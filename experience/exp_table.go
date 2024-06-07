@@ -1,11 +1,8 @@
-// package experience
 package experience
 
 import (
 	"fmt"
 	"math"
-	// "sort"
-	// "golang.org/x/text/search"
 )
 
 const (
@@ -59,12 +56,12 @@ func (e *ExpTable) GetLvlByExp(exp int) int {
 func (e *ExpTable) ToString() string {
 	expTable := "=============================\n"
 	expTable += "Coef: "
-	expTable += fmt.Sprintf("%+.2f", e.Coefficient)
+	expTable += fmt.Sprintf("%.1f\n", e.Coefficient)
 	expTable += "Lvl\t| Base\t| Total\n"
-	for i := 0; i <= int(MAX_LVL); i++ {
-		expTable += " " + string(i) + "\t| "
-		expTable += string(e.baseTable[i]) + "\t| "
-		expTable += string(rune(e.aggregateTable[i])) + "\n"
+	for i := 0; i < int(MAX_LVL); i++ {
+		expTable += " " + fmt.Sprint(i) + "\t| "
+		expTable += fmt.Sprint(e.baseTable[i]) + "\t| "
+		expTable += fmt.Sprint(e.aggregateTable[i]) + "\n"
 	}
 	expTable += "=============================\n"
 	return expTable
