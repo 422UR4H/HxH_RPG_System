@@ -12,7 +12,7 @@ const (
 )
 
 type ExpTable struct {
-	Coefficient    float64
+	coefficient    float64
 	baseTable      [MAX_LVL]int
 	aggregateTable [MAX_LVL]int
 }
@@ -24,12 +24,12 @@ func expTableFunction(lvl int) float64 {
 }
 
 func NewExpTable(coefficient float64) *ExpTable {
-	expTable := &ExpTable{Coefficient: coefficient}
+	expTable := &ExpTable{coefficient: coefficient}
 	expTable.baseTable[0] = 0
 	expTable.aggregateTable[0] = 0
 
 	for i := 1; i < int(MAX_LVL); i++ {
-		currExp := int(expTable.Coefficient * expTableFunction(i))
+		currExp := int(expTable.coefficient * expTableFunction(i))
 		expTable.baseTable[i] = currExp
 		expTable.aggregateTable[i] = expTable.aggregateTable[i-1] + currExp
 	}
@@ -60,7 +60,7 @@ func (e *ExpTable) GetLvlByExp(exp int) int {
 func (e *ExpTable) ToString() string {
 	expTable := "=============================\n"
 	expTable += "Coef: "
-	expTable += fmt.Sprintf("%.1f\n", e.Coefficient)
+	expTable += fmt.Sprintf("%.1f\n", e.coefficient)
 	expTable += "Lvl\t| Base\t| Total\n"
 	for lvl := 0; lvl < int(MAX_LVL); lvl++ {
 		expTable += " " + fmt.Sprint(lvl) + "\t| "
