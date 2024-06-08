@@ -29,11 +29,15 @@ func NewExpTable(coefficient float64) *ExpTable {
 	expTable.aggregateTable[0] = 0
 
 	for i := 1; i < int(MAX_LVL); i++ {
-		currExp := int(coefficient * expTableFunction(i))
+		currExp := int(expTable.Coefficient * expTableFunction(i))
 		expTable.baseTable[i] = currExp
 		expTable.aggregateTable[i] = expTable.aggregateTable[i-1] + currExp
 	}
 	return expTable
+}
+
+func NewDefaultExpTable() *ExpTable {
+	return NewExpTable(1.0)
 }
 
 func (e *ExpTable) GetBaseExpByLvl(lvl int) int {
@@ -45,8 +49,8 @@ func (e *ExpTable) GetAggregateExpByLvl(lvl int) int {
 }
 
 func (e *ExpTable) GetLvlByExp(exp int) int {
-	for lvl := len(e.aggregateTable); lvl >= 0; lvl-- {
-		if e.aggregateTable[lvl] < exp {
+	for lvl := len(e.aggregateTable) - 1; lvl >= 0; lvl-- {
+		if e.aggregateTable[lvl] <= exp {
 			return lvl
 		}
 	}
@@ -58,10 +62,10 @@ func (e *ExpTable) ToString() string {
 	expTable += "Coef: "
 	expTable += fmt.Sprintf("%.1f\n", e.Coefficient)
 	expTable += "Lvl\t| Base\t| Total\n"
-	for i := 0; i < int(MAX_LVL); i++ {
-		expTable += " " + fmt.Sprint(i) + "\t| "
-		expTable += fmt.Sprint(e.baseTable[i]) + "\t| "
-		expTable += fmt.Sprint(e.aggregateTable[i]) + "\n"
+	for lvl := 0; lvl < int(MAX_LVL); lvl++ {
+		expTable += " " + fmt.Sprint(lvl) + "\t| "
+		expTable += fmt.Sprint(e.baseTable[lvl]) + "\t| "
+		expTable += fmt.Sprint(e.aggregateTable[lvl]) + "\n"
 	}
 	expTable += "=============================\n"
 	return expTable
