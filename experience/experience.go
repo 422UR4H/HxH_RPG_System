@@ -7,7 +7,7 @@ type Experience struct {
 }
 
 func NewExperience(expTable ExpTable) *Experience {
-	return &Experience{expTable: expTable}
+	return &Experience{expTable: expTable, points: 0, level: 0}
 }
 
 func (e *Experience) GetPoints() int {
