@@ -1,7 +1,7 @@
 package experience
 
 type CharacterExp struct {
-	ITriggerCascadeExp
+	IEndCascadeUpgrade
 	exp Experience
 }
 
