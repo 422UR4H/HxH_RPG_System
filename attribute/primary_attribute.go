@@ -1,17 +1,17 @@
 package attribute
 
 import (
-	a "github.com/422UR4H/HxH_RPG_Environment.Domain/ability"
+	ability "github.com/422UR4H/HxH_RPG_Environment.Domain/ability"
 	exp "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
 )
 
 type PrimaryAttribute struct {
 	points  int
 	exp     exp.Experience
-	ability a.IAbility
+	ability ability.IAbility
 }
 
-func NewPrimaryAttribute(exp exp.Experience, ability a.IAbility) *PrimaryAttribute {
+func NewPrimaryAttribute(exp exp.Experience, ability ability.IAbility) *PrimaryAttribute {
 	return &PrimaryAttribute{exp: exp, ability: ability, points: 0}
 }
 
