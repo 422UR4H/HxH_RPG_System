@@ -1,27 +1,42 @@
 package status
 
 type HitPoints struct {
-	Min     int
-	Current int
-	Max     int
+	Status
 }
 
 func NewHitPoints() *HitPoints {
 	points := 0
 	return &HitPoints{
-		Min:     points,
-		Current: points,
-		Max:     points,
+		Status: Status{
+			Min:     points,
+			Current: points,
+			Max:     points,
+		},
 	}
 }
 
 func (ap *HitPoints) StatusUpgrade(level int) {
 	// TODO: Implement Min
 	// Min = generateStatus.GetLvl();
+	ap.Status.StatusUpgrade(level)
+}
 
-	if ap.Current == ap.Max {
-		ap.Current = level
-	}
-	// TODO: Implement else case (ex.: ap.Current == ap.Max - 1 -> threat % case)
-	ap.Max = level
+func (ap *HitPoints) IncreaseAt(value int) int {
+	return ap.Status.IncreaseAt(value)
+}
+
+func (ap *HitPoints) DecreaseAt(value int) int {
+	return ap.Status.DecreaseAt(value)
+}
+
+func (ap *HitPoints) GetMin() int {
+	return ap.Status.Min
+}
+
+func (ap *HitPoints) GetCurrent() int {
+	return ap.Status.Current
+}
+
+func (ap *HitPoints) GetMax() int {
+	return ap.Status.Max
 }

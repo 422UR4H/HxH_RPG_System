@@ -1,13 +1,13 @@
 package status
 
-type AuraPoints struct {
+type StaminaPoints struct {
 	Status
 }
 
 // TODO: rerify if should I private status and its fields
-func NewAuraPoints() *AuraPoints {
+func NewStaminaPoints() *StaminaPoints {
 	points := 0
-	return &AuraPoints{
+	return &StaminaPoints{
 		Status: Status{
 			Min:     points,
 			Current: points,
@@ -16,26 +16,26 @@ func NewAuraPoints() *AuraPoints {
 	}
 }
 
-func (ap *AuraPoints) StatusUpgrade(level int) {
+func (ap *StaminaPoints) StatusUpgrade(level int) {
 	ap.Status.StatusUpgrade(level)
 }
 
-func (ap *AuraPoints) IncreaseAt(value int) int {
+func (ap *StaminaPoints) IncreaseAt(value int) int {
 	return ap.Status.IncreaseAt(value)
 }
 
-func (ap *AuraPoints) DecreaseAt(value int) int {
+func (ap *StaminaPoints) DecreaseAt(value int) int {
 	return ap.Status.DecreaseAt(value)
 }
 
-func (ap *AuraPoints) GetMin() int {
+func (ap *StaminaPoints) GetMin() int {
 	return ap.Status.Min
 }
 
-func (ap *AuraPoints) GetCurrent() int {
+func (ap *StaminaPoints) GetCurrent() int {
 	return ap.Status.Current
 }
 
-func (ap *AuraPoints) GetMax() int {
+func (ap *StaminaPoints) GetMax() int {
 	return ap.Status.Max
 }
