@@ -7,9 +7,9 @@ import (
 )
 
 type CharacterSkills struct {
-	PhysicalSkills  SkillsManager
-	MentalSkills    SkillsManager
-	SpiritualSkills SkillsManager
+	physicalSkills  SkillsManager
+	mentalSkills    SkillsManager
+	spiritualSkills SkillsManager
 }
 
 func NewCharacterSkills(
@@ -18,20 +18,20 @@ func NewCharacterSkills(
 	spiritualSkills SkillsManager) *CharacterSkills {
 
 	return &CharacterSkills{
-		PhysicalSkills:  physicalSkills,
-		MentalSkills:    mentalSkills,
-		SpiritualSkills: spiritualSkills,
+		physicalSkills:  physicalSkills,
+		mentalSkills:    mentalSkills,
+		spiritualSkills: spiritualSkills,
 	}
 }
 
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
-	if skill, err := cs.SpiritualSkills.Get(name); err == nil {
+	if skill, err := cs.spiritualSkills.Get(name); err == nil {
 		return skill, nil
 	}
-	if skill, err := cs.PhysicalSkills.Get(name); err == nil {
+	if skill, err := cs.physicalSkills.Get(name); err == nil {
 		return skill, nil
 	}
-	if skill, err := cs.MentalSkills.Get(name); err == nil {
+	if skill, err := cs.mentalSkills.Get(name); err == nil {
 		return skill, nil
 	}
 	return nil, errors.New("skill not found")
