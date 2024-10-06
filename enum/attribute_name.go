@@ -13,7 +13,7 @@ const (
 	Flexibility
 	Dexterity
 	Sense
-	Intuition
+	Instinct
 
 	// Mentals
 	Resilience
@@ -45,8 +45,8 @@ func (an AttributeName) String() string {
 		return "Dexterity"
 	case Sense:
 		return "Sense"
-	case Intuition:
-		return "Intuition"
+	case Instinct:
+		return "Instinct"
 	case Resilience:
 		return "Resilience"
 	case Adaptability:
