@@ -1,8 +1,8 @@
 package skill
 
 import (
-	attributes "github.com/422UR4H/HxH_RPG_Environment.Domain/attribute"
-	experiences "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
+	attr "github.com/422UR4H/HxH_RPG_Environment.Domain/attribute"
+	exp "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
 	status "github.com/422UR4H/HxH_RPG_Environment.Domain/status"
 )
 
@@ -13,9 +13,9 @@ type StatusSkill struct {
 
 func NewStatusSkill(
 	status status.IStatus,
-	exp experiences.Experience,
-	attribute attributes.IGameAttribute,
-	abilitySkillsExp IEndCascadeUpgrade) *StatusSkill {
+	exp exp.Experience,
+	attribute attr.IGameAttribute,
+	abilitySkillsExp exp.IEndCascadeUpgrade) *StatusSkill {
 
 	skill := &StatusSkill{
 		commonSkill: *NewCommonSkill(exp, attribute, abilitySkillsExp),
@@ -34,3 +34,5 @@ func (ss *StatusSkill) TriggerCascadeUpgrade(exp int) {
 		ss.Status.StatusUpgrade(ss.Exp.GetLvl())
 	}
 }
+
+// status skill estende person (common) skill. devo resolver isso para continuar
