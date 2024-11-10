@@ -8,7 +8,7 @@ import (
 	exp "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
 )
 
-type SkillsManager struct {
+type Manager struct {
 	skills     map[enum.SkillName]ISkill
 	exp        exp.Experience
 	skillsExp  exp.ICascadeUpgrade
@@ -18,9 +18,9 @@ type SkillsManager struct {
 func NewSkillsManager(
 	exp exp.Experience,
 	skillsExp exp.ICascadeUpgrade,
-	abilityExp exp.ICascadeUpgrade) *SkillsManager {
+	abilityExp exp.ICascadeUpgrade) *Manager {
 
-	return &SkillsManager{
+	return &Manager{
 		skills:     make(map[enum.SkillName]ISkill),
 		exp:        exp,
 		skillsExp:  skillsExp,
@@ -28,7 +28,7 @@ func NewSkillsManager(
 	}
 }
 
-func (sm *SkillsManager) Init(skills map[enum.SkillName]ISkill) {
+func (sm *Manager) Init(skills map[enum.SkillName]ISkill) {
 	if len(sm.skills) > 0 {
 		fmt.Println("skills already initialized")
 		return
@@ -36,14 +36,14 @@ func (sm *SkillsManager) Init(skills map[enum.SkillName]ISkill) {
 	sm.skills = skills
 }
 
-func (sm *SkillsManager) Get(name enum.SkillName) (ISkill, error) {
+func (sm *Manager) Get(name enum.SkillName) (ISkill, error) {
 	if skill, ok := sm.skills[name]; ok {
 		return skill, nil
 	}
 	return nil, errors.New("skill not found")
 }
 
-func (sm *SkillsManager) GetLvlOf(name enum.SkillName) (int, error) {
+func (sm *Manager) GetLvlOf(name enum.SkillName) (int, error) {
 	skill, err := sm.Get(name)
 	if err != nil {
 		return 0, err
@@ -51,7 +51,7 @@ func (sm *SkillsManager) GetLvlOf(name enum.SkillName) (int, error) {
 	return skill.GetLvl(), nil
 }
 
-func (sm *SkillsManager) GetValueForTestOf(name enum.SkillName) (int, error) {
+func (sm *Manager) GetValueForTestOf(name enum.SkillName) (int, error) {
 	skill, err := sm.Get(name)
 	if err != nil {
 		return 0, err
@@ -59,7 +59,7 @@ func (sm *SkillsManager) GetValueForTestOf(name enum.SkillName) (int, error) {
 	return skill.GetValueForTest(), nil
 }
 
-func (sm *SkillsManager) IncreaseExp(exp int, name enum.SkillName) (int, error) {
+func (sm *Manager) IncreaseExp(exp int, name enum.SkillName) (int, error) {
 	skill, err := sm.Get(name)
 	if err != nil {
 		return 0, err
@@ -67,12 +67,12 @@ func (sm *SkillsManager) IncreaseExp(exp int, name enum.SkillName) (int, error) 
 	return skill.IncreaseExp(exp), nil
 }
 
-func (sm *SkillsManager) CascadeUpgrade(exp int) {
+func (sm *Manager) CascadeUpgrade(exp int) {
 	sm.exp.IncreasePoints(exp)
 	sm.skillsExp.CascadeUpgrade(exp)
 	sm.abilityExp.CascadeUpgrade(exp)
 }
 
-func (sm *SkillsManager) TriggerEndUpgrade(exp int) {
+func (sm *Manager) TriggerEndUpgrade(exp int) {
 	sm.exp.IncreasePoints(exp)
 }

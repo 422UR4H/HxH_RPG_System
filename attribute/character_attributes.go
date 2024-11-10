@@ -7,12 +7,12 @@ import (
 )
 
 type CharacterAttributes struct {
-	physicalAttributes  AttributeManager
-	mentalAttributes    AttributeManager
-	spiritualAttributes AttributeManager
+	physicalAttributes  Manager
+	mentalAttributes    Manager
+	spiritualAttributes Manager
 }
 
-func NewCharacterAttributes(physical, mental, spiritual AttributeManager) *CharacterAttributes {
+func NewCharacterAttributes(physical, mental, spiritual Manager) *CharacterAttributes {
 	return &CharacterAttributes{
 		physicalAttributes:  physical,
 		mentalAttributes:    mental,

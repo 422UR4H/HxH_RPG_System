@@ -6,7 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_Environment.Domain/enum"
 )
 
-type AttributeManager struct {
+type Manager struct {
 	primaryAttributes map[enum.AttributeName]PrimaryAttribute
 	middleAttributes  map[enum.AttributeName]MiddleAttribute
 }
@@ -14,14 +14,14 @@ type AttributeManager struct {
 // NewAttributeManager creates a new instance of AttributeManager.
 func NewAttributeManager(
 	primAttr map[enum.AttributeName]PrimaryAttribute,
-	midAttr map[enum.AttributeName]MiddleAttribute) *AttributeManager {
-	return &AttributeManager{
+	midAttr map[enum.AttributeName]MiddleAttribute) *Manager {
+	return &Manager{
 		primaryAttributes: primAttr,
 		middleAttributes:  midAttr,
 	}
 }
 
-func (am *AttributeManager) Get(name enum.AttributeName) (IGameAttribute, error) {
+func (am *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
 	primaryAttribute, ok := am.primaryAttributes[name]
 	if ok {
 		return primaryAttribute, nil
@@ -34,7 +34,7 @@ func (am *AttributeManager) Get(name enum.AttributeName) (IGameAttribute, error)
 	return nil, errors.New("attribute not found")
 }
 
-func (am *AttributeManager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) {
+func (am *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) {
 	primaryAttribute, ok := am.primaryAttributes[name]
 	if ok {
 		return primaryAttribute, nil

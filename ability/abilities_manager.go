@@ -7,25 +7,25 @@ import (
 	exp "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
 )
 
-type AbilitiesManager struct {
+type Manager struct {
 	characterExp exp.CharacterExp
 	abilities    map[enum.AbilityName]Ability
 	talent       Talent
 }
 
-func (am *AbilitiesManager) NewAbilitiesManager(
+func (am *Manager) NewAbilitiesManager(
 	characterExp exp.CharacterExp,
 	abilities map[enum.AbilityName]Ability,
 	talent Talent,
-) *AbilitiesManager {
-	return &AbilitiesManager{
+) *Manager {
+	return &Manager{
 		characterExp: characterExp,
 		abilities:    abilities,
 		talent:       talent,
 	}
 }
 
-func (am *AbilitiesManager) Get(name enum.AbilityName) (Ability, error) {
+func (am *Manager) Get(name enum.AbilityName) (Ability, error) {
 	ability, ok := am.abilities[name]
 	if !ok {
 		return Ability{}, errors.New("ability not found")
@@ -33,7 +33,7 @@ func (am *AbilitiesManager) Get(name enum.AbilityName) (Ability, error) {
 	return ability, nil
 }
 
-func (am *AbilitiesManager) GetExpPointsOf(name enum.AbilityName) (int, error) {
+func (am *Manager) GetExpPointsOf(name enum.AbilityName) (int, error) {
 	ability, err := am.Get(name)
 	if err != nil {
 		return 0, err
@@ -41,7 +41,7 @@ func (am *AbilitiesManager) GetExpPointsOf(name enum.AbilityName) (int, error) {
 	return ability.GetExpPoints(), nil
 }
 
-func (am *AbilitiesManager) GetLevelOf(name enum.AbilityName) (int, error) {
+func (am *Manager) GetLevelOf(name enum.AbilityName) (int, error) {
 	ability, err := am.Get(name)
 	if err != nil {
 		return 0, err

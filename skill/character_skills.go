@@ -7,15 +7,15 @@ import (
 )
 
 type CharacterSkills struct {
-	physicalSkills  SkillsManager
-	mentalSkills    SkillsManager
-	spiritualSkills SkillsManager
+	physicalSkills  Manager
+	mentalSkills    Manager
+	spiritualSkills Manager
 }
 
 func NewCharacterSkills(
 	physicalSkills,
 	mentalSkills,
-	spiritualSkills SkillsManager) *CharacterSkills {
+	spiritualSkills Manager) *CharacterSkills {
 
 	return &CharacterSkills{
 		physicalSkills:  physicalSkills,
