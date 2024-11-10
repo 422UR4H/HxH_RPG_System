@@ -2,47 +2,56 @@ package status
 
 type IStatus interface {
 	// TODO: verify if these methods are necessary
-	// GetMin() int
-	// GetCurrent() int
-	// GetMax() int
 	IncreaseAt(value int) int
 	DecreaseAt(value int) int
-	StatusUpgrade(level int)
+	Upgrade(level int)
 	GetMin() int
 	GetCurrent() int
 	GetMax() int
 }
 
 type Status struct {
-	Min     int
-	Current int
-	Max     int
+	min     int
+	current int
+	max     int
 }
 
 func (s *Status) IncreaseAt(value int) int {
-	temp := s.Current + value
-	if temp > s.Max {
-		s.Current = s.Max
+	temp := s.current + value
+	if temp > s.max {
+		s.current = s.max
 	} else {
-		s.Current = temp
+		s.current = temp
 	}
-	return s.Current
+	return s.current
 }
 
 func (s *Status) DecreaseAt(value int) int {
-	temp := s.Current - value
-	if temp < s.Min {
-		s.Current = s.Min
+	temp := s.current - value
+	if temp < s.min {
+		s.current = s.min
 	} else {
-		s.Current = temp
+		s.current = temp
 	}
-	return s.Current
+	return s.current
 }
 
-func (ap *Status) StatusUpgrade(level int) {
-	if ap.Current == ap.Max {
-		ap.Current = level
+func (ap *Status) Upgrade(level int) {
+	if ap.current == ap.max {
+		ap.current = level
 	}
-	// TODO: Implement else case (ex.: ap.Current == ap.Max - 1 -> threat % case)
-	ap.Max = level
+	// TODO: Implement else case (ex.: ap.current == ap.max - 1 -> threat % case)
+	ap.max = level
+}
+
+func (s *Status) GetMin() int {
+	return s.min
+}
+
+func (s *Status) GetCurrent() int {
+	return s.current
+}
+
+func (s *Status) GetMax() int {
+	return s.max
 }

@@ -21,18 +21,38 @@ func NewStatusSkill(
 		commonSkill: *NewCommonSkill(exp, attribute, abilitySkillsExp),
 		status:      status,
 	}
-	skill.status.StatusUpgrade(skill.GetLvl())
+	skill.status.Upgrade(skill.GetLvl())
 	return skill
 }
 
 func (ss *StatusSkill) TriggerCascadeUpgrade(exp int) {
-	diff := ss.Exp.IncreasePoints(exp)
-	ss.Attribute.CascadeUpgrade(exp)
+	diff := ss.commonSkill.IncreaseExp(exp)
+	ss.commonSkill.CascadeUpgrade(exp)
 	ss.AbilitySkillsExp.TriggerEndUpgrade(exp)
 
 	if diff != 0 {
-		ss.Status.StatusUpgrade(ss.Exp.GetLvl())
+		ss.Status.Upgrade(ss.Exp.GetLvl())
 	}
 }
+
+func (ss *StatusSkill) IncreaseExp(points int) int {
+	return ss.IncreaseExp(points)
+}
+
+func (ss *StatusSkill) GetValueForTest() int {
+	return ss.GetValueForTest()
+}
+
+func (ss *StatusSkill) GetExpPoints() int {
+	return ss.GetExpPoints()
+}
+
+func (ss *StatusSkill) GetLvl() int {
+	return ss.GetLvl()
+}
+
+// func (ss *StatusSkill) Clone(points int) *StatusSkill {
+// 	return NewCommonSkill(*ss.exp.Clone(), ss.attribute, ss.abilitySkillsExp)
+// }
 
 // status skill estende person (common) skill. devo resolver isso para continuar
