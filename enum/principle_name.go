@@ -13,6 +13,9 @@ const (
 	Ryu
 	In
 	En
+	// TODO: create SpiritualAttribute or similar for:
+	AuraControl // CoA
+	Aop
 )
 
 func (pn PrincipleName) String() string {
@@ -37,6 +40,10 @@ func (pn PrincipleName) String() string {
 		return "In"
 	case En:
 		return "En"
+	case AuraControl:
+		return "AuraControl"
+	case Aop:
+		return "Aop"
 	}
 	return "Unknown"
 }

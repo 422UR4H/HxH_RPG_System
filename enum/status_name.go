@@ -19,7 +19,3 @@ func (sn StatusName) String() string {
 	}
 	return "Unknown"
 }
-
-// TODO: create SpiritualAttribute or similar to handle these attributes below
-// AuraControl
-// Aop
