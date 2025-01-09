@@ -24,6 +24,10 @@ func (np *NenPrinciple) GetExpPoints() int {
 	return np.exp.GetPoints()
 }
 
+func (np *NenPrinciple) GetLvl() int {
+	return np.exp.GetLevel()
+}
+
 // func Clone() *NenPrinciple {
 // 	return NewNenPrinciple(experience.Clone(), AbilityExp);
 // }
