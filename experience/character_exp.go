@@ -2,13 +2,13 @@ package experience
 
 type CharacterExp struct {
 	IEndCascadeUpgrade
-	exp Experience
+	exp Exp
 }
 
-func NewCharacterExp(exp Experience) *CharacterExp {
+func NewCharacterExp(exp Exp) *CharacterExp {
 	return &CharacterExp{exp: exp}
 }
 
-func (ce *CharacterExp) TriggerEndUpgrade(exp int) {
+func (ce *CharacterExp) EndCascadeUpgrade(exp int) {
 	ce.exp.IncreasePoints(exp)
 }

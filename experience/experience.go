@@ -1,49 +1,49 @@
 package experience
 
-type Experience struct {
+type Exp struct {
 	expTable ExpTable
 	points   int
 	level    int
 }
 
-func NewExperience(expTable ExpTable) *Experience {
-	return &Experience{expTable: expTable, points: 0, level: 0}
+func NewExperience(expTable ExpTable) *Exp {
+	return &Exp{expTable: expTable, points: 0, level: 0}
 }
 
-func (e *Experience) GetPoints() int {
+func (e *Exp) GetPoints() int {
 	return e.points
 }
 
-func (e *Experience) GetLevel() int {
+func (e *Exp) GetLevel() int {
 	return e.level
 }
 
-func (e *Experience) GetBaseExpByLvl(lvl int) int {
+func (e *Exp) GetBaseExpByLvl(lvl int) int {
 	return e.expTable.GetBaseExpByLvl(lvl)
 }
 
-func (e *Experience) GetAggregateExpByLvl(lvl int) int {
+func (e *Exp) GetAggregateExpByLvl(lvl int) int {
 	return e.expTable.GetAggregateExpByLvl(lvl)
 }
 
-func (e *Experience) GetCurrentExp() int {
+func (e *Exp) GetCurrentExp() int {
 	return e.points - e.expTable.GetAggregateExpByLvl(e.level)
 }
 
-func (e *Experience) GetExpToEvolve() int {
+func (e *Exp) GetExpToEvolve() int {
 	return e.GetAggregateExpByLvl(e.level+1) - e.GetCurrentExp()
 }
 
-func (e *Experience) getLvlByExp() int {
+func (e *Exp) getLvlByExp() int {
 	return e.expTable.GetLvlByExp(e.points)
 }
 
-func (e *Experience) upgrade() {
+func (e *Exp) upgrade() {
 	e.level = e.getLvlByExp()
 }
 
 // return level diff
-func (e *Experience) IncreasePoints(exp int) int {
+func (e *Exp) IncreasePoints(exp int) int {
 	e.points += exp
 
 	diff := e.getLvlByExp() - e.level
@@ -53,6 +53,6 @@ func (e *Experience) IncreasePoints(exp int) int {
 	return diff
 }
 
-func (e *Experience) Clone() *Experience {
+func (e *Exp) Clone() *Exp {
 	return NewExperience(e.expTable)
 }

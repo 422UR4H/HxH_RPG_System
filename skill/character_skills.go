@@ -3,7 +3,7 @@ package skill
 import (
 	"errors"
 
-	enum "github.com/422UR4H/HxH_RPG_Environment.Domain/enum"
+	"github.com/422UR4H/HxH_RPG_Environment.Domain/enum"
 )
 
 type CharacterSkills struct {
@@ -22,6 +22,14 @@ func NewCharacterSkills(
 		mentalSkills:    mentalSkills,
 		spiritualSkills: spiritualSkills,
 	}
+}
+
+func (cs *CharacterSkills) IncreaseExp(points int, name enum.SkillName) (int, error) {
+	skill, err := cs.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.CascadeUpgradeTrigger(points), nil
 }
 
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
@@ -59,12 +67,4 @@ func (cs *CharacterSkills) GetLevelOf(name enum.SkillName) (int, error) {
 		return 0, err
 	}
 	return skill.GetLvl(), nil
-}
-
-func (cs *CharacterSkills) IncreaseExp(points int, name enum.SkillName) (int, error) {
-	skill, err := cs.Get(name)
-	if err != nil {
-		return 0, err
-	}
-	return skill.IncreaseExp(points), nil
 }

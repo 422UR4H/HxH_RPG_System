@@ -1,5 +1,5 @@
 package experience
 
 type ITriggerCascadeExp interface {
-	TriggerCascadeUpgrade(exp int)
+	CascadeUpgradeTrigger(exp int) int
 }

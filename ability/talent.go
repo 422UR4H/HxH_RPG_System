@@ -1,12 +1,12 @@
 package ability
 
-import exp "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
+import "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
 
 type Talent struct {
-	exp exp.Experience
+	exp experience.Exp
 }
 
-func (t *Talent) NewTalent(exp exp.Experience) *Talent {
+func (t *Talent) NewTalent(exp experience.Exp) *Talent {
 	return &Talent{exp: exp}
 }
 

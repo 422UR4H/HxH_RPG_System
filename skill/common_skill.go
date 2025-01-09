@@ -2,31 +2,28 @@ package skill
 
 import (
 	attr "github.com/422UR4H/HxH_RPG_Environment.Domain/attribute"
-	exp "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
+	"github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
 )
 
 type CommonSkill struct {
-	exp              exp.Experience
+	exp              experience.Exp
 	attribute        attr.IGameAttribute
-	abilitySkillsExp exp.IEndCascadeUpgrade
+	abilitySkillsExp experience.IEndCascadeUpgrade
 }
 
 func NewCommonSkill(
-	exp exp.Experience,
+	exp experience.Exp,
 	attr attr.IGameAttribute,
-	abilitySkillsExp exp.IEndCascadeUpgrade) *CommonSkill {
+	abilitySkillsExp experience.IEndCascadeUpgrade) *CommonSkill {
 
 	return &CommonSkill{exp: exp, attribute: attr, abilitySkillsExp: abilitySkillsExp}
 }
 
-func (cs *CommonSkill) TriggerEndUpgrade(exp int) {
-	cs.exp.IncreasePoints(exp)
+func (cs *CommonSkill) CascadeUpgradeTrigger(exp int) int {
+	diff := cs.exp.IncreasePoints(exp)
 	cs.attribute.CascadeUpgrade(exp)
-	cs.abilitySkillsExp.TriggerEndUpgrade(exp)
-}
-
-func (cs *CommonSkill) IncreaseExp(points int) int {
-	return cs.exp.IncreasePoints(points)
+	cs.abilitySkillsExp.EndCascadeUpgrade(exp)
+	return diff
 }
 
 func (cs *CommonSkill) GetValueForTest() int {
