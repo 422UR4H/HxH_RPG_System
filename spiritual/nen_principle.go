@@ -20,11 +20,15 @@ func (np *NenPrinciple) CascadeUpgradeTrigger(exp int) int {
 	return diff
 }
 
+func (np *NenPrinciple) GetPrinciplePower() int {
+	return np.GetLevel() + np.abilityExp.GetLevel()/2
+}
+
 func (np *NenPrinciple) GetExpPoints() int {
 	return np.exp.GetPoints()
 }
 
-func (np *NenPrinciple) GetLvl() int {
+func (np *NenPrinciple) GetLevel() int {
 	return np.exp.GetLevel()
 }
 

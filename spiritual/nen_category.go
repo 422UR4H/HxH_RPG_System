@@ -24,7 +24,7 @@ func (np *NenCategory) GetExpPoints() int {
 	return np.exp.GetPoints()
 }
 
-func (np *NenCategory) GetLvl() int {
+func (np *NenCategory) GetLevel() int {
 	return np.exp.GetLevel()
 }
 

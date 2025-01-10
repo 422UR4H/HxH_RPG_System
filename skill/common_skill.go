@@ -34,7 +34,7 @@ func (cs *CommonSkill) GetExpPoints() int {
 	return cs.exp.GetPoints()
 }
 
-func (cs *CommonSkill) GetLvl() int {
+func (cs *CommonSkill) GetLevel() int {
 	return cs.exp.GetLevel()
 }
 

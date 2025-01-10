@@ -56,6 +56,10 @@ func (h *Hatsu) Get(name enum.CategoryName) (NenCategory, error) {
 	return NenCategory{}, errors.New("category not found")
 }
 
+func (h *Hatsu) GetPrinciplePower() int {
+	return h.GetLevel() + h.abilityExp.GetLevel()/2
+}
+
 func (h *Hatsu) GetExpPointsOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
@@ -68,14 +72,14 @@ func (h *Hatsu) GetExpPoints() int {
 	return h.exp.GetPoints()
 }
 
-func (h *Hatsu) GetLvlOf(name enum.CategoryName) (int, error) {
+func (h *Hatsu) GetLevelOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s %s", err, "failed to get level of", name.String())
 	}
-	return category.GetLvl(), nil
+	return category.GetLevel(), nil
 }
 
-func (h *Hatsu) GetLvl() int {
+func (h *Hatsu) GetLevel() int {
 	return h.exp.GetLevel()
 }

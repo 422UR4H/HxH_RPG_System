@@ -66,5 +66,5 @@ func (cs *CharacterSkills) GetLevelOf(name enum.SkillName) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return skill.GetLvl(), nil
+	return skill.GetLevel(), nil
 }

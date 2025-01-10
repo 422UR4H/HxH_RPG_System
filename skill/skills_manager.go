@@ -43,12 +43,12 @@ func (m *Manager) Get(name enum.SkillName) (ISkill, error) {
 	return nil, errors.New("skill not found")
 }
 
-func (m *Manager) GetLvlOf(name enum.SkillName) (int, error) {
+func (m *Manager) GetLevelOf(name enum.SkillName) (int, error) {
 	skill, err := m.Get(name)
 	if err != nil {
 		return 0, err
 	}
-	return skill.GetLvl(), nil
+	return skill.GetLevel(), nil
 }
 
 func (m *Manager) GetValueForTestOf(name enum.SkillName) (int, error) {

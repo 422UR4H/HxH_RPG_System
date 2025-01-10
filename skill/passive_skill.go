@@ -25,7 +25,7 @@ func NewPassiveSkill(
 		attribute:        attribute,
 		abilitySkillsExp: abilitySkillsExp,
 	}
-	skill.status.Upgrade(skill.GetLvl())
+	skill.status.Upgrade(skill.GetLevel())
 	return skill
 }
 
@@ -47,7 +47,7 @@ func (ps *PassiveSkill) GetExpPoints() int {
 	return ps.exp.GetPoints()
 }
 
-func (ps *PassiveSkill) GetLvl() int {
+func (ps *PassiveSkill) GetLevel() int {
 	return ps.exp.GetLevel()
 }
 
