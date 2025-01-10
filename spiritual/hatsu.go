@@ -1,7 +1,6 @@
 package spiritual
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/422UR4H/HxH_RPG_Environment.Domain/enum"
@@ -40,20 +39,19 @@ func (h *Hatsu) CascadeUpgrade(exp int) int {
 	return diff
 }
 
-func (h *Hatsu) IncreaseExp(points int, name enum.CategoryName) error {
+func (h *Hatsu) IncreaseExp(points int, name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
-		return fmt.Errorf("%w: %s", err, "failed to increase exp")
+		return 0, fmt.Errorf("%w: %s", err, "failed to increase exp")
 	}
-	category.CascadeUpgradeTrigger(points)
-	return nil
+	return category.CascadeUpgradeTrigger(points), nil
 }
 
 func (h *Hatsu) Get(name enum.CategoryName) (NenCategory, error) {
 	if category, ok := h.categories[name]; ok {
 		return category, nil
 	}
-	return NenCategory{}, errors.New("category not found")
+	return NenCategory{}, fmt.Errorf("category %s not found", name.String())
 }
 
 func (h *Hatsu) GetPrinciplePower() int {

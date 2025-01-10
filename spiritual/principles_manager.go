@@ -22,6 +22,27 @@ func NewPrinciplesManager(
 	}
 }
 
+func (pm *PrinciplesManager) IncreaseExpByPrinciple(
+	name enum.PrincipleName, exp int,
+) (int, error) {
+
+	if principle, ok := pm.principles[name]; ok {
+		return principle.CascadeUpgradeTrigger(exp), nil
+	}
+	return 0, fmt.Errorf("principle %s not found", name.String())
+}
+
+func (pm *PrinciplesManager) IncreaseExpByCategory(
+	name enum.CategoryName, exp int,
+) (int, error) {
+
+	diff, err := pm.hatsu.IncreaseExp(exp, name)
+	if err != nil {
+		return 0, err
+	}
+	return diff, nil
+}
+
 func (pm *PrinciplesManager) Get(name enum.PrincipleName) (IPrinciple, error) {
 	if name == enum.Hatsu {
 		return pm.hatsu, nil
