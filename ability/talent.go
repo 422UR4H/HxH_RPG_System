@@ -6,7 +6,7 @@ type Talent struct {
 	exp experience.Exp
 }
 
-func (t *Talent) NewTalent(exp experience.Exp) *Talent {
+func NewTalent(exp experience.Exp) *Talent {
 	return &Talent{exp: exp}
 }
 

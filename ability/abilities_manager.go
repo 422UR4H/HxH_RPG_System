@@ -13,7 +13,7 @@ type Manager struct {
 	talent       Talent
 }
 
-func (am *Manager) NewAbilitiesManager(
+func NewAbilitiesManager(
 	characterExp exp.CharacterExp,
 	abilities map[enum.AbilityName]Ability,
 	talent Talent,
@@ -25,24 +25,24 @@ func (am *Manager) NewAbilitiesManager(
 	}
 }
 
-func (am *Manager) Get(name enum.AbilityName) (Ability, error) {
-	ability, ok := am.abilities[name]
+func (m *Manager) Get(name enum.AbilityName) (Ability, error) {
+	ability, ok := m.abilities[name]
 	if !ok {
 		return Ability{}, errors.New("ability not found")
 	}
 	return ability, nil
 }
 
-func (am *Manager) GetExpPointsOf(name enum.AbilityName) (int, error) {
-	ability, err := am.Get(name)
+func (m *Manager) GetExpPointsOf(name enum.AbilityName) (int, error) {
+	ability, err := m.Get(name)
 	if err != nil {
 		return 0, err
 	}
 	return ability.GetExpPoints(), nil
 }
 
-func (am *Manager) GetLevelOf(name enum.AbilityName) (int, error) {
-	ability, err := am.Get(name)
+func (m *Manager) GetLevelOf(name enum.AbilityName) (int, error) {
+	ability, err := m.Get(name)
 	if err != nil {
 		return 0, err
 	}
