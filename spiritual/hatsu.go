@@ -33,10 +33,9 @@ func (h *Hatsu) Init(categories map[enum.CategoryName]NenCategory) {
 	h.categories = categories
 }
 
-func (h *Hatsu) CascadeUpgrade(exp int) int {
-	diff := h.exp.IncreasePoints(exp)
+func (h *Hatsu) CascadeUpgrade(exp int) {
+	h.exp.IncreasePoints(exp)
 	h.abilityExp.CascadeUpgrade(exp)
-	return diff
 }
 
 func (h *Hatsu) IncreaseExp(points int, name enum.CategoryName) (int, error) {
