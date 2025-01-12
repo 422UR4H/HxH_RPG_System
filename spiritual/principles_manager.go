@@ -6,7 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_Environment.Domain/enum"
 )
 
-type PrinciplesManager struct {
+type Manager struct {
 	principles map[enum.PrincipleName]NenPrinciple
 	hatsu      *Hatsu
 }
@@ -14,15 +14,15 @@ type PrinciplesManager struct {
 func NewPrinciplesManager(
 	principles map[enum.PrincipleName]NenPrinciple,
 	hatsu *Hatsu,
-) *PrinciplesManager {
+) *Manager {
 
-	return &PrinciplesManager{
+	return &Manager{
 		principles: principles,
 		hatsu:      hatsu,
 	}
 }
 
-func (pm *PrinciplesManager) IncreaseExpByPrinciple(
+func (pm *Manager) IncreaseExpByPrinciple(
 	name enum.PrincipleName, exp int,
 ) (int, error) {
 
@@ -32,7 +32,7 @@ func (pm *PrinciplesManager) IncreaseExpByPrinciple(
 	return 0, fmt.Errorf("principle %s not found", name.String())
 }
 
-func (pm *PrinciplesManager) IncreaseExpByCategory(
+func (pm *Manager) IncreaseExpByCategory(
 	name enum.CategoryName, exp int,
 ) (int, error) {
 
@@ -43,7 +43,7 @@ func (pm *PrinciplesManager) IncreaseExpByCategory(
 	return diff, nil
 }
 
-func (pm *PrinciplesManager) Get(name enum.PrincipleName) (IPrinciple, error) {
+func (pm *Manager) Get(name enum.PrincipleName) (IPrinciple, error) {
 	if name == enum.Hatsu {
 		return pm.hatsu, nil
 	}
@@ -53,7 +53,7 @@ func (pm *PrinciplesManager) Get(name enum.PrincipleName) (IPrinciple, error) {
 	return nil, fmt.Errorf("principle %s not found", name.String())
 }
 
-func (pm *PrinciplesManager) GetExpPointsOfPrinciple(
+func (pm *Manager) GetExpPointsOfPrinciple(
 	name enum.PrincipleName) (int, error) {
 
 	principle, err := pm.Get(name)
@@ -63,7 +63,7 @@ func (pm *PrinciplesManager) GetExpPointsOfPrinciple(
 	return principle.GetExpPoints(), nil
 }
 
-func (pm *PrinciplesManager) GetLevelOfPrinciple(
+func (pm *Manager) GetLevelOfPrinciple(
 	name enum.PrincipleName) (int, error) {
 
 	principle, err := pm.Get(name)
@@ -73,7 +73,7 @@ func (pm *PrinciplesManager) GetLevelOfPrinciple(
 	return principle.GetLevel(), nil
 }
 
-func (pm *PrinciplesManager) GetExpPointsOfCategory(
+func (pm *Manager) GetExpPointsOfCategory(
 	name enum.CategoryName) (int, error) {
 
 	principle, err := pm.hatsu.Get(name)
@@ -83,7 +83,7 @@ func (pm *PrinciplesManager) GetExpPointsOfCategory(
 	return principle.GetExpPoints(), nil
 }
 
-func (pm *PrinciplesManager) GetLevelOfCategory(
+func (pm *Manager) GetLevelOfCategory(
 	name enum.CategoryName) (int, error) {
 
 	principle, err := pm.hatsu.Get(name)

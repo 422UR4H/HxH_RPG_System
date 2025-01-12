@@ -38,6 +38,6 @@ func (cs *CommonSkill) GetLevel() int {
 	return cs.exp.GetLevel()
 }
 
-func (cs *CommonSkill) Clone(points int) *CommonSkill {
+func (cs *CommonSkill) Clone() *CommonSkill {
 	return NewCommonSkill(*cs.exp.Clone(), cs.attribute, cs.abilitySkillsExp)
 }

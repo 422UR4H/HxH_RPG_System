@@ -6,24 +6,24 @@ import (
 	"github.com/422UR4H/HxH_RPG_Environment.Domain/enum"
 )
 
-type StatusManager struct {
+type Manager struct {
 	status map[enum.StatusName]Bar
 }
 
-func NewStatusManager(status map[enum.StatusName]Bar) *StatusManager {
-	return &StatusManager{
+func NewStatusManager(status map[enum.StatusName]Bar) *Manager {
+	return &Manager{
 		status: status,
 	}
 }
 
-func (sm *StatusManager) Get(name enum.StatusName) (Bar, error) {
+func (sm *Manager) Get(name enum.StatusName) (Bar, error) {
 	if status, ok := sm.status[name]; ok {
 		return status, nil
 	}
 	return Bar{}, errors.New("status not found")
 }
 
-func (sm *StatusManager) GetMaxOf(name enum.StatusName) (int, error) {
+func (sm *Manager) GetMaxOf(name enum.StatusName) (int, error) {
 	status, err := sm.Get(name)
 	if err != nil {
 		return 0, err
@@ -31,7 +31,7 @@ func (sm *StatusManager) GetMaxOf(name enum.StatusName) (int, error) {
 	return status.GetMax(), nil
 }
 
-func (sm *StatusManager) GetMinOf(name enum.StatusName) (int, error) {
+func (sm *Manager) GetMinOf(name enum.StatusName) (int, error) {
 	status, err := sm.Get(name)
 	if err != nil {
 		return 0, err
@@ -39,7 +39,7 @@ func (sm *StatusManager) GetMinOf(name enum.StatusName) (int, error) {
 	return status.GetMin(), nil
 }
 
-func (sm *StatusManager) GetCurrentOf(name enum.StatusName) (int, error) {
+func (sm *Manager) GetCurrentOf(name enum.StatusName) (int, error) {
 	status, err := sm.Get(name)
 	if err != nil {
 		return 0, err

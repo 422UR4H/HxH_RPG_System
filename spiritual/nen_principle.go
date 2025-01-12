@@ -32,6 +32,6 @@ func (np *NenPrinciple) GetLevel() int {
 	return np.exp.GetLevel()
 }
 
-// func Clone() *NenPrinciple {
-// 	return NewNenPrinciple(experience.Clone(), AbilityExp);
-// }
+func (np *NenPrinciple) Clone() *NenPrinciple {
+	return NewNenPrinciple(*np.exp.Clone(), np.abilityExp)
+}

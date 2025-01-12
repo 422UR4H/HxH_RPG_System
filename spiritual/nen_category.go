@@ -1,6 +1,8 @@
 package spiritual
 
-import "github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
+import (
+	"github.com/422UR4H/HxH_RPG_Environment.Domain/experience"
+)
 
 type NenCategory struct {
 	exp      experience.Exp
@@ -14,20 +16,20 @@ func NewNenCategory(
 	return &NenCategory{exp: exp, hatsuExp: hatsuExp}
 }
 
-func (np *NenCategory) CascadeUpgradeTrigger(exp int) int {
-	diff := np.exp.IncreasePoints(exp)
-	np.hatsuExp.CascadeUpgrade(exp)
+func (nc *NenCategory) CascadeUpgradeTrigger(exp int) int {
+	diff := nc.exp.IncreasePoints(exp)
+	nc.hatsuExp.CascadeUpgrade(exp)
 	return diff
 }
 
-func (np *NenCategory) GetExpPoints() int {
-	return np.exp.GetPoints()
+func (nc *NenCategory) GetExpPoints() int {
+	return nc.exp.GetPoints()
 }
 
-func (np *NenCategory) GetLevel() int {
-	return np.exp.GetLevel()
+func (nc *NenCategory) GetLevel() int {
+	return nc.exp.GetLevel()
 }
 
-// func Clone() *NenCategory {
-// 	return NewNenPrinciple(experience.Clone(), AbilityExp);
-// }
+func (nc *NenCategory) Clone() *NenCategory {
+	return NewNenCategory(*nc.exp.Clone(), nc.hatsuExp)
+}
