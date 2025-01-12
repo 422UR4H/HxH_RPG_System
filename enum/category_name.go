@@ -28,3 +28,14 @@ func (cn CategoryName) String() string {
 	}
 	return "Unknown"
 }
+
+func AllNenCategoryNames() []CategoryName {
+	return []CategoryName{
+		Reinforcement,
+		Emission,
+		Transmutation,
+		Manipulation,
+		Materialization,
+		Specialization,
+	}
+}

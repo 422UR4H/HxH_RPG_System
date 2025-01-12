@@ -41,3 +41,19 @@ func (am *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error)
 	}
 	return PrimaryAttribute{}, errors.New("primary attribute not found")
 }
+
+func (am *Manager) GetExpPointsOf(name enum.AttributeName) (int, error) {
+	attr, err := am.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return attr.GetExpPoints(), nil
+}
+
+func (am *Manager) GetLevelOf(name enum.AttributeName) (int, error) {
+	attr, err := am.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return attr.GetLevel(), nil
+}

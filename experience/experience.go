@@ -1,12 +1,12 @@
 package experience
 
 type Exp struct {
-	expTable ExpTable
+	expTable *ExpTable
 	points   int
 	level    int
 }
 
-func NewExperience(expTable ExpTable) *Exp {
+func NewExperience(expTable *ExpTable) *Exp {
 	return &Exp{expTable: expTable, points: 0, level: 0}
 }
 

@@ -43,6 +43,14 @@ func (m *Manager) Get(name enum.SkillName) (ISkill, error) {
 	return nil, errors.New("skill not found")
 }
 
+func (m *Manager) GetExpPointsOf(name enum.SkillName) (int, error) {
+	skill, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.GetExpPoints(), nil
+}
+
 func (m *Manager) GetLevelOf(name enum.SkillName) (int, error) {
 	skill, err := m.Get(name)
 	if err != nil {

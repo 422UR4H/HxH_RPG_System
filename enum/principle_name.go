@@ -47,3 +47,20 @@ func (pn PrincipleName) String() string {
 	}
 	return "Unknown"
 }
+
+func AllNenPrincipleNames() []PrincipleName {
+	return []PrincipleName{
+		Ten,
+		Zetsu,
+		Ren,
+		Gyo,
+		Hatsu,
+		Kou,
+		Ken,
+		Ryu,
+		In,
+		En,
+		AuraControl,
+		Aop,
+	}
+}
