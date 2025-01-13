@@ -1,3 +1,3 @@
-module github.com/422UR4H/HxH_RPG_Environment.Domain
+module github.com/422UR4H/HxH_RPG_System
 
-go 1.22.2
+go 1.22.3
