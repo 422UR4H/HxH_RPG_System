@@ -1,4 +1,4 @@
-package charactersheet
+package sheet
 
 import (
 	"errors"
