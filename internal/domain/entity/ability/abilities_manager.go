@@ -3,8 +3,8 @@ package ability
 import (
 	"errors"
 
-	enum "github.com/422UR4H/HxH_RPG_System/internal/domain/enum"
-	exp "github.com/422UR4H/HxH_RPG_System/internal/domain/experience"
+	enum "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	exp "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type Manager struct {

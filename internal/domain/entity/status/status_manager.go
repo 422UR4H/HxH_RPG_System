@@ -3,7 +3,7 @@ package status
 import (
 	"errors"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
 type Manager struct {

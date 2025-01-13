@@ -1,12 +1,12 @@
 package charactersheet
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/ability"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/attribute"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/skill"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/spiritual"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/status"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 type CharacterSheet struct {

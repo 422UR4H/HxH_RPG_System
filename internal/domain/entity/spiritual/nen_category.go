@@ -1,7 +1,7 @@
 package spiritual
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/experience"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type NenCategory struct {

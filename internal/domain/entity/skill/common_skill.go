@@ -1,8 +1,8 @@
 package skill
 
 import (
-	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/attribute"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/experience"
+	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type CommonSkill struct {

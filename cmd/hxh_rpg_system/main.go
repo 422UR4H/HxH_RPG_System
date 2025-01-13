@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	experience "github.com/422UR4H/HxH_RPG_System/internal/domain/experience"
-	// status "github.com/422UR4H/HxH_RPG_System/internal/domain/status"
+	experience "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+	// status "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 func main() {
