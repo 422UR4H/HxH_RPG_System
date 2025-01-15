@@ -14,7 +14,7 @@ import (
 
 const (
 	CHARACTER_COEFF           = 10.0
-	TALENT_COEFF              = 10.0
+	TALENT_COEFF              = 2.0
 	PHYSICAL_COEFF            = 20.0
 	MENTAL_COEFF              = 15.0
 	SPIRITUAL_COEFF           = 5.0
@@ -30,11 +30,18 @@ const (
 
 type CharacterSheetFactory struct{}
 
-func (csf *CharacterSheetFactory) Build(profile CharacterProfile) *CharacterSheet {
+// TODO: create a type to encapsule talentLvl, hexagonRange and categories below
+//
+//	type TalentByCategorySet struct {
+//		categories map[enum.CategoryName]bool
+//	}
+func (csf *CharacterSheetFactory) Build(
+	profile CharacterProfile, talentLvl int, hexagonRange *int,
+) *CharacterSheet {
 	exp := experience.NewExperience(experience.NewExpTable(CHARACTER_COEFF))
 	characterExp := experience.NewCharacterExp(*exp)
 
-	abilities := csf.BuildPersonAbilities(*characterExp)
+	abilities := csf.BuildPersonAbilities(characterExp, talentLvl)
 
 	physAbility, _ := abilities.Get(enum.Physicals)
 	physAttrs := csf.BuildPhysAttrs(&physAbility)
@@ -67,7 +74,12 @@ func (csf *CharacterSheetFactory) Build(profile CharacterProfile) *CharacterShee
 
 	aura, _ := status.Get(enum.Aura)
 	hatsu := csf.BuildHatsu(&spiritualAbility)
-	spiritPrinciples := csf.BuildSpiritPrinciples(aura, &spiritualAbility, hatsu)
+
+	var nenHexagon *spiritual.NenHexagon
+	if hexagonRange != nil {
+		nenHexagon = spiritual.NewNenHexagon(*hexagonRange)
+	}
+	spiritPrinciples := csf.BuildSpiritPrinciples(aura, &spiritualAbility, nenHexagon, hatsu)
 
 	return NewCharacterSheet(
 		profile,
@@ -80,13 +92,13 @@ func (csf *CharacterSheetFactory) Build(profile CharacterProfile) *CharacterShee
 }
 
 func (csf *CharacterSheetFactory) BuildPersonAbilities(
-	characterExp experience.CharacterExp,
+	characterExp *experience.CharacterExp, talentLvl int,
 ) *ability.Manager {
 
 	abilities := make(map[enum.AbilityName]ability.Ability)
 
 	talentExp := experience.NewExperience(experience.NewExpTable(TALENT_COEFF))
-	talent := ability.NewTalent(*talentExp)
+	talent := ability.NewTalent(*talentExp, talentLvl)
 
 	physicalExp := experience.NewExperience(experience.NewExpTable(PHYSICAL_COEFF))
 	abilities[enum.Physicals] = *ability.NewAbility(*physicalExp, characterExp)
@@ -100,7 +112,7 @@ func (csf *CharacterSheetFactory) BuildPersonAbilities(
 	skillsExp := experience.NewExperience(experience.NewExpTable(SKILLS_COEFF))
 	abilities[enum.Skills] = *ability.NewAbility(*skillsExp, characterExp)
 
-	return ability.NewAbilitiesManager(characterExp, abilities, *talent)
+	return ability.NewAbilitiesManager(*characterExp, abilities, *talent)
 }
 
 func (csf *CharacterSheetFactory) BuildPhysAttrs(
@@ -358,6 +370,7 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 	aura status.Bar,
 	spiritAbilityExp experience.ICascadeUpgrade,
+	nenHexagon *spiritual.NenHexagon,
 	hatsu *spiritual.Hatsu,
 ) *spiritual.Manager {
 
@@ -377,5 +390,5 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 		// }
 		principles[name] = *principle.Clone()
 	}
-	return spiritual.NewPrinciplesManager(principles, hatsu)
+	return spiritual.NewPrinciplesManager(principles, nenHexagon, hatsu)
 }
