@@ -105,11 +105,11 @@ func (m *Manager) GetLevelOfCategory(
 }
 
 func (m *Manager) IncreaseHexagonRange() (int, enum.CategoryName) {
-	return m.nenHexagon.IncreaseRange()
+	return m.nenHexagon.IncreaseCurrHexValue()
 }
 
 func (m *Manager) DecreaseHexagonRange() (int, enum.CategoryName) {
-	return m.nenHexagon.IncreaseRange()
+	return m.nenHexagon.IncreaseCurrHexValue()
 }
 
 func (m *Manager) ResetNenCategory() (int, enum.CategoryName) {
@@ -121,5 +121,5 @@ func (m *Manager) GetNenCategoryName() enum.CategoryName {
 }
 
 func (m *Manager) GetHexagonRange() int {
-	return m.nenHexagon.GetRange()
+	return m.nenHexagon.GetCurrHexValue()
 }

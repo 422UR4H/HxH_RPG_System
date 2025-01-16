@@ -1,85 +1,126 @@
 package spiritual
 
-import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+import (
+	"math"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+)
+
+const (
+	percentageJumpByCategory = 20
+	maxHexRange              = 600
+	categoryRange            = maxHexRange / 6 // 100
+)
+
+var nenHexagon = map[enum.CategoryName]int{
+	enum.Reinforcement:   categoryRange * 0, // 0
+	enum.Transmutation:   categoryRange * 1, // 100
+	enum.Materialization: categoryRange * 2, // 200
+	enum.Specialization:  categoryRange * 3, // 300
+	enum.Manipulation:    categoryRange * 4, // 400
+	enum.Emission:        categoryRange * 5, // 500
+}
 
 type NenHexagon struct {
-	hexagonRange    int
+	currHexValue    int
 	nenCategoryName enum.CategoryName
 }
 
-func NewNenHexagon(hexagonRange int) *NenHexagon {
-	hexagonRange %= 600
+func NewNenHexagon(currHexValue int) *NenHexagon {
+	currHexValue %= maxHexRange
 
 	return &NenHexagon{
-		hexagonRange:    hexagonRange,
-		nenCategoryName: getCategoryByHexagon(hexagonRange),
+		currHexValue:    currHexValue,
+		nenCategoryName: getCategoryByHexagon(currHexValue),
 	}
 }
 
-func (nh *NenHexagon) IncreaseRange() (int, enum.CategoryName) {
-	nh.hexagonRange++
-	nh.hexagonRange %= 600
-	nh.nenCategoryName = getCategoryByHexagon(nh.hexagonRange)
+func (nh *NenHexagon) IncreaseCurrHexValue() (int, enum.CategoryName) {
+	nh.currHexValue++
+	nh.currHexValue %= maxHexRange
+	nh.nenCategoryName = getCategoryByHexagon(nh.currHexValue)
 
-	return nh.hexagonRange, nh.nenCategoryName
+	return nh.currHexValue, nh.nenCategoryName
 }
 
-func (nh *NenHexagon) DecreaseRange() (int, enum.CategoryName) {
-	nh.hexagonRange--
-	nh.hexagonRange %= 600
+func (nh *NenHexagon) DecreaseCurrHexValue() (int, enum.CategoryName) {
+	nh.currHexValue--
+	nh.currHexValue %= maxHexRange
 
-	if nh.hexagonRange < 0 {
-		nh.hexagonRange += 600
+	if nh.currHexValue < 0 {
+		nh.currHexValue += maxHexRange
 	}
-	nh.nenCategoryName = getCategoryByHexagon(nh.hexagonRange)
-	return nh.hexagonRange, nh.nenCategoryName
+	nh.nenCategoryName = getCategoryByHexagon(nh.currHexValue)
+	return nh.currHexValue, nh.nenCategoryName
 }
 
-func getCategoryByHexagon(hexagonRange int) enum.CategoryName {
-	if hexagonRange < 50 || hexagonRange >= 550 {
-		return enum.Reinforcement
+func getCategoryByHexagon(currHexValue int) enum.CategoryName {
+	currHexValue %= maxHexRange
+	halfCategoryRange := categoryRange / 2
 
-	} else if hexagonRange < 150 {
-		return enum.Transmutation
-
-	} else if hexagonRange < 250 {
-		return enum.Materialization
-
-	} else if hexagonRange < 350 {
-		return enum.Specialization
-
-	} else if hexagonRange < 450 {
-		return enum.Manipulation
-
-	} else { // hexagonRange < 550
-		return enum.Emission
+	for key, val := range nenHexagon {
+		if currHexValue < (val + halfCategoryRange) {
+			return key
+		}
 	}
+	return enum.Reinforcement
+
+	// TODO: remove after tests
+	// if currHexValue < halfCategoryRange || currHexValue >= 550 {
+	// 	return enum.Reinforcement
+
+	// } else if currHexValue < 150 {
+	// 	return enum.Transmutation
+
+	// } else if currHexValue < 250 {
+	// 	return enum.Materialization
+
+	// } else if currHexValue < 350 {
+	// 	return enum.Specialization
+
+	// } else if currHexValue < 450 {
+	// 	return enum.Manipulation
+
+	// } else { // currHexValue < 550
+	// 	return enum.Emission
+	// }
+}
+
+func (nh *NenHexagon) GetPercentOf(category enum.CategoryName) float64 {
+	// absHexDiff is absolute hexagonal difference
+	// it will always be positive (absolute) and symmetrical to the hexagon
+	absHexDiff := math.Abs(float64(nenHexagon[category] - nh.currHexValue))
+	if absHexDiff > maxHexRange/2 {
+		absHexDiff = maxHexRange - absHexDiff
+	}
+	divisor := categoryRange / percentageJumpByCategory
+	absHexDiff /= float64(divisor)
+	percent := 100.0 - absHexDiff
+
+	return percent
+}
+
+func (nh *NenHexagon) GetCategoryPercents() map[enum.CategoryName]float64 {
+	modifiers := make(map[enum.CategoryName]float64)
+
+	for key := range nenHexagon {
+		modifiers[key] = nh.GetPercentOf(key)
+	}
+	return modifiers
 }
 
 // ResetCategory resets the category to the default value
 // in the same way that happened to Gon after the events
 // of the end of the Chimera Ants arc.
 func (nh *NenHexagon) ResetCategory() (int, enum.CategoryName) {
-	if nh.nenCategoryName == enum.Reinforcement {
-		nh.hexagonRange = 0
-	} else if nh.nenCategoryName == enum.Transmutation {
-		nh.hexagonRange = 100
-	} else if nh.nenCategoryName == enum.Materialization {
-		nh.hexagonRange = 200
-	} else if nh.nenCategoryName == enum.Specialization {
-		nh.hexagonRange = 300
-	} else if nh.nenCategoryName == enum.Manipulation {
-		nh.hexagonRange = 400
-	} else { // nh.nenCategoryName == enum.Emission
-		nh.hexagonRange = 500
-	}
-	return nh.hexagonRange, nh.nenCategoryName
+	nh.currHexValue = nenHexagon[nh.nenCategoryName]
+	return nh.currHexValue, nh.nenCategoryName
 }
 
 func (nh *NenHexagon) GetCategoryName() enum.CategoryName {
 	return nh.nenCategoryName
 }
 
-func (nh *NenHexagon) GetRange() int {
-	return nh.hexagonRange
+func (nh *NenHexagon) GetCurrHexValue() int {
+	return nh.currHexValue
 }
