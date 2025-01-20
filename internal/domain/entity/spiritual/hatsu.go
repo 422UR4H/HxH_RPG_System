@@ -8,20 +8,23 @@ import (
 )
 
 type Hatsu struct {
-	exp        experience.Exp
-	abilityExp experience.ICascadeUpgrade
-	categories map[enum.CategoryName]NenCategory
+	exp              experience.Exp
+	abilityExp       experience.ICascadeUpgrade
+	categories       map[enum.CategoryName]NenCategory
+	categoryPercents map[enum.CategoryName]float64
 }
 
 func NewHatsu(
 	exp experience.Exp,
 	abilityExp experience.ICascadeUpgrade,
 	categories map[enum.CategoryName]NenCategory,
+	categoryPercents map[enum.CategoryName]float64,
 ) *Hatsu {
 	return &Hatsu{
-		exp:        exp,
-		abilityExp: abilityExp,
-		categories: make(map[enum.CategoryName]NenCategory),
+		exp:              exp,
+		abilityExp:       abilityExp,
+		categories:       make(map[enum.CategoryName]NenCategory),
+		categoryPercents: categoryPercents,
 	}
 }
 
@@ -31,6 +34,17 @@ func (h *Hatsu) Init(categories map[enum.CategoryName]NenCategory) {
 		return
 	}
 	h.categories = categories
+}
+
+func (h *Hatsu) SetCategoryPercents(
+	categoryPercents map[enum.CategoryName]float64,
+) error {
+
+	if len(categoryPercents) != 6 {
+		return fmt.Errorf("category percents must have 6 elements")
+	}
+	h.categoryPercents = categoryPercents
+	return nil
 }
 
 func (h *Hatsu) CascadeUpgrade(exp int) {
@@ -79,4 +93,8 @@ func (h *Hatsu) GetLevelOf(name enum.CategoryName) (int, error) {
 
 func (h *Hatsu) GetLevel() int {
 	return h.exp.GetLevel()
+}
+
+func (h *Hatsu) GetCategoryPercents() map[enum.CategoryName]float64 {
+	return h.categoryPercents
 }
