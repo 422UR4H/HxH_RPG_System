@@ -30,6 +30,7 @@ func (m *Manager) InitNenHexagon(nenHexagon *NenHexagon) error {
 		return fmt.Errorf("nen hexagon already initialized")
 	}
 	m.nenHexagon = nenHexagon
+	m.hatsu.SetCategoryPercents(nenHexagon.GetCategoryPercents())
 	return nil
 }
 
@@ -104,22 +105,35 @@ func (m *Manager) GetLevelOfCategory(
 	return principle.GetLevel(), nil
 }
 
-func (m *Manager) IncreaseHexagonRange() (int, enum.CategoryName) {
-	return m.nenHexagon.IncreaseCurrHexValue()
+// TODO: handle errors below, case nenHexagon is nil
+func (m *Manager) IncreaseCurrHexValue() (
+	map[enum.CategoryName]float64, enum.CategoryName) {
+
+	percents, name := m.nenHexagon.IncreaseCurrHexValue()
+	m.hatsu.SetCategoryPercents(percents)
+
+	return percents, name
 }
 
-func (m *Manager) DecreaseHexagonRange() (int, enum.CategoryName) {
-	return m.nenHexagon.IncreaseCurrHexValue()
+func (m *Manager) DecreaseCurrHexValue() (
+	map[enum.CategoryName]float64, enum.CategoryName) {
+	percents, name := m.nenHexagon.DecreaseCurrHexValue()
+	m.hatsu.SetCategoryPercents(percents)
+
+	return percents, name
 }
 
 func (m *Manager) ResetNenCategory() (int, enum.CategoryName) {
-	return m.nenHexagon.ResetCategory()
+	currHexValue, name := m.nenHexagon.ResetCategory()
+	m.hatsu.SetCategoryPercents(m.nenHexagon.GetCategoryPercents())
+
+	return currHexValue, name
 }
 
 func (m *Manager) GetNenCategoryName() enum.CategoryName {
 	return m.nenHexagon.GetCategoryName()
 }
 
-func (m *Manager) GetHexagonRange() int {
+func (m *Manager) GetCurrHexValue() int {
 	return m.nenHexagon.GetCurrHexValue()
 }

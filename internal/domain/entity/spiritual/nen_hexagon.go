@@ -35,15 +35,19 @@ func NewNenHexagon(currHexValue int) *NenHexagon {
 	}
 }
 
-func (nh *NenHexagon) IncreaseCurrHexValue() (int, enum.CategoryName) {
+func (nh *NenHexagon) IncreaseCurrHexValue() (
+	map[enum.CategoryName]float64, enum.CategoryName) {
+
 	nh.currHexValue++
 	nh.currHexValue %= maxHexRange
 	nh.nenCategoryName = getCategoryByHexagon(nh.currHexValue)
 
-	return nh.currHexValue, nh.nenCategoryName
+	return nh.GetCategoryPercents(), nh.nenCategoryName
 }
 
-func (nh *NenHexagon) DecreaseCurrHexValue() (int, enum.CategoryName) {
+func (nh *NenHexagon) DecreaseCurrHexValue() (
+	map[enum.CategoryName]float64, enum.CategoryName) {
+
 	nh.currHexValue--
 	nh.currHexValue %= maxHexRange
 
@@ -51,7 +55,7 @@ func (nh *NenHexagon) DecreaseCurrHexValue() (int, enum.CategoryName) {
 		nh.currHexValue += maxHexRange
 	}
 	nh.nenCategoryName = getCategoryByHexagon(nh.currHexValue)
-	return nh.currHexValue, nh.nenCategoryName
+	return nh.GetCategoryPercents(), nh.nenCategoryName
 }
 
 func getCategoryByHexagon(currHexValue int) enum.CategoryName {
@@ -64,26 +68,6 @@ func getCategoryByHexagon(currHexValue int) enum.CategoryName {
 		}
 	}
 	return enum.Reinforcement
-
-	// TODO: remove after tests
-	// if currHexValue < halfCategoryRange || currHexValue >= 550 {
-	// 	return enum.Reinforcement
-
-	// } else if currHexValue < 150 {
-	// 	return enum.Transmutation
-
-	// } else if currHexValue < 250 {
-	// 	return enum.Materialization
-
-	// } else if currHexValue < 350 {
-	// 	return enum.Specialization
-
-	// } else if currHexValue < 450 {
-	// 	return enum.Manipulation
-
-	// } else { // currHexValue < 550
-	// 	return enum.Emission
-	// }
 }
 
 func (nh *NenHexagon) GetPercentOf(category enum.CategoryName) float64 {
