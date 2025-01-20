@@ -30,17 +30,13 @@ const (
 
 type CharacterSheetFactory struct{}
 
-// TODO: create a type to encapsule talentLvl, hexagonRange and categories below
-//
-//	type TalentByCategorySet struct {
-//		categories map[enum.CategoryName]bool
-//	}
 func (csf *CharacterSheetFactory) Build(
-	profile CharacterProfile, talentLvl int, hexagonRange *int,
+	profile CharacterProfile, categorySet TalentByCategorySet,
 ) *CharacterSheet {
 	exp := experience.NewExperience(experience.NewExpTable(CHARACTER_COEFF))
 	characterExp := experience.NewCharacterExp(*exp)
 
+	talentLvl := categorySet.GetTalentLvl()
 	abilities := csf.BuildPersonAbilities(characterExp, talentLvl)
 
 	physAbility, _ := abilities.Get(enum.Physicals)
@@ -72,14 +68,18 @@ func (csf *CharacterSheetFactory) Build(
 		*physSkills, *mentalSkills, *spiritSkills,
 	)
 
-	aura, _ := status.Get(enum.Aura)
-	hatsu := csf.BuildHatsu(&spiritualAbility)
-
 	var nenHexagon *spiritual.NenHexagon
-	if hexagonRange != nil {
-		nenHexagon = spiritual.NewNenHexagon(*hexagonRange)
+	var categoryPercents map[enum.CategoryName]float64
+	if categorySet.initialHexValue != nil {
+		nenHexagon = spiritual.NewNenHexagon(*categorySet.initialHexValue)
+		categoryPercents = nenHexagon.GetCategoryPercents()
 	}
-	spiritPrinciples := csf.BuildSpiritPrinciples(aura, &spiritualAbility, nenHexagon, hatsu)
+	hatsu := csf.BuildHatsu(&spiritualAbility, categoryPercents)
+	aura, _ := status.Get(enum.Aura)
+
+	spiritPrinciples := csf.BuildSpiritPrinciples(
+		aura, &spiritualAbility, nenHexagon, hatsu,
+	)
 
 	return NewCharacterSheet(
 		profile,
@@ -351,12 +351,13 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 
 func (csf *CharacterSheetFactory) BuildHatsu(
 	abilityExp experience.ICascadeUpgrade,
+	categoryPercents map[enum.CategoryName]float64,
 ) *spiritual.Hatsu {
 
 	categories := make(map[enum.CategoryName]spiritual.NenCategory)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
-	hatsu := spiritual.NewHatsu(*exp, abilityExp, categories)
+	hatsu := spiritual.NewHatsu(*exp, abilityExp, categories, categoryPercents)
 
 	category := spiritual.NewNenCategory(*exp.Clone(), hatsu)
 	for _, name := range enum.AllNenCategoryNames() {
