@@ -19,7 +19,7 @@ func (a *Ability) GetHalfLvl() float64 {
 	return float64(a.exp.GetLevel()) / 2.0
 }
 
-// talvez eu deva subir a exp apenas metrica,
+// talvez eu deva subir a exp apenas para metrica,
 // mas subir o lvl para o characterPower que desce pras skills
 // melhorando os treinos e testes
 func (a *Ability) CascadeUpgrade(exp int) {
