@@ -109,3 +109,7 @@ func (cs *CharacterSheet) GetExpPointsOfPrinciple(name enum.PrincipleName) (int,
 func (cs *CharacterSheet) GetExpPointsOfCategory(name enum.CategoryName) (int, error) {
 	return cs.principle.GetExpPointsOfCategory(name)
 }
+
+func (cs *CharacterSheet) GetExpPoints() int {
+	return cs.ability.GetCharacterExp()
+}
