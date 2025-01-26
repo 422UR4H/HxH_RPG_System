@@ -1,6 +1,8 @@
 package ability
 
-import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+)
 
 type Ability struct {
 	exp     experience.Exp
@@ -14,7 +16,7 @@ func NewAbility(
 }
 
 func (a *Ability) GetHalfLvl() float64 {
-	return float64(a.exp.GetPoints()) / 2.0
+	return float64(a.exp.GetLevel()) / 2.0
 }
 
 // talvez eu deva subir a exp apenas metrica,
