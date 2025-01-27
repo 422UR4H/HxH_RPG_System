@@ -10,11 +10,11 @@ type PassiveSkill struct {
 	exp              exp.Exp
 	attribute        attr.IGameAttribute
 	abilitySkillsExp exp.IEndCascadeUpgrade
-	status           status.Bar
+	status           status.IStatusBar
 }
 
 func NewPassiveSkill(
-	status status.Bar,
+	status status.IStatusBar,
 	exp exp.Exp,
 	attribute attr.IGameAttribute,
 	abilitySkillsExp exp.IEndCascadeUpgrade) *PassiveSkill {
