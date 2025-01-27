@@ -8,14 +8,14 @@ import (
 )
 
 type Manager struct {
-	characterExp exp.CharacterExp
-	abilities    map[enum.AbilityName]Ability
+	characterExp *exp.CharacterExp
+	abilities    map[enum.AbilityName]IAbility
 	talent       Talent
 }
 
 func NewAbilitiesManager(
-	characterExp exp.CharacterExp,
-	abilities map[enum.AbilityName]Ability,
+	characterExp *exp.CharacterExp,
+	abilities map[enum.AbilityName]IAbility,
 	talent Talent,
 ) *Manager {
 	return &Manager{
@@ -25,10 +25,10 @@ func NewAbilitiesManager(
 	}
 }
 
-func (m *Manager) Get(name enum.AbilityName) (Ability, error) {
+func (m *Manager) Get(name enum.AbilityName) (IAbility, error) {
 	ability, ok := m.abilities[name]
 	if !ok {
-		return Ability{}, errors.New("ability not found")
+		return nil, errors.New("ability not found")
 	}
 	return ability, nil
 }
