@@ -7,20 +7,20 @@ import (
 )
 
 type Manager struct {
-	status map[enum.StatusName]Bar
+	status map[enum.StatusName]IStatusBar
 }
 
-func NewStatusManager(status map[enum.StatusName]Bar) *Manager {
+func NewStatusManager(status map[enum.StatusName]IStatusBar) *Manager {
 	return &Manager{
 		status: status,
 	}
 }
 
-func (sm *Manager) Get(name enum.StatusName) (Bar, error) {
+func (sm *Manager) Get(name enum.StatusName) (IStatusBar, error) {
 	if status, ok := sm.status[name]; ok {
 		return status, nil
 	}
-	return Bar{}, errors.New("status not found")
+	return nil, errors.New("status not found")
 }
 
 func (sm *Manager) GetMaxOf(name enum.StatusName) (int, error) {
