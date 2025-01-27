@@ -7,14 +7,13 @@ import (
 )
 
 type Manager struct {
-	primaryAttributes map[enum.AttributeName]PrimaryAttribute
-	middleAttributes  map[enum.AttributeName]MiddleAttribute
+	primaryAttributes map[enum.AttributeName]*PrimaryAttribute
+	middleAttributes  map[enum.AttributeName]*MiddleAttribute
 }
 
-// NewAttributeManager creates a new instance of AttributeManager.
 func NewAttributeManager(
-	primAttr map[enum.AttributeName]PrimaryAttribute,
-	midAttr map[enum.AttributeName]MiddleAttribute) *Manager {
+	primAttr map[enum.AttributeName]*PrimaryAttribute,
+	midAttr map[enum.AttributeName]*MiddleAttribute) *Manager {
 	return &Manager{
 		primaryAttributes: primAttr,
 		middleAttributes:  midAttr,
@@ -37,7 +36,7 @@ func (am *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
 func (am *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) {
 	primaryAttribute, ok := am.primaryAttributes[name]
 	if ok {
-		return primaryAttribute, nil
+		return *primaryAttribute, nil
 	}
 	return PrimaryAttribute{}, errors.New("primary attribute not found")
 }
