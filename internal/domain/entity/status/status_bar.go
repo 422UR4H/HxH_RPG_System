@@ -15,44 +15,44 @@ func NewStatusBar() *Bar {
 	}
 }
 
-func (sb *Bar) IncreaseAt(value int) int {
-	temp := sb.curr + value
-	if temp > sb.max {
-		sb.curr = sb.max
+func (b *Bar) IncreaseAt(value int) int {
+	temp := b.curr + value
+	if temp > b.max {
+		b.curr = b.max
 	} else {
-		sb.curr = temp
+		b.curr = temp
 	}
-	return sb.curr
+	return b.curr
 }
 
-func (sb *Bar) DecreaseAt(value int) int {
-	temp := sb.curr - value
-	if temp < sb.min {
-		sb.curr = sb.min
+func (b *Bar) DecreaseAt(value int) int {
+	temp := b.curr - value
+	if temp < b.min {
+		b.curr = b.min
 	} else {
-		sb.curr = temp
+		b.curr = temp
 	}
-	return sb.curr
+	return b.curr
 }
 
-func (sb *Bar) Upgrade(level int) {
+func (b *Bar) Upgrade(level int) {
 	// TODO: Implement Min for hit_points
 	// Min = generateStatus.GetLvl();
-	if sb.curr == sb.max {
-		sb.curr = level
+	if b.curr == b.max {
+		b.curr = level
 	}
-	// TODO: Implement else case (ex.: sb.current == sb.max - 1 -> threat % case)
-	sb.max = level
+	// TODO: Implement else case (ex.: b.current == b.max - 1 -> threat % case)
+	b.max = level
 }
 
-func (sb *Bar) GetMin() int {
-	return sb.min
+func (b *Bar) GetMin() int {
+	return b.min
 }
 
-func (sb *Bar) GetCurrent() int {
-	return sb.curr
+func (b *Bar) GetCurrent() int {
+	return b.curr
 }
 
-func (sb *Bar) GetMax() int {
-	return sb.max
+func (b *Bar) GetMax() int {
+	return b.max
 }
