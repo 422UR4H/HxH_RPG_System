@@ -4,16 +4,15 @@ type AttributeName uint8
 
 const (
 	// Physicals
-	Constitution = iota
-	Defense
+	Resistance = iota
 	Strength
-	Velocity
 	Agility
 	ActionSpeed
 	Flexibility
 	Dexterity
 	Sense
-	Instinct
+	Constitution
+	Instinct // ?
 
 	// Mentals
 	Resilience
@@ -27,14 +26,10 @@ const (
 
 func (an AttributeName) String() string {
 	switch an {
-	case Constitution:
-		return "Constitution"
-	case Defense:
-		return "Defense"
+	case Resistance:
+		return "Resistance"
 	case Strength:
 		return "Strength"
-	case Velocity:
-		return "Velocity"
 	case Agility:
 		return "Agility"
 	case ActionSpeed:
@@ -45,6 +40,8 @@ func (an AttributeName) String() string {
 		return "Dexterity"
 	case Sense:
 		return "Sense"
+	case Constitution:
+		return "Constitution"
 	case Instinct:
 		return "Instinct"
 	case Resilience:

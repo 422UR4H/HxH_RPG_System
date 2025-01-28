@@ -124,35 +124,33 @@ func (csf *CharacterSheetFactory) BuildPhysAttrs(
 	physAbility ability.IAbility,
 ) *attribute.Manager {
 
-	primaryAttributes := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
-	middleAttributes := make(map[enum.AttributeName]*attribute.MiddleAttribute)
+	primaryAttrs := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
+	middleAttrs := make(map[enum.AttributeName]*attribute.MiddleAttribute)
 
 	exp := experience.NewExperience(experience.NewExpTable(PHYSICAL_ATTRIBUTE_COEFF))
-	primaryAttribute := attribute.NewPrimaryAttribute(*exp, physAbility)
+	primAttr := attribute.NewPrimaryAttribute(*exp, physAbility)
 
-	constitution := primaryAttribute.Clone()
-	strength := primaryAttribute.Clone()
-	defense := attribute.NewMiddleAttribute(*exp.Clone(), constitution, strength)
-	primaryAttributes[enum.Constitution] = constitution
-	primaryAttributes[enum.Strength] = strength
-	middleAttributes[enum.Defense] = defense
+	res := primAttr.Clone()
+	agi := primAttr.Clone()
+	str := attribute.NewMiddleAttribute(*exp.Clone(), res, agi)
+	primaryAttrs[enum.Resistance] = res
+	primaryAttrs[enum.Agility] = agi
+	middleAttrs[enum.Strength] = str
 
-	agility := primaryAttribute.Clone()
-	velocity := attribute.NewMiddleAttribute(*exp.Clone(), strength, agility)
-	primaryAttributes[enum.Agility] = agility
-	middleAttributes[enum.Velocity] = velocity
+	flx := primAttr.Clone()
+	ats := attribute.NewMiddleAttribute(*exp.Clone(), agi, flx)
+	primaryAttrs[enum.Flexibility] = flx
+	middleAttrs[enum.ActionSpeed] = ats
 
-	flexibility := primaryAttribute.Clone()
-	actionSpeed := attribute.NewMiddleAttribute(*exp.Clone(), agility, flexibility)
-	primaryAttributes[enum.Flexibility] = flexibility
-	middleAttributes[enum.ActionSpeed] = actionSpeed
+	sen := primAttr.Clone()
+	dex := attribute.NewMiddleAttribute(*exp.Clone(), flx, sen)
+	primaryAttrs[enum.Sense] = sen
+	middleAttrs[enum.Dexterity] = dex
 
-	sense := primaryAttribute.Clone()
-	dexterity := attribute.NewMiddleAttribute(*exp.Clone(), flexibility, sense)
-	primaryAttributes[enum.Sense] = sense
-	middleAttributes[enum.Dexterity] = dexterity
+	con := attribute.NewMiddleAttribute(*exp.Clone(), sen, res)
+	middleAttrs[enum.Constitution] = con
 
-	return attribute.NewAttributeManager(primaryAttributes, middleAttributes)
+	return attribute.NewAttributeManager(primaryAttrs, middleAttrs)
 }
 
 func (csf *CharacterSheetFactory) BuildMentalAttrs(
@@ -214,28 +212,19 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	exp := experience.NewExperience(experience.NewExpTable(PHYSICAL_SKILLS_COEFF))
 	physSkills := skill.NewSkillsManager(*exp, skillsExp, physAbilityExp)
 
-	con, err := physAttrs.Get(enum.Constitution)
+	res, err := physAttrs.Get(enum.Resistance)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
 	health, _ := status.Get(enum.Health)
-	vitSkill := skill.NewPassiveSkill(health, *exp.Clone(), con, physSkills)
+	vitSkill := skill.NewPassiveSkill(health, *exp.Clone(), res, physSkills)
 	skills[enum.Vitality] = vitSkill
 
 	stamina, _ := status.Get(enum.Stamina)
-	resSkill := skill.NewPassiveSkill(stamina, *exp.Clone(), con, physSkills)
-	skills[enum.Resistance] = resSkill
+	engSkill := skill.NewPassiveSkill(stamina, *exp.Clone(), res, physSkills)
+	skills[enum.Energy] = engSkill
 
-	conSkill := skill.NewCommonSkill(*exp.Clone(), con, physSkills)
-	skills[enum.Breath] = conSkill.Clone()
-	skills[enum.Heal] = conSkill.Clone()
-
-	def, err := physAttrs.Get(enum.Defense)
-	if err != nil {
-		panic(errors.New("attribute not found"))
-	}
-	defSkill := skill.NewCommonSkill(*exp.Clone(), def, physSkills)
-	skills[enum.Defense] = defSkill.Clone()
+	skills[enum.Defense] = skill.NewCommonSkill(*exp.Clone(), res, physSkills)
 
 	str, err := physAttrs.Get(enum.Strength)
 	if err != nil {
@@ -243,35 +232,25 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	}
 	strSkill := skill.NewCommonSkill(*exp.Clone(), str, physSkills)
 	// TODO: remove climb
-	skills[enum.Climb] = strSkill.Clone()
 	skills[enum.Push] = strSkill.Clone()
 	skills[enum.Grab] = strSkill.Clone()
 	skills[enum.CarryCapacity] = strSkill.Clone()
-
-	vel, err := physAttrs.Get(enum.Velocity)
-	if err != nil {
-		panic(errors.New("attribute not found"))
-	}
-	velSkill := skill.NewCommonSkill(*exp.Clone(), vel, physSkills)
-	skills[enum.Run] = velSkill.Clone()
-	skills[enum.Swim] = velSkill.Clone()
-	skills[enum.Jump] = velSkill.Clone()
 
 	agi, err := physAttrs.Get(enum.Agility)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	agiSkill := skill.NewCommonSkill(*exp.Clone(), agi, physSkills)
-	skills[enum.Dodge] = agiSkill.Clone()
-	skills[enum.Accelerate] = agiSkill.Clone()
-	skills[enum.Brake] = agiSkill.Clone()
+	velSkill := skill.NewCommonSkill(*exp.Clone(), agi, physSkills)
+	skills[enum.Velocity] = velSkill.Clone()
+	skills[enum.Accelerate] = velSkill.Clone()
+	skills[enum.Brake] = velSkill.Clone()
 
 	ats, err := physAttrs.Get(enum.ActionSpeed)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
 	atsSkill := skill.NewCommonSkill(*exp.Clone(), ats, physSkills)
-	skills[enum.ActionSpeed] = atsSkill.Clone()
+	skills[enum.AttackSpeed] = atsSkill.Clone()
 	skills[enum.Feint] = atsSkill.Clone()
 
 	flx, err := physAttrs.Get(enum.Flexibility)
@@ -290,8 +269,6 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Reflex] = dexSkill.Clone()
 	skills[enum.Accuracy] = dexSkill.Clone()
 	skills[enum.Stealth] = dexSkill.Clone()
-	// TODO: make private to rougue class for example
-	skills[enum.SleightOfHand] = dexSkill.Clone()
 
 	sen, err := physAttrs.Get(enum.Sense)
 	if err != nil {
@@ -304,6 +281,15 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Tact] = senSkill.Clone()
 	skills[enum.Taste] = senSkill.Clone()
 	skills[enum.Balance] = senSkill.Clone()
+
+	con, err := physAttrs.Get(enum.Constitution)
+	if err != nil {
+		panic(errors.New("attribute not found"))
+	}
+	conSkill := skill.NewCommonSkill(*exp.Clone(), con, physSkills)
+	skills[enum.Heal] = conSkill.Clone()
+	skills[enum.Breath] = conSkill.Clone()
+	skills[enum.Tenacity] = conSkill.Clone()
 
 	physSkills.Init(skills)
 	return physSkills

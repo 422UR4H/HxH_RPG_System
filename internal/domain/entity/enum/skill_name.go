@@ -4,31 +4,23 @@ type SkillName uint8
 
 const (
 	// PHYSICALS
-	// Constitution
+	// Resistance
 	Vitality SkillName = iota
-	Resistance
-	Breath
-	Heal
-	DefenseSkill
+	Energy
+	Defense
 
 	// Strength
-	Climb
 	Push
 	Grab
 	CarryCapacity
 
-	// Velocity
-	Run
-	Swim
-	Jump
-
 	// Agility
-	Dodge
+	Velocity
 	Accelerate
 	Brake
 
-	// Action Speed
-	AttackSpeed
+	// Action Speed => TODO: change to other name
+	AttackSpeed // TODO: change to ActionSpeed
 	Feint
 
 	// Flexibility
@@ -39,7 +31,6 @@ const (
 	Reflex
 	Accuracy
 	Stealth
-	SleightOfHand
 
 	// Sense
 	Vision
@@ -49,8 +40,13 @@ const (
 	Taste
 	Balance
 
+	// Constitution
+	Heal
+	Breath
+	Tenacity
+
 	// Instinct
-	Intuition
+	Intuition // ?
 
 	// MENTALS
 	// Resilience
@@ -69,30 +65,22 @@ func (sn SkillName) String() string {
 	switch sn {
 	case Vitality:
 		return "Vitality"
-	case Resistance:
-		return "Resistance"
+	case Energy:
+		return "Energy"
+	case Defense:
+		return "Defense"
 	case Breath:
 		return "Breath"
 	case Heal:
 		return "Heal"
-	case DefenseSkill:
-		return "DefenseSkill"
-	case Climb:
-		return "Climb"
 	case Push:
 		return "Push"
 	case Grab:
 		return "Grab"
 	case CarryCapacity:
 		return "CarryCapacity"
-	case Run:
-		return "Run"
-	case Swim:
-		return "Swim"
-	case Jump:
-		return "Jump"
-	case Dodge:
-		return "Dodge"
+	// case Dodge:
+	// 	return "Dodge"
 	case Accelerate:
 		return "Accelerate"
 	case Brake:
@@ -111,8 +99,6 @@ func (sn SkillName) String() string {
 		return "Accuracy"
 	case Stealth:
 		return "Stealth"
-	case SleightOfHand:
-		return "SleightOfHand"
 	case Vision:
 		return "Vision"
 	case Hearing:
