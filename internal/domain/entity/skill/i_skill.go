@@ -8,4 +8,5 @@ type ISkill interface {
 	GetLevel() int
 	GetValueForTest() int
 	GetExpPoints() int
+	GetAggregateExpByLvl(lvl int) int
 }

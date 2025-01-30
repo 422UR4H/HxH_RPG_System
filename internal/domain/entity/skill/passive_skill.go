@@ -52,6 +52,10 @@ func (ps *PassiveSkill) GetLevel() int {
 	return ps.exp.GetLevel()
 }
 
+func (ps *PassiveSkill) GetAggregateExpByLvl(lvl int) int {
+	return ps.exp.GetAggregateExpByLvl(lvl)
+}
+
 // func (ps *StatusSkill) Clone(points int) *StatusSkill {
 // 	return NewCommonSkill(*ps.exp.Clone(), ps.attribute, ps.abilitySkillsExp)
 // }

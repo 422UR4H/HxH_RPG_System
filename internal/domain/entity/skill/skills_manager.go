@@ -84,3 +84,14 @@ func (m *Manager) CascadeUpgrade(exp int) {
 func (m *Manager) EndCascadeUpgrade(exp int) {
 	m.exp.IncreasePoints(exp)
 }
+
+func (m *Manager) GetAggregateExpByLvlOf(
+	name enum.SkillName, lvl int,
+) (int, error) {
+
+	skill, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.GetAggregateExpByLvl(lvl), nil
+}
