@@ -68,3 +68,14 @@ func (cs *CharacterSkills) GetLevelOf(name enum.SkillName) (int, error) {
 	}
 	return skill.GetLevel(), nil
 }
+
+func (cs *CharacterSkills) GetAggregateExpByLvlOf(
+	name enum.SkillName, lvl int,
+) (int, error) {
+
+	skill, err := cs.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.GetAggregateExpByLvl(lvl), nil
+}
