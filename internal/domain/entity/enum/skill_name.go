@@ -9,7 +9,8 @@ const (
 	Energy
 	Defense
 
-	// Strength
+	// Strength: Ao treinar e aprender uma arma, o personagem treina a skill Strike
+	// essa skill é relacionada à sua arma, então não é comum (common)
 	Push
 	Grab
 	CarryCapacity
@@ -21,18 +22,23 @@ const (
 
 	// Action Speed => TODO: change to other name
 	AttackSpeed // TODO: change to ActionSpeed
+	Repel
 	Feint
 
-	// Flexibility
+	// Flexibility: Permite técnicas de combate mais versáteis, como chutes altos ou esquivas complexas
+	// Pode ser usado para habilidades que exigem movimentos incomuns, como ataques com ângulos inesperados
+	// Ex.: Hisoka demonstra flexibilidade em suas técnicas de combate, usando seu corpo de maneiras imprevisíveis
 	Acrobatics
+	Evasion // Permite forçar esquiva sem sair do lugar ou se movimentar muito
 	Sneak
 
 	// Dexterity?
 	Reflex
-	Accuracy
+	Accuracy // crítico
 	Stealth
 
-	// Sense
+	// Sense: Percepção ou Acuidade Sensorial
+	// Ex.: Kurapika usa sua percepção apurada ao detectar inimigos e mentiras através da habilidade Chain Jail
 	Vision
 	Hearing
 	Smell
