@@ -343,9 +343,9 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
 	hatsu := spiritual.NewHatsu(*exp, abilityExp, categories, categoryPercents)
 
-	category := spiritual.NewNenCategory(*exp.Clone(), hatsu)
+	category := spiritual.NewNenCategory(*exp.Clone(), enum.Reinforcement, hatsu)
 	for _, name := range enum.AllNenCategoryNames() {
-		categories[name] = *category.Clone()
+		categories[name] = *category.Clone(name)
 	}
 
 	hatsu.Init(categories)

@@ -60,11 +60,11 @@ func (h *Hatsu) IncreaseExp(points int, name enum.CategoryName) (int, error) {
 	return category.CascadeUpgradeTrigger(points), nil
 }
 
-func (h *Hatsu) Get(name enum.CategoryName) (NenCategory, error) {
+func (h *Hatsu) Get(name enum.CategoryName) (ICategory, error) {
 	if category, ok := h.categories[name]; ok {
-		return category, nil
+		return &category, nil
 	}
-	return NenCategory{}, fmt.Errorf("category %s not found", name.String())
+	return nil, fmt.Errorf("category %s not found", name.String())
 }
 
 func (h *Hatsu) GetPrinciplePower() int {
@@ -97,4 +97,8 @@ func (h *Hatsu) GetLevel() int {
 
 func (h *Hatsu) GetCategoryPercents() map[enum.CategoryName]float64 {
 	return h.categoryPercents
+}
+
+func (h *Hatsu) GetPercentOf(category enum.CategoryName) float64 {
+	return h.categoryPercents[category]
 }
