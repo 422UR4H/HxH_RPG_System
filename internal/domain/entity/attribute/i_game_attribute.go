@@ -8,6 +8,5 @@ type IGameAttribute interface {
 	GetHalfOfAbilityLvl() float64
 	GetExpPoints() int
 	GetPoints() int
-	GetLevel() int
 	GetPower() int
 }
