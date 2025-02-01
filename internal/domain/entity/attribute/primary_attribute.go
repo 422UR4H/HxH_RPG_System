@@ -23,8 +23,8 @@ func (pa *PrimaryAttribute) CascadeUpgrade(exp int) {
 	pa.ability.CascadeUpgrade(exp)
 }
 
-func (pa *PrimaryAttribute) GetHalfOfAbilityLvl() float64 {
-	return pa.ability.GetHalfLvl()
+func (pa *PrimaryAttribute) GetBonus() float64 {
+	return pa.ability.GetBonus()
 }
 
 func (pa *PrimaryAttribute) GetExpPoints() int {
@@ -40,7 +40,7 @@ func (pa *PrimaryAttribute) GetLevel() int {
 }
 
 func (pa *PrimaryAttribute) GetPower() int {
-	return pa.points + pa.GetLevel() + int(pa.GetHalfOfAbilityLvl())
+	return pa.points + pa.GetLevel() + int(pa.GetBonus())
 }
 
 func (pa *PrimaryAttribute) Clone() *PrimaryAttribute {

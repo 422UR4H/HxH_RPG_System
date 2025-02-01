@@ -6,25 +6,31 @@ import (
 
 type Ability struct {
 	exp     experience.Exp
-	charExp experience.IEndCascadeUpgrade
+	charExp experience.ICharacterExp
 }
 
 func NewAbility(
-	exp experience.Exp, charExp experience.IEndCascadeUpgrade,
+	exp experience.Exp, charExp experience.ICharacterExp,
 ) *Ability {
 	return &Ability{exp: exp, charExp: charExp}
 }
 
-func (a *Ability) GetHalfLvl() float64 {
-	return float64(a.exp.GetLevel()) / 2.0
+func (a *Ability) GetBonus() float64 {
+	pts := float64(a.charExp.GetCharacterPoints())
+	lvl := float64(a.exp.GetLevel())
+	return (pts + lvl) / 2.0
 }
 
 // talvez eu deva subir a exp apenas para metrica,
 // mas subir o lvl para o characterPower que desce pras skills
 // melhorando os treinos e testes
 func (a *Ability) CascadeUpgrade(exp int) {
-	a.exp.IncreasePoints(exp)
+	diff := a.exp.IncreasePoints(exp)
 	a.charExp.EndCascadeUpgrade(exp)
+
+	if diff > 0 {
+		a.charExp.IncreaseCharacterPoints(diff)
+	}
 }
 
 func (a *Ability) GetExpPoints() int {
