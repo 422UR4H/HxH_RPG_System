@@ -71,6 +71,10 @@ func getCategoryByHexagon(currHexValue int) enum.CategoryName {
 }
 
 func (nh *NenHexagon) GetPercentOf(category enum.CategoryName) float64 {
+	if category == enum.Specialization && category != nh.nenCategoryName {
+		return 0.0
+	}
+
 	// absHexDiff is absolute hexagonal difference
 	// it will always be positive (absolute) and symmetrical to the hexagon
 	absHexDiff := math.Abs(float64(nenHexagon[category] - nh.currHexValue))
