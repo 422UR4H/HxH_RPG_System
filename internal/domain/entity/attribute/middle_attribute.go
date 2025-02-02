@@ -8,14 +8,16 @@ import (
 
 type MiddleAttribute struct {
 	exp          experience.Exp
+	buff         *int
 	primaryAttrs []*PrimaryAttribute
 }
 
 func NewMiddleAttribute(
 	exp experience.Exp,
+	buff *int,
 	primaryAttrs ...*PrimaryAttribute,
 ) *MiddleAttribute {
-	return &MiddleAttribute{exp: exp, primaryAttrs: primaryAttrs}
+	return &MiddleAttribute{exp: exp, buff: buff, primaryAttrs: primaryAttrs}
 }
 
 func (ma *MiddleAttribute) CascadeUpgrade(exp int) {
@@ -54,5 +56,5 @@ func (ma *MiddleAttribute) GetLevel() int {
 }
 
 func (ma *MiddleAttribute) GetPower() int {
-	return ma.GetPoints() + ma.GetLevel() + int(ma.GetBonus())
+	return ma.GetPoints() + ma.GetLevel() + int(ma.GetBonus()) + *ma.buff
 }

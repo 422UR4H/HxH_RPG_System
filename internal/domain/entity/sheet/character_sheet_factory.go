@@ -126,31 +126,32 @@ func (csf *CharacterSheetFactory) BuildPhysAttrs(
 
 	primaryAttrs := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
 	middleAttrs := make(map[enum.AttributeName]*attribute.MiddleAttribute)
+	buffs := csf.BuildPhysAttrBuffs()
 
 	exp := experience.NewExperience(experience.NewExpTable(PHYSICAL_ATTRIBUTE_COEFF))
-	primAttr := attribute.NewPrimaryAttribute(*exp, physAbility)
+	primAttr := attribute.NewPrimaryAttribute(*exp, physAbility, buffs[0])
 
-	res := primAttr.Clone()
-	agi := primAttr.Clone()
-	str := attribute.NewMiddleAttribute(*exp.Clone(), res, agi)
+	res := primAttr.Clone(buffs[enum.Resistance])
+	agi := primAttr.Clone(buffs[enum.Agility])
+	str := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.Strength], res, agi)
 	primaryAttrs[enum.Resistance] = res
 	primaryAttrs[enum.Agility] = agi
 	middleAttrs[enum.Strength] = str
 
-	flx := primAttr.Clone()
-	ats := attribute.NewMiddleAttribute(*exp.Clone(), agi, flx)
+	flx := primAttr.Clone(buffs[enum.Flexibility])
+	ats := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.ActionSpeed], agi, flx)
 	primaryAttrs[enum.Flexibility] = flx
 	middleAttrs[enum.ActionSpeed] = ats
 
-	sen := primAttr.Clone()
-	dex := attribute.NewMiddleAttribute(*exp.Clone(), flx, sen)
+	sen := primAttr.Clone(buffs[enum.Sense])
+	dex := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.Dexterity], flx, sen)
 	primaryAttrs[enum.Sense] = sen
 	middleAttrs[enum.Dexterity] = dex
 
-	con := attribute.NewMiddleAttribute(*exp.Clone(), sen, res)
+	con := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.Constitution], sen, res)
 	middleAttrs[enum.Constitution] = con
 
-	return attribute.NewAttributeManager(primaryAttrs, middleAttrs)
+	return attribute.NewAttributeManager(primaryAttrs, middleAttrs, buffs)
 }
 
 func (csf *CharacterSheetFactory) BuildMentalAttrs(
@@ -158,18 +159,19 @@ func (csf *CharacterSheetFactory) BuildMentalAttrs(
 ) *attribute.Manager {
 
 	attrs := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
+	buffs := csf.BuildMentalAttrBuffs()
 
 	exp := experience.NewExperience(experience.NewExpTable(MENTAL_ATTRIBUTE_COEFF))
-	attr := attribute.NewPrimaryAttribute(*exp, mentalAbility)
+	attr := attribute.NewPrimaryAttribute(*exp, mentalAbility, buffs[0])
 
-	attrs[enum.Resilience] = attr.Clone()
-	attrs[enum.Adaptability] = attr.Clone()
-	attrs[enum.Weighting] = attr.Clone()
-	attrs[enum.Creativity] = attr.Clone()
+	attrs[enum.Resilience] = attr.Clone(buffs[enum.Resilience])
+	attrs[enum.Adaptability] = attr.Clone(buffs[enum.Adaptability])
+	attrs[enum.Weighting] = attr.Clone(buffs[enum.Weighting])
+	attrs[enum.Creativity] = attr.Clone(buffs[enum.Creativity])
 
 	// TODO: add middle attributes which primary attributes above
 	return attribute.NewAttributeManager(
-		attrs, make(map[enum.AttributeName]*attribute.MiddleAttribute),
+		attrs, make(map[enum.AttributeName]*attribute.MiddleAttribute), buffs,
 	)
 }
 
@@ -178,15 +180,16 @@ func (csf *CharacterSheetFactory) BuildSpiritualAttrs(
 ) *attribute.Manager {
 
 	attrs := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
+	buffs := csf.BuildSpiritAttrsBuffs()
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_ATTRIBUTE_COEFF))
-	attr := attribute.NewPrimaryAttribute(*exp, spiritualAbility)
+	attr := attribute.NewPrimaryAttribute(*exp, spiritualAbility, buffs[enum.Spirit])
 
 	attrs[enum.Spirit] = attr
 
 	// TODO: maybe add middle attributes which primary attributes above
 	return attribute.NewAttributeManager(
-		attrs, make(map[enum.AttributeName]*attribute.MiddleAttribute),
+		attrs, make(map[enum.AttributeName]*attribute.MiddleAttribute), buffs,
 	)
 }
 
@@ -376,4 +379,38 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 		principles[name] = *principle.Clone()
 	}
 	return spiritual.NewPrinciplesManager(principles, nenHexagon, hatsu)
+}
+
+func (csf *CharacterSheetFactory) BuildPhysAttrBuffs() map[enum.AttributeName]*int {
+	buffs := make(map[enum.AttributeName]*int)
+
+	buffs[enum.Resistance] = new(int)
+	buffs[enum.Strength] = new(int)
+	buffs[enum.Agility] = new(int)
+	buffs[enum.ActionSpeed] = new(int)
+	buffs[enum.Flexibility] = new(int)
+	buffs[enum.Dexterity] = new(int)
+	buffs[enum.Sense] = new(int)
+	buffs[enum.Constitution] = new(int)
+
+	return buffs
+}
+
+func (csf *CharacterSheetFactory) BuildMentalAttrBuffs() map[enum.AttributeName]*int {
+	buffs := make(map[enum.AttributeName]*int)
+
+	buffs[enum.Resilience] = new(int)
+	buffs[enum.Adaptability] = new(int)
+	buffs[enum.Weighting] = new(int)
+	buffs[enum.Creativity] = new(int)
+
+	return buffs
+}
+
+func (csf *CharacterSheetFactory) BuildSpiritAttrsBuffs() map[enum.AttributeName]*int {
+	buffs := make(map[enum.AttributeName]*int)
+
+	buffs[enum.Spirit] = new(int)
+
+	return buffs
 }

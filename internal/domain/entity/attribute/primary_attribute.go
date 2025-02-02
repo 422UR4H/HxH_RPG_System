@@ -9,13 +9,15 @@ type PrimaryAttribute struct {
 	points  int
 	exp     experience.Exp
 	ability ability.IAbility
+	buff    *int
 }
 
 func NewPrimaryAttribute(
 	exp experience.Exp,
 	ability ability.IAbility,
+	buff *int,
 ) *PrimaryAttribute {
-	return &PrimaryAttribute{exp: exp, ability: ability, points: 0}
+	return &PrimaryAttribute{exp: exp, ability: ability, points: 0, buff: buff}
 }
 
 func (pa *PrimaryAttribute) CascadeUpgrade(exp int) {
@@ -40,9 +42,9 @@ func (pa *PrimaryAttribute) GetLevel() int {
 }
 
 func (pa *PrimaryAttribute) GetPower() int {
-	return pa.points + pa.GetLevel() + int(pa.GetBonus())
+	return pa.points + pa.GetLevel() + int(pa.GetBonus()) + *pa.buff
 }
 
-func (pa *PrimaryAttribute) Clone() *PrimaryAttribute {
-	return NewPrimaryAttribute(*pa.exp.Clone(), pa.ability)
+func (pa *PrimaryAttribute) Clone(buff *int) *PrimaryAttribute {
+	return NewPrimaryAttribute(*pa.exp.Clone(), pa.ability, buff)
 }
