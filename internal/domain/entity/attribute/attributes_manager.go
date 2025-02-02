@@ -13,44 +13,45 @@ type Manager struct {
 
 func NewAttributeManager(
 	primAttr map[enum.AttributeName]*PrimaryAttribute,
-	midAttr map[enum.AttributeName]*MiddleAttribute) *Manager {
+	midAttr map[enum.AttributeName]*MiddleAttribute,
+) *Manager {
 	return &Manager{
 		primaryAttributes: primAttr,
 		middleAttributes:  midAttr,
 	}
 }
 
-func (am *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
-	primaryAttribute, ok := am.primaryAttributes[name]
+func (m *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
+	primaryAttribute, ok := m.primaryAttributes[name]
 	if ok {
 		return primaryAttribute, nil
 	}
 
-	middleAttribute, ok := am.middleAttributes[name]
+	middleAttribute, ok := m.middleAttributes[name]
 	if ok {
 		return middleAttribute, nil
 	}
 	return nil, errors.New("attribute not found")
 }
 
-func (am *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) {
-	primaryAttribute, ok := am.primaryAttributes[name]
+func (m *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) {
+	primaryAttribute, ok := m.primaryAttributes[name]
 	if ok {
 		return *primaryAttribute, nil
 	}
 	return PrimaryAttribute{}, errors.New("primary attribute not found")
 }
 
-func (am *Manager) GetExpPointsOf(name enum.AttributeName) (int, error) {
-	attr, err := am.Get(name)
+func (m *Manager) GetExpPointsOf(name enum.AttributeName) (int, error) {
+	attr, err := m.Get(name)
 	if err != nil {
 		return 0, err
 	}
 	return attr.GetExpPoints(), nil
 }
 
-func (am *Manager) GetLevelOf(name enum.AttributeName) (int, error) {
-	attr, err := am.Get(name)
+func (m *Manager) GetLevelOf(name enum.AttributeName) (int, error) {
+	attr, err := m.Get(name)
 	if err != nil {
 		return 0, err
 	}
