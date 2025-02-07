@@ -1,4 +1,4 @@
-package tool
+package item
 
 type Weapon struct {
 	dice        []int
@@ -49,7 +49,7 @@ func (w *Weapon) GetDefense() int {
 	return w.defense
 }
 
-func (w *Weapon) Getpenality() int {
+func (w *Weapon) GetPenality() int {
 	return w.penalty
 }
 
