@@ -15,15 +15,15 @@ func NewAbility(
 	return &Ability{exp: exp, charExp: charExp}
 }
 
+// maybe character points should only go down for training
+// in this case, change this name to GetTrainingBonus
+// and create another GetBonus that only lowers your level / 2
 func (a *Ability) GetBonus() float64 {
 	pts := float64(a.charExp.GetCharacterPoints())
 	lvl := float64(a.exp.GetLevel())
 	return (pts + lvl) / 2.0
 }
 
-// talvez eu deva subir a exp apenas para metrica,
-// mas subir o lvl para o characterPower que desce pras skills
-// melhorando os treinos e testes
 func (a *Ability) CascadeUpgrade(exp int) {
 	diff := a.exp.IncreasePoints(exp)
 	a.charExp.EndCascadeUpgrade(exp)
