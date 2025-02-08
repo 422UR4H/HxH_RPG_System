@@ -20,15 +20,23 @@ func NewMiddleAttribute(
 	return &MiddleAttribute{exp: exp, buff: buff, primaryAttrs: primaryAttrs}
 }
 
+// TODO: test for lenAttrs > 2 (and for lenAttrs = 2)
 func (ma *MiddleAttribute) CascadeUpgrade(exp int) {
+	lenAttrs := len(ma.primaryAttrs)
+	remainder := ma.exp.GetPoints() % lenAttrs
+
 	ma.exp.IncreasePoints(exp)
+
+	exp += remainder
+	exp /= lenAttrs
 	for _, attr := range ma.primaryAttrs {
 		attr.CascadeUpgrade(exp)
 	}
 }
 
 func (ma *MiddleAttribute) GetBonus() float64 {
-	if len(ma.primaryAttrs) == 0 {
+	lenAttrs := len(ma.primaryAttrs)
+	if lenAttrs == 0 {
 		return 0
 	}
 
@@ -36,7 +44,7 @@ func (ma *MiddleAttribute) GetBonus() float64 {
 	for _, primaryAttr := range ma.primaryAttrs {
 		value += primaryAttr.GetBonus()
 	}
-	return value / float64(len(ma.primaryAttrs))
+	return value / float64(lenAttrs)
 }
 
 func (ma *MiddleAttribute) GetExpPoints() int {
