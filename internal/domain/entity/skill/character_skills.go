@@ -7,15 +7,15 @@ import (
 )
 
 type CharacterSkills struct {
-	physicalSkills  Manager
-	mentalSkills    Manager
-	spiritualSkills Manager
+	physicalSkills  *Manager
+	mentalSkills    *Manager
+	spiritualSkills *Manager
 }
 
 func NewCharacterSkills(
 	physicalSkills,
 	mentalSkills,
-	spiritualSkills Manager) *CharacterSkills {
+	spiritualSkills *Manager) *CharacterSkills {
 
 	return &CharacterSkills{
 		physicalSkills:  physicalSkills,
@@ -33,8 +33,10 @@ func (cs *CharacterSkills) IncreaseExp(points int, name enum.SkillName) (int, er
 }
 
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
-	if skill, err := cs.spiritualSkills.Get(name); err == nil {
-		return skill, nil
+	if cs.spiritualSkills != nil {
+		if skill, err := cs.spiritualSkills.Get(name); err == nil {
+			return skill, nil
+		}
 	}
 	if skill, err := cs.physicalSkills.Get(name); err == nil {
 		return skill, nil

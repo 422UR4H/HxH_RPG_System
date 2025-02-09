@@ -7,12 +7,12 @@ import (
 )
 
 type CharacterAttributes struct {
-	physicalAttributes  Manager
-	mentalAttributes    Manager
-	spiritualAttributes Manager
+	physicalAttributes  *Manager
+	mentalAttributes    *Manager
+	spiritualAttributes *Manager
 }
 
-func NewCharacterAttributes(physical, mental, spiritual Manager) *CharacterAttributes {
+func NewCharacterAttributes(physical, mental, spiritual *Manager) *CharacterAttributes {
 	return &CharacterAttributes{
 		physicalAttributes:  physical,
 		mentalAttributes:    mental,
@@ -21,8 +21,10 @@ func NewCharacterAttributes(physical, mental, spiritual Manager) *CharacterAttri
 }
 
 func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, error) {
-	if attr, _ := ca.spiritualAttributes.Get(name); attr != nil {
-		return attr, nil
+	if ca.spiritualAttributes != nil {
+		if attr, _ := ca.spiritualAttributes.Get(name); attr != nil {
+			return attr, nil
+		}
 	}
 	if attr, _ := ca.physicalAttributes.Get(name); attr != nil {
 		return attr, nil

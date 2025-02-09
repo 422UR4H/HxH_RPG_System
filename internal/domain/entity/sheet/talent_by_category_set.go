@@ -20,8 +20,9 @@ func NewTalentByCategorySet(
 		categories:      categories,
 		initialHexValue: initialHexValue,
 	}
-
 }
+
+const BASE_TALENT_LVL = 20
 
 func (t *TalentByCategorySet) GetTalentLvl() int {
 	activeCategoryCount := getActiveCategoryCount(t.categories)
@@ -34,7 +35,7 @@ func (t *TalentByCategorySet) GetTalentLvl() int {
 			bonus = 1
 		}
 	}
-	return 20 + bonus
+	return BASE_TALENT_LVL + bonus
 }
 
 func getActiveCategoryCount(categories map[enum.CategoryName]bool) int {
