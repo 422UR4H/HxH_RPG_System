@@ -54,7 +54,7 @@ func (csf *CharacterSheetFactory) Build(
 	spiritAttrs := csf.BuildSpiritualAttrs(spiritualAbility)
 
 	characterAttrs := attribute.NewCharacterAttributes(
-		*physAttrs, *mentalAttrs, *spiritAttrs,
+		physAttrs, mentalAttrs, spiritAttrs,
 	)
 
 	status := csf.BuildStatusManager()
@@ -70,7 +70,7 @@ func (csf *CharacterSheetFactory) Build(
 		skills, spiritualAbility, spiritAttrs,
 	)
 	characterSkills := skill.NewCharacterSkills(
-		*physSkills, *mentalSkills, *spiritSkills,
+		physSkills, mentalSkills, spiritSkills,
 	)
 
 	var nenHexagon *spiritual.NenHexagon
@@ -413,4 +413,72 @@ func (csf *CharacterSheetFactory) BuildSpiritAttrsBuffs() map[enum.AttributeName
 	buffs[enum.Spirit] = new(int)
 
 	return buffs
+}
+
+func (csf *CharacterSheetFactory) BuildHalfSheet(
+	profile CharacterProfile, categorySet *TalentByCategorySet,
+) *HalfSheet {
+	expTable := experience.NewExpTable(CHARACTER_COEFF)
+	exp := experience.NewExperience(expTable)
+	characterExp := experience.NewCharacterExp(*exp)
+
+	var talentLvl int
+	if categorySet == nil {
+		talentLvl = BASE_TALENT_LVL
+	} else {
+		talentLvl = categorySet.GetTalentLvl()
+	}
+	abilities := csf.BuildPersonAbilitiesHalf(characterExp, talentLvl)
+
+	physAbility, _ := abilities.Get(enum.Physicals)
+	physAttrs := csf.BuildPhysAttrs(physAbility)
+
+	mentalAbility, _ := abilities.Get(enum.Mentals)
+	mentalAttrs := csf.BuildMentalAttrs(mentalAbility)
+
+	characterAttrs := attribute.NewCharacterAttributes(
+		physAttrs, mentalAttrs, nil,
+	)
+
+	status := csf.BuildStatusManager()
+
+	skills, _ := abilities.Get(enum.Skills)
+	physSkills := csf.BuildPhysSkills(
+		*status, skills, physAbility, physAttrs,
+	)
+	mentalSkills := csf.BuildMentalSkills(
+		skills, mentalAbility, mentalAttrs,
+	)
+	characterSkills := skill.NewCharacterSkills(
+		physSkills, mentalSkills, nil,
+	)
+
+	return NewHalfSheet(
+		profile,
+		*abilities,
+		*characterAttrs,
+		*characterSkills,
+		*status,
+	)
+}
+
+func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
+	characterExp *experience.CharacterExp, talentLvl int,
+) *ability.Manager {
+
+	abilities := make(map[enum.AbilityName]ability.IAbility)
+
+	talentExp := experience.NewExperience(experience.NewExpTable(TALENT_COEFF))
+	talent := ability.NewTalent(*talentExp, talentLvl)
+
+	physicalExp := experience.NewExperience(experience.NewExpTable(PHYSICAL_COEFF))
+	abilities[enum.Physicals] = ability.NewAbility(*physicalExp, characterExp)
+
+	mentalExp := experience.NewExperience(experience.NewExpTable(MENTAL_COEFF))
+	abilities[enum.Mentals] = ability.NewAbility(*mentalExp, characterExp)
+
+	skillsExp := experience.NewExperience(experience.NewExpTable(SKILLS_COEFF))
+	abilities[enum.Skills] = ability.NewAbility(*skillsExp, characterExp)
+
+	return ability.NewAbilitiesManager(characterExp, abilities, *talent)
 }
