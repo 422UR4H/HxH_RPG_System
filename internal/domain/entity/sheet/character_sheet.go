@@ -16,6 +16,7 @@ type CharacterSheet struct {
 	skill     skill.CharacterSkills
 	principle spiritual.Manager
 	status    status.Manager
+	// equipedItems []Item
 }
 
 func NewCharacterSheet(

@@ -53,6 +53,7 @@ func (m *Manager) GetExpPointsOf(name enum.SkillName) (int, error) {
 	return skill.GetExpPoints(), nil
 }
 
+// TODO: verify if is necessary sum the buffs here
 func (m *Manager) GetLevelOf(name enum.SkillName) (int, error) {
 	skill, err := m.Get(name)
 	if err != nil {
