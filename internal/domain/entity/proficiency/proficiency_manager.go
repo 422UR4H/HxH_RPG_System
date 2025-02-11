@@ -6,6 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
+// unlike skills, there are only hard coded proficiencies
 type Manager struct {
 	personProficiencies map[string]*PersonProficiency
 	commonProficiencies map[enum.WeaponName]*Proficiency
