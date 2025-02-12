@@ -41,9 +41,9 @@ func (cs *CharacterSheet) GetValueForTestOfSkill(name enum.SkillName) (int, erro
 	return cs.skill.GetValueForTestOf(name)
 }
 
-// func (cs *CharacterSheet) GetValueForTestOfAttribute(name enum.AttributeName) (int, error) {
-// 	return cs.attribute.GetPowerOf(name)
-// }
+func (cs *CharacterSheet) GetValueForTestOfAttribute(name enum.AttributeName) (int, error) {
+	return cs.attribute.GetPowerOf(name)
+}
 
 func (cs *CharacterSheet) IncreaseExpForSkill(
 	points int, name enum.SkillName,
