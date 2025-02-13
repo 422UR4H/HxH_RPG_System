@@ -22,6 +22,18 @@ func (ce *CharacterExp) GetCharacterPoints() int {
 	return ce.points
 }
 
+func (ce *CharacterExp) GetNextLvlBaseExp() int {
+	return ce.exp.GetNextLvlBaseExp()
+}
+
+func (ce *CharacterExp) GetNextLvlAggregateExp() int {
+	return ce.exp.GetNextLvlAggregateExp()
+}
+
+func (ce *CharacterExp) GetCurrentExp() int {
+	return ce.exp.GetCurrentExp()
+}
+
 func (ce *CharacterExp) GetExpPoints() int {
 	return ce.exp.GetPoints()
 }

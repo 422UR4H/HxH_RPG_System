@@ -33,6 +33,18 @@ func (a *Ability) CascadeUpgrade(exp int) {
 	}
 }
 
+func (a *Ability) GetNextLvlBaseExp() int {
+	return a.exp.GetNextLvlBaseExp()
+}
+
+func (a *Ability) GetNextLvlAggregateExp() int {
+	return a.exp.GetNextLvlAggregateExp()
+}
+
+func (a *Ability) GetCurrentExp() int {
+	return a.exp.GetCurrentExp()
+}
+
 func (a *Ability) GetExpPoints() int {
 	return a.exp.GetPoints()
 }

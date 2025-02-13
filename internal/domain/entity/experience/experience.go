@@ -27,11 +27,19 @@ func (e *Exp) GetAggregateExpByLvl(lvl int) int {
 }
 
 func (e *Exp) GetCurrentExp() int {
-	return e.points - e.expTable.GetAggregateExpByLvl(e.level)
+	return e.points - e.GetAggregateExpByLvl(e.level)
 }
 
 func (e *Exp) GetExpToEvolve() int {
 	return e.GetAggregateExpByLvl(e.level+1) - e.GetCurrentExp()
+}
+
+func (e *Exp) GetNextLvlBaseExp() int {
+	return e.GetBaseExpByLvl(e.level + 1)
+}
+
+func (e *Exp) GetNextLvlAggregateExp() int {
+	return e.GetAggregateExpByLvl(e.level + 1)
 }
 
 func (e *Exp) getLvlByExp() int {

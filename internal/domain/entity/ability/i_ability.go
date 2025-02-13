@@ -5,6 +5,9 @@ import exp "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 type IAbility interface {
 	exp.ICascadeUpgrade
 
-	GetBonus() float64
+	GetNextLvlAggregateExp() int
+	GetNextLvlBaseExp() int
+	GetCurrentExp() int
 	GetExpPoints() int
+	GetBonus() float64
 }

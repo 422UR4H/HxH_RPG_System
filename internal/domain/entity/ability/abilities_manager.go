@@ -49,6 +49,10 @@ func (m *Manager) GetLevelOf(name enum.AbilityName) (int, error) {
 	return ability.GetLevel(), nil
 }
 
+func (m *Manager) GetTalentLevel() int {
+	return m.talent.GetLevel()
+}
+
 func (m *Manager) GetCharacterExp() int {
 	return m.characterExp.GetExpPoints()
 }
