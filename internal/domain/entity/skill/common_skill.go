@@ -30,16 +30,24 @@ func (cs *CommonSkill) GetValueForTest() int {
 	return cs.exp.GetLevel() + cs.attribute.GetPower()
 }
 
+func (cs *CommonSkill) GetNextLvlAggregateExp() int {
+	return cs.exp.GetNextLvlAggregateExp()
+}
+
+func (cs *CommonSkill) GetNextLvlBaseExp() int {
+	return cs.exp.GetNextLvlBaseExp()
+}
+
+func (cs *CommonSkill) GetCurrentExp() int {
+	return cs.exp.GetCurrentExp()
+}
+
 func (cs *CommonSkill) GetExpPoints() int {
 	return cs.exp.GetPoints()
 }
 
 func (cs *CommonSkill) GetLevel() int {
 	return cs.exp.GetLevel()
-}
-
-func (cs *CommonSkill) GetAggregateExpByLvl(lvl int) int {
-	return cs.exp.GetAggregateExpByLvl(lvl)
 }
 
 func (cs *CommonSkill) Clone() *CommonSkill {

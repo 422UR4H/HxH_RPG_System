@@ -44,16 +44,24 @@ func (ps *PassiveSkill) GetValueForTest() int {
 	return ps.exp.GetLevel() + ps.attribute.GetPower()
 }
 
+func (ps *PassiveSkill) GetNextLvlAggregateExp() int {
+	return ps.exp.GetNextLvlAggregateExp()
+}
+
+func (ps *PassiveSkill) GetNextLvlBaseExp() int {
+	return ps.exp.GetNextLvlBaseExp()
+}
+
+func (ps *PassiveSkill) GetCurrentExp() int {
+	return ps.exp.GetCurrentExp()
+}
+
 func (ps *PassiveSkill) GetExpPoints() int {
 	return ps.exp.GetPoints()
 }
 
 func (ps *PassiveSkill) GetLevel() int {
 	return ps.exp.GetLevel()
-}
-
-func (ps *PassiveSkill) GetAggregateExpByLvl(lvl int) int {
-	return ps.exp.GetAggregateExpByLvl(lvl)
 }
 
 // func (ps *StatusSkill) Clone(points int) *StatusSkill {

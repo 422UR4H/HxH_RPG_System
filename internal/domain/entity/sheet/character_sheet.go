@@ -111,12 +111,6 @@ func (cs *CharacterSheet) GetExpPointsOfCategory(name enum.CategoryName) (int, e
 	return cs.principle.GetExpPointsOfCategory(name)
 }
 
-func (cs *CharacterSheet) GetAggregateExpByLvlOfSkill(
-	name enum.SkillName, lvl int,
-) (int, error) {
-	return cs.skill.GetAggregateExpByLvlOf(name, lvl)
-}
-
 func (cs *CharacterSheet) GetExpPoints() int {
-	return cs.ability.GetCharacterExp()
+	return cs.ability.GetCharacterExpPoints()
 }

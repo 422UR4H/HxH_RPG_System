@@ -3,26 +3,27 @@ package spiritual
 import (
 	"fmt"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type Hatsu struct {
 	exp              experience.Exp
-	abilityExp       experience.ICascadeUpgrade
+	ability          ability.IAbility
 	categories       map[enum.CategoryName]NenCategory
 	categoryPercents map[enum.CategoryName]float64
 }
 
 func NewHatsu(
 	exp experience.Exp,
-	abilityExp experience.ICascadeUpgrade,
+	ability ability.IAbility,
 	categories map[enum.CategoryName]NenCategory,
 	categoryPercents map[enum.CategoryName]float64,
 ) *Hatsu {
 	return &Hatsu{
 		exp:              exp,
-		abilityExp:       abilityExp,
+		ability:          ability,
 		categories:       make(map[enum.CategoryName]NenCategory),
 		categoryPercents: categoryPercents,
 	}
@@ -49,7 +50,7 @@ func (h *Hatsu) SetCategoryPercents(
 
 func (h *Hatsu) CascadeUpgrade(exp int) {
 	h.exp.IncreasePoints(exp)
-	h.abilityExp.CascadeUpgrade(exp)
+	h.ability.CascadeUpgrade(exp)
 }
 
 func (h *Hatsu) IncreaseExp(points int, name enum.CategoryName) (int, error) {
@@ -67,8 +68,34 @@ func (h *Hatsu) Get(name enum.CategoryName) (ICategory, error) {
 	return nil, fmt.Errorf("category %s not found", name.String())
 }
 
-func (h *Hatsu) GetPrinciplePower() int {
-	return h.GetLevel() + h.abilityExp.GetLevel()/2
+func (h *Hatsu) GetValueForTest() int {
+	return h.GetLevel() + int(h.ability.GetBonus())
+}
+
+func (h *Hatsu) GetNextLvlAggregateExpOf(name enum.CategoryName) (int, error) {
+	category, err := h.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get aggregate exp of next lvl of", name.String())
+	}
+	return category.GetNextLvlAggregateExp(), nil
+}
+
+func (h *Hatsu) GetNextLvlBaseExpOf(name enum.CategoryName) (int, error) {
+	category, err := h.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get base exp of next lvl of", name.String())
+	}
+	return category.GetNextLvlBaseExp(), nil
+}
+
+func (h *Hatsu) GetCurrentExpOf(name enum.CategoryName) (int, error) {
+	category, err := h.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s %s", err, "failed to get current exp of", name.String())
+	}
+	return category.GetCurrentExp(), nil
 }
 
 func (h *Hatsu) GetExpPointsOf(name enum.CategoryName) (int, error) {
@@ -79,16 +106,68 @@ func (h *Hatsu) GetExpPointsOf(name enum.CategoryName) (int, error) {
 	return category.GetExpPoints(), nil
 }
 
-func (h *Hatsu) GetExpPoints() int {
-	return h.exp.GetPoints()
-}
-
 func (h *Hatsu) GetLevelOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s %s", err, "failed to get level of", name.String())
 	}
 	return category.GetLevel(), nil
+}
+
+func (h *Hatsu) GetCategoriesNextLvlAggregateExp() map[enum.CategoryName]int {
+	expList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		expList[name] = category.GetNextLvlAggregateExp()
+	}
+	return expList
+}
+
+func (h *Hatsu) GetCategoriesNextLvlBaseExp() map[enum.CategoryName]int {
+	expList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		expList[name] = category.GetNextLvlBaseExp()
+	}
+	return expList
+}
+
+func (h *Hatsu) GetCategoriesCurrentExp() map[enum.CategoryName]int {
+	expList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		expList[name] = category.GetCurrentExp()
+	}
+	return expList
+}
+
+func (h *Hatsu) GetCategoriesExpPoints() map[enum.CategoryName]int {
+	expList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		expList[name] = category.GetExpPoints()
+	}
+	return expList
+}
+
+func (h *Hatsu) GetCategoriesLevel() map[enum.CategoryName]int {
+	lvlList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		lvlList[name] = category.GetLevel()
+	}
+	return lvlList
+}
+
+func (h *Hatsu) GetNextLvlAggregateExp() int {
+	return h.exp.GetNextLvlAggregateExp()
+}
+
+func (h *Hatsu) GetNextLvlBaseExp() int {
+	return h.exp.GetNextLvlBaseExp()
+}
+
+func (h *Hatsu) GetCurrentExp() int {
+	return h.exp.GetCurrentExp()
+}
+
+func (h *Hatsu) GetExpPoints() int {
+	return h.exp.GetPoints()
 }
 
 func (h *Hatsu) GetLevel() int {

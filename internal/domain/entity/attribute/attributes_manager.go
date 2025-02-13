@@ -45,6 +45,30 @@ func (m *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) 
 	return PrimaryAttribute{}, errors.New("primary attribute not found")
 }
 
+func (m *Manager) GetNextLvlAggregateExpOf(name enum.AttributeName) (int, error) {
+	attr, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return attr.GetNextLvlAggregateExp(), nil
+}
+
+func (m *Manager) GetNextLvlBaseExpOf(name enum.AttributeName) (int, error) {
+	attr, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return attr.GetNextLvlBaseExp(), nil
+}
+
+func (m *Manager) GetCurrentExpOf(name enum.AttributeName) (int, error) {
+	attr, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return attr.GetCurrentExp(), nil
+}
+
 func (m *Manager) GetExpPointsOf(name enum.AttributeName) (int, error) {
 	attr, err := m.Get(name)
 	if err != nil {
@@ -59,6 +83,61 @@ func (m *Manager) GetLevelOf(name enum.AttributeName) (int, error) {
 		return 0, err
 	}
 	return attr.GetLevel(), nil
+}
+
+func (m *Manager) GetAttributesNextLvlAggregateExp() map[enum.AttributeName]int {
+	expList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		expList[name] = attr.GetNextLvlAggregateExp()
+	}
+	for name, attr := range m.middleAttributes {
+		expList[name] = attr.GetNextLvlAggregateExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetAttributesNextLvlBaseExp() map[enum.AttributeName]int {
+	expList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		expList[name] = attr.GetNextLvlBaseExp()
+	}
+	for name, attr := range m.middleAttributes {
+		expList[name] = attr.GetNextLvlBaseExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetAttributesCurrentExp() map[enum.AttributeName]int {
+	expList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		expList[name] = attr.GetCurrentExp()
+	}
+	for name, attr := range m.middleAttributes {
+		expList[name] = attr.GetCurrentExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetAttributesExpPoints() map[enum.AttributeName]int {
+	expList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		expList[name] = attr.GetExpPoints()
+	}
+	for name, attr := range m.middleAttributes {
+		expList[name] = attr.GetExpPoints()
+	}
+	return expList
+}
+
+func (m *Manager) GetAttributesLevel() map[enum.AttributeName]int {
+	lvlList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		lvlList[name] = attr.GetLevel()
+	}
+	for name, attr := range m.middleAttributes {
+		lvlList[name] = attr.GetLevel()
+	}
+	return lvlList
 }
 
 func (m *Manager) GetBuffs() map[enum.AttributeName]*int {

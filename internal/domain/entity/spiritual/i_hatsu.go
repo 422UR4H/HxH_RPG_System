@@ -8,4 +8,8 @@ import (
 type IHatsu interface {
 	experience.ICascadeUpgrade
 	GetPercentOf(category enum.CategoryName) float64
+	GetNextLvlAggregateExp() int
+	GetNextLvlBaseExp() int
+	GetCurrentExp() int
+	GetExpPoints() int
 }

@@ -39,23 +39,6 @@ func (jp *JointProficiency) CascadeUpgradeTrigger(exp int) int {
 	return diff
 }
 
-// TODO: validate this
-func (jp *JointProficiency) GetValueForTest() int {
-	return jp.exp.GetLevel() //+ jp.attr.GetPower()
-}
-
-func (jp *JointProficiency) GetExpPoints() int {
-	return jp.exp.GetPoints()
-}
-
-func (jp *JointProficiency) GetLevel() int {
-	return jp.exp.GetLevel()
-}
-
-func (jp *JointProficiency) GetName() string {
-	return jp.name
-}
-
 func (jp *JointProficiency) ContainsWeapon(name enum.WeaponName) bool {
 	for _, weapon := range jp.weapons {
 		if weapon == name {
@@ -69,8 +52,8 @@ func (jp *JointProficiency) AddWeapon(name enum.WeaponName) {
 	jp.weapons = append(jp.weapons, name)
 }
 
-func (jp *JointProficiency) GetAggregateExpByLvl(lvl int) int {
-	return jp.exp.GetAggregateExpByLvl(lvl)
+func (jp *JointProficiency) GetWeapons() []enum.WeaponName {
+	return jp.weapons
 }
 
 func (jp *JointProficiency) SetBuff(name enum.WeaponName, value int) int { //, int) {
@@ -87,6 +70,31 @@ func (jp *JointProficiency) GetBuff() int {
 	return jp.buff
 }
 
-func (jp *JointProficiency) GetWeapons() []enum.WeaponName {
-	return jp.weapons
+// TODO: validate this
+func (jp *JointProficiency) GetValueForTest() int {
+	return jp.exp.GetLevel() //+ jp.attr.GetPower()
+}
+
+func (jp *JointProficiency) GetNextLvlAggregateExp() int {
+	return jp.exp.GetNextLvlAggregateExp()
+}
+
+func (jp *JointProficiency) GetNextLvlBaseExp() int {
+	return jp.exp.GetNextLvlBaseExp()
+}
+
+func (jp *JointProficiency) GetCurrentExp() int {
+	return jp.exp.GetCurrentExp()
+}
+
+func (jp *JointProficiency) GetExpPoints() int {
+	return jp.exp.GetPoints()
+}
+
+func (jp *JointProficiency) GetLevel() int {
+	return jp.exp.GetLevel()
+}
+
+func (jp *JointProficiency) GetName() string {
+	return jp.name
 }

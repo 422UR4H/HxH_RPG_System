@@ -47,16 +47,24 @@ func (js *JointSkill) GetValueForTest() int {
 	return js.exp.GetLevel() + js.attribute.GetPower()
 }
 
+func (js *JointSkill) GetNextLvlAggregateExp() int {
+	return js.exp.GetNextLvlAggregateExp()
+}
+
+func (js *JointSkill) GetNextLvlBaseExp() int {
+	return js.exp.GetNextLvlBaseExp()
+}
+
+func (js *JointSkill) GetCurrentExp() int {
+	return js.exp.GetCurrentExp()
+}
+
 func (js *JointSkill) GetExpPoints() int {
 	return js.exp.GetPoints()
 }
 
 func (js *JointSkill) GetLevel() int {
 	return js.exp.GetLevel()
-}
-
-func (js *JointSkill) GetAggregateExpByLvl(lvl int) int {
-	return js.exp.GetAggregateExpByLvl(lvl)
 }
 
 func (js *JointSkill) Contains(name enum.SkillName) bool {

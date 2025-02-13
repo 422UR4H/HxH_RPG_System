@@ -5,8 +5,10 @@ import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 type ISkill interface {
 	experience.ITriggerCascadeExp
 
-	GetLevel() int
 	GetValueForTest() int
+	GetNextLvlAggregateExp() int
+	GetNextLvlBaseExp() int
+	GetCurrentExp() int
 	GetExpPoints() int
-	GetAggregateExpByLvl(lvl int) int
+	GetLevel() int
 }

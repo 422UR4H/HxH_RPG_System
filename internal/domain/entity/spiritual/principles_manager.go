@@ -65,9 +65,38 @@ func (m *Manager) Get(name enum.PrincipleName) (IPrinciple, error) {
 	return nil, fmt.Errorf("principle %s not found", name.String())
 }
 
-func (m *Manager) GetExpPointsOfPrinciple(
+func (m *Manager) GetNextLvlAggregateExpOfPrinciple(
 	name enum.PrincipleName) (int, error) {
 
+	principle, err := m.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get aggregate exp of next lvl of", name.String())
+	}
+	return principle.GetNextLvlAggregateExp(), nil
+}
+
+func (m *Manager) GetNextLvlBaseExpOfPrinciple(
+	name enum.PrincipleName) (int, error) {
+
+	principle, err := m.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get base exp of next lvl of", name.String())
+	}
+	return principle.GetNextLvlBaseExp(), nil
+}
+
+func (m *Manager) GetCurrentExpOfPrinciple(name enum.PrincipleName) (int, error) {
+	principle, err := m.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get current exp of", name.String())
+	}
+	return principle.GetCurrentExp(), nil
+}
+
+func (m *Manager) GetExpPointsOfPrinciple(name enum.PrincipleName) (int, error) {
 	principle, err := m.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s", err, "failed to get exp")
@@ -75,9 +104,7 @@ func (m *Manager) GetExpPointsOfPrinciple(
 	return principle.GetExpPoints(), nil
 }
 
-func (m *Manager) GetLevelOfPrinciple(
-	name enum.PrincipleName) (int, error) {
-
+func (m *Manager) GetLevelOfPrinciple(name enum.PrincipleName) (int, error) {
 	principle, err := m.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s", err, "failed to get level")
@@ -85,24 +112,91 @@ func (m *Manager) GetLevelOfPrinciple(
 	return principle.GetLevel(), nil
 }
 
-func (m *Manager) GetExpPointsOfCategory(
+func (m *Manager) GetNextLvlAggregateExpOfCategory(
 	name enum.CategoryName) (int, error) {
 
-	principle, err := m.hatsu.Get(name)
+	category, err := m.hatsu.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get aggregate exp of next lvl of", name.String())
+	}
+	return category.GetNextLvlAggregateExp(), nil
+}
+
+func (m *Manager) GetNextLvlBaseExpOfCategory(
+	name enum.CategoryName) (int, error) {
+
+	category, err := m.hatsu.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get base exp of next lvl of", name.String())
+	}
+	return category.GetNextLvlBaseExp(), nil
+}
+
+func (m *Manager) GetCurrentExpOfCategory(name enum.CategoryName) (int, error) {
+	category, err := m.hatsu.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%w: %s %s", err, "failed to get current exp of", name.String())
+	}
+	return category.GetCurrentExp(), nil
+}
+
+func (m *Manager) GetExpPointsOfCategory(name enum.CategoryName) (int, error) {
+	category, err := m.hatsu.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s", err, "failed to get exp")
 	}
-	return principle.GetExpPoints(), nil
+	return category.GetExpPoints(), nil
 }
 
-func (m *Manager) GetLevelOfCategory(
-	name enum.CategoryName) (int, error) {
-
-	principle, err := m.hatsu.Get(name)
+func (m *Manager) GetLevelOfCategory(name enum.CategoryName) (int, error) {
+	category, err := m.hatsu.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s", err, "failed to get level")
 	}
-	return principle.GetLevel(), nil
+	return category.GetLevel(), nil
+}
+
+func (m *Manager) GetNextLvlAggregateExpOfPrinciples() map[enum.PrincipleName]int {
+	expList := make(map[enum.PrincipleName]int)
+	for name, principle := range m.principles {
+		expList[name] = principle.GetNextLvlAggregateExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetNextLvlBaseExpOfPrinciples() map[enum.PrincipleName]int {
+	expList := make(map[enum.PrincipleName]int)
+	for name, principle := range m.principles {
+		expList[name] = principle.GetNextLvlBaseExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetCurrentExpOfPrinciples() map[enum.PrincipleName]int {
+	expList := make(map[enum.PrincipleName]int)
+	for name, principle := range m.principles {
+		expList[name] = principle.GetCurrentExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetExpPointsOfPrinciples() map[enum.PrincipleName]int {
+	expList := make(map[enum.PrincipleName]int)
+	for name, principle := range m.principles {
+		expList[name] = principle.GetExpPoints()
+	}
+	return expList
+}
+
+func (m *Manager) GetLevelOfPrinciples() map[enum.PrincipleName]int {
+	lvlList := make(map[enum.PrincipleName]int)
+	for name, principle := range m.principles {
+		lvlList[name] = principle.GetLevel()
+	}
+	return lvlList
 }
 
 // TODO: handle errors below, case nenHexagon is nil
@@ -136,4 +230,24 @@ func (m *Manager) GetNenCategoryName() enum.CategoryName {
 
 func (m *Manager) GetCurrHexValue() int {
 	return m.nenHexagon.GetCurrHexValue()
+}
+
+func (m *Manager) GetNextLvlAggregateExpOfCategories() map[enum.CategoryName]int {
+	return m.hatsu.GetCategoriesNextLvlAggregateExp()
+}
+
+func (m *Manager) GetNextLvlBaseExpOfCategories() map[enum.CategoryName]int {
+	return m.hatsu.GetCategoriesNextLvlBaseExp()
+}
+
+func (m *Manager) GetCurrentExpOfCategories() map[enum.CategoryName]int {
+	return m.hatsu.GetCategoriesCurrentExp()
+}
+
+func (m *Manager) GetExpPointsOfCategories() map[enum.CategoryName]int {
+	return m.hatsu.GetCategoriesExpPoints()
+}
+
+func (m *Manager) GetLevelOfCategories() map[enum.CategoryName]int {
+	return m.hatsu.GetCategoriesLevel()
 }

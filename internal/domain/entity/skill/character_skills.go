@@ -7,20 +7,20 @@ import (
 )
 
 type CharacterSkills struct {
-	physicalSkills  *Manager
-	mentalSkills    *Manager
-	spiritualSkills *Manager
+	physicals  *Manager
+	mentals    *Manager
+	spirituals *Manager
 }
 
 func NewCharacterSkills(
-	physicalSkills,
-	mentalSkills,
-	spiritualSkills *Manager) *CharacterSkills {
+	physicals,
+	mentals,
+	spirituals *Manager) *CharacterSkills {
 
 	return &CharacterSkills{
-		physicalSkills:  physicalSkills,
-		mentalSkills:    mentalSkills,
-		spiritualSkills: spiritualSkills,
+		physicals:  physicals,
+		mentals:    mentals,
+		spirituals: spirituals,
 	}
 }
 
@@ -33,15 +33,15 @@ func (cs *CharacterSkills) IncreaseExp(points int, name enum.SkillName) (int, er
 }
 
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
-	if cs.spiritualSkills != nil {
-		if skill, err := cs.spiritualSkills.Get(name); err == nil {
+	if cs.spirituals != nil {
+		if skill, err := cs.spirituals.Get(name); err == nil {
 			return skill, nil
 		}
 	}
-	if skill, err := cs.physicalSkills.Get(name); err == nil {
+	if skill, err := cs.physicals.Get(name); err == nil {
 		return skill, nil
 	}
-	if skill, err := cs.mentalSkills.Get(name); err == nil {
+	if skill, err := cs.mentals.Get(name); err == nil {
 		return skill, nil
 	}
 	return nil, errors.New("skill not found")
@@ -53,6 +53,31 @@ func (cs *CharacterSkills) GetValueForTestOf(name enum.SkillName) (int, error) {
 		return 0, err
 	}
 	return skill.GetValueForTest(), nil
+}
+
+func (cs *CharacterSkills) GetNextLvlAggregateExpOf(name enum.SkillName) (int, error) {
+
+	skill, err := cs.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.GetNextLvlAggregateExp(), nil
+}
+
+func (cs *CharacterSkills) GetNextLvlBaseExpOf(name enum.SkillName) (int, error) {
+	skill, err := cs.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.GetNextLvlBaseExp(), nil
+}
+
+func (cs *CharacterSkills) GetCurrentExpOf(name enum.SkillName) (int, error) {
+	skill, err := cs.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.GetCurrentExp(), nil
 }
 
 func (cs *CharacterSkills) GetExpPointsOf(name enum.SkillName) (int, error) {
@@ -71,13 +96,62 @@ func (cs *CharacterSkills) GetLevelOf(name enum.SkillName) (int, error) {
 	return skill.GetLevel(), nil
 }
 
-func (cs *CharacterSkills) GetAggregateExpByLvlOf(
-	name enum.SkillName, lvl int,
-) (int, error) {
+func (cs *CharacterSkills) GetPhysicalsNextLvlAggregateExp() map[enum.SkillName]int {
+	return cs.physicals.GetSkillsNextLvlAggregateExp()
+}
 
-	skill, err := cs.Get(name)
-	if err != nil {
-		return 0, err
-	}
-	return skill.GetAggregateExpByLvl(lvl), nil
+func (cs *CharacterSkills) GetMentalsNextLvlAggregateExp() map[enum.SkillName]int {
+	return cs.mentals.GetSkillsNextLvlAggregateExp()
+}
+
+func (cs *CharacterSkills) GetSpiritualsNextLvlAggregateExp() map[enum.SkillName]int {
+	return cs.spirituals.GetSkillsNextLvlAggregateExp()
+}
+
+func (cs *CharacterSkills) GetPhysicalsNextLvlBaseExp() map[enum.SkillName]int {
+	return cs.physicals.GetSkillsNextLvlBaseExp()
+}
+
+func (cs *CharacterSkills) GetMentalsNextLvlBaseExp() map[enum.SkillName]int {
+	return cs.mentals.GetSkillsNextLvlBaseExp()
+}
+
+func (cs *CharacterSkills) GetSpiritualsNextLvlBaseExp() map[enum.SkillName]int {
+	return cs.spirituals.GetSkillsNextLvlBaseExp()
+}
+
+func (cs *CharacterSkills) GetPhysicalsCurrentExp() map[enum.SkillName]int {
+	return cs.physicals.GetSkillsCurrentExp()
+}
+
+func (cs *CharacterSkills) GetMentalsCurrentExp() map[enum.SkillName]int {
+	return cs.mentals.GetSkillsCurrentExp()
+}
+
+func (cs *CharacterSkills) GetSpiritualsCurrentExp() map[enum.SkillName]int {
+	return cs.spirituals.GetSkillsCurrentExp()
+}
+
+func (cs *CharacterSkills) GetPhysicalsExpPoints() map[enum.SkillName]int {
+	return cs.physicals.GetSkillsExpPoints()
+}
+
+func (cs *CharacterSkills) GetMentalsExpPoints() map[enum.SkillName]int {
+	return cs.mentals.GetSkillsExpPoints()
+}
+
+func (cs *CharacterSkills) GetSpiritualsExpPoints() map[enum.SkillName]int {
+	return cs.spirituals.GetSkillsExpPoints()
+}
+
+func (cs *CharacterSkills) GetPhysicalsLevel() map[enum.SkillName]int {
+	return cs.physicals.GetSkillsLevel()
+}
+
+func (cs *CharacterSkills) GetMentalsLevel() map[enum.SkillName]int {
+	return cs.mentals.GetSkillsLevel()
+}
+
+func (cs *CharacterSkills) GetSpiritualsLevel() map[enum.SkillName]int {
+	return cs.spirituals.GetSkillsLevel()
 }

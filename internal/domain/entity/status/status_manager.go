@@ -46,3 +46,7 @@ func (sm *Manager) GetCurrentOf(name enum.StatusName) (int, error) {
 	}
 	return status.GetCurrent(), nil
 }
+
+func (sm *Manager) GetAllStatus() map[enum.StatusName]IStatusBar {
+	return sm.status
+}

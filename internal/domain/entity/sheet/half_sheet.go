@@ -75,12 +75,6 @@ func (cs *HalfSheet) GetExpPointsOfSkill(name enum.SkillName) (int, error) {
 	return cs.skill.GetExpPointsOf(name)
 }
 
-func (cs *HalfSheet) GetAggregateExpByLvlOfSkill(
-	name enum.SkillName, lvl int,
-) (int, error) {
-	return cs.skill.GetAggregateExpByLvlOf(name, lvl)
-}
-
 func (cs *HalfSheet) GetExpPoints() int {
-	return cs.ability.GetCharacterExp()
+	return cs.ability.GetCharacterExpPoints()
 }

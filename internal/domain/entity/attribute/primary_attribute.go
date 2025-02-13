@@ -25,24 +25,36 @@ func (pa *PrimaryAttribute) CascadeUpgrade(exp int) {
 	pa.ability.CascadeUpgrade(exp)
 }
 
-func (pa *PrimaryAttribute) GetBonus() float64 {
-	return pa.ability.GetBonus()
-}
-
-func (pa *PrimaryAttribute) GetExpPoints() int {
-	return pa.exp.GetPoints()
+func (pa *PrimaryAttribute) GetPower() int {
+	return pa.points + pa.GetLevel() + int(pa.GetBonus()) + *pa.buff
 }
 
 func (pa *PrimaryAttribute) GetPoints() int {
 	return pa.points
 }
 
-func (pa *PrimaryAttribute) GetLevel() int {
-	return pa.exp.GetLevel()
+func (pa *PrimaryAttribute) GetBonus() float64 {
+	return pa.ability.GetBonus()
 }
 
-func (pa *PrimaryAttribute) GetPower() int {
-	return pa.points + pa.GetLevel() + int(pa.GetBonus()) + *pa.buff
+func (pa *PrimaryAttribute) GetNextLvlAggregateExp() int {
+	return pa.exp.GetNextLvlAggregateExp()
+}
+
+func (pa *PrimaryAttribute) GetNextLvlBaseExp() int {
+	return pa.exp.GetNextLvlBaseExp()
+}
+
+func (pa *PrimaryAttribute) GetCurrentExp() int {
+	return pa.exp.GetCurrentExp()
+}
+
+func (pa *PrimaryAttribute) GetExpPoints() int {
+	return pa.exp.GetPoints()
+}
+
+func (pa *PrimaryAttribute) GetLevel() int {
+	return pa.exp.GetLevel()
 }
 
 func (pa *PrimaryAttribute) Clone(buff *int) *PrimaryAttribute {

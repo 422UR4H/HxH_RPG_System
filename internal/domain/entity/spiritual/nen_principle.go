@@ -1,27 +1,42 @@
 package spiritual
 
-import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+)
 
 type NenPrinciple struct {
-	exp        experience.Exp
-	abilityExp experience.ICascadeUpgrade
+	exp     experience.Exp
+	ability ability.IAbility
 }
 
 func NewNenPrinciple(
 	exp experience.Exp,
-	abilityExp experience.ICascadeUpgrade,
+	ability ability.IAbility,
 ) *NenPrinciple {
-	return &NenPrinciple{exp: exp, abilityExp: abilityExp}
+	return &NenPrinciple{exp: exp, ability: ability}
 }
 
 func (np *NenPrinciple) CascadeUpgradeTrigger(exp int) int {
 	diff := np.exp.IncreasePoints(exp)
-	np.abilityExp.CascadeUpgrade(exp)
+	np.ability.CascadeUpgrade(exp)
 	return diff
 }
 
-func (np *NenPrinciple) GetPrinciplePower() int {
-	return np.GetLevel() + np.abilityExp.GetLevel()/2
+func (np *NenPrinciple) GetValueForTest() int {
+	return np.GetLevel() + int(np.ability.GetBonus())
+}
+
+func (np *NenPrinciple) GetNextLvlAggregateExp() int {
+	return np.exp.GetNextLvlAggregateExp()
+}
+
+func (np *NenPrinciple) GetNextLvlBaseExp() int {
+	return np.exp.GetNextLvlBaseExp()
+}
+
+func (np *NenPrinciple) GetCurrentExp() int {
+	return np.exp.GetCurrentExp()
 }
 
 func (np *NenPrinciple) GetExpPoints() int {
@@ -33,5 +48,5 @@ func (np *NenPrinciple) GetLevel() int {
 }
 
 func (np *NenPrinciple) Clone() *NenPrinciple {
-	return NewNenPrinciple(*np.exp.Clone(), np.abilityExp)
+	return NewNenPrinciple(*np.exp.Clone(), np.ability)
 }

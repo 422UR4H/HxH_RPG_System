@@ -33,6 +33,53 @@ func (m *Manager) Get(name enum.WeaponName) (IProficiency, error) {
 	return nil, errors.New("proficiency not found")
 }
 
+func (m *Manager) GetJointProficiencies() map[string]JointProficiency {
+	lvlList := make(map[string]JointProficiency)
+	for name, prof := range m.jointProficiencies {
+		lvlList[name] = *prof
+	}
+	return lvlList
+}
+
+func (m *Manager) GetValueForTestOf(name enum.WeaponName) (int, error) {
+	prof, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	// TODO: validate this
+	// testVal := prof.GetValueForTest()
+	testVal := prof.GetLevel()
+
+	if buff, ok := m.buffs[name]; ok {
+		testVal += buff
+	}
+	return testVal, nil
+}
+
+func (m *Manager) GetNextLvlAggregateExpOf(name enum.WeaponName) (int, error) {
+	prof, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return prof.GetNextLvlAggregateExp(), nil
+}
+
+func (m *Manager) GetNextLvlBaseExpOf(name enum.WeaponName) (int, error) {
+	prof, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return prof.GetNextLvlBaseExp(), nil
+}
+
+func (m *Manager) GetCurrentExpOf(name enum.WeaponName) (int, error) {
+	prof, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return prof.GetCurrentExp(), nil
+}
+
 func (m *Manager) GetExpPointsOf(name enum.WeaponName) (int, error) {
 	prof, err := m.Get(name)
 	if err != nil {
@@ -49,19 +96,45 @@ func (m *Manager) GetLevelOf(name enum.WeaponName) (int, error) {
 	return prof.GetLevel(), nil
 }
 
-func (m *Manager) GetValueForTestOf(name enum.WeaponName) (int, error) {
-	prof, err := m.Get(name)
-	if err != nil {
-		return 0, err
+func (m *Manager) GetCommonsNextLvlAggregateExp() map[enum.WeaponName]int {
+	expList := make(map[enum.WeaponName]int)
+	for name, prof := range m.commonProficiencies {
+		expList[name] = prof.GetNextLvlAggregateExp()
 	}
-	// TODO: validate this
-	// testVal := prof.GetValueForTest()
-	testVal := prof.GetLevel()
+	return expList
+}
 
-	if buff, ok := m.buffs[name]; ok {
-		testVal += buff
+func (m *Manager) GetCommonsNextLvlBaseExp() map[enum.WeaponName]int {
+	expList := make(map[enum.WeaponName]int)
+	for name, prof := range m.commonProficiencies {
+		expList[name] = prof.GetNextLvlBaseExp()
 	}
-	return testVal, nil
+	return expList
+}
+
+func (m *Manager) GetCommonsCurrentExp() map[enum.WeaponName]int {
+	expList := make(map[enum.WeaponName]int)
+	for name, prof := range m.commonProficiencies {
+		expList[name] = prof.GetCurrentExp()
+	}
+	return expList
+}
+
+func (m *Manager) GetCommonsExpPoints() map[enum.WeaponName]int {
+	expList := make(map[enum.WeaponName]int)
+	for name, prof := range m.commonProficiencies {
+		expList[name] = prof.GetExpPoints()
+	}
+	return expList
+
+}
+
+func (m *Manager) GetCommonsLevel() map[enum.WeaponName]int {
+	expList := make(map[enum.WeaponName]int)
+	for name, prof := range m.commonProficiencies {
+		expList[name] = prof.GetLevel()
+	}
+	return expList
 }
 
 func (m *Manager) IncreaseExp(exp int, name enum.WeaponName) (int, error) {

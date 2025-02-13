@@ -7,6 +7,9 @@ import (
 type ICategory interface {
 	experience.ITriggerCascadeExp
 
+	GetNextLvlAggregateExp() int
+	GetNextLvlBaseExp() int
+	GetCurrentExp() int
 	GetExpPoints() int
 	GetLevel() int
 }

@@ -25,6 +25,18 @@ func (nc *NenCategory) CascadeUpgradeTrigger(exp int) int {
 	return diff
 }
 
+func (nc *NenCategory) GetNextLvlAggregateExp() int {
+	return nc.exp.GetNextLvlAggregateExp()
+}
+
+func (nc *NenCategory) GetNextLvlBaseExp() int {
+	return nc.exp.GetNextLvlBaseExp()
+}
+
+func (nc *NenCategory) GetCurrentExp() int {
+	return nc.exp.GetCurrentExp()
+}
+
 func (nc *NenCategory) GetExpPoints() int {
 	return nc.exp.GetPoints()
 }

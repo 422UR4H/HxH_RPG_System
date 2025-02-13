@@ -12,6 +12,18 @@ func NewTalent(exp experience.Exp, lvl int) *Talent {
 	return &Talent{exp: exp}
 }
 
+func (t *Talent) GetNextLvlAggregateExp() int {
+	return t.exp.GetNextLvlAggregateExp()
+}
+
+func (t *Talent) GetNextLvlBaseExp() int {
+	return t.exp.GetNextLvlBaseExp()
+}
+
+func (t *Talent) GetCurrentExp() int {
+	return t.exp.GetCurrentExp()
+}
+
 func (t *Talent) GetExpPoints() int {
 	return t.exp.GetPoints()
 }

@@ -47,10 +47,6 @@ func (ma *MiddleAttribute) GetBonus() float64 {
 	return value / float64(lenAttrs)
 }
 
-func (ma *MiddleAttribute) GetExpPoints() int {
-	return ma.exp.GetPoints()
-}
-
 func (ma *MiddleAttribute) GetPoints() int {
 	points := 0
 	for _, primaryAttr := range ma.primaryAttrs {
@@ -59,10 +55,26 @@ func (ma *MiddleAttribute) GetPoints() int {
 	return int(math.Round(float64(points) / float64(len(ma.primaryAttrs))))
 }
 
-func (ma *MiddleAttribute) GetLevel() int {
-	return ma.exp.GetLevel()
-}
-
 func (ma *MiddleAttribute) GetPower() int {
 	return ma.GetPoints() + ma.GetLevel() + int(ma.GetBonus()) + *ma.buff
+}
+
+func (ma *MiddleAttribute) GetNextLvlAggregateExp() int {
+	return ma.exp.GetNextLvlAggregateExp()
+}
+
+func (ma *MiddleAttribute) GetNextLvlBaseExp() int {
+	return ma.exp.GetNextLvlBaseExp()
+}
+
+func (ma *MiddleAttribute) GetCurrentExp() int {
+	return ma.exp.GetCurrentExp()
+}
+
+func (ma *MiddleAttribute) GetExpPoints() int {
+	return ma.exp.GetPoints()
+}
+
+func (ma *MiddleAttribute) GetLevel() int {
+	return ma.exp.GetLevel()
 }

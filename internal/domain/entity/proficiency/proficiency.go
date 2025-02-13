@@ -33,14 +33,22 @@ func (p *Proficiency) GetValueForTest() int {
 	return p.exp.GetLevel() //+ p.attribute.GetPower()
 }
 
+func (p *Proficiency) GetNextLvlAggregateExp() int {
+	return p.exp.GetNextLvlAggregateExp()
+}
+
+func (p *Proficiency) GetNextLvlBaseExp() int {
+	return p.exp.GetNextLvlBaseExp()
+}
+
+func (p *Proficiency) GetCurrentExp() int {
+	return p.exp.GetCurrentExp()
+}
+
 func (p *Proficiency) GetExpPoints() int {
 	return p.exp.GetPoints()
 }
 
 func (p *Proficiency) GetLevel() int {
 	return p.exp.GetLevel()
-}
-
-func (p *Proficiency) GetAggregateExpByLvl(lvl int) int {
-	return p.exp.GetAggregateExpByLvl(lvl)
 }
