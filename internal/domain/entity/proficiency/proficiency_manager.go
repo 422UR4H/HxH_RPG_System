@@ -8,21 +8,21 @@ import (
 
 // unlike skills, there are only hard coded proficiencies
 type Manager struct {
-	personProficiencies map[string]*PersonProficiency
+	jointProficiencies  map[string]*JointProficiency
 	commonProficiencies map[enum.WeaponName]*Proficiency
 	buffs               map[enum.WeaponName]int
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		personProficiencies: make(map[string]*PersonProficiency),
+		jointProficiencies:  make(map[string]*JointProficiency),
 		commonProficiencies: make(map[enum.WeaponName]*Proficiency),
 		buffs:               make(map[enum.WeaponName]int),
 	}
 }
 
 func (m *Manager) Get(name enum.WeaponName) (IProficiency, error) {
-	for _, prof := range m.personProficiencies {
+	for _, prof := range m.jointProficiencies {
 		if prof.ContainsWeapon(name) {
 			return prof, nil
 		}
