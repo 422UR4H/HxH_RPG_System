@@ -25,6 +25,10 @@ func NewAbilitiesManager(
 	}
 }
 
+func (m *Manager) GetCharacterPoints() int {
+	return m.characterExp.GetCharacterPoints()
+}
+
 func (m *Manager) Get(name enum.AbilityName) (IAbility, error) {
 	ability, ok := m.abilities[name]
 	if !ok {

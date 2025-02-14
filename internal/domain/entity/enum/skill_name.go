@@ -85,8 +85,8 @@ func (sn SkillName) String() string {
 		return "Grab"
 	case CarryCapacity:
 		return "CarryCapacity"
-	// case Dodge:
-	// 	return "Dodge"
+	case Velocity:
+		return "Velocity"
 	case Accelerate:
 		return "Accelerate"
 	case Brake:

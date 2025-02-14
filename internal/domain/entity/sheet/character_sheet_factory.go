@@ -294,7 +294,8 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Breath] = conSkill.Clone()
 	skills[enum.Tenacity] = conSkill.Clone()
 
-	physSkills.Init(skills)
+	// TODO: fix adding character class here
+	physSkills.Init(nil, skills)
 	return physSkills
 }
 
@@ -332,19 +333,20 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	skills[enum.Focus] = skill.Clone()
 	skills[enum.WillPower] = skill.Clone()
 
-	spiritualSkills.Init(skills)
+	// TODO: fix adding character class here
+	spiritualSkills.Init(nil, skills)
 	return spiritualSkills
 }
 
 func (csf *CharacterSheetFactory) BuildHatsu(
-	abilityExp experience.ICascadeUpgrade,
+	ability ability.IAbility,
 	categoryPercents map[enum.CategoryName]float64,
 ) *spiritual.Hatsu {
 
 	categories := make(map[enum.CategoryName]spiritual.NenCategory)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
-	hatsu := spiritual.NewHatsu(*exp, abilityExp, categories, categoryPercents)
+	hatsu := spiritual.NewHatsu(*exp, ability, categories, categoryPercents)
 
 	category := spiritual.NewNenCategory(*exp.Clone(), enum.Reinforcement, hatsu)
 	for _, name := range enum.AllNenCategoryNames() {
@@ -357,7 +359,7 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 
 func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 	aura status.IStatusBar,
-	spiritAbilityExp experience.ICascadeUpgrade,
+	spiritAbility ability.IAbility,
 	nenHexagon *spiritual.NenHexagon,
 	hatsu *spiritual.Hatsu,
 ) *spiritual.Manager {
@@ -365,7 +367,7 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 	principles := make(map[enum.PrincipleName]spiritual.NenPrinciple)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
-	principle := spiritual.NewNenPrinciple(*exp, spiritAbilityExp)
+	principle := spiritual.NewNenPrinciple(*exp, spiritAbility)
 
 	for _, name := range enum.AllNenPrincipleNames() {
 		if name == enum.Hatsu {
@@ -373,7 +375,7 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 		}
 		// TODO: resolve aura\mop
 		// if name == enum.Mop {
-		// 	principles[name] = *spiritual.NewNenStatus(aura, *exp.Clone(), spiritAbilityExp)
+		// 	principles[name] = *spiritual.NewNenStatus(aura, *exp.Clone(), spiritAbility)
 		// 	continue
 		// }
 		principles[name] = *principle.Clone()
