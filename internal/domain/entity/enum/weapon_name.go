@@ -120,11 +120,12 @@ func (sn WeaponName) String() string {
 	case MachineGun:
 		return "Machine Gun"
 	case Pistol38:
-		return "Pistol 38"
+		return "Pistol .38"
 	case Rifle:
 		return "Rifle"
 	case Uzi:
 		return "Uzi"
+	default:
+		return "Unknown"
 	}
-	return "Unknown"
 }
