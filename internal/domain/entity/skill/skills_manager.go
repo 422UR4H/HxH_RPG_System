@@ -32,19 +32,34 @@ func NewSkillsManager(
 	}
 }
 
-func (m *Manager) Init(
-	jointSkills map[string]*JointSkill,
-	skills map[enum.SkillName]ISkill,
-) {
-	if len(m.jointSkills) > 0 || len(m.skills) > 0 {
+func (m *Manager) Init(skills map[enum.SkillName]ISkill) {
+	if len(m.skills) > 0 {
 		fmt.Println("skills already initialized")
 		return
 	}
-	m.jointSkills = jointSkills
 	m.skills = skills
 }
 
+func (m *Manager) CascadeUpgrade(exp int) {
+	m.exp.IncreasePoints(exp)
+	m.skillsExp.CascadeUpgrade(exp)
+	m.abilityExp.CascadeUpgrade(exp)
+}
+
+func (m *Manager) EndCascadeUpgrade(exp int) {
+	m.exp.IncreasePoints(exp)
+}
+
+func (m *Manager) IncreaseExp(exp int, name enum.SkillName) (int, error) {
+	skill, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return skill.CascadeUpgradeTrigger(exp), nil
+}
+
 func (m *Manager) Get(name enum.SkillName) (ISkill, error) {
+	// TODO: maybe do not get jointSkills here
 	for _, jointSk := range m.jointSkills {
 		if jointSk.Contains(name) {
 			return jointSk, nil
@@ -150,24 +165,6 @@ func (m *Manager) GetSkillsLevel() map[enum.SkillName]int {
 	return lvlList
 }
 
-func (m *Manager) IncreaseExp(exp int, name enum.SkillName) (int, error) {
-	skill, err := m.Get(name)
-	if err != nil {
-		return 0, err
-	}
-	return skill.CascadeUpgradeTrigger(exp), nil
-}
-
-func (m *Manager) CascadeUpgrade(exp int) {
-	m.exp.IncreasePoints(exp)
-	m.skillsExp.CascadeUpgrade(exp)
-	m.abilityExp.CascadeUpgrade(exp)
-}
-
-func (m *Manager) EndCascadeUpgrade(exp int) {
-	m.exp.IncreasePoints(exp)
-}
-
 func (m *Manager) SetBuff(name enum.SkillName, value int) (int, int) {
 	lvl, err := m.GetLevelOf(name)
 	if err != nil {
@@ -185,4 +182,22 @@ func (m *Manager) DeleteBuff(name enum.SkillName) {
 
 func (m *Manager) GetBuffs() map[enum.SkillName]int {
 	return m.buffs
+}
+
+func (m *Manager) AddJointSkill(js *JointSkill) error {
+	for key := range m.jointSkills {
+		if key == js.GetName() {
+			return fmt.Errorf("joint skill %s already exists", js.GetName())
+		}
+	}
+	m.jointSkills[js.GetName()] = js
+	return nil
+}
+
+func (m *Manager) GetJointSkills() map[string]JointSkill {
+	jointSkills := make(map[string]JointSkill)
+	for key, value := range m.jointSkills {
+		jointSkills[key] = *value
+	}
+	return jointSkills
 }

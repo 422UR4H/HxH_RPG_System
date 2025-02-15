@@ -44,7 +44,7 @@ func (js *JointSkill) CascadeUpgradeTrigger(exp int) int {
 }
 
 func (js *JointSkill) GetValueForTest() int {
-	return js.exp.GetLevel() + js.attribute.GetPower()
+	return js.exp.GetLevel() + js.attribute.GetPower() + js.buff
 }
 
 func (js *JointSkill) GetNextLvlAggregateExp() int {
@@ -74,6 +74,18 @@ func (js *JointSkill) Contains(name enum.SkillName) bool {
 		}
 	}
 	return false
+}
+
+func (js *JointSkill) GetName() string {
+	return js.name
+}
+
+func (js *JointSkill) GetBuff() int {
+	return js.buff
+}
+
+func (js *JointSkill) SetBuff(buff int) {
+	js.buff = buff
 }
 
 func (js *JointSkill) GetCommonSkills() map[enum.SkillName]ISkill {
