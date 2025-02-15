@@ -7,6 +7,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
@@ -37,9 +38,8 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 func (csf *CharacterSheetFactory) Build(
 	profile CharacterProfile, categorySet TalentByCategorySet,
 ) *CharacterSheet {
-	expTable := experience.NewExpTable(CHARACTER_COEFF)
-	exp := experience.NewExperience(expTable)
-	characterExp := experience.NewCharacterExp(*exp)
+
+	characterExp := csf.BuildCharacterExp()
 
 	talentLvl := categorySet.GetTalentLvl()
 	abilities := csf.BuildPersonAbilities(characterExp, talentLvl)
@@ -86,14 +86,23 @@ func (csf *CharacterSheetFactory) Build(
 		aura, spiritualAbility, nenHexagon, hatsu,
 	)
 
+	proficiency := proficiency.NewManager()
+
 	return NewCharacterSheet(
 		profile,
 		*abilities,
 		*characterAttrs,
 		*spiritPrinciples,
 		*characterSkills,
+		*proficiency,
 		*status,
 	)
+}
+
+func (csf *CharacterSheetFactory) BuildCharacterExp() *experience.CharacterExp {
+	expTable := experience.NewExpTable(CHARACTER_COEFF)
+	exp := experience.NewExperience(expTable)
+	return experience.NewCharacterExp(*exp)
 }
 
 func (csf *CharacterSheetFactory) BuildPersonAbilities(
@@ -234,7 +243,6 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		panic(errors.New("attribute not found"))
 	}
 	strSkill := skill.NewCommonSkill(*exp.Clone(), str, physSkills)
-	// TODO: remove climb
 	skills[enum.Push] = strSkill.Clone()
 	skills[enum.Grab] = strSkill.Clone()
 	skills[enum.CarryCapacity] = strSkill.Clone()
@@ -294,8 +302,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Breath] = conSkill.Clone()
 	skills[enum.Tenacity] = conSkill.Clone()
 
-	// TODO: fix adding character class here
-	physSkills.Init(nil, skills)
+	physSkills.Init(skills)
 	return physSkills
 }
 
@@ -333,8 +340,7 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	skills[enum.Focus] = skill.Clone()
 	skills[enum.WillPower] = skill.Clone()
 
-	// TODO: fix adding character class here
-	spiritualSkills.Init(nil, skills)
+	spiritualSkills.Init(skills)
 	return spiritualSkills
 }
 
@@ -455,11 +461,14 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 		physSkills, mentalSkills, nil,
 	)
 
+	proficiency := proficiency.NewManager()
+
 	return NewHalfSheet(
 		profile,
 		*abilities,
 		*characterAttrs,
 		*characterSkills,
+		*proficiency,
 		*status,
 	)
 }

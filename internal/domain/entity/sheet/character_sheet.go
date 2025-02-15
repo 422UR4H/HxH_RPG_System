@@ -6,18 +6,20 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 type CharacterSheet struct {
-	profile   CharacterProfile
-	ability   ability.Manager
-	attribute attribute.CharacterAttributes
-	skill     skill.CharacterSkills
-	principle spiritual.Manager
-	status    status.Manager
+	profile     CharacterProfile
+	ability     ability.Manager
+	attribute   attribute.CharacterAttributes
+	skill       skill.CharacterSkills
+	principle   spiritual.Manager
+	proficiency proficiency.Manager
+	status      status.Manager
 	// equipedItems []Item
 }
 
@@ -27,15 +29,17 @@ func NewCharacterSheet(
 	attributes attribute.CharacterAttributes,
 	principles spiritual.Manager,
 	skills skill.CharacterSkills,
+	proficiency proficiency.Manager,
 	status status.Manager,
 ) *CharacterSheet {
 	return &CharacterSheet{
-		profile:   profile,
-		ability:   abilities,
-		attribute: attributes,
-		skill:     skills,
-		principle: principles,
-		status:    status,
+		profile:     profile,
+		ability:     abilities,
+		attribute:   attributes,
+		skill:       skills,
+		principle:   principles,
+		proficiency: proficiency,
+		status:      status,
 	}
 }
 
@@ -64,6 +68,16 @@ func (cs *CharacterSheet) IncreaseExpForCategory(
 ) (int, error) {
 	return cs.principle.IncreaseExpByCategory(name, points)
 }
+
+func (cs *CharacterSheet) IncreaseExpForProficiency(
+	points int, name enum.WeaponName,
+) (int, error) {
+	return cs.proficiency.IncreaseExp(points, name)
+}
+
+// func (cs *CharacterSheet) AddProficiency(name enum.WeaponName) error {
+// 	return cs.proficiency.AddProficiency(name)
+// }
 
 func (cs *CharacterSheet) GetMaxOfStatus(name enum.StatusName) (int, error) {
 	return cs.status.GetMaxOf(name)

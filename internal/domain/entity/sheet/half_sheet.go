@@ -6,16 +6,18 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 type HalfSheet struct {
-	profile   CharacterProfile
-	ability   ability.Manager
-	attribute attribute.CharacterAttributes
-	skill     skill.CharacterSkills
-	status    status.Manager
+	profile     CharacterProfile
+	ability     ability.Manager
+	attribute   attribute.CharacterAttributes
+	skill       skill.CharacterSkills
+	proficiency proficiency.Manager
+	status      status.Manager
 	// equipedItems []Item
 }
 
@@ -24,14 +26,16 @@ func NewHalfSheet(
 	abilities ability.Manager,
 	attributes attribute.CharacterAttributes,
 	skills skill.CharacterSkills,
+	proficiency proficiency.Manager,
 	status status.Manager,
 ) *HalfSheet {
 	return &HalfSheet{
-		profile:   profile,
-		ability:   abilities,
-		attribute: attributes,
-		skill:     skills,
-		status:    status,
+		profile:     profile,
+		ability:     abilities,
+		attribute:   attributes,
+		skill:       skills,
+		proficiency: proficiency,
+		status:      status,
 	}
 }
 
@@ -43,6 +47,12 @@ func (hs *HalfSheet) IncreaseExpForSkill(
 	points int, name enum.SkillName,
 ) (int, error) {
 	return hs.skill.IncreaseExp(points, name)
+}
+
+func (hs *HalfSheet) IncreaseExpForProficiency(
+	points int, name enum.WeaponName,
+) (int, error) {
+	return hs.proficiency.IncreaseExp(points, name)
 }
 
 func (hs *HalfSheet) GetMaxOfStatus(name enum.StatusName) (int, error) {
