@@ -29,6 +29,7 @@ func NewHatsu(
 	}
 }
 
+// TODO: handle error here
 func (h *Hatsu) Init(categories map[enum.CategoryName]NenCategory) {
 	if len(h.categories) > 0 {
 		fmt.Println("hatsu already initialized with categories")
