@@ -6,7 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
+	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
@@ -16,8 +16,9 @@ type HalfSheet struct {
 	ability     ability.Manager
 	attribute   attribute.CharacterAttributes
 	skill       skill.CharacterSkills
-	proficiency proficiency.Manager
+	proficiency prof.Manager
 	status      status.Manager
+	charClass   *enum.CharacterClassName
 	// equipedItems []Item
 }
 
@@ -26,8 +27,9 @@ func NewHalfSheet(
 	abilities ability.Manager,
 	attributes attribute.CharacterAttributes,
 	skills skill.CharacterSkills,
-	proficiency proficiency.Manager,
+	proficiency prof.Manager,
 	status status.Manager,
+	charClass *enum.CharacterClassName,
 ) *HalfSheet {
 	return &HalfSheet{
 		profile:     profile,
@@ -36,7 +38,12 @@ func NewHalfSheet(
 		skill:       skills,
 		proficiency: proficiency,
 		status:      status,
+		charClass:   charClass,
 	}
+}
+
+func (hs *HalfSheet) GetClass() enum.CharacterClassName {
+	return *hs.charClass
 }
 
 func (hs *HalfSheet) GetValueForTestOfSkill(name enum.SkillName) (int, error) {
@@ -49,10 +56,51 @@ func (hs *HalfSheet) IncreaseExpForSkill(
 	return hs.skill.IncreaseExp(points, name)
 }
 
+// AddJointSkill only supports physical skills yet
+func (hs *HalfSheet) AddJointSkill(
+	skill *skill.JointSkill,
+) error {
+	physSkillsExp, err := hs.ability.GetExpReferenceOf(enum.Physicals)
+	if err != nil {
+		return err
+	}
+	if err := skill.Init(physSkillsExp); err != nil {
+		return err
+	}
+	return hs.skill.AddPhysicalJoint(skill)
+}
+
+func (hs *HalfSheet) GetPhysJointSkills() map[string]skill.JointSkill {
+	return hs.skill.GetPhysicalsJoint()
+}
+
 func (hs *HalfSheet) IncreaseExpForProficiency(
 	points int, name enum.WeaponName,
 ) (int, error) {
 	return hs.proficiency.IncreaseExp(points, name)
+}
+
+// TODO: resolve this
+func (hs *HalfSheet) IncreaseExpForMentals(
+	points int, name enum.AttributeName,
+) (int, error) {
+	return hs.attribute.IncreaseExpForMentals(points, name)
+}
+
+func (hs *HalfSheet) AddJointProficiency(
+	proficiency *prof.JointProficiency,
+) error {
+	physSkillsExp, err := hs.ability.GetExpReferenceOf(enum.Physicals)
+	if err != nil {
+		return err
+	}
+	return hs.proficiency.AddJoint(proficiency, physSkillsExp)
+}
+
+func (hs *HalfSheet) AddCommonProficiency(
+	name enum.WeaponName, proficiency *prof.Proficiency,
+) error {
+	return hs.proficiency.AddCommon(name, proficiency)
 }
 
 func (hs *HalfSheet) GetMaxOfStatus(name enum.StatusName) (int, error) {

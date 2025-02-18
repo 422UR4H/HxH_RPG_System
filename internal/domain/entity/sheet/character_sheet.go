@@ -6,7 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
+	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
@@ -18,8 +18,9 @@ type CharacterSheet struct {
 	attribute   attribute.CharacterAttributes
 	skill       skill.CharacterSkills
 	principle   spiritual.Manager
-	proficiency proficiency.Manager
+	proficiency prof.Manager
 	status      status.Manager
+	charClass   *enum.CharacterClassName
 	// equipedItems []Item
 }
 
@@ -29,8 +30,9 @@ func NewCharacterSheet(
 	attributes attribute.CharacterAttributes,
 	principles spiritual.Manager,
 	skills skill.CharacterSkills,
-	proficiency proficiency.Manager,
+	proficiency prof.Manager,
 	status status.Manager,
+	charClass *enum.CharacterClassName,
 ) *CharacterSheet {
 	return &CharacterSheet{
 		profile:     profile,
@@ -40,7 +42,12 @@ func NewCharacterSheet(
 		principle:   principles,
 		proficiency: proficiency,
 		status:      status,
+		charClass:   charClass,
 	}
+}
+
+func (cs *CharacterSheet) GetClass() enum.CharacterClassName {
+	return *cs.charClass
 }
 
 func (cs *CharacterSheet) GetValueForTestOfSkill(name enum.SkillName) (int, error) {
@@ -55,6 +62,24 @@ func (cs *CharacterSheet) IncreaseExpForSkill(
 	points int, name enum.SkillName,
 ) (int, error) {
 	return cs.skill.IncreaseExp(points, name)
+}
+
+// AddJointSkill only supports physical skills yet
+func (cs *CharacterSheet) AddJointSkill(
+	skill *skill.JointSkill,
+) error {
+	physSkillsExp, err := cs.ability.GetExpReferenceOf(enum.Physicals)
+	if err != nil {
+		return err
+	}
+	if err := skill.Init(physSkillsExp); err != nil {
+		return err
+	}
+	return cs.skill.AddPhysicalJoint(skill)
+}
+
+func (cs *CharacterSheet) GetPhysJointSkills() map[string]skill.JointSkill {
+	return cs.skill.GetPhysicalsJoint()
 }
 
 func (cs *CharacterSheet) IncreaseExpForPrinciple(
@@ -75,9 +100,28 @@ func (cs *CharacterSheet) IncreaseExpForProficiency(
 	return cs.proficiency.IncreaseExp(points, name)
 }
 
-// func (cs *CharacterSheet) AddProficiency(name enum.WeaponName) error {
-// 	return cs.proficiency.AddProficiency(name)
-// }
+// TODO: resolve this
+func (cs *CharacterSheet) IncreaseExpForMentals(
+	points int, name enum.AttributeName,
+) (int, error) {
+	return cs.attribute.IncreaseExpForMentals(points, name)
+}
+
+func (cs *CharacterSheet) AddJointProficiency(
+	proficiency *prof.JointProficiency,
+) error {
+	physSkillsExp, err := cs.ability.GetExpReferenceOf(enum.Physicals)
+	if err != nil {
+		return err
+	}
+	return cs.proficiency.AddJoint(proficiency, physSkillsExp)
+}
+
+func (cs *CharacterSheet) AddCommonProficiency(
+	name enum.WeaponName, proficiency *prof.Proficiency,
+) error {
+	return cs.proficiency.AddCommon(name, proficiency)
+}
 
 func (cs *CharacterSheet) GetMaxOfStatus(name enum.StatusName) (int, error) {
 	return cs.status.GetMaxOf(name)

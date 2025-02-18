@@ -5,6 +5,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
+	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
@@ -36,7 +37,9 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 }
 
 func (csf *CharacterSheetFactory) Build(
-	profile CharacterProfile, categorySet TalentByCategorySet,
+	profile CharacterProfile,
+	categorySet TalentByCategorySet,
+	charClass *cc.CharacterClass,
 ) *CharacterSheet {
 
 	characterExp := csf.BuildCharacterExp()
@@ -88,7 +91,11 @@ func (csf *CharacterSheetFactory) Build(
 
 	proficiency := proficiency.NewManager()
 
-	return NewCharacterSheet(
+	var className enum.CharacterClassName
+	if charClass != nil {
+		className = charClass.GetName()
+	}
+	charSheet := NewCharacterSheet(
 		profile,
 		*abilities,
 		*characterAttrs,
@@ -96,7 +103,12 @@ func (csf *CharacterSheetFactory) Build(
 		*characterSkills,
 		*proficiency,
 		*status,
+		&className,
 	)
+	if charClass != nil {
+		charSheet = csf.Wrap(charSheet, charClass)
+	}
+	return charSheet
 }
 
 func (csf *CharacterSheetFactory) BuildCharacterExp() *experience.CharacterExp {
@@ -423,8 +435,31 @@ func (csf *CharacterSheetFactory) BuildSpiritAttrsBuffs() map[enum.AttributeName
 	return buffs
 }
 
+func (csf *CharacterSheetFactory) Wrap(
+	charSheet *CharacterSheet, charClass *cc.CharacterClass,
+) *CharacterSheet {
+	for name, exp := range charClass.SkillsExps {
+		charSheet.IncreaseExpForSkill(exp, name)
+	}
+	for _, skill := range charClass.JointSkills {
+		charSheet.AddJointSkill(&skill)
+	}
+	for name, exp := range charClass.ProficienciesExps {
+		charSheet.IncreaseExpForProficiency(exp, name)
+	}
+	for _, prof := range charClass.JointProficiencies {
+		charSheet.AddJointProficiency(&prof)
+	}
+	for name, exp := range charClass.AttributesExps {
+		charSheet.IncreaseExpForMentals(exp, name)
+	}
+	return charSheet
+}
+
 func (csf *CharacterSheetFactory) BuildHalfSheet(
-	profile CharacterProfile, categorySet *TalentByCategorySet,
+	profile CharacterProfile,
+	categorySet *TalentByCategorySet,
+	charClass *cc.CharacterClass,
 ) *HalfSheet {
 	expTable := experience.NewExpTable(CHARACTER_COEFF)
 	exp := experience.NewExperience(expTable)
@@ -463,14 +498,24 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 
 	proficiency := proficiency.NewManager()
 
-	return NewHalfSheet(
+	var className enum.CharacterClassName
+	if charClass != nil {
+		className = charClass.GetName()
+	}
+	sheet := NewHalfSheet(
 		profile,
 		*abilities,
 		*characterAttrs,
 		*characterSkills,
 		*proficiency,
 		*status,
+		&className,
 	)
+	if charClass != nil {
+		sheet = csf.WrapHalf(sheet, charClass)
+	}
+	return sheet
+
 }
 
 func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
@@ -492,4 +537,25 @@ func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
 	abilities[enum.Skills] = ability.NewAbility(*skillsExp, characterExp)
 
 	return ability.NewAbilitiesManager(characterExp, abilities, *talent)
+}
+
+func (csf *CharacterSheetFactory) WrapHalf(
+	sheet *HalfSheet, charClass *cc.CharacterClass,
+) *HalfSheet {
+	for name, exp := range charClass.SkillsExps {
+		sheet.IncreaseExpForSkill(exp, name)
+	}
+	for _, skill := range charClass.JointSkills {
+		sheet.AddJointSkill(&skill)
+	}
+	for name, exp := range charClass.ProficienciesExps {
+		sheet.IncreaseExpForProficiency(exp, name)
+	}
+	for _, prof := range charClass.JointProficiencies {
+		sheet.AddJointProficiency(&prof)
+	}
+	for name, exp := range charClass.AttributesExps {
+		sheet.IncreaseExpForMentals(exp, name)
+	}
+	return sheet
 }
