@@ -14,15 +14,16 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
+// TODO: strike the gavel about these changes
 const (
 	CHARACTER_COEFF           = 10.0
 	TALENT_COEFF              = 2.0
 	PHYSICAL_COEFF            = 20.0
-	MENTAL_COEFF              = 15.0
+	MENTAL_COEFF              = 20.0 // 15.0
 	SPIRITUAL_COEFF           = 5.0
 	SKILLS_COEFF              = 5.0
 	PHYSICAL_ATTRIBUTE_COEFF  = 5.0
-	MENTAL_ATTRIBUTE_COEFF    = 3.0
+	MENTAL_ATTRIBUTE_COEFF    = 1.0 // 3.0
 	SPIRITUAL_ATTRIBUTE_COEFF = 1.0
 	PHYSICAL_SKILLS_COEFF     = 1.0
 	MENTAL_SKILLS_COEFF       = 2.0
