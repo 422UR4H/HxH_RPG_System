@@ -38,7 +38,7 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 
 func (csf *CharacterSheetFactory) Build(
 	profile CharacterProfile,
-	categorySet TalentByCategorySet,
+	categorySet *TalentByCategorySet,
 	charClass *cc.CharacterClass,
 ) *CharacterSheet {
 

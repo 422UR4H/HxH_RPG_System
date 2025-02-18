@@ -32,6 +32,6 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	// TODO: validate character class
 	// validar se todas as proficienciesExps e skillsExps existem em characterClasses global
 	// as que não existirem, validar se existem nos alloweds e verificar a quantidade exata
-	characterSheet := factory.Build(input.profile, input.set, &input.characterClass)
+	characterSheet := factory.Build(input.profile, &input.set, &input.characterClass)
 	return characterSheet
 }

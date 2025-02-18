@@ -1,6 +1,10 @@
 package sheet
 
-import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+import (
+	"fmt"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+)
 
 type TalentByCategorySet struct {
 	categories      map[enum.CategoryName]bool
@@ -10,16 +14,16 @@ type TalentByCategorySet struct {
 func NewTalentByCategorySet(
 	categories map[enum.CategoryName]bool,
 	initialHexValue *int,
-) *TalentByCategorySet {
+) (*TalentByCategorySet, error) {
 
 	activeCategoryCount := getActiveCategoryCount(categories)
 	if activeCategoryCount == 0 {
-		return nil
+		return nil, fmt.Errorf("at least one category must be active")
 	}
 	return &TalentByCategorySet{
 		categories:      categories,
 		initialHexValue: initialHexValue,
-	}
+	}, nil
 }
 
 const BASE_TALENT_LVL = 20
