@@ -49,6 +49,7 @@ func (w *WeaponsManagerFactory) Build() *WeaponsManager {
 		enum.Pistol38:       *NewWeapon([]int{12}, 4, 0, 1.3, 0.9, 3, true),
 		enum.Rifle:          *NewWeapon([]int{12, 10}, 8, 0, 1.2, 6, 16, true),
 		enum.Uzi:            *NewWeapon([]int{12, 8}, 1, 0, 0.4, 3, 6, true),
+		enum.Bomb:           *NewWeapon([]int{12, 12, 12}, 0, 0, 0.2, 2, 3, false),
 	}
 
 	return &WeaponsManager{weapons: weapons}
