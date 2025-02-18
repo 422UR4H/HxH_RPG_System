@@ -10,6 +10,7 @@ const (
 	Longbow
 	Staff
 	Scimitar
+	Rapier
 	Whip
 	Club
 	Longclub
@@ -32,7 +33,6 @@ const (
 	Longmass
 	Pickaxe
 	Fist
-	Rapier
 	Trident
 	Tchaco
 
@@ -43,6 +43,7 @@ const (
 	Pistol38
 	Rifle
 	Uzi
+	Bomb
 )
 
 func (sn WeaponName) String() string {
@@ -125,6 +126,8 @@ func (sn WeaponName) String() string {
 		return "Rifle"
 	case Uzi:
 		return "Uzi"
+	case Bomb:
+		return "Bomb"
 	default:
 		return "Unknown"
 	}
