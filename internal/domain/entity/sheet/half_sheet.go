@@ -140,45 +140,54 @@ func (hs *HalfSheet) GetExpPoints() int {
 }
 
 func (hs *HalfSheet) ToString() string {
-	sheet := "=============================\n"
+	const nameWidth = 14
+	const valueWidth = 4
+
+	sheet := "===========================================================\n"
 	sheet += hs.profile.ToString()
 
-	sheet += "CHARACTER LVL: " + fmt.Sprint(hs.ability.GetCharacterLevel()) +
-		"\t| Points: " + fmt.Sprint(hs.ability.GetCharacterPoints()) +
-		"\t| Talent: " + fmt.Sprint(hs.ability.GetTalentLevel()) + "\n"
+	sheet += fmt.Sprintf("CHARACTER LVL: %-*d | Points: %-*d | Talent: %-*d\n",
+		valueWidth, hs.ability.GetCharacterLevel(),
+		valueWidth, hs.ability.GetCharacterPoints(),
+		valueWidth, hs.ability.GetTalentLevel())
 
-	sheet += "Exp Total: " + fmt.Sprint(hs.ability.GetCharacterExpPoints()) +
-		"\t| Exp: " + fmt.Sprint(hs.ability.GetCharacterCurrentExp()) +
-		" / " + fmt.Sprint(hs.ability.GetCharacterNextLvlBaseExp()) + "\n"
-	sheet += "-----------------------------\n"
+	sheet += fmt.Sprintf("Exp Total: %-*d | Exp: %d / %-*d\n",
+		valueWidth, hs.ability.GetCharacterExpPoints(),
+		hs.ability.GetCharacterCurrentExp(),
+		valueWidth, hs.ability.GetCharacterNextLvlBaseExp())
+	sheet += "-----------------------------------------------------------\n"
 
 	physicals, _ := hs.ability.Get(enum.Physicals)
-	sheet += "PHYSICALS LVL: " + fmt.Sprint(physicals.GetLevel()) +
-		"\t| Bonus: " + fmt.Sprintf("%.1f\n", physicals.GetBonus())
+	sheet += fmt.Sprintf("PHYSICALS LVL: %d | Bonus: %.1f\n",
+		physicals.GetLevel(),
+		physicals.GetBonus())
 
-	sheet += "Exp Total: " + fmt.Sprint(physicals.GetExpPoints()) +
-		"\t| Exp: " + fmt.Sprint(physicals.GetCurrentExp()) +
-		" / " + fmt.Sprint(physicals.GetNextLvlBaseExp()) + "\n"
+	sheet += fmt.Sprintf("Exp Total: %-*d | Exp: %d / %-*d\n",
+		valueWidth, physicals.GetExpPoints(),
+		physicals.GetCurrentExp(),
+		valueWidth, physicals.GetNextLvlBaseExp())
 
 	physicalsLvl := hs.attribute.GetPhysicalsLevel()
 	physicalsExp := hs.attribute.GetPhysicalsExpPoints()
 	physicalsCurrExp := hs.attribute.GetPhysicalsCurrentExp()
 	physicalsNextLvlExp := hs.attribute.GetPhysicalsNextLvlBaseExp()
-	sortAttrNames := []enum.AttributeName{
+	sortedAttrNames := []enum.AttributeName{
 		enum.Resistance, enum.Strength, enum.Agility, enum.ActionSpeed,
 		enum.Flexibility, enum.Dexterity, enum.Sense, enum.Constitution,
 	}
-	for _, name := range sortAttrNames {
+	for _, name := range sortedAttrNames {
 		lvl := physicalsLvl[name]
 		exp := physicalsExp[name]
 		currExp := physicalsCurrExp[name]
 		nextLvlExp := physicalsNextLvlExp[name]
-		sheet += name.String() + "\tLvl: " + fmt.Sprint(lvl) +
-			"\t| Exp Total: " + fmt.Sprint(exp) +
-			"\t| Exp: " + fmt.Sprint(currExp) +
-			" / " + fmt.Sprint(nextLvlExp) + "\n"
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name.String(),
+			valueWidth, lvl,
+			valueWidth, exp,
+			currExp,
+			valueWidth, nextLvlExp)
 	}
-	sheet += "-----------------------------\n"
+	sheet += "-----------------------------------------------------------\n"
 
 	skillsLvl := hs.skill.GetPhysicalsLevel()
 	skillsExp := hs.skill.GetPhysicalsExpPoints()
@@ -204,28 +213,54 @@ func (hs *HalfSheet) ToString() string {
 		currExp := skillsCurrExp[name]
 		nextLvlExp := skillsNextLvlExp[name]
 
-		sheet += name.String() + "\tLvl: " + fmt.Sprint(lvl) +
-			"\t| Exp Total: " + fmt.Sprint(exp) +
-			"\t| Exp: " + fmt.Sprint(currExp) +
-			" / " + fmt.Sprint(nextLvlExp) + "\n"
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name.String(),
+			valueWidth, lvl,
+			valueWidth, exp,
+			currExp,
+			valueWidth, nextLvlExp)
 	}
-	sheet += "-----------------------------\n"
+	sheet += "-----------------------------------------------------------\n"
 
 	mentals, _ := hs.ability.Get(enum.Mentals)
-	sheet += "MENTALS LVL: " + fmt.Sprint(mentals.GetLevel()) +
-		"\t| Bonus: " + fmt.Sprintf("%.1f\n", mentals.GetBonus())
+	sheet += fmt.Sprintf("MENTALS LVL: %d | Bonus: %.1f\n",
+		mentals.GetLevel(),
+		mentals.GetBonus())
 
-	sheet += "Exp Total: " + fmt.Sprint(mentals.GetExpPoints()) +
-		"\t| Exp: " + fmt.Sprint(mentals.GetCurrentExp()) +
-		" / " + fmt.Sprint(mentals.GetNextLvlAggregateExp()) + "\n"
-	sheet += "-----------------------------\n"
+	sheet += fmt.Sprintf("Exp Total: %-*d | Exp: %d / %-*d\n",
+		valueWidth, mentals.GetExpPoints(),
+		mentals.GetCurrentExp(),
+		valueWidth, mentals.GetNextLvlBaseExp())
+
+	mentalsLvl := hs.attribute.GetMentalsLevel()
+	mentalsExp := hs.attribute.GetMentalsExpPoints()
+	mentalsCurrExp := hs.attribute.GetMentalsCurrentExp()
+	mentalsNextLvlExp := hs.attribute.GetMentalsNextLvlBaseExp()
+	sortedAttrNames = []enum.AttributeName{
+		enum.Resilience, enum.Adaptability, enum.Weighting, enum.Creativity,
+	}
+	for _, name := range sortedAttrNames {
+		lvl := mentalsLvl[name]
+		exp := mentalsExp[name]
+		currExp := mentalsCurrExp[name]
+		nextLvlExp := mentalsNextLvlExp[name]
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name.String(),
+			valueWidth, lvl,
+			valueWidth, exp,
+			currExp,
+			valueWidth, nextLvlExp)
+	}
+	sheet += "-----------------------------------------------------------\n"
 
 	statusList := hs.status.GetAllStatus()
 	for name, status := range statusList {
-		sheet += name.String() + ": Min " + fmt.Sprint(status.GetMin()) +
-			"\t| : " + fmt.Sprint(status.GetCurrent()) +
-			" / " + fmt.Sprint(status.GetMax()) + "\n"
+		sheet += fmt.Sprintf("%-*s Min %-*d | %d / %-*d\n",
+			nameWidth, name.String(),
+			valueWidth, status.GetMin(),
+			status.GetCurrent(),
+			valueWidth, status.GetMax())
 	}
-	sheet += "=============================\n"
+	sheet += "===========================================================\n"
 	return sheet
 }

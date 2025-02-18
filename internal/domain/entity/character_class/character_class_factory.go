@@ -89,7 +89,6 @@ func BuildSwordsman() CharacterClass {
 		mentals,
 		nil,
 	)
-	// fmt.Println(swordsman.ToString())
 	return swordsman
 }
 
