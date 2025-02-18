@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 // unlike skills, there are only hard coded proficiencies
@@ -31,6 +32,40 @@ func (m *Manager) Get(name enum.WeaponName) (IProficiency, error) {
 		return prof, nil
 	}
 	return nil, errors.New("proficiency not found")
+}
+
+func (m *Manager) IncreaseExp(exp int, name enum.WeaponName) (int, error) {
+	prof, err := m.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return prof.CascadeUpgradeTrigger(exp), nil
+}
+
+func (m *Manager) AddJoint(
+	proficiency *JointProficiency,
+	physSkillsExp experience.ICascadeUpgrade,
+) error {
+	name := proficiency.GetName()
+
+	if _, ok := m.jointProficiencies[name]; ok {
+		return errors.New("proficiency already exists")
+	}
+	if err := proficiency.Init(physSkillsExp); err != nil {
+		return err
+	}
+	m.jointProficiencies[name] = proficiency
+	return nil
+}
+
+func (m *Manager) AddCommon(
+	name enum.WeaponName, proficiency *Proficiency,
+) error {
+	if _, ok := m.commonProficiencies[name]; ok {
+		return errors.New("proficiency already exists")
+	}
+	m.commonProficiencies[name] = proficiency
+	return nil
 }
 
 func (m *Manager) GetJointProficiencies() map[string]JointProficiency {
@@ -135,14 +170,6 @@ func (m *Manager) GetCommonsLevel() map[enum.WeaponName]int {
 		expList[name] = prof.GetLevel()
 	}
 	return expList
-}
-
-func (m *Manager) IncreaseExp(exp int, name enum.WeaponName) (int, error) {
-	prof, err := m.Get(name)
-	if err != nil {
-		return 0, err
-	}
-	return prof.CascadeUpgradeTrigger(exp), nil
 }
 
 func (m *Manager) SetBuff(name enum.WeaponName, value int) int { //, int) {

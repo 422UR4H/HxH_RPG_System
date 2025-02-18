@@ -1,6 +1,8 @@
 package proficiency
 
 import (
+	"errors"
+
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -21,20 +23,30 @@ func NewJointProficiency(
 	name string,
 	// attr attr.IGameAttribute,
 	weapons []enum.WeaponName,
-	physSkExp experience.ICascadeUpgrade,
 ) *JointProficiency {
 	return &JointProficiency{
 		exp:  exp,
 		name: name,
 		// attr:          attr,
-		weapons:       weapons,
-		physSkillsExp: physSkExp,
+		weapons: weapons,
 	}
+}
+
+func (jp *JointProficiency) Init(physSkillsExp experience.ICascadeUpgrade) error {
+	if jp.physSkillsExp != nil {
+		return errors.New("proficiency already initialized")
+	}
+	if physSkillsExp == nil {
+		return errors.New("physSkillsExp cannot be nil")
+	}
+	jp.physSkillsExp = physSkillsExp
+	return nil
 }
 
 func (jp *JointProficiency) CascadeUpgradeTrigger(exp int) int {
 	diff := jp.exp.IncreasePoints(exp)
 	// jp.attr.CascadeUpgrade(exp)
+	// TODO: if uncomment, fix BuildWeaponsMaster
 	jp.physSkillsExp.CascadeUpgrade(exp) //* len(jp.weapons))
 	return diff
 }

@@ -32,6 +32,14 @@ func (cs *CharacterSkills) IncreaseExp(points int, name enum.SkillName) (int, er
 	return skill.CascadeUpgradeTrigger(points), nil
 }
 
+func (cs *CharacterSkills) AddPhysicalJoint(skill *JointSkill) error {
+	return cs.physicals.AddJointSkill(skill)
+}
+
+func (cs *CharacterSkills) GetPhysicalsJoint() map[string]JointSkill {
+	return cs.physicals.GetJointSkills()
+}
+
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
 	if cs.spirituals != nil {
 		if skill, err := cs.spirituals.Get(name); err == nil {

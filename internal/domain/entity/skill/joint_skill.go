@@ -1,6 +1,8 @@
 package skill
 
 import (
+	"fmt"
+
 	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
@@ -15,31 +17,42 @@ type JointSkill struct {
 	// ladinagem (roguery), caça (hunt), atleta (athletics?), hack
 	attribute        attr.IGameAttribute
 	commonSkills     map[enum.SkillName]ISkill
-	abilitySkillsExp experience.IEndCascadeUpgrade
+	abilitySkillsExp experience.ICascadeUpgrade
 }
 
 func NewJointSkill(
 	exp experience.Exp,
 	name string,
-	buff int,
 	attr attr.IGameAttribute,
-	commonSkills map[enum.SkillName]ISkill,
-	abilitySkillsExp experience.IEndCascadeUpgrade) *JointSkill {
+	commonSkills map[enum.SkillName]ISkill) *JointSkill {
 
 	return &JointSkill{
-		exp:              exp,
-		name:             name,
-		buff:             buff,
-		attribute:        attr,
-		commonSkills:     commonSkills,
-		abilitySkillsExp: abilitySkillsExp,
+		exp:          exp,
+		name:         name,
+		attribute:    attr,
+		commonSkills: commonSkills,
 	}
+}
+
+func (js *JointSkill) Init(abilitySkillsExp experience.ICascadeUpgrade) error {
+	if js.abilitySkillsExp != nil {
+		return fmt.Errorf("abilitySkillsExp already initialized")
+	}
+	if abilitySkillsExp == nil {
+		return fmt.Errorf("abilitySkillsExp cannot be nil")
+	}
+	js.abilitySkillsExp = abilitySkillsExp
+	return nil
+}
+
+func (js *JointSkill) IsInitialized() bool {
+	return js.abilitySkillsExp != nil
 }
 
 func (js *JointSkill) CascadeUpgradeTrigger(exp int) int {
 	diff := js.exp.IncreasePoints(exp)
 	js.attribute.CascadeUpgrade(exp)
-	js.abilitySkillsExp.EndCascadeUpgrade(exp * len(js.commonSkills))
+	js.abilitySkillsExp.CascadeUpgrade(exp * len(js.commonSkills))
 	return diff
 }
 
