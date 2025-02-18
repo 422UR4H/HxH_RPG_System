@@ -185,19 +185,21 @@ func (m *Manager) GetBuffs() map[enum.SkillName]int {
 }
 
 func (m *Manager) AddJointSkill(js *JointSkill) error {
-	for key := range m.jointSkills {
-		if key == js.GetName() {
-			return fmt.Errorf("joint skill %s already exists", js.GetName())
-		}
+	if !js.IsInitialized() {
+		return fmt.Errorf("joint skill is not initialized")
 	}
-	m.jointSkills[js.GetName()] = js
+	name := js.GetName()
+	if _, ok := m.jointSkills[name]; ok {
+		return fmt.Errorf("joint skill %s already exists", js.GetName())
+	}
+	m.jointSkills[name] = js
 	return nil
 }
 
 func (m *Manager) GetJointSkills() map[string]JointSkill {
 	jointSkills := make(map[string]JointSkill)
-	for key, value := range m.jointSkills {
-		jointSkills[key] = *value
+	for name, value := range m.jointSkills {
+		jointSkills[name] = *value
 	}
 	return jointSkills
 }
