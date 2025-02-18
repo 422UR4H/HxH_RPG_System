@@ -20,6 +20,18 @@ func NewCharacterAttributes(physicals, mentals, spirituals *Manager) *CharacterA
 	}
 }
 
+// TODO: resolve this
+func (ca *CharacterAttributes) IncreaseExpForMentals(points int, name enum.AttributeName) (int, error) {
+	attr, err := ca.mentals.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	// TODO: resolve CascadeUpgrade return quickly
+	attr.CascadeUpgrade(points)
+	// TODO: after this, return diff here
+	return 0, nil
+}
+
 func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, error) {
 	if ca.spirituals != nil {
 		if attr, _ := ca.spirituals.Get(name); attr != nil {
