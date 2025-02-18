@@ -52,3 +52,7 @@ func (a *Ability) GetExpPoints() int {
 func (a *Ability) GetLevel() int {
 	return a.exp.GetLevel()
 }
+
+func (a *Ability) GetExpReference() experience.ICascadeUpgrade {
+	return a
+}

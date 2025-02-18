@@ -37,6 +37,17 @@ func (m *Manager) Get(name enum.AbilityName) (IAbility, error) {
 	return ability, nil
 }
 
+func (m *Manager) GetExpReferenceOf(
+	name enum.AbilityName,
+) (exp.ICascadeUpgrade, error) {
+
+	ability, err := m.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return ability.GetExpReference(), nil
+}
+
 func (m *Manager) GetNextLvlAggregateExpOf(name enum.AbilityName) (int, error) {
 	ability, err := m.Get(name)
 	if err != nil {
