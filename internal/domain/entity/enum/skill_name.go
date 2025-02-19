@@ -75,10 +75,6 @@ func (sn SkillName) String() string {
 		return "Energy"
 	case Defense:
 		return "Defense"
-	case Breath:
-		return "Breath"
-	case Heal:
-		return "Heal"
 	case Push:
 		return "Push"
 	case Grab:
@@ -93,10 +89,14 @@ func (sn SkillName) String() string {
 		return "Brake"
 	case AttackSpeed:
 		return "AttackSpeed"
+	case Repel:
+		return "Repel"
 	case Feint:
 		return "Feint"
 	case Acrobatics:
 		return "Acrobatics"
+	case Evasion:
+		return "Evasion"
 	case Sneak:
 		return "Sneak"
 	case Reflex:
@@ -117,6 +117,12 @@ func (sn SkillName) String() string {
 		return "Taste"
 	case Balance:
 		return "Balance"
+	case Heal:
+		return "Heal"
+	case Breath:
+		return "Breath"
+	case Tenacity:
+		return "Tenacity"
 	case Intuition:
 		return "Intuition"
 	case Nen:
