@@ -2,6 +2,7 @@ package charactersheet
 
 import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 )
 
@@ -10,28 +11,48 @@ type ICreateCharacterSheet interface {
 }
 
 type CreateCharacterSheetUC struct {
-	// repo
+	// add repo
+	characterClasses map[enum.CharacterClassName]cc.CharacterClass
+	factory          *sheet.CharacterSheetFactory
 }
 
-func NewCreateCharacterSheetUC() *CreateCharacterSheetUC {
+func NewCreateCharacterSheetUC(
+	charClasses map[enum.CharacterClassName]cc.CharacterClass,
+	factory *sheet.CharacterSheetFactory,
+) *CreateCharacterSheetUC {
 	return &CreateCharacterSheetUC{
-		// repo
+		// add repo
+		characterClasses: charClasses,
+		factory:          factory,
 	}
 }
 
+type DistributionInput struct {
+}
+
 type CreateCharacterSheetInput struct {
-	characterClass cc.CharacterClass
-	profile        sheet.CharacterProfile
-	set            sheet.TalentByCategorySet
+	Profile           sheet.CharacterProfile
+	CharacterClass    enum.CharacterClassName
+	CategorySet       sheet.TalentByCategorySet
+	SkillsExps        map[enum.SkillName]int
+	ProficienciesExps map[enum.WeaponName]int
 }
 
 func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	input CreateCharacterSheetInput,
-) *sheet.CharacterSheet {
-	factory := sheet.NewCharacterSheetFactory()
-	// TODO: validate character class
-	// validar se todas as proficienciesExps e skillsExps existem em characterClasses global
-	// as que não existirem, validar se existem nos alloweds e verificar a quantidade exata
-	characterSheet := factory.Build(input.profile, &input.set, &input.characterClass)
-	return characterSheet
+) (*sheet.CharacterSheet, error) {
+	charClass := uc.characterClasses[input.CharacterClass]
+	skillsExps := input.SkillsExps
+	if err := charClass.ValidateSkills(skillsExps); err != nil {
+		return nil, err
+	}
+	profExps := input.ProficienciesExps
+	if err := charClass.ValidateProficiencies(profExps); err != nil {
+		return nil, err
+	}
+	charClass.ApplySkills(skillsExps)
+	charClass.ApplyProficiencies(profExps)
+	characterSheet := uc.factory.Build(input.Profile, &input.CategorySet, &charClass)
+	// save to repo
+	return characterSheet, nil
 }
