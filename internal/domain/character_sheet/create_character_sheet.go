@@ -52,7 +52,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	}
 	charClass.ApplySkills(skillsExps)
 	charClass.ApplyProficiencies(profExps)
-	characterSheet := uc.factory.Build(input.Profile, &input.CategorySet, &charClass)
+	characterSheet, err := uc.factory.Build(input.Profile, &input.CategorySet, &charClass)
 	// save to repo
-	return characterSheet, nil
+	return characterSheet, err
 }

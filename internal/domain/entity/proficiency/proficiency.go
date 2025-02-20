@@ -1,23 +1,25 @@
 package proficiency
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 // TODO: upgrade adding strike (GetStrike) and hit
 type Proficiency struct {
+	weapon        enum.WeaponName
 	exp           experience.Exp
 	physSkillsExp experience.ICascadeUpgrade
 }
 
 func NewProficiency(
+	weapon enum.WeaponName,
 	exp experience.Exp,
-	// weapon enum.WeaponName,
 	physSkExp experience.ICascadeUpgrade,
 ) *Proficiency {
 	return &Proficiency{
-		exp: exp,
-		// weapon:        weapon,
+		weapon:        weapon,
+		exp:           exp,
 		physSkillsExp: physSkExp,
 	}
 }
@@ -51,4 +53,8 @@ func (p *Proficiency) GetExpPoints() int {
 
 func (p *Proficiency) GetLevel() int {
 	return p.exp.GetLevel()
+}
+
+func (p *Proficiency) GetWeapon() enum.WeaponName {
+	return p.weapon
 }

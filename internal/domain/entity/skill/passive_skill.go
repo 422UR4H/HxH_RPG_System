@@ -2,11 +2,13 @@ package skill
 
 import (
 	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	exp "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	status "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 type PassiveSkill struct {
+	name             enum.SkillName
 	exp              exp.Exp
 	attribute        attr.IGameAttribute
 	abilitySkillsExp exp.IEndCascadeUpgrade
@@ -14,12 +16,14 @@ type PassiveSkill struct {
 }
 
 func NewPassiveSkill(
+	name enum.SkillName,
 	status status.IStatusBar,
 	exp exp.Exp,
 	attribute attr.IGameAttribute,
 	abilitySkillsExp exp.IEndCascadeUpgrade) *PassiveSkill {
 
 	skill := &PassiveSkill{
+		name:             name,
 		exp:              exp,
 		status:           status,
 		attribute:        attribute,
@@ -62,6 +66,10 @@ func (ps *PassiveSkill) GetExpPoints() int {
 
 func (ps *PassiveSkill) GetLevel() int {
 	return ps.exp.GetLevel()
+}
+
+func (ps *PassiveSkill) GetName() enum.SkillName {
+	return ps.name
 }
 
 // func (ps *StatusSkill) Clone(points int) *StatusSkill {

@@ -45,6 +45,10 @@ func (nc *NenCategory) GetLevel() int {
 	return int(float64(nc.exp.GetLevel()) * nc.hatsu.GetPercentOf(nc.name) / 100.0)
 }
 
+func (nc *NenCategory) GetName() enum.CategoryName {
+	return nc.name
+}
+
 func (nc *NenCategory) Clone(name enum.CategoryName) *NenCategory {
 	return NewNenCategory(*nc.exp.Clone(), name, nc.hatsu)
 }

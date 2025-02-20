@@ -76,6 +76,14 @@ func (m *Manager) GetJointProficiencies() map[string]JointProficiency {
 	return lvlList
 }
 
+func (m *Manager) GetWeapons() []enum.WeaponName {
+	var weapons []enum.WeaponName
+	for name := range m.commonProficiencies {
+		weapons = append(weapons, name)
+	}
+	return weapons
+}
+
 func (m *Manager) GetValueForTestOf(name enum.WeaponName) (int, error) {
 	prof, err := m.Get(name)
 	if err != nil {

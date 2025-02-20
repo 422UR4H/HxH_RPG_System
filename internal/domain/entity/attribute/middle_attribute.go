@@ -3,21 +3,26 @@ package attribute
 import (
 	"math"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type MiddleAttribute struct {
+	name         enum.AttributeName
 	exp          experience.Exp
 	buff         *int
 	primaryAttrs []*PrimaryAttribute
 }
 
 func NewMiddleAttribute(
+	name enum.AttributeName,
 	exp experience.Exp,
 	buff *int,
 	primaryAttrs ...*PrimaryAttribute,
 ) *MiddleAttribute {
-	return &MiddleAttribute{exp: exp, buff: buff, primaryAttrs: primaryAttrs}
+	return &MiddleAttribute{
+		name: name, exp: exp, buff: buff, primaryAttrs: primaryAttrs,
+	}
 }
 
 // TODO: test for lenAttrs > 2 (and for lenAttrs = 2)
@@ -77,4 +82,8 @@ func (ma *MiddleAttribute) GetExpPoints() int {
 
 func (ma *MiddleAttribute) GetLevel() int {
 	return ma.exp.GetLevel()
+}
+
+func (ma *MiddleAttribute) GetName() enum.AttributeName {
+	return ma.name
 }
