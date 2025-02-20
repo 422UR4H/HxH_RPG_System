@@ -25,7 +25,7 @@ func NewPassiveSkill(
 		attribute:        attribute,
 		abilitySkillsExp: abilitySkillsExp,
 	}
-	skill.status.Upgrade(skill.GetLevel())
+	skill.status.Upgrade(skill.GetLevel(), skill.attribute)
 	return skill
 }
 
@@ -34,9 +34,7 @@ func (ps *PassiveSkill) CascadeUpgradeTrigger(exp int) int {
 	ps.attribute.CascadeUpgrade(exp)
 	ps.abilitySkillsExp.EndCascadeUpgrade(exp)
 
-	if diff != 0 {
-		ps.status.Upgrade(ps.exp.GetLevel())
-	}
+	ps.status.Upgrade(ps.exp.GetLevel(), ps.attribute)
 	return diff
 }
 

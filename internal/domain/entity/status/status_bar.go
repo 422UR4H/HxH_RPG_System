@@ -1,11 +1,18 @@
 package status
 
+import (
+	"fmt"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
+)
+
 type Bar struct {
 	min  int
 	curr int
 	max  int
 }
 
+// TODO: implement one for each status bar (hp, sp, ap)
 func NewStatusBar() *Bar {
 	points := 0
 	return &Bar{
@@ -35,14 +42,24 @@ func (b *Bar) DecreaseAt(value int) int {
 	return b.curr
 }
 
-func (b *Bar) Upgrade(level int) {
+func (b *Bar) Upgrade(skLvl int, attr attribute.IGameAttribute) {
+	// old formula
+	// this.hpMax = (this.getProHp() + this.modCon + this.coefHp) * this.lvl + this.valCon + Ficha.getHP_INICIAL();
+	// new formula -> attrBonus * (skLvl + attrLvl + attrPoints)
+
 	// TODO: Implement Min for hit_points
 	// Min = generateStatus.GetLvl();
+	// TODO: check how the buff interferes here
+	fmt.Println("Upgrade status bar")
+	fmt.Printf("skLvl: %d, attrLevel: %d, attrPoints: %d, attrBonus: %f\n", skLvl, attr.GetLevel(), attr.GetPoints(), attr.GetBonus())
+
+	coeff := float64(skLvl + attr.GetLevel() + attr.GetPoints())
+	maxVal := int(coeff * attr.GetBonus())
 	if b.curr == b.max {
-		b.curr = level
+		b.curr = maxVal
 	}
 	// TODO: Implement else case (ex.: b.current == b.max - 1 -> threat % case)
-	b.max = level
+	b.max = maxVal
 }
 
 func (b *Bar) GetMin() int {
