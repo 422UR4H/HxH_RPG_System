@@ -229,7 +229,7 @@ func (cs *CharacterSheet) ToString() string {
 	skillsExp := cs.skill.GetPhysicalsExpPoints()
 	skillsCurrExp := cs.skill.GetPhysicalsCurrentExp()
 	skillsNextLvlExp := cs.skill.GetPhysicalsNextLvlBaseExp()
-	sortSkillNames := []enum.SkillName{
+	sortedSkillNames := []enum.SkillName{
 		enum.Vitality, enum.Energy, enum.Defense,
 		enum.Push, enum.Grab, enum.CarryCapacity,
 		enum.Velocity, enum.Accelerate, enum.Brake,
@@ -240,7 +240,7 @@ func (cs *CharacterSheet) ToString() string {
 		enum.Tact, enum.Taste, enum.Balance,
 		enum.Heal, enum.Breath, enum.Tenacity,
 	}
-	for _, name := range sortSkillNames {
+	for _, name := range sortedSkillNames {
 		lvl := skillsLvl[name]
 		exp := skillsExp[name]
 		if lvl == 0 && lvl == exp {
@@ -297,6 +297,37 @@ func (cs *CharacterSheet) ToString() string {
 			status.GetCurrent(),
 			valueWidth, status.GetMax())
 	}
+	sheet += "-----------------------------------------------------------\n"
+
+	profLvl := cs.proficiency.GetCommonsLevel()
+	profExp := cs.proficiency.GetCommonsExpPoints()
+	profCurrExp := cs.proficiency.GetCommonsCurrentExp()
+	profNextLvlExp := cs.proficiency.GetCommonsNextLvlBaseExp()
+	profNames := cs.proficiency.GetWeapons()
+
+	for _, name := range profNames {
+		lvl := profLvl[name]
+		exp := profExp[name]
+		currExp := profCurrExp[name]
+		nextLvlExp := profNextLvlExp[name]
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name.String(),
+			valueWidth, lvl,
+			valueWidth, exp,
+			currExp,
+			valueWidth, nextLvlExp)
+	}
+
+	jointProfs := cs.proficiency.GetJointProficiencies()
+	for name, prof := range jointProfs {
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name,
+			valueWidth, prof.GetLevel(),
+			valueWidth, prof.GetExpPoints(),
+			prof.GetCurrentExp(),
+			valueWidth, prof.GetNextLvlBaseExp())
+	}
+
 	sheet += "===========================================================\n"
 	return sheet
 }
