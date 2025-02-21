@@ -3,24 +3,24 @@ package skill
 import (
 	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	exp "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	status "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 type PassiveSkill struct {
 	name             enum.SkillName
-	exp              exp.Exp
+	exp              experience.Exp
 	attribute        attr.IGameAttribute
-	abilitySkillsExp exp.IEndCascadeUpgrade
+	abilitySkillsExp experience.IEndCascadeUpgrade
 	status           status.IStatusBar
 }
 
 func NewPassiveSkill(
 	name enum.SkillName,
 	status status.IStatusBar,
-	exp exp.Exp,
+	exp experience.Exp,
 	attribute attr.IGameAttribute,
-	abilitySkillsExp exp.IEndCascadeUpgrade) *PassiveSkill {
+	abilitySkillsExp experience.IEndCascadeUpgrade) *PassiveSkill {
 
 	skill := &PassiveSkill{
 		name:             name,
@@ -34,7 +34,7 @@ func NewPassiveSkill(
 }
 
 func (ps *PassiveSkill) CascadeUpgradeTrigger(
-	values *exp.UpgradeCascade,
+	values *experience.UpgradeCascade,
 ) {
 	diff := ps.exp.IncreasePoints(values.GetExp())
 	ps.attribute.CascadeUpgrade(values)
@@ -42,6 +42,12 @@ func (ps *PassiveSkill) CascadeUpgradeTrigger(
 
 	if diff != 0 {
 		ps.status.Upgrade(ps.exp.GetLevel())
+	}
+
+	values.Skills[ps.name.String()] = experience.SkillCascade{
+		Lvl:     ps.GetLevel(),
+		Exp:     ps.GetCurrentExp(),
+		TestVal: ps.GetValueForTest(),
 	}
 }
 

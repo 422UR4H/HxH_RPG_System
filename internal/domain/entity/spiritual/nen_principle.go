@@ -23,6 +23,12 @@ func NewNenPrinciple(
 func (np *NenPrinciple) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
 	np.exp.IncreasePoints(values.GetExp())
 	np.ability.CascadeUpgrade(values)
+
+	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
+		Lvl:     np.GetLevel(),
+		Exp:     np.GetCurrentExp(),
+		TestVal: np.GetValueForTest(),
+	}
 }
 
 func (np *NenPrinciple) GetValueForTest() int {

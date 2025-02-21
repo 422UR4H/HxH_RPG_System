@@ -22,6 +22,13 @@ func NewNenCategory(
 func (nc *NenCategory) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
 	nc.exp.IncreasePoints(values.GetExp())
 	nc.hatsu.CascadeUpgrade(values)
+
+	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
+		Lvl: nc.GetLevel(),
+		Exp: nc.GetCurrentExp(),
+		// TODO: add test value for this class (obj) to add here too
+		// TestVal: nc.GetValueForTest(),
+	}
 }
 
 func (nc *NenCategory) GetNextLvlAggregateExp() int {

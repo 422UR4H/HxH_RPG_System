@@ -36,6 +36,11 @@ func (ma *MiddleAttribute) CascadeUpgrade(values *experience.UpgradeCascade) {
 	exp := remainder + values.GetExp()
 	exp /= lenAttrs
 	values.SetExp(exp)
+	values.Attributes[ma.name] = experience.AttributeCascade{
+		Exp:   ma.GetExpPoints(),
+		Lvl:   ma.GetLevel(),
+		Power: ma.GetPower(),
+	}
 
 	for _, attr := range ma.primaryAttrs {
 		attr.CascadeUpgrade(values)

@@ -48,6 +48,11 @@ func (jp *JointProficiency) CascadeUpgradeTrigger(values *experience.UpgradeCasc
 	// jp.attr.CascadeUpgrade(exp)
 	// TODO: if uncomment, fix BuildWeaponsMaster
 	jp.physSkillsExp.CascadeUpgrade(values) //* len(jp.weapons))
+
+	values.Proficiency[jp.name] = experience.ProficiencyCascade{
+		Lvl: jp.GetLevel(),
+		Exp: jp.GetCurrentExp(),
+	}
 }
 
 func (jp *JointProficiency) ContainsWeapon(name enum.WeaponName) bool {

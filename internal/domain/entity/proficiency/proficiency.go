@@ -27,6 +27,11 @@ func NewProficiency(
 func (p *Proficiency) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
 	p.exp.IncreasePoints(values.GetExp())
 	p.physSkillsExp.CascadeUpgrade(values)
+
+	values.Proficiency[p.weapon.String()] = experience.ProficiencyCascade{
+		Lvl: p.GetLevel(),
+		Exp: p.GetCurrentExp(),
+	}
 }
 
 // TODO: validate this

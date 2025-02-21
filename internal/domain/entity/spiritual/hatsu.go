@@ -52,6 +52,12 @@ func (h *Hatsu) SetCategoryPercents(
 func (h *Hatsu) CascadeUpgrade(values *experience.UpgradeCascade) {
 	h.exp.IncreasePoints(values.GetExp())
 	h.ability.CascadeUpgrade(values)
+
+	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
+		Lvl:     h.GetLevel(),
+		Exp:     h.GetCurrentExp(),
+		TestVal: h.GetValueForTest(),
+	}
 }
 
 func (h *Hatsu) IncreaseExp(

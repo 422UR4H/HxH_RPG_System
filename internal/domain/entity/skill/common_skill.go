@@ -28,6 +28,12 @@ func (cs *CommonSkill) CascadeUpgradeTrigger(values *experience.UpgradeCascade) 
 	cs.exp.IncreasePoints(values.GetExp())
 	cs.attribute.CascadeUpgrade(values)
 	cs.abilitySkillsExp.EndCascadeUpgrade(values)
+
+	values.Skills[cs.name.String()] = experience.SkillCascade{
+		Lvl:     cs.GetLevel(),
+		Exp:     cs.GetCurrentExp(),
+		TestVal: cs.GetValueForTest(),
+	}
 }
 
 func (cs *CommonSkill) GetValueForTest() int {
