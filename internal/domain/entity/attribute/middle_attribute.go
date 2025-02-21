@@ -26,16 +26,19 @@ func NewMiddleAttribute(
 }
 
 // TODO: test for lenAttrs > 2 (and for lenAttrs = 2)
-func (ma *MiddleAttribute) CascadeUpgrade(exp int) {
+// maybe move or share this logic with UpgradeCascade
+func (ma *MiddleAttribute) CascadeUpgrade(values *experience.UpgradeCascade) {
 	lenAttrs := len(ma.primaryAttrs)
 	remainder := ma.exp.GetPoints() % lenAttrs
 
-	ma.exp.IncreasePoints(exp)
+	ma.exp.IncreasePoints(values.GetExp())
 
-	exp += remainder
+	exp := remainder + values.GetExp()
 	exp /= lenAttrs
+	values.SetExp(exp)
+
 	for _, attr := range ma.primaryAttrs {
-		attr.CascadeUpgrade(exp)
+		attr.CascadeUpgrade(values)
 	}
 }
 

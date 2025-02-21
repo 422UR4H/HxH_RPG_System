@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type CharacterSkills struct {
@@ -24,12 +25,16 @@ func NewCharacterSkills(
 	}
 }
 
-func (cs *CharacterSkills) IncreaseExp(points int, name enum.SkillName) (int, error) {
+func (cs *CharacterSkills) IncreaseExp(
+	values *experience.UpgradeCascade,
+	name enum.SkillName,
+) error {
 	skill, err := cs.Get(name)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return skill.CascadeUpgradeTrigger(points), nil
+	skill.CascadeUpgradeTrigger(values)
+	return nil
 }
 
 func (cs *CharacterSkills) AddPhysicalJoint(skill *JointSkill) error {

@@ -26,12 +26,18 @@ func (a *Ability) GetBonus() float64 {
 	return (pts + lvl) / 2.0
 }
 
-func (a *Ability) CascadeUpgrade(exp int) {
-	diff := a.exp.IncreasePoints(exp)
-	a.charExp.EndCascadeUpgrade(exp)
+func (a *Ability) CascadeUpgrade(values *experience.UpgradeCascade) {
+	diff := a.exp.IncreasePoints(values.GetExp())
+	a.charExp.EndCascadeUpgrade(values)
 
 	if diff > 0 {
 		a.charExp.IncreaseCharacterPoints(diff)
+	}
+
+	values.Abilities[a.name] = experience.AbilityCascade{
+		Exp:   a.GetExpPoints(),
+		Lvl:   a.GetLevel(),
+		Bonus: a.GetBonus(),
 	}
 }
 

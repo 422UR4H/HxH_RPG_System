@@ -25,9 +25,15 @@ func NewPrimaryAttribute(
 	}
 }
 
-func (pa *PrimaryAttribute) CascadeUpgrade(exp int) {
-	pa.exp.IncreasePoints(exp)
-	pa.ability.CascadeUpgrade(exp)
+func (pa *PrimaryAttribute) CascadeUpgrade(values *experience.UpgradeCascade) {
+	pa.exp.IncreasePoints(values.GetExp())
+	pa.ability.CascadeUpgrade(values)
+
+	values.Attributes[pa.name] = experience.AttributeCascade{
+		Exp:   pa.GetExpPoints(),
+		Lvl:   pa.GetLevel(),
+		Power: pa.GetPower(),
+	}
 }
 
 func (pa *PrimaryAttribute) GetPower() int {

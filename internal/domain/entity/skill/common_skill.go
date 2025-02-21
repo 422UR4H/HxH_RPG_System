@@ -24,11 +24,10 @@ func NewCommonSkill(
 	}
 }
 
-func (cs *CommonSkill) CascadeUpgradeTrigger(exp int) int {
-	diff := cs.exp.IncreasePoints(exp)
-	cs.attribute.CascadeUpgrade(exp)
-	cs.abilitySkillsExp.EndCascadeUpgrade(exp)
-	return diff
+func (cs *CommonSkill) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	cs.exp.IncreasePoints(values.GetExp())
+	cs.attribute.CascadeUpgrade(values)
+	cs.abilitySkillsExp.EndCascadeUpgrade(values)
 }
 
 func (cs *CommonSkill) GetValueForTest() int {

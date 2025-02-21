@@ -6,6 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
@@ -51,9 +52,9 @@ func (hs *HalfSheet) GetValueForTestOfSkill(name enum.SkillName) (int, error) {
 }
 
 func (hs *HalfSheet) IncreaseExpForSkill(
-	points int, name enum.SkillName,
-) (int, error) {
-	return hs.skill.IncreaseExp(points, name)
+	values *experience.UpgradeCascade, name enum.SkillName,
+) error {
+	return hs.skill.IncreaseExp(values, name)
 }
 
 // AddJointSkill only supports physical skills yet
@@ -75,16 +76,16 @@ func (hs *HalfSheet) GetPhysJointSkills() map[string]skill.JointSkill {
 }
 
 func (hs *HalfSheet) IncreaseExpForProficiency(
-	points int, name enum.WeaponName,
-) (int, error) {
-	return hs.proficiency.IncreaseExp(points, name)
+	values *experience.UpgradeCascade, name enum.WeaponName,
+) error {
+	return hs.proficiency.IncreaseExp(values, name)
 }
 
 // TODO: resolve this
 func (hs *HalfSheet) IncreaseExpForMentals(
-	points int, name enum.AttributeName,
-) (int, error) {
-	return hs.attribute.IncreaseExpForMentals(points, name)
+	values *experience.UpgradeCascade, name enum.AttributeName,
+) error {
+	return hs.attribute.IncreaseExpForMentals(values, name)
 }
 
 func (hs *HalfSheet) AddJointProficiency(

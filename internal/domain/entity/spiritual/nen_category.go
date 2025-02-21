@@ -19,10 +19,9 @@ func NewNenCategory(
 	return &NenCategory{exp: exp, name: name, hatsu: hatsu}
 }
 
-func (nc *NenCategory) CascadeUpgradeTrigger(exp int) int {
-	diff := nc.exp.IncreasePoints(exp)
-	nc.hatsu.CascadeUpgrade(exp)
-	return diff
+func (nc *NenCategory) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	nc.exp.IncreasePoints(values.GetExp())
+	nc.hatsu.CascadeUpgrade(values)
 }
 
 func (nc *NenCategory) GetNextLvlAggregateExp() int {

@@ -40,22 +40,26 @@ func (m *Manager) Init(skills map[enum.SkillName]ISkill) {
 	m.skills = skills
 }
 
-func (m *Manager) CascadeUpgrade(exp int) {
-	m.exp.IncreasePoints(exp)
-	m.skillsExp.CascadeUpgrade(exp)
-	m.abilityExp.CascadeUpgrade(exp)
+func (m *Manager) CascadeUpgrade(values *experience.UpgradeCascade) {
+	m.exp.IncreasePoints(values.GetExp())
+	m.skillsExp.CascadeUpgrade(values)
+	m.abilityExp.CascadeUpgrade(values)
 }
 
-func (m *Manager) EndCascadeUpgrade(exp int) {
-	m.exp.IncreasePoints(exp)
+func (m *Manager) EndCascadeUpgrade(values *experience.UpgradeCascade) {
+	m.exp.IncreasePoints(values.GetExp())
 }
 
-func (m *Manager) IncreaseExp(exp int, name enum.SkillName) (int, error) {
+func (m *Manager) IncreaseExp(
+	values *experience.UpgradeCascade,
+	name enum.SkillName,
+) error {
 	skill, err := m.Get(name)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return skill.CascadeUpgradeTrigger(exp), nil
+	skill.CascadeUpgradeTrigger(values)
+	return nil
 }
 
 func (m *Manager) Get(name enum.SkillName) (ISkill, error) {

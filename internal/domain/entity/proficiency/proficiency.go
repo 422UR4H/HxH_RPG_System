@@ -24,10 +24,9 @@ func NewProficiency(
 	}
 }
 
-func (p *Proficiency) CascadeUpgradeTrigger(exp int) int {
-	diff := p.exp.IncreasePoints(exp)
-	p.physSkillsExp.CascadeUpgrade(exp)
-	return diff
+func (p *Proficiency) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	p.exp.IncreasePoints(values.GetExp())
+	p.physSkillsExp.CascadeUpgrade(values)
 }
 
 // TODO: validate this

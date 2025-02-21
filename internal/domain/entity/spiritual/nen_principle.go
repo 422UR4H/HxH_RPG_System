@@ -20,10 +20,9 @@ func NewNenPrinciple(
 	return &NenPrinciple{name: name, exp: exp, ability: ability}
 }
 
-func (np *NenPrinciple) CascadeUpgradeTrigger(exp int) int {
-	diff := np.exp.IncreasePoints(exp)
-	np.ability.CascadeUpgrade(exp)
-	return diff
+func (np *NenPrinciple) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	np.exp.IncreasePoints(values.GetExp())
+	np.ability.CascadeUpgrade(values)
 }
 
 func (np *NenPrinciple) GetValueForTest() int {

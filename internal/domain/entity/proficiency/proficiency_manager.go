@@ -34,12 +34,13 @@ func (m *Manager) Get(name enum.WeaponName) (IProficiency, error) {
 	return nil, errors.New("proficiency not found")
 }
 
-func (m *Manager) IncreaseExp(exp int, name enum.WeaponName) (int, error) {
+func (m *Manager) IncreaseExp(values *experience.UpgradeCascade, name enum.WeaponName) error {
 	prof, err := m.Get(name)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return prof.CascadeUpgradeTrigger(exp), nil
+	prof.CascadeUpgradeTrigger(values)
+	return nil
 }
 
 func (m *Manager) AddJoint(

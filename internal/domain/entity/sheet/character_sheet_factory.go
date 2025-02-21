@@ -469,7 +469,7 @@ func (csf *CharacterSheetFactory) Wrap(
 	physSkExp experience.ICascadeUpgrade,
 ) *CharacterSheet {
 	for name, exp := range charClass.SkillsExps {
-		charSheet.IncreaseExpForSkill(exp, name)
+		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, skill := range charClass.JointSkills {
 		charSheet.AddJointSkill(&skill)
@@ -478,14 +478,14 @@ func (csf *CharacterSheetFactory) Wrap(
 		charSheet.AddJointProficiency(&prof)
 	}
 	for name, exp := range charClass.AttributesExps {
-		charSheet.IncreaseExpForMentals(exp, name)
+		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
 	}
 	expTable := experience.NewExpTable(PHYSICAL_SKILLS_COEFF)
 	newExp := experience.NewExperience(expTable)
 	for name, exp := range charClass.ProficienciesExps {
 		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
 		charSheet.AddCommonProficiency(name, prof)
-		charSheet.IncreaseExpForProficiency(exp, name)
+		charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
 	}
 	return charSheet
 }
@@ -577,19 +577,19 @@ func (csf *CharacterSheetFactory) WrapHalf(
 	sheet *HalfSheet, charClass *cc.CharacterClass,
 ) *HalfSheet {
 	for name, exp := range charClass.SkillsExps {
-		sheet.IncreaseExpForSkill(exp, name)
+		sheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, skill := range charClass.JointSkills {
 		sheet.AddJointSkill(&skill)
 	}
 	for name, exp := range charClass.ProficienciesExps {
-		sheet.IncreaseExpForProficiency(exp, name)
+		sheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, prof := range charClass.JointProficiencies {
 		sheet.AddJointProficiency(&prof)
 	}
 	for name, exp := range charClass.AttributesExps {
-		sheet.IncreaseExpForMentals(exp, name)
+		sheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
 	}
 	return sheet
 }

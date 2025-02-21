@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type Manager struct {
@@ -35,24 +36,23 @@ func (m *Manager) InitNenHexagon(nenHexagon *NenHexagon) error {
 }
 
 func (m *Manager) IncreaseExpByPrinciple(
-	name enum.PrincipleName, exp int,
-) (int, error) {
-
+	name enum.PrincipleName, values *experience.UpgradeCascade,
+) error {
 	if principle, ok := m.principles[name]; ok {
-		return principle.CascadeUpgradeTrigger(exp), nil
+		principle.CascadeUpgradeTrigger(values)
+		return nil
 	}
-	return 0, fmt.Errorf("principle %s not found", name.String())
+	return fmt.Errorf("principle %s not found", name.String())
 }
 
 func (m *Manager) IncreaseExpByCategory(
-	name enum.CategoryName, exp int,
-) (int, error) {
-
-	diff, err := m.hatsu.IncreaseExp(exp, name)
+	name enum.CategoryName, values *experience.UpgradeCascade,
+) error {
+	err := m.hatsu.IncreaseExp(values, name)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return diff, nil
+	return nil
 }
 
 func (m *Manager) Get(name enum.PrincipleName) (IPrinciple, error) {

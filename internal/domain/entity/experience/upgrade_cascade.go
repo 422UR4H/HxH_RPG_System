@@ -15,28 +15,24 @@ type UpgradeCascade struct {
 
 func NewUpgradeCascade(
 	expInserted int,
-	CharacterExp ICharacterExp,
-	Skills map[string]SkillCascade,
-	Proficiency map[string]ProficiencyCascade,
-	Abilities map[enum.AbilityName]AbilityCascade,
-	Attributes map[enum.AttributeName]AttributeCascade,
-	Principles map[enum.PrincipleName]PrincipleCascade,
-	Status map[enum.StatusName]StatusCascade,
 ) *UpgradeCascade {
 	return &UpgradeCascade{
-		expInserted:  expInserted,
-		CharacterExp: CharacterExp,
-		Skills:       Skills,
-		Proficiency:  Proficiency,
-		Abilities:    Abilities,
-		Attributes:   Attributes,
-		Principles:   Principles,
-		Status:       Status,
+		expInserted: expInserted,
+		Skills:      make(map[string]SkillCascade),
+		Proficiency: make(map[string]ProficiencyCascade),
+		Abilities:   make(map[enum.AbilityName]AbilityCascade),
+		Attributes:  make(map[enum.AttributeName]AttributeCascade),
+		Principles:  make(map[enum.PrincipleName]PrincipleCascade),
+		Status:      make(map[enum.StatusName]StatusCascade),
 	}
 }
 
 func (uc *UpgradeCascade) GetExp() int {
 	return uc.expInserted
+}
+
+func (uc *UpgradeCascade) SetExp(exp int) {
+	uc.expInserted = exp
 }
 
 type AbilityCascade struct {
