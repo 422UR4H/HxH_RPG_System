@@ -24,10 +24,9 @@ func (nc *NenCategory) CascadeUpgradeTrigger(values *experience.UpgradeCascade) 
 	nc.hatsu.CascadeUpgrade(values)
 
 	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
-		Lvl: nc.GetLevel(),
-		Exp: nc.GetCurrentExp(),
-		// TODO: add test value for this class (obj) to add here too
-		// TestVal: nc.GetValueForTest(),
+		Lvl:     nc.GetLevel(),
+		Exp:     nc.GetCurrentExp(),
+		TestVal: nc.GetValueForTest(),
 	}
 }
 
@@ -48,7 +47,11 @@ func (nc *NenCategory) GetExpPoints() int {
 }
 
 func (nc *NenCategory) GetLevel() int {
-	return int(float64(nc.exp.GetLevel()) * nc.hatsu.GetPercentOf(nc.name) / 100.0)
+	return nc.exp.GetLevel()
+}
+
+func (nc *NenCategory) GetValueForTest() int {
+	return int(float64(nc.GetLevel()) * nc.hatsu.GetPercentOf(nc.name) / 100.0)
 }
 
 func (nc *NenCategory) GetName() enum.CategoryName {

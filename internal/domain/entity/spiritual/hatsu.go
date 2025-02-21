@@ -165,6 +165,14 @@ func (h *Hatsu) GetCategoriesLevel() map[enum.CategoryName]int {
 	return lvlList
 }
 
+func (h *Hatsu) GetCategoriesTestValue() map[enum.CategoryName]int {
+	lvlList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		lvlList[name] = category.GetValueForTest()
+	}
+	return lvlList
+}
+
 func (h *Hatsu) GetNextLvlAggregateExp() int {
 	return h.exp.GetNextLvlAggregateExp()
 }

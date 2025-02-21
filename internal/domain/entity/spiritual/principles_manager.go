@@ -159,6 +159,14 @@ func (m *Manager) GetLevelOfCategory(name enum.CategoryName) (int, error) {
 	return category.GetLevel(), nil
 }
 
+func (m *Manager) GetTestValueOfCategory(name enum.CategoryName) (int, error) {
+	category, err := m.hatsu.Get(name)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s", err, "failed to get level")
+	}
+	return category.GetValueForTest(), nil
+}
+
 func (m *Manager) GetNextLvlAggregateExpOfPrinciples() map[enum.PrincipleName]int {
 	expList := make(map[enum.PrincipleName]int)
 	for name, principle := range m.principles {
@@ -249,5 +257,9 @@ func (m *Manager) GetExpPointsOfCategories() map[enum.CategoryName]int {
 }
 
 func (m *Manager) GetLevelOfCategories() map[enum.CategoryName]int {
+	return m.hatsu.GetCategoriesLevel()
+}
+
+func (m *Manager) GetTestValueOfCategories() map[enum.CategoryName]int {
 	return m.hatsu.GetCategoriesLevel()
 }
