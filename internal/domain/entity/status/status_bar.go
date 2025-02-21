@@ -51,10 +51,10 @@ func (b *Bar) Upgrade(skLvl int, attr attribute.IGameAttribute) {
 	// Min = generateStatus.GetLvl();
 	// TODO: check how the buff interferes here
 	fmt.Println("Upgrade status bar")
-	fmt.Printf("skLvl: %d, attrLevel: %d, attrPoints: %d, attrBonus: %f\n", skLvl, attr.GetLevel(), attr.GetPoints(), attr.GetBonus())
+	fmt.Printf("skLvl: %d, attrLevel: %d, attrPoints: %d, attrBonus: %f\n", skLvl, attr.GetLevel(), attr.GetPoints(), attr.GetAbilityBonus())
 
 	coeff := float64(skLvl + attr.GetLevel() + attr.GetPoints())
-	maxVal := int(coeff * attr.GetBonus())
+	maxVal := int(coeff * attr.GetAbilityBonus())
 	if b.curr == b.max {
 		b.curr = maxVal
 	}

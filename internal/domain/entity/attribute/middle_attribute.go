@@ -34,7 +34,7 @@ func (ma *MiddleAttribute) CascadeUpgrade(exp int) {
 	}
 }
 
-func (ma *MiddleAttribute) GetBonus() float64 {
+func (ma *MiddleAttribute) GetAbilityBonus() float64 {
 	lenAttrs := len(ma.primaryAttrs)
 	if lenAttrs == 0 {
 		return 0
@@ -42,7 +42,7 @@ func (ma *MiddleAttribute) GetBonus() float64 {
 
 	value := 0.0
 	for _, primaryAttr := range ma.primaryAttrs {
-		value += primaryAttr.GetBonus()
+		value += primaryAttr.GetAbilityBonus()
 	}
 	return value / float64(lenAttrs)
 }
@@ -56,7 +56,7 @@ func (ma *MiddleAttribute) GetPoints() int {
 }
 
 func (ma *MiddleAttribute) GetPower() int {
-	return ma.GetPoints() + ma.GetLevel() + int(ma.GetBonus()) + *ma.buff
+	return ma.GetPoints() + ma.GetLevel() + int(ma.GetAbilityBonus()) + *ma.buff
 }
 
 func (ma *MiddleAttribute) GetNextLvlAggregateExp() int {
