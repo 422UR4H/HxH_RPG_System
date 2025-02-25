@@ -1,18 +1,20 @@
 package ability
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type Ability struct {
+	name    enum.AbilityName
 	exp     experience.Exp
 	charExp experience.ICharacterExp
 }
 
 func NewAbility(
-	exp experience.Exp, charExp experience.ICharacterExp,
+	name enum.AbilityName, exp experience.Exp, charExp experience.ICharacterExp,
 ) *Ability {
-	return &Ability{exp: exp, charExp: charExp}
+	return &Ability{name: name, exp: exp, charExp: charExp}
 }
 
 // maybe character points should only go down for training
@@ -24,12 +26,18 @@ func (a *Ability) GetBonus() float64 {
 	return (pts + lvl) / 2.0
 }
 
-func (a *Ability) CascadeUpgrade(exp int) {
-	diff := a.exp.IncreasePoints(exp)
-	a.charExp.EndCascadeUpgrade(exp)
+func (a *Ability) CascadeUpgrade(values *experience.UpgradeCascade) {
+	diff := a.exp.IncreasePoints(values.GetExp())
+	a.charExp.EndCascadeUpgrade(values)
 
 	if diff > 0 {
 		a.charExp.IncreaseCharacterPoints(diff)
+	}
+
+	values.Abilities[a.name] = experience.AbilityCascade{
+		Exp:   a.GetExpPoints(),
+		Lvl:   a.GetLevel(),
+		Bonus: a.GetBonus(),
 	}
 }
 
@@ -51,6 +59,10 @@ func (a *Ability) GetExpPoints() int {
 
 func (a *Ability) GetLevel() int {
 	return a.exp.GetLevel()
+}
+
+func (a *Ability) GetName() enum.AbilityName {
+	return a.name
 }
 
 func (a *Ability) GetExpReference() experience.ICascadeUpgrade {

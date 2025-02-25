@@ -43,12 +43,16 @@ func (jp *JointProficiency) Init(physSkillsExp experience.ICascadeUpgrade) error
 	return nil
 }
 
-func (jp *JointProficiency) CascadeUpgradeTrigger(exp int) int {
-	diff := jp.exp.IncreasePoints(exp)
+func (jp *JointProficiency) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	jp.exp.IncreasePoints(values.GetExp())
 	// jp.attr.CascadeUpgrade(exp)
 	// TODO: if uncomment, fix BuildWeaponsMaster
-	jp.physSkillsExp.CascadeUpgrade(exp) //* len(jp.weapons))
-	return diff
+	jp.physSkillsExp.CascadeUpgrade(values) //* len(jp.weapons))
+
+	values.Proficiency[jp.name] = experience.ProficiencyCascade{
+		Lvl: jp.GetLevel(),
+		Exp: jp.GetCurrentExp(),
+	}
 }
 
 func (jp *JointProficiency) ContainsWeapon(name enum.WeaponName) bool {

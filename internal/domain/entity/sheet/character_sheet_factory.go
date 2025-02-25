@@ -2,6 +2,7 @@ package sheet
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
@@ -41,7 +42,7 @@ func (csf *CharacterSheetFactory) Build(
 	profile CharacterProfile,
 	categorySet *TalentByCategorySet,
 	charClass *cc.CharacterClass,
-) *CharacterSheet {
+) (*CharacterSheet, error) {
 
 	characterExp := csf.BuildCharacterExp()
 
@@ -107,9 +108,15 @@ func (csf *CharacterSheetFactory) Build(
 		&className,
 	)
 	if charClass != nil {
-		charSheet = csf.Wrap(charSheet, charClass)
+		physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
+		if err != nil {
+			return charSheet, fmt.Errorf(
+				"class not applied: error getting exp reference for %w", err,
+			)
+		}
+		charSheet = csf.Wrap(charSheet, charClass, physSkExp)
 	}
-	return charSheet
+	return charSheet, nil
 }
 
 func (csf *CharacterSheetFactory) BuildCharacterExp() *experience.CharacterExp {
@@ -128,16 +135,16 @@ func (csf *CharacterSheetFactory) BuildPersonAbilities(
 	talent := ability.NewTalent(*talentExp, talentLvl)
 
 	physicalExp := experience.NewExperience(experience.NewExpTable(PHYSICAL_COEFF))
-	abilities[enum.Physicals] = ability.NewAbility(*physicalExp, characterExp)
+	abilities[enum.Physicals] = ability.NewAbility(enum.Physicals, *physicalExp, characterExp)
 
 	mentalExp := experience.NewExperience(experience.NewExpTable(MENTAL_COEFF))
-	abilities[enum.Mentals] = ability.NewAbility(*mentalExp, characterExp)
+	abilities[enum.Mentals] = ability.NewAbility(enum.Mentals, *mentalExp, characterExp)
 
 	spiritualExp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_COEFF))
-	abilities[enum.Spirituals] = ability.NewAbility(*spiritualExp, characterExp)
+	abilities[enum.Spirituals] = ability.NewAbility(enum.Spirituals, *spiritualExp, characterExp)
 
 	skillsExp := experience.NewExperience(experience.NewExpTable(SKILLS_COEFF))
-	abilities[enum.Skills] = ability.NewAbility(*skillsExp, characterExp)
+	abilities[enum.Skills] = ability.NewAbility(enum.Skills, *skillsExp, characterExp)
 
 	return ability.NewAbilitiesManager(characterExp, abilities, *talent)
 }
@@ -151,26 +158,36 @@ func (csf *CharacterSheetFactory) BuildPhysAttrs(
 	buffs := csf.BuildPhysAttrBuffs()
 
 	exp := experience.NewExperience(experience.NewExpTable(PHYSICAL_ATTRIBUTE_COEFF))
-	primAttr := attribute.NewPrimaryAttribute(*exp, physAbility, buffs[0])
+	primAttr := attribute.NewPrimaryAttribute(
+		enum.Resistance, *exp, physAbility, buffs[0],
+	)
 
-	res := primAttr.Clone(buffs[enum.Resistance])
-	agi := primAttr.Clone(buffs[enum.Agility])
-	str := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.Strength], res, agi)
+	res := primAttr.Clone(enum.Resistance, buffs[enum.Resistance])
+	agi := primAttr.Clone(enum.Agility, buffs[enum.Agility])
+	str := attribute.NewMiddleAttribute(
+		enum.Strength, *exp.Clone(), buffs[enum.Strength], res, agi,
+	)
 	primaryAttrs[enum.Resistance] = res
 	primaryAttrs[enum.Agility] = agi
 	middleAttrs[enum.Strength] = str
 
-	flx := primAttr.Clone(buffs[enum.Flexibility])
-	ats := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.ActionSpeed], agi, flx)
+	flx := primAttr.Clone(enum.Flexibility, buffs[enum.Flexibility])
+	ats := attribute.NewMiddleAttribute(
+		enum.ActionSpeed, *exp.Clone(), buffs[enum.ActionSpeed], agi, flx,
+	)
 	primaryAttrs[enum.Flexibility] = flx
 	middleAttrs[enum.ActionSpeed] = ats
 
-	sen := primAttr.Clone(buffs[enum.Sense])
-	dex := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.Dexterity], flx, sen)
+	sen := primAttr.Clone(enum.Sense, buffs[enum.Sense])
+	dex := attribute.NewMiddleAttribute(
+		enum.Dexterity, *exp.Clone(), buffs[enum.Dexterity], flx, sen,
+	)
 	primaryAttrs[enum.Sense] = sen
 	middleAttrs[enum.Dexterity] = dex
 
-	con := attribute.NewMiddleAttribute(*exp.Clone(), buffs[enum.Constitution], sen, res)
+	con := attribute.NewMiddleAttribute(
+		enum.Constitution, *exp.Clone(), buffs[enum.Constitution], sen, res,
+	)
 	middleAttrs[enum.Constitution] = con
 
 	return attribute.NewAttributeManager(primaryAttrs, middleAttrs, buffs)
@@ -183,13 +200,13 @@ func (csf *CharacterSheetFactory) BuildMentalAttrs(
 	attrs := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
 	buffs := csf.BuildMentalAttrBuffs()
 
-	exp := experience.NewExperience(experience.NewExpTable(MENTAL_ATTRIBUTE_COEFF))
-	attr := attribute.NewPrimaryAttribute(*exp, mentalAbility, buffs[0])
+	exp := *experience.NewExperience(experience.NewExpTable(MENTAL_ATTRIBUTE_COEFF))
+	attr := attribute.NewPrimaryAttribute(enum.Resilience, exp, mentalAbility, buffs[0])
 
-	attrs[enum.Resilience] = attr.Clone(buffs[enum.Resilience])
-	attrs[enum.Adaptability] = attr.Clone(buffs[enum.Adaptability])
-	attrs[enum.Weighting] = attr.Clone(buffs[enum.Weighting])
-	attrs[enum.Creativity] = attr.Clone(buffs[enum.Creativity])
+	attrs[enum.Resilience] = attr.Clone(enum.Resilience, buffs[enum.Resilience])
+	attrs[enum.Adaptability] = attr.Clone(enum.Adaptability, buffs[enum.Adaptability])
+	attrs[enum.Weighting] = attr.Clone(enum.Weighting, buffs[enum.Weighting])
+	attrs[enum.Creativity] = attr.Clone(enum.Creativity, buffs[enum.Creativity])
 
 	// TODO: add middle attributes which primary attributes above
 	return attribute.NewAttributeManager(
@@ -205,7 +222,9 @@ func (csf *CharacterSheetFactory) BuildSpiritualAttrs(
 	buffs := csf.BuildSpiritAttrsBuffs()
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_ATTRIBUTE_COEFF))
-	attr := attribute.NewPrimaryAttribute(*exp, spiritualAbility, buffs[enum.Spirit])
+	attr := attribute.NewPrimaryAttribute(
+		enum.Spirit, *exp, spiritualAbility, buffs[enum.Spirit],
+	)
 
 	attrs[enum.Spirit] = attr
 
@@ -242,78 +261,86 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		panic(errors.New("attribute not found"))
 	}
 	health, _ := status.Get(enum.Health)
-	vitSkill := skill.NewPassiveSkill(health, *exp.Clone(), res, physSkills)
+	vitSkill := skill.NewPassiveSkill(
+		enum.Vitality, health, *exp.Clone(), res, physSkills,
+	)
 	skills[enum.Vitality] = vitSkill
 
 	stamina, _ := status.Get(enum.Stamina)
-	engSkill := skill.NewPassiveSkill(stamina, *exp.Clone(), res, physSkills)
+	engSkill := skill.NewPassiveSkill(
+		enum.Energy, stamina, *exp.Clone(), res, physSkills,
+	)
 	skills[enum.Energy] = engSkill
 
-	skills[enum.Defense] = skill.NewCommonSkill(*exp.Clone(), res, physSkills)
+	skills[enum.Defense] = skill.NewCommonSkill(
+		enum.Defense, *exp.Clone(), res, physSkills,
+	)
 
 	str, err := physAttrs.Get(enum.Strength)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	strSkill := skill.NewCommonSkill(*exp.Clone(), str, physSkills)
-	skills[enum.Push] = strSkill.Clone()
-	skills[enum.Grab] = strSkill.Clone()
-	skills[enum.CarryCapacity] = strSkill.Clone()
+	strSkill := skill.NewCommonSkill(enum.Push, *exp.Clone(), str, physSkills)
+	skills[enum.Push] = strSkill.Clone(enum.Push)
+	skills[enum.Grab] = strSkill.Clone(enum.Grab)
+	skills[enum.CarryCapacity] = strSkill.Clone(enum.CarryCapacity)
 
 	agi, err := physAttrs.Get(enum.Agility)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	velSkill := skill.NewCommonSkill(*exp.Clone(), agi, physSkills)
-	skills[enum.Velocity] = velSkill.Clone()
-	skills[enum.Accelerate] = velSkill.Clone()
-	skills[enum.Brake] = velSkill.Clone()
+	agiSkill := skill.NewCommonSkill(enum.Velocity, *exp.Clone(), agi, physSkills)
+	skills[enum.Velocity] = agiSkill.Clone(enum.Velocity)
+	skills[enum.Accelerate] = agiSkill.Clone(enum.Accelerate)
+	skills[enum.Brake] = agiSkill.Clone(enum.Brake)
 
 	ats, err := physAttrs.Get(enum.ActionSpeed)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	atsSkill := skill.NewCommonSkill(*exp.Clone(), ats, physSkills)
-	skills[enum.AttackSpeed] = atsSkill.Clone()
-	skills[enum.Feint] = atsSkill.Clone()
+	atsSkill := skill.NewCommonSkill(enum.AttackSpeed, *exp.Clone(), ats, physSkills)
+	skills[enum.AttackSpeed] = atsSkill.Clone(enum.AttackSpeed)
+	skills[enum.Repel] = atsSkill.Clone(enum.Repel)
+	skills[enum.Feint] = atsSkill.Clone(enum.Feint)
 
 	flx, err := physAttrs.Get(enum.Flexibility)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	flxSkill := skill.NewCommonSkill(*exp.Clone(), flx, physSkills)
-	skills[enum.Acrobatics] = flxSkill.Clone()
-	skills[enum.Sneak] = flxSkill.Clone()
+	flxSkill := skill.NewCommonSkill(enum.Acrobatics, *exp.Clone(), flx, physSkills)
+	skills[enum.Acrobatics] = flxSkill.Clone(enum.Acrobatics)
+	skills[enum.Evasion] = flxSkill.Clone(enum.Evasion)
+	skills[enum.Sneak] = flxSkill.Clone(enum.Sneak)
 
 	dex, err := physAttrs.Get(enum.Dexterity)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	dexSkill := skill.NewCommonSkill(*exp.Clone(), dex, physSkills)
-	skills[enum.Reflex] = dexSkill.Clone()
-	skills[enum.Accuracy] = dexSkill.Clone()
-	skills[enum.Stealth] = dexSkill.Clone()
+	dexSkill := skill.NewCommonSkill(enum.Reflex, *exp.Clone(), dex, physSkills)
+	skills[enum.Reflex] = dexSkill.Clone(enum.Reflex)
+	skills[enum.Accuracy] = dexSkill.Clone(enum.Accuracy)
+	skills[enum.Stealth] = dexSkill.Clone(enum.Stealth)
 
 	sen, err := physAttrs.Get(enum.Sense)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	senSkill := skill.NewCommonSkill(*exp.Clone(), sen, physSkills)
-	skills[enum.Vision] = senSkill.Clone()
-	skills[enum.Hearing] = senSkill.Clone()
-	skills[enum.Smell] = senSkill.Clone()
-	skills[enum.Tact] = senSkill.Clone()
-	skills[enum.Taste] = senSkill.Clone()
-	skills[enum.Balance] = senSkill.Clone()
+	senSkill := skill.NewCommonSkill(enum.Vision, *exp.Clone(), sen, physSkills)
+	skills[enum.Vision] = senSkill.Clone(enum.Vision)
+	skills[enum.Hearing] = senSkill.Clone(enum.Hearing)
+	skills[enum.Smell] = senSkill.Clone(enum.Smell)
+	skills[enum.Tact] = senSkill.Clone(enum.Tact)
+	skills[enum.Taste] = senSkill.Clone(enum.Taste)
+	skills[enum.Balance] = senSkill.Clone(enum.Balance)
 
 	con, err := physAttrs.Get(enum.Constitution)
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	conSkill := skill.NewCommonSkill(*exp.Clone(), con, physSkills)
-	skills[enum.Heal] = conSkill.Clone()
-	skills[enum.Breath] = conSkill.Clone()
-	skills[enum.Tenacity] = conSkill.Clone()
+	conSkill := skill.NewCommonSkill(enum.Heal, *exp.Clone(), con, physSkills)
+	skills[enum.Heal] = conSkill.Clone(enum.Heal)
+	skills[enum.Breath] = conSkill.Clone(enum.Breath)
+	skills[enum.Tenacity] = conSkill.Clone(enum.Tenacity)
 
 	physSkills.Init(skills)
 	return physSkills
@@ -348,10 +375,10 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 		panic(errors.New("attribute not found"))
 	}
 
-	skill := skill.NewCommonSkill(*exp.Clone(), spr, spiritualSkills)
-	skills[enum.Nen] = skill.Clone()
-	skills[enum.Focus] = skill.Clone()
-	skills[enum.WillPower] = skill.Clone()
+	skill := skill.NewCommonSkill(enum.Nen, *exp.Clone(), spr, spiritualSkills)
+	skills[enum.Nen] = skill.Clone(enum.Nen)
+	skills[enum.Focus] = skill.Clone(enum.Focus)
+	skills[enum.WillPower] = skill.Clone(enum.WillPower)
 
 	spiritualSkills.Init(skills)
 	return spiritualSkills
@@ -386,7 +413,7 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 	principles := make(map[enum.PrincipleName]spiritual.NenPrinciple)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
-	principle := spiritual.NewNenPrinciple(*exp, spiritAbility)
+	principle := spiritual.NewNenPrinciple(enum.Ten, *exp, spiritAbility)
 
 	for _, name := range enum.AllNenPrincipleNames() {
 		if name == enum.Hatsu {
@@ -397,7 +424,7 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 		// 	principles[name] = *spiritual.NewNenStatus(aura, *exp.Clone(), spiritAbility)
 		// 	continue
 		// }
-		principles[name] = *principle.Clone()
+		principles[name] = *principle.Clone(name)
 	}
 	return spiritual.NewPrinciplesManager(principles, nenHexagon, hatsu)
 }
@@ -437,22 +464,28 @@ func (csf *CharacterSheetFactory) BuildSpiritAttrsBuffs() map[enum.AttributeName
 }
 
 func (csf *CharacterSheetFactory) Wrap(
-	charSheet *CharacterSheet, charClass *cc.CharacterClass,
+	charSheet *CharacterSheet,
+	charClass *cc.CharacterClass,
+	physSkExp experience.ICascadeUpgrade,
 ) *CharacterSheet {
 	for name, exp := range charClass.SkillsExps {
-		charSheet.IncreaseExpForSkill(exp, name)
+		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, skill := range charClass.JointSkills {
 		charSheet.AddJointSkill(&skill)
-	}
-	for name, exp := range charClass.ProficienciesExps {
-		charSheet.IncreaseExpForProficiency(exp, name)
 	}
 	for _, prof := range charClass.JointProficiencies {
 		charSheet.AddJointProficiency(&prof)
 	}
 	for name, exp := range charClass.AttributesExps {
-		charSheet.IncreaseExpForMentals(exp, name)
+		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
+	}
+	expTable := experience.NewExpTable(PHYSICAL_SKILLS_COEFF)
+	newExp := experience.NewExperience(expTable)
+	for name, exp := range charClass.ProficienciesExps {
+		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
+		charSheet.AddCommonProficiency(name, prof)
+		charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
 	}
 	return charSheet
 }
@@ -529,13 +562,13 @@ func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
 	talent := ability.NewTalent(*talentExp, talentLvl)
 
 	physicalExp := experience.NewExperience(experience.NewExpTable(PHYSICAL_COEFF))
-	abilities[enum.Physicals] = ability.NewAbility(*physicalExp, characterExp)
+	abilities[enum.Physicals] = ability.NewAbility(enum.Physicals, *physicalExp, characterExp)
 
 	mentalExp := experience.NewExperience(experience.NewExpTable(MENTAL_COEFF))
-	abilities[enum.Mentals] = ability.NewAbility(*mentalExp, characterExp)
+	abilities[enum.Mentals] = ability.NewAbility(enum.Mentals, *mentalExp, characterExp)
 
 	skillsExp := experience.NewExperience(experience.NewExpTable(SKILLS_COEFF))
-	abilities[enum.Skills] = ability.NewAbility(*skillsExp, characterExp)
+	abilities[enum.Skills] = ability.NewAbility(enum.Skills, *skillsExp, characterExp)
 
 	return ability.NewAbilitiesManager(characterExp, abilities, *talent)
 }
@@ -544,19 +577,19 @@ func (csf *CharacterSheetFactory) WrapHalf(
 	sheet *HalfSheet, charClass *cc.CharacterClass,
 ) *HalfSheet {
 	for name, exp := range charClass.SkillsExps {
-		sheet.IncreaseExpForSkill(exp, name)
+		sheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, skill := range charClass.JointSkills {
 		sheet.AddJointSkill(&skill)
 	}
 	for name, exp := range charClass.ProficienciesExps {
-		sheet.IncreaseExpForProficiency(exp, name)
+		sheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, prof := range charClass.JointProficiencies {
 		sheet.AddJointProficiency(&prof)
 	}
 	for name, exp := range charClass.AttributesExps {
-		sheet.IncreaseExpForMentals(exp, name)
+		sheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
 	}
 	return sheet
 }

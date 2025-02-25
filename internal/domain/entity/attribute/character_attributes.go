@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type CharacterAttributes struct {
@@ -21,15 +22,18 @@ func NewCharacterAttributes(physicals, mentals, spirituals *Manager) *CharacterA
 }
 
 // TODO: resolve this
-func (ca *CharacterAttributes) IncreaseExpForMentals(points int, name enum.AttributeName) (int, error) {
+func (ca *CharacterAttributes) IncreaseExpForMentals(
+	values *experience.UpgradeCascade,
+	name enum.AttributeName,
+) error {
 	attr, err := ca.mentals.Get(name)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	// TODO: resolve CascadeUpgrade return quickly
-	attr.CascadeUpgrade(points)
+	attr.CascadeUpgrade(values)
 	// TODO: after this, return diff here
-	return 0, nil
+	return nil
 }
 
 func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, error) {

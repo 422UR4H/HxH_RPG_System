@@ -6,6 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
@@ -59,9 +60,9 @@ func (cs *CharacterSheet) GetValueForTestOfAttribute(name enum.AttributeName) (i
 }
 
 func (cs *CharacterSheet) IncreaseExpForSkill(
-	points int, name enum.SkillName,
-) (int, error) {
-	return cs.skill.IncreaseExp(points, name)
+	values *experience.UpgradeCascade, name enum.SkillName,
+) error {
+	return cs.skill.IncreaseExp(values, name)
 }
 
 // AddJointSkill only supports physical skills yet
@@ -83,28 +84,28 @@ func (cs *CharacterSheet) GetPhysJointSkills() map[string]skill.JointSkill {
 }
 
 func (cs *CharacterSheet) IncreaseExpForPrinciple(
-	points int, name enum.PrincipleName,
-) (int, error) {
-	return cs.principle.IncreaseExpByPrinciple(name, points)
+	values *experience.UpgradeCascade, name enum.PrincipleName,
+) error {
+	return cs.principle.IncreaseExpByPrinciple(name, values)
 }
 
 func (cs *CharacterSheet) IncreaseExpForCategory(
-	points int, name enum.CategoryName,
-) (int, error) {
-	return cs.principle.IncreaseExpByCategory(name, points)
+	values *experience.UpgradeCascade, name enum.CategoryName,
+) error {
+	return cs.principle.IncreaseExpByCategory(name, values)
 }
 
 func (cs *CharacterSheet) IncreaseExpForProficiency(
-	points int, name enum.WeaponName,
-) (int, error) {
-	return cs.proficiency.IncreaseExp(points, name)
+	values *experience.UpgradeCascade, name enum.WeaponName,
+) error {
+	return cs.proficiency.IncreaseExp(values, name)
 }
 
 // TODO: resolve this
 func (cs *CharacterSheet) IncreaseExpForMentals(
-	points int, name enum.AttributeName,
-) (int, error) {
-	return cs.attribute.IncreaseExpForMentals(points, name)
+	values *experience.UpgradeCascade, name enum.AttributeName,
+) error {
+	return cs.attribute.IncreaseExpForMentals(values, name)
 }
 
 func (cs *CharacterSheet) AddJointProficiency(
@@ -229,7 +230,7 @@ func (cs *CharacterSheet) ToString() string {
 	skillsExp := cs.skill.GetPhysicalsExpPoints()
 	skillsCurrExp := cs.skill.GetPhysicalsCurrentExp()
 	skillsNextLvlExp := cs.skill.GetPhysicalsNextLvlBaseExp()
-	sortSkillNames := []enum.SkillName{
+	sortedSkillNames := []enum.SkillName{
 		enum.Vitality, enum.Energy, enum.Defense,
 		enum.Push, enum.Grab, enum.CarryCapacity,
 		enum.Velocity, enum.Accelerate, enum.Brake,
@@ -240,7 +241,7 @@ func (cs *CharacterSheet) ToString() string {
 		enum.Tact, enum.Taste, enum.Balance,
 		enum.Heal, enum.Breath, enum.Tenacity,
 	}
-	for _, name := range sortSkillNames {
+	for _, name := range sortedSkillNames {
 		lvl := skillsLvl[name]
 		exp := skillsExp[name]
 		if lvl == 0 && lvl == exp {
@@ -297,6 +298,37 @@ func (cs *CharacterSheet) ToString() string {
 			status.GetCurrent(),
 			valueWidth, status.GetMax())
 	}
+	sheet += "-----------------------------------------------------------\n"
+
+	profLvl := cs.proficiency.GetCommonsLevel()
+	profExp := cs.proficiency.GetCommonsExpPoints()
+	profCurrExp := cs.proficiency.GetCommonsCurrentExp()
+	profNextLvlExp := cs.proficiency.GetCommonsNextLvlBaseExp()
+	profNames := cs.proficiency.GetWeapons()
+
+	for _, name := range profNames {
+		lvl := profLvl[name]
+		exp := profExp[name]
+		currExp := profCurrExp[name]
+		nextLvlExp := profNextLvlExp[name]
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name.String(),
+			valueWidth, lvl,
+			valueWidth, exp,
+			currExp,
+			valueWidth, nextLvlExp)
+	}
+
+	jointProfs := cs.proficiency.GetJointProficiencies()
+	for name, prof := range jointProfs {
+		sheet += fmt.Sprintf("%-*s Lvl: %-*d | Exp Total: %-*d | Exp: %d / %-*d\n",
+			nameWidth, name,
+			valueWidth, prof.GetLevel(),
+			valueWidth, prof.GetExpPoints(),
+			prof.GetCurrentExp(),
+			valueWidth, prof.GetNextLvlBaseExp())
+	}
+
 	sheet += "===========================================================\n"
 	return sheet
 }

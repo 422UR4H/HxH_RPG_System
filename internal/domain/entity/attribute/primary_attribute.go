@@ -2,27 +2,38 @@ package attribute
 
 import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 type PrimaryAttribute struct {
 	points  int
+	name    enum.AttributeName
 	exp     experience.Exp
 	ability ability.IAbility
 	buff    *int
 }
 
 func NewPrimaryAttribute(
+	name enum.AttributeName,
 	exp experience.Exp,
 	ability ability.IAbility,
 	buff *int,
 ) *PrimaryAttribute {
-	return &PrimaryAttribute{exp: exp, ability: ability, points: 0, buff: buff}
+	return &PrimaryAttribute{
+		name: name, exp: exp, ability: ability, points: 0, buff: buff,
+	}
 }
 
-func (pa *PrimaryAttribute) CascadeUpgrade(exp int) {
-	pa.exp.IncreasePoints(exp)
-	pa.ability.CascadeUpgrade(exp)
+func (pa *PrimaryAttribute) CascadeUpgrade(values *experience.UpgradeCascade) {
+	pa.exp.IncreasePoints(values.GetExp())
+	pa.ability.CascadeUpgrade(values)
+
+	values.Attributes[pa.name] = experience.AttributeCascade{
+		Exp:   pa.GetExpPoints(),
+		Lvl:   pa.GetLevel(),
+		Power: pa.GetPower(),
+	}
 }
 
 func (pa *PrimaryAttribute) GetPower() int {
@@ -57,6 +68,10 @@ func (pa *PrimaryAttribute) GetLevel() int {
 	return pa.exp.GetLevel()
 }
 
-func (pa *PrimaryAttribute) Clone(buff *int) *PrimaryAttribute {
-	return NewPrimaryAttribute(*pa.exp.Clone(), pa.ability, buff)
+func (pa *PrimaryAttribute) GetName() enum.AttributeName {
+	return pa.name
+}
+
+func (pa *PrimaryAttribute) Clone(name enum.AttributeName, buff *int) *PrimaryAttribute {
+	return NewPrimaryAttribute(name, *pa.exp.Clone(), pa.ability, buff)
 }

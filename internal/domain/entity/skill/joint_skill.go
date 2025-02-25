@@ -49,11 +49,18 @@ func (js *JointSkill) IsInitialized() bool {
 	return js.abilitySkillsExp != nil
 }
 
-func (js *JointSkill) CascadeUpgradeTrigger(exp int) int {
-	diff := js.exp.IncreasePoints(exp)
-	js.attribute.CascadeUpgrade(exp)
-	js.abilitySkillsExp.CascadeUpgrade(exp * len(js.commonSkills))
-	return diff
+func (js *JointSkill) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	exp := values.GetExp()
+	js.exp.IncreasePoints(exp)
+	js.attribute.CascadeUpgrade(values)
+
+	values.SetExp(exp * len(js.commonSkills))
+	values.Skills[js.name] = experience.SkillCascade{
+		Lvl:     js.GetLevel(),
+		Exp:     js.GetCurrentExp(),
+		TestVal: js.GetValueForTest(),
+	}
+	js.abilitySkillsExp.CascadeUpgrade(values)
 }
 
 func (js *JointSkill) GetValueForTest() int {

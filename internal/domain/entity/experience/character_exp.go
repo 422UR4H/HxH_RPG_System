@@ -10,8 +10,9 @@ func NewCharacterExp(exp Exp) *CharacterExp {
 	return &CharacterExp{exp: exp}
 }
 
-func (ce *CharacterExp) EndCascadeUpgrade(exp int) {
-	ce.exp.IncreasePoints(exp)
+func (ce *CharacterExp) EndCascadeUpgrade(values *UpgradeCascade) {
+	ce.exp.IncreasePoints(values.GetExp())
+	values.CharacterExp = ce
 }
 
 func (ce *CharacterExp) IncreaseCharacterPoints(pts int) {

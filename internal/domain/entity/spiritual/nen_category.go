@@ -19,10 +19,15 @@ func NewNenCategory(
 	return &NenCategory{exp: exp, name: name, hatsu: hatsu}
 }
 
-func (nc *NenCategory) CascadeUpgradeTrigger(exp int) int {
-	diff := nc.exp.IncreasePoints(exp)
-	nc.hatsu.CascadeUpgrade(exp)
-	return diff
+func (nc *NenCategory) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	nc.exp.IncreasePoints(values.GetExp())
+	nc.hatsu.CascadeUpgrade(values)
+
+	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
+		Lvl:     nc.GetLevel(),
+		Exp:     nc.GetCurrentExp(),
+		TestVal: nc.GetValueForTest(),
+	}
 }
 
 func (nc *NenCategory) GetNextLvlAggregateExp() int {
@@ -42,7 +47,15 @@ func (nc *NenCategory) GetExpPoints() int {
 }
 
 func (nc *NenCategory) GetLevel() int {
-	return int(float64(nc.exp.GetLevel()) * nc.hatsu.GetPercentOf(nc.name) / 100.0)
+	return nc.exp.GetLevel()
+}
+
+func (nc *NenCategory) GetValueForTest() int {
+	return int(float64(nc.GetLevel()) * nc.hatsu.GetPercentOf(nc.name) / 100.0)
+}
+
+func (nc *NenCategory) GetName() enum.CategoryName {
+	return nc.name
 }
 
 func (nc *NenCategory) Clone(name enum.CategoryName) *NenCategory {

@@ -49,7 +49,10 @@ func InitCharacterClasses() {
 		if err != nil {
 			fmt.Println(err)
 		}
-		newClass := factory.Build(profile, set, &class)
+		newClass, err := factory.Build(profile, set, &class)
+		if err != nil {
+			fmt.Println(err)
+		}
 		charClassSheets[name] = newClass
 		// uncomment to print all character classes
 		fmt.Println(newClass.ToString())

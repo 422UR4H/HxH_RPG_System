@@ -2,24 +2,28 @@ package skill
 
 import (
 	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
-	exp "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	status "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 
 type PassiveSkill struct {
-	exp              exp.Exp
+	name             enum.SkillName
+	exp              experience.Exp
 	attribute        attr.IGameAttribute
-	abilitySkillsExp exp.IEndCascadeUpgrade
+	abilitySkillsExp experience.IEndCascadeUpgrade
 	status           status.IStatusBar
 }
 
 func NewPassiveSkill(
+	name enum.SkillName,
 	status status.IStatusBar,
-	exp exp.Exp,
+	exp experience.Exp,
 	attribute attr.IGameAttribute,
-	abilitySkillsExp exp.IEndCascadeUpgrade) *PassiveSkill {
+	abilitySkillsExp experience.IEndCascadeUpgrade) *PassiveSkill {
 
 	skill := &PassiveSkill{
+		name:             name,
 		exp:              exp,
 		status:           status,
 		attribute:        attribute,
@@ -29,13 +33,22 @@ func NewPassiveSkill(
 	return skill
 }
 
-func (ps *PassiveSkill) CascadeUpgradeTrigger(exp int) int {
-	diff := ps.exp.IncreasePoints(exp)
-	ps.attribute.CascadeUpgrade(exp)
-	ps.abilitySkillsExp.EndCascadeUpgrade(exp)
+func (ps *PassiveSkill) CascadeUpgradeTrigger(
+	values *experience.UpgradeCascade,
+) {
+	diff := ps.exp.IncreasePoints(values.GetExp())
+	ps.attribute.CascadeUpgrade(values)
+	ps.abilitySkillsExp.EndCascadeUpgrade(values)
 
-	ps.status.Upgrade(ps.exp.GetLevel(), ps.attribute)
-	return diff
+	if diff != 0 {
+		ps.status.Upgrade(ps.exp.GetLevel())
+	}
+
+	values.Skills[ps.name.String()] = experience.SkillCascade{
+		Lvl:     ps.GetLevel(),
+		Exp:     ps.GetCurrentExp(),
+		TestVal: ps.GetValueForTest(),
+	}
 }
 
 func (ps *PassiveSkill) GetValueForTest() int {
@@ -60,6 +73,10 @@ func (ps *PassiveSkill) GetExpPoints() int {
 
 func (ps *PassiveSkill) GetLevel() int {
 	return ps.exp.GetLevel()
+}
+
+func (ps *PassiveSkill) GetName() enum.SkillName {
+	return ps.name
 }
 
 // func (ps *StatusSkill) Clone(points int) *StatusSkill {

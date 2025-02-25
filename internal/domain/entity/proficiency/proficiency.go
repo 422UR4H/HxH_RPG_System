@@ -1,31 +1,37 @@
 package proficiency
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
 
 // TODO: upgrade adding strike (GetStrike) and hit
 type Proficiency struct {
+	weapon        enum.WeaponName
 	exp           experience.Exp
 	physSkillsExp experience.ICascadeUpgrade
 }
 
 func NewProficiency(
+	weapon enum.WeaponName,
 	exp experience.Exp,
-	// weapon enum.WeaponName,
 	physSkExp experience.ICascadeUpgrade,
 ) *Proficiency {
 	return &Proficiency{
-		exp: exp,
-		// weapon:        weapon,
+		weapon:        weapon,
+		exp:           exp,
 		physSkillsExp: physSkExp,
 	}
 }
 
-func (p *Proficiency) CascadeUpgradeTrigger(exp int) int {
-	diff := p.exp.IncreasePoints(exp)
-	p.physSkillsExp.CascadeUpgrade(exp)
-	return diff
+func (p *Proficiency) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
+	p.exp.IncreasePoints(values.GetExp())
+	p.physSkillsExp.CascadeUpgrade(values)
+
+	values.Proficiency[p.weapon.String()] = experience.ProficiencyCascade{
+		Lvl: p.GetLevel(),
+		Exp: p.GetCurrentExp(),
+	}
 }
 
 // TODO: validate this
@@ -51,4 +57,8 @@ func (p *Proficiency) GetExpPoints() int {
 
 func (p *Proficiency) GetLevel() int {
 	return p.exp.GetLevel()
+}
+
+func (p *Proficiency) GetWeapon() enum.WeaponName {
+	return p.weapon
 }

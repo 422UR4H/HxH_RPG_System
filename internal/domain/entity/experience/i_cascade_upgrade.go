@@ -1,6 +1,6 @@
 package experience
 
 type ICascadeUpgrade interface {
-	CascadeUpgrade(exp int)
+	CascadeUpgrade(values *UpgradeCascade)
 	GetLevel() int
 }

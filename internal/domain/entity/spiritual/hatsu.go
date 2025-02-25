@@ -49,17 +49,27 @@ func (h *Hatsu) SetCategoryPercents(
 	return nil
 }
 
-func (h *Hatsu) CascadeUpgrade(exp int) {
-	h.exp.IncreasePoints(exp)
-	h.ability.CascadeUpgrade(exp)
+func (h *Hatsu) CascadeUpgrade(values *experience.UpgradeCascade) {
+	h.exp.IncreasePoints(values.GetExp())
+	h.ability.CascadeUpgrade(values)
+
+	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
+		Lvl:     h.GetLevel(),
+		Exp:     h.GetCurrentExp(),
+		TestVal: h.GetValueForTest(),
+	}
 }
 
-func (h *Hatsu) IncreaseExp(points int, name enum.CategoryName) (int, error) {
+func (h *Hatsu) IncreaseExp(
+	values *experience.UpgradeCascade,
+	name enum.CategoryName,
+) error {
 	category, err := h.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s", err, "failed to increase exp")
+		return fmt.Errorf("%w: %s", err, "failed to increase exp")
 	}
-	return category.CascadeUpgradeTrigger(points), nil
+	category.CascadeUpgradeTrigger(values)
+	return nil
 }
 
 func (h *Hatsu) Get(name enum.CategoryName) (ICategory, error) {
@@ -151,6 +161,14 @@ func (h *Hatsu) GetCategoriesLevel() map[enum.CategoryName]int {
 	lvlList := make(map[enum.CategoryName]int)
 	for name, category := range h.categories {
 		lvlList[name] = category.GetLevel()
+	}
+	return lvlList
+}
+
+func (h *Hatsu) GetCategoriesTestValue() map[enum.CategoryName]int {
+	lvlList := make(map[enum.CategoryName]int)
+	for name, category := range h.categories {
+		lvlList[name] = category.GetValueForTest()
 	}
 	return lvlList
 }
