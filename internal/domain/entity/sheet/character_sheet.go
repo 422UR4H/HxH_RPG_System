@@ -62,7 +62,9 @@ func (cs *CharacterSheet) GetValueForTestOfAttribute(name enum.AttributeName) (i
 func (cs *CharacterSheet) IncreaseExpForSkill(
 	values *experience.UpgradeCascade, name enum.SkillName,
 ) error {
-	return cs.skill.IncreaseExp(values, name)
+	err := cs.skill.IncreaseExp(values, name)
+	cs.status.Upgrade()
+	return err
 }
 
 // AddJointSkill only supports physical skills yet
@@ -86,26 +88,34 @@ func (cs *CharacterSheet) GetPhysJointSkills() map[string]skill.JointSkill {
 func (cs *CharacterSheet) IncreaseExpForPrinciple(
 	values *experience.UpgradeCascade, name enum.PrincipleName,
 ) error {
-	return cs.principle.IncreaseExpByPrinciple(name, values)
+	err := cs.principle.IncreaseExpByPrinciple(name, values)
+	cs.status.Upgrade()
+	return err
 }
 
 func (cs *CharacterSheet) IncreaseExpForCategory(
 	values *experience.UpgradeCascade, name enum.CategoryName,
 ) error {
-	return cs.principle.IncreaseExpByCategory(name, values)
+	err := cs.principle.IncreaseExpByCategory(name, values)
+	cs.status.Upgrade()
+	return err
 }
 
 func (cs *CharacterSheet) IncreaseExpForProficiency(
 	values *experience.UpgradeCascade, name enum.WeaponName,
 ) error {
-	return cs.proficiency.IncreaseExp(values, name)
+	err := cs.proficiency.IncreaseExp(values, name)
+	cs.status.Upgrade()
+	return err
 }
 
 // TODO: resolve this
 func (cs *CharacterSheet) IncreaseExpForMentals(
 	values *experience.UpgradeCascade, name enum.AttributeName,
 ) error {
-	return cs.attribute.IncreaseExpForMentals(values, name)
+	err := cs.attribute.IncreaseExpForMentals(values, name)
+	cs.status.Upgrade()
+	return err
 }
 
 func (cs *CharacterSheet) AddJointProficiency(
