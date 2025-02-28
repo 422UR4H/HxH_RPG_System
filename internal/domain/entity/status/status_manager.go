@@ -23,6 +23,17 @@ func (sm *Manager) Get(name enum.StatusName) (IStatusBar, error) {
 	return nil, errors.New("status not found")
 }
 
+func (sm *Manager) Upgrade() error {
+	for name := range sm.status {
+		status, err := sm.Get(name)
+		if err != nil {
+			return err
+		}
+		status.Upgrade()
+	}
+	return nil
+}
+
 func (sm *Manager) GetMaxOf(name enum.StatusName) (int, error) {
 	status, err := sm.Get(name)
 	if err != nil {
