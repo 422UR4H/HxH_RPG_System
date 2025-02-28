@@ -62,11 +62,9 @@ func (csf *CharacterSheetFactory) Build(
 		physAttrs, mentalAttrs, spiritAttrs,
 	)
 
-	status := csf.BuildStatusManager()
-
 	skills, _ := abilities.Get(enum.Skills)
 	physSkills := csf.BuildPhysSkills(
-		*status, skills, physAbility, physAttrs,
+		skills, physAbility, physAttrs,
 	)
 	mentalSkills := csf.BuildMentalSkills(
 		skills, mentalAbility, mentalAttrs,
@@ -85,10 +83,10 @@ func (csf *CharacterSheetFactory) Build(
 		categoryPercents = nenHexagon.GetCategoryPercents()
 	}
 	hatsu := csf.BuildHatsu(spiritualAbility, categoryPercents)
-	aura, _ := status.Get(enum.Aura)
+	// aura, _ := status.Get(enum.Aura)
 
 	spiritPrinciples := csf.BuildSpiritPrinciples(
-		aura, spiritualAbility, nenHexagon, hatsu,
+		spiritualAbility, nenHexagon, hatsu,
 	)
 
 	proficiency := proficiency.NewManager()
@@ -97,6 +95,8 @@ func (csf *CharacterSheetFactory) Build(
 	if charClass != nil {
 		className = charClass.GetName()
 	}
+	status := csf.BuildStatusManager(abilities, characterAttrs, characterSkills)
+
 	charSheet := NewCharacterSheet(
 		profile,
 		*abilities,
@@ -234,18 +234,29 @@ func (csf *CharacterSheetFactory) BuildSpiritualAttrs(
 	)
 }
 
-func (csf *CharacterSheetFactory) BuildStatusManager() *status.Manager {
+func (csf *CharacterSheetFactory) BuildStatusManager(
+	abilities *ability.Manager,
+	attrs *attribute.CharacterAttributes,
+	skills *skill.CharacterSkills,
+) *status.Manager {
 	status_bars := make(map[enum.StatusName]status.IStatusBar)
 
-	status_bars[enum.Stamina] = status.NewStatusBar()
-	status_bars[enum.Health] = status.NewStatusBar()
-	status_bars[enum.Aura] = status.NewStatusBar()
+	physAbility, _ := abilities.Get(enum.Physicals)
+	resistance, _ := attrs.Get(enum.Resistance)
+	vitality, _ := skills.Get(enum.Vitality)
+	status_bars[enum.Health] = status.NewStatusBar(physAbility, resistance, vitality)
+
+	energy, _ := skills.Get(enum.Energy)
+	status_bars[enum.Stamina] = status.NewStatusBar(physAbility, resistance, energy)
+
+	// TODO: decide and implement
+	// spiritAbility, _ := abilities.Get(enum.Spirituals)
+	// status_bars[enum.Aura] = status.NewStatusBar()
 
 	return status.NewStatusManager(status_bars)
 }
 
 func (csf *CharacterSheetFactory) BuildPhysSkills(
-	status status.Manager,
 	skillsExp experience.ICascadeUpgrade,
 	physAbilityExp experience.ICascadeUpgrade,
 	physAttrs *attribute.Manager,
@@ -260,21 +271,10 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-	health, _ := status.Get(enum.Health)
-	vitSkill := skill.NewPassiveSkill(
-		enum.Vitality, health, *exp.Clone(), res, physSkills,
-	)
-	skills[enum.Vitality] = vitSkill
-
-	stamina, _ := status.Get(enum.Stamina)
-	engSkill := skill.NewPassiveSkill(
-		enum.Energy, stamina, *exp.Clone(), res, physSkills,
-	)
-	skills[enum.Energy] = engSkill
-
-	skills[enum.Defense] = skill.NewCommonSkill(
-		enum.Defense, *exp.Clone(), res, physSkills,
-	)
+	resSkill := skill.NewCommonSkill(enum.Vitality, *exp.Clone(), res, physSkills)
+	skills[enum.Vitality] = resSkill.Clone(enum.Vitality)
+	skills[enum.Energy] = resSkill.Clone(enum.Energy)
+	skills[enum.Defense] = resSkill.Clone(enum.Defense)
 
 	str, err := physAttrs.Get(enum.Strength)
 	if err != nil {
@@ -374,7 +374,6 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	if err != nil {
 		panic(errors.New("attribute not found"))
 	}
-
 	skill := skill.NewCommonSkill(enum.Nen, *exp.Clone(), spr, spiritualSkills)
 	skills[enum.Nen] = skill.Clone(enum.Nen)
 	skills[enum.Focus] = skill.Clone(enum.Focus)
@@ -404,7 +403,6 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 }
 
 func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
-	aura status.IStatusBar,
 	spiritAbility ability.IAbility,
 	nenHexagon *spiritual.NenHexagon,
 	hatsu *spiritual.Hatsu,
@@ -517,11 +515,9 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 		physAttrs, mentalAttrs, nil,
 	)
 
-	status := csf.BuildStatusManager()
-
 	skills, _ := abilities.Get(enum.Skills)
 	physSkills := csf.BuildPhysSkills(
-		*status, skills, physAbility, physAttrs,
+		skills, physAbility, physAttrs,
 	)
 	mentalSkills := csf.BuildMentalSkills(
 		skills, mentalAbility, mentalAttrs,
@@ -536,6 +532,9 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	if charClass != nil {
 		className = charClass.GetName()
 	}
+	// TODO: fix after add aura (MOP - spiritual status)
+	status := csf.BuildStatusManager(abilities, characterAttrs, characterSkills)
+
 	sheet := NewHalfSheet(
 		profile,
 		*abilities,

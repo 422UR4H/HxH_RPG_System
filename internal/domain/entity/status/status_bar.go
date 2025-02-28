@@ -1,25 +1,39 @@
 package status
 
 import (
-	"fmt"
-
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 )
 
 type Bar struct {
+	ability   ability.IAbility
+	attribute attribute.IGameAttribute
+	skill     skill.ISkill
+
 	min  int
 	curr int
 	max  int
 }
 
 // TODO: implement one for each status bar (hp, sp, ap)
-func NewStatusBar() *Bar {
-	points := 0
-	return &Bar{
-		min:  points,
-		curr: points,
-		max:  points,
+// cada status terá seu próprio construtor por onde serão injetadas
+// as referências utilizadas para calcular seu valor máximo
+// cada status também terá sua própria implementação de upgrade
+// onde as funções de refs injetadas serão utilizadas para o cálculo
+func NewStatusBar(
+	ability ability.IAbility,
+	attribute attribute.IGameAttribute,
+	skill skill.ISkill,
+) *Bar {
+	bar := &Bar{
+		ability:   ability,
+		attribute: attribute,
+		skill:     skill,
 	}
+	bar.Upgrade()
+
+	return bar
 }
 
 func (b *Bar) IncreaseAt(value int) int {
@@ -42,7 +56,7 @@ func (b *Bar) DecreaseAt(value int) int {
 	return b.curr
 }
 
-func (b *Bar) Upgrade(skLvl int, attr attribute.IGameAttribute) {
+func (b *Bar) Upgrade() {
 	// old formula
 	// this.hpMax = (this.getProHp() + this.modCon + this.coefHp) * this.lvl + this.valCon + Ficha.getHP_INICIAL();
 	// new formula -> attrBonus * (skLvl + attrLvl + attrPoints)
@@ -50,11 +64,9 @@ func (b *Bar) Upgrade(skLvl int, attr attribute.IGameAttribute) {
 	// TODO: Implement Min for hit_points
 	// Min = generateStatus.GetLvl();
 	// TODO: check how the buff interferes here
-	fmt.Println("Upgrade status bar")
-	fmt.Printf("skLvl: %d, attrLevel: %d, attrPoints: %d, attrBonus: %f\n", skLvl, attr.GetLevel(), attr.GetPoints(), attr.GetAbilityBonus())
-
-	coeff := float64(skLvl + attr.GetLevel() + attr.GetPoints())
-	maxVal := int(coeff * attr.GetAbilityBonus())
+	coeff := float64(b.skill.GetLevel() + b.attribute.GetValue())
+	bonus := b.ability.GetBonus()
+	maxVal := int(coeff * bonus)
 	if b.curr == b.max {
 		b.curr = maxVal
 	}
