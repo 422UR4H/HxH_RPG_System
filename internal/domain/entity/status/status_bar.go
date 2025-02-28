@@ -6,6 +6,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 )
 
+const BASE_VALUE = 20
+
 type Bar struct {
 	ability   ability.IAbility
 	attribute attribute.IGameAttribute
@@ -38,21 +40,13 @@ func NewStatusBar(
 
 func (b *Bar) IncreaseAt(value int) int {
 	temp := b.curr + value
-	if temp > b.max {
-		b.curr = b.max
-	} else {
-		b.curr = temp
-	}
+	b.curr = min(temp, b.max)
 	return b.curr
 }
 
 func (b *Bar) DecreaseAt(value int) int {
 	temp := b.curr - value
-	if temp < b.min {
-		b.curr = b.min
-	} else {
-		b.curr = temp
-	}
+	b.curr = max(temp, b.min)
 	return b.curr
 }
 
@@ -66,7 +60,7 @@ func (b *Bar) Upgrade() {
 	// TODO: check how the buff interferes here
 	coeff := float64(b.skill.GetLevel() + b.attribute.GetValue())
 	bonus := b.ability.GetBonus()
-	maxVal := int(coeff * bonus)
+	maxVal := int(coeff*bonus) + BASE_VALUE
 	if b.curr == b.max {
 		b.curr = maxVal
 	}
