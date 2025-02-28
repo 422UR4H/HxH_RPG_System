@@ -68,6 +68,10 @@ func (ma *MiddleAttribute) GetPoints() int {
 	return int(math.Round(float64(points) / float64(len(ma.primaryAttrs))))
 }
 
+func (ma *MiddleAttribute) GetValue() int {
+	return ma.GetPoints() + ma.GetLevel()
+}
+
 func (ma *MiddleAttribute) GetPower() int {
 	return ma.GetPoints() + ma.GetLevel() + int(ma.GetAbilityBonus()) + *ma.buff
 }

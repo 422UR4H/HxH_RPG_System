@@ -11,5 +11,6 @@ type IGameAttribute interface {
 	GetExpPoints() int
 	GetPoints() int
 	GetPower() int
+	GetValue() int
 	GetAbilityBonus() float64
 }

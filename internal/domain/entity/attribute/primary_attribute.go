@@ -36,8 +36,12 @@ func (pa *PrimaryAttribute) CascadeUpgrade(values *experience.UpgradeCascade) {
 	}
 }
 
+func (pa *PrimaryAttribute) GetValue() int {
+	return pa.points + pa.GetLevel()
+}
+
 func (pa *PrimaryAttribute) GetPower() int {
-	return pa.points + pa.GetLevel() + int(pa.GetAbilityBonus()) + *pa.buff
+	return pa.GetValue() + int(pa.GetAbilityBonus()) + *pa.buff
 }
 
 func (pa *PrimaryAttribute) GetPoints() int {
