@@ -244,14 +244,14 @@ func (csf *CharacterSheetFactory) BuildStatusManager(
 	physAbility, _ := abilities.Get(enum.Physicals)
 	resistance, _ := attrs.Get(enum.Resistance)
 	vitality, _ := skills.Get(enum.Vitality)
-	status_bars[enum.Health] = status.NewStatusBar(physAbility, resistance, vitality)
+	status_bars[enum.Health] = status.NewHealthPoints(physAbility, resistance, vitality)
 
 	energy, _ := skills.Get(enum.Energy)
-	status_bars[enum.Stamina] = status.NewStatusBar(physAbility, resistance, energy)
+	status_bars[enum.Stamina] = status.NewStaminaPoints(physAbility, resistance, energy)
 
 	// TODO: decide and implement
-	// spiritAbility, _ := abilities.Get(enum.Spirituals)
-	// status_bars[enum.Aura] = status.NewStatusBar()
+	// someSkill, _ := skills.Get(enum.SomeSkill)
+	// status_bars[enum.Aura] = status.NewStatusBar(someSkill)
 
 	return status.NewStatusManager(status_bars)
 }
