@@ -1,6 +1,8 @@
 package charactersheet
 
 import (
+	"fmt"
+
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
@@ -41,6 +43,13 @@ type CreateCharacterSheetInput struct {
 func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	input CreateCharacterSheetInput,
 ) (*sheet.CharacterSheet, error) {
+	for _, charClass := range uc.characterClasses {
+		if charClass.GetName().String() == input.Profile.NickName {
+			return nil, fmt.Errorf("nickname is not allowed")
+		}
+	}
+	// TODO: validate input.Profile.NickName in repo
+
 	charClass := uc.characterClasses[input.CharacterClass]
 	skillsExps := input.SkillsExps
 	if err := charClass.ValidateSkills(skillsExps); err != nil {
