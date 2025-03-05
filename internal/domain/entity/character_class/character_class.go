@@ -2,6 +2,7 @@ package characterclass
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
@@ -76,7 +77,7 @@ func (cc *CharacterClass) ValidateSkills(
 	skills map[enum.SkillName]int,
 ) error {
 	d := *cc.Distribution
-	skillPts := d.SkillPoints
+	skillPts := slices.Clone(d.SkillPoints)
 	if len(skillPts) != len(skills) {
 		return fmt.Errorf(
 			"skills count is not exact in character class %s", cc.GetName(),
@@ -89,19 +90,18 @@ func (cc *CharacterClass) ValidateSkills(
 			)
 		}
 	}
-	for name, exp := range skills {
+	for _, exp := range skills {
 		for i, points := range skillPts {
 			if exp == points {
-				skillPts = append(skillPts[:i], skillPts[i+1:]...)
-				delete(skills, name)
+				skillPts = slices.Delete(skillPts, i, i+1)
 				break
 			}
 		}
-		if len(skills) != 0 || len(skillPts) != 0 {
-			return fmt.Errorf(
-				"skills is not equals in character class %s", cc.GetName(),
-			)
-		}
+	}
+	if len(skillPts) != 0 {
+		return fmt.Errorf(
+			"skills is not equals in character class %s", cc.GetName(),
+		)
 	}
 	return nil
 }
@@ -110,7 +110,7 @@ func (cc *CharacterClass) ValidateProficiencies(
 	proficiencies map[enum.WeaponName]int,
 ) error {
 	d := *cc.Distribution
-	profPts := d.ProficiencyPoints
+	profPts := slices.Clone(d.ProficiencyPoints)
 	if len(profPts) != len(proficiencies) {
 		return fmt.Errorf(
 			"proficiencies count is not exact in character class %s", cc.GetName(),
@@ -123,19 +123,18 @@ func (cc *CharacterClass) ValidateProficiencies(
 			)
 		}
 	}
-	for name, exp := range proficiencies {
+	for _, exp := range proficiencies {
 		for i, points := range profPts {
 			if exp == points {
-				profPts = append(profPts[:i], profPts[i+1:]...)
-				delete(proficiencies, name)
+				profPts = slices.Delete(profPts, i, i+1)
 				break
 			}
 		}
-		if len(proficiencies) != 0 || len(profPts) != 0 {
-			return fmt.Errorf(
-				"proficiencies is not equals in character class %s", cc.GetName(),
-			)
-		}
+	}
+	if len(profPts) != 0 {
+		return fmt.Errorf(
+			"proficiencies is not equals in character class %s", cc.GetName(),
+		)
 	}
 	return nil
 }
@@ -143,6 +142,9 @@ func (cc *CharacterClass) ValidateProficiencies(
 func (cc *CharacterClass) ApplySkills(
 	skills map[enum.SkillName]int,
 ) {
+	if cc.SkillsExps == nil {
+		cc.SkillsExps = make(map[enum.SkillName]int)
+	}
 	for name, exp := range skills {
 		cc.SkillsExps[name] = exp
 	}
@@ -151,6 +153,9 @@ func (cc *CharacterClass) ApplySkills(
 func (cc *CharacterClass) ApplyProficiencies(
 	profs map[enum.WeaponName]int,
 ) {
+	if cc.ProficienciesExps == nil {
+		cc.ProficienciesExps = make(map[enum.WeaponName]int)
+	}
 	for name, exp := range profs {
 		cc.ProficienciesExps[name] = exp
 	}

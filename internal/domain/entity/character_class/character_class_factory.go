@@ -43,6 +43,8 @@ func BuildSwordsman() CharacterClass {
 		enum.Swordsman, "", "The Swordsman is a master of swords", "",
 	)
 	skills := map[enum.SkillName]int{
+		enum.Energy: 69,
+
 		enum.Velocity:   210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
@@ -98,6 +100,8 @@ func BuildSamurai() CharacterClass {
 	)
 	// TODO: fix exp of increase below
 	skills := map[enum.SkillName]int{
+		enum.Energy: 69,
+
 		enum.Velocity:   210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
@@ -207,6 +211,8 @@ func BuildRogue() CharacterClass {
 		enum.Rogue, "", "The Rogue excels in stealth and roguery", "",
 	)
 	skills := map[enum.SkillName]int{
+		enum.Energy: 69,
+
 		enum.Velocity:   210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
@@ -260,6 +266,8 @@ func BuildNetrunner() CharacterClass {
 		enum.Netrunner, "", "The Netrunner is a master of digital stealth and hacking", "",
 	)
 	skills := map[enum.SkillName]int{
+		enum.Energy: 69,
+
 		enum.Velocity:   127,
 		enum.Accelerate: 127,
 		enum.Brake:      69,
@@ -315,6 +323,8 @@ func BuildPirate() CharacterClass {
 		enum.Pirate, "", description, "",
 	)
 	skills := map[enum.SkillName]int{
+		enum.Energy: 69,
+
 		enum.Push:          210,
 		enum.Grab:          210,
 		enum.CarryCapacity: 210,
@@ -371,6 +381,7 @@ func BuildMercenary() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Vitality: 127,
 		enum.Defense:  127,
+		enum.Energy:   69,
 
 		enum.Push:          69,
 		enum.Grab:          69,
@@ -621,6 +632,8 @@ func BuildHunter() CharacterClass {
 		enum.Hunter, "", description, "",
 	)
 	skills := map[enum.SkillName]int{
+		enum.Energy: 69,
+
 		enum.CarryCapacity: 127,
 
 		enum.Velocity:   210,
@@ -692,6 +705,7 @@ func BuildWeaponsMaster() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Vitality: 69,
 		enum.Defense:  127,
+		enum.Energy:   69,
 
 		enum.Push:          127,
 		enum.Grab:          127,
