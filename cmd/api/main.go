@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
-	// charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
-	// "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
+	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	"github.com/ardanlabs/conf/v3"
 	"github.com/joho/godotenv"
 )
@@ -18,6 +22,11 @@ type config struct {
 	ServerReadTimeout  time.Duration `conf:"default:30s"`
 	ServerWriteTimeout time.Duration `conf:"default:30s"`
 }
+
+var characterClasses sync.Map
+
+// TODO: remove or handle after balancing
+var charClassSheets map[enum.CharacterClassName]*sheet.CharacterSheet
 
 func main() {
 	loadEnvFile()
@@ -36,20 +45,30 @@ func main() {
 	// 	panic(fmt.Errorf("error creating pg pool: %w", err))
 	// }
 
+	charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
+	initCharacterClasses()
+
 	// initialize usecases
 	// repo
-	// createCharacterSheetUC := charactersheet.NewCreateCharacterSheetUC(
+	// createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
+	// TODO: refactor below to sync.Map
 	// 	api.GetAllCharacterClasses(),
 	// 	sheet.NewCharacterSheetFactory(),
 	// )
+	listCharacterClassesUC := cc.NewListCharacterClassesUC(
+		&characterClasses,
+	)
 	// other usecases
 	chiServer := api.NewServer()
-	// characterSheetsApi := api.Api{}
+	characterSheetsApi := sheetHandler.Api{
+		// CreateCharacterSheetHandler: ,
+		ListClassesHandler: sheetHandler.ListClassesHandler(listCharacterClassesUC),
+	}
 
 	a := api.Api{
-		LivenessHandler:  api.LivenessHandler(),
-		ReadinessHandler: api.ReadinessHandler(),
-		// CharacterSheetHandler: characterSheetsApi,
+		LivenessHandler:       api.LivenessHandler(),
+		ReadinessHandler:      api.ReadinessHandler(),
+		CharacterSheetHandler: &characterSheetsApi,
 		// Logger:                chiServer.Logger,
 	}
 	a.Routes(chiServer)
@@ -68,6 +87,48 @@ func main() {
 		// TODO: remove this
 		panic(err)
 	}
+}
+
+func initCharacterClasses() {
+	factory := sheet.NewCharacterSheetFactory()
+	ccFactory := ccEntity.NewCharacterClassFactory()
+
+	for name, class := range ccFactory.Build() {
+		characterClasses.Store(name, class)
+	}
+
+	characterClasses.Range(func(key, value interface{}) bool {
+		name := key.(enum.CharacterClassName)
+		class := value.(ccEntity.CharacterClass)
+		profile := sheet.CharacterProfile{
+			NickName:         name.String(),
+			Alignment:        class.Profile.Alignment,
+			Description:      class.Profile.Description,
+			BriefDescription: class.Profile.BriefDescription,
+		}
+		set, err := sheet.NewTalentByCategorySet(
+			map[enum.CategoryName]bool{
+				enum.Reinforcement:   true,
+				enum.Transmutation:   true,
+				enum.Materialization: true,
+				enum.Specialization:  true,
+				enum.Manipulation:    true,
+				enum.Emission:        true,
+			},
+			nil,
+		)
+		if err != nil {
+			fmt.Println(err)
+		}
+		newClass, err := factory.Build(profile, set, &class)
+		if err != nil {
+			fmt.Println(err)
+		}
+		charClassSheets[name] = newClass
+		// uncomment to print all character classes
+		fmt.Println(newClass.ToString())
+		return true
+	})
 }
 
 func loadEnvFile() {
