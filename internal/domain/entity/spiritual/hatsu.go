@@ -200,3 +200,11 @@ func (h *Hatsu) GetCategoryPercents() map[enum.CategoryName]float64 {
 func (h *Hatsu) GetPercentOf(category enum.CategoryName) float64 {
 	return h.categoryPercents[category]
 }
+
+func (h *Hatsu) GetAllCategories() map[enum.CategoryName]ICategory {
+	categories := make(map[enum.CategoryName]ICategory)
+	for name, category := range h.categories {
+		categories[name] = &category
+	}
+	return categories
+}

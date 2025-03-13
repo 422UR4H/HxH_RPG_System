@@ -171,3 +171,14 @@ func (m *Manager) RemoveBuff(
 	*m.buffs[name] = 0
 	return m.buffs, nil
 }
+
+func (m *Manager) GetAllAttributes() map[enum.AttributeName]IGameAttribute {
+	attributes := make(map[enum.AttributeName]IGameAttribute)
+	for name, attr := range m.primaryAttributes {
+		attributes[name] = attr
+	}
+	for name, attr := range m.middleAttributes {
+		attributes[name] = attr
+	}
+	return attributes
+}

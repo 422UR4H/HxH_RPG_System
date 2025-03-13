@@ -3,12 +3,12 @@ package sheet
 import "time"
 
 type CharacterProfile struct {
-	NickName         string
-	FullName         string
-	Alignment        string
-	Description      string
-	BriefDescription string
-	Birthday         time.Time
+	NickName         string    `json:"nickname"`
+	FullName         string    `json:"fullname"`
+	Alignment        string    `json:"alignment"`
+	Description      string    `json:"description"`
+	BriefDescription string    `json:"brief_description"`
+	Birthday         time.Time `json:"birthday"`
 }
 
 func (cp *CharacterProfile) ToString() string {

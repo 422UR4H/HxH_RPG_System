@@ -188,6 +188,14 @@ func (m *Manager) GetBuffs() map[enum.SkillName]int {
 	return m.buffs
 }
 
+func (m *Manager) GetCommonSkills() map[enum.SkillName]ISkill {
+	skills := make(map[enum.SkillName]ISkill)
+	for name, skill := range m.skills {
+		skills[name] = skill
+	}
+	return skills
+}
+
 func (m *Manager) AddJointSkill(js *JointSkill) error {
 	if !js.IsInitialized() {
 		return fmt.Errorf("joint skill is not initialized")

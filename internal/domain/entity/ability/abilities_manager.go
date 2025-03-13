@@ -167,3 +167,11 @@ func (m *Manager) GetTalentExpPoints() int {
 func (m *Manager) GetTalentLevel() int {
 	return m.talent.GetLevel()
 }
+
+func (m *Manager) GetAllAbilities() map[enum.AbilityName]IAbility {
+	abilities := make(map[enum.AbilityName]IAbility)
+	for name, ability := range m.abilities {
+		abilities[name] = ability
+	}
+	return abilities
+}

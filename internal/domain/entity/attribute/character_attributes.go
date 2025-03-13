@@ -179,3 +179,15 @@ func (ca *CharacterAttributes) GetMentalsLevel() map[enum.AttributeName]int {
 func (ca *CharacterAttributes) GetSpiritualsLevel() map[enum.AttributeName]int {
 	return ca.spirituals.GetAttributesLevel()
 }
+
+func (ca *CharacterAttributes) GetPhysicalAttributes() map[enum.AttributeName]IGameAttribute {
+	return ca.physicals.GetAllAttributes()
+}
+
+func (ca *CharacterAttributes) GetMentalAttributes() map[enum.AttributeName]IGameAttribute {
+	return ca.mentals.GetAllAttributes()
+}
+
+func (ca *CharacterAttributes) GetSpiritualAttributes() map[enum.AttributeName]IGameAttribute {
+	return ca.spirituals.GetAllAttributes()
+}

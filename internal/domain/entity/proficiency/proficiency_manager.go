@@ -199,3 +199,11 @@ func (m *Manager) DeleteBuff(name enum.WeaponName) {
 func (m *Manager) GetBuffs() map[enum.WeaponName]int {
 	return m.buffs
 }
+
+func (m *Manager) GetCommons() map[enum.WeaponName]IProficiency {
+	proficiencies := make(map[enum.WeaponName]IProficiency)
+	for name, prof := range m.commonProficiencies {
+		proficiencies[name] = prof
+	}
+	return proficiencies
+}

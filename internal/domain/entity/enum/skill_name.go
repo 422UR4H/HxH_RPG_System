@@ -1,5 +1,7 @@
 package enum
 
+import "fmt"
+
 type SkillName uint8
 
 const (
@@ -133,4 +135,73 @@ func (sn SkillName) String() string {
 		return "WillPower"
 	}
 	return "Unknown"
+}
+
+func SkillNameFrom(s string) (SkillName, error) {
+	switch s {
+	case "Vitality":
+		return Vitality, nil
+	case "Energy":
+		return Energy, nil
+	case "Defense":
+		return Defense, nil
+	case "Push":
+		return Push, nil
+	case "Grab":
+		return Grab, nil
+	case "CarryCapacity":
+		return CarryCapacity, nil
+	case "Velocity":
+		return Velocity, nil
+	case "Accelerate":
+		return Accelerate, nil
+	case "Brake":
+		return Brake, nil
+	case "AttackSpeed":
+		return AttackSpeed, nil
+	case "Repel":
+		return Repel, nil
+	case "Feint":
+		return Feint, nil
+	case "Acrobatics":
+		return Acrobatics, nil
+	case "Evasion":
+		return Evasion, nil
+	case "Sneak":
+		return Sneak, nil
+	case "Reflex":
+		return Reflex, nil
+	case "Accuracy":
+		return Accuracy, nil
+	case "Stealth":
+		return Stealth, nil
+	case "Vision":
+		return Vision, nil
+	case "Hearing":
+		return Hearing, nil
+	case "Smell":
+		return Smell, nil
+	case "Tact":
+		return Tact, nil
+	case "Taste":
+		return Taste, nil
+	case "Balance":
+		return Balance, nil
+	case "Heal":
+		return Heal, nil
+	case "Breath":
+		return Breath, nil
+	case "Tenacity":
+		return Tenacity, nil
+	case "Intuition":
+		return Intuition, nil
+	case "Nen":
+		return Nen, nil
+	case "Focus":
+		return Focus, nil
+	case "WillPower":
+		return WillPower, nil
+	default:
+		return 0, fmt.Errorf("invalid skill name: %s", s)
+	}
 }

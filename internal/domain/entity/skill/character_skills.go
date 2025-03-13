@@ -168,3 +168,15 @@ func (cs *CharacterSkills) GetMentalsLevel() map[enum.SkillName]int {
 func (cs *CharacterSkills) GetSpiritualsLevel() map[enum.SkillName]int {
 	return cs.spirituals.GetSkillsLevel()
 }
+
+func (cs *CharacterSkills) GetPhysicalSkills() map[enum.SkillName]ISkill {
+	return cs.physicals.GetCommonSkills()
+}
+
+func (cs *CharacterSkills) GetMentalSkills() map[enum.SkillName]ISkill {
+	return cs.mentals.GetCommonSkills()
+}
+
+func (cs *CharacterSkills) GetSpiritualSkills() map[enum.SkillName]ISkill {
+	return cs.spirituals.GetCommonSkills()
+}

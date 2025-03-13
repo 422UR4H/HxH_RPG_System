@@ -47,10 +47,6 @@ func NewCharacterSheet(
 	}
 }
 
-func (cs *CharacterSheet) GetClass() enum.CharacterClassName {
-	return *cs.charClass
-}
-
 func (cs *CharacterSheet) GetValueForTestOfSkill(name enum.SkillName) (int, error) {
 	return cs.skill.GetValueForTestOf(name)
 }
@@ -134,6 +130,22 @@ func (cs *CharacterSheet) AddCommonProficiency(
 	return cs.proficiency.AddCommon(name, proficiency)
 }
 
+func (cs *CharacterSheet) GetCurrHexValue() *int {
+	val, err := cs.principle.GetCurrHexValue()
+	if err != nil {
+		return nil
+	}
+	return &val
+}
+
+func (cs *CharacterSheet) GetCharacterClass() enum.CharacterClassName {
+	return *cs.charClass
+}
+
+func (cs *CharacterSheet) GetCategoryName() (enum.CategoryName, error) {
+	return cs.principle.GetNenCategoryName()
+}
+
 func (cs *CharacterSheet) GetMaxOfStatus(name enum.StatusName) (int, error) {
 	return cs.status.GetMaxOf(name)
 }
@@ -182,8 +194,96 @@ func (cs *CharacterSheet) GetExpPointsOfCategory(name enum.CategoryName) (int, e
 	return cs.principle.GetExpPointsOfCategory(name)
 }
 
+func (cs *CharacterSheet) GetNextLvlAggregateExp() int {
+	return cs.ability.GetCharacterNextLvlAggregateExp()
+}
+
+func (cs *CharacterSheet) GetNextLvlBaseExp() int {
+	return cs.ability.GetCharacterNextLvlBaseExp()
+}
+
+func (cs *CharacterSheet) GetCurrentExp() int {
+	return cs.ability.GetCharacterCurrentExp()
+}
+
 func (cs *CharacterSheet) GetExpPoints() int {
 	return cs.ability.GetCharacterExpPoints()
+}
+
+func (cs *CharacterSheet) GetLevel() int {
+	return cs.ability.GetCharacterLevel()
+}
+
+func (cs *CharacterSheet) GetTalentNextLvlAggregateExp() int {
+	return cs.ability.GetTalentNextLvlAggregateExp()
+}
+
+func (cs *CharacterSheet) GetTalentNextLvlBaseExp() int {
+	return cs.ability.GetTalentNextLvlBaseExp()
+}
+
+func (cs *CharacterSheet) GetTalentCurrentExp() int {
+	return cs.ability.GetTalentCurrentExp()
+}
+
+func (cs *CharacterSheet) GetTalentExpPoints() int {
+	return cs.ability.GetTalentExpPoints()
+}
+
+func (cs *CharacterSheet) GetTalentLevel() int {
+	return cs.ability.GetTalentLevel()
+}
+
+func (cs *CharacterSheet) GetAbilities() map[enum.AbilityName]ability.IAbility {
+	return cs.ability.GetAllAbilities()
+}
+
+func (cs *CharacterSheet) GetPhysicalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+	return cs.attribute.GetPhysicalAttributes()
+}
+
+func (cs *CharacterSheet) GetMentalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+	return cs.attribute.GetMentalAttributes()
+}
+
+func (cs *CharacterSheet) GetSpiritualAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+	return cs.attribute.GetSpiritualAttributes()
+}
+
+func (cs *CharacterSheet) GetPhysicalSkills() map[enum.SkillName]skill.ISkill {
+	return cs.skill.GetPhysicalSkills()
+}
+
+func (cs *CharacterSheet) GetMentalSkills() map[enum.SkillName]skill.ISkill {
+	return cs.skill.GetMentalSkills()
+}
+
+func (cs *CharacterSheet) GetSpiritualSkills() map[enum.SkillName]skill.ISkill {
+	return cs.skill.GetSpiritualSkills()
+}
+
+func (cs *CharacterSheet) GetPrinciples() map[enum.PrincipleName]spiritual.IPrinciple {
+	return cs.principle.GetAllPrinciples()
+}
+
+func (cs *CharacterSheet) GetCategories() map[enum.CategoryName]spiritual.ICategory {
+	return cs.principle.GetAllCategories()
+}
+
+func (cs *CharacterSheet) GetCommonProficiencies() map[enum.WeaponName]prof.IProficiency {
+	return cs.proficiency.GetCommons()
+}
+
+func (cs *CharacterSheet) GetJointProficiencies() map[string]prof.JointProficiency {
+	return cs.proficiency.GetJointProficiencies()
+}
+
+func (cs *CharacterSheet) GetAllStatusBar() map[enum.StatusName]status.IStatusBar {
+	return cs.status.GetAllStatus()
+}
+
+func (cs *CharacterSheet) GetProfile() CharacterProfile {
+	return cs.profile
 }
 
 func (cs *CharacterSheet) ToString() string {

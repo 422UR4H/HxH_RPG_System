@@ -1,5 +1,7 @@
 package enum
 
+import "fmt"
+
 type WeaponName int
 
 const (
@@ -130,5 +132,92 @@ func (sn WeaponName) String() string {
 		return "Bomb"
 	default:
 		return "Unknown"
+	}
+}
+
+func WeaponNameFrom(s string) (WeaponName, error) {
+	switch s {
+	case "Dagger":
+		return Dagger, nil
+	case "Throwing Dagger":
+		return ThrowingDagger, nil
+	case "Halberd":
+		return Halberd, nil
+	case "Bow":
+		return Bow, nil
+	case "Longbow":
+		return Longbow, nil
+	case "Staff":
+		return Staff, nil
+	case "Scimitar":
+		return Scimitar, nil
+	case "Rapier":
+		return Rapier, nil
+	case "Whip":
+		return Whip, nil
+	case "Club":
+		return Club, nil
+	case "Longclub":
+		return Longclub, nil
+	case "Sword":
+		return Sword, nil
+	case "Longsword":
+		return Longsword, nil
+	case "Scythe":
+		return Scythe, nil
+	case "Longscythe":
+		return Longscythe, nil
+	case "Katana":
+		return Katana, nil
+	case "Katar":
+		return Katar, nil
+	case "Spear":
+		return Spear, nil
+	case "Longspear":
+		return Longspear, nil
+	case "Axe":
+		return Axe, nil
+	case "Longaxe":
+		return Longaxe, nil
+	case "Throwing Axe":
+		return ThrowingAxe, nil
+	case "Hammer":
+		return Hammer, nil
+	case "Warhammer":
+		return Warhammer, nil
+	case "Throwing Hammer":
+		return ThrowingHammer, nil
+	case "Massa":
+		return Massa, nil
+	case "Mangual":
+		return Mangual, nil
+	case "Longmass":
+		return Longmass, nil
+	case "Pickaxe":
+		return Pickaxe, nil
+	case "Fist":
+		return Fist, nil
+	case "Trident":
+		return Trident, nil
+	case "Tchaco":
+		return Tchaco, nil
+	case "Crossbow":
+		return Crossbow, nil
+	case "Ak47":
+		return Ak47, nil
+	case "Ar15":
+		return Ar15, nil
+	case "Machine Gun":
+		return MachineGun, nil
+	case "Pistol .38":
+		return Pistol38, nil
+	case "Rifle":
+		return Rifle, nil
+	case "Uzi":
+		return Uzi, nil
+	case "Bomb":
+		return Bomb, nil
+	default:
+		return 0, fmt.Errorf("invalid weapon name: %s", s)
 	}
 }
