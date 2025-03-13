@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type GetCharacterClassRequest struct {
@@ -27,7 +28,7 @@ func GetClassHandler(
 	return func(_ context.Context, req *GetCharacterClassRequest) (*GetCharacterClassResponse, error) {
 		charClass, err := uc.GetCharacterClass(req.Name)
 		if err != nil {
-			return nil, err
+			return nil, huma.Error422UnprocessableEntity(err.Error())
 		}
 		var response = NewCharacterClassResponse(charClass)
 
