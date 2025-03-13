@@ -219,25 +219,35 @@ func (m *Manager) IncreaseCurrHexValue() (
 
 func (m *Manager) DecreaseCurrHexValue() (
 	map[enum.CategoryName]float64, enum.CategoryName) {
+
 	percents, name := m.nenHexagon.DecreaseCurrHexValue()
 	m.hatsu.SetCategoryPercents(percents)
 
 	return percents, name
 }
 
-func (m *Manager) ResetNenCategory() (int, enum.CategoryName) {
-	currHexValue, name := m.nenHexagon.ResetCategory()
+func (m *Manager) ResetNenCategory() (int, error) {
+	if m.nenHexagon == nil {
+		return -1, fmt.Errorf("nen hexagon not initialized")
+	}
+	currHexValue := m.nenHexagon.ResetCategory()
 	m.hatsu.SetCategoryPercents(m.nenHexagon.GetCategoryPercents())
 
-	return currHexValue, name
+	return currHexValue, nil
 }
 
-func (m *Manager) GetNenCategoryName() enum.CategoryName {
-	return m.nenHexagon.GetCategoryName()
+func (m *Manager) GetNenCategoryName() (enum.CategoryName, error) {
+	if m.nenHexagon == nil {
+		return -1, fmt.Errorf("nen hexagon not initialized")
+	}
+	return m.nenHexagon.GetCategoryName(), nil
 }
 
-func (m *Manager) GetCurrHexValue() int {
-	return m.nenHexagon.GetCurrHexValue()
+func (m *Manager) GetCurrHexValue() (int, error) {
+	if m.nenHexagon == nil {
+		return -1, fmt.Errorf("nen hexagon not initialized")
+	}
+	return m.nenHexagon.GetCurrHexValue(), nil
 }
 
 func (m *Manager) GetNextLvlAggregateExpOfCategories() map[enum.CategoryName]int {
@@ -262,4 +272,16 @@ func (m *Manager) GetLevelOfCategories() map[enum.CategoryName]int {
 
 func (m *Manager) GetTestValueOfCategories() map[enum.CategoryName]int {
 	return m.hatsu.GetCategoriesLevel()
+}
+
+func (m *Manager) GetAllPrinciples() map[enum.PrincipleName]IPrinciple {
+	principles := make(map[enum.PrincipleName]IPrinciple)
+	for name, principle := range m.principles {
+		principles[name] = &principle
+	}
+	return principles
+}
+
+func (m *Manager) GetAllCategories() map[enum.CategoryName]ICategory {
+	return m.hatsu.GetAllCategories()
 }

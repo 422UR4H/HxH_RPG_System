@@ -76,6 +76,14 @@ func (d *Distribution) AllowProficiency(prof enum.WeaponName) bool {
 func (cc *CharacterClass) ValidateSkills(
 	skills map[enum.SkillName]int,
 ) error {
+	if cc.Distribution == nil {
+		if len(skills) != 0 {
+			return fmt.Errorf(
+				"character class %s has no skill distribution", cc.GetName(),
+			)
+		}
+		return nil
+	}
 	d := *cc.Distribution
 	skillPts := slices.Clone(d.SkillPoints)
 	if len(skillPts) != len(skills) {
@@ -109,6 +117,14 @@ func (cc *CharacterClass) ValidateSkills(
 func (cc *CharacterClass) ValidateProficiencies(
 	proficiencies map[enum.WeaponName]int,
 ) error {
+	if cc.Distribution == nil {
+		if len(proficiencies) != 0 {
+			return fmt.Errorf(
+				"character class %s has no proficiency distribution", cc.GetName(),
+			)
+		}
+		return nil
+	}
 	d := *cc.Distribution
 	profPts := slices.Clone(d.ProficiencyPoints)
 	if len(profPts) != len(proficiencies) {
