@@ -2,6 +2,7 @@ package spiritual
 
 import (
 	"math"
+	"sort"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
@@ -11,6 +12,11 @@ const (
 	maxHexRange              = 600
 	categoryRange            = maxHexRange / 6 // 100
 )
+
+type CategoryPair struct {
+	Key   enum.CategoryName
+	Value int
+}
 
 var nenHexagon = map[enum.CategoryName]int{
 	enum.Reinforcement:   categoryRange * 0, // 0
@@ -58,20 +64,34 @@ func (nh *NenHexagon) DecreaseCurrHexValue() (
 	return nh.GetCategoryPercents(), nh.nenCategoryName
 }
 
+// TODO: evaluate solution
 func getCategoryByHexagon(currHexValue int) enum.CategoryName {
 	currHexValue %= maxHexRange
 	halfCategoryRange := categoryRange / 2
 
-	for key, val := range nenHexagon {
-		if currHexValue < (val + halfCategoryRange) {
-			return key
+	sortedNenHexagon := sortNenHexagon()
+
+	for _, hex := range sortedNenHexagon {
+		if currHexValue < (hex.Value + halfCategoryRange) {
+			return hex.Key
 		}
 	}
 	return enum.Reinforcement
 }
 
+func sortNenHexagon() []CategoryPair {
+	var pairs []CategoryPair
+	for key, val := range nenHexagon {
+		pairs = append(pairs, CategoryPair{Key: key, Value: val})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].Value < pairs[j].Value
+	})
+	return pairs
+}
+
 func (nh *NenHexagon) GetPercentOf(category enum.CategoryName) float64 {
-	if category == enum.Specialization && category != nh.nenCategoryName {
+	if category == enum.Specialization && nh.nenCategoryName != enum.Specialization {
 		return 0.0
 	}
 
@@ -100,9 +120,9 @@ func (nh *NenHexagon) GetCategoryPercents() map[enum.CategoryName]float64 {
 // ResetCategory resets the category to the default value
 // in the same way that happened to Gon after the events
 // of the end of the Chimera Ants arc.
-func (nh *NenHexagon) ResetCategory() (int, enum.CategoryName) {
+func (nh *NenHexagon) ResetCategory() int {
 	nh.currHexValue = nenHexagon[nh.nenCategoryName]
-	return nh.currHexValue, nh.nenCategoryName
+	return nh.currHexValue
 }
 
 func (nh *NenHexagon) GetCategoryName() enum.CategoryName {
