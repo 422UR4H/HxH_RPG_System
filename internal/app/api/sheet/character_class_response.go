@@ -3,33 +3,33 @@ package sheet
 import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
+	p "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
+	s "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 )
 
 type CharacterClassResponse struct {
-	Profile             ClassProfileResponse
-	Distribution        *DistributionResponse
-	SkillsExps          map[string]int
-	JointSkills         map[string]skill.JointSkill
-	ProficienciesExps   map[string]int
-	JointProficiencies  map[string]proficiency.JointProficiency
-	AttributesExps      map[string]int
-	IndicatedCategories []string
+	Profile             ClassProfileResponse          `json:"profile"`
+	Distribution        *DistributionResponse         `json:"distribution,omitempty"`
+	SkillsExps          map[string]int                `json:"skills_exps"`
+	JointSkills         map[string]s.JointSkill       `json:"joint_skills"`
+	ProficienciesExps   map[string]int                `json:"proficiencies_exps"`
+	JointProficiencies  map[string]p.JointProficiency `json:"joint_proficiencies"`
+	AttributesExps      map[string]int                `json:"attributes_exps"`
+	IndicatedCategories []string                      `json:"indicated_categories"`
 }
 
 type ClassProfileResponse struct {
-	Name             string
-	Alignment        string
-	Description      string
-	BriefDescription string
+	Name             string `json:"name"`
+	Alignment        string `json:"alignment"`
+	Description      string `json:"description"`
+	BriefDescription string `json:"brief_description"`
 }
 
 type DistributionResponse struct {
-	SkillPoints          []int
-	ProficiencyPoints    []int
-	SkillsAllowed        []string
-	ProficienciesAllowed []string
+	SkillPoints          []int    `json:"skill_points"`
+	ProficiencyPoints    []int    `json:"proficiency_points"`
+	SkillsAllowed        []string `json:"skills_allowed"`
+	ProficienciesAllowed []string `json:"proficiencies_allowed"`
 }
 
 func NewCharacterClassResponse(charClass cc.CharacterClass) CharacterClassResponse {
