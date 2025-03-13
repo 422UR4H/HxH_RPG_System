@@ -25,10 +25,6 @@ type Api struct {
 
 func (a *Api) Routes(r *chi.Mux) huma.API {
 	huma.NewError = NewErrorWithType
-	// var api huma.API
-
-	// r.Get("/liveness", a.LivenessHandler)
-	// r.Get("/readiness", a.ReadinessHandler)
 
 	api := humachi.New(r, newConfig(
 		"HxH RPG System", "v0-pre-alpha", "Core Rules API for HxH RPG System (Pre-Alpha Version)",
@@ -85,13 +81,3 @@ func newConfig(title, version, description string) huma.Config {
 		DefaultFormat: "application/json",
 	}
 }
-
-// TODO: move
-// func GetCharacterClass(name enum.CharacterClassName) (cc.CharacterClass, error) {
-
-// 	class, exists := characterClasses.Load(name)
-// 	if !exists {
-// 		return cc.CharacterClass{}, fmt.Errorf("character class %s not found", name)
-// 	}
-// 	return class.(cc.CharacterClass), nil
-// }

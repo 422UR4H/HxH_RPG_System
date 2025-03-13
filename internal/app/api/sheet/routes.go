@@ -13,12 +13,25 @@ import (
 type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
-	ListClassesHandler Handler[struct{}, ListCharacterClassesResponse]
-	GetClassHandler    Handler[GetCharacterClassRequest, GetCharacterClassResponse]
-	// CreateCharacterSheetHandler Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
+	CreateCharacterSheetHandler Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
+	ListClassesHandler          Handler[struct{}, ListCharacterClassesResponse]
+	GetClassHandler             Handler[GetCharacterClassRequest, GetCharacterClassResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/charactersheets",
+		Description: "Create a new character sheet",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusConflict,
+			http.StatusBadRequest,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusCreated,
+	}, a.CreateCharacterSheetHandler)
+
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
 		Path:        "/classes",

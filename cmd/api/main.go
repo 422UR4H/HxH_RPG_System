@@ -48,13 +48,11 @@ func main() {
 	charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
 	initCharacterClasses()
 
-	// initialize usecases
 	// repo
-	// createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
-	// TODO: refactor below to sync.Map
-	// 	api.GetAllCharacterClasses(),
-	// 	sheet.NewCharacterSheetFactory(),
-	// )
+	createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
+		&characterClasses,
+		sheet.NewCharacterSheetFactory(),
+	)
 	listCharacterClassesUC := cc.NewListCharacterClassesUC(
 		&characterClasses,
 	)
@@ -64,9 +62,9 @@ func main() {
 
 	chiServer := api.NewServer()
 	characterSheetsApi := sheetHandler.Api{
-		// CreateCharacterSheetHandler: ,
-		ListClassesHandler: sheetHandler.ListClassesHandler(listCharacterClassesUC),
-		GetClassHandler:    sheetHandler.GetClassHandler(getCharacterClassUC),
+		CreateCharacterSheetHandler: sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
+		ListClassesHandler:          sheetHandler.ListClassesHandler(listCharacterClassesUC),
+		GetClassHandler:             sheetHandler.GetClassHandler(getCharacterClassUC),
 	}
 
 	a := api.Api{
