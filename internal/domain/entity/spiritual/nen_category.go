@@ -50,8 +50,12 @@ func (nc *NenCategory) GetLevel() int {
 	return nc.exp.GetLevel()
 }
 
+func (nc *NenCategory) GetPercent() float64 {
+	return nc.hatsu.GetPercentOf(nc.name)
+}
+
 func (nc *NenCategory) GetValueForTest() int {
-	return int(float64(nc.GetLevel()) * nc.hatsu.GetPercentOf(nc.name) / 100.0)
+	return int(float64(nc.GetLevel()) * nc.GetPercent() / 100.0)
 }
 
 func (nc *NenCategory) GetName() enum.CategoryName {
