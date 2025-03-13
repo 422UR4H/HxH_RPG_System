@@ -7,6 +7,7 @@ import (
 type ICategory interface {
 	experience.ITriggerCascadeExp
 
+	GetPercent() float64
 	GetValueForTest() int
 	GetNextLvlAggregateExp() int
 	GetNextLvlBaseExp() int
