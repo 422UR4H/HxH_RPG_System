@@ -58,11 +58,15 @@ func main() {
 	listCharacterClassesUC := cc.NewListCharacterClassesUC(
 		&characterClasses,
 	)
-	// other usecases
+	getCharacterClassUC := cc.NewGetCharacterClassUC(
+		&characterClasses,
+	)
+
 	chiServer := api.NewServer()
 	characterSheetsApi := sheetHandler.Api{
 		// CreateCharacterSheetHandler: ,
 		ListClassesHandler: sheetHandler.ListClassesHandler(listCharacterClassesUC),
+		GetClassHandler:    sheetHandler.GetClassHandler(getCharacterClassUC),
 	}
 
 	a := api.Api{

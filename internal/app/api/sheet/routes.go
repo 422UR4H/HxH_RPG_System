@@ -13,8 +13,8 @@ import (
 type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
-	ListClassesHandler Handler[struct{}, ListClassesResponse]
-	// GetClassHandler             Handler[string, cc.CharacterClass]
+	ListClassesHandler Handler[struct{}, ListCharacterClassesResponse]
+	GetClassHandler    Handler[GetCharacterClassRequest, GetCharacterClassResponse]
 	// CreateCharacterSheetHandler Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
 }
 
@@ -28,4 +28,15 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.ListClassesHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/classes/{name}",
+		Description: "Get character classe by name",
+		Tags:        []string{"character_classes"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusInternalServerError,
+		},
+	}, a.GetClassHandler)
 }
