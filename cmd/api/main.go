@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,12 +14,13 @@ import (
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/ardanlabs/conf/v3"
 	"github.com/joho/godotenv"
 )
 
 type config struct {
-	ServerAddr         string        `conf:"default:localhost:5000"`
+	ServerAddr         string        `conf:"env:SERVER_ADDR,default:localhost:5000"`
 	ServerReadTimeout  time.Duration `conf:"default:30s"`
 	ServerWriteTimeout time.Duration `conf:"default:30s"`
 }
@@ -37,13 +39,14 @@ func main() {
 	}
 	fmt.Println(cfg)
 
-	// ctx, cancelCtx := context.WithCancel(context.Background())
-	// defer cancelCtx()
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
 
-	// pgPool, err := pgfs.New(ctx, "")
-	// if err != nil {
-	// 	panic(fmt.Errorf("error creating pg pool: %w", err))
-	// }
+	pgPool, err := pgfs.New(ctx, "")
+	if err != nil {
+		panic(fmt.Errorf("error creating pg pool: %w", err))
+	}
+	defer pgPool.Close()
 
 	charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
 	initCharacterClasses()
