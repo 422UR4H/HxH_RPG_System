@@ -1,6 +1,7 @@
 package charactersheet
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -14,19 +15,20 @@ type ICreateCharacterSheet interface {
 }
 
 type CreateCharacterSheetUC struct {
-	// add repo
 	characterClasses *sync.Map
 	factory          *sheet.CharacterSheetFactory
+	repo             IRepository
 }
 
 func NewCreateCharacterSheetUC(
 	charClasses *sync.Map,
 	factory *sheet.CharacterSheetFactory,
+	repo IRepository,
 ) *CreateCharacterSheetUC {
 	return &CreateCharacterSheetUC{
-		// add repo
 		characterClasses: charClasses,
 		factory:          factory,
+		repo:             repo,
 	}
 }
 
@@ -68,7 +70,10 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	charClass.ApplySkills(skillsExps)
 	charClass.ApplyProficiencies(profExps)
 	characterSheet, err := uc.factory.Build(input.Profile, &input.CategorySet, &charClass)
-	// save to repo
+
+	// TODO: save to repo
+	uc.repo.Test(context.Background(), "test")
+
 	return characterSheet, err
 }
 

@@ -13,6 +13,8 @@ import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/ardanlabs/conf/v3"
@@ -51,10 +53,12 @@ func main() {
 	charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
 	initCharacterClasses()
 
-	// repo
+	characterSheetRepo := sheetPg.NewRepository(pgPool)
+
 	createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
 		&characterClasses,
 		sheet.NewCharacterSheetFactory(),
+		characterSheetRepo,
 	)
 	listCharacterClassesUC := cc.NewListCharacterClassesUC(
 		&characterClasses,
