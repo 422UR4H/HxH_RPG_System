@@ -1,59 +1,28 @@
 package enum
 
-type AttributeName uint8
+type AttributeName string
 
 const (
 	// Physicals
-	Resistance = iota
-	Strength
-	Agility
-	ActionSpeed
-	Flexibility
-	Dexterity
-	Sense
-	Constitution
-	Instinct // ?
+	Resistance   AttributeName = "Resistance"
+	Strength     AttributeName = "Strength"
+	Agility      AttributeName = "Agility"
+	ActionSpeed  AttributeName = "ActionSpeed"
+	Flexibility  AttributeName = "Flexibility"
+	Dexterity    AttributeName = "Dexterity"
+	Sense        AttributeName = "Sense"
+	Constitution AttributeName = "Constitution"
 
 	// Mentals
-	Resilience
-	Adaptability
-	Weighting
-	Creativity
+	Resilience   AttributeName = "Resilience"
+	Adaptability AttributeName = "Adaptability"
+	Weighting    AttributeName = "Weighting"
+	Creativity   AttributeName = "Creativity"
 
 	// Spirituals
-	Spirit
+	Spirit AttributeName = "Spirit"
 )
 
 func (an AttributeName) String() string {
-	switch an {
-	case Resistance:
-		return "Resistance"
-	case Strength:
-		return "Strength"
-	case Agility:
-		return "Agility"
-	case ActionSpeed:
-		return "ActionSpeed"
-	case Flexibility:
-		return "Flexibility"
-	case Dexterity:
-		return "Dexterity"
-	case Sense:
-		return "Sense"
-	case Constitution:
-		return "Constitution"
-	case Instinct:
-		return "Instinct"
-	case Resilience:
-		return "Resilience"
-	case Adaptability:
-		return "Adaptability"
-	case Weighting:
-		return "Weighting"
-	case Creativity:
-		return "Creativity"
-	case Spirit:
-		return "Spirit"
-	}
-	return "Unknown"
+	return string(an)
 }

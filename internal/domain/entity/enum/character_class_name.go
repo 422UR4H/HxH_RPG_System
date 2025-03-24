@@ -2,105 +2,58 @@ package enum
 
 import "fmt"
 
-type CharacterClassName uint8
+type CharacterClassName string
 
 const (
-	Swordsman CharacterClassName = iota
-	Samurai
-	Ninja
-	Rogue
-	Netrunner
-	Pirate
-	Mercenary
-	Terrorist
-	Monk
+	Swordsman CharacterClassName = "Swordsman"
+	Samurai   CharacterClassName = "Samurai"
+	Ninja     CharacterClassName = "Ninja"
+	Rogue     CharacterClassName = "Rogue"
+	Netrunner CharacterClassName = "Netrunner"
+	Pirate    CharacterClassName = "Pirate"
+	Mercenary CharacterClassName = "Mercenary"
+	Terrorist CharacterClassName = "Terrorist"
+	Monk      CharacterClassName = "Monk"
 	// MafiaMan
-	Military
-	Hunter
-	WeaponsMaster
-	Athlete
-	Tribal
-	Experiment
-	Circus
+	Military      CharacterClassName = "Military"
+	Hunter        CharacterClassName = "Hunter"
+	WeaponsMaster CharacterClassName = "WeaponsMaster"
+	Athlete       CharacterClassName = "Athlete"
+	Tribal        CharacterClassName = "Tribal"
+	Experiment    CharacterClassName = "Experiment"
+	Circus        CharacterClassName = "Circus"
 )
 
 func (ccn CharacterClassName) String() string {
-	switch ccn {
-	case Swordsman:
-		return "Swordsman"
-	case Samurai:
-		return "Samurai"
-	case Ninja:
-		return "Ninja"
-	case Rogue:
-		return "Rogue"
-	case Netrunner:
-		return "Netrunner"
-	case Pirate:
-		return "Pirate"
-	case Mercenary:
-		return "Mercenary"
-	case Terrorist:
-		return "Terrorist"
-	case Monk:
-		return "Monk"
-	// case MafiaMan:
-	// 	return "Mafia Man"
-	case Military:
-		return "Military"
-	case Hunter:
-		return "Hunter"
-	case WeaponsMaster:
-		return "Weapons Master"
-	case Athlete:
-		return "Athlete"
-	case Tribal:
-		return "Tribal"
-	case Experiment:
-		return "Experiment"
-	case Circus:
-		return "Circus"
+	return string(ccn)
+}
+
+func GetAllCharacterClasses() []CharacterClassName {
+	return []CharacterClassName{
+		Swordsman,
+		Samurai,
+		Ninja,
+		Rogue,
+		Netrunner,
+		Pirate,
+		Mercenary,
+		Terrorist,
+		Monk,
+		Military,
+		Hunter,
+		WeaponsMaster,
+		Athlete,
+		Tribal,
+		Experiment,
+		Circus,
 	}
-	return "Unknown"
 }
 
 func CharacterClassNameFrom(s string) (CharacterClassName, error) {
-	switch s {
-	case "Swordsman":
-		return Swordsman, nil
-	case "Samurai":
-		return Samurai, nil
-	case "Ninja":
-		return Ninja, nil
-	case "Rogue":
-		return Rogue, nil
-	case "Netrunner":
-		return Netrunner, nil
-	case "Pirate":
-		return Pirate, nil
-	case "Mercenary":
-		return Mercenary, nil
-	case "Terrorist":
-		return Terrorist, nil
-	case "Monk":
-		return Monk, nil
-	// case "Mafia Man":
-	// 	return MafiaMan
-	case "Military":
-		return Military, nil
-	case "Hunter":
-		return Hunter, nil
-	case "WeaponsMaster":
-		return WeaponsMaster, nil
-	case "Athlete":
-		return Athlete, nil
-	case "Tribal":
-		return Tribal, nil
-	case "Experiment":
-		return Experiment, nil
-	case "Circus":
-		return Circus, nil
-	default:
-		return 0, fmt.Errorf("invalid character class name: %s", s)
+	for _, name := range GetAllCharacterClasses() {
+		if s == name.String() {
+			return name, nil
+		}
 	}
+	return "", fmt.Errorf("invalid character class name: %s", s)
 }

@@ -238,7 +238,7 @@ func (m *Manager) ResetNenCategory() (int, error) {
 
 func (m *Manager) GetNenCategoryName() (enum.CategoryName, error) {
 	if m.nenHexagon == nil {
-		return -1, fmt.Errorf("nen hexagon not initialized")
+		return "", fmt.Errorf("nen hexagon not initialized")
 	}
 	return m.nenHexagon.GetCategoryName(), nil
 }

@@ -59,8 +59,8 @@ func BuildSwordsman() CharacterClass {
 		enum.Reflex:   494,
 		enum.Accuracy: 69,
 
-		enum.Vision:  494,
-		enum.Balance: 210,
+		enum.Vision: 494,
+		enum.Tact:   210,
 
 		enum.Heal:   69,
 		enum.Breath: 69,
@@ -116,8 +116,8 @@ func BuildSamurai() CharacterClass {
 		enum.Reflex:   494,
 		enum.Accuracy: 69,
 
-		enum.Vision:  494,
-		enum.Balance: 210,
+		enum.Vision: 494,
+		enum.Tact:   210,
 
 		enum.Heal:   69,
 		enum.Breath: 69,
@@ -170,7 +170,7 @@ func BuildNinja() CharacterClass {
 
 		enum.Vision:  494,
 		enum.Hearing: 494,
-		enum.Balance: 210,
+		enum.Tact:    210,
 
 		enum.Heal:     69,
 		enum.Breath:   69,
@@ -231,7 +231,7 @@ func BuildRogue() CharacterClass {
 
 		enum.Vision:  494,
 		enum.Hearing: 494,
-		enum.Balance: 210,
+		enum.Tact:    210,
 	}
 	mentals := map[enum.AttributeName]int{
 		enum.Adaptability: 210,
@@ -345,8 +345,7 @@ func BuildPirate() CharacterClass {
 
 		enum.Vision:  210,
 		enum.Hearing: 69,
-		enum.Tact:    69,
-		enum.Balance: 494,
+		enum.Tact:    494,
 
 		enum.Breath: 328,
 	}
@@ -534,8 +533,7 @@ func BuildMonk() CharacterClass {
 		enum.Vision:  127,
 		enum.Hearing: 127,
 		enum.Smell:   69,
-		enum.Tact:    69,
-		enum.Balance: 127,
+		enum.Tact:    127,
 
 		enum.Heal:     210,
 		enum.Breath:   210,
@@ -654,8 +652,8 @@ func BuildHunter() CharacterClass {
 		enum.Vision:  328,
 		enum.Hearing: 210,
 		enum.Smell:   210,
+		enum.Tact:    69,
 		enum.Taste:   69,
-		enum.Balance: 69,
 
 		enum.Heal:   127,
 		enum.Breath: 127,
@@ -729,8 +727,7 @@ func BuildWeaponsMaster() CharacterClass {
 
 		enum.Vision:  210,
 		enum.Hearing: 69,
-		enum.Tact:    69,
-		enum.Balance: 127,
+		enum.Tact:    127,
 
 		enum.Breath: 69,
 	}

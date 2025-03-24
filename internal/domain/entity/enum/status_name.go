@@ -1,21 +1,13 @@
 package enum
 
-type StatusName int
+type StatusName string
 
 const (
-	Health StatusName = iota
-	Stamina
-	Aura
+	Health  StatusName = "Health"
+	Stamina StatusName = "Stamina"
+	Aura    StatusName = "Aura"
 )
 
 func (sn StatusName) String() string {
-	switch sn {
-	case Health:
-		return "Health"
-	case Stamina:
-		return "Stamina"
-	case Aura:
-		return "Aura"
-	}
-	return "Unknown"
+	return string(sn)
 }

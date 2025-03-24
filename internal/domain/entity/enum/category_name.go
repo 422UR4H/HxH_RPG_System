@@ -2,33 +2,19 @@ package enum
 
 import "fmt"
 
-type CategoryName int
+type CategoryName string
 
 const (
-	Reinforcement = iota
-	Transmutation
-	Materialization
-	Specialization
-	Manipulation
-	Emission
+	Reinforcement   CategoryName = "Reinforcement"
+	Transmutation   CategoryName = "Transmutation"
+	Materialization CategoryName = "Materialization"
+	Specialization  CategoryName = "Specialization"
+	Manipulation    CategoryName = "Manipulation"
+	Emission        CategoryName = "Emission"
 )
 
 func (cn CategoryName) String() string {
-	switch cn {
-	case Reinforcement:
-		return "Reinforcement"
-	case Transmutation:
-		return "Transmutation"
-	case Materialization:
-		return "Materialization"
-	case Specialization:
-		return "Specialization"
-	case Manipulation:
-		return "Manipulation"
-	case Emission:
-		return "Emission"
-	}
-	return "Unknown"
+	return string(cn)
 }
 
 func AllNenCategoryNames() []CategoryName {
@@ -43,20 +29,10 @@ func AllNenCategoryNames() []CategoryName {
 }
 
 func CategoryNameFrom(s string) (CategoryName, error) {
-	switch s {
-	case "Reinforcement":
-		return Reinforcement, nil
-	case "Transmutation":
-		return Transmutation, nil
-	case "Materialization":
-		return Materialization, nil
-	case "Specialization":
-		return Specialization, nil
-	case "Manipulation":
-		return Manipulation, nil
-	case "Emission":
-		return Emission, nil
-	default:
-		return 0, fmt.Errorf("invalid category name: %s", s)
+	for _, name := range AllNenCategoryNames() {
+		if s == name.String() {
+			return name, nil
+		}
 	}
+	return "", fmt.Errorf("invalid category name: %s", s)
 }

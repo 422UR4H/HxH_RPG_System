@@ -1,27 +1,14 @@
 package enum
 
-type AbilityName uint8
+type AbilityName string
 
 const (
-	Physicals AbilityName = iota
-	Mentals
-	Spirituals
-	Skills
+	Physicals  AbilityName = "Physicals"
+	Mentals    AbilityName = "Mentals"
+	Spirituals AbilityName = "Spirituals"
+	Skills     AbilityName = "Skills"
 )
 
 func (an AbilityName) String() string {
-	switch an {
-	case Physicals:
-		return "Physicals"
-	case Mentals:
-		return "Mentals"
-	case Spirituals:
-		return "Spirituals"
-	case Skills:
-		return "Skills"
-
-		// knowledge
-		// talent
-	}
-	return "Unknown"
+	return string(an)
 }

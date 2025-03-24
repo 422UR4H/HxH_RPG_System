@@ -46,6 +46,7 @@ func (csf *CharacterSheetFactory) Build(
 
 	characterExp := csf.BuildCharacterExp()
 
+	// TODO: move to CharacterSheetUC
 	talentLvl := categorySet.GetTalentLvl()
 	abilities := csf.BuildPersonAbilities(characterExp, talentLvl)
 
@@ -159,7 +160,7 @@ func (csf *CharacterSheetFactory) BuildPhysAttrs(
 
 	exp := experience.NewExperience(experience.NewExpTable(PHYSICAL_ATTRIBUTE_COEFF))
 	primAttr := attribute.NewPrimaryAttribute(
-		enum.Resistance, *exp, physAbility, buffs[0],
+		enum.Resistance, *exp, physAbility, buffs[enum.Resistance],
 	)
 
 	res := primAttr.Clone(enum.Resistance, buffs[enum.Resistance])
@@ -201,7 +202,9 @@ func (csf *CharacterSheetFactory) BuildMentalAttrs(
 	buffs := csf.BuildMentalAttrBuffs()
 
 	exp := *experience.NewExperience(experience.NewExpTable(MENTAL_ATTRIBUTE_COEFF))
-	attr := attribute.NewPrimaryAttribute(enum.Resilience, exp, mentalAbility, buffs[0])
+	attr := attribute.NewPrimaryAttribute(
+		enum.Resilience, exp, mentalAbility, buffs[enum.Resilience],
+	)
 
 	attrs[enum.Resilience] = attr.Clone(enum.Resilience, buffs[enum.Resilience])
 	attrs[enum.Adaptability] = attr.Clone(enum.Adaptability, buffs[enum.Adaptability])
@@ -331,7 +334,6 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Smell] = senSkill.Clone(enum.Smell)
 	skills[enum.Tact] = senSkill.Clone(enum.Tact)
 	skills[enum.Taste] = senSkill.Clone(enum.Taste)
-	skills[enum.Balance] = senSkill.Clone(enum.Balance)
 
 	con, err := physAttrs.Get(enum.Constitution)
 	if err != nil {

@@ -201,8 +201,7 @@ func (hs *HalfSheet) ToString() string {
 		enum.AttackSpeed, enum.Repel, enum.Feint,
 		enum.Acrobatics, enum.Evasion, enum.Sneak,
 		enum.Reflex, enum.Accuracy, enum.Stealth,
-		enum.Vision, enum.Hearing, enum.Smell,
-		enum.Tact, enum.Taste, enum.Balance,
+		enum.Vision, enum.Hearing, enum.Smell, enum.Tact, enum.Taste,
 		enum.Heal, enum.Breath, enum.Tenacity,
 	}
 	for _, name := range sortSkillNames {
