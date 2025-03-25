@@ -13,6 +13,7 @@ type CharacterProfile struct {
 	NickName         string
 	FullName         string
 	Alignment        string
+	CharacterClass   string
 	Description      string
 	BriefDescription string
 	Birthday         time.Time
