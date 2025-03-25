@@ -1,11 +1,19 @@
 package model
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type CharacterSheet struct {
-	Id             uuid.UUID
-	CharacterClass string
-	// CharacterProfile
+	ID   int
+	UUID uuid.UUID
+
+	Profile            CharacterProfile
+	Proficiencies      []Proficiency
+	JointProficiencies []JointProficiency
+
 	CurrHexValue int
 	TalentExp    int
 
@@ -18,7 +26,6 @@ type CharacterSheet struct {
 	DexterityPts    int
 	SensePts        int
 	ConstitutionPts int
-	// InstinctPts     int
 
 	// Mental Attributes
 	ResiliencePts   int
@@ -61,13 +68,10 @@ type CharacterSheet struct {
 	SmellExp   int
 	TactExp    int
 	TasteExp   int
-	BalanceExp int
 	// Constitution
 	HealExp     int
 	BreathExp   int
 	TenacityExp int
-	// Instinct
-	// Intuition // ?
 	// SPIRITUALS
 	// Spirit
 	NenExp       int
@@ -102,6 +106,6 @@ type CharacterSheet struct {
 	HealthCurrPts  int
 	// AuraCurrPts    int
 
-	// add relation 1:n with proficiencies
-	// add relation 1:n with joint proficiencies
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
