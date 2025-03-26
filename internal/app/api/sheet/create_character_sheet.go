@@ -2,6 +2,7 @@ package sheet
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
@@ -44,7 +45,16 @@ func CreateCharacterSheetHandler(
 
 		characterSheet, err := uc.CreateCharacterSheet(input)
 		if err != nil {
-			return nil, huma.Error422UnprocessableEntity(err.Error())
+			switch {
+			case errors.Is(err, charactersheet.ErrNicknameAlreadyExists):
+				return nil, huma.Error409Conflict(err.Error())
+			case errors.Is(err, charactersheet.ErrNicknameNotAllowed):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, charactersheet.ErrCharacterClassNotFound):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(err.Error())
+			}
 		}
 		response := NewCharacterSheetResponse(characterSheet)
 
@@ -52,7 +62,7 @@ func CreateCharacterSheetHandler(
 			Body: CreateCharacterSheetResponseBody{
 				CharacterSheet: *response,
 			},
-			Status: http.StatusOK,
+			Status: http.StatusCreated,
 		}, nil
 	}
 }
