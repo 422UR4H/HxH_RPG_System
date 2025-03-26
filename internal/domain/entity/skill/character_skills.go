@@ -1,8 +1,6 @@
 package skill
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -46,18 +44,19 @@ func (cs *CharacterSkills) GetPhysicalsJoint() map[string]JointSkill {
 }
 
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
+	// TODO: refactor error handler
 	if cs.spirituals != nil {
-		if skill, err := cs.spirituals.Get(name); err == nil {
+		if skill, _ := cs.spirituals.Get(name); skill != nil {
 			return skill, nil
 		}
 	}
-	if skill, err := cs.physicals.Get(name); err == nil {
+	if skill, _ := cs.physicals.Get(name); skill != nil {
 		return skill, nil
 	}
-	if skill, err := cs.mentals.Get(name); err == nil {
+	if skill, _ := cs.mentals.Get(name); skill != nil {
 		return skill, nil
 	}
-	return nil, errors.New("skill not found")
+	return nil, ErrSkillNotFound
 }
 
 func (cs *CharacterSkills) GetValueForTestOf(name enum.SkillName) (int, error) {

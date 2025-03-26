@@ -1,8 +1,6 @@
 package ability
 
 import (
-	"errors"
-
 	enum "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	exp "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -32,7 +30,7 @@ func (m *Manager) GetCharacterPoints() int {
 func (m *Manager) Get(name enum.AbilityName) (IAbility, error) {
 	ability, ok := m.abilities[name]
 	if !ok {
-		return nil, errors.New("ability not found")
+		return nil, ErrAbilityNotFound
 	}
 	return ability, nil
 }

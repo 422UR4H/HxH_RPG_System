@@ -43,7 +43,7 @@ func (h *Hatsu) SetCategoryPercents(
 ) error {
 
 	if len(categoryPercents) != 6 {
-		return fmt.Errorf("category percents must have 6 elements")
+		return ErrInvalidCategoryPercents
 	}
 	h.categoryPercents = categoryPercents
 	return nil
@@ -76,7 +76,7 @@ func (h *Hatsu) Get(name enum.CategoryName) (ICategory, error) {
 	if category, ok := h.categories[name]; ok {
 		return &category, nil
 	}
-	return nil, fmt.Errorf("category %s not found", name.String())
+	return nil, fmt.Errorf("%w: %s", ErrCategoryNotFound, name.String())
 }
 
 func (h *Hatsu) GetValueForTest() int {
@@ -87,7 +87,7 @@ func (h *Hatsu) GetNextLvlAggregateExpOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get aggregate exp of next lvl of", name.String())
+			"%w: %s", err, "failed to get aggregate exp of next lvl")
 	}
 	return category.GetNextLvlAggregateExp(), nil
 }
@@ -96,7 +96,7 @@ func (h *Hatsu) GetNextLvlBaseExpOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get base exp of next lvl of", name.String())
+			"%w: %s", err, "failed to get base exp of next lvl")
 	}
 	return category.GetNextLvlBaseExp(), nil
 }
@@ -104,7 +104,7 @@ func (h *Hatsu) GetNextLvlBaseExpOf(name enum.CategoryName) (int, error) {
 func (h *Hatsu) GetCurrentExpOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s %s", err, "failed to get current exp of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get current exp of")
 	}
 	return category.GetCurrentExp(), nil
 }
@@ -112,7 +112,7 @@ func (h *Hatsu) GetCurrentExpOf(name enum.CategoryName) (int, error) {
 func (h *Hatsu) GetExpPointsOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s %s", err, "failed to get exp of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get exp of")
 	}
 	return category.GetExpPoints(), nil
 }
@@ -120,7 +120,7 @@ func (h *Hatsu) GetExpPointsOf(name enum.CategoryName) (int, error) {
 func (h *Hatsu) GetLevelOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s %s", err, "failed to get level of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get level of")
 	}
 	return category.GetLevel(), nil
 }

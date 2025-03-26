@@ -89,5 +89,5 @@ func SkillNameFrom(s string) (SkillName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("invalid skill name: %s", s)
+	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "skill", s)
 }

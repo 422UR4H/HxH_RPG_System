@@ -1,8 +1,6 @@
 package status
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -20,7 +18,7 @@ func (sm *Manager) Get(name enum.StatusName) (IStatusBar, error) {
 	if status, ok := sm.status[name]; ok {
 		return status, nil
 	}
-	return nil, errors.New("status not found")
+	return nil, ErrStatusNotFound
 }
 
 func (sm *Manager) Upgrade() error {

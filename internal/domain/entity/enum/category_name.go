@@ -34,5 +34,5 @@ func CategoryNameFrom(s string) (CategoryName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("invalid category name: %s", s)
+	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "category", s)
 }

@@ -1,8 +1,6 @@
 package proficiency
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -34,10 +32,10 @@ func NewJointProficiency(
 
 func (jp *JointProficiency) Init(physSkillsExp experience.ICascadeUpgrade) error {
 	if jp.physSkillsExp != nil {
-		return errors.New("proficiency already initialized")
+		return ErrProficiencyAlreadyInitialized
 	}
 	if physSkillsExp == nil {
-		return errors.New("physSkillsExp cannot be nil")
+		return ErrPhysSkillsCannotBeNil
 	}
 	jp.physSkillsExp = physSkillsExp
 	return nil

@@ -1,7 +1,6 @@
 package characterclass
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -55,6 +54,10 @@ func (cc *CharacterClass) GetName() enum.CharacterClassName {
 	return cc.Profile.Name
 }
 
+func (cc *CharacterClass) GetNameString() string {
+	return cc.Profile.Name.String()
+}
+
 func (d *Distribution) AllowSkill(skill enum.SkillName) bool {
 	for _, s := range d.SkillsAllowed {
 		if s == skill {
@@ -78,24 +81,18 @@ func (cc *CharacterClass) ValidateSkills(
 ) error {
 	if cc.Distribution == nil {
 		if len(skills) != 0 {
-			return fmt.Errorf(
-				"character class %s has no skill distribution", cc.GetName(),
-			)
+			return NewNoSkillDistributionError(cc.GetNameString())
 		}
 		return nil
 	}
 	d := *cc.Distribution
 	skillPts := slices.Clone(d.SkillPoints)
 	if len(skillPts) != len(skills) {
-		return fmt.Errorf(
-			"skills count is not exact in character class %s", cc.GetName(),
-		)
+		return NewSkillsCountMismatchError(cc.GetNameString())
 	}
 	for name := range skills {
 		if !d.AllowSkill(name) {
-			return fmt.Errorf(
-				"skill %s not found in character class %s", name, cc.GetName(),
-			)
+			return NewSkillNotAllowedError(name.String(), cc.GetNameString())
 		}
 	}
 	for _, exp := range skills {
@@ -107,9 +104,7 @@ func (cc *CharacterClass) ValidateSkills(
 		}
 	}
 	if len(skillPts) != 0 {
-		return fmt.Errorf(
-			"skills is not equals in character class %s", cc.GetName(),
-		)
+		return NewSkillsPointsMismatchError(cc.GetNameString())
 	}
 	return nil
 }
@@ -119,24 +114,18 @@ func (cc *CharacterClass) ValidateProficiencies(
 ) error {
 	if cc.Distribution == nil {
 		if len(proficiencies) != 0 {
-			return fmt.Errorf(
-				"character class %s has no proficiency distribution", cc.GetName(),
-			)
+			return NewNoProficiencyDistributionError(cc.GetNameString())
 		}
 		return nil
 	}
 	d := *cc.Distribution
 	profPts := slices.Clone(d.ProficiencyPoints)
 	if len(profPts) != len(proficiencies) {
-		return fmt.Errorf(
-			"proficiencies count is not exact in character class %s", cc.GetName(),
-		)
+		return NewProficienciesCountMismatchError(cc.GetNameString())
 	}
 	for name := range proficiencies {
 		if !d.AllowProficiency(name) {
-			return fmt.Errorf(
-				"proficiency %s not found in character class %s", name, cc.GetName(),
-			)
+			return NewProficiencyNotAllowedError(name.String(), cc.GetNameString())
 		}
 	}
 	for _, exp := range proficiencies {
@@ -148,9 +137,7 @@ func (cc *CharacterClass) ValidateProficiencies(
 		}
 	}
 	if len(profPts) != 0 {
-		return fmt.Errorf(
-			"proficiencies is not equals in character class %s", cc.GetName(),
-		)
+		return NewProficienciesPointsMismatchError(cc.GetNameString())
 	}
 	return nil
 }

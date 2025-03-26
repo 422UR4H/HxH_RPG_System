@@ -1,8 +1,6 @@
 package item
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -28,7 +26,7 @@ func (wm *WeaponsManager) GetAll() map[enum.WeaponName]Weapon {
 func (wm *WeaponsManager) Get(name enum.WeaponName) (Weapon, error) {
 	weapon, ok := wm.weapons[name]
 	if !ok {
-		return Weapon{}, errors.New("weapon not found")
+		return Weapon{}, ErrWeaponNotFound
 	}
 	return weapon, nil
 }

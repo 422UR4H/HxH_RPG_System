@@ -1,8 +1,6 @@
 package proficiency
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -31,7 +29,7 @@ func (m *Manager) Get(name enum.WeaponName) (IProficiency, error) {
 	if prof, ok := m.commonProficiencies[name]; ok {
 		return prof, nil
 	}
-	return nil, errors.New("proficiency not found")
+	return nil, ErrProficiencyNotFound
 }
 
 func (m *Manager) IncreaseExp(values *experience.UpgradeCascade, name enum.WeaponName) error {
@@ -50,7 +48,7 @@ func (m *Manager) AddJoint(
 	name := proficiency.GetName()
 
 	if _, ok := m.jointProficiencies[name]; ok {
-		return errors.New("proficiency already exists")
+		return ErrProficiencyAlreadyExists
 	}
 	if err := proficiency.Init(physSkillsExp); err != nil {
 		return err
@@ -63,7 +61,7 @@ func (m *Manager) AddCommon(
 	name enum.WeaponName, proficiency *Proficiency,
 ) error {
 	if _, ok := m.commonProficiencies[name]; ok {
-		return errors.New("proficiency already exists")
+		return ErrProficiencyAlreadyExists
 	}
 	m.commonProficiencies[name] = proficiency
 	return nil

@@ -1,8 +1,6 @@
 package attribute
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -37,6 +35,7 @@ func (ca *CharacterAttributes) IncreaseExpForMentals(
 }
 
 func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, error) {
+	// TODO: refactor error handler
 	if ca.spirituals != nil {
 		if attr, _ := ca.spirituals.Get(name); attr != nil {
 			return attr, nil
@@ -48,7 +47,7 @@ func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, err
 	if attr, _ := ca.mentals.Get(name); attr != nil {
 		return attr, nil
 	}
-	return nil, errors.New("attribute not found")
+	return nil, ErrAttributeNotFound
 }
 
 func (ca *CharacterAttributes) GetPointsOf(name enum.AttributeName) (int, error) {

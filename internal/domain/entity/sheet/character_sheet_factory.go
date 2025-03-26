@@ -264,6 +264,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	physAbilityExp experience.ICascadeUpgrade,
 	physAttrs *attribute.Manager,
 ) *skill.Manager {
+	// TODO: refactor panic to error handlers
 
 	skills := make(map[enum.SkillName]skill.ISkill)
 
@@ -344,7 +345,9 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Breath] = conSkill.Clone(enum.Breath)
 	skills[enum.Tenacity] = conSkill.Clone(enum.Tenacity)
 
-	physSkills.Init(skills)
+	if err := physSkills.Init(skills); err != nil {
+		panic(errors.New("skills already initialized"))
+	}
 	return physSkills
 }
 

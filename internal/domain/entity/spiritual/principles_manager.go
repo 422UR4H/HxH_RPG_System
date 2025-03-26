@@ -28,7 +28,7 @@ func NewPrinciplesManager(
 
 func (m *Manager) InitNenHexagon(nenHexagon *NenHexagon) error {
 	if nenHexagon != nil {
-		return fmt.Errorf("nen hexagon already initialized")
+		return ErrNenHexAlreadyInitialized
 	}
 	m.nenHexagon = nenHexagon
 	m.hatsu.SetCategoryPercents(nenHexagon.GetCategoryPercents())
@@ -42,7 +42,7 @@ func (m *Manager) IncreaseExpByPrinciple(
 		principle.CascadeUpgradeTrigger(values)
 		return nil
 	}
-	return fmt.Errorf("principle %s not found", name.String())
+	return fmt.Errorf("%w: %s", ErrPrincipleNotFound, name.String())
 }
 
 func (m *Manager) IncreaseExpByCategory(
@@ -62,7 +62,7 @@ func (m *Manager) Get(name enum.PrincipleName) (IPrinciple, error) {
 	if principle, ok := m.principles[name]; ok {
 		return &principle, nil
 	}
-	return nil, fmt.Errorf("principle %s not found", name.String())
+	return nil, fmt.Errorf("%w: %s", ErrPrincipleNotFound, name.String())
 }
 
 func (m *Manager) GetNextLvlAggregateExpOfPrinciple(
@@ -70,8 +70,7 @@ func (m *Manager) GetNextLvlAggregateExpOfPrinciple(
 
 	principle, err := m.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get aggregate exp of next lvl of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get aggregate exp of next lvl")
 	}
 	return principle.GetNextLvlAggregateExp(), nil
 }
@@ -81,8 +80,7 @@ func (m *Manager) GetNextLvlBaseExpOfPrinciple(
 
 	principle, err := m.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get base exp of next lvl of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get base exp of next lvl")
 	}
 	return principle.GetNextLvlBaseExp(), nil
 }
@@ -90,8 +88,7 @@ func (m *Manager) GetNextLvlBaseExpOfPrinciple(
 func (m *Manager) GetCurrentExpOfPrinciple(name enum.PrincipleName) (int, error) {
 	principle, err := m.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get current exp of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get current exp")
 	}
 	return principle.GetCurrentExp(), nil
 }
@@ -117,8 +114,7 @@ func (m *Manager) GetNextLvlAggregateExpOfCategory(
 
 	category, err := m.hatsu.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get aggregate exp of next lvl of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get aggregate exp of next lvl")
 	}
 	return category.GetNextLvlAggregateExp(), nil
 }
@@ -128,8 +124,7 @@ func (m *Manager) GetNextLvlBaseExpOfCategory(
 
 	category, err := m.hatsu.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get base exp of next lvl of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get base exp of next lvl")
 	}
 	return category.GetNextLvlBaseExp(), nil
 }
@@ -137,8 +132,7 @@ func (m *Manager) GetNextLvlBaseExpOfCategory(
 func (m *Manager) GetCurrentExpOfCategory(name enum.CategoryName) (int, error) {
 	category, err := m.hatsu.Get(name)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: %s %s", err, "failed to get current exp of", name.String())
+		return 0, fmt.Errorf("%w: %s", err, "failed to get current exp")
 	}
 	return category.GetCurrentExp(), nil
 }
@@ -228,7 +222,7 @@ func (m *Manager) DecreaseCurrHexValue() (
 
 func (m *Manager) ResetNenCategory() (int, error) {
 	if m.nenHexagon == nil {
-		return -1, fmt.Errorf("nen hexagon not initialized")
+		return -1, ErrNenHexNotInitialized
 	}
 	currHexValue := m.nenHexagon.ResetCategory()
 	m.hatsu.SetCategoryPercents(m.nenHexagon.GetCategoryPercents())
@@ -238,14 +232,14 @@ func (m *Manager) ResetNenCategory() (int, error) {
 
 func (m *Manager) GetNenCategoryName() (enum.CategoryName, error) {
 	if m.nenHexagon == nil {
-		return "", fmt.Errorf("nen hexagon not initialized")
+		return "", ErrNenHexNotInitialized
 	}
 	return m.nenHexagon.GetCategoryName(), nil
 }
 
 func (m *Manager) GetCurrHexValue() (int, error) {
 	if m.nenHexagon == nil {
-		return -1, fmt.Errorf("nen hexagon not initialized")
+		return -1, ErrNenHexNotInitialized
 	}
 	return m.nenHexagon.GetCurrHexValue(), nil
 }

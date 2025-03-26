@@ -103,5 +103,5 @@ func WeaponNameFrom(s string) (WeaponName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("invalid weapon name: %s", s)
+	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "weapon", s)
 }

@@ -1,8 +1,6 @@
 package attribute
 
 import (
-	"errors"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -34,7 +32,7 @@ func (m *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
 	if ok {
 		return middleAttribute, nil
 	}
-	return nil, errors.New("attribute not found")
+	return nil, ErrAttributeNotFound
 }
 
 func (m *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) {
@@ -42,7 +40,7 @@ func (m *Manager) GetPrimary(name enum.AttributeName) (PrimaryAttribute, error) 
 	if ok {
 		return *primaryAttribute, nil
 	}
-	return PrimaryAttribute{}, errors.New("primary attribute not found")
+	return PrimaryAttribute{}, ErrPrimaryAttributeNotFound
 }
 
 func (m *Manager) GetNextLvlAggregateExpOf(name enum.AttributeName) (int, error) {

@@ -1,9 +1,6 @@
 package skill
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 )
@@ -32,12 +29,12 @@ func NewSkillsManager(
 	}
 }
 
-func (m *Manager) Init(skills map[enum.SkillName]ISkill) {
+func (m *Manager) Init(skills map[enum.SkillName]ISkill) error {
 	if len(m.skills) > 0 {
-		fmt.Println("skills already initialized")
-		return
+		return ErrSkillsAlreadyInitialized
 	}
 	m.skills = skills
+	return nil
 }
 
 func (m *Manager) CascadeUpgrade(values *experience.UpgradeCascade) {
@@ -73,7 +70,7 @@ func (m *Manager) Get(name enum.SkillName) (ISkill, error) {
 	if skill, ok := m.skills[name]; ok {
 		return skill, nil
 	}
-	return nil, errors.New("skill not found")
+	return nil, ErrSkillNotFound
 }
 
 func (m *Manager) GetValueForTestOf(name enum.SkillName) (int, error) {
@@ -198,11 +195,11 @@ func (m *Manager) GetCommonSkills() map[enum.SkillName]ISkill {
 
 func (m *Manager) AddJointSkill(js *JointSkill) error {
 	if !js.IsInitialized() {
-		return fmt.Errorf("joint skill is not initialized")
+		return ErrJointSkillNotInitialized
 	}
 	name := js.GetName()
 	if _, ok := m.jointSkills[name]; ok {
-		return fmt.Errorf("joint skill %s already exists", js.GetName())
+		return ErrJointSkillAlreadyExists
 	}
 	m.jointSkills[name] = js
 	return nil

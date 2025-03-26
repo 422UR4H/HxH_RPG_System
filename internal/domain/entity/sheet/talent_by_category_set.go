@@ -1,8 +1,6 @@
 package sheet
 
 import (
-	"fmt"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -18,7 +16,7 @@ func NewTalentByCategorySet(
 
 	activeCategoryCount := getActiveCategoryCount(categories)
 	if activeCategoryCount == 0 {
-		return nil, fmt.Errorf("at least one category must be active")
+		return nil, ErrInvalidActiveCategoryCount
 	}
 	return &TalentByCategorySet{
 		categories:      categories,

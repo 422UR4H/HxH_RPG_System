@@ -1,8 +1,6 @@
 package skill
 
 import (
-	"fmt"
-
 	attr "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
@@ -36,10 +34,10 @@ func NewJointSkill(
 
 func (js *JointSkill) Init(abilitySkillsExp experience.ICascadeUpgrade) error {
 	if js.abilitySkillsExp != nil {
-		return fmt.Errorf("abilitySkillsExp already initialized")
+		return ErrAbilitySkillsAlreadyInitialized
 	}
 	if abilitySkillsExp == nil {
-		return fmt.Errorf("abilitySkillsExp cannot be nil")
+		return ErrAbilitySkillsCannotBeNil
 	}
 	js.abilitySkillsExp = abilitySkillsExp
 	return nil

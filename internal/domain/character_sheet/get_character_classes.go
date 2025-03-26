@@ -1,7 +1,6 @@
 package charactersheet
 
 import (
-	"fmt"
 	"sync"
 
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
@@ -34,7 +33,7 @@ func (uc *GetCharacterClassUC) GetCharacterClass(
 
 	class, exists := uc.characterClasses.Load(className)
 	if !exists {
-		return cc.CharacterClass{}, fmt.Errorf("character class %s not found", name)
+		return cc.CharacterClass{}, ErrCharacterClassNotFound
 	}
 	return class.(cc.CharacterClass), nil
 }

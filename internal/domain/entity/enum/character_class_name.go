@@ -55,5 +55,5 @@ func CharacterClassNameFrom(s string) (CharacterClassName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("invalid character class name: %s", s)
+	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "character class", s)
 }
