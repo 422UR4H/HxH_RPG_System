@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS character_profiles (
   UNIQUE (uuid),
   FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets (uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx ON character_profiles (nickname);
+CREATE INDEX IF NOT EXISTS idx_character_profiles_nickname ON character_profiles (nickname);
 
 COMMIT;
 -- +goose StatementEnd
