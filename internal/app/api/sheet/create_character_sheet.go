@@ -3,8 +3,10 @@ package sheet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
@@ -52,6 +54,8 @@ func CreateCharacterSheetHandler(
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			case errors.Is(err, charactersheet.ErrCharacterClassNotFound):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, domain.ErrValidation):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}
@@ -70,6 +74,10 @@ func CreateCharacterSheetHandler(
 func castRequest(
 	body *CreateCharacterSheetRequestBody,
 ) (*charactersheet.CreateCharacterSheetInput, error) {
+
+	if err := body.Profile.Validate(); err != nil {
+		return nil, fmt.Errorf("character profile error: %w", err)
+	}
 
 	skillsExps := make(map[enum.SkillName]int)
 	for k, v := range body.SkillsExps {
