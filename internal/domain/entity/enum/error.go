@@ -7,5 +7,5 @@ import (
 )
 
 var (
-	ErrInvalidNameOf = domain.NewDomainError(errors.New("invalid name of "))
+	ErrInvalidNameOf = domain.NewValidationError(errors.New("invalid name of "))
 )

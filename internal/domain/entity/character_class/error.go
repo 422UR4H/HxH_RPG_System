@@ -8,14 +8,14 @@ import (
 )
 
 var (
-	ErrNoSkillDistribution         = domain.NewDomainError(errors.New("character class has no skill distribution"))
-	ErrSkillsCountMismatch         = domain.NewDomainError(errors.New("skills count mismatch"))
-	ErrSkillNotAllowed             = domain.NewDomainError(errors.New("skill not allowed in character class"))
-	ErrSkillsPointsMismatch        = domain.NewDomainError(errors.New("skills points mismatch"))
-	ErrNoProficiencyDistribution   = domain.NewDomainError(errors.New("character class has no proficiency distribution"))
-	ErrProficienciesCountMismatch  = domain.NewDomainError(errors.New("proficiencies count mismatch"))
-	ErrProficiencyNotAllowed       = domain.NewDomainError(errors.New("proficiency not allowed in character class"))
-	ErrProficienciesPointsMismatch = domain.NewDomainError(errors.New("proficiencies points mismatch"))
+	ErrNoSkillDistribution         = domain.NewValidationError(errors.New("character class has no skill distribution"))
+	ErrSkillsCountMismatch         = domain.NewValidationError(errors.New("skills count mismatch"))
+	ErrSkillNotAllowed             = domain.NewValidationError(errors.New("skill not allowed in character class"))
+	ErrSkillsPointsMismatch        = domain.NewValidationError(errors.New("skills points mismatch"))
+	ErrNoProficiencyDistribution   = domain.NewValidationError(errors.New("character class has no proficiency distribution"))
+	ErrProficienciesCountMismatch  = domain.NewValidationError(errors.New("proficiencies count mismatch"))
+	ErrProficiencyNotAllowed       = domain.NewValidationError(errors.New("proficiency not allowed in character class"))
+	ErrProficienciesPointsMismatch = domain.NewValidationError(errors.New("proficiencies points mismatch"))
 )
 
 // Helper functions to add context to errors

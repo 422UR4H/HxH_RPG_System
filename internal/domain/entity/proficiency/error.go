@@ -8,7 +8,7 @@ import (
 
 var (
 	ErrProficiencyAlreadyInitialized = domain.NewDomainError(errors.New("proficiency already initialized"))
-	ErrProficiencyAlreadyExists      = domain.NewDomainError(errors.New("proficiency already exists"))
 	ErrPhysSkillsCannotBeNil         = domain.NewDomainError(errors.New("physical skill exp cannot be nil"))
-	ErrProficiencyNotFound           = domain.NewDomainError(errors.New("proficiency not found"))
+	ErrProficiencyAlreadyExists      = domain.NewValidationError(errors.New("proficiency already exists"))
+	ErrProficiencyNotFound           = domain.NewValidationError(errors.New("proficiency not found"))
 )

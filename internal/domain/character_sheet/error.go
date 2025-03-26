@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	ErrCharacterClassNotFound = domain.NewDomainError(errors.New("character class not found"))
-	ErrNicknameNotAllowed     = domain.NewDomainError(errors.New("nickname is not allowed"))
-	ErrNicknameAlreadyExists  = domain.NewDomainError(errors.New("nickname already exists"))
+	ErrCharacterClassNotFound = domain.NewValidationError(errors.New("character class not found"))
+	ErrNicknameNotAllowed     = domain.NewValidationError(errors.New("nickname is not allowed"))
+	ErrNicknameAlreadyExists  = domain.NewValidationError(errors.New("nickname already exists"))
 )
 
 // Helper functions to add context to errors
