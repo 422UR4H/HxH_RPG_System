@@ -28,6 +28,7 @@ type config struct {
 }
 
 var characterClasses sync.Map
+var characterSheets sync.Map
 
 // TODO: remove or handle after balancing
 var charClassSheets map[enum.CharacterClassName]*sheet.CharacterSheet
@@ -57,6 +58,7 @@ func main() {
 
 	createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
 		&characterClasses,
+		&characterSheets,
 		sheet.NewCharacterSheetFactory(),
 		characterSheetRepo,
 	)
@@ -135,7 +137,7 @@ func initCharacterClasses() {
 		}
 		charClassSheets[name] = newClass
 		// uncomment to print all character classes
-		fmt.Println(newClass.ToString())
+		// fmt.Println(newClass.ToString())
 		return true
 	})
 }

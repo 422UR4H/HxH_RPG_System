@@ -154,6 +154,10 @@ func (cs *CharacterSheet) GetMinOfStatus(name enum.StatusName) (int, error) {
 	return cs.status.GetMinOf(name)
 }
 
+func (cs *CharacterSheet) GetPointsOfAttribute(name enum.AttributeName) (int, error) {
+	return cs.attribute.GetPointsOf(name)
+}
+
 func (cs *CharacterSheet) GetLevelOfAbility(name enum.AbilityName) (int, error) {
 	return cs.ability.GetLevelOf(name)
 }
