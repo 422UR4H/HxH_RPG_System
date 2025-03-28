@@ -93,7 +93,6 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	return characterSheet, err
 }
 
-// TODO: validate input.Profile.NickName in repo
 func (uc *CreateCharacterSheetUC) validateNickName(nick string) error {
 	var allowedNickName = true
 	uc.characterClasses.Range(func(_, value any) bool {
