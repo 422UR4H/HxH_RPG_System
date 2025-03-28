@@ -83,8 +83,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	characterSheet.InitTalentWithLvl(talentLvl)
 
 	characterSheet.UUID = uuid.New()
-	// TODO: maybe save with PLAYER/USER nickname instead of your character
-	uc.characterSheets.Store(input.Profile.NickName, characterSheet)
+	uc.characterSheets.Store(characterSheet.UUID, characterSheet)
 
 	model := CharacterSheetToModel(characterSheet)
 	err = uc.repo.CreateCharacterSheet(context.Background(), model)

@@ -11,10 +11,11 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	"github.com/google/uuid"
 )
 
 type IGetCharacterSheet interface {
-	GetCharacterSheet(ctx context.Context, uuid string) (*sheet.CharacterSheet, error)
+	GetCharacterSheet(ctx context.Context, uuid uuid.UUID) (*sheet.CharacterSheet, error)
 }
 
 type GetCharacterSheetUC struct {
@@ -36,19 +37,18 @@ func NewGetCharacterSheetUC(
 }
 
 func (uc *GetCharacterSheetUC) GetCharacterSheet(
-	ctx context.Context, uuid string,
+	ctx context.Context, id uuid.UUID,
 ) (*sheet.CharacterSheet, error) {
-	// TODO: consult characterSheets *sync.Map before with nickname(?) instead of uuid
-	// if sheet, ok := uc.characterSheets.Load(uuid); ok {
-	// 	return sheet.(*sheet.CharacterSheet), nil
-	// }
-	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, uuid)
+
+	if charSheet, ok := uc.characterSheets.Load(id); ok {
+		return charSheet.(*sheet.CharacterSheet), nil
+	}
+
+	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, id.String())
 	if err != nil {
-		// TODO: improve err handler
 		return nil, ErrCharacterSheetNotFound
 	}
 
-	// Convert the model to the domain entity
 	profile := ModelToProfile(&modelSheet.Profile)
 	characterSheet, err := uc.factory.Build(*profile, modelSheet.CurrHexValue, nil)
 	if err != nil {
@@ -59,20 +59,18 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	if err != nil {
 		return nil, err
 	}
+
 	err = characterSheet.AddDryCharacterClass(&characterClass)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("characterClass")
-	fmt.Println(characterSheet.GetCharacterClass())
 
 	err = Wrap(characterSheet, modelSheet)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: maybe save with PLAYER/USER nickname instead of your character
-	uc.characterSheets.Store(profile.NickName, characterSheet)
+	uc.characterSheets.Store(id, characterSheet)
 
 	return characterSheet, nil
 }

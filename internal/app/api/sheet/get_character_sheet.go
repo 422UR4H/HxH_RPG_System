@@ -29,12 +29,12 @@ func GetCharacterSheetHandler(
 
 	return func(ctx context.Context, req *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
 
-		_, err := uuid.Parse(req.UUID)
+		uuid, err := uuid.Parse(req.UUID)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 
-		characterSheet, err := uc.GetCharacterSheet(ctx, req.UUID)
+		characterSheet, err := uc.GetCharacterSheet(ctx, uuid)
 		if err != nil {
 			if errors.Is(err, cc.ErrCharacterSheetNotFound) {
 				return nil, huma.Error404NotFound(err.Error())
