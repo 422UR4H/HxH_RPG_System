@@ -29,13 +29,12 @@ func NewHatsu(
 	}
 }
 
-// TODO: handle error here
-func (h *Hatsu) Init(categories map[enum.CategoryName]NenCategory) {
+func (h *Hatsu) Init(categories map[enum.CategoryName]NenCategory) error {
 	if len(h.categories) > 0 {
-		fmt.Println("hatsu already initialized with categories")
-		return
+		return ErrNenHexAlreadyInitialized
 	}
 	h.categories = categories
+	return nil
 }
 
 func (h *Hatsu) SetCategoryPercents(

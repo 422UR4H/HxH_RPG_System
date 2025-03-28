@@ -44,7 +44,6 @@ func (cs *CharacterSkills) GetPhysicalsJoint() map[string]JointSkill {
 }
 
 func (cs *CharacterSkills) Get(name enum.SkillName) (ISkill, error) {
-	// TODO: refactor error handler
 	if cs.spirituals != nil {
 		if skill, _ := cs.spirituals.Get(name); skill != nil {
 			return skill, nil
