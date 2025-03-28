@@ -1,9 +1,6 @@
 package sheet
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/attribute"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
@@ -53,26 +50,24 @@ func (csf *CharacterSheetFactory) Build(
 	mentalAbility, _ := abilities.Get(enum.Mentals)
 	mentalAttrs := csf.BuildMentalAttrs(mentalAbility)
 
-	spiritualAbility, _ := abilities.Get(enum.Spirituals)
-	spiritAttrs := csf.BuildSpiritualAttrs(spiritualAbility)
+	spiritAbility, _ := abilities.Get(enum.Spirituals)
+	spiritAttrs := csf.BuildSpiritualAttrs(spiritAbility)
 
-	characterAttrs := attribute.NewCharacterAttributes(
-		physAttrs, mentalAttrs, spiritAttrs,
-	)
+	charAttrs := attribute.NewCharacterAttributes(physAttrs, mentalAttrs, spiritAttrs)
 
 	skills, _ := abilities.Get(enum.Skills)
-	physSkills := csf.BuildPhysSkills(
-		skills, physAbility, physAttrs,
-	)
-	mentalSkills := csf.BuildMentalSkills(
-		skills, mentalAbility, mentalAttrs,
-	)
-	spiritSkills := csf.BuildSpiritualSkills(
-		skills, spiritualAbility, spiritAttrs,
-	)
-	characterSkills := skill.NewCharacterSkills(
-		physSkills, mentalSkills, spiritSkills,
-	)
+	physSkills, err := csf.BuildPhysSkills(skills, physAbility, physAttrs)
+	if err != nil {
+		return nil, err
+	}
+
+	mentalSkills := csf.BuildMentalSkills(skills, mentalAbility, mentalAttrs)
+
+	spiritSkills, err := csf.BuildSpiritualSkills(skills, spiritAbility, spiritAttrs)
+	if err != nil {
+		return nil, err
+	}
+	charSkills := skill.NewCharacterSkills(physSkills, mentalSkills, spiritSkills)
 
 	var nenHexagon *spiritual.NenHexagon
 	var categoryPercents map[enum.CategoryName]float64
@@ -80,12 +75,9 @@ func (csf *CharacterSheetFactory) Build(
 		nenHexagon = spiritual.NewNenHexagon(*hexValue)
 		categoryPercents = nenHexagon.GetCategoryPercents()
 	}
-	hatsu := csf.BuildHatsu(spiritualAbility, categoryPercents)
+	hatsu := csf.BuildHatsu(spiritAbility, categoryPercents)
 	// aura, _ := status.Get(enum.Aura)
-
-	spiritPrinciples := csf.BuildSpiritPrinciples(
-		spiritualAbility, nenHexagon, hatsu,
-	)
+	spiritPrinciples := csf.BuildSpiritPrinciples(spiritAbility, nenHexagon, hatsu)
 
 	proficiency := proficiency.NewManager()
 
@@ -93,14 +85,14 @@ func (csf *CharacterSheetFactory) Build(
 	if charClass != nil {
 		className = charClass.GetName()
 	}
-	status := csf.BuildStatusManager(abilities, characterAttrs, characterSkills)
+	status := csf.BuildStatusManager(abilities, charAttrs, charSkills)
 
 	charSheet := NewCharacterSheet(
 		profile,
 		*abilities,
-		*characterAttrs,
+		*charAttrs,
 		*spiritPrinciples,
-		*characterSkills,
+		*charSkills,
 		*proficiency,
 		*status,
 		&className,
@@ -109,10 +101,7 @@ func (csf *CharacterSheetFactory) Build(
 		// TODO: move into Wrap
 		physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
 		if err != nil {
-			// TODO: refactor to ErrDomain
-			return charSheet, fmt.Errorf(
-				"class not applied: error getting exp reference for %w", err,
-			)
+			return charSheet, NewClassNotAppliedError("getting exp reference")
 		}
 		charSheet = csf.Wrap(charSheet, charClass, physSkExp)
 	}
@@ -262,8 +251,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skillsExp experience.ICascadeUpgrade,
 	physAbilityExp experience.ICascadeUpgrade,
 	physAttrs *attribute.Manager,
-) *skill.Manager {
-	// TODO: refactor panic to error handlers
+) (*skill.Manager, error) {
 
 	skills := make(map[enum.SkillName]skill.ISkill)
 
@@ -272,7 +260,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	res, err := physAttrs.Get(enum.Resistance)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	resSkill := skill.NewCommonSkill(enum.Vitality, *exp.Clone(), res, physSkills)
 	skills[enum.Vitality] = resSkill.Clone(enum.Vitality)
@@ -281,7 +269,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	str, err := physAttrs.Get(enum.Strength)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	strSkill := skill.NewCommonSkill(enum.Push, *exp.Clone(), str, physSkills)
 	skills[enum.Push] = strSkill.Clone(enum.Push)
@@ -290,7 +278,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	agi, err := physAttrs.Get(enum.Agility)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	agiSkill := skill.NewCommonSkill(enum.Velocity, *exp.Clone(), agi, physSkills)
 	skills[enum.Velocity] = agiSkill.Clone(enum.Velocity)
@@ -299,7 +287,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	ats, err := physAttrs.Get(enum.ActionSpeed)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	atsSkill := skill.NewCommonSkill(enum.AttackSpeed, *exp.Clone(), ats, physSkills)
 	skills[enum.AttackSpeed] = atsSkill.Clone(enum.AttackSpeed)
@@ -308,7 +296,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	flx, err := physAttrs.Get(enum.Flexibility)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	flxSkill := skill.NewCommonSkill(enum.Acrobatics, *exp.Clone(), flx, physSkills)
 	skills[enum.Acrobatics] = flxSkill.Clone(enum.Acrobatics)
@@ -317,7 +305,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	dex, err := physAttrs.Get(enum.Dexterity)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	dexSkill := skill.NewCommonSkill(enum.Reflex, *exp.Clone(), dex, physSkills)
 	skills[enum.Reflex] = dexSkill.Clone(enum.Reflex)
@@ -326,7 +314,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	sen, err := physAttrs.Get(enum.Sense)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	senSkill := skill.NewCommonSkill(enum.Vision, *exp.Clone(), sen, physSkills)
 	skills[enum.Vision] = senSkill.Clone(enum.Vision)
@@ -337,7 +325,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 	con, err := physAttrs.Get(enum.Constitution)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	conSkill := skill.NewCommonSkill(enum.Heal, *exp.Clone(), con, physSkills)
 	skills[enum.Heal] = conSkill.Clone(enum.Heal)
@@ -345,9 +333,9 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Tenacity] = conSkill.Clone(enum.Tenacity)
 
 	if err := physSkills.Init(skills); err != nil {
-		panic(errors.New("skills already initialized"))
+		return nil, err
 	}
-	return physSkills
+	return physSkills, nil
 }
 
 func (csf *CharacterSheetFactory) BuildMentalSkills(
@@ -367,7 +355,7 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	skillsExp experience.ICascadeUpgrade,
 	spiritualAbilityExp experience.ICascadeUpgrade,
 	spiritualsAttrs *attribute.Manager,
-) *skill.Manager {
+) (*skill.Manager, error) {
 
 	skills := make(map[enum.SkillName]skill.ISkill)
 
@@ -376,15 +364,18 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 
 	spr, err := spiritualsAttrs.Get(enum.Spirit)
 	if err != nil {
-		panic(errors.New("attribute not found"))
+		return nil, err
 	}
 	skill := skill.NewCommonSkill(enum.Nen, *exp.Clone(), spr, spiritualSkills)
 	skills[enum.Nen] = skill.Clone(enum.Nen)
 	skills[enum.Focus] = skill.Clone(enum.Focus)
 	skills[enum.WillPower] = skill.Clone(enum.WillPower)
 
-	spiritualSkills.Init(skills)
-	return spiritualSkills
+	err = spiritualSkills.Init(skills)
+	if err != nil {
+		return nil, err
+	}
+	return spiritualSkills, nil
 }
 
 func (csf *CharacterSheetFactory) BuildHatsu(
@@ -496,7 +487,7 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	profile CharacterProfile,
 	categorySet *TalentByCategorySet,
 	charClass *cc.CharacterClass,
-) *HalfSheet {
+) (*HalfSheet, error) {
 	expTable := experience.NewExpTable(CHARACTER_COEFF)
 	exp := experience.NewExperience(expTable)
 	characterExp := experience.NewCharacterExp(*exp)
@@ -521,9 +512,12 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	)
 
 	skills, _ := abilities.Get(enum.Skills)
-	physSkills := csf.BuildPhysSkills(
+	physSkills, err := csf.BuildPhysSkills(
 		skills, physAbility, physAttrs,
 	)
+	if err != nil {
+		return nil, err
+	}
 	mentalSkills := csf.BuildMentalSkills(
 		skills, mentalAbility, mentalAttrs,
 	)
@@ -552,7 +546,7 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	if charClass != nil {
 		sheet = csf.WrapHalf(sheet, charClass)
 	}
-	return sheet
+	return sheet, nil
 
 }
 

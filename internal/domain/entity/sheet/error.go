@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	ErrClassNotApplied            = domain.NewDomainError(errors.New("class not applied"))
 	ErrInvalidActiveCategoryCount = domain.NewValidationError(errors.New("at least one category must be active"))
 	ErrInvalidNicknameLength      = domain.NewValidationError(errors.New("invalid nickname length"))
 	ErrInvalidFullNameLength      = domain.NewValidationError(errors.New("invalid fullname length"))
@@ -17,6 +18,10 @@ var (
 	ErrInvalidDistributionPoints  = domain.NewValidationError(errors.New("invalid distribution points"))
 	ErrCharClassAlreadyExists     = domain.NewValidationError(errors.New("character class already exists"))
 )
+
+func NewClassNotAppliedError(msg string) error {
+	return fmt.Errorf("%w: %s", ErrClassNotApplied, msg)
+}
 
 func NewInvalidNicknameLengthError(nick string) error {
 	return fmt.Errorf("%w: %s", ErrInvalidNicknameLength, nick)
