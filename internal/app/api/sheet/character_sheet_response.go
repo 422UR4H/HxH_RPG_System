@@ -30,7 +30,7 @@ type CharacterSheetResponse struct {
 	Status             map[string]StatusResponse            `json:"status"`
 }
 
-// TODO: refactor adding constructor
+// TODO: maybe refactor adding constructor
 type ExperienceResponse struct {
 	Level         int `json:"level"`
 	Exp           int `json:"exp"`

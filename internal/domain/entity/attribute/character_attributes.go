@@ -35,7 +35,6 @@ func (ca *CharacterAttributes) IncreaseExpForMentals(
 }
 
 func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, error) {
-	// TODO: refactor error handler
 	if ca.spirituals != nil {
 		if attr, _ := ca.spirituals.Get(name); attr != nil {
 			return attr, nil
