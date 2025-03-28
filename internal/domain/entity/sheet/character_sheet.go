@@ -124,10 +124,14 @@ func (cs *CharacterSheet) IncreaseExpForTalent(exp int) {
 func (cs *CharacterSheet) AddDryCharacterClass(
 	charClass *enum.CharacterClassName,
 ) error {
-	// TODO: refactor reference for enum in sheet and its factory to uncomment
-	// if cs.charClass != nil {
-	// 	return ErrCharClassAlreadyExists
-	// }
+	// if enum cast is successful, the charClass already exists
+	_, err := enum.CharacterClassNameFrom(cs.charClass.String())
+	if err == nil {
+		return ErrCharClassAlreadyExists
+	}
+	if cs.charClass != nil {
+		return ErrCharClassAlreadyExists
+	}
 	cs.charClass = charClass
 	return nil
 }
