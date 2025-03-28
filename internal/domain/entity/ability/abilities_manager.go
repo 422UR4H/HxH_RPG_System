@@ -23,6 +23,14 @@ func NewAbilitiesManager(
 	}
 }
 
+func (m *Manager) InitTalentWithLvl(lvl int) {
+	m.talent.InitWithLvl(lvl)
+}
+
+func (m *Manager) IncreaseTalentExp(exp int) {
+	m.talent.IncreaseExp(exp)
+}
+
 func (m *Manager) GetCharacterPoints() int {
 	return m.characterExp.GetCharacterPoints()
 }
@@ -124,6 +132,14 @@ func (m *Manager) GetAbilitiesLevel() map[enum.AbilityName]int {
 		lvlList[name] = ability.GetLevel()
 	}
 	return lvlList
+}
+
+func (m *Manager) GetPhysicalsLevel() (int, error) {
+	phys, err := m.Get(enum.Physicals)
+	if err != nil {
+		return 0, err
+	}
+	return phys.GetLevel(), nil
 }
 
 func (m *Manager) GetCharacterNextLvlAggregateExp() int {

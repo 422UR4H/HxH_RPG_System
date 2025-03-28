@@ -14,6 +14,8 @@ var (
 	ErrInvalidAlignmentLength     = domain.NewValidationError(errors.New("invalid alignment length"))
 	ErrInvalidBriefDescription    = domain.NewValidationError(errors.New("invalid brief description length"))
 	ErrInvalidBirthday            = domain.NewValidationError(errors.New("invalid birthday"))
+	ErrInvalidDistributionPoints  = domain.NewValidationError(errors.New("invalid distribution points"))
+	ErrCharClassAlreadyExists     = domain.NewValidationError(errors.New("character class already exists"))
 )
 
 func NewInvalidNicknameLengthError(nick string) error {

@@ -2,9 +2,11 @@ package sheet
 
 import (
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	"github.com/google/uuid"
 )
 
 type CharacterSheetResponse struct {
+	UUID           uuid.UUID                    `json:"uuid"`
 	CharacterClass string                       `json:"character_class"`
 	CategoryName   string                       `json:"category_name"`
 	Profile        domainSheet.CharacterProfile `json:"profile"`
@@ -97,7 +99,6 @@ func NewCharacterSheetResponse(
 		strCategoryName = ""
 	}
 	charClass := charSheet.GetCharacterClass()
-
 	nenHexValue := charSheet.GetCurrHexValue()
 
 	charExp := CharacterExpResponse{
@@ -284,6 +285,7 @@ func NewCharacterSheetResponse(
 	}
 
 	return &CharacterSheetResponse{
+		UUID:                charSheet.UUID,
 		Profile:             charSheet.GetProfile(),
 		CharacterClass:      charClass.String(),
 		CategoryName:        strCategoryName,

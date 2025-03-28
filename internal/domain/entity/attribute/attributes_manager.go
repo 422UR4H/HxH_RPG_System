@@ -22,6 +22,17 @@ func NewAttributeManager(
 	}
 }
 
+func (m *Manager) IncreasePointsForPrimary(
+	name enum.AttributeName, value int,
+) (map[enum.AttributeName]int, error) {
+	attr, err := m.GetPrimary(name)
+	if err != nil {
+		return nil, err
+	}
+	attr.IncreasePoints(value)
+	return m.GetAttributesPoints(), nil
+}
+
 func (m *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
 	primaryAttribute, ok := m.primaryAttributes[name]
 	if ok {
@@ -136,6 +147,25 @@ func (m *Manager) GetAttributesLevel() map[enum.AttributeName]int {
 		lvlList[name] = attr.GetLevel()
 	}
 	return lvlList
+}
+
+func (m *Manager) GetAttributesPoints() map[enum.AttributeName]int {
+	pointsList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		pointsList[name] = attr.GetPoints()
+	}
+	for name, attr := range m.middleAttributes {
+		pointsList[name] = attr.GetPoints()
+	}
+	return pointsList
+}
+
+func (m *Manager) GetDistributedPrimaryPoints() map[enum.AttributeName]int {
+	pointsList := make(map[enum.AttributeName]int)
+	for name, attr := range m.primaryAttributes {
+		pointsList[name] = attr.GetPoints()
+	}
+	return pointsList
 }
 
 func (m *Manager) GetBuffs() map[enum.AttributeName]*int {

@@ -72,13 +72,19 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	}
 	charClass.ApplySkills(skillsExps)
 	charClass.ApplyProficiencies(profExps)
-	characterSheet, err := uc.factory.Build(input.Profile, &input.CategorySet, &charClass)
+
+	characterSheet, err := uc.factory.Build(
+		input.Profile, input.CategorySet.GetInitialHexValue(), &charClass,
+	)
 	if err != nil {
 		return nil, err
 	}
+	talentLvl := input.CategorySet.GetTalentLvl()
+	characterSheet.InitTalentWithLvl(talentLvl)
 
-	// TODO: save with PLAYER/USER nickname instead of your character
-	uc.characterSheets.Store(input.Profile.NickName, charClass)
+	characterSheet.UUID = uuid.New()
+	// TODO: maybe save with PLAYER/USER nickname instead of your character
+	uc.characterSheets.Store(input.Profile.NickName, characterSheet)
 
 	model := CharacterSheetToModel(characterSheet)
 	err = uc.repo.CreateCharacterSheet(context.Background(), model)
@@ -154,7 +160,7 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 	}
 
 	charSheetModel := &model.CharacterSheet{
-		UUID: uuid.New(),
+		UUID: sheet.UUID,
 
 		Profile: model.CharacterProfile{
 			UUID:             uuid.New(),

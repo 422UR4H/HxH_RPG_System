@@ -54,12 +54,18 @@ func main() {
 	charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
 	initCharacterClasses()
 
+	characterSheetFactory := sheet.NewCharacterSheetFactory()
 	characterSheetRepo := sheetPg.NewRepository(pgPool)
 
+	getCharacterSheetUC := cc.NewGetCharacterSheetUC(
+		&characterSheets,
+		characterSheetFactory,
+		characterSheetRepo,
+	)
 	createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
 		&characterClasses,
 		&characterSheets,
-		sheet.NewCharacterSheetFactory(),
+		characterSheetFactory,
 		characterSheetRepo,
 	)
 	listCharacterClassesUC := cc.NewListCharacterClassesUC(
@@ -72,6 +78,7 @@ func main() {
 	chiServer := api.NewServer()
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler: sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
+		GetCharacterSheetHandler:    sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
 		ListClassesHandler:          sheetHandler.ListClassesHandler(listCharacterClassesUC),
 		GetClassHandler:             sheetHandler.GetClassHandler(getCharacterClassUC),
 	}
@@ -131,7 +138,7 @@ func initCharacterClasses() {
 		if err != nil {
 			fmt.Println(err)
 		}
-		newClass, err := factory.Build(profile, set, &class)
+		newClass, err := factory.Build(profile, set.GetInitialHexValue(), &class)
 		if err != nil {
 			fmt.Println(err)
 		}

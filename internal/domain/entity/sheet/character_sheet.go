@@ -11,9 +11,11 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
+	"github.com/google/uuid"
 )
 
 type CharacterSheet struct {
+	UUID        uuid.UUID
 	profile     CharacterProfile
 	ability     ability.Manager
 	attribute   attribute.CharacterAttributes
@@ -63,6 +65,36 @@ func (cs *CharacterSheet) IncreaseExpForSkill(
 	return err
 }
 
+func (cs *CharacterSheet) IncreasePtsForPhysPrimaryAttr(
+	name enum.AttributeName,
+	points int,
+) (map[enum.AttributeName]int, map[enum.StatusName]int, error) {
+
+	physPtsSum := 0
+	for _, lvl := range cs.attribute.GetPhysicalsPrimaryPoints() {
+		physPtsSum += lvl
+	}
+	physLvl, err := cs.ability.GetPhysicalsLevel()
+	if err != nil {
+		return nil, nil, err
+	}
+	if physPtsSum+points > physLvl {
+		return nil, nil, ErrInvalidDistributionPoints
+	}
+
+	attrPts, err := cs.attribute.IncreasePrimaryPhysicalPts(name, points)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = cs.status.Upgrade()
+	if err != nil {
+		return nil, nil, err
+	}
+	maxStatusValues := cs.status.GetAllMaximuns()
+
+	return attrPts, maxStatusValues, nil
+}
+
 // AddJointSkill only supports physical skills yet
 func (cs *CharacterSheet) AddJointSkill(
 	skill *skill.JointSkill,
@@ -79,6 +111,25 @@ func (cs *CharacterSheet) AddJointSkill(
 
 func (cs *CharacterSheet) GetPhysJointSkills() map[string]skill.JointSkill {
 	return cs.skill.GetPhysicalsJoint()
+}
+
+func (cs *CharacterSheet) InitTalentWithLvl(lvl int) {
+	cs.ability.InitTalentWithLvl(lvl)
+}
+
+func (cs *CharacterSheet) IncreaseExpForTalent(exp int) {
+	cs.ability.IncreaseTalentExp(exp)
+}
+
+func (cs *CharacterSheet) AddDryCharacterClass(
+	charClass *enum.CharacterClassName,
+) error {
+	// TODO: refactor reference for enum in sheet and its factory to uncomment
+	// if cs.charClass != nil {
+	// 	return ErrCharClassAlreadyExists
+	// }
+	cs.charClass = charClass
+	return nil
 }
 
 func (cs *CharacterSheet) IncreaseExpForPrinciple(
@@ -288,6 +339,10 @@ func (cs *CharacterSheet) GetAllStatusBar() map[enum.StatusName]status.IStatusBa
 
 func (cs *CharacterSheet) GetProfile() CharacterProfile {
 	return cs.profile
+}
+
+func (cs *CharacterSheet) GetPhysSkillExpReference() (experience.ICascadeUpgrade, error) {
+	return cs.ability.GetExpReferenceOf(enum.Physicals)
 }
 
 func (cs *CharacterSheet) ToString() string {

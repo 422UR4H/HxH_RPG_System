@@ -56,6 +56,15 @@ func (sm *Manager) GetCurrentOf(name enum.StatusName) (int, error) {
 	return status.GetCurrent(), nil
 }
 
+func (sm *Manager) GetAllMaximuns() map[enum.StatusName]int {
+	maxs := make(map[enum.StatusName]int)
+	for name := range sm.status {
+		max, _ := sm.GetMaxOf(name)
+		maxs[name] = max
+	}
+	return maxs
+}
+
 func (sm *Manager) GetAllStatus() map[enum.StatusName]IStatusBar {
 	return sm.status
 }

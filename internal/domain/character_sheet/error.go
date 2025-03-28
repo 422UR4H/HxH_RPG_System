@@ -8,12 +8,12 @@ import (
 )
 
 var (
-	ErrCharacterClassNotFound = domain.NewValidationError(errors.New("character class not found"))
+	ErrCharacterSheetNotFound = domain.NewDBError(errors.New("character sheet not found"))
+	ErrCharacterClassNotFound = domain.NewDBError(errors.New("character class not found"))
 	ErrNicknameNotAllowed     = domain.NewValidationError(errors.New("nickname is not allowed"))
 	ErrNicknameAlreadyExists  = domain.NewValidationError(errors.New("nickname already exists"))
 )
 
-// Helper functions to add context to errors
 func NewCharacterClassNotFoundError(className string) error {
 	return fmt.Errorf("%w: %s", ErrCharacterClassNotFound, className)
 }

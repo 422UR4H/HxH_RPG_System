@@ -98,18 +98,11 @@ func (ca *CharacterAttributes) GetLevelOf(name enum.AttributeName) (int, error) 
 	return attr.GetLevel(), nil
 }
 
-// TODO: verify if this is necessary
-// func (ca *CharacterAttributes) SetPoints(points int, name enum.AttributeName) error {
-// 	attr, err := ca.physicals.GetPrimary(name)
-// 	if err != nil {
-// 		attr, err = ca.mentals.GetPrimary(name)
-// 	}
-// 	if err != nil {
-// 		return err
-// 	}
-// 	attr.SetPoints(points)
-// 	return nil
-// }
+func (ca *CharacterAttributes) IncreasePrimaryPhysicalPts(
+	name enum.AttributeName, points int,
+) (map[enum.AttributeName]int, error) {
+	return ca.physicals.IncreasePointsForPrimary(name, points)
+}
 
 func (ca *CharacterAttributes) GetPowerOf(name enum.AttributeName) (int, error) {
 	attr, err := ca.Get(name)
@@ -177,6 +170,10 @@ func (ca *CharacterAttributes) GetMentalsLevel() map[enum.AttributeName]int {
 
 func (ca *CharacterAttributes) GetSpiritualsLevel() map[enum.AttributeName]int {
 	return ca.spirituals.GetAttributesLevel()
+}
+
+func (ca *CharacterAttributes) GetPhysicalsPrimaryPoints() map[enum.AttributeName]int {
+	return ca.physicals.GetDistributedPrimaryPoints()
 }
 
 func (ca *CharacterAttributes) GetPhysicalAttributes() map[enum.AttributeName]IGameAttribute {

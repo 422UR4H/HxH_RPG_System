@@ -6,10 +6,17 @@ type Talent struct {
 	exp experience.Exp
 }
 
-func NewTalent(exp experience.Exp, lvl int) *Talent {
-	aggregateExp := exp.GetAggregateExpByLvl(lvl)
-	exp.IncreasePoints(aggregateExp)
+func NewTalent(exp experience.Exp) *Talent {
 	return &Talent{exp: exp}
+}
+
+func (t *Talent) InitWithLvl(lvl int) {
+	aggregateExp := t.exp.GetAggregateExpByLvl(lvl)
+	t.IncreaseExp(aggregateExp)
+}
+
+func (t *Talent) IncreaseExp(value int) int {
+	return t.exp.IncreasePoints(value)
 }
 
 func (t *Talent) GetNextLvlAggregateExp() int {

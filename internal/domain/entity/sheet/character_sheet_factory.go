@@ -40,15 +40,12 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 
 func (csf *CharacterSheetFactory) Build(
 	profile CharacterProfile,
-	categorySet *TalentByCategorySet,
+	hexValue *int,
 	charClass *cc.CharacterClass,
 ) (*CharacterSheet, error) {
 
 	characterExp := csf.BuildCharacterExp()
-
-	// TODO: move to CharacterSheetUC
-	talentLvl := categorySet.GetTalentLvl()
-	abilities := csf.BuildPersonAbilities(characterExp, talentLvl)
+	abilities := csf.BuildPersonAbilities(characterExp)
 
 	physAbility, _ := abilities.Get(enum.Physicals)
 	physAttrs := csf.BuildPhysAttrs(physAbility)
@@ -79,8 +76,8 @@ func (csf *CharacterSheetFactory) Build(
 
 	var nenHexagon *spiritual.NenHexagon
 	var categoryPercents map[enum.CategoryName]float64
-	if categorySet.initialHexValue != nil {
-		nenHexagon = spiritual.NewNenHexagon(*categorySet.initialHexValue)
+	if hexValue != nil {
+		nenHexagon = spiritual.NewNenHexagon(*hexValue)
 		categoryPercents = nenHexagon.GetCategoryPercents()
 	}
 	hatsu := csf.BuildHatsu(spiritualAbility, categoryPercents)
@@ -109,8 +106,10 @@ func (csf *CharacterSheetFactory) Build(
 		&className,
 	)
 	if charClass != nil {
+		// TODO: move into Wrap
 		physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
 		if err != nil {
+			// TODO: refactor to ErrDomain
 			return charSheet, fmt.Errorf(
 				"class not applied: error getting exp reference for %w", err,
 			)
@@ -127,13 +126,13 @@ func (csf *CharacterSheetFactory) BuildCharacterExp() *experience.CharacterExp {
 }
 
 func (csf *CharacterSheetFactory) BuildPersonAbilities(
-	characterExp *experience.CharacterExp, talentLvl int,
+	characterExp *experience.CharacterExp,
 ) *ability.Manager {
 
 	abilities := make(map[enum.AbilityName]ability.IAbility)
 
 	talentExp := experience.NewExperience(experience.NewExpTable(TALENT_COEFF))
-	talent := ability.NewTalent(*talentExp, talentLvl)
+	talent := ability.NewTalent(*talentExp)
 
 	physicalExp := experience.NewExperience(experience.NewExpTable(PHYSICAL_COEFF))
 	abilities[enum.Physicals] = ability.NewAbility(enum.Physicals, *physicalExp, characterExp)
@@ -502,13 +501,14 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	exp := experience.NewExperience(expTable)
 	characterExp := experience.NewCharacterExp(*exp)
 
-	var talentLvl int
-	if categorySet == nil {
-		talentLvl = BASE_TALENT_LVL
-	} else {
-		talentLvl = categorySet.GetTalentLvl()
-	}
-	abilities := csf.BuildPersonAbilitiesHalf(characterExp, talentLvl)
+	// TODO: like Build func above, move to client that calls this func
+	// var talentLvl int
+	// if categorySet == nil {
+	// 	talentLvl = BASE_TALENT_LVL
+	// } else {
+	// 	talentLvl = categorySet.GetTalentLvl()
+	// }
+	abilities := csf.BuildPersonAbilitiesHalf(characterExp)
 
 	physAbility, _ := abilities.Get(enum.Physicals)
 	physAttrs := csf.BuildPhysAttrs(physAbility)
@@ -557,13 +557,13 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 }
 
 func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
-	characterExp *experience.CharacterExp, talentLvl int,
+	characterExp *experience.CharacterExp,
 ) *ability.Manager {
 
 	abilities := make(map[enum.AbilityName]ability.IAbility)
 
 	talentExp := experience.NewExperience(experience.NewExpTable(TALENT_COEFF))
-	talent := ability.NewTalent(*talentExp, talentLvl)
+	talent := ability.NewTalent(*talentExp)
 
 	physicalExp := experience.NewExperience(experience.NewExpTable(PHYSICAL_COEFF))
 	abilities[enum.Physicals] = ability.NewAbility(enum.Physicals, *physicalExp, characterExp)
