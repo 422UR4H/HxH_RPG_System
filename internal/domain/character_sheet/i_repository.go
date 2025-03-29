@@ -10,4 +10,6 @@ type IRepository interface {
 	CreateCharacterSheet(ctx context.Context, sheet *model.CharacterSheet) error
 	ExistsCharacterWithNick(ctx context.Context, nick string) (bool, error)
 	GetCharacterSheetByUUID(ctx context.Context, uuid string) (*model.CharacterSheet, error)
+	IncreaseNenHexagonValue(ctx context.Context, uuid string) error
+	DecreaseNenHexagonValue(ctx context.Context, uuid string) error
 }
