@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -25,7 +25,7 @@ type GetCharacterSheetResponse struct {
 }
 
 func GetCharacterSheetHandler(
-	uc cc.IGetCharacterSheet,
+	uc cs.IGetCharacterSheet,
 ) func(context.Context, *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
 
 	return func(ctx context.Context, req *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
@@ -37,7 +37,7 @@ func GetCharacterSheetHandler(
 
 		characterSheet, err := uc.GetCharacterSheet(ctx, uuid)
 		if err != nil {
-			if errors.Is(err, cc.ErrCharacterSheetNotFound) {
+			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
 				return nil, huma.Error404NotFound(err.Error())
 			}
 			return nil, huma.Error500InternalServerError(err.Error())

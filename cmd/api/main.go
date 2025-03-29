@@ -10,7 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
@@ -56,24 +56,24 @@ func main() {
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
 	characterSheetRepo := sheetPg.NewRepository(pgPool)
 
-	getCharacterSheetUC := cc.NewGetCharacterSheetUC(
+	getCharacterSheetUC := cs.NewGetCharacterSheetUC(
 		&characterSheets,
 		characterSheetFactory,
 		characterSheetRepo,
 	)
-	createCharacterSheetUC := cc.NewCreateCharacterSheetUC(
+	createCharacterSheetUC := cs.NewCreateCharacterSheetUC(
 		&characterClasses,
 		&characterSheets,
 		characterSheetFactory,
 		characterSheetRepo,
 	)
-	listCharacterClassesUC := cc.NewListCharacterClassesUC(
+	listCharacterClassesUC := cs.NewListCharacterClassesUC(
 		&characterClasses,
 	)
-	getCharacterClassUC := cc.NewGetCharacterClassUC(
+	getCharacterClassUC := cs.NewGetCharacterClassUC(
 		&characterClasses,
 	)
-	updateNenHexValUC := cc.NewUpdateNenHexagonValueUC(
+	updateNenHexValUC := cs.NewUpdateNenHexagonValueUC(
 		&characterSheets,
 		characterSheetRepo,
 	)
