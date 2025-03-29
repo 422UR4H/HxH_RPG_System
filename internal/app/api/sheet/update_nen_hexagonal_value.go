@@ -19,8 +19,9 @@ type UpdateNenHexagonValueRequest struct {
 }
 
 type UpdateNenHexagonValueResponseBody struct {
-	PercentList  map[enum.CategoryName]float64 `json:"percent_list"`
-	CategoryName enum.CategoryName             `json:"category_name"`
+	PercentList     map[enum.CategoryName]float64 `json:"percent_list"`
+	CategoryName    enum.CategoryName             `json:"category_name"`
+	CurrentHexValue int                           `json:"current_hex_value"`
 }
 
 type UpdateNenHexagonValueResponse struct {
@@ -51,7 +52,7 @@ func UpdateNenHexagonValueHandler(
 			return nil, huma.Error422UnprocessableEntity(cs.ErrNenHexNotInitialized.Error())
 		}
 
-		percentList, categoryName, err := hexValUC.UpdateNenHexagonValue(ctx, characterSheet, req.Method)
+		result, err := hexValUC.UpdateNenHexagonValue(ctx, characterSheet, req.Method)
 		if err != nil {
 			if errors.Is(err, spiritual.ErrNenHexNotInitialized) {
 				return nil, huma.Error400BadRequest(err.Error())
@@ -61,8 +62,9 @@ func UpdateNenHexagonValueHandler(
 
 		return &UpdateNenHexagonValueResponse{
 			Body: UpdateNenHexagonValueResponseBody{
-				PercentList:  percentList,
-				CategoryName: categoryName,
+				PercentList:     result.PercentList,
+				CategoryName:    result.CategoryName,
+				CurrentHexValue: result.CurrentHexVal,
 			},
 			Status: http.StatusOK,
 		}, nil

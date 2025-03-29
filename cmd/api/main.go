@@ -119,7 +119,7 @@ func initCharacterClasses() {
 		characterClasses.Store(name, class)
 	}
 
-	characterClasses.Range(func(key, value interface{}) bool {
+	characterClasses.Range(func(key, value any) bool {
 		name := key.(enum.CharacterClassName)
 		class := value.(ccEntity.CharacterClass)
 		profile := sheet.CharacterProfile{
@@ -142,7 +142,7 @@ func initCharacterClasses() {
 		if err != nil {
 			fmt.Println(err)
 		}
-		newClass, err := factory.Build(profile, set.GetInitialHexValue(), &class)
+		newClass, err := factory.Build(profile, set.GetInitialHexValue(), nil, &class)
 		if err != nil {
 			fmt.Println(err)
 		}

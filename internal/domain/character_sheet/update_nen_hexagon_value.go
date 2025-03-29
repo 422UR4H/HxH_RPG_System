@@ -5,14 +5,14 @@ import (
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 )
 
 type IUpdateNenHexagonValue interface {
 	UpdateNenHexagonValue(
 		ctx context.Context, charSheet *sheet.CharacterSheet, method string,
-	) (map[enum.CategoryName]float64, enum.CategoryName, error)
+	) (*spiritual.NenHexagonUpdateResult, error)
 }
 
 type UpdateNenHexagonValueUC struct {
@@ -32,30 +32,27 @@ func NewUpdateNenHexagonValueUC(
 
 func (uc *UpdateNenHexagonValueUC) UpdateNenHexagonValue(
 	ctx context.Context, charSheet *sheet.CharacterSheet, method string,
-) (map[enum.CategoryName]float64, enum.CategoryName, error) {
+) (*spiritual.NenHexagonUpdateResult, error) {
 
-	var percentList map[enum.CategoryName]float64
-	var categoryName enum.CategoryName
+	var result *spiritual.NenHexagonUpdateResult
 	var err error
-	var dbErr error
-	uuid := charSheet.UUID.String()
 
 	switch method {
 	case "increase":
-		percentList, categoryName, err = charSheet.IncreaseNenHexValue()
-		dbErr = uc.repo.IncreaseNenHexagonValue(ctx, uuid)
+		result, err = charSheet.IncreaseNenHexValue()
 	case "decrease":
-		percentList, categoryName, err = charSheet.DecreaseNenHexValue()
-		dbErr = uc.repo.DecreaseNenHexagonValue(ctx, uuid)
+		result, err = charSheet.DecreaseNenHexValue()
 	default:
 		err = ErrInvalidUpdateHexValMethod
 	}
-
 	if err != nil {
-		return nil, categoryName, err
+		return nil, err
 	}
+
+	uuid := charSheet.UUID.String()
+	dbErr := uc.repo.UpdateNenHexagonValue(ctx, uuid, result.CurrentHexVal)
 	if dbErr != nil {
-		return nil, categoryName, domain.NewDBError(dbErr)
+		return nil, domain.NewDBError(dbErr)
 	}
-	return percentList, categoryName, nil
+	return result, nil
 }

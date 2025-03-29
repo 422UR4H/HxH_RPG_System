@@ -14,6 +14,7 @@ type CharacterSheet struct {
 	Proficiencies      []Proficiency
 	JointProficiencies []JointProficiency
 
+	CategoryName string
 	CurrHexValue *int
 	TalentExp    int
 

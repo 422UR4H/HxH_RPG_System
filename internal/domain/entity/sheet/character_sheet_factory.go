@@ -38,6 +38,7 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 func (csf *CharacterSheetFactory) Build(
 	profile CharacterProfile,
 	hexValue *int,
+	category *enum.CategoryName,
 	charClass *cc.CharacterClass,
 ) (*CharacterSheet, error) {
 
@@ -72,7 +73,7 @@ func (csf *CharacterSheetFactory) Build(
 	var nenHexagon *spiritual.NenHexagon
 	var categoryPercents map[enum.CategoryName]float64
 	if hexValue != nil {
-		nenHexagon = spiritual.NewNenHexagon(*hexValue)
+		nenHexagon = spiritual.NewNenHexagon(*hexValue, category)
 		categoryPercents = nenHexagon.GetCategoryPercents()
 	}
 	hatsu := csf.BuildHatsu(spiritAbility, categoryPercents)

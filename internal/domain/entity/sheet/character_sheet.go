@@ -193,11 +193,11 @@ func (cs *CharacterSheet) GetCurrHexValue() *int {
 	return &val
 }
 
-func (cs *CharacterSheet) IncreaseNenHexValue() (map[enum.CategoryName]float64, enum.CategoryName, error) {
+func (cs *CharacterSheet) IncreaseNenHexValue() (*spiritual.NenHexagonUpdateResult, error) {
 	return cs.principle.IncreaseCurrHexValue()
 }
 
-func (cs *CharacterSheet) DecreaseNenHexValue() (map[enum.CategoryName]float64, enum.CategoryName, error) {
+func (cs *CharacterSheet) DecreaseNenHexValue() (*spiritual.NenHexagonUpdateResult, error) {
 	return cs.principle.DecreaseCurrHexValue()
 }
 

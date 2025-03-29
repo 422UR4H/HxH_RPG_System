@@ -73,13 +73,14 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	charClass.ApplySkills(skillsExps)
 	charClass.ApplyProficiencies(profExps)
 
+	set := input.CategorySet
 	characterSheet, err := uc.factory.Build(
-		input.Profile, input.CategorySet.GetInitialHexValue(), &charClass,
+		input.Profile, set.GetInitialHexValue(), nil, &charClass,
 	)
 	if err != nil {
 		return nil, err
 	}
-	talentLvl := input.CategorySet.GetTalentLvl()
+	talentLvl := set.GetTalentLvl()
 	characterSheet.InitTalentWithLvl(talentLvl)
 
 	characterSheet.UUID = uuid.New()
@@ -130,6 +131,12 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 	profs := sheet.GetCommonProficiencies()
 	jointProfs := sheet.GetJointProficiencies()
 
+	categoryName, err := sheet.GetCategoryName()
+	categoryString := ""
+	if err != nil {
+		categoryString = categoryName.String()
+	}
+
 	modelProfs := []model.Proficiency{}
 	for weapon, prof := range profs {
 		modelProfs = append(modelProfs, model.Proficiency{
@@ -172,6 +179,7 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		},
+		CategoryName: categoryString,
 		CurrHexValue: sheet.GetCurrHexValue(),
 		TalentExp:    sheet.GetTalentExpPoints(),
 

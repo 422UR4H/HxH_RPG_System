@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   id SERIAL PRIMARY KEY,
   uuid UUID NOT NULL DEFAULT gen_random_uuid(),
 
+  category_name VARCHAR(16) NOT NULL,
   curr_hex_value INT,
   talent_exp INT,
 

@@ -202,27 +202,27 @@ func (m *Manager) GetLevelOfPrinciples() map[enum.PrincipleName]int {
 }
 
 func (m *Manager) IncreaseCurrHexValue() (
-	map[enum.CategoryName]float64, enum.CategoryName, error) {
+	*NenHexagonUpdateResult, error) {
 
 	if m.nenHexagon == nil {
-		return nil, "", ErrNenHexNotInitialized
+		return nil, ErrNenHexNotInitialized
 	}
-	percents, name := m.nenHexagon.IncreaseCurrHexValue()
-	m.hatsu.SetCategoryPercents(percents)
+	result := m.nenHexagon.IncreaseCurrHexValue()
+	m.hatsu.SetCategoryPercents(result.PercentList)
 
-	return percents, name, nil
+	return result, nil
 }
 
 func (m *Manager) DecreaseCurrHexValue() (
-	map[enum.CategoryName]float64, enum.CategoryName, error) {
+	*NenHexagonUpdateResult, error) {
 
 	if m.nenHexagon == nil {
-		return nil, "", ErrNenHexNotInitialized
+		return nil, ErrNenHexNotInitialized
 	}
-	percents, name := m.nenHexagon.DecreaseCurrHexValue()
-	m.hatsu.SetCategoryPercents(percents)
+	result := m.nenHexagon.DecreaseCurrHexValue()
+	m.hatsu.SetCategoryPercents(result.PercentList)
 
-	return percents, name, nil
+	return result, nil
 }
 
 func (m *Manager) ResetNenCategory() (int, error) {

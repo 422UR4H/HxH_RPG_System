@@ -50,7 +50,11 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	}
 
 	profile := ModelToProfile(&modelSheet.Profile)
-	characterSheet, err := uc.factory.Build(*profile, modelSheet.CurrHexValue, nil)
+
+	categoryName := (*enum.CategoryName)(&modelSheet.CategoryName)
+	characterSheet, err := uc.factory.Build(
+		*profile, modelSheet.CurrHexValue, categoryName, nil,
+	)
 	if err != nil {
 		return nil, err
 	}

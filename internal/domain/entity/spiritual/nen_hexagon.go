@@ -32,27 +32,36 @@ type NenHexagon struct {
 	nenCategoryName enum.CategoryName
 }
 
-func NewNenHexagon(currHexValue int) *NenHexagon {
+func NewNenHexagon(currHexValue int, categoryName *enum.CategoryName) *NenHexagon {
 	currHexValue %= maxHexRange
+
+	var nenCategoryName enum.CategoryName
+	if categoryName == nil {
+		nenCategoryName = getCategoryByHexagon(currHexValue)
+	} else {
+		nenCategoryName = *categoryName
+	}
 
 	return &NenHexagon{
 		currHexValue:    currHexValue,
-		nenCategoryName: getCategoryByHexagon(currHexValue),
+		nenCategoryName: nenCategoryName,
 	}
 }
 
-func (nh *NenHexagon) IncreaseCurrHexValue() (
-	map[enum.CategoryName]float64, enum.CategoryName) {
+func (nh *NenHexagon) IncreaseCurrHexValue() *NenHexagonUpdateResult {
 
 	nh.currHexValue++
 	nh.currHexValue %= maxHexRange
 	nh.nenCategoryName = nh.UpdateCategoryByHexagon()
 
-	return nh.GetCategoryPercents(), nh.nenCategoryName
+	return &NenHexagonUpdateResult{
+		PercentList:   nh.GetCategoryPercents(),
+		CategoryName:  nh.nenCategoryName,
+		CurrentHexVal: nh.currHexValue,
+	}
 }
 
-func (nh *NenHexagon) DecreaseCurrHexValue() (
-	map[enum.CategoryName]float64, enum.CategoryName) {
+func (nh *NenHexagon) DecreaseCurrHexValue() *NenHexagonUpdateResult {
 
 	nh.currHexValue--
 	nh.currHexValue %= maxHexRange
@@ -61,7 +70,12 @@ func (nh *NenHexagon) DecreaseCurrHexValue() (
 		nh.currHexValue += maxHexRange
 	}
 	nh.nenCategoryName = nh.UpdateCategoryByHexagon()
-	return nh.GetCategoryPercents(), nh.nenCategoryName
+
+	return &NenHexagonUpdateResult{
+		PercentList:   nh.GetCategoryPercents(),
+		CategoryName:  nh.nenCategoryName,
+		CurrentHexVal: nh.currHexValue,
+	}
 }
 
 // UpdateCategoryByHexagon updates the category for increase and decrease hexValue

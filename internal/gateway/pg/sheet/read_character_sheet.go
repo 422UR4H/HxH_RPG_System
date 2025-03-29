@@ -10,7 +10,7 @@ import (
 func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (*model.CharacterSheet, error) {
 	const query = `
 			SELECT
-					cs.id, cs.uuid, cs.curr_hex_value, cs.talent_exp,
+					cs.id, cs.category_name, cs.uuid, cs.curr_hex_value, cs.talent_exp,
 					cs.resistance_pts, cs.strength_pts, cs.agility_pts, cs.action_speed_pts, cs.flexibility_pts, cs.dexterity_pts, cs.sense_pts, cs.constitution_pts,
 					cs.resilience_pts, cs.adaptability_pts, cs.weighting_pts, cs.creativity_pts, cs.resilience_exp, cs.adaptability_exp, cs.weighting_exp, cs.creativity_exp,
 					cs.vitality_exp, cs.energy_exp, cs.defense_exp, cs.push_exp, cs.grab_exp, cs.carry_capacity_exp, cs.velocity_exp, cs.accelerate_exp, cs.brake_exp,
@@ -33,7 +33,7 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 	var profile model.CharacterProfile
 
 	err := row.Scan(
-		&sheet.ID, &sheet.UUID, &sheet.CurrHexValue, &sheet.TalentExp,
+		&sheet.ID, &sheet.CategoryName, &sheet.UUID, &sheet.CurrHexValue, &sheet.TalentExp,
 		&sheet.ResistancePts, &sheet.StrengthPts, &sheet.AgilityPts, &sheet.ActionSpeedPts, &sheet.FlexibilityPts, &sheet.DexterityPts, &sheet.SensePts, &sheet.ConstitutionPts,
 		&sheet.ResiliencePts, &sheet.AdaptabilityPts, &sheet.WeightingPts, &sheet.CreativityPts, &sheet.ResilienceExp, &sheet.AdaptabilityExp, &sheet.WeightingExp, &sheet.CreativityExp,
 		&sheet.VitalityExp, &sheet.EnergyExp, &sheet.DefenseExp, &sheet.PushExp, &sheet.GrabExp, &sheet.CarryCapacityExp, &sheet.VelocityExp, &sheet.AccelerateExp, &sheet.BrakeExp,
