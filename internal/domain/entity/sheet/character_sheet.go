@@ -129,7 +129,7 @@ func (cs *CharacterSheet) AddDryCharacterClass(
 	if err == nil {
 		return ErrCharClassAlreadyExists
 	}
-	if cs.charClass != nil {
+	if *cs.charClass != "" {
 		return ErrCharClassAlreadyExists
 	}
 	cs.charClass = charClass
