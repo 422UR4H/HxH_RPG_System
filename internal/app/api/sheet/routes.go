@@ -12,10 +12,11 @@ import (
 type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
-	CreateCharacterSheetHandler Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
-	GetCharacterSheetHandler    Handler[GetCharacterSheetRequest, GetCharacterSheetResponse]
-	ListClassesHandler          Handler[struct{}, ListCharacterClassesResponse]
-	GetClassHandler             Handler[GetCharacterClassRequest, GetCharacterClassResponse]
+	CreateCharacterSheetHandler  Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
+	GetCharacterSheetHandler     Handler[GetCharacterSheetRequest, GetCharacterSheetResponse]
+	ListClassesHandler           Handler[struct{}, ListCharacterClassesResponse]
+	GetClassHandler              Handler[GetCharacterClassRequest, GetCharacterClassResponse]
+	UpdateNenHexagonValueHandler Handler[UpdateNenHexagonValueRequest, UpdateNenHexagonValueResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -65,4 +66,18 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.GetClassHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/charactersheets/{character_sheet_uuid}/nen-hexagon/{method}",
+		Description: "Update the nen hexagon value of a character sheet",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusOK,
+	}, a.UpdateNenHexagonValueHandler)
 }

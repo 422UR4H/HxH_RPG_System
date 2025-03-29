@@ -8,10 +8,12 @@ import (
 )
 
 var (
-	ErrCharacterSheetNotFound = domain.NewDBError(errors.New("character sheet not found"))
-	ErrCharacterClassNotFound = domain.NewDBError(errors.New("character class not found"))
-	ErrNicknameNotAllowed     = domain.NewValidationError(errors.New("nickname is not allowed"))
-	ErrNicknameAlreadyExists  = domain.NewValidationError(errors.New("nickname already exists"))
+	ErrCharacterSheetNotFound    = domain.NewDBError(errors.New("character sheet not found"))
+	ErrCharacterClassNotFound    = domain.NewDBError(errors.New("character class not found"))
+	ErrNicknameNotAllowed        = domain.NewValidationError(errors.New("nickname is not allowed"))
+	ErrNicknameAlreadyExists     = domain.NewValidationError(errors.New("nickname already exists"))
+	ErrNenHexNotInitialized      = domain.NewValidationError(errors.New("nen hexagon value not initialized"))
+	ErrInvalidUpdateHexValMethod = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
 )
 
 func NewCharacterClassNotFoundError(className string) error {

@@ -14,8 +14,8 @@ const (
 )
 
 type CategoryPair struct {
-	Key   enum.CategoryName
-	Value int
+	Category enum.CategoryName
+	Value    int
 }
 
 var nenHexagon = map[enum.CategoryName]int{
@@ -46,7 +46,7 @@ func (nh *NenHexagon) IncreaseCurrHexValue() (
 
 	nh.currHexValue++
 	nh.currHexValue %= maxHexRange
-	nh.nenCategoryName = getCategoryByHexagon(nh.currHexValue)
+	nh.nenCategoryName = nh.UpdateCategoryByHexagon()
 
 	return nh.GetCategoryPercents(), nh.nenCategoryName
 }
@@ -60,11 +60,27 @@ func (nh *NenHexagon) DecreaseCurrHexValue() (
 	if nh.currHexValue < 0 {
 		nh.currHexValue += maxHexRange
 	}
-	nh.nenCategoryName = getCategoryByHexagon(nh.currHexValue)
+	nh.nenCategoryName = nh.UpdateCategoryByHexagon()
 	return nh.GetCategoryPercents(), nh.nenCategoryName
 }
 
-// TODO: evaluate solution
+// UpdateCategoryByHexagon updates the category for increase and decrease hexValue
+// this allows an intermediate value between the categories
+func (nh *NenHexagon) UpdateCategoryByHexagon() enum.CategoryName {
+	halfCategoryRange := categoryRange / 2
+	sortedNenHexagon := sortNenHexagon()
+
+	for _, hex := range sortedNenHexagon {
+		if nh.currHexValue < (hex.Value + halfCategoryRange) {
+			return hex.Category
+		} else if nh.currHexValue == (hex.Value + halfCategoryRange) {
+			return nh.nenCategoryName
+		}
+	}
+	return enum.Reinforcement
+}
+
+// getCategoryByHexagon returns the initial category of the hexagon
 func getCategoryByHexagon(currHexValue int) enum.CategoryName {
 	currHexValue %= maxHexRange
 	halfCategoryRange := categoryRange / 2
@@ -73,7 +89,7 @@ func getCategoryByHexagon(currHexValue int) enum.CategoryName {
 
 	for _, hex := range sortedNenHexagon {
 		if currHexValue < (hex.Value + halfCategoryRange) {
-			return hex.Key
+			return hex.Category
 		}
 	}
 	return enum.Reinforcement
@@ -82,7 +98,7 @@ func getCategoryByHexagon(currHexValue int) enum.CategoryName {
 func sortNenHexagon() []CategoryPair {
 	var pairs []CategoryPair
 	for key, val := range nenHexagon {
-		pairs = append(pairs, CategoryPair{Key: key, Value: val})
+		pairs = append(pairs, CategoryPair{Category: key, Value: val})
 	}
 	sort.Slice(pairs, func(i, j int) bool {
 		return pairs[i].Value < pairs[j].Value
@@ -111,8 +127,8 @@ func (nh *NenHexagon) GetPercentOf(category enum.CategoryName) float64 {
 func (nh *NenHexagon) GetCategoryPercents() map[enum.CategoryName]float64 {
 	modifiers := make(map[enum.CategoryName]float64)
 
-	for key := range nenHexagon {
-		modifiers[key] = nh.GetPercentOf(key)
+	for category := range nenHexagon {
+		modifiers[category] = nh.GetPercentOf(category)
 	}
 	return modifiers
 }

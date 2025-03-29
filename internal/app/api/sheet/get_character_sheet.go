@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// TODO: evaluate adding campaignUUID to get of campaign sync.Map
 type GetCharacterSheetRequest struct {
 	UUID string `path:"uuid" required:"true" doc:"UUID of the character sheet"`
 }

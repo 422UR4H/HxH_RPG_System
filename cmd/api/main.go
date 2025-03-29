@@ -13,9 +13,8 @@ import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/ardanlabs/conf/v3"
 	"github.com/joho/godotenv"
@@ -74,13 +73,18 @@ func main() {
 	getCharacterClassUC := cc.NewGetCharacterClassUC(
 		&characterClasses,
 	)
+	updateNenHexValUC := cc.NewUpdateNenHexagonValueUC(
+		&characterSheets,
+		characterSheetRepo,
+	)
 
 	chiServer := api.NewServer()
 	characterSheetsApi := sheetHandler.Api{
-		CreateCharacterSheetHandler: sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
-		GetCharacterSheetHandler:    sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
-		ListClassesHandler:          sheetHandler.ListClassesHandler(listCharacterClassesUC),
-		GetClassHandler:             sheetHandler.GetClassHandler(getCharacterClassUC),
+		CreateCharacterSheetHandler:  sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
+		GetCharacterSheetHandler:     sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
+		ListClassesHandler:           sheetHandler.ListClassesHandler(listCharacterClassesUC),
+		GetClassHandler:              sheetHandler.GetClassHandler(getCharacterClassUC),
+		UpdateNenHexagonValueHandler: sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
 	}
 
 	a := api.Api{

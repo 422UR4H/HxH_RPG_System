@@ -193,6 +193,14 @@ func (cs *CharacterSheet) GetCurrHexValue() *int {
 	return &val
 }
 
+func (cs *CharacterSheet) IncreaseNenHexValue() (map[enum.CategoryName]float64, enum.CategoryName, error) {
+	return cs.principle.IncreaseCurrHexValue()
+}
+
+func (cs *CharacterSheet) DecreaseNenHexValue() (map[enum.CategoryName]float64, enum.CategoryName, error) {
+	return cs.principle.DecreaseCurrHexValue()
+}
+
 func (cs *CharacterSheet) GetCharacterClass() enum.CharacterClassName {
 	return *cs.charClass
 }
