@@ -10,7 +10,21 @@ import (
 func (r *Repository) CreateCharacterSheet(
 	ctx context.Context, sheet *model.CharacterSheet,
 ) error {
-	// TODO: add transaction
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			// TODO: maybe throws other error
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
 
 	const sheetQuery = `
 		INSERT INTO character_sheets (
@@ -38,7 +52,7 @@ func (r *Repository) CreateCharacterSheet(
 		) RETURNING id
 	`
 	var sheetID int
-	err := r.q.QueryRow(ctx, sheetQuery,
+	err = tx.QueryRow(ctx, sheetQuery,
 		sheet.UUID, sheet.CategoryName, sheet.CurrHexValue, sheet.TalentExp,
 		sheet.ResistancePts, sheet.StrengthPts, sheet.AgilityPts, sheet.ActionSpeedPts, sheet.FlexibilityPts, sheet.DexterityPts, sheet.SensePts, sheet.ConstitutionPts,
 		sheet.ResiliencePts, sheet.AdaptabilityPts, sheet.WeightingPts, sheet.CreativityPts, sheet.ResilienceExp, sheet.AdaptabilityExp, sheet.WeightingExp, sheet.CreativityExp,
@@ -62,7 +76,7 @@ func (r *Repository) CreateCharacterSheet(
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 		)
 	`
-	_, err = r.q.Exec(ctx, profileQuery,
+	_, err = tx.Exec(ctx, profileQuery,
 		sheet.Profile.UUID, sheet.UUID, sheet.Profile.NickName, sheet.Profile.FullName, sheet.Profile.Alignment,
 		sheet.Profile.CharacterClass, sheet.Profile.Description, sheet.Profile.BriefDescription, sheet.Profile.Birthday,
 		sheet.Profile.CreatedAt, sheet.Profile.UpdatedAt,
@@ -79,7 +93,7 @@ func (r *Repository) CreateCharacterSheet(
 		)
 	`
 	for _, proficiency := range sheet.Proficiencies {
-		_, err = r.q.Exec(ctx, proficienciesQuery,
+		_, err = tx.Exec(ctx, proficienciesQuery,
 			sheet.UUID, proficiency.Weapon, proficiency.Exp,
 		)
 		if err != nil {
@@ -95,7 +109,7 @@ func (r *Repository) CreateCharacterSheet(
 		)
 	`
 	for _, jointProficiency := range sheet.JointProficiencies {
-		_, err = r.q.Exec(ctx, jointProficienciesQuery,
+		_, err = tx.Exec(ctx, jointProficienciesQuery,
 			sheet.UUID, jointProficiency.Name, jointProficiency.Weapons, jointProficiency.Exp,
 		)
 		if err != nil {

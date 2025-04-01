@@ -16,6 +16,7 @@ type IQuerier interface {
 	Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, query string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, query string, args ...any) pgx.Row
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 func (p *Pool) Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
@@ -28,4 +29,8 @@ func (p *Pool) Query(ctx context.Context, query string, args ...any) (pgx.Rows, 
 
 func (p *Pool) QueryRow(ctx context.Context, query string, args ...any) pgx.Row {
 	return p.pool.QueryRow(ctx, query, args...)
+}
+
+func (p *Pool) Begin(ctx context.Context) (pgx.Tx, error) {
+	return p.pool.Begin(ctx)
 }
