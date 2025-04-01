@@ -160,6 +160,14 @@ func (cs *CharacterSheet) IncreaseExpForProficiency(
 	return err
 }
 
+func (cs *CharacterSheet) IncreaseExpForJointProficiency(
+	values *experience.UpgradeCascade, name string,
+) error {
+	err := cs.proficiency.IncreaseExpForJoint(values, name)
+	cs.status.Upgrade()
+	return err
+}
+
 // TODO: resolve this
 func (cs *CharacterSheet) IncreaseExpForMentals(
 	values *experience.UpgradeCascade, name enum.AttributeName,

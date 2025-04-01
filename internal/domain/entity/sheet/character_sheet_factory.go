@@ -481,6 +481,12 @@ func (csf *CharacterSheetFactory) Wrap(
 		charSheet.AddCommonProficiency(name, prof)
 		charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
 	}
+	for name, exp := range charClass.JointProfExps {
+		charSheet.IncreaseExpForJointProficiency(
+			experience.NewUpgradeCascade(exp),
+			name,
+		)
+	}
 	return charSheet
 }
 

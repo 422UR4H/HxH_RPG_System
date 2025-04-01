@@ -15,6 +15,7 @@ type CharacterClass struct {
 	JointSkills        map[string]skill.JointSkill
 	ProficienciesExps  map[enum.WeaponName]int
 	JointProficiencies map[string]prof.JointProficiency
+	JointProfExps      map[string]int
 	// TODO: resolve mental skills and update below
 	AttributesExps      map[enum.AttributeName]int
 	IndicatedCategories []enum.CategoryName
@@ -35,6 +36,7 @@ func NewCharacterClass(
 	jointSkills map[string]skill.JointSkill,
 	proficienciesExps map[enum.WeaponName]int,
 	jointProficiencies map[string]prof.JointProficiency,
+	JointProfExps map[string]int,
 	attributesExps map[enum.AttributeName]int,
 	indicatedCategories []enum.CategoryName,
 ) *CharacterClass {
@@ -45,6 +47,7 @@ func NewCharacterClass(
 		JointSkills:         jointSkills,
 		ProficienciesExps:   proficienciesExps,
 		JointProficiencies:  jointProficiencies,
+		JointProfExps:       JointProfExps,
 		AttributesExps:      attributesExps,
 		IndicatedCategories: indicatedCategories,
 	}
@@ -59,21 +62,11 @@ func (cc *CharacterClass) GetNameString() string {
 }
 
 func (d *Distribution) AllowSkill(skill enum.SkillName) bool {
-	for _, s := range d.SkillsAllowed {
-		if s == skill {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(d.SkillsAllowed, skill)
 }
 
 func (d *Distribution) AllowProficiency(prof enum.WeaponName) bool {
-	for _, s := range d.ProficienciesAllowed {
-		if s == prof {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(d.ProficienciesAllowed, prof)
 }
 
 func (cc *CharacterClass) ValidateSkills(

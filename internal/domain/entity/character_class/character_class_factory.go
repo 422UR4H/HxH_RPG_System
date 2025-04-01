@@ -76,6 +76,9 @@ func BuildSwordsman() CharacterClass {
 			*exp, "Sword Master", weapons,
 		),
 	}
+	jointProfExps := make(map[string]int)
+	jointProfExps["Sword Master"] = 328
+
 	mentals := map[enum.AttributeName]int{
 		enum.Resilience:   210,
 		enum.Adaptability: 210,
@@ -88,6 +91,7 @@ func BuildSwordsman() CharacterClass {
 		nil,
 		nil,
 		jointProficiencies,
+		jointProfExps,
 		mentals,
 		nil,
 	)
@@ -136,6 +140,7 @@ func BuildSamurai() CharacterClass {
 		skills,
 		nil,
 		proficiencies,
+		nil,
 		nil,
 		mentals,
 		nil,
@@ -200,6 +205,7 @@ func BuildNinja() CharacterClass {
 		nil,
 		proficiencies,
 		nil,
+		nil,
 		mentals,
 		categories,
 	)
@@ -254,6 +260,7 @@ func BuildRogue() CharacterClass {
 		skills,
 		nil,
 		proficiencies,
+		nil,
 		nil,
 		mentals,
 		categories,
@@ -310,6 +317,7 @@ func BuildNetrunner() CharacterClass {
 		nil,
 		proficiencies,
 		nil,
+		nil,
 		mentals,
 		categories,
 	)
@@ -364,6 +372,7 @@ func BuildPirate() CharacterClass {
 		skills,
 		nil,
 		proficiencies,
+		nil,
 		nil,
 		mentals,
 		nil,
@@ -441,6 +450,7 @@ func BuildMercenary() CharacterClass {
 		nil,
 		nil,
 		nil,
+		nil,
 		mentals,
 		categories,
 	)
@@ -494,6 +504,7 @@ func BuildTerrorist() CharacterClass {
 		skills,
 		nil,
 		proficiencies,
+		nil,
 		nil,
 		mentals,
 		nil,
@@ -561,6 +572,7 @@ func BuildMonk() CharacterClass {
 		nil,
 		proficiencies,
 		nil,
+		nil,
 		mentals,
 		categories,
 	)
@@ -615,6 +627,7 @@ func BuildMilitary() CharacterClass {
 		skills,
 		nil,
 		proficiencies,
+		nil,
 		nil,
 		mentals,
 		categories,
@@ -688,6 +701,7 @@ func BuildHunter() CharacterClass {
 		nil,
 		proficiencies,
 		nil,
+		nil,
 		mentals,
 		categories,
 	)
@@ -757,6 +771,8 @@ func BuildWeaponsMaster() CharacterClass {
 			*exp, "Mastery of Weapons", weapons,
 		),
 	}
+	jointProfExps := make(map[string]int)
+	jointProfExps["Mastery of Weapons"] = 328
 
 	weaponsMaster := *NewCharacterClass(
 		profile,
@@ -765,6 +781,7 @@ func BuildWeaponsMaster() CharacterClass {
 		nil,
 		nil,
 		jointProficiencies,
+		jointProfExps,
 		mentals,
 		nil,
 	)

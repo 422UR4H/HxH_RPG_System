@@ -32,8 +32,28 @@ func (m *Manager) Get(name enum.WeaponName) (IProficiency, error) {
 	return nil, ErrProficiencyNotFound
 }
 
-func (m *Manager) IncreaseExp(values *experience.UpgradeCascade, name enum.WeaponName) error {
+func (m *Manager) GetJoint(name string) (IProficiency, error) {
+	if prof, ok := m.jointProficiencies[name]; ok {
+		return prof, nil
+	}
+	return nil, ErrProficiencyNotFound
+}
+
+func (m *Manager) IncreaseExp(
+	values *experience.UpgradeCascade, name enum.WeaponName,
+) error {
 	prof, err := m.Get(name)
+	if err != nil {
+		return err
+	}
+	prof.CascadeUpgradeTrigger(values)
+	return nil
+}
+
+func (m *Manager) IncreaseExpForJoint(
+	values *experience.UpgradeCascade, name string,
+) error {
+	prof, err := m.GetJoint(name)
 	if err != nil {
 		return err
 	}
