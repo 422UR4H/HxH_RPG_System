@@ -19,7 +19,7 @@ const (
 	PHYSICAL_COEFF            = 20.0
 	MENTAL_COEFF              = 20.0 // 15.0
 	SPIRITUAL_COEFF           = 5.0
-	SKILLS_COEFF              = 5.0
+	SKILLS_COEFF              = 20.0 // 5.0
 	PHYSICAL_ATTRIBUTE_COEFF  = 5.0
 	MENTAL_ATTRIBUTE_COEFF    = 1.0 // 3.0
 	SPIRITUAL_ATTRIBUTE_COEFF = 1.0
@@ -57,14 +57,14 @@ func (csf *CharacterSheetFactory) Build(
 	charAttrs := attribute.NewCharacterAttributes(physAttrs, mentalAttrs, spiritAttrs)
 
 	skills, _ := abilities.Get(enum.Skills)
-	physSkills, err := csf.BuildPhysSkills(skills, physAbility, physAttrs)
+	physSkills, err := csf.BuildPhysSkills(skills, physAttrs)
 	if err != nil {
 		return nil, err
 	}
 
-	mentalSkills := csf.BuildMentalSkills(skills, mentalAbility, mentalAttrs)
+	mentalSkills := csf.BuildMentalSkills(skills, mentalAttrs)
 
-	spiritSkills, err := csf.BuildSpiritualSkills(skills, spiritAbility, spiritAttrs)
+	spiritSkills, err := csf.BuildSpiritualSkills(skills, spiritAttrs)
 	if err != nil {
 		return nil, err
 	}
@@ -250,14 +250,13 @@ func (csf *CharacterSheetFactory) BuildStatusManager(
 
 func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skillsExp experience.ICascadeUpgrade,
-	physAbilityExp experience.ICascadeUpgrade,
 	physAttrs *attribute.Manager,
 ) (*skill.Manager, error) {
 
 	skills := make(map[enum.SkillName]skill.ISkill)
 
 	exp := experience.NewExperience(experience.NewExpTable(PHYSICAL_SKILLS_COEFF))
-	physSkills := skill.NewSkillsManager(*exp, skillsExp, physAbilityExp)
+	physSkills := skill.NewSkillsManager(*exp, skillsExp)
 
 	res, err := physAttrs.Get(enum.Resistance)
 	if err != nil {
@@ -341,27 +340,25 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 
 func (csf *CharacterSheetFactory) BuildMentalSkills(
 	skillsExp experience.ICascadeUpgrade,
-	mentalAbilityExp experience.ICascadeUpgrade,
 	mentalsAttrs *attribute.Manager,
 ) *skill.Manager {
 	// skills := make(map[enum.SkillName]skill.ISkill)
 
 	exp := experience.NewExperience(experience.NewExpTable(MENTAL_SKILLS_COEFF))
-	mentalSkills := skill.NewSkillsManager(*exp, skillsExp, mentalAbilityExp)
+	mentalSkills := skill.NewSkillsManager(*exp, skillsExp)
 
 	return mentalSkills
 }
 
 func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	skillsExp experience.ICascadeUpgrade,
-	spiritualAbilityExp experience.ICascadeUpgrade,
 	spiritualsAttrs *attribute.Manager,
 ) (*skill.Manager, error) {
 
 	skills := make(map[enum.SkillName]skill.ISkill)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_SKILLS_COEFF))
-	spiritualSkills := skill.NewSkillsManager(*exp, skillsExp, spiritualAbilityExp)
+	spiritualSkills := skill.NewSkillsManager(*exp, skillsExp)
 
 	spr, err := spiritualsAttrs.Get(enum.Spirit)
 	if err != nil {
@@ -520,13 +517,13 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 
 	skills, _ := abilities.Get(enum.Skills)
 	physSkills, err := csf.BuildPhysSkills(
-		skills, physAbility, physAttrs,
+		skills, physAttrs,
 	)
 	if err != nil {
 		return nil, err
 	}
 	mentalSkills := csf.BuildMentalSkills(
-		skills, mentalAbility, mentalAttrs,
+		skills, mentalAttrs,
 	)
 	characterSkills := skill.NewCharacterSkills(
 		physSkills, mentalSkills, nil,

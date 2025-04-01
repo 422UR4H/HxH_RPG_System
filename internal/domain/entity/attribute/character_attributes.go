@@ -28,9 +28,7 @@ func (ca *CharacterAttributes) IncreaseExpForMentals(
 	if err != nil {
 		return err
 	}
-	// TODO: resolve CascadeUpgrade return quickly
 	attr.CascadeUpgrade(values)
-	// TODO: after this, return diff here
 	return nil
 }
 

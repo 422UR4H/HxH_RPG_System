@@ -10,15 +10,14 @@ type CommonSkill struct {
 	name             enum.SkillName
 	exp              experience.Exp
 	attribute        attr.IGameAttribute
-	abilitySkillsExp experience.IEndCascadeUpgrade
+	abilitySkillsExp experience.ICascadeUpgrade
 }
 
 func NewCommonSkill(
 	name enum.SkillName,
 	exp experience.Exp,
 	attr attr.IGameAttribute,
-	abilitySkillsExp experience.IEndCascadeUpgrade) *CommonSkill {
-
+	abilitySkillsExp experience.ICascadeUpgrade) *CommonSkill {
 	return &CommonSkill{
 		name: name, exp: exp, attribute: attr, abilitySkillsExp: abilitySkillsExp,
 	}
@@ -27,7 +26,7 @@ func NewCommonSkill(
 func (cs *CommonSkill) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
 	cs.exp.IncreasePoints(values.GetExp())
 	cs.attribute.CascadeUpgrade(values)
-	cs.abilitySkillsExp.EndCascadeUpgrade(values)
+	cs.abilitySkillsExp.CascadeUpgrade(values)
 
 	values.Skills[cs.name.String()] = experience.SkillCascade{
 		Lvl:     cs.GetLevel(),

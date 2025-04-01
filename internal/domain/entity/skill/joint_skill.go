@@ -51,6 +51,7 @@ func (js *JointSkill) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
 	exp := values.GetExp()
 	js.exp.IncreasePoints(exp)
 	js.attribute.CascadeUpgrade(values)
+	// TODO: upgrade to evolve abilitySkillsExp just like it was done with jointProfs
 
 	values.SetExp(exp * len(js.commonSkills))
 	values.Skills[js.name] = experience.SkillCascade{

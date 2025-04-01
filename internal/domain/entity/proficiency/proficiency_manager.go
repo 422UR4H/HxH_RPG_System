@@ -64,13 +64,14 @@ func (m *Manager) IncreaseExpForJoint(
 func (m *Manager) AddJoint(
 	proficiency *JointProficiency,
 	physSkillsExp experience.ICascadeUpgrade,
+	abilitySkillsExp experience.ICascadeUpgrade,
 ) error {
 	name := proficiency.GetName()
 
 	if _, ok := m.jointProficiencies[name]; ok {
 		return ErrProficiencyAlreadyExists
 	}
-	if err := proficiency.Init(physSkillsExp); err != nil {
+	if err := proficiency.Init(physSkillsExp, abilitySkillsExp); err != nil {
 		return err
 	}
 	m.jointProficiencies[name] = proficiency

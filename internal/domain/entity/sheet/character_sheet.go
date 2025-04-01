@@ -184,7 +184,11 @@ func (cs *CharacterSheet) AddJointProficiency(
 	if err != nil {
 		return err
 	}
-	return cs.proficiency.AddJoint(proficiency, physSkillsExp)
+	abilitySkillsExp, err := cs.ability.GetExpReferenceOf(enum.Skills)
+	if err != nil {
+		return err
+	}
+	return cs.proficiency.AddJoint(proficiency, physSkillsExp, abilitySkillsExp)
 }
 
 func (cs *CharacterSheet) AddCommonProficiency(

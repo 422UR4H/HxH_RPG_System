@@ -11,13 +11,11 @@ type Manager struct {
 	buffs       map[enum.SkillName]int
 	exp         experience.Exp
 	skillsExp   experience.ICascadeUpgrade
-	abilityExp  experience.ICascadeUpgrade
 }
 
 func NewSkillsManager(
 	exp experience.Exp,
-	skillsExp experience.ICascadeUpgrade,
-	abilityExp experience.ICascadeUpgrade) *Manager {
+	skillsExp experience.ICascadeUpgrade) *Manager {
 
 	return &Manager{
 		jointSkills: make(map[string]*JointSkill),
@@ -25,7 +23,6 @@ func NewSkillsManager(
 		buffs:       make(map[enum.SkillName]int),
 		exp:         exp,
 		skillsExp:   skillsExp,
-		abilityExp:  abilityExp,
 	}
 }
 
@@ -40,11 +37,6 @@ func (m *Manager) Init(skills map[enum.SkillName]ISkill) error {
 func (m *Manager) CascadeUpgrade(values *experience.UpgradeCascade) {
 	m.exp.IncreasePoints(values.GetExp())
 	m.skillsExp.CascadeUpgrade(values)
-	m.abilityExp.CascadeUpgrade(values)
-}
-
-func (m *Manager) EndCascadeUpgrade(values *experience.UpgradeCascade) {
-	m.exp.IncreasePoints(values.GetExp())
 }
 
 func (m *Manager) IncreaseExp(
@@ -124,6 +116,10 @@ func (m *Manager) GetLevelOf(name enum.SkillName) (int, error) {
 		return 0, err
 	}
 	return skill.GetLevel(), nil
+}
+
+func (m *Manager) GetLevel() int {
+	return m.exp.GetLevel()
 }
 
 func (m *Manager) GetSkillsNextLvlAggregateExp() map[enum.SkillName]int {

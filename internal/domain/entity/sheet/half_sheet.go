@@ -95,7 +95,11 @@ func (hs *HalfSheet) AddJointProficiency(
 	if err != nil {
 		return err
 	}
-	return hs.proficiency.AddJoint(proficiency, physSkillsExp)
+	abilitySkillsExp, err := hs.ability.GetExpReferenceOf(enum.Skills)
+	if err != nil {
+		return err
+	}
+	return hs.proficiency.AddJoint(proficiency, physSkillsExp, abilitySkillsExp)
 }
 
 func (hs *HalfSheet) AddCommonProficiency(
