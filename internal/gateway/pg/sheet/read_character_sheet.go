@@ -8,6 +8,22 @@ import (
 )
 
 func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (*model.CharacterSheet, error) {
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			// TODO: maybe throws other error
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
+
 	const query = `
 			SELECT
 					cs.id, cs.category_name, cs.uuid, cs.curr_hex_value, cs.talent_exp,
@@ -27,12 +43,12 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 			JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
 			WHERE cs.uuid = $1
 	`
-	row := r.q.QueryRow(ctx, query, uuid)
+	row := tx.QueryRow(ctx, query, uuid)
 
 	var sheet model.CharacterSheet
 	var profile model.CharacterProfile
 
-	err := row.Scan(
+	err = row.Scan(
 		&sheet.ID, &sheet.CategoryName, &sheet.UUID, &sheet.CurrHexValue, &sheet.TalentExp,
 		&sheet.ResistancePts, &sheet.StrengthPts, &sheet.AgilityPts, &sheet.ActionSpeedPts, &sheet.FlexibilityPts, &sheet.DexterityPts, &sheet.SensePts, &sheet.ConstitutionPts,
 		&sheet.ResiliencePts, &sheet.AdaptabilityPts, &sheet.WeightingPts, &sheet.CreativityPts, &sheet.ResilienceExp, &sheet.AdaptabilityExp, &sheet.WeightingExp, &sheet.CreativityExp,
@@ -57,7 +73,7 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 			FROM proficiencies
 			WHERE character_sheet_uuid = $1
 	`
-	rows, err := r.q.Query(ctx, proficienciesQuery, uuid)
+	rows, err := tx.Query(ctx, proficienciesQuery, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch proficiencies: %w", err)
 	}
@@ -76,7 +92,7 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 			FROM joint_proficiencies
 			WHERE character_sheet_uuid = $1
 	`
-	rows, err = r.q.Query(ctx, jointProficienciesQuery, uuid)
+	rows, err = tx.Query(ctx, jointProficienciesQuery, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch joint proficiencies: %w", err)
 	}
