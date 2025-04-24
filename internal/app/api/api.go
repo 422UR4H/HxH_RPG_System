@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -20,16 +21,20 @@ type Api struct {
 	LivenessHandler       Handler[struct{}, HealthResponse]
 	ReadinessHandler      Handler[struct{}, HealthResponse]
 	CharacterSheetHandler IApi
+	AuthHandler           *auth.AuthHandler
 	Logger                *zap.Logger
 }
 
-func (a *Api) Routes(r *chi.Mux) huma.API {
+func (a *Api) Routes(r *chi.Mux, authMiddleware func(ctx huma.Context, next func(huma.Context))) huma.API {
 	huma.NewError = NewErrorWithType
 
 	api := humachi.New(r, newConfig(
 		"HxH RPG System", "v0-pre-alpha", "Core Rules API for HxH RPG System (Pre-Alpha Version)",
 	))
 	a.registerHealthRoutes(api)
+	a.AuthHandler.RegisterRoutes(r, api)
+
+	api.UseMiddleware(authMiddleware)
 	a.CharacterSheetHandler.RegisterRoutes(r, api, a.Logger)
 
 	return api

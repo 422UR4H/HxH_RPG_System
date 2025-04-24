@@ -9,14 +9,18 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
+	jwtAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/ardanlabs/conf/v3"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/joho/godotenv"
 )
 
@@ -53,6 +57,9 @@ func main() {
 	charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
 	initCharacterClasses()
 
+	authRepo := user.NewRepository(pgPool)
+	authHandler := auth.NewAuthHandler(authRepo)
+
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
 	characterSheetRepo := sheetPg.NewRepository(pgPool)
 
@@ -77,8 +84,6 @@ func main() {
 		&characterSheets,
 		characterSheetRepo,
 	)
-
-	chiServer := api.NewServer()
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler:  sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
 		GetCharacterSheetHandler:     sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
@@ -86,14 +91,16 @@ func main() {
 		GetClassHandler:              sheetHandler.GetClassHandler(getCharacterClassUC),
 		UpdateNenHexagonValueHandler: sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
 	}
+	chiServer := api.NewServer()
 
 	a := api.Api{
 		LivenessHandler:       api.LivenessHandler(),
 		ReadinessHandler:      api.ReadinessHandler(),
 		CharacterSheetHandler: &characterSheetsApi,
+		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}
-	a.Routes(chiServer)
+	a.Routes(chiServer, authMiddleware)
 
 	server := http.Server{
 		Addr:         cfg.ServerAddr,
@@ -102,13 +109,42 @@ func main() {
 		WriteTimeout: cfg.ServerWriteTimeout,
 	}
 
-	// logger.Info("Starting server", zap.String("addr", cfg.ServerAddr))
 	fmt.Println("Starting server")
 	if err := server.ListenAndServe(); err != nil {
-		// logger.Error("Server error", zap.Error(err))
-		// TODO: remove this
-		panic(err)
+		fmt.Printf("Server error: %v\n", err)
+		os.Exit(1)
 	}
+}
+
+type contextKey string
+
+const userIDKey contextKey = "userID"
+
+// TODO: set up debug and run to see where the flow drops after the return
+// and move this function there to handle the error
+func authMiddleware(ctx huma.Context, next func(huma.Context)) {
+	tokenStr := ctx.Header("Authorization")
+	if tokenStr == "" {
+		// huma.WriteErr(api, ctx, http.StatusUnauthorized,
+		// 	"missing token", fmt.Errorf("error detail"),
+		// )
+		return
+	}
+
+	claims, err := jwtAuth.ValidateToken(tokenStr)
+	if err != nil {
+		// huma.WriteErr(api, ctx, http.StatusUnauthorized,
+		// 	"invalid token", fmt.Errorf("error detail"),
+		// )
+		return
+	}
+
+	ctx.AppendHeader(string(userIDKey), claims.UserID.String())
+
+	// fmt.Println("body reader", ctx.BodyReader())
+	// fmt.Println("body writer", ctx.BodyWriter())
+	// fmt.Println("header auth", ctx.Header("Authorization"))
+	next(ctx)
 }
 
 func initCharacterClasses() {
