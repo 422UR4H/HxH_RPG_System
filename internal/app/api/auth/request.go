@@ -1,12 +1,21 @@
 package auth
 
 type RegisterRequest struct {
-	Nick     string `json:"nick"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Body RegisterRequestBody `json:"body"`
+}
+
+type RegisterRequestBody struct {
+	Nick        string `json:"nick" required:"true"`
+	Email       string `json:"email" required:"true"`
+	Password    string `json:"password" required:"true"`
+	ConfirmPass string `json:"confirm_pass" required:"true"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Body LoginRequestBody `json:"body" required:"true"`
+}
+
+type LoginRequestBody struct {
+	Email    string `json:"email" required:"true"`
+	Password string `json:"password" required:"true"`
 }

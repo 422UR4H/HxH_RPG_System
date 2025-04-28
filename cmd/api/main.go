@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -18,9 +19,7 @@ import (
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
-	jwtAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/ardanlabs/conf/v3"
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/joho/godotenv"
 )
 
@@ -32,6 +31,7 @@ type config struct {
 
 var characterClasses sync.Map
 var characterSheets sync.Map
+var sessions sync.Map
 
 // TODO: remove or handle after balancing
 var charClassSheets map[enum.CharacterClassName]*sheet.CharacterSheet
@@ -58,7 +58,9 @@ func main() {
 	initCharacterClasses()
 
 	authRepo := user.NewRepository(pgPool)
-	authHandler := auth.NewAuthHandler(authRepo)
+	registerUC := domainAuth.NewRegisterUC(authRepo)
+	loginUC := domainAuth.NewLoginUC(&sessions, authRepo)
+	authHandler := auth.NewAuthHandler(registerUC, loginUC)
 
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
 	characterSheetRepo := sheetPg.NewRepository(pgPool)
@@ -100,6 +102,7 @@ func main() {
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}
+	authMiddleware := auth.AuthMiddlewareProvider(&sessions)
 	a.Routes(chiServer, authMiddleware)
 
 	server := http.Server{
@@ -114,37 +117,6 @@ func main() {
 		fmt.Printf("Server error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-type contextKey string
-
-const userIDKey contextKey = "userID"
-
-// TODO: set up debug and run to see where the flow drops after the return
-// and move this function there to handle the error
-func authMiddleware(ctx huma.Context, next func(huma.Context)) {
-	tokenStr := ctx.Header("Authorization")
-	if tokenStr == "" {
-		// huma.WriteErr(api, ctx, http.StatusUnauthorized,
-		// 	"missing token", fmt.Errorf("error detail"),
-		// )
-		return
-	}
-
-	claims, err := jwtAuth.ValidateToken(tokenStr)
-	if err != nil {
-		// huma.WriteErr(api, ctx, http.StatusUnauthorized,
-		// 	"invalid token", fmt.Errorf("error detail"),
-		// )
-		return
-	}
-
-	ctx.AppendHeader(string(userIDKey), claims.UserID.String())
-
-	// fmt.Println("body reader", ctx.BodyReader())
-	// fmt.Println("body writer", ctx.BodyWriter())
-	// fmt.Println("header auth", ctx.Header("Authorization"))
-	next(ctx)
 }
 
 func initCharacterClasses() {

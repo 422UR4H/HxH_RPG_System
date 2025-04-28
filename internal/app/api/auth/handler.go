@@ -3,53 +3,87 @@ package auth
 import (
 	"context"
 	"net/http"
-	"time"
 
-	domainUser "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
-	pgUser "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
-	"github.com/422UR4H/HxH_RPG_System/pkg/auth"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	du "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
-	repo *pgUser.Repository
+	registerUC domainAuth.IRegister
+	loginUC    domainAuth.ILogin
 }
 
-func NewAuthHandler(repo *pgUser.Repository) *AuthHandler {
-	return &AuthHandler{repo: repo}
+func NewAuthHandler(registerUC domainAuth.IRegister, loginUC domainAuth.ILogin) *AuthHandler {
+	return &AuthHandler{registerUC: registerUC, loginUC: loginUC}
 }
 
 func (h *AuthHandler) Register(
 	ctx context.Context, req *RegisterRequest,
 ) (*RegisterResponse, error) {
-	u := &domainUser.User{
-		Nick:      req.Nick,
-		Email:     req.Email,
-		Password:  req.Password,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+
+	input := &domainAuth.RegisterInput{
+		Nick:        req.Body.Nick,
+		Email:       req.Body.Email,
+		Password:    req.Body.Password,
+		ConfirmPass: req.Body.ConfirmPass,
 	}
-	if err := h.repo.CreateUser(ctx, u); err != nil {
-		return nil, err
+	err := h.registerUC.Register(input)
+	if err != nil {
+		switch err {
+		case du.ErrMissingNick,
+			du.ErrMissingEmail,
+			du.ErrMissingPassword,
+			du.ErrMissingConfirmPass:
+			return nil, huma.Error400BadRequest(err.Error())
+
+		case du.ErrInvalidNickLength,
+			du.ErrInvalidEmailLength,
+			du.ErrPasswordMinLenght,
+			du.ErrPasswordMaxLenght,
+			du.ErrMismatchPassword:
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+
+		case du.ErrNickAlreadyExists,
+			du.ErrEmailAlreadyExists:
+			return nil, huma.Error409Conflict(err.Error())
+
+		default:
+			return nil, huma.Error500InternalServerError(err.Error())
+		}
 	}
-	return &RegisterResponse{Message: "User registered successfully"}, nil
+	return &RegisterResponse{Status: http.StatusCreated}, nil
 }
 
-func (h *AuthHandler) Login(ctx context.Context, req *LoginRequest) (*LoginResponse, error) {
-	u, err := h.repo.GetUserByEmail(ctx, req.Email)
+func (h *AuthHandler) Login(
+	ctx context.Context, req *LoginRequest,
+) (*LoginResponse, error) {
+
+	input := &domainAuth.LoginInput{
+		Email:    req.Body.Email,
+		Password: req.Body.Password,
+	}
+	output, err := h.loginUC.Login(input)
 	if err != nil {
-		return nil, err
+		switch err {
+		case du.ErrMissingEmail,
+			du.ErrMissingPassword:
+			return nil, huma.Error400BadRequest(err.Error())
+		case du.ErrInvalidEmailLength,
+			du.ErrPasswordMinLenght,
+			du.ErrPasswordMaxLenght:
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		case du.ErrAccessDenied:
+			return nil, huma.Error401Unauthorized(err.Error())
+		default:
+			return nil, huma.Error500InternalServerError(err.Error())
+		}
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)); err != nil {
-		return nil, err
-	}
-	token, err := auth.GenerateToken(u.UUID)
-	if err != nil {
-		return nil, err
-	}
-	return &LoginResponse{Token: token}, nil
+	return &LoginResponse{
+		Body:   LoginResponseBody{Token: output.Token, User: *output.User},
+		Status: http.StatusOK,
+	}, nil
 }
 
 func (h *AuthHandler) RegisterRoutes(r *chi.Mux, api huma.API) {

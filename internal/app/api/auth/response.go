@@ -1,9 +1,16 @@
 package auth
 
+import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
+
 type RegisterResponse struct {
-	Message string `json:"message"`
+	Status int `json:"status"`
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
+	Body   LoginResponseBody `json:"body"`
+	Status int               `json:"status"`
+}
+type LoginResponseBody struct {
+	Token string    `json:"token"`
+	User  user.User `json:"user"`
 }
