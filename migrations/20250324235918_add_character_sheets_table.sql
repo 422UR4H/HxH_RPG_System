@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   stamina_curr_pts INT,
   health_curr_pts INT,
 
+  story_start_at DATE,
+  story_current_at DATE,
+  dead_at TIMESTAMP,
+
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (uuid)
