@@ -44,7 +44,7 @@ func AuthMiddlewareProvider(sessions *sync.Map) func(ctx huma.Context, next func
 			return
 		}
 
-		ctx.AppendHeader(string(UserIDKey), claims.UserID.String())
+		ctx = huma.WithValue(ctx, UserIDKey, claims.UserID)
 		next(ctx)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -29,13 +30,17 @@ func GetCharacterSheetHandler(
 ) func(context.Context, *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
 
 	return func(ctx context.Context, req *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
+		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
+		if !ok {
+			return nil, errors.New("failed to get userID in context")
+		}
 
-		uuid, err := uuid.Parse(req.UUID)
+		charSheetId, err := uuid.Parse(req.UUID)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 
-		characterSheet, err := uc.GetCharacterSheet(ctx, uuid)
+		characterSheet, err := uc.GetCharacterSheet(ctx, charSheetId, playerUUID)
 		if err != nil {
 			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
 				return nil, huma.Error404NotFound(err.Error())

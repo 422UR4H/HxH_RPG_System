@@ -15,19 +15,23 @@ import (
 )
 
 type CharacterSheet struct {
-	UUID        uuid.UUID
-	profile     CharacterProfile
-	ability     ability.Manager
-	attribute   attribute.CharacterAttributes
-	skill       skill.CharacterSkills
-	principle   spiritual.Manager
-	proficiency prof.Manager
-	status      status.Manager
-	charClass   *enum.CharacterClassName
+	UUID         uuid.UUID
+	playerUUID   *uuid.UUID
+	scenarioUUID *uuid.UUID
+	profile      CharacterProfile
+	ability      ability.Manager
+	attribute    attribute.CharacterAttributes
+	skill        skill.CharacterSkills
+	principle    spiritual.Manager
+	proficiency  prof.Manager
+	status       status.Manager
+	charClass    *enum.CharacterClassName
 	// equipedItems []Item
 }
 
 func NewCharacterSheet(
+	playerUUID *uuid.UUID,
+	scenarioUUID *uuid.UUID,
 	profile CharacterProfile,
 	abilities ability.Manager,
 	attributes attribute.CharacterAttributes,
@@ -36,17 +40,23 @@ func NewCharacterSheet(
 	proficiency prof.Manager,
 	status status.Manager,
 	charClass *enum.CharacterClassName,
-) *CharacterSheet {
-	return &CharacterSheet{
-		profile:     profile,
-		ability:     abilities,
-		attribute:   attributes,
-		skill:       skills,
-		principle:   principles,
-		proficiency: proficiency,
-		status:      status,
-		charClass:   charClass,
+) (*CharacterSheet, error) {
+	if (playerUUID == nil) == (scenarioUUID == nil) {
+		return nil, ErrInvalidOwner
 	}
+
+	return &CharacterSheet{
+		playerUUID:   playerUUID,
+		scenarioUUID: scenarioUUID,
+		profile:      profile,
+		ability:      abilities,
+		attribute:    attributes,
+		skill:        skills,
+		principle:    principles,
+		proficiency:  proficiency,
+		status:       status,
+		charClass:    charClass,
+	}, nil
 }
 
 func (cs *CharacterSheet) GetValueForTestOfSkill(name enum.SkillName) (int, error) {
@@ -367,6 +377,14 @@ func (cs *CharacterSheet) GetProfile() CharacterProfile {
 
 func (cs *CharacterSheet) GetPhysSkillExpReference() (experience.ICascadeUpgrade, error) {
 	return cs.ability.GetExpReferenceOf(enum.Physicals)
+}
+
+func (cs *CharacterSheet) GetPlayerUUID() uuid.UUID {
+	return *cs.playerUUID
+}
+
+func (cs *CharacterSheet) GetScenarioUUID() uuid.UUID {
+	return *cs.scenarioUUID
 }
 
 func (cs *CharacterSheet) ToString() string {

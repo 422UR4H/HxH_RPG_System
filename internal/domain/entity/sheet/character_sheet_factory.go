@@ -10,6 +10,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
+	"github.com/google/uuid"
 )
 
 // TODO: strike the gavel about these changes
@@ -36,6 +37,8 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 }
 
 func (csf *CharacterSheetFactory) Build(
+	playerUUID *uuid.UUID,
+	scenarioUUID *uuid.UUID,
 	profile CharacterProfile,
 	hexValue *int,
 	category *enum.CategoryName,
@@ -88,7 +91,9 @@ func (csf *CharacterSheetFactory) Build(
 	}
 	status := csf.BuildStatusManager(abilities, charAttrs, charSkills)
 
-	charSheet := NewCharacterSheet(
+	charSheet, err := NewCharacterSheet(
+		playerUUID,
+		scenarioUUID,
 		profile,
 		*abilities,
 		*charAttrs,
@@ -98,6 +103,10 @@ func (csf *CharacterSheetFactory) Build(
 		*status,
 		&className,
 	)
+	if err != nil {
+		return nil, err
+	}
+
 	if charClass != nil {
 		// TODO: move into Wrap
 		physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)

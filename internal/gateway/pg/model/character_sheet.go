@@ -7,8 +7,10 @@ import (
 )
 
 type CharacterSheet struct {
-	ID   int
-	UUID uuid.UUID
+	ID           int
+	UUID         uuid.UUID
+	PlayerUUID   *uuid.UUID
+	ScenarioUUID *uuid.UUID
 
 	Profile            CharacterProfile
 	Proficiencies      []Proficiency

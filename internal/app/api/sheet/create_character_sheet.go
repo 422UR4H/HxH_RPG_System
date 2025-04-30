@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 )
 
 type CreateCharacterSheetRequestBody struct {
@@ -39,11 +41,17 @@ func CreateCharacterSheetHandler(
 	uc charactersheet.ICreateCharacterSheet,
 ) func(context.Context, *CreateCharacterSheetRequest) (*CreateCharacterSheetResponse, error) {
 
-	return func(_ context.Context, req *CreateCharacterSheetRequest) (*CreateCharacterSheetResponse, error) {
+	return func(ctx context.Context, req *CreateCharacterSheetRequest) (*CreateCharacterSheetResponse, error) {
+		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
+		if !ok {
+			return nil, errors.New("failed to get userID in context")
+		}
+
 		input, err := castRequest(&req.Body)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
+		input.PlayerUUID = &userUUID
 
 		characterSheet, err := uc.CreateCharacterSheet(input)
 		if err != nil {

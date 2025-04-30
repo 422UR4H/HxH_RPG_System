@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
@@ -35,12 +36,17 @@ func UpdateNenHexagonValueHandler(
 ) func(context.Context, *UpdateNenHexagonValueRequest) (*UpdateNenHexagonValueResponse, error) {
 
 	return func(ctx context.Context, req *UpdateNenHexagonValueRequest) (*UpdateNenHexagonValueResponse, error) {
-		charSheetUUID, err := uuid.Parse(req.CharSheetUUID)
+		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
+		if !ok {
+			return nil, errors.New("failed to get userID in context")
+		}
+
+		charSheetId, err := uuid.Parse(req.CharSheetUUID)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 
-		characterSheet, err := charSheetUC.GetCharacterSheet(ctx, charSheetUUID)
+		characterSheet, err := charSheetUC.GetCharacterSheet(ctx, charSheetId, playerUUID)
 		if err != nil {
 			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
 				return nil, huma.Error404NotFound(err.Error())

@@ -41,6 +41,7 @@ type DistributionInput struct {
 }
 
 type CreateCharacterSheetInput struct {
+	PlayerUUID        *uuid.UUID
 	Profile           sheet.CharacterProfile
 	CharacterClass    enum.CharacterClassName
 	CategorySet       sheet.TalentByCategorySet
@@ -75,7 +76,12 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 
 	set := input.CategorySet
 	characterSheet, err := uc.factory.Build(
-		input.Profile, set.GetInitialHexValue(), nil, &charClass,
+		input.PlayerUUID,
+		nil,
+		input.Profile,
+		set.GetInitialHexValue(),
+		nil,
+		&charClass,
 	)
 	if err != nil {
 		return nil, err
@@ -164,8 +170,10 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 		})
 	}
 
+	playerUUID := sheet.GetPlayerUUID()
 	charSheetModel := &model.CharacterSheet{
-		UUID: sheet.UUID,
+		UUID:       sheet.UUID,
+		PlayerUUID: &playerUUID,
 
 		Profile: model.CharacterProfile{
 			UUID:             uuid.New(),

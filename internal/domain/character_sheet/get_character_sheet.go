@@ -15,7 +15,9 @@ import (
 )
 
 type IGetCharacterSheet interface {
-	GetCharacterSheet(ctx context.Context, uuid uuid.UUID) (*sheet.CharacterSheet, error)
+	GetCharacterSheet(
+		ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID,
+	) (*sheet.CharacterSheet, error)
 }
 
 type GetCharacterSheetUC struct {
@@ -37,14 +39,14 @@ func NewGetCharacterSheetUC(
 }
 
 func (uc *GetCharacterSheetUC) GetCharacterSheet(
-	ctx context.Context, id uuid.UUID,
+	ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID,
 ) (*sheet.CharacterSheet, error) {
 
-	if charSheet, ok := uc.characterSheets.Load(id); ok {
+	if charSheet, ok := uc.characterSheets.Load(charSheetId); ok {
 		return charSheet.(*sheet.CharacterSheet), nil
 	}
 
-	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, id.String())
+	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, charSheetId.String())
 	if err != nil {
 		return nil, ErrCharacterSheetNotFound
 	}
@@ -53,18 +55,18 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 
 	categoryName := (*enum.CategoryName)(&modelSheet.CategoryName)
 	characterSheet, err := uc.factory.Build(
-		*profile, modelSheet.CurrHexValue, categoryName, nil,
+		&playerId, nil, *profile, modelSheet.CurrHexValue, categoryName, nil,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	characterClass, err := enum.CharacterClassNameFrom(modelSheet.Profile.CharacterClass)
+	charClass, err := enum.CharacterClassNameFrom(modelSheet.Profile.CharacterClass)
 	if err != nil {
 		return nil, err
 	}
 
-	err = characterSheet.AddDryCharacterClass(&characterClass)
+	err = characterSheet.AddDryCharacterClass(&charClass)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 
-	uc.characterSheets.Store(id, characterSheet)
+	uc.characterSheets.Store(charSheetId, characterSheet)
 
 	return characterSheet, nil
 }
