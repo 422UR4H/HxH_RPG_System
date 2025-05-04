@@ -70,6 +70,9 @@ func main() {
 		characterSheetFactory,
 		characterSheetRepo,
 	)
+	listCharacterSheetsUC := cs.NewListCharacterSheetsUC(
+		characterSheetRepo,
+	)
 	createCharacterSheetUC := cs.NewCreateCharacterSheetUC(
 		&characterClasses,
 		&characterSheets,
@@ -89,6 +92,7 @@ func main() {
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler:  sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
 		GetCharacterSheetHandler:     sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
+		ListCharacterSheetsHandler:   sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
 		ListClassesHandler:           sheetHandler.ListClassesHandler(listCharacterClassesUC),
 		GetClassHandler:              sheetHandler.GetClassHandler(getCharacterClassUC),
 		UpdateNenHexagonValueHandler: sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),

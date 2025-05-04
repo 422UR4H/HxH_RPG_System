@@ -14,6 +14,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 type Api struct {
 	CreateCharacterSheetHandler  Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
 	GetCharacterSheetHandler     Handler[GetCharacterSheetRequest, GetCharacterSheetResponse]
+	ListCharacterSheetsHandler   Handler[struct{}, ListCharacterSheetsResponse]
 	ListClassesHandler           Handler[struct{}, ListCharacterClassesResponse]
 	GetClassHandler              Handler[GetCharacterClassRequest, GetCharacterClassResponse]
 	UpdateNenHexagonValueHandler Handler[UpdateNenHexagonValueRequest, UpdateNenHexagonValueResponse]
@@ -28,6 +29,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Errors: []int{
 			http.StatusConflict,
 			http.StatusBadRequest,
+			http.StatusUnauthorized,
 			http.StatusUnprocessableEntity,
 			http.StatusInternalServerError,
 		},
@@ -42,9 +44,22 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Errors: []int{
 			http.StatusNotFound,
 			http.StatusBadRequest,
+			http.StatusUnauthorized,
 			http.StatusInternalServerError,
 		},
 	}, a.GetCharacterSheetHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/charactersheets",
+		Description: "Get a list of player character sheets",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.ListCharacterSheetsHandler)
 
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,

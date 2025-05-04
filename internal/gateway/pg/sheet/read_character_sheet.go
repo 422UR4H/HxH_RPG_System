@@ -124,3 +124,56 @@ func (r *Repository) ExistsCharacterWithNick(ctx context.Context, nick string) (
 	}
 	return exists, nil
 }
+
+func (r *Repository) ListCharacterSheetsByPlayerUUID(
+	ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error) {
+
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			// TODO: maybe throws other error
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
+
+	const query = `
+			SELECT
+					cs.id, cs.uuid, cs.category_name, cs.curr_hex_value,
+					cs.stamina_curr_pts, cs.health_curr_pts,
+					cs.created_at, cs.updated_at,
+					cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
+			FROM character_sheets cs
+			JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
+			WHERE cs.player_uuid = $1
+			ORDER BY cp.nickname ASC
+	`
+	rows, err := tx.Query(ctx, query, playerUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch character sheets: %w", err)
+	}
+	defer rows.Close()
+
+	var sheets []model.CharacterSheetSummary
+	for rows.Next() {
+		var sheet model.CharacterSheetSummary
+		err := rows.Scan(
+			&sheet.ID, &sheet.UUID, &sheet.CategoryName, &sheet.CurrHexValue,
+			&sheet.StaminaCurrPts, &sheet.HealthCurrPts,
+			&sheet.CreatedAt, &sheet.UpdatedAt,
+			&sheet.NickName, &sheet.FullName, &sheet.Alignment, &sheet.CharacterClass, &sheet.Birthday,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan character sheet summary: %w", err)
+		}
+		sheets = append(sheets, sheet)
+	}
+	return sheets, nil
+}
