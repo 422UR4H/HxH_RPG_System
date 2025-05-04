@@ -10,7 +10,5 @@ type Repository struct {
 }
 
 func NewRepository(q pgfs.IQuerier) *Repository {
-	return &Repository{
-		q: q,
-	}
+	return &Repository{q: q}
 }
