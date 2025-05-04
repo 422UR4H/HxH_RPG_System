@@ -22,6 +22,7 @@ type Api struct {
 	ReadinessHandler      Handler[struct{}, HealthResponse]
 	CharacterSheetHandler IApi
 	ScenarioHandler       IApi
+	CampaignHandler       IApi
 	AuthHandler           *auth.AuthHandler
 	Logger                *zap.Logger
 }
@@ -38,6 +39,7 @@ func (a *Api) Routes(r *chi.Mux, authMiddleware func(ctx huma.Context, next func
 	api.UseMiddleware(authMiddleware)
 	a.CharacterSheetHandler.RegisterRoutes(r, api, a.Logger)
 	a.ScenarioHandler.RegisterRoutes(r, api, a.Logger)
+	a.CampaignHandler.RegisterRoutes(r, api, a.Logger)
 
 	return api
 }

@@ -10,13 +10,16 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	campaignHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
+	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
@@ -108,6 +111,13 @@ func main() {
 		CreateScenarioHandler: scenarioHandler.CreateScenarioHandler(createScenarioUC),
 	}
 
+	campaignRepo := campaignPg.NewRepository(pgPool)
+	createCampaignUC := domainCampaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
+
+	campaignsApi := campaignHandler.Api{
+		CreateCampaignHandler: campaignHandler.CreateCampaignHandler(createCampaignUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -115,6 +125,7 @@ func main() {
 		ReadinessHandler:      api.ReadinessHandler(),
 		CharacterSheetHandler: &characterSheetsApi,
 		ScenarioHandler:       &scenariosApi,
+		CampaignHandler:       &campaignsApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}
