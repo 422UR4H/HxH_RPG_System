@@ -10,11 +10,14 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
+	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
@@ -97,12 +100,21 @@ func main() {
 		GetClassHandler:              sheetHandler.GetClassHandler(getCharacterClassUC),
 		UpdateNenHexagonValueHandler: sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
 	}
+
+	scenarioRepo := scenarioPg.NewRepository(pgPool)
+	createScenarioUC := domainScenario.NewCreateScenarioUC(scenarioRepo)
+
+	scenariosApi := scenarioHandler.Api{
+		CreateScenarioHandler: scenarioHandler.CreateScenarioHandler(createScenarioUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
 		LivenessHandler:       api.LivenessHandler(),
 		ReadinessHandler:      api.ReadinessHandler(),
 		CharacterSheetHandler: &characterSheetsApi,
+		ScenarioHandler:       &scenariosApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}
