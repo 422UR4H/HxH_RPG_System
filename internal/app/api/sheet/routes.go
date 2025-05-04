@@ -67,6 +67,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Description: "List all available character classes",
 		Tags:        []string{"character_classes"},
 		Errors: []int{
+			http.StatusUnauthorized,
 			http.StatusInternalServerError,
 		},
 	}, a.ListClassesHandler)
@@ -78,6 +79,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Tags:        []string{"character_classes"},
 		Errors: []int{
 			http.StatusNotFound,
+			http.StatusUnauthorized,
 			http.StatusInternalServerError,
 		},
 	}, a.GetClassHandler)
@@ -90,6 +92,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Errors: []int{
 			http.StatusNotFound,
 			http.StatusBadRequest,
+			http.StatusUnauthorized,
 			http.StatusUnprocessableEntity,
 			http.StatusInternalServerError,
 		},
