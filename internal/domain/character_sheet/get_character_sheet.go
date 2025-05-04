@@ -47,6 +47,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	}
 
 	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, charSheetId.String())
+	// TODO: fix error handling that is not necessarily ErrCharacterSheetNotFound
 	if err != nil {
 		return nil, ErrCharacterSheetNotFound
 	}
