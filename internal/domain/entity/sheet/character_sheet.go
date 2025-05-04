@@ -303,6 +303,10 @@ func (cs *CharacterSheet) GetLevel() int {
 	return cs.ability.GetCharacterLevel()
 }
 
+func (cs *CharacterSheet) GetCharacterPoints() int {
+	return cs.ability.GetCharacterPoints()
+}
+
 func (cs *CharacterSheet) GetTalentNextLvlAggregateExp() int {
 	return cs.ability.GetTalentNextLvlAggregateExp()
 }

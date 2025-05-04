@@ -108,7 +108,7 @@ func NewCharacterSheetResponse(
 			CurrentExp:    charSheet.GetCurrentExp(),
 			NxtLvlBaseExp: charSheet.GetNextLvlBaseExp(),
 		},
-		Points: charSheet.GetExpPoints(),
+		Points: charSheet.GetCharacterPoints(),
 	}
 
 	talent := TalentResponse{
