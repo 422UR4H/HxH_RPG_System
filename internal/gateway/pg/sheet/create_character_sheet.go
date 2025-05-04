@@ -28,7 +28,7 @@ func (r *Repository) CreateCharacterSheet(
 
 	const sheetQuery = `
 		INSERT INTO character_sheets (
-			uuid, player_id, category_name, curr_hex_value, talent_exp,
+			uuid, player_uuid, category_name, curr_hex_value, talent_exp,
 			resistance_pts, strength_pts, agility_pts, action_speed_pts, flexibility_pts, dexterity_pts, sense_pts, constitution_pts,
 			resilience_pts, adaptability_pts, weighting_pts, creativity_pts, resilience_exp, adaptability_exp, weighting_exp, creativity_exp,
 			vitality_exp, energy_exp, defense_exp, push_exp, grab_exp, carry_capacity_exp, velocity_exp, accelerate_exp, brake_exp,
