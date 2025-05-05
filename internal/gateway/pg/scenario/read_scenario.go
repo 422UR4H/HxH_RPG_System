@@ -46,7 +46,7 @@ func (r *Repository) GetScenario(ctx context.Context, uuid uuid.UUID) (*scenario
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrScenarioNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch scenario: %w", err)
 	}
 	return &scenario, nil
 }
