@@ -118,10 +118,12 @@ func main() {
 	campaignRepo := campaignPg.NewRepository(pgPool)
 	createCampaignUC := domainCampaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
 	getCampaignUC := domainCampaign.NewGetCampaignUC(campaignRepo)
+	listCampaignsUC := domainCampaign.NewListCampaignsUC(campaignRepo)
 
 	campaignsApi := campaignHandler.Api{
 		CreateCampaignHandler: campaignHandler.CreateCampaignHandler(createCampaignUC),
 		GetCampaignHandler:    campaignHandler.GetCampaignHandler(getCampaignUC),
+		ListCampaignsHandler:  campaignHandler.ListCampaignsHandler(listCampaignsUC),
 	}
 
 	chiServer := api.NewServer()
