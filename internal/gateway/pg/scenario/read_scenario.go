@@ -2,10 +2,12 @@ package scenario
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	scenarioEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func (r *Repository) GetScenario(ctx context.Context, uuid uuid.UUID) (*scenarioEntity.Scenario, error) {
@@ -41,7 +43,10 @@ func (r *Repository) GetScenario(ctx context.Context, uuid uuid.UUID) (*scenario
 		&scenario.UpdatedAt,
 	)
 	if err != nil {
-		return nil, ErrScenarioNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrScenarioNotFound
+		}
+		return nil, err
 	}
 	return &scenario, nil
 }
