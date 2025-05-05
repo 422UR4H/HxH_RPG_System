@@ -9,6 +9,7 @@ import (
 
 type IRepository interface {
 	CreateScenario(ctx context.Context, scenario *scenario.Scenario) error
+	GetScenario(ctx context.Context, uuid uuid.UUID) (*scenario.Scenario, error)
 	ExistsScenario(ctx context.Context, uuid uuid.UUID) (bool, error)
 	ExistsScenarioWithName(ctx context.Context, name string) (bool, error)
 }
