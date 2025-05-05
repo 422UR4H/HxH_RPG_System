@@ -13,6 +13,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
 	CreateCampaignHandler Handler[CreateCampaignRequest, CreateCampaignResponse]
+	GetCampaignHandler    Handler[GetCampaignRequest, GetCampaignResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -30,4 +31,17 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusCreated,
 	}, a.CreateCampaignHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/campaigns/{uuid}",
+		Description: "Get a campaign by UUID",
+		Tags:        []string{"campaigns"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.GetCampaignHandler)
 }

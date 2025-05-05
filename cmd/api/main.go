@@ -115,9 +115,11 @@ func main() {
 
 	campaignRepo := campaignPg.NewRepository(pgPool)
 	createCampaignUC := domainCampaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
+	getCampaignUC := domainCampaign.NewGetCampaignUC(campaignRepo)
 
 	campaignsApi := campaignHandler.Api{
 		CreateCampaignHandler: campaignHandler.CreateCampaignHandler(createCampaignUC),
+		GetCampaignHandler:    campaignHandler.GetCampaignHandler(getCampaignUC),
 	}
 
 	chiServer := api.NewServer()
