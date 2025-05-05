@@ -107,10 +107,12 @@ func main() {
 	scenarioRepo := scenarioPg.NewRepository(pgPool)
 	createScenarioUC := domainScenario.NewCreateScenarioUC(scenarioRepo)
 	getScenarioUC := domainScenario.NewGetScenarioUC(scenarioRepo)
+	listScenariosUC := domainScenario.NewListScenariosUC(scenarioRepo)
 
 	scenariosApi := scenarioHandler.Api{
 		CreateScenarioHandler: scenarioHandler.CreateScenarioHandler(createScenarioUC),
 		GetScenarioHandler:    scenarioHandler.GetScenarioHandler(getScenarioUC),
+		ListScenariosHandler:  scenarioHandler.ListScenariosHandler(listScenariosUC),
 	}
 
 	campaignRepo := campaignPg.NewRepository(pgPool)

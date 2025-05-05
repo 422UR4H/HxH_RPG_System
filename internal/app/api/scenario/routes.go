@@ -14,6 +14,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 type Api struct {
 	CreateScenarioHandler Handler[CreateScenarioRequest, CreateScenarioResponse]
 	GetScenarioHandler    Handler[GetScenarioRequest, GetScenarioResponse]
+	ListScenariosHandler  Handler[struct{}, ListScenariosResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -43,4 +44,16 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.GetScenarioHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/scenarios",
+		Description: "List all user's scenarios",
+		Tags:        []string{"scenarios"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.ListScenariosHandler)
 }
