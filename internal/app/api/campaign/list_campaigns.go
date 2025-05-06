@@ -21,7 +21,6 @@ type ListCampaignsResponse struct {
 
 type CampaignSummaryResponse struct {
 	UUID             uuid.UUID `json:"uuid"`
-	ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
 	Name             string    `json:"name"`
 	BriefDescription string    `json:"brief_description"`
 	StoryStartAt     string    `json:"story_start_at"`
@@ -60,7 +59,6 @@ func ListCampaignsHandler(
 			}
 			responses = append(responses, CampaignSummaryResponse{
 				UUID:             c.UUID,
-				ScenarioUUID:     c.ScenarioUUID,
 				Name:             c.Name,
 				BriefDescription: c.BriefDescription,
 				StoryStartAt:     c.StoryStartAt.Format("2006-01-02"),
