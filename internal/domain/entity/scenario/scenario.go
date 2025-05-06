@@ -3,6 +3,7 @@ package scenario
 import (
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/google/uuid"
 )
 
@@ -12,8 +13,10 @@ type Scenario struct {
 	Name             string
 	BriefDescription string
 	Description      string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Campaigns        []*campaign.Summary
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func NewScenario(

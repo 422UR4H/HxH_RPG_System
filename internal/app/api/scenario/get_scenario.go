@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -15,11 +16,22 @@ type GetScenarioRequest struct {
 }
 
 type GetScenarioResponseBody struct {
-	Scenario ScenarioResponse `json:"scenario"`
+	Scenario ScenarioWithCampaignsResponse `json:"scenario"`
 }
 
 type GetScenarioResponse struct {
 	Body GetScenarioResponseBody `json:"body"`
+}
+
+type ScenarioWithCampaignsResponse struct {
+	UUID             uuid.UUID                          `json:"uuid"`
+	Name             string                             `json:"name"`
+	BriefDescription string                             `json:"brief_description"`
+	Description      string                             `json:"description"`
+	Campaigns        []campaign.CampaignSummaryResponse `json:"campaigns"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func GetScenarioHandler(
@@ -37,11 +49,38 @@ func GetScenarioHandler(
 			}
 		}
 
-		response := ScenarioResponse{
+		campaignResponses := make([]campaign.CampaignSummaryResponse, 0, len(scenario.Campaigns))
+		for _, c := range scenario.Campaigns {
+			var storyCurrentAtStr *string
+			if c.StoryCurrentAt != nil {
+				formatted := c.StoryCurrentAt.Format("2006-01-02")
+				storyCurrentAtStr = &formatted
+			}
+
+			var storyEndAtStr *string
+			if c.StoryEndAt != nil {
+				formatted := c.StoryEndAt.Format("2006-01-02")
+				storyEndAtStr = &formatted
+			}
+
+			campaignResponses = append(campaignResponses, campaign.CampaignSummaryResponse{
+				UUID:             c.UUID,
+				Name:             c.Name,
+				BriefDescription: c.BriefDescription,
+				StoryStartAt:     c.StoryStartAt.Format("2006-01-02"),
+				StoryCurrentAt:   storyCurrentAtStr,
+				StoryEndAt:       storyEndAtStr,
+				CreatedAt:        c.CreatedAt.Format(http.TimeFormat),
+				UpdatedAt:        c.UpdatedAt.Format(http.TimeFormat),
+			})
+		}
+
+		response := ScenarioWithCampaignsResponse{
 			UUID:             scenario.UUID,
 			Name:             scenario.Name,
 			BriefDescription: scenario.BriefDescription,
 			Description:      scenario.Description,
+			Campaigns:        campaignResponses,
 			CreatedAt:        scenario.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:        scenario.UpdatedAt.Format(http.TimeFormat),
 		}
