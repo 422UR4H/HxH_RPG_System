@@ -15,7 +15,7 @@ type ICreateCampaign interface {
 
 type CreateCampaignInput struct {
 	UserUUID         uuid.UUID
-	ScenarioUUID     uuid.UUID
+	ScenarioUUID     *uuid.UUID
 	Name             string
 	BriefDescription string
 	Description      string
@@ -43,7 +43,9 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	input *CreateCampaignInput,
 ) (*campaign.Campaign, error) {
 
-	exists, err := uc.scenarioRepo.ExistsScenario(context.Background(), input.ScenarioUUID)
+	exists, err := uc.scenarioRepo.ExistsScenario(
+		context.Background(), *input.ScenarioUUID,
+	)
 	if err != nil {
 		return nil, err
 	}

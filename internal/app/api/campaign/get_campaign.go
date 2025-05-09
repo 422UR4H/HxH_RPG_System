@@ -51,8 +51,8 @@ func GetCampaignHandler(
 		}
 
 		response := CampaignResponse{
-			UUID:             campaign.UUID,
-			ScenarioUUID:     campaign.ScenarioUUID,
+			UUID: campaign.UUID,
+			// ScenarioUUID:     campaign.ScenarioUUID,
 			Name:             campaign.Name,
 			BriefDescription: campaign.BriefDescription,
 			Description:      campaign.Description,

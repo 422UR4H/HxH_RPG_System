@@ -9,7 +9,7 @@ import (
 type Campaign struct {
 	UUID             uuid.UUID
 	UserUUID         uuid.UUID
-	ScenarioUUID     uuid.UUID
+	ScenarioUUID     *uuid.UUID
 	Name             string
 	BriefDescription string
 	Description      string
@@ -22,7 +22,7 @@ type Campaign struct {
 
 func NewCampaign(
 	userUUID uuid.UUID,
-	scenarioUUID uuid.UUID,
+	scenarioUUID *uuid.UUID,
 	name string,
 	briefDescription string,
 	description string,

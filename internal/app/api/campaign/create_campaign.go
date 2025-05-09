@@ -12,14 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// ScenarioUUID will now only be enabled for shared scenario
 type CreateCampaignRequestBody struct {
-	ScenarioUUID     uuid.UUID `json:"scenario_uuid" required:"true" doc:"UUID of the scenario this campaign is based on"`
-	Name             string    `json:"name" required:"true" maxLength:"32" doc:"Name of the campaign"`
-	BriefDescription string    `json:"brief_description" maxLength:"64" doc:"Brief description of the campaign"`
-	Description      string    `json:"description" doc:"Full description of the campaign"`
-	StoryStartAt     string    `json:"story_start_at" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
-	StoryCurrentAt   *string   `json:"story_current_at,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
-	StoryEndAt       *string   `json:"story_end_at,omitempty" doc:"End date of the campaign story (YYYY-MM-DD)"`
+	// ScenarioUUID     uuid.UUID `json:"scenario_uuid" required:"true" doc:"UUID of the scenario this campaign is based on"`
+	Name             string  `json:"name" required:"true" maxLength:"32" doc:"Name of the campaign"`
+	BriefDescription string  `json:"brief_description" maxLength:"64" doc:"Brief description of the campaign"`
+	Description      string  `json:"description" doc:"Full description of the campaign"`
+	StoryStartAt     string  `json:"story_start_at" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
+	StoryCurrentAt   *string `json:"story_current_at,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
+	StoryEndAt       *string `json:"story_end_at,omitempty" doc:"End date of the campaign story (YYYY-MM-DD)"`
 }
 
 type CreateCampaignRequest struct {
@@ -36,16 +37,16 @@ type CreateCampaignResponse struct {
 }
 
 type CampaignResponse struct {
-	UUID             uuid.UUID `json:"uuid"`
-	ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
-	Name             string    `json:"name"`
-	BriefDescription string    `json:"brief_description"`
-	Description      string    `json:"description"`
-	StoryStartAt     string    `json:"story_start_at"`
-	StoryCurrentAt   *string   `json:"story_current_at,omitempty"`
-	StoryEndAt       *string   `json:"story_end_at,omitempty"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
+	UUID uuid.UUID `json:"uuid"`
+	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
+	Name             string  `json:"name"`
+	BriefDescription string  `json:"brief_description"`
+	Description      string  `json:"description"`
+	StoryStartAt     string  `json:"story_start_at"`
+	StoryCurrentAt   *string `json:"story_current_at,omitempty"`
+	StoryEndAt       *string `json:"story_end_at,omitempty"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
 }
 
 func CreateCampaignHandler(
@@ -70,9 +71,9 @@ func CreateCampaignHandler(
 			return nil, huma.Error422UnprocessableEntity(domainCampaign.ErrMaxBriefDescLength.Error())
 		}
 
-		if req.Body.ScenarioUUID == uuid.Nil {
-			return nil, huma.Error422UnprocessableEntity("scenario_uuid cannot be empty")
-		}
+		// if req.Body.ScenarioUUID == uuid.Nil {
+		// 	return nil, huma.Error422UnprocessableEntity("scenario_uuid cannot be empty")
+		// }
 
 		storyStartAt, err := time.Parse("2006-01-02", req.Body.StoryStartAt)
 		if err != nil {
@@ -99,7 +100,7 @@ func CreateCampaignHandler(
 
 		input := &domainCampaign.CreateCampaignInput{
 			UserUUID:         userUUID,
-			ScenarioUUID:     req.Body.ScenarioUUID,
+			ScenarioUUID:     nil, //req.Body.ScenarioUUID,
 			Name:             req.Body.Name,
 			BriefDescription: req.Body.BriefDescription,
 			Description:      req.Body.Description,
@@ -131,8 +132,8 @@ func CreateCampaignHandler(
 		}
 
 		response := CampaignResponse{
-			UUID:             campaign.UUID,
-			ScenarioUUID:     campaign.ScenarioUUID,
+			UUID: campaign.UUID,
+			// ScenarioUUID:     campaign.ScenarioUUID,
 			Name:             campaign.Name,
 			BriefDescription: campaign.BriefDescription,
 			Description:      campaign.Description,
