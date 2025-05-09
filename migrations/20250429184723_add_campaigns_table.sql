@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   id SERIAL PRIMARY KEY,
   uuid UUID NOT NULL DEFAULT gen_random_uuid(),
   user_uuid UUID NOT NULL,
-  scenario_uuid UUID NOT NULL,
+  scenario_uuid UUID,
 
   name VARCHAR(32) NOT NULL,
   brief_description VARCHAR(64),
