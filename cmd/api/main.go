@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
+	matchHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
@@ -18,8 +19,10 @@ import (
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
+	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
@@ -126,6 +129,13 @@ func main() {
 		ListCampaignsHandler:  campaignHandler.ListCampaignsHandler(listCampaignsUC),
 	}
 
+	matchRepo := matchPg.NewRepository(pgPool)
+	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
+
+	matchesApi := matchHandler.Api{
+		CreateMatchHandler: matchHandler.CreateMatchHandler(createMatchUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -134,6 +144,7 @@ func main() {
 		CharacterSheetHandler: &characterSheetsApi,
 		ScenarioHandler:       &scenariosApi,
 		CampaignHandler:       &campaignsApi,
+		MatchHandler:          &matchesApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}

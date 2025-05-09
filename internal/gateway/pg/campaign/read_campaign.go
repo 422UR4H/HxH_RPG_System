@@ -116,3 +116,15 @@ func (r *Repository) ListCampaignsByUserUUID(
 
 	return campaigns, nil
 }
+
+func (r *Repository) ExistsCampaign(ctx context.Context, campaignUUID uuid.UUID) (bool, error) {
+	const query = `
+        SELECT EXISTS(SELECT 1 FROM campaigns WHERE uuid = $1)
+    `
+	var exists bool
+	err := r.q.QueryRow(ctx, query, campaignUUID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if campaign exists: %w", err)
+	}
+	return exists, nil
+}

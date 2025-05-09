@@ -10,5 +10,6 @@ import (
 type IRepository interface {
 	CreateCampaign(ctx context.Context, campaign *campaign.Campaign) error
 	GetCampaign(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error)
+	ExistsCampaign(ctx context.Context, uuid uuid.UUID) (bool, error)
 	ListCampaignsByUserUUID(ctx context.Context, userUUID uuid.UUID) ([]*campaign.Summary, error)
 }
