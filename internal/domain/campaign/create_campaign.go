@@ -21,7 +21,6 @@ type CreateCampaignInput struct {
 	Description      string
 	StoryStartAt     time.Time
 	StoryCurrentAt   *time.Time
-	StoryEndAt       *time.Time
 }
 
 type CreateCampaignUC struct {
@@ -43,14 +42,16 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	input *CreateCampaignInput,
 ) (*campaign.Campaign, error) {
 
-	exists, err := uc.scenarioRepo.ExistsScenario(
-		context.Background(), *input.ScenarioUUID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, ErrScenarioNotFound
+	if input.ScenarioUUID != nil {
+		exists, err := uc.scenarioRepo.ExistsScenario(
+			context.Background(), *input.ScenarioUUID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, ErrScenarioNotFound
+		}
 	}
 
 	newCampaign, err := campaign.NewCampaign(
@@ -61,7 +62,6 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		input.Description,
 		input.StoryStartAt,
 		input.StoryCurrentAt,
-		input.StoryEndAt,
 	)
 	if err != nil {
 		return nil, err

@@ -20,7 +20,6 @@ type CreateCampaignRequestBody struct {
 	Description      string  `json:"description" doc:"Full description of the campaign"`
 	StoryStartAt     string  `json:"story_start_at" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
 	StoryCurrentAt   *string `json:"story_current_at,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
-	StoryEndAt       *string `json:"story_end_at,omitempty" doc:"End date of the campaign story (YYYY-MM-DD)"`
 }
 
 type CreateCampaignRequest struct {
@@ -28,15 +27,6 @@ type CreateCampaignRequest struct {
 }
 
 type CreateCampaignResponseBody struct {
-	Campaign CampaignResponse `json:"campaign"`
-}
-
-type CreateCampaignResponse struct {
-	Body   CreateCampaignResponseBody `json:"body"`
-	Status int                        `json:"status"`
-}
-
-type CampaignResponse struct {
 	UUID uuid.UUID `json:"uuid"`
 	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
 	Name             string  `json:"name"`
@@ -44,9 +34,13 @@ type CampaignResponse struct {
 	Description      string  `json:"description"`
 	StoryStartAt     string  `json:"story_start_at"`
 	StoryCurrentAt   *string `json:"story_current_at,omitempty"`
-	StoryEndAt       *string `json:"story_end_at,omitempty"`
 	CreatedAt        string  `json:"created_at"`
 	UpdatedAt        string  `json:"updated_at"`
+}
+
+type CreateCampaignResponse struct {
+	Body   CreateCampaignResponseBody `json:"body"`
+	Status int                        `json:"status"`
 }
 
 func CreateCampaignHandler(
@@ -89,15 +83,6 @@ func CreateCampaignHandler(
 			storyCurrentAtPtr = &storyCurrentAt
 		}
 
-		var storyEndAtPtr *time.Time
-		if req.Body.StoryEndAt != nil {
-			storyEndAt, err := time.Parse("2006-01-02", *req.Body.StoryEndAt)
-			if err != nil {
-				return nil, huma.Error422UnprocessableEntity("invalid story_end_at date format, use YYYY-MM-DD")
-			}
-			storyEndAtPtr = &storyEndAt
-		}
-
 		input := &domainCampaign.CreateCampaignInput{
 			UserUUID:         userUUID,
 			ScenarioUUID:     nil, //req.Body.ScenarioUUID,
@@ -106,7 +91,6 @@ func CreateCampaignHandler(
 			Description:      req.Body.Description,
 			StoryStartAt:     storyStartAt,
 			StoryCurrentAt:   storyCurrentAtPtr,
-			StoryEndAt:       storyEndAtPtr,
 		}
 
 		campaign, err := uc.CreateCampaign(input)
@@ -125,13 +109,7 @@ func CreateCampaignHandler(
 			storyCurrentAtStr = &formattedTime
 		}
 
-		var storyEndAtStr *string
-		if campaign.StoryEndAt != nil {
-			formattedDate := campaign.StoryEndAt.Format("2006-01-02")
-			storyEndAtStr = &formattedDate
-		}
-
-		response := CampaignResponse{
+		response := CreateCampaignResponseBody{
 			UUID: campaign.UUID,
 			// ScenarioUUID:     campaign.ScenarioUUID,
 			Name:             campaign.Name,
@@ -139,15 +117,12 @@ func CreateCampaignHandler(
 			Description:      campaign.Description,
 			StoryStartAt:     campaign.StoryStartAt.Format("2006-01-02"),
 			StoryCurrentAt:   storyCurrentAtStr,
-			StoryEndAt:       storyEndAtStr,
 			CreatedAt:        campaign.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:        campaign.UpdatedAt.Format(http.TimeFormat),
 		}
 
 		return &CreateCampaignResponse{
-			Body: CreateCampaignResponseBody{
-				Campaign: response,
-			},
+			Body:   response,
 			Status: http.StatusCreated,
 		}, nil
 	}

@@ -16,7 +16,16 @@ type GetCampaignRequest struct {
 }
 
 type GetCampaignResponseBody struct {
-	Campaign CampaignResponse `json:"campaign"`
+	UUID uuid.UUID `json:"uuid"`
+	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
+	Name             string  `json:"name"`
+	BriefDescription string  `json:"brief_description"`
+	Description      string  `json:"description"`
+	StoryStartAt     string  `json:"story_start_at"`
+	StoryCurrentAt   *string `json:"story_current_at,omitempty"`
+	StoryEndAt       *string `json:"story_end_at,omitempty"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
 }
 
 type GetCampaignResponse struct {
@@ -50,7 +59,7 @@ func GetCampaignHandler(
 			storyEndAtStr = &formattedDate
 		}
 
-		response := CampaignResponse{
+		response := GetCampaignResponseBody{
 			UUID: campaign.UUID,
 			// ScenarioUUID:     campaign.ScenarioUUID,
 			Name:             campaign.Name,
@@ -64,9 +73,7 @@ func GetCampaignHandler(
 		}
 
 		return &GetCampaignResponse{
-			Body: GetCampaignResponseBody{
-				Campaign: response,
-			},
+			Body: response,
 		}, nil
 	}
 }

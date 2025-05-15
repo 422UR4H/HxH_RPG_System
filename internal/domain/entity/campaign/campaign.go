@@ -28,7 +28,6 @@ func NewCampaign(
 	description string,
 	storyStartAt time.Time,
 	storyCurrentAt *time.Time,
-	storyEndAt *time.Time,
 ) (*Campaign, error) {
 	if name == "" {
 		return nil, ErrEmptyName
@@ -48,7 +47,6 @@ func NewCampaign(
 		Description:      description,
 		StoryStartAt:     storyStartAt,
 		StoryCurrentAt:   storyCurrentAt,
-		StoryEndAt:       storyEndAt,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}, nil
