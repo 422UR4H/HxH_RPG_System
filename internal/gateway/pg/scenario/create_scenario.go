@@ -33,14 +33,17 @@ func (r *Repository) CreateScenario(ctx context.Context, scenario *scenario.Scen
 
 	const query = `
         INSERT INTO scenarios (
-            uuid, user_uuid, name, brief_description, description, created_at, updated_at
+            uuid, user_uuid,
+						name, brief_description, description,
+						created_at, updated_at
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7
         )
     `
 	_, err = tx.Exec(ctx, query,
-		scenario.UUID, scenario.UserUUID, scenario.Name, scenario.BriefDescription,
-		scenario.Description, scenario.CreatedAt, scenario.UpdatedAt,
+		scenario.UUID, scenario.UserUUID,
+		scenario.Name, scenario.BriefDescription, scenario.Description,
+		scenario.CreatedAt, scenario.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save scenario: %w", err)

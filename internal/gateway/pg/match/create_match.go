@@ -25,15 +25,19 @@ func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error 
 
 	const query = `
         INSERT INTO matches (
-            uuid, master_uuid, campaign_uuid, title, brief_description, description, 
-            story_start_at, story_end_at, created_at, updated_at
+            uuid, master_uuid, campaign_uuid,
+						title, brief_description, description, 
+            story_start_at, story_end_at,
+						created_at, updated_at
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
         )
     `
 	_, err = tx.Exec(ctx, query,
-		match.UUID, match.MasterUUID, match.CampaignUUID, match.Title, match.BriefDescription,
-		match.Description, match.StoryStartAt, match.StoryEndAt, match.CreatedAt, match.UpdatedAt,
+		match.UUID, match.MasterUUID, match.CampaignUUID,
+		match.Title, match.BriefDescription, match.Description,
+		match.StoryStartAt, match.StoryEndAt,
+		match.CreatedAt, match.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save match: %w", err)

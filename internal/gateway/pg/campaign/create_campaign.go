@@ -26,15 +26,18 @@ func (r *Repository) CreateCampaign(ctx context.Context, campaign *campaign.Camp
 
 	const query = `
         INSERT INTO campaigns (
-            uuid, user_uuid, scenario_uuid, name, brief_description, description, 
-            story_start_at, story_current_at, story_end_at, created_at, updated_at
+            uuid, user_uuid, scenario_uuid,
+						name, brief_description, description, 
+            story_start_at, story_current_at, story_end_at,
+						created_at, updated_at
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
         )
     `
 	_, err = tx.Exec(ctx, query,
-		campaign.UUID, campaign.UserUUID, campaign.ScenarioUUID, campaign.Name, campaign.BriefDescription,
-		campaign.Description, campaign.StoryStartAt, campaign.StoryCurrentAt, campaign.StoryEndAt,
+		campaign.UUID, campaign.UserUUID, campaign.ScenarioUUID,
+		campaign.Name, campaign.BriefDescription, campaign.Description,
+		campaign.StoryStartAt, campaign.StoryCurrentAt, campaign.StoryEndAt,
 		campaign.CreatedAt, campaign.UpdatedAt,
 	)
 	if err != nil {

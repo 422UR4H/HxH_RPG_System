@@ -28,8 +28,10 @@ func (r *Repository) GetCampaign(ctx context.Context, uuid uuid.UUID) (*campaign
 
 	const query = `
         SELECT 
-            uuid, user_uuid, scenario_uuid, name, brief_description, description,
-            story_start_at, story_current_at, story_end_at, created_at, updated_at
+            uuid, user_uuid, scenario_uuid,
+						name, brief_description, description,
+            story_start_at, story_current_at, story_end_at,
+						created_at, updated_at
         FROM campaigns
         WHERE uuid = $1
     `
@@ -77,7 +79,8 @@ func (r *Repository) ListCampaignsByUserUUID(
 
 	const query = `
 					SELECT 
-							uuid, scenario_uuid, name, brief_description, 
+							uuid, scenario_uuid,
+							name, brief_description, 
 							story_start_at, story_current_at, story_end_at,
 							created_at, updated_at
 					FROM campaigns
