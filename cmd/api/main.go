@@ -132,10 +132,12 @@ func main() {
 	matchRepo := matchPg.NewRepository(pgPool)
 	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
 	getMatchUC := domainMatch.NewGetMatchUC(matchRepo)
+	listMatchesUC := domainMatch.NewListMatchesUC(matchRepo)
 
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler: matchHandler.CreateMatchHandler(createMatchUC),
 		GetMatchHandler:    matchHandler.GetMatchHandler(getMatchUC),
+		ListMatchesHandler: matchHandler.ListMatchesHandler(listMatchesUC),
 	}
 
 	chiServer := api.NewServer()

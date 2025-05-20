@@ -10,4 +10,5 @@ import (
 type IRepository interface {
 	CreateMatch(ctx context.Context, match *match.Match) error
 	GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match, error)
+	ListMatchesByMasterUUID(ctx context.Context, masterUUID uuid.UUID) ([]*match.Summary, error)
 }

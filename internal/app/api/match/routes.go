@@ -14,6 +14,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 type Api struct {
 	CreateMatchHandler Handler[CreateMatchRequest, CreateMatchResponse]
 	GetMatchHandler    Handler[GetMatchRequest, GetMatchResponse]
+	ListMatchesHandler Handler[struct{}, ListMatchesResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -44,4 +45,16 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.GetMatchHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/matches",
+		Description: "List all user's matches",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.ListMatchesHandler)
 }
