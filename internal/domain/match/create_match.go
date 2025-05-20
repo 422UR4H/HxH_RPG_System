@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/google/uuid"
@@ -25,12 +25,12 @@ type CreateMatchInput struct {
 
 type CreateMatchUC struct {
 	matchRepo    IRepository
-	campaignRepo campaign.IRepository
+	campaignRepo domainCampaign.IRepository
 }
 
 func NewCreateMatchUC(
 	matchRepo IRepository,
-	campaignRepo campaign.IRepository,
+	campaignRepo domainCampaign.IRepository,
 ) *CreateMatchUC {
 	return &CreateMatchUC{
 		matchRepo:    matchRepo,
@@ -45,7 +45,7 @@ func (uc *CreateMatchUC) CreateMatch(input *CreateMatchInput) (*match.Match, err
 
 	campaign, err := uc.campaignRepo.GetCampaign(context.Background(), input.CampaignUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
-		return nil, ErrCampaignNotFound
+		return nil, domainCampaign.ErrCampaignNotFound
 	}
 	if err != nil {
 		return nil, err

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -89,7 +90,7 @@ func CreateMatchHandler(
 		match, err := uc.CreateMatch(input)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrCampaignNotFound):
+			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, domainMatch.ErrMinOfStartDate):
 				return nil, huma.Error422UnprocessableEntity(err.Error())

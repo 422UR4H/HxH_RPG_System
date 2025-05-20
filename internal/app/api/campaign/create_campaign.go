@@ -8,6 +8,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -96,7 +97,7 @@ func CreateCampaignHandler(
 		campaign, err := uc.CreateCampaign(input)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainCampaign.ErrScenarioNotFound):
+			case errors.Is(err, scenario.ErrScenarioNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

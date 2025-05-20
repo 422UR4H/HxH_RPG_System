@@ -2,9 +2,11 @@ package sheet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	"github.com/jackc/pgx/v5"
 )
 
 func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (*model.CharacterSheet, error) {
@@ -64,6 +66,9 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrCharacterSheetNotFound
+		}
 		return nil, fmt.Errorf("failed to fetch character sheet: %w", err)
 	}
 	sheet.Profile = profile

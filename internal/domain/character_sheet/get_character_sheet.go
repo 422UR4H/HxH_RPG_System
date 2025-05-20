@@ -2,6 +2,7 @@ package charactersheet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 )
 
@@ -47,9 +49,11 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	}
 
 	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, charSheetId.String())
-	// TODO: fix error handling that is not necessarily ErrCharacterSheetNotFound
 	if err != nil {
-		return nil, ErrCharacterSheetNotFound
+		if errors.Is(err, sheetPg.ErrCharacterSheetNotFound) {
+			return nil, ErrCharacterSheetNotFound
+		}
+		return nil, err
 	}
 
 	profile := ModelToProfile(&modelSheet.Profile)

@@ -1,10 +1,14 @@
 package campaign
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
+)
 
 var (
-	ErrEmptyName          = errors.New("name cannot be empty")
-	ErrMaxNameLength      = errors.New("name cannot exceed 32 characters")
-	ErrInvalidStartDate   = errors.New("story start date cannot be empty")
-	ErrMaxBriefDescLength = errors.New("brief description cannot exceed 64 characters")
+	ErrEmptyName          = domain.NewValidationError(errors.New("name cannot be empty"))
+	ErrMaxNameLength      = domain.NewValidationError(errors.New("name cannot exceed 32 characters"))
+	ErrInvalidStartDate   = domain.NewValidationError(errors.New("story start date cannot be empty"))
+	ErrMaxBriefDescLength = domain.NewValidationError(errors.New("brief description cannot exceed 64 characters"))
 )

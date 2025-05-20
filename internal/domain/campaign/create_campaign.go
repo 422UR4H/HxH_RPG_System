@@ -50,7 +50,7 @@ func (uc *CreateCampaignUC) CreateCampaign(
 			return nil, err
 		}
 		if !exists {
-			return nil, ErrScenarioNotFound
+			return nil, scenario.ErrScenarioNotFound
 		}
 	}
 
