@@ -13,6 +13,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
 	CreateMatchHandler Handler[CreateMatchRequest, CreateMatchResponse]
+	GetMatchHandler    Handler[GetMatchRequest, GetMatchResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -30,4 +31,17 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusCreated,
 	}, a.CreateMatchHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/matches/{uuid}",
+		Description: "Get a match by UUID",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.GetMatchHandler)
 }

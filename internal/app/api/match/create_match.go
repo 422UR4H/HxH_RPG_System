@@ -40,6 +40,7 @@ type MatchResponse struct {
 	BriefDescription string    `json:"brief_description"`
 	Description      string    `json:"description"`
 	StoryStartAt     string    `json:"story_start_at"`
+	StoryEndAt       *string   `json:"story_end_at,omitempty"`
 	CreatedAt        string    `json:"created_at"`
 	UpdatedAt        string    `json:"updated_at"`
 }

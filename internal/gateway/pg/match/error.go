@@ -3,5 +3,5 @@ package match
 import "errors"
 
 var (
-	ErrCampaignNotFound = errors.New("campaign not found in database")
+	ErrMatchNotFound = errors.New("match not found in database")
 )

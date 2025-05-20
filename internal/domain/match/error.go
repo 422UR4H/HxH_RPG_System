@@ -3,6 +3,7 @@ package match
 import "errors"
 
 var (
+	ErrMatchNotFound      = errors.New("match not found")
 	ErrCampaignNotFound   = errors.New("campaign not found")
 	ErrMinTitleLength     = errors.New("title must be at least 5 characters")
 	ErrMaxTitleLength     = errors.New("title cannot exceed 32 characters")
