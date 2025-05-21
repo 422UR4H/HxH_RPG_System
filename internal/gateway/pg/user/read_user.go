@@ -19,7 +19,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*user.Us
 		&u.ID, &u.UUID, &u.Nick, &u.Email, &u.Password, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
-		return nil, user.ErrAccessDenied
+		return nil, ErrEmailNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user: %w", err)

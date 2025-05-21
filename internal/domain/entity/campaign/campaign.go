@@ -29,14 +29,6 @@ func NewCampaign(
 	storyStartAt time.Time,
 	storyCurrentAt *time.Time,
 ) (*Campaign, error) {
-	if name == "" {
-		return nil, ErrEmptyName
-	}
-
-	if storyStartAt.IsZero() {
-		return nil, ErrInvalidStartDate
-	}
-
 	now := time.Now()
 	return &Campaign{
 		UUID:             uuid.New(),

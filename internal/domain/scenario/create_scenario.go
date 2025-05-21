@@ -31,6 +31,17 @@ func NewCreateScenarioUC(repo IRepository) *CreateScenarioUC {
 func (uc *CreateScenarioUC) CreateScenario(
 	input *CreateScenarioInput,
 ) (*scenario.Scenario, error) {
+	if len(input.Name) < 5 {
+		return nil, ErrMinNameLength
+	}
+
+	if len(input.Name) > 32 {
+		return nil, ErrMaxNameLength
+	}
+
+	if len(input.BriefDescription) > 64 {
+		return nil, ErrMaxBriefDescLength
+	}
 
 	exists, err := uc.repo.ExistsScenarioWithName(context.Background(), input.Name)
 	if err != nil {

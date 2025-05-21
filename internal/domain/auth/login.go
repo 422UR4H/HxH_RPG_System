@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
+	pgUser "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	"github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -55,6 +56,9 @@ func (uc *LoginUC) Login(input *LoginInput) (LoginOutput, error) {
 	}
 
 	userEntity, err := uc.repo.GetUserByEmail(context.Background(), input.Email)
+	if err == pgUser.ErrEmailNotFound {
+		return LoginOutput{}, ErrUnauthorized
+	}
 	if err != nil {
 		return LoginOutput{}, err
 	}
@@ -63,7 +67,7 @@ func (uc *LoginUC) Login(input *LoginInput) (LoginOutput, error) {
 		[]byte(userEntity.Password), []byte(input.Password),
 	)
 	if err != nil {
-		return LoginOutput{}, user.ErrAccessDenied
+		return LoginOutput{}, ErrUnauthorized
 	}
 
 	token, err := auth.GenerateToken(userEntity.UUID)

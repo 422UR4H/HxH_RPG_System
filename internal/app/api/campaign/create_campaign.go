@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	"github.com/danielgtaylor/huma/v2"
@@ -54,22 +55,6 @@ func CreateCampaignHandler(
 			return nil, errors.New("failed to get userID in context")
 		}
 
-		if len(req.Body.Name) < 5 {
-			return nil, huma.Error422UnprocessableEntity(domainCampaign.ErrMinNameLength.Error())
-		}
-
-		if len(req.Body.Name) > 32 {
-			return nil, huma.Error422UnprocessableEntity(domainCampaign.ErrMaxNameLength.Error())
-		}
-
-		if len(req.Body.BriefDescription) > 64 {
-			return nil, huma.Error422UnprocessableEntity(domainCampaign.ErrMaxBriefDescLength.Error())
-		}
-
-		// if req.Body.ScenarioUUID == uuid.Nil {
-		// 	return nil, huma.Error422UnprocessableEntity("scenario_uuid cannot be empty")
-		// }
-
 		storyStartAt, err := time.Parse("2006-01-02", req.Body.StoryStartAt)
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid story_start_at date format, use YYYY-MM-DD")
@@ -99,6 +84,8 @@ func CreateCampaignHandler(
 			switch {
 			case errors.Is(err, scenario.ErrScenarioNotFound):
 				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, domain.ErrValidation):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

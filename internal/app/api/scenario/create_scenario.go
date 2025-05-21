@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -55,12 +56,13 @@ func CreateScenarioHandler(
 			BriefDescription: req.Body.BriefDescription,
 			Description:      req.Body.Description,
 		}
-
 		scenario, err := uc.CreateScenario(input)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainScenario.ErrScenarioNameAlreadyExists):
 				return nil, huma.Error409Conflict(err.Error())
+			case errors.Is(err, domain.ErrValidation):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

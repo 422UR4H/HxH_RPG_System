@@ -41,7 +41,23 @@ func NewCreateCampaignUC(
 func (uc *CreateCampaignUC) CreateCampaign(
 	input *CreateCampaignInput,
 ) (*campaign.Campaign, error) {
+	if len(input.Name) < 5 {
+		return nil, ErrMinNameLength
+	}
 
+	if len(input.Name) > 32 {
+		return nil, ErrMaxNameLength
+	}
+
+	if input.StoryStartAt.IsZero() {
+		return nil, ErrInvalidStartDate
+	}
+
+	if len(input.BriefDescription) > 64 {
+		return nil, ErrMaxBriefDescLength
+	}
+
+	// Currently campaigns do not belong to scenarios, but this will change soon
 	if input.ScenarioUUID != nil {
 		exists, err := uc.scenarioRepo.ExistsScenario(
 			context.Background(), *input.ScenarioUUID,

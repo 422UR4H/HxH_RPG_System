@@ -27,26 +27,6 @@ func NewMatch(
 	description string,
 	storyStartAt time.Time,
 ) (*Match, error) {
-	if title == "" {
-		return nil, ErrEmptyTitle
-	}
-
-	if len(title) < 5 {
-		return nil, ErrMinTitleLength
-	}
-
-	if len(title) > 32 {
-		return nil, ErrMaxTitleLength
-	}
-
-	if len(briefDescription) > 64 {
-		return nil, ErrMaxBriefDescLength
-	}
-
-	if storyStartAt.IsZero() {
-		return nil, ErrInvalidStartDate
-	}
-
 	now := time.Now()
 	return &Match{
 		UUID:             uuid.New(),

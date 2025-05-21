@@ -14,9 +14,8 @@ type Scenario struct {
 	BriefDescription string
 	Description      string
 	Campaigns        []*campaign.Summary
-
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 func NewScenario(
@@ -25,18 +24,6 @@ func NewScenario(
 	briefDescription string,
 	description string,
 ) (*Scenario, error) {
-	if name == "" {
-		return nil, ErrEmptyName
-	}
-
-	if len(name) > 32 {
-		return nil, ErrMaxNameLength
-	}
-
-	if len(briefDescription) > 64 {
-		return nil, ErrMaxBriefDescLength
-	}
-
 	now := time.Now()
 	return &Scenario{
 		UUID:             uuid.New(),

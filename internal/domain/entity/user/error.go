@@ -24,5 +24,4 @@ var (
 	ErrMissingConfirmPass = domain.NewValidationError(errors.New("confirm password is required"))
 
 	ErrUserNotFound = domain.NewValidationError(errors.New("user not found"))
-	ErrAccessDenied = domain.NewValidationError(errors.New("access denied"))
 )

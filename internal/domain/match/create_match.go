@@ -43,6 +43,14 @@ func (uc *CreateMatchUC) CreateMatch(input *CreateMatchInput) (*match.Match, err
 		return nil, ErrMinTitleLength
 	}
 
+	if len(input.Title) > 32 {
+		return nil, ErrMaxTitleLength
+	}
+
+	if len(input.BriefDescription) > 64 {
+		return nil, ErrMaxBriefDescLength
+	}
+
 	campaign, err := uc.campaignRepo.GetCampaign(context.Background(), input.CampaignUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
 		return nil, domainCampaign.ErrCampaignNotFound

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
@@ -56,25 +57,10 @@ func CreateMatchHandler(
 			return nil, errors.New("failed to get userID in context")
 		}
 
-		if len(req.Body.Title) < 5 {
-			return nil, huma.Error422UnprocessableEntity(domainMatch.ErrMinTitleLength.Error())
-		}
-
-		if len(req.Body.Title) > 32 {
-			return nil, huma.Error422UnprocessableEntity(domainMatch.ErrMaxTitleLength.Error())
-		}
-
-		if len(req.Body.BriefDescription) > 64 {
-			return nil, huma.Error422UnprocessableEntity(domainMatch.ErrMaxBriefDescLength.Error())
-		}
-
-		if req.Body.CampaignUUID == uuid.Nil {
-			return nil, huma.Error422UnprocessableEntity("campaign_uuid cannot be empty")
-		}
-
 		storyStartAt, err := time.Parse("2006-01-02", req.Body.StoryStartAt)
 		if err != nil {
-			return nil, huma.Error422UnprocessableEntity("invalid story_start_at date format, use YYYY-MM-DD")
+			return nil, huma.Error422UnprocessableEntity(
+				"invalid story_start_at date format, use YYYY-MM-DD")
 		}
 
 		input := &domainMatch.CreateMatchInput{
@@ -85,16 +71,12 @@ func CreateMatchHandler(
 			Description:      req.Body.Description,
 			StoryStartAt:     storyStartAt,
 		}
-
-		// TODO: improve error suite to refactor here
 		match, err := uc.CreateMatch(input)
 		if err != nil {
 			switch {
 			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainMatch.ErrMinOfStartDate):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
-			case errors.Is(err, domainMatch.ErrMaxOfStartDate):
+			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

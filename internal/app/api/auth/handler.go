@@ -74,7 +74,7 @@ func (h *AuthHandler) Login(
 			du.ErrPasswordMinLenght,
 			du.ErrPasswordMaxLenght:
 			return nil, huma.Error422UnprocessableEntity(err.Error())
-		case du.ErrAccessDenied:
+		case domainAuth.ErrUnauthorized:
 			return nil, huma.Error401Unauthorized(err.Error())
 		default:
 			return nil, huma.Error500InternalServerError(err.Error())
