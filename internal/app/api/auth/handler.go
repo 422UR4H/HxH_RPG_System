@@ -29,7 +29,7 @@ func (h *AuthHandler) Register(
 		Password:    req.Body.Password,
 		ConfirmPass: req.Body.ConfirmPass,
 	}
-	err := h.registerUC.Register(input)
+	err := h.registerUC.Register(ctx, input)
 	if err != nil {
 		switch err {
 		case du.ErrMissingNick,
@@ -64,7 +64,7 @@ func (h *AuthHandler) Login(
 		Email:    req.Body.Email,
 		Password: req.Body.Password,
 	}
-	output, err := h.loginUC.Login(input)
+	output, err := h.loginUC.Login(ctx, input)
 	if err != nil {
 		switch err {
 		case du.ErrMissingEmail,

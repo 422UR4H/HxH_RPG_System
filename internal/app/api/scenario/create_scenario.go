@@ -56,7 +56,7 @@ func CreateScenarioHandler(
 			BriefDescription: req.Body.BriefDescription,
 			Description:      req.Body.Description,
 		}
-		scenario, err := uc.CreateScenario(input)
+		scenario, err := uc.CreateScenario(ctx, input)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainScenario.ErrScenarioNameAlreadyExists):

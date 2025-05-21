@@ -10,7 +10,9 @@ import (
 )
 
 type ICreateCampaign interface {
-	CreateCampaign(input *CreateCampaignInput) (*campaign.Campaign, error)
+	CreateCampaign(
+		ctx context.Context, input *CreateCampaignInput,
+	) (*campaign.Campaign, error)
 }
 
 type CreateCampaignInput struct {
@@ -39,7 +41,7 @@ func NewCreateCampaignUC(
 }
 
 func (uc *CreateCampaignUC) CreateCampaign(
-	input *CreateCampaignInput,
+	ctx context.Context, input *CreateCampaignInput,
 ) (*campaign.Campaign, error) {
 	if len(input.Name) < 5 {
 		return nil, ErrMinNameLength
@@ -60,7 +62,7 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	// Currently campaigns do not belong to scenarios, but this will change soon
 	if input.ScenarioUUID != nil {
 		exists, err := uc.scenarioRepo.ExistsScenario(
-			context.Background(), *input.ScenarioUUID,
+			ctx, *input.ScenarioUUID,
 		)
 		if err != nil {
 			return nil, err
@@ -83,7 +85,7 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		return nil, err
 	}
 
-	err = uc.campaignRepo.CreateCampaign(context.Background(), newCampaign)
+	err = uc.campaignRepo.CreateCampaign(ctx, newCampaign)
 	if err != nil {
 		return nil, err
 	}

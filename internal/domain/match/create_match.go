@@ -11,7 +11,7 @@ import (
 )
 
 type ICreateMatch interface {
-	CreateMatch(input *CreateMatchInput) (*match.Match, error)
+	CreateMatch(ctx context.Context, input *CreateMatchInput) (*match.Match, error)
 }
 
 type CreateMatchInput struct {
@@ -38,7 +38,9 @@ func NewCreateMatchUC(
 	}
 }
 
-func (uc *CreateMatchUC) CreateMatch(input *CreateMatchInput) (*match.Match, error) {
+func (uc *CreateMatchUC) CreateMatch(
+	ctx context.Context, input *CreateMatchInput,
+) (*match.Match, error) {
 	if len(input.Title) < 5 {
 		return nil, ErrMinTitleLength
 	}
@@ -51,7 +53,7 @@ func (uc *CreateMatchUC) CreateMatch(input *CreateMatchInput) (*match.Match, err
 		return nil, ErrMaxBriefDescLength
 	}
 
-	campaign, err := uc.campaignRepo.GetCampaign(context.Background(), input.CampaignUUID)
+	campaign, err := uc.campaignRepo.GetCampaign(ctx, input.CampaignUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
 		return nil, domainCampaign.ErrCampaignNotFound
 	}
@@ -78,7 +80,7 @@ func (uc *CreateMatchUC) CreateMatch(input *CreateMatchInput) (*match.Match, err
 		return nil, err
 	}
 
-	err = uc.matchRepo.CreateMatch(context.Background(), newMatch)
+	err = uc.matchRepo.CreateMatch(ctx, newMatch)
 	if err != nil {
 		return nil, err
 	}

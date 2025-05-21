@@ -37,7 +37,7 @@ func ListScenariosHandler(
 			return nil, errors.New("failed to get userID in context")
 		}
 
-		scenarios, err := uc.ListScenarios(userUUID)
+		scenarios, err := uc.ListScenarios(ctx, userUUID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(err.Error())
 		}

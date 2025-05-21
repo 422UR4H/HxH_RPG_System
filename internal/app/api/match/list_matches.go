@@ -40,7 +40,7 @@ func ListMatchesHandler(
 			return nil, errors.New("failed to get userID in context")
 		}
 
-		matches, err := uc.ListMatches(masterUUID)
+		matches, err := uc.ListMatches(ctx, masterUUID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(err.Error())
 		}

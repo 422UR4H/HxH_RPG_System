@@ -40,7 +40,7 @@ func ListCampaignsHandler(
 			return nil, errors.New("failed to get userID in context")
 		}
 
-		campaigns, err := uc.ListCampaigns(userUUID)
+		campaigns, err := uc.ListCampaigns(ctx, userUUID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(err.Error())
 		}

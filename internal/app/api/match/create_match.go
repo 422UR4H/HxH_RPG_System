@@ -71,7 +71,7 @@ func CreateMatchHandler(
 			Description:      req.Body.Description,
 			StoryStartAt:     storyStartAt,
 		}
-		match, err := uc.CreateMatch(input)
+		match, err := uc.CreateMatch(ctx, input)
 		if err != nil {
 			switch {
 			case errors.Is(err, campaign.ErrCampaignNotFound):

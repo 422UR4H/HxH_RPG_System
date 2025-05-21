@@ -53,7 +53,7 @@ func CreateCharacterSheetHandler(
 		}
 		input.PlayerUUID = &userUUID
 
-		characterSheet, err := uc.CreateCharacterSheet(input)
+		characterSheet, err := uc.CreateCharacterSheet(ctx, input)
 		if err != nil {
 			switch {
 			case errors.Is(err, charactersheet.ErrNicknameAlreadyExists):

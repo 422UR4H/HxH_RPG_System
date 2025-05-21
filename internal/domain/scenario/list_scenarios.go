@@ -8,7 +8,9 @@ import (
 )
 
 type IListScenarios interface {
-	ListScenarios(userUUID uuid.UUID) ([]*scenarioEntity.Summary, error)
+	ListScenarios(
+		ctx context.Context, userUUID uuid.UUID,
+	) ([]*scenarioEntity.Summary, error)
 }
 
 type ListScenariosUC struct {
@@ -21,8 +23,10 @@ func NewListScenariosUC(repo IRepository) *ListScenariosUC {
 	}
 }
 
-func (uc *ListScenariosUC) ListScenarios(userUUID uuid.UUID) ([]*scenarioEntity.Summary, error) {
-	scenarios, err := uc.repo.ListScenariosByUserUUID(context.Background(), userUUID)
+func (uc *ListScenariosUC) ListScenarios(
+	ctx context.Context, userUUID uuid.UUID,
+) ([]*scenarioEntity.Summary, error) {
+	scenarios, err := uc.repo.ListScenariosByUserUUID(ctx, userUUID)
 	if err != nil {
 		return nil, err
 	}

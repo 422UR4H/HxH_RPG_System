@@ -8,7 +8,9 @@ import (
 )
 
 type ICreateScenario interface {
-	CreateScenario(input *CreateScenarioInput) (*scenario.Scenario, error)
+	CreateScenario(
+		ctx context.Context, input *CreateScenarioInput,
+	) (*scenario.Scenario, error)
 }
 
 type CreateScenarioInput struct {
@@ -29,7 +31,7 @@ func NewCreateScenarioUC(repo IRepository) *CreateScenarioUC {
 }
 
 func (uc *CreateScenarioUC) CreateScenario(
-	input *CreateScenarioInput,
+	ctx context.Context, input *CreateScenarioInput,
 ) (*scenario.Scenario, error) {
 	if len(input.Name) < 5 {
 		return nil, ErrMinNameLength
@@ -43,7 +45,7 @@ func (uc *CreateScenarioUC) CreateScenario(
 		return nil, ErrMaxBriefDescLength
 	}
 
-	exists, err := uc.repo.ExistsScenarioWithName(context.Background(), input.Name)
+	exists, err := uc.repo.ExistsScenarioWithName(ctx, input.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func (uc *CreateScenarioUC) CreateScenario(
 		return nil, err
 	}
 
-	err = uc.repo.CreateScenario(context.Background(), newScenario)
+	err = uc.repo.CreateScenario(ctx, newScenario)
 	if err != nil {
 		return nil, err
 	}

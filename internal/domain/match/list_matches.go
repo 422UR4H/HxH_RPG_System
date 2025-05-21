@@ -8,7 +8,7 @@ import (
 )
 
 type IListMatches interface {
-	ListMatches(masterUUID uuid.UUID) ([]*match.Summary, error)
+	ListMatches(ctx context.Context, masterUUID uuid.UUID) ([]*match.Summary, error)
 }
 
 type ListMatchesUC struct {
@@ -21,8 +21,10 @@ func NewListMatchesUC(repo IRepository) *ListMatchesUC {
 	}
 }
 
-func (uc *ListMatchesUC) ListMatches(masterUUID uuid.UUID) ([]*match.Summary, error) {
-	matches, err := uc.repo.ListMatchesByMasterUUID(context.Background(), masterUUID)
+func (uc *ListMatchesUC) ListMatches(
+	ctx context.Context, masterUUID uuid.UUID,
+) ([]*match.Summary, error) {
+	matches, err := uc.repo.ListMatchesByMasterUUID(ctx, masterUUID)
 	if err != nil {
 		return nil, err
 	}

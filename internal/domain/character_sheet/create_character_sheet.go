@@ -13,7 +13,9 @@ import (
 )
 
 type ICreateCharacterSheet interface {
-	CreateCharacterSheet(input *CreateCharacterSheetInput) (*sheet.CharacterSheet, error)
+	CreateCharacterSheet(
+		ctx context.Context, input *CreateCharacterSheetInput,
+	) (*sheet.CharacterSheet, error)
 }
 
 type CreateCharacterSheetUC struct {
@@ -50,7 +52,7 @@ type CreateCharacterSheetInput struct {
 }
 
 func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
-	input *CreateCharacterSheetInput,
+	ctx context.Context, input *CreateCharacterSheetInput,
 ) (*sheet.CharacterSheet, error) {
 
 	class, exists := uc.characterClasses.Load(input.CharacterClass)
@@ -59,7 +61,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	}
 	charClass := class.(cc.CharacterClass)
 
-	if err := uc.validateNickName(input.Profile.NickName); err != nil {
+	if err := uc.validateNickName(ctx, input.Profile.NickName); err != nil {
 		return nil, err
 	}
 
@@ -93,14 +95,16 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	uc.characterSheets.Store(characterSheet.UUID, characterSheet)
 
 	model := CharacterSheetToModel(characterSheet)
-	err = uc.repo.CreateCharacterSheet(context.Background(), model)
+	err = uc.repo.CreateCharacterSheet(ctx, model)
 	if err != nil {
 		return nil, err
 	}
 	return characterSheet, err
 }
 
-func (uc *CreateCharacterSheetUC) validateNickName(nick string) error {
+func (uc *CreateCharacterSheetUC) validateNickName(
+	ctx context.Context, nick string,
+) error {
 	var allowedNickName = true
 	uc.characterClasses.Range(func(_, value any) bool {
 		charClass := value.(cc.CharacterClass)
@@ -114,7 +118,7 @@ func (uc *CreateCharacterSheetUC) validateNickName(nick string) error {
 		return NewNicknameNotAllowedError(nick)
 	}
 
-	exists, err := uc.repo.ExistsCharacterWithNick(context.Background(), nick)
+	exists, err := uc.repo.ExistsCharacterWithNick(ctx, nick)
 	if err != nil {
 		return err
 	}

@@ -79,7 +79,7 @@ func CreateCampaignHandler(
 			StoryCurrentAt:   storyCurrentAtPtr,
 		}
 
-		campaign, err := uc.CreateCampaign(input)
+		campaign, err := uc.CreateCampaign(ctx, input)
 		if err != nil {
 			switch {
 			case errors.Is(err, scenario.ErrScenarioNotFound):

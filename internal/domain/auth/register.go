@@ -16,7 +16,7 @@ type RegisterInput struct {
 }
 
 type IRegister interface {
-	Register(user *RegisterInput) error
+	Register(ctx context.Context, user *RegisterInput) error
 }
 
 type RegisterUC struct {
@@ -29,7 +29,7 @@ func NewRegisterUC(repo IRepository) *RegisterUC {
 	}
 }
 
-func (uc *RegisterUC) Register(input *RegisterInput) error {
+func (uc *RegisterUC) Register(ctx context.Context, input *RegisterInput) error {
 	if input.Nick == "" {
 		return user.ErrMissingNick
 	}
@@ -62,21 +62,21 @@ func (uc *RegisterUC) Register(input *RegisterInput) error {
 	}
 
 	// TODO: improve validation unifying these 2 or 3 db calls
-	exists, err := uc.repo.ExistsUserWithNick(context.Background(), input.Nick)
+	exists, err := uc.repo.ExistsUserWithNick(ctx, input.Nick)
 	if err != nil {
 		return err
 	} else if exists {
 		return user.ErrNickAlreadyExists
 	}
 
-	exists, err = uc.repo.ExistsUserWithEmail(context.Background(), input.Email)
+	exists, err = uc.repo.ExistsUserWithEmail(ctx, input.Email)
 	if err != nil {
 		return err
 	} else if exists {
 		return user.ErrEmailAlreadyExists
 	}
 
-	err = uc.repo.CreateUser(context.Background(), &user.User{
+	err = uc.repo.CreateUser(ctx, &user.User{
 		UUID:      uuid.New(),
 		Nick:      input.Nick,
 		Email:     input.Email,

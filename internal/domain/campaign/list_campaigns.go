@@ -8,7 +8,7 @@ import (
 )
 
 type IListCampaigns interface {
-	ListCampaigns(userUUID uuid.UUID) ([]*campaignEntity.Summary, error)
+	ListCampaigns(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.Summary, error)
 }
 
 type ListCampaignsUC struct {
@@ -21,8 +21,8 @@ func NewListCampaignsUC(repo IRepository) *ListCampaignsUC {
 	}
 }
 
-func (uc *ListCampaignsUC) ListCampaigns(userUUID uuid.UUID) ([]*campaignEntity.Summary, error) {
-	campaigns, err := uc.repo.ListCampaignsByUserUUID(context.Background(), userUUID)
+func (uc *ListCampaignsUC) ListCampaigns(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.Summary, error) {
+	campaigns, err := uc.repo.ListCampaignsByUserUUID(ctx, userUUID)
 	if err != nil {
 		return nil, err
 	}

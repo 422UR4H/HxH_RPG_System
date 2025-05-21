@@ -21,7 +21,7 @@ type LoginOutput struct {
 }
 
 type ILogin interface {
-	Login(user *LoginInput) (LoginOutput, error)
+	Login(ctx context.Context, user *LoginInput) (LoginOutput, error)
 }
 
 type LoginUC struct {
@@ -36,7 +36,7 @@ func NewLoginUC(sessions *sync.Map, repo IRepository) *LoginUC {
 	}
 }
 
-func (uc *LoginUC) Login(input *LoginInput) (LoginOutput, error) {
+func (uc *LoginUC) Login(ctx context.Context, input *LoginInput) (LoginOutput, error) {
 	if input.Email == "" {
 		return LoginOutput{}, user.ErrMissingEmail
 	}
@@ -55,7 +55,7 @@ func (uc *LoginUC) Login(input *LoginInput) (LoginOutput, error) {
 		return LoginOutput{}, user.ErrPasswordMaxLenght
 	}
 
-	userEntity, err := uc.repo.GetUserByEmail(context.Background(), input.Email)
+	userEntity, err := uc.repo.GetUserByEmail(ctx, input.Email)
 	if err == pgUser.ErrEmailNotFound {
 		return LoginOutput{}, ErrUnauthorized
 	}
