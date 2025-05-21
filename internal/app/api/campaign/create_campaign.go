@@ -82,6 +82,8 @@ func CreateCampaignHandler(
 		campaign, err := uc.CreateCampaign(ctx, input)
 		if err != nil {
 			switch {
+			case errors.Is(err, domainCampaign.ErrMaxCampaignsLimit):
+				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, scenario.ErrScenarioNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, domain.ErrValidation):

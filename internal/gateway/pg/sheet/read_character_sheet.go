@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -128,6 +129,35 @@ func (r *Repository) ExistsCharacterWithNick(ctx context.Context, nick string) (
 		return false, fmt.Errorf("failed to check if character profile exists by nickname: %w", err)
 	}
 	return exists, nil
+}
+
+func (r *Repository) CountCharactersByPlayerUUID(ctx context.Context, playerUUID uuid.UUID) (int, error) {
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
+
+	const query = `
+        SELECT COUNT(*) 
+        FROM character_sheets
+        WHERE player_uuid = $1
+    `
+	var count int
+	err = tx.QueryRow(ctx, query, playerUUID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count player character sheets: %w", err)
+	}
+	return count, nil
 }
 
 func (r *Repository) ListCharacterSheetsByPlayerUUID(

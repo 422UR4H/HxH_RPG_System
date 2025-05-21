@@ -9,10 +9,11 @@ import (
 
 var (
 	ErrCharacterSheetNotFound    = domain.NewDBError(errors.New("character sheet not found"))
-	ErrCharacterClassNotFound    = domain.NewDBError(errors.New("character class not found"))
+	ErrCharacterClassNotFound    = domain.NewValidationError(errors.New("character class not found"))
 	ErrNicknameNotAllowed        = domain.NewValidationError(errors.New("nickname is not allowed"))
 	ErrNicknameAlreadyExists     = domain.NewValidationError(errors.New("nickname already exists"))
 	ErrNenHexNotInitialized      = domain.NewValidationError(errors.New("nen hexagon value not initialized"))
+	ErrMaxCharacterSheetsLimit   = domain.NewValidationError(errors.New("player cannot have more than 10 character sheets"))
 	ErrInvalidUpdateHexValMethod = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
 )
 

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
@@ -54,6 +55,10 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 			return nil, ErrCharacterSheetNotFound
 		}
 		return nil, err
+	}
+
+	if *modelSheet.PlayerUUID != playerId {
+		return nil, auth.ErrInsufficientPermissions
 	}
 
 	profile := ModelToProfile(&modelSheet.Profile)

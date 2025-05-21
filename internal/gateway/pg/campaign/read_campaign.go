@@ -10,7 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *Repository) GetCampaign(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error) {
+func (r *Repository) GetCampaign(
+	ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error) {
+
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -120,7 +122,9 @@ func (r *Repository) ListCampaignsByUserUUID(
 	return campaigns, nil
 }
 
-func (r *Repository) ExistsCampaign(ctx context.Context, campaignUUID uuid.UUID) (bool, error) {
+func (r *Repository) ExistsCampaign(
+	ctx context.Context, campaignUUID uuid.UUID) (bool, error) {
+
 	const query = `
         SELECT EXISTS(SELECT 1 FROM campaigns WHERE uuid = $1)
     `
@@ -130,4 +134,35 @@ func (r *Repository) ExistsCampaign(ctx context.Context, campaignUUID uuid.UUID)
 		return false, fmt.Errorf("failed to check if campaign exists: %w", err)
 	}
 	return exists, nil
+}
+
+func (r *Repository) CountCampaignsByUserUUID(
+	ctx context.Context, userUUID uuid.UUID) (int, error) {
+
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
+
+	const query = `
+        SELECT COUNT(*) 
+        FROM campaigns
+        WHERE user_uuid = $1
+    `
+	var count int
+	err = tx.QueryRow(ctx, query, userUUID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count user campaigns: %w", err)
+	}
+	return count, nil
 }

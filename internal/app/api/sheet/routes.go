@@ -30,6 +30,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusConflict,
 			http.StatusBadRequest,
 			http.StatusUnauthorized,
+			http.StatusForbidden,
 			http.StatusUnprocessableEntity,
 			http.StatusInternalServerError,
 		},
@@ -45,6 +46,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusNotFound,
 			http.StatusBadRequest,
 			http.StatusUnauthorized,
+			http.StatusForbidden,
 			http.StatusInternalServerError,
 		},
 	}, a.GetCharacterSheetHandler)

@@ -58,10 +58,10 @@ func CreateCharacterSheetHandler(
 			switch {
 			case errors.Is(err, charactersheet.ErrNicknameAlreadyExists):
 				return nil, huma.Error409Conflict(err.Error())
-			case errors.Is(err, charactersheet.ErrNicknameNotAllowed):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
 			case errors.Is(err, charactersheet.ErrCharacterClassNotFound):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, charactersheet.ErrMaxCharacterSheetsLimit):
+				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:

@@ -59,6 +59,16 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		return nil, ErrMaxBriefDescLength
 	}
 
+	campaignsCount, err := uc.campaignRepo.CountCampaignsByUserUUID(
+		ctx, input.UserUUID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if campaignsCount >= 5 {
+		return nil, ErrMaxCampaignsLimit
+	}
+
 	// Currently campaigns do not belong to scenarios, but this will change soon
 	if input.ScenarioUUID != nil {
 		exists, err := uc.scenarioRepo.ExistsScenario(

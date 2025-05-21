@@ -27,6 +27,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusNotFound,
 			http.StatusBadRequest,
 			http.StatusUnauthorized,
+			http.StatusForbidden,
 			http.StatusUnprocessableEntity,
 			http.StatusInternalServerError,
 		},

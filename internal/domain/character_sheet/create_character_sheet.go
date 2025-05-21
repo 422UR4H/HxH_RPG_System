@@ -61,10 +61,6 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	}
 	charClass := class.(cc.CharacterClass)
 
-	if err := uc.validateNickName(ctx, input.Profile.NickName); err != nil {
-		return nil, err
-	}
-
 	skillsExps := input.SkillsExps
 	if err := charClass.ValidateSkills(skillsExps); err != nil {
 		return nil, err
@@ -75,6 +71,20 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	}
 	charClass.ApplySkills(skillsExps)
 	charClass.ApplyProficiencies(profExps)
+
+	if err := uc.validateNickName(ctx, input.Profile.NickName); err != nil {
+		return nil, err
+	}
+
+	characterSheetsCount, err := uc.repo.CountCharactersByPlayerUUID(
+		ctx, *input.PlayerUUID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if characterSheetsCount >= 10 {
+		return nil, ErrMaxCharacterSheetsLimit
+	}
 
 	set := input.CategorySet
 	characterSheet, err := uc.factory.Build(
