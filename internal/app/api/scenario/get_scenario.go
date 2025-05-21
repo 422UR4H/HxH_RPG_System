@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 
+	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -39,11 +41,18 @@ func GetScenarioHandler(
 ) func(context.Context, *GetScenarioRequest) (*GetScenarioResponse, error) {
 
 	return func(ctx context.Context, req *GetScenarioRequest) (*GetScenarioResponse, error) {
-		scenario, err := uc.GetScenario(req.UUID)
+		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
+		if !ok {
+			return nil, errors.New("failed to get userID in context")
+		}
+
+		scenario, err := uc.GetScenario(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainScenario.ErrScenarioNotFound):
 				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

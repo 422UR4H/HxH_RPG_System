@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -27,11 +29,18 @@ func GetMatchHandler(
 ) func(context.Context, *GetMatchRequest) (*GetMatchResponse, error) {
 
 	return func(ctx context.Context, req *GetMatchRequest) (*GetMatchResponse, error) {
-		match, err := uc.GetMatch(req.UUID)
+		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
+		if !ok {
+			return nil, errors.New("failed to get userID in context")
+		}
+
+		match, err := uc.GetMatch(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainMatch.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

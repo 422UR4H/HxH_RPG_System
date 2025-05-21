@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -37,11 +39,18 @@ func GetCampaignHandler(
 ) func(context.Context, *GetCampaignRequest) (*GetCampaignResponse, error) {
 
 	return func(ctx context.Context, req *GetCampaignRequest) (*GetCampaignResponse, error) {
-		campaign, err := uc.GetCampaign(req.UUID)
+		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
+		if !ok {
+			return nil, errors.New("failed to get userID in context")
+		}
+
+		campaign, err := uc.GetCampaign(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainCampaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}
