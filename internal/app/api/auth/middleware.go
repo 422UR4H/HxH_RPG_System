@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	jwtAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
@@ -14,33 +15,32 @@ const UserIDKey contextKey = "userID"
 
 func AuthMiddlewareProvider(sessions *sync.Map) func(ctx huma.Context, next func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		tokenStr := ctx.Header("Authorization")
-		if tokenStr == "" {
+		authHeader := ctx.Header("Authorization")
+		if authHeader == "" {
 			ctx.SetStatus(http.StatusUnauthorized)
-			w := ctx.BodyWriter()
-			w.Write([]byte(
-				`{"error":"Authentication required","message":"Missing authorization token"}`,
-			))
+			WriteAuthError(ctx.BodyWriter(), "Authentication required", "Missing authorization token")
 			return
 		}
+
+		const bearerPrefix = "Bearer "
+		if !strings.HasPrefix(authHeader, bearerPrefix) {
+			ctx.SetStatus(http.StatusUnauthorized)
+			WriteAuthError(ctx.BodyWriter(), "Authentication failed", "Invalid token format, expected 'Bearer <token>'")
+			return
+		}
+		tokenStr := authHeader[len(bearerPrefix):]
 
 		claims, err := jwtAuth.ValidateToken(tokenStr)
 		if err != nil {
 			ctx.SetStatus(http.StatusUnauthorized)
-			w := ctx.BodyWriter()
-			w.Write([]byte(
-				`{"error":"Authentication failed","message":"Invalid authorization token"}`,
-			))
+			WriteAuthError(ctx.BodyWriter(), "Authentication failed", "Invalid authorization token")
 			return
 		}
 
 		_, exists := sessions.Load(claims.UserID)
 		if !exists {
 			ctx.SetStatus(http.StatusUnauthorized)
-			w := ctx.BodyWriter()
-			w.Write([]byte(
-				`{"error":"Authentication failed","message":"Access Denied"}`,
-			))
+			WriteAuthError(ctx.BodyWriter(), "Authentication failed", "Access Denied")
 			return
 		}
 
