@@ -31,9 +31,9 @@ type Api struct {
 func (a *Api) Routes(r *chi.Mux, authMiddleware func(ctx huma.Context, next func(huma.Context))) huma.API {
 	huma.NewError = NewErrorWithType
 
-	api := humachi.New(r, newConfig(
-		"HxH RPG System", "v0-pre-alpha", "Core Rules API for HxH RPG System (Pre-Alpha Version)",
-	))
+	config := newConfig("HxH RPG API", "1.0.0", "API for Hunter x Hunter RPG System")
+	api := humachi.New(r, config)
+
 	a.registerHealthRoutes(api)
 	a.AuthHandler.RegisterRoutes(r, api)
 
