@@ -33,3 +33,11 @@ func (b *Bar) GetCurrent() int {
 func (b *Bar) GetMax() int {
 	return b.max
 }
+
+func (b *Bar) SetCurrent(value int) error {
+	if value < b.min || value > b.max {
+		return ErrInvalidValue
+	}
+	b.curr = value
+	return nil
+}

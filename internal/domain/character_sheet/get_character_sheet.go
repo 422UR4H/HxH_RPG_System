@@ -190,6 +190,10 @@ func Wrap(charSheet *sheet.CharacterSheet, modelSheet *model.CharacterSheet) err
 		charSheet.IncreaseExpForCategory(experience.NewUpgradeCascade(exp), name)
 	}
 
+	charSheet.SetCurrStatus(enum.Health, modelSheet.Health.Curr)
+	charSheet.SetCurrStatus(enum.Stamina, modelSheet.Stamina.Curr)
+	charSheet.SetCurrStatus(enum.Aura, modelSheet.Aura.Curr)
+
 	physSkExp, err := charSheet.GetPhysSkillExpReference()
 	if err != nil {
 		return domain.NewDomainError(

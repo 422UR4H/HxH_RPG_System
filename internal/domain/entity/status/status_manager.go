@@ -32,6 +32,17 @@ func (sm *Manager) Upgrade() error {
 	return nil
 }
 
+func (sm *Manager) SetCurrent(name enum.StatusName, value int) error {
+	status, err := sm.Get(name)
+	if err != nil {
+		return err
+	}
+	if err := status.SetCurrent(value); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (sm *Manager) GetMaxOf(name enum.StatusName) (int, error) {
 	status, err := sm.Get(name)
 	if err != nil {

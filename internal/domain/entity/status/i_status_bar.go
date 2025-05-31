@@ -7,4 +7,5 @@ type IStatusBar interface {
 	GetMin() int
 	GetCurrent() int
 	GetMax() int
+	SetCurrent(value int) error
 }

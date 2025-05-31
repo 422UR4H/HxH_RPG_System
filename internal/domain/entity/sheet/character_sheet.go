@@ -215,6 +215,10 @@ func (cs *CharacterSheet) GetCurrHexValue() *int {
 	return &val
 }
 
+func (cs *CharacterSheet) SetCurrStatus(name enum.StatusName, value int) error {
+	return cs.status.SetCurrent(name, value)
+}
+
 func (cs *CharacterSheet) IncreaseNenHexValue() (*spiritual.NenHexagonUpdateResult, error) {
 	return cs.principle.IncreaseCurrHexValue()
 }

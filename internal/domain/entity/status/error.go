@@ -8,4 +8,5 @@ import (
 
 var (
 	ErrStatusNotFound = domain.NewDomainError(errors.New("status not found"))
+	ErrInvalidValue   = domain.NewDomainError(errors.New("invalid value for status"))
 )

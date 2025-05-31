@@ -20,6 +20,20 @@ type CharacterSheet struct {
 	CurrHexValue *int
 	TalentExp    int
 
+	// Levels
+	Level         int
+	Points        int
+	TalentLvl     int
+	PhysicalsLvl  int
+	MentalsLvl    int
+	SpiritualsLvl int
+	SkillsLvl     int
+
+	// Status
+	Stamina StatusBar
+	Health  StatusBar
+	Aura    StatusBar
+
 	// Physical Attributes
 	ResistancePts   int
 	StrengthPts     int
@@ -104,10 +118,6 @@ type CharacterSheet struct {
 	SpecializationExp  int
 	ManipulationExp    int
 	EmissionExp        int
-
-	StaminaCurrPts int
-	HealthCurrPts  int
-	// AuraCurrPts    int
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

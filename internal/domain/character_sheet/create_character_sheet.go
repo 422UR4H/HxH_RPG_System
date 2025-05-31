@@ -157,6 +157,11 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 		categoryString = categoryName.String()
 	}
 
+	physicalsLvl, _ := sheet.GetLevelOfAbility(enum.Physicals)
+	mentalsLvl, _ := sheet.GetLevelOfAbility(enum.Mentals)
+	spiritualsLvl, _ := sheet.GetLevelOfAbility(enum.Spirituals)
+	skillsLvl, _ := sheet.GetLevelOfAbility(enum.Skills)
+
 	modelProfs := []model.Proficiency{}
 	for weapon, prof := range profs {
 		modelProfs = append(modelProfs, model.Proficiency{
@@ -204,6 +209,32 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 		CategoryName: categoryString,
 		CurrHexValue: sheet.GetCurrHexValue(),
 		TalentExp:    sheet.GetTalentExpPoints(),
+
+		// Levels
+		Level:         sheet.GetLevel(),
+		Points:        sheet.GetCharacterPoints(),
+		TalentLvl:     sheet.GetTalentLevel(),
+		PhysicalsLvl:  physicalsLvl,
+		MentalsLvl:    mentalsLvl,
+		SpiritualsLvl: spiritualsLvl,
+		SkillsLvl:     skillsLvl,
+
+		// Status
+		Health: model.StatusBar{
+			Min:  statusBars[enum.Health].GetMin(),
+			Curr: statusBars[enum.Health].GetCurrent(),
+			Max:  statusBars[enum.Health].GetMax(),
+		},
+		Stamina: model.StatusBar{
+			Min:  statusBars[enum.Stamina].GetMin(),
+			Curr: statusBars[enum.Stamina].GetCurrent(),
+			Max:  statusBars[enum.Stamina].GetMax(),
+		},
+		// Aura: model.StatusBar{
+		// 	Min:  statusBars[enum.Aura].GetMin(),
+		// 	Curr: statusBars[enum.Aura].GetCurrent(),
+		// 	Max:  statusBars[enum.Aura].GetMax(),
+		// },
 
 		// Physical Attributes
 		ResistancePts:   physAttrs[enum.Resistance].GetPoints(),
@@ -271,9 +302,6 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 		SpecializationExp:  categories[enum.Specialization].GetExpPoints(),
 		ManipulationExp:    categories[enum.Manipulation].GetExpPoints(),
 		EmissionExp:        categories[enum.Emission].GetExpPoints(),
-
-		StaminaCurrPts: statusBars[enum.Stamina].GetCurrent(),
-		HealthCurrPts:  statusBars[enum.Health].GetCurrent(),
 
 		Proficiencies:      modelProfs,
 		JointProficiencies: modelJointProfs,

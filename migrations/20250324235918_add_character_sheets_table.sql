@@ -10,6 +10,28 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   curr_hex_value INT,
   talent_exp INT,
 
+  -- Levels
+  level INT,
+  points INT,
+  talent_lvl INT,
+  physicals_lvl INT,
+  mentals_lvl INT,
+  spirituals_lvl INT,
+  skills_lvl INT,
+
+  -- Status
+  health_min_pts INT DEFAULT 0,
+  health_curr_pts INT,
+  health_max_pts INT,
+
+  stamina_min_pts INT DEFAULT 0,
+  stamina_curr_pts INT,
+  stamina_max_pts INT,
+
+  aura_min_pts INT DEFAULT 0,
+  aura_curr_pts INT,
+  aura_max_pts INT,
+
   -- Physical Attributes
   resistance_pts INT,
   strength_pts INT,
@@ -91,9 +113,6 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   specialization_exp INT,
   manipulation_exp INT,
   emission_exp INT,
-
-  stamina_curr_pts INT,
-  health_curr_pts INT,
 
   story_start_at DATE,
   story_current_at DATE,
