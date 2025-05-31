@@ -7,12 +7,11 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )
 
 type ListCharacterSheetsBody struct {
-	CharacterSheets []model.CharacterSheetSummary `json:"character_sheets"`
+	CharacterSheets []CharacterSummaryResponse `json:"character_sheets"`
 }
 
 type ListCharacterSheetsResponse struct {
@@ -35,9 +34,14 @@ func ListCharacterSheetsHandler(
 			return nil, err
 		}
 
+		responses := make([]CharacterSummaryResponse, len(sheets))
+		for i, sheet := range sheets {
+			responses[i] = ToSummaryResponse(sheet)
+		}
+
 		return &ListCharacterSheetsResponse{
 			Body: ListCharacterSheetsBody{
-				CharacterSheets: sheets,
+				CharacterSheets: responses,
 			},
 			Status: http.StatusOK,
 		}, nil

@@ -18,8 +18,16 @@ type CharacterSheetSummary struct {
 	Birthday       time.Time
 	CategoryName   string
 	CurrHexValue   *int
-	StaminaCurrPts int
-	HealthCurrPts  int
+	Level          int
+	Points         int
+	TalentLvl      int
+	PhysicalsLvl   int
+	MentalsLvl     int
+	SpiritualsLvl  int
+	SkillsLvl      int
+	Stamina        StatusBar
+	Health         StatusBar
+	Aura           StatusBar
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
