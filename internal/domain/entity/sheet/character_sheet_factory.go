@@ -39,6 +39,7 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 func (csf *CharacterSheetFactory) Build(
 	playerUUID *uuid.UUID,
 	masterUUID *uuid.UUID,
+	campaignUUID *uuid.UUID,
 	profile CharacterProfile,
 	hexValue *int,
 	category *enum.CategoryName,
@@ -94,6 +95,7 @@ func (csf *CharacterSheetFactory) Build(
 	charSheet, err := NewCharacterSheet(
 		playerUUID,
 		masterUUID,
+		campaignUUID,
 		profile,
 		*abilities,
 		*charAttrs,

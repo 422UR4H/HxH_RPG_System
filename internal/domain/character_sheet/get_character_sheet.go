@@ -57,7 +57,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 
-	if *modelSheet.PlayerUUID != playerId {
+	if modelSheet.PlayerUUID == nil || *modelSheet.PlayerUUID != playerId {
 		return nil, auth.ErrInsufficientPermissions
 	}
 
@@ -65,7 +65,13 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 
 	categoryName := (*enum.CategoryName)(&modelSheet.CategoryName)
 	characterSheet, err := uc.factory.Build(
-		&playerId, nil, *profile, modelSheet.CurrHexValue, categoryName, nil,
+		&playerId,
+		modelSheet.MasterUUID,
+		modelSheet.CampaignUUID,
+		*profile,
+		modelSheet.CurrHexValue,
+		categoryName,
+		nil,
 	)
 	if err != nil {
 		return nil, err

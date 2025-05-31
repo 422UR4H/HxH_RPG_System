@@ -8,26 +8,29 @@ import (
 )
 
 type CharacterSummaryResponse struct {
-	UUID           uuid.UUID `json:"uuid"`
-	NickName       string    `json:"nick_name"`
-	FullName       string    `json:"full_name"`
-	Alignment      string    `json:"alignment"`
-	CharacterClass string    `json:"character_class"`
-	Birthday       string    `json:"birthday"`
-	CategoryName   string    `json:"category_name"`
-	CurrHexValue   *int      `json:"curr_hex_value,omitempty"`
-	Level          int       `json:"level"`
-	Points         int       `json:"points"`
-	TalentLvl      int       `json:"talent_lvl"`
-	PhysicalsLvl   int       `json:"physicals_lvl"`
-	MentalsLvl     int       `json:"mentals_lvl"`
-	SpiritualsLvl  int       `json:"spirituals_lvl"`
-	SkillsLvl      int       `json:"skills_lvl"`
-	Stamina        StatusBar `json:"stamina"`
-	Health         StatusBar `json:"health"`
-	Aura           StatusBar `json:"aura"`
-	CreatedAt      string    `json:"created_at"`
-	UpdatedAt      string    `json:"updated_at"`
+	UUID           uuid.UUID  `json:"uuid"`
+	PlayerUUID     *uuid.UUID `json:"player_uuid,omitempty"`
+	MasterUUID     *uuid.UUID `json:"master_uuid,omitempty"`
+	CampaignUUID   *uuid.UUID `json:"campaign_uuid,omitempty"`
+	NickName       string     `json:"nick_name"`
+	FullName       string     `json:"full_name"`
+	Alignment      string     `json:"alignment"`
+	CharacterClass string     `json:"character_class"`
+	Birthday       string     `json:"birthday"`
+	CategoryName   string     `json:"category_name"`
+	CurrHexValue   *int       `json:"curr_hex_value,omitempty"`
+	Level          int        `json:"level"`
+	Points         int        `json:"points"`
+	TalentLvl      int        `json:"talent_lvl"`
+	PhysicalsLvl   int        `json:"physicals_lvl"`
+	MentalsLvl     int        `json:"mentals_lvl"`
+	SpiritualsLvl  int        `json:"spirituals_lvl"`
+	SkillsLvl      int        `json:"skills_lvl"`
+	Stamina        StatusBar  `json:"stamina"`
+	Health         StatusBar  `json:"health"`
+	Aura           StatusBar  `json:"aura"`
+	CreatedAt      string     `json:"created_at"`
+	UpdatedAt      string     `json:"updated_at"`
 }
 
 type StatusBar struct {
@@ -45,6 +48,9 @@ func ToSummaryResponse(
 
 	return CharacterSummaryResponse{
 		UUID:           sheet.UUID,
+		PlayerUUID:     sheet.PlayerUUID,
+		MasterUUID:     sheet.MasterUUID,
+		CampaignUUID:   sheet.CampaignUUID,
 		NickName:       sheet.NickName,
 		FullName:       sheet.FullName,
 		Alignment:      sheet.Alignment,

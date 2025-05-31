@@ -10,7 +10,8 @@ type CharacterSheet struct {
 	ID           int
 	UUID         uuid.UUID
 	PlayerUUID   *uuid.UUID
-	ScenarioUUID *uuid.UUID
+	MasterUUID   *uuid.UUID
+	CampaignUUID *uuid.UUID
 
 	Profile            CharacterProfile
 	Proficiencies      []Proficiency

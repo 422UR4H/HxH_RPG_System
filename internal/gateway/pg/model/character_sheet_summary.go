@@ -11,6 +11,9 @@ import (
 type CharacterSheetSummary struct {
 	ID             int
 	UUID           uuid.UUID
+	PlayerUUID     *uuid.UUID
+	MasterUUID     *uuid.UUID
+	CampaignUUID   *uuid.UUID
 	NickName       string
 	FullName       string
 	Alignment      string

@@ -90,6 +90,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	characterSheet, err := uc.factory.Build(
 		input.PlayerUUID,
 		nil,
+		nil,
 		input.Profile,
 		set.GetInitialHexValue(),
 		nil,
@@ -192,7 +193,7 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 	playerUUID := sheet.GetPlayerUUID()
 	charSheetModel := &model.CharacterSheet{
 		UUID:       sheet.UUID,
-		PlayerUUID: &playerUUID,
+		PlayerUUID: playerUUID,
 
 		Profile: model.CharacterProfile{
 			UUID:             uuid.New(),

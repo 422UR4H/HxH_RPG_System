@@ -58,7 +58,9 @@ func (r *Repository) GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match
 	return &m, nil
 }
 
-func (r *Repository) ListMatchesByMasterUUID(ctx context.Context, masterUUID uuid.UUID) ([]*match.Summary, error) {
+func (r *Repository) ListMatchesByMasterUUID(
+	ctx context.Context, masterUUID uuid.UUID,
+) ([]*match.Summary, error) {
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)

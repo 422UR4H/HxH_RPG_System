@@ -6,14 +6,18 @@ import (
 )
 
 type CharacterSheetResponse struct {
-	UUID           uuid.UUID                    `json:"uuid"`
+	UUID         uuid.UUID  `json:"uuid"`
+	PlayerUUID   *uuid.UUID `json:"player_uuid,omitempty"`
+	MasterUUID   *uuid.UUID `json:"master_uuid,omitempty"`
+	CampaignUUID *uuid.UUID `json:"campaign_uuid,omitempty"`
+
 	CharacterClass string                       `json:"character_class"`
 	CategoryName   string                       `json:"category_name"`
 	Profile        domainSheet.CharacterProfile `json:"profile"`
 
 	CharacterExp CharacterExpResponse `json:"character_exp"`
 	Talent       TalentResponse       `json:"talent"`
-	NenHexValue  *int                 `json:"nen_hex_value"`
+	NenHexValue  *int                 `json:"nen_hex_value,omitempty"`
 
 	Abilities           map[string]AbilityResponse   `json:"abilities"`
 	PhysicalAttributes  map[string]AttributeResponse `json:"physical_attributes"`
@@ -286,6 +290,9 @@ func NewCharacterSheetResponse(
 
 	return &CharacterSheetResponse{
 		UUID:                charSheet.UUID,
+		PlayerUUID:          charSheet.GetPlayerUUID(),
+		MasterUUID:          charSheet.GetMasterUUID(),
+		CampaignUUID:        charSheet.GetCampaignUUID(),
 		Profile:             charSheet.GetProfile(),
 		CharacterClass:      charClass.String(),
 		CategoryName:        strCategoryName,

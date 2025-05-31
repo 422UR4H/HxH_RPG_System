@@ -17,7 +17,8 @@ import (
 type CharacterSheet struct {
 	UUID         uuid.UUID
 	playerUUID   *uuid.UUID
-	scenarioUUID *uuid.UUID
+	masterUUID   *uuid.UUID
+	campaignUUID *uuid.UUID
 	profile      CharacterProfile
 	ability      ability.Manager
 	attribute    attribute.CharacterAttributes
@@ -31,7 +32,8 @@ type CharacterSheet struct {
 
 func NewCharacterSheet(
 	playerUUID *uuid.UUID,
-	scenarioUUID *uuid.UUID,
+	masterUUID *uuid.UUID,
+	campaignUUID *uuid.UUID,
 	profile CharacterProfile,
 	abilities ability.Manager,
 	attributes attribute.CharacterAttributes,
@@ -41,13 +43,14 @@ func NewCharacterSheet(
 	status status.Manager,
 	charClass *enum.CharacterClassName,
 ) (*CharacterSheet, error) {
-	if (playerUUID == nil) == (scenarioUUID == nil) {
+	if (playerUUID == nil) == (masterUUID == nil) {
 		return nil, ErrInvalidOwner
 	}
 
 	return &CharacterSheet{
 		playerUUID:   playerUUID,
-		scenarioUUID: scenarioUUID,
+		masterUUID:   masterUUID,
+		campaignUUID: campaignUUID,
 		profile:      profile,
 		ability:      abilities,
 		attribute:    attributes,
@@ -387,12 +390,16 @@ func (cs *CharacterSheet) GetPhysSkillExpReference() (experience.ICascadeUpgrade
 	return cs.ability.GetExpReferenceOf(enum.Physicals)
 }
 
-func (cs *CharacterSheet) GetPlayerUUID() uuid.UUID {
-	return *cs.playerUUID
+func (cs *CharacterSheet) GetPlayerUUID() *uuid.UUID {
+	return cs.playerUUID
 }
 
-func (cs *CharacterSheet) GetScenarioUUID() uuid.UUID {
-	return *cs.scenarioUUID
+func (cs *CharacterSheet) GetMasterUUID() *uuid.UUID {
+	return cs.masterUUID
+}
+
+func (cs *CharacterSheet) GetCampaignUUID() *uuid.UUID {
+	return cs.campaignUUID
 }
 
 func (cs *CharacterSheet) ToString() string {

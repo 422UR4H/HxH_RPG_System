@@ -29,7 +29,8 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 
 	const query = `
 			SELECT
-					cs.id, cs.category_name, cs.uuid, cs.curr_hex_value, cs.talent_exp,
+					cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
+					cs.category_name, cs.curr_hex_value, cs.talent_exp,
 					cs.health_curr_pts, cs.stamina_curr_pts, cs.aura_curr_pts,
 					cs.resistance_pts, cs.strength_pts, cs.agility_pts, cs.action_speed_pts, cs.flexibility_pts, cs.dexterity_pts, cs.sense_pts, cs.constitution_pts,
 					cs.resilience_pts, cs.adaptability_pts, cs.weighting_pts, cs.creativity_pts, cs.resilience_exp, cs.adaptability_exp, cs.weighting_exp, cs.creativity_exp,
@@ -52,7 +53,8 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 	var profile model.CharacterProfile
 
 	err = row.Scan(
-		&sheet.ID, &sheet.CategoryName, &sheet.UUID, &sheet.CurrHexValue, &sheet.TalentExp,
+		&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
+		&sheet.CategoryName, &sheet.CurrHexValue, &sheet.TalentExp,
 		&sheet.Health.Curr, &sheet.Stamina.Curr, &sheet.Aura.Curr,
 		&sheet.ResistancePts, &sheet.StrengthPts, &sheet.AgilityPts, &sheet.ActionSpeedPts, &sheet.FlexibilityPts, &sheet.DexterityPts, &sheet.SensePts, &sheet.ConstitutionPts,
 		&sheet.ResiliencePts, &sheet.AdaptabilityPts, &sheet.WeightingPts, &sheet.CreativityPts, &sheet.ResilienceExp, &sheet.AdaptabilityExp, &sheet.WeightingExp, &sheet.CreativityExp,
@@ -113,6 +115,25 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 	}
 
 	return &sheet, nil
+}
+
+func (r *Repository) GetCharacterSheetPlayerUUID(
+	ctx context.Context, sheet_uuid uuid.UUID,
+) (uuid.UUID, error) {
+	const query = `
+		SELECT player_uuid
+		FROM character_sheets
+		WHERE uuid = $1
+	`
+	var playerUUID uuid.UUID
+	err := r.q.QueryRow(ctx, query, sheet_uuid).Scan(&playerUUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrCharacterSheetNotFound
+		}
+		return uuid.Nil, fmt.Errorf("failed to fetch character sheet player UUID: %w", err)
+	}
+	return playerUUID, nil
 }
 
 func (r *Repository) ExistsCharacterWithNick(ctx context.Context, nick string) (bool, error) {
@@ -181,7 +202,8 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 
 	const query = `
 			SELECT
-					cs.id, cs.uuid, cs.category_name, cs.curr_hex_value,
+					cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
+					cs.category_name, cs.curr_hex_value,
 					cs.level, cs.points, cs.talent_lvl, cs.skills_lvl,
 					cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
 					cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
@@ -204,7 +226,8 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 	for rows.Next() {
 		var sheet model.CharacterSheetSummary
 		err := rows.Scan(
-			&sheet.ID, &sheet.UUID, &sheet.CategoryName, &sheet.CurrHexValue,
+			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
+			&sheet.CategoryName, &sheet.CurrHexValue,
 			&sheet.Level, &sheet.Points, &sheet.TalentLvl, &sheet.SkillsLvl,
 			&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
 			&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,
