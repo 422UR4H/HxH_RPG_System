@@ -67,12 +67,16 @@ func main() {
 	initCharacterClasses()
 
 	authRepo := user.NewRepository(pgPool)
+	characterSheetRepo := sheetPg.NewRepository(pgPool)
+	scenarioRepo := scenarioPg.NewRepository(pgPool)
+	campaignRepo := campaignPg.NewRepository(pgPool)
+	matchRepo := matchPg.NewRepository(pgPool)
+
 	registerUC := domainAuth.NewRegisterUC(authRepo)
 	loginUC := domainAuth.NewLoginUC(&sessions, authRepo)
 	authHandler := auth.NewAuthHandler(registerUC, loginUC)
 
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
-	characterSheetRepo := sheetPg.NewRepository(pgPool)
 
 	getCharacterSheetUC := cs.NewGetCharacterSheetUC(
 		&characterSheets,
@@ -88,6 +92,10 @@ func main() {
 		characterSheetFactory,
 		characterSheetRepo,
 	)
+	submitCharacterSheetUC := cs.NewSubmitCharacterSheetUC(
+		characterSheetRepo,
+		campaignRepo,
+	)
 	listCharacterClassesUC := cs.NewListCharacterClassesUC(
 		&characterClasses,
 	)
@@ -100,6 +108,7 @@ func main() {
 	)
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler:  sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
+		SubmitCharacterSheetHandler:  sheetHandler.SubmitCharacterSheetHandler(submitCharacterSheetUC),
 		GetCharacterSheetHandler:     sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
 		ListCharacterSheetsHandler:   sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
 		ListClassesHandler:           sheetHandler.ListClassesHandler(listCharacterClassesUC),
@@ -107,7 +116,6 @@ func main() {
 		UpdateNenHexagonValueHandler: sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
 	}
 
-	scenarioRepo := scenarioPg.NewRepository(pgPool)
 	createScenarioUC := domainScenario.NewCreateScenarioUC(scenarioRepo)
 	getScenarioUC := domainScenario.NewGetScenarioUC(scenarioRepo)
 	listScenariosUC := domainScenario.NewListScenariosUC(scenarioRepo)
@@ -118,7 +126,6 @@ func main() {
 		ListScenariosHandler:  scenarioHandler.ListScenariosHandler(listScenariosUC),
 	}
 
-	campaignRepo := campaignPg.NewRepository(pgPool)
 	createCampaignUC := domainCampaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
 	getCampaignUC := domainCampaign.NewGetCampaignUC(campaignRepo)
 	listCampaignsUC := domainCampaign.NewListCampaignsUC(campaignRepo)
@@ -129,7 +136,6 @@ func main() {
 		ListCampaignsHandler:  campaignHandler.ListCampaignsHandler(listCampaignsUC),
 	}
 
-	matchRepo := matchPg.NewRepository(pgPool)
 	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
 	getMatchUC := domainMatch.NewGetMatchUC(matchRepo)
 	listMatchesUC := domainMatch.NewListMatchesUC(matchRepo)

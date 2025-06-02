@@ -122,18 +122,21 @@ func (r *Repository) ListCampaignsByUserUUID(
 	return campaigns, nil
 }
 
-func (r *Repository) ExistsCampaign(
-	ctx context.Context, campaignUUID uuid.UUID) (bool, error) {
+func (r *Repository) GetCampaignUserUUID(
+	ctx context.Context, campaignUUID uuid.UUID) (uuid.UUID, error) {
 
 	const query = `
-        SELECT EXISTS(SELECT 1 FROM campaigns WHERE uuid = $1)
+        SELECT user_uuid FROM campaigns WHERE uuid = $1
     `
-	var exists bool
-	err := r.q.QueryRow(ctx, query, campaignUUID).Scan(&exists)
+	var userUUID uuid.UUID
+	err := r.q.QueryRow(ctx, query, campaignUUID).Scan(&userUUID)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if campaign exists: %w", err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrCampaignNotFound
+		}
+		return uuid.Nil, fmt.Errorf("failed to get campaign user UUID: %w", err)
 	}
-	return exists, nil
+	return userUUID, nil
 }
 
 func (r *Repository) CountCampaignsByUserUUID(
