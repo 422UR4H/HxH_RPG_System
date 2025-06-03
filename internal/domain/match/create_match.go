@@ -53,12 +53,16 @@ func (uc *CreateMatchUC) CreateMatch(
 		return nil, ErrMaxBriefDescLength
 	}
 
-	campaign, err := uc.campaignRepo.GetCampaign(ctx, input.CampaignUUID)
+	campaign, err := uc.campaignRepo.GetCampaignStoryDates(ctx, input.CampaignUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
 		return nil, domainCampaign.ErrCampaignNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if campaign.UserUUID != input.MasterUUID {
+		return nil, ErrNotCampaignOwner
 	}
 
 	if input.StoryStartAt.Before(campaign.StoryStartAt) {

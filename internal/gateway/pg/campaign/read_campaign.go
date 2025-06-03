@@ -227,6 +227,48 @@ func (r *Repository) GetCampaignUserUUID(
 	return userUUID, nil
 }
 
+func (r *Repository) GetCampaignStoryDates(
+	ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error) {
+
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
+
+	const campaignQuery = `
+        SELECT 
+            uuid, user_uuid,
+            story_start_at, story_current_at, story_end_at
+        FROM campaigns
+        WHERE uuid = $1
+    `
+	var c campaign.Campaign
+	err = tx.QueryRow(ctx, campaignQuery, uuid).Scan(
+		&c.UUID,
+		&c.UserUUID,
+		&c.StoryStartAt,
+		&c.StoryCurrentAt,
+		&c.StoryEndAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrCampaignNotFound
+		}
+		return nil, fmt.Errorf("failed to fetch campaign story dates: %w", err)
+	}
+	return &c, nil
+}
+
 func (r *Repository) CountCampaignsByUserUUID(
 	ctx context.Context, userUUID uuid.UUID) (int, error) {
 

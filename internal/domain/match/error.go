@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrMatchNotFound      = domain.NewDBError(errors.New("match not found"))
+	ErrMatchNotFound      = domain.NewValidationError(errors.New("match not found"))
+	ErrNotCampaignOwner   = domain.NewValidationError(errors.New("user is not the owner of this campaign"))
 	ErrMinTitleLength     = domain.NewValidationError(errors.New("title must be at least 5 characters"))
 	ErrMaxTitleLength     = domain.NewValidationError(errors.New("title cannot exceed 32 characters"))
 	ErrMinOfStartDate     = domain.NewValidationError(errors.New("story start date must be after campaign start date"))

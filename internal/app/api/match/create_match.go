@@ -76,6 +76,8 @@ func CreateMatchHandler(
 			switch {
 			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, domainMatch.ErrNotCampaignOwner):
+				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
