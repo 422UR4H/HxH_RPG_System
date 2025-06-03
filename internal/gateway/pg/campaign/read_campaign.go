@@ -34,7 +34,8 @@ func (r *Repository) GetCampaign(
 	const campaignQuery = `
         SELECT 
             uuid, user_uuid, scenario_uuid,
-						name, brief_description, description,
+						name, brief_initial_description, brief_final_description, description,
+						is_public, call_link,
             story_start_at, story_current_at, story_end_at,
 						created_at, updated_at
         FROM campaigns
@@ -46,8 +47,11 @@ func (r *Repository) GetCampaign(
 		&c.UserUUID,
 		&c.ScenarioUUID,
 		&c.Name,
-		&c.BriefDescription,
+		&c.BriefInitialDescription,
+		&c.BriefFinalDescription,
 		&c.Description,
+		&c.IsPublic,
+		&c.CallLink,
 		&c.StoryStartAt,
 		&c.StoryCurrentAt,
 		&c.StoryEndAt,
@@ -66,9 +70,9 @@ func (r *Repository) GetCampaign(
             cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
             cs.category_name, cs.curr_hex_value,
             cs.level, cs.points, cs.talent_lvl, cs.skills_lvl,
+            cs.physicals_lvl, cs.mentals_lvl, cs.spirituals_lvl,
             cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
             cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
-            cs.physicals_lvl, cs.mentals_lvl, cs.spirituals_lvl,
             cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
             cs.created_at, cs.updated_at,
             cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
@@ -91,9 +95,9 @@ func (r *Repository) GetCampaign(
 			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
 			&sheet.CategoryName, &sheet.CurrHexValue,
 			&sheet.Level, &sheet.Points, &sheet.TalentLvl, &sheet.SkillsLvl,
+			&sheet.PhysicalsLvl, &sheet.MentalsLvl, &sheet.SpiritualsLvl,
 			&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
 			&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,
-			&sheet.PhysicalsLvl, &sheet.MentalsLvl, &sheet.SpiritualsLvl,
 			&sheet.Aura.Min, &sheet.Aura.Curr, &sheet.Aura.Max,
 			&sheet.CreatedAt, &sheet.UpdatedAt,
 			&sheet.NickName, &sheet.FullName, &sheet.Alignment, &sheet.CharacterClass, &sheet.Birthday,
@@ -108,9 +112,10 @@ func (r *Repository) GetCampaign(
 	}
 	c.CharacterSheets = sheets
 
+	// TODO: fix match here
 	const matchesQuery = `
         SELECT 
-            uuid, campaign_uuid, title, brief_description,
+            uuid, campaign_uuid, title, brief_initial_description,
             story_start_at, story_end_at,
             created_at, updated_at
         FROM matches
@@ -170,7 +175,8 @@ func (r *Repository) ListCampaignsByUserUUID(
 	const query = `
 					SELECT 
 							uuid, scenario_uuid,
-							name, brief_description, 
+							name, brief_initial_description, brief_final_description,
+							is_public, call_link,
 							story_start_at, story_current_at, story_end_at,
 							created_at, updated_at
 					FROM campaigns
@@ -190,7 +196,10 @@ func (r *Repository) ListCampaignsByUserUUID(
 			&c.UUID,
 			&c.ScenarioUUID,
 			&c.Name,
-			&c.BriefDescription,
+			&c.BriefInitialDescription,
+			&c.BriefFinalDescription,
+			&c.IsPublic,
+			&c.CallLink,
 			&c.StoryStartAt,
 			&c.StoryCurrentAt,
 			&c.StoryEndAt,
@@ -202,11 +211,9 @@ func (r *Repository) ListCampaignsByUserUUID(
 		}
 		campaigns = append(campaigns, &c)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over campaigns summary: %w", err)
 	}
-
 	return campaigns, nil
 }
 

@@ -16,13 +16,15 @@ type ICreateCampaign interface {
 }
 
 type CreateCampaignInput struct {
-	UserUUID         uuid.UUID
-	ScenarioUUID     *uuid.UUID
-	Name             string
-	BriefDescription string
-	Description      string
-	StoryStartAt     time.Time
-	StoryCurrentAt   *time.Time
+	UserUUID                uuid.UUID
+	ScenarioUUID            *uuid.UUID
+	Name                    string
+	BriefInitialDescription string
+	Description             string
+	IsPublic                bool
+	CallLink                string
+	StoryStartAt            time.Time
+	StoryCurrentAt          *time.Time
 }
 
 type CreateCampaignUC struct {
@@ -46,7 +48,6 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	if len(input.Name) < 5 {
 		return nil, ErrMinNameLength
 	}
-
 	if len(input.Name) > 32 {
 		return nil, ErrMaxNameLength
 	}
@@ -55,7 +56,7 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		return nil, ErrInvalidStartDate
 	}
 
-	if len(input.BriefDescription) > 64 {
+	if len(input.BriefInitialDescription) > 255 {
 		return nil, ErrMaxBriefDescLength
 	}
 
@@ -65,7 +66,7 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	if err != nil {
 		return nil, err
 	}
-	if campaignsCount >= 5 {
+	if campaignsCount >= 10 {
 		return nil, ErrMaxCampaignsLimit
 	}
 
@@ -86,8 +87,10 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		input.UserUUID,
 		input.ScenarioUUID,
 		input.Name,
-		input.BriefDescription,
+		input.BriefInitialDescription,
 		input.Description,
+		input.IsPublic,
+		input.CallLink,
 		input.StoryStartAt,
 		input.StoryCurrentAt,
 	)

@@ -17,11 +17,13 @@ import (
 // ScenarioUUID will now only be enabled for shared scenario
 type CreateCampaignRequestBody struct {
 	// ScenarioUUID     uuid.UUID `json:"scenario_uuid" required:"true" doc:"UUID of the scenario this campaign is based on"`
-	Name             string  `json:"name" required:"true" maxLength:"32" doc:"Name of the campaign"`
-	BriefDescription string  `json:"brief_description" maxLength:"64" doc:"Brief description of the campaign"`
-	Description      string  `json:"description" doc:"Full description of the campaign"`
-	StoryStartAt     string  `json:"story_start_at" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
-	StoryCurrentAt   *string `json:"story_current_at,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
+	Name                    string  `json:"name" required:"true" maxLength:"32" doc:"Name of the campaign"`
+	BriefInitialDescription string  `json:"brief_initial_description" maxLength:"255" doc:"Brief initial description of the campaign"`
+	Description             string  `json:"description" doc:"Full description of the campaign"`
+	IsPublic                bool    `json:"is_public" default:"false" doc:"Whether the campaign is public or private"`
+	CallLink                string  `json:"call_link" maxLength:"255" doc:"Link to the campaign call (e.g., Discord)"`
+	StoryStartAt            string  `json:"story_start_at" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
+	StoryCurrentAt          *string `json:"story_current_at,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
 }
 
 type CreateCampaignRequest struct {
@@ -31,13 +33,15 @@ type CreateCampaignRequest struct {
 type CreateCampaignResponseBody struct {
 	UUID uuid.UUID `json:"uuid"`
 	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
-	Name             string  `json:"name"`
-	BriefDescription string  `json:"brief_description"`
-	Description      string  `json:"description"`
-	StoryStartAt     string  `json:"story_start_at"`
-	StoryCurrentAt   *string `json:"story_current_at,omitempty"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
+	Name                    string  `json:"name"`
+	BriefInitialDescription string  `json:"brief_initial_description"`
+	Description             string  `json:"description"`
+	IsPublic                bool    `json:"is_public"`
+	CallLink                string  `json:"call_link"`
+	StoryStartAt            string  `json:"story_start_at"`
+	StoryCurrentAt          *string `json:"story_current_at,omitempty"`
+	CreatedAt               string  `json:"created_at"`
+	UpdatedAt               string  `json:"updated_at"`
 }
 
 type CreateCampaignResponse struct {
@@ -70,13 +74,15 @@ func CreateCampaignHandler(
 		}
 
 		input := &domainCampaign.CreateCampaignInput{
-			UserUUID:         userUUID,
-			ScenarioUUID:     nil, //req.Body.ScenarioUUID,
-			Name:             req.Body.Name,
-			BriefDescription: req.Body.BriefDescription,
-			Description:      req.Body.Description,
-			StoryStartAt:     storyStartAt,
-			StoryCurrentAt:   storyCurrentAtPtr,
+			UserUUID:                userUUID,
+			ScenarioUUID:            nil, //req.Body.ScenarioUUID,
+			Name:                    req.Body.Name,
+			BriefInitialDescription: req.Body.BriefInitialDescription,
+			Description:             req.Body.Description,
+			IsPublic:                req.Body.IsPublic,
+			CallLink:                req.Body.CallLink,
+			StoryStartAt:            storyStartAt,
+			StoryCurrentAt:          storyCurrentAtPtr,
 		}
 
 		campaign, err := uc.CreateCampaign(ctx, input)
@@ -102,13 +108,15 @@ func CreateCampaignHandler(
 		response := CreateCampaignResponseBody{
 			UUID: campaign.UUID,
 			// ScenarioUUID:     campaign.ScenarioUUID,
-			Name:             campaign.Name,
-			BriefDescription: campaign.BriefDescription,
-			Description:      campaign.Description,
-			StoryStartAt:     campaign.StoryStartAt.Format("2006-01-02"),
-			StoryCurrentAt:   storyCurrentAtStr,
-			CreatedAt:        campaign.CreatedAt.Format(http.TimeFormat),
-			UpdatedAt:        campaign.UpdatedAt.Format(http.TimeFormat),
+			Name:                    campaign.Name,
+			BriefInitialDescription: campaign.BriefInitialDescription,
+			Description:             campaign.Description,
+			IsPublic:                campaign.IsPublic,
+			CallLink:                campaign.CallLink,
+			StoryStartAt:            campaign.StoryStartAt.Format("2006-01-02"),
+			StoryCurrentAt:          storyCurrentAtStr,
+			CreatedAt:               campaign.CreatedAt.Format(http.TimeFormat),
+			UpdatedAt:               campaign.UpdatedAt.Format(http.TimeFormat),
 		}
 
 		return &CreateCampaignResponse{

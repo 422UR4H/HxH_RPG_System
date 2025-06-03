@@ -52,14 +52,14 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 		var name, briefDesc, description string
 		var scenarioCreatedAt, scenarioUpdatedAt time.Time
 
-		var campaignUUID, campaignName, campaignBriefDesc sql.NullString
+		var campaignUUID, campaignName, campaignBriefInitDesc sql.NullString
 		var campaignStartAt, campaignCurrentAt, campaignEndAt sql.NullTime
 		var campaignCreatedAt, campaignUpdatedAt sql.NullTime
 
 		err := rows.Scan(
 			&scenarioUUID, &userUUID, &name, &briefDesc, &description,
 			&scenarioCreatedAt, &scenarioUpdatedAt,
-			&campaignUUID, &campaignName, &campaignBriefDesc,
+			&campaignUUID, &campaignName, &campaignBriefInitDesc,
 			&campaignStartAt, &campaignCurrentAt, &campaignEndAt,
 			&campaignCreatedAt, &campaignUpdatedAt,
 		)
@@ -81,10 +81,10 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 
 		if campaignUUID.Valid {
 			campaign := &campaignEntity.Summary{
-				UUID:             uuid.MustParse(campaignUUID.String),
-				Name:             campaignName.String,
-				BriefDescription: campaignBriefDesc.String,
-				StoryStartAt:     campaignStartAt.Time,
+				UUID:                    uuid.MustParse(campaignUUID.String),
+				Name:                    campaignName.String,
+				BriefInitialDescription: campaignBriefInitDesc.String,
+				StoryStartAt:            campaignStartAt.Time,
 			}
 
 			if campaignCurrentAt.Valid {

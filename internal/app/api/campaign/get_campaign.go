@@ -22,14 +22,17 @@ type GetCampaignRequest struct {
 type GetCampaignResponseBody struct {
 	UUID uuid.UUID `json:"uuid"`
 	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
-	Name             string  `json:"name"`
-	BriefDescription string  `json:"brief_description"`
-	Description      string  `json:"description"`
-	StoryStartAt     string  `json:"story_start_at"`
-	StoryCurrentAt   *string `json:"story_current_at,omitempty"`
-	StoryEndAt       *string `json:"story_end_at,omitempty"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
+	Name                    string  `json:"name"`
+	BriefInitialDescription string  `json:"brief_initial_description"`
+	BriefFinalDescription   *string `json:"brief_final_description,omitempty"`
+	Description             string  `json:"description"`
+	IsPublic                bool    `json:"is_public"`
+	CallLink                string  `json:"call_link"`
+	StoryStartAt            string  `json:"story_start_at"`
+	StoryCurrentAt          *string `json:"story_current_at,omitempty"`
+	StoryEndAt              *string `json:"story_end_at,omitempty"`
+	CreatedAt               string  `json:"created_at"`
+	UpdatedAt               string  `json:"updated_at"`
 
 	CharacterSheets []sheet.CharacterSummaryResponse `json:"character_sheets,omitempty"`
 	Matches         []match.MatchSummaryResponse     `json:"matches,omitempty"`
@@ -79,7 +82,8 @@ func GetCampaignHandler(
 			characterSheets = append(characterSheets, sheet.ToSummaryResponse(cs))
 		}
 
-		matches := make([]match.MatchSummaryResponse, 0, len(campaign.Matches))
+		matchesLen := len(campaign.Matches)
+		matches := make([]match.MatchSummaryResponse, 0, matchesLen)
 		for _, m := range campaign.Matches {
 			matches = append(matches, match.ToSummaryResponse(&m))
 		}
@@ -87,16 +91,19 @@ func GetCampaignHandler(
 		response := GetCampaignResponseBody{
 			UUID: campaign.UUID,
 			// ScenarioUUID:     campaign.ScenarioUUID,
-			Name:             campaign.Name,
-			BriefDescription: campaign.BriefDescription,
-			Description:      campaign.Description,
-			StoryStartAt:     campaign.StoryStartAt.Format("2006-01-02"),
-			StoryCurrentAt:   storyCurrentAtStr,
-			StoryEndAt:       storyEndAtStr,
-			CharacterSheets:  characterSheets,
-			Matches:          matches,
-			CreatedAt:        campaign.CreatedAt.Format(http.TimeFormat),
-			UpdatedAt:        campaign.UpdatedAt.Format(http.TimeFormat),
+			Name:                    campaign.Name,
+			BriefInitialDescription: campaign.BriefInitialDescription,
+			BriefFinalDescription:   campaign.BriefFinalDescription,
+			Description:             campaign.Description,
+			IsPublic:                campaign.IsPublic,
+			CallLink:                campaign.CallLink,
+			StoryStartAt:            campaign.StoryStartAt.Format("2006-01-02"),
+			StoryCurrentAt:          storyCurrentAtStr,
+			StoryEndAt:              storyEndAtStr,
+			CharacterSheets:         characterSheets,
+			Matches:                 matches,
+			CreatedAt:               campaign.CreatedAt.Format(http.TimeFormat),
+			UpdatedAt:               campaign.UpdatedAt.Format(http.TimeFormat),
 		}
 		return &GetCampaignResponse{
 			Body: response,

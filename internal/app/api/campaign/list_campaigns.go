@@ -20,14 +20,17 @@ type ListCampaignsResponse struct {
 }
 
 type CampaignSummaryResponse struct {
-	UUID             uuid.UUID `json:"uuid"`
-	Name             string    `json:"name"`
-	BriefDescription string    `json:"brief_description"`
-	StoryStartAt     string    `json:"story_start_at"`
-	StoryCurrentAt   *string   `json:"story_current_at,omitempty"`
-	StoryEndAt       *string   `json:"story_end_at,omitempty"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
+	UUID                    uuid.UUID `json:"uuid"`
+	Name                    string    `json:"name"`
+	BriefInitialDescription string    `json:"brief_initial_description"`
+	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
+	IsPublic                bool      `json:"is_public"`
+	CallLink                string    `json:"call_link"`
+	StoryStartAt            string    `json:"story_start_at"`
+	StoryCurrentAt          *string   `json:"story_current_at,omitempty"`
+	StoryEndAt              *string   `json:"story_end_at,omitempty"`
+	CreatedAt               string    `json:"created_at"`
+	UpdatedAt               string    `json:"updated_at"`
 }
 
 func ListCampaignsHandler(
@@ -58,14 +61,17 @@ func ListCampaignsHandler(
 				storyEndAtStr = &formatted
 			}
 			responses = append(responses, CampaignSummaryResponse{
-				UUID:             c.UUID,
-				Name:             c.Name,
-				BriefDescription: c.BriefDescription,
-				StoryStartAt:     c.StoryStartAt.Format("2006-01-02"),
-				StoryCurrentAt:   storyCurrentAtStr,
-				StoryEndAt:       storyEndAtStr,
-				CreatedAt:        c.CreatedAt.Format(http.TimeFormat),
-				UpdatedAt:        c.UpdatedAt.Format(http.TimeFormat),
+				UUID:                    c.UUID,
+				Name:                    c.Name,
+				BriefInitialDescription: c.BriefInitialDescription,
+				BriefFinalDescription:   c.BriefFinalDescription,
+				IsPublic:                c.IsPublic,
+				CallLink:                c.CallLink,
+				StoryStartAt:            c.StoryStartAt.Format("2006-01-02"),
+				StoryCurrentAt:          storyCurrentAtStr,
+				StoryEndAt:              storyEndAtStr,
+				CreatedAt:               c.CreatedAt.Format(http.TimeFormat),
+				UpdatedAt:               c.UpdatedAt.Format(http.TimeFormat),
 			})
 		}
 

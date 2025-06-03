@@ -9,8 +9,13 @@ CREATE TABLE IF NOT EXISTS campaigns (
   scenario_uuid UUID,
 
   name VARCHAR(32) NOT NULL,
-  brief_description VARCHAR(64),
+  brief_initial_description VARCHAR(255),
+  brief_final_description VARCHAR(255),
   description TEXT,
+
+  is_public BOOLEAN DEFAULT TRUE,
+  call_link VARCHAR(255),
+
   story_start_at DATE NOT NULL,
   story_current_at TIMESTAMP,
   story_end_at DATE,

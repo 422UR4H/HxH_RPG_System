@@ -73,14 +73,14 @@ func GetScenarioHandler(
 			}
 
 			campaignResponses = append(campaignResponses, campaign.CampaignSummaryResponse{
-				UUID:             c.UUID,
-				Name:             c.Name,
-				BriefDescription: c.BriefDescription,
-				StoryStartAt:     c.StoryStartAt.Format("2006-01-02"),
-				StoryCurrentAt:   storyCurrentAtStr,
-				StoryEndAt:       storyEndAtStr,
-				CreatedAt:        c.CreatedAt.Format(http.TimeFormat),
-				UpdatedAt:        c.UpdatedAt.Format(http.TimeFormat),
+				UUID:                    c.UUID,
+				Name:                    c.Name,
+				BriefInitialDescription: c.BriefInitialDescription,
+				StoryStartAt:            c.StoryStartAt.Format("2006-01-02"),
+				StoryCurrentAt:          storyCurrentAtStr,
+				StoryEndAt:              storyEndAtStr,
+				CreatedAt:               c.CreatedAt.Format(http.TimeFormat),
+				UpdatedAt:               c.UpdatedAt.Format(http.TimeFormat),
 			})
 		}
 
