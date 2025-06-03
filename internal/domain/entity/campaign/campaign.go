@@ -3,6 +3,8 @@ package campaign
 import (
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )
 
@@ -16,6 +18,8 @@ type Campaign struct {
 	StoryStartAt     time.Time
 	StoryCurrentAt   *time.Time
 	StoryEndAt       *time.Time
+	CharacterSheets  []model.CharacterSheetSummary
+	Matches          []match.Summary
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }

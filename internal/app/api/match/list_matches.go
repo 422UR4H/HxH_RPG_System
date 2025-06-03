@@ -3,7 +3,6 @@ package match
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -17,17 +16,6 @@ type ListMatchesResponseBody struct {
 
 type ListMatchesResponse struct {
 	Body ListMatchesResponseBody `json:"body"`
-}
-
-type MatchSummaryResponse struct {
-	UUID             uuid.UUID `json:"uuid"`
-	CampaignUUID     uuid.UUID `json:"campaign_uuid"`
-	Title            string    `json:"title"`
-	BriefDescription string    `json:"brief_description"`
-	StoryStartAt     string    `json:"story_start_at"`
-	StoryEndAt       *string   `json:"story_end_at,omitempty"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
 }
 
 func ListMatchesHandler(
@@ -47,22 +35,7 @@ func ListMatchesHandler(
 
 		responses := make([]MatchSummaryResponse, 0, len(matches))
 		for _, m := range matches {
-			var storyEndAtStr *string
-			if m.StoryEndAt != nil {
-				formatted := m.StoryEndAt.Format("2006-01-02")
-				storyEndAtStr = &formatted
-			}
-
-			responses = append(responses, MatchSummaryResponse{
-				UUID:             m.UUID,
-				CampaignUUID:     m.CampaignUUID,
-				Title:            m.Title,
-				BriefDescription: m.BriefDescription,
-				StoryStartAt:     m.StoryStartAt.Format("2006-01-02"),
-				StoryEndAt:       storyEndAtStr,
-				CreatedAt:        m.CreatedAt.Format(http.TimeFormat),
-				UpdatedAt:        m.UpdatedAt.Format(http.TimeFormat),
-			})
+			responses = append(responses, ToSummaryResponse(m))
 		}
 
 		return &ListMatchesResponse{

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/danielgtaylor/huma/v2"
@@ -28,6 +30,9 @@ type GetCampaignResponseBody struct {
 	StoryEndAt       *string `json:"story_end_at,omitempty"`
 	CreatedAt        string  `json:"created_at"`
 	UpdatedAt        string  `json:"updated_at"`
+
+	CharacterSheets []sheet.CharacterSummaryResponse `json:"character_sheets,omitempty"`
+	Matches         []match.MatchSummaryResponse     `json:"matches,omitempty"`
 }
 
 type GetCampaignResponse struct {
@@ -68,6 +73,17 @@ func GetCampaignHandler(
 			storyEndAtStr = &formattedDate
 		}
 
+		sheetsLen := len(campaign.CharacterSheets)
+		characterSheets := make([]sheet.CharacterSummaryResponse, 0, sheetsLen)
+		for _, cs := range campaign.CharacterSheets {
+			characterSheets = append(characterSheets, sheet.ToSummaryResponse(cs))
+		}
+
+		matches := make([]match.MatchSummaryResponse, 0, len(campaign.Matches))
+		for _, m := range campaign.Matches {
+			matches = append(matches, match.ToSummaryResponse(&m))
+		}
+
 		response := GetCampaignResponseBody{
 			UUID: campaign.UUID,
 			// ScenarioUUID:     campaign.ScenarioUUID,
@@ -77,10 +93,11 @@ func GetCampaignHandler(
 			StoryStartAt:     campaign.StoryStartAt.Format("2006-01-02"),
 			StoryCurrentAt:   storyCurrentAtStr,
 			StoryEndAt:       storyEndAtStr,
+			CharacterSheets:  characterSheets,
+			Matches:          matches,
 			CreatedAt:        campaign.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:        campaign.UpdatedAt.Format(http.TimeFormat),
 		}
-
 		return &GetCampaignResponse{
 			Body: response,
 		}, nil
