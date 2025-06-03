@@ -115,7 +115,9 @@ func (r *Repository) GetCampaign(
 	// TODO: fix match here
 	const matchesQuery = `
         SELECT 
-            uuid, campaign_uuid, title, brief_initial_description,
+            uuid, campaign_uuid,
+						title, brief_initial_description, brief_final_description,
+						is_public, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
         FROM matches
@@ -135,7 +137,10 @@ func (r *Repository) GetCampaign(
 			&m.UUID,
 			&m.CampaignUUID,
 			&m.Title,
-			&m.BriefDescription,
+			&m.BriefInitialDescription,
+			&m.BriefFinalDescription,
+			&m.IsPublic,
+			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,
 			&m.CreatedAt,

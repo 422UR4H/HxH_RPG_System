@@ -29,7 +29,8 @@ func (r *Repository) GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match
 	const query = `
         SELECT 
             uuid, master_uuid, campaign_uuid,
-						title, brief_description, description,
+						title, brief_initial_description, brief_final_description, description,
+						is_public, game_start_at,
             story_start_at, story_end_at,
 						created_at, updated_at
         FROM matches
@@ -41,8 +42,11 @@ func (r *Repository) GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match
 		&m.MasterUUID,
 		&m.CampaignUUID,
 		&m.Title,
-		&m.BriefDescription,
+		&m.BriefInitialDescription,
+		&m.BriefFinalDescription,
 		&m.Description,
+		&m.IsPublic,
+		&m.GameStartAt,
 		&m.StoryStartAt,
 		&m.StoryEndAt,
 		&m.CreatedAt,
@@ -54,7 +58,6 @@ func (r *Repository) GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match
 		}
 		return nil, fmt.Errorf("failed to fetch match: %w", err)
 	}
-
 	return &m, nil
 }
 
@@ -78,7 +81,9 @@ func (r *Repository) ListMatchesByMasterUUID(
 
 	const query = `
         SELECT 
-            uuid, campaign_uuid, title, brief_description,
+            uuid, campaign_uuid, title,
+						brief_initial_description, brief_final_description,
+						is_public, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
         FROM matches
@@ -99,7 +104,10 @@ func (r *Repository) ListMatchesByMasterUUID(
 			&m.UUID,
 			&m.CampaignUUID,
 			&m.Title,
-			&m.BriefDescription,
+			&m.BriefInitialDescription,
+			&m.BriefFinalDescription,
+			&m.IsPublic,
+			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,
 			&m.CreatedAt,
@@ -110,10 +118,8 @@ func (r *Repository) ListMatchesByMasterUUID(
 		}
 		matches = append(matches, &m)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over match summaries: %w", err)
 	}
-
 	return matches, nil
 }

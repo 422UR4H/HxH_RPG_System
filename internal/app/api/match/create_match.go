@@ -15,11 +15,13 @@ import (
 )
 
 type CreateMatchRequestBody struct {
-	CampaignUUID     uuid.UUID `json:"campaign_uuid" required:"true" doc:"UUID of the campaign this match is based on"`
-	Title            string    `json:"title" required:"true" maxLength:"32" doc:"Title of the match"`
-	BriefDescription string    `json:"brief_description" maxLength:"64" doc:"Brief description of the match"`
-	Description      string    `json:"description" doc:"Full description of the match"`
-	StoryStartAt     string    `json:"story_start_at" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
+	CampaignUUID            uuid.UUID `json:"campaign_uuid" required:"true" doc:"UUID of the campaign this match is based on"`
+	Title                   string    `json:"title" required:"true" maxLength:"32" doc:"Title of the match"`
+	BriefInitialDescription string    `json:"brief_initial_description" maxLength:"64" doc:"Brief description of the match"`
+	Description             string    `json:"description" doc:"Full description of the match"`
+	IsPublic                bool      `json:"is_public" default:"true" doc:"If the match is public or private"`
+	GameStartAt             string    `json:"game_start_at" required:"true" doc:"Date and time when the game starts (ISO 8601)"`
+	StoryStartAt            string    `json:"story_start_at" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
 }
 
 type CreateMatchRequest struct {
@@ -36,15 +38,18 @@ type CreateMatchResponse struct {
 }
 
 type MatchResponse struct {
-	UUID             uuid.UUID `json:"uuid"`
-	CampaignUUID     uuid.UUID `json:"campaign_uuid"`
-	Title            string    `json:"title"`
-	BriefDescription string    `json:"brief_description"`
-	Description      string    `json:"description"`
-	StoryStartAt     string    `json:"story_start_at"`
-	StoryEndAt       *string   `json:"story_end_at,omitempty"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
+	UUID                    uuid.UUID `json:"uuid"`
+	CampaignUUID            uuid.UUID `json:"campaign_uuid"`
+	Title                   string    `json:"title"`
+	BriefInitialDescription string    `json:"brief_initial_description"`
+	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
+	Description             string    `json:"description"`
+	IsPublic                bool      `json:"is_public"`
+	GameStartAt             string    `json:"game_start_at"`
+	StoryStartAt            string    `json:"story_start_at"`
+	StoryEndAt              *string   `json:"story_end_at,omitempty"`
+	CreatedAt               string    `json:"created_at"`
+	UpdatedAt               string    `json:"updated_at"`
 }
 
 func CreateMatchHandler(
@@ -63,13 +68,21 @@ func CreateMatchHandler(
 				"invalid story_start_at date format, use YYYY-MM-DD")
 		}
 
+		gameStartAt, err := time.Parse(time.RFC3339, req.Body.GameStartAt)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity(
+				"invalid game_start_at date format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
+		}
+
 		input := &domainMatch.CreateMatchInput{
-			MasterUUID:       userUUID,
-			CampaignUUID:     req.Body.CampaignUUID,
-			Title:            req.Body.Title,
-			BriefDescription: req.Body.BriefDescription,
-			Description:      req.Body.Description,
-			StoryStartAt:     storyStartAt,
+			MasterUUID:              userUUID,
+			CampaignUUID:            req.Body.CampaignUUID,
+			Title:                   req.Body.Title,
+			BriefInitialDescription: req.Body.BriefInitialDescription,
+			Description:             req.Body.Description,
+			IsPublic:                req.Body.IsPublic,
+			GameStartAt:             gameStartAt,
+			StoryStartAt:            storyStartAt,
 		}
 		match, err := uc.CreateMatch(ctx, input)
 		if err != nil {
@@ -86,16 +99,18 @@ func CreateMatchHandler(
 		}
 
 		response := MatchResponse{
-			UUID:             match.UUID,
-			CampaignUUID:     match.CampaignUUID,
-			Title:            match.Title,
-			BriefDescription: match.BriefDescription,
-			Description:      match.Description,
-			StoryStartAt:     match.StoryStartAt.Format("2006-01-02"),
-			CreatedAt:        match.CreatedAt.Format(http.TimeFormat),
-			UpdatedAt:        match.UpdatedAt.Format(http.TimeFormat),
+			UUID:                    match.UUID,
+			CampaignUUID:            match.CampaignUUID,
+			Title:                   match.Title,
+			BriefInitialDescription: match.BriefInitialDescription,
+			BriefFinalDescription:   match.BriefFinalDescription,
+			Description:             match.Description,
+			IsPublic:                match.IsPublic,
+			GameStartAt:             match.GameStartAt.Format(time.RFC3339),
+			StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
+			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
+			UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
 		}
-
 		return &CreateMatchResponse{
 			Body: CreateMatchResponseBody{
 				Match: response,

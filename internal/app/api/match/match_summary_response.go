@@ -8,14 +8,17 @@ import (
 )
 
 type MatchSummaryResponse struct {
-	UUID             uuid.UUID `json:"uuid"`
-	CampaignUUID     uuid.UUID `json:"campaign_uuid"`
-	Title            string    `json:"title"`
-	BriefDescription string    `json:"brief_description"`
-	StoryStartAt     string    `json:"story_start_at"`
-	StoryEndAt       *string   `json:"story_end_at,omitempty"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
+	UUID                    uuid.UUID `json:"uuid"`
+	CampaignUUID            uuid.UUID `json:"campaign_uuid"`
+	Title                   string    `json:"title"`
+	BriefInitialDescription string    `json:"brief_initial_description"`
+	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
+	IsPublic                bool      `json:"is_public"`
+	GameStartAt             string    `json:"game_start_at"`
+	StoryStartAt            string    `json:"story_start_at"`
+	StoryEndAt              *string   `json:"story_end_at,omitempty"`
+	CreatedAt               string    `json:"created_at"`
+	UpdatedAt               string    `json:"updated_at"`
 }
 
 func ToSummaryResponse(m *domainMatch.Summary) MatchSummaryResponse {
@@ -26,13 +29,16 @@ func ToSummaryResponse(m *domainMatch.Summary) MatchSummaryResponse {
 	}
 
 	return MatchSummaryResponse{
-		UUID:             m.UUID,
-		CampaignUUID:     m.CampaignUUID,
-		Title:            m.Title,
-		BriefDescription: m.BriefDescription,
-		StoryStartAt:     m.StoryStartAt.Format("2006-01-02"),
-		StoryEndAt:       storyEndAtStr,
-		CreatedAt:        m.CreatedAt.Format(http.TimeFormat),
-		UpdatedAt:        m.UpdatedAt.Format(http.TimeFormat),
+		UUID:                    m.UUID,
+		CampaignUUID:            m.CampaignUUID,
+		Title:                   m.Title,
+		BriefInitialDescription: m.BriefInitialDescription,
+		BriefFinalDescription:   m.BriefFinalDescription,
+		IsPublic:                m.IsPublic,
+		GameStartAt:             m.GameStartAt.Format(http.TimeFormat),
+		StoryStartAt:            m.StoryStartAt.Format("2006-01-02"),
+		StoryEndAt:              storyEndAtStr,
+		CreatedAt:               m.CreatedAt.Format(http.TimeFormat),
+		UpdatedAt:               m.UpdatedAt.Format(http.TimeFormat),
 	}
 }

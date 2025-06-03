@@ -53,17 +53,19 @@ func GetMatchHandler(
 		}
 
 		response := MatchResponse{
-			UUID:             match.UUID,
-			CampaignUUID:     match.CampaignUUID,
-			Title:            match.Title,
-			BriefDescription: match.BriefDescription,
-			Description:      match.Description,
-			StoryStartAt:     match.StoryStartAt.Format("2006-01-02"),
-			StoryEndAt:       storyEndAtStr,
-			CreatedAt:        match.CreatedAt.Format(http.TimeFormat),
-			UpdatedAt:        match.UpdatedAt.Format(http.TimeFormat),
+			UUID:                    match.UUID,
+			CampaignUUID:            match.CampaignUUID,
+			Title:                   match.Title,
+			BriefInitialDescription: match.BriefInitialDescription,
+			BriefFinalDescription:   match.BriefFinalDescription,
+			Description:             match.Description,
+			IsPublic:                match.IsPublic,
+			GameStartAt:             match.GameStartAt.Format(http.TimeFormat),
+			StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
+			StoryEndAt:              storyEndAtStr,
+			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
+			UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
 		}
-
 		return &GetMatchResponse{
 			Body: GetMatchResponseBody{
 				Match: response,

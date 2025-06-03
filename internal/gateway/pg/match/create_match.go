@@ -26,16 +26,18 @@ func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error 
 	const query = `
         INSERT INTO matches (
             uuid, master_uuid, campaign_uuid,
-						title, brief_description, description, 
+						title, brief_initial_description, description,
+						is_public, game_start_at,
             story_start_at, story_end_at,
 						created_at, updated_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
         )
     `
 	_, err = tx.Exec(ctx, query,
 		match.UUID, match.MasterUUID, match.CampaignUUID,
-		match.Title, match.BriefDescription, match.Description,
+		match.Title, match.BriefInitialDescription, match.Description,
+		match.IsPublic, match.GameStartAt,
 		match.StoryStartAt, match.StoryEndAt,
 		match.CreatedAt, match.UpdatedAt,
 	)

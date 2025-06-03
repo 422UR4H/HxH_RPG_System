@@ -9,8 +9,13 @@ CREATE TABLE IF NOT EXISTS matches (
   campaign_uuid UUID NOT NULL,
 
   title VARCHAR(32) NOT NULL,
-  brief_description VARCHAR(64),
+  brief_initial_description VARCHAR(255),
+  brief_final_description VARCHAR(255),
   description TEXT,
+
+  is_public BOOLEAN DEFAULT TRUE,
+  game_start_at TIMESTAMP NOT NULL,
+
   story_start_at DATE NOT NULL,
   story_end_at DATE,
 
