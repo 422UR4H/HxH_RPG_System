@@ -31,7 +31,7 @@ func GetMatchHandler(
 	return func(ctx context.Context, req *GetMatchRequest) (*GetMatchResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		match, err := uc.GetMatch(ctx, req.UUID, userUUID)

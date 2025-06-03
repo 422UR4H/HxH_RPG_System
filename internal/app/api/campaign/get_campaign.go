@@ -49,7 +49,7 @@ func GetCampaignHandler(
 	return func(ctx context.Context, req *GetCampaignRequest) (*GetCampaignResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		campaign, err := uc.GetCampaign(ctx, req.UUID, userUUID)

@@ -2,7 +2,6 @@ package match
 
 import (
 	"context"
-	"errors"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -25,7 +24,7 @@ func ListMatchesHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListMatchesResponse, error) {
 		masterUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		matches, err := uc.ListMatches(ctx, masterUUID)

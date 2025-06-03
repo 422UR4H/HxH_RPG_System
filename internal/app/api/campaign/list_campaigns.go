@@ -2,7 +2,6 @@ package campaign
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -40,7 +39,7 @@ func ListCampaignsHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListCampaignsResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		campaigns, err := uc.ListCampaigns(ctx, userUUID)

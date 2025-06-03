@@ -44,7 +44,7 @@ func CreateCharacterSheetHandler(
 	return func(ctx context.Context, req *CreateCharacterSheetRequest) (*CreateCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		input, err := castRequest(&req.Body)

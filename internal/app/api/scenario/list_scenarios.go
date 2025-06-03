@@ -2,7 +2,6 @@ package scenario
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -34,7 +33,7 @@ func ListScenariosHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListScenariosResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		scenarios, err := uc.ListScenarios(ctx, userUUID)

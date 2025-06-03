@@ -56,7 +56,7 @@ func CreateCampaignHandler(
 	return func(ctx context.Context, req *CreateCampaignRequest) (*CreateCampaignResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		storyStartAt, err := time.Parse("2006-01-02", req.Body.StoryStartAt)
@@ -118,7 +118,6 @@ func CreateCampaignHandler(
 			CreatedAt:               campaign.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               campaign.UpdatedAt.Format(http.TimeFormat),
 		}
-
 		return &CreateCampaignResponse{
 			Body:   response,
 			Status: http.StatusCreated,

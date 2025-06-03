@@ -38,7 +38,7 @@ func UpdateNenHexagonValueHandler(
 	return func(ctx context.Context, req *UpdateNenHexagonValueRequest) (*UpdateNenHexagonValueResponse, error) {
 		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		charSheetId, err := uuid.Parse(req.CharSheetUUID)

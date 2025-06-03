@@ -32,7 +32,7 @@ func SubmitCharacterSheetHandler(
 	return func(ctx context.Context, req *SubmitCharacterRequest) (*SubmitCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		err := uc.Submit(ctx, userUUID, req.Body.SheetUUID, req.Body.CampaignUUID)

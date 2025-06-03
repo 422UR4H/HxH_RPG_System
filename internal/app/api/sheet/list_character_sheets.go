@@ -2,11 +2,11 @@ package sheet
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -26,12 +26,12 @@ func ListCharacterSheetsHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListCharacterSheetsResponse, error) {
 		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		sheets, err := uc.ListCharacterSheets(ctx, playerUUID)
 		if err != nil {
-			return nil, err
+			return nil, huma.Error500InternalServerError(err.Error())
 		}
 
 		responses := make([]CharacterSummaryResponse, len(sheets))

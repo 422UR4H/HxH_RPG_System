@@ -47,7 +47,7 @@ func CreateScenarioHandler(
 	return func(ctx context.Context, req *CreateScenarioRequest) (*CreateScenarioResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, errors.New("failed to get userID in context")
+			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
 		input := &domainScenario.CreateScenarioInput{
@@ -76,7 +76,6 @@ func CreateScenarioHandler(
 			CreatedAt:        scenario.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:        scenario.UpdatedAt.Format(http.TimeFormat),
 		}
-
 		return &CreateScenarioResponse{
 			Body: CreateScenarioResponseBody{
 				Scenario: response,
