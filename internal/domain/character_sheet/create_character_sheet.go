@@ -72,7 +72,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	charClass.ApplySkills(skillsExps)
 	charClass.ApplyProficiencies(profExps)
 
-	if err := uc.validateNickName(ctx, input.Profile.NickName); err != nil {
+	if err := uc.validateNickName(input.Profile.NickName); err != nil {
 		return nil, err
 	}
 
@@ -113,9 +113,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	return characterSheet, err
 }
 
-func (uc *CreateCharacterSheetUC) validateNickName(
-	ctx context.Context, nick string,
-) error {
+func (uc *CreateCharacterSheetUC) validateNickName(nick string) error {
 	var allowedNickName = true
 	uc.characterClasses.Range(func(_, value any) bool {
 		charClass := value.(cc.CharacterClass)
@@ -129,13 +127,14 @@ func (uc *CreateCharacterSheetUC) validateNickName(
 		return NewNicknameNotAllowedError(nick)
 	}
 
-	exists, err := uc.repo.ExistsCharacterWithNick(ctx, nick)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return NewNicknameAlreadyExistsError(nick)
-	}
+	// TODO: add this validation to create NPC and remove from here
+	// exists, err := uc.repo.ExistsCharacterWithNick(ctx, nick)
+	// if err != nil {
+	// 	return err
+	// }
+	// if exists {
+	// 	return NewNicknameAlreadyExistsError(nick)
+	// }
 	return nil
 }
 
