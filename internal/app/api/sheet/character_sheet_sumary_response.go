@@ -28,9 +28,12 @@ type CharacterSummaryResponse struct {
 	SkillsLvl      int        `json:"skills_lvl"`
 	Stamina        StatusBar  `json:"stamina"`
 	Health         StatusBar  `json:"health"`
-	Aura           StatusBar  `json:"aura"`
-	CreatedAt      string     `json:"created_at"`
-	UpdatedAt      string     `json:"updated_at"`
+	// Aura           StatusBar  `json:"aura"`
+	StoryStartAt   *string `json:"story_start_at,omitempty"`
+	StoryCurrentAt *string `json:"story_current_at,omitempty"`
+	DeadAt         *string `json:"dead_at,omitempty"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 type StatusBar struct {
@@ -45,6 +48,24 @@ func ToSummaryResponse(
 	stamina := sheet.Stamina
 	health := sheet.Health
 	// aura := sheet.Aura
+
+	var storyStartAtStr *string
+	if sheet.StoryStartAt != nil {
+		formatted := sheet.StoryStartAt.Format("2006-01-02")
+		storyStartAtStr = &formatted
+	}
+
+	var storyCurrentAtStr *string
+	if sheet.StoryCurrentAt != nil {
+		formatted := sheet.StoryCurrentAt.Format("2006-01-02")
+		storyCurrentAtStr = &formatted
+	}
+
+	var deadAtStr *string
+	if sheet.DeadAt != nil {
+		formatted := sheet.DeadAt.Format(time.RFC3339)
+		deadAtStr = &formatted
+	}
 
 	return CharacterSummaryResponse{
 		UUID:           sheet.UUID,
@@ -80,7 +101,10 @@ func ToSummaryResponse(
 		// 	Curr: aura.Curr,
 		// 	Max:  aura.Max,
 		// },
-		CreatedAt: sheet.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: sheet.UpdatedAt.Format(time.RFC3339),
+		StoryStartAt:   storyStartAtStr,
+		StoryCurrentAt: storyCurrentAtStr,
+		DeadAt:         deadAtStr,
+		CreatedAt:      sheet.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      sheet.UpdatedAt.Format(time.RFC3339),
 	}
 }

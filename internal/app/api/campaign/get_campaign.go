@@ -35,6 +35,7 @@ type GetCampaignResponseBody struct {
 	UpdatedAt               string  `json:"updated_at"`
 
 	CharacterSheets []sheet.CharacterSummaryResponse `json:"character_sheets,omitempty"`
+	PendingSheets   []sheet.CharacterSummaryResponse `json:"pending_sheets,omitempty"`
 	Matches         []match.MatchSummaryResponse     `json:"matches,omitempty"`
 }
 
@@ -76,10 +77,16 @@ func GetCampaignHandler(
 			storyEndAtStr = &formattedDate
 		}
 
-		sheetsLen := len(campaign.CharacterSheets)
-		characterSheets := make([]sheet.CharacterSummaryResponse, 0, sheetsLen)
+		characterSheetsLen := len(campaign.CharacterSheets)
+		characterSheets := make([]sheet.CharacterSummaryResponse, 0, characterSheetsLen)
 		for _, cs := range campaign.CharacterSheets {
 			characterSheets = append(characterSheets, sheet.ToSummaryResponse(cs))
+		}
+
+		pendingSheetsLen := len(campaign.PendingSheets)
+		pendingSheets := make([]sheet.CharacterSummaryResponse, 0, pendingSheetsLen)
+		for _, ps := range campaign.PendingSheets {
+			pendingSheets = append(pendingSheets, sheet.ToSummaryResponse(ps))
 		}
 
 		matchesLen := len(campaign.Matches)
@@ -101,6 +108,7 @@ func GetCampaignHandler(
 			StoryCurrentAt:          storyCurrentAtStr,
 			StoryEndAt:              storyEndAtStr,
 			CharacterSheets:         characterSheets,
+			PendingSheets:           pendingSheets,
 			Matches:                 matches,
 			CreatedAt:               campaign.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               campaign.UpdatedAt.Format(http.TimeFormat),

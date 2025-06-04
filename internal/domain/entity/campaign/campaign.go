@@ -22,6 +22,7 @@ type Campaign struct {
 	StoryCurrentAt          *time.Time
 	StoryEndAt              *time.Time
 	CharacterSheets         []model.CharacterSheetSummary
+	PendingSheets           []model.CharacterSheetSummary
 	Matches                 []match.Summary
 	CreatedAt               time.Time
 	UpdatedAt               time.Time

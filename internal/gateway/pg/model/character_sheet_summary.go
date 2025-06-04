@@ -31,6 +31,9 @@ type CharacterSheetSummary struct {
 	Stamina        StatusBar
 	Health         StatusBar
 	Aura           StatusBar
+	StoryStartAt   *time.Time
+	StoryCurrentAt *time.Time
+	DeadAt         *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

@@ -65,7 +65,7 @@ func (r *Repository) GetCampaign(
 		return nil, fmt.Errorf("failed to fetch campaign: %w", err)
 	}
 
-	const sheetsQuery = `
+	const pendingSheetsQuery = `
         SELECT 
             cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
             cs.category_name, cs.curr_hex_value,
@@ -74,6 +74,7 @@ func (r *Repository) GetCampaign(
             cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
             cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
             cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
+						cs.story_start_at, cs.story_current_at, cs.dead_at,
             cs.created_at, cs.updated_at,
             cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
         FROM submit_character_sheets scs
@@ -82,13 +83,13 @@ func (r *Repository) GetCampaign(
         WHERE scs.campaign_uuid = $1
         ORDER BY cp.nickname ASC
     `
-	rows, err := tx.Query(ctx, sheetsQuery, uuid)
+	rows, err := tx.Query(ctx, pendingSheetsQuery, uuid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch submitted character sheets: %w", err)
+		return nil, fmt.Errorf("failed to fetch submitted pending character sheets: %w", err)
 	}
 	defer rows.Close()
 
-	var sheets []model.CharacterSheetSummary
+	var pendingSheets []model.CharacterSheetSummary
 	for rows.Next() {
 		var sheet model.CharacterSheetSummary
 		err := rows.Scan(
@@ -99,20 +100,68 @@ func (r *Repository) GetCampaign(
 			&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
 			&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,
 			&sheet.Aura.Min, &sheet.Aura.Curr, &sheet.Aura.Max,
+			&sheet.StoryStartAt, &sheet.StoryCurrentAt, &sheet.DeadAt,
 			&sheet.CreatedAt, &sheet.UpdatedAt,
 			&sheet.NickName, &sheet.FullName, &sheet.Alignment, &sheet.CharacterClass, &sheet.Birthday,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan character sheet summary: %w", err)
 		}
-		sheets = append(sheets, sheet)
+		pendingSheets = append(pendingSheets, sheet)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over character sheets: %w", err)
 	}
-	c.CharacterSheets = sheets
+	c.PendingSheets = pendingSheets
 
-	// TODO: fix match here
+	const characterSheetsQuery = `
+        SELECT 
+            cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
+            cs.category_name, cs.curr_hex_value,
+            cs.level, cs.points, cs.talent_lvl, cs.skills_lvl,
+            cs.physicals_lvl, cs.mentals_lvl, cs.spirituals_lvl,
+            cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
+            cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
+            cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
+            cs.story_start_at, cs.story_current_at, cs.dead_at,
+            cs.created_at, cs.updated_at,
+            cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
+        FROM character_sheets cs
+        JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
+        WHERE cs.campaign_uuid = $1
+        ORDER BY cp.nickname ASC
+    `
+	rows, err = tx.Query(ctx, characterSheetsQuery, uuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch character sheets: %w", err)
+	}
+	defer rows.Close()
+
+	var characterSheets []model.CharacterSheetSummary
+	for rows.Next() {
+		var sheet model.CharacterSheetSummary
+		err := rows.Scan(
+			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
+			&sheet.CategoryName, &sheet.CurrHexValue,
+			&sheet.Level, &sheet.Points, &sheet.TalentLvl, &sheet.SkillsLvl,
+			&sheet.PhysicalsLvl, &sheet.MentalsLvl, &sheet.SpiritualsLvl,
+			&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
+			&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,
+			&sheet.Aura.Min, &sheet.Aura.Curr, &sheet.Aura.Max,
+			&sheet.StoryStartAt, &sheet.StoryCurrentAt, &sheet.DeadAt,
+			&sheet.CreatedAt, &sheet.UpdatedAt,
+			&sheet.NickName, &sheet.FullName, &sheet.Alignment, &sheet.CharacterClass, &sheet.Birthday,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan character sheet summary: %w", err)
+		}
+		characterSheets = append(characterSheets, sheet)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over character sheets: %w", err)
+	}
+	c.CharacterSheets = characterSheets
+
 	const matchesQuery = `
         SELECT 
             uuid, campaign_uuid,
