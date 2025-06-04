@@ -37,7 +37,7 @@ func (uc *GetMatchUC) GetMatch(
 		return nil, err
 	}
 
-	if match.MasterUUID != userUUID {
+	if match.MasterUUID != userUUID && !match.IsPublic {
 		return nil, auth.ErrInsufficientPermissions
 	}
 	return match, nil

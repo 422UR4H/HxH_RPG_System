@@ -37,7 +37,7 @@ func (uc *GetCampaignUC) GetCampaign(
 		return nil, err
 	}
 
-	if campaign.UserUUID != userUUID {
+	if campaign.UserUUID != userUUID && !campaign.IsPublic {
 		return nil, auth.ErrInsufficientPermissions
 	}
 	return campaign, nil
