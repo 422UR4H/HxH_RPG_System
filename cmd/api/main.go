@@ -139,11 +139,13 @@ func main() {
 	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
 	getMatchUC := domainMatch.NewGetMatchUC(matchRepo)
 	listMatchesUC := domainMatch.NewListMatchesUC(matchRepo)
+	listPublicUpcomingMatchesUC := domainMatch.NewListPublicUpcomingMatchesUC(matchRepo)
 
 	matchesApi := matchHandler.Api{
-		CreateMatchHandler: matchHandler.CreateMatchHandler(createMatchUC),
-		GetMatchHandler:    matchHandler.GetMatchHandler(getMatchUC),
-		ListMatchesHandler: matchHandler.ListMatchesHandler(listMatchesUC),
+		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),
+		GetMatchHandler:                  matchHandler.GetMatchHandler(getMatchUC),
+		ListMatchesHandler:               matchHandler.ListMatchesHandler(listMatchesUC),
+		ListPublicUpcomingMatchesHandler: matchHandler.ListPublicUpcomingMatchesHandler(listPublicUpcomingMatchesUC),
 	}
 
 	chiServer := api.NewServer()

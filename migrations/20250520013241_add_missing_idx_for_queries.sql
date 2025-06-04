@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_scenarios_name ON scenarios(name);
 CREATE INDEX IF NOT EXISTS idx_matches_master_uuid ON matches(master_uuid);
 CREATE INDEX IF NOT EXISTS idx_matches_master_uuid_title ON matches(master_uuid, title);
 CREATE INDEX IF NOT EXISTS idx_matches_campaign_uuid ON matches(campaign_uuid);
+CREATE INDEX IF NOT EXISTS idx_matches_game_start_at ON matches(game_start_at);
 
 COMMIT;
 -- +goose StatementEnd

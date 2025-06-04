@@ -12,9 +12,10 @@ import (
 type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
-	CreateMatchHandler Handler[CreateMatchRequest, CreateMatchResponse]
-	GetMatchHandler    Handler[GetMatchRequest, GetMatchResponse]
-	ListMatchesHandler Handler[struct{}, ListMatchesResponse]
+	CreateMatchHandler               Handler[CreateMatchRequest, CreateMatchResponse]
+	GetMatchHandler                  Handler[GetMatchRequest, GetMatchResponse]
+	ListMatchesHandler               Handler[struct{}, ListMatchesResponse]
+	ListPublicUpcomingMatchesHandler Handler[struct{}, ListMatchesResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -51,7 +52,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
 		Path:        "/matches",
-		Description: "List all user's matches",
+		Description: "List all master's matches summaries sorted by story_start_at",
 		Tags:        []string{"matches"},
 		Errors: []int{
 			http.StatusBadRequest,
@@ -59,4 +60,15 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.ListMatchesHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/public/matches",
+		Description: "List all upcoming public matches sorted by game_start_at",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.ListPublicUpcomingMatchesHandler)
 }
