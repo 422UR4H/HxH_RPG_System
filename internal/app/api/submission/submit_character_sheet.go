@@ -1,4 +1,4 @@
-package sheet
+package submission
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/domain/submission"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -26,7 +27,7 @@ type SubmitCharacterSheetResponse struct {
 }
 
 func SubmitCharacterSheetHandler(
-	uc charactersheet.ISubmitCharacterSheet,
+	uc domainSubmission.ISubmitCharacterSheet,
 ) func(context.Context, *SubmitCharacterRequest) (*SubmitCharacterSheetResponse, error) {
 
 	return func(ctx context.Context, req *SubmitCharacterRequest) (*SubmitCharacterSheetResponse, error) {
@@ -42,11 +43,11 @@ func SubmitCharacterSheetHandler(
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, charactersheet.ErrNotCharacterSheetOwner):
+			case errors.Is(err, domainSubmission.ErrNotCharacterSheetOwner):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, charactersheet.ErrMasterCannotSubmitOwnSheet):
+			case errors.Is(err, domainSubmission.ErrMasterCannotSubmitOwnSheet):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, charactersheet.ErrCharacterAlreadySubmitted):
+			case errors.Is(err, domainSubmission.ErrCharacterAlreadySubmitted):
 				return nil, huma.Error409Conflict(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

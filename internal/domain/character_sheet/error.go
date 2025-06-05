@@ -8,16 +8,13 @@ import (
 )
 
 var (
-	ErrCharacterSheetNotFound     = domain.NewValidationError(errors.New("character sheet not found"))
-	ErrCharacterClassNotFound     = domain.NewValidationError(errors.New("character class not found"))
-	ErrNicknameNotAllowed         = domain.NewValidationError(errors.New("nickname is not allowed"))
-	ErrNicknameAlreadyExists      = domain.NewValidationError(errors.New("nickname already exists"))
-	ErrNenHexNotInitialized       = domain.NewValidationError(errors.New("nen hexagon value not initialized"))
-	ErrMaxCharacterSheetsLimit    = domain.NewValidationError(errors.New("player cannot have more than 10 character sheets"))
-	ErrNotCharacterSheetOwner     = domain.NewValidationError(errors.New("not the owner of the character sheet"))
-	ErrCharacterAlreadySubmitted  = domain.NewValidationError(errors.New("character sheet is already submitted"))
-	ErrMasterCannotSubmitOwnSheet = domain.NewValidationError(errors.New("master cannot submit own character sheet"))
-	ErrInvalidUpdateHexValMethod  = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
+	ErrCharacterSheetNotFound    = domain.NewValidationError(errors.New("character sheet not found"))
+	ErrCharacterClassNotFound    = domain.NewValidationError(errors.New("character class not found"))
+	ErrNicknameNotAllowed        = domain.NewValidationError(errors.New("nickname is not allowed"))
+	ErrNicknameAlreadyExists     = domain.NewValidationError(errors.New("nickname already exists"))
+	ErrNenHexNotInitialized      = domain.NewValidationError(errors.New("nen hexagon value not initialized"))
+	ErrMaxCharacterSheetsLimit   = domain.NewValidationError(errors.New("player cannot have more than 10 character sheets"))
+	ErrInvalidUpdateHexValMethod = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
 )
 
 func NewCharacterClassNotFoundError(className string) error {

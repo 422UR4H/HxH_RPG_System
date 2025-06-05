@@ -14,6 +14,7 @@ import (
 	matchHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
+	submissionHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
@@ -21,10 +22,12 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
+	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/domain/submission"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	submitPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submit"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/ardanlabs/conf/v3"
@@ -71,6 +74,7 @@ func main() {
 	scenarioRepo := scenarioPg.NewRepository(pgPool)
 	campaignRepo := campaignPg.NewRepository(pgPool)
 	matchRepo := matchPg.NewRepository(pgPool)
+	submitRepo := submitPg.NewRepository(pgPool)
 
 	registerUC := domainAuth.NewRegisterUC(authRepo)
 	loginUC := domainAuth.NewLoginUC(&sessions, authRepo)
@@ -92,10 +96,6 @@ func main() {
 		characterSheetFactory,
 		characterSheetRepo,
 	)
-	submitCharacterSheetUC := cs.NewSubmitCharacterSheetUC(
-		characterSheetRepo,
-		campaignRepo,
-	)
 	listCharacterClassesUC := cs.NewListCharacterClassesUC(
 		&characterClasses,
 	)
@@ -108,7 +108,6 @@ func main() {
 	)
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler:  sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
-		SubmitCharacterSheetHandler:  sheetHandler.SubmitCharacterSheetHandler(submitCharacterSheetUC),
 		GetCharacterSheetHandler:     sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
 		ListCharacterSheetsHandler:   sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
 		ListClassesHandler:           sheetHandler.ListClassesHandler(listCharacterClassesUC),
@@ -148,6 +147,20 @@ func main() {
 		ListPublicUpcomingMatchesHandler: matchHandler.ListPublicUpcomingMatchesHandler(listPublicUpcomingMatchesUC),
 	}
 
+	submitCharacterSheetUC := domainSubmission.NewSubmitCharacterSheetUC(
+		submitRepo,
+		characterSheetRepo,
+		campaignRepo,
+	)
+	acceptCharacterSheetSubmissionUC := domainSubmission.NewAcceptCharacterSheetSubmissionUC(
+		submitRepo,
+		campaignRepo,
+	)
+	submissionsApi := submissionHandler.Api{
+		SubmitCharacterSheetHandler:  submissionHandler.SubmitCharacterSheetHandler(submitCharacterSheetUC),
+		AcceptSheetSubmissionHandler: submissionHandler.AcceptSheetSubmissionHandler(acceptCharacterSheetSubmissionUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -157,6 +170,7 @@ func main() {
 		ScenarioHandler:       &scenariosApi,
 		CampaignHandler:       &campaignsApi,
 		MatchHandler:          &matchesApi,
+		SubmissionHandler:     &submissionsApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}

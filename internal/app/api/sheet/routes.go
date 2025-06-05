@@ -13,7 +13,6 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
 	CreateCharacterSheetHandler  Handler[CreateCharacterSheetRequest, CreateCharacterSheetResponse]
-	SubmitCharacterSheetHandler  Handler[SubmitCharacterRequest, SubmitCharacterSheetResponse]
 	GetCharacterSheetHandler     Handler[GetCharacterSheetRequest, GetCharacterSheetResponse]
 	ListCharacterSheetsHandler   Handler[struct{}, ListCharacterSheetsResponse]
 	ListClassesHandler           Handler[struct{}, ListCharacterClassesResponse]
@@ -63,22 +62,6 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.ListCharacterSheetsHandler)
-
-	huma.Register(api, huma.Operation{
-		Method:      http.MethodPost,
-		Path:        "/charactersheets/submit",
-		Description: "Submit a character sheet to a campaign",
-		Tags:        []string{"character_sheets"},
-		Errors: []int{
-			http.StatusNotFound,
-			http.StatusConflict,
-			http.StatusBadRequest,
-			http.StatusUnauthorized,
-			http.StatusForbidden,
-			http.StatusInternalServerError,
-		},
-		DefaultStatus: http.StatusCreated,
-	}, a.SubmitCharacterSheetHandler)
 
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
