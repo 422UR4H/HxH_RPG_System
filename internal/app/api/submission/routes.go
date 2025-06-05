@@ -14,6 +14,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 type Api struct {
 	SubmitCharacterSheetHandler  Handler[SubmitCharacterRequest, SubmitCharacterSheetResponse]
 	AcceptSheetSubmissionHandler Handler[AcceptSheetSubmissionRequest, AcceptSheetSubmissionResponse]
+	RejectSheetSubmissionHandler Handler[RejectSheetSubmissionRequest, RejectSheetSubmissionResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -46,4 +47,18 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.AcceptSheetSubmissionHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/submissions/{sheet_uuid}/reject",
+		Description: "Rejeitar uma submissão de ficha de personagem para campanha",
+		Tags:        []string{"campaigns", "character_sheets"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+			http.StatusInternalServerError,
+		},
+	}, a.RejectSheetSubmissionHandler)
 }

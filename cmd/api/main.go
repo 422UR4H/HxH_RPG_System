@@ -156,9 +156,14 @@ func main() {
 		submitRepo,
 		campaignRepo,
 	)
+	rejectCharacterSheetSubmissionUC := domainSubmission.NewRejectCharacterSheetSubmissionUC(
+		submitRepo,
+		campaignRepo,
+	)
 	submissionsApi := submissionHandler.Api{
 		SubmitCharacterSheetHandler:  submissionHandler.SubmitCharacterSheetHandler(submitCharacterSheetUC),
 		AcceptSheetSubmissionHandler: submissionHandler.AcceptSheetSubmissionHandler(acceptCharacterSheetSubmissionUC),
+		RejectSheetSubmissionHandler: submissionHandler.RejectSheetSubmissionHandler(rejectCharacterSheetSubmissionUC),
 	}
 
 	chiServer := api.NewServer()

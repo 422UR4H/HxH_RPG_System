@@ -12,4 +12,5 @@ type IRepository interface {
 	ExistsSubmittedCharacterSheet(ctx context.Context, uuid uuid.UUID) (bool, error)
 	AcceptCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID) error
 	GetSubmissionCampaignUUIDBySheetUUID(ctx context.Context, sheetUUID uuid.UUID) (uuid.UUID, error)
+	RejectCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID) error
 }
