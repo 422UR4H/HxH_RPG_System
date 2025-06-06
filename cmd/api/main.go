@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
+	enrollmentHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
 	matchHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
@@ -18,12 +19,14 @@ import (
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/domain/submission"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
+	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
@@ -75,6 +78,7 @@ func main() {
 	campaignRepo := campaignPg.NewRepository(pgPool)
 	matchRepo := matchPg.NewRepository(pgPool)
 	submitRepo := submitPg.NewRepository(pgPool)
+	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
 
 	registerUC := domainAuth.NewRegisterUC(authRepo)
 	loginUC := domainAuth.NewLoginUC(&sessions, authRepo)
@@ -166,6 +170,15 @@ func main() {
 		RejectSheetSubmissionHandler: submissionHandler.RejectSheetSubmissionHandler(rejectCharacterSheetSubmissionUC),
 	}
 
+	enrollCharacterSheetUC := domainEnrollment.NewEnrollCharacterInMatchUC(
+		enrollmentRepo,
+		matchRepo,
+		characterSheetRepo,
+	)
+	enrollmentApi := enrollmentHandler.Api{
+		EnrollCharacterHandler: enrollmentHandler.EnrollCharacterHandler(enrollCharacterSheetUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -176,6 +189,7 @@ func main() {
 		CampaignHandler:       &campaignsApi,
 		MatchHandler:          &matchesApi,
 		SubmissionHandler:     &submissionsApi,
+		EnrollmentHandler:     &enrollmentApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}

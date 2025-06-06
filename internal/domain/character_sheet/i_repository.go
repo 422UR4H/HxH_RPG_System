@@ -15,4 +15,5 @@ type IRepository interface {
 	GetCharacterSheetByUUID(ctx context.Context, uuid string) (*model.CharacterSheet, error)
 	ListCharacterSheetsByPlayerUUID(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error)
 	UpdateNenHexagonValue(ctx context.Context, uuid string, val int) error
+	GetCharacterSheetRelationshipUUIDs(ctx context.Context, uuid uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error)
 }

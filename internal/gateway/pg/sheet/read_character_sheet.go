@@ -136,6 +136,30 @@ func (r *Repository) GetCharacterSheetPlayerUUID(
 	return playerUUID, nil
 }
 
+func (r *Repository) GetCharacterSheetRelationshipUUIDs(
+	ctx context.Context, sheet_uuid uuid.UUID,
+) (model.CharacterSheetRelationshipUUIDs, error) {
+	const query = `
+		SELECT player_uuid, master_uuid, campaign_uuid
+		FROM character_sheets
+		WHERE uuid = $1
+	`
+	var relationshipUUIDs model.CharacterSheetRelationshipUUIDs
+	err := r.q.QueryRow(ctx, query, sheet_uuid).Scan(
+		&relationshipUUIDs.PlayerUUID,
+		&relationshipUUIDs.MasterUUID,
+		&relationshipUUIDs.CampaignUUID,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.CharacterSheetRelationshipUUIDs{}, ErrCharacterSheetNotFound
+		}
+		return model.CharacterSheetRelationshipUUIDs{},
+			fmt.Errorf("failed to fetch character sheet relationship UUIDs: %w", err)
+	}
+	return relationshipUUIDs, nil
+}
+
 func (r *Repository) ExistsCharacterWithNick(ctx context.Context, nick string) (bool, error) {
 	const query = `
 		SELECT EXISTS (

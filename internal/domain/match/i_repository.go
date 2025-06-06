@@ -11,6 +11,7 @@ import (
 type IRepository interface {
 	CreateMatch(ctx context.Context, match *match.Match) error
 	GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match, error)
+	GetMatchCampaignUUID(ctx context.Context, matchUUID uuid.UUID) (uuid.UUID, error)
 	ListMatchesByMasterUUID(ctx context.Context, masterUUID uuid.UUID) ([]*match.Summary, error)
 	ListPublicUpcomingMatches(ctx context.Context, after time.Time, masterUUID uuid.UUID) ([]*match.Summary, error)
 }

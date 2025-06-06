@@ -43,7 +43,7 @@ func SubmitCharacterSheetHandler(
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainSubmission.ErrNotCharacterSheetOwner):
+			case errors.Is(err, charactersheet.ErrNotCharacterSheetOwner):
 				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, domainSubmission.ErrMasterCannotSubmitOwnSheet):
 				return nil, huma.Error403Forbidden(err.Error())

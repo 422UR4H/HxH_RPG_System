@@ -2,20 +2,21 @@
 -- +goose StatementBegin
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS submit_character_sheets (
+CREATE TABLE IF NOT EXISTS enrollments (
   id SERIAL PRIMARY KEY,
   uuid UUID NOT NULL DEFAULT gen_random_uuid(),
-  campaign_uuid UUID NOT NULL,
+  match_uuid UUID NOT NULL,
   character_sheet_uuid UUID NOT NULL,
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
+  
   UNIQUE (uuid),
   UNIQUE (character_sheet_uuid),
-  FOREIGN KEY (campaign_uuid) REFERENCES campaigns (uuid),
+  FOREIGN KEY (match_uuid) REFERENCES matches (uuid),
   FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets (uuid)
 );
-CREATE INDEX idx_submit_character_sheet_campaign_uuid ON submit_character_sheets (campaign_uuid);
+CREATE INDEX idx_enrollments_match_uuid ON enrollments(match_uuid);
+CREATE INDEX idx_enrollments_character_sheet_uuid ON enrollments(character_sheet_uuid);
 
 COMMIT;
 -- +goose StatementEnd
@@ -24,7 +25,7 @@ COMMIT;
 -- +goose StatementBegin
 BEGIN;
 
-DROP TABLE IF EXISTS submit_character_sheets;
+DROP TABLE IF EXISTS enrollments;
 
 COMMIT;
 -- +goose StatementEnd

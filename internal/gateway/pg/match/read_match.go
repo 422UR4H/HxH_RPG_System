@@ -64,6 +64,25 @@ func (r *Repository) GetMatch(
 	return &m, nil
 }
 
+func (r *Repository) GetMatchCampaignUUID(
+	ctx context.Context, matchUUID uuid.UUID,
+) (uuid.UUID, error) {
+	const query = `
+        SELECT campaign_uuid
+        FROM matches
+        WHERE uuid = $1
+    `
+	var campaignUUID uuid.UUID
+	err := r.q.QueryRow(ctx, query, matchUUID).Scan(&campaignUUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrMatchNotFound
+		}
+		return uuid.Nil, fmt.Errorf("failed to get match campaign UUID: %w", err)
+	}
+	return campaignUUID, nil
+}
+
 func (r *Repository) ListMatchesByMasterUUID(
 	ctx context.Context, masterUUID uuid.UUID,
 ) ([]*match.Summary, error) {

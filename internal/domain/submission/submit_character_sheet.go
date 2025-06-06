@@ -52,7 +52,7 @@ func (uc *SubmitCharacterSheetUC) Submit(
 		return err
 	}
 	if playerUUID != userUUID {
-		return ErrNotCharacterSheetOwner
+		return charactersheet.ErrNotCharacterSheetOwner
 	}
 
 	exists, err := uc.repo.ExistsSubmittedCharacterSheet(ctx, sheetUUID)
@@ -70,15 +70,8 @@ func (uc *SubmitCharacterSheetUC) Submit(
 	if err != nil {
 		return err
 	}
-
 	if playerUUID == masterUUID {
 		return ErrMasterCannotSubmitOwnSheet
 	}
-	err = uc.repo.SubmitCharacterSheet(
-		ctx, sheetUUID, campaignUUID, time.Now(),
-	)
-	if err != nil {
-		return err
-	}
-	return nil
+	return uc.repo.SubmitCharacterSheet(ctx, sheetUUID, campaignUUID, time.Now())
 }
