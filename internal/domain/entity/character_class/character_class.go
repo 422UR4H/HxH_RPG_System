@@ -3,9 +3,9 @@ package characterclass
 import (
 	"slices"
 
+	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 )
 
 type CharacterClass struct {

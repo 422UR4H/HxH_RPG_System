@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
 )
 
 type IUpdateNenHexagonValue interface {

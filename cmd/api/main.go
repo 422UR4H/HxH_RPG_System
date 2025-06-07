@@ -21,7 +21,7 @@ import (
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/domain/submission"

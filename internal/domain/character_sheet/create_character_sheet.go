@@ -6,8 +6,8 @@ import (
 	"time"
 
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )

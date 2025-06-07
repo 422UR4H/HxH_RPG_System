@@ -1,7 +1,7 @@
 package sheet
 
 import (
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/sheet"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
 

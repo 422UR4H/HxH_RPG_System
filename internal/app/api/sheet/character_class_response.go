@@ -2,9 +2,9 @@ package sheet
 
 import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
+	p "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
+	s "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	p "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/proficiency"
-	s "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/skill"
 )
 
 type CharacterClassResponse struct {

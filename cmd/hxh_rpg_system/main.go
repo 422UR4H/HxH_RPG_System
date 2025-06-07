@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	experience "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/experience"
+	experience "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	// status "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/status"
 )
 

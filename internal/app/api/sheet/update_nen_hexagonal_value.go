@@ -7,8 +7,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/spiritual"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
