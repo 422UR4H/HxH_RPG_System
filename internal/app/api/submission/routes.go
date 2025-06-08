@@ -22,7 +22,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Method:      http.MethodPost,
 		Path:        "/submissions/charactersheets/submit",
 		Description: "Submit a character sheet to a campaign",
-		Tags:        []string{"character_sheets"},
+		Tags:        []string{"submissions"},
 		Errors: []int{
 			http.StatusNotFound,
 			http.StatusConflict,
@@ -38,7 +38,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Method:      http.MethodPost,
 		Path:        "/submissions/{sheet_uuid}/accept",
 		Description: "Accept a character sheet submission for a campaign",
-		Tags:        []string{"campaigns", "character_sheets"},
+		Tags:        []string{"submissions"},
 		Errors: []int{
 			http.StatusNotFound,
 			http.StatusBadRequest,
@@ -52,7 +52,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		Method:      http.MethodPost,
 		Path:        "/submissions/{sheet_uuid}/reject",
 		Description: "Rejeitar uma submissão de ficha de personagem para campanha",
-		Tags:        []string{"campaigns", "character_sheets"},
+		Tags:        []string{"submissions"},
 		Errors: []int{
 			http.StatusNotFound,
 			http.StatusBadRequest,
