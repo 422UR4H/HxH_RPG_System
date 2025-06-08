@@ -22,7 +22,7 @@ func NewListCampaignsUC(repo IRepository) *ListCampaignsUC {
 }
 
 func (uc *ListCampaignsUC) ListCampaigns(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.Summary, error) {
-	campaigns, err := uc.repo.ListCampaignsByUserUUID(ctx, userUUID)
+	campaigns, err := uc.repo.ListCampaignsByMasterUUID(ctx, userUUID)
 	if err != nil {
 		return nil, err
 	}

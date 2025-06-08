@@ -16,7 +16,7 @@ type ICreateCampaign interface {
 }
 
 type CreateCampaignInput struct {
-	UserUUID                uuid.UUID
+	MasterUUID              uuid.UUID
 	ScenarioUUID            *uuid.UUID
 	Name                    string
 	BriefInitialDescription string
@@ -60,8 +60,8 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		return nil, ErrMaxBriefDescLength
 	}
 
-	campaignsCount, err := uc.campaignRepo.CountCampaignsByUserUUID(
-		ctx, input.UserUUID,
+	campaignsCount, err := uc.campaignRepo.CountCampaignsByMasterUUID(
+		ctx, input.MasterUUID,
 	)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	}
 
 	newCampaign, err := campaign.NewCampaign(
-		input.UserUUID,
+		input.MasterUUID,
 		input.ScenarioUUID,
 		input.Name,
 		input.BriefInitialDescription,

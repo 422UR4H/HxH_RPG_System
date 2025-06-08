@@ -63,7 +63,7 @@ func (uc *SubmitCharacterSheetUC) Submit(
 		return ErrCharacterAlreadySubmitted
 	}
 
-	masterUUID, err := uc.campaignRepo.GetCampaignUserUUID(ctx, campaignUUID)
+	masterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, campaignUUID)
 	if err == campaignPg.ErrCampaignNotFound {
 		return campaignDomain.ErrCampaignNotFound
 	}

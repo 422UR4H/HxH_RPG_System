@@ -69,7 +69,7 @@ func (uc *CreateMatchUC) CreateMatch(
 		return nil, err
 	}
 
-	if campaign.UserUUID != input.MasterUUID {
+	if campaign.MasterUUID != input.MasterUUID {
 		return nil, ErrNotCampaignOwner
 	}
 

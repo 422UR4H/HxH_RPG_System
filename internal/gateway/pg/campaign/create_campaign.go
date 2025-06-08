@@ -26,7 +26,7 @@ func (r *Repository) CreateCampaign(ctx context.Context, campaign *campaign.Camp
 
 	const query = `
         INSERT INTO campaigns (
-            uuid, user_uuid, scenario_uuid,
+            uuid, master_uuid, scenario_uuid,
 						name, brief_initial_description, description, 
 						is_public, call_link,
             story_start_at, story_current_at, story_end_at,
@@ -36,7 +36,7 @@ func (r *Repository) CreateCampaign(ctx context.Context, campaign *campaign.Camp
         )
     `
 	_, err = tx.Exec(ctx, query,
-		campaign.UUID, campaign.UserUUID, campaign.ScenarioUUID,
+		campaign.UUID, campaign.MasterUUID, campaign.ScenarioUUID,
 		campaign.Name, campaign.BriefInitialDescription, campaign.Description,
 		campaign.IsPublic, campaign.CallLink,
 		campaign.StoryStartAt, campaign.StoryCurrentAt, campaign.StoryEndAt,

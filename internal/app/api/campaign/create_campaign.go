@@ -74,7 +74,7 @@ func CreateCampaignHandler(
 		}
 
 		input := &domainCampaign.CreateCampaignInput{
-			UserUUID:                userUUID,
+			MasterUUID:              userUUID,
 			ScenarioUUID:            nil, //req.Body.ScenarioUUID,
 			Name:                    req.Body.Name,
 			BriefInitialDescription: req.Body.BriefInitialDescription,

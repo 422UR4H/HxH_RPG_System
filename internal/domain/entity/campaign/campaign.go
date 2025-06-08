@@ -10,7 +10,7 @@ import (
 
 type Campaign struct {
 	UUID                    uuid.UUID
-	UserUUID                uuid.UUID
+	MasterUUID              uuid.UUID
 	ScenarioUUID            *uuid.UUID
 	Name                    string
 	BriefInitialDescription string
@@ -29,7 +29,7 @@ type Campaign struct {
 }
 
 func NewCampaign(
-	userUUID uuid.UUID,
+	masterUUID uuid.UUID,
 	scenarioUUID *uuid.UUID,
 	name string,
 	briefInitialDescription string,
@@ -42,7 +42,7 @@ func NewCampaign(
 	now := time.Now()
 	return &Campaign{
 		UUID:                    uuid.New(),
-		UserUUID:                userUUID,
+		MasterUUID:              masterUUID,
 		ScenarioUUID:            scenarioUUID,
 		Name:                    name,
 		BriefInitialDescription: briefInitialDescription,

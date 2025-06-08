@@ -10,8 +10,8 @@ CREATE INDEX IF NOT EXISTS idx_character_profiles_nickname ON character_profiles
 CREATE INDEX IF NOT EXISTS idx_proficiencies_character_sheet_uuid ON proficiencies(character_sheet_uuid);
 CREATE INDEX IF NOT EXISTS idx_joint_proficiencies_character_sheet_uuid ON joint_proficiencies(character_sheet_uuid);
 
-CREATE INDEX IF NOT EXISTS idx_campaigns_user_uuid ON campaigns(user_uuid);
-CREATE INDEX IF NOT EXISTS idx_campaigns_user_uuid_name ON campaigns(user_uuid, name);
+CREATE INDEX IF NOT EXISTS idx_campaigns_master_uuid ON campaigns(master_uuid);
+CREATE INDEX IF NOT EXISTS idx_campaigns_master_uuid_name ON campaigns(master_uuid, name);
 CREATE INDEX IF NOT EXISTS idx_campaigns_scenario_uuid ON campaigns(scenario_uuid);
 
 CREATE INDEX IF NOT EXISTS idx_scenarios_user_uuid ON scenarios(user_uuid);
@@ -36,8 +36,8 @@ DROP INDEX IF EXISTS idx_character_profiles_nickname;
 DROP INDEX IF EXISTS idx_proficiencies_character_sheet_uuid;
 DROP INDEX IF EXISTS idx_joint_proficiencies_character_sheet_uuid;
 
-DROP INDEX IF EXISTS idx_campaigns_user_uuid;
-DROP INDEX IF EXISTS idx_campaigns_user_uuid_name;
+DROP INDEX IF EXISTS idx_campaigns_master_uuid;
+DROP INDEX IF EXISTS idx_campaigns_master_uuid_name;
 DROP INDEX IF EXISTS idx_campaigns_scenario_uuid;
 
 DROP INDEX IF EXISTS idx_scenarios_user_uuid;

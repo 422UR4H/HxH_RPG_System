@@ -33,6 +33,7 @@ func (uc *RejectCharacterSheetSubmissionUC) Reject(
 	sheetUUID uuid.UUID,
 	masterUUID uuid.UUID,
 ) error {
+	// TODO: optimize that 2 calls to db to only 1
 	campaignUUID, err := uc.repo.GetSubmissionCampaignUUIDBySheetUUID(ctx, sheetUUID)
 	if err == submit.ErrSubmissionNotFound {
 		return ErrSubmissionNotFound
@@ -41,7 +42,7 @@ func (uc *RejectCharacterSheetSubmissionUC) Reject(
 		return err
 	}
 
-	campaignMasterUUID, err := uc.campaignRepo.GetCampaignUserUUID(ctx, campaignUUID)
+	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, campaignUUID)
 	if err == campaignPg.ErrCampaignNotFound {
 		return campaignDomain.ErrCampaignNotFound
 	}

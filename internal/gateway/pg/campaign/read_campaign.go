@@ -33,7 +33,7 @@ func (r *Repository) GetCampaign(
 
 	const campaignQuery = `
         SELECT 
-            uuid, user_uuid, scenario_uuid,
+            uuid, master_uuid, scenario_uuid,
 						name, brief_initial_description, brief_final_description, description,
 						is_public, call_link,
             story_start_at, story_current_at, story_end_at,
@@ -44,7 +44,7 @@ func (r *Repository) GetCampaign(
 	var c campaign.Campaign
 	err = tx.QueryRow(ctx, campaignQuery, uuid).Scan(
 		&c.UUID,
-		&c.UserUUID,
+		&c.MasterUUID,
 		&c.ScenarioUUID,
 		&c.Name,
 		&c.BriefInitialDescription,
@@ -208,8 +208,8 @@ func (r *Repository) GetCampaign(
 	return &c, nil
 }
 
-func (r *Repository) ListCampaignsByUserUUID(
-	ctx context.Context, userUUID uuid.UUID) ([]*campaign.Summary, error) {
+func (r *Repository) ListCampaignsByMasterUUID(
+	ctx context.Context, masterUUID uuid.UUID) ([]*campaign.Summary, error) {
 
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
@@ -234,10 +234,10 @@ func (r *Repository) ListCampaignsByUserUUID(
 							story_start_at, story_current_at, story_end_at,
 							created_at, updated_at
 					FROM campaigns
-					WHERE user_uuid = $1
+					WHERE master_uuid = $1
 					ORDER BY name ASC
 	`
-	rows, err := tx.Query(ctx, query, userUUID)
+	rows, err := tx.Query(ctx, query, masterUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch campaigns summary: %w", err)
 	}
@@ -271,21 +271,22 @@ func (r *Repository) ListCampaignsByUserUUID(
 	return campaigns, nil
 }
 
-func (r *Repository) GetCampaignUserUUID(
+// GetCampaignMasterUUID retrieves the master UUID associated with a campaign.
+func (r *Repository) GetCampaignMasterUUID(
 	ctx context.Context, campaignUUID uuid.UUID) (uuid.UUID, error) {
 
 	const query = `
-        SELECT user_uuid FROM campaigns WHERE uuid = $1
+        SELECT master_uuid FROM campaigns WHERE uuid = $1
     `
-	var userUUID uuid.UUID
-	err := r.q.QueryRow(ctx, query, campaignUUID).Scan(&userUUID)
+	var masterUUID uuid.UUID
+	err := r.q.QueryRow(ctx, query, campaignUUID).Scan(&masterUUID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return uuid.Nil, ErrCampaignNotFound
 		}
-		return uuid.Nil, fmt.Errorf("failed to get campaign user UUID: %w", err)
+		return uuid.Nil, fmt.Errorf("failed to get campaign master UUID: %w", err)
 	}
-	return userUUID, nil
+	return masterUUID, nil
 }
 
 func (r *Repository) GetCampaignStoryDates(
@@ -308,7 +309,7 @@ func (r *Repository) GetCampaignStoryDates(
 
 	const campaignQuery = `
         SELECT 
-            uuid, user_uuid,
+            uuid, master_uuid,
             story_start_at, story_current_at, story_end_at
         FROM campaigns
         WHERE uuid = $1
@@ -316,7 +317,7 @@ func (r *Repository) GetCampaignStoryDates(
 	var c campaign.Campaign
 	err = tx.QueryRow(ctx, campaignQuery, uuid).Scan(
 		&c.UUID,
-		&c.UserUUID,
+		&c.MasterUUID,
 		&c.StoryStartAt,
 		&c.StoryCurrentAt,
 		&c.StoryEndAt,
@@ -330,8 +331,8 @@ func (r *Repository) GetCampaignStoryDates(
 	return &c, nil
 }
 
-func (r *Repository) CountCampaignsByUserUUID(
-	ctx context.Context, userUUID uuid.UUID) (int, error) {
+func (r *Repository) CountCampaignsByMasterUUID(
+	ctx context.Context, masterUUID uuid.UUID) (int, error) {
 
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
@@ -351,10 +352,10 @@ func (r *Repository) CountCampaignsByUserUUID(
 	const query = `
         SELECT COUNT(*) 
         FROM campaigns
-        WHERE user_uuid = $1
+        WHERE master_uuid = $1
     `
 	var count int
-	err = tx.QueryRow(ctx, query, userUUID).Scan(&count)
+	err = tx.QueryRow(ctx, query, masterUUID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count user campaigns: %w", err)
 	}

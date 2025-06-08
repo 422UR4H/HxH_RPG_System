@@ -5,7 +5,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS campaigns (
   id SERIAL PRIMARY KEY,
   uuid UUID NOT NULL DEFAULT gen_random_uuid(),
-  user_uuid UUID NOT NULL,
+  master_uuid UUID NOT NULL,
   scenario_uuid UUID,
 
   name VARCHAR(32) NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   UNIQUE (uuid),
-  FOREIGN KEY (user_uuid) REFERENCES users (uuid),
+  FOREIGN KEY (master_uuid) REFERENCES users (uuid),
   FOREIGN KEY (scenario_uuid) REFERENCES scenarios (uuid)
 );
 
