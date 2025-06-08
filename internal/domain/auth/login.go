@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/session"
 	pgUser "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	"github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"golang.org/x/crypto/bcrypt"
@@ -25,18 +27,24 @@ type ILogin interface {
 }
 
 type LoginUC struct {
-	sessions *sync.Map
-	repo     IRepository
+	sessions    *sync.Map
+	repo        IRepository
+	sessionRepo session.IRepository
 }
 
-func NewLoginUC(sessions *sync.Map, repo IRepository) *LoginUC {
+func NewLoginUC(
+	sessions *sync.Map, repo IRepository, sessionRepo session.IRepository,
+) *LoginUC {
 	return &LoginUC{
-		sessions: sessions,
-		repo:     repo,
+		sessions:    sessions,
+		repo:        repo,
+		sessionRepo: sessionRepo,
 	}
 }
 
-func (uc *LoginUC) Login(ctx context.Context, input *LoginInput) (LoginOutput, error) {
+func (uc *LoginUC) Login(
+	ctx context.Context, input *LoginInput) (LoginOutput, error) {
+
 	if input.Email == "" {
 		return LoginOutput{}, user.ErrMissingEmail
 	}
@@ -76,5 +84,9 @@ func (uc *LoginUC) Login(ctx context.Context, input *LoginInput) (LoginOutput, e
 	}
 	uc.sessions.Store(userEntity.UUID, token)
 
+	err = uc.sessionRepo.CreateSession(ctx, userEntity.UUID, token)
+	if err != nil {
+		fmt.Println("failed to persist session:", err)
+	}
 	return LoginOutput{Token: token, User: userEntity}, nil
 }

@@ -29,6 +29,7 @@ import (
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
+	sessionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/session"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	submitPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submit"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
@@ -73,6 +74,7 @@ func main() {
 	initCharacterClasses()
 
 	authRepo := user.NewRepository(pgPool)
+	sessionRepo := sessionPg.NewRepository(pgPool)
 	characterSheetRepo := sheetPg.NewRepository(pgPool)
 	scenarioRepo := scenarioPg.NewRepository(pgPool)
 	campaignRepo := campaignPg.NewRepository(pgPool)
@@ -81,7 +83,7 @@ func main() {
 	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
 
 	registerUC := domainAuth.NewRegisterUC(authRepo)
-	loginUC := domainAuth.NewLoginUC(&sessions, authRepo)
+	loginUC := domainAuth.NewLoginUC(&sessions, authRepo, sessionRepo)
 	authHandler := auth.NewAuthHandler(registerUC, loginUC)
 
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
@@ -195,7 +197,7 @@ func main() {
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}
-	authMiddleware := auth.AuthMiddlewareProvider(&sessions)
+	authMiddleware := auth.AuthMiddlewareProvider(&sessions, sessionRepo)
 	a.Routes(chiServer, authMiddleware)
 
 	server := http.Server{
