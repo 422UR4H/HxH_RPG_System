@@ -2,70 +2,95 @@ package charactersheet
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
-	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	pgSheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 )
 
 type IGetCharacterSheet interface {
 	GetCharacterSheet(
 		ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID,
-	) (*sheet.CharacterSheet, error)
+	) (*domainSheet.CharacterSheet, error)
 }
 
 type GetCharacterSheetUC struct {
 	characterSheets *sync.Map
-	factory         *sheet.CharacterSheetFactory
+	factory         *domainSheet.CharacterSheetFactory
 	repo            IRepository
+	campaignRepo    domainCampaign.IRepository
 }
 
 func NewGetCharacterSheetUC(
 	charSheets *sync.Map,
-	factory *sheet.CharacterSheetFactory,
+	factory *domainSheet.CharacterSheetFactory,
 	repo IRepository,
+	campaignRepo domainCampaign.IRepository,
 ) *GetCharacterSheetUC {
 	return &GetCharacterSheetUC{
 		characterSheets: charSheets,
 		factory:         factory,
 		repo:            repo,
+		campaignRepo:    campaignRepo,
 	}
 }
 
 func (uc *GetCharacterSheetUC) GetCharacterSheet(
-	ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID,
-) (*sheet.CharacterSheet, error) {
+	ctx context.Context, sheetUUID uuid.UUID, userUUID uuid.UUID,
+) (*domainSheet.CharacterSheet, error) {
 
-	if charSheet, ok := uc.characterSheets.Load(charSheetId); ok {
-		return charSheet.(*sheet.CharacterSheet), nil
+	// TODO: fix, move after auth validations or remove
+	// if charSheet, ok := uc.characterSheets.Load(sheetUUID); ok {
+	// 	return charSheet.(*sheet.CharacterSheet), nil
+	// }
+
+	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+	if err == pgSheet.ErrCharacterSheetNotFound {
+		return nil, ErrCharacterSheetNotFound
 	}
-
-	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, charSheetId.String())
 	if err != nil {
-		if errors.Is(err, sheetPg.ErrCharacterSheetNotFound) {
-			return nil, ErrCharacterSheetNotFound
-		}
 		return nil, err
 	}
 
-	if modelSheet.PlayerUUID == nil || *modelSheet.PlayerUUID != playerId {
+	// Check if the user is the owner of the character sheet
+	if modelSheet.MasterUUID != nil && *modelSheet.MasterUUID != userUUID {
 		return nil, auth.ErrInsufficientPermissions
+	}
+	if modelSheet.PlayerUUID == nil {
+		return &domainSheet.CharacterSheet{}, ErrCharacterSheetHasNoOwner
+	}
+	if *modelSheet.PlayerUUID != userUUID {
+		if modelSheet.CampaignUUID == nil {
+			return &domainSheet.CharacterSheet{}, auth.ErrInsufficientPermissions
+		}
+		// Check if the user is the owner of the character sheet campaign
+		masterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *modelSheet.CampaignUUID)
+		if err == pgCampaign.ErrCampaignNotFound {
+			return nil, domainCampaign.ErrCampaignNotFound
+		}
+		if err != nil {
+			return &domainSheet.CharacterSheet{}, err
+		}
+		if masterUUID != userUUID {
+			return &domainSheet.CharacterSheet{}, auth.ErrInsufficientPermissions
+		}
 	}
 
 	profile := ModelToProfile(&modelSheet.Profile)
 
 	categoryName := (*enum.CategoryName)(&modelSheet.CategoryName)
 	characterSheet, err := uc.factory.Build(
-		&playerId,
+		&userUUID,
 		modelSheet.MasterUUID,
 		modelSheet.CampaignUUID,
 		*profile,
@@ -92,13 +117,13 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 
-	uc.characterSheets.Store(charSheetId, characterSheet)
+	// uc.characterSheets.Store(sheetUUID, characterSheet)
 
 	return characterSheet, nil
 }
 
-func ModelToProfile(profile *model.CharacterProfile) *sheet.CharacterProfile {
-	return &sheet.CharacterProfile{
+func ModelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfile {
+	return &domainSheet.CharacterProfile{
 		NickName:         profile.NickName,
 		FullName:         profile.FullName,
 		Alignment:        profile.Alignment,
@@ -108,7 +133,7 @@ func ModelToProfile(profile *model.CharacterProfile) *sheet.CharacterProfile {
 	}
 }
 
-func Wrap(charSheet *sheet.CharacterSheet, modelSheet *model.CharacterSheet) error {
+func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterSheet) error {
 	charSheet.UUID = modelSheet.UUID
 
 	physicalAttrs := map[enum.AttributeName]int{
@@ -206,7 +231,7 @@ func Wrap(charSheet *sheet.CharacterSheet, modelSheet *model.CharacterSheet) err
 			fmt.Errorf("failed to get physical skills experience reference"),
 		)
 	}
-	expTable := experience.NewExpTable(sheet.PHYSICAL_SKILLS_COEFF)
+	expTable := experience.NewExpTable(domainSheet.PHYSICAL_SKILLS_COEFF)
 	newExp := experience.NewExperience(expTable)
 	for _, prof := range modelSheet.Proficiencies {
 		domainProf := proficiency.NewProficiency(

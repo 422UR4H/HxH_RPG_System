@@ -15,6 +15,7 @@ var (
 	ErrNenHexNotInitialized      = domain.NewValidationError(errors.New("nen hexagon value not initialized"))
 	ErrMaxCharacterSheetsLimit   = domain.NewValidationError(errors.New("player cannot have more than 10 character sheets"))
 	ErrNotCharacterSheetOwner    = domain.NewValidationError(errors.New("not the owner of the character sheet"))
+	ErrCharacterSheetHasNoOwner  = domain.NewDomainError(errors.New("the character sheet has no playerUUID or masterUUID"))
 	ErrInvalidUpdateHexValMethod = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
 )
 

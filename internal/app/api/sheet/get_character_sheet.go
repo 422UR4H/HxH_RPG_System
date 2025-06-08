@@ -7,6 +7,7 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -31,7 +32,7 @@ func GetCharacterSheetHandler(
 ) func(context.Context, *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
 
 	return func(ctx context.Context, req *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
-		playerUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
+		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
 			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
@@ -41,10 +42,12 @@ func GetCharacterSheetHandler(
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 
-		characterSheet, err := uc.GetCharacterSheet(ctx, charSheetId, playerUUID)
+		characterSheet, err := uc.GetCharacterSheet(ctx, charSheetId, userUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, cs.ErrCharacterSheetNotFound):
+				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
