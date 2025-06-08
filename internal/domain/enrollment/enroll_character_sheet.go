@@ -58,7 +58,9 @@ func (uc *EnrollCharacterInMatchUC) Enroll(
 		return charactersheet.ErrNotCharacterSheetOwner
 	}
 
-	alreadyEnrolled, err := uc.repo.ExistsEnrolledCharacterSheet(ctx, sheetUUID)
+	alreadyEnrolled, err := uc.repo.ExistsEnrolledCharacterSheet(
+		ctx, sheetUUID, matchUUID,
+	)
 	if err != nil {
 		return err
 	}
