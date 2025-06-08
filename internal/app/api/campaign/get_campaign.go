@@ -3,12 +3,8 @@ package campaign
 import (
 	"context"
 	"errors"
-	"net/http"
-	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/danielgtaylor/huma/v2"
@@ -20,23 +16,7 @@ type GetCampaignRequest struct {
 }
 
 type GetCampaignResponseBody struct {
-	UUID uuid.UUID `json:"uuid"`
-	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
-	Name                    string  `json:"name"`
-	BriefInitialDescription string  `json:"brief_initial_description"`
-	BriefFinalDescription   *string `json:"brief_final_description,omitempty"`
-	Description             string  `json:"description"`
-	IsPublic                bool    `json:"is_public"`
-	CallLink                string  `json:"call_link"`
-	StoryStartAt            string  `json:"story_start_at"`
-	StoryCurrentAt          *string `json:"story_current_at,omitempty"`
-	StoryEndAt              *string `json:"story_end_at,omitempty"`
-	CreatedAt               string  `json:"created_at"`
-	UpdatedAt               string  `json:"updated_at"`
-
-	CharacterSheets []sheet.CharacterSummaryResponse `json:"character_sheets,omitempty"`
-	PendingSheets   []sheet.CharacterSummaryResponse `json:"pending_sheets,omitempty"`
-	Matches         []match.MatchSummaryResponse     `json:"matches,omitempty"`
+	Campaign any `json:"campaign"`
 }
 
 type GetCampaignResponse struct {
@@ -65,56 +45,16 @@ func GetCampaignHandler(
 			}
 		}
 
-		var storyCurrentAtStr *string
-		if campaign.StoryCurrentAt != nil {
-			formattedTime := campaign.StoryCurrentAt.Format(time.RFC3339)
-			storyCurrentAtStr = &formattedTime
-		}
-
-		var storyEndAtStr *string
-		if campaign.StoryEndAt != nil {
-			formattedDate := campaign.StoryEndAt.Format("2006-01-02")
-			storyEndAtStr = &formattedDate
-		}
-
-		characterSheetsLen := len(campaign.CharacterSheets)
-		characterSheets := make([]sheet.CharacterSummaryResponse, 0, characterSheetsLen)
-		for _, cs := range campaign.CharacterSheets {
-			characterSheets = append(characterSheets, sheet.ToSummaryResponse(cs))
-		}
-
-		pendingSheetsLen := len(campaign.PendingSheets)
-		pendingSheets := make([]sheet.CharacterSummaryResponse, 0, pendingSheetsLen)
-		for _, ps := range campaign.PendingSheets {
-			pendingSheets = append(pendingSheets, sheet.ToSummaryResponse(ps))
-		}
-
-		matchesLen := len(campaign.Matches)
-		matches := make([]match.MatchSummaryResponse, 0, matchesLen)
-		for _, m := range campaign.Matches {
-			matches = append(matches, match.ToSummaryResponse(&m))
-		}
-
-		response := GetCampaignResponseBody{
-			UUID: campaign.UUID,
-			// ScenarioUUID:     campaign.ScenarioUUID,
-			Name:                    campaign.Name,
-			BriefInitialDescription: campaign.BriefInitialDescription,
-			BriefFinalDescription:   campaign.BriefFinalDescription,
-			Description:             campaign.Description,
-			IsPublic:                campaign.IsPublic,
-			CallLink:                campaign.CallLink,
-			StoryStartAt:            campaign.StoryStartAt.Format("2006-01-02"),
-			StoryCurrentAt:          storyCurrentAtStr,
-			StoryEndAt:              storyEndAtStr,
-			CharacterSheets:         characterSheets,
-			PendingSheets:           pendingSheets,
-			Matches:                 matches,
-			CreatedAt:               campaign.CreatedAt.Format(http.TimeFormat),
-			UpdatedAt:               campaign.UpdatedAt.Format(http.TimeFormat),
+		var response any
+		if campaign.MasterUUID == userUUID {
+			response = ToMasterResponse(campaign)
+		} else {
+			response = ToPlayerResponse(campaign)
 		}
 		return &GetCampaignResponse{
-			Body: response,
+			Body: GetCampaignResponseBody{
+				Campaign: response,
+			},
 		}, nil
 	}
 }
