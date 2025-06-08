@@ -16,6 +16,7 @@ import (
 )
 
 type CreateCharacterSheetRequestBody struct {
+	CampaignUUID      *uuid.UUID             `json:"campaign_uuid"`
 	Profile           sheet.CharacterProfile `json:"profile"`
 	CharacterClass    string                 `json:"character_class"`
 	SkillsExps        map[string]int         `json:"skills_exps"`
@@ -51,7 +52,12 @@ func CreateCharacterSheetHandler(
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
-		input.PlayerUUID = &userUUID
+
+		if input.CampaignUUID == nil {
+			input.PlayerUUID = &userUUID
+		} else {
+			input.MasterUUID = &userUUID
+		}
 
 		characterSheet, err := uc.CreateCharacterSheet(ctx, input)
 		if err != nil {
@@ -126,6 +132,7 @@ func castRequest(
 	}
 
 	return &charactersheet.CreateCharacterSheetInput{
+		CampaignUUID:      body.CampaignUUID,
 		Profile:           body.Profile,
 		CharacterClass:    charClassName,
 		CategorySet:       *talentByCategorySet,

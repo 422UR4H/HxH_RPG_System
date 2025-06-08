@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS character_profiles (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  UNIQUE (uuid),,
+  UNIQUE (uuid),
   FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets (uuid) ON DELETE CASCADE
 );
 CREATE INDEX idx_character_profiles_character_sheet_uuid ON character_profiles (character_sheet_uuid);

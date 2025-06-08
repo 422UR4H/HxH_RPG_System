@@ -70,7 +70,7 @@ func (uc *CreateMatchUC) CreateMatch(
 	}
 
 	if campaign.MasterUUID != input.MasterUUID {
-		return nil, ErrNotCampaignOwner
+		return nil, domainCampaign.ErrNotCampaignOwner
 	}
 
 	if input.StoryStartAt.Before(campaign.StoryStartAt) {
