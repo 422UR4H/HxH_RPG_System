@@ -11,7 +11,7 @@ import (
 )
 
 type ListCharacterSheetsBody struct {
-	CharacterSheets []CharacterSummaryResponse `json:"character_sheets"`
+	CharacterSheets []CharacterPlayerSummaryResponse `json:"character_sheets"`
 }
 
 type ListCharacterSheetsResponse struct {
@@ -34,9 +34,9 @@ func ListCharacterSheetsHandler(
 			return nil, huma.Error500InternalServerError(err.Error())
 		}
 
-		responses := make([]CharacterSummaryResponse, len(sheets))
+		responses := make([]CharacterPlayerSummaryResponse, len(sheets))
 		for i, sheet := range sheets {
-			responses[i] = ToSummaryResponse(sheet)
+			responses[i] = ToSummaryPlayerResponse(&sheet)
 		}
 
 		return &ListCharacterSheetsResponse{
