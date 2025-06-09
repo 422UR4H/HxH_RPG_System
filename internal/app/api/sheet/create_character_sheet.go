@@ -16,7 +16,7 @@ import (
 )
 
 type CreateCharacterSheetRequestBody struct {
-	CampaignUUID      *uuid.UUID             `json:"campaign_uuid"`
+	CampaignUUID      *uuid.UUID             `json:"campaign_uuid" required:"false"`
 	Profile           sheet.CharacterProfile `json:"profile"`
 	CharacterClass    string                 `json:"character_class"`
 	SkillsExps        map[string]int         `json:"skills_exps"`
