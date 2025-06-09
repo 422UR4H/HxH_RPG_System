@@ -39,7 +39,7 @@ func (r *Repository) EnrollCharacterSheet(
 		uuid.New(), matchUUID, characterSheetUUID, time.Now(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to elroll character in match: %w", err)
+		return fmt.Errorf("failed to enroll character in match: %w", err)
 	}
 	return nil
 }
