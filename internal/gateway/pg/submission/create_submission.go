@@ -1,4 +1,4 @@
-package submit
+package submission
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func (r *Repository) SubmitCharacterSheet(
 	}()
 
 	const query = `
-		INSERT INTO submit_character_sheets (
+		INSERT INTO submissions (
 			uuid, character_sheet_uuid, campaign_uuid, created_at
 		) VALUES (
 			$1, $2, $3, $4
@@ -40,7 +40,7 @@ func (r *Repository) SubmitCharacterSheet(
 		uuid.New(), sheetUUID, campaignUUID, createdAt,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to save submitted character sheet: %w", err)
+		return fmt.Errorf("failed to submit character in campaign: %w", err)
 	}
 	return nil
 }

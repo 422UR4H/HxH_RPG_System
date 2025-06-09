@@ -77,10 +77,10 @@ func (r *Repository) GetCampaign(
 						cs.story_start_at, cs.story_current_at, cs.dead_at,
             cs.created_at, cs.updated_at,
             cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
-        FROM submit_character_sheets scs
-        JOIN character_sheets cs ON scs.character_sheet_uuid = cs.uuid
-        JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
-        WHERE scs.campaign_uuid = $1
+        FROM submissions s
+        INNER JOIN character_sheets cs ON s.character_sheet_uuid = cs.uuid
+        INNER JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
+        WHERE s.campaign_uuid = $1
         ORDER BY cp.nickname ASC
     `
 	rows, err := tx.Query(ctx, pendingSheetsQuery, uuid)

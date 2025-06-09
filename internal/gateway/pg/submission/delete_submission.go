@@ -1,4 +1,4 @@
-package submit
+package submission
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func (r *Repository) RejectCharacterSheetSubmission(
 	}()
 
 	const deleteSubmissionQuery = `
-        DELETE FROM submit_character_sheets
+        DELETE FROM submissions
         WHERE character_sheet_uuid = $1
     `
 	result, err := tx.Exec(ctx, deleteSubmissionQuery, sheetUUID)

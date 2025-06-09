@@ -1,4 +1,4 @@
-package submit
+package submission
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func (r *Repository) GetSubmissionCampaignUUIDBySheetUUID(
 ) (uuid.UUID, error) {
 	const query = `
         SELECT campaign_uuid
-        FROM submit_character_sheets
+        FROM submissions
         WHERE character_sheet_uuid = $1
     `
 	var campaignUUID uuid.UUID
@@ -34,14 +34,14 @@ func (r *Repository) ExistsSubmittedCharacterSheet(
 	const query = `
 		SELECT EXISTS (
 			SELECT 1
-			FROM submit_character_sheets
+			FROM submissions
 			WHERE character_sheet_uuid = $1
 		)
 	`
 	var exists bool
 	err := r.q.QueryRow(ctx, query, uuid).Scan(&exists)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if submitted character sheet exists: %w", err)
+		return false, fmt.Errorf("failed to check if character is submitted: %w", err)
 	}
 	return exists, nil
 }

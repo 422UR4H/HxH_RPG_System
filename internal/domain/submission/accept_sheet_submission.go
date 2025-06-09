@@ -5,7 +5,7 @@ import (
 
 	campaignDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submit"
+	submissionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
 	"github.com/google/uuid"
 )
 
@@ -35,7 +35,7 @@ func (uc *AcceptCharacterSheetSubmissionUC) Accept(
 ) error {
 	// TODO: optimize that 2 calls to db to only 1
 	campaignUUID, err := uc.repo.GetSubmissionCampaignUUIDBySheetUUID(ctx, sheetUUID)
-	if err == submit.ErrSubmissionNotFound {
+	if err == submissionPg.ErrSubmissionNotFound {
 		return ErrSubmissionNotFound
 	}
 	if err != nil {

@@ -31,7 +31,7 @@ import (
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sessionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/session"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
-	submitPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submit"
+	submissionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/ardanlabs/conf/v3"
@@ -79,7 +79,7 @@ func main() {
 	scenarioRepo := scenarioPg.NewRepository(pgPool)
 	campaignRepo := campaignPg.NewRepository(pgPool)
 	matchRepo := matchPg.NewRepository(pgPool)
-	submitRepo := submitPg.NewRepository(pgPool)
+	submitRepo := submissionPg.NewRepository(pgPool)
 	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
 
 	registerUC := domainAuth.NewRegisterUC(authRepo)

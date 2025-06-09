@@ -1,4 +1,4 @@
-package submit
+package submission
 
 import (
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
