@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
 
   UNIQUE (uuid),
   UNIQUE (name),
-  FOREIGN KEY (user_uuid) REFERENCES users (uuid)
+  FOREIGN KEY (user_uuid) REFERENCES users(uuid)
 );
 
 COMMIT;

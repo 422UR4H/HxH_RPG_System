@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   UNIQUE (uuid),
-  FOREIGN KEY (master_uuid) REFERENCES users (uuid),
-  FOREIGN KEY (scenario_uuid) REFERENCES scenarios (uuid)
+  FOREIGN KEY (master_uuid) REFERENCES users(uuid),
+  FOREIGN KEY (scenario_uuid) REFERENCES scenarios(uuid)
 );
 
 COMMIT;

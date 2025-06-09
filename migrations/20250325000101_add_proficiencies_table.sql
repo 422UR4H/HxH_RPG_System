@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS proficiencies (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   UNIQUE (uuid),
-  FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets (uuid) ON DELETE CASCADE
+  FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets(uuid) ON DELETE CASCADE
 );
-CREATE INDEX idx_proficiencies_character_sheet_uuid ON proficiencies (character_sheet_uuid);
+CREATE INDEX idx_proficiencies_character_sheet_uuid ON proficiencies(character_sheet_uuid);
 
 COMMIT;
 -- +goose StatementEnd

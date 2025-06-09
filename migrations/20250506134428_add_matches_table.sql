@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS matches (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   UNIQUE (uuid),
-  FOREIGN KEY (master_uuid) REFERENCES users (uuid),
-  FOREIGN KEY (campaign_uuid) REFERENCES campaigns (uuid)
+  FOREIGN KEY (master_uuid) REFERENCES users(uuid),
+  FOREIGN KEY (campaign_uuid) REFERENCES campaigns(uuid)
 );
 
 COMMIT;
