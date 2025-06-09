@@ -12,11 +12,10 @@ CREATE TABLE IF NOT EXISTS enrollments (
   
   UNIQUE (uuid),
   UNIQUE (character_sheet_uuid),
-  FOREIGN KEY (match_uuid) REFERENCES matches (uuid),
-  FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets (uuid)
+  FOREIGN KEY (match_uuid) REFERENCES matches(uuid),
+  FOREIGN KEY (character_sheet_uuid) REFERENCES character_sheets(uuid)
 );
-CREATE INDEX idx_enrollments_match_uuid ON enrollments(match_uuid);
-CREATE INDEX idx_enrollments_character_sheet_uuid ON enrollments(character_sheet_uuid);
+CREATE INDEX idx_enrollments_sheet_match_uuid ON enrollments(character_sheet_uuid, match_uuid);
 
 COMMIT;
 -- +goose StatementEnd
