@@ -20,7 +20,7 @@ type CharacterBaseSummaryResponse struct {
 	UpdatedAt      string     `json:"updated_at"`
 }
 
-type CharacterMasterSummaryResponse struct {
+type CharacterPrivateSummaryResponse struct {
 	CharacterBaseSummaryResponse
 	FullName       string    `json:"full_name"`
 	Alignment      string    `json:"alignment"`
@@ -40,7 +40,7 @@ type CharacterMasterSummaryResponse struct {
 	// Aura           StatusBar  `json:"aura"`
 }
 
-type CharacterPlayerSummaryResponse struct {
+type CharacterPublicSummaryResponse struct {
 	CharacterBaseSummaryResponse
 }
 
@@ -50,13 +50,13 @@ type StatusBar struct {
 	Max  int `json:"max"`
 }
 
-func ToSummaryMasterResponse(
-	sheet *model.CharacterSheetSummary) CharacterMasterSummaryResponse {
+func ToPrivateSummaryResponse(
+	sheet *model.CharacterSheetSummary) CharacterPrivateSummaryResponse {
 
 	stamina := sheet.Stamina
 	health := sheet.Health
 	// aura := sheet.Aura
-	return CharacterMasterSummaryResponse{
+	return CharacterPrivateSummaryResponse{
 		CharacterBaseSummaryResponse: toSummaryBaseResponse(sheet),
 
 		FullName:       sheet.FullName,
@@ -90,10 +90,10 @@ func ToSummaryMasterResponse(
 	}
 }
 
-func ToSummaryPlayerResponse(
-	sheet *model.CharacterSheetSummary) CharacterPlayerSummaryResponse {
+func ToPublicSummaryResponse(
+	sheet *model.CharacterSheetSummary) CharacterPublicSummaryResponse {
 
-	return CharacterPlayerSummaryResponse{
+	return CharacterPublicSummaryResponse{
 		CharacterBaseSummaryResponse: toSummaryBaseResponse(sheet),
 	}
 }

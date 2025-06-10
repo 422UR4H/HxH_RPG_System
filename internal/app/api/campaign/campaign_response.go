@@ -29,24 +29,24 @@ type CampaignBaseResponse struct {
 
 type CampaignMasterResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterMasterSummaryResponse `json:"character_sheets,omitempty"`
-	PendingSheets   []sheet.CharacterMasterSummaryResponse `json:"pending_sheets,omitempty"`
+	CharacterSheets []sheet.CharacterPrivateSummaryResponse `json:"character_sheets,omitempty"`
+	PendingSheets   []sheet.CharacterPrivateSummaryResponse `json:"pending_sheets,omitempty"`
 }
 
 type CampaignPlayerResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPlayerSummaryResponse `json:"character_sheets,omitempty"`
+	CharacterSheets []sheet.CharacterPublicSummaryResponse `json:"character_sheets,omitempty"`
 }
 
 func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {
-	characterSheets := make([]sheet.CharacterMasterSummaryResponse, 0, len(campaign.CharacterSheets))
+	characterSheets := make([]sheet.CharacterPrivateSummaryResponse, 0, len(campaign.CharacterSheets))
 	for _, cs := range campaign.CharacterSheets {
-		characterSheets = append(characterSheets, sheet.ToSummaryMasterResponse(&cs))
+		characterSheets = append(characterSheets, sheet.ToPrivateSummaryResponse(&cs))
 	}
 
-	pendingSheets := make([]sheet.CharacterMasterSummaryResponse, 0, len(campaign.PendingSheets))
+	pendingSheets := make([]sheet.CharacterPrivateSummaryResponse, 0, len(campaign.PendingSheets))
 	for _, ps := range campaign.PendingSheets {
-		pendingSheets = append(pendingSheets, sheet.ToSummaryMasterResponse(&ps))
+		pendingSheets = append(pendingSheets, sheet.ToPrivateSummaryResponse(&ps))
 	}
 
 	return CampaignMasterResponse{
@@ -57,9 +57,9 @@ func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {
 }
 
 func ToPlayerResponse(campaign *campaign.Campaign) CampaignPlayerResponse {
-	characterSheets := make([]sheet.CharacterPlayerSummaryResponse, 0, len(campaign.CharacterSheets))
+	characterSheets := make([]sheet.CharacterPublicSummaryResponse, 0, len(campaign.CharacterSheets))
 	for _, cs := range campaign.CharacterSheets {
-		characterSheets = append(characterSheets, sheet.ToSummaryPlayerResponse(&cs))
+		characterSheets = append(characterSheets, sheet.ToPublicSummaryResponse(&cs))
 	}
 	return CampaignPlayerResponse{
 		CampaignBaseResponse: toSummaryBaseResponse(campaign),
