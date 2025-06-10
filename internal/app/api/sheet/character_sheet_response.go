@@ -1,6 +1,8 @@
 package sheet
 
 import (
+	"strings"
+
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
@@ -281,7 +283,7 @@ func NewCharacterSheetResponse(
 
 	status := make(map[string]StatusResponse)
 	for name, statusBar := range charSheet.GetAllStatusBar() {
-		status[name.String()] = StatusResponse{
+		status[strings.ToLower(name.String())] = StatusResponse{
 			Min:     statusBar.GetMin(),
 			Current: statusBar.GetCurrent(),
 			Max:     statusBar.GetMax(),
