@@ -45,9 +45,9 @@ type CharacterPublicSummaryResponse struct {
 }
 
 type StatusBar struct {
-	Min  int `json:"min"`
-	Curr int `json:"curr"`
-	Max  int `json:"max"`
+	Min     int `json:"min"`
+	Current int `json:"current"`
+	Max     int `json:"max"`
 }
 
 func ToPrivateSummaryResponse(
@@ -73,14 +73,14 @@ func ToPrivateSummaryResponse(
 		SpiritualsLvl:  sheet.SpiritualsLvl,
 		SkillsLvl:      sheet.SkillsLvl,
 		Stamina: StatusBar{
-			Min:  stamina.Min,
-			Curr: stamina.Curr,
-			Max:  stamina.Max,
+			Min:     stamina.Min,
+			Current: stamina.Curr,
+			Max:     stamina.Max,
 		},
 		Health: StatusBar{
-			Min:  health.Min,
-			Curr: health.Curr,
-			Max:  health.Max,
+			Min:     health.Min,
+			Current: health.Curr,
+			Max:     health.Max,
 		},
 		// Aura: StatusBar{
 		// 	Min:  aura.Min,
