@@ -24,18 +24,18 @@ type CampaignBaseResponse struct {
 	CreatedAt               string  `json:"created_at"`
 	UpdatedAt               string  `json:"updated_at"`
 
-	Matches []match.MatchSummaryResponse `json:"matches,omitempty"`
+	Matches []match.MatchSummaryResponse `json:"matches"`
 }
 
 type CampaignMasterResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPrivateSummaryResponse `json:"character_sheets,omitempty"`
-	PendingSheets   []sheet.CharacterPrivateSummaryResponse `json:"pending_sheets,omitempty"`
+	CharacterSheets []sheet.CharacterPrivateSummaryResponse `json:"character_sheets"`
+	PendingSheets   []sheet.CharacterPrivateSummaryResponse `json:"pending_sheets"`
 }
 
 type CampaignPlayerResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPublicSummaryResponse `json:"character_sheets,omitempty"`
+	CharacterSheets []sheet.CharacterPublicSummaryResponse `json:"character_sheets"`
 }
 
 func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {
