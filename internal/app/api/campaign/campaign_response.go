@@ -10,7 +10,8 @@ import (
 )
 
 type CampaignBaseResponse struct {
-	UUID uuid.UUID `json:"uuid"`
+	UUID       uuid.UUID `json:"uuid"`
+	MasterUUID uuid.UUID `json:"master_uuid"`
 	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
 	Name                    string  `json:"name"`
 	BriefInitialDescription string  `json:"brief_initial_description"`
@@ -84,6 +85,7 @@ func toSummaryBaseResponse(campaign *campaign.Campaign) CampaignBaseResponse {
 	}
 	return CampaignBaseResponse{
 		UUID:                    campaign.UUID,
+		MasterUUID:              campaign.MasterUUID,
 		Name:                    campaign.Name,
 		BriefInitialDescription: campaign.BriefInitialDescription,
 		BriefFinalDescription:   campaign.BriefFinalDescription,
