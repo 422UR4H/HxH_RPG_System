@@ -13,19 +13,19 @@ const (
 
 	// Strength: Ao treinar e aprender uma arma, o personagem treina a skill Strike
 	// essa skill é relacionada à sua arma, então não é comum (common)
-	Push          SkillName = "Push"
-	Grab          SkillName = "Grab"
-	CarryCapacity SkillName = "CarryCapacity"
+	Push  SkillName = "Push"
+	Grab  SkillName = "Grab"
+	Carry SkillName = "Carry"
 
 	// Agility
 	Velocity   SkillName = "Velocity"
 	Accelerate SkillName = "Accelerate"
 	Brake      SkillName = "Brake"
 
-	// Action Speed => TODO: change to other name
-	AttackSpeed SkillName = "AttackSpeed" // TODO: change to ActionSpeed
-	Repel       SkillName = "Repel"
-	Feint       SkillName = "Feint"
+	// Celerity
+	Legerity SkillName = "Legerity"
+	Repel    SkillName = "Repel"
+	Feint    SkillName = "Feint"
 
 	// Flexibility: Permite técnicas de combate mais versáteis, como chutes altos ou esquivas complexas
 	// Pode ser usado para habilidades que exigem movimentos incomuns, como ataques com ângulos inesperados
@@ -72,9 +72,9 @@ func (sn SkillName) String() string {
 func AllSkillNames() []SkillName {
 	return []SkillName{
 		Vitality, Energy, Defense,
-		Push, Grab, CarryCapacity,
+		Push, Grab, Carry,
 		Velocity, Accelerate, Brake,
-		AttackSpeed, Repel, Feint,
+		Legerity, Repel, Feint,
 		Acrobatics, Evasion, Sneak,
 		Reflex, Accuracy, Stealth,
 		Vision, Hearing, Smell, Tact, Taste,

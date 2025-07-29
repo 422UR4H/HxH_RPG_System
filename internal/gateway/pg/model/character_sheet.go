@@ -39,7 +39,7 @@ type CharacterSheet struct {
 	ResistancePts   int
 	StrengthPts     int
 	AgilityPts      int
-	ActionSpeedPts  int
+	CelerityPts     int
 	FlexibilityPts  int
 	DexterityPts    int
 	SensePts        int
@@ -61,17 +61,17 @@ type CharacterSheet struct {
 	EnergyExp   int
 	DefenseExp  int
 	// Strength
-	PushExp          int
-	GrabExp          int
-	CarryCapacityExp int
+	PushExp  int
+	GrabExp  int
+	CarryExp int
 	// Agility
 	VelocityExp   int
 	AccelerateExp int
 	BrakeExp      int
-	// Action Speed => TODO: change to other name
-	AttackSpeedExp int // TODO: change to ActionSpeed
-	RepelExp       int
-	FeintExp       int
+	// Celerity
+	LegerityExp int
+	RepelExp    int
+	FeintExp    int
 	// Flexibility
 	AcrobaticsExp int
 	EvasionExp    int
@@ -103,6 +103,7 @@ type CharacterSheet struct {
 	ZetsuExp int
 	RenExp   int
 	GyoExp   int
+	ShuExp   int
 	KouExp   int
 	KenExp   int
 	RyuExp   int

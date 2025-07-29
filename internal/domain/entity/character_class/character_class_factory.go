@@ -49,9 +49,9 @@ func BuildSwordsman() CharacterClass {
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 127,
-		enum.Repel:       494,
-		enum.Feint:       210,
+		enum.Legerity: 127,
+		enum.Repel:    494,
+		enum.Feint:    210,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    494,
@@ -110,9 +110,9 @@ func BuildSamurai() CharacterClass {
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 127,
-		enum.Repel:       494,
-		enum.Feint:       210,
+		enum.Legerity: 127,
+		enum.Repel:    494,
+		enum.Feint:    210,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    494,
@@ -161,9 +161,9 @@ func BuildNinja() CharacterClass {
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 127,
-		enum.Repel:       494,
-		enum.Feint:       210,
+		enum.Legerity: 127,
+		enum.Repel:    494,
+		enum.Feint:    210,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    494,
@@ -223,9 +223,9 @@ func BuildRogue() CharacterClass {
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 127,
-		enum.Repel:       494,
-		enum.Feint:       210,
+		enum.Legerity: 127,
+		enum.Repel:    494,
+		enum.Feint:    210,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    494,
@@ -279,8 +279,8 @@ func BuildNetrunner() CharacterClass {
 		enum.Accelerate: 127,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 69,
-		enum.Repel:       127,
+		enum.Legerity: 69,
+		enum.Repel:    127,
 
 		enum.Acrobatics: 210,
 		enum.Evasion:    210,
@@ -333,16 +333,16 @@ func BuildPirate() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Push:          210,
-		enum.Grab:          210,
-		enum.CarryCapacity: 210,
+		enum.Push:  210,
+		enum.Grab:  210,
+		enum.Carry: 210,
 
 		enum.Velocity:   69,
 		enum.Accelerate: 127,
 
-		enum.AttackSpeed: 69,
-		enum.Repel:       210,
-		enum.Feint:       69,
+		enum.Legerity: 69,
+		enum.Repel:    210,
+		enum.Feint:    69,
 
 		enum.Acrobatics: 210,
 		enum.Evasion:    69,
@@ -391,16 +391,16 @@ func BuildMercenary() CharacterClass {
 		enum.Defense:  127,
 		enum.Energy:   69,
 
-		enum.Push:          69,
-		enum.Grab:          69,
-		enum.CarryCapacity: 127,
+		enum.Push:  69,
+		enum.Grab:  69,
+		enum.Carry: 127,
 
 		enum.Velocity:   127,
 		enum.Accelerate: 69,
 
-		enum.AttackSpeed: 69,
-		enum.Repel:       69,
-		enum.Feint:       69,
+		enum.Legerity: 69,
+		enum.Repel:    69,
+		enum.Feint:    69,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    69,
@@ -467,9 +467,9 @@ func BuildTerrorist() CharacterClass {
 		enum.Vitality: 328,
 		enum.Defense:  210,
 
-		enum.Push:          127,
-		enum.Grab:          127,
-		enum.CarryCapacity: 210,
+		enum.Push:  127,
+		enum.Grab:  127,
+		enum.Carry: 210,
 
 		enum.Velocity: 127,
 
@@ -521,17 +521,17 @@ func BuildMonk() CharacterClass {
 		enum.Vitality: 210,
 		enum.Defense:  210,
 
-		enum.Push:          127,
-		enum.Grab:          127,
-		enum.CarryCapacity: 127,
+		enum.Push:  127,
+		enum.Grab:  127,
+		enum.Carry: 127,
 
 		enum.Velocity:   127,
 		enum.Accelerate: 127,
 		enum.Brake:      127,
 
-		enum.AttackSpeed: 127,
-		enum.Repel:       127,
-		enum.Feint:       127,
+		enum.Legerity: 127,
+		enum.Repel:    127,
+		enum.Feint:    127,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    69,
@@ -589,9 +589,9 @@ func BuildMilitary() CharacterClass {
 		enum.Vitality: 210,
 		enum.Defense:  210,
 
-		enum.Push:          210,
-		enum.Grab:          69,
-		enum.CarryCapacity: 127,
+		enum.Push:  210,
+		enum.Grab:  69,
+		enum.Carry: 127,
 
 		enum.Velocity: 127,
 
@@ -645,14 +645,14 @@ func BuildHunter() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.CarryCapacity: 127,
+		enum.Carry: 127,
 
 		enum.Velocity:   210,
 		enum.Accelerate: 127,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 127,
-		enum.Repel:       69,
+		enum.Legerity: 127,
+		enum.Repel:    69,
 
 		enum.Acrobatics: 127,
 		enum.Evasion:    210,
@@ -719,17 +719,17 @@ func BuildWeaponsMaster() CharacterClass {
 		enum.Defense:  127,
 		enum.Energy:   69,
 
-		enum.Push:          127,
-		enum.Grab:          127,
-		enum.CarryCapacity: 210,
+		enum.Push:  127,
+		enum.Grab:  127,
+		enum.Carry: 210,
 
 		enum.Velocity:   210,
 		enum.Accelerate: 69,
 		enum.Brake:      69,
 
-		enum.AttackSpeed: 69,
-		enum.Repel:       127,
-		enum.Feint:       127,
+		enum.Legerity: 69,
+		enum.Repel:    127,
+		enum.Feint:    127,
 
 		enum.Acrobatics: 69,
 		enum.Evasion:    127,

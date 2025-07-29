@@ -33,13 +33,13 @@ func (r *Repository) CreateCharacterSheet(
 			health_min_pts, health_curr_pts, health_max_pts,
 			stamina_min_pts, stamina_curr_pts, stamina_max_pts,
 			aura_min_pts, aura_curr_pts, aura_max_pts,
-			resistance_pts, strength_pts, agility_pts, action_speed_pts, flexibility_pts, dexterity_pts, sense_pts, constitution_pts,
+			resistance_pts, strength_pts, agility_pts, celerity_pts, flexibility_pts, dexterity_pts, sense_pts, constitution_pts,
 			resilience_pts, adaptability_pts, weighting_pts, creativity_pts, resilience_exp, adaptability_exp, weighting_exp, creativity_exp,
-			vitality_exp, energy_exp, defense_exp, push_exp, grab_exp, carry_capacity_exp, velocity_exp, accelerate_exp, brake_exp,
-			attack_speed_exp, repel_exp, feint_exp, acrobatics_exp, evasion_exp, sneak_exp, reflex_exp, accuracy_exp, stealth_exp,
+			vitality_exp, energy_exp, defense_exp, push_exp, grab_exp, carry_exp, velocity_exp, accelerate_exp, brake_exp,
+			legerity_exp, repel_exp, feint_exp, acrobatics_exp, evasion_exp, sneak_exp, reflex_exp, accuracy_exp, stealth_exp,
 			vision_exp, hearing_exp, smell_exp, tact_exp, taste_exp, heal_exp, breath_exp, tenacity_exp,
 			nen_exp, focus_exp, will_power_exp,
-			ten_exp, zetsu_exp, ren_exp, gyo_exp, kou_exp, ken_exp, ryu_exp, in_exp, en_exp, aura_control_exp, aop_exp,
+			ten_exp, zetsu_exp, ren_exp, gyo_exp, shu_exp, kou_exp, ken_exp, ryu_exp, in_exp, en_exp, aura_control_exp, aop_exp,
 			reinforcement_exp, transmutation_exp, materialization_exp, specialization_exp, manipulation_exp, emission_exp,
 			created_at, updated_at
 		) VALUES (
@@ -56,7 +56,7 @@ func (r *Repository) CreateCharacterSheet(
 			$64, $65, $66,
 			$67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77,
 			$78, $79, $80, $81, $82, $83,
-			$84, $85
+			$84, $85, $86,
 		) RETURNING id
 	`
 	var sheetID int
@@ -66,13 +66,13 @@ func (r *Repository) CreateCharacterSheet(
 		sheet.Health.Min, sheet.Health.Curr, sheet.Health.Max,
 		sheet.Stamina.Min, sheet.Stamina.Curr, sheet.Stamina.Max,
 		sheet.Aura.Min, sheet.Aura.Curr, sheet.Aura.Max,
-		sheet.ResistancePts, sheet.StrengthPts, sheet.AgilityPts, sheet.ActionSpeedPts, sheet.FlexibilityPts, sheet.DexterityPts, sheet.SensePts, sheet.ConstitutionPts,
+		sheet.ResistancePts, sheet.StrengthPts, sheet.AgilityPts, sheet.CelerityPts, sheet.FlexibilityPts, sheet.DexterityPts, sheet.SensePts, sheet.ConstitutionPts,
 		sheet.ResiliencePts, sheet.AdaptabilityPts, sheet.WeightingPts, sheet.CreativityPts, sheet.ResilienceExp, sheet.AdaptabilityExp, sheet.WeightingExp, sheet.CreativityExp,
-		sheet.VitalityExp, sheet.EnergyExp, sheet.DefenseExp, sheet.PushExp, sheet.GrabExp, sheet.CarryCapacityExp, sheet.VelocityExp, sheet.AccelerateExp, sheet.BrakeExp,
-		sheet.AttackSpeedExp, sheet.RepelExp, sheet.FeintExp, sheet.AcrobaticsExp, sheet.EvasionExp, sheet.SneakExp, sheet.ReflexExp, sheet.AccuracyExp, sheet.StealthExp,
+		sheet.VitalityExp, sheet.EnergyExp, sheet.DefenseExp, sheet.PushExp, sheet.GrabExp, sheet.CarryExp, sheet.VelocityExp, sheet.AccelerateExp, sheet.BrakeExp,
+		sheet.LegerityExp, sheet.RepelExp, sheet.FeintExp, sheet.AcrobaticsExp, sheet.EvasionExp, sheet.SneakExp, sheet.ReflexExp, sheet.AccuracyExp, sheet.StealthExp,
 		sheet.VisionExp, sheet.HearingExp, sheet.SmellExp, sheet.TactExp, sheet.TasteExp, sheet.HealExp, sheet.BreathExp, sheet.TenacityExp,
 		sheet.NenExp, sheet.FocusExp, sheet.WillPowerExp,
-		sheet.TenExp, sheet.ZetsuExp, sheet.RenExp, sheet.GyoExp, sheet.KouExp, sheet.KenExp, sheet.RyuExp, sheet.InExp, sheet.EnExp, sheet.AuraControlExp, sheet.AopExp,
+		sheet.TenExp, sheet.ZetsuExp, sheet.RenExp, sheet.GyoExp, sheet.ShuExp, sheet.KouExp, sheet.KenExp, sheet.RyuExp, sheet.InExp, sheet.EnExp, sheet.AuraControlExp, sheet.AopExp,
 		sheet.ReinforcementExp, sheet.TransmutationExp, sheet.MaterializationExp, sheet.SpecializationExp, sheet.ManipulationExp, sheet.EmissionExp,
 		sheet.CreatedAt, sheet.UpdatedAt,
 	).Scan(&sheetID)

@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   resistance_pts INT,
   strength_pts INT,
   agility_pts INT,
-  action_speed_pts INT,
+  celerity_pts INT,
   flexibility_pts INT,
   dexterity_pts INT,
   sense_pts INT,
@@ -60,13 +60,13 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   -- strength
   push_exp INT,
   grab_exp INT,
-  carry_capacity_exp INT,
+  carry_exp INT,
   -- agility
   velocity_exp INT,
   accelerate_exp INT,
   brake_exp INT,
   -- action speed
-  attack_speed_exp INT,
+  legerity_exp INT,
   repel_exp INT,
   feint_exp INT,
   -- flexibility
@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS character_sheets (
   zetsu_exp INT,
   ren_exp INT,
   gyo_exp INT,
+  shu_exp INT,
   kou_exp INT,
   ken_exp INT,
   ryu_exp INT,

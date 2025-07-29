@@ -8,6 +8,7 @@ const (
 	Ren   PrincipleName = "Ren"
 	Gyo   PrincipleName = "Gyo"
 	Hatsu PrincipleName = "Hatsu"
+	Shu   PrincipleName = "Shu"
 	Kou   PrincipleName = "Kou"
 	Ken   PrincipleName = "Ken"
 	Ryu   PrincipleName = "Ryu"
@@ -29,6 +30,7 @@ func AllNenPrincipleNames() []PrincipleName {
 		Ren,
 		Gyo,
 		Hatsu,
+		Shu,
 		Kou,
 		Ken,
 		Ryu,

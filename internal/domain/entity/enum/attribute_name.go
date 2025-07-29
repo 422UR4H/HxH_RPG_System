@@ -7,7 +7,7 @@ const (
 	Resistance   AttributeName = "Resistance"
 	Strength     AttributeName = "Strength"
 	Agility      AttributeName = "Agility"
-	ActionSpeed  AttributeName = "ActionSpeed"
+	Celerity     AttributeName = "Celerity"
 	Flexibility  AttributeName = "Flexibility"
 	Dexterity    AttributeName = "Dexterity"
 	Sense        AttributeName = "Sense"

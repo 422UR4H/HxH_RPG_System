@@ -177,7 +177,7 @@ func (hs *HalfSheet) ToString() string {
 	physicalsCurrExp := hs.attribute.GetPhysicalsCurrentExp()
 	physicalsNextLvlExp := hs.attribute.GetPhysicalsNextLvlBaseExp()
 	sortedAttrNames := []enum.AttributeName{
-		enum.Resistance, enum.Strength, enum.Agility, enum.ActionSpeed,
+		enum.Resistance, enum.Strength, enum.Agility, enum.Celerity,
 		enum.Flexibility, enum.Dexterity, enum.Sense, enum.Constitution,
 	}
 	for _, name := range sortedAttrNames {
@@ -200,9 +200,9 @@ func (hs *HalfSheet) ToString() string {
 	skillsNextLvlExp := hs.skill.GetPhysicalsNextLvlBaseExp()
 	sortSkillNames := []enum.SkillName{
 		enum.Vitality, enum.Energy, enum.Defense,
-		enum.Push, enum.Grab, enum.CarryCapacity,
+		enum.Push, enum.Grab, enum.Carry,
 		enum.Velocity, enum.Accelerate, enum.Brake,
-		enum.AttackSpeed, enum.Repel, enum.Feint,
+		enum.Legerity, enum.Repel, enum.Feint,
 		enum.Acrobatics, enum.Evasion, enum.Sneak,
 		enum.Reflex, enum.Accuracy, enum.Stealth,
 		enum.Vision, enum.Hearing, enum.Smell, enum.Tact, enum.Taste,

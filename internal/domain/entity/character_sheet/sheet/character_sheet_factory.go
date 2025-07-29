@@ -174,10 +174,10 @@ func (csf *CharacterSheetFactory) BuildPhysAttrs(
 
 	flx := primAttr.Clone(enum.Flexibility, buffs[enum.Flexibility])
 	ats := attribute.NewMiddleAttribute(
-		enum.ActionSpeed, *exp.Clone(), buffs[enum.ActionSpeed], agi, flx,
+		enum.Celerity, *exp.Clone(), buffs[enum.Celerity], agi, flx,
 	)
 	primaryAttrs[enum.Flexibility] = flx
-	middleAttrs[enum.ActionSpeed] = ats
+	middleAttrs[enum.Celerity] = ats
 
 	sen := primAttr.Clone(enum.Sense, buffs[enum.Sense])
 	dex := attribute.NewMiddleAttribute(
@@ -285,7 +285,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	strSkill := skill.NewCommonSkill(enum.Push, *exp.Clone(), str, physSkills)
 	skills[enum.Push] = strSkill.Clone(enum.Push)
 	skills[enum.Grab] = strSkill.Clone(enum.Grab)
-	skills[enum.CarryCapacity] = strSkill.Clone(enum.CarryCapacity)
+	skills[enum.Carry] = strSkill.Clone(enum.Carry)
 
 	agi, err := physAttrs.Get(enum.Agility)
 	if err != nil {
@@ -296,12 +296,12 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	skills[enum.Accelerate] = agiSkill.Clone(enum.Accelerate)
 	skills[enum.Brake] = agiSkill.Clone(enum.Brake)
 
-	ats, err := physAttrs.Get(enum.ActionSpeed)
+	ats, err := physAttrs.Get(enum.Celerity)
 	if err != nil {
 		return nil, err
 	}
-	atsSkill := skill.NewCommonSkill(enum.AttackSpeed, *exp.Clone(), ats, physSkills)
-	skills[enum.AttackSpeed] = atsSkill.Clone(enum.AttackSpeed)
+	atsSkill := skill.NewCommonSkill(enum.Legerity, *exp.Clone(), ats, physSkills)
+	skills[enum.Legerity] = atsSkill.Clone(enum.Legerity)
 	skills[enum.Repel] = atsSkill.Clone(enum.Repel)
 	skills[enum.Feint] = atsSkill.Clone(enum.Feint)
 
@@ -437,7 +437,7 @@ func (csf *CharacterSheetFactory) BuildPhysAttrBuffs() map[enum.AttributeName]*i
 	buffs[enum.Resistance] = new(int)
 	buffs[enum.Strength] = new(int)
 	buffs[enum.Agility] = new(int)
-	buffs[enum.ActionSpeed] = new(int)
+	buffs[enum.Celerity] = new(int)
 	buffs[enum.Flexibility] = new(int)
 	buffs[enum.Dexterity] = new(int)
 	buffs[enum.Sense] = new(int)
