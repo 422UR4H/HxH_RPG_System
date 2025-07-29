@@ -61,37 +61,47 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	if err != nil {
 		return nil, err
 	}
+	masterUUID := modelSheet.MasterUUID
+	playerUUID := modelSheet.PlayerUUID
 
 	// Check if the user is the owner of the character sheet
-	if modelSheet.MasterUUID != nil && *modelSheet.MasterUUID != userUUID {
-		return nil, auth.ErrInsufficientPermissions
+	if masterUUID != nil && *masterUUID == userUUID {
+		return uc.hydrateCharacterSheet(playerUUID, masterUUID, modelSheet)
 	}
-	if modelSheet.PlayerUUID == nil {
-		return &domainSheet.CharacterSheet{}, ErrCharacterSheetHasNoOwner
-	}
-	if *modelSheet.PlayerUUID != userUUID {
-		if modelSheet.CampaignUUID == nil {
-			return &domainSheet.CharacterSheet{}, auth.ErrInsufficientPermissions
-		}
-		// Check if the user is the owner of the character sheet campaign
-		masterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *modelSheet.CampaignUUID)
-		if err == pgCampaign.ErrCampaignNotFound {
-			return nil, domainCampaign.ErrCampaignNotFound
-		}
-		if err != nil {
-			return &domainSheet.CharacterSheet{}, err
-		}
-		if masterUUID != userUUID {
-			return &domainSheet.CharacterSheet{}, auth.ErrInsufficientPermissions
-		}
+	if playerUUID != nil && *playerUUID == userUUID {
+		return uc.hydrateCharacterSheet(playerUUID, masterUUID, modelSheet)
 	}
 
+	campaignUUID := modelSheet.CampaignUUID
+	if campaignUUID == nil {
+		return nil, auth.ErrInsufficientPermissions
+	}
+
+	// Check if the user is the owner of the character sheet campaign
+	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *campaignUUID)
+	if err == pgCampaign.ErrCampaignNotFound {
+		return nil, domainCampaign.ErrCampaignNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if campaignMasterUUID == userUUID {
+		return uc.hydrateCharacterSheet(playerUUID, masterUUID, modelSheet)
+	}
+	return nil, auth.ErrInsufficientPermissions
+}
+
+func (uc *GetCharacterSheetUC) hydrateCharacterSheet(
+	playerUUID *uuid.UUID,
+	masterUUID *uuid.UUID,
+	modelSheet *model.CharacterSheet,
+) (*domainSheet.CharacterSheet, error) {
 	profile := ModelToProfile(&modelSheet.Profile)
 
 	categoryName := (*enum.CategoryName)(&modelSheet.CategoryName)
 	characterSheet, err := uc.factory.Build(
-		&userUUID,
-		modelSheet.MasterUUID,
+		playerUUID,
+		masterUUID,
 		modelSheet.CampaignUUID,
 		*profile,
 		modelSheet.CurrHexValue,
