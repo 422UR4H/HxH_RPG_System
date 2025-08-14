@@ -81,6 +81,14 @@ func (hs *HalfSheet) IncreaseExpForProficiency(
 	return hs.proficiency.IncreaseExp(values, name)
 }
 
+func (hs *HalfSheet) IncreaseExpForJointProficiency(
+	values *experience.UpgradeCascade, name string,
+) error {
+	err := hs.proficiency.IncreaseExpForJoint(values, name)
+	hs.status.Upgrade()
+	return err
+}
+
 // TODO: resolve this
 func (hs *HalfSheet) IncreaseExpForMentals(
 	values *experience.UpgradeCascade, name enum.AttributeName,

@@ -16,12 +16,14 @@ import (
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	submissionHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
 	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/domain/submission"
@@ -44,12 +46,10 @@ type config struct {
 	ServerWriteTimeout time.Duration `conf:"default:30s"`
 }
 
+var dryCharacterClasses sync.Map
 var characterClasses sync.Map
 var characterSheets sync.Map
 var sessions sync.Map
-
-// TODO: remove or handle after balancing
-// var charClassSheets map[enum.CharacterClassName]*sheet.CharacterSheet
 
 func main() {
 	loadEnvFile()
@@ -69,9 +69,7 @@ func main() {
 	}
 	defer pgPool.Close()
 
-	// TODO: remove or handle after balancing
-	// charClassSheets = make(map[enum.CharacterClassName]*sheet.CharacterSheet)
-	initCharacterClasses()
+	initDryCharacterClasses()
 
 	authRepo := user.NewRepository(pgPool)
 	sessionRepo := sessionPg.NewRepository(pgPool)
@@ -87,6 +85,7 @@ func main() {
 	authHandler := auth.NewAuthHandler(registerUC, loginUC)
 
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
+	initCharacterClasses(characterSheetFactory)
 
 	getCharacterSheetUC := cs.NewGetCharacterSheetUC(
 		&characterSheets,
@@ -98,7 +97,7 @@ func main() {
 		characterSheetRepo,
 	)
 	createCharacterSheetUC := cs.NewCreateCharacterSheetUC(
-		&characterClasses,
+		&dryCharacterClasses,
 		&characterSheets,
 		characterSheetFactory,
 		characterSheetRepo,
@@ -214,46 +213,51 @@ func main() {
 	}
 }
 
-func initCharacterClasses() {
+func initDryCharacterClasses() {
 	ccFactory := ccEntity.NewCharacterClassFactory()
 
 	for name, class := range ccFactory.Build() {
-		characterClasses.Store(name, class)
+		dryCharacterClasses.Store(name, class)
 	}
+}
 
-	// uncomment to print all character classes
-	// factory := sheet.NewCharacterSheetFactory()
-	// characterClasses.Range(func(key, value any) bool {
-	// 	name := key.(enum.CharacterClassName)
-	// 	class := value.(ccEntity.CharacterClass)
-	// 	profile := sheet.CharacterProfile{
-	// 		NickName:         name.String(),
-	// 		Alignment:        class.Profile.Alignment,
-	// 		Description:      class.Profile.Description,
-	// 		BriefDescription: class.Profile.BriefDescription,
-	// 	}
-	// 	set, err := sheet.NewTalentByCategorySet(
-	// 		map[enum.CategoryName]bool{
-	// 			enum.Reinforcement:   true,
-	// 			enum.Transmutation:   true,
-	// 			enum.Materialization: true,
-	// 			enum.Specialization:  true,
-	// 			enum.Manipulation:    true,
-	// 			enum.Emission:        true,
-	// 		},
-	// 		nil,
-	// 	)
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 	}
-	// 	newClass, err := factory.Build(profile, set.GetInitialHexValue(), nil, &class)
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 	}
-	// 	charClassSheets[name] = newClass
-	// 	fmt.Println(newClass.ToString())
-	// 	return true
-	// })
+func initCharacterClasses(sheetFactory *sheet.CharacterSheetFactory) {
+	dryCharacterClasses.Range(func(key, value any) bool {
+		name := key.(enum.CharacterClassName)
+		class := value.(ccEntity.CharacterClass)
+
+		profile := sheet.CharacterProfile{
+			NickName:         name.String(),
+			Alignment:        class.Profile.Alignment,
+			Description:      class.Profile.Description,
+			BriefDescription: class.Profile.BriefDescription,
+		}
+		// 	set, err := sheet.NewTalentByCategorySet(
+		// 		map[enum.CategoryName]bool{
+		// 			enum.Reinforcement:   true,
+		// 			enum.Transmutation:   true,
+		// 			enum.Materialization: true,
+		// 			enum.Specialization:  true,
+		// 			enum.Manipulation:    true,
+		// 			enum.Emission:        true,
+		// 		},
+		// 		nil,
+		// 	)
+		// 	if err != nil {
+		// 		fmt.Println(err)
+		// 	}
+
+		charClass, err := sheetFactory.BuildHalfSheet(profile, nil)
+		if err != nil {
+			panic(domain.NewDomainError(fmt.Errorf(
+				"error building character class %s: %w", name, err),
+			))
+		}
+		characterClasses.Store(name, charClass)
+		// uncomment to print all character classes
+		// fmt.Println(newClass.ToString())
+		return true
+	})
 }
 
 func loadEnvFile() {

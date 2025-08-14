@@ -110,12 +110,7 @@ func (csf *CharacterSheetFactory) Build(
 	}
 
 	if charClass != nil {
-		// TODO: move into Wrap
-		physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
-		if err != nil {
-			return charSheet, NewClassNotAppliedError("getting exp reference")
-		}
-		charSheet = csf.Wrap(charSheet, charClass, physSkExp)
+		return csf.Wrap(charSheet, charClass)
 	}
 	return charSheet, nil
 }
@@ -468,8 +463,7 @@ func (csf *CharacterSheetFactory) BuildSpiritAttrsBuffs() map[enum.AttributeName
 func (csf *CharacterSheetFactory) Wrap(
 	charSheet *CharacterSheet,
 	charClass *cc.CharacterClass,
-	physSkExp experience.ICascadeUpgrade,
-) *CharacterSheet {
+) (*CharacterSheet, error) {
 	for name, exp := range charClass.SkillsExps {
 		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
 	}
@@ -481,6 +475,11 @@ func (csf *CharacterSheetFactory) Wrap(
 	}
 	for name, exp := range charClass.AttributesExps {
 		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
+	}
+
+	physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
+	if err != nil {
+		return charSheet, NewClassNotAppliedError("getting exp reference")
 	}
 	expTable := experience.NewExpTable(PHYSICAL_SKILLS_COEFF)
 	newExp := experience.NewExperience(expTable)
@@ -495,17 +494,14 @@ func (csf *CharacterSheetFactory) Wrap(
 			name,
 		)
 	}
-	return charSheet
+	return charSheet, nil
 }
 
 func (csf *CharacterSheetFactory) BuildHalfSheet(
 	profile CharacterProfile,
-	categorySet *TalentByCategorySet,
 	charClass *cc.CharacterClass,
+	// categorySet *TalentByCategorySet,
 ) (*HalfSheet, error) {
-	expTable := experience.NewExpTable(CHARACTER_COEFF)
-	exp := experience.NewExperience(expTable)
-	characterExp := experience.NewCharacterExp(*exp)
 
 	// TODO: like Build func above, move to client that calls this func
 	// var talentLvl int
@@ -514,6 +510,7 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	// } else {
 	// 	talentLvl = categorySet.GetTalentLvl()
 	// }
+	characterExp := csf.BuildCharacterExp()
 	abilities := csf.BuildPersonAbilitiesHalf(characterExp)
 
 	physAbility, _ := abilities.Get(enum.Physicals)
@@ -522,23 +519,15 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 	mentalAbility, _ := abilities.Get(enum.Mentals)
 	mentalAttrs := csf.BuildMentalAttrs(mentalAbility)
 
-	characterAttrs := attribute.NewCharacterAttributes(
-		physAttrs, mentalAttrs, nil,
-	)
+	characterAttrs := attribute.NewCharacterAttributes(physAttrs, mentalAttrs, nil)
 
 	skills, _ := abilities.Get(enum.Skills)
-	physSkills, err := csf.BuildPhysSkills(
-		skills, physAttrs,
-	)
+	physSkills, err := csf.BuildPhysSkills(skills, physAttrs)
 	if err != nil {
 		return nil, err
 	}
-	mentalSkills := csf.BuildMentalSkills(
-		skills, mentalAttrs,
-	)
-	characterSkills := skill.NewCharacterSkills(
-		physSkills, mentalSkills, nil,
-	)
+	mentalSkills := csf.BuildMentalSkills(skills, mentalAttrs)
+	charSkills := skill.NewCharacterSkills(physSkills, mentalSkills, nil)
 
 	proficiency := proficiency.NewManager()
 
@@ -547,22 +536,21 @@ func (csf *CharacterSheetFactory) BuildHalfSheet(
 		className = charClass.GetName()
 	}
 	// TODO: fix after add aura (MOP - spiritual status)
-	status := csf.BuildStatusManager(abilities, characterAttrs, characterSkills)
+	status := csf.BuildStatusManager(abilities, characterAttrs, charSkills)
 
 	sheet := NewHalfSheet(
 		profile,
 		*abilities,
 		*characterAttrs,
-		*characterSkills,
+		*charSkills,
 		*proficiency,
 		*status,
 		&className,
 	)
 	if charClass != nil {
-		sheet = csf.WrapHalf(sheet, charClass)
+		return csf.WrapHalf(sheet, charClass)
 	}
 	return sheet, nil
-
 }
 
 func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
@@ -587,22 +575,38 @@ func (csf *CharacterSheetFactory) BuildPersonAbilitiesHalf(
 }
 
 func (csf *CharacterSheetFactory) WrapHalf(
-	sheet *HalfSheet, charClass *cc.CharacterClass,
-) *HalfSheet {
+	charSheet *HalfSheet,
+	charClass *cc.CharacterClass,
+) (*HalfSheet, error) {
 	for name, exp := range charClass.SkillsExps {
-		sheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
+		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
 	}
 	for _, skill := range charClass.JointSkills {
-		sheet.AddJointSkill(&skill)
-	}
-	for name, exp := range charClass.ProficienciesExps {
-		sheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
+		charSheet.AddJointSkill(&skill)
 	}
 	for _, prof := range charClass.JointProficiencies {
-		sheet.AddJointProficiency(&prof)
+		charSheet.AddJointProficiency(&prof)
 	}
 	for name, exp := range charClass.AttributesExps {
-		sheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
+		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
 	}
-	return sheet
+
+	physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
+	if err != nil {
+		return charSheet, NewClassNotAppliedError("getting exp reference")
+	}
+	expTable := experience.NewExpTable(PHYSICAL_SKILLS_COEFF)
+	newExp := experience.NewExperience(expTable)
+	for name, exp := range charClass.ProficienciesExps {
+		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
+		charSheet.AddCommonProficiency(name, prof)
+		charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
+	}
+	for name, exp := range charClass.JointProfExps {
+		charSheet.IncreaseExpForJointProficiency(
+			experience.NewUpgradeCascade(exp),
+			name,
+		)
+	}
+	return charSheet, nil
 }
