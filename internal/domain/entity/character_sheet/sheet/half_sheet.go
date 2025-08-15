@@ -152,6 +152,50 @@ func (hs *HalfSheet) GetExpPoints() int {
 	return hs.ability.GetCharacterExpPoints()
 }
 
+func (hs *HalfSheet) GetPhysicalSkillsExpPoints() map[enum.SkillName]int {
+	return hs.skill.GetPhysicalsExpPoints()
+}
+
+func (hs *HalfSheet) GetMentalSkillsExpPoints() map[enum.SkillName]int {
+	return hs.skill.GetMentalsExpPoints()
+}
+
+func (hs *HalfSheet) GetPhysicalSkillsLevel() map[enum.SkillName]int {
+	return hs.skill.GetPhysicalsLevel()
+}
+
+func (hs *HalfSheet) GetMentalSkillsLevel() map[enum.SkillName]int {
+	return hs.skill.GetMentalsLevel()
+}
+
+func (hs *HalfSheet) GetPhysicalAttributesExpPoints() map[enum.AttributeName]int {
+	return hs.attribute.GetPhysicalsExpPoints()
+}
+
+func (hs *HalfSheet) GetMentalAttributesExpPoints() map[enum.AttributeName]int {
+	return hs.attribute.GetMentalsExpPoints()
+}
+
+func (hs *HalfSheet) GetPhysicalAttributesLevels() map[enum.AttributeName]int {
+	return hs.attribute.GetPhysicalsLevel()
+}
+
+func (hs *HalfSheet) GetMentalAttributesLevels() map[enum.AttributeName]int {
+	return hs.attribute.GetMentalsLevel()
+}
+
+func (hs *HalfSheet) GetCommonProficiencies() map[enum.WeaponName]prof.IProficiency {
+	return hs.proficiency.GetCommons()
+}
+
+func (hs *HalfSheet) GetJointProficiencies() map[string]prof.JointProficiency {
+	return hs.proficiency.GetJointProficiencies()
+}
+
+func (hs *HalfSheet) GetProfile() CharacterProfile {
+	return hs.profile
+}
+
 func (hs *HalfSheet) ToString() string {
 	const nameWidth = 14
 	const valueWidth = 4

@@ -3,6 +3,7 @@ package sheet
 import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	p "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	s "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
@@ -10,11 +11,11 @@ import (
 type CharacterClassResponse struct {
 	Profile             ClassProfileResponse          `json:"profile"`
 	Distribution        *DistributionResponse         `json:"distribution,omitempty"`
-	SkillsExps          map[string]int                `json:"skills_exps"`
+	SkillsExps          map[string]LvlExp             `json:"skills_exps"`
 	JointSkills         map[string]s.JointSkill       `json:"joint_skills"`
-	ProficienciesExps   map[string]int                `json:"proficiencies_exps"`
+	ProficienciesExps   map[string]LvlExp             `json:"proficiencies_exps"`
 	JointProficiencies  map[string]p.JointProficiency `json:"joint_proficiencies"`
-	AttributesExps      map[string]int                `json:"attributes_exps"`
+	AttributesExps      map[string]LvlExp             `json:"attributes_exps"`
 	IndicatedCategories []string                      `json:"indicated_categories"`
 }
 
@@ -32,20 +33,67 @@ type DistributionResponse struct {
 	ProficienciesAllowed []string `json:"proficiencies_allowed"`
 }
 
-func NewCharacterClassResponse(charClass cc.CharacterClass) CharacterClassResponse {
-	skillsExps := make(map[string]int)
-	for k, v := range charClass.SkillsExps {
-		skillsExps[k.String()] = v
+type LvlExp struct {
+	Level int `json:"lvl"`
+	Exp   int `json:"exp"`
+}
+
+func NewCharacterClassResponse(
+	classSheet cs.HalfSheet, charClass cc.CharacterClass,
+) CharacterClassResponse {
+	skillsExps := make(map[string]LvlExp)
+	physSkillsExp := classSheet.GetPhysicalSkillsExpPoints()
+	physSkillsLvl := classSheet.GetPhysicalSkillsLevel()
+	for skillName, exp := range physSkillsExp {
+		if exp > 0 {
+			skillsExps[skillName.String()] = LvlExp{
+				Level: physSkillsLvl[skillName],
+				Exp:   exp,
+			}
+		}
 	}
 
-	proficienciesExps := make(map[string]int)
-	for k, v := range charClass.ProficienciesExps {
-		proficienciesExps[k.String()] = v
+	mentalSkillsExp := classSheet.GetMentalSkillsExpPoints()
+	mentalSkillsLvl := classSheet.GetMentalSkillsLevel()
+	for skillName, exp := range mentalSkillsExp {
+		if exp > 0 {
+			skillsExps[skillName.String()] = LvlExp{
+				Level: mentalSkillsLvl[skillName],
+				Exp:   exp,
+			}
+		}
 	}
 
-	attributesExps := make(map[string]int)
-	for k, v := range charClass.AttributesExps {
-		attributesExps[k.String()] = v
+	proficienciesExps := make(map[string]LvlExp)
+	commonProfs := classSheet.GetCommonProficiencies()
+	for weaponName, prof := range commonProfs {
+		proficienciesExps[weaponName.String()] = LvlExp{
+			Level: prof.GetLevel(),
+			Exp:   prof.GetExpPoints(),
+		}
+	}
+
+	attributesExps := make(map[string]LvlExp)
+	physAttrsExp := classSheet.GetPhysicalAttributesExpPoints()
+	physAttrsLvl := classSheet.GetPhysicalAttributesLevels()
+	for attrName, exp := range physAttrsExp {
+		if exp > 0 {
+			attributesExps[attrName.String()] = LvlExp{
+				Level: physAttrsLvl[attrName],
+				Exp:   exp,
+			}
+		}
+	}
+
+	mentalAttrsExp := classSheet.GetMentalAttributesExpPoints()
+	mentalAttrsLvl := classSheet.GetMentalAttributesLevels()
+	for attrName, exp := range mentalAttrsExp {
+		if exp > 0 {
+			attributesExps[attrName.String()] = LvlExp{
+				Level: mentalAttrsLvl[attrName],
+				Exp:   exp,
+			}
+		}
 	}
 
 	indicatedCategories := make([]string, len(charClass.IndicatedCategories))
@@ -79,19 +127,19 @@ func NewCharacterClassResponse(charClass cc.CharacterClass) CharacterClassRespon
 		}
 	}
 
-	profile := charClass.Profile
+	profile := classSheet.GetProfile()
 	return CharacterClassResponse{
 		Profile: ClassProfileResponse{
-			Name:             profile.Name.String(),
+			Name:             profile.NickName,
 			Alignment:        profile.Alignment,
 			Description:      profile.Description,
 			BriefDescription: profile.BriefDescription,
 		},
 		Distribution:        distribution,
 		SkillsExps:          skillsExps,
-		JointSkills:         charClass.JointSkills,
+		JointSkills:         classSheet.GetPhysJointSkills(),
 		ProficienciesExps:   proficienciesExps,
-		JointProficiencies:  charClass.JointProficiencies,
+		JointProficiencies:  classSheet.GetJointProficiencies(),
 		AttributesExps:      attributesExps,
 		IndicatedCategories: indicatedCategories,
 	}

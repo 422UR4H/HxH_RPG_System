@@ -30,7 +30,11 @@ func GetClassHandler(
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity(err.Error())
 		}
-		var response = NewCharacterClassResponse(charClass)
+		classSheet, err := uc.GetClassSheet(req.Name)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(err.Error())
+		}
+		var response = NewCharacterClassResponse(classSheet, charClass)
 
 		return &GetCharacterClassResponse{
 			Body: GetCharacterClassBody{

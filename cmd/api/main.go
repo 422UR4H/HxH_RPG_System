@@ -104,9 +104,11 @@ func main() {
 		campaignRepo,
 	)
 	listCharacterClassesUC := cs.NewListCharacterClassesUC(
+		&dryCharacterClasses,
 		&characterClasses,
 	)
 	getCharacterClassUC := cs.NewGetCharacterClassUC(
+		&dryCharacterClasses,
 		&characterClasses,
 	)
 	updateNenHexValUC := cs.NewUpdateNenHexagonValueUC(
@@ -247,7 +249,8 @@ func initCharacterClasses(sheetFactory *sheet.CharacterSheetFactory) {
 		// 		fmt.Println(err)
 		// 	}
 
-		charClass, err := sheetFactory.BuildHalfSheet(profile, nil)
+		classRef := &class
+		charClass, err := sheetFactory.BuildHalfSheet(profile, classRef)
 		if err != nil {
 			panic(domain.NewDomainError(fmt.Errorf(
 				"error building character class %s: %w", name, err),
@@ -255,7 +258,7 @@ func initCharacterClasses(sheetFactory *sheet.CharacterSheetFactory) {
 		}
 		characterClasses.Store(name, charClass)
 		// uncomment to print all character classes
-		// fmt.Println(newClass.ToString())
+		// fmt.Println(charClass.ToString())
 		return true
 	})
 }

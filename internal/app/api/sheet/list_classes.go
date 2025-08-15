@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	characterclass "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
 type ListCharacterClassesBody struct {
@@ -21,11 +23,17 @@ func ListClassesHandler(
 ) func(context.Context, *struct{}) (*ListCharacterClassesResponse, error) {
 
 	return func(_ context.Context, _ *struct{}) (*ListCharacterClassesResponse, error) {
-		charClasses := uc.ListCharacterClasses()
 		var response []CharacterClassResponse
+		charClasses := uc.ListCharacterClasses()
+		classSheets := uc.ListClassSheets()
+		classes := make(map[enum.CharacterClassName]characterclass.CharacterClass)
 
 		for _, charClass := range charClasses {
-			response = append(response, NewCharacterClassResponse(charClass))
+			classes[charClass.GetName()] = charClass
+		}
+		for _, classSheet := range classSheets {
+			charClass := classes[classSheet.GetClass()]
+			response = append(response, NewCharacterClassResponse(classSheet, charClass))
 		}
 		return &ListCharacterClassesResponse{
 			Body: ListCharacterClassesBody{
