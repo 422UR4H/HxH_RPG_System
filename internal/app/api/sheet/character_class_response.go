@@ -11,11 +11,11 @@ import (
 type CharacterClassResponse struct {
 	Profile             ClassProfileResponse          `json:"profile"`
 	Distribution        *DistributionResponse         `json:"distribution,omitempty"`
-	SkillsExps          map[string]LvlExp             `json:"skills_exps"`
+	Skills              map[string]LvlExp             `json:"skills"`
 	JointSkills         map[string]s.JointSkill       `json:"joint_skills"`
-	ProficienciesExps   map[string]LvlExp             `json:"proficiencies_exps"`
+	Proficiencies       map[string]LvlExp             `json:"proficiencies"`
 	JointProficiencies  map[string]p.JointProficiency `json:"joint_proficiencies"`
-	AttributesExps      map[string]LvlExp             `json:"attributes_exps"`
+	Attributes          map[string]LvlExp             `json:"attributes"`
 	IndicatedCategories []string                      `json:"indicated_categories"`
 }
 
@@ -41,12 +41,12 @@ type LvlExp struct {
 func NewCharacterClassResponse(
 	classSheet cs.HalfSheet, charClass cc.CharacterClass,
 ) CharacterClassResponse {
-	skillsExps := make(map[string]LvlExp)
+	skills := make(map[string]LvlExp)
 	physSkillsExp := classSheet.GetPhysicalSkillsExpPoints()
 	physSkillsLvl := classSheet.GetPhysicalSkillsLevel()
 	for skillName, exp := range physSkillsExp {
 		if exp > 0 {
-			skillsExps[skillName.String()] = LvlExp{
+			skills[skillName.String()] = LvlExp{
 				Level: physSkillsLvl[skillName],
 				Exp:   exp,
 			}
@@ -57,28 +57,28 @@ func NewCharacterClassResponse(
 	mentalSkillsLvl := classSheet.GetMentalSkillsLevel()
 	for skillName, exp := range mentalSkillsExp {
 		if exp > 0 {
-			skillsExps[skillName.String()] = LvlExp{
+			skills[skillName.String()] = LvlExp{
 				Level: mentalSkillsLvl[skillName],
 				Exp:   exp,
 			}
 		}
 	}
 
-	proficienciesExps := make(map[string]LvlExp)
+	proficiencies := make(map[string]LvlExp)
 	commonProfs := classSheet.GetCommonProficiencies()
 	for weaponName, prof := range commonProfs {
-		proficienciesExps[weaponName.String()] = LvlExp{
+		proficiencies[weaponName.String()] = LvlExp{
 			Level: prof.GetLevel(),
 			Exp:   prof.GetExpPoints(),
 		}
 	}
 
-	attributesExps := make(map[string]LvlExp)
+	attributes := make(map[string]LvlExp)
 	physAttrsExp := classSheet.GetPhysicalAttributesExpPoints()
 	physAttrsLvl := classSheet.GetPhysicalAttributesLevels()
 	for attrName, exp := range physAttrsExp {
 		if exp > 0 {
-			attributesExps[attrName.String()] = LvlExp{
+			attributes[attrName.String()] = LvlExp{
 				Level: physAttrsLvl[attrName],
 				Exp:   exp,
 			}
@@ -89,7 +89,7 @@ func NewCharacterClassResponse(
 	mentalAttrsLvl := classSheet.GetMentalAttributesLevels()
 	for attrName, exp := range mentalAttrsExp {
 		if exp > 0 {
-			attributesExps[attrName.String()] = LvlExp{
+			attributes[attrName.String()] = LvlExp{
 				Level: mentalAttrsLvl[attrName],
 				Exp:   exp,
 			}
@@ -136,11 +136,11 @@ func NewCharacterClassResponse(
 			BriefDescription: profile.BriefDescription,
 		},
 		Distribution:        distribution,
-		SkillsExps:          skillsExps,
+		Skills:              skills,
 		JointSkills:         classSheet.GetPhysJointSkills(),
-		ProficienciesExps:   proficienciesExps,
+		Proficiencies:       proficiencies,
 		JointProficiencies:  classSheet.GetJointProficiencies(),
-		AttributesExps:      attributesExps,
+		Attributes:          attributes,
 		IndicatedCategories: indicatedCategories,
 	}
 }

@@ -10,6 +10,7 @@ import (
 )
 
 type ListCharacterClassesBody struct {
+	// TODO: change to character_classes in json
 	CharacterClasses []CharacterClassResponse
 }
 
