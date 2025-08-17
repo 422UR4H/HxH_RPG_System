@@ -118,7 +118,7 @@ func (m *Manager) GetAbilitiesCurrentExp() map[enum.AbilityName]int {
 	return expList
 }
 
-func (m *Manager) GetAbilitiesExpPoints() map[enum.AbilityName]int {
+func (m *Manager) GetExpPoints() map[enum.AbilityName]int {
 	expList := make(map[enum.AbilityName]int)
 	for name, ability := range m.abilities {
 		expList[name] = ability.GetExpPoints()
@@ -126,7 +126,7 @@ func (m *Manager) GetAbilitiesExpPoints() map[enum.AbilityName]int {
 	return expList
 }
 
-func (m *Manager) GetAbilitiesLevel() map[enum.AbilityName]int {
+func (m *Manager) GetLevels() map[enum.AbilityName]int {
 	lvlList := make(map[enum.AbilityName]int)
 	for name, ability := range m.abilities {
 		lvlList[name] = ability.GetLevel()

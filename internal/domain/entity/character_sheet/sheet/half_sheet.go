@@ -192,6 +192,26 @@ func (hs *HalfSheet) GetJointProficiencies() map[string]prof.JointProficiency {
 	return hs.proficiency.GetJointProficiencies()
 }
 
+func (hs *HalfSheet) GetAbilities() map[enum.AbilityName]ability.IAbility {
+	return hs.ability.GetAllAbilities()
+}
+
+func (hs *HalfSheet) GetPhysicalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+	return hs.attribute.GetPhysicalAttributes()
+}
+
+func (hs *HalfSheet) GetMentalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+	return hs.attribute.GetMentalAttributes()
+}
+
+func (hs *HalfSheet) GetPhysicalSkills() map[enum.SkillName]skill.ISkill {
+	return hs.skill.GetPhysicalSkills()
+}
+
+func (hs *HalfSheet) GetMentalSkills() map[enum.SkillName]skill.ISkill {
+	return hs.skill.GetMentalSkills()
+}
+
 func (hs *HalfSheet) GetProfile() CharacterProfile {
 	return hs.profile
 }
