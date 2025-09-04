@@ -17,7 +17,7 @@ type CharacterProfile struct {
 }
 
 func (cp *CharacterProfile) Validate() error {
-	if len(cp.NickName) < 3 || len(cp.NickName) > 16 {
+	if len(cp.NickName) < 3 || len(cp.NickName) > 10 {
 		return NewInvalidNicknameLengthError(cp.NickName)
 	}
 	if len(cp.FullName) < 6 || len(cp.FullName) > 32 {

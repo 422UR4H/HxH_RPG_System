@@ -15,7 +15,7 @@ var (
 	ErrInvalidOwner               = domain.NewValidationError(errors.New(invalidOwnerMsg))
 	ErrInvalidAlignment           = domain.NewValidationError(errors.New(invalidAlignment))
 	ErrInvalidActiveCategoryCount = domain.NewValidationError(errors.New("at least one category must be active"))
-	ErrInvalidNicknameLength      = domain.NewValidationError(errors.New("nickname must be 3-16 characters long"))
+	ErrInvalidNicknameLength      = domain.NewValidationError(errors.New("nickname must be 3-10 characters long"))
 	ErrInvalidFullNameLength      = domain.NewValidationError(errors.New("fullname must be 6-32 characters long"))
 	ErrInvalidBriefDescription    = domain.NewValidationError(errors.New("brief description must be at most 32 characters long"))
 	ErrInvalidBirthday            = domain.NewValidationError(errors.New("invalid birthday"))
