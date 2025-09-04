@@ -83,14 +83,14 @@ func (r *Repository) CreateCharacterSheet(
 
 	const profileQuery = `
 		INSERT INTO character_profiles (
-			uuid, character_sheet_uuid, nickname, fullname, alignment, character_class, long_description, brief_description, birthday, created_at, updated_at
+			uuid, character_sheet_uuid, nickname, fullname, alignment, character_class, long_description, brief_description, birthday, age, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 		)
 	`
 	_, err = tx.Exec(ctx, profileQuery,
 		sheet.Profile.UUID, sheet.UUID, sheet.Profile.NickName, sheet.Profile.FullName, sheet.Profile.Alignment,
-		sheet.Profile.CharacterClass, sheet.Profile.Description, sheet.Profile.BriefDescription, sheet.Profile.Birthday,
+		sheet.Profile.CharacterClass, sheet.Profile.Description, sheet.Profile.BriefDescription, sheet.Profile.Birthday, sheet.Profile.Age,
 		sheet.Profile.CreatedAt, sheet.Profile.UpdatedAt,
 	)
 	if err != nil {

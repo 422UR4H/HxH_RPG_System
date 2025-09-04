@@ -12,8 +12,9 @@ CREATE TABLE IF NOT EXISTS character_profiles (
   alignment VARCHAR(16) NOT NULL,
   character_class VARCHAR(16) NOT NULL,
   long_description TEXT,
-  brief_description VARCHAR(32),
+  brief_description VARCHAR(255),
   birthday DATE NOT NULL,
+  age INT NOT NULL,
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

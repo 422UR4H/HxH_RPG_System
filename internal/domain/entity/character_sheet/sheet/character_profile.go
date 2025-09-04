@@ -1,14 +1,19 @@
 package sheet
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 type CharacterProfile struct {
-	NickName         string    `json:"nickname"`
-	FullName         string    `json:"fullname"`
-	Alignment        string    `json:"alignment"`
-	Description      string    `json:"description"`
-	BriefDescription string    `json:"brief_description"`
-	Birthday         time.Time `json:"birthday"`
+	NickName         string     `json:"nickname"`
+	FullName         string     `json:"fullname"`
+	Alignment        string     `json:"alignment"`
+	Description      string     `json:"description"`
+	BriefDescription string     `json:"brief_description"`
+	Birthday         *time.Time `json:"birthday"`
+	Age              int        `json:"age"`
 }
 
 func (cp *CharacterProfile) Validate() error {
@@ -18,14 +23,43 @@ func (cp *CharacterProfile) Validate() error {
 	if len(cp.FullName) < 6 || len(cp.FullName) > 32 {
 		return NewInvalidFullNameLengthError(cp.FullName)
 	}
-	if len(cp.Alignment) > 16 {
-		return NewInvalidAlignmentLengthError(cp.Alignment)
-	}
-	if len(cp.BriefDescription) > 32 {
+	if len(cp.BriefDescription) > 255 {
 		return NewInvalidBriefDescriptionError(cp.BriefDescription)
 	}
-	if cp.Birthday.After(time.Now()) {
-		return NewInvalidBirthdayError()
+	if cp.Age < 0 {
+		return NewInvalidAgeError()
+	}
+	return cp.ValidateAlignment()
+}
+
+func (cp *CharacterProfile) ValidateAlignment() error {
+	if cp.Alignment == "" {
+		return nil
+	}
+
+	alignment := strings.Split(cp.Alignment, "-")
+	if len(alignment) != 2 {
+		return NewInvalidAlignmentError(cp.Alignment)
+	}
+
+	validFirst := map[string]struct{}{
+		"Lawful":  {},
+		"Neutral": {},
+		"Chaotic": {},
+	}
+	validSecond := map[string]struct{}{
+		"Good":    {},
+		"Neutral": {},
+		"Evil":    {},
+	}
+	first := alignment[0]
+	second := alignment[1]
+
+	if _, ok := validFirst[first]; !ok {
+		return NewInvalidAlignmentError(cp.Alignment)
+	}
+	if _, ok := validSecond[second]; !ok {
+		return NewInvalidAlignmentError(cp.Alignment)
 	}
 	return nil
 }
@@ -35,6 +69,7 @@ func (cp *CharacterProfile) ToString() string {
 	profile += "Name: " + cp.FullName + "\n"
 	profile += "Alignment: " + cp.Alignment + " | "
 	profile += "Birthday: " + cp.Birthday.String() + "\n"
+	profile += "Age: " + strconv.Itoa(cp.Age) + "\n"
 
 	briefDesc := cp.BriefDescription
 	if briefDesc != "" {

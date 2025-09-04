@@ -90,7 +90,7 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 		if err != nil {
 			return nil, err
 		}
-		if characterSheetsCount >= 10 {
+		if characterSheetsCount >= 20 {
 			return nil, ErrMaxCharacterSheetsLimit
 		}
 	}
@@ -147,15 +147,6 @@ func (uc *CreateCharacterSheetUC) validateNickName(nick string) error {
 	if !allowedNickName {
 		return NewNicknameNotAllowedError(nick)
 	}
-
-	// TODO: add this validation to create NPC and remove from here
-	// exists, err := uc.repo.ExistsCharacterWithNick(ctx, nick)
-	// if err != nil {
-	// 	return err
-	// }
-	// if exists {
-	// 	return NewNicknameAlreadyExistsError(nick)
-	// }
 	return nil
 }
 
@@ -224,6 +215,7 @@ func CharacterSheetToModel(sheet *sheet.CharacterSheet) *model.CharacterSheet {
 			Description:      profile.Description,
 			BriefDescription: profile.BriefDescription,
 			Birthday:         profile.Birthday,
+			Age:              profile.Age,
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		},

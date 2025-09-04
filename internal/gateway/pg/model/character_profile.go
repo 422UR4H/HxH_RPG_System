@@ -16,7 +16,8 @@ type CharacterProfile struct {
 	CharacterClass   string
 	Description      string
 	BriefDescription string
-	Birthday         time.Time
+	Birthday         *time.Time
+	Age              int
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
