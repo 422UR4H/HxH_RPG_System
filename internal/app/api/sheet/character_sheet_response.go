@@ -67,18 +67,18 @@ type AttributeResponse struct {
 
 type PrincipleResponse struct {
 	ExperienceResponse
-	ValueForTest int `json:"value_for_test"`
+	ValueForTest int `json:"value"`
 }
 
 type CategoryResponse struct {
 	ExperienceResponse
-	ValueForTest int     `json:"value_for_test"`
+	ValueForTest int     `json:"value"`
 	Percent      float64 `json:"percent"`
 }
 
 type SkillResponse struct {
 	ExperienceResponse
-	ValueForTest int `json:"value_for_test"`
+	ValueForTest int `json:"value"`
 }
 
 type CommonProficiencyResponse struct {
