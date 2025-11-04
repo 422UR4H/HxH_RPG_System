@@ -37,22 +37,22 @@ Decidi logar as atualizações no board do Excalidraw aqui abaixo por enquanto, 
 
 
 Diagrama atual de Atributos Físicos:
-![alt text](image.png)
+<img width="696" height="641" alt="Captura de tela de 2025-11-03 21-25-37" src="https://github.com/user-attachments/assets/e891e74e-d3f0-4f11-be22-25c90f893c52" />
 
 Diagrama de Actions:
-![alt text](image-2.png)
+<img width="1030" height="543" alt="Captura de tela de 2025-11-03 21-27-08" src="https://github.com/user-attachments/assets/82c9d4af-cf0d-4142-9674-95043fb35f1c" />
 
 Contrato de Actions:
-![alt text](image-3.png)
+<img width="868" height="459" alt="Captura de tela de 2025-11-03 21-28-52" src="https://github.com/user-attachments/assets/ecabe8f3-89e7-4990-b09b-90b30c991ed6" />
 
 Entidade de Actions:
-![alt text](image-4.png)
+<img width="878" height="507" alt="Captura de tela de 2025-11-03 21-29-26" src="https://github.com/user-attachments/assets/8210d5c3-018a-47aa-a42d-e2d2d1002813" />
 
 Protótipo do Front-end do Mestre:
-![alt text](image-7.png)
+<img width="869" height="799" alt="Captura de tela de 2025-11-03 21-33-24" src="https://github.com/user-attachments/assets/9d7dc2f8-06dd-414e-9550-954f06f5c82a" />
 
 Fluxo de Alto Nível do Combate (regra de jogo):
-![alt text](image-5.png)
+<img width="1911" height="906" alt="Captura de tela de 2025-11-03 21-30-17" src="https://github.com/user-attachments/assets/91599e2f-3cac-43ba-8212-a9b9ce6769f4" />
 
-Fluxo de Baixo Nível do Combate (nível técnico) - em desenvolvimento:
-![alt text](image-6.png)
+Fluxo de Baixo Nível da Partida (nível técnico) - em desenvolvimento:
+<img width="1819" height="925" alt="Captura de tela de 2025-11-03 21-31-40" src="https://github.com/user-attachments/assets/6d4bf769-4bb0-42ca-a539-faf8a33f9a15" />
