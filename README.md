@@ -38,6 +38,7 @@ Decidi logar as atualizações no board do Excalidraw aqui abaixo por enquanto, 
 
 
 Diagrama atual de Atributos Físicos:
+
 <img width="696" height="641" alt="Captura de tela de 2025-11-03 21-25-37" src="https://github.com/user-attachments/assets/e891e74e-d3f0-4f11-be22-25c90f893c52" />
 
 Diagrama de Actions:
