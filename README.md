@@ -32,8 +32,9 @@ A nova etapa do projeto consiste em realizar a definição das entidades de dom�
 Decidi logar as atualizações no board do Excalidraw aqui abaixo por enquanto, mas também deixar alguns prints (que estarão rapidamente desatualizados), apenas para registrar o trabalho que pode parecer parado, mas que está em constante desenvolvimento!!
 
 
-**Links do desenvolvimento lógico no Excalidraw:**
+**Links do desenvolvimento lógico no Excalidraw (histórico):**
 * https://excalidraw.com/#json=o-b6B0_9vGhSqAtTbc_hO,ZOPhGHyULdy_hpXW3AVFGg
+* https://excalidraw.com/#json=95Up2n1nj9Qn9SR0nSPH3,4-Lh8oJq-xjVc5Lek5WTTQ
 
 
 Diagrama atual de Atributos Físicos:
