@@ -35,6 +35,7 @@ Decidi logar as atualizações no board do Excalidraw aqui abaixo por enquanto, 
 **Links do desenvolvimento lógico no Excalidraw (histórico):**
 * https://excalidraw.com/#json=o-b6B0_9vGhSqAtTbc_hO,ZOPhGHyULdy_hpXW3AVFGg
 * https://excalidraw.com/#json=95Up2n1nj9Qn9SR0nSPH3,4-Lh8oJq-xjVc5Lek5WTTQ
+* https://excalidraw.com/#json=oKpQk2u2xT5vA2VxpJIB_,2Ps_YaNzATyim4krn9kXHQ
 
 
 Diagrama atual de Atributos Físicos:
