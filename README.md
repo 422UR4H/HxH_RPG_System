@@ -1,7 +1,6 @@
 Front-end:
 https://github.com/422UR4H/HxH_RPG_Environment_React
 <img width="872" height="1080" alt="Captura de tela de 2025-12-18 15-33-50" src="https://github.com/user-attachments/assets/a9fdd5cf-6458-4bd9-a455-46acfe6652e2" />
-<img width="860" height="930" alt="Captura de tela de 2025-12-18 15-29-33" src="https://github.com/user-attachments/assets/840e4a26-1612-49fb-9d85-5cc56a2eb270" />
 
 
 # Hunter X Hunter RPG System
