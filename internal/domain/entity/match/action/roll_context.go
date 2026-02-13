@@ -7,9 +7,10 @@ import (
 type RollContext struct {
 	Dice      []die.Die
 	Condition *RollCondition
+	Result    *int
 }
 
-func (rc *RollContext) GetResultSum(d die.Die) int {
+func (rc *RollContext) GetDiceResult(d die.Die) int {
 	sum := 0
 	for _, die := range rc.Dice {
 		sum += die.GetResult()

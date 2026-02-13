@@ -3,24 +3,24 @@ package action
 import "github.com/google/uuid"
 
 type Action struct {
-	actorID     uuid.UUID
-	TargetID    []uuid.UUID // maybe change to *CharacterSheet
-	ReactToID   []uuid.UUID // maybe change to *Action
-	Skills      []Skill
-	ActionSpeed RollContext
-	Feint       *RollContext // TODO: change to obj in v0.1
-	Move        *Move
-	Attack      *Attack
-	Defense     *Defense
-	Dodge       *Dodge
+	actorID   uuid.UUID
+	TargetID  []uuid.UUID // maybe change to *CharacterSheet
+	ReactToID uuid.UUID   // maybe change to *Action
+	Skills    []Skill
+	Speed     ActionSpeed
+	Feint     *RollContext // TODO: change to obj in v0.1
+	Move      *Move
+	Attack    *Attack
+	Defense   *Defense
+	Dodge     *Dodge
 }
 
 func NewAction(
 	actorID uuid.UUID,
 	targetID []uuid.UUID,
-	reactToID []uuid.UUID,
+	reactToID uuid.UUID,
 	skills []Skill,
-	actionSpeed RollContext,
+	actionSpeed ActionSpeed,
 	feint *RollContext,
 	move *Move,
 	attack *Attack,
@@ -28,16 +28,16 @@ func NewAction(
 	dodge *Dodge,
 ) *Action {
 	return &Action{
-		actorID:     actorID,
-		TargetID:    targetID,
-		ReactToID:   reactToID,
-		Skills:      skills,
-		ActionSpeed: actionSpeed,
-		Feint:       feint,
-		Move:        move,
-		Attack:      attack,
-		Defense:     defense,
-		Dodge:       dodge,
+		actorID:   actorID,
+		TargetID:  targetID,
+		ReactToID: reactToID,
+		Skills:    skills,
+		Speed:     actionSpeed,
+		Feint:     feint,
+		Move:      move,
+		Attack:    attack,
+		Defense:   defense,
+		Dodge:     dodge,
 	}
 }
 

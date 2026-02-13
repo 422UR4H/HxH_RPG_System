@@ -5,7 +5,8 @@ import (
 )
 
 type Skill struct {
-	SkillName  enum.SkillName
-	Roll       *RollCondition // strategy set dices based on campaign\match rules
-	Difficulty *int           // difficulty class (DC -> CD in pt-br)
+	SkillName   enum.SkillName
+	Roll        *RollContext // strategy set dice based on campaign\match rules
+	Difficulty  *int         // difficulty class (DC -> CD in pt-br)
+	FinalResult int
 }
