@@ -40,6 +40,7 @@ Decidi logar as atualizações no board do Excalidraw aqui abaixo por enquanto, 
 * https://excalidraw.com/#json=pCATPdMspsHX3jhvKd-hP,MZHjAntaKRkH9HHAObtCxg
 * https://excalidraw.com/#json=qa579OGsWxRYSXaRup0o6,eySEKwW4xOb8ny46nHq0UA
 * https://excalidraw.com/#json=pZrC8hBlyCYoBKoJJq76P,_z88LtqN-w8PYkWk0_L9JA
+* https://excalidraw.com/#json=Ooy4ufrSboAHLwwlQxCq0,UdQpGnW1zR7SXfxm_cPqzQ
 
 
 Diagrama atual de Atributos Físicos:
