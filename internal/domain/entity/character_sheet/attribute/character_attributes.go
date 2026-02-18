@@ -8,10 +8,14 @@ import (
 type CharacterAttributes struct {
 	physicals  *Manager
 	mentals    *Manager
-	spirituals *Manager
+	spirituals *SpiritualManager
 }
 
-func NewCharacterAttributes(physicals, mentals, spirituals *Manager) *CharacterAttributes {
+func NewCharacterAttributes(
+	physicals *Manager,
+	mentals *Manager,
+	spirituals *SpiritualManager,
+) *CharacterAttributes {
 	return &CharacterAttributes{
 		physicals:  physicals,
 		mentals:    mentals,
@@ -47,8 +51,18 @@ func (ca *CharacterAttributes) Get(name enum.AttributeName) (IGameAttribute, err
 	return nil, ErrAttributeNotFound
 }
 
+func (ca *CharacterAttributes) GetDistributable(name enum.AttributeName) (IDistributableAttribute, error) {
+	if attr, _ := ca.physicals.Get(name); attr != nil {
+		return attr, nil
+	}
+	if attr, _ := ca.mentals.Get(name); attr != nil {
+		return attr, nil
+	}
+	return nil, ErrAttributeNotFound
+}
+
 func (ca *CharacterAttributes) GetPointsOf(name enum.AttributeName) (int, error) {
-	attr, err := ca.Get(name)
+	attr, err := ca.GetDistributable(name)
 	if err != nil {
 		return 0, err
 	}
@@ -173,11 +187,11 @@ func (ca *CharacterAttributes) GetPhysicalsPrimaryPoints() map[enum.AttributeNam
 	return ca.physicals.GetDistributedPrimaryPoints()
 }
 
-func (ca *CharacterAttributes) GetPhysicalAttributes() map[enum.AttributeName]IGameAttribute {
+func (ca *CharacterAttributes) GetPhysicalAttributes() map[enum.AttributeName]IDistributableAttribute {
 	return ca.physicals.GetAllAttributes()
 }
 
-func (ca *CharacterAttributes) GetMentalAttributes() map[enum.AttributeName]IGameAttribute {
+func (ca *CharacterAttributes) GetMentalAttributes() map[enum.AttributeName]IDistributableAttribute {
 	return ca.mentals.GetAllAttributes()
 }
 

@@ -45,6 +45,7 @@ func (pa *PrimaryAttribute) GetValue() int {
 	return pa.points + pa.GetLevel()
 }
 
+// TODO: validate if buff is added here
 func (pa *PrimaryAttribute) GetPower() int {
 	return pa.GetValue() + int(pa.GetAbilityBonus()) + *pa.buff
 }

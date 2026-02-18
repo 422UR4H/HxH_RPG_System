@@ -80,9 +80,11 @@ func (csf *CharacterSheetFactory) Build(
 		nenHexagon = spiritual.NewNenHexagon(*hexValue, category)
 		categoryPercents = nenHexagon.GetCategoryPercents()
 	}
-	hatsu := csf.BuildHatsu(spiritAbility, categoryPercents)
+	flame, _ := spiritAttrs.Get(enum.Flame)
+	conscience, _ := spiritAttrs.Get(enum.Conscience)
+	hatsu := csf.BuildHatsu(flame, conscience, categoryPercents)
 	// aura, _ := status.Get(enum.Aura)
-	spiritPrinciples := csf.BuildSpiritPrinciples(spiritAbility, nenHexagon, hatsu)
+	spiritPrinciples := csf.BuildSpiritPrinciples(flame, conscience, nenHexagon, hatsu)
 
 	proficiency := proficiency.NewManager()
 
@@ -158,7 +160,7 @@ func (csf *CharacterSheetFactory) BuildPhysAttrs(
 		enum.Resistance, *exp, physAbility, buffs[enum.Resistance],
 	)
 
-	res := primAttr.Clone(enum.Resistance, buffs[enum.Resistance])
+	res := primAttr
 	agi := primAttr.Clone(enum.Agility, buffs[enum.Agility])
 	str := attribute.NewMiddleAttribute(
 		enum.Strength, *exp.Clone(), buffs[enum.Strength], res, agi,
@@ -201,35 +203,32 @@ func (csf *CharacterSheetFactory) BuildMentalAttrs(
 		enum.Resilience, exp, mentalAbility, buffs[enum.Resilience],
 	)
 
-	attrs[enum.Resilience] = attr.Clone(enum.Resilience, buffs[enum.Resilience])
+	attrs[enum.Resilience] = attr
 	attrs[enum.Adaptability] = attr.Clone(enum.Adaptability, buffs[enum.Adaptability])
 	attrs[enum.Weighting] = attr.Clone(enum.Weighting, buffs[enum.Weighting])
 	attrs[enum.Creativity] = attr.Clone(enum.Creativity, buffs[enum.Creativity])
 
 	// TODO: add middle attributes which primary attributes above
 	return attribute.NewAttributeManager(
-		attrs, make(map[enum.AttributeName]*attribute.MiddleAttribute), buffs,
+		attrs, nil, buffs,
 	)
 }
 
 func (csf *CharacterSheetFactory) BuildSpiritualAttrs(
 	spiritualAbility ability.IAbility,
-) *attribute.Manager {
+) *attribute.SpiritualManager {
 
-	attrs := make(map[enum.AttributeName]*attribute.PrimaryAttribute)
+	attrs := make(map[enum.AttributeName]*attribute.SpiritualAttribute)
 	buffs := csf.BuildSpiritAttrsBuffs()
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_ATTRIBUTE_COEFF))
-	attr := attribute.NewPrimaryAttribute(
-		enum.Spirit, *exp, spiritualAbility, buffs[enum.Spirit],
+	attr := attribute.NewSpiritualAttribute(
+		enum.Flame, *exp, spiritualAbility, buffs[enum.Flame],
 	)
+	attrs[enum.Flame] = attr
+	attrs[enum.Conscience] = attr.Clone(enum.Conscience, buffs[enum.Conscience])
 
-	attrs[enum.Spirit] = attr
-
-	// TODO: maybe add middle attributes which primary attributes above
-	return attribute.NewAttributeManager(
-		attrs, make(map[enum.AttributeName]*attribute.MiddleAttribute), buffs,
-	)
+	return attribute.NewSpiritualAttributeManager(attrs, buffs)
 }
 
 func (csf *CharacterSheetFactory) BuildStatusManager(
@@ -240,16 +239,19 @@ func (csf *CharacterSheetFactory) BuildStatusManager(
 	status_bars := make(map[enum.StatusName]status.IStatusBar)
 
 	physAbility, _ := abilities.Get(enum.Physicals)
-	resistance, _ := attrs.Get(enum.Resistance)
+	resistance, _ := attrs.GetDistributable(enum.Resistance)
 	vitality, _ := skills.Get(enum.Vitality)
 	status_bars[enum.Health] = status.NewHealthPoints(physAbility, resistance, vitality)
 
 	energy, _ := skills.Get(enum.Energy)
 	status_bars[enum.Stamina] = status.NewStaminaPoints(physAbility, resistance, energy)
 
-	// TODO: decide and implement
-	// someSkill, _ := skills.Get(enum.SomeSkill)
-	// status_bars[enum.Aura] = status.NewStatusBar(someSkill)
+	spiritualAbility, _ := abilities.Get(enum.Spirituals)
+	if spiritualAbility != nil {
+		conscience, _ := attrs.Get(enum.Conscience)
+		mop, _ := skills.Get(enum.Mop)
+		status_bars[enum.Aura], _ = status.NewAuraPoints(spiritualAbility, conscience, mop)
+	}
 
 	return status.NewStatusManager(status_bars)
 }
@@ -269,7 +271,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	resSkill := skill.NewCommonSkill(enum.Vitality, *exp.Clone(), res, physSkills)
-	skills[enum.Vitality] = resSkill.Clone(enum.Vitality)
+	skills[enum.Vitality] = resSkill
 	skills[enum.Energy] = resSkill.Clone(enum.Energy)
 	skills[enum.Defense] = resSkill.Clone(enum.Defense)
 
@@ -278,7 +280,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	strSkill := skill.NewCommonSkill(enum.Push, *exp.Clone(), str, physSkills)
-	skills[enum.Push] = strSkill.Clone(enum.Push)
+	skills[enum.Push] = strSkill
 	skills[enum.Grab] = strSkill.Clone(enum.Grab)
 	skills[enum.Carry] = strSkill.Clone(enum.Carry)
 
@@ -287,7 +289,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	agiSkill := skill.NewCommonSkill(enum.Velocity, *exp.Clone(), agi, physSkills)
-	skills[enum.Velocity] = agiSkill.Clone(enum.Velocity)
+	skills[enum.Velocity] = agiSkill
 	skills[enum.Accelerate] = agiSkill.Clone(enum.Accelerate)
 	skills[enum.Brake] = agiSkill.Clone(enum.Brake)
 
@@ -296,7 +298,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	atsSkill := skill.NewCommonSkill(enum.Legerity, *exp.Clone(), ats, physSkills)
-	skills[enum.Legerity] = atsSkill.Clone(enum.Legerity)
+	skills[enum.Legerity] = atsSkill
 	skills[enum.Repel] = atsSkill.Clone(enum.Repel)
 	skills[enum.Feint] = atsSkill.Clone(enum.Feint)
 
@@ -305,7 +307,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	flxSkill := skill.NewCommonSkill(enum.Acrobatics, *exp.Clone(), flx, physSkills)
-	skills[enum.Acrobatics] = flxSkill.Clone(enum.Acrobatics)
+	skills[enum.Acrobatics] = flxSkill
 	skills[enum.Evasion] = flxSkill.Clone(enum.Evasion)
 	skills[enum.Sneak] = flxSkill.Clone(enum.Sneak)
 
@@ -314,7 +316,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	dexSkill := skill.NewCommonSkill(enum.Reflex, *exp.Clone(), dex, physSkills)
-	skills[enum.Reflex] = dexSkill.Clone(enum.Reflex)
+	skills[enum.Reflex] = dexSkill
 	skills[enum.Accuracy] = dexSkill.Clone(enum.Accuracy)
 	skills[enum.Stealth] = dexSkill.Clone(enum.Stealth)
 
@@ -323,7 +325,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	senSkill := skill.NewCommonSkill(enum.Vision, *exp.Clone(), sen, physSkills)
-	skills[enum.Vision] = senSkill.Clone(enum.Vision)
+	skills[enum.Vision] = senSkill
 	skills[enum.Hearing] = senSkill.Clone(enum.Hearing)
 	skills[enum.Smell] = senSkill.Clone(enum.Smell)
 	skills[enum.Tact] = senSkill.Clone(enum.Tact)
@@ -334,7 +336,7 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 		return nil, err
 	}
 	conSkill := skill.NewCommonSkill(enum.Heal, *exp.Clone(), con, physSkills)
-	skills[enum.Heal] = conSkill.Clone(enum.Heal)
+	skills[enum.Heal] = conSkill
 	skills[enum.Breath] = conSkill.Clone(enum.Breath)
 	skills[enum.Tenacity] = conSkill.Clone(enum.Tenacity)
 
@@ -358,7 +360,7 @@ func (csf *CharacterSheetFactory) BuildMentalSkills(
 
 func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	skillsExp experience.ICascadeUpgrade,
-	spiritualsAttrs *attribute.Manager,
+	spiritualsAttrs *attribute.SpiritualManager,
 ) (*skill.Manager, error) {
 
 	skills := make(map[enum.SkillName]skill.ISkill)
@@ -366,14 +368,23 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_SKILLS_COEFF))
 	spiritualSkills := skill.NewSkillsManager(*exp, skillsExp)
 
-	spr, err := spiritualsAttrs.Get(enum.Spirit)
+	flameNen, err := spiritualsAttrs.Get(enum.Flame)
 	if err != nil {
 		return nil, err
 	}
-	skill := skill.NewCommonSkill(enum.Nen, *exp.Clone(), spr, spiritualSkills)
-	skills[enum.Nen] = skill.Clone(enum.Nen)
-	skills[enum.Focus] = skill.Clone(enum.Focus)
-	skills[enum.WillPower] = skill.Clone(enum.WillPower)
+	flameSkill := skill.NewCommonSkill(enum.Focus, *exp.Clone(), flameNen, spiritualSkills)
+	skills[enum.Focus] = flameSkill
+	skills[enum.WillPower] = flameSkill.Clone(enum.WillPower)
+	skills[enum.SelfKnowledge] = flameSkill.Clone(enum.SelfKnowledge)
+
+	conscienceNen, err := spiritualsAttrs.Get(enum.Conscience)
+	if err != nil {
+		return nil, err
+	}
+	conscienceSkill := skill.NewCommonSkill(enum.Coa, *exp.Clone(), conscienceNen, spiritualSkills)
+	skills[enum.Coa] = conscienceSkill
+	skills[enum.Mop] = conscienceSkill.Clone(enum.Mop)
+	skills[enum.Aop] = conscienceSkill.Clone(enum.Aop)
 
 	err = spiritualSkills.Init(skills)
 	if err != nil {
@@ -383,14 +394,15 @@ func (csf *CharacterSheetFactory) BuildSpiritualSkills(
 }
 
 func (csf *CharacterSheetFactory) BuildHatsu(
-	ability ability.IAbility,
+	flameNen attribute.IGameAttribute,
+	conscienceNen attribute.IGameAttribute,
 	categoryPercents map[enum.CategoryName]float64,
 ) *spiritual.Hatsu {
 
 	categories := make(map[enum.CategoryName]spiritual.NenCategory)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
-	hatsu := spiritual.NewHatsu(*exp, ability, categories, categoryPercents)
+	hatsu := spiritual.NewHatsu(*exp, flameNen, conscienceNen, categories, categoryPercents)
 
 	category := spiritual.NewNenCategory(*exp.Clone(), enum.Reinforcement, hatsu)
 	for _, name := range enum.AllNenCategoryNames() {
@@ -402,7 +414,8 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 }
 
 func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
-	spiritAbility ability.IAbility,
+	flameNen attribute.IGameAttribute,
+	conscienceNen attribute.IGameAttribute,
 	nenHexagon *spiritual.NenHexagon,
 	hatsu *spiritual.Hatsu,
 ) *spiritual.Manager {
@@ -410,17 +423,12 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 	principles := make(map[enum.PrincipleName]spiritual.NenPrinciple)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
-	principle := spiritual.NewNenPrinciple(enum.Ten, *exp, spiritAbility)
+	principle := spiritual.NewNenPrinciple(enum.Ten, *exp, flameNen, conscienceNen)
 
 	for _, name := range enum.AllNenPrincipleNames() {
 		if name == enum.Hatsu {
 			continue
 		}
-		// TODO: resolve aura\mop
-		// if name == enum.Mop {
-		// 	principles[name] = *spiritual.NewNenStatus(aura, *exp.Clone(), spiritAbility)
-		// 	continue
-		// }
 		principles[name] = *principle.Clone(name)
 	}
 	return spiritual.NewPrinciplesManager(principles, nenHexagon, hatsu)
@@ -455,7 +463,8 @@ func (csf *CharacterSheetFactory) BuildMentalAttrBuffs() map[enum.AttributeName]
 func (csf *CharacterSheetFactory) BuildSpiritAttrsBuffs() map[enum.AttributeName]*int {
 	buffs := make(map[enum.AttributeName]*int)
 
-	buffs[enum.Spirit] = new(int)
+	buffs[enum.Flame] = new(int)
+	buffs[enum.Conscience] = new(int)
 
 	return buffs
 }

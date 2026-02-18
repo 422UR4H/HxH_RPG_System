@@ -21,15 +21,15 @@ type CharacterSheetResponse struct {
 	Talent       TalentResponse       `json:"talent"`
 	NenHexValue  *int                 `json:"nen_hex_value,omitempty"`
 
-	Abilities           map[string]AbilityResponse   `json:"abilities"`
-	PhysicalAttributes  map[string]AttributeResponse `json:"physical_attributes"`
-	MentalAttributes    map[string]AttributeResponse `json:"mental_attributes"`
-	SpiritualAttributes map[string]AttributeResponse `json:"spiritual_attributes"`
-	PhysicalSkills      map[string]SkillResponse     `json:"physical_skills"`
-	MentalSkills        map[string]SkillResponse     `json:"mental_skills"`
-	SpiritualSkills     map[string]SkillResponse     `json:"spiritual_skills"`
-	Principles          map[string]PrincipleResponse `json:"principles"`
-	Categories          map[string]CategoryResponse  `json:"categories"`
+	Abilities           map[string]AbilityResponse            `json:"abilities"`
+	PhysicalAttributes  map[string]AttributeResponse          `json:"physical_attributes"`
+	MentalAttributes    map[string]AttributeResponse          `json:"mental_attributes"`
+	SpiritualAttributes map[string]SpiritualAttributeResponse `json:"spiritual_attributes"`
+	PhysicalSkills      map[string]SkillResponse              `json:"physical_skills"`
+	MentalSkills        map[string]SkillResponse              `json:"mental_skills"`
+	SpiritualSkills     map[string]SkillResponse              `json:"spiritual_skills"`
+	Principles          map[string]PrincipleResponse          `json:"principles"`
+	Categories          map[string]CategoryResponse           `json:"categories"`
 	// JointSkills         map[string]skill.JointSkill             `json:"joint_skills"`
 	Proficiencies      map[string]CommonProficiencyResponse `json:"common_proficiencies"`
 	JointProficiencies map[string]JointProficiencyResponse  `json:"joint_proficiencies"`
@@ -63,6 +63,11 @@ type AttributeResponse struct {
 	Points int `json:"points"`
 	Value  int `json:"value"`
 	Power  int `json:"power"`
+}
+
+type SpiritualAttributeResponse struct {
+	ExperienceResponse
+	Power int `json:"power"`
 }
 
 type PrincipleResponse struct {
@@ -169,18 +174,16 @@ func NewCharacterSheetResponse(
 		}
 	}
 
-	spiritAttrs := make(map[string]AttributeResponse)
+	spiritAttrs := make(map[string]SpiritualAttributeResponse)
 	for name, attr := range charSheet.GetSpiritualAttributes() {
-		spiritAttrs[name.String()] = AttributeResponse{
+		spiritAttrs[name.String()] = SpiritualAttributeResponse{
 			ExperienceResponse: ExperienceResponse{
 				Level:         attr.GetLevel(),
 				Exp:           attr.GetExpPoints(),
 				CurrentExp:    attr.GetCurrentExp(),
 				NxtLvlBaseExp: attr.GetNextLvlBaseExp(),
 			},
-			Points: attr.GetPoints(),
-			Value:  attr.GetValue(),
-			Power:  attr.GetPower(),
+			Power: attr.GetPower(),
 		}
 	}
 

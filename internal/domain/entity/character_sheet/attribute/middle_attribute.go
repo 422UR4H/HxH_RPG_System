@@ -73,7 +73,7 @@ func (ma *MiddleAttribute) GetValue() int {
 }
 
 func (ma *MiddleAttribute) GetPower() int {
-	return ma.GetPoints() + ma.GetLevel() + int(ma.GetAbilityBonus()) + *ma.buff
+	return ma.GetValue() + int(ma.GetAbilityBonus()) + *ma.buff
 }
 
 func (ma *MiddleAttribute) GetNextLvlAggregateExp() int {

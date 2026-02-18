@@ -3,27 +3,30 @@ package spiritual
 import (
 	"fmt"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/ability"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/attribute"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
 type Hatsu struct {
 	exp              experience.Exp
-	ability          ability.IAbility
+	flameNen         attribute.IGameAttribute
+	conscienceNen    attribute.IGameAttribute
 	categories       map[enum.CategoryName]NenCategory
 	categoryPercents map[enum.CategoryName]float64
 }
 
 func NewHatsu(
 	exp experience.Exp,
-	ability ability.IAbility,
+	flameNen attribute.IGameAttribute,
+	conscienceNen attribute.IGameAttribute,
 	categories map[enum.CategoryName]NenCategory,
 	categoryPercents map[enum.CategoryName]float64,
 ) *Hatsu {
 	return &Hatsu{
 		exp:              exp,
-		ability:          ability,
+		flameNen:         flameNen,
+		conscienceNen:    conscienceNen,
 		categories:       make(map[enum.CategoryName]NenCategory),
 		categoryPercents: categoryPercents,
 	}
@@ -50,7 +53,8 @@ func (h *Hatsu) SetCategoryPercents(
 
 func (h *Hatsu) CascadeUpgrade(values *experience.UpgradeCascade) {
 	h.exp.IncreasePoints(values.GetExp())
-	h.ability.CascadeUpgrade(values)
+	// only upgrade conscienceNen
+	h.conscienceNen.CascadeUpgrade(values)
 
 	values.Principles[enum.Hatsu] = experience.PrincipleCascade{
 		Lvl:     h.GetLevel(),
@@ -79,8 +83,11 @@ func (h *Hatsu) Get(name enum.CategoryName) (ICategory, error) {
 }
 
 func (h *Hatsu) GetValueForTest() int {
-	return h.GetLevel() + int(h.ability.GetBonus())
+	flameNenlvl := h.flameNen.GetLevel()
+	return h.GetLevel() + int(h.conscienceNen.GetPower()) + flameNenlvl
 }
+
+// Aux functions
 
 func (h *Hatsu) GetNextLvlAggregateExpOf(name enum.CategoryName) (int, error) {
 	category, err := h.Get(name)

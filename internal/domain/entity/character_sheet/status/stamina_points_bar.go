@@ -6,22 +6,22 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/skill"
 )
 
-const SP_BASE_VALUE = 30
+const SP_COEF_VALUE = 10
 
 type StaminaPoints struct {
-	spirituals ability.IAbility
-	resistance attribute.IGameAttribute
+	physicals  ability.IAbility
+	resistance attribute.IDistributableAttribute
 	energy     skill.ISkill
 	*Bar
 }
 
 func NewStaminaPoints(
-	spirituals ability.IAbility,
-	resistance attribute.IGameAttribute,
+	physicals ability.IAbility,
+	resistance attribute.IDistributableAttribute,
 	energy skill.ISkill,
 ) *StaminaPoints {
 	bar := &StaminaPoints{
-		spirituals: spirituals,
+		physicals:  physicals,
 		resistance: resistance,
 		energy:     energy,
 		Bar:        &Bar{},
@@ -33,18 +33,12 @@ func NewStaminaPoints(
 
 func (sp *StaminaPoints) Upgrade() {
 	// TODO: check how the buff interferes here
-	energyLvl := sp.energy.GetLevel()
-	if energyLvl == 0 {
-		energyLvl = 1
-	}
-	resistance := sp.resistance.GetValue()
-	if resistance == 0 {
-		resistance = 1
-	}
 	// TODO: Implement Min for stamina_points
-	coeff := float64(energyLvl * resistance)
-	bonus := sp.spirituals.GetBonus()
-	maxVal := int(coeff*bonus) * SP_BASE_VALUE
+	coeff := float64(sp.energy.GetLevel() + sp.resistance.GetValue())
+	bonus := sp.physicals.GetBonus()
+	maxVal := SP_COEF_VALUE * int(coeff*bonus)
+
+	// if character is fully rested, upgrade current sp to new max
 	if sp.curr == sp.max {
 		sp.curr = maxVal
 	}

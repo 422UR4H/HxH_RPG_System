@@ -10,19 +10,14 @@ const HP_BASE_VALUE = 20
 
 type HealthPoints struct {
 	physicals  ability.IAbility
-	resistance attribute.IGameAttribute
+	resistance attribute.IDistributableAttribute
 	vitality   skill.ISkill
 	*Bar
 }
 
-// TODO: implement one for each status bar (hp, sp, ap)
-// cada status terá seu próprio construtor por onde serão injetadas
-// as referências utilizadas para calcular seu valor máximo
-// cada status também terá sua própria implementação de upgrade
-// onde as funções de refs injetadas serão utilizadas para o cálculo
 func NewHealthPoints(
 	physicals ability.IAbility,
-	resistance attribute.IGameAttribute,
+	resistance attribute.IDistributableAttribute,
 	vitality skill.ISkill,
 ) *HealthPoints {
 	bar := &HealthPoints{
@@ -42,11 +37,13 @@ func (hp *HealthPoints) Upgrade() {
 	// new formula -> attrBonus * (skLvl + attrLvl + attrPoints)
 
 	// TODO: Implement Min for hit_points
-	// Min = generateStatus.GetLvl();
+	// Min = -generateStatus.GetLvl();
 	// TODO: check how the buff interferes here
 	coeff := float64(hp.vitality.GetLevel() + hp.resistance.GetValue())
 	bonus := hp.physicals.GetBonus()
-	maxVal := int(coeff*bonus) + HP_BASE_VALUE
+	maxVal := HP_BASE_VALUE + int(coeff*bonus)
+
+	// if character is fully healed, upgrade current hp to new max
 	if hp.curr == hp.max {
 		hp.curr = maxVal
 	}

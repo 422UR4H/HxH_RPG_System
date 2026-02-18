@@ -8,5 +8,6 @@ import (
 
 var (
 	ErrStatusNotFound = domain.NewDomainError(errors.New("status not found"))
+	ErrSpiritualIsNil = domain.NewDomainError(errors.New("spiritual ability is nil"))
 	ErrInvalidValue   = domain.NewDomainError(errors.New("invalid value for status"))
 )

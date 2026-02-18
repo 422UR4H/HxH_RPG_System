@@ -33,7 +33,7 @@ func (m *Manager) IncreasePointsForPrimary(
 	return m.GetAttributesPoints(), nil
 }
 
-func (m *Manager) Get(name enum.AttributeName) (IGameAttribute, error) {
+func (m *Manager) Get(name enum.AttributeName) (IDistributableAttribute, error) {
 	primaryAttribute, ok := m.primaryAttributes[name]
 	if ok {
 		return primaryAttribute, nil
@@ -200,8 +200,8 @@ func (m *Manager) RemoveBuff(
 	return m.buffs, nil
 }
 
-func (m *Manager) GetAllAttributes() map[enum.AttributeName]IGameAttribute {
-	attributes := make(map[enum.AttributeName]IGameAttribute)
+func (m *Manager) GetAllAttributes() map[enum.AttributeName]IDistributableAttribute {
+	attributes := make(map[enum.AttributeName]IDistributableAttribute)
 	for name, attr := range m.primaryAttributes {
 		attributes[name] = attr
 	}

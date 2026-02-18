@@ -36,7 +36,7 @@ func (cs *CommonSkill) CascadeUpgradeTrigger(values *experience.UpgradeCascade) 
 }
 
 func (cs *CommonSkill) GetValueForTest() int {
-	return cs.exp.GetLevel() + cs.attribute.GetPower()
+	return cs.GetLevel() + cs.attribute.GetPower()
 }
 
 func (cs *CommonSkill) GetNextLvlAggregateExp() int {

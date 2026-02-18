@@ -338,11 +338,11 @@ func (cs *CharacterSheet) GetAbilities() map[enum.AbilityName]ability.IAbility {
 	return cs.ability.GetAllAbilities()
 }
 
-func (cs *CharacterSheet) GetPhysicalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+func (cs *CharacterSheet) GetPhysicalAttributes() map[enum.AttributeName]attribute.IDistributableAttribute {
 	return cs.attribute.GetPhysicalAttributes()
 }
 
-func (cs *CharacterSheet) GetMentalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+func (cs *CharacterSheet) GetMentalAttributes() map[enum.AttributeName]attribute.IDistributableAttribute {
 	return cs.attribute.GetMentalAttributes()
 }
 

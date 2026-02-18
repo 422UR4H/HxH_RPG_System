@@ -196,11 +196,11 @@ func (hs *HalfSheet) GetAbilities() map[enum.AbilityName]ability.IAbility {
 	return hs.ability.GetAllAbilities()
 }
 
-func (hs *HalfSheet) GetPhysicalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+func (hs *HalfSheet) GetPhysicalAttributes() map[enum.AttributeName]attribute.IDistributableAttribute {
 	return hs.attribute.GetPhysicalAttributes()
 }
 
-func (hs *HalfSheet) GetMentalAttributes() map[enum.AttributeName]attribute.IGameAttribute {
+func (hs *HalfSheet) GetMentalAttributes() map[enum.AttributeName]attribute.IDistributableAttribute {
 	return hs.attribute.GetMentalAttributes()
 }
 
