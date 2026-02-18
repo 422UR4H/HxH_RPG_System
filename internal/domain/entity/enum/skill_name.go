@@ -59,10 +59,15 @@ const (
 	// Creativity
 
 	// SPIRITUALS
-	// Spirit
-	Nen       SkillName = "Nen"
-	Focus     SkillName = "Focus"
-	WillPower SkillName = "WillPower"
+	// Flame Nen
+	Focus         SkillName = "Focus"
+	WillPower     SkillName = "WillPower"
+	SelfKnowledge SkillName = "SelfKnowledge"
+
+	// Conscience Nen
+	Coa SkillName = "Coa"
+	Mop SkillName = "Mop"
+	Aop SkillName = "Aop"
 )
 
 func (sn SkillName) String() string {
@@ -79,7 +84,8 @@ func AllSkillNames() []SkillName {
 		Reflex, Accuracy, Stealth,
 		Vision, Hearing, Smell, Tact, Taste,
 		Heal, Breath, Tenacity,
-		Nen, Focus, WillPower,
+		Focus, WillPower, SelfKnowledge,
+		Coa, Mop, Aop,
 	}
 }
 

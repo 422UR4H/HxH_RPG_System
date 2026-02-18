@@ -14,9 +14,6 @@ const (
 	Ryu   PrincipleName = "Ryu"
 	In    PrincipleName = "In"
 	En    PrincipleName = "En"
-	// TODO: create SpiritualAttribute or SpiritualSkill for:
-	AuraControl PrincipleName = "AuraControl" // CoA
-	Aop         PrincipleName = "Aop"
 )
 
 func (pn PrincipleName) String() string {
@@ -36,7 +33,5 @@ func AllNenPrincipleNames() []PrincipleName {
 		Ryu,
 		In,
 		En,
-		AuraControl,
-		Aop,
 	}
 }

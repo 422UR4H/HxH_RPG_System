@@ -20,7 +20,8 @@ const (
 	Creativity   AttributeName = "Creativity"
 
 	// Spirituals
-	Spirit AttributeName = "Spirit"
+	Flame      AttributeName = "Flame"
+	Conscience AttributeName = "Conscience"
 )
 
 func (an AttributeName) String() string {
