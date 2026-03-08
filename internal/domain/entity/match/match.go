@@ -3,6 +3,7 @@ package match
 import (
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/scene"
 	"github.com/google/uuid"
 )
 
@@ -15,6 +16,7 @@ type Match struct {
 	BriefFinalDescription   *string
 	Description             string
 	IsPublic                bool
+	scenes                  []*scene.Scene
 	GameStartAt             time.Time
 	StoryStartAt            time.Time
 	StoryEndAt              *time.Time
@@ -46,4 +48,12 @@ func NewMatch(
 		CreatedAt:               now,
 		UpdatedAt:               now,
 	}, nil
+}
+
+func (m *Match) AddScene(scene *scene.Scene) {
+	m.scenes = append(m.scenes, scene)
+}
+
+func (m *Match) GetScenes() []*scene.Scene {
+	return m.scenes
 }

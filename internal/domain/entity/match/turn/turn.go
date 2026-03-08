@@ -28,6 +28,10 @@ func (t *Turn) AddAction(action *action.Action) {
 	t.actions = append(t.actions, *action)
 }
 
+func (t *Turn) GetMode() enum.TurnMode {
+	return t.mode
+}
+
 func (t *Turn) GetActions() []action.Action {
 	return t.actions
 }

@@ -9,9 +9,11 @@ import (
 // GameEvent represents an event that occurs during a turn/match, such as:
 // - a change in the game date
 // - a character's death during the turn
-// - an breaking news that affects the match
+// - a breaking news that affects the match
+// - an action rollback (ctrl + z)
 type GameEvent struct {
 	category     []enum.GameEventCategory
+	title        string
 	description  *string
 	changeDateTo *time.Time
 	happenedAt   time.Time
@@ -19,6 +21,7 @@ type GameEvent struct {
 
 func NewGameEvent(
 	category []enum.GameEventCategory,
+	title string,
 	description *string,
 	changeDateTo *time.Time,
 ) *GameEvent {
@@ -28,6 +31,7 @@ func NewGameEvent(
 
 	return &GameEvent{
 		category:     category,
+		title:        title,
 		description:  description,
 		changeDateTo: changeDateTo,
 		happenedAt:   time.Now(),

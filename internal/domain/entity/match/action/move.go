@@ -7,6 +7,5 @@ type Move struct {
 	Position   [3]int // x, y, z
 	Speed      *RollCheck
 	Charge     *RollCheck
-	SkillValue int
 	FinalSpeed int
 }

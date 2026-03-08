@@ -9,5 +9,6 @@ const (
 	Achievement GameEventCategory = "achievement"
 	DateChange  GameEventCategory = "date_change"
 	Politics    GameEventCategory = "politics"
+	System      GameEventCategory = "system" // e.g.: an action rollback (crtl + z)
 	Other       GameEventCategory = "other"
 )
