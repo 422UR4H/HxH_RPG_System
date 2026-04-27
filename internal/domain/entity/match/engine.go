@@ -9,7 +9,7 @@ import (
 )
 
 type Engine struct {
-	// adicionar scene aqui
+	// adicionar scene aqui?
 	scenes        []*scene.Scene
 	sceneCategory enum.SceneCategory
 }

@@ -35,6 +35,8 @@ func (p *Proficiency) CascadeUpgradeTrigger(values *experience.UpgradeCascade) {
 }
 
 // TODO: validate this
+// proficiência realiza teste? isso faz sentido mesmo?
+// proficiência é, realmente, uma skill? isso faz sentido?
 func (p *Proficiency) GetValueForTest() int {
 	return p.exp.GetLevel() //+ p.attribute.GetPower()
 }

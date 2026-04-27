@@ -66,7 +66,11 @@ func (ss *SpecialSkill) CascadeUpgradeTrigger(exp int) int {
 	return diff
 }
 
+// TODO: validate this
 // TODO: decide how to calculate damage
+// special skill faz teste mesmo? isso faz sentido?
+// faz sentido esse ser o valor do dano?
+// obs: olhar proficiency e joint_proficiency
 func (ss *SpecialSkill) GetValueForTest() int {
 	return ss.exp.GetLevel() // + ss.attribute.GetPower()
 }
