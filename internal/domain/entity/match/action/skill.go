@@ -1,7 +1,11 @@
 package action
 
+import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+)
+
 type Skill struct {
-	SkillName  string // enum.SkillName was superseded by mental tests (attrs) and
-	Difficulty *int   // difficulty class (DC -> CD in pt-br)
+	SkillName  enum.SkillName
+	Difficulty *int // difficulty class (DC -> CD in pt-br)
 	RollCheck
 }

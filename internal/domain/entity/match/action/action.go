@@ -6,23 +6,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// TODO: REFACTOR TO IMPLEMENT I_ACTION INTERFACE
 type Action struct {
-	id        uuid.UUID
-	actorID   uuid.UUID
-	TargetID  []uuid.UUID
-	ReactToID uuid.UUID // maybe change to *Action
-
-	Speed  ActionSpeed
-	Skills []Skill
-
-	Trigger *Trigger
-	Feint   *RollCheck
-	Move    *Move
-	Attack  *Attack
-	Defense *Defense
-	Dodge   *Dodge
-
+	id          uuid.UUID
+	actorID     uuid.UUID
+	TargetID    []uuid.UUID
+	ReactToID   uuid.UUID // maybe change to *Action
+	Speed       ActionSpeed
+	Trigger     *Trigger
+	Feint       *RollCheck
+	Move        *Move
+	Attack      *Attack
+	Defense     *Defense
+	Dodge       *Dodge
+	Skills      []Skill
 	openedAt    *time.Time
 	confirmedAt *time.Time
 }
