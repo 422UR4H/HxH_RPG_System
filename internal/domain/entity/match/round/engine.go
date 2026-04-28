@@ -9,7 +9,7 @@ import (
 
 type Engine struct {
 	mode                enum.TurnMode
-	actionQueue         ActionPriorityQueue
+	actionQueue         action.PriorityQueue
 	preparedActions     map[uuid.UUID]*action.Action
 	rounds              []*Round
 	currentTurn         *turn.Turn
@@ -24,10 +24,11 @@ func NewEngine(actionQueue *[]*action.Action, rounds *[]*Round, closeRoundTrigge
 	if closeRoundTriggered == nil {
 		return nil, ErrCloseRoundTriggeredCantBeNil
 	}
-	if rounds == nil {
-		rounds = &[]*Round{NewRound(enum.Free)}
-	}
-	aq := NewActionPriorityQueue(actionQueue)
+	// TODO: inicialize when the first action is oppened
+	// if rounds == nil {
+	// 	rounds = &[]*Round{NewRound(enum.Free)}
+	// }
+	aq := action.NewActionPriorityQueue(actionQueue)
 
 	mode := enum.Free
 	lenRounds := len(*rounds)

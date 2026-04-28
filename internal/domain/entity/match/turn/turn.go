@@ -9,36 +9,40 @@ import (
 
 type Turn struct {
 	masterActions []action.MasterAction
-	actions       []action.Action
-	events        []GameEvent
+	action        action.Action
+	reactions     action.PriorityQueue
 	mode          enum.TurnMode
-	coast         *int // if nil, the turn is free (no race in this turn)
 	finishedAt    *time.Time
 }
 
-func NewTurn(mode enum.TurnMode) *Turn {
+func NewTurn(
+	mode enum.TurnMode,
+	act action.Action,
+	react []action.Action,
+) *Turn {
 	return &Turn{
-		mode:    mode,
-		actions: []action.Action{},
-		events:  []GameEvent{},
+		mode:      mode,
+		action:    act,
+		reactions: react,
 	}
 }
 
-func (t *Turn) AddAction(action *action.Action) {
-	t.actions = append(t.actions, *action)
+func (t *Turn) AttachReaction(reaction action.Action) {
+	t.reactions = append(t.reactions, reaction)
 }
 
 func (t *Turn) GetMode() enum.TurnMode {
 	return t.mode
 }
 
-func (t *Turn) GetActions() []action.Action {
-	return t.actions
+func (t *Turn) GetAction() action.Action {
+	return t.action
 }
 
-func (t *Turn) GetLastAction() (action.Action, error) {
-	if len(t.actions) == 0 {
-		return action.Action{}, ErrTurnIsEmpty
-	}
-	return t.actions[len(t.actions)-1], nil
+func (t *Turn) GetReactions() []action.Action {
+	return t.reactions
+}
+
+func (t *Turn) GetFinishedAt() *time.Time {
+	return t.finishedAt
 }
