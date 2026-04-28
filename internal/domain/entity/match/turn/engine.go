@@ -8,7 +8,7 @@ import (
 
 type Engine struct {
 	mode               enum.TurnMode
-	actionQueue        ActionPriorityQueue
+	actionQueue        action.PriorityQueue
 	turns              []*Turn
 	currentTurn        *Turn
 	currentAction      *action.Action
@@ -20,7 +20,7 @@ func NewEngine(actionQueue *[]*action.Action, turns *[]*Turn, closeTurnTriggered
 	if turns == nil {
 		turns = &[]*Turn{NewTurn(enum.Free)}
 	}
-	aq := NewActionPriorityQueue(actionQueue)
+	aq := action.NewActionPriorityQueue(actionQueue)
 
 	mode := enum.Free
 	lenTurns := len(*turns)
