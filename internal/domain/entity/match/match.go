@@ -17,6 +17,7 @@ type Match struct {
 	Description             string
 	IsPublic                bool
 	scenes                  []*scene.Scene
+	events                  []GameEvent
 	GameStartAt             time.Time
 	StoryStartAt            time.Time
 	StoryEndAt              *time.Time
