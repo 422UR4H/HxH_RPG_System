@@ -116,7 +116,4 @@ make migrate-create name=add_users_table
 
 ## Known Issues / Bugs
 
-1. **Value-copy bug in `attribute.Manager.IncreasePointsForPrimary()`**: `GetPrimary()` returns a value copy, so `IncreasePoints()` modifies the copy only. Changes don't persist.
-2. **Value-copy bug in `spiritual.Manager.IncreaseExpByPrinciple()`**: Same pattern — map value copy means exp doesn't persist.
-3. **Inverted nil check in `spiritual.Manager.InitNenHexagon()`** (line 30): checks `nenHexagon != nil` instead of `m.nenHexagon != nil`.
-4. **Turn/Round test broken**: Semantic refactoring in progress.
+1. **Turn/Round test broken**: Semantic refactoring in progress.

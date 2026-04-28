@@ -8,13 +8,13 @@ import (
 )
 
 type Manager struct {
-	principles map[enum.PrincipleName]NenPrinciple
+	principles map[enum.PrincipleName]*NenPrinciple
 	nenHexagon *NenHexagon
 	hatsu      *Hatsu
 }
 
 func NewPrinciplesManager(
-	principles map[enum.PrincipleName]NenPrinciple,
+	principles map[enum.PrincipleName]*NenPrinciple,
 	nenHexagon *NenHexagon,
 	hatsu *Hatsu,
 ) *Manager {
@@ -27,7 +27,7 @@ func NewPrinciplesManager(
 }
 
 func (m *Manager) InitNenHexagon(nenHexagon *NenHexagon) error {
-	if nenHexagon != nil {
+	if m.nenHexagon != nil {
 		return ErrNenHexAlreadyInitialized
 	}
 	m.nenHexagon = nenHexagon
@@ -60,7 +60,7 @@ func (m *Manager) Get(name enum.PrincipleName) (IPrinciple, error) {
 		return m.hatsu, nil
 	}
 	if principle, ok := m.principles[name]; ok {
-		return &principle, nil
+		return principle, nil
 	}
 	return nil, fmt.Errorf("%w: %s", ErrPrincipleNotFound, name.String())
 }
@@ -276,7 +276,7 @@ func (m *Manager) GetTestValueOfCategories() map[enum.CategoryName]int {
 func (m *Manager) GetAllPrinciples() map[enum.PrincipleName]IPrinciple {
 	principles := make(map[enum.PrincipleName]IPrinciple)
 	for name, principle := range m.principles {
-		principles[name] = &principle
+		principles[name] = principle
 	}
 	return principles
 }

@@ -25,9 +25,9 @@ func NewAttributeManager(
 func (m *Manager) IncreasePointsForPrimary(
 	name enum.AttributeName, value int,
 ) (map[enum.AttributeName]int, error) {
-	attr, err := m.GetPrimary(name)
-	if err != nil {
-		return nil, err
+	attr, ok := m.primaryAttributes[name]
+	if !ok {
+		return nil, ErrPrimaryAttributeNotFound
 	}
 	attr.IncreasePoints(value)
 	return m.GetAttributesPoints(), nil

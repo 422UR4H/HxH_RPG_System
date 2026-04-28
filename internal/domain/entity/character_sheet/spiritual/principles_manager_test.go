@@ -14,14 +14,14 @@ func newTestPrinciplesManager() *spiritual.Manager {
 	conscience := &mockGameAttribute{power: 2}
 
 	// Build principles
-	principles := make(map[enum.PrincipleName]spiritual.NenPrinciple)
+	principles := make(map[enum.PrincipleName]*spiritual.NenPrinciple)
 	for _, name := range enum.AllNenPrincipleNames() {
 		if name == enum.Hatsu {
 			continue
 		}
 		exp := *experience.NewExperience(table)
 		p := spiritual.NewNenPrinciple(name, exp, flame, conscience)
-		principles[name] = *p
+		principles[name] = p
 	}
 
 	// Build hatsu + hexagon
@@ -72,6 +72,12 @@ func TestPrinciplesManager_IncreaseExpByPrinciple(t *testing.T) {
 		t.Fatalf("IncreaseExpByPrinciple error: %v", err)
 	}
 
+	// Verify exp was actually stored (pointer fix)
+	expMap := m.GetExpPointsOfPrinciples()
+	if expMap[enum.Ten] != 50 {
+		t.Errorf("Ten exp points = %d, want 50", expMap[enum.Ten])
+	}
+
 	// Verify the cascade was triggered by checking the Principles map
 	cascade, ok := values.Principles[enum.Hatsu]
 	if !ok {
@@ -90,6 +96,44 @@ func TestPrinciplesManager_IncreaseExpByPrinciple_NotFound(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for non-existent principle")
 	}
+}
+
+func TestPrinciplesManager_InitNenHexagon(t *testing.T) {
+	table := experience.NewDefaultExpTable()
+	flame := &mockGameAttribute{level: 1}
+	conscience := &mockGameAttribute{power: 2}
+
+	principles := make(map[enum.PrincipleName]*spiritual.NenPrinciple)
+	for _, name := range enum.AllNenPrincipleNames() {
+		if name == enum.Hatsu {
+			continue
+		}
+		exp := *experience.NewExperience(table)
+		p := spiritual.NewNenPrinciple(name, exp, flame, conscience)
+		principles[name] = p
+	}
+
+	hatsuExp := *experience.NewExperience(table)
+	hatsu := spiritual.NewHatsu(hatsuExp, flame, conscience, nil, nil)
+
+	// Create manager WITHOUT a hexagon
+	m := spiritual.NewPrinciplesManager(principles, nil, hatsu)
+
+	t.Run("init hexagon succeeds when nil", func(t *testing.T) {
+		hexagon := spiritual.NewNenHexagon(0, nil)
+		err := m.InitNenHexagon(hexagon)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+	})
+
+	t.Run("init hexagon fails when already set", func(t *testing.T) {
+		hexagon2 := spiritual.NewNenHexagon(100, nil)
+		err := m.InitNenHexagon(hexagon2)
+		if err == nil {
+			t.Fatal("expected ErrNenHexAlreadyInitialized, got nil")
+		}
+	})
 }
 
 func TestPrinciplesManager_HexagonOperations(t *testing.T) {

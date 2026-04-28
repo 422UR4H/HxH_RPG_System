@@ -420,7 +420,7 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 	hatsu *spiritual.Hatsu,
 ) *spiritual.Manager {
 
-	principles := make(map[enum.PrincipleName]spiritual.NenPrinciple)
+	principles := make(map[enum.PrincipleName]*spiritual.NenPrinciple)
 
 	exp := experience.NewExperience(experience.NewExpTable(SPIRITUAL_PRINCIPLE_COEFF))
 	principle := spiritual.NewNenPrinciple(enum.Ten, *exp, flameNen, conscienceNen)
@@ -429,7 +429,7 @@ func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
 		if name == enum.Hatsu {
 			continue
 		}
-		principles[name] = *principle.Clone(name)
+		principles[name] = principle.Clone(name)
 	}
 	return spiritual.NewPrinciplesManager(principles, nenHexagon, hatsu)
 }

@@ -105,11 +105,8 @@ func TestAttributeManager_IncreasePointsForPrimary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IncreasePointsForPrimary error: %v", err)
 	}
-	// BUG: GetPrimary() returns a value copy, so IncreasePoints modifies the
-	// copy only — the original map entry remains unchanged. Points stay at 0.
-	if result[enum.Resistance] != 0 {
-		t.Errorf("Resistance points: got %d, want 0 (value-copy bug: IncreasePoints modifies a copy)",
-			result[enum.Resistance])
+	if result[enum.Resistance] != 3 {
+		t.Errorf("Resistance points: got %d, want 3", result[enum.Resistance])
 	}
 }
 
