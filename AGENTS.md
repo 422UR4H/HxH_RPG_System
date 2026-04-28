@@ -50,6 +50,7 @@ internal/
 
 ## Code Conventions
 
+- **NEVER remove TODO comments:** TODOs in source code are intentional markers written by the owner. They must be preserved in ALL edits, regardless of context.
 - **Go idiomatic:** Implicit interfaces, short variable names in context, error wrapping with `%w`
 - **Engines as domain services:** Logic extracted from entities lives in "engine" packages under `internal/domain/`. These correlate entities that are themselves dry (or nearly dry) per Go convention.
 - **No test frameworks:** Standard library `testing` only. Table-driven tests with `t.Run()`.
