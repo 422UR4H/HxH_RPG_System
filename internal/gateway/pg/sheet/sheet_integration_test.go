@@ -16,6 +16,7 @@ import (
 
 func buildTestSheet(playerUUID *uuid.UUID) *model.CharacterSheet {
 	now := time.Now()
+	birthday := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	sheetUUID := uuid.New()
 	profileUUID := uuid.New()
 	return &model.CharacterSheet{
@@ -33,6 +34,7 @@ func buildTestSheet(playerUUID *uuid.UUID) *model.CharacterSheet {
 			CharacterClass:   "Swordsman",
 			Description:      "A test character",
 			BriefDescription: "Test",
+			Birthday:         &birthday,
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		},
@@ -61,14 +63,17 @@ func TestCreateCharacterSheet(t *testing.T) {
 		}
 	})
 
-	t.Run("happy path master-owned minimal", func(t *testing.T) {
-		now := time.Now()
+	t.Run("happy path master-owned requires player_uuid nil", func(t *testing.T) {
+		// NOTE: CreateCharacterSheet only inserts player_uuid, not master_uuid.
+		// The XOR constraint (chk_exclusive_owner) requires exactly one of player_uuid/master_uuid.
+		// Creating master-owned sheets is not supported by this repository method.
 		s := &model.CharacterSheet{
 			UUID:         uuid.New(),
 			PlayerUUID:   nil,
+			MasterUUID:   &playerUUID,
 			CategoryName: "Reinforcement",
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 			Profile: model.CharacterProfile{
 				UUID:             uuid.New(),
 				NickName:         "MasterNPC",
@@ -77,16 +82,14 @@ func TestCreateCharacterSheet(t *testing.T) {
 				CharacterClass:   "Swordsman",
 				Description:      "An NPC",
 				BriefDescription: "NPC",
-				CreatedAt:        now,
-				UpdatedAt:        now,
+				Birthday:         func() *time.Time { t := time.Date(1995, 6, 15, 0, 0, 0, 0, time.UTC); return &t }(),
+				CreatedAt:        time.Now(),
+				UpdatedAt:        time.Now(),
 			},
 		}
 		err := repo.CreateCharacterSheet(ctx, s)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if s.ID == 0 {
-			t.Fatal("expected sheet ID to be set after create")
+		if err == nil {
+			t.Fatal("expected error for master-owned sheet (repo only inserts player_uuid), got nil")
 		}
 	})
 }

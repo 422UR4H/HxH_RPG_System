@@ -43,7 +43,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	$(GO_CMD) test -tags=integration ./internal/gateway/pg/...
+	$(GO_CMD) test -tags=integration -p 1 ./internal/gateway/pg/...
 
 # Auxiliary commands
 .PHONY: env
