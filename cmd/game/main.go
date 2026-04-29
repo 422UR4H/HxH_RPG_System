@@ -1,74 +1,67 @@
-package game
+package main
 
 import (
+	"context"
+	"fmt"
 	"log"
-	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
+	"github.com/joho/godotenv"
 )
 
-// TODO: evaluate to action
-type Message struct {
-	Nick string `json:"nick"`
-	Msg  string `json:"msg"`
-}
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		// TODO: IN PRODUCTION, IMPLEMENT ORIGIN CHECKING
-		return true
-	},
-}
-var broadcast = make(chan Message)
-var clients = make(map[*websocket.Conn]bool)
-
 func main() {
-	http.HandleFunc("/ws", handleConnections)
-
-	// Start the message handler in a separate goroutine
-	go handleMessages()
-
-	// Start the server
-	log.Println("Server started on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal("ListenAndServe: ", err)
+	// TODO: evaluate to action — consider config/env loading
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, using environment variables")
 	}
-}
 
-// TODO: move to handlers
-func handleConnections(w http.ResponseWriter, r *http.Request) {
-	ws, err := upgrader.Upgrade(w, r, nil)
+	addr := os.Getenv("GAME_SERVER_ADDR")
+	if addr == "" {
+		addr = ":8081"
+	}
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+
+	pgPool, err := pgfs.New(ctx, "")
 	if err != nil {
-		// TODO: verify this before game testing with other players
-		log.Fatal(err)
+		panic(fmt.Errorf("error creating pg pool: %w", err))
 	}
-	defer ws.Close()
+	defer pgPool.Close()
 
-	clients[ws] = true
-	for {
-		var msg Message
-		err := ws.ReadJSON(&msg)
-		if err != nil {
-			log.Println(err)
-			delete(clients, ws)
-			break
-		}
-		broadcast <- msg
-	}
-}
+	matchRepository := matchPg.NewRepository(pgPool)
+	enrollmentRepository := enrollmentPg.NewRepository(pgPool)
 
-func handleMessages() {
-	for {
-		msg := <-broadcast
-		for client := range clients {
-			err := client.WriteJSON(msg)
-			if err != nil {
-				log.Println(err)
-				client.Close()
-				delete(clients, client)
-			}
+	hub := game.NewHub()
+	handler := game.NewHandler(hub, matchRepository, enrollmentRepository)
+	server := game.NewServer(addr, hub, handler)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := server.Start(); err != nil {
+			log.Printf("game server error: %v", err)
 		}
+	}()
+
+	// TODO: verify this before game testing with other players
+	log.Printf("game server running on %s", addr)
+	<-quit
+	log.Println("shutting down game server...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("game server shutdown error: %v", err)
 	}
+	log.Println("game server stopped")
 }
