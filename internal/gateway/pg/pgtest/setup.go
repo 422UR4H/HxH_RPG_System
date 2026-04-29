@@ -62,16 +62,8 @@ func runMigrations(t *testing.T, dbURL string) {
 }
 
 func findMigrationsDir() string {
-	candidates := []string{
-		"../../../../migrations",
-		"../../../../../migrations",
-		"migrations",
-	}
-	for _, dir := range candidates {
-		if _, err := os.Stat(dir); err == nil {
-			return dir
-		}
-	}
+	// All integration test packages are at internal/gateway/pg/<pkg>/,
+	// so migrations is always 4 levels up from the test working directory.
 	return "../../../../migrations"
 }
 

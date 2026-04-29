@@ -31,7 +31,7 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 			SELECT 
 					s.uuid, s.user_uuid, s.name, s.brief_description, s.description,
 					s.created_at, s.updated_at,
-					c.uuid, c.name, c.brief_description,
+					c.uuid, c.name, c.brief_initial_description,
 					c.story_start_at, c.story_current_at, c.story_end_at,
 					c.created_at, c.updated_at
 			FROM scenarios s
