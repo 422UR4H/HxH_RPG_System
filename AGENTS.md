@@ -85,14 +85,22 @@ internal/
 | Reaction | Reação |
 | Campaign | Campanha |
 | Scenario | Cenário |
+| Scene | Cena (roleplay ou battle) |
+| Free Turn | Turno Livre (sem disputa de tempo) |
+| Race Turn | Turno Disputado (ordem por velocidade) |
+| Lobby | Sala de Espera (pré-partida) |
+| Room | Sala (instância WS de uma partida) |
+| Hub | Hub (gerenciador de rooms) |
+| Master | Mestre (quem conduz a partida) |
 
 ## Current State
 
 - ✅ `character_sheet/` — Stable, fully tested (experience, ability, attribute, skill, proficiency, spiritual, status, sheet)
 - ⚠️ `match/` — Turn/Round system WIP (semantic refactoring in progress, broken test)
 - ⚠️ `domain/` services (engines) — Pending rename to domain services pattern
-- 🔲 `gateway/` — PostgreSQL repositories (basic structure)
-- 🔲 `app/` — HTTP handlers (basic structure)
+- ✅ `gateway/` — PostgreSQL repositories (fully implemented, integration tested)
+- ✅ `app/api/` — HTTP handlers (fully implemented, unit tested with humatest)
+- 🔲 `app/game/` — WebSocket game server (design approved, implementation pending)
 
 ## Commands
 

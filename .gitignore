@@ -30,4 +30,4 @@ bin/
 
 # Local
 .local
-*.png
+*.png.superpowers/

@@ -46,14 +46,33 @@ A plataforma oferece uma listagem de partidas públicas futuras (upcoming). Esta
 
 ```
 Partida
-├── Cenas (Scenes)
-│   └── Turnos (Turns)
-│       └── Rounds
+├── Cenas (Scenes) — roleplay ou battle
+│   └── Turnos (Turns) — modo free ou race
+│       └── Rounds — ação de um personagem
 │           └── Ações e Reações
 └── Eventos de Jogo (Game Events)
 ```
 
-> **Nota:** A hierarquia interna (Cenas → Turnos → Rounds) está em refatoração e não coberta pelos testes atuais.
+A categorização de cenas (roleplay vs battle) serve para classificação e
+leitura histórica. O modo do turno (free vs race) é independente da
+categoria da cena — embora o esperado seja roleplay/free e battle/race, o
+mestre pode configurar diferente.
+
+Ver `docs/game/cenas-e-turnos.md` para detalhes completos.
+
+> **Nota:** A Turn/Round Engine está em refatoração semântica.
+
+## Execução em Tempo Real
+
+Quando uma partida é iniciada pelo mestre, todos os participantes (mestre e
+jogadores inscritos) se conectam via WebSocket ao Game Server. O fluxo:
+
+1. Jogadores entram no **lobby** da partida (WebSocket)
+2. Mestre clica **"Iniciar Partida"** → todos recebem o evento
+3. A partida roda em tempo real com troca de mensagens bidirecionais
+4. Cenas, turnos, rounds e ações são transmitidos pelo WebSocket
+
+Ver spec de design do WebSocket Game Server para detalhes técnicos.
 
 ## Visibilidade
 

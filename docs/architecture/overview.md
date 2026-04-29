@@ -103,6 +103,18 @@ These are evolving toward formal Domain Services with clearer naming.
 - User authentication
 
 ### WebSocket Game Server (`cmd/game/main.go`)
-- Real-time match/combat flow
-- Turn/Round orchestration
-- Action/Reaction dispatching
+- Real-time match/combat flow via WebSocket
+- Hub/Room/Client architecture (one room per match)
+- Lobby → Playing → Closed state machine
+- Turn/Round orchestration (future, over same WS infra)
+- Action/Reaction dispatching (future)
+
+### Match Runtime Concepts
+
+A running match organizes into:
+- **Scenes** — categorized as `roleplay` or `battle` (for history/readability only)
+- **Turns** — mode `free` (no time pressure) or `race` (speed priority queue)
+- **Rounds** — one character's action + triggered reactions
+
+Scene category does NOT determine turn mode. The Turn Engine is agnostic to
+scene category by design. See `docs/game/cenas-e-turnos.md` for details.
