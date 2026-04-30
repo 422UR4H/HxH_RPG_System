@@ -27,12 +27,19 @@ O sistema possui três tipos de atributo, cada um com semântica diferente para
 Power e distribuição de pontos:
 
 ```
-IGameAttribute (interface base)
-├── IDistributableAttribute (estende com GetPoints/GetValue)
-│   ├── PrimaryAttribute     — atributo primário (ex: Força, Inteligência)
-│   └── MiddleAttribute      — atributo derivado de 2+ primários (ex: Defesa)
-└── SpiritualAttribute        — atributo espiritual (sem pontos distribuíveis)
+ICascadeUpgrade (interface da cascata)
+├── IGameAttribute            (base para todos os atributos)
+│   ├── SpiritualAttribute    — atributo espiritual (sem pontos distribuíveis)
+│   └── ...
+├── IDistributableAttribute   (superset estrutural de IGameAttribute + GetPoints/GetValue)
+│   ├── PrimaryAttribute      — atributo primário (ex: Força, Agilidade)
+│   └── MiddleAttribute       — atributo derivado de 2+ primários (ex: Constituição)
 ```
+
+> **Nota Go:** `IDistributableAttribute` e `IGameAttribute` não possuem relação de
+> embedding — ambas embeddam `ICascadeUpgrade` independentemente. Porém,
+> `IDistributableAttribute` é um superset estrutural (qualquer implementação satisfaz
+> `IGameAttribute` também).
 
 | Tipo | Points | Value | Power | Cascade |
 |------|--------|-------|-------|---------|
@@ -60,13 +67,14 @@ A `Ability` possui:
 
 ```
 IGameAttribute                   IAbility
-├── CascadeUpgrade()             ├── ICascadeUpgrade (CascadeUpgrade + GetLevel)
+├── ICascadeUpgrade              ├── ICascadeUpgrade (CascadeUpgrade + GetLevel)
 ├── GetPower()                   ├── GetBonus() float64
 ├── GetAbilityBonus()            ├── GetExpReference() ICascadeUpgrade
 └── (exp getters)                └── (exp getters)
 
-IDistributableAttribute
-├── IGameAttribute
+IDistributableAttribute          (superset de IGameAttribute)
+├── ICascadeUpgrade
+├── (tudo de IGameAttribute)
 ├── GetPoints() int
 └── GetValue() int
 ```
@@ -176,8 +184,9 @@ Detalhes importantes:
 
 - **Acessa `primaryAttr.points` diretamente** — possível porque `MiddleAttribute`
   está no mesmo pacote. Diferente de `GetPoints()` que retornaria o valor público.
-- **Usa `math.Round`** — arredondamento bancário (round half to even). Para 2
-  primários com points {3, 4}, o resultado é `Round(3.5) = 4` (arredonda para par).
+- **Usa `math.Round`** — arredondamento half away from zero. Para 2
+  primários com points {3, 4}, o resultado é `Round(3.5) = 4`. Note que
+  `Round(2.5) = 3` (arredonda para longe de zero, diferente de banker's rounding).
 - **Points é somente leitura** para `MiddleAttribute` — ele não aceita
   `IncreasePoints()`. Os pontos são distribuídos apenas nos primários.
 
