@@ -24,9 +24,7 @@ Os princípios são as técnicas fundamentais de Nen. Existem **11 princípios**
 
 Cada princípio possui um **valor de teste** calculado pela fórmula:
 
-```
-ValorDeTeste = nível do princípio + poder da Consciência + nível da Chama
-```
+> **Valor de Teste** = nível do princípio + poder da Consciência + nível da Chama
 
 Esse valor representa a efetividade total do personagem ao utilizar o princípio em testes durante o jogo.
 
@@ -36,22 +34,20 @@ As categorias definem a afinidade do personagem com um tipo específico de Nen. 
 
 | Categoria | Centro no Hexágono |
 |-----------|-------------------|
-| **Reforço** (Reinforcement) | 0 |
-| **Transmutação** (Transmutation) | 100 |
-| **Materialização** (Materialization) | 200 |
-| **Especialização** (Specialization) | 300 |
-| **Manipulação** (Manipulation) | 400 |
-| **Emissão** (Emission) | 500 |
+| **Reforço** | 0 |
+| **Transmutação** | 100 |
+| **Materialização** | 200 |
+| **Especialização** | 300 |
+| **Manipulação** | 400 |
+| **Emissão** | 500 |
 
 ### Valor de Teste das Categorias
 
 O valor de teste de cada categoria é calculado pela fórmula:
 
-```
-ValorDeTesteCategoria = int((nívelCategoria + valorTesteHatsu) × porcentagem / 100)
-```
+> **Valor de Teste da Categoria** = (nível da categoria + valor de teste do Hatsu) × porcentagem ÷ 100 (arredondado para baixo)
 
-Onde `porcentagem` é determinada pelo Hexágono Nen (veja abaixo).
+Onde a **porcentagem** é determinada pelo Hexágono Nen (veja abaixo).
 
 ## Hexágono Nen
 
@@ -67,14 +63,9 @@ O Hexágono Nen é o sistema que distribui as porcentagens de afinidade entre as
 
 A porcentagem de afinidade com cada categoria é calculada com base na **distância hexagonal**:
 
-```
-diferencaAbsoluta = |centroCategoria - valorHexAtual|
-se diferencaAbsoluta > 300:
-    diferencaAbsoluta = 600 - diferencaAbsoluta
-
-divisor = 100 / 20 = 5
-porcentagem = 100 - diferencaAbsoluta / divisor
-```
+> **Diferença** = |centro da categoria − valor hexagonal atual|
+> Se a diferença for maior que 300, ajusta-se: **diferença** = 600 − diferença
+> **Porcentagem** = 100 − diferença ÷ 5
 
 Isso resulta em saltos de **20%** por categoria de distância:
 
@@ -99,41 +90,39 @@ O Hatsu representa as habilidades Nen individuais do personagem e funciona como 
 
 ### Valor de Teste do Hatsu
 
-```
-ValorDeTesteHatsu = nível do Hatsu + poder da Consciência + nível da Chama
-```
+> **Valor de Teste do Hatsu** = nível do Hatsu + poder da Consciência + nível da Chama
 
-### Cascade de Experiência
+### Progressão em Cascata
 
 Quando experiência é adicionada a uma categoria ou princípio, ela se propaga em cascata:
 
-```
-Categoria → Hatsu → Consciência → Habilidade Espiritual → Exp do Personagem
-```
+1. A **categoria** (ou princípio) recebe a experiência
+2. O **Hatsu** recebe a experiência em cascata
+3. A **Consciência** avança com a experiência propagada
+4. A **habilidade Espiritual** recebe a cascata
+5. A **experiência geral do personagem** é atualizada
 
-Cada nível dessa cascata registra os dados de progressão (nível, experiência e valor de teste) no objeto `UpgradeCascade`, permitindo que o sistema acompanhe a evolução completa do personagem.
+Cada nível dessa cascata registra os dados de progressão (nível, experiência e valor de teste), permitindo que o sistema acompanhe a evolução completa do personagem.
 
-### Inicialização
+## Controle do Sistema Nen
 
-O Hatsu precisa ser inicializado com o mapa de categorias antes de poder ser utilizado. Uma tentativa de inicialização dupla resulta em erro.
+O sistema Nen coordena todos os princípios, o Hexágono Nen e o Hatsu de forma integrada. O jogador pode interagir com o sistema das seguintes formas:
 
-## PrinciplesManager
+### Gerenciamento dos Princípios
 
-O `PrinciplesManager` é o gerenciador central que coordena todos os princípios Nen, o Hexágono Nen e o Hatsu.
+O sistema armazena e fornece acesso aos 10 princípios (o Hatsu é tratado separadamente por possuir mecânicas próprias). O jogador pode consultar níveis, experiência e valores de teste de todos os princípios e categorias.
 
-### Responsabilidades
+### Operações do Hexágono
 
-- **Gerenciar princípios**: armazena e fornece acesso aos 10 princípios (excluindo Hatsu, que é tratado separadamente)
-- **Gerenciar hexágono**: controla o aumento/diminuição do valor hexagonal e a atualização das porcentagens das categorias
-- **Gerenciar Hatsu**: delega operações de experiência e consultas de categorias ao Hatsu
-- **Fornecer dados em lote**: retorna níveis, experiências e valores de teste de todos os princípios e categorias de uma vez
+- **Aumentar o valor hexagonal** — avança a posição no hexágono e atualiza as porcentagens de afinidade
+- **Diminuir o valor hexagonal** — recua a posição no hexágono e atualiza as porcentagens de afinidade
+- **Resetar a categoria** — retorna a posição ao centro da categoria Nen atual
+- **Consultar a categoria atual** — verifica qual é a categoria Nen do personagem
+- **Consultar o valor hexagonal** — verifica a posição atual no hexágono
 
-### Operações do Hexágono via Manager
+---
 
-- `IncreaseCurrHexValue()` — incrementa o valor hexagonal e atualiza porcentagens
-- `DecreaseCurrHexValue()` — decrementa o valor hexagonal e atualiza porcentagens
-- `ResetNenCategory()` — reseta para o centro da categoria atual
-- `GetNenCategoryName()` — retorna a categoria Nen atual
-- `GetCurrHexValue()` — retorna o valor hexagonal atual
-
-> **Nota:** Todas as operações do hexágono verificam se ele foi inicializado antes de executar, retornando erro caso contrário.
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/character-sheet/spiritual.md`](../../dev/character-sheet/spiritual.md)
+> Código-fonte: `internal/domain/entity/character_sheet/spiritual/`
