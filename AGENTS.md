@@ -52,6 +52,7 @@ internal/
 
 - **NEVER remove TODO comments:** TODOs in source code are intentional markers written by the owner. They must be preserved in ALL edits, regardless of context.
 - **Go idiomatic:** Implicit interfaces, short variable names in context, error wrapping with `%w`
+- **Entity naming — User vs Player vs Master:** `User` is the generic identity entity (authentication, account). `Player` and `Master` are specific domain roles. Use the specific name (`player`, `master`) in code unless the context truly applies to both roles equally. Example: `IsPlayerEnrolledInMatch`, not `IsUserEnrolledInMatch`.
 - **Engines as domain services:** Logic extracted from entities lives in "engine" packages under `internal/domain/`. These correlate entities that are themselves dry (or nearly dry) per Go convention.
 - **No test frameworks:** Standard library `testing` only. Table-driven tests with `t.Run()`.
 - **External test packages:** Tests use `package foo_test` to test exported API only.
@@ -92,6 +93,8 @@ internal/
 | Room | Sala (instância WS de uma partida) |
 | Hub | Hub (gerenciador de rooms) |
 | Master | Mestre (quem conduz a partida) |
+| Player | Jogador (quem joga um personagem) |
+| User | Usuário (entidade genérica de autenticação) |
 
 ## Current State
 

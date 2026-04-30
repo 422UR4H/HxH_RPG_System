@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-func (r *Repository) IsUserEnrolledInMatch(
-	ctx context.Context, userUUID, matchUUID uuid.UUID,
+func (r *Repository) IsPlayerEnrolledInMatch(
+	ctx context.Context, playerUUID, matchUUID uuid.UUID,
 ) (bool, error) {
 	const query = `
 		SELECT EXISTS (
@@ -20,9 +20,9 @@ func (r *Repository) IsUserEnrolledInMatch(
 		)
 	`
 	var exists bool
-	err := r.q.QueryRow(ctx, query, matchUUID, userUUID).Scan(&exists)
+	err := r.q.QueryRow(ctx, query, matchUUID, playerUUID).Scan(&exists)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if user is enrolled in match: %w", err)
+		return false, fmt.Errorf("failed to check if player is enrolled in match: %w", err)
 	}
 	return exists, nil
 }

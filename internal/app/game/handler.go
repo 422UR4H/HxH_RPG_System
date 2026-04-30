@@ -16,7 +16,7 @@ type MatchRepository interface {
 }
 
 type EnrollmentChecker interface {
-	IsUserEnrolledInMatch(ctx context.Context, userUUID, matchUUID uuid.UUID) (bool, error)
+	IsPlayerEnrolledInMatch(ctx context.Context, playerUUID, matchUUID uuid.UUID) (bool, error)
 }
 
 var upgrader = websocket.Upgrader{
@@ -68,7 +68,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	isMaster := masterUUID == userUUID
 	if !isMaster {
-		enrolled, err := h.enrollmentRepo.IsUserEnrolledInMatch(r.Context(), userUUID, matchUUID)
+		enrolled, err := h.enrollmentRepo.IsPlayerEnrolledInMatch(r.Context(), userUUID, matchUUID)
 		if err != nil || !enrolled {
 			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 			return

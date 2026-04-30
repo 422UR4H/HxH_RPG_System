@@ -29,7 +29,7 @@ type mockEnrollmentChecker struct {
 	err      error
 }
 
-func (m *mockEnrollmentChecker) IsUserEnrolledInMatch(_ context.Context, _, _ uuid.UUID) (bool, error) {
+func (m *mockEnrollmentChecker) IsPlayerEnrolledInMatch(_ context.Context, _, _ uuid.UUID) (bool, error) {
 	return m.enrolled, m.err
 }
 
