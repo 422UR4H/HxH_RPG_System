@@ -37,7 +37,7 @@ A construção segue uma ordem linear estrita:
 6.  NewCharacterAttributes(physAttrs, mentalAttrs, spiritAttrs)
         ↓ charAttrs
 7.  BuildPhysSkills(skills, physAttrs)
-        ↓ physSkills (21 perícias)
+        ↓ physSkills (26 perícias)
 8.  BuildMentalSkills(skills, mentalAttrs)
         ↓ mentalSkills (Manager vazio — TODO)
 9.  BuildSpiritualSkills(skills, spiritAttrs)
@@ -137,7 +137,7 @@ Os 13 coeficientes definem a velocidade de progressão de cada componente via
 
 | Constante | Valor | ExpTable alimenta |
 |-----------|-------|-------------------|
-| `PHYSICAL_SKILLS_COEFF` | `1.0` | 21 perícias físicas |
+| `PHYSICAL_SKILLS_COEFF` | `1.0` | 26 perícias físicas |
 | `MENTAL_SKILLS_COEFF` | `2.0` | Perícias mentais (Manager vazio atualmente) |
 | `SPIRITUAL_SKILLS_COEFF` | `3.0` | 6 perícias espirituais (Focus, WillPower, etc.) |
 | `SPIRITUAL_PRINCIPLE_COEFF` | `1.0` | Princípios Nen (Ten, Zetsu, Ren, etc.) + Hatsu + NenCategories |
@@ -345,7 +345,7 @@ BuildHalfSheet()
 
 ## Wiring de Perícias — Referência
 
-### Perícias Físicas (21 total, 8 grupos)
+### Perícias Físicas (26 total, 8 grupos)
 
 Cada grupo é vinculado a um atributo (primário ou intermediário):
 
