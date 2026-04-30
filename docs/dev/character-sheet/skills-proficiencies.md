@@ -71,14 +71,14 @@ Todas as dependências são injetadas na construção — não precisa de `Init(
 
 ### JointSkill
 
-A `JointSkill` agrupa múltiplas `CommonSkill` sob um nome composto (ex: Ladinagem,
-Caça, Atleta, Hack). Ela tem:
+A `JointSkill` agrupa múltiplas perícias (via interface `ISkill`) sob um nome composto
+(ex: Ladinagem, Caça, Atleta, Hack). Ela tem:
 
 - **`name`** — nome como `string` (não enum, pois JointSkills são compostas)
 - **`exp`** — instância própria de `Exp`
 - **`buff`** — buff interno (`int`)
 - **`attribute`** — referência ao atributo associado
-- **`commonSkills`** — mapa das perícias comuns que compõem esta joint skill
+- **`commonSkills`** — mapa de perícias que compõem esta joint skill (`map[enum.SkillName]ISkill`)
 - **`abilitySkillsExp`** — referência à ability de perícias (injetada via `Init()`)
 
 | Aspecto | CommonSkill | JointSkill |
@@ -86,7 +86,7 @@ Caça, Atleta, Hack). Ela tem:
 | Nome | `enum.SkillName` | `string` |
 | Init necessário | Não | Sim (`Init()`) |
 | Buff interno | Não | Sim (`buff int`) |
-| Contém sub-perícias | Não | Sim (`commonSkills map`) |
+| Contém sub-perícias | Não | Sim (`commonSkills map[SkillName]ISkill`) |
 | Multiplicação de XP | Não | Sim (×`len(commonSkills)`) |
 
 ---
@@ -103,6 +103,7 @@ exp := values.GetExp()
 js.exp.IncreasePoints(exp)           // JointSkill recebe XP original
 js.attribute.CascadeUpgrade(values)  // atributo recebe XP original
 values.SetExp(exp * len(js.commonSkills))  // MULTIPLICA pelo nº de componentes
+values.Skills[js.name] = SkillCascade{...} // registra no coletor ANTES da ability
 js.abilitySkillsExp.CascadeUpgrade(values) // ability recebe XP multiplicado
 ```
 
@@ -121,13 +122,14 @@ CommonSkill:                          JointSkill:
 1. skill.exp += XP                    1. skill.exp += XP
 2. attribute.CascadeUpgrade(XP)       2. attribute.CascadeUpgrade(XP)
 3. abilitySkillsExp.CascadeUpgrade(XP) 3. values.SetExp(XP × len(commonSkills))
-4. registra no coletor                4. abilitySkillsExp.CascadeUpgrade(XP×N)
-                                      5. registra no coletor
+4. registra no coletor                4. registra no coletor
+                                      5. abilitySkillsExp.CascadeUpgrade(XP×N)
 ```
 
 Na `CommonSkill`, o atributo e a ability recebem o **mesmo** XP. Na `JointSkill`, a
 multiplicação acontece **entre** as duas cascatas — o atributo recebe XP original e a
-ability recebe XP multiplicado.
+ability recebe XP multiplicado. Note que na `JointSkill` o registro no coletor acontece
+**antes** da cascata para `abilitySkillsExp`.
 
 ### TODO relevante
 
@@ -337,13 +339,23 @@ O Manager oferece `SetBuff(name, value)` e `DeleteBuff(name)` para gerenciar buf
 
 ### Buff interno na JointSkill / JointProficiency
 
-Adicionalmente, `JointSkill` e `JointProficiency` possuem um campo `buff int` interno
-que é somado diretamente no `GetValueForTest()`:
+Adicionalmente, `JointSkill` e `JointProficiency` possuem um campo `buff int` interno.
+Porém, apenas a `JointSkill` soma esse buff diretamente no `GetValueForTest()`:
 
 ```go
-// JointSkill.GetValueForTest
+// JointSkill.GetValueForTest — inclui buff
 func (js *JointSkill) GetValueForTest() int {
     return js.exp.GetLevel() + js.attribute.GetPower() + js.buff
+}
+```
+
+A `JointProficiency.GetValueForTest()` **não** inclui o buff — retorna apenas o nível
+(com o Power do atributo comentado, assim como a `Proficiency` comum):
+
+```go
+// JointProficiency.GetValueForTest — NÃO inclui buff
+func (jp *JointProficiency) GetValueForTest() int {
+    return jp.exp.GetLevel() //+ jp.attr.GetPower()
 }
 ```
 
@@ -413,10 +425,20 @@ A proficiência usa apenas o nível (o atributo está comentado — ver seção 
 
 ### Valor final via Manager
 
-O Manager adiciona o buff externo ao valor retornado:
+O Manager adiciona o buff externo ao valor calculado. A fórmula difere entre os dois
+Managers:
+
+**Skill Manager** — usa `skill.GetValueForTest()`:
 
 ```
-FinalValue = entity.GetValueForTest() + Manager.buffs[name]
+FinalValue = skill.GetValueForTest() + Manager.buffs[name]
+```
+
+**Proficiency Manager** — usa `prof.GetLevel()` diretamente (com `GetValueForTest()`
+comentado e um TODO questionando):
+
+```
+FinalValue = prof.GetLevel() + Manager.buffs[name]
 ```
 
 ### Fórmula expandida completa (CommonSkill via Manager)
