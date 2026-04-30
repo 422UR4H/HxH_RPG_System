@@ -1,22 +1,18 @@
-# Sistema de Experiência (Experience System)
+# Sistema de Experiência
 
 ## Visão Geral
 
-O sistema de experiência (XP) é a base de toda a progressão no HxH RPG System. Cada entidade na ficha de personagem — perícias, atributos, habilidades, princípios Nen — possui sua própria instância de experiência com tabela de progressão configurável.
+O sistema de experiência (XP) é a base de toda a progressão no HxH RPG System. Cada elemento na ficha de personagem — perícias, atributos, habilidades, princípios Nen — possui seu próprio sistema de experiência com uma tabela de progressão específica.
 
-## Tabela de Experiência (ExpTable)
+## Tabela de Progressão
 
-Cada componente utiliza uma **ExpTable** com um coeficiente multiplicador. A tabela suporta até **100 níveis** (0–100) e é gerada por uma função sigmoidal tripla:
+Cada componente da ficha possui uma **tabela de progressão** com uma velocidade de progressão própria. A tabela suporta até **100 níveis** (0–100), e a quantidade de XP necessária para cada nível cresce de forma não-linear: os primeiros níveis são rápidos, os intermediários exigem mais dedicação, e os últimos níveis são os mais desafiadores.
 
-```
-f(lvl) = 1700/(1 + e^(0.37*(12-lvl))) + 1800/(1 + e^(0.37*(38-lvl))) + 2000/(1 + e^(0.28*(74-lvl)))
-```
+O XP base para cada nível é calculado como **velocidade de progressão × custo do nível**, e o XP total acumulado é a soma de todos os níveis anteriores.
 
-O XP base para cada nível é `coeficiente × f(nível)`, e o XP agregado é a soma cumulativa de todos os níveis anteriores.
+### Velocidade de Progressão por Componente
 
-### Coeficientes por Componente
-
-| Componente | Coeficiente | Descrição |
+| Componente | Velocidade de Progressão | Descrição |
 |---|---|---|
 | Personagem | 10.0 | Experiência geral do personagem |
 | Talento | 2.0 | Progressão do talento por categoria |
@@ -32,23 +28,29 @@ O XP base para cada nível é `coeficiente × f(nível)`, e o XP agregado é a s
 | Perícias Espirituais | 3.0 | Cada perícia espiritual |
 | Princípios Nen | 1.0 | Cada princípio e categoria |
 
-## Experiência do Personagem (CharacterExp)
+> **🔍 Curiosidade — A Fórmula por trás da Progressão**
+>
+> A curva de progressão é gerada por uma função sigmoidal tripla:
+>
+> *f(nível) = 1700 / (1 + e^(0,37 × (12 − nível))) + 1800 / (1 + e^(0,37 × (38 − nível))) + 2000 / (1 + e^(0,28 × (74 − nível)))*
+>
+> Ela determina a velocidade com que o custo de XP cresce entre os níveis. Na prática, isso significa que a progressão começa suave, acelera nos níveis intermediários e desacelera nos níveis mais altos — criando uma experiência de jogo equilibrada. Você não precisa calcular isso manualmente; o sistema cuida de tudo!
 
-A `CharacterExp` é o nível geral do personagem. Ela recebe XP no final de cada **upgrade em cascata** (cascade upgrade) — sempre que qualquer perícia ou princípio recebe experiência, o XP se propaga pela cadeia até chegar à experiência do personagem.
+## Experiência do Personagem
+
+A experiência do personagem representa o **nível geral** do personagem. Ela recebe XP ao final de cada **progressão em cascata** — sempre que qualquer perícia ou princípio recebe experiência, o XP se propaga pela cadeia até chegar à experiência do personagem.
 
 ### Pontos de Personagem
 
-Cada vez que uma **habilidade** (Physicals, Mentals, Spirituals, Skills) sobe de nível, o personagem ganha **pontos de personagem** que influenciam o bônus de habilidade.
+Cada vez que uma **habilidade** (Físicos, Mentais, Espirituais ou Perícias) sobe de nível, o personagem ganha **pontos de personagem** que influenciam o bônus de habilidade.
 
 ### Fórmula do Bônus de Habilidade
 
-```
-bônus = (pontosDePersonagem + nívelDaHabilidade) / 2
-```
+> *bônus = (pontos de personagem + nível da habilidade) / 2*
 
-## Upgrade em Cascata (Cascade Upgrade)
+## Progressão em Cascata
 
-O mecanismo central de progressão. Quando XP é inserido em uma perícia:
+O mecanismo central de progressão. Quando XP é adicionado a uma perícia, ele se propaga automaticamente por toda a cadeia:
 
 1. A **perícia** recebe o XP
 2. O **atributo** associado recebe o XP
@@ -56,4 +58,13 @@ O mecanismo central de progressão. Quando XP é inserido em uma perícia:
 4. A **experiência do personagem** recebe o XP
 5. Todos os **status** são recalculados
 
+**Exemplo prático:** imagine que seu personagem treina *Acrobacia* (uma perícia física). Esse treino não melhora apenas a Acrobacia — ele também fortalece a *Flexibilidade* (o atributo associado), que por sua vez melhora toda a habilidade *Físicos*, e por fim incrementa a experiência geral do personagem. É como treinar um movimento específico que acaba fortalecendo o corpo inteiro.
+
 Este processo garante que treinar qualquer aspecto do personagem contribui para sua progressão geral.
+
+---
+
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/character-sheet/experience.md`](../../dev/character-sheet/experience.md)
+> Código-fonte: `internal/domain/entity/character_sheet/experience/`
