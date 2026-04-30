@@ -48,6 +48,18 @@ internal/
 | Dice | `internal/domain/entity/die/` |
 | Items | `internal/domain/entity/item/` |
 
+## Documentation Structure
+
+| Directory | Purpose | Audience | Language |
+|-----------|---------|----------|----------|
+| `docs/game/` | Game rules, mechanics, player-facing content (like a RPG rulebook) | Players & Masters | PT-BR |
+| `docs/architecture/` | Technical design, entity flows, data models, integration details | Developers | EN |
+| `docs/superpowers/specs/` | Feature design specs (formal, timestamped) | Developers | EN + PT-BR |
+| `docs/superpowers/plans/` | Implementation plans | Developers | EN |
+| `AGENTS.md` | Quick-reference guide for AI agents | AI Agents | EN |
+
+**Key rule:** Game docs (`docs/game/`) must contain ONLY game rules and mechanics — no implementation details, no code references, no software entities. Think of it as content that could be printed in a RPG rulebook. Technical details about how the software implements these rules go in `docs/architecture/`.
+
 ## Code Conventions
 
 - **NEVER remove TODO comments:** TODOs in source code are intentional markers written by the owner. They must be preserved in ALL edits, regardless of context.
@@ -59,7 +71,15 @@ internal/
 - **Experience cascade pattern:** XP flows upward: skill → attribute → ability → character. Each layer calls `CascadeUpgrade`/`CascadeUpgradeTrigger` on the layer above.
 - **DDD-lite:** Value objects, entities, domain services (engines), use cases, repository interfaces.
 - **Specs:** Design specs in `docs/superpowers/specs/` must have both EN and PT-BR versions (`.pt-br.md` suffix). Both versions committed together.
-- **Game docs:** PT-BR documentation in `docs/game/ficha-de-personagem/`.
+- **Game docs:** PT-BR documentation in `docs/game/` — pure game rules for players (no implementation details). Separate technical docs for developers live in `docs/architecture/`.
+
+## Git Workflow
+
+- **Always use Pull Requests:** Never merge directly to `main`. Work on feature branches, push to origin, create a PR on GitHub, review the diff, then merge.
+- **Branch naming:** `feat/<description>`, `fix/<description>`, `docs/<description>`, `refactor/<description>`
+- **PR flow:** Create branch → work → push → create PR (with description of changes) → owner reviews diff → merge
+- **Commits:** Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailer
+- **Specs committed together:** EN + PT-BR versions in same commit
 
 ## Quick Glossary (EN → PT-BR)
 
@@ -103,7 +123,7 @@ internal/
 - ⚠️ `domain/` services (engines) — Pending rename to domain services pattern
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented, integration tested)
 - ✅ `app/api/` — HTTP handlers (fully implemented, unit tested with humatest)
-- 🔲 `app/game/` — WebSocket game server (design approved, implementation pending)
+- ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern, unit + integration tested)
 
 ## Commands
 
