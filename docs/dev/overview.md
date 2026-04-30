@@ -118,3 +118,51 @@ A running match organizes into:
 
 Scene category does NOT determine turn mode. The Turn Engine is agnostic to
 scene category by design. See `docs/game/cenas-e-turnos.md` for details.
+
+## Dev Documentation Index
+
+Detailed technical documentation for each subsystem (PT-BR with English code references):
+
+### Character Sheet (`internal/domain/entity/character_sheet/`)
+
+| Document | Covers |
+|----------|--------|
+| [`experience.md`](character-sheet/experience.md) | ExpTable, CharacterExp, cascade flow, XP coefficients |
+| [`abilities-attributes.md`](character-sheet/abilities-attributes.md) | Abilities, PrimaryAttribute, MiddleAttribute, SpiritualAttribute, Talent |
+| [`skills-proficiencies.md`](character-sheet/skills-proficiencies.md) | CommonSkill, JointSkill, Proficiency, JointProficiency, Managers |
+| [`spiritual.md`](character-sheet/spiritual.md) | NenPrinciple, NenCategory, Hexagon, Hatsu, PrinciplesManager |
+| [`status.md`](character-sheet/status.md) | StatusBars (HP/SP/AP), formulas, upgrade mechanics |
+| [`factory.md`](character-sheet/factory.md) | CharacterSheetFactory, class application, validation |
+
+### Items & Dice (`internal/domain/entity/`)
+
+| Document | Covers |
+|----------|--------|
+| [`weapons-dice.md`](weapons-dice.md) | Weapon properties, dice system, damage calculation |
+
+### Auth & Sessions
+
+| Document | Covers |
+|----------|--------|
+| [`auth.md`](auth.md) | User registration, login, JWT, session management |
+
+### Campaigns & Scenarios (`internal/domain/entity/campaign/`, `scenario/`)
+
+| Document | Covers |
+|----------|--------|
+| [`campaigns-scenarios.md`](campaigns-scenarios.md) | Campaign lifecycle, Scenario, Submission flow |
+| [`enrollment.md`](enrollment.md) | Match enrollment, character sheet validation |
+
+### Match Runtime (`internal/domain/entity/match/`)
+
+| Document | Covers |
+|----------|--------|
+| [`match/scenes.md`](match/scenes.md) | Scene entity, categories (roleplay/battle), lifecycle |
+| [`match/turns-rounds.md`](match/turns-rounds.md) | Turn/Round engines, free vs race modes, semantic refactoring |
+| [`match/actions.md`](match/actions.md) | Action structure, PriorityQueue, Attack, RollContext |
+
+### WebSocket Game Server (`internal/app/game/`)
+
+| Document | Covers |
+|----------|--------|
+| [`websocket.md`](websocket.md) | Hub/Room/Client architecture, message protocol, state machine |
