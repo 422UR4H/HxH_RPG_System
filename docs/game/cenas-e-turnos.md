@@ -1,4 +1,4 @@
-# Cenas e Turnos (Scenes & Turns)
+# Cenas e Turnos
 
 > Estrutura de execução em tempo real de uma partida no HxH RPG.
 
@@ -8,18 +8,18 @@ Durante uma partida em execução, o fluxo de jogo se organiza em uma
 hierarquia: **Partida → Cenas → Turnos → Rounds**.
 
 ```
-Partida (Match)
-├── Cena (Scene) — roleplay ou battle
-│   ├── Turno (Turn) — modo free ou race
+Partida
+├── Cena — roleplay ou battle
+│   ├── Turno — modo free ou race
 │   │   ├── Round — ação de um personagem
-│   │   │   ├── Ação (Action)
-│   │   │   └── Reações (Reactions) — de outros jogadores
+│   │   │   ├── Ação
+│   │   │   └── Reações — de outros jogadores
 │   │   └── Round ...
 │   └── Turno ...
 └── Cena ...
 ```
 
-## Cenas (Scenes)
+## Cenas
 
 Uma cena é um segmento contínuo da partida com um propósito narrativo.
 Existem duas categorias:
@@ -51,7 +51,7 @@ esperado seja:
 3. Mestre finaliza a cena com descrição breve final
 4. Cena finalizada não aceita mais turnos
 
-## Turnos (Turns)
+## Turnos
 
 Um turno é um ciclo de ações dentro de uma cena. Possui dois modos:
 
@@ -65,21 +65,21 @@ Um turno é um ciclo de ações dentro de uma cena. Possui dois modos:
 ### Modo Race (Turno Disputado)
 
 - Cada milissegundo conta
-- Ações são resolvidas por velocidade (fila de prioridade — max-heap)
+- Ações são resolvidas por velocidade (fila de prioridade — as ações mais rápidas são resolvidas primeiro)
 - Típico de combates
 - A ação mais rápida é processada primeiro
 - Reações podem ser engatilhadas ou desengatilhadas ao longo do fluxo
 
-### Engine de Turnos
+### Sistema de Turnos
 
-A Turn Engine gerencia a execução dos turnos **sem saber se a cena é
-roleplay ou battle**. Ela apenas conhece o modo do turno (free ou race) e
+O sistema de turnos gerencia a execução dos turnos **sem considerar se a cena é
+roleplay ou battle**. Ele apenas conhece o modo do turno (free ou race) e
 executa de acordo.
 
 Essa separação é intencional:
 - A **cena** classifica o contexto narrativo
 - O **turno** executa a mecânica de jogo
-- A **engine** orquestra o fluxo
+- O **sistema** orquestra o fluxo
 
 ## Rounds
 
@@ -87,7 +87,7 @@ Um round é a **ação de um personagem** dentro de um turno. Composto por:
 
 - **Ação principal** — o que o personagem faz
 - **Reações** — respostas de outros personagens à ação
-  - Reações podem ser **engatilhadas** (triggered) automaticamente
+  - Reações podem ser **engatilhadas** automaticamente
   - Reações podem ser **desengatilhadas** ao longo do fluxo
 
 Tudo dentro de um round parte da ação de um personagem específico.
@@ -105,9 +105,9 @@ No modo race, rounds são ordenados pela velocidade da ação:
 Ver `docs/game/combate/acoes.md` para detalhes sobre ações, ataques e fila
 de prioridade.
 
-## Eventos de Jogo (Game Events)
+## Eventos de Jogo
 
-Além da hierarquia Cena → Turno → Round, uma partida registra **Game Events**
+Além da hierarquia Cena → Turno → Round, uma partida registra **eventos de jogo**
 genéricos que podem ocorrer a qualquer momento: mudanças de data narrativa,
 mortes, notícias, ações desfeitas, etc.
 
@@ -116,9 +116,17 @@ completa do que aconteceu em cada partida.
 
 ## Comunicação em Tempo Real
 
-A execução em tempo real utiliza WebSocket. Quando uma partida está em
-execução, mestre e jogadores estão conectados via WebSocket ao Game Server.
+Quando uma partida está em execução, a comunicação acontece em tempo real.
+Mestre e jogadores permanecem conectados ao servidor de jogo durante toda a
+sessão.
 
-O fluxo de cenas, turnos e rounds será transmitido em tempo real por essa
-conexão. Ver spec de design do WebSocket Game Server para detalhes da
-infraestrutura de comunicação.
+O fluxo de cenas, turnos e rounds é transmitido em tempo real por essa
+conexão, garantindo que todos os participantes acompanhem os eventos
+simultaneamente.
+
+---
+
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/match/scenes.md`](../dev/match/scenes.md) · [`docs/dev/match/turns-rounds.md`](../dev/match/turns-rounds.md)
+> Código-fonte: `internal/domain/entity/match/`

@@ -50,3 +50,10 @@ Campanha
 ├── Fichas Pendentes (aguardando aprovação)
 └── Partidas
 ```
+
+---
+
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/campaigns-scenarios.md`](../dev/campaigns-scenarios.md)
+> Código-fonte: `internal/domain/entity/campaign/`

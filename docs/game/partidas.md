@@ -1,6 +1,6 @@
 # Partidas
 
-Uma **Partida** (Match) é uma sessão de jogo individual dentro de uma campanha. Representa um encontro específico onde os jogadores se reúnem para jogar.
+Uma **Partida** é uma sessão de jogo individual dentro de uma campanha. Representa um encontro específico onde os jogadores se reúnem para jogar.
 
 ## Estrutura
 
@@ -23,7 +23,7 @@ Uma **Partida** (Match) é uma sessão de jogo individual dentro de uma campanha
 - O **início da história** deve ser após o início da história da campanha
 - Se a campanha tem data de fim, o início da história deve ser antes dela
 
-## Inscrição de Personagens (Enrollment)
+## Inscrição de Personagens
 
 Após a ficha ser aceita na campanha, o jogador pode inscrevê-la em partidas específicas:
 
@@ -46,11 +46,11 @@ A plataforma oferece uma listagem de partidas públicas futuras (upcoming). Esta
 
 ```
 Partida
-├── Cenas (Scenes) — roleplay ou battle
-│   └── Turnos (Turns) — modo free ou race
+├── Cenas — roleplay ou battle
+│   └── Turnos — modo free ou race
 │       └── Rounds — ação de um personagem
 │           └── Ações e Reações
-└── Eventos de Jogo (Game Events)
+└── Eventos de Jogo
 ```
 
 A categorização de cenas (roleplay vs battle) serve para classificação e
@@ -60,21 +60,24 @@ mestre pode configurar diferente.
 
 Ver `docs/game/cenas-e-turnos.md` para detalhes completos.
 
-> **Nota:** A Turn/Round Engine está em refatoração semântica.
-
 ## Execução em Tempo Real
 
 Quando uma partida é iniciada pelo mestre, todos os participantes (mestre e
-jogadores inscritos) se conectam via WebSocket ao Game Server. O fluxo:
+jogadores inscritos) se conectam em tempo real ao servidor de jogo. O fluxo:
 
-1. Jogadores entram no **lobby** da partida (WebSocket)
+1. Jogadores entram no **lobby** da partida
 2. Mestre clica **"Iniciar Partida"** → todos recebem o evento
 3. A partida roda em tempo real com troca de mensagens bidirecionais
-4. Cenas, turnos, rounds e ações são transmitidos pelo WebSocket
-
-Ver spec de design do WebSocket Game Server para detalhes técnicos.
+4. Cenas, turnos, rounds e ações são transmitidos pela conexão em tempo real
 
 ## Visibilidade
 
 - **Pública**: qualquer jogador pode visualizar
 - **Privada**: apenas o mestre pode visualizar
+
+---
+
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/enrollment.md`](../dev/enrollment.md) · [`docs/dev/match/`](../dev/match/)
+> Código-fonte: `internal/domain/entity/match/`
