@@ -145,7 +145,7 @@ diferentes e chega ao `CharacterExp` **duas vezes**.
 
 ### MiddleAttribute — divisão de XP
 
-`MiddleAttribute` (ex: Defesa, que depende de Força e Constituição) trata XP de
+`MiddleAttribute` (ex: Força, que depende de Resistência e Agilidade) trata XP de
 forma diferente dos atributos primários:
 
 ```go
