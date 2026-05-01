@@ -128,9 +128,10 @@ Todos os campos são ponteiros (`*uuid.UUID`), o que significa que:
 > Atualmente apenas jogadores podem fazer enrollment. Há intenção de permitir que
 > o master também inscreva fichas em partidas, mas isso ainda não foi implementado.
 
-**Nota:** `ErrMasterCannotEnrollOwnSheet` existe em `error.go` mas não é utilizado
-no fluxo atual de `Enroll` — provavelmente reservado para a implementação futura
-do TODO acima.
+**Nota:** O bloqueio de mestre inscrever sua própria ficha é feito no fluxo de
+`SubmitCharacterSheet`, que impede a submissão da ficha à campanha. Como o
+enrollment já valida se a ficha pertence à campanha da partida, esse cenário
+é coberto indiretamente.
 
 ---
 
