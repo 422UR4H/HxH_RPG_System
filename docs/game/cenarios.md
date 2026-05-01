@@ -31,3 +31,10 @@ Cenário → Campanhas → Partidas → Cenas → Turnos → Rounds
 
 - Apenas o mestre que criou o cenário pode visualizá-lo
 - A listagem retorna apenas cenários do próprio mestre
+
+---
+
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/campaigns-scenarios.md`](../dev/campaigns-scenarios.md)
+> Código-fonte: `internal/domain/entity/scenario/`

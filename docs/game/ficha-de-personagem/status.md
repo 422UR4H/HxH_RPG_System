@@ -7,22 +7,20 @@ O sistema de status representa os recursos vitais do personagem: vida (HP), esta
 ## Pontos de Vida — HP (Health Points)
 
 **Fórmula:**
-```
-HP_máx = 20 + (nível_vitalidade + valor_resistência) × bônus_físicos
-```
+
+> **HP máximo** = 20 + (nível da Vitalidade + valor da Resistência) × bônus dos Físicos
 
 - **Base:** 20 pontos fixos
 - **Coeficiente:** nível da perícia Vitalidade + valor do atributo Resistência
 - **Bônus:** bônus da habilidade Físicos
 
-Quando o personagem está com vida cheia, um upgrade mantém a vida no máximo novo.
+Quando o personagem está com vida cheia, uma evolução mantém a vida no máximo novo.
 
 ## Pontos de Estamina — SP (Stamina Points)
 
 **Fórmula:**
-```
-SP_máx = 10 × (nível_energia + valor_resistência) × bônus_físicos
-```
+
+> **SP máximo** = 10 × (nível da Energia + valor da Resistência) × bônus dos Físicos
 
 - **Coeficiente:** 10 (multiplicador)
 - **Fatores:** nível da perícia Energia + valor do atributo Resistência
@@ -31,25 +29,32 @@ SP_máx = 10 × (nível_energia + valor_resistência) × bônus_físicos
 ## Pontos de Aura — AP (Aura Points)
 
 **Fórmula:**
-```
-AP_máx = 10 × (nível_mop + nível_consciência) × bônus_espirituais
-```
+
+> **AP máximo** = 10 × (nível da Mop + nível da Consciência) × bônus dos Espirituais (arredondado para baixo)
 
 - **Coeficiente:** 10 (multiplicador)
-- **Fatores:** nível da perícia MOP + nível do atributo Consciência
-- **Bônus:** bônus da habilidade Espirituais (convertido para inteiro)
+- **Fatores:** nível da perícia Mop + nível do atributo Consciência
+- **Bônus:** bônus da habilidade Espirituais (arredondado para baixo)
 
-> **Nota:** AP só existe para personagens com habilidade Espiritual ativa. Se `spirituals` for nil, a barra de aura não é criada.
+> **Nota:** AP só existe para personagens que despertaram o Nen. Se o personagem não tiver despertado o Nen, a barra de aura não é criada.
 
 ## Mecânica das Barras
 
 Cada barra possui três valores:
-- **Mínimo (min):** limite inferior (geralmente 0)
-- **Atual (curr):** valor corrente
-- **Máximo (max):** limite superior calculado
+- **Mínimo:** limite inferior (geralmente 0)
+- **Atual:** valor corrente
+- **Máximo:** limite superior calculado
 
-### Operações
-- **IncreaseAt(valor):** Aumenta o atual, limitado pelo máximo
-- **DecreaseAt(valor):** Diminui o atual, limitado pelo mínimo
-- **SetCurrent(valor):** Define o atual (erro se fora dos limites)
-- **Upgrade():** Recalcula o máximo; se estava cheio, o atual acompanha
+### Como as Barras Funcionam
+
+- **Recuperar:** o personagem pode recuperar pontos até o valor máximo da barra
+- **Perder:** o personagem perde pontos ao receber dano, gastar estamina ou usar aura, até o valor mínimo da barra
+- **Definir valor:** em situações especiais, o valor atual pode ser definido diretamente, desde que esteja dentro dos limites da barra
+- **Evolução:** quando o personagem evolui, o máximo da barra é recalculado; se a barra estava cheia antes da evolução, o valor atual acompanha o novo máximo
+
+---
+
+> **🔧 Para Desenvolvedores**
+>
+> Implementação técnica: [`docs/dev/character-sheet/status.md`](../../dev/character-sheet/status.md)
+> Código-fonte: `internal/domain/entity/character_sheet/status/`

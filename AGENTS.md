@@ -53,12 +53,12 @@ internal/
 | Directory | Purpose | Audience | Language |
 |-----------|---------|----------|----------|
 | `docs/game/` | Game rules, mechanics, player-facing content (like a RPG rulebook) | Players & Masters | PT-BR |
-| `docs/architecture/` | Technical design, entity flows, data models, integration details | Developers | EN |
+| `docs/dev/` | Technical flows, design rationale, cross-package relationships | Developers | PT-BR |
 | `docs/superpowers/specs/` | Feature design specs (formal, timestamped) | Developers | EN + PT-BR |
 | `docs/superpowers/plans/` | Implementation plans | Developers | EN |
 | `AGENTS.md` | Quick-reference guide for AI agents | AI Agents | EN |
 
-**Key rule:** Game docs (`docs/game/`) must contain ONLY game rules and mechanics — no implementation details, no code references, no software entities. Think of it as content that could be printed in a RPG rulebook. Technical details about how the software implements these rules go in `docs/architecture/`.
+**Key rule:** Game docs (`docs/game/`) must contain ONLY game rules and mechanics — no implementation details, no code references, no software entities. Think of it as content that could be printed in a RPG rulebook. Technical details about how the software implements these rules go in `docs/dev/`.
 
 ## Code Conventions
 
@@ -71,7 +71,7 @@ internal/
 - **Experience cascade pattern:** XP flows upward: skill → attribute → ability → character. Each layer calls `CascadeUpgrade`/`CascadeUpgradeTrigger` on the layer above.
 - **DDD-lite:** Value objects, entities, domain services (engines), use cases, repository interfaces.
 - **Specs:** Design specs in `docs/superpowers/specs/` must have both EN and PT-BR versions (`.pt-br.md` suffix). Both versions committed together.
-- **Game docs:** PT-BR documentation in `docs/game/` — pure game rules for players (no implementation details). Separate technical docs for developers live in `docs/architecture/`.
+- **Game docs:** PT-BR documentation in `docs/game/` — pure game rules for players (no implementation details). Separate technical docs for developers live in `docs/dev/`.
 
 ## Git Workflow
 
