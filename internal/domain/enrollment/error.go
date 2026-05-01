@@ -9,4 +9,6 @@ import (
 var (
 	ErrCharacterNotInCampaign   = domain.NewValidationError(errors.New("character sheet does not belong to the match's campaign"))
 	ErrCharacterAlreadyEnrolled = domain.NewValidationError(errors.New("character sheet is already enrolled in this match"))
+	ErrEnrollmentNotFound       = domain.NewValidationError(errors.New("enrollment not found"))
+	ErrNotMatchMaster           = domain.NewValidationError(errors.New("user is not the match's campaign master"))
 )
