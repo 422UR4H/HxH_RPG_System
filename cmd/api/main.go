@@ -180,8 +180,20 @@ func main() {
 		matchRepo,
 		characterSheetRepo,
 	)
+	acceptEnrollmentUC := domainEnrollment.NewAcceptEnrollmentUC(
+		enrollmentRepo,
+		matchRepo,
+		campaignRepo,
+	)
+	rejectEnrollmentUC := domainEnrollment.NewRejectEnrollmentUC(
+		enrollmentRepo,
+		matchRepo,
+		campaignRepo,
+	)
 	enrollmentApi := enrollmentHandler.Api{
-		EnrollCharacterHandler: enrollmentHandler.EnrollCharacterHandler(enrollCharacterSheetUC),
+		EnrollCharacterHandler:  enrollmentHandler.EnrollCharacterHandler(enrollCharacterSheetUC),
+		AcceptEnrollmentHandler: enrollmentHandler.AcceptEnrollmentHandler(acceptEnrollmentUC),
+		RejectEnrollmentHandler: enrollmentHandler.RejectEnrollmentHandler(rejectEnrollmentUC),
 	}
 
 	chiServer := api.NewServer()
