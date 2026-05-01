@@ -116,6 +116,60 @@ internal/
 | Player | Jogador (quem joga um personagem) |
 | User | Usuário (entidade genérica de autenticação) |
 
+## Documentation Maintenance Workflow
+
+**Rule:** Every PR that changes code in `internal/` or `cmd/` MUST verify whether documentation needs updating.
+
+**Source of truth:** `docs/documentation-map.yaml` maps code paths → affected docs.
+
+### Process (before finishing a branch)
+
+1. **Identify changed code paths** — `git diff --name-only $(git merge-base HEAD main)`
+2. **Check the map** — For each changed path, look up affected docs in `documentation-map.yaml`
+3. **Classify impact:**
+   - `covered` — doc was already updated in this PR ✅
+   - `missing` — doc needs updating ⚠️
+   - `unmapped` — changed file has no mapping → manual review required 🔍
+4. **Update affected docs** or explicitly justify skipping (in PR description)
+
+### When to Update Game Docs (`docs/game/`)
+
+Update if the change affects **player-visible behavior:**
+- New game mechanics or rules
+- Changed formulas (XP, damage, status)
+- New character options (classes, skills, abilities)
+- Modified combat flow
+
+**Do NOT update game docs for:** Internal refactoring, performance optimizations, gateway/repository changes, test additions.
+
+### When to Update Dev Docs (`docs/dev/`)
+
+Update if the change affects **developer understanding:**
+- New packages, entities, or domain services
+- Changed architectural patterns or flows
+- Modified interfaces or contracts between layers
+- New integration patterns (WS messages, API routes)
+
+**Do NOT update dev docs for:** Bug fixes with no design change, test additions, dependency bumps.
+
+### Skip Justification
+
+If documentation update is not needed, state why explicitly:
+- "Pure refactor — no behavioral change, no API change"
+- "Test-only change — no new behavior"
+- "Bug fix — docs already describe correct behavior"
+
+### Conventions Reminder
+
+- **Game docs:** PT-BR, zero code references, player-friendly language
+- **Dev docs:** PT-BR prose with English code references
+- **Developer footers:** Game docs include `> 🔧 Para Desenvolvedores` footer linking to dev docs
+- **`.gitignore` note:** Use `git add -f` for files under `docs/game/` (gitignore matches the game binary pattern)
+
+### Future Enhancement
+
+When the team grows beyond 1 developer + AI agents, add a GitHub Actions CI check that enforces this workflow on every PR automatically.
+
 ## Current State
 
 - ✅ `character_sheet/` — Stable, fully tested (experience, ability, attribute, skill, proficiency, spiritual, status, sheet)

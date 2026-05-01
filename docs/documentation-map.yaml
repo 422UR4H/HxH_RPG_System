@@ -1,0 +1,356 @@
+# Documentation Map — Single Source of Truth
+#
+# Maps code paths to their corresponding documentation files.
+# Used by AGENTS.md rules and the documentation-check extension tool.
+#
+# Format:
+#   Each entry maps a code path prefix to the docs that describe its behavior.
+#   - code_path: Prefix match against changed files (directory or file)
+#   - dev_docs: Developer-facing technical documentation (docs/dev/)
+#   - game_docs: Player-facing game rules documentation (docs/game/)
+#   - notes: Optional context about what kind of changes trigger doc updates
+#
+# Confidence levels when reporting:
+#   - directly_affected: Code path is the primary subject of the doc
+#   - possibly_affected: Code path contributes to the doc's topic but isn't central
+#
+# Rules:
+#   - If a changed file matches NO entry → "unmapped: manual review required"
+#   - If a changed file matches an entry → report affected docs
+#   - Changes to docs/ files themselves don't trigger this check
+
+mappings:
+  # ─── Character Sheet: Experience ───
+  - code_path: internal/domain/entity/character_sheet/experience/
+    dev_docs:
+      - path: docs/dev/character-sheet/experience.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/experiencia.md
+        confidence: directly_affected
+    notes: XP formulas, level thresholds, cascade triggers
+
+  # ─── Character Sheet: Abilities ───
+  - code_path: internal/domain/entity/character_sheet/ability/
+    dev_docs:
+      - path: docs/dev/character-sheet/abilities-attributes.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/habilidades.md
+        confidence: directly_affected
+    notes: Ability categories (Physicals, Mentals, Spirituals, Skills), talents, power
+
+  # ─── Character Sheet: Attributes ───
+  - code_path: internal/domain/entity/character_sheet/attribute/
+    dev_docs:
+      - path: docs/dev/character-sheet/abilities-attributes.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/atributos.md
+        confidence: directly_affected
+    notes: Attribute buffs, base/total values, cascade logic
+
+  # ─── Character Sheet: Skills (Perícias) ───
+  - code_path: internal/domain/entity/character_sheet/skill/
+    dev_docs:
+      - path: docs/dev/character-sheet/skills-proficiencies.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/pericias.md
+        confidence: directly_affected
+    notes: Joint skills, skill categories, XP cascade to attributes
+
+  # ─── Character Sheet: Proficiencies ───
+  - code_path: internal/domain/entity/character_sheet/proficiency/
+    dev_docs:
+      - path: docs/dev/character-sheet/skills-proficiencies.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/proficiencias.md
+        confidence: directly_affected
+    notes: Weapon proficiency progression, battle integration
+
+  # ─── Character Sheet: Spiritual/Nen ───
+  - code_path: internal/domain/entity/character_sheet/spiritual/
+    dev_docs:
+      - path: docs/dev/character-sheet/spiritual.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/sistema-nen.md
+        confidence: directly_affected
+    notes: Nen principles, categories, hexagon, hatsu
+
+  # ─── Character Sheet: Status Bars ───
+  - code_path: internal/domain/entity/character_sheet/status/
+    dev_docs:
+      - path: docs/dev/character-sheet/status.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/status.md
+        confidence: directly_affected
+    notes: HP, SP, AP formulas, current/max/bonus
+
+  # ─── Character Sheet: Sheet (integration) ───
+  - code_path: internal/domain/entity/character_sheet/sheet/
+    dev_docs:
+      - path: docs/dev/character-sheet/factory.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/classes.md
+        confidence: possibly_affected
+    notes: Sheet factory, class-based initialization
+
+  # ─── Character Classes ───
+  - code_path: internal/domain/entity/character_class/
+    dev_docs:
+      - path: docs/dev/character-sheet/factory.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/classes.md
+        confidence: directly_affected
+    notes: Class definitions, initial stats, class-specific rules
+
+  # ─── Dice ───
+  - code_path: internal/domain/entity/die/
+    dev_docs:
+      - path: docs/dev/weapons-dice.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/dados.md
+        confidence: directly_affected
+    notes: Dice rolling, randomness, result generation
+
+  # ─── Items/Weapons ───
+  - code_path: internal/domain/entity/item/
+    dev_docs:
+      - path: docs/dev/weapons-dice.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/armas.md
+        confidence: directly_affected
+    notes: Weapon stats, damage calculations, weight
+
+  # ─── Match: Core ───
+  - code_path: internal/domain/entity/match/
+    dev_docs:
+      - path: docs/dev/match/scenes.md
+        confidence: directly_affected
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+      - path: docs/dev/match/actions.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/partidas.md
+        confidence: directly_affected
+      - path: docs/game/cenas-e-turnos.md
+        confidence: directly_affected
+      - path: docs/game/combate/acoes.md
+        confidence: directly_affected
+    notes: Scenes, turns, rounds, actions, reactions, battle flow
+
+  # ─── Match: Scenes ───
+  - code_path: internal/domain/entity/match/scene/
+    dev_docs:
+      - path: docs/dev/match/scenes.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/cenas-e-turnos.md
+        confidence: directly_affected
+    notes: Scene types (roleplay, battle), transitions
+
+  # ─── Match: Turns ───
+  - code_path: internal/domain/entity/match/turn/
+    dev_docs:
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/cenas-e-turnos.md
+        confidence: directly_affected
+    notes: Free turns, race turns, turn ordering
+
+  # ─── Match: Rounds ───
+  - code_path: internal/domain/entity/match/round/
+    dev_docs:
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/acoes.md
+        confidence: directly_affected
+    notes: Round lifecycle, action/reaction flow
+
+  # ─── Match: Actions ───
+  - code_path: internal/domain/entity/match/action/
+    dev_docs:
+      - path: docs/dev/match/actions.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/acoes.md
+        confidence: directly_affected
+    notes: Action types, reaction triggers, resolution
+
+  # ─── Match: Battle ───
+  - code_path: internal/domain/entity/match/battle/
+    dev_docs:
+      - path: docs/dev/match/scenes.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/cenas-e-turnos.md
+        confidence: directly_affected
+      - path: docs/game/combate/acoes.md
+        confidence: possibly_affected
+    notes: Battle scene management, participant tracking
+
+  # ─── Campaign ───
+  - code_path: internal/domain/entity/campaign/
+    dev_docs:
+      - path: docs/dev/campaigns-scenarios.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/campanhas.md
+        confidence: directly_affected
+    notes: Campaign lifecycle, player enrollment
+
+  - code_path: internal/domain/campaign/
+    dev_docs:
+      - path: docs/dev/campaigns-scenarios.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/campanhas.md
+        confidence: possibly_affected
+    notes: Campaign use cases
+
+  # ─── Scenario ───
+  - code_path: internal/domain/entity/scenario/
+    dev_docs:
+      - path: docs/dev/campaigns-scenarios.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/cenarios.md
+        confidence: directly_affected
+    notes: Scenario configuration, win/loss conditions
+
+  - code_path: internal/domain/scenario/
+    dev_docs:
+      - path: docs/dev/campaigns-scenarios.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/cenarios.md
+        confidence: possibly_affected
+    notes: Scenario use cases
+
+  # ─── Enrollment ───
+  - code_path: internal/domain/enrollment/
+    dev_docs:
+      - path: docs/dev/enrollment.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/partidas.md
+        confidence: possibly_affected
+    notes: Player/Master enrollment in matches
+
+  # ─── Authentication ───
+  - code_path: internal/domain/auth/
+    dev_docs:
+      - path: docs/dev/auth.md
+        confidence: directly_affected
+    game_docs: []
+    notes: Auth has no game doc — pure technical concern
+
+  - code_path: internal/domain/session/
+    dev_docs:
+      - path: docs/dev/auth.md
+        confidence: directly_affected
+    game_docs: []
+    notes: Session management — pure technical concern
+
+  # ─── WebSocket Game Server ───
+  - code_path: cmd/game/
+    dev_docs:
+      - path: docs/dev/websocket.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/partidas.md
+        confidence: possibly_affected
+    notes: Game server entrypoint, WS connection setup
+
+  - code_path: internal/app/game/
+    dev_docs:
+      - path: docs/dev/websocket.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/partidas.md
+        confidence: possibly_affected
+    notes: Hub/Room/Client pattern, real-time communication
+
+  # ─── REST API ───
+  - code_path: cmd/api/
+    dev_docs:
+      - path: docs/dev/overview.md
+        confidence: possibly_affected
+    game_docs: []
+    notes: API entrypoint — usually no doc impact unless adding new routes
+
+  - code_path: internal/app/api/
+    dev_docs:
+      - path: docs/dev/overview.md
+        confidence: possibly_affected
+    game_docs: []
+    notes: HTTP handlers — doc impact depends on whether behavior changes
+
+  # ─── Domain Services (Engines/Use Cases) ───
+  - code_path: internal/domain/character_sheet/
+    dev_docs:
+      - path: docs/dev/character-sheet/experience.md
+        confidence: possibly_affected
+    game_docs: []
+    notes: Character sheet use cases — check if behavior changes visible to players
+
+  - code_path: internal/domain/match/
+    dev_docs:
+      - path: docs/dev/match/scenes.md
+        confidence: possibly_affected
+      - path: docs/dev/match/turns-rounds.md
+        confidence: possibly_affected
+    game_docs:
+      - path: docs/game/partidas.md
+        confidence: possibly_affected
+    notes: Match use cases / domain services
+
+  # ─── Gateway (Repositories) ───
+  - code_path: internal/gateway/
+    dev_docs:
+      - path: docs/dev/overview.md
+        confidence: possibly_affected
+    game_docs: []
+    notes: Repository implementations — rarely impact docs unless adding new entities
+
+  # ─── Enums ───
+  - code_path: internal/domain/entity/enum/
+    dev_docs:
+      - path: docs/dev/overview.md
+        confidence: possibly_affected
+    game_docs:
+      - path: docs/game/glossario.md
+        confidence: possibly_affected
+    notes: New enums may need glossary entries
+
+  # ─── Migrations ───
+  - code_path: migrations/
+    dev_docs:
+      - path: docs/dev/overview.md
+        confidence: possibly_affected
+    game_docs: []
+    notes: Schema changes — check if new entities need docs
+
+# ─── Excluded Paths (no doc check needed) ───
+excluded_paths:
+  - "*.md"             # Documentation changes don't trigger doc-check
+  - docs/             # Docs themselves
+  - .github/          # CI/tooling
+  - docker-compose.yaml
+  - Makefile
+  - go.mod
+  - go.sum
+  - "*.png"
+  - "*.jpg"
+  - bin/
