@@ -1,0 +1,73 @@
+package enrollment
+
+import (
+	"context"
+
+	campaignDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
+	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
+	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	"github.com/google/uuid"
+)
+
+type IRejectEnrollment interface {
+	Reject(ctx context.Context, enrollmentUUID uuid.UUID, masterUUID uuid.UUID) error
+}
+
+type RejectEnrollmentUC struct {
+	repo         IRepository
+	matchRepo    matchDomain.IRepository
+	campaignRepo campaignDomain.IRepository
+}
+
+func NewRejectEnrollmentUC(
+	repo IRepository,
+	matchRepo matchDomain.IRepository,
+	campaignRepo campaignDomain.IRepository,
+) *RejectEnrollmentUC {
+	return &RejectEnrollmentUC{
+		repo:         repo,
+		matchRepo:    matchRepo,
+		campaignRepo: campaignRepo,
+	}
+}
+
+func (uc *RejectEnrollmentUC) Reject(
+	ctx context.Context,
+	enrollmentUUID uuid.UUID,
+	masterUUID uuid.UUID,
+) error {
+	status, matchUUID, err := uc.repo.GetEnrollmentByUUID(ctx, enrollmentUUID)
+	if err == enrollmentPg.ErrEnrollmentNotFound {
+		return ErrEnrollmentNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if status == "rejected" {
+		return nil
+	}
+
+	// TODO: check if match has already started (temporal guard)
+	campaignUUID, err := uc.matchRepo.GetMatchCampaignUUID(ctx, matchUUID)
+	if err == matchPg.ErrMatchNotFound {
+		return matchDomain.ErrMatchNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, campaignUUID)
+	if err == campaignPg.ErrCampaignNotFound {
+		return campaignDomain.ErrCampaignNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if campaignMasterUUID != masterUUID {
+		return ErrNotMatchMaster
+	}
+
+	return uc.repo.RejectEnrollment(ctx, enrollmentUUID)
+}
