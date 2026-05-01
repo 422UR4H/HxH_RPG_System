@@ -2,224 +2,72 @@
 
 ## Project Overview
 
-Go backend for a Hunter × Hunter tabletop RPG platform. The system handles all mechanical calculations (experience, levels, stats, combat) so players can focus on roleplay.
+Go 1.23 backend for a Hunter × Hunter tabletop RPG. Module: `github.com/422UR4H/HxH_RPG_System`. PostgreSQL (goose migrations). Entry points: REST API (`cmd/api/`) and WebSocket game server (`cmd/game/`).
 
-- **Language:** Go 1.23
-- **Module:** `github.com/422UR4H/HxH_RPG_System`
-- **Database:** PostgreSQL (via goose migrations)
-- **Entry points:** REST API (`cmd/api/`) and WebSocket game server (`cmd/game/`)
-
-## Architecture (4 Layers)
+## Architecture
 
 ```
 internal/
-├── app/          ← HTTP/WS handlers (presentation)
-│   ├── api/      ← REST controllers
-│   └── game/     ← WebSocket game server
-├── domain/       ← Use cases + domain services (engines)
-├── entity/       ← Pure domain model (no I/O)
-│   └── (inside internal/domain/entity/)
-├── gateway/      ← PostgreSQL repositories
-│   └── pg/       ← pgx-based implementations
-└── config/       ← Configuration loading
+├── app/       ← HTTP/WS handlers (api/ + game/)
+├── domain/    ← Use cases + domain services (engines)
+│   └── entity/ ← Pure domain model (no I/O)
+├── gateway/   ← PostgreSQL repositories (pg/)
+└── config/    ← Configuration loading
 ```
 
-**Dependency rules:** entity ← domain ← app, entity ← gateway. Entities never import outer layers.
-
-## Domain Map
-
-| Concept | Path |
-|---------|------|
-| Character Sheet | `internal/domain/entity/character_sheet/` |
-| Experience System | `internal/domain/entity/character_sheet/experience/` |
-| Abilities | `internal/domain/entity/character_sheet/ability/` |
-| Attributes | `internal/domain/entity/character_sheet/attribute/` |
-| Skills (Perícias) | `internal/domain/entity/character_sheet/skill/` |
-| Proficiencies | `internal/domain/entity/character_sheet/proficiency/` |
-| Spiritual/Nen | `internal/domain/entity/character_sheet/spiritual/` |
-| Status Bars | `internal/domain/entity/character_sheet/status/` |
-| Sheet (integration) | `internal/domain/entity/character_sheet/sheet/` |
-| Character Classes | `internal/domain/entity/character_class/` |
-| Match/Combat | `internal/domain/entity/match/` |
-| Campaign | `internal/domain/entity/campaign/` |
-| Scenario | `internal/domain/entity/scenario/` |
-| User | `internal/domain/entity/user/` |
-| Enums | `internal/domain/entity/enum/` |
-| Dice | `internal/domain/entity/die/` |
-| Items | `internal/domain/entity/item/` |
-
-## Documentation Structure
-
-| Directory | Purpose | Audience | Language |
-|-----------|---------|----------|----------|
-| `docs/game/` | Game rules, mechanics, player-facing content (like a RPG rulebook) | Players & Masters | PT-BR |
-| `docs/dev/` | Technical flows, design rationale, cross-package relationships | Developers | PT-BR |
-| `docs/superpowers/specs/` | Feature design specs (formal, timestamped) | Developers | EN + PT-BR |
-| `docs/superpowers/plans/` | Implementation plans | Developers | EN |
-| `AGENTS.md` | Quick-reference guide for AI agents | AI Agents | EN |
-
-**Key rule:** Game docs (`docs/game/`) must contain ONLY game rules and mechanics — no implementation details, no code references, no software entities. Think of it as content that could be printed in a RPG rulebook. Technical details about how the software implements these rules go in `docs/dev/`.
+Dependency: entity ← domain ← app, entity ← gateway. Entities never import outer layers.
 
 ## Code Conventions
 
-- **NEVER remove TODO comments:** TODOs in source code are intentional markers written by the owner. They must be preserved in ALL edits, regardless of context.
-- **Go idiomatic:** Implicit interfaces, short variable names in context, error wrapping with `%w`
-- **Entity naming — User vs Player vs Master:** `User` is the generic identity entity (authentication, account). `Player` and `Master` are specific domain roles. Use the specific name (`player`, `master`) in code unless the context truly applies to both roles equally. Example: `IsPlayerEnrolledInMatch`, not `IsUserEnrolledInMatch`.
-- **Engines as domain services:** Logic extracted from entities lives in "engine" packages under `internal/domain/`. These correlate entities that are themselves dry (or nearly dry) per Go convention.
-- **No test frameworks:** Standard library `testing` only. Table-driven tests with `t.Run()`.
-- **External test packages:** Tests use `package foo_test` to test exported API only.
-- **Experience cascade pattern:** XP flows upward: skill → attribute → ability → character. Each layer calls `CascadeUpgrade`/`CascadeUpgradeTrigger` on the layer above.
-- **DDD-lite:** Value objects, entities, domain services (engines), use cases, repository interfaces.
-- **Specs:** Design specs in `docs/superpowers/specs/` must have both EN and PT-BR versions (`.pt-br.md` suffix). Both versions committed together.
-- **Game docs:** PT-BR documentation in `docs/game/` — pure game rules for players (no implementation details). Separate technical docs for developers live in `docs/dev/`.
+- **NEVER remove TODO comments** — intentional markers by the owner
+- Go idiomatic: implicit interfaces, short var names, error wrapping `%w`
+- **User vs Player vs Master:** `User` = generic auth entity. Use `Player`/`Master` for role-specific contexts.
+- Engines = domain services under `internal/domain/` correlating entities
+- XP cascade: skill → attribute → ability → character (`CascadeUpgrade`/`CascadeUpgradeTrigger`)
+- DDD-lite: value objects, entities, domain services, use cases, repository interfaces
+
+## Testing
+
+- Standard `testing` only, no frameworks. Table-driven with `t.Run()`.
+- External test packages: `package foo_test`
+- Mocks: `mocks_test.go` per handler package (Go idiomatic)
+- Create documentation alongside tests during all development work
 
 ## Git Workflow
 
-- **Always use Pull Requests:** Never merge directly to `main`. Work on feature branches, push to origin, create a PR on GitHub, review the diff, then merge.
-- **Branch naming:** `feat/<description>`, `fix/<description>`, `docs/<description>`, `refactor/<description>`
-- **PR flow:** Create branch → work → push → create PR (with description of changes) → owner reviews diff → merge
-- **Commits:** Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailer
-- **Specs committed together:** EN + PT-BR versions in same commit
-
-## Quick Glossary (EN → PT-BR)
-
-| English | Português |
-|---------|-----------|
-| Character Sheet | Ficha de Personagem |
-| Experience / XP | Experiência / XP |
-| Level | Nível |
-| Ability | Habilidade (Physicals, Mentals, Spirituals, Skills) |
-| Attribute | Atributo |
-| Skill (Perícia) | Perícia |
-| Proficiency | Proficiência (armas) |
-| Status Bar | Barra de Status (HP, SP, AP) |
-| Talent | Talento |
-| Nen Principle | Princípio Nen |
-| Nen Category | Categoria Nen |
-| Hexagon | Hexágono |
-| Hatsu | Hatsu |
-| Buff | Buff (temporário) |
-| Cascade | Cascata (fluxo de XP) |
-| Turn | Turno |
-| Round | Round (ação de um personagem) |
-| Action | Ação |
-| Reaction | Reação |
-| Campaign | Campanha |
-| Scenario | Cenário |
-| Scene | Cena (roleplay ou battle) |
-| Free Turn | Turno Livre (sem disputa de tempo) |
-| Race Turn | Turno Disputado (ordem por velocidade) |
-| Lobby | Sala de Espera (pré-partida) |
-| Room | Sala (instância WS de uma partida) |
-| Hub | Hub (gerenciador de rooms) |
-| Master | Mestre (quem conduz a partida) |
-| Player | Jogador (quem joga um personagem) |
-| User | Usuário (entidade genérica de autenticação) |
-
-## Documentation Maintenance Workflow
-
-**Rule:** Every PR that changes code in `internal/` or `cmd/` MUST verify whether documentation needs updating.
-
-**Source of truth:** `docs/documentation-map.yaml` maps code paths → affected docs.
-
-### Process (before finishing a branch)
-
-1. **Identify changed code paths** — `git diff --name-only $(git merge-base HEAD main)`
-2. **Check the map** — For each changed path, look up affected docs in `documentation-map.yaml`
-3. **Classify impact:**
-   - `covered` — doc was already updated in this PR ✅
-   - `missing` — doc needs updating ⚠️
-   - `unmapped` — changed file has no mapping → manual review required 🔍
-4. **Update affected docs** or explicitly justify skipping (in PR description)
-
-### When to Update Game Docs (`docs/game/`)
-
-Update if the change affects **player-visible behavior:**
-- New game mechanics or rules
-- Changed formulas (XP, damage, status)
-- New character options (classes, skills, abilities)
-- Modified combat flow
-
-**Do NOT update game docs for:** Internal refactoring, performance optimizations, gateway/repository changes, test additions.
-
-### When to Update Dev Docs (`docs/dev/`)
-
-Update if the change affects **developer understanding:**
-- New packages, entities, or domain services
-- Changed architectural patterns or flows
-- Modified interfaces or contracts between layers
-- New integration patterns (WS messages, API routes)
-
-**Do NOT update dev docs for:** Bug fixes with no design change, test additions, dependency bumps.
-
-### Skip Justification
-
-If documentation update is not needed, state why explicitly:
-- "Pure refactor — no behavioral change, no API change"
-- "Test-only change — no new behavior"
-- "Bug fix — docs already describe correct behavior"
-
-### Conventions Reminder
-
-- **Game docs:** PT-BR, zero code references, player-friendly language
-- **Dev docs:** PT-BR prose with English code references
-- **Developer footers:** Game docs include `> 🔧 Para Desenvolvedores` footer linking to dev docs
-- **`.gitignore` note:** Use `git add -f` for files under `docs/game/` (gitignore matches the game binary pattern)
-
-### Future Enhancement
-
-When the team grows beyond 1 developer + AI agents, add a GitHub Actions CI check that enforces this workflow on every PR automatically.
-
-## Current State
-
-- ✅ `character_sheet/` — Stable, fully tested (experience, ability, attribute, skill, proficiency, spiritual, status, sheet)
-- ⚠️ `match/` — Turn/Round system WIP (semantic refactoring in progress, broken test)
-- ⚠️ `domain/` services (engines) — Pending rename to domain services pattern
-- ✅ `gateway/` — PostgreSQL repositories (fully implemented, integration tested)
-- ✅ `app/api/` — HTTP handlers (fully implemented, unit tested with humatest)
-- ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern, unit + integration tested)
+- **Always PRs** — never merge directly to `main`
+- Branch: `feat/`, `fix/`, `docs/`, `refactor/`
+- Commits: include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+- Specs EN + PT-BR versions in same commit
 
 ## Agent Model Strategy
 
-When dispatching sub-agents (via `task` tool or equivalent), use the optimal model for each role:
+| Role | Model |
+|------|-------|
+| Orchestration/Planning | Opus (main) |
+| Code Implementation | Sonnet 4.6 (always override) |
+| Code Review/Critique | Sonnet 4.6+ (auto) |
+| Exploration/Commands | Haiku 4.5 |
 
-| Role | Model | Rationale |
-|------|-------|-----------|
-| **Orchestration & Planning** | Claude Opus (main) | Deep reasoning, architectural decisions, sustained focus |
-| **Code Implementation** | Claude Sonnet 4.6 | SWE-bench 72.7%, best speed/quality ratio for coding |
-| **Code Review & Critique** | Claude Sonnet 4.6+ | Needs reasoning depth, not speed |
-| **Exploration & Search** | Claude Haiku 4.5 | Fast, sufficient for file reading/grep |
-| **Command Execution** (build/test/lint) | Claude Haiku 4.5 | Only needs to report success/failure |
-
-**Rules:**
-- When delegating **code writing** to a sub-agent, always use `model: "claude-sonnet-4.6"` (do NOT accept Haiku default for implementation tasks).
-- Haiku is acceptable ONLY for mechanical tasks: file exploration, running commands, pattern searches.
-- For rubber-duck/critique agents, let the system choose automatically (defaults to high-quality reasoning).
-- When in doubt between Sonnet and Opus for a sub-agent, prefer Sonnet — it's faster and equally capable for coding.
-
-**Sources:** Anthropic "Building Effective Agents" (routing pattern), Claude 4 benchmarks, GitHub's choice of Sonnet for their coding agent.
+Never accept Haiku default for code-writing sub-agents. When in doubt, prefer Sonnet.
 
 ## Commands
 
 ```bash
-# Run all tests
-go test ./...
-
-# Run character sheet tests only
-go test ./internal/domain/entity/character_sheet/...
-
-# Build
-make build
-
-# Run dev server
-make run-dev
-
-# Database migrations
-make migrate-up
-make migrate-down
-make migrate-create name=add_users_table
+go test ./...                                         # all tests
+go test ./internal/domain/entity/character_sheet/...  # sheet tests
+make build                                            # build
+make run-dev                                          # dev server
+make migrate-up / migrate-down / migrate-create name=X
 ```
 
-## Known Issues / Bugs
+## Scoped Instructions
 
-1. **Turn/Round test broken**: Semantic refactoring in progress.
+Context-specific content lives in `.github/instructions/` (loaded only when relevant):
+- `domain-map.instructions.md` — entity paths and current state (when working on `internal/`)
+- `docs-workflow.instructions.md` — documentation maintenance rules (when working on `docs/`)
+- `glossary.instructions.md` — EN↔PT-BR terminology (when working on `docs/game/`)
+
+## Known Issues
+
+- `match/` Turn/Round test broken — semantic refactoring in progress
