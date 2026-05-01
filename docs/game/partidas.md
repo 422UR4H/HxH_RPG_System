@@ -31,9 +31,19 @@ Após a ficha ser aceita na campanha, o jogador pode inscrevê-la em partidas es
 2. A ficha não pode estar já inscrita nesta partida
 3. A partida deve pertencer à mesma campanha onde a ficha foi aceita
 
+### Aprovação pelo Mestre
+
+A inscrição começa com status **pendente**. O mestre da campanha deve **aceitar** ou **rejeitar** cada inscrição:
+
+- **Aceita** → o personagem participará da partida
+- **Rejeitada** → o personagem não participará (pode ser revertido pelo mestre)
+- **Pendente** → aguardando decisão do mestre
+
+O mestre pode mudar a decisão a qualquer momento antes do início da partida. Apenas personagens com inscrição **aceita** entram no lobby da partida.
+
 ### Restrições
 - A ficha deve estar aceita na campanha da partida
-- Não é possível se inscrever duas vezes na mesma partida
+- Não é possível ter mais de uma inscrição ativa (pendente ou aceita) na mesma partida
 
 ## Partidas Públicas Futuras
 

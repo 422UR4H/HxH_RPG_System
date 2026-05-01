@@ -135,7 +135,62 @@ enrollment já valida se a ficha pertence à campanha da partida, esse cenário
 
 ---
 
-## 4. Diagrama de Relacionamentos
+## 4. Aceitação / Rejeição de Enrollment
+
+O mestre da campanha aceita ou rejeita inscrições de personagens em partidas.
+As inscrições possuem um campo `status` com três estados possíveis:
+`pending`, `accepted`, `rejected`.
+
+### Transições de status
+
+```
+pending ──accept──▶ accepted
+pending ──reject──▶ rejected
+accepted ─reject──▶ rejected
+rejected ─accept──▶ accepted
+```
+
+O mestre tem flexibilidade total para mudar o status até o início da partida.
+Operações idempotentes: aceitar um enrollment já aceito ou rejeitar um já
+rejeitado retorna sucesso sem erro.
+
+### Cadeia de validação (Accept e Reject)
+
+```
+1. GetEnrollmentByUUID(enrollmentUUID)
+   └─ Enrollment não existe? → ErrEnrollmentNotFound
+
+2. status == "accepted" (para Accept) ou "rejected" (para Reject)?
+   └─ Sim → retorna nil (idempotente, sem mais queries)
+
+3. GetMatchCampaignUUID(matchUUID)
+   └─ Partida não existe? → ErrMatchNotFound
+
+4. GetCampaignMasterUUID(campaignUUID)
+   └─ Campanha não existe? → ErrCampaignNotFound
+
+5. campaignMasterUUID != masterUUID?
+   └─ → ErrNotMatchMaster
+
+6a. Accept → AcceptEnrollment(enrollmentUUID)
+6b. Reject → RejectEnrollment(enrollmentUUID)
+```
+
+### Regra de unicidade parcial
+
+O banco possui um índice parcial `UNIQUE(character_sheet_uuid) WHERE status != 'rejected'`.
+Isso permite que uma ficha tenha múltiplas inscrições rejeitadas, mas apenas
+**uma** inscrição ativa (pending ou accepted) por vez.
+
+> **TODO preservado do código-fonte (presente em ambos os UCs):**
+> `// TODO: check if match has already started (temporal guard)`
+>
+> A verificação de que a partida ainda não iniciou será implementada quando
+> o ciclo de vida da partida (match lifecycle) estiver completo.
+
+---
+
+## 5. Diagrama de Relacionamentos
 
 ```
   User (Player)
@@ -158,7 +213,8 @@ enrollment já valida se a ficha pertence à campanha da partida, esse cenário
 2. Player submete ficha → Campaign  (submission)
 3. Master aceita submissão          (accept → vincula CampaignUUID na ficha)
 4. Player inscreve ficha → Match    (enrollment → valida CampaignUUID)
-5. Ficha participa da partida
+5. Master aceita enrollment         (accept → status pending → accepted)
+6. Ficha participa da partida       (apenas enrollments com status "accepted")
 ```
 
 **Validação cross-entity no enrollment:** O sistema garante integridade verificando
@@ -173,14 +229,16 @@ de múltiplas partidas dentro da mesma campanha.
 
 ## Referências de Código
 
-| Arquivo                                              | Responsabilidade                              |
-|------------------------------------------------------|-----------------------------------------------|
-| `internal/domain/submission/submit_character_sheet.go`  | UC de submissão de ficha a campanha        |
-| `internal/domain/submission/accept_sheet_submission.go` | UC de aceitação pelo master                |
-| `internal/domain/submission/reject_sheet_submission.go` | UC de rejeição pelo master                 |
-| `internal/domain/submission/error.go`                   | Erros de domínio de Submission             |
-| `internal/domain/submission/i_repository.go`            | Interface de repositório Submission        |
-| `internal/domain/enrollment/enroll_character_sheet.go`  | UC de enrollment em partida                |
-| `internal/domain/enrollment/error.go`                   | Erros de domínio de Enrollment             |
-| `internal/domain/enrollment/i_repository.go`            | Interface de repositório Enrollment        |
-| `internal/domain/campaign/i_repository.go`              | `GetCampaignMasterUUID` — usado por ambos  |
+| Arquivo                                                  | Responsabilidade                              |
+|----------------------------------------------------------|-----------------------------------------------|
+| `internal/domain/submission/submit_character_sheet.go`   | UC de submissão de ficha a campanha           |
+| `internal/domain/submission/accept_sheet_submission.go`  | UC de aceitação de submissão pelo master      |
+| `internal/domain/submission/reject_sheet_submission.go`  | UC de rejeição de submissão pelo master       |
+| `internal/domain/submission/error.go`                    | Erros de domínio de Submission                |
+| `internal/domain/submission/i_repository.go`             | Interface de repositório Submission           |
+| `internal/domain/enrollment/enroll_character_sheet.go`   | UC de enrollment em partida                   |
+| `internal/domain/enrollment/accept_enrollment.go`        | UC de aceitação de enrollment pelo master     |
+| `internal/domain/enrollment/reject_enrollment.go`        | UC de rejeição de enrollment pelo master      |
+| `internal/domain/enrollment/error.go`                    | Erros de domínio de Enrollment                |
+| `internal/domain/enrollment/i_repository.go`             | Interface de repositório Enrollment           |
+| `internal/domain/campaign/i_repository.go`               | `GetCampaignMasterUUID` — usado por ambos     |
