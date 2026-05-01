@@ -125,6 +125,26 @@ internal/
 - ✅ `app/api/` — HTTP handlers (fully implemented, unit tested with humatest)
 - ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern, unit + integration tested)
 
+## Agent Model Strategy
+
+When dispatching sub-agents (via `task` tool or equivalent), use the optimal model for each role:
+
+| Role | Model | Rationale |
+|------|-------|-----------|
+| **Orchestration & Planning** | Claude Opus (main) | Deep reasoning, architectural decisions, sustained focus |
+| **Code Implementation** | Claude Sonnet 4.6 | SWE-bench 72.7%, best speed/quality ratio for coding |
+| **Code Review & Critique** | Claude Sonnet 4.6+ | Needs reasoning depth, not speed |
+| **Exploration & Search** | Claude Haiku 4.5 | Fast, sufficient for file reading/grep |
+| **Command Execution** (build/test/lint) | Claude Haiku 4.5 | Only needs to report success/failure |
+
+**Rules:**
+- When delegating **code writing** to a sub-agent, always use `model: "claude-sonnet-4.6"` (do NOT accept Haiku default for implementation tasks).
+- Haiku is acceptable ONLY for mechanical tasks: file exploration, running commands, pattern searches.
+- For rubber-duck/critique agents, let the system choose automatically (defaults to high-quality reasoning).
+- When in doubt between Sonnet and Opus for a sub-agent, prefer Sonnet — it's faster and equally capable for coding.
+
+**Sources:** Anthropic "Building Effective Agents" (routing pattern), Claude 4 benchmarks, GitHub's choice of Sonnet for their coding agent.
+
 ## Commands
 
 ```bash
