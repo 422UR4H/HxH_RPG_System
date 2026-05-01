@@ -4,7 +4,7 @@
 
 **Goal:** Enable the master to accept or reject player enrollment requests in matches, with bidirectional status transitions and idempotent behavior.
 
-**Architecture:** Add a `status` column (`pending`/`accepted`/`rejected`) to the `enrollments` table. Two new use cases (`AcceptEnrollmentUC`, `RejectEnrollmentUC`) mirror the submission accept/reject pattern — each validates master ownership via enrollment → match → campaign chain before updating status. Gateway adds 3 new repo methods. App layer adds 2 new HTTP handlers with path-param-based routing.
+**Architecture:** Add a `status` column (`pending`/`accepted`/`rejected`) to the `enrollments` table. Two new use cases (`AcceptEnrollmentUC`, `RejectEnrollmentUC`) mirror the submission accept/reject pattern — each validates master ownership via enrollment → match → campaign chain before updating status. Gateway adds 3 new repo methods. App layer adds 2 new HTTP handlers following REST convention (`/enrollments/{uuid}/accept`, `/enrollments/{uuid}/reject`).
 
 **Tech Stack:** Go 1.23, PostgreSQL (goose migrations), Huma v2 + Chi router, pgx v5, standard `testing` package
 
@@ -64,11 +64,11 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 2: Gateway — Error Sentinel + Read Status
+### Task 2: Gateway — Error Sentinel + Read Enrollment
 
 **Files:**
 - Create: `internal/gateway/pg/enrollment/error.go`
-- Create: `internal/gateway/pg/enrollment/read_enrollment_status.go`
+- Create: `internal/gateway/pg/enrollment/read_enrollment.go`
 
 - [ ] **Step 1: Create the gateway error sentinel**
 
@@ -84,9 +84,9 @@ var (
 )
 ```
 
-- [ ] **Step 2: Create the read enrollment status query**
+- [ ] **Step 2: Create the read enrollment query**
 
-Create `internal/gateway/pg/enrollment/read_enrollment_status.go`:
+Create `internal/gateway/pg/enrollment/read_enrollment.go`:
 
 ```go
 package enrollment
@@ -100,33 +100,33 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *Repository) GetEnrollmentStatus(
+func (r *Repository) GetEnrollmentByUUID(
 	ctx context.Context,
-	characterSheetUUID uuid.UUID,
-	matchUUID uuid.UUID,
-) (string, error) {
+	enrollmentUUID uuid.UUID,
+) (string, uuid.UUID, error) {
 	const query = `
-		SELECT status
+		SELECT status, match_uuid
 		FROM enrollments
-		WHERE character_sheet_uuid = $1 AND match_uuid = $2
+		WHERE uuid = $1
 	`
 	var status string
-	err := r.q.QueryRow(ctx, query, characterSheetUUID, matchUUID).Scan(&status)
+	var matchUUID uuid.UUID
+	err := r.q.QueryRow(ctx, query, enrollmentUUID).Scan(&status, &matchUUID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", ErrEnrollmentNotFound
+			return "", uuid.Nil, ErrEnrollmentNotFound
 		}
-		return "", fmt.Errorf("failed to get enrollment status: %w", err)
+		return "", uuid.Nil, fmt.Errorf("failed to get enrollment: %w", err)
 	}
-	return status, nil
+	return status, matchUUID, nil
 }
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add internal/gateway/pg/enrollment/error.go internal/gateway/pg/enrollment/read_enrollment_status.go
-git commit -m "feat(enrollment): add gateway error sentinel and read status query
+git add internal/gateway/pg/enrollment/error.go internal/gateway/pg/enrollment/read_enrollment.go
+git commit -m "feat(enrollment): add gateway error sentinel and read enrollment query
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
@@ -154,8 +154,7 @@ import (
 
 func (r *Repository) AcceptEnrollment(
 	ctx context.Context,
-	characterSheetUUID uuid.UUID,
-	matchUUID uuid.UUID,
+	enrollmentUUID uuid.UUID,
 ) error {
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
@@ -174,9 +173,9 @@ func (r *Repository) AcceptEnrollment(
 
 	const query = `
 		UPDATE enrollments SET status = 'accepted'
-		WHERE character_sheet_uuid = $1 AND match_uuid = $2
+		WHERE uuid = $1
 	`
-	result, err := tx.Exec(ctx, query, characterSheetUUID, matchUUID)
+	result, err := tx.Exec(ctx, query, enrollmentUUID)
 	if err != nil {
 		return fmt.Errorf("failed to accept enrollment: %w", err)
 	}
@@ -208,7 +207,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 - [ ] **Step 1: Add new domain errors**
 
-In `internal/domain/enrollment/error.go`, add the new errors after the existing ones:
+Replace `internal/domain/enrollment/error.go` entirely:
 
 ```go
 package enrollment
@@ -229,7 +228,7 @@ var (
 
 - [ ] **Step 2: Expand the repository interface**
 
-In `internal/domain/enrollment/i_repository.go`, add the 3 new methods:
+Replace `internal/domain/enrollment/i_repository.go` entirely:
 
 ```go
 package enrollment
@@ -243,9 +242,9 @@ import (
 type IRepository interface {
 	EnrollCharacterSheet(ctx context.Context, matchUUID uuid.UUID, characterSheetUUID uuid.UUID) error
 	ExistsEnrolledCharacterSheet(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (bool, error)
-	GetEnrollmentStatus(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (string, error)
-	AcceptEnrollment(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) error
-	RejectEnrollment(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) error
+	GetEnrollmentByUUID(ctx context.Context, enrollmentUUID uuid.UUID) (status string, matchUUID uuid.UUID, err error)
+	AcceptEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error
+	RejectEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error
 }
 ```
 
@@ -267,7 +266,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 - [ ] **Step 1: Add mock methods for the 3 new interface methods**
 
-Replace the entire file with:
+Replace `internal/domain/testutil/mock_enrollment_repo.go` entirely:
 
 ```go
 package testutil
@@ -281,9 +280,9 @@ import (
 type MockEnrollmentRepo struct {
 	EnrollCharacterSheetFn         func(ctx context.Context, matchUUID uuid.UUID, characterSheetUUID uuid.UUID) error
 	ExistsEnrolledCharacterSheetFn func(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (bool, error)
-	GetEnrollmentStatusFn          func(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (string, error)
-	AcceptEnrollmentFn             func(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) error
-	RejectEnrollmentFn             func(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) error
+	GetEnrollmentByUUIDFn          func(ctx context.Context, enrollmentUUID uuid.UUID) (string, uuid.UUID, error)
+	AcceptEnrollmentFn             func(ctx context.Context, enrollmentUUID uuid.UUID) error
+	RejectEnrollmentFn             func(ctx context.Context, enrollmentUUID uuid.UUID) error
 }
 
 func (m *MockEnrollmentRepo) EnrollCharacterSheet(ctx context.Context, matchUUID uuid.UUID, characterSheetUUID uuid.UUID) error {
@@ -300,23 +299,23 @@ func (m *MockEnrollmentRepo) ExistsEnrolledCharacterSheet(ctx context.Context, c
 	return false, nil
 }
 
-func (m *MockEnrollmentRepo) GetEnrollmentStatus(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (string, error) {
-	if m.GetEnrollmentStatusFn != nil {
-		return m.GetEnrollmentStatusFn(ctx, characterSheetUUID, matchUUID)
+func (m *MockEnrollmentRepo) GetEnrollmentByUUID(ctx context.Context, enrollmentUUID uuid.UUID) (string, uuid.UUID, error) {
+	if m.GetEnrollmentByUUIDFn != nil {
+		return m.GetEnrollmentByUUIDFn(ctx, enrollmentUUID)
 	}
-	return "", nil
+	return "", uuid.Nil, nil
 }
 
-func (m *MockEnrollmentRepo) AcceptEnrollment(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) error {
+func (m *MockEnrollmentRepo) AcceptEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error {
 	if m.AcceptEnrollmentFn != nil {
-		return m.AcceptEnrollmentFn(ctx, characterSheetUUID, matchUUID)
+		return m.AcceptEnrollmentFn(ctx, enrollmentUUID)
 	}
 	return nil
 }
 
-func (m *MockEnrollmentRepo) RejectEnrollment(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) error {
+func (m *MockEnrollmentRepo) RejectEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error {
 	if m.RejectEnrollmentFn != nil {
-		return m.RejectEnrollmentFn(ctx, characterSheetUUID, matchUUID)
+		return m.RejectEnrollmentFn(ctx, enrollmentUUID)
 	}
 	return nil
 }
@@ -346,20 +345,31 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 - [ ] **Step 1: Write the failing tests for AcceptEnrollmentUC**
 
-Append to `internal/domain/enrollment/enrollment_test.go`:
+Append the `TestAcceptEnrollment` function to `internal/domain/enrollment/enrollment_test.go`.
+Also add these imports to the existing import block (if not already present):
+
+```go
+import (
+	// ... existing imports ...
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
+	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
+	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+)
+```
+
+The test function:
 
 ```go
 func TestAcceptEnrollment(t *testing.T) {
 	masterUUID := uuid.New()
 	otherUUID := uuid.New()
+	enrollmentUUID := uuid.New()
 	matchUUID := uuid.New()
-	sheetUUID := uuid.New()
 	campaignUUID := uuid.New()
 
 	tests := []struct {
 		name         string
-		sheetUUID    uuid.UUID
-		matchUUID    uuid.UUID
+		enrollUUID   uuid.UUID
 		masterUUID   uuid.UUID
 		enrollMock   *testutil.MockEnrollmentRepo
 		matchMock    *testutil.MockMatchRepo
@@ -368,12 +378,11 @@ func TestAcceptEnrollment(t *testing.T) {
 	}{
 		{
 			name:       "success from pending",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -390,12 +399,11 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "success from rejected",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "rejected", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "rejected", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -412,12 +420,11 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "idempotent when already accepted",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "accepted", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "accepted", matchUUID, nil
 				},
 			},
 			matchMock:    &testutil.MockMatchRepo{},
@@ -426,12 +433,11 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "enrollment not found",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "", enrollmentPg.ErrEnrollmentNotFound
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "", uuid.Nil, enrollmentPg.ErrEnrollmentNotFound
 				},
 			},
 			matchMock:    &testutil.MockMatchRepo{},
@@ -440,12 +446,11 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "match not found",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -458,12 +463,11 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "campaign not found",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -480,12 +484,11 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "not campaign master",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: otherUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -502,14 +505,13 @@ func TestAcceptEnrollment(t *testing.T) {
 		},
 		{
 			name:       "repo error on accept",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
-				AcceptEnrollmentFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) error {
+				AcceptEnrollmentFn: func(ctx context.Context, id uuid.UUID) error {
 					return errors.New("db error")
 				},
 			},
@@ -530,7 +532,7 @@ func TestAcceptEnrollment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			uc := enrollment.NewAcceptEnrollmentUC(tt.enrollMock, tt.matchMock, tt.campaignMock)
-			err := uc.Accept(context.Background(), tt.sheetUUID, tt.matchUUID, tt.masterUUID)
+			err := uc.Accept(context.Background(), tt.enrollUUID, tt.masterUUID)
 
 			if tt.wantErr != nil {
 				if err == nil {
@@ -547,17 +549,6 @@ func TestAcceptEnrollment(t *testing.T) {
 		})
 	}
 }
-```
-
-The test file needs these additional imports (add to the existing import block):
-
-```go
-import (
-	// ... existing imports ...
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
-	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
-	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
-)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -584,7 +575,7 @@ import (
 )
 
 type IAcceptEnrollment interface {
-	Accept(ctx context.Context, sheetUUID uuid.UUID, matchUUID uuid.UUID, masterUUID uuid.UUID) error
+	Accept(ctx context.Context, enrollmentUUID uuid.UUID, masterUUID uuid.UUID) error
 }
 
 type AcceptEnrollmentUC struct {
@@ -607,11 +598,10 @@ func NewAcceptEnrollmentUC(
 
 func (uc *AcceptEnrollmentUC) Accept(
 	ctx context.Context,
-	sheetUUID uuid.UUID,
-	matchUUID uuid.UUID,
+	enrollmentUUID uuid.UUID,
 	masterUUID uuid.UUID,
 ) error {
-	status, err := uc.repo.GetEnrollmentStatus(ctx, sheetUUID, matchUUID)
+	status, matchUUID, err := uc.repo.GetEnrollmentByUUID(ctx, enrollmentUUID)
 	if err == enrollmentPg.ErrEnrollmentNotFound {
 		return ErrEnrollmentNotFound
 	}
@@ -642,7 +632,7 @@ func (uc *AcceptEnrollmentUC) Accept(
 		return ErrNotMatchMaster
 	}
 
-	return uc.repo.AcceptEnrollment(ctx, sheetUUID, matchUUID)
+	return uc.repo.AcceptEnrollment(ctx, enrollmentUUID)
 }
 ```
 
@@ -679,11 +669,11 @@ Append to `internal/app/api/enrollment/mocks_test.go`:
 
 ```go
 type mockAcceptEnrollment struct {
-	fn func(ctx context.Context, sheetUUID, matchUUID, masterUUID uuid.UUID) error
+	fn func(ctx context.Context, enrollmentUUID, masterUUID uuid.UUID) error
 }
 
-func (m *mockAcceptEnrollment) Accept(ctx context.Context, sheetUUID, matchUUID, masterUUID uuid.UUID) error {
-	return m.fn(ctx, sheetUUID, matchUUID, masterUUID)
+func (m *mockAcceptEnrollment) Accept(ctx context.Context, enrollmentUUID, masterUUID uuid.UUID) error {
+	return m.fn(ctx, enrollmentUUID, masterUUID)
 }
 ```
 
@@ -712,84 +702,66 @@ import (
 
 func TestAcceptEnrollmentHandler(t *testing.T) {
 	masterUUID := uuid.New()
-	sheetUUID := uuid.New()
-	matchUUID := uuid.New()
+	enrollmentUUID := uuid.New()
 
 	tests := []struct {
-		name          string
-		pathSheetUUID string
-		pathMatchUUID string
-		mockFn        func(ctx context.Context, sheetUUID, matchUUID, masterUUID uuid.UUID) error
-		wantStatus    int
+		name       string
+		pathUUID   string
+		mockFn     func(ctx context.Context, enrollmentUUID, masterUUID uuid.UUID) error
+		wantStatus int
 	}{
 		{
-			name:          "success",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "success",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:          "invalid sheet uuid",
-			pathSheetUUID: "not-a-valid-uuid",
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "invalid uuid in path",
+			pathUUID: "not-a-valid-uuid",
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return nil
 			},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:          "invalid match uuid",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: "not-a-valid-uuid",
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
-				return nil
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:          "enrollment not found",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "enrollment not found",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainEnrollment.ErrEnrollmentNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:          "match not found",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "match not found",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainMatch.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:          "campaign not found",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "campaign not found",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainCampaign.ErrCampaignNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:          "not match master",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "not match master",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainEnrollment.ErrNotMatchMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:          "generic error",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "generic error",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return errors.New("unexpected database error")
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -805,11 +777,11 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 
 			huma.Register(api, huma.Operation{
 				Method: http.MethodPost,
-				Path:   "/enrollments/{sheet_uuid}/{match_uuid}/accept",
+				Path:   "/enrollments/{uuid}/accept",
 			}, handler)
 
 			ctx := context.WithValue(context.Background(), auth.UserIDKey, masterUUID)
-			resp := api.PostCtx(ctx, "/enrollments/"+tt.pathSheetUUID+"/"+tt.pathMatchUUID+"/accept")
+			resp := api.PostCtx(ctx, "/enrollments/"+tt.pathUUID+"/accept")
 
 			if resp.Code != tt.wantStatus {
 				t.Errorf("got status %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
@@ -845,8 +817,7 @@ import (
 )
 
 type AcceptEnrollmentRequest struct {
-	SheetUUID string `path:"sheet_uuid" required:"true" doc:"enrolled character sheet UUID"`
-	MatchUUID string `path:"match_uuid" required:"true" doc:"match UUID"`
+	EnrollmentUUID string `path:"uuid" required:"true" doc:"enrollment UUID"`
 }
 
 type AcceptEnrollmentResponse struct {
@@ -863,17 +834,12 @@ func AcceptEnrollmentHandler(
 			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
-		sheetUUID, err := uuid.Parse(req.SheetUUID)
+		enrollmentUUID, err := uuid.Parse(req.EnrollmentUUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid sheet UUID")
+			return nil, huma.Error400BadRequest("invalid enrollment UUID")
 		}
 
-		matchUUID, err := uuid.Parse(req.MatchUUID)
-		if err != nil {
-			return nil, huma.Error400BadRequest("invalid match UUID")
-		}
-
-		err = uc.Accept(ctx, sheetUUID, matchUUID, masterUUID)
+		err = uc.Accept(ctx, enrollmentUUID, masterUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainEnrollment.ErrEnrollmentNotFound):
@@ -906,7 +872,7 @@ Expected: ALL tests PASS.
 git add internal/app/api/enrollment/accept_enrollment.go internal/app/api/enrollment/accept_enrollment_test.go internal/app/api/enrollment/mocks_test.go
 git commit -m "feat(enrollment): add accept enrollment handler with tests
 
-POST /enrollments/{sheet_uuid}/{match_uuid}/accept
+POST /enrollments/{uuid}/accept
 Maps domain errors to appropriate HTTP status codes.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
@@ -922,7 +888,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 - [ ] **Step 1: Add the accept handler to routes.go**
 
-Replace the entire `internal/app/api/enrollment/routes.go`:
+Replace `internal/app/api/enrollment/routes.go` entirely:
 
 ```go
 package enrollment
@@ -962,7 +928,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodPost,
-		Path:        "/enrollments/{sheet_uuid}/{match_uuid}/accept",
+		Path:        "/enrollments/{uuid}/accept",
 		Description: "Accept a character sheet enrollment in a match",
 		Tags:        []string{"enrollments"},
 		Errors: []int{
@@ -978,9 +944,8 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 
 - [ ] **Step 2: Wire the UC in main.go**
 
-In `cmd/api/main.go`, after the existing `enrollCharacterSheetUC` instantiation (around line 178-185), add the accept UC and update the Api struct:
+In `cmd/api/main.go`, find this block (around line 178-185):
 
-Find this block:
 ```go
 	enrollCharacterSheetUC := domainEnrollment.NewEnrollCharacterInMatchUC(
 		enrollmentRepo,
@@ -993,6 +958,7 @@ Find this block:
 ```
 
 Replace with:
+
 ```go
 	enrollCharacterSheetUC := domainEnrollment.NewEnrollCharacterInMatchUC(
 		enrollmentRepo,
@@ -1026,8 +992,8 @@ Expected: ALL tests PASS.
 git add internal/app/api/enrollment/routes.go cmd/api/main.go
 git commit -m "feat(enrollment): wire accept enrollment endpoint
 
-Registers POST /enrollments/{sheet_uuid}/{match_uuid}/accept
-and wires AcceptEnrollmentUC in main.go.
+Registers POST /enrollments/{uuid}/accept and wires
+AcceptEnrollmentUC in main.go.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
@@ -1057,8 +1023,7 @@ import (
 
 func (r *Repository) RejectEnrollment(
 	ctx context.Context,
-	characterSheetUUID uuid.UUID,
-	matchUUID uuid.UUID,
+	enrollmentUUID uuid.UUID,
 ) error {
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
@@ -1077,9 +1042,9 @@ func (r *Repository) RejectEnrollment(
 
 	const query = `
 		UPDATE enrollments SET status = 'rejected'
-		WHERE character_sheet_uuid = $1 AND match_uuid = $2
+		WHERE uuid = $1
 	`
-	result, err := tx.Exec(ctx, query, characterSheetUUID, matchUUID)
+	result, err := tx.Exec(ctx, query, enrollmentUUID)
 	if err != nil {
 		return fmt.Errorf("failed to reject enrollment: %w", err)
 	}
@@ -1111,20 +1076,19 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 - [ ] **Step 1: Write the failing tests for RejectEnrollmentUC**
 
-Append to `internal/domain/enrollment/enrollment_test.go`:
+Append the `TestRejectEnrollment` function to `internal/domain/enrollment/enrollment_test.go`:
 
 ```go
 func TestRejectEnrollment(t *testing.T) {
 	masterUUID := uuid.New()
 	otherUUID := uuid.New()
+	enrollmentUUID := uuid.New()
 	matchUUID := uuid.New()
-	sheetUUID := uuid.New()
 	campaignUUID := uuid.New()
 
 	tests := []struct {
 		name         string
-		sheetUUID    uuid.UUID
-		matchUUID    uuid.UUID
+		enrollUUID   uuid.UUID
 		masterUUID   uuid.UUID
 		enrollMock   *testutil.MockEnrollmentRepo
 		matchMock    *testutil.MockMatchRepo
@@ -1133,12 +1097,11 @@ func TestRejectEnrollment(t *testing.T) {
 	}{
 		{
 			name:       "success from pending",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -1155,12 +1118,11 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "success from accepted",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "accepted", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "accepted", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -1177,12 +1139,11 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "idempotent when already rejected",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "rejected", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "rejected", matchUUID, nil
 				},
 			},
 			matchMock:    &testutil.MockMatchRepo{},
@@ -1191,12 +1152,11 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "enrollment not found",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "", enrollmentPg.ErrEnrollmentNotFound
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "", uuid.Nil, enrollmentPg.ErrEnrollmentNotFound
 				},
 			},
 			matchMock:    &testutil.MockMatchRepo{},
@@ -1205,12 +1165,11 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "match not found",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -1223,12 +1182,11 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "campaign not found",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -1245,12 +1203,11 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "not campaign master",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: otherUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
@@ -1267,14 +1224,13 @@ func TestRejectEnrollment(t *testing.T) {
 		},
 		{
 			name:       "repo error on reject",
-			sheetUUID:  sheetUUID,
-			matchUUID:  matchUUID,
+			enrollUUID: enrollmentUUID,
 			masterUUID: masterUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{
-				GetEnrollmentStatusFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) (string, error) {
-					return "pending", nil
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
 				},
-				RejectEnrollmentFn: func(ctx context.Context, sUUID uuid.UUID, mUUID uuid.UUID) error {
+				RejectEnrollmentFn: func(ctx context.Context, id uuid.UUID) error {
 					return errors.New("db error")
 				},
 			},
@@ -1295,7 +1251,7 @@ func TestRejectEnrollment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			uc := enrollment.NewRejectEnrollmentUC(tt.enrollMock, tt.matchMock, tt.campaignMock)
-			err := uc.Reject(context.Background(), tt.sheetUUID, tt.matchUUID, tt.masterUUID)
+			err := uc.Reject(context.Background(), tt.enrollUUID, tt.masterUUID)
 
 			if tt.wantErr != nil {
 				if err == nil {
@@ -1338,7 +1294,7 @@ import (
 )
 
 type IRejectEnrollment interface {
-	Reject(ctx context.Context, sheetUUID uuid.UUID, matchUUID uuid.UUID, masterUUID uuid.UUID) error
+	Reject(ctx context.Context, enrollmentUUID uuid.UUID, masterUUID uuid.UUID) error
 }
 
 type RejectEnrollmentUC struct {
@@ -1361,11 +1317,10 @@ func NewRejectEnrollmentUC(
 
 func (uc *RejectEnrollmentUC) Reject(
 	ctx context.Context,
-	sheetUUID uuid.UUID,
-	matchUUID uuid.UUID,
+	enrollmentUUID uuid.UUID,
 	masterUUID uuid.UUID,
 ) error {
-	status, err := uc.repo.GetEnrollmentStatus(ctx, sheetUUID, matchUUID)
+	status, matchUUID, err := uc.repo.GetEnrollmentByUUID(ctx, enrollmentUUID)
 	if err == enrollmentPg.ErrEnrollmentNotFound {
 		return ErrEnrollmentNotFound
 	}
@@ -1396,7 +1351,7 @@ func (uc *RejectEnrollmentUC) Reject(
 		return ErrNotMatchMaster
 	}
 
-	return uc.repo.RejectEnrollment(ctx, sheetUUID, matchUUID)
+	return uc.repo.RejectEnrollment(ctx, enrollmentUUID)
 }
 ```
 
@@ -1433,11 +1388,11 @@ Append to `internal/app/api/enrollment/mocks_test.go`:
 
 ```go
 type mockRejectEnrollment struct {
-	fn func(ctx context.Context, sheetUUID, matchUUID, masterUUID uuid.UUID) error
+	fn func(ctx context.Context, enrollmentUUID, masterUUID uuid.UUID) error
 }
 
-func (m *mockRejectEnrollment) Reject(ctx context.Context, sheetUUID, matchUUID, masterUUID uuid.UUID) error {
-	return m.fn(ctx, sheetUUID, matchUUID, masterUUID)
+func (m *mockRejectEnrollment) Reject(ctx context.Context, enrollmentUUID, masterUUID uuid.UUID) error {
+	return m.fn(ctx, enrollmentUUID, masterUUID)
 }
 ```
 
@@ -1466,84 +1421,66 @@ import (
 
 func TestRejectEnrollmentHandler(t *testing.T) {
 	masterUUID := uuid.New()
-	sheetUUID := uuid.New()
-	matchUUID := uuid.New()
+	enrollmentUUID := uuid.New()
 
 	tests := []struct {
-		name          string
-		pathSheetUUID string
-		pathMatchUUID string
-		mockFn        func(ctx context.Context, sheetUUID, matchUUID, masterUUID uuid.UUID) error
-		wantStatus    int
+		name       string
+		pathUUID   string
+		mockFn     func(ctx context.Context, enrollmentUUID, masterUUID uuid.UUID) error
+		wantStatus int
 	}{
 		{
-			name:          "success",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "success",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return nil
 			},
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:          "invalid sheet uuid",
-			pathSheetUUID: "not-a-valid-uuid",
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "invalid uuid in path",
+			pathUUID: "not-a-valid-uuid",
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return nil
 			},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:          "invalid match uuid",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: "not-a-valid-uuid",
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
-				return nil
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:          "enrollment not found",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "enrollment not found",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainEnrollment.ErrEnrollmentNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:          "match not found",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "match not found",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainMatch.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:          "campaign not found",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "campaign not found",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainCampaign.ErrCampaignNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:          "not match master",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "not match master",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return domainEnrollment.ErrNotMatchMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:          "generic error",
-			pathSheetUUID: sheetUUID.String(),
-			pathMatchUUID: matchUUID.String(),
-			mockFn: func(ctx context.Context, sUUID, mUUID, masterUUID uuid.UUID) error {
+			name:     "generic error",
+			pathUUID: enrollmentUUID.String(),
+			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
 				return errors.New("unexpected database error")
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -1559,11 +1496,11 @@ func TestRejectEnrollmentHandler(t *testing.T) {
 
 			huma.Register(api, huma.Operation{
 				Method: http.MethodPost,
-				Path:   "/enrollments/{sheet_uuid}/{match_uuid}/reject",
+				Path:   "/enrollments/{uuid}/reject",
 			}, handler)
 
 			ctx := context.WithValue(context.Background(), auth.UserIDKey, masterUUID)
-			resp := api.PostCtx(ctx, "/enrollments/"+tt.pathSheetUUID+"/"+tt.pathMatchUUID+"/reject")
+			resp := api.PostCtx(ctx, "/enrollments/"+tt.pathUUID+"/reject")
 
 			if resp.Code != tt.wantStatus {
 				t.Errorf("got status %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
@@ -1599,8 +1536,7 @@ import (
 )
 
 type RejectEnrollmentRequest struct {
-	SheetUUID string `path:"sheet_uuid" required:"true" doc:"enrolled character sheet UUID to reject"`
-	MatchUUID string `path:"match_uuid" required:"true" doc:"match UUID"`
+	EnrollmentUUID string `path:"uuid" required:"true" doc:"enrollment UUID to reject"`
 }
 
 type RejectEnrollmentResponse struct {
@@ -1617,17 +1553,12 @@ func RejectEnrollmentHandler(
 			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
-		sheetUUID, err := uuid.Parse(req.SheetUUID)
+		enrollmentUUID, err := uuid.Parse(req.EnrollmentUUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid sheet UUID")
+			return nil, huma.Error400BadRequest("invalid enrollment UUID")
 		}
 
-		matchUUID, err := uuid.Parse(req.MatchUUID)
-		if err != nil {
-			return nil, huma.Error400BadRequest("invalid match UUID")
-		}
-
-		err = uc.Reject(ctx, sheetUUID, matchUUID, masterUUID)
+		err = uc.Reject(ctx, enrollmentUUID, masterUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, domainEnrollment.ErrEnrollmentNotFound):
@@ -1660,7 +1591,7 @@ Expected: ALL tests PASS.
 git add internal/app/api/enrollment/reject_enrollment.go internal/app/api/enrollment/reject_enrollment_test.go internal/app/api/enrollment/mocks_test.go
 git commit -m "feat(enrollment): add reject enrollment handler with tests
 
-POST /enrollments/{sheet_uuid}/{match_uuid}/reject
+POST /enrollments/{uuid}/reject
 Maps domain errors to appropriate HTTP status codes.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
@@ -1676,7 +1607,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 - [ ] **Step 1: Add the reject handler to routes.go**
 
-In `internal/app/api/enrollment/routes.go`, add `RejectEnrollmentHandler` to the `Api` struct and register the route:
+In `internal/app/api/enrollment/routes.go`, update the `Api` struct and add the reject route registration.
 
 Update the `Api` struct:
 ```go
@@ -1691,7 +1622,7 @@ Add after the accept registration in `RegisterRoutes`:
 ```go
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodPost,
-		Path:        "/enrollments/{sheet_uuid}/{match_uuid}/reject",
+		Path:        "/enrollments/{uuid}/reject",
 		Description: "Reject a character sheet enrollment in a match",
 		Tags:        []string{"enrollments"},
 		Errors: []int{
@@ -1746,8 +1677,8 @@ Expected: ALL tests PASS (no regressions). The known broken match test may fail 
 git add internal/app/api/enrollment/routes.go cmd/api/main.go
 git commit -m "feat(enrollment): wire reject enrollment endpoint
 
-Registers POST /enrollments/{sheet_uuid}/{match_uuid}/reject
-and wires RejectEnrollmentUC in main.go.
+Registers POST /enrollments/{uuid}/reject and wires
+RejectEnrollmentUC in main.go.
 
 Completes both accept and reject enrollment flows end-to-end.
 

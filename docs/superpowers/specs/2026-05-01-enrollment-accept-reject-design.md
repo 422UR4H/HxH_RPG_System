@@ -58,31 +58,31 @@ Existing enrollments are migrated to `pending` — the master must accept them e
 
 #### `AcceptEnrollmentUC`
 Interface: `IAcceptEnrollment`
-Method: `Accept(ctx, sheetUUID, matchUUID, masterUUID) error`
+Method: `Accept(ctx, enrollmentUUID, masterUUID) error`
 
 Flow:
-1. Get enrollment status and match_uuid via `GetEnrollmentStatus(sheetUUID, matchUUID)`
+1. Get enrollment data via `GetEnrollmentByUUID(enrollmentUUID)` → (status, matchUUID)
 2. If not found → `ErrEnrollmentNotFound`
 3. If already `accepted` → return nil (idempotent)
 4. Get campaign_uuid via `matchRepo.GetMatchCampaignUUID(matchUUID)`
 5. Get campaign master via `campaignRepo.GetCampaignMasterUUID(campaignUUID)`
 6. If masterUUID != campaign master → `ErrNotMatchMaster`
 7. TODO: Check if match has started → `ErrMatchAlreadyStarted`
-8. Call `repo.AcceptEnrollment(sheetUUID, matchUUID)`
+8. Call `repo.AcceptEnrollment(enrollmentUUID)`
 
 #### `RejectEnrollmentUC`
 Interface: `IRejectEnrollment`
-Method: `Reject(ctx, sheetUUID, matchUUID, masterUUID) error`
+Method: `Reject(ctx, enrollmentUUID, masterUUID) error`
 
 Flow:
-1. Get enrollment status and match_uuid via `GetEnrollmentStatus(sheetUUID, matchUUID)`
+1. Get enrollment data via `GetEnrollmentByUUID(enrollmentUUID)` → (status, matchUUID)
 2. If not found → `ErrEnrollmentNotFound`
 3. If already `rejected` → return nil (idempotent)
 4. Get campaign_uuid via `matchRepo.GetMatchCampaignUUID(matchUUID)`
 5. Get campaign master via `campaignRepo.GetCampaignMasterUUID(campaignUUID)`
 6. If masterUUID != campaign master → `ErrNotMatchMaster`
 7. TODO: Check if match has started → `ErrMatchAlreadyStarted`
-8. Call `repo.RejectEnrollment(sheetUUID, matchUUID)`
+8. Call `repo.RejectEnrollment(enrollmentUUID)`
 
 ### New Domain Errors (`internal/domain/enrollment/error.go`)
 
@@ -96,33 +96,33 @@ ErrNotMatchMaster = domain.NewValidationError(
 ### Expanded Repository Interface (`internal/domain/enrollment/i_repository.go`)
 
 New methods:
-- `GetEnrollmentStatus(ctx, sheetUUID, matchUUID) (string, error)` — returns current status
-- `AcceptEnrollment(ctx, sheetUUID, matchUUID) error` — sets status to `accepted`
-- `RejectEnrollment(ctx, sheetUUID, matchUUID) error` — sets status to `rejected`
+- `GetEnrollmentByUUID(ctx, enrollmentUUID) (status string, matchUUID uuid.UUID, err error)` — returns enrollment data
+- `AcceptEnrollment(ctx, enrollmentUUID) error` — sets status to `accepted`
+- `RejectEnrollment(ctx, enrollmentUUID) error` — sets status to `rejected`
 
 ## Gateway Layer (`internal/gateway/pg/enrollment/`)
 
 ### `error.go`
 Gateway-level sentinel: `ErrEnrollmentNotFound` (domain UC maps it to its own domain error, following the submission pattern).
 
-### `read_enrollment_status.go`
+### `read_enrollment.go`
 ```sql
-SELECT status FROM enrollments
-WHERE character_sheet_uuid = $1 AND match_uuid = $2
+SELECT status, match_uuid FROM enrollments
+WHERE uuid = $1
 ```
 Returns gateway `ErrEnrollmentNotFound` sentinel if no rows.
 
 ### `accept_enrollment.go`
 ```sql
 UPDATE enrollments SET status = 'accepted'
-WHERE character_sheet_uuid = $1 AND match_uuid = $2
+WHERE uuid = $1
 ```
 Wrapped in transaction following existing pattern.
 
 ### `reject_enrollment.go`
 ```sql
 UPDATE enrollments SET status = 'rejected'
-WHERE character_sheet_uuid = $1 AND match_uuid = $2
+WHERE uuid = $1
 ```
 Wrapped in transaction following existing pattern.
 
@@ -131,10 +131,10 @@ Wrapped in transaction following existing pattern.
 ### `accept_enrollment.go`
 
 ```
-POST /enrollments/{sheet_uuid}/{match_uuid}/accept
+POST /enrollments/{uuid}/accept
 ```
 
-Request: path params `sheet_uuid`, `match_uuid`
+Request: path param `uuid` (enrollment UUID)
 Response: `{ "status": 200 }`
 
 Error mapping:
@@ -147,11 +147,11 @@ Error mapping:
 ### `reject_enrollment.go`
 
 ```
-POST /enrollments/{sheet_uuid}/{match_uuid}/reject
+POST /enrollments/{uuid}/reject
 ```
 
-Request: path params `sheet_uuid`, `match_uuid`
-Response: `{ "status": 204 }`
+Request: path param `uuid` (enrollment UUID)
+Response: `{ "status": 200 }`
 
 Error mapping: same as accept.
 
