@@ -55,12 +55,17 @@ Never accept Haiku default for code-writing sub-agents. When in doubt, prefer So
 
 ## Commands
 
+**Prefer CI over local runs** (saves tokens). Local only for TDD iteration or debugging.
+
 ```bash
+# CI (default):
+rtk gh run list --workflow=ci.yml --limit=1   # check status
+rtk gh run view <run-id> --log-failed         # failure logs
+
+# Local (when needed):
 go test ./...                                         # all tests
-go test ./internal/domain/entity/character_sheet/...  # sheet tests
 go test -tags=integration ./internal/gateway/pg/...   # integration tests
-make build                                            # build
-make run-dev                                          # dev server
+make build / make run-dev
 make migrate-up / migrate-down / migrate-create name=X
 ```
 
