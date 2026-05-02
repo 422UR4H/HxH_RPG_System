@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pressly/goose/v3"
@@ -120,8 +121,8 @@ func InsertTestCampaign(t *testing.T, pool *pgxpool.Pool, masterUUID, name strin
 	var campaignUUID string
 	err := pool.QueryRow(ctx,
 		`INSERT INTO campaigns (master_uuid, name, story_start_at)
-		 VALUES ($1, $2, CURRENT_DATE) RETURNING uuid`,
-		masterUUID, name,
+		 VALUES ($1, $2, $3) RETURNING uuid`,
+		masterUUID, name, time.Now(),
 	).Scan(&campaignUUID)
 	if err != nil {
 		t.Fatalf("failed to insert test campaign: %v", err)
@@ -136,8 +137,8 @@ func InsertTestMatch(t *testing.T, pool *pgxpool.Pool, masterUUID, campaignUUID,
 	var matchUUID string
 	err := pool.QueryRow(ctx,
 		`INSERT INTO matches (master_uuid, campaign_uuid, title, game_scheduled_at, story_start_at)
-		 VALUES ($1, $2, $3, NOW() + INTERVAL '1 day', CURRENT_DATE) RETURNING uuid`,
-		masterUUID, campaignUUID, title,
+		 VALUES ($1, $2, $3, $4, $5) RETURNING uuid`,
+		masterUUID, campaignUUID, title, time.Now().Add(24*time.Hour), time.Now(),
 	).Scan(&matchUUID)
 	if err != nil {
 		t.Fatalf("failed to insert test match: %v", err)
@@ -152,8 +153,8 @@ func InsertTestEnrollment(t *testing.T, pool *pgxpool.Pool, matchUUID, sheetUUID
 	var enrollmentUUID string
 	err := pool.QueryRow(ctx,
 		`INSERT INTO enrollments (uuid, match_uuid, character_sheet_uuid, status, created_at)
-		 VALUES (gen_random_uuid(), $1, $2, $3, NOW()) RETURNING uuid`,
-		matchUUID, sheetUUID, status,
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING uuid`,
+		matchUUID, sheetUUID, status, time.Now(),
 	).Scan(&enrollmentUUID)
 	if err != nil {
 		t.Fatalf("failed to insert test enrollment: %v", err)

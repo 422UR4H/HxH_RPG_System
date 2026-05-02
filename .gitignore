@@ -27,10 +27,10 @@ go.work
 
 # Binary
 bin/
-game
+/game
+/api
 
 # Local
 .local
 *.png
 .superpowers/
-api

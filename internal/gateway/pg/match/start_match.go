@@ -3,6 +3,7 @@ package match
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -10,12 +11,13 @@ import (
 func (r *Repository) StartMatch(
 	ctx context.Context, matchUUID uuid.UUID,
 ) error {
+	now := time.Now()
 	const query = `
 		UPDATE matches
-		SET game_start_at = NOW(), updated_at = NOW()
-		WHERE uuid = $1 AND game_start_at IS NULL
+		SET game_start_at = $1, updated_at = $2
+		WHERE uuid = $3 AND game_start_at IS NULL
 	`
-	result, err := r.q.Exec(ctx, query, matchUUID)
+	result, err := r.q.Exec(ctx, query, now, now, matchUUID)
 	if err != nil {
 		return fmt.Errorf("failed to start match: %w", err)
 	}

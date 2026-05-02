@@ -45,6 +45,7 @@ func main() {
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
 
 	hub := game.NewHub()
+	// TODO: evaluate to a handler for package
 	handler := game.NewHandler(hub, matchRepository, enrollmentRepository, startMatchUC, kickPlayerUC)
 	server := game.NewServer(addr, hub, handler)
 

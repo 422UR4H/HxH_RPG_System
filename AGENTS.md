@@ -71,6 +71,7 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 - `docs-workflow.instructions.md` — documentation maintenance rules (when working on `docs/`)
 - `glossary.instructions.md` — EN↔PT-BR terminology (when working on `docs/game/`)
 - `integration-tests.instructions.md` — test patterns, helpers, DB setup (when working on `internal/gateway/pg/`)
+- `gateway-conventions.instructions.md` — SQL/repository patterns (when working on `internal/gateway/`)
 
 ## Known Issues
 
