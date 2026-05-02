@@ -100,7 +100,7 @@ func TestHub(t *testing.T) {
 		t.Errorf("expected 0 rooms, got %d", hub.RoomCount())
 	}
 
-	room := hub.GetOrCreateRoom(matchUUID, masterUUID)
+	room := hub.GetOrCreateRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
 	if room == nil {
 		t.Fatal("expected room to be created")
 	}
@@ -108,7 +108,7 @@ func TestHub(t *testing.T) {
 		t.Errorf("expected 1 room, got %d", hub.RoomCount())
 	}
 
-	room2 := hub.GetOrCreateRoom(matchUUID, masterUUID)
+	room2 := hub.GetOrCreateRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
 	}
@@ -117,7 +117,7 @@ func TestHub(t *testing.T) {
 	}
 
 	otherMatchUUID := uuid.New()
-	otherRoom := hub.GetOrCreateRoom(otherMatchUUID, masterUUID)
+	otherRoom := hub.GetOrCreateRoom(otherMatchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")
 	}
@@ -140,7 +140,7 @@ func TestRoom(t *testing.T) {
 	matchUUID := uuid.New()
 	masterUUID := uuid.New()
 
-	room := game.NewRoom(matchUUID, masterUUID)
+	room := game.NewRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
 	go room.Run()
 	defer room.Stop()
 
@@ -164,7 +164,7 @@ func TestRoomStartMatch(t *testing.T) {
 	masterUUID := uuid.New()
 	playerUUID := uuid.New()
 
-	room := game.NewRoom(matchUUID, masterUUID)
+	room := game.NewRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
 	go room.Run()
 	defer room.Stop()
 
