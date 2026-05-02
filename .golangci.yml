@@ -1,0 +1,11 @@
+linters:
+  enable:
+    - errcheck
+    - staticcheck
+    - unused
+    - govet
+
+issues:
+  # Only report issues in new/changed code, not pre-existing ones.
+  # This lets us adopt linting gradually without blocking CI.
+  new-from-rev: main
