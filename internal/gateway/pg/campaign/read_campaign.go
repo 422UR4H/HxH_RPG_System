@@ -24,9 +24,8 @@ func (r *Repository) GetCampaign(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const campaignQuery = `
@@ -221,9 +220,8 @@ func (r *Repository) ListCampaignsByMasterUUID(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -303,9 +301,8 @@ func (r *Repository) GetCampaignStoryDates(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const campaignQuery = `
@@ -346,9 +343,8 @@ func (r *Repository) CountCampaignsByMasterUUID(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

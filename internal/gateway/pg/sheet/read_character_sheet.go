@@ -20,9 +20,8 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 			_ = tx.Rollback(ctx)
 			// TODO: maybe throws other error
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -186,9 +185,8 @@ func (r *Repository) CountCharactersByPlayerUUID(ctx context.Context, playerUUID
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -219,9 +217,8 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 			_ = tx.Rollback(ctx)
 			// TODO: maybe throws other error
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

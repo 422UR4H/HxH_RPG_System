@@ -22,9 +22,8 @@ func (r *Repository) SubmitCharacterSheet(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

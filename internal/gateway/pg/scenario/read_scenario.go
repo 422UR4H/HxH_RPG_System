@@ -20,9 +20,8 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -120,9 +119,8 @@ func (r *Repository) ListScenariosByUserUUID(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

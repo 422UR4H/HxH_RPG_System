@@ -24,9 +24,8 @@ func (r *Repository) CreateScenario(ctx context.Context, scenario *scenario.Scen
 			//     zap.Any("panic", p),
 			//     zap.Stack("stack"))
 			// err = errors.New("internal server error during database operation")
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

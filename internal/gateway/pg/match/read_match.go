@@ -22,9 +22,8 @@ func (r *Repository) GetMatch(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -96,9 +95,8 @@ func (r *Repository) ListMatchesByMasterUUID(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -161,9 +159,8 @@ func (r *Repository) ListPublicUpcomingMatches(
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

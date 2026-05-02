@@ -16,9 +16,8 @@ func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error 
 		if p := recover(); p != nil {
 			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `

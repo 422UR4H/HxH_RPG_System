@@ -19,9 +19,8 @@ func (r *Repository) CreateCharacterSheet(
 			_ = tx.Rollback(ctx)
 			// TODO: maybe throws other error
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const sheetQuery = `

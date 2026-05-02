@@ -17,9 +17,8 @@ func (r *Repository) CreateCampaign(ctx context.Context, campaign *campaign.Camp
 			_ = tx.Rollback(ctx)
 			// TODO: improve error handling
 			panic(p)
-		} else if err != nil {
-			_ = tx.Rollback(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
