@@ -25,7 +25,7 @@ func validCreateMatchInput() *domainMatch.CreateMatchInput {
 		BriefInitialDescription: "Brief",
 		Description:             "Full description",
 		IsPublic:                true,
-		GameStartAt:             time.Now().Add(24 * time.Hour),
+		GameScheduledAt:         time.Now().Add(24 * time.Hour),
 		StoryStartAt:            time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC),
 	}
 }
@@ -90,26 +90,26 @@ func TestCreateMatch(t *testing.T) {
 			wantErr:      domainMatch.ErrMaxBriefDescLength,
 		},
 		{
-			name: "game start at in the past",
+			name: "game scheduled at in the past",
 			input: func() *domainMatch.CreateMatchInput {
 				i := validCreateMatchInput()
-				i.GameStartAt = time.Now().Add(-1 * time.Hour)
+				i.GameScheduledAt = time.Now().Add(-1 * time.Hour)
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMinOfGameStartAt,
+			wantErr:      domainMatch.ErrMinOfGameScheduledAt,
 		},
 		{
-			name: "game start at more than 1 year ahead",
+			name: "game scheduled at more than 1 year ahead",
 			input: func() *domainMatch.CreateMatchInput {
 				i := validCreateMatchInput()
-				i.GameStartAt = time.Now().AddDate(1, 1, 0)
+				i.GameScheduledAt = time.Now().AddDate(1, 1, 0)
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMaxOfGameStartAt,
+			wantErr:      domainMatch.ErrMaxOfGameScheduledAt,
 		},
 		{
 			name: "campaign not found",

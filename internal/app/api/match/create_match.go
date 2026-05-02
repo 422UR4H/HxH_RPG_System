@@ -20,7 +20,7 @@ type CreateMatchRequestBody struct {
 	BriefInitialDescription string    `json:"brief_initial_description" maxLength:"64" doc:"Brief description of the match"`
 	Description             string    `json:"description" doc:"Full description of the match"`
 	IsPublic                bool      `json:"is_public" default:"true" doc:"If the match is public or private"`
-	GameStartAt             string    `json:"game_start_at" required:"true" doc:"Date and time when the game starts (ISO 8601)"`
+	GameScheduledAt         string    `json:"game_scheduled_at" required:"true" doc:"Date and time when the game is scheduled (ISO 8601)"`
 	StoryStartAt            string    `json:"story_start_at" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
 }
 
@@ -45,7 +45,8 @@ type MatchResponse struct {
 	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
 	Description             string    `json:"description"`
 	IsPublic                bool      `json:"is_public"`
-	GameStartAt             string    `json:"game_start_at"`
+	GameScheduledAt         string    `json:"game_scheduled_at"`
+	GameStartAt             *string   `json:"game_start_at,omitempty"`
 	StoryStartAt            string    `json:"story_start_at"`
 	StoryEndAt              *string   `json:"story_end_at,omitempty"`
 	CreatedAt               string    `json:"created_at"`
@@ -68,10 +69,10 @@ func CreateMatchHandler(
 				"invalid story_start_at date format, use YYYY-MM-DD")
 		}
 
-		gameStartAt, err := time.Parse(time.RFC3339, req.Body.GameStartAt)
+		gameScheduledAt, err := time.Parse(time.RFC3339, req.Body.GameScheduledAt)
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity(
-				"invalid game_start_at date format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
+				"invalid game_scheduled_at date format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
 		}
 
 		input := &domainMatch.CreateMatchInput{
@@ -81,7 +82,7 @@ func CreateMatchHandler(
 			BriefInitialDescription: req.Body.BriefInitialDescription,
 			Description:             req.Body.Description,
 			IsPublic:                req.Body.IsPublic,
-			GameStartAt:             gameStartAt,
+			GameScheduledAt:         gameScheduledAt,
 			StoryStartAt:            storyStartAt,
 		}
 		match, err := uc.CreateMatch(ctx, input)
@@ -98,6 +99,12 @@ func CreateMatchHandler(
 			}
 		}
 
+		var gameStartAtStr *string
+		if match.GameStartAt != nil {
+			formatted := match.GameStartAt.Format(time.RFC3339)
+			gameStartAtStr = &formatted
+		}
+
 		response := MatchResponse{
 			UUID:                    match.UUID,
 			CampaignUUID:            match.CampaignUUID,
@@ -106,7 +113,8 @@ func CreateMatchHandler(
 			BriefFinalDescription:   match.BriefFinalDescription,
 			Description:             match.Description,
 			IsPublic:                match.IsPublic,
-			GameStartAt:             match.GameStartAt.Format(time.RFC3339),
+			GameScheduledAt:         match.GameScheduledAt.Format(time.RFC3339),
+			GameStartAt:             gameStartAtStr,
 			StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
 			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),

@@ -13,7 +13,8 @@ type Summary struct {
 	BriefInitialDescription string
 	BriefFinalDescription   *string
 	IsPublic                bool
-	GameStartAt             time.Time
+	GameScheduledAt         time.Time
+	GameStartAt             *time.Time
 	StoryStartAt            time.Time
 	StoryEndAt              *time.Time
 	CreatedAt               time.Time

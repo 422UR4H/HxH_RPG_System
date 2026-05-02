@@ -12,4 +12,6 @@ type IRepository interface {
 	GetEnrollmentByUUID(ctx context.Context, enrollmentUUID uuid.UUID) (status string, matchUUID uuid.UUID, err error)
 	AcceptEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error
 	RejectEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error
+	RejectPendingEnrollments(ctx context.Context, matchUUID uuid.UUID) error
+	RejectEnrollmentByPlayerAndMatch(ctx context.Context, playerUUID uuid.UUID, matchUUID uuid.UUID) error
 }

@@ -166,7 +166,7 @@ func (r *Repository) GetCampaign(
         SELECT 
             uuid, campaign_uuid,
 						title, brief_initial_description, brief_final_description,
-						is_public, game_start_at,
+						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
         FROM matches
@@ -189,6 +189,7 @@ func (r *Repository) GetCampaign(
 			&m.BriefInitialDescription,
 			&m.BriefFinalDescription,
 			&m.IsPublic,
+			&m.GameScheduledAt,
 			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,

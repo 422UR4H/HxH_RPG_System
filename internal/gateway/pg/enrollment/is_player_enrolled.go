@@ -17,6 +17,7 @@ func (r *Repository) IsPlayerEnrolledInMatch(
 			JOIN character_sheets cs ON cs.uuid = e.character_sheet_uuid
 			WHERE e.match_uuid = $1
 			AND (cs.player_uuid = $2 OR cs.master_uuid = $2)
+			AND e.status = 'accepted'
 		)
 	`
 	var exists bool

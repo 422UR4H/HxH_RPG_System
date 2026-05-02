@@ -18,7 +18,8 @@ type Match struct {
 	IsPublic                bool
 	scenes                  []*scene.Scene
 	events                  []GameEvent
-	GameStartAt             time.Time
+	GameScheduledAt         time.Time
+	GameStartAt             *time.Time
 	StoryStartAt            time.Time
 	StoryEndAt              *time.Time
 	CreatedAt               time.Time
@@ -32,7 +33,7 @@ func NewMatch(
 	briefInitialDescription string,
 	description string,
 	isPublic bool,
-	gameStartAt time.Time,
+	gameScheduledAt time.Time,
 	storyStartAt time.Time,
 ) (*Match, error) {
 	now := time.Now()
@@ -44,7 +45,7 @@ func NewMatch(
 		BriefInitialDescription: briefInitialDescription,
 		Description:             description,
 		IsPublic:                isPublic,
-		GameStartAt:             gameStartAt,
+		GameScheduledAt:         gameScheduledAt,
 		StoryStartAt:            storyStartAt,
 		CreatedAt:               now,
 		UpdatedAt:               now,

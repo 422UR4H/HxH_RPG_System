@@ -2,6 +2,7 @@ package match
 
 import (
 	"net/http"
+	"time"
 
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
 	"github.com/google/uuid"
@@ -14,7 +15,8 @@ type MatchSummaryResponse struct {
 	BriefInitialDescription string    `json:"brief_initial_description"`
 	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
 	IsPublic                bool      `json:"is_public"`
-	GameStartAt             string    `json:"game_start_at"`
+	GameScheduledAt         string    `json:"game_scheduled_at"`
+	GameStartAt             *string   `json:"game_start_at,omitempty"`
 	StoryStartAt            string    `json:"story_start_at"`
 	StoryEndAt              *string   `json:"story_end_at,omitempty"`
 	CreatedAt               string    `json:"created_at"`
@@ -28,6 +30,12 @@ func ToSummaryResponse(m *domainMatch.Summary) MatchSummaryResponse {
 		storyEndAtStr = &formatted
 	}
 
+	var gameStartAtStr *string
+	if m.GameStartAt != nil {
+		formatted := m.GameStartAt.Format(time.RFC3339)
+		gameStartAtStr = &formatted
+	}
+
 	return MatchSummaryResponse{
 		UUID:                    m.UUID,
 		CampaignUUID:            m.CampaignUUID,
@@ -35,7 +43,8 @@ func ToSummaryResponse(m *domainMatch.Summary) MatchSummaryResponse {
 		BriefInitialDescription: m.BriefInitialDescription,
 		BriefFinalDescription:   m.BriefFinalDescription,
 		IsPublic:                m.IsPublic,
-		GameStartAt:             m.GameStartAt.Format(http.TimeFormat),
+		GameScheduledAt:         m.GameScheduledAt.Format(time.RFC3339),
+		GameStartAt:             gameStartAtStr,
 		StoryStartAt:            m.StoryStartAt.Format("2006-01-02"),
 		StoryEndAt:              storyEndAtStr,
 		CreatedAt:               m.CreatedAt.Format(http.TimeFormat),

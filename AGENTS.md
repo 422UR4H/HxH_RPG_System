@@ -32,6 +32,8 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - External test packages: `package foo_test`
 - Mocks: `mocks_test.go` per handler package (Go idiomatic)
 - Create documentation alongside tests during all development work
+- **Every feature must have integration tests** (not just unit tests)
+- TDD strategy per layer: see `integration-tests.instructions.md` (loaded for `internal/**`)
 
 ## Git Workflow
 
@@ -56,6 +58,7 @@ Never accept Haiku default for code-writing sub-agents. When in doubt, prefer So
 ```bash
 go test ./...                                         # all tests
 go test ./internal/domain/entity/character_sheet/...  # sheet tests
+go test -tags=integration ./internal/gateway/pg/...   # integration tests
 make build                                            # build
 make run-dev                                          # dev server
 make migrate-up / migrate-down / migrate-create name=X
@@ -67,6 +70,8 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 - `domain-map.instructions.md` — entity paths and current state (when working on `internal/`)
 - `docs-workflow.instructions.md` — documentation maintenance rules (when working on `docs/`)
 - `glossary.instructions.md` — EN↔PT-BR terminology (when working on `docs/game/`)
+- `integration-tests.instructions.md` — test patterns, helpers, DB setup (when working on `internal/gateway/pg/`)
+- `gateway-conventions.instructions.md` — SQL/repository patterns (when working on `internal/gateway/`)
 
 ## Known Issues
 

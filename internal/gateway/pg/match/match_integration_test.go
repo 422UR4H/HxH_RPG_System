@@ -15,7 +15,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 )
 
-func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic bool, gameStartAt time.Time) *entityMatch.Match {
+func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic bool, gameScheduledAt time.Time) *entityMatch.Match {
 	now := time.Now().Truncate(time.Microsecond)
 	return &entityMatch.Match{
 		UUID:                    uuid.New(),
@@ -25,7 +25,7 @@ func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic boo
 		BriefInitialDescription: "Brief description for " + title,
 		Description:             "Full description for " + title,
 		IsPublic:                isPublic,
-		GameStartAt:             gameStartAt.Truncate(time.Microsecond),
+		GameScheduledAt:         gameScheduledAt.Truncate(time.Microsecond),
 		StoryStartAt:            now,
 		CreatedAt:               now,
 		UpdatedAt:               now,
@@ -248,6 +248,57 @@ func TestListPublicUpcomingMatches(t *testing.T) {
 		}
 		if len(list) != 0 {
 			t.Errorf("list length = %d, want 0", len(list))
+		}
+	})
+}
+
+func TestStartMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm8", "gm8@hunter.com", "pass"))
+	campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Start Match Campaign"))
+
+	t.Run("happy path", func(t *testing.T) {
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Start Match Session"))
+
+		if err := repo.StartMatch(ctx, matchUUID); err != nil {
+			t.Fatalf("StartMatch() unexpected error: %v", err)
+		}
+
+		got, err := repo.GetMatch(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("GetMatch() after StartMatch: %v", err)
+		}
+		if got.GameStartAt == nil {
+			t.Error("GameStartAt = nil, want non-nil")
+		}
+	})
+
+	t.Run("already started returns error", func(t *testing.T) {
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Already Started Session"))
+
+		if err := repo.StartMatch(ctx, matchUUID); err != nil {
+			t.Fatalf("StartMatch() first call unexpected error: %v", err)
+		}
+
+		err := repo.StartMatch(ctx, matchUUID)
+		if err == nil {
+			t.Fatal("StartMatch() second call expected error, got nil")
+		}
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("error = %v, want %v", err, pgMatch.ErrMatchNotFound)
+		}
+	})
+
+	t.Run("non-existent match returns error", func(t *testing.T) {
+		err := repo.StartMatch(ctx, uuid.New())
+		if err == nil {
+			t.Fatal("StartMatch() expected error, got nil")
+		}
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("error = %v, want %v", err, pgMatch.ErrMatchNotFound)
 		}
 	})
 }

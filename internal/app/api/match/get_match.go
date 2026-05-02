@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
@@ -46,6 +47,12 @@ func GetMatchHandler(
 			}
 		}
 
+		var gameStartAtStr *string
+		if match.GameStartAt != nil {
+			formatted := match.GameStartAt.Format(time.RFC3339)
+			gameStartAtStr = &formatted
+		}
+
 		var storyEndAtStr *string
 		if match.StoryEndAt != nil {
 			formattedDate := match.StoryEndAt.Format("2006-01-02")
@@ -60,7 +67,8 @@ func GetMatchHandler(
 			BriefFinalDescription:   match.BriefFinalDescription,
 			Description:             match.Description,
 			IsPublic:                match.IsPublic,
-			GameStartAt:             match.GameStartAt.Format(http.TimeFormat),
+			GameScheduledAt:         match.GameScheduledAt.Format(time.RFC3339),
+			GameStartAt:             gameStartAtStr,
 			StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
 			StoryEndAt:              storyEndAtStr,
 			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),

@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -23,6 +24,14 @@ var (
 	ErrRoomClosed     = errors.New("room is closed")
 )
 
+type IStartMatch interface {
+	Start(ctx context.Context, matchUUID uuid.UUID, masterUUID uuid.UUID) error
+}
+
+type IKickPlayer interface {
+	Kick(ctx context.Context, matchUUID uuid.UUID, playerUUID uuid.UUID, masterUUID uuid.UUID) error
+}
+
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -33,18 +42,27 @@ type Room struct {
 	unregister chan *Client
 	stop       chan struct{}
 	mu         sync.RWMutex
+
+	startMatchUC IStartMatch
+	kickPlayerUC IKickPlayer
 }
 
-func NewRoom(matchUUID, masterUUID uuid.UUID) *Room {
+func NewRoom(
+	matchUUID, masterUUID uuid.UUID,
+	startMatchUC IStartMatch,
+	kickPlayerUC IKickPlayer,
+) *Room {
 	return &Room{
-		matchUUID:  matchUUID,
-		masterUUID: masterUUID,
-		state:      RoomStateLobby,
-		clients:    make(map[uuid.UUID]*Client),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		stop:       make(chan struct{}),
+		matchUUID:    matchUUID,
+		masterUUID:   masterUUID,
+		state:        RoomStateLobby,
+		clients:      make(map[uuid.UUID]*Client),
+		broadcast:    make(chan []byte, 256),
+		register:     make(chan *Client),
+		unregister:   make(chan *Client),
+		stop:         make(chan struct{}),
+		startMatchUC: startMatchUC,
+		kickPlayerUC: kickPlayerUC,
 	}
 }
 
@@ -144,17 +162,63 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	if !r.IsMaster(userUUID) {
 		return ErrNotMaster
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
+	r.mu.RLock()
 	if r.state != RoomStateLobby {
+		r.mu.RUnlock()
 		return ErrAlreadyPlaying
 	}
+	r.mu.RUnlock()
+
+	if err := r.startMatchUC.Start(context.Background(), r.matchUUID, userUUID); err != nil {
+		return err
+	}
+
+	r.mu.Lock()
 	r.state = RoomStatePlaying
+	r.mu.Unlock()
 
 	msg := NewServerMessage(MsgTypeMatchStarted, struct{}{})
 	data, _ := json.Marshal(msg)
 	go func() { r.broadcast <- data }()
+	return nil
+}
+
+func (r *Room) KickPlayer(masterUUID uuid.UUID, playerUUID uuid.UUID) error {
+	if !r.IsMaster(masterUUID) {
+		return ErrNotMaster
+	}
+
+	if err := r.kickPlayerUC.Kick(context.Background(), r.matchUUID, playerUUID, masterUUID); err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	client, ok := r.clients[playerUUID]
+	if ok {
+		delete(r.clients, playerUUID)
+	}
+	r.mu.Unlock()
+
+	if ok {
+		kickedMsg := NewServerMessage(MsgTypePlayerKicked, PlayerKickedPayload{
+			UUID:     playerUUID,
+			Nickname: client.nickname,
+			Reason:   "kicked by master",
+		})
+
+		client.SendMessage(kickedMsg)
+		close(client.send)
+
+		data, _ := json.Marshal(kickedMsg)
+		r.mu.RLock()
+		for _, c := range r.clients {
+			select {
+			case c.send <- data:
+			default:
+			}
+		}
+		r.mu.RUnlock()
+	}
 	return nil
 }
 
@@ -168,6 +232,16 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	switch incoming.Type {
 	case MsgTypeStartMatch:
 		if err := r.StartMatch(client.userUUID); err != nil {
+			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
+		}
+
+	case MsgTypeKickPlayer:
+		var kickPayload KickPlayerPayload
+		if err := json.Unmarshal(incoming.Payload, &kickPayload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid kick payload"))
+			return
+		}
+		if err := r.KickPlayer(client.userUUID, kickPayload.PlayerUUID); err != nil {
 			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
 		}
 

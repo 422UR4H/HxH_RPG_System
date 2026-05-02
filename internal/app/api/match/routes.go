@@ -64,7 +64,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
 		Path:        "/public/matches",
-		Description: "List all upcoming public matches sorted by game_start_at",
+		Description: "List all upcoming public matches sorted by game_scheduled_at",
 		Tags:        []string{"matches"},
 		Errors: []int{
 			http.StatusUnauthorized,

@@ -33,13 +33,31 @@ func (m *mockEnrollmentChecker) IsPlayerEnrolledInMatch(_ context.Context, _, _ 
 	return m.enrolled, m.err
 }
 
+type mockStartMatchUC struct {
+	err error
+}
+
+func (m *mockStartMatchUC) Start(_ context.Context, _, _ uuid.UUID) error {
+	return m.err
+}
+
+type mockKickPlayerUC struct {
+	err error
+}
+
+func (m *mockKickPlayerUC) Kick(_ context.Context, _, _, _ uuid.UUID) error {
+	return m.err
+}
+
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {
 	hub := game.NewHub()
 	go hub.Run()
 
 	matchRepo := &mockMatchRepo{masterUUID: masterUUID}
 	enrollmentRepo := &mockEnrollmentChecker{enrolled: enrolled}
-	handler := game.NewHandler(hub, matchRepo, enrollmentRepo)
+	startUC := &mockStartMatchUC{}
+	kickUC := &mockKickPlayerUC{}
+	handler := game.NewHandler(hub, matchRepo, enrollmentRepo, startUC, kickUC)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", handler.HandleWebSocket)
@@ -281,6 +299,72 @@ func TestPlayerCannotStartMatch(t *testing.T) {
 	data, _ := json.Marshal(startMsg)
 	if err := playerConn.WriteMessage(websocket.TextMessage, data); err != nil {
 		t.Fatalf("failed to send start_match: %v", err)
+	}
+
+	received := readMessage(t, playerConn)
+	if received.Type != game.MsgTypeError {
+		t.Errorf("expected error, got %s", received.Type)
+	}
+}
+
+func TestKickPlayerFlow(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close()
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
+	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer playerConn.Close()
+	_ = readMessage(t, playerConn) // room_state
+	_ = readMessage(t, masterConn) // player_joined
+
+	kickMsg := game.Message{
+		Type:    game.MsgTypeKickPlayer,
+		Payload: json.RawMessage(`{"player_uuid":"` + playerUUID.String() + `"}`),
+	}
+	data, _ := json.Marshal(kickMsg)
+	if err := masterConn.WriteMessage(websocket.TextMessage, data); err != nil {
+		t.Fatalf("failed to send kick_player: %v", err)
+	}
+
+	playerReceived := readMessage(t, playerConn)
+	if playerReceived.Type != game.MsgTypePlayerKicked {
+		t.Errorf("expected player_kicked, got %s", playerReceived.Type)
+	}
+
+	masterReceived := readMessage(t, masterConn)
+	if masterReceived.Type != game.MsgTypePlayerKicked {
+		t.Errorf("expected master to get player_kicked, got %s", masterReceived.Type)
+	}
+}
+
+func TestPlayerCannotKick(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer playerConn.Close()
+	_ = readMessage(t, playerConn) // room_state
+
+	kickMsg := game.Message{
+		Type:    game.MsgTypeKickPlayer,
+		Payload: json.RawMessage(`{"player_uuid":"` + masterUUID.String() + `"}`),
+	}
+	data, _ := json.Marshal(kickMsg)
+	if err := playerConn.WriteMessage(websocket.TextMessage, data); err != nil {
+		t.Fatalf("failed to send kick_player: %v", err)
 	}
 
 	received := readMessage(t, playerConn)

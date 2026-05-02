@@ -4,6 +4,7 @@ package enrollment_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	enrollmentRepo "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
@@ -99,6 +100,308 @@ func TestExistsEnrolledCharacterSheet(t *testing.T) {
 		}
 		if exists {
 			t.Error("ExistsEnrolledCharacterSheet() = true, want false")
+		}
+	})
+}
+
+func TestAcceptEnrollment(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("happy path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
+
+		enrollID := uuid.MustParse(enrollmentUUID)
+
+		if err := repo.AcceptEnrollment(ctx, enrollID); err != nil {
+			t.Fatalf("AcceptEnrollment() error = %v, want nil", err)
+		}
+
+		status, _, err := repo.GetEnrollmentByUUID(ctx, enrollID)
+		if err != nil {
+			t.Fatalf("GetEnrollmentByUUID() error = %v", err)
+		}
+		if status != "accepted" {
+			t.Errorf("GetEnrollmentByUUID() status = %q, want %q", status, "accepted")
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		err := repo.AcceptEnrollment(ctx, uuid.New())
+		if !errors.Is(err, enrollmentRepo.ErrEnrollmentNotFound) {
+			t.Errorf("AcceptEnrollment() error = %v, want ErrEnrollmentNotFound", err)
+		}
+	})
+}
+
+func TestRejectEnrollment(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("happy path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
+
+		enrollID := uuid.MustParse(enrollmentUUID)
+
+		if err := repo.RejectEnrollment(ctx, enrollID); err != nil {
+			t.Fatalf("RejectEnrollment() error = %v, want nil", err)
+		}
+
+		status, _, err := repo.GetEnrollmentByUUID(ctx, enrollID)
+		if err != nil {
+			t.Fatalf("GetEnrollmentByUUID() error = %v", err)
+		}
+		if status != "rejected" {
+			t.Errorf("GetEnrollmentByUUID() status = %q, want %q", status, "rejected")
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		err := repo.RejectEnrollment(ctx, uuid.New())
+		if !errors.Is(err, enrollmentRepo.ErrEnrollmentNotFound) {
+			t.Errorf("RejectEnrollment() error = %v, want ErrEnrollmentNotFound", err)
+		}
+	})
+}
+
+func TestGetEnrollmentByUUID(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Kurapika")
+		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
+
+		enrollID := uuid.MustParse(enrollmentUUID)
+		matchID := uuid.MustParse(matchUUID)
+
+		status, gotMatchUUID, err := repo.GetEnrollmentByUUID(ctx, enrollID)
+		if err != nil {
+			t.Fatalf("GetEnrollmentByUUID() error = %v, want nil", err)
+		}
+		if status != "pending" {
+			t.Errorf("GetEnrollmentByUUID() status = %q, want %q", status, "pending")
+		}
+		if gotMatchUUID != matchID {
+			t.Errorf("GetEnrollmentByUUID() matchUUID = %v, want %v", gotMatchUUID, matchID)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		_, _, err := repo.GetEnrollmentByUUID(ctx, uuid.New())
+		if !errors.Is(err, enrollmentRepo.ErrEnrollmentNotFound) {
+			t.Errorf("GetEnrollmentByUUID() error = %v, want ErrEnrollmentNotFound", err)
+		}
+	})
+}
+
+func TestRejectPendingEnrollments(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("rejects all pending", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+
+		sheetUUID1 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		sheetUUID2 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		sheetUUID3 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Kurapika")
+
+		pendingID1 := uuid.MustParse(pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID1, "pending"))
+		pendingID2 := uuid.MustParse(pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID2, "pending"))
+		acceptedID := uuid.MustParse(pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID3, "accepted"))
+
+		matchID := uuid.MustParse(matchUUID)
+
+		if err := repo.RejectPendingEnrollments(ctx, matchID); err != nil {
+			t.Fatalf("RejectPendingEnrollments() error = %v, want nil", err)
+		}
+
+		for _, enrollID := range []uuid.UUID{pendingID1, pendingID2} {
+			status, _, err := repo.GetEnrollmentByUUID(ctx, enrollID)
+			if err != nil {
+				t.Fatalf("GetEnrollmentByUUID(%v) error = %v", enrollID, err)
+			}
+			if status != "rejected" {
+				t.Errorf("GetEnrollmentByUUID(%v) status = %q, want %q", enrollID, status, "rejected")
+			}
+		}
+
+		status, _, err := repo.GetEnrollmentByUUID(ctx, acceptedID)
+		if err != nil {
+			t.Fatalf("GetEnrollmentByUUID(acceptedID) error = %v", err)
+		}
+		if status != "accepted" {
+			t.Errorf("GetEnrollmentByUUID(acceptedID) status = %q, want %q (should be unchanged)", status, "accepted")
+		}
+	})
+
+	t.Run("no pending enrollments is not an error", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+
+		matchID := uuid.MustParse(matchUUID)
+
+		if err := repo.RejectPendingEnrollments(ctx, matchID); err != nil {
+			t.Errorf("RejectPendingEnrollments() error = %v, want nil (zero rows is valid)", err)
+		}
+	})
+}
+
+func TestRejectEnrollmentByPlayerAndMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("happy path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "accepted")
+
+		playerID := uuid.MustParse(userUUID)
+		matchID := uuid.MustParse(matchUUID)
+		enrollID := uuid.MustParse(enrollmentUUID)
+
+		if err := repo.RejectEnrollmentByPlayerAndMatch(ctx, playerID, matchID); err != nil {
+			t.Fatalf("RejectEnrollmentByPlayerAndMatch() error = %v, want nil", err)
+		}
+
+		status, _, err := repo.GetEnrollmentByUUID(ctx, enrollID)
+		if err != nil {
+			t.Fatalf("GetEnrollmentByUUID() error = %v", err)
+		}
+		if status != "rejected" {
+			t.Errorf("GetEnrollmentByUUID() status = %q, want %q", status, "rejected")
+		}
+	})
+
+	t.Run("not found when no accepted enrollment", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
+
+		playerID := uuid.MustParse(userUUID)
+		matchID := uuid.MustParse(matchUUID)
+
+		err := repo.RejectEnrollmentByPlayerAndMatch(ctx, playerID, matchID)
+		if !errors.Is(err, enrollmentRepo.ErrEnrollmentNotFound) {
+			t.Errorf("RejectEnrollmentByPlayerAndMatch() error = %v, want ErrEnrollmentNotFound", err)
+		}
+	})
+
+	t.Run("not found when player has no enrollment", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+
+		matchID := uuid.MustParse(matchUUID)
+
+		err := repo.RejectEnrollmentByPlayerAndMatch(ctx, uuid.New(), matchID)
+		if !errors.Is(err, enrollmentRepo.ErrEnrollmentNotFound) {
+			t.Errorf("RejectEnrollmentByPlayerAndMatch() error = %v, want ErrEnrollmentNotFound", err)
+		}
+	})
+}
+
+func TestIsPlayerEnrolledInMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("true when accepted", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "accepted")
+
+		playerID := uuid.MustParse(userUUID)
+		matchID := uuid.MustParse(matchUUID)
+
+		enrolled, err := repo.IsPlayerEnrolledInMatch(ctx, playerID, matchID)
+		if err != nil {
+			t.Fatalf("IsPlayerEnrolledInMatch() error = %v, want nil", err)
+		}
+		if !enrolled {
+			t.Error("IsPlayerEnrolledInMatch() = false, want true")
+		}
+	})
+
+	t.Run("false when pending", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
+
+		playerID := uuid.MustParse(userUUID)
+		matchID := uuid.MustParse(matchUUID)
+
+		enrolled, err := repo.IsPlayerEnrolledInMatch(ctx, playerID, matchID)
+		if err != nil {
+			t.Fatalf("IsPlayerEnrolledInMatch() error = %v, want nil", err)
+		}
+		if enrolled {
+			t.Error("IsPlayerEnrolledInMatch() = true, want false")
+		}
+	})
+
+	t.Run("false when no enrollment", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		enrolled, err := repo.IsPlayerEnrolledInMatch(ctx, uuid.New(), uuid.New())
+		if err != nil {
+			t.Fatalf("IsPlayerEnrolledInMatch() error = %v, want nil", err)
+		}
+		if enrolled {
+			t.Error("IsPlayerEnrolledInMatch() = true, want false")
 		}
 	})
 }

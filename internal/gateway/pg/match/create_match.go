@@ -27,7 +27,7 @@ func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error 
         INSERT INTO matches (
             uuid, master_uuid, campaign_uuid,
 						title, brief_initial_description, description,
-						is_public, game_start_at,
+						is_public, game_scheduled_at,
             story_start_at, story_end_at,
 						created_at, updated_at
         ) VALUES (
@@ -37,7 +37,7 @@ func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error 
 	_, err = tx.Exec(ctx, query,
 		match.UUID, match.MasterUUID, match.CampaignUUID,
 		match.Title, match.BriefInitialDescription, match.Description,
-		match.IsPublic, match.GameStartAt,
+		match.IsPublic, match.GameScheduledAt,
 		match.StoryStartAt, match.StoryEndAt,
 		match.CreatedAt, match.UpdatedAt,
 	)
