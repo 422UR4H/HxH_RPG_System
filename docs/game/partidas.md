@@ -41,6 +41,8 @@ A inscrição começa com status **pendente**. O mestre da campanha deve **aceit
 
 O mestre pode mudar a decisão a qualquer momento antes do início da partida. Apenas personagens com inscrição **aceita** entram no lobby da partida.
 
+O mestre também pode **expulsar** um jogador do lobby durante a partida, rejeitando automaticamente sua inscrição.
+
 ### Restrições
 - A ficha deve estar aceita na campanha da partida
 - Não é possível ter mais de uma inscrição ativa (pendente ou aceita) na mesma partida

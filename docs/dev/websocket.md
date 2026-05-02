@@ -12,8 +12,8 @@ Hub (1)
      └─ ...
 ```
 
-- **Hub** — gerencia salas em `map[uuid.UUID]*Room` protegido por `sync.RWMutex`. `GetOrCreateRoom` cria a sala e inicia sua goroutine (`go room.Run()`). `Stop()` encerra todas as salas.
-- **Room** — event loop baseado em `select` com canais: `broadcast`, `register`, `unregister`, `stop`. Cada sala roda em sua própria goroutine.
+- **Hub** — gerencia salas em `map[uuid.UUID]*Room` protegido por `sync.RWMutex`. `GetOrCreateRoom` cria a sala (recebendo UCs de domínio) e inicia sua goroutine (`go room.Run()`). `Stop()` encerra todas as salas.
+- **Room** — event loop baseado em `select` com canais: `broadcast`, `register`, `unregister`, `stop`. Cada sala roda em sua própria goroutine. Possui UCs injetados (`IStartMatch`, `IKickPlayer`) para operações de domínio com persistência.
 - **Client** — encapsula `gorilla/websocket.Conn` com duas goroutines: `ReadPump` (lê mensagens do WS e delega a `room.handleClientMessage`) e `WritePump` (escreve do canal `send` e envia pings).
 
 Constantes do Client:
@@ -31,7 +31,7 @@ Constantes do Client:
 Lobby → Playing → Closed
 ```
 
-- **Lobby** → **Playing**: Apenas o mestre pode iniciar (`StartMatch`). Valida `userUUID == masterUUID` e `state == RoomStateLobby`.
+- **Lobby** → **Playing**: Apenas o mestre pode iniciar (`StartMatch`). Valida `userUUID == masterUUID` e `state == RoomStateLobby`. Chama `StartMatchUC.Start` que persiste `game_start_at` no banco e rejeita enrollments pendentes.
 - **Playing** → **Closed**: Sala fecha quando o último client desconecta ou via `Hub.Stop()`.
 
 Estados definidos como `RoomState string`: `"lobby"`, `"playing"`, `"closed"`.
@@ -51,21 +51,23 @@ type Message struct {
 
 ### Server → Client
 
-| Tipo             | Payload             | Quando                        |
-|------------------|---------------------|-------------------------------|
-| `room_state`     | `RoomStatePayload`  | Ao conectar (estado completo) |
-| `player_joined`  | `PlayerPayload`     | Novo jogador entra            |
-| `player_left`    | `PlayerPayload`     | Jogador sai                   |
-| `match_started`  | —                   | Mestre inicia a partida       |
-| `chat_message`   | `ChatPayload`       | Mensagem de chat              |
-| `error`          | `ErrorPayload`      | Erro (code + message)         |
+| Tipo             | Payload                | Quando                                  |
+|------------------|------------------------|-----------------------------------------|
+| `room_state`     | `RoomStatePayload`     | Ao conectar (estado completo)           |
+| `player_joined`  | `PlayerPayload`        | Novo jogador entra                      |
+| `player_left`    | `PlayerPayload`        | Jogador sai                             |
+| `player_kicked`  | `PlayerKickedPayload`  | Mestre expulsa jogador do lobby         |
+| `match_started`  | —                      | Mestre inicia a partida                 |
+| `chat_message`   | `ChatPayload`          | Mensagem de chat                        |
+| `error`          | `ErrorPayload`         | Erro (code + message)                   |
 
 ### Client → Server
 
-| Tipo           | Descrição                      |
-|----------------|--------------------------------|
-| `start_match`  | Mestre solicita início         |
-| `chat`         | Mensagem de chat               |
+| Tipo           | Descrição                            |
+|----------------|--------------------------------------|
+| `start_match`  | Mestre solicita início               |
+| `kick_player`  | Mestre expulsa jogador               |
+| `chat`         | Mensagem de chat                     |
 
 Payloads auxiliares:
 - `ErrorPayload { Code, Message string }`
@@ -73,6 +75,8 @@ Payloads auxiliares:
 - `RoomStatePayload { MatchUUID, State, Players []PlayerInfo }`
 - `PlayerInfo { UUID, Nickname, IsMaster, IsOnline }`
 - `ChatPayload { Message string }`
+- `KickPlayerPayload { PlayerUUID uuid.UUID }` — enviado pelo mestre
+- `PlayerKickedPayload { UUID, Nickname, Reason }` — broadcast para todos
 
 ## Ciclo de Vida da Conexão
 
@@ -93,12 +97,32 @@ Payloads auxiliares:
 Dependências do handler:
 - `MatchRepository` — busca dados da partida e mestre.
 - `EnrollmentChecker` — verifica inscrição do jogador.
+- `IStartMatch` — UC de domínio para iniciar partida (persiste no banco).
+- `IKickPlayer` — UC de domínio para expulsar jogador (rejeita enrollment no banco).
 
 Servidor (`Server`) usa chi router com duas rotas:
 - `GET /ws` — HandleWebSocket
 - `GET /health` — health check
 
 Timeouts: Read=15s, Write=15s, Idle=60s.
+
+## Integração com Domínio
+
+A Room delega operações de negócio a use cases de domínio via interfaces locais:
+
+```go
+type IStartMatch interface {
+    Start(ctx context.Context, matchUUID uuid.UUID, masterUUID uuid.UUID) error
+}
+type IKickPlayer interface {
+    Kick(ctx context.Context, matchUUID uuid.UUID, playerUUID uuid.UUID, masterUUID uuid.UUID) error
+}
+```
+
+- **StartMatch**: Valida permissões localmente (mestre + estado lobby), depois chama `StartMatchUC.Start` que persiste `game_start_at` e rejeita todos os enrollments pendentes. Apenas após sucesso no banco a sala transiciona para `Playing`.
+- **KickPlayer**: Valida permissão de mestre, chama `KickPlayerUC.Kick` que rejeita o enrollment no banco, depois desconecta o client e envia `player_kicked` para todos.
+
+Chamadas ao banco usam `context.Background()` dentro das goroutines da Room (o `r.Context()` do HTTP já foi encerrado no momento da chamada).
 
 ## Referências de Código
 

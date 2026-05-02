@@ -94,10 +94,12 @@ partida específica (`Match`) daquela campanha.
 3. ExistsEnrolledCharacterSheet(sheetUUID, matchUUID)
    └─ Já inscrita nesta partida? → ErrCharacterAlreadyEnrolled
 
-4. GetMatchCampaignUUID(matchUUID)
+4. GetMatch(matchUUID)
    └─ Partida não existe? → ErrMatchNotFound
+   └─ GameStartAt != nil? → ErrMatchAlreadyStarted
+   └─ StoryEndAt != nil? → ErrMatchAlreadyFinished
 
-5. sheetRelationship.CampaignUUID == nil || *CampaignUUID != campaignUUID?
+5. sheetRelationship.CampaignUUID == nil || *CampaignUUID != match.CampaignUUID?
    └─ → ErrCharacterNotInCampaign
 
 6. EnrollCharacterSheet(matchUUID, sheetUUID)
@@ -150,7 +152,8 @@ accepted ─reject──▶ rejected
 rejected ─accept──▶ accepted
 ```
 
-O mestre tem flexibilidade total para mudar o status até o início da partida.
+O mestre pode mudar a decisão a qualquer momento **antes do início da partida**
+(`game_start_at IS NULL`) e **antes do término da história** (`story_end_at IS NULL`).
 Operações idempotentes: aceitar um enrollment já aceito ou rejeitar um já
 rejeitado retorna sucesso sem erro.
 
@@ -163,10 +166,12 @@ rejeitado retorna sucesso sem erro.
 2. status == "accepted" (para Accept) ou "rejected" (para Reject)?
    └─ Sim → retorna nil (idempotente, sem mais queries)
 
-3. GetMatchCampaignUUID(matchUUID)
+3. GetMatch(matchUUID)
    └─ Partida não existe? → ErrMatchNotFound
+   └─ GameStartAt != nil? → ErrMatchAlreadyStarted
+   └─ StoryEndAt != nil? → ErrMatchAlreadyFinished
 
-4. GetCampaignMasterUUID(campaignUUID)
+4. GetCampaignMasterUUID(match.CampaignUUID)
    └─ Campanha não existe? → ErrCampaignNotFound
 
 5. campaignMasterUUID != masterUUID?
@@ -176,21 +181,56 @@ rejeitado retorna sucesso sem erro.
 6b. Reject → RejectEnrollment(enrollmentUUID)
 ```
 
+### Guarda Temporal
+
+Antes de aceitar/rejeitar um enrollment, os UCs verificam:
+- `match.GameStartAt != nil` → a partida já começou, não pode alterar enrollments
+- `match.StoryEndAt != nil` → a partida já terminou
+
+Estas verificações usam `GetMatch` (que retorna a entidade completa) em vez de
+`GetMatchCampaignUUID`, reutilizando `match.CampaignUUID` diretamente.
+
 ### Regra de unicidade parcial
 
 O banco possui um índice parcial `UNIQUE(character_sheet_uuid) WHERE status != 'rejected'`.
 Isso permite que uma ficha tenha múltiplas inscrições rejeitadas, mas apenas
 **uma** inscrição ativa (pending ou accepted) por vez.
 
-> **TODO preservado do código-fonte (presente em ambos os UCs):**
-> `// TODO: check if match has already started (temporal guard)`
->
-> A verificação de que a partida ainda não iniciou será implementada quando
-> o ciclo de vida da partida (match lifecycle) estiver completo.
+---
+
+## 5. Expulsão de Jogador (Kick)
+
+O mestre pode expulsar um jogador de uma partida durante o lobby via WebSocket.
+
+### Cadeia de validação (`KickPlayerUC.Kick`)
+
+```
+1. GetMatch(matchUUID)
+   └─ Partida não existe? → ErrMatchNotFound
+
+2. match.MasterUUID != masterUUID?
+   └─ → ErrNotMatchMaster
+
+3. masterUUID == playerUUID?
+   └─ → ErrCannotKickSelf
+
+4. GameStartAt != nil?
+   └─ → ErrMatchAlreadyStarted
+
+5. StoryEndAt != nil?
+   └─ → ErrMatchAlreadyFinished
+
+6. RejectEnrollmentByPlayerAndMatch(playerUUID, matchUUID)
+   └─ Enrollment não encontrado? → ErrEnrollmentNotFound
+```
+
+**Efeito no WebSocket:** Após a rejeição no banco, o jogador é desconectado da
+sala e recebe uma mensagem `player_kicked`. Todos os demais clients recebem o
+mesmo broadcast.
 
 ---
 
-## 5. Diagrama de Relacionamentos
+## 6. Diagrama de Relacionamentos
 
 ```
   User (Player)
@@ -239,6 +279,7 @@ de múltiplas partidas dentro da mesma campanha.
 | `internal/domain/enrollment/enroll_character_sheet.go`   | UC de enrollment em partida                   |
 | `internal/domain/enrollment/accept_enrollment.go`        | UC de aceitação de enrollment pelo master     |
 | `internal/domain/enrollment/reject_enrollment.go`        | UC de rejeição de enrollment pelo master      |
+| `internal/domain/enrollment/kick_player.go`              | UC de expulsão de jogador pelo master         |
 | `internal/domain/enrollment/error.go`                    | Erros de domínio de Enrollment                |
 | `internal/domain/enrollment/i_repository.go`             | Interface de repositório Enrollment           |
 | `internal/domain/campaign/i_repository.go`               | `GetCampaignMasterUUID` — usado por ambos     |
