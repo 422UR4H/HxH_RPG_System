@@ -1,0 +1,13 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - staticcheck
+    - unused
+    - govet
+
+issues:
+  # Only report issues in new/changed code, not pre-existing ones.
+  # Uses origin/main because CI has no local main branch ref.
+  new-from-rev: origin/main
