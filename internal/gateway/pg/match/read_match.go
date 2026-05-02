@@ -29,7 +29,8 @@ func (r *Repository) GetMatch(
 	const query = `
         SELECT 
             uuid, master_uuid, campaign_uuid,
-						title, brief_initial_description, brief_final_description, description,
+						title, COALESCE(brief_initial_description, ''), brief_final_description,
+						COALESCE(description, ''),
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
 						created_at, updated_at
@@ -102,7 +103,7 @@ func (r *Repository) ListMatchesByMasterUUID(
 	const query = `
         SELECT 
             uuid, campaign_uuid, title,
-						brief_initial_description, brief_final_description,
+						COALESCE(brief_initial_description, ''), brief_final_description,
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
@@ -166,7 +167,7 @@ func (r *Repository) ListPublicUpcomingMatches(
 	const query = `
         SELECT 
             uuid, campaign_uuid, title,
-            brief_initial_description, brief_final_description,
+            COALESCE(brief_initial_description, ''), brief_final_description,
             is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at

@@ -31,7 +31,8 @@ func (r *Repository) GetCampaign(
 	const campaignQuery = `
         SELECT 
             uuid, master_uuid, scenario_uuid,
-						name, brief_initial_description, brief_final_description, description,
+						name, COALESCE(brief_initial_description, ''), brief_final_description,
+						COALESCE(description, ''),
 						is_public, call_link,
             story_start_at, story_current_at, story_end_at,
 						created_at, updated_at
@@ -162,7 +163,7 @@ func (r *Repository) GetCampaign(
 	const matchesQuery = `
         SELECT 
             uuid, campaign_uuid,
-						title, brief_initial_description, brief_final_description,
+						title, COALESCE(brief_initial_description, ''), brief_final_description,
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
@@ -227,7 +228,7 @@ func (r *Repository) ListCampaignsByMasterUUID(
 	const query = `
 					SELECT 
 							uuid, scenario_uuid,
-							name, brief_initial_description, brief_final_description,
+							name, COALESCE(brief_initial_description, ''), brief_final_description,
 							is_public, call_link,
 							story_start_at, story_current_at, story_end_at,
 							created_at, updated_at

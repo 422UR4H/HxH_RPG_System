@@ -26,7 +26,8 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 
 	const query = `
 			SELECT 
-					s.uuid, s.user_uuid, s.name, s.brief_description, s.description,
+					s.uuid, s.user_uuid, s.name, COALESCE(s.brief_description, ''),
+					COALESCE(s.description, ''),
 					s.created_at, s.updated_at,
 					c.uuid, c.name, c.brief_initial_description,
 					c.story_start_at, c.story_current_at, c.story_end_at,
@@ -125,7 +126,7 @@ func (r *Repository) ListScenariosByUserUUID(
 
 	const query = `
 			SELECT 
-					uuid, name, brief_description, created_at, updated_at
+					uuid, name, COALESCE(brief_description, ''), created_at, updated_at
 			FROM scenarios
 			WHERE user_uuid = $1
 			ORDER BY name ASC
