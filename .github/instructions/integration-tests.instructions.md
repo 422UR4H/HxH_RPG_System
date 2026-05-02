@@ -1,8 +1,23 @@
 ---
-applyTo: "internal/gateway/pg/**"
+applyTo: "internal/**"
 ---
 
-# Integration Test Conventions
+# Testing Strategy
+
+## TDD by Layer
+
+| Layer | TDD with | Why |
+|-------|----------|-----|
+| `entity/` | Unit tests | Pure logic, no I/O |
+| `domain/` services (engines → future refactor to domain services) | Unit tests | Pure domain logic integrating entities; no I/O, no mocks needed |
+| `domain/` use cases | Unit tests (mocks) | Orchestrate I/O + domain; mock repos |
+| `gateway/pg/` | **Integration tests** | Real SQL matters; mocks don't catch query bugs |
+| `app/` (handlers) | Unit tests (mocks) | HTTP/WS contract |
+
+When implementing a full slice: TDD each layer with its appropriate test type.
+Integration tests for gateways are written **during gateway TDD**, not deferred.
+
+## Integration Test Conventions
 
 ## Structure
 

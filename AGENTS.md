@@ -33,17 +33,7 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - Mocks: `mocks_test.go` per handler package (Go idiomatic)
 - Create documentation alongside tests during all development work
 - **Every feature must have integration tests** (not just unit tests)
-
-### TDD by Layer
-
-| Layer | TDD with | Why |
-|-------|----------|-----|
-| `entity/` | Unit tests | Pure logic, no I/O |
-| `domain/` (use cases) | Unit tests (mocks) | Orchestration/rules |
-| `gateway/pg/` | **Integration tests** | Real SQL matters; mocks don't catch query bugs |
-| `app/` (handlers) | Unit tests (mocks) | HTTP/WS contract |
-
-When implementing a full slice: TDD each layer with its appropriate test type. Integration tests for gateways are written **during gateway TDD**, not deferred.
+- TDD strategy per layer: see `integration-tests.instructions.md` (loaded for `internal/**`)
 
 ## Git Workflow
 
