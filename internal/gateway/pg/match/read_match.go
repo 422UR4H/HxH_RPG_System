@@ -33,7 +33,7 @@ func (r *Repository) GetMatch(
         SELECT 
             uuid, master_uuid, campaign_uuid,
 						title, brief_initial_description, brief_final_description, description,
-						is_public, game_start_at,
+						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
 						created_at, updated_at
         FROM matches
@@ -49,6 +49,7 @@ func (r *Repository) GetMatch(
 		&m.BriefFinalDescription,
 		&m.Description,
 		&m.IsPublic,
+		&m.GameScheduledAt,
 		&m.GameStartAt,
 		&m.StoryStartAt,
 		&m.StoryEndAt,
@@ -105,7 +106,7 @@ func (r *Repository) ListMatchesByMasterUUID(
         SELECT 
             uuid, campaign_uuid, title,
 						brief_initial_description, brief_final_description,
-						is_public, game_start_at,
+						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
         FROM matches
@@ -129,6 +130,7 @@ func (r *Repository) ListMatchesByMasterUUID(
 			&m.BriefInitialDescription,
 			&m.BriefFinalDescription,
 			&m.IsPublic,
+			&m.GameScheduledAt,
 			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,
@@ -168,14 +170,14 @@ func (r *Repository) ListPublicUpcomingMatches(
         SELECT 
             uuid, campaign_uuid, title,
             brief_initial_description, brief_final_description,
-            is_public, game_start_at,
+            is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
         FROM matches
         WHERE is_public = true
-        AND game_start_at > $1
+        AND game_scheduled_at > $1
         AND master_uuid != $2
-        ORDER BY game_start_at ASC
+        ORDER BY game_scheduled_at ASC
     `
 	rows, err := tx.Query(ctx, query, after, masterUUID)
 	if err != nil {
@@ -193,6 +195,7 @@ func (r *Repository) ListPublicUpcomingMatches(
 			&m.BriefInitialDescription,
 			&m.BriefFinalDescription,
 			&m.IsPublic,
+			&m.GameScheduledAt,
 			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,

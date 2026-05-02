@@ -21,7 +21,7 @@ type CreateMatchInput struct {
 	BriefInitialDescription string
 	Description             string
 	IsPublic                bool
-	GameStartAt             time.Time
+	GameScheduledAt         time.Time
 	StoryStartAt            time.Time
 }
 
@@ -54,11 +54,11 @@ func (uc *CreateMatchUC) CreateMatch(
 		return nil, ErrMaxBriefDescLength
 	}
 
-	if input.GameStartAt.Before(time.Now()) {
-		return nil, ErrMinOfGameStartAt
+	if input.GameScheduledAt.Before(time.Now()) {
+		return nil, ErrMinOfGameScheduledAt
 	}
-	if input.GameStartAt.After(time.Now().AddDate(1, 0, 0)) {
-		return nil, ErrMaxOfGameStartAt
+	if input.GameScheduledAt.After(time.Now().AddDate(1, 0, 0)) {
+		return nil, ErrMaxOfGameScheduledAt
 	}
 
 	campaign, err := uc.campaignRepo.GetCampaignStoryDates(ctx, input.CampaignUUID)
@@ -87,7 +87,7 @@ func (uc *CreateMatchUC) CreateMatch(
 		input.BriefInitialDescription,
 		input.Description,
 		input.IsPublic,
-		input.GameStartAt,
+		input.GameScheduledAt,
 		input.StoryStartAt,
 	)
 	if err != nil {

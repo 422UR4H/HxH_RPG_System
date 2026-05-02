@@ -33,3 +33,4 @@ game
 .local
 *.png
 .superpowers/
+api

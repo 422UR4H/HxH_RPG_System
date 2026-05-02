@@ -39,7 +39,7 @@ func TestGetMatchHandler(t *testing.T) {
 					BriefInitialDescription: "Brief",
 					Description:             "Full",
 					IsPublic:                true,
-					GameStartAt:             now,
+					GameScheduledAt:         now,
 					StoryStartAt:            now,
 					CreatedAt:               now,
 					UpdatedAt:               now,

@@ -135,7 +135,7 @@ func InsertTestMatch(t *testing.T, pool *pgxpool.Pool, masterUUID, campaignUUID,
 
 	var matchUUID string
 	err := pool.QueryRow(ctx,
-		`INSERT INTO matches (master_uuid, campaign_uuid, title, game_start_at, story_start_at)
+		`INSERT INTO matches (master_uuid, campaign_uuid, title, game_scheduled_at, story_start_at)
 		 VALUES ($1, $2, $3, NOW() + INTERVAL '1 day', CURRENT_DATE) RETURNING uuid`,
 		masterUUID, campaignUUID, title,
 	).Scan(&matchUUID)

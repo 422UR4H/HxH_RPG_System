@@ -37,7 +37,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"brief_initial_description": "brief",
 				"description":              "full",
 				"is_public":                true,
-				"game_start_at":            "2026-06-15T19:30:00Z",
+				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
@@ -49,7 +49,7 @@ func TestCreateMatchHandler(t *testing.T) {
 					BriefInitialDescription: input.BriefInitialDescription,
 					Description:             input.Description,
 					IsPublic:                input.IsPublic,
-					GameStartAt:             input.GameStartAt,
+					GameScheduledAt:         input.GameScheduledAt,
 					StoryStartAt:            input.StoryStartAt,
 					CreatedAt:               now,
 					UpdatedAt:               now,
@@ -65,7 +65,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"brief_initial_description": "brief",
 				"description":              "full",
 				"is_public":                true,
-				"game_start_at":            "2026-06-15T19:30:00Z",
+				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
@@ -81,7 +81,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"brief_initial_description": "brief",
 				"description":              "full",
 				"is_public":                true,
-				"game_start_at":            "2026-06-15T19:30:00Z",
+				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
@@ -97,7 +97,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"brief_initial_description": "brief",
 				"description":              "full",
 				"is_public":                true,
-				"game_start_at":            "2026-06-15T19:30:00Z",
+				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
@@ -113,7 +113,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"brief_initial_description": "brief",
 				"description":              "full",
 				"is_public":                true,
-				"game_start_at":            "2026-06-15T19:30:00Z",
+				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {

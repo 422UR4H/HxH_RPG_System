@@ -15,7 +15,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 )
 
-func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic bool, gameStartAt time.Time) *entityMatch.Match {
+func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic bool, gameScheduledAt time.Time) *entityMatch.Match {
 	now := time.Now().Truncate(time.Microsecond)
 	return &entityMatch.Match{
 		UUID:                    uuid.New(),
@@ -25,7 +25,7 @@ func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic boo
 		BriefInitialDescription: "Brief description for " + title,
 		Description:             "Full description for " + title,
 		IsPublic:                isPublic,
-		GameStartAt:             gameStartAt.Truncate(time.Microsecond),
+		GameScheduledAt:         gameScheduledAt.Truncate(time.Microsecond),
 		StoryStartAt:            now,
 		CreatedAt:               now,
 		UpdatedAt:               now,

@@ -36,7 +36,7 @@ func TestListPublicUpcomingMatchesHandler(t *testing.T) {
 						Title:                   "Public Match",
 						BriefInitialDescription: "Upcoming",
 						IsPublic:                true,
-						GameStartAt:             now.Add(24 * time.Hour),
+						GameScheduledAt:         now.Add(24 * time.Hour),
 						StoryStartAt:            now,
 						CreatedAt:               now,
 						UpdatedAt:               now,
