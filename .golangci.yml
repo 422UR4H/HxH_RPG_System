@@ -9,5 +9,5 @@ linters:
 
 issues:
   # Only report issues in new/changed code, not pre-existing ones.
-  # This lets us adopt linting gradually without blocking CI.
-  new-from-rev: main
+  # Uses origin/main because CI has no local main branch ref.
+  new-from-rev: origin/main
