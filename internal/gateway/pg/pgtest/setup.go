@@ -145,6 +145,22 @@ func InsertTestMatch(t *testing.T, pool *pgxpool.Pool, masterUUID, campaignUUID,
 	return matchUUID
 }
 
+func InsertTestEnrollment(t *testing.T, pool *pgxpool.Pool, matchUUID, sheetUUID, status string) string {
+	t.Helper()
+	ctx := context.Background()
+
+	var enrollmentUUID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO enrollments (uuid, match_uuid, character_sheet_uuid, status, created_at)
+		 VALUES (gen_random_uuid(), $1, $2, $3, NOW()) RETURNING uuid`,
+		matchUUID, sheetUUID, status,
+	).Scan(&enrollmentUUID)
+	if err != nil {
+		t.Fatalf("failed to insert test enrollment: %v", err)
+	}
+	return enrollmentUUID
+}
+
 func InsertTestCharacterSheet(t *testing.T, pool *pgxpool.Pool, playerUUID *string, masterUUID *string, nick string) string {
 	t.Helper()
 	ctx := context.Background()

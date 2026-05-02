@@ -252,6 +252,57 @@ func TestListPublicUpcomingMatches(t *testing.T) {
 	})
 }
 
+func TestStartMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm8", "gm8@hunter.com", "pass"))
+	campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Start Match Campaign"))
+
+	t.Run("happy path", func(t *testing.T) {
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Start Match Session"))
+
+		if err := repo.StartMatch(ctx, matchUUID); err != nil {
+			t.Fatalf("StartMatch() unexpected error: %v", err)
+		}
+
+		got, err := repo.GetMatch(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("GetMatch() after StartMatch: %v", err)
+		}
+		if got.GameStartAt == nil {
+			t.Error("GameStartAt = nil, want non-nil")
+		}
+	})
+
+	t.Run("already started returns error", func(t *testing.T) {
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Already Started Session"))
+
+		if err := repo.StartMatch(ctx, matchUUID); err != nil {
+			t.Fatalf("StartMatch() first call unexpected error: %v", err)
+		}
+
+		err := repo.StartMatch(ctx, matchUUID)
+		if err == nil {
+			t.Fatal("StartMatch() second call expected error, got nil")
+		}
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("error = %v, want %v", err, pgMatch.ErrMatchNotFound)
+		}
+	})
+
+	t.Run("non-existent match returns error", func(t *testing.T) {
+		err := repo.StartMatch(ctx, uuid.New())
+		if err == nil {
+			t.Fatal("StartMatch() expected error, got nil")
+		}
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("error = %v, want %v", err, pgMatch.ErrMatchNotFound)
+		}
+	})
+}
+
 func mustParseUUID(t *testing.T, s string) uuid.UUID {
 	t.Helper()
 	id, err := uuid.Parse(s)
