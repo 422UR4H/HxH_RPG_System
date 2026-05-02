@@ -31,7 +31,9 @@ func (m *Manager) InitNenHexagon(nenHexagon *NenHexagon) error {
 		return ErrNenHexAlreadyInitialized
 	}
 	m.nenHexagon = nenHexagon
-	m.hatsu.SetCategoryPercents(nenHexagon.GetCategoryPercents())
+	if err := m.hatsu.SetCategoryPercents(nenHexagon.GetCategoryPercents()); err != nil {
+		return fmt.Errorf("failed to set category percents: %w", err)
+	}
 	return nil
 }
 
@@ -208,7 +210,9 @@ func (m *Manager) IncreaseCurrHexValue() (
 		return nil, ErrNenHexNotInitialized
 	}
 	result := m.nenHexagon.IncreaseCurrHexValue()
-	m.hatsu.SetCategoryPercents(result.PercentList)
+	if err := m.hatsu.SetCategoryPercents(result.PercentList); err != nil {
+		return nil, fmt.Errorf("failed to set category percents: %w", err)
+	}
 
 	return result, nil
 }
@@ -220,7 +224,9 @@ func (m *Manager) DecreaseCurrHexValue() (
 		return nil, ErrNenHexNotInitialized
 	}
 	result := m.nenHexagon.DecreaseCurrHexValue()
-	m.hatsu.SetCategoryPercents(result.PercentList)
+	if err := m.hatsu.SetCategoryPercents(result.PercentList); err != nil {
+		return nil, fmt.Errorf("failed to set category percents: %w", err)
+	}
 
 	return result, nil
 }
@@ -230,7 +236,9 @@ func (m *Manager) ResetNenCategory() (int, error) {
 		return -1, ErrNenHexNotInitialized
 	}
 	currHexValue := m.nenHexagon.ResetCategory()
-	m.hatsu.SetCategoryPercents(m.nenHexagon.GetCategoryPercents())
+	if err := m.hatsu.SetCategoryPercents(m.nenHexagon.GetCategoryPercents()); err != nil {
+		return -1, fmt.Errorf("failed to set category percents: %w", err)
+	}
 
 	return currHexValue, nil
 }

@@ -15,12 +15,14 @@ func newTestSkillsManager() *skill.Manager {
 	return skill.NewSkillsManager(exp, mockAbilityExp)
 }
 
-func initManagerWithSkills(m *skill.Manager, names ...enum.SkillName) {
+func initManagerWithSkills(t testing.TB, m *skill.Manager, names ...enum.SkillName) {
 	skills := make(map[enum.SkillName]skill.ISkill)
 	for _, name := range names {
 		skills[name] = newTestCommonSkill(name, 3)
 	}
-	m.Init(skills)
+	if err := m.Init(skills); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSkillsManager_Init(t *testing.T) {
@@ -39,7 +41,7 @@ func TestSkillsManager_Init(t *testing.T) {
 
 func TestSkillsManager_Get(t *testing.T) {
 	m := newTestSkillsManager()
-	initManagerWithSkills(m, enum.Vitality, enum.Energy)
+	initManagerWithSkills(t, m, enum.Vitality, enum.Energy)
 
 	t.Run("existing skill", func(t *testing.T) {
 		sk, err := m.Get(enum.Vitality)
@@ -61,7 +63,7 @@ func TestSkillsManager_Get(t *testing.T) {
 
 func TestSkillsManager_GetValueForTestOf(t *testing.T) {
 	m := newTestSkillsManager()
-	initManagerWithSkills(m, enum.Vitality)
+	initManagerWithSkills(t, m, enum.Vitality)
 
 	val, err := m.GetValueForTestOf(enum.Vitality)
 	if err != nil {
@@ -74,7 +76,7 @@ func TestSkillsManager_GetValueForTestOf(t *testing.T) {
 
 func TestSkillsManager_BuffManagement(t *testing.T) {
 	m := newTestSkillsManager()
-	initManagerWithSkills(m, enum.Vitality)
+	initManagerWithSkills(t, m, enum.Vitality)
 
 	m.SetBuff(enum.Vitality, 5)
 
@@ -96,7 +98,7 @@ func TestSkillsManager_BuffManagement(t *testing.T) {
 
 func TestSkillsManager_AddJointSkill(t *testing.T) {
 	m := newTestSkillsManager()
-	initManagerWithSkills(m, enum.Vision, enum.Stealth)
+	initManagerWithSkills(t, m, enum.Vision, enum.Stealth)
 
 	js := newTestJointSkill("hunt", 3, enum.Vision, enum.Stealth)
 
@@ -107,7 +109,9 @@ func TestSkillsManager_AddJointSkill(t *testing.T) {
 	})
 
 	mockAbilityExp := &mockCascadeUpgrade{}
-	js.Init(mockAbilityExp)
+	if err := js.Init(mockAbilityExp); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("initialized joint skill accepted", func(t *testing.T) {
 		if err := m.AddJointSkill(js); err != nil {
@@ -117,7 +121,9 @@ func TestSkillsManager_AddJointSkill(t *testing.T) {
 
 	t.Run("duplicate joint skill rejected", func(t *testing.T) {
 		js2 := newTestJointSkill("hunt", 3, enum.Vision)
-		js2.Init(mockAbilityExp)
+		if err := js2.Init(mockAbilityExp); err != nil {
+			t.Fatal(err)
+		}
 		if err := m.AddJointSkill(js2); err == nil {
 			t.Error("should reject duplicate joint skill name")
 		}
@@ -136,7 +142,7 @@ func TestSkillsManager_AddJointSkill(t *testing.T) {
 
 func TestSkillsManager_IncreaseExp(t *testing.T) {
 	m := newTestSkillsManager()
-	initManagerWithSkills(m, enum.Defense)
+	initManagerWithSkills(t, m, enum.Defense)
 
 	values := experience.NewUpgradeCascade(50)
 	if err := m.IncreaseExp(values, enum.Defense); err != nil {
@@ -155,7 +161,7 @@ func TestSkillsManager_IncreaseExp(t *testing.T) {
 
 func TestSkillsManager_BatchGetters(t *testing.T) {
 	m := newTestSkillsManager()
-	initManagerWithSkills(m, enum.Vitality, enum.Energy, enum.Defense)
+	initManagerWithSkills(t, m, enum.Vitality, enum.Energy, enum.Defense)
 
 	levels := m.GetSkillsLevel()
 	if len(levels) != 3 {

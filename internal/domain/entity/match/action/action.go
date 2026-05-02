@@ -23,8 +23,8 @@ type Action struct {
 	Defense *Defense
 	Dodge   *Dodge
 
-	openedAt    *time.Time
-	confirmedAt *time.Time
+	openedAt    *time.Time  //nolint:unused // WIP: match system under development
+	confirmedAt *time.Time  //nolint:unused // WIP: match system under development
 }
 
 func NewAction(

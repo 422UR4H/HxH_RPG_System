@@ -17,7 +17,7 @@ type Match struct {
 	Description             string
 	IsPublic                bool
 	scenes                  []*scene.Scene
-	events                  []GameEvent
+	events                  []GameEvent //nolint:unused // WIP: match system under development
 	GameScheduledAt         time.Time
 	GameStartAt             *time.Time
 	StoryStartAt            time.Time

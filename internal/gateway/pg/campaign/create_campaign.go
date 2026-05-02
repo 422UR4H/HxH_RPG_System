@@ -14,13 +14,11 @@ func (r *Repository) CreateCampaign(ctx context.Context, campaign *campaign.Camp
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			// TODO: improve error handling
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -44,6 +42,9 @@ func (r *Repository) CreateCampaign(ctx context.Context, campaign *campaign.Camp
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save campaign: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }

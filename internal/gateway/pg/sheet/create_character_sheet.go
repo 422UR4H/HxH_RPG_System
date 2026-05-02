@@ -16,13 +16,11 @@ func (r *Repository) CreateCharacterSheet(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			// TODO: maybe throws other error
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -129,5 +127,8 @@ func (r *Repository) CreateCharacterSheet(
 		}
 	}
 
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return nil
 }

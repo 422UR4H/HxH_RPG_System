@@ -18,12 +18,10 @@ func (r *Repository) CreateSession(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -39,6 +37,9 @@ func (r *Repository) CreateSession(
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }

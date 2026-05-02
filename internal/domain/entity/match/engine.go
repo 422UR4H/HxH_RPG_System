@@ -39,7 +39,6 @@ func (e *Engine) ChangeScene(initiative *action.Initiative) {
 	}
 	e.sceneCategory = enum.Battle
 
-	if initiative != nil {
-
+	if initiative != nil { //nolint:staticcheck // TODO: process initiative actions
 	}
 }

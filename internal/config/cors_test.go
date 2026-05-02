@@ -8,7 +8,9 @@ import (
 )
 
 func TestLoadCORS_DefaultOrigins(t *testing.T) {
-	os.Unsetenv("ALLOWED_ORIGINS")
+	if err := os.Unsetenv("ALLOWED_ORIGINS"); err != nil {
+		t.Fatal(err)
+	}
 
 	c := config.LoadCORS()
 

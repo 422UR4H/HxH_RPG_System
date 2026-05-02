@@ -14,7 +14,7 @@ func (r *Repository) CreateScenario(ctx context.Context, scenario *scenario.Scen
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			// TODO: refactor panic to
 			// err = fmt.Errorf("internal error: recovered from panic: %v", p)
 			panic(p)
@@ -25,9 +25,7 @@ func (r *Repository) CreateScenario(ctx context.Context, scenario *scenario.Scen
 			//     zap.Stack("stack"))
 			// err = errors.New("internal server error during database operation")
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -47,6 +45,9 @@ func (r *Repository) CreateScenario(ctx context.Context, scenario *scenario.Scen
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save scenario: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }

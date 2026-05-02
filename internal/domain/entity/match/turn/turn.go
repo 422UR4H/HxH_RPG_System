@@ -8,12 +8,12 @@ import (
 )
 
 type Turn struct {
-	masterActions []action.MasterAction
+	masterActions []action.MasterAction //nolint:unused // WIP: match system under development
 	actions       []action.Action
 	events        []GameEvent
 	mode          enum.TurnMode
-	coast         *int // if nil, the turn is free (no race in this turn)
-	finishedAt    *time.Time
+	coast         *int //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
+	finishedAt    *time.Time //nolint:unused // WIP: match system under development
 }
 
 func NewTurn(mode enum.TurnMode) *Turn {

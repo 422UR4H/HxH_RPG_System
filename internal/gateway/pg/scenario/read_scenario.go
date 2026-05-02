@@ -18,12 +18,10 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -105,6 +103,9 @@ func (r *Repository) GetScenario(ctx context.Context, id uuid.UUID) (*scenarioEn
 		return nil, ErrScenarioNotFound
 	}
 	scenario.Campaigns = campaigns
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return scenario, nil
 }
 
@@ -117,12 +118,10 @@ func (r *Repository) ListScenariosByUserUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -157,6 +156,9 @@ func (r *Repository) ListScenariosByUserUUID(
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over scenarios summary: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return scenarios, nil
 }

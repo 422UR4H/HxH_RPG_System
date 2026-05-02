@@ -74,7 +74,9 @@ func (cs *CharacterSheet) IncreaseExpForSkill(
 	values *experience.UpgradeCascade, name enum.SkillName,
 ) error {
 	err := cs.skill.IncreaseExp(values, name)
-	cs.status.Upgrade()
+	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
+		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+	}
 	return err
 }
 
@@ -153,7 +155,9 @@ func (cs *CharacterSheet) IncreaseExpForPrinciple(
 	values *experience.UpgradeCascade, name enum.PrincipleName,
 ) error {
 	err := cs.principle.IncreaseExpByPrinciple(name, values)
-	cs.status.Upgrade()
+	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
+		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+	}
 	return err
 }
 
@@ -161,7 +165,9 @@ func (cs *CharacterSheet) IncreaseExpForCategory(
 	values *experience.UpgradeCascade, name enum.CategoryName,
 ) error {
 	err := cs.principle.IncreaseExpByCategory(name, values)
-	cs.status.Upgrade()
+	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
+		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+	}
 	return err
 }
 
@@ -169,7 +175,9 @@ func (cs *CharacterSheet) IncreaseExpForProficiency(
 	values *experience.UpgradeCascade, name enum.WeaponName,
 ) error {
 	err := cs.proficiency.IncreaseExp(values, name)
-	cs.status.Upgrade()
+	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
+		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+	}
 	return err
 }
 
@@ -177,7 +185,9 @@ func (cs *CharacterSheet) IncreaseExpForJointProficiency(
 	values *experience.UpgradeCascade, name string,
 ) error {
 	err := cs.proficiency.IncreaseExpForJoint(values, name)
-	cs.status.Upgrade()
+	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
+		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+	}
 	return err
 }
 
@@ -186,7 +196,9 @@ func (cs *CharacterSheet) IncreaseExpForMentals(
 	values *experience.UpgradeCascade, name enum.AttributeName,
 ) error {
 	err := cs.attribute.IncreaseExpForMentals(values, name)
-	cs.status.Upgrade()
+	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
+		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+	}
 	return err
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
-func newTestPrinciplesManager() *spiritual.Manager {
+func newTestPrinciplesManager(t testing.TB) *spiritual.Manager {
 	table := experience.NewDefaultExpTable()
 	flame := &mockGameAttribute{level: 1}
 	conscience := &mockGameAttribute{power: 2}
@@ -35,13 +35,15 @@ func newTestPrinciplesManager() *spiritual.Manager {
 		exp := *experience.NewExperience(table)
 		categories[name] = *spiritual.NewNenCategory(exp, name, hatsu)
 	}
-	hatsu.Init(categories)
+	if err := hatsu.Init(categories); err != nil {
+		t.Fatal(err)
+	}
 
 	return spiritual.NewPrinciplesManager(principles, hexagon, hatsu)
 }
 
 func TestPrinciplesManager_Get(t *testing.T) {
-	m := newTestPrinciplesManager()
+	m := newTestPrinciplesManager(t)
 
 	t.Run("existing principle", func(t *testing.T) {
 		p, err := m.Get(enum.Ten)
@@ -65,7 +67,7 @@ func TestPrinciplesManager_Get(t *testing.T) {
 }
 
 func TestPrinciplesManager_IncreaseExpByPrinciple(t *testing.T) {
-	m := newTestPrinciplesManager()
+	m := newTestPrinciplesManager(t)
 	values := experience.NewUpgradeCascade(50)
 
 	if err := m.IncreaseExpByPrinciple(enum.Ten, values); err != nil {
@@ -89,7 +91,7 @@ func TestPrinciplesManager_IncreaseExpByPrinciple(t *testing.T) {
 }
 
 func TestPrinciplesManager_IncreaseExpByPrinciple_NotFound(t *testing.T) {
-	m := newTestPrinciplesManager()
+	m := newTestPrinciplesManager(t)
 	values := experience.NewUpgradeCascade(50)
 
 	err := m.IncreaseExpByPrinciple("NonExistent", values)
@@ -137,7 +139,7 @@ func TestPrinciplesManager_InitNenHexagon(t *testing.T) {
 }
 
 func TestPrinciplesManager_HexagonOperations(t *testing.T) {
-	m := newTestPrinciplesManager()
+	m := newTestPrinciplesManager(t)
 
 	t.Run("initial hex value", func(t *testing.T) {
 		val, err := m.GetCurrHexValue()
@@ -181,7 +183,7 @@ func TestPrinciplesManager_HexagonOperations(t *testing.T) {
 }
 
 func TestPrinciplesManager_BatchGetters(t *testing.T) {
-	m := newTestPrinciplesManager()
+	m := newTestPrinciplesManager(t)
 	levels := m.GetLevelOfPrinciples()
 
 	// Should have 10 principles (all except Hatsu)

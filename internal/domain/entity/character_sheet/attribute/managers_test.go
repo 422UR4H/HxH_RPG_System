@@ -143,7 +143,9 @@ func TestAttributeManager_SetBuff_NotFound(t *testing.T) {
 func TestAttributeManager_RemoveBuff(t *testing.T) {
 	mgr, _ := newTestManager()
 
-	mgr.SetBuff(enum.Resistance, 5)
+	if _, err := mgr.SetBuff(enum.Resistance, 5); err != nil {
+		t.Fatal(err)
+	}
 	buffs, err := mgr.RemoveBuff(enum.Resistance)
 	if err != nil {
 		t.Fatalf("RemoveBuff error: %v", err)
@@ -252,7 +254,9 @@ func TestSpiritualManager_SetBuff(t *testing.T) {
 func TestSpiritualManager_RemoveBuff(t *testing.T) {
 	mgr, _ := newTestSpiritualManager()
 
-	mgr.SetBuff(enum.Flame, 7)
+	if _, err := mgr.SetBuff(enum.Flame, 7); err != nil {
+		t.Fatal(err)
+	}
 	buffs, err := mgr.RemoveBuff(enum.Flame)
 	if err != nil {
 		t.Fatalf("RemoveBuff error: %v", err)

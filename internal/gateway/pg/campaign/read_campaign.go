@@ -22,12 +22,10 @@ func (r *Repository) GetCampaign(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -206,6 +204,9 @@ func (r *Repository) GetCampaign(
 	}
 	c.Matches = matches
 
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return &c, nil
 }
 
@@ -218,12 +219,10 @@ func (r *Repository) ListCampaignsByMasterUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -269,6 +268,9 @@ func (r *Repository) ListCampaignsByMasterUUID(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over campaigns summary: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return campaigns, nil
 }
 
@@ -299,12 +301,10 @@ func (r *Repository) GetCampaignStoryDates(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -329,6 +329,9 @@ func (r *Repository) GetCampaignStoryDates(
 		}
 		return nil, fmt.Errorf("failed to fetch campaign story dates: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return &c, nil
 }
 
@@ -341,12 +344,10 @@ func (r *Repository) CountCampaignsByMasterUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -359,6 +360,9 @@ func (r *Repository) CountCampaignsByMasterUUID(
 	err = tx.QueryRow(ctx, query, masterUUID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count user campaigns: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return count, nil
 }

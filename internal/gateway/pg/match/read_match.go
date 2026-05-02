@@ -20,12 +20,10 @@ func (r *Repository) GetMatch(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -62,6 +60,9 @@ func (r *Repository) GetMatch(
 		}
 		return nil, fmt.Errorf("failed to fetch match: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return &m, nil
 }
 
@@ -93,12 +94,10 @@ func (r *Repository) ListMatchesByMasterUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -145,6 +144,9 @@ func (r *Repository) ListMatchesByMasterUUID(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over match summaries: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return matches, nil
 }
 
@@ -157,12 +159,10 @@ func (r *Repository) ListPublicUpcomingMatches(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
+			_ = tx.Rollback(ctx)
 		}
 	}()
 
@@ -209,6 +209,9 @@ func (r *Repository) ListPublicUpcomingMatches(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over public match summaries: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return matches, nil
 }
