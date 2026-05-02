@@ -32,13 +32,23 @@ type Handler struct {
 	hub            *Hub
 	matchRepo      MatchRepository
 	enrollmentRepo EnrollmentChecker
+	startMatchUC   IStartMatch
+	kickPlayerUC   IKickPlayer
 }
 
-func NewHandler(hub *Hub, matchRepo MatchRepository, enrollmentRepo EnrollmentChecker) *Handler {
+func NewHandler(
+	hub *Hub,
+	matchRepo MatchRepository,
+	enrollmentRepo EnrollmentChecker,
+	startMatchUC IStartMatch,
+	kickPlayerUC IKickPlayer,
+) *Handler {
 	return &Handler{
 		hub:            hub,
 		matchRepo:      matchRepo,
 		enrollmentRepo: enrollmentRepo,
+		startMatchUC:   startMatchUC,
+		kickPlayerUC:   kickPlayerUC,
 	}
 }
 
@@ -86,7 +96,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		nickname = userUUID.String()[:8]
 	}
 
-	room := h.hub.GetOrCreateRoom(matchUUID, masterUUID)
+	room := h.hub.GetOrCreateRoom(matchUUID, masterUUID, h.startMatchUC, h.kickPlayerUC)
 	client := NewClient(userUUID, conn, nickname)
 
 	room.Register(client)

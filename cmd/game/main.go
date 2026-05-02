@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
@@ -39,8 +41,11 @@ func main() {
 	matchRepository := matchPg.NewRepository(pgPool)
 	enrollmentRepository := enrollmentPg.NewRepository(pgPool)
 
+	startMatchUC := domainMatch.NewStartMatchUC(matchRepository, enrollmentRepository)
+	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
+
 	hub := game.NewHub()
-	handler := game.NewHandler(hub, matchRepository, enrollmentRepository)
+	handler := game.NewHandler(hub, matchRepository, enrollmentRepository, startMatchUC, kickPlayerUC)
 	server := game.NewServer(addr, hub, handler)
 
 	quit := make(chan os.Signal, 1)
