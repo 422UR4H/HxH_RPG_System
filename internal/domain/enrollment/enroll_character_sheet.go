@@ -68,15 +68,21 @@ func (uc *EnrollCharacterInMatchUC) Enroll(
 		return ErrCharacterAlreadyEnrolled
 	}
 
-	campaignUUID, err := uc.matchRepo.GetMatchCampaignUUID(ctx, matchUUID)
+	match, err := uc.matchRepo.GetMatch(ctx, matchUUID)
 	if err == matchPg.ErrMatchNotFound {
 		return matchDomain.ErrMatchNotFound
 	}
 	if err != nil {
 		return err
 	}
+	if match.GameStartAt != nil {
+		return ErrMatchAlreadyStarted
+	}
+	if match.StoryEndAt != nil {
+		return ErrMatchAlreadyFinished
+	}
 	if sheetRelationship.CampaignUUID == nil ||
-		*sheetRelationship.CampaignUUID != campaignUUID {
+		*sheetRelationship.CampaignUUID != match.CampaignUUID {
 		return ErrCharacterNotInCampaign
 	}
 	return uc.repo.EnrollCharacterSheet(ctx, matchUUID, sheetUUID)

@@ -50,15 +50,21 @@ func (uc *RejectEnrollmentUC) Reject(
 	}
 
 	// TODO: check if match has already started (temporal guard)
-	campaignUUID, err := uc.matchRepo.GetMatchCampaignUUID(ctx, matchUUID)
+	match, err := uc.matchRepo.GetMatch(ctx, matchUUID)
 	if err == matchPg.ErrMatchNotFound {
 		return matchDomain.ErrMatchNotFound
 	}
 	if err != nil {
 		return err
 	}
+	if match.GameStartAt != nil {
+		return ErrMatchAlreadyStarted
+	}
+	if match.StoryEndAt != nil {
+		return ErrMatchAlreadyFinished
+	}
 
-	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, campaignUUID)
+	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, match.CampaignUUID)
 	if err == campaignPg.ErrCampaignNotFound {
 		return campaignDomain.ErrCampaignNotFound
 	}

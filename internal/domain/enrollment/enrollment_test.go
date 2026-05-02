@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/testutil"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
@@ -41,8 +43,11 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			playerUUID: playerUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
@@ -131,8 +136,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			playerUUID: playerUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return uuid.Nil, matchPg.ErrMatchNotFound
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return nil, matchPg.ErrMatchNotFound
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
@@ -152,8 +157,11 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			playerUUID: playerUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return uuid.New(), nil // different campaign
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    uuid.New(), // different campaign
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
@@ -173,8 +181,11 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			playerUUID: playerUUID,
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
@@ -250,8 +261,11 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -271,8 +285,11 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -318,8 +335,8 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return uuid.Nil, matchPg.ErrMatchNotFound
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return nil, matchPg.ErrMatchNotFound
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{},
@@ -335,8 +352,11 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -356,8 +376,11 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -380,8 +403,11 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			matchMock: &testutil.MockMatchRepo{
-				GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-					return campaignUUID, nil
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+					}, nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -390,6 +416,50 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			wantErr: errors.New("db error"),
+		},
+		{
+			name:       "match already started",
+			enrollUUID: enrollmentUUID,
+			masterUUID: masterUUID,
+			enrollMock: &testutil.MockEnrollmentRepo{
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
+				},
+			},
+			matchMock: &testutil.MockMatchRepo{
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					gameStartAt := time.Now()
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+						GameStartAt:     &gameStartAt,
+					}, nil
+				},
+			},
+			campaignMock: &testutil.MockCampaignRepo{},
+			wantErr:      enrollment.ErrMatchAlreadyStarted,
+		},
+		{
+			name:       "match already finished",
+			enrollUUID: enrollmentUUID,
+			masterUUID: masterUUID,
+			enrollMock: &testutil.MockEnrollmentRepo{
+				GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+					return "pending", matchUUID, nil
+				},
+			},
+			matchMock: &testutil.MockMatchRepo{
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					storyEndAt := time.Now()
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+						StoryEndAt:      &storyEndAt,
+					}, nil
+				},
+			},
+			campaignMock: &testutil.MockCampaignRepo{},
+			wantErr:      enrollment.ErrMatchAlreadyFinished,
 		},
 	}
 
@@ -440,8 +510,11 @@ return "pending", matchUUID, nil
 },
 },
 matchMock: &testutil.MockMatchRepo{
-GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-return campaignUUID, nil
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+}, nil
 },
 },
 campaignMock: &testutil.MockCampaignRepo{
@@ -461,8 +534,11 @@ return "accepted", matchUUID, nil
 },
 },
 matchMock: &testutil.MockMatchRepo{
-GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-return campaignUUID, nil
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+}, nil
 },
 },
 campaignMock: &testutil.MockCampaignRepo{
@@ -508,8 +584,8 @@ return "pending", matchUUID, nil
 },
 },
 matchMock: &testutil.MockMatchRepo{
-GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-return uuid.Nil, matchPg.ErrMatchNotFound
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+return nil, matchPg.ErrMatchNotFound
 },
 },
 campaignMock: &testutil.MockCampaignRepo{},
@@ -525,8 +601,11 @@ return "pending", matchUUID, nil
 },
 },
 matchMock: &testutil.MockMatchRepo{
-GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-return campaignUUID, nil
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+}, nil
 },
 },
 campaignMock: &testutil.MockCampaignRepo{
@@ -546,8 +625,11 @@ return "pending", matchUUID, nil
 },
 },
 matchMock: &testutil.MockMatchRepo{
-GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-return campaignUUID, nil
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+}, nil
 },
 },
 campaignMock: &testutil.MockCampaignRepo{
@@ -570,8 +652,11 @@ return errors.New("db error")
 },
 },
 matchMock: &testutil.MockMatchRepo{
-GetMatchCampaignUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-return campaignUUID, nil
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+}, nil
 },
 },
 campaignMock: &testutil.MockCampaignRepo{
@@ -580,6 +665,50 @@ return masterUUID, nil
 },
 },
 wantErr: errors.New("db error"),
+},
+{
+name:       "match already started",
+enrollUUID: enrollmentUUID,
+masterUUID: masterUUID,
+enrollMock: &testutil.MockEnrollmentRepo{
+GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+return "pending", matchUUID, nil
+},
+},
+matchMock: &testutil.MockMatchRepo{
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+gameStartAt := time.Now()
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+GameStartAt:     &gameStartAt,
+}, nil
+},
+},
+campaignMock: &testutil.MockCampaignRepo{},
+wantErr:      enrollment.ErrMatchAlreadyStarted,
+},
+{
+name:       "match already finished",
+enrollUUID: enrollmentUUID,
+masterUUID: masterUUID,
+enrollMock: &testutil.MockEnrollmentRepo{
+GetEnrollmentByUUIDFn: func(ctx context.Context, id uuid.UUID) (string, uuid.UUID, error) {
+return "pending", matchUUID, nil
+},
+},
+matchMock: &testutil.MockMatchRepo{
+GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+storyEndAt := time.Now()
+return &matchEntity.Match{
+CampaignUUID:    campaignUUID,
+GameScheduledAt: time.Now(),
+StoryEndAt:      &storyEndAt,
+}, nil
+},
+},
+campaignMock: &testutil.MockCampaignRepo{},
+wantErr:      enrollment.ErrMatchAlreadyFinished,
 },
 }
 
