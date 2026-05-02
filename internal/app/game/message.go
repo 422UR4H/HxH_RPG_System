@@ -14,12 +14,14 @@ const (
 	MsgTypeRoomState    MessageType = "room_state"
 	MsgTypePlayerJoined MessageType = "player_joined"
 	MsgTypePlayerLeft   MessageType = "player_left"
+	MsgTypePlayerKicked MessageType = "player_kicked"
 	MsgTypeMatchStarted MessageType = "match_started"
 	MsgTypeChatMessage  MessageType = "chat_message"
 	MsgTypeError        MessageType = "error"
 
 	// Client → Server
 	MsgTypeStartMatch MessageType = "start_match"
+	MsgTypeKickPlayer MessageType = "kick_player"
 	MsgTypeChat       MessageType = "chat"
 )
 
@@ -55,6 +57,16 @@ type PlayerInfo struct {
 
 type ChatPayload struct {
 	Message string `json:"message"`
+}
+
+type KickPlayerPayload struct {
+	PlayerUUID uuid.UUID `json:"player_uuid"`
+}
+
+type PlayerKickedPayload struct {
+	UUID     uuid.UUID `json:"uuid"`
+	Nickname string    `json:"nickname"`
+	Reason   string    `json:"reason"`
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {
