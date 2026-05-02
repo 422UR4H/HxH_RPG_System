@@ -14,11 +14,34 @@
 
 ## File Map
 
-### New files
+### Refactoring files (Task 0)
+
+| File | Changes |
+|------|---------|
+| `migrations/20260501190000_refactor_game_start_at.sql` | Add `game_scheduled_at`, make `game_start_at` nullable, update indexes |
+| `internal/domain/entity/match/match.go` | `GameStartAt *time.Time` + `GameScheduledAt time.Time` |
+| `internal/domain/entity/match/summary.go` | Same changes as match.go |
+| `internal/domain/match/create_match.go` | `GameStartAt` → `GameScheduledAt` in input/validation |
+| `internal/domain/match/error.go` | `ErrMinOfGameScheduledAt`, `ErrMaxOfGameScheduledAt` |
+| `internal/domain/match/match_uc_test.go` | Update scheduled time field references |
+| `internal/gateway/pg/match/create_match.go` | INSERT `game_scheduled_at` instead of `game_start_at` |
+| `internal/gateway/pg/match/read_match.go` | SELECT both columns, update all Scan calls |
+| `internal/gateway/pg/campaign/read_campaign.go` | SELECT both columns, update Scan |
+| `internal/gateway/pg/match/match_integration_test.go` | Update test fixture |
+| `internal/gateway/pg/pgtest/setup.go` | Update `InsertTestMatch` |
+| `internal/app/api/match/create_match.go` | Request: `game_scheduled_at`, Response: both fields |
+| `internal/app/api/match/match_summary_response.go` | Add `GameScheduledAt` + nullable `GameStartAt` |
+| `internal/app/api/match/get_match.go` | Response: both fields |
+| `internal/app/api/match/create_match_test.go` | Update all body maps + mocks |
+| `internal/app/api/match/get_match_test.go` | Update mock fixture |
+| `internal/app/api/match/list_matches_test.go` | Update Summary fixtures |
+| `internal/app/api/match/list_public_upcoming_matches_test.go` | Update Summary fixture |
+| `internal/app/api/match/routes.go` | Update description text |
+
+### New files (Lobby feature)
 
 | File | Responsibility |
 |------|---------------|
-| `migrations/20260501190000_add_match_started_at.sql` | Add `started_at` nullable column to `matches` |
 | `internal/gateway/pg/match/start_match.go` | Gateway: `StartMatch(ctx, matchUUID)` UPDATE |
 | `internal/gateway/pg/enrollment/reject_by_player_and_match.go` | Gateway: reject enrollment by playerUUID + matchUUID |
 | `internal/gateway/pg/enrollment/reject_pending_enrollments.go` | Gateway: reject all pending enrollments for a match |
@@ -27,13 +50,12 @@
 | `internal/domain/enrollment/kick_player.go` | KickPlayerUC domain use case |
 | `internal/domain/enrollment/kick_player_test.go` | KickPlayerUC tests |
 
-### Modified files
+### Modified files (Lobby feature)
 
 | File | Changes |
 |------|---------|
-| `internal/domain/entity/match/match.go` | Add `StartedAt *time.Time` field |
 | `internal/domain/match/i_repository.go` | Add `StartMatch` method |
-| `internal/domain/match/error.go` | Add `ErrMatchAlreadyStarted`, `ErrMatchAlreadyFinished` |
+| `internal/domain/match/error.go` | Add `ErrMatchAlreadyStarted`, `ErrMatchAlreadyFinished`, `ErrNotMatchMaster` |
 | `internal/domain/enrollment/i_repository.go` | Add 3 new methods |
 | `internal/domain/enrollment/error.go` | Add `ErrMatchAlreadyStarted`, `ErrMatchAlreadyFinished`, `ErrPlayerNotEnrolled` |
 | `internal/domain/enrollment/accept_enrollment.go` | Add temporal guard |
@@ -41,7 +63,6 @@
 | `internal/domain/enrollment/enrollment_test.go` | Add temporal guard test cases |
 | `internal/domain/testutil/mock_match_repo.go` | Add `StartMatchFn` |
 | `internal/domain/testutil/mock_enrollment_repo.go` | Add 3 new Fn fields + methods |
-| `internal/gateway/pg/match/read_match.go` | Update `GetMatch` query/scan for `started_at` |
 | `internal/gateway/pg/enrollment/is_player_enrolled.go` | Add `AND e.status = 'accepted'` to query |
 | `internal/app/game/message.go` | Add `MsgTypeKickPlayer`, `MsgTypePlayerKicked`, `KickPlayerPayload`, `PlayerKickedPayload` |
 | `internal/app/game/room.go` | Inject UCs, enhance `StartMatch`/`handleClientMessage`/`sendRoomState` |
@@ -52,19 +73,61 @@
 
 ---
 
-### Task 1: Migration — add `started_at` column
+### Task 0: Refactoring — GameStartAt → GameScheduledAt
+
+> **IMPORTANT — Post-refactoring naming convention:**
+> After this task, all subsequent tasks use the **new** naming:
+> - `GameStartAt *time.Time` = when the match **actually started** (nullable, filled by `StartMatch`)
+> - `GameScheduledAt time.Time` = when the master **scheduled** the match (NOT NULL, set at creation)
+> - DB column `game_start_at` = nullable TIMESTAMP (actual start)
+> - DB column `game_scheduled_at` = NOT NULL TIMESTAMP (scheduled time)
+>
+> In downstream tasks, wherever the old plan references `StartedAt` or `started_at`, it now corresponds to `GameStartAt` / `game_start_at`. The old `GameStartAt` / `game_start_at` (scheduled time) is now `GameScheduledAt` / `game_scheduled_at`.
 
 **Files:**
-- Create: `migrations/20260501190000_add_match_started_at.sql`
+- Create: `migrations/20260501190000_refactor_game_start_at.sql`
+- Modify: `internal/domain/entity/match/match.go`
+- Modify: `internal/domain/entity/match/summary.go`
+- Modify: `internal/domain/match/create_match.go`
+- Modify: `internal/domain/match/error.go`
+- Modify: `internal/domain/match/match_uc_test.go`
+- Modify: `internal/gateway/pg/match/create_match.go`
+- Modify: `internal/gateway/pg/match/read_match.go`
+- Modify: `internal/gateway/pg/campaign/read_campaign.go`
+- Modify: `internal/gateway/pg/match/match_integration_test.go`
+- Modify: `internal/gateway/pg/pgtest/setup.go`
+- Modify: `internal/app/api/match/create_match.go`
+- Modify: `internal/app/api/match/match_summary_response.go`
+- Modify: `internal/app/api/match/get_match.go`
+- Modify: `internal/app/api/match/create_match_test.go`
+- Modify: `internal/app/api/match/get_match_test.go`
+- Modify: `internal/app/api/match/list_matches_test.go`
+- Modify: `internal/app/api/match/list_public_upcoming_matches_test.go`
+- Modify: `internal/app/api/match/routes.go`
 
-- [ ] **Step 1: Create the migration file**
+#### Part A: Migration
+
+- [ ] **Step 1: Create migration file**
+
+Create `migrations/20260501190000_refactor_game_start_at.sql`:
 
 ```sql
 -- +goose Up
 -- +goose StatementBegin
 BEGIN;
 
-ALTER TABLE matches ADD COLUMN started_at TIMESTAMP;
+ALTER TABLE matches ADD COLUMN game_scheduled_at TIMESTAMP;
+UPDATE matches SET game_scheduled_at = game_start_at;
+ALTER TABLE matches ALTER COLUMN game_scheduled_at SET NOT NULL;
+
+ALTER TABLE matches ALTER COLUMN game_start_at DROP NOT NULL;
+UPDATE matches SET game_start_at = NULL;
+
+DROP INDEX IF EXISTS idx_matches_is_public_game_start_master;
+DROP INDEX IF EXISTS idx_matches_game_start_at;
+
+CREATE INDEX IF NOT EXISTS idx_matches_is_public_game_scheduled_master ON matches(is_public, game_scheduled_at, master_uuid);
+CREATE INDEX IF NOT EXISTS idx_matches_game_scheduled_at ON matches(game_scheduled_at);
 
 COMMIT;
 -- +goose StatementEnd
@@ -73,7 +136,16 @@ COMMIT;
 -- +goose StatementBegin
 BEGIN;
 
-ALTER TABLE matches DROP COLUMN IF EXISTS started_at;
+UPDATE matches SET game_start_at = game_scheduled_at WHERE game_start_at IS NULL;
+ALTER TABLE matches ALTER COLUMN game_start_at SET NOT NULL;
+
+ALTER TABLE matches DROP COLUMN game_scheduled_at;
+
+DROP INDEX IF EXISTS idx_matches_is_public_game_scheduled_master;
+DROP INDEX IF EXISTS idx_matches_game_scheduled_at;
+
+CREATE INDEX IF NOT EXISTS idx_matches_is_public_game_start_master ON matches(is_public, game_start_at, master_uuid);
+CREATE INDEX IF NOT EXISTS idx_matches_game_start_at ON matches(game_start_at);
 
 COMMIT;
 -- +goose StatementEnd
@@ -82,74 +154,697 @@ COMMIT;
 - [ ] **Step 2: Run migration**
 
 Run: `make migrate-up`
-Expected: Migration applies successfully. The `matches` table now has a nullable `started_at` column.
+Expected: Migration applies successfully.
 
-- [ ] **Step 3: Commit**
+#### Part B: Entity layer
 
-```bash
-git add migrations/20260501190000_add_match_started_at.sql
-git commit -m "feat: add started_at column to matches table
+- [ ] **Step 3: Update Match entity**
 
-Nullable TIMESTAMP to track when a match was actually started,
-distinct from game_start_at which is the scheduled time.
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
-```
-
----
-
-### Task 2: Match entity — add `StartedAt` field
-
-**Files:**
-- Modify: `internal/domain/entity/match/match.go:10-26`
-
-- [ ] **Step 1: Add StartedAt field to Match struct**
-
-In `internal/domain/entity/match/match.go`, add `StartedAt *time.Time` to the Match struct. Insert it after `GameStartAt`:
+In `internal/domain/entity/match/match.go`, change `GameStartAt time.Time` to `GameStartAt *time.Time` and add `GameScheduledAt time.Time`:
 
 ```go
 type Match struct {
-	UUID                    uuid.UUID
-	MasterUUID              uuid.UUID
-	CampaignUUID            uuid.UUID
-	Title                   string
-	BriefInitialDescription string
-	BriefFinalDescription   *string
-	Description             string
-	IsPublic                bool
-	scenes                  []*scene.Scene
-	events                  []GameEvent
-	GameStartAt             time.Time
-	StartedAt               *time.Time
-	StoryStartAt            time.Time
-	StoryEndAt              *time.Time
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+UUID                    uuid.UUID
+MasterUUID              uuid.UUID
+CampaignUUID            uuid.UUID
+Title                   string
+BriefInitialDescription string
+BriefFinalDescription   *string
+Description             string
+IsPublic                bool
+scenes                  []*scene.Scene
+events                  []GameEvent
+GameScheduledAt         time.Time
+GameStartAt             *time.Time
+StoryStartAt            time.Time
+StoryEndAt              *time.Time
+CreatedAt               time.Time
+UpdatedAt               time.Time
 }
 ```
 
-Note: `NewMatch` constructor does NOT set `StartedAt` — it stays nil (match hasn't started yet).
+Update `NewMatch` — rename the parameter and set `GameScheduledAt` instead of `GameStartAt`:
 
-- [ ] **Step 2: Verify build**
+```go
+func NewMatch(
+masterUUID uuid.UUID,
+campaignUUID uuid.UUID,
+title string,
+briefInitialDescription string,
+description string,
+isPublic bool,
+gameScheduledAt time.Time,
+storyStartAt time.Time,
+) (*Match, error) {
+now := time.Now()
+return &Match{
+UUID:                    uuid.New(),
+MasterUUID:              masterUUID,
+CampaignUUID:            campaignUUID,
+Title:                   title,
+BriefInitialDescription: briefInitialDescription,
+Description:             description,
+IsPublic:                isPublic,
+GameScheduledAt:         gameScheduledAt,
+StoryStartAt:            storyStartAt,
+CreatedAt:               now,
+UpdatedAt:               now,
+}, nil
+}
+```
 
-Run: `go build ./internal/domain/entity/match/...`
-Expected: Build succeeds.
+Note: `GameStartAt` is NOT set in the constructor — it stays `nil` (match hasn't started yet).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Update Summary struct**
+
+In `internal/domain/entity/match/summary.go`:
+
+```go
+type Summary struct {
+UUID                    uuid.UUID
+CampaignUUID            uuid.UUID
+Title                   string
+BriefInitialDescription string
+BriefFinalDescription   *string
+IsPublic                bool
+GameScheduledAt         time.Time
+GameStartAt             *time.Time
+StoryStartAt            time.Time
+StoryEndAt              *time.Time
+CreatedAt               time.Time
+UpdatedAt               time.Time
+}
+```
+
+#### Part C: Domain layer
+
+- [ ] **Step 5: Rename domain errors**
+
+In `internal/domain/match/error.go`, rename the GameStartAt error sentinels:
+
+```go
+var (
+ErrMatchNotFound          = domain.NewValidationError(errors.New("match not found"))
+ErrMinTitleLength         = domain.NewValidationError(errors.New("title must be at least 5 characters"))
+ErrMaxTitleLength         = domain.NewValidationError(errors.New("title cannot exceed 32 characters"))
+ErrMinOfStoryStartAt      = domain.NewValidationError(errors.New("story start date must be after campaign start date"))
+ErrMaxOfStoryStartAt      = domain.NewValidationError(errors.New("story start date must be before campaign end date"))
+ErrMinOfGameScheduledAt   = domain.NewValidationError(errors.New("game scheduled at cannot be in the past"))
+ErrMaxOfGameScheduledAt   = domain.NewValidationError(errors.New("game scheduled at cannot be greater than one year from now"))
+ErrMaxBriefDescLength     = domain.NewValidationError(errors.New("brief description cannot exceed 64 characters"))
+)
+```
+
+- [ ] **Step 6: Update CreateMatchInput and CreateMatchUC**
+
+In `internal/domain/match/create_match.go`:
+
+Change `CreateMatchInput.GameStartAt` → `GameScheduledAt`:
+
+```go
+type CreateMatchInput struct {
+MasterUUID              uuid.UUID
+CampaignUUID            uuid.UUID
+Title                   string
+BriefInitialDescription string
+Description             string
+IsPublic                bool
+GameScheduledAt         time.Time
+StoryStartAt            time.Time
+}
+```
+
+Update validation in `CreateMatch`:
+
+```go
+if input.GameScheduledAt.Before(time.Now()) {
+return nil, ErrMinOfGameScheduledAt
+}
+if input.GameScheduledAt.After(time.Now().AddDate(1, 0, 0)) {
+return nil, ErrMaxOfGameScheduledAt
+}
+```
+
+Update `NewMatch` call:
+
+```go
+newMatch, err := match.NewMatch(
+input.MasterUUID,
+input.CampaignUUID,
+input.Title,
+input.BriefInitialDescription,
+input.Description,
+input.IsPublic,
+input.GameScheduledAt,
+input.StoryStartAt,
+)
+```
+
+- [ ] **Step 7: Update CreateMatch UC test**
+
+In `internal/domain/match/match_uc_test.go`, update `validCreateMatchInput()`:
+
+```go
+func validCreateMatchInput() *domainMatch.CreateMatchInput {
+return &domainMatch.CreateMatchInput{
+MasterUUID:              uuid.New(),
+CampaignUUID:            uuid.New(),
+Title:                   "Valid Title",
+BriefInitialDescription: "Brief",
+Description:             "Full description",
+IsPublic:                true,
+GameScheduledAt:         time.Now().Add(24 * time.Hour),
+StoryStartAt:            time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC),
+}
+}
+```
+
+Update the "game start at in the past" test case:
+
+```go
+{
+name: "game scheduled at in the past",
+input: func() *domainMatch.CreateMatchInput {
+i := validCreateMatchInput()
+i.GameScheduledAt = time.Now().Add(-1 * time.Hour)
+return i
+}(),
+matchMock:    &testutil.MockMatchRepo{},
+campaignMock: &testutil.MockCampaignRepo{},
+wantErr:      domainMatch.ErrMinOfGameScheduledAt,
+},
+```
+
+Update the "game start at more than 1 year ahead" test case:
+
+```go
+{
+name: "game scheduled at more than 1 year ahead",
+input: func() *domainMatch.CreateMatchInput {
+i := validCreateMatchInput()
+i.GameScheduledAt = time.Now().AddDate(1, 1, 0)
+return i
+}(),
+matchMock:    &testutil.MockMatchRepo{},
+campaignMock: &testutil.MockCampaignRepo{},
+wantErr:      domainMatch.ErrMaxOfGameScheduledAt,
+},
+```
+
+#### Part D: Gateway layer
+
+- [ ] **Step 8: Update CreateMatch gateway**
+
+In `internal/gateway/pg/match/create_match.go`, add `game_scheduled_at` to the INSERT:
+
+```go
+const query = `
+        INSERT INTO matches (
+            uuid, master_uuid, campaign_uuid,
+            title, brief_initial_description, description,
+            is_public, game_scheduled_at,
+            story_start_at, story_end_at,
+            created_at, updated_at
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+        )
+    `
+_, err = tx.Exec(ctx, query,
+match.UUID, match.MasterUUID, match.CampaignUUID,
+match.Title, match.BriefInitialDescription, match.Description,
+match.IsPublic, match.GameScheduledAt,
+match.StoryStartAt, match.StoryEndAt,
+match.CreatedAt, match.UpdatedAt,
+)
+```
+
+Note: `game_start_at` is NOT included — it defaults to NULL (match hasn't started).
+
+- [ ] **Step 9: Update GetMatch gateway**
+
+In `internal/gateway/pg/match/read_match.go`, update `GetMatch` to SELECT both columns:
+
+```go
+const query = `
+        SELECT 
+            uuid, master_uuid, campaign_uuid,
+            title, brief_initial_description, brief_final_description, description,
+            is_public, game_scheduled_at, game_start_at,
+            story_start_at, story_end_at,
+            created_at, updated_at
+        FROM matches
+        WHERE uuid = $1
+    `
+var m match.Match
+err = tx.QueryRow(ctx, query, uuid).Scan(
+&m.UUID,
+&m.MasterUUID,
+&m.CampaignUUID,
+&m.Title,
+&m.BriefInitialDescription,
+&m.BriefFinalDescription,
+&m.Description,
+&m.IsPublic,
+&m.GameScheduledAt,
+&m.GameStartAt,
+&m.StoryStartAt,
+&m.StoryEndAt,
+&m.CreatedAt,
+&m.UpdatedAt,
+)
+```
+
+- [ ] **Step 10: Update ListMatchesByMasterUUID gateway**
+
+In `internal/gateway/pg/match/read_match.go`, update `ListMatchesByMasterUUID` SELECT and Scan:
+
+```go
+const query = `
+        SELECT 
+            uuid, campaign_uuid, title,
+            brief_initial_description, brief_final_description,
+            is_public, game_scheduled_at, game_start_at,
+            story_start_at, story_end_at,
+            created_at, updated_at
+        FROM matches
+        WHERE master_uuid = $1
+        ORDER BY story_start_at ASC
+    `
+```
+
+Scan:
+```go
+err := rows.Scan(
+&m.UUID,
+&m.CampaignUUID,
+&m.Title,
+&m.BriefInitialDescription,
+&m.BriefFinalDescription,
+&m.IsPublic,
+&m.GameScheduledAt,
+&m.GameStartAt,
+&m.StoryStartAt,
+&m.StoryEndAt,
+&m.CreatedAt,
+&m.UpdatedAt,
+)
+```
+
+- [ ] **Step 11: Update ListPublicUpcomingMatches gateway**
+
+In `internal/gateway/pg/match/read_match.go`, update query to filter by `game_scheduled_at` and SELECT both columns:
+
+```go
+const query = `
+        SELECT 
+            uuid, campaign_uuid, title,
+            brief_initial_description, brief_final_description,
+            is_public, game_scheduled_at, game_start_at,
+            story_start_at, story_end_at,
+            created_at, updated_at
+        FROM matches
+        WHERE is_public = true
+        AND game_scheduled_at > $1
+        AND master_uuid != $2
+        ORDER BY game_scheduled_at ASC
+    `
+```
+
+Same Scan update as Step 10.
+
+- [ ] **Step 12: Update campaign gateway**
+
+In `internal/gateway/pg/campaign/read_campaign.go`, update the matches query in `GetCampaignByUUID`:
+
+```go
+const matchesQuery = `
+        SELECT 
+            uuid, campaign_uuid,
+            title, brief_initial_description, brief_final_description,
+            is_public, game_scheduled_at, game_start_at,
+            story_start_at, story_end_at,
+            created_at, updated_at
+        FROM matches
+        WHERE campaign_uuid = $1
+        ORDER BY story_start_at DESC
+    `
+```
+
+Update Scan to include both fields:
+```go
+err := rows.Scan(
+&m.UUID,
+&m.CampaignUUID,
+&m.Title,
+&m.BriefInitialDescription,
+&m.BriefFinalDescription,
+&m.IsPublic,
+&m.GameScheduledAt,
+&m.GameStartAt,
+&m.StoryStartAt,
+&m.StoryEndAt,
+&m.CreatedAt,
+&m.UpdatedAt,
+)
+```
+
+- [ ] **Step 13: Update integration test fixture**
+
+In `internal/gateway/pg/pgtest/setup.go`, update `InsertTestMatch`:
+
+```go
+func InsertTestMatch(t *testing.T, pool *pgxpool.Pool, masterUUID, campaignUUID, title string) string {
+t.Helper()
+ctx := context.Background()
+
+var matchUUID string
+err := pool.QueryRow(ctx,
+`INSERT INTO matches (master_uuid, campaign_uuid, title, game_scheduled_at, story_start_at)
+ VALUES ($1, $2, $3, NOW() + INTERVAL '1 day', CURRENT_DATE) RETURNING uuid`,
+masterUUID, campaignUUID, title,
+).Scan(&matchUUID)
+if err != nil {
+t.Fatalf("failed to insert test match: %v", err)
+}
+return matchUUID
+}
+```
+
+- [ ] **Step 14: Update match integration test**
+
+In `internal/gateway/pg/match/match_integration_test.go`, update `newTestMatch`:
+
+```go
+func newTestMatch(masterUUID, campaignUUID uuid.UUID, title string, isPublic bool, gameScheduledAt time.Time) *entityMatch.Match {
+now := time.Now().Truncate(time.Microsecond)
+return &entityMatch.Match{
+UUID:                    uuid.New(),
+MasterUUID:              masterUUID,
+CampaignUUID:            campaignUUID,
+Title:                   title,
+BriefInitialDescription: "Brief description for " + title,
+Description:             "Full description for " + title,
+IsPublic:                isPublic,
+GameScheduledAt:         gameScheduledAt.Truncate(time.Microsecond),
+StoryStartAt:            now,
+CreatedAt:               now,
+UpdatedAt:               now,
+}
+}
+```
+
+Note: `GameStartAt` is not set — stays nil.
+
+#### Part E: API layer
+
+- [ ] **Step 15: Update CreateMatch API handler**
+
+In `internal/app/api/match/create_match.go`:
+
+Update `CreateMatchRequestBody`:
+```go
+type CreateMatchRequestBody struct {
+CampaignUUID            uuid.UUID `json:"campaign_uuid" required:"true" doc:"UUID of the campaign this match is based on"`
+Title                   string    `json:"title" required:"true" maxLength:"32" doc:"Title of the match"`
+BriefInitialDescription string    `json:"brief_initial_description" maxLength:"64" doc:"Brief description of the match"`
+Description             string    `json:"description" doc:"Full description of the match"`
+IsPublic                bool      `json:"is_public" default:"true" doc:"If the match is public or private"`
+GameScheduledAt         string    `json:"game_scheduled_at" required:"true" doc:"Date and time when the game is scheduled (ISO 8601)"`
+StoryStartAt            string    `json:"story_start_at" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
+}
+```
+
+Update `MatchResponse` — now has both fields:
+```go
+type MatchResponse struct {
+UUID                    uuid.UUID `json:"uuid"`
+CampaignUUID            uuid.UUID `json:"campaign_uuid"`
+Title                   string    `json:"title"`
+BriefInitialDescription string    `json:"brief_initial_description"`
+BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
+Description             string    `json:"description"`
+IsPublic                bool      `json:"is_public"`
+GameScheduledAt         string    `json:"game_scheduled_at"`
+GameStartAt             *string   `json:"game_start_at,omitempty"`
+StoryStartAt            string    `json:"story_start_at"`
+StoryEndAt              *string   `json:"story_end_at,omitempty"`
+CreatedAt               string    `json:"created_at"`
+UpdatedAt               string    `json:"updated_at"`
+}
+```
+
+Update the handler parsing:
+```go
+gameScheduledAt, err := time.Parse(time.RFC3339, req.Body.GameScheduledAt)
+if err != nil {
+return nil, huma.Error422UnprocessableEntity(
+"invalid game_scheduled_at date format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
+}
+
+input := &domainMatch.CreateMatchInput{
+MasterUUID:              userUUID,
+CampaignUUID:            req.Body.CampaignUUID,
+Title:                   req.Body.Title,
+BriefInitialDescription: req.Body.BriefInitialDescription,
+Description:             req.Body.Description,
+IsPublic:                req.Body.IsPublic,
+GameScheduledAt:         gameScheduledAt,
+StoryStartAt:            storyStartAt,
+}
+```
+
+Update response building:
+```go
+var gameStartAtStr *string
+if match.GameStartAt != nil {
+formatted := match.GameStartAt.Format(time.RFC3339)
+gameStartAtStr = &formatted
+}
+
+response := MatchResponse{
+UUID:                    match.UUID,
+CampaignUUID:            match.CampaignUUID,
+Title:                   match.Title,
+BriefInitialDescription: match.BriefInitialDescription,
+BriefFinalDescription:   match.BriefFinalDescription,
+Description:             match.Description,
+IsPublic:                match.IsPublic,
+GameScheduledAt:         match.GameScheduledAt.Format(time.RFC3339),
+GameStartAt:             gameStartAtStr,
+StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
+CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
+UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
+}
+```
+
+- [ ] **Step 16: Update GetMatch handler**
+
+In `internal/app/api/match/get_match.go`, update response building same as create:
+
+```go
+var gameStartAtStr *string
+if match.GameStartAt != nil {
+formatted := match.GameStartAt.Format(time.RFC3339)
+gameStartAtStr = &formatted
+}
+
+var storyEndAtStr *string
+if match.StoryEndAt != nil {
+formattedDate := match.StoryEndAt.Format("2006-01-02")
+storyEndAtStr = &formattedDate
+}
+
+response := MatchResponse{
+UUID:                    match.UUID,
+CampaignUUID:            match.CampaignUUID,
+Title:                   match.Title,
+BriefInitialDescription: match.BriefInitialDescription,
+BriefFinalDescription:   match.BriefFinalDescription,
+Description:             match.Description,
+IsPublic:                match.IsPublic,
+GameScheduledAt:         match.GameScheduledAt.Format(time.RFC3339),
+GameStartAt:             gameStartAtStr,
+StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
+StoryEndAt:              storyEndAtStr,
+CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
+UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
+}
+```
+
+- [ ] **Step 17: Update MatchSummaryResponse**
+
+In `internal/app/api/match/match_summary_response.go`:
+
+```go
+type MatchSummaryResponse struct {
+UUID                    uuid.UUID `json:"uuid"`
+CampaignUUID            uuid.UUID `json:"campaign_uuid"`
+Title                   string    `json:"title"`
+BriefInitialDescription string    `json:"brief_initial_description"`
+BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
+IsPublic                bool      `json:"is_public"`
+GameScheduledAt         string    `json:"game_scheduled_at"`
+GameStartAt             *string   `json:"game_start_at,omitempty"`
+StoryStartAt            string    `json:"story_start_at"`
+StoryEndAt              *string   `json:"story_end_at,omitempty"`
+CreatedAt               string    `json:"created_at"`
+UpdatedAt               string    `json:"updated_at"`
+}
+
+func ToSummaryResponse(m *domainMatch.Summary) MatchSummaryResponse {
+var storyEndAtStr *string
+if m.StoryEndAt != nil {
+formatted := m.StoryEndAt.Format("2006-01-02")
+storyEndAtStr = &formatted
+}
+
+var gameStartAtStr *string
+if m.GameStartAt != nil {
+formatted := m.GameStartAt.Format(time.RFC3339)
+gameStartAtStr = &formatted
+}
+
+return MatchSummaryResponse{
+UUID:                    m.UUID,
+CampaignUUID:            m.CampaignUUID,
+Title:                   m.Title,
+BriefInitialDescription: m.BriefInitialDescription,
+BriefFinalDescription:   m.BriefFinalDescription,
+IsPublic:                m.IsPublic,
+GameScheduledAt:         m.GameScheduledAt.Format(time.RFC3339),
+GameStartAt:             gameStartAtStr,
+StoryStartAt:            m.StoryStartAt.Format("2006-01-02"),
+StoryEndAt:              storyEndAtStr,
+CreatedAt:               m.CreatedAt.Format(http.TimeFormat),
+UpdatedAt:               m.UpdatedAt.Format(http.TimeFormat),
+}
+}
+```
+
+Add `"time"` to imports if not already present.
+
+- [ ] **Step 18: Update routes description**
+
+In `internal/app/api/match/routes.go`, update the public matches route description:
+
+```go
+Description: "List all upcoming public matches sorted by game_scheduled_at",
+```
+
+- [ ] **Step 19: Update API handler tests**
+
+In `internal/app/api/match/create_match_test.go`, update ALL test body maps:
+- Change `"game_start_at"` → `"game_scheduled_at"` in all request bodies
+- Update success mock to set `GameScheduledAt` instead of `GameStartAt`:
+
+```go
+mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+return &matchEntity.Match{
+UUID:                    uuid.New(),
+CampaignUUID:            input.CampaignUUID,
+MasterUUID:              input.MasterUUID,
+Title:                   input.Title,
+BriefInitialDescription: input.BriefInitialDescription,
+Description:             input.Description,
+IsPublic:                input.IsPublic,
+GameScheduledAt:         input.GameScheduledAt,
+StoryStartAt:            input.StoryStartAt,
+CreatedAt:               now,
+UpdatedAt:               now,
+}, nil
+},
+```
+
+In `internal/app/api/match/get_match_test.go`, update the success mock:
+
+```go
+return &matchEntity.Match{
+UUID:                    id,
+CampaignUUID:            uuid.New(),
+MasterUUID:              uid,
+Title:                   "My Match",
+BriefInitialDescription: "Brief",
+Description:             "Full",
+IsPublic:                true,
+GameScheduledAt:         now,
+StoryStartAt:            now,
+CreatedAt:               now,
+UpdatedAt:               now,
+}, nil
+```
+
+In `internal/app/api/match/list_matches_test.go`, update Summary fixtures:
+
+```go
+{
+UUID:                    uuid.New(),
+CampaignUUID:            uuid.New(),
+Title:                   "Match 1",
+BriefInitialDescription: "Brief 1",
+IsPublic:                true,
+GameScheduledAt:         now,
+StoryStartAt:            now,
+CreatedAt:               now,
+UpdatedAt:               now,
+},
+{
+UUID:                    uuid.New(),
+CampaignUUID:            uuid.New(),
+Title:                   "Match 2",
+BriefInitialDescription: "Brief 2",
+IsPublic:                false,
+GameScheduledAt:         now,
+StoryStartAt:            now,
+CreatedAt:               now,
+UpdatedAt:               now,
+},
+```
+
+In `internal/app/api/match/list_public_upcoming_matches_test.go`, update Summary fixture:
+
+```go
+{
+UUID:                    uuid.New(),
+CampaignUUID:            uuid.New(),
+Title:                   "Public Match",
+BriefInitialDescription: "Upcoming",
+IsPublic:                true,
+GameScheduledAt:         now.Add(24 * time.Hour),
+StoryStartAt:            now,
+CreatedAt:               now,
+UpdatedAt:               now,
+},
+```
+
+#### Part F: Verify and commit
+
+- [ ] **Step 20: Run all tests**
+
+Run: `go test ./... -count=1`
+Expected: All tests pass (except known broken match/Turn/Round tests).
+
+- [ ] **Step 21: Build both binaries**
+
+Run: `go build ./cmd/api/ && go build ./cmd/game/`
+Expected: Both build successfully.
+
+- [ ] **Step 22: Commit**
 
 ```bash
-git add internal/domain/entity/match/match.go
-git commit -m "feat(entity): add StartedAt field to Match
+git add -A
+git commit -m "refactor: rename GameStartAt semantics + add GameScheduledAt
 
-Nullable *time.Time to track actual match start. Distinct from
-GameStartAt which is the scheduled time (NOT NULL).
+GameStartAt is now *time.Time — tracks when match actually started.
+GameScheduledAt is time.Time (NOT NULL) — tracks when master scheduled.
+Migration copies existing game_start_at → game_scheduled_at, nullifies.
+All layers updated: entity, domain, gateway, API, tests.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
 
-### Task 3: Domain errors
+### Task 1: Domain errors
 
 **Files:**
 - Modify: `internal/domain/match/error.go`
@@ -166,8 +861,8 @@ var (
 	ErrMaxTitleLength       = domain.NewValidationError(errors.New("title cannot exceed 32 characters"))
 	ErrMinOfStoryStartAt    = domain.NewValidationError(errors.New("story start date must be after campaign start date"))
 	ErrMaxOfStoryStartAt    = domain.NewValidationError(errors.New("story start date must be before campaign end date"))
-	ErrMinOfGameStartAt     = domain.NewValidationError(errors.New("game start at cannot be in the past"))
-	ErrMaxOfGameStartAt     = domain.NewValidationError(errors.New("game start at cannot be greater than one year from now"))
+	ErrMinOfGameScheduledAt     = domain.NewValidationError(errors.New("game start at cannot be in the past"))
+	ErrMaxOfGameScheduledAt     = domain.NewValidationError(errors.New("game start at cannot be greater than one year from now"))
 	ErrMaxBriefDescLength   = domain.NewValidationError(errors.New("brief description cannot exceed 64 characters"))
 	ErrMatchAlreadyStarted  = domain.NewValidationError(errors.New("match has already started"))
 	ErrMatchAlreadyFinished = domain.NewValidationError(errors.New("match has already finished"))
@@ -210,7 +905,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 4: Repository interfaces
+### Task 2: Repository interfaces
 
 **Files:**
 - Modify: `internal/domain/match/i_repository.go`
@@ -266,7 +961,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 5: Mocks — update for new interfaces
+### Task 3: Mocks — update for new interfaces
 
 **Files:**
 - Modify: `internal/domain/testutil/mock_match_repo.go`
@@ -351,7 +1046,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 6: Gateway — match (StartMatch + update GetMatch scan)
+### Task 4: Gateway — match (StartMatch + update GetMatch scan)
 
 **Files:**
 - Create: `internal/gateway/pg/match/start_match.go`
@@ -376,8 +1071,8 @@ func (r *Repository) StartMatch(
 ) error {
 	const query = `
 		UPDATE matches
-		SET started_at = NOW(), updated_at = NOW()
-		WHERE uuid = $1 AND started_at IS NULL
+		SET game_start_at = NOW(), updated_at = NOW()
+		WHERE uuid = $1 AND game_start_at IS NULL
 	`
 	result, err := r.q.Exec(ctx, query, matchUUID)
 	if err != nil {
@@ -390,25 +1085,25 @@ func (r *Repository) StartMatch(
 }
 ```
 
-Note: Returns `ErrMatchNotFound` when `RowsAffected == 0`. This can mean either the match doesn't exist OR it was already started (`started_at IS NULL` condition fails). The UC checks existence beforehand, so at the gateway level this is correct.
+Note: Returns `ErrMatchNotFound` when `RowsAffected == 0`. This can mean either the match doesn't exist OR it was already started (`game_start_at IS NULL` condition fails). The UC checks existence beforehand, so at the gateway level this is correct.
 
-- [ ] **Step 2: Update GetMatch query to include started_at**
+- [ ] **Step 2: Update GetMatch query to include game_start_at**
 
-In `internal/gateway/pg/match/read_match.go`, update the `GetMatch` method's SQL query and Scan call to include `started_at`:
+In `internal/gateway/pg/match/read_match.go`, update the `GetMatch` method's SQL query and Scan call to include `game_start_at`:
 
 The SELECT should become:
 ```sql
 SELECT 
     uuid, master_uuid, campaign_uuid,
     title, brief_initial_description, brief_final_description, description,
-    is_public, game_start_at, started_at,
+    is_public, game_scheduled_at, game_start_at,
     story_start_at, story_end_at,
     created_at, updated_at
 FROM matches
 WHERE uuid = $1
 ```
 
-And the Scan should include `&m.StartedAt` after `&m.GameStartAt`:
+And the Scan should include `&m.GameStartAt` after `&m.GameScheduledAt`:
 ```go
 err = tx.QueryRow(ctx, query, uuid).Scan(
     &m.UUID,
@@ -419,8 +1114,8 @@ err = tx.QueryRow(ctx, query, uuid).Scan(
     &m.BriefFinalDescription,
     &m.Description,
     &m.IsPublic,
+    &m.GameScheduledAt,
     &m.GameStartAt,
-    &m.StartedAt,
     &m.StoryStartAt,
     &m.StoryEndAt,
     &m.CreatedAt,
@@ -437,17 +1132,17 @@ Expected: Build succeeds.
 
 ```bash
 git add internal/gateway/pg/match/start_match.go internal/gateway/pg/match/read_match.go
-git commit -m "feat(gateway): add StartMatch and update GetMatch for started_at
+git commit -m "feat(gateway): add StartMatch and update GetMatch for game_start_at
 
-StartMatch sets started_at = NOW() atomically (WHERE started_at IS NULL).
-GetMatch now includes started_at in SELECT and Scan.
+StartMatch sets game_start_at = NOW() atomically (WHERE game_start_at IS NULL).
+GetMatch now includes game_start_at in SELECT and Scan.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
 
-### Task 7: Gateway — enrollment (new queries + fix IsPlayerEnrolled)
+### Task 5: Gateway — enrollment (new queries + fix IsPlayerEnrolled)
 
 **Files:**
 - Create: `internal/gateway/pg/enrollment/reject_pending_enrollments.go`
@@ -572,7 +1267,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 8: StartMatchUC (TDD)
+### Task 6: StartMatchUC (TDD)
 
 **Files:**
 - Create: `internal/domain/match/start_match.go`
@@ -624,7 +1319,7 @@ func TestStartMatch(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -653,7 +1348,7 @@ func TestStartMatch(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -670,8 +1365,8 @@ func TestStartMatch(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
-						StartedAt:    &now,
+						GameScheduledAt:  now,
+						GameStartAt:    &now,
 					}, nil
 				},
 			},
@@ -688,7 +1383,7 @@ func TestStartMatch(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 						StoryEndAt:   &finishedAt,
 					}, nil
 				},
@@ -718,7 +1413,7 @@ func TestStartMatch(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 				StartMatchFn: func(ctx context.Context, id uuid.UUID) error {
@@ -738,7 +1433,7 @@ func TestStartMatch(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -829,7 +1524,7 @@ func (uc *StartMatchUC) Start(
 	if match.MasterUUID != masterUUID {
 		return ErrNotMatchMaster
 	}
-	if match.StartedAt != nil {
+	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
 	if match.StoryEndAt != nil {
@@ -856,14 +1551,14 @@ git add internal/domain/match/start_match.go internal/domain/match/start_match_t
 git commit -m "feat(domain): add StartMatchUC with TDD
 
 Validates master ownership, not-already-started, not-finished.
-Persists started_at then rejects pending enrollments.
+Persists game_start_at then rejects pending enrollments.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
 
-### Task 9: KickPlayerUC (TDD)
+### Task 7: KickPlayerUC (TDD)
 
 **Files:**
 - Create: `internal/domain/enrollment/kick_player.go`
@@ -919,7 +1614,7 @@ func TestKickPlayer(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -950,7 +1645,7 @@ func TestKickPlayer(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -968,8 +1663,8 @@ func TestKickPlayer(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
-						StartedAt:    &startedAt,
+						GameScheduledAt:  now,
+						GameStartAt:    &startedAt,
 					}, nil
 				},
 			},
@@ -987,7 +1682,7 @@ func TestKickPlayer(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -1005,7 +1700,7 @@ func TestKickPlayer(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -1027,7 +1722,7 @@ func TestKickPlayer(t *testing.T) {
 						UUID:         matchUUID,
 						MasterUUID:   masterUUID,
 						CampaignUUID: campaignUUID,
-						GameStartAt:  now,
+						GameScheduledAt:  now,
 					}, nil
 				},
 			},
@@ -1120,7 +1815,7 @@ func (uc *KickPlayerUC) Kick(
 	if match.MasterUUID != masterUUID || playerUUID == masterUUID {
 		return ErrNotMatchMaster
 	}
-	if match.StartedAt != nil {
+	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
 
@@ -1154,7 +1849,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 10: Temporal guard on enrollment UCs
+### Task 8: Temporal guard on enrollment UCs
 
 **Files:**
 - Modify: `internal/domain/enrollment/accept_enrollment.go:36-73`
@@ -1190,7 +1885,7 @@ func (uc *AcceptEnrollmentUC) Accept(
 	if err != nil {
 		return err
 	}
-	if match.StartedAt != nil {
+	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
 	if match.StoryEndAt != nil {
@@ -1212,7 +1907,7 @@ func (uc *AcceptEnrollmentUC) Accept(
 }
 ```
 
-Note: This replaces the `GetMatchCampaignUUID` call with `GetMatch` (which returns the full match including CampaignUUID, StartedAt, StoryEndAt). We read `match.CampaignUUID` directly instead of a separate `GetMatchCampaignUUID` call.
+Note: This replaces the `GetMatchCampaignUUID` call with `GetMatch` (which returns the full match including CampaignUUID, GameStartAt, StoryEndAt). We read `match.CampaignUUID` directly instead of a separate `GetMatchCampaignUUID` call.
 
 The imports need to include:
 ```go
@@ -1257,7 +1952,7 @@ func (uc *RejectEnrollmentUC) Reject(
 	if err != nil {
 		return err
 	}
-	if match.StartedAt != nil {
+	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
 	if match.StoryEndAt != nil {
@@ -1341,7 +2036,7 @@ func (uc *EnrollCharacterInMatchUC) Enroll(
 	if err != nil {
 		return err
 	}
-	if match.StartedAt != nil {
+	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
 	if match.StoryEndAt != nil {
@@ -1390,8 +2085,8 @@ In `internal/domain/enrollment/enrollment_test.go`, add two new test cases to `T
 				UUID:         matchUUID,
 				MasterUUID:   masterUUID,
 				CampaignUUID: campaignUUID,
-				GameStartAt:  time.Now(),
-				StartedAt:    &startedAt,
+				GameScheduledAt:  time.Now(),
+				GameStartAt:    &startedAt,
 			}, nil
 		},
 	},
@@ -1414,7 +2109,7 @@ In `internal/domain/enrollment/enrollment_test.go`, add two new test cases to `T
 				UUID:         matchUUID,
 				MasterUUID:   masterUUID,
 				CampaignUUID: campaignUUID,
-				GameStartAt:  time.Now(),
+				GameScheduledAt:  time.Now(),
 				StoryEndAt:   &finishedAt,
 			}, nil
 		},
@@ -1447,7 +2142,7 @@ matchMock: &testutil.MockMatchRepo{
 			UUID:         matchUUID,
 			MasterUUID:   masterUUID,
 			CampaignUUID: campaignUUID,
-			GameStartAt:  time.Now(),
+			GameScheduledAt:  time.Now(),
 		}, nil
 	},
 },
@@ -1492,7 +2187,7 @@ git add internal/domain/enrollment/accept_enrollment.go \
        internal/domain/enrollment/enrollment_test.go
 git commit -m "feat(domain): add temporal guard to enrollment UCs
 
-Accept/Reject/Enroll now call GetMatch and check StartedAt/StoryEndAt.
+Accept/Reject/Enroll now call GetMatch and check GameStartAt/StoryEndAt.
 Replaces GetMatchCampaignUUID with GetMatch for efficiency.
 Tests updated for new mock pattern + new guard test cases.
 
@@ -1501,7 +2196,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 11: Game server — messages and payloads
+### Task 9: Game server — messages and payloads
 
 **Files:**
 - Modify: `internal/app/game/message.go`
@@ -1571,7 +2266,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 12: Game server — Room enhancements
+### Task 10: Game server — Room enhancements
 
 **Files:**
 - Modify: `internal/app/game/room.go`
@@ -1748,7 +2443,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 13: Game server — Handler, Hub, and wiring
+### Task 11: Game server — Handler, Hub, and wiring
 
 **Files:**
 - Modify: `internal/app/game/handler.go`
@@ -1915,7 +2610,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 14: Game server tests — update and expand
+### Task 12: Game server tests — update and expand
 
 **Files:**
 - Modify: `internal/app/game/handler_test.go`
@@ -2060,7 +2755,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 ---
 
-### Task 15: Full test suite verification
+### Task 13: Full test suite verification
 
 - [ ] **Step 1: Run all tests**
 
@@ -2078,7 +2773,7 @@ If any test failures required fixes, commit them here. Otherwise, no action need
 
 ---
 
-### Task 16: Documentation check
+### Task 14: Documentation check
 
 - [ ] **Step 1: Run documentation impact check**
 
