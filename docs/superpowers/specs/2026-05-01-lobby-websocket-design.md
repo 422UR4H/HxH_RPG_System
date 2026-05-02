@@ -31,7 +31,7 @@ enrollments one last time → waits for players to connect → starts the match.
 | Ready system | None | Players communicate via Discord/external call |
 | Min players to start | None | Master is sovereign authority |
 | Temporal guard | Lock enrollments on match start | Prevent state changes after match begins |
-| Persist match start | Yes, `game_start_at = NOW()` | Required for temporal guard + crash recovery |
+| Persist match start | Yes, new `started_at` column (nullable) | `game_start_at` is the scheduled time (NOT NULL); `started_at` tracks actual start |
 | Reconnection | Current behavior (left + joined) | Simple, adequate for MVP |
 | match_started payload | Empty | Frontend already has player data from lobby |
 | Kick timing | Lobby only (MVP) | Mid-game kick is a separate feature |
@@ -111,9 +111,9 @@ type StartMatchUC struct {
 **Flow:**
 1. `matchRepo.GetMatch(ctx, matchUUID)` → validate exists
 2. Verify `masterUUID` matches match owner
-3. Verify `game_start_at == nil` → `ErrMatchAlreadyStarted`
+3. Verify `started_at == nil` → `ErrMatchAlreadyStarted`
 4. Verify `story_end_at == nil` → `ErrMatchAlreadyFinished`
-5. `matchRepo.StartMatch(ctx, matchUUID)` → set `game_start_at = NOW()`
+5. `matchRepo.StartMatch(ctx, matchUUID)` → set `started_at = NOW()`
 6. `enrollmentRepo.RejectPendingEnrollments(ctx, matchUUID)` → reject all pending
 
 **Errors:**
@@ -140,7 +140,7 @@ type KickPlayerUC struct {
 **Flow:**
 1. `matchRepo.GetMatch(ctx, matchUUID)` → validate exists
 2. Verify `masterUUID` matches match owner
-3. Verify `game_start_at == nil` → `ErrMatchAlreadyStarted` (kick only in lobby)
+3. Verify `started_at == nil` → `ErrMatchAlreadyStarted` (kick only in lobby)
 4. Verify `story_end_at == nil` → `ErrMatchAlreadyFinished`
 5. `enrollmentRepo.RejectEnrollmentByPlayerAndMatch(ctx, playerUUID, matchUUID)`
 
@@ -157,7 +157,7 @@ type KickPlayerUC struct {
 
 **Change:** Add `match.IRepository` as dependency. Before processing, check:
 1. Fetch match via `matchUUID` from the enrollment
-2. If `game_start_at != nil` → return `ErrMatchAlreadyStarted`
+2. If `started_at != nil` → return `ErrMatchAlreadyStarted`
 3. If `story_end_at != nil` → return `ErrMatchAlreadyFinished`
 
 ## Gateway Layer
@@ -166,8 +166,8 @@ type KickPlayerUC struct {
 
 **`internal/gateway/pg/match/start_match.go`:**
 ```sql
-UPDATE matches SET game_start_at = NOW(), updated_at = NOW()
-WHERE uuid = $1 AND game_start_at IS NULL
+UPDATE matches SET started_at = NOW(), updated_at = NOW()
+WHERE uuid = $1 AND started_at IS NULL
 ```
 Returns `ErrMatchAlreadyStarted` if `RowsAffected == 0`.
 
