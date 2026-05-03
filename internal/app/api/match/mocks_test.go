@@ -8,6 +8,16 @@ import (
 	"github.com/google/uuid"
 )
 
+type mockListMatchEnrollments struct {
+	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error)
+}
+
+func (m *mockListMatchEnrollments) List(
+	ctx context.Context, matchUUID, userUUID uuid.UUID,
+) (*domainMatch.ListMatchEnrollmentsResult, error) {
+	return m.fn(ctx, matchUUID, userUUID)
+}
+
 type mockCreateMatch struct {
 	fn func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error)
 }
