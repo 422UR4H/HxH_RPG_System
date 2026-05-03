@@ -86,7 +86,7 @@ func (csf *CharacterSheetFactory) Build(
 	conscience, _ := spiritAttrs.Get(enum.Conscience)
 	hatsu, err := csf.BuildHatsu(flame, conscience, categoryPercents)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build hatsu: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrFailedToBuildHatsu, err)
 	}
 	// aura, _ := status.Get(enum.Aura)
 	spiritPrinciples := csf.BuildSpiritPrinciples(flame, conscience, nenHexagon, hatsu)
@@ -415,7 +415,7 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 	}
 
 	if err := hatsu.Init(categories); err != nil {
-		return nil, fmt.Errorf("failed to init hatsu: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrFailedToInitHatsu, err)
 	}
 	return hatsu, nil
 }
@@ -482,22 +482,22 @@ func (csf *CharacterSheetFactory) Wrap(
 ) (*CharacterSheet, error) {
 	for name, exp := range charClass.SkillsExps {
 		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for skill %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseSkillExp, name, err)
 		}
 	}
 	for _, skill := range charClass.JointSkills {
 		if err := charSheet.AddJointSkill(&skill); err != nil {
-			return nil, fmt.Errorf("failed to add joint skill: %w", err)
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointSkill, err)
 		}
 	}
 	for _, prof := range charClass.JointProficiencies {
 		if err := charSheet.AddJointProficiency(&prof); err != nil {
-			return nil, fmt.Errorf("failed to add joint proficiency: %w", err)
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointProficiency, err)
 		}
 	}
 	for name, exp := range charClass.AttributesExps {
 		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for mental %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseMentalExp, name, err)
 		}
 	}
 
@@ -510,10 +510,10 @@ func (csf *CharacterSheetFactory) Wrap(
 	for name, exp := range charClass.ProficienciesExps {
 		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
 		if err := charSheet.AddCommonProficiency(name, prof); err != nil {
-			return nil, fmt.Errorf("failed to add common proficiency %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToAddCommonProficiency, name, err)
 		}
 		if err := charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for proficiency %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseProficiencyExp, name, err)
 		}
 	}
 	for name, exp := range charClass.JointProfExps {
@@ -521,7 +521,7 @@ func (csf *CharacterSheetFactory) Wrap(
 			experience.NewUpgradeCascade(exp),
 			name,
 		); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for joint proficiency %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseJointProfExp, name, err)
 		}
 	}
 	return charSheet, nil
@@ -610,22 +610,22 @@ func (csf *CharacterSheetFactory) WrapHalf(
 ) (*HalfSheet, error) {
 	for name, exp := range charClass.SkillsExps {
 		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for skill %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseSkillExp, name, err)
 		}
 	}
 	for _, skill := range charClass.JointSkills {
 		if err := charSheet.AddJointSkill(&skill); err != nil {
-			return nil, fmt.Errorf("failed to add joint skill: %w", err)
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointSkill, err)
 		}
 	}
 	for _, prof := range charClass.JointProficiencies {
 		if err := charSheet.AddJointProficiency(&prof); err != nil {
-			return nil, fmt.Errorf("failed to add joint proficiency: %w", err)
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointProficiency, err)
 		}
 	}
 	for name, exp := range charClass.AttributesExps {
 		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for mental %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseMentalExp, name, err)
 		}
 	}
 
@@ -638,10 +638,10 @@ func (csf *CharacterSheetFactory) WrapHalf(
 	for name, exp := range charClass.ProficienciesExps {
 		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
 		if err := charSheet.AddCommonProficiency(name, prof); err != nil {
-			return nil, fmt.Errorf("failed to add common proficiency %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToAddCommonProficiency, name, err)
 		}
 		if err := charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for proficiency %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseProficiencyExp, name, err)
 		}
 	}
 	for name, exp := range charClass.JointProfExps {
@@ -649,7 +649,7 @@ func (csf *CharacterSheetFactory) WrapHalf(
 			experience.NewUpgradeCascade(exp),
 			name,
 		); err != nil {
-			return nil, fmt.Errorf("failed to increase exp for joint proficiency %s: %w", name, err)
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseJointProfExp, name, err)
 		}
 	}
 	return charSheet, nil

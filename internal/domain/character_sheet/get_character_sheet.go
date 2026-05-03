@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
@@ -161,7 +160,7 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			continue
 		}
 		if _, _, err := charSheet.IncreasePtsForPhysPrimaryAttr(name, points); err != nil {
-			return fmt.Errorf("failed to increase pts for phys primary attr %s: %w", name, err)
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePhysAttrPts, name, err)
 		}
 	}
 
@@ -178,7 +177,7 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			continue
 		}
 		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
-			return fmt.Errorf("failed to increase exp for mentals %s: %w", name, err)
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
 		}
 	}
 
@@ -215,7 +214,7 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			continue
 		}
 		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
-			return fmt.Errorf("failed to increase exp for skill %s: %w", name, err)
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseSkillExp, name, err)
 		}
 	}
 
@@ -236,7 +235,7 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			continue
 		}
 		if err := charSheet.IncreaseExpForPrinciple(experience.NewUpgradeCascade(exp), name); err != nil {
-			return fmt.Errorf("failed to increase exp for principle %s: %w", name, err)
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePrincipleExp, name, err)
 		}
 	}
 
@@ -253,25 +252,23 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			continue
 		}
 		if err := charSheet.IncreaseExpForCategory(experience.NewUpgradeCascade(exp), name); err != nil {
-			return fmt.Errorf("failed to increase exp for category %s: %w", name, err)
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseCategoryExp, name, err)
 		}
 	}
 
 	if err := charSheet.SetCurrStatus(enum.Health, modelSheet.Health.Curr); err != nil {
-		return fmt.Errorf("failed to set health status: %w", err)
+		return fmt.Errorf("%w (health): %v", domainSheet.ErrFailedToSetStatus, err)
 	}
 	if err := charSheet.SetCurrStatus(enum.Stamina, modelSheet.Stamina.Curr); err != nil {
-		return fmt.Errorf("failed to set stamina status: %w", err)
+		return fmt.Errorf("%w (stamina): %v", domainSheet.ErrFailedToSetStatus, err)
 	}
 	if err := charSheet.SetCurrStatus(enum.Aura, modelSheet.Aura.Curr); err != nil {
-		return fmt.Errorf("failed to set aura status: %w", err)
+		return fmt.Errorf("%w (aura): %v", domainSheet.ErrFailedToSetStatus, err)
 	}
 
 	physSkExp, err := charSheet.GetPhysSkillExpReference()
 	if err != nil {
-		return domain.NewDomainError(
-			fmt.Errorf("failed to get physical skills experience reference"),
-		)
+		return domainSheet.ErrFailedToGetPhysSkillExpRef
 	}
 	expTable := experience.NewExpTable(domainSheet.PHYSICAL_SKILLS_COEFF)
 	newExp := experience.NewExperience(expTable)
@@ -280,12 +277,12 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			enum.WeaponName(prof.Weapon), *newExp, physSkExp,
 		)
 		if err := charSheet.AddCommonProficiency(enum.WeaponName(prof.Weapon), domainProf); err != nil {
-			return fmt.Errorf("failed to add common proficiency: %w", err)
+			return fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddCommonProficiency, err)
 		}
 		if err := charSheet.IncreaseExpForProficiency(
 			experience.NewUpgradeCascade(prof.Exp), enum.WeaponName(prof.Weapon),
 		); err != nil {
-			return fmt.Errorf("failed to increase exp for proficiency: %w", err)
+			return fmt.Errorf("%w: %v", domainSheet.ErrFailedToIncreaseProficiencyExp, err)
 		}
 	}
 
@@ -298,7 +295,7 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 			*newExp, jointProf.Name, weapons,
 		)
 		if err := charSheet.AddJointProficiency(domainJointProf); err != nil {
-			return fmt.Errorf("failed to add joint proficiency: %w", err)
+			return fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddJointProficiency, err)
 		}
 		// TODO: implement for create and add here too
 		// charSheet.IncreaseExpForProficiency(

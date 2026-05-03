@@ -75,7 +75,7 @@ func (cs *CharacterSheet) IncreaseExpForSkill(
 ) error {
 	err := cs.skill.IncreaseExp(values, name)
 	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }
@@ -156,7 +156,7 @@ func (cs *CharacterSheet) IncreaseExpForPrinciple(
 ) error {
 	err := cs.principle.IncreaseExpByPrinciple(name, values)
 	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }
@@ -166,7 +166,7 @@ func (cs *CharacterSheet) IncreaseExpForCategory(
 ) error {
 	err := cs.principle.IncreaseExpByCategory(name, values)
 	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }
@@ -176,7 +176,7 @@ func (cs *CharacterSheet) IncreaseExpForProficiency(
 ) error {
 	err := cs.proficiency.IncreaseExp(values, name)
 	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }
@@ -186,7 +186,7 @@ func (cs *CharacterSheet) IncreaseExpForJointProficiency(
 ) error {
 	err := cs.proficiency.IncreaseExpForJoint(values, name)
 	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }
@@ -197,7 +197,7 @@ func (cs *CharacterSheet) IncreaseExpForMentals(
 ) error {
 	err := cs.attribute.IncreaseExpForMentals(values, name)
 	if upgradeErr := cs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }

@@ -86,7 +86,7 @@ func (hs *HalfSheet) IncreaseExpForJointProficiency(
 ) error {
 	err := hs.proficiency.IncreaseExpForJoint(values, name)
 	if upgradeErr := hs.status.Upgrade(); upgradeErr != nil {
-		return fmt.Errorf("failed to upgrade status: %w", upgradeErr)
+		return fmt.Errorf("%w: %v", ErrFailedToUpgradeStatus, upgradeErr)
 	}
 	return err
 }

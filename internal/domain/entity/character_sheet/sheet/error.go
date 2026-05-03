@@ -22,6 +22,22 @@ var (
 	ErrInvalidAge                 = domain.NewValidationError(errors.New("age must be positive"))
 	ErrInvalidDistributionPoints  = domain.NewValidationError(errors.New("invalid distribution points"))
 	ErrCharClassAlreadyExists     = domain.NewValidationError(errors.New("character class already exists"))
+
+	ErrFailedToUpgradeStatus          = domain.NewDomainError(errors.New("failed to upgrade status"))
+	ErrFailedToBuildHatsu             = domain.NewDomainError(errors.New("failed to build hatsu"))
+	ErrFailedToInitHatsu              = domain.NewDomainError(errors.New("failed to init hatsu"))
+	ErrFailedToSetStatus              = domain.NewDomainError(errors.New("failed to set status"))
+	ErrFailedToGetPhysSkillExpRef     = domain.NewDomainError(errors.New("failed to get physical skills experience reference"))
+	ErrFailedToIncreasePhysAttrPts    = domain.NewDomainError(errors.New("failed to increase physical primary attribute points"))
+	ErrFailedToIncreaseMentalExp      = domain.NewDomainError(errors.New("failed to increase mental exp"))
+	ErrFailedToIncreaseSkillExp       = domain.NewDomainError(errors.New("failed to increase skill exp"))
+	ErrFailedToIncreasePrincipleExp   = domain.NewDomainError(errors.New("failed to increase principle exp"))
+	ErrFailedToIncreaseCategoryExp    = domain.NewDomainError(errors.New("failed to increase category exp"))
+	ErrFailedToIncreaseProficiencyExp = domain.NewDomainError(errors.New("failed to increase proficiency exp"))
+	ErrFailedToIncreaseJointProfExp   = domain.NewDomainError(errors.New("failed to increase joint proficiency exp"))
+	ErrFailedToAddJointSkill          = domain.NewDomainError(errors.New("failed to add joint skill"))
+	ErrFailedToAddJointProficiency    = domain.NewDomainError(errors.New("failed to add joint proficiency"))
+	ErrFailedToAddCommonProficiency   = domain.NewDomainError(errors.New("failed to add common proficiency"))
 )
 
 func NewClassNotAppliedError(msg string) error {
