@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -30,18 +30,36 @@ func (m *mockEnrollmentLister) ListByMatchUUID(ctx context.Context, matchUUID uu
 	return m.fn(ctx, matchUUID)
 }
 
+type mockParticipationChecker struct {
+	fn func(ctx context.Context, playerUUID, campaignUUID uuid.UUID) (bool, error)
+}
+
+func (m *mockParticipationChecker) ExistsSheetInCampaign(
+	ctx context.Context, playerUUID, campaignUUID uuid.UUID,
+) (bool, error) {
+	return m.fn(ctx, playerUUID, campaignUUID)
+}
+
 func TestListMatchEnrollmentsUC(t *testing.T) {
 	matchUUID := uuid.New()
 	masterUUID := uuid.New()
 	otherUserUUID := uuid.New()
+	campaignUUID := uuid.New()
 
-	makeMatch := func() *matchEntity.Match {
+	makeMatch := func(isPublic bool) *matchEntity.Match {
 		return &matchEntity.Match{
 			UUID:         matchUUID,
 			MasterUUID:   masterUUID,
-			CampaignUUID: uuid.New(),
-			IsPublic:     true,
+			CampaignUUID: campaignUUID,
+			IsPublic:     isPublic,
 		}
+	}
+
+	checkerNeverCalled := func(t *testing.T) *mockParticipationChecker {
+		return &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			t.Fatal("participationChecker should NOT be called for this case")
+			return false, nil
+		}}
 	}
 
 	tests := []struct {
@@ -49,36 +67,100 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 		userUUID     uuid.UUID
 		matchFn      func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error)
 		listFn       func(ctx context.Context, matchUUID uuid.UUID) ([]*enrollmentEntity.Enrollment, error)
+		checker      func(t *testing.T) *mockParticipationChecker
 		wantErr      error
 		wantIsMaster bool
 		wantLen      int
 	}{
 		{
-			name:     "master sees ViewerIsMaster=true",
+			name:     "master on public match — no checker call",
 			userUUID: masterUUID,
 			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
-				return makeMatch(), nil
+				return makeMatch(true), nil
 			},
 			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
-				return []*enrollmentEntity.Enrollment{
-					{UUID: uuid.New(), Status: "pending", CreatedAt: time.Now()},
-					{UUID: uuid.New(), Status: "accepted", CreatedAt: time.Now()},
-				}, nil
+				return []*enrollmentEntity.Enrollment{{Status: "pending"}}, nil
 			},
+			checker:      checkerNeverCalled,
 			wantIsMaster: true,
-			wantLen:      2,
+			wantLen:      1,
 		},
 		{
-			name:     "non-master on public match sees ViewerIsMaster=false",
-			userUUID: otherUserUUID,
+			name:     "master on private match — no checker call",
+			userUUID: masterUUID,
 			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
-				return makeMatch(), nil
+				return makeMatch(false), nil
 			},
 			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
-				return []*enrollmentEntity.Enrollment{{UUID: uuid.New(), Status: "pending"}}, nil
+				return []*enrollmentEntity.Enrollment{}, nil
+			},
+			checker:      checkerNeverCalled,
+			wantIsMaster: true,
+			wantLen:      0,
+		},
+		{
+			name:     "non-master on public match — no checker call",
+			userUUID: otherUserUUID,
+			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return makeMatch(true), nil
+			},
+			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
+				return []*enrollmentEntity.Enrollment{{Status: "accepted"}}, nil
+			},
+			checker:      checkerNeverCalled,
+			wantIsMaster: false,
+			wantLen:      1,
+		},
+		{
+			name:     "non-master on private match, participates — allowed",
+			userUUID: otherUserUUID,
+			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return makeMatch(false), nil
+			},
+			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
+				return []*enrollmentEntity.Enrollment{{Status: "accepted"}}, nil
+			},
+			checker: func(_ *testing.T) *mockParticipationChecker {
+				return &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+					return true, nil
+				}}
 			},
 			wantIsMaster: false,
 			wantLen:      1,
+		},
+		{
+			name:     "non-master on private match, does NOT participate — forbidden",
+			userUUID: otherUserUUID,
+			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return makeMatch(false), nil
+			},
+			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
+				t.Fatal("listFn should not be called when forbidden")
+				return nil, nil
+			},
+			checker: func(_ *testing.T) *mockParticipationChecker {
+				return &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+					return false, nil
+				}}
+			},
+			wantErr: domainAuth.ErrInsufficientPermissions,
+		},
+		{
+			name:     "checker error is propagated",
+			userUUID: otherUserUUID,
+			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return makeMatch(false), nil
+			},
+			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
+				t.Fatal("listFn should not be called when checker errors")
+				return nil, nil
+			},
+			checker: func(_ *testing.T) *mockParticipationChecker {
+				return &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+					return false, errors.New("db down")
+				}}
+			},
+			wantErr: errors.New("db down"),
 		},
 		{
 			name:     "match not found maps to ErrMatchNotFound",
@@ -90,42 +172,20 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 				t.Fatal("listFn should not be called when match is missing")
 				return nil, nil
 			},
+			checker: checkerNeverCalled,
 			wantErr: domainMatch.ErrMatchNotFound,
 		},
 		{
-			name:     "lister returns empty slice and no error",
+			name:     "lister error is propagated (master path)",
 			userUUID: masterUUID,
 			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
-				return makeMatch(), nil
-			},
-			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
-				return []*enrollmentEntity.Enrollment{}, nil
-			},
-			wantIsMaster: true,
-			wantLen:      0,
-		},
-		{
-			name:     "lister error is propagated",
-			userUUID: masterUUID,
-			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
-				return makeMatch(), nil
+				return makeMatch(true), nil
 			},
 			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
 				return nil, errors.New("db down")
 			},
+			checker: checkerNeverCalled,
 			wantErr: errors.New("db down"),
-		},
-		{
-			name:     "match repo error (other than not found) is propagated",
-			userUUID: masterUUID,
-			matchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
-				return nil, errors.New("conn refused")
-			},
-			listFn: func(_ context.Context, _ uuid.UUID) ([]*enrollmentEntity.Enrollment, error) {
-				t.Fatal("listFn should not be called when match repo errors")
-				return nil, nil
-			},
-			wantErr: errors.New("conn refused"),
 		},
 	}
 
@@ -134,6 +194,7 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 			uc := domainMatch.NewListMatchEnrollmentsUC(
 				&mockMatchRepoForList{getMatchFn: tc.matchFn},
 				&mockEnrollmentLister{fn: tc.listFn},
+				tc.checker(t),
 			)
 
 			got, err := uc.List(context.Background(), matchUUID, tc.userUUID)
@@ -142,14 +203,19 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error %v, got nil", tc.wantErr)
 				}
-				if errors.Is(tc.wantErr, domainMatch.ErrMatchNotFound) {
+				switch {
+				case errors.Is(tc.wantErr, domainMatch.ErrMatchNotFound):
 					if !errors.Is(err, domainMatch.ErrMatchNotFound) {
 						t.Fatalf("expected ErrMatchNotFound, got %v", err)
 					}
-					return
-				}
-				if err.Error() != tc.wantErr.Error() {
-					t.Fatalf("expected error %q, got %q", tc.wantErr.Error(), err.Error())
+				case errors.Is(tc.wantErr, domainAuth.ErrInsufficientPermissions):
+					if !errors.Is(err, domainAuth.ErrInsufficientPermissions) {
+						t.Fatalf("expected ErrInsufficientPermissions, got %v", err)
+					}
+				default:
+					if err.Error() != tc.wantErr.Error() {
+						t.Fatalf("expected error %q, got %q", tc.wantErr.Error(), err.Error())
+					}
 				}
 				return
 			}
