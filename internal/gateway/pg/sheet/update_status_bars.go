@@ -2,6 +2,7 @@ package sheet
 
 import (
 	"context"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 )
@@ -22,13 +23,15 @@ func (r *Repository) UpdateStatusBars(
 			stamina_max_pts  = $6,
 			aura_min_pts     = $7,
 			aura_curr_pts    = $8,
-			aura_max_pts     = $9
-		WHERE uuid = $10
+			aura_max_pts     = $9,
+			updated_at       = $10
+		WHERE uuid = $11
 	`
 	_, err := r.q.Exec(ctx, query,
 		health.Min, health.Curr, health.Max,
 		stamina.Min, stamina.Curr, stamina.Max,
 		aura.Min, aura.Curr, aura.Max,
+		time.Now(),
 		sheetUUID,
 	)
 	return err
