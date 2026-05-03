@@ -23,7 +23,7 @@ func TestEnrollCharacterSheet(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Gon")
 
 		matchID := uuid.MustParse(matchUUID)
 		sheetID := uuid.MustParse(sheetUUID)
@@ -47,7 +47,7 @@ func TestEnrollCharacterSheet(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Killua")
 
 		matchID := uuid.MustParse(matchUUID)
 		sheetID := uuid.MustParse(sheetUUID)
@@ -73,7 +73,7 @@ func TestExistsEnrolledCharacterSheet(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Kurapika")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Kurapika")
 
 		matchID := uuid.MustParse(matchUUID)
 		sheetID := uuid.MustParse(sheetUUID)
@@ -115,7 +115,7 @@ func TestAcceptEnrollment(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Gon")
 		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
 
 		enrollID := uuid.MustParse(enrollmentUUID)
@@ -154,7 +154,7 @@ func TestRejectEnrollment(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Killua")
 		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
 
 		enrollID := uuid.MustParse(enrollmentUUID)
@@ -193,7 +193,7 @@ func TestGetEnrollmentByUUID(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Kurapika")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Kurapika")
 		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
 
 		enrollID := uuid.MustParse(enrollmentUUID)
@@ -233,9 +233,9 @@ func TestRejectPendingEnrollments(t *testing.T) {
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
 
-		sheetUUID1 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
-		sheetUUID2 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
-		sheetUUID3 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Kurapika")
+		sheetUUID1 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Gon")
+		sheetUUID2 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Killua")
+		sheetUUID3 := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Kurapika")
 
 		pendingID1 := uuid.MustParse(pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID1, "pending"))
 		pendingID2 := uuid.MustParse(pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID2, "pending"))
@@ -292,7 +292,7 @@ func TestRejectEnrollmentByPlayerAndMatch(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Gon")
 		enrollmentUUID := pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "accepted")
 
 		playerID := uuid.MustParse(userUUID)
@@ -318,7 +318,7 @@ func TestRejectEnrollmentByPlayerAndMatch(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Killua")
 		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
 
 		playerID := uuid.MustParse(userUUID)
@@ -357,7 +357,7 @@ func TestIsPlayerEnrolledInMatch(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Gon")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Gon")
 		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "accepted")
 
 		playerID := uuid.MustParse(userUUID)
@@ -378,7 +378,7 @@ func TestIsPlayerEnrolledInMatch(t *testing.T) {
 		userUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, userUUID, "Test Campaign")
 		matchUUID := pgtest.InsertTestMatch(t, pool, userUUID, campaignUUID, "Match 1")
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, "Killua")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &userUUID, nil, nil, "Killua")
 		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
 
 		playerID := uuid.MustParse(userUUID)
@@ -402,6 +402,103 @@ func TestIsPlayerEnrolledInMatch(t *testing.T) {
 		}
 		if enrolled {
 			t.Error("IsPlayerEnrolledInMatch() = true, want false")
+		}
+	})
+}
+
+func TestListByMatchUUID(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := enrollmentRepo.NewRepository(pool)
+
+	t.Run("lists all statuses ordered by created_at and includes joined sheet+player data", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		playerUUID := pgtest.InsertTestUser(t, pool, "player1", "p1@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match 1")
+
+		sheet1 := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, &campaignUUID, "Gon")
+		sheet2 := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, &campaignUUID, "Killua")
+		sheet3 := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, &campaignUUID, "Kurapika")
+
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheet1, "pending")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheet2, "accepted")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheet3, "rejected")
+
+		got, err := repo.ListByMatchUUID(ctx, uuid.MustParse(matchUUID))
+		if err != nil {
+			t.Fatalf("ListByMatchUUID() error = %v, want nil", err)
+		}
+		if len(got) != 3 {
+			t.Fatalf("ListByMatchUUID() len = %d, want 3", len(got))
+		}
+
+		wantNicks := []string{"Gon", "Killua", "Kurapika"}
+		wantStatuses := []string{"pending", "accepted", "rejected"}
+		for i, e := range got {
+			if e.CharacterSheet.NickName != wantNicks[i] {
+				t.Errorf("row %d: nick = %q, want %q", i, e.CharacterSheet.NickName, wantNicks[i])
+			}
+			if e.Status != wantStatuses[i] {
+				t.Errorf("row %d: status = %q, want %q", i, e.Status, wantStatuses[i])
+			}
+			if e.Player.Nick != "player1" {
+				t.Errorf("row %d: player nick = %q, want %q", i, e.Player.Nick, "player1")
+			}
+			if e.Player.UUID.String() != playerUUID {
+				t.Errorf("row %d: player uuid = %s, want %s", i, e.Player.UUID, playerUUID)
+			}
+			if e.CharacterSheet.UUID == uuid.Nil {
+				t.Errorf("row %d: character sheet uuid is nil", i)
+			}
+			if e.CharacterSheet.CampaignUUID == nil {
+				t.Errorf("row %d: campaign_uuid is nil, want set", i)
+			}
+		}
+	})
+
+	t.Run("returns empty slice when match has no enrollments", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match 1")
+
+		got, err := repo.ListByMatchUUID(ctx, uuid.MustParse(matchUUID))
+		if err != nil {
+			t.Fatalf("ListByMatchUUID() error = %v, want nil", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("ListByMatchUUID() len = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("does not include enrollments from other matches", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		playerUUID := pgtest.InsertTestUser(t, pool, "player1", "p1@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Test Campaign")
+		matchA := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match A")
+		matchB := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match B")
+
+		sheetA := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Gon")
+		sheetB := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Killua")
+
+		pgtest.InsertTestEnrollment(t, pool, matchA, sheetA, "pending")
+		pgtest.InsertTestEnrollment(t, pool, matchB, sheetB, "accepted")
+
+		got, err := repo.ListByMatchUUID(ctx, uuid.MustParse(matchA))
+		if err != nil {
+			t.Fatalf("ListByMatchUUID() error = %v, want nil", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("ListByMatchUUID() len = %d, want 1", len(got))
+		}
+		if got[0].CharacterSheet.NickName != "Gon" {
+			t.Errorf("got nick %q, want %q", got[0].CharacterSheet.NickName, "Gon")
 		}
 	})
 }
