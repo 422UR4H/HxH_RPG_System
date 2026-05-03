@@ -285,8 +285,14 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		{enum.Stamina, modelSheet.Stamina.Curr, modelSheet.Stamina.Max},
 		{enum.Aura, modelSheet.Aura.Curr, modelSheet.Aura.Max},
 	} {
-		newMax, _ := charSheet.GetMaxOfStatus(e.name)
-		minVal, _ := charSheet.GetMinOfStatus(e.name)
+		newMax, err := charSheet.GetMaxOfStatus(e.name)
+		if err != nil {
+			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
+		}
+		minVal, err := charSheet.GetMinOfStatus(e.name)
+		if err != nil {
+			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
+		}
 		corrected, correctionApplied := normalizeStatus(e.curr, e.oldMax, newMax, minVal)
 		if correctionApplied {
 			wasCorrected = true
