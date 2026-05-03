@@ -319,6 +319,9 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		if correctionApplied {
 			wasCorrected = true
 		}
+		if newMax == 0 {
+			continue // bar not yet unlocked; curr must remain at bar's initialized value
+		}
 		if err := charSheet.SetCurrStatus(e.name, corrected); err != nil {
 			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToSetStatus, e.name, err)
 		}

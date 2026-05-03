@@ -22,6 +22,7 @@ func TestNormalizeStatus(t *testing.T) {
 		{"result clamped to newMax", 100, 100, 50, 0, 50, true},
 		{"minVal clamp applied", 81, 1000, 80, 10, 10, true},
 		{"proportional with rounding up", 91, 100, 80, 0, 73, true},
+		{"no correction - curr positive but newMax zero", 5, 100, 0, 0, 5, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
