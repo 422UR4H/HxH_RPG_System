@@ -16,6 +16,7 @@ type MockCharacterSheetRepo struct {
 	ListCharacterSheetsByPlayerUUIDFn    func(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error)
 	UpdateNenHexagonValueFn              func(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDsFn func(ctx context.Context, uuid uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error)
+	ExistsSheetInCampaignFn              func(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
 }
 
 func (m *MockCharacterSheetRepo) CreateCharacterSheet(ctx context.Context, sheet *model.CharacterSheet) error {
@@ -72,4 +73,11 @@ func (m *MockCharacterSheetRepo) GetCharacterSheetRelationshipUUIDs(ctx context.
 		return m.GetCharacterSheetRelationshipUUIDsFn(ctx, id)
 	}
 	return model.CharacterSheetRelationshipUUIDs{}, nil
+}
+
+func (m *MockCharacterSheetRepo) ExistsSheetInCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error) {
+	if m.ExistsSheetInCampaignFn != nil {
+		return m.ExistsSheetInCampaignFn(ctx, playerUUID, campaignUUID)
+	}
+	return false, nil
 }

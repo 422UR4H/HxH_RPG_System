@@ -16,4 +16,5 @@ type IRepository interface {
 	ListCharacterSheetsByPlayerUUID(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error)
 	UpdateNenHexagonValue(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDs(ctx context.Context, uuid uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error)
+	ExistsSheetInCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
 }

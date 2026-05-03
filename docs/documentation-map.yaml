@@ -316,6 +316,35 @@ mappings:
         confidence: possibly_affected
     notes: Match use cases / domain services
 
+  # ─── Match: Roster (Enrollments Listing) ───
+  - code_path: internal/domain/match/list_match_enrollments.go
+    dev_docs:
+      - path: docs/dev/match/roster.md
+        confidence: directly_affected
+    notes: Use case for the match roster read path; privacy and visibility tiers
+
+  - code_path: internal/domain/entity/enrollment/
+    dev_docs:
+      - path: docs/dev/enrollment.md
+        confidence: directly_affected
+      - path: docs/dev/match/roster.md
+        confidence: possibly_affected
+    notes: Enrollment aggregate (uuid, status, created_at, character sheet summary, player ref)
+
+  - code_path: internal/gateway/pg/enrollment/list_by_match_uuid.go
+    dev_docs:
+      - path: docs/dev/match/roster.md
+        confidence: directly_affected
+      - path: docs/dev/enrollment.md
+        confidence: possibly_affected
+    notes: Cross-domain JOIN (enrollments + character_sheets + character_profiles + users)
+
+  - code_path: internal/gateway/pg/sheet/exists_in_campaign.go
+    dev_docs:
+      - path: docs/dev/match/roster.md
+        confidence: possibly_affected
+    notes: Participation check used by private-match privacy rule
+
   # ─── Gateway (Repositories) ───
   - code_path: internal/gateway/
     dev_docs:

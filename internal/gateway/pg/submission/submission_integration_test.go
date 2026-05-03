@@ -21,7 +21,7 @@ func TestSubmitCharacterSheet(t *testing.T) {
 	masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
 	playerUUID := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
-	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, "Hero")
+	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Hero")
 
 	t.Run("happy path", func(t *testing.T) {
 		err := repo.SubmitCharacterSheet(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID), time.Now())
@@ -54,7 +54,7 @@ func TestGetSubmissionCampaignUUIDBySheetUUID(t *testing.T) {
 	masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
 	playerUUID := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
-	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, "Hero")
+	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Hero")
 
 	err := repo.SubmitCharacterSheet(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID), time.Now())
 	if err != nil {
@@ -87,7 +87,7 @@ func TestExistsSubmittedCharacterSheet(t *testing.T) {
 	masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
 	playerUUID := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
-	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, "Hero")
+	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Hero")
 
 	err := repo.SubmitCharacterSheet(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID), time.Now())
 	if err != nil {
@@ -123,7 +123,7 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 	masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
 	playerUUID := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
-	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, "Hero")
+	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Hero")
 
 	err := repo.SubmitCharacterSheet(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID), time.Now())
 	if err != nil {
@@ -167,7 +167,7 @@ func TestRejectCharacterSheetSubmission(t *testing.T) {
 	masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
 	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
 	playerUUID := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
-	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, "Hero")
+	sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Hero")
 
 	err := repo.SubmitCharacterSheet(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID), time.Now())
 	if err != nil {

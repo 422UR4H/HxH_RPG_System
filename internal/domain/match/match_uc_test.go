@@ -205,19 +205,29 @@ func TestGetMatch(t *testing.T) {
 	masterUUID := uuid.New()
 	otherUUID := uuid.New()
 	matchUUID := uuid.New()
+	campaignUUID := uuid.New()
 
 	privateMatch := &matchEntity.Match{
-		UUID:       matchUUID,
-		MasterUUID: masterUUID,
-		Title:      "Private Match",
-		IsPublic:   false,
+		UUID:         matchUUID,
+		MasterUUID:   masterUUID,
+		CampaignUUID: campaignUUID,
+		Title:        "Private Match",
+		IsPublic:     false,
 	}
 
 	publicMatch := &matchEntity.Match{
-		UUID:       matchUUID,
-		MasterUUID: masterUUID,
-		Title:      "Public Match",
-		IsPublic:   true,
+		UUID:         matchUUID,
+		MasterUUID:   masterUUID,
+		CampaignUUID: campaignUUID,
+		Title:        "Public Match",
+		IsPublic:     true,
+	}
+
+	checkerNeverCalled := func(t *testing.T) *mockParticipationChecker {
+		return &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			t.Fatal("participationChecker should NOT be called for this case")
+			return false, nil
+		}}
 	}
 
 	tests := []struct {
@@ -225,6 +235,7 @@ func TestGetMatch(t *testing.T) {
 		uuid     uuid.UUID
 		userUUID uuid.UUID
 		mock     *testutil.MockMatchRepo
+		checker  func(t *testing.T) *mockParticipationChecker
 		wantErr  error
 	}{
 		{
@@ -236,6 +247,7 @@ func TestGetMatch(t *testing.T) {
 					return privateMatch, nil
 				},
 			},
+			checker: checkerNeverCalled,
 			wantErr: nil,
 		},
 		{
@@ -247,6 +259,7 @@ func TestGetMatch(t *testing.T) {
 					return publicMatch, nil
 				},
 			},
+			checker: checkerNeverCalled,
 			wantErr: nil,
 		},
 		{
@@ -257,6 +270,11 @@ func TestGetMatch(t *testing.T) {
 				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
 					return privateMatch, nil
 				},
+			},
+			checker: func(_ *testing.T) *mockParticipationChecker {
+				return &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+					return false, nil
+				}}
 			},
 			wantErr: auth.ErrInsufficientPermissions,
 		},
@@ -269,6 +287,7 @@ func TestGetMatch(t *testing.T) {
 					return nil, matchPg.ErrMatchNotFound
 				},
 			},
+			checker: checkerNeverCalled,
 			wantErr: domainMatch.ErrMatchNotFound,
 		},
 		{
@@ -280,13 +299,14 @@ func TestGetMatch(t *testing.T) {
 					return nil, errors.New("connection error")
 				},
 			},
+			checker: checkerNeverCalled,
 			wantErr: errors.New("connection error"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewGetMatchUC(tt.mock)
+			uc := domainMatch.NewGetMatchUC(tt.mock, tt.checker(t))
 			result, err := uc.GetMatch(context.Background(), tt.uuid, tt.userUUID)
 
 			if tt.wantErr != nil {
@@ -306,6 +326,86 @@ func TestGetMatch(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("non-master on private match, participates — allowed", func(t *testing.T) {
+		matchUUID := uuid.New()
+		masterUUID := uuid.New()
+		userUUID := uuid.New()
+		campaignUUID := uuid.New()
+
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return &matchEntity.Match{
+					UUID:         matchUUID,
+					MasterUUID:   masterUUID,
+					CampaignUUID: campaignUUID,
+					IsPublic:     false,
+				}, nil
+			},
+		}
+		checker := &mockParticipationChecker{fn: func(_ context.Context, p, c uuid.UUID) (bool, error) {
+			if p != userUUID || c != campaignUUID {
+				t.Errorf("checker called with (%v,%v), want (%v,%v)", p, c, userUUID, campaignUUID)
+			}
+			return true, nil
+		}}
+		uc := domainMatch.NewGetMatchUC(matchRepo, checker)
+
+		got, err := uc.GetMatch(context.Background(), matchUUID, userUUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.UUID != matchUUID {
+			t.Errorf("got match uuid %v, want %v", got.UUID, matchUUID)
+		}
+	})
+
+	t.Run("non-master on private match, does NOT participate — forbidden", func(t *testing.T) {
+		matchUUID := uuid.New()
+		masterUUID := uuid.New()
+		userUUID := uuid.New()
+
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return &matchEntity.Match{
+					UUID: matchUUID, MasterUUID: masterUUID, CampaignUUID: uuid.New(), IsPublic: false,
+				}, nil
+			},
+		}
+		checker := &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
+		}}
+		uc := domainMatch.NewGetMatchUC(matchRepo, checker)
+
+		_, err := uc.GetMatch(context.Background(), matchUUID, userUUID)
+		if !errors.Is(err, auth.ErrInsufficientPermissions) {
+			t.Fatalf("got %v, want ErrInsufficientPermissions", err)
+		}
+	})
+
+	t.Run("non-master on private match, checker errors — propagated", func(t *testing.T) {
+		matchUUID := uuid.New()
+		masterUUID := uuid.New()
+		userUUID := uuid.New()
+
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return &matchEntity.Match{
+					UUID: matchUUID, MasterUUID: masterUUID, CampaignUUID: uuid.New(), IsPublic: false,
+				}, nil
+			},
+		}
+		wantErr := errors.New("db down")
+		checker := &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, wantErr
+		}}
+		uc := domainMatch.NewGetMatchUC(matchRepo, checker)
+
+		_, err := uc.GetMatch(context.Background(), matchUUID, userUUID)
+		if err == nil || err.Error() != wantErr.Error() {
+			t.Fatalf("got %v, want %v", err, wantErr)
+		}
+	})
 }
 
 func TestListMatches(t *testing.T) {

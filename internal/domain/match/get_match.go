@@ -17,19 +17,24 @@ type IGetMatch interface {
 }
 
 type GetMatchUC struct {
-	repo IRepository
+	repo                 IRepository
+	participationChecker CampaignParticipationChecker
 }
 
-func NewGetMatchUC(repo IRepository) *GetMatchUC {
+func NewGetMatchUC(
+	repo IRepository,
+	participationChecker CampaignParticipationChecker,
+) *GetMatchUC {
 	return &GetMatchUC{
-		repo: repo,
+		repo:                 repo,
+		participationChecker: participationChecker,
 	}
 }
 
 func (uc *GetMatchUC) GetMatch(
-	ctx context.Context, uuid uuid.UUID, userUUID uuid.UUID,
+	ctx context.Context, id uuid.UUID, userUUID uuid.UUID,
 ) (*matchEntity.Match, error) {
-	match, err := uc.repo.GetMatch(ctx, uuid)
+	match, err := uc.repo.GetMatch(ctx, id)
 	if err != nil {
 		if errors.Is(err, matchPg.ErrMatchNotFound) {
 			return nil, ErrMatchNotFound
@@ -37,8 +42,16 @@ func (uc *GetMatchUC) GetMatch(
 		return nil, err
 	}
 
-	if match.MasterUUID != userUUID && !match.IsPublic {
-		return nil, auth.ErrInsufficientPermissions
+	if !match.IsPublic && match.MasterUUID != userUUID {
+		ok, err := uc.participationChecker.ExistsSheetInCampaign(
+			ctx, userUUID, match.CampaignUUID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, auth.ErrInsufficientPermissions
+		}
 	}
 	return match, nil
 }

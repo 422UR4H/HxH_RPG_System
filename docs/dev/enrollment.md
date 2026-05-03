@@ -267,6 +267,30 @@ de múltiplas partidas dentro da mesma campanha.
 
 ---
 
+## 7. Listagem de Inscrições por Match
+
+A leitura "todas as inscrições de uma match" é exposta via `GET /matches/{uuid}/enrollments`.
+A documentação detalhada (autorização, visibilidade por linha, formato de
+response) vive em [`match/roster.md`](./match/roster.md).
+
+**Pontos cross-domain relevantes para esta área:**
+
+- A entidade agregadora `Enrollment` foi adicionada em
+  `internal/domain/entity/enrollment/enrollment.go` — antes desta task não
+  existia entity package para enrollment. O agregado carrega uuid, status,
+  `created_at`, summary completo do character sheet e referência do player.
+- O use case que orquestra a leitura vive em
+  `internal/domain/match/list_match_enrollments.go` (não em
+  `domain/enrollment/`). Razão: a operação é semanticamente "roster da
+  match"; enrollments são dados agregados, não sujeito da orquestração.
+  As operações que agem sobre uma inscrição (accept/reject/kick)
+  permanecem em `domain/enrollment/`.
+- O gateway `ListByMatchUUID` em `internal/gateway/pg/enrollment/` faz
+  JOIN com `character_sheets`, `character_profiles` e `users` para
+  popular o agregado em uma única query.
+
+---
+
 ## Referências de Código
 
 | Arquivo                                                  | Responsabilidade                              |
@@ -283,3 +307,4 @@ de múltiplas partidas dentro da mesma campanha.
 | `internal/domain/enrollment/error.go`                    | Erros de domínio de Enrollment                |
 | `internal/domain/enrollment/i_repository.go`             | Interface de repositório Enrollment           |
 | `internal/domain/campaign/i_repository.go`               | `GetCampaignMasterUUID` — usado por ambos     |
+| `internal/gateway/pg/enrollment/list_by_match_uuid.go`   | Listagem cross-domain por match (JOIN com sheet + player) |
