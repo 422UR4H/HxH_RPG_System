@@ -295,6 +295,9 @@ func TestGetCharacterSheet(t *testing.T) {
 				return modelSheet, nil
 			},
 			UpdateStatusBarsFn: func(ctx context.Context, uuid string, health, stamina, aura model.StatusBar) error {
+				if health.Curr != 17 {
+					t.Errorf("expected normalized health curr = 17, got %d", health.Curr)
+				}
 				close(done)
 				return nil
 			},
