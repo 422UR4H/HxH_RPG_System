@@ -20,8 +20,10 @@ type CharacterBaseSummaryResponse struct {
 	UpdatedAt      string     `json:"updated_at"`
 }
 
-type CharacterPrivateSummaryResponse struct {
-	CharacterBaseSummaryResponse
+// CharacterPrivateOnlyResponse holds the fields that are private to the sheet
+// owner (and to the master of a match the sheet is enrolled in). It does NOT
+// embed the base — it is meant to be nested under a base-typed parent.
+type CharacterPrivateOnlyResponse struct {
 	FullName       string    `json:"full_name"`
 	Alignment      string    `json:"alignment"`
 	CharacterClass string    `json:"character_class"`
@@ -40,6 +42,13 @@ type CharacterPrivateSummaryResponse struct {
 	// Aura           StatusBar  `json:"aura"`
 }
 
+// CharacterPrivateSummaryResponse is the flat (base + private) shape used by
+// existing endpoints (kept for backward compatibility).
+type CharacterPrivateSummaryResponse struct {
+	CharacterBaseSummaryResponse
+	CharacterPrivateOnlyResponse
+}
+
 type CharacterPublicSummaryResponse struct {
 	CharacterBaseSummaryResponse
 }
@@ -50,15 +59,11 @@ type StatusBar struct {
 	Max     int `json:"max"`
 }
 
-func ToPrivateSummaryResponse(
-	sheet *model.CharacterSheetSummary) CharacterPrivateSummaryResponse {
-
+func ToPrivateOnlyResponse(sheet *model.CharacterSheetSummary) CharacterPrivateOnlyResponse {
 	stamina := sheet.Stamina
 	health := sheet.Health
 	// aura := sheet.Aura
-	return CharacterPrivateSummaryResponse{
-		CharacterBaseSummaryResponse: toSummaryBaseResponse(sheet),
-
+	return CharacterPrivateOnlyResponse{
 		FullName:       sheet.FullName,
 		Alignment:      sheet.Alignment,
 		CharacterClass: sheet.CharacterClass,
@@ -90,17 +95,22 @@ func ToPrivateSummaryResponse(
 	}
 }
 
-func ToPublicSummaryResponse(
-	sheet *model.CharacterSheetSummary) CharacterPublicSummaryResponse {
-
-	return CharacterPublicSummaryResponse{
-		CharacterBaseSummaryResponse: toSummaryBaseResponse(sheet),
+func ToPrivateSummaryResponse(sheet *model.CharacterSheetSummary) CharacterPrivateSummaryResponse {
+	return CharacterPrivateSummaryResponse{
+		CharacterBaseSummaryResponse: ToBaseSummaryResponse(sheet),
+		CharacterPrivateOnlyResponse: ToPrivateOnlyResponse(sheet),
 	}
 }
 
-func toSummaryBaseResponse(
-	sheet *model.CharacterSheetSummary) CharacterBaseSummaryResponse {
+func ToPublicSummaryResponse(sheet *model.CharacterSheetSummary) CharacterPublicSummaryResponse {
+	return CharacterPublicSummaryResponse{
+		CharacterBaseSummaryResponse: ToBaseSummaryResponse(sheet),
+	}
+}
 
+// ToBaseSummaryResponse exports what was previously the unexported
+// toSummaryBaseResponse so the new match handler can map base summaries.
+func ToBaseSummaryResponse(sheet *model.CharacterSheetSummary) CharacterBaseSummaryResponse {
 	var storyStartAtStr, storyCurrentAtStr, deadAtStr *string
 	if sheet.StoryStartAt != nil {
 		formatted := sheet.StoryStartAt.Format("2006-01-02")
@@ -116,12 +126,11 @@ func toSummaryBaseResponse(
 	}
 
 	return CharacterBaseSummaryResponse{
-		UUID:         sheet.UUID,
-		PlayerUUID:   sheet.PlayerUUID,
-		MasterUUID:   sheet.MasterUUID,
-		CampaignUUID: sheet.CampaignUUID,
-		NickName:     sheet.NickName,
-
+		UUID:           sheet.UUID,
+		PlayerUUID:     sheet.PlayerUUID,
+		MasterUUID:     sheet.MasterUUID,
+		CampaignUUID:   sheet.CampaignUUID,
+		NickName:       sheet.NickName,
 		StoryStartAt:   storyStartAtStr,
 		StoryCurrentAt: storyCurrentAtStr,
 		DeadAt:         deadAtStr,
