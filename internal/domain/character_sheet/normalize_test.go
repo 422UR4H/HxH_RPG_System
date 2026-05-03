@@ -18,7 +18,7 @@ func TestNormalizeStatus(t *testing.T) {
 		{"no correction - curr is zero", 0, 100, 90, 0, 0, false},
 		{"proportional correction", 90, 100, 80, 0, 72, true},
 		{"fully healed correction", 100, 100, 90, 0, 90, true},
-		{"oldMax zero fallback returns newMax", 50, 0, 90, 0, 90, true},
+		{"oldMax zero fallback returns newMax", 100, 0, 90, 0, 90, true},
 		{"result clamped to newMax", 100, 100, 50, 0, 50, true},
 	}
 	for _, tt := range tests {
