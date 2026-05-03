@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
@@ -157,7 +156,12 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		enum.Constitution: modelSheet.ConstitutionPts,
 	}
 	for name, points := range physicalAttrs {
-		charSheet.IncreasePtsForPhysPrimaryAttr(name, points)
+		if points == 0 {
+			continue
+		}
+		if _, _, err := charSheet.IncreasePtsForPhysPrimaryAttr(name, points); err != nil {
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePhysAttrPts, name, err)
+		}
 	}
 
 	// TODO: add mental attributes points or remove from modelSheet
@@ -169,7 +173,12 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		enum.Creativity:   modelSheet.CreativityExp,
 	}
 	for name, exp := range mentalAttrs {
-		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
+		if exp == 0 {
+			continue
+		}
+		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
+		}
 	}
 
 	physicalSkills := map[enum.SkillName]int{
@@ -201,7 +210,12 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		enum.Tenacity:   modelSheet.TenacityExp,
 	}
 	for name, exp := range physicalSkills {
-		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
+		if exp == 0 {
+			continue
+		}
+		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseSkillExp, name, err)
+		}
 	}
 
 	spiritualPrinciples := map[enum.PrincipleName]int{
@@ -217,7 +231,12 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		enum.En:    modelSheet.EnExp,
 	}
 	for name, exp := range spiritualPrinciples {
-		charSheet.IncreaseExpForPrinciple(experience.NewUpgradeCascade(exp), name)
+		if exp == 0 {
+			continue
+		}
+		if err := charSheet.IncreaseExpForPrinciple(experience.NewUpgradeCascade(exp), name); err != nil {
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePrincipleExp, name, err)
+		}
 	}
 
 	spiritualCategories := map[enum.CategoryName]int{
@@ -229,18 +248,27 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		enum.Emission:        modelSheet.EmissionExp,
 	}
 	for name, exp := range spiritualCategories {
-		charSheet.IncreaseExpForCategory(experience.NewUpgradeCascade(exp), name)
+		if exp == 0 {
+			continue
+		}
+		if err := charSheet.IncreaseExpForCategory(experience.NewUpgradeCascade(exp), name); err != nil {
+			return fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseCategoryExp, name, err)
+		}
 	}
 
-	charSheet.SetCurrStatus(enum.Health, modelSheet.Health.Curr)
-	charSheet.SetCurrStatus(enum.Stamina, modelSheet.Stamina.Curr)
-	charSheet.SetCurrStatus(enum.Aura, modelSheet.Aura.Curr)
+	if err := charSheet.SetCurrStatus(enum.Health, modelSheet.Health.Curr); err != nil {
+		return fmt.Errorf("%w (health): %v", domainSheet.ErrFailedToSetStatus, err)
+	}
+	if err := charSheet.SetCurrStatus(enum.Stamina, modelSheet.Stamina.Curr); err != nil {
+		return fmt.Errorf("%w (stamina): %v", domainSheet.ErrFailedToSetStatus, err)
+	}
+	if err := charSheet.SetCurrStatus(enum.Aura, modelSheet.Aura.Curr); err != nil {
+		return fmt.Errorf("%w (aura): %v", domainSheet.ErrFailedToSetStatus, err)
+	}
 
 	physSkExp, err := charSheet.GetPhysSkillExpReference()
 	if err != nil {
-		return domain.NewDomainError(
-			fmt.Errorf("failed to get physical skills experience reference"),
-		)
+		return domainSheet.ErrFailedToGetPhysSkillExpRef
 	}
 	expTable := experience.NewExpTable(domainSheet.PHYSICAL_SKILLS_COEFF)
 	newExp := experience.NewExperience(expTable)
@@ -248,10 +276,14 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		domainProf := proficiency.NewProficiency(
 			enum.WeaponName(prof.Weapon), *newExp, physSkExp,
 		)
-		charSheet.AddCommonProficiency(enum.WeaponName(prof.Weapon), domainProf)
-		charSheet.IncreaseExpForProficiency(
+		if err := charSheet.AddCommonProficiency(enum.WeaponName(prof.Weapon), domainProf); err != nil {
+			return fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddCommonProficiency, err)
+		}
+		if err := charSheet.IncreaseExpForProficiency(
 			experience.NewUpgradeCascade(prof.Exp), enum.WeaponName(prof.Weapon),
-		)
+		); err != nil {
+			return fmt.Errorf("%w: %v", domainSheet.ErrFailedToIncreaseProficiencyExp, err)
+		}
 	}
 
 	for _, jointProf := range modelSheet.JointProficiencies {
@@ -262,7 +294,9 @@ func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterShee
 		domainJointProf := proficiency.NewJointProficiency(
 			*newExp, jointProf.Name, weapons,
 		)
-		charSheet.AddJointProficiency(domainJointProf)
+		if err := charSheet.AddJointProficiency(domainJointProf); err != nil {
+			return fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddJointProficiency, err)
+		}
 		// TODO: implement for create and add here too
 		// charSheet.IncreaseExpForProficiency(
 		// 	experience.NewUpgradeCascade(jointProf.Exp), enum.WeaponName(jointProf.Weapon),

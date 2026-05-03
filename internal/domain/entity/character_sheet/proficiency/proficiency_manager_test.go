@@ -22,7 +22,9 @@ func TestProficiencyManager_AddCommon(t *testing.T) {
 
 func TestProficiencyManager_Get(t *testing.T) {
 	m := proficiency.NewManager()
-	m.AddCommon(enum.Sword, newTestProficiency(enum.Sword))
+	if err := m.AddCommon(enum.Sword, newTestProficiency(enum.Sword)); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("existing weapon", func(t *testing.T) {
 		prof, err := m.Get(enum.Sword)
@@ -44,12 +46,16 @@ func TestProficiencyManager_Get(t *testing.T) {
 
 func TestProficiencyManager_GetFindsJointFirst(t *testing.T) {
 	m := proficiency.NewManager()
-	m.AddCommon(enum.Sword, newTestProficiency(enum.Sword))
+	if err := m.AddCommon(enum.Sword, newTestProficiency(enum.Sword)); err != nil {
+		t.Fatal(err)
+	}
 
 	jp := newTestJointProficiency("blades", enum.Sword, enum.Dagger)
 	mockPhys := &mockCascadeUpgrade{}
 	mockAbility := &mockCascadeUpgrade{}
-	m.AddJoint(jp, mockPhys, mockAbility)
+	if err := m.AddJoint(jp, mockPhys, mockAbility); err != nil {
+		t.Fatal(err)
+	}
 
 	// Get(Sword) should return joint proficiency since it contains Sword
 	prof, err := m.Get(enum.Sword)
@@ -88,7 +94,9 @@ func TestProficiencyManager_AddJoint(t *testing.T) {
 
 func TestProficiencyManager_IncreaseExp(t *testing.T) {
 	m := proficiency.NewManager()
-	m.AddCommon(enum.Sword, newTestProficiency(enum.Sword))
+	if err := m.AddCommon(enum.Sword, newTestProficiency(enum.Sword)); err != nil {
+		t.Fatal(err)
+	}
 
 	values := experience.NewUpgradeCascade(50)
 	if err := m.IncreaseExp(values, enum.Sword); err != nil {
@@ -103,7 +111,9 @@ func TestProficiencyManager_IncreaseExp(t *testing.T) {
 
 func TestProficiencyManager_BuffManagement(t *testing.T) {
 	m := proficiency.NewManager()
-	m.AddCommon(enum.Sword, newTestProficiency(enum.Sword))
+	if err := m.AddCommon(enum.Sword, newTestProficiency(enum.Sword)); err != nil {
+		t.Fatal(err)
+	}
 
 	m.SetBuff(enum.Sword, 3)
 

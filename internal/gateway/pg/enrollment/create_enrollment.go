@@ -19,13 +19,10 @@ func (r *Repository) EnrollCharacterSheet(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -40,6 +37,9 @@ func (r *Repository) EnrollCharacterSheet(
 	)
 	if err != nil {
 		return fmt.Errorf("failed to enroll character in match: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }

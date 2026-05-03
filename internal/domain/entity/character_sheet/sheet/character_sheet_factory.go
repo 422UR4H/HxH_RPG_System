@@ -1,6 +1,8 @@
 package sheet
 
 import (
+	"fmt"
+
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/ability"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/attribute"
@@ -82,7 +84,10 @@ func (csf *CharacterSheetFactory) Build(
 	}
 	flame, _ := spiritAttrs.Get(enum.Flame)
 	conscience, _ := spiritAttrs.Get(enum.Conscience)
-	hatsu := csf.BuildHatsu(flame, conscience, categoryPercents)
+	hatsu, err := csf.BuildHatsu(flame, conscience, categoryPercents)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFailedToBuildHatsu, err)
+	}
 	// aura, _ := status.Get(enum.Aura)
 	spiritPrinciples := csf.BuildSpiritPrinciples(flame, conscience, nenHexagon, hatsu)
 
@@ -397,7 +402,7 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 	flameNen attribute.IGameAttribute,
 	conscienceNen attribute.IGameAttribute,
 	categoryPercents map[enum.CategoryName]float64,
-) *spiritual.Hatsu {
+) (*spiritual.Hatsu, error) {
 
 	categories := make(map[enum.CategoryName]spiritual.NenCategory)
 
@@ -409,8 +414,10 @@ func (csf *CharacterSheetFactory) BuildHatsu(
 		categories[name] = *category.Clone(name)
 	}
 
-	hatsu.Init(categories)
-	return hatsu
+	if err := hatsu.Init(categories); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFailedToInitHatsu, err)
+	}
+	return hatsu, nil
 }
 
 func (csf *CharacterSheetFactory) BuildSpiritPrinciples(
@@ -474,16 +481,24 @@ func (csf *CharacterSheetFactory) Wrap(
 	charClass *cc.CharacterClass,
 ) (*CharacterSheet, error) {
 	for name, exp := range charClass.SkillsExps {
-		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
+		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseSkillExp, name, err)
+		}
 	}
 	for _, skill := range charClass.JointSkills {
-		charSheet.AddJointSkill(&skill)
+		if err := charSheet.AddJointSkill(&skill); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointSkill, err)
+		}
 	}
 	for _, prof := range charClass.JointProficiencies {
-		charSheet.AddJointProficiency(&prof)
+		if err := charSheet.AddJointProficiency(&prof); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointProficiency, err)
+		}
 	}
 	for name, exp := range charClass.AttributesExps {
-		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
+		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseMentalExp, name, err)
+		}
 	}
 
 	physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
@@ -494,14 +509,20 @@ func (csf *CharacterSheetFactory) Wrap(
 	newExp := experience.NewExperience(expTable)
 	for name, exp := range charClass.ProficienciesExps {
 		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
-		charSheet.AddCommonProficiency(name, prof)
-		charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
+		if err := charSheet.AddCommonProficiency(name, prof); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToAddCommonProficiency, name, err)
+		}
+		if err := charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseProficiencyExp, name, err)
+		}
 	}
 	for name, exp := range charClass.JointProfExps {
-		charSheet.IncreaseExpForJointProficiency(
+		if err := charSheet.IncreaseExpForJointProficiency(
 			experience.NewUpgradeCascade(exp),
 			name,
-		)
+		); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseJointProfExp, name, err)
+		}
 	}
 	return charSheet, nil
 }
@@ -588,16 +609,24 @@ func (csf *CharacterSheetFactory) WrapHalf(
 	charClass *cc.CharacterClass,
 ) (*HalfSheet, error) {
 	for name, exp := range charClass.SkillsExps {
-		charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name)
+		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseSkillExp, name, err)
+		}
 	}
 	for _, skill := range charClass.JointSkills {
-		charSheet.AddJointSkill(&skill)
+		if err := charSheet.AddJointSkill(&skill); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointSkill, err)
+		}
 	}
 	for _, prof := range charClass.JointProficiencies {
-		charSheet.AddJointProficiency(&prof)
+		if err := charSheet.AddJointProficiency(&prof); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrFailedToAddJointProficiency, err)
+		}
 	}
 	for name, exp := range charClass.AttributesExps {
-		charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name)
+		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseMentalExp, name, err)
+		}
 	}
 
 	physSkExp, err := charSheet.ability.GetExpReferenceOf(enum.Physicals)
@@ -608,14 +637,20 @@ func (csf *CharacterSheetFactory) WrapHalf(
 	newExp := experience.NewExperience(expTable)
 	for name, exp := range charClass.ProficienciesExps {
 		prof := proficiency.NewProficiency(name, *newExp, physSkExp)
-		charSheet.AddCommonProficiency(name, prof)
-		charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name)
+		if err := charSheet.AddCommonProficiency(name, prof); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToAddCommonProficiency, name, err)
+		}
+		if err := charSheet.IncreaseExpForProficiency(experience.NewUpgradeCascade(exp), name); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseProficiencyExp, name, err)
+		}
 	}
 	for name, exp := range charClass.JointProfExps {
-		charSheet.IncreaseExpForJointProficiency(
+		if err := charSheet.IncreaseExpForJointProficiency(
 			experience.NewUpgradeCascade(exp),
 			name,
-		)
+		); err != nil {
+			return nil, fmt.Errorf("%w %s: %v", ErrFailedToIncreaseJointProfExp, name, err)
+		}
 	}
 	return charSheet, nil
 }

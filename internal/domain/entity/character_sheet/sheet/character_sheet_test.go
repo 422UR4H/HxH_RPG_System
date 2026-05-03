@@ -69,7 +69,9 @@ func TestCharacterSheet_StatusUpgradeAfterExpIncrease(t *testing.T) {
 		t.Fatalf("GetMaxOfStatus error: %v", err)
 	}
 
-	cs.IncreaseExpForSkill(experience.NewUpgradeCascade(50000), enum.Vitality)
+	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(50000), enum.Vitality); err != nil {
+		t.Fatal(err)
+	}
 
 	hpAfter, err := cs.GetMaxOfStatus(enum.Health)
 	if err != nil {

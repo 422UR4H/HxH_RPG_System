@@ -22,19 +22,17 @@ func (r *Repository) GetCampaign(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const campaignQuery = `
         SELECT 
             uuid, master_uuid, scenario_uuid,
-						name, brief_initial_description, brief_final_description, description,
+						name, COALESCE(brief_initial_description, ''), brief_final_description,
+						COALESCE(description, ''),
 						is_public, call_link,
             story_start_at, story_current_at, story_end_at,
 						created_at, updated_at
@@ -165,7 +163,7 @@ func (r *Repository) GetCampaign(
 	const matchesQuery = `
         SELECT 
             uuid, campaign_uuid,
-						title, brief_initial_description, brief_final_description,
+						title, COALESCE(brief_initial_description, ''), brief_final_description,
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
@@ -206,6 +204,9 @@ func (r *Repository) GetCampaign(
 	}
 	c.Matches = matches
 
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return &c, nil
 }
 
@@ -218,19 +219,16 @@ func (r *Repository) ListCampaignsByMasterUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
 					SELECT 
 							uuid, scenario_uuid,
-							name, brief_initial_description, brief_final_description,
+							name, COALESCE(brief_initial_description, ''), brief_final_description,
 							is_public, call_link,
 							story_start_at, story_current_at, story_end_at,
 							created_at, updated_at
@@ -269,6 +267,9 @@ func (r *Repository) ListCampaignsByMasterUUID(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over campaigns summary: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return campaigns, nil
 }
 
@@ -299,13 +300,10 @@ func (r *Repository) GetCampaignStoryDates(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const campaignQuery = `
@@ -329,6 +327,9 @@ func (r *Repository) GetCampaignStoryDates(
 		}
 		return nil, fmt.Errorf("failed to fetch campaign story dates: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return &c, nil
 }
 
@@ -341,13 +342,10 @@ func (r *Repository) CountCampaignsByMasterUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -359,6 +357,9 @@ func (r *Repository) CountCampaignsByMasterUUID(
 	err = tx.QueryRow(ctx, query, masterUUID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count user campaigns: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return count, nil
 }

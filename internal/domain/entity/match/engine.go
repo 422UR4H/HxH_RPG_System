@@ -1,8 +1,6 @@
 package match
 
 import (
-	"fmt"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/scene"
@@ -15,9 +13,8 @@ type Engine struct {
 }
 
 func NewEngine(match *Match) (*Engine, error) {
-	// TODO: refactor error
 	if match == nil {
-		return nil, fmt.Errorf("match cannot be nil")
+		return nil, ErrMatchIsNil
 	}
 	var sceneCategory enum.SceneCategory
 	scenes := match.GetScenes()
@@ -39,7 +36,6 @@ func (e *Engine) ChangeScene(initiative *action.Initiative) {
 	}
 	e.sceneCategory = enum.Battle
 
-	if initiative != nil {
-
+	if initiative != nil { //nolint:staticcheck // TODO: process initiative actions
 	}
 }

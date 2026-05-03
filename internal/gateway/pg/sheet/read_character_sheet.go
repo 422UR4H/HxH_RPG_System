@@ -17,14 +17,11 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			// TODO: maybe throws other error
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -114,6 +111,9 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 		sheet.JointProficiencies = append(sheet.JointProficiencies, jointProf)
 	}
 
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return &sheet, nil
 }
 
@@ -183,13 +183,10 @@ func (r *Repository) CountCharactersByPlayerUUID(ctx context.Context, playerUUID
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -201,6 +198,9 @@ func (r *Repository) CountCharactersByPlayerUUID(ctx context.Context, playerUUID
 	err = tx.QueryRow(ctx, query, playerUUID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count player character sheets: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return count, nil
 }
@@ -214,14 +214,11 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			// TODO: maybe throws other error
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
@@ -264,6 +261,9 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 			return nil, fmt.Errorf("failed to scan character sheet summary: %w", err)
 		}
 		sheets = append(sheets, sheet)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return sheets, nil
 }

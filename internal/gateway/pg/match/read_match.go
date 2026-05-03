@@ -20,19 +20,17 @@ func (r *Repository) GetMatch(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
         SELECT 
             uuid, master_uuid, campaign_uuid,
-						title, brief_initial_description, brief_final_description, description,
+						title, COALESCE(brief_initial_description, ''), brief_final_description,
+						COALESCE(description, ''),
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
 						created_at, updated_at
@@ -61,6 +59,9 @@ func (r *Repository) GetMatch(
 			return nil, ErrMatchNotFound
 		}
 		return nil, fmt.Errorf("failed to fetch match: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return &m, nil
 }
@@ -93,19 +94,16 @@ func (r *Repository) ListMatchesByMasterUUID(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
         SELECT 
             uuid, campaign_uuid, title,
-						brief_initial_description, brief_final_description,
+						COALESCE(brief_initial_description, ''), brief_final_description,
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
@@ -145,6 +143,9 @@ func (r *Repository) ListMatchesByMasterUUID(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over match summaries: %w", err)
 	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 	return matches, nil
 }
 
@@ -157,19 +158,16 @@ func (r *Repository) ListPublicUpcomingMatches(
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(p)
-		} else if err != nil {
-			tx.Rollback(ctx)
-		} else {
-			tx.Commit(ctx)
 		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	const query = `
         SELECT 
             uuid, campaign_uuid, title,
-            brief_initial_description, brief_final_description,
+            COALESCE(brief_initial_description, ''), brief_final_description,
             is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
             created_at, updated_at
@@ -209,6 +207,9 @@ func (r *Repository) ListPublicUpcomingMatches(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over public match summaries: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return matches, nil
 }

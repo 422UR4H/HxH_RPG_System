@@ -97,7 +97,9 @@ func TestJointProficiency_CascadeUpgradeTrigger(t *testing.T) {
 	jp := newTestJointProficiency("blades", enum.Sword, enum.Dagger)
 	mockPhys := &mockCascadeUpgrade{}
 	mockAbility := &mockCascadeUpgrade{}
-	jp.Init(mockPhys, mockAbility)
+	if err := jp.Init(mockPhys, mockAbility); err != nil {
+		t.Fatal(err)
+	}
 
 	values := experience.NewUpgradeCascade(100)
 	jp.CascadeUpgradeTrigger(values)

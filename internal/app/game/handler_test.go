@@ -91,7 +91,7 @@ func connectWS(t *testing.T, serverURL string, userUUID uuid.UUID, matchUUID uui
 
 func readMessage(t *testing.T, conn *websocket.Conn) game.Message {
 	t.Helper()
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, data, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("failed to read message: %v", err)
@@ -170,7 +170,7 @@ func TestMasterCanConnect(t *testing.T) {
 	defer hub.Stop()
 
 	conn := connectWS(t, server.URL, masterUUID, matchUUID)
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	msg := readMessage(t, conn)
 	if msg.Type != game.MsgTypeRoomState {
@@ -195,7 +195,7 @@ func TestPlayerCanConnect(t *testing.T) {
 	defer hub.Stop()
 
 	conn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	msg := readMessage(t, conn)
 	if msg.Type != game.MsgTypeRoomState {
@@ -212,13 +212,13 @@ func TestChatFlow(t *testing.T) {
 	defer hub.Stop()
 
 	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
-	defer masterConn.Close()
+	defer masterConn.Close() //nolint:errcheck
 	_ = readMessage(t, masterConn) // room_state
 
 	time.Sleep(50 * time.Millisecond)
 
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer playerConn.Close()
+	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
 
 	_ = readMessage(t, masterConn) // player_joined
@@ -250,13 +250,13 @@ func TestStartMatchFlow(t *testing.T) {
 	defer hub.Stop()
 
 	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
-	defer masterConn.Close()
+	defer masterConn.Close() //nolint:errcheck
 	_ = readMessage(t, masterConn) // room_state
 
 	time.Sleep(50 * time.Millisecond)
 
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer playerConn.Close()
+	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
 	_ = readMessage(t, masterConn) // player_joined
 
@@ -289,7 +289,7 @@ func TestPlayerCannotStartMatch(t *testing.T) {
 	defer hub.Stop()
 
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer playerConn.Close()
+	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
 
 	startMsg := game.Message{
@@ -316,13 +316,13 @@ func TestKickPlayerFlow(t *testing.T) {
 	defer hub.Stop()
 
 	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
-	defer masterConn.Close()
+	defer masterConn.Close() //nolint:errcheck
 	_ = readMessage(t, masterConn) // room_state
 
 	time.Sleep(50 * time.Millisecond)
 
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer playerConn.Close()
+	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
 	_ = readMessage(t, masterConn) // player_joined
 
@@ -355,7 +355,7 @@ func TestPlayerCannotKick(t *testing.T) {
 	defer hub.Stop()
 
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer playerConn.Close()
+	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
 
 	kickMsg := game.Message{

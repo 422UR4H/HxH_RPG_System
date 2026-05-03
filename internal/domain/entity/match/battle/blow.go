@@ -6,10 +6,10 @@ import (
 )
 
 type Blow struct {
-	actorID       uuid.UUID
-	targetID      uuid.UUID
-	attack        action.Attack
-	attackSkills  *action.Skill
-	defense       action.Defense
-	defenseSkills *action.Skill
+	actorID       uuid.UUID     //nolint:unused // WIP: match system under development
+	targetID      uuid.UUID     //nolint:unused // WIP: match system under development
+	attack        action.Attack //nolint:unused // WIP: match system under development
+	attackSkills  *action.Skill //nolint:unused // WIP: match system under development
+	defense       action.Defense //nolint:unused // WIP: match system under development
+	defenseSkills *action.Skill  //nolint:unused // WIP: match system under development
 }
