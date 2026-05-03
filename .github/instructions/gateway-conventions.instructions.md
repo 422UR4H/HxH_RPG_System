@@ -22,3 +22,27 @@ _, err = tx.Exec(ctx, `UPDATE matches SET updated_at = NOW() WHERE uuid = $1`, m
 ```
 
 This applies to both production gateways AND test helpers (`pgtest/`).
+
+## Transaction Rollback
+
+Always use unconditional rollback in tx defer — never guard with `else if err != nil`:
+
+```go
+// ✅ correct
+defer func() {
+    if p := recover(); p != nil {
+        _ = tx.Rollback(ctx)
+        panic(p)
+    }
+    _ = tx.Rollback(ctx) // no-op after Commit
+}()
+
+// ❌ wrong — shadowed err causes connection leak on panic
+defer func() {
+    if err != nil {
+        _ = tx.Rollback(ctx)
+    }
+}()
+```
+
+**Why:** Shadowed `err` variables inside the defer capture the outer `err` at closure creation time, not at call time — connection leaks on panic paths.

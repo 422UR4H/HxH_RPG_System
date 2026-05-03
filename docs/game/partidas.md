@@ -60,7 +60,7 @@ A plataforma oferece uma listagem de partidas públicas futuras (upcoming). Esta
 Partida
 ├── Cenas — roleplay ou battle
 │   └── Turnos — modo free ou race
-│       └── Rounds — ação de um personagem
+│       └── Rodadas — ação de um personagem
 │           └── Ações e Reações
 └── Eventos de Jogo
 ```
@@ -80,7 +80,7 @@ jogadores inscritos) se conectam em tempo real ao servidor de jogo. O fluxo:
 1. Jogadores entram no **lobby** da partida
 2. Mestre clica **"Iniciar Partida"** → todos recebem o evento
 3. A partida roda em tempo real com troca de mensagens bidirecionais
-4. Cenas, turnos, rounds e ações são transmitidos pela conexão em tempo real
+4. Cenas, turnos, rodadas e ações são transmitidos pela conexão em tempo real
 
 ## Visibilidade
 

@@ -26,7 +26,7 @@ Uma ação é composta por:
 
 ## Velocidade da Ação
 
-A velocidade determina a **ordem de resolução** das ações no round. Composta por:
+A velocidade determina a **ordem de resolução** das ações na rodada. Composta por:
 - **Barra** — valor base de velocidade
 - **Rolagem de Verificação** — resultado da rolagem de velocidade
 
@@ -42,7 +42,7 @@ O sistema usa uma fila de prioridade ordenada por velocidade para resolver as a�
 - É possível consultar a próxima ação sem removê-la
 - Uma ação específica pode ser cancelada e removida da fila
 
-### Fluxo de um Round
+### Fluxo de uma Rodada
 
 1. Todos os jogadores declaram suas ações
 2. Ações são inseridas na fila de prioridade

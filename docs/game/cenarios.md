@@ -24,7 +24,7 @@ Um **Cenário** é o contexto narrativo e geográfico onde campanhas acontecem. 
 Atualmente, campanhas podem existir sem cenário (campo opcional). Futuramente, a vinculação será obrigatória, e cenários servirão como o nível organizacional mais alto da hierarquia:
 
 ```
-Cenário → Campanhas → Partidas → Cenas → Turnos → Rounds
+Cenário → Campanhas → Partidas → Cenas → Turnos → Rodadas
 ```
 
 ## Permissões

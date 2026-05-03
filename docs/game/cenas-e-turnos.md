@@ -5,16 +5,16 @@
 ## Visão Geral
 
 Durante uma partida em execução, o fluxo de jogo se organiza em uma
-hierarquia: **Partida → Cenas → Turnos → Rounds**.
+hierarquia: **Partida → Cenas → Turnos → Rodadas**.
 
 ```
 Partida
 ├── Cena — roleplay ou battle
 │   ├── Turno — modo free ou race
-│   │   ├── Round — ação de um personagem
+│   │   ├── Rodada — ação de um personagem
 │   │   │   ├── Ação
 │   │   │   └── Reações — de outros jogadores
-│   │   └── Round ...
+│   │   └── Rodada ...
 │   └── Turno ...
 └── Cena ...
 ```
@@ -81,20 +81,20 @@ Essa separação é intencional:
 - O **turno** executa a mecânica de jogo
 - O **sistema** orquestra o fluxo
 
-## Rounds
+## Rodadas
 
-Um round é a **ação de um personagem** dentro de um turno. Composto por:
+Uma rodada é a **ação de um personagem** dentro de um turno. Composta por:
 
 - **Ação principal** — o que o personagem faz
 - **Reações** — respostas de outros personagens à ação
   - Reações podem ser **engatilhadas** automaticamente
   - Reações podem ser **desengatilhadas** ao longo do fluxo
 
-Tudo dentro de um round parte da ação de um personagem específico.
+Tudo dentro de uma rodada parte da ação de um personagem específico.
 
 ### Em Modo Race
 
-No modo race, rounds são ordenados pela velocidade da ação:
+No modo race, rodadas são ordenadas pela velocidade da ação:
 
 1. Todos declaram ações
 2. Ações entram na fila de prioridade (por velocidade)
@@ -107,7 +107,7 @@ de prioridade.
 
 ## Eventos de Jogo
 
-Além da hierarquia Cena → Turno → Round, uma partida registra **eventos de jogo**
+Além da hierarquia Cena → Turno → Rodada, uma partida registra **eventos de jogo**
 genéricos que podem ocorrer a qualquer momento: mudanças de data narrativa,
 mortes, notícias, ações desfeitas, etc.
 
@@ -120,7 +120,7 @@ Quando uma partida está em execução, a comunicação acontece em tempo real.
 Mestre e jogadores permanecem conectados ao servidor de jogo durante toda a
 sessão.
 
-O fluxo de cenas, turnos e rounds é transmitido em tempo real por essa
+O fluxo de cenas, turnos e rodadas é transmitido em tempo real por essa
 conexão, garantindo que todos os participantes acompanhem os eventos
 simultaneamente.
 

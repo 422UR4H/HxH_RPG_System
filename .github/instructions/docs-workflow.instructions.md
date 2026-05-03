@@ -17,7 +17,7 @@ applyTo: "docs/**"
 
 ## Conventions
 
-- **Game docs:** PT-BR, zero code references, player-friendly language
+- **Game docs:** PT-BR, player-friendly language (no thechnical jargon for devs)
 - **Dev docs:** PT-BR prose with English code references (type names, methods, paths)
 - **Developer footers:** Game docs include `> 🔧 Para Desenvolvedores` footer linking to dev docs
 - **`.gitignore` note:** Use `git add -f` for files under `docs/game/` (gitignore matches the game binary pattern)
