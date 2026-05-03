@@ -336,3 +336,80 @@ func TestUpdateNenHexagonValue(t *testing.T) {
 		}
 	})
 }
+
+func TestExistsSheetInCampaign(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+	repo := sheet.NewRepository(pool)
+
+	t.Run("true when player has a sheet in the campaign", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		playerUUID := pgtest.InsertTestUser(t, pool, "player1", "p1@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Campaign A")
+
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Gon")
+		if _, err := pool.Exec(ctx,
+			`UPDATE character_sheets SET campaign_uuid = $1 WHERE uuid = $2`,
+			campaignUUID, sheetUUID,
+		); err != nil {
+			t.Fatalf("update campaign_uuid: %v", err)
+		}
+
+		got, err := repo.ExistsSheetInCampaign(ctx,
+			uuid.MustParse(playerUUID), uuid.MustParse(campaignUUID),
+		)
+		if err != nil {
+			t.Fatalf("ExistsSheetInCampaign() error = %v", err)
+		}
+		if !got {
+			t.Error("ExistsSheetInCampaign() = false, want true")
+		}
+	})
+
+	t.Run("false when player has no sheet in the campaign", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		playerUUID := pgtest.InsertTestUser(t, pool, "player1", "p1@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Campaign A")
+
+		got, err := repo.ExistsSheetInCampaign(ctx,
+			uuid.MustParse(playerUUID), uuid.MustParse(campaignUUID),
+		)
+		if err != nil {
+			t.Fatalf("ExistsSheetInCampaign() error = %v", err)
+		}
+		if got {
+			t.Error("ExistsSheetInCampaign() = true, want false")
+		}
+	})
+
+	t.Run("false when player has sheets in other campaigns only", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		playerUUID := pgtest.InsertTestUser(t, pool, "player1", "p1@test.com", "pass123")
+		campaignA := pgtest.InsertTestCampaign(t, pool, masterUUID, "Campaign A")
+		campaignB := pgtest.InsertTestCampaign(t, pool, masterUUID, "Campaign B")
+
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Gon")
+		if _, err := pool.Exec(ctx,
+			`UPDATE character_sheets SET campaign_uuid = $1 WHERE uuid = $2`,
+			campaignA, sheetUUID,
+		); err != nil {
+			t.Fatalf("update campaign_uuid: %v", err)
+		}
+
+		got, err := repo.ExistsSheetInCampaign(ctx,
+			uuid.MustParse(playerUUID), uuid.MustParse(campaignB),
+		)
+		if err != nil {
+			t.Fatalf("ExistsSheetInCampaign() error = %v", err)
+		}
+		if got {
+			t.Error("ExistsSheetInCampaign() = true, want false")
+		}
+	})
+}
