@@ -337,6 +337,57 @@ func TestUpdateNenHexagonValue(t *testing.T) {
 	})
 }
 
+func TestUpdateStatusBars(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerStr, nil, nil, "Gon")
+
+		health := model.StatusBar{Min: 0, Curr: 17, Max: 20}
+		stamina := model.StatusBar{Min: 0, Curr: 0, Max: 0}
+		aura := model.StatusBar{Min: 0, Curr: 0, Max: 0}
+
+		err := repo.UpdateStatusBars(ctx, sheetUUID, health, stamina, aura)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+
+		var healthMin, healthCurr, healthMax int
+		err = pool.QueryRow(ctx,
+			`SELECT health_min_pts, health_curr_pts, health_max_pts FROM character_sheets WHERE uuid = $1`,
+			sheetUUID,
+		).Scan(&healthMin, &healthCurr, &healthMax)
+		if err != nil {
+			t.Fatalf("failed to fetch sheet: %v", err)
+		}
+		if healthCurr != 17 {
+			t.Errorf("health curr = %d, want 17", healthCurr)
+		}
+		if healthMax != 20 {
+			t.Errorf("health max = %d, want 20", healthMax)
+		}
+		if healthMin != 0 {
+			t.Errorf("health min = %d, want 0", healthMin)
+		}
+	})
+
+	t.Run("sheet not found is a no-op", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		health := model.StatusBar{Min: 0, Curr: 10, Max: 20}
+		stamina := model.StatusBar{Min: 0, Curr: 5, Max: 10}
+		aura := model.StatusBar{Min: 0, Curr: 0, Max: 0}
+
+		err := repo.UpdateStatusBars(ctx, uuid.New().String(), health, stamina, aura)
+		if err != nil {
+			t.Errorf("expected no error for missing sheet, got: %v", err)
+		}
+	})
+}
+
 func TestExistsSheetInCampaign(t *testing.T) {
 	pool := pgtest.SetupTestDB(t)
 	ctx := context.Background()
