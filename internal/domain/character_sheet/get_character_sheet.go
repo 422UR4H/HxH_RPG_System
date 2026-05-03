@@ -3,6 +3,7 @@ package charactersheet
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
@@ -140,6 +141,23 @@ func ModelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfi
 		BriefDescription: profile.BriefDescription,
 		Birthday:         profile.Birthday,
 	}
+}
+
+func normalizeStatus(curr, oldMax, newMax, minVal int) (int, bool) {
+	if newMax == 0 {
+		return curr, false
+	}
+	if oldMax <= 0 {
+		fmt.Printf("TODO(logger): status normalized (fallback): curr %d → new_max %d\n", curr, newMax)
+		return newMax, true
+	}
+	if curr <= newMax {
+		return curr, false
+	}
+	corrected := int(math.Round(float64(newMax) * float64(curr) / float64(oldMax)))
+	corrected = max(minVal, min(newMax, corrected))
+	fmt.Printf("TODO(logger): status normalized: curr %d → %d (old_max: %d, new_max: %d)\n", curr, corrected, oldMax, newMax)
+	return corrected, true
 }
 
 func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterSheet) error {
