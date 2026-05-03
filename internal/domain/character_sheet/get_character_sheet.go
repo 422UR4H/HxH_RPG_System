@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
@@ -122,14 +123,35 @@ func (uc *GetCharacterSheetUC) hydrateCharacterSheet(
 		return nil, err
 	}
 
-	_, err = Wrap(characterSheet, modelSheet)
+	wasCorrected, err := Wrap(characterSheet, modelSheet)
 	if err != nil {
 		return nil, err
+	}
+	if wasCorrected {
+		go uc.persistNormalizedStatus(context.Background(), modelSheet.UUID.String(), characterSheet)
 	}
 
 	// uc.characterSheets.Store(sheetUUID, characterSheet)
 
 	return characterSheet, nil
+}
+
+func (uc *GetCharacterSheetUC) persistNormalizedStatus(
+	ctx context.Context,
+	sheetUUID string,
+	charSheet *domainSheet.CharacterSheet,
+) {
+	allBars := charSheet.GetAllStatusBar()
+	toBar := func(bar status.IStatusBar) model.StatusBar {
+		return model.StatusBar{Min: bar.GetMin(), Curr: bar.GetCurrent(), Max: bar.GetMax()}
+	}
+	if err := uc.repo.UpdateStatusBars(ctx, sheetUUID,
+		toBar(allBars[enum.Health]),
+		toBar(allBars[enum.Stamina]),
+		toBar(allBars[enum.Aura]),
+	); err != nil {
+		fmt.Printf("TODO(logger): failed to persist normalized status for sheet %s: %v\n", sheetUUID, err)
+	}
 }
 
 func ModelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfile {
