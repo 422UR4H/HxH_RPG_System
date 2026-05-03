@@ -17,4 +17,5 @@ type IRepository interface {
 	UpdateNenHexagonValue(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDs(ctx context.Context, uuid uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error)
 	ExistsSheetInCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
+	UpdateStatusBars(ctx context.Context, sheetUUID string, health, stamina, aura model.StatusBar) error
 }
