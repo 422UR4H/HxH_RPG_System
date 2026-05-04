@@ -6,9 +6,9 @@ import (
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )
 
@@ -36,12 +36,12 @@ func (m *mockGetCharacterSheet) GetCharacterSheet(
 
 // mockListCharacterSheets implements charactersheet.IListCharacterSheets
 type mockListCharacterSheets struct {
-	fn func(ctx context.Context, playerId uuid.UUID) ([]model.CharacterSheetSummary, error)
+	fn func(ctx context.Context, playerId uuid.UUID) ([]csEntity.Summary, error)
 }
 
 func (m *mockListCharacterSheets) ListCharacterSheets(
 	ctx context.Context, playerId uuid.UUID,
-) ([]model.CharacterSheetSummary, error) {
+) ([]csEntity.Summary, error) {
 	return m.fn(ctx, playerId)
 }
 

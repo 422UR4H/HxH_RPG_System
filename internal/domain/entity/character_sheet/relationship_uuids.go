@@ -1,8 +1,8 @@
-package model
+package charactersheet
 
 import "github.com/google/uuid"
 
-type CharacterSheetRelationshipUUIDs struct {
+type RelationshipUUIDs struct {
 	CampaignUUID *uuid.UUID
 	PlayerUUID   *uuid.UUID
 	MasterUUID   *uuid.UUID

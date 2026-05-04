@@ -1,15 +1,22 @@
+// internal/gateway/pg/sheet/create_character_sheet.go
 package sheet
 
 import (
 	"context"
 	"fmt"
+	"time"
 
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	"github.com/google/uuid"
 )
 
 func (r *Repository) CreateCharacterSheet(
-	ctx context.Context, sheet *model.CharacterSheet,
+	ctx context.Context, sheet *domainSheet.CharacterSheet,
 ) error {
+	m := charSheetToModel(sheet)
+
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -58,25 +65,24 @@ func (r *Repository) CreateCharacterSheet(
 	`
 	var sheetID int
 	err = tx.QueryRow(ctx, sheetQuery,
-		sheet.UUID, sheet.PlayerUUID, sheet.CategoryName, sheet.CurrHexValue, sheet.TalentExp,
-		sheet.Level, sheet.Points, sheet.TalentLvl, sheet.PhysicalsLvl, sheet.MentalsLvl, sheet.SpiritualsLvl, sheet.SkillsLvl,
-		sheet.Health.Min, sheet.Health.Curr, sheet.Health.Max,
-		sheet.Stamina.Min, sheet.Stamina.Curr, sheet.Stamina.Max,
-		sheet.Aura.Min, sheet.Aura.Curr, sheet.Aura.Max,
-		sheet.ResistancePts, sheet.StrengthPts, sheet.AgilityPts, sheet.CelerityPts, sheet.FlexibilityPts, sheet.DexterityPts, sheet.SensePts, sheet.ConstitutionPts,
-		sheet.ResiliencePts, sheet.AdaptabilityPts, sheet.WeightingPts, sheet.CreativityPts, sheet.ResilienceExp, sheet.AdaptabilityExp, sheet.WeightingExp, sheet.CreativityExp,
-		sheet.VitalityExp, sheet.EnergyExp, sheet.DefenseExp, sheet.PushExp, sheet.GrabExp, sheet.CarryExp, sheet.VelocityExp, sheet.AccelerateExp, sheet.BrakeExp,
-		sheet.LegerityExp, sheet.RepelExp, sheet.FeintExp, sheet.AcrobaticsExp, sheet.EvasionExp, sheet.SneakExp, sheet.ReflexExp, sheet.AccuracyExp, sheet.StealthExp,
-		sheet.VisionExp, sheet.HearingExp, sheet.SmellExp, sheet.TactExp, sheet.TasteExp, sheet.HealExp, sheet.BreathExp, sheet.TenacityExp,
-		sheet.NenExp, sheet.FocusExp, sheet.WillPowerExp,
-		sheet.TenExp, sheet.ZetsuExp, sheet.RenExp, sheet.GyoExp, sheet.ShuExp, sheet.KouExp, sheet.KenExp, sheet.RyuExp, sheet.InExp, sheet.EnExp, sheet.AuraControlExp, sheet.AopExp,
-		sheet.ReinforcementExp, sheet.TransmutationExp, sheet.MaterializationExp, sheet.SpecializationExp, sheet.ManipulationExp, sheet.EmissionExp,
-		sheet.CreatedAt, sheet.UpdatedAt,
+		m.UUID, m.PlayerUUID, m.CategoryName, m.CurrHexValue, m.TalentExp,
+		m.Level, m.Points, m.TalentLvl, m.PhysicalsLvl, m.MentalsLvl, m.SpiritualsLvl, m.SkillsLvl,
+		m.Health.Min, m.Health.Curr, m.Health.Max,
+		m.Stamina.Min, m.Stamina.Curr, m.Stamina.Max,
+		m.Aura.Min, m.Aura.Curr, m.Aura.Max,
+		m.ResistancePts, m.StrengthPts, m.AgilityPts, m.CelerityPts, m.FlexibilityPts, m.DexterityPts, m.SensePts, m.ConstitutionPts,
+		m.ResiliencePts, m.AdaptabilityPts, m.WeightingPts, m.CreativityPts, m.ResilienceExp, m.AdaptabilityExp, m.WeightingExp, m.CreativityExp,
+		m.VitalityExp, m.EnergyExp, m.DefenseExp, m.PushExp, m.GrabExp, m.CarryExp, m.VelocityExp, m.AccelerateExp, m.BrakeExp,
+		m.LegerityExp, m.RepelExp, m.FeintExp, m.AcrobaticsExp, m.EvasionExp, m.SneakExp, m.ReflexExp, m.AccuracyExp, m.StealthExp,
+		m.VisionExp, m.HearingExp, m.SmellExp, m.TactExp, m.TasteExp, m.HealExp, m.BreathExp, m.TenacityExp,
+		m.NenExp, m.FocusExp, m.WillPowerExp,
+		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
+		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
+		m.CreatedAt, m.UpdatedAt,
 	).Scan(&sheetID)
 	if err != nil {
 		return fmt.Errorf("failed to save character sheet: %w", err)
 	}
-	sheet.ID = sheetID
 
 	const profileQuery = `
 		INSERT INTO character_profiles (
@@ -86,9 +92,9 @@ func (r *Repository) CreateCharacterSheet(
 		)
 	`
 	_, err = tx.Exec(ctx, profileQuery,
-		sheet.Profile.UUID, sheet.UUID, sheet.Profile.NickName, sheet.Profile.FullName, sheet.Profile.Alignment,
-		sheet.Profile.CharacterClass, sheet.Profile.Description, sheet.Profile.BriefDescription, sheet.Profile.Birthday, sheet.Profile.Age,
-		sheet.Profile.CreatedAt, sheet.Profile.UpdatedAt,
+		m.Profile.UUID, m.UUID, m.Profile.NickName, m.Profile.FullName, m.Profile.Alignment,
+		m.Profile.CharacterClass, m.Profile.Description, m.Profile.BriefDescription, m.Profile.Birthday, m.Profile.Age,
+		m.Profile.CreatedAt, m.Profile.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save character profile: %w", err)
@@ -101,9 +107,9 @@ func (r *Repository) CreateCharacterSheet(
 			$1, $2, $3
 		)
 	`
-	for _, proficiency := range sheet.Proficiencies {
+	for _, proficiency := range m.Proficiencies {
 		_, err = tx.Exec(ctx, proficienciesQuery,
-			sheet.UUID, proficiency.Weapon, proficiency.Exp,
+			m.UUID, proficiency.Weapon, proficiency.Exp,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to save proficiency %s: %w", proficiency.Weapon, err)
@@ -117,9 +123,9 @@ func (r *Repository) CreateCharacterSheet(
 			$1, $2, $3, $4
 		)
 	`
-	for _, jointProficiency := range sheet.JointProficiencies {
+	for _, jointProficiency := range m.JointProficiencies {
 		_, err = tx.Exec(ctx, jointProficienciesQuery,
-			sheet.UUID, jointProficiency.Name, jointProficiency.Weapons, jointProficiency.Exp,
+			m.UUID, jointProficiency.Name, jointProficiency.Weapons, jointProficiency.Exp,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to save joint proficiency %s: %w", jointProficiency.Name, err)
@@ -130,4 +136,169 @@ func (r *Repository) CreateCharacterSheet(
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
+}
+
+// charSheetToModel converts a domain CharacterSheet entity to the pg/model used for persistence.
+// TODO: refactor these maps (inherited from domain use case)
+func charSheetToModel(sheet *domainSheet.CharacterSheet) *model.CharacterSheet {
+	now := time.Now()
+	profile := sheet.GetProfile()
+	physAttrs := sheet.GetPhysicalAttributes()
+	mentalAttrs := sheet.GetMentalAttributes()
+	physSkills := sheet.GetPhysicalSkills()
+	principles := sheet.GetPrinciples()
+	categories := sheet.GetCategories()
+	statusBars := sheet.GetAllStatusBar()
+	profs := sheet.GetCommonProficiencies()
+	jointProfs := sheet.GetJointProficiencies()
+
+	categoryName, err := sheet.GetCategoryName()
+	categoryString := ""
+	if err != nil {
+		categoryString = categoryName.String()
+	}
+
+	physicalsLvl, _ := sheet.GetLevelOfAbility(enum.Physicals)
+	mentalsLvl, _ := sheet.GetLevelOfAbility(enum.Mentals)
+	spiritualsLvl, _ := sheet.GetLevelOfAbility(enum.Spirituals)
+	skillsLvl, _ := sheet.GetLevelOfAbility(enum.Skills)
+
+	modelProfs := []model.Proficiency{}
+	for weapon, prof := range profs {
+		modelProfs = append(modelProfs, model.Proficiency{
+			UUID:      uuid.New(),
+			Weapon:    weapon.String(),
+			Exp:       prof.GetExpPoints(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+
+	modelJointProfs := []model.JointProficiency{}
+	for name, prof := range jointProfs {
+		weapons := []string{}
+		for _, weapon := range prof.GetWeapons() {
+			weapons = append(weapons, weapon.String())
+		}
+		modelJointProfs = append(modelJointProfs, model.JointProficiency{
+			UUID:      uuid.New(),
+			Name:      name,
+			Exp:       prof.GetExpPoints(),
+			Weapons:   weapons,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+
+	playerUUID := sheet.GetPlayerUUID()
+	return &model.CharacterSheet{
+		UUID:       sheet.UUID,
+		PlayerUUID: playerUUID,
+
+		Profile: model.CharacterProfile{
+			UUID:             uuid.New(),
+			CharacterClass:   sheet.GetCharacterClass().String(),
+			NickName:         profile.NickName,
+			FullName:         profile.FullName,
+			Alignment:        profile.Alignment,
+			Description:      profile.Description,
+			BriefDescription: profile.BriefDescription,
+			Birthday:         profile.Birthday,
+			Age:              profile.Age,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		CategoryName: categoryString,
+		CurrHexValue: sheet.GetCurrHexValue(),
+		TalentExp:    sheet.GetTalentExpPoints(),
+
+		Level:         sheet.GetLevel(),
+		Points:        sheet.GetCharacterPoints(),
+		TalentLvl:     sheet.GetTalentLevel(),
+		PhysicalsLvl:  physicalsLvl,
+		MentalsLvl:    mentalsLvl,
+		SpiritualsLvl: spiritualsLvl,
+		SkillsLvl:     skillsLvl,
+
+		Health: model.StatusBar{
+			Min:  statusBars[enum.Health].GetMin(),
+			Curr: statusBars[enum.Health].GetCurrent(),
+			Max:  statusBars[enum.Health].GetMax(),
+		},
+		Stamina: model.StatusBar{
+			Min:  statusBars[enum.Stamina].GetMin(),
+			Curr: statusBars[enum.Stamina].GetCurrent(),
+			Max:  statusBars[enum.Stamina].GetMax(),
+		},
+		// Aura: model.StatusBar{...},
+
+		ResistancePts:   physAttrs[enum.Resistance].GetPoints(),
+		StrengthPts:     physAttrs[enum.Strength].GetPoints(),
+		AgilityPts:      physAttrs[enum.Agility].GetPoints(),
+		CelerityPts:     physAttrs[enum.Celerity].GetPoints(),
+		FlexibilityPts:  physAttrs[enum.Flexibility].GetPoints(),
+		DexterityPts:    physAttrs[enum.Dexterity].GetPoints(),
+		SensePts:        physAttrs[enum.Sense].GetPoints(),
+		ConstitutionPts: physAttrs[enum.Constitution].GetPoints(),
+
+		ResiliencePts:   mentalAttrs[enum.Resilience].GetPoints(),
+		AdaptabilityPts: mentalAttrs[enum.Adaptability].GetPoints(),
+		WeightingPts:    mentalAttrs[enum.Weighting].GetPoints(),
+		CreativityPts:   mentalAttrs[enum.Creativity].GetPoints(),
+		ResilienceExp:   mentalAttrs[enum.Resilience].GetExpPoints(),
+		AdaptabilityExp: mentalAttrs[enum.Adaptability].GetExpPoints(),
+		WeightingExp:    mentalAttrs[enum.Weighting].GetExpPoints(),
+		CreativityExp:   mentalAttrs[enum.Creativity].GetExpPoints(),
+
+		VitalityExp:   physSkills[enum.Vitality].GetExpPoints(),
+		EnergyExp:     physSkills[enum.Energy].GetExpPoints(),
+		DefenseExp:    physSkills[enum.Defense].GetExpPoints(),
+		PushExp:       physSkills[enum.Push].GetExpPoints(),
+		GrabExp:       physSkills[enum.Grab].GetExpPoints(),
+		CarryExp:      physSkills[enum.Carry].GetExpPoints(),
+		VelocityExp:   physSkills[enum.Velocity].GetExpPoints(),
+		AccelerateExp: physSkills[enum.Accelerate].GetExpPoints(),
+		BrakeExp:      physSkills[enum.Brake].GetExpPoints(),
+		LegerityExp:   physSkills[enum.Legerity].GetExpPoints(),
+		RepelExp:      physSkills[enum.Repel].GetExpPoints(),
+		FeintExp:      physSkills[enum.Feint].GetExpPoints(),
+		AcrobaticsExp: physSkills[enum.Acrobatics].GetExpPoints(),
+		EvasionExp:    physSkills[enum.Evasion].GetExpPoints(),
+		SneakExp:      physSkills[enum.Sneak].GetExpPoints(),
+		ReflexExp:     physSkills[enum.Reflex].GetExpPoints(),
+		AccuracyExp:   physSkills[enum.Accuracy].GetExpPoints(),
+		StealthExp:    physSkills[enum.Stealth].GetExpPoints(),
+		VisionExp:     physSkills[enum.Vision].GetExpPoints(),
+		HearingExp:    physSkills[enum.Hearing].GetExpPoints(),
+		SmellExp:      physSkills[enum.Smell].GetExpPoints(),
+		TactExp:       physSkills[enum.Tact].GetExpPoints(),
+		TasteExp:      physSkills[enum.Taste].GetExpPoints(),
+		HealExp:       physSkills[enum.Heal].GetExpPoints(),
+		BreathExp:     physSkills[enum.Breath].GetExpPoints(),
+		TenacityExp:   physSkills[enum.Tenacity].GetExpPoints(),
+
+		TenExp:   principles[enum.Ten].GetExpPoints(),
+		ZetsuExp: principles[enum.Zetsu].GetExpPoints(),
+		RenExp:   principles[enum.Ren].GetExpPoints(),
+		GyoExp:   principles[enum.Gyo].GetExpPoints(),
+		ShuExp:   principles[enum.Shu].GetExpPoints(),
+		KouExp:   principles[enum.Kou].GetExpPoints(),
+		KenExp:   principles[enum.Ken].GetExpPoints(),
+		RyuExp:   principles[enum.Ryu].GetExpPoints(),
+		InExp:    principles[enum.In].GetExpPoints(),
+		EnExp:    principles[enum.En].GetExpPoints(),
+
+		ReinforcementExp:   categories[enum.Reinforcement].GetExpPoints(),
+		TransmutationExp:   categories[enum.Transmutation].GetExpPoints(),
+		MaterializationExp: categories[enum.Materialization].GetExpPoints(),
+		SpecializationExp:  categories[enum.Specialization].GetExpPoints(),
+		ManipulationExp:    categories[enum.Manipulation].GetExpPoints(),
+		EmissionExp:        categories[enum.Emission].GetExpPoints(),
+
+		Proficiencies:      modelProfs,
+		JointProficiencies: modelJointProfs,
+
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 }

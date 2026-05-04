@@ -1,16 +1,17 @@
+// internal/domain/character_sheet/list_character_sheets.go
 package charactersheet
 
 import (
 	"context"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/google/uuid"
 )
 
 type IListCharacterSheets interface {
 	ListCharacterSheets(
 		ctx context.Context, playerId uuid.UUID,
-	) ([]model.CharacterSheetSummary, error)
+	) ([]csEntity.Summary, error)
 }
 
 type ListCharacterSheetsUC struct {
@@ -23,11 +24,6 @@ func NewListCharacterSheetsUC(repo IRepository) *ListCharacterSheetsUC {
 
 func (uc *ListCharacterSheetsUC) ListCharacterSheets(
 	ctx context.Context, playerId uuid.UUID,
-) ([]model.CharacterSheetSummary, error) {
-
-	sheet, err := uc.repo.ListCharacterSheetsByPlayerUUID(ctx, playerId.String())
-	if err != nil {
-		return nil, err
-	}
-	return sheet, nil
+) ([]csEntity.Summary, error) {
+	return uc.repo.ListCharacterSheetsByPlayerUUID(ctx, playerId.String())
 }

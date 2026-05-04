@@ -1,13 +1,12 @@
 package charactersheet_test
 
 import (
+	"fmt"
 	"sync"
-	"time"
 
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
@@ -60,26 +59,17 @@ func newValidCategorySet() *sheet.TalentByCategorySet {
 	return set
 }
 
-func newValidModelSheet(playerUUID, masterUUID, campaignUUID *uuid.UUID) *model.CharacterSheet {
-	sheetUUID := uuid.New()
-	now := time.Now()
-	return &model.CharacterSheet{
-		UUID:         sheetUUID,
-		PlayerUUID:   playerUUID,
-		MasterUUID:   masterUUID,
-		CampaignUUID: campaignUUID,
-		Profile: model.CharacterProfile{
-			UUID:           uuid.New(),
-			NickName:       "Gon",
-			FullName:       "Gon Freecss",
-			Alignment:      "Chaotic-Good",
-			CharacterClass: "Swordsman",
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		},
-		CategoryName: "",
-		CurrHexValue: nil,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+func newValidDomainSheet(playerUUID, masterUUID, campaignUUID *uuid.UUID) *sheet.CharacterSheet {
+	factory := sheet.NewCharacterSheetFactory()
+	profile := sheet.CharacterProfile{
+		NickName:  "Gon",
+		FullName:  "Gon Freecss",
+		Alignment: "Chaotic-Good",
 	}
+	s, err := factory.Build(playerUUID, masterUUID, campaignUUID, profile, nil, nil, nil)
+	if err != nil {
+		panic(fmt.Sprintf("newValidDomainSheet: %v", err))
+	}
+	s.UUID = uuid.New()
+	return s
 }

@@ -1,4 +1,4 @@
-package model
+package charactersheet
 
 import (
 	"time"
@@ -6,9 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// CharacterSheetSummary represents a summarized version of the character sheet
-// used for listing. Contains only the essential fields for display in the list.
-type CharacterSheetSummary struct {
+type StatusBar struct {
+	Min  int
+	Curr int
+	Max  int
+}
+
+type Summary struct {
 	ID             int
 	UUID           uuid.UUID
 	PlayerUUID     *uuid.UUID

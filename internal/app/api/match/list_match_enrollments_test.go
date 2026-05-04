@@ -11,9 +11,9 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiMatch "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -30,7 +30,7 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 				UUID:      uuid.New(),
 				Status:    "pending",
 				CreatedAt: now,
-				CharacterSheet: model.CharacterSheetSummary{
+				CharacterSheet: csEntity.Summary{
 					UUID:     uuid.New(),
 					NickName: "Gon",
 					FullName: "Gon Freecss",

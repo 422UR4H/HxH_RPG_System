@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/testutil"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
-	pgSheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 )
 
@@ -24,10 +22,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		masterUUID := uuid.New()
 
-		modelSheet := newValidModelSheet(nil, &masterUUID, nil)
+		domainS := newValidDomainSheet(nil, &masterUUID, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -36,15 +34,15 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		result, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, masterUUID)
+		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, masterUUID)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 		if result == nil {
 			t.Fatal("expected character sheet, got nil")
 		}
-		if result.UUID != modelSheet.UUID {
-			t.Errorf("expected UUID %v, got %v", modelSheet.UUID, result.UUID)
+		if result.UUID != domainS.UUID {
+			t.Errorf("expected UUID %v, got %v", domainS.UUID, result.UUID)
 		}
 	})
 
@@ -53,10 +51,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		playerUUID := uuid.New()
 
-		modelSheet := newValidModelSheet(&playerUUID, nil, nil)
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -65,7 +63,7 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		result, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, playerUUID)
+		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, playerUUID)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -81,10 +79,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		campaignMaster := uuid.New()
 		campaignUUID := uuid.New()
 
-		modelSheet := newValidModelSheet(&playerUUID, nil, &campaignUUID)
+		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -97,7 +95,7 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		result, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, campaignMaster)
+		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, campaignMaster)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -110,8 +108,8 @@ func TestGetCharacterSheet(t *testing.T) {
 		sheetMap := newTestSheetMap()
 		factory := newTestFactory()
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return nil, pgSheet.ErrCharacterSheetNotFound
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return nil, false, charactersheet.ErrCharacterSheetNotFound
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -134,8 +132,8 @@ func TestGetCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		repoErr := errors.New("database connection failed")
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return nil, repoErr
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return nil, false, repoErr
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -159,10 +157,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		playerUUID := uuid.New()
 		unrelatedUser := uuid.New()
 
-		modelSheet := newValidModelSheet(&playerUUID, nil, nil)
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -171,7 +169,7 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		_, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, unrelatedUser)
+		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -188,10 +186,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		unrelatedUser := uuid.New()
 		differentCampaignMaster := uuid.New()
 
-		modelSheet := newValidModelSheet(&playerUUID, nil, &campaignUUID)
+		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -204,7 +202,7 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		_, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, unrelatedUser)
+		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -220,10 +218,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		campaignUUID := uuid.New()
 		unrelatedUser := uuid.New()
 
-		modelSheet := newValidModelSheet(&playerUUID, nil, &campaignUUID)
+		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -236,7 +234,7 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		_, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, unrelatedUser)
+		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -253,10 +251,10 @@ func TestGetCharacterSheet(t *testing.T) {
 		unrelatedUser := uuid.New()
 		repoErr := errors.New("campaign db error")
 
-		modelSheet := newValidModelSheet(&playerUUID, nil, &campaignUUID)
+		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -269,54 +267,12 @@ func TestGetCharacterSheet(t *testing.T) {
 			sheetMap, factory, mockRepo, mockCampaignRepo,
 		)
 
-		_, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, unrelatedUser)
+		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
 		if !errors.Is(err, repoErr) {
 			t.Errorf("expected repo error, got: %v", err)
-		}
-	})
-
-	t.Run("triggers async persist when status curr exceeds new max", func(t *testing.T) {
-		sheetMap := newTestSheetMap()
-		factory := newTestFactory()
-		masterUUID := uuid.New()
-
-		modelSheet := newValidModelSheet(nil, &masterUUID, nil)
-		// HP_BASE_VALUE = 20 for a base sheet with no XP.
-		// curr=25, max=30 → normalizeStatus computes round(20*25/30)=17
-		modelSheet.Health.Curr = 25
-		modelSheet.Health.Max = 30
-
-		done := make(chan struct{})
-		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
-				return modelSheet, nil
-			},
-			UpdateStatusBarsFn: func(ctx context.Context, uuid string, health, stamina, aura model.StatusBar) error {
-				if health.Curr != 17 {
-					t.Errorf("expected normalized health curr = 17, got %d", health.Curr)
-				}
-				close(done)
-				return nil
-			},
-		}
-		mockCampaignRepo := &testutil.MockCampaignRepo{}
-
-		uc := charactersheet.NewGetCharacterSheetUC(sheetMap, factory, mockRepo, mockCampaignRepo)
-		result, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, masterUUID)
-		if err != nil {
-			t.Fatalf("expected no error, got: %v", err)
-		}
-		if result == nil {
-			t.Fatal("expected character sheet, got nil")
-		}
-
-		select {
-		case <-done:
-		case <-time.After(100 * time.Millisecond):
-			t.Error("expected UpdateStatusBars to be called within 100ms")
 		}
 	})
 }

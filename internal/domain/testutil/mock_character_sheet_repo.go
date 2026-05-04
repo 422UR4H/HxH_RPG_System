@@ -3,26 +3,28 @@ package testutil
 import (
 	"context"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/google/uuid"
 )
 
 type MockCharacterSheetRepo struct {
-	CreateCharacterSheetFn               func(ctx context.Context, sheet *model.CharacterSheet) error
+	CreateCharacterSheetFn               func(ctx context.Context, sheet *sheet.CharacterSheet) error
 	ExistsCharacterWithNickFn            func(ctx context.Context, nick string) (bool, error)
 	CountCharactersByPlayerUUIDFn        func(ctx context.Context, playerUUID uuid.UUID) (int, error)
 	GetCharacterSheetPlayerUUIDFn        func(ctx context.Context, uuid uuid.UUID) (uuid.UUID, error)
-	GetCharacterSheetByUUIDFn            func(ctx context.Context, uuid string) (*model.CharacterSheet, error)
-	ListCharacterSheetsByPlayerUUIDFn    func(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error)
+	GetCharacterSheetByUUIDFn            func(ctx context.Context, uuid string) (*sheet.CharacterSheet, bool, error)
+	ListCharacterSheetsByPlayerUUIDFn    func(ctx context.Context, playerUUID string) ([]csEntity.Summary, error)
 	UpdateNenHexagonValueFn              func(ctx context.Context, uuid string, val int) error
-	GetCharacterSheetRelationshipUUIDsFn func(ctx context.Context, uuid uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error)
+	GetCharacterSheetRelationshipUUIDsFn func(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)
 	ExistsSheetInCampaignFn              func(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
-	UpdateStatusBarsFn                   func(ctx context.Context, uuid string, health, stamina, aura model.StatusBar) error
+	UpdateStatusBarsFn                   func(ctx context.Context, uuid string, health, stamina, aura status.IStatusBar) error
 }
 
-func (m *MockCharacterSheetRepo) CreateCharacterSheet(ctx context.Context, sheet *model.CharacterSheet) error {
+func (m *MockCharacterSheetRepo) CreateCharacterSheet(ctx context.Context, s *sheet.CharacterSheet) error {
 	if m.CreateCharacterSheetFn != nil {
-		return m.CreateCharacterSheetFn(ctx, sheet)
+		return m.CreateCharacterSheetFn(ctx, s)
 	}
 	return nil
 }
@@ -48,14 +50,14 @@ func (m *MockCharacterSheetRepo) GetCharacterSheetPlayerUUID(ctx context.Context
 	return uuid.Nil, nil
 }
 
-func (m *MockCharacterSheetRepo) GetCharacterSheetByUUID(ctx context.Context, id string) (*model.CharacterSheet, error) {
+func (m *MockCharacterSheetRepo) GetCharacterSheetByUUID(ctx context.Context, id string) (*sheet.CharacterSheet, bool, error) {
 	if m.GetCharacterSheetByUUIDFn != nil {
 		return m.GetCharacterSheetByUUIDFn(ctx, id)
 	}
-	return nil, nil
+	return nil, false, nil
 }
 
-func (m *MockCharacterSheetRepo) ListCharacterSheetsByPlayerUUID(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error) {
+func (m *MockCharacterSheetRepo) ListCharacterSheetsByPlayerUUID(ctx context.Context, playerUUID string) ([]csEntity.Summary, error) {
 	if m.ListCharacterSheetsByPlayerUUIDFn != nil {
 		return m.ListCharacterSheetsByPlayerUUIDFn(ctx, playerUUID)
 	}
@@ -69,11 +71,11 @@ func (m *MockCharacterSheetRepo) UpdateNenHexagonValue(ctx context.Context, id s
 	return nil
 }
 
-func (m *MockCharacterSheetRepo) GetCharacterSheetRelationshipUUIDs(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
+func (m *MockCharacterSheetRepo) GetCharacterSheetRelationshipUUIDs(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
 	if m.GetCharacterSheetRelationshipUUIDsFn != nil {
 		return m.GetCharacterSheetRelationshipUUIDsFn(ctx, id)
 	}
-	return model.CharacterSheetRelationshipUUIDs{}, nil
+	return csEntity.RelationshipUUIDs{}, nil
 }
 
 func (m *MockCharacterSheetRepo) ExistsSheetInCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error) {
@@ -83,9 +85,9 @@ func (m *MockCharacterSheetRepo) ExistsSheetInCampaign(ctx context.Context, play
 	return false, nil
 }
 
-func (m *MockCharacterSheetRepo) UpdateStatusBars(ctx context.Context, uuid string, health, stamina, aura model.StatusBar) error {
+func (m *MockCharacterSheetRepo) UpdateStatusBars(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
 	if m.UpdateStatusBarsFn != nil {
-		return m.UpdateStatusBarsFn(ctx, uuid, health, stamina, aura)
+		return m.UpdateStatusBarsFn(ctx, id, health, stamina, aura)
 	}
 	return nil
 }

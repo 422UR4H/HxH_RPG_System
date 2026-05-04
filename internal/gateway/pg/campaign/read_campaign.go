@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -87,9 +87,9 @@ func (r *Repository) GetCampaign(
 	}
 	defer rows.Close()
 
-	var pendingSheets []model.CharacterSheetSummary
+	var pendingSheets []csEntity.Summary
 	for rows.Next() {
-		var sheet model.CharacterSheetSummary
+		var sheet csEntity.Summary
 		err := rows.Scan(
 			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
 			&sheet.CategoryName, &sheet.CurrHexValue,
@@ -135,9 +135,9 @@ func (r *Repository) GetCampaign(
 	}
 	defer rows.Close()
 
-	var characterSheets []model.CharacterSheetSummary
+	var characterSheets []csEntity.Summary
 	for rows.Next() {
-		var sheet model.CharacterSheetSummary
+		var sheet csEntity.Summary
 		err := rows.Scan(
 			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
 			&sheet.CategoryName, &sheet.CurrHexValue,

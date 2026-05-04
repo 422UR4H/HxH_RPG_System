@@ -9,14 +9,13 @@ import (
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/testutil"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 )
 
@@ -51,8 +50,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   &playerUUID,
 						CampaignUUID: &campaignUUID,
 					}, nil
@@ -68,8 +67,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock:  &testutil.MockMatchRepo{},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{}, sheet.ErrCharacterSheetNotFound
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{}, charactersheet.ErrCharacterSheetNotFound
 				},
 			},
 			wantErr: charactersheet.ErrCharacterSheetNotFound,
@@ -82,8 +81,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock:  &testutil.MockMatchRepo{},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   &playerUUID,
 						CampaignUUID: &campaignUUID,
 					}, nil
@@ -99,8 +98,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock:  &testutil.MockMatchRepo{},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   nil,
 						CampaignUUID: &campaignUUID,
 					}, nil
@@ -120,8 +119,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			},
 			matchMock: &testutil.MockMatchRepo{},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   &playerUUID,
 						CampaignUUID: &campaignUUID,
 					}, nil
@@ -141,8 +140,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   &playerUUID,
 						CampaignUUID: &campaignUUID,
 					}, nil
@@ -165,8 +164,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   &playerUUID,
 						CampaignUUID: &campaignUUID,
 					}, nil
@@ -189,8 +188,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 				},
 			},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
 						PlayerUUID:   &playerUUID,
 						CampaignUUID: nil,
 					}, nil
@@ -206,8 +205,8 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			enrollMock: &testutil.MockEnrollmentRepo{},
 			matchMock:  &testutil.MockMatchRepo{},
 			sheetMock: &testutil.MockCharacterSheetRepo{
-				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (model.CharacterSheetRelationshipUUIDs, error) {
-					return model.CharacterSheetRelationshipUUIDs{}, errors.New("db error")
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{}, errors.New("db error")
 				},
 			},
 			wantErr: errors.New("db error"),
