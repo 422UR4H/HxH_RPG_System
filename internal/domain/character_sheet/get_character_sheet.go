@@ -15,7 +15,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
-	pgSheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 )
 
@@ -56,9 +55,6 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	// }
 
 	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
-	if err == pgSheet.ErrCharacterSheetNotFound {
-		return nil, ErrCharacterSheetNotFound
-	}
 	if err != nil {
 		return nil, err
 	}
