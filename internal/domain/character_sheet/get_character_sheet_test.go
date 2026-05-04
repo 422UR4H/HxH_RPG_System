@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
@@ -274,6 +275,48 @@ func TestGetCharacterSheet(t *testing.T) {
 		}
 		if !errors.Is(err, repoErr) {
 			t.Errorf("expected repo error, got: %v", err)
+		}
+	})
+
+	t.Run("triggers async persist when status curr exceeds new max", func(t *testing.T) {
+		sheetMap := newTestSheetMap()
+		factory := newTestFactory()
+		masterUUID := uuid.New()
+
+		modelSheet := newValidModelSheet(nil, &masterUUID, nil)
+		// HP_BASE_VALUE = 20 for a base sheet with no XP.
+		// curr=25, max=30 → normalizeStatus computes round(20*25/30)=17
+		modelSheet.Health.Curr = 25
+		modelSheet.Health.Max = 30
+
+		done := make(chan struct{})
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*model.CharacterSheet, error) {
+				return modelSheet, nil
+			},
+			UpdateStatusBarsFn: func(ctx context.Context, uuid string, health, stamina, aura model.StatusBar) error {
+				if health.Curr != 17 {
+					t.Errorf("expected normalized health curr = 17, got %d", health.Curr)
+				}
+				close(done)
+				return nil
+			},
+		}
+		mockCampaignRepo := &testutil.MockCampaignRepo{}
+
+		uc := charactersheet.NewGetCharacterSheetUC(sheetMap, factory, mockRepo, mockCampaignRepo)
+		result, err := uc.GetCharacterSheet(ctx, modelSheet.UUID, masterUUID)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if result == nil {
+			t.Fatal("expected character sheet, got nil")
+		}
+
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
+			t.Error("expected UpdateStatusBars to be called within 100ms")
 		}
 	})
 }

@@ -27,6 +27,7 @@ var (
 	ErrFailedToBuildHatsu             = domain.NewDomainError(errors.New("failed to build hatsu"))
 	ErrFailedToInitHatsu              = domain.NewDomainError(errors.New("failed to init hatsu"))
 	ErrFailedToSetStatus              = domain.NewDomainError(errors.New("failed to set status"))
+	ErrFailedToGetStatus              = domain.NewDomainError(errors.New("failed to get status"))
 	ErrFailedToGetPhysSkillExpRef     = domain.NewDomainError(errors.New("failed to get physical skills experience reference"))
 	ErrFailedToIncreasePhysAttrPts    = domain.NewDomainError(errors.New("failed to increase physical primary attribute points"))
 	ErrFailedToIncreaseMentalExp      = domain.NewDomainError(errors.New("failed to increase mental exp"))
