@@ -93,7 +93,7 @@ func (uc *GetCharacterSheetUC) checkAndNormalize(
 	return charSheet, nil
 }
 
-func (uc *GetCharacterSheetUC) persistNormalizedStatus(
+func (uc *GetCharacterSheetUC) persistNormalizedStatus( //nolint:unused
 	ctx context.Context,
 	sheetUUID string,
 	charSheet *domainSheet.CharacterSheet,
