@@ -145,12 +145,14 @@ func (r *Repository) GetCharacterSheetByUUID(
 		return nil, false, fmt.Errorf("failed to build character sheet entity: %w", err)
 	}
 
-	charClass, err := enum.CharacterClassNameFrom(m.Profile.CharacterClass)
-	if err != nil {
-		return nil, false, err
-	}
-	if err := charSheet.AddDryCharacterClass(&charClass); err != nil {
-		return nil, false, err
+	if m.Profile.CharacterClass != "" {
+		charClass, err := enum.CharacterClassNameFrom(m.Profile.CharacterClass)
+		if err != nil {
+			return nil, false, err
+		}
+		if err := charSheet.AddDryCharacterClass(&charClass); err != nil {
+			return nil, false, err
+		}
 	}
 
 	wasCorrected, err := wrap(charSheet, &m)

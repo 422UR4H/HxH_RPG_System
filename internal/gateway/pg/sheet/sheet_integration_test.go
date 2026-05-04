@@ -40,6 +40,26 @@ func buildTestSheet(playerUUID *uuid.UUID) *domainsheet.CharacterSheet {
 	return s
 }
 
+func buildMasterTestSheet(masterUUID *uuid.UUID) *domainsheet.CharacterSheet {
+	factory := domainsheet.NewCharacterSheetFactory()
+	profile := domainsheet.CharacterProfile{
+		NickName:         "MasterChar",
+		FullName:         "Master Character",
+		Alignment:        "Neutral",
+		Description:      "A master-owned test character",
+		BriefDescription: "Master",
+	}
+	birthday := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	profile.Birthday = &birthday
+
+	s, err := factory.Build(nil, masterUUID, nil, profile, nil, nil, nil)
+	if err != nil {
+		panic(fmt.Sprintf("buildMasterTestSheet: %v", err))
+	}
+	s.UUID = uuid.New()
+	return s
+}
+
 // testBar is a minimal status.IStatusBar for use in integration tests.
 type testBar struct{ min, curr, max int }
 
@@ -76,14 +96,13 @@ func TestCreateCharacterSheet(t *testing.T) {
 		}
 	})
 
-	t.Run("master-owned requires player_uuid nil — not supported by repo", func(t *testing.T) {
+	t.Run("master-owned sheet not insertable via player-only repo", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		// NOTE: CreateCharacterSheet only inserts player_uuid, not master_uuid.
-		// The XOR constraint (chk_exclusive_owner) requires exactly one of player_uuid/master_uuid.
-		// Passing a master-owned sheet (playerUUID nil) hits the constraint.
-		masterUUID := playerUUID
-		s := buildTestSheet(nil)
-		_ = masterUUID // sheet has playerUUID=nil, master not inserted into SQL → constraint violation
+		// A master-owned sheet (playerUUID=nil, masterUUID=non-nil) hits the DB XOR constraint.
+		masterStr := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass")
+		masterID := uuid.MustParse(masterStr)
+		s := buildMasterTestSheet(&masterID)
 		err := repo.CreateCharacterSheet(ctx, s)
 		if err == nil {
 			t.Fatal("expected error for master-owned sheet, got nil")
