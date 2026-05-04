@@ -5,10 +5,15 @@ package sheet_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	domainsheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	pgcampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
@@ -461,6 +466,66 @@ func TestExistsSheetInCampaign(t *testing.T) {
 		}
 		if got {
 			t.Error("ExistsSheetInCampaign() = true, want false")
+		}
+	})
+}
+
+func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	ctx := context.Background()
+
+	sheetRepo := sheet.NewRepository(pool)
+	campaignRepo := pgcampaign.NewRepository(pool)
+	factory := domainsheet.NewCharacterSheetFactory()
+
+	t.Run("normalizes stale curr and persists to DB", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass")
+		playerUUID := uuid.MustParse(playerStr)
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerStr, nil, nil, "Gon")
+
+		// Simulate stale data: curr=25, max=30 (persisted under old rules).
+		// Base health max for a Swordsman with no XP is 20.
+		// normalizeStatus(25, 30, 20, 0) → round(20*25/30) = 17.
+		_, err := pool.Exec(ctx,
+			`UPDATE character_sheets SET health_curr_pts = 25, health_max_pts = 30 WHERE uuid = $1`,
+			sheetUUID,
+		)
+		if err != nil {
+			t.Fatalf("failed to inject stale health values: %v", err)
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			&sync.Map{}, factory, sheetRepo, campaignRepo,
+		)
+
+		result, err := uc.GetCharacterSheet(ctx, uuid.MustParse(sheetUUID), playerUUID)
+		if err != nil {
+			t.Fatalf("GetCharacterSheet() error = %v", err)
+		}
+
+		allBars := result.GetAllStatusBar()
+		if got := allBars[enum.Health].GetCurrent(); got != 17 {
+			t.Errorf("domain health curr = %d, want 17", got)
+		}
+
+		// Give the async goroutine time to write back to DB.
+		time.Sleep(100 * time.Millisecond)
+
+		var healthCurr, healthMax int
+		err = pool.QueryRow(ctx,
+			`SELECT health_curr_pts, health_max_pts FROM character_sheets WHERE uuid = $1`,
+			sheetUUID,
+		).Scan(&healthCurr, &healthMax)
+		if err != nil {
+			t.Fatalf("failed to query persisted health values: %v", err)
+		}
+		if healthCurr != 17 {
+			t.Errorf("DB health_curr_pts = %d, want 17", healthCurr)
+		}
+		if healthMax != 20 {
+			t.Errorf("DB health_max_pts = %d, want 20", healthMax)
 		}
 	})
 }
