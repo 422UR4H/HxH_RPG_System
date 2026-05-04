@@ -14,7 +14,7 @@ type IRepository interface {
 	ExistsCharacterWithNick(ctx context.Context, nick string) (bool, error)
 	CountCharactersByPlayerUUID(ctx context.Context, playerUUID uuid.UUID) (int, error)
 	GetCharacterSheetPlayerUUID(ctx context.Context, uuid uuid.UUID) (uuid.UUID, error)
-	GetCharacterSheetByUUID(ctx context.Context, uuid string) (*sheet.CharacterSheet, error)
+	GetCharacterSheetByUUID(ctx context.Context, uuid string) (*sheet.CharacterSheet, bool, error)
 	ListCharacterSheetsByPlayerUUID(ctx context.Context, playerUUID string) ([]csEntity.Summary, error)
 	UpdateNenHexagonValue(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDs(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)

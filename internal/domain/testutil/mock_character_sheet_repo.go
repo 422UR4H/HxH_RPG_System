@@ -14,7 +14,7 @@ type MockCharacterSheetRepo struct {
 	ExistsCharacterWithNickFn            func(ctx context.Context, nick string) (bool, error)
 	CountCharactersByPlayerUUIDFn        func(ctx context.Context, playerUUID uuid.UUID) (int, error)
 	GetCharacterSheetPlayerUUIDFn        func(ctx context.Context, uuid uuid.UUID) (uuid.UUID, error)
-	GetCharacterSheetByUUIDFn            func(ctx context.Context, uuid string) (*sheet.CharacterSheet, error)
+	GetCharacterSheetByUUIDFn            func(ctx context.Context, uuid string) (*sheet.CharacterSheet, bool, error)
 	ListCharacterSheetsByPlayerUUIDFn    func(ctx context.Context, playerUUID string) ([]csEntity.Summary, error)
 	UpdateNenHexagonValueFn              func(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDsFn func(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)
@@ -50,11 +50,11 @@ func (m *MockCharacterSheetRepo) GetCharacterSheetPlayerUUID(ctx context.Context
 	return uuid.Nil, nil
 }
 
-func (m *MockCharacterSheetRepo) GetCharacterSheetByUUID(ctx context.Context, id string) (*sheet.CharacterSheet, error) {
+func (m *MockCharacterSheetRepo) GetCharacterSheetByUUID(ctx context.Context, id string) (*sheet.CharacterSheet, bool, error) {
 	if m.GetCharacterSheetByUUIDFn != nil {
 		return m.GetCharacterSheetByUUIDFn(ctx, id)
 	}
-	return nil, nil
+	return nil, false, nil
 }
 
 func (m *MockCharacterSheetRepo) ListCharacterSheetsByPlayerUUID(ctx context.Context, playerUUID string) ([]csEntity.Summary, error) {

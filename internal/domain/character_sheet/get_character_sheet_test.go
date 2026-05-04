@@ -24,8 +24,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(nil, &masterUUID, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -53,8 +53,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -81,8 +81,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -108,8 +108,8 @@ func TestGetCharacterSheet(t *testing.T) {
 		sheetMap := newTestSheetMap()
 		factory := newTestFactory()
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return nil, charactersheet.ErrCharacterSheetNotFound
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return nil, false, charactersheet.ErrCharacterSheetNotFound
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -132,8 +132,8 @@ func TestGetCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		repoErr := errors.New("database connection failed")
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return nil, repoErr
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return nil, false, repoErr
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -159,8 +159,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
@@ -188,8 +188,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -220,8 +220,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{
@@ -253,8 +253,8 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, error) {
-				return domainS, nil
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{

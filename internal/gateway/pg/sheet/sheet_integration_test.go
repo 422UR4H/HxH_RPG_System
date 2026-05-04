@@ -67,7 +67,7 @@ func TestCreateCharacterSheet(t *testing.T) {
 		if err := repo.CreateCharacterSheet(ctx, s); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		got, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
 		if err != nil {
 			t.Fatalf("expected sheet to be readable after create, got: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestGetCharacterSheetByUUID(t *testing.T) {
 	}
 
 	t.Run("found", func(t *testing.T) {
-		got, err := repo.GetCharacterSheetByUUID(ctx, created.UUID.String())
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, created.UUID.String())
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -118,7 +118,7 @@ func TestGetCharacterSheetByUUID(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		_, err := repo.GetCharacterSheetByUUID(ctx, uuid.New().String())
+		_, _, err := repo.GetCharacterSheetByUUID(ctx, uuid.New().String())
 		if !errors.Is(err, charactersheet.ErrCharacterSheetNotFound) {
 			t.Fatalf("expected ErrCharacterSheetNotFound, got %v", err)
 		}
@@ -307,7 +307,7 @@ func TestUpdateNenHexagonValue(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		got, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
 		if err != nil {
 			t.Fatalf("expected no error fetching sheet, got %v", err)
 		}

@@ -20,10 +20,10 @@ import (
 
 func (r *Repository) GetCharacterSheetByUUID(
 	ctx context.Context, uuid string,
-) (*domainSheet.CharacterSheet, error) {
+) (*domainSheet.CharacterSheet, bool, error) {
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if p := recover(); p != nil {
@@ -81,9 +81,9 @@ func (r *Repository) GetCharacterSheetByUUID(
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, charactersheet.ErrCharacterSheetNotFound
+			return nil, false, charactersheet.ErrCharacterSheetNotFound
 		}
-		return nil, fmt.Errorf("failed to fetch character sheet: %w", err)
+		return nil, false, fmt.Errorf("failed to fetch character sheet: %w", err)
 	}
 	m.Profile = profile
 
@@ -94,14 +94,14 @@ func (r *Repository) GetCharacterSheetByUUID(
 	`
 	rows, err := tx.Query(ctx, proficienciesQuery, uuid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch proficiencies: %w", err)
+		return nil, false, fmt.Errorf("failed to fetch proficiencies: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var prof model.Proficiency
 		if err := rows.Scan(&prof.Weapon, &prof.Exp); err != nil {
-			return nil, fmt.Errorf("failed to scan proficiency: %w", err)
+			return nil, false, fmt.Errorf("failed to scan proficiency: %w", err)
 		}
 		m.Proficiencies = append(m.Proficiencies, prof)
 	}
@@ -113,20 +113,20 @@ func (r *Repository) GetCharacterSheetByUUID(
 	`
 	rows, err = tx.Query(ctx, jointProficienciesQuery, uuid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch joint proficiencies: %w", err)
+		return nil, false, fmt.Errorf("failed to fetch joint proficiencies: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var jointProf model.JointProficiency
 		if err := rows.Scan(&jointProf.Name, &jointProf.Weapons, &jointProf.Exp); err != nil {
-			return nil, fmt.Errorf("failed to scan joint proficiency: %w", err)
+			return nil, false, fmt.Errorf("failed to scan joint proficiency: %w", err)
 		}
 		m.JointProficiencies = append(m.JointProficiencies, jointProf)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return nil, false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	domainProfile := modelToProfile(&m.Profile)
@@ -142,21 +142,22 @@ func (r *Repository) GetCharacterSheetByUUID(
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build character sheet entity: %w", err)
+		return nil, false, fmt.Errorf("failed to build character sheet entity: %w", err)
 	}
 
 	charClass, err := enum.CharacterClassNameFrom(m.Profile.CharacterClass)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := charSheet.AddDryCharacterClass(&charClass); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	if _, err := wrap(charSheet, &m); err != nil {
-		return nil, err
+	wasCorrected, err := wrap(charSheet, &m)
+	if err != nil {
+		return nil, false, err
 	}
-	return charSheet, nil
+	return charSheet, wasCorrected, nil
 }
 
 func (r *Repository) GetCharacterSheetPlayerUUID(

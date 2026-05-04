@@ -50,7 +50,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	// 	return charSheet.(*sheet.CharacterSheet), nil
 	// }
 
-	charSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+	charSheet, wasCorrected, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -58,10 +58,10 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	playerUUID := charSheet.GetPlayerUUID()
 
 	if masterUUID != nil && *masterUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet)
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
 	}
 	if playerUUID != nil && *playerUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet)
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
 	}
 
 	campaignUUID := charSheet.GetCampaignUUID()
@@ -77,7 +77,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 	if campaignMasterUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet)
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
 	}
 	return nil, auth.ErrInsufficientPermissions
 }
@@ -86,14 +86,15 @@ func (uc *GetCharacterSheetUC) checkAndNormalize(
 	ctx context.Context,
 	sheetUUID string,
 	charSheet *domainSheet.CharacterSheet,
+	wasCorrected bool,
 ) (*domainSheet.CharacterSheet, error) {
-	// Status normalization is handled inside the gateway's wrap function.
-	// If correction was applied, persist asynchronously.
-	// TODO: expose wasCorrected from gateway or move normalization trigger here
+	if wasCorrected {
+		go uc.persistNormalizedStatus(ctx, sheetUUID, charSheet)
+	}
 	return charSheet, nil
 }
 
-func (uc *GetCharacterSheetUC) persistNormalizedStatus( //nolint:unused
+func (uc *GetCharacterSheetUC) persistNormalizedStatus(
 	ctx context.Context,
 	sheetUUID string,
 	charSheet *domainSheet.CharacterSheet,
