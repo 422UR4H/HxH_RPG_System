@@ -1,3 +1,4 @@
+// internal/domain/enrollment/enroll_character_sheet.go
 package enrollment
 
 import (
@@ -6,7 +7,6 @@ import (
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 )
 
@@ -46,9 +46,6 @@ func (uc *EnrollCharacterInMatchUC) Enroll(
 	sheetRelationship, err := uc.sheetRepo.GetCharacterSheetRelationshipUUIDs(
 		ctx, sheetUUID,
 	)
-	if err == sheet.ErrCharacterSheetNotFound {
-		return charactersheet.ErrCharacterSheetNotFound
-	}
 	if err != nil {
 		return err
 	}

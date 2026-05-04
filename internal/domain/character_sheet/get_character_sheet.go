@@ -1,20 +1,16 @@
+// internal/domain/character_sheet/get_character_sheet.go
 package charactersheet
 
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )
 
@@ -54,27 +50,25 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	// 	return charSheet.(*sheet.CharacterSheet), nil
 	// }
 
-	modelSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+	charSheet, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
 	if err != nil {
 		return nil, err
 	}
-	masterUUID := modelSheet.MasterUUID
-	playerUUID := modelSheet.PlayerUUID
+	masterUUID := charSheet.GetMasterUUID()
+	playerUUID := charSheet.GetPlayerUUID()
 
-	// Check if the user is the owner of the character sheet
 	if masterUUID != nil && *masterUUID == userUUID {
-		return uc.hydrateCharacterSheet(playerUUID, masterUUID, modelSheet)
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet)
 	}
 	if playerUUID != nil && *playerUUID == userUUID {
-		return uc.hydrateCharacterSheet(playerUUID, masterUUID, modelSheet)
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet)
 	}
 
-	campaignUUID := modelSheet.CampaignUUID
+	campaignUUID := charSheet.GetCampaignUUID()
 	if campaignUUID == nil {
 		return nil, auth.ErrInsufficientPermissions
 	}
 
-	// Check if the user is the owner of the character sheet campaign
 	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *campaignUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
 		return nil, domainCampaign.ErrCampaignNotFound
@@ -83,53 +77,20 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 	if campaignMasterUUID == userUUID {
-		return uc.hydrateCharacterSheet(playerUUID, masterUUID, modelSheet)
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet)
 	}
 	return nil, auth.ErrInsufficientPermissions
 }
 
-func (uc *GetCharacterSheetUC) hydrateCharacterSheet(
-	playerUUID *uuid.UUID,
-	masterUUID *uuid.UUID,
-	modelSheet *model.CharacterSheet,
+func (uc *GetCharacterSheetUC) checkAndNormalize(
+	ctx context.Context,
+	sheetUUID string,
+	charSheet *domainSheet.CharacterSheet,
 ) (*domainSheet.CharacterSheet, error) {
-	profile := ModelToProfile(&modelSheet.Profile)
-
-	categoryName := (*enum.CategoryName)(&modelSheet.CategoryName)
-	characterSheet, err := uc.factory.Build(
-		playerUUID,
-		masterUUID,
-		modelSheet.CampaignUUID,
-		*profile,
-		modelSheet.CurrHexValue,
-		categoryName,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	charClass, err := enum.CharacterClassNameFrom(modelSheet.Profile.CharacterClass)
-	if err != nil {
-		return nil, err
-	}
-
-	err = characterSheet.AddDryCharacterClass(&charClass)
-	if err != nil {
-		return nil, err
-	}
-
-	wasCorrected, err := Wrap(characterSheet, modelSheet)
-	if err != nil {
-		return nil, err
-	}
-	if wasCorrected {
-		go uc.persistNormalizedStatus(context.Background(), modelSheet.UUID.String(), characterSheet)
-	}
-
-	// uc.characterSheets.Store(sheetUUID, characterSheet)
-
-	return characterSheet, nil
+	// Status normalization is handled inside the gateway's wrap function.
+	// If correction was applied, persist asynchronously.
+	// TODO: expose wasCorrected from gateway or move normalization trigger here
+	return charSheet, nil
 }
 
 func (uc *GetCharacterSheetUC) persistNormalizedStatus(
@@ -138,228 +99,11 @@ func (uc *GetCharacterSheetUC) persistNormalizedStatus(
 	charSheet *domainSheet.CharacterSheet,
 ) {
 	allBars := charSheet.GetAllStatusBar()
-	toBar := func(bar status.IStatusBar) model.StatusBar {
-		return model.StatusBar{Min: bar.GetMin(), Curr: bar.GetCurrent(), Max: bar.GetMax()}
-	}
 	if err := uc.repo.UpdateStatusBars(ctx, sheetUUID,
-		toBar(allBars[enum.Health]),
-		toBar(allBars[enum.Stamina]),
-		toBar(allBars[enum.Aura]),
+		allBars[enum.Health],
+		allBars[enum.Stamina],
+		allBars[enum.Aura],
 	); err != nil {
 		fmt.Printf("TODO(logger): failed to persist normalized status for sheet %s: %v\n", sheetUUID, err)
 	}
-}
-
-func ModelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfile {
-	return &domainSheet.CharacterProfile{
-		NickName:         profile.NickName,
-		FullName:         profile.FullName,
-		Alignment:        profile.Alignment,
-		Description:      profile.Description,
-		BriefDescription: profile.BriefDescription,
-		Birthday:         profile.Birthday,
-	}
-}
-
-func normalizeStatus(curr, oldMax, newMax, minVal int) (int, bool) {
-	if newMax == 0 {
-		fmt.Printf("TODO(logger): status normalized anomaly: newMax is 0, curr %d not corrected\n", curr)
-		return curr, false
-	}
-	if curr <= newMax {
-		return curr, false
-	}
-	if oldMax <= 0 {
-		fmt.Printf("TODO(logger): status normalized (fallback): curr %d → new_max %d\n", curr, newMax)
-		return newMax, true
-	}
-	corrected := int(math.Round(float64(newMax) * float64(curr) / float64(oldMax)))
-	corrected = max(minVal, min(newMax, corrected))
-	fmt.Printf("TODO(logger): status normalized: curr %d → %d (old_max: %d, new_max: %d)\n", curr, corrected, oldMax, newMax)
-	return corrected, true
-}
-
-func Wrap(charSheet *domainSheet.CharacterSheet, modelSheet *model.CharacterSheet) (wasCorrected bool, err error) {
-	charSheet.UUID = modelSheet.UUID
-
-	physicalAttrs := map[enum.AttributeName]int{
-		enum.Resistance:   modelSheet.ResistancePts,
-		enum.Strength:     modelSheet.StrengthPts,
-		enum.Agility:      modelSheet.AgilityPts,
-		enum.Celerity:     modelSheet.CelerityPts,
-		enum.Flexibility:  modelSheet.FlexibilityPts,
-		enum.Dexterity:    modelSheet.DexterityPts,
-		enum.Sense:        modelSheet.SensePts,
-		enum.Constitution: modelSheet.ConstitutionPts,
-	}
-	for name, points := range physicalAttrs {
-		if points == 0 {
-			continue
-		}
-		if _, _, err := charSheet.IncreasePtsForPhysPrimaryAttr(name, points); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePhysAttrPts, name, err)
-		}
-	}
-
-	// TODO: add mental attributes points or remove from modelSheet
-
-	mentalAttrs := map[enum.AttributeName]int{
-		enum.Resilience:   modelSheet.ResilienceExp,
-		enum.Adaptability: modelSheet.AdaptabilityExp,
-		enum.Weighting:    modelSheet.WeightingExp,
-		enum.Creativity:   modelSheet.CreativityExp,
-	}
-	for name, exp := range mentalAttrs {
-		if exp == 0 {
-			continue
-		}
-		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
-		}
-	}
-
-	physicalSkills := map[enum.SkillName]int{
-		enum.Vitality:   modelSheet.VitalityExp,
-		enum.Energy:     modelSheet.EnergyExp,
-		enum.Defense:    modelSheet.DefenseExp,
-		enum.Push:       modelSheet.PushExp,
-		enum.Grab:       modelSheet.GrabExp,
-		enum.Carry:      modelSheet.CarryExp,
-		enum.Velocity:   modelSheet.VelocityExp,
-		enum.Accelerate: modelSheet.AccelerateExp,
-		enum.Brake:      modelSheet.BrakeExp,
-		enum.Legerity:   modelSheet.LegerityExp,
-		enum.Repel:      modelSheet.RepelExp,
-		enum.Feint:      modelSheet.FeintExp,
-		enum.Acrobatics: modelSheet.AcrobaticsExp,
-		enum.Evasion:    modelSheet.EvasionExp,
-		enum.Sneak:      modelSheet.SneakExp,
-		enum.Reflex:     modelSheet.ReflexExp,
-		enum.Accuracy:   modelSheet.AccuracyExp,
-		enum.Stealth:    modelSheet.StealthExp,
-		enum.Vision:     modelSheet.VisionExp,
-		enum.Hearing:    modelSheet.HearingExp,
-		enum.Smell:      modelSheet.SmellExp,
-		enum.Tact:       modelSheet.TactExp,
-		enum.Taste:      modelSheet.TasteExp,
-		enum.Heal:       modelSheet.HealExp,
-		enum.Breath:     modelSheet.BreathExp,
-		enum.Tenacity:   modelSheet.TenacityExp,
-	}
-	for name, exp := range physicalSkills {
-		if exp == 0 {
-			continue
-		}
-		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseSkillExp, name, err)
-		}
-	}
-
-	spiritualPrinciples := map[enum.PrincipleName]int{
-		enum.Ten:   modelSheet.TenExp,
-		enum.Zetsu: modelSheet.ZetsuExp,
-		enum.Ren:   modelSheet.RenExp,
-		enum.Gyo:   modelSheet.GyoExp,
-		enum.Shu:   modelSheet.ShuExp,
-		enum.Kou:   modelSheet.KouExp,
-		enum.Ken:   modelSheet.KenExp,
-		enum.Ryu:   modelSheet.RyuExp,
-		enum.In:    modelSheet.InExp,
-		enum.En:    modelSheet.EnExp,
-	}
-	for name, exp := range spiritualPrinciples {
-		if exp == 0 {
-			continue
-		}
-		if err := charSheet.IncreaseExpForPrinciple(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePrincipleExp, name, err)
-		}
-	}
-
-	spiritualCategories := map[enum.CategoryName]int{
-		enum.Reinforcement:   modelSheet.ReinforcementExp,
-		enum.Transmutation:   modelSheet.TransmutationExp,
-		enum.Materialization: modelSheet.MaterializationExp,
-		enum.Specialization:  modelSheet.SpecializationExp,
-		enum.Manipulation:    modelSheet.ManipulationExp,
-		enum.Emission:        modelSheet.EmissionExp,
-	}
-	for name, exp := range spiritualCategories {
-		if exp == 0 {
-			continue
-		}
-		if err := charSheet.IncreaseExpForCategory(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseCategoryExp, name, err)
-		}
-	}
-
-	type statusEntry struct {
-		name   enum.StatusName
-		curr   int
-		oldMax int
-	}
-	for _, e := range []statusEntry{
-		{enum.Health, modelSheet.Health.Curr, modelSheet.Health.Max},
-		{enum.Stamina, modelSheet.Stamina.Curr, modelSheet.Stamina.Max},
-		{enum.Aura, modelSheet.Aura.Curr, modelSheet.Aura.Max},
-	} {
-		newMax, err := charSheet.GetMaxOfStatus(e.name)
-		if err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
-		}
-		minVal, err := charSheet.GetMinOfStatus(e.name)
-		if err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
-		}
-		corrected, correctionApplied := normalizeStatus(e.curr, e.oldMax, newMax, minVal)
-		if correctionApplied {
-			wasCorrected = true
-		}
-		if newMax == 0 {
-			continue // bar not yet unlocked; curr must remain at bar's initialized value
-		}
-		if err := charSheet.SetCurrStatus(e.name, corrected); err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToSetStatus, e.name, err)
-		}
-	}
-
-	physSkExp, err := charSheet.GetPhysSkillExpReference()
-	if err != nil {
-		return false, domainSheet.ErrFailedToGetPhysSkillExpRef
-	}
-	expTable := experience.NewExpTable(domainSheet.PHYSICAL_SKILLS_COEFF)
-	newExp := experience.NewExperience(expTable)
-	for _, prof := range modelSheet.Proficiencies {
-		domainProf := proficiency.NewProficiency(
-			enum.WeaponName(prof.Weapon), *newExp, physSkExp,
-		)
-		if err := charSheet.AddCommonProficiency(enum.WeaponName(prof.Weapon), domainProf); err != nil {
-			return false, fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddCommonProficiency, err)
-		}
-		if err := charSheet.IncreaseExpForProficiency(
-			experience.NewUpgradeCascade(prof.Exp), enum.WeaponName(prof.Weapon),
-		); err != nil {
-			return false, fmt.Errorf("%w: %v", domainSheet.ErrFailedToIncreaseProficiencyExp, err)
-		}
-	}
-
-	for _, jointProf := range modelSheet.JointProficiencies {
-		weapons := []enum.WeaponName{}
-		for _, weapon := range jointProf.Weapons {
-			weapons = append(weapons, enum.WeaponName(weapon))
-		}
-		domainJointProf := proficiency.NewJointProficiency(
-			*newExp, jointProf.Name, weapons,
-		)
-		if err := charSheet.AddJointProficiency(domainJointProf); err != nil {
-			return false, fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddJointProficiency, err)
-		}
-		// TODO: implement for create and add here too
-		// charSheet.IncreaseExpForProficiency(
-		// 	experience.NewUpgradeCascade(jointProf.Exp), enum.WeaponName(jointProf.Weapon),
-		// )
-	}
-
-	charSheet.IncreaseExpForTalent(modelSheet.TalentExp)
-	return wasCorrected, nil
 }
