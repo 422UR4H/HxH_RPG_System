@@ -1,16 +1,17 @@
+// internal/gateway/pg/sheet/update_status_bars.go
 package sheet
 
 import (
 	"context"
 	"time"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 )
 
 func (r *Repository) UpdateStatusBars(
 	ctx context.Context,
 	sheetUUID string,
-	health, stamina, aura model.StatusBar,
+	health, stamina, aura status.IStatusBar,
 ) error {
 	const query = `
 		UPDATE character_sheets
@@ -28,9 +29,9 @@ func (r *Repository) UpdateStatusBars(
 		WHERE uuid = $11
 	`
 	_, err := r.q.Exec(ctx, query,
-		health.Min, health.Curr, health.Max,
-		stamina.Min, stamina.Curr, stamina.Max,
-		aura.Min, aura.Curr, aura.Max,
+		health.GetMin(), health.GetCurrent(), health.GetMax(),
+		stamina.GetMin(), stamina.GetCurrent(), stamina.GetMax(),
+		aura.GetMin(), aura.GetCurrent(), aura.GetMax(),
 		time.Now(),
 		sheetUUID,
 	)
