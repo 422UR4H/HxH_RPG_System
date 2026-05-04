@@ -10,7 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -22,15 +22,15 @@ func TestListCharacterSheetsHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		mockFn     func(ctx context.Context, uid uuid.UUID) ([]model.CharacterSheetSummary, error)
+		mockFn     func(ctx context.Context, uid uuid.UUID) ([]csEntity.Summary, error)
 		wantStatus int
 		wantCount  int
 	}{
 		{
 			name: "success_with_sheets",
-			mockFn: func(ctx context.Context, uid uuid.UUID) ([]model.CharacterSheetSummary, error) {
+			mockFn: func(ctx context.Context, uid uuid.UUID) ([]csEntity.Summary, error) {
 				playerUUID := uid
-				return []model.CharacterSheetSummary{
+				return []csEntity.Summary{
 					{
 						UUID:           uuid.New(),
 						PlayerUUID:     &playerUUID,
@@ -40,8 +40,8 @@ func TestListCharacterSheetsHandler(t *testing.T) {
 						CharacterClass: "Hunter",
 						Birthday:       now,
 						Level:          1,
-						Stamina:        model.StatusBar{Min: 0, Curr: 100, Max: 100},
-						Health:         model.StatusBar{Min: 0, Curr: 100, Max: 100},
+						Stamina:        csEntity.StatusBar{Min: 0, Curr: 100, Max: 100},
+						Health:         csEntity.StatusBar{Min: 0, Curr: 100, Max: 100},
 						CreatedAt:      now,
 						UpdatedAt:      now,
 					},
@@ -52,7 +52,7 @@ func TestListCharacterSheetsHandler(t *testing.T) {
 		},
 		{
 			name: "internal_server_error",
-			mockFn: func(ctx context.Context, uid uuid.UUID) ([]model.CharacterSheetSummary, error) {
+			mockFn: func(ctx context.Context, uid uuid.UUID) ([]csEntity.Summary, error) {
 				return nil, errors.New("db connection failed")
 			},
 			wantStatus: http.StatusInternalServerError,

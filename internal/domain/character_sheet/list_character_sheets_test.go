@@ -7,7 +7,7 @@ import (
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/testutil"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/google/uuid"
 )
 
@@ -15,12 +15,12 @@ func TestListCharacterSheets(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("happy path - returns list", func(t *testing.T) {
-		expected := []model.CharacterSheetSummary{
+		expected := []csEntity.Summary{
 			{UUID: uuid.New(), NickName: "Gon"},
 			{UUID: uuid.New(), NickName: "Killua"},
 		}
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			ListCharacterSheetsByPlayerUUIDFn: func(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error) {
+			ListCharacterSheetsByPlayerUUIDFn: func(ctx context.Context, playerUUID string) ([]csEntity.Summary, error) {
 				return expected, nil
 			},
 		}
@@ -42,8 +42,8 @@ func TestListCharacterSheets(t *testing.T) {
 
 	t.Run("happy path - empty list", func(t *testing.T) {
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			ListCharacterSheetsByPlayerUUIDFn: func(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error) {
-				return []model.CharacterSheetSummary{}, nil
+			ListCharacterSheetsByPlayerUUIDFn: func(ctx context.Context, playerUUID string) ([]csEntity.Summary, error) {
+				return []csEntity.Summary{}, nil
 			},
 		}
 
@@ -62,7 +62,7 @@ func TestListCharacterSheets(t *testing.T) {
 	t.Run("error - repo error", func(t *testing.T) {
 		repoErr := errors.New("database error")
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			ListCharacterSheetsByPlayerUUIDFn: func(ctx context.Context, playerUUID string) ([]model.CharacterSheetSummary, error) {
+			ListCharacterSheetsByPlayerUUIDFn: func(ctx context.Context, playerUUID string) ([]csEntity.Summary, error) {
 				return nil, repoErr
 			},
 		}

@@ -7,10 +7,10 @@ import (
 
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/testutil"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )
 
@@ -334,7 +334,7 @@ func TestCreateCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		repoErr := errors.New("insert failed")
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			CreateCharacterSheetFn: func(ctx context.Context, s *model.CharacterSheet) error {
+			CreateCharacterSheetFn: func(ctx context.Context, s *domainSheet.CharacterSheet) error {
 				return repoErr
 			},
 		}
