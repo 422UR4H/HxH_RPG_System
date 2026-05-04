@@ -28,7 +28,9 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 			SELECT
 					cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
 					cs.category_name, cs.curr_hex_value, cs.talent_exp,
-					cs.health_curr_pts, cs.stamina_curr_pts, cs.aura_curr_pts,
+					cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
+					cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
+					cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
 					cs.resistance_pts, cs.strength_pts, cs.agility_pts, cs.celerity_pts, cs.flexibility_pts, cs.dexterity_pts, cs.sense_pts, cs.constitution_pts,
 					cs.resilience_pts, cs.adaptability_pts, cs.weighting_pts, cs.creativity_pts, cs.resilience_exp, cs.adaptability_exp, cs.weighting_exp, cs.creativity_exp,
 					cs.vitality_exp, cs.energy_exp, cs.defense_exp, cs.push_exp, cs.grab_exp, cs.carry_exp, cs.velocity_exp, cs.accelerate_exp, cs.brake_exp,
@@ -52,7 +54,9 @@ func (r *Repository) GetCharacterSheetByUUID(ctx context.Context, uuid string) (
 	err = row.Scan(
 		&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
 		&sheet.CategoryName, &sheet.CurrHexValue, &sheet.TalentExp,
-		&sheet.Health.Curr, &sheet.Stamina.Curr, &sheet.Aura.Curr,
+		&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
+		&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,
+		&sheet.Aura.Min, &sheet.Aura.Curr, &sheet.Aura.Max,
 		&sheet.ResistancePts, &sheet.StrengthPts, &sheet.AgilityPts, &sheet.CelerityPts, &sheet.FlexibilityPts, &sheet.DexterityPts, &sheet.SensePts, &sheet.ConstitutionPts,
 		&sheet.ResiliencePts, &sheet.AdaptabilityPts, &sheet.WeightingPts, &sheet.CreativityPts, &sheet.ResilienceExp, &sheet.AdaptabilityExp, &sheet.WeightingExp, &sheet.CreativityExp,
 		&sheet.VitalityExp, &sheet.EnergyExp, &sheet.DefenseExp, &sheet.PushExp, &sheet.GrabExp, &sheet.CarryExp, &sheet.VelocityExp, &sheet.AccelerateExp, &sheet.BrakeExp,

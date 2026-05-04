@@ -483,14 +483,18 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 
 		playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass")
 		playerUUID := uuid.MustParse(playerStr)
-		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerStr, nil, nil, "Gon")
+
+		s := buildTestSheet(&playerUUID)
+		if err := sheetRepo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("setup: failed to create sheet: %v", err)
+		}
 
 		// Simulate stale data: curr=25, max=30 (persisted under old rules).
 		// Base health max for a Swordsman with no XP is 20.
 		// normalizeStatus(25, 30, 20, 0) → round(20*25/30) = 17.
 		_, err := pool.Exec(ctx,
 			`UPDATE character_sheets SET health_curr_pts = 25, health_max_pts = 30 WHERE uuid = $1`,
-			sheetUUID,
+			s.UUID,
 		)
 		if err != nil {
 			t.Fatalf("failed to inject stale health values: %v", err)
@@ -500,7 +504,7 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 			&sync.Map{}, factory, sheetRepo, campaignRepo,
 		)
 
-		result, err := uc.GetCharacterSheet(ctx, uuid.MustParse(sheetUUID), playerUUID)
+		result, err := uc.GetCharacterSheet(ctx, s.UUID, playerUUID)
 		if err != nil {
 			t.Fatalf("GetCharacterSheet() error = %v", err)
 		}
@@ -516,7 +520,7 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 		var healthCurr, healthMax int
 		err = pool.QueryRow(ctx,
 			`SELECT health_curr_pts, health_max_pts FROM character_sheets WHERE uuid = $1`,
-			sheetUUID,
+			s.UUID,
 		).Scan(&healthCurr, &healthMax)
 		if err != nil {
 			t.Fatalf("failed to query persisted health values: %v", err)
