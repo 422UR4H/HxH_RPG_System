@@ -3,7 +3,7 @@ package sheet
 import (
 	"time"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/google/uuid"
 )
 
@@ -59,7 +59,7 @@ type StatusBar struct {
 	Max     int `json:"max"`
 }
 
-func ToPrivateOnlyResponse(sheet *model.CharacterSheetSummary) CharacterPrivateOnlyResponse {
+func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse {
 	stamina := sheet.Stamina
 	health := sheet.Health
 	// aura := sheet.Aura
@@ -95,14 +95,14 @@ func ToPrivateOnlyResponse(sheet *model.CharacterSheetSummary) CharacterPrivateO
 	}
 }
 
-func ToPrivateSummaryResponse(sheet *model.CharacterSheetSummary) CharacterPrivateSummaryResponse {
+func ToPrivateSummaryResponse(sheet *csEntity.Summary) CharacterPrivateSummaryResponse {
 	return CharacterPrivateSummaryResponse{
 		CharacterBaseSummaryResponse: ToBaseSummaryResponse(sheet),
 		CharacterPrivateOnlyResponse: ToPrivateOnlyResponse(sheet),
 	}
 }
 
-func ToPublicSummaryResponse(sheet *model.CharacterSheetSummary) CharacterPublicSummaryResponse {
+func ToPublicSummaryResponse(sheet *csEntity.Summary) CharacterPublicSummaryResponse {
 	return CharacterPublicSummaryResponse{
 		CharacterBaseSummaryResponse: ToBaseSummaryResponse(sheet),
 	}
@@ -110,7 +110,7 @@ func ToPublicSummaryResponse(sheet *model.CharacterSheetSummary) CharacterPublic
 
 // ToBaseSummaryResponse exports what was previously the unexported
 // toSummaryBaseResponse so the new match handler can map base summaries.
-func ToBaseSummaryResponse(sheet *model.CharacterSheetSummary) CharacterBaseSummaryResponse {
+func ToBaseSummaryResponse(sheet *csEntity.Summary) CharacterBaseSummaryResponse {
 	var storyStartAtStr, storyCurrentAtStr, deadAtStr *string
 	if sheet.StoryStartAt != nil {
 		formatted := sheet.StoryStartAt.Format("2006-01-02")
