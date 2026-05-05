@@ -384,6 +384,64 @@ func TestRegisterFromAcceptedEnrollments(t *testing.T) {
 	})
 }
 
+func TestListParticipantsByMatchUUID(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("returns participants with sheet data", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_list", "gm_list@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "List Campaign"))
+		playerUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "p_list", "p_list@hunter.com", "pass"))
+
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "List Session"))
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &[]string{playerUUID.String()}[0], nil, nil, "Leorio")
+
+		joinedAt := time.Now().UTC().Truncate(time.Microsecond)
+		pgtest.InsertTestMatchParticipant(t, pool, matchUUID.String(), sheetUUID, joinedAt)
+
+		participants, err := repo.ListParticipantsByMatchUUID(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("ListParticipantsByMatchUUID() unexpected error: %v", err)
+		}
+		if len(participants) != 1 {
+			t.Fatalf("got %d participants, want 1", len(participants))
+		}
+
+		p := participants[0]
+		if p.MatchUUID != matchUUID {
+			t.Errorf("MatchUUID = %v, want %v", p.MatchUUID, matchUUID)
+		}
+		if p.Sheet.NickName != "Leorio" {
+			t.Errorf("NickName = %q, want %q", p.Sheet.NickName, "Leorio")
+		}
+		if !p.JoinedAt.UTC().Truncate(time.Microsecond).Equal(joinedAt) {
+			t.Errorf("JoinedAt = %v, want %v", p.JoinedAt, joinedAt)
+		}
+		if p.LeftAt != nil {
+			t.Errorf("LeftAt = %v, want nil", p.LeftAt)
+		}
+	})
+
+	t.Run("returns empty slice when no participants", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_empty", "gm_empty@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Empty Campaign"))
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Empty Session"))
+
+		participants, err := repo.ListParticipantsByMatchUUID(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("ListParticipantsByMatchUUID() unexpected error: %v", err)
+		}
+		if len(participants) != 0 {
+			t.Errorf("got %d participants, want 0", len(participants))
+		}
+	})
+}
+
 func mustParseUUID(t *testing.T, s string) uuid.UUID {
 	t.Helper()
 	id, err := uuid.Parse(s)
