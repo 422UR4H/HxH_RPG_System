@@ -13,16 +13,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type mockParticipantReader struct {
-	fn func(ctx context.Context, matchUUID uuid.UUID) ([]*matchEntity.Participant, error)
-}
-
-func (m *mockParticipantReader) ListParticipantsByMatchUUID(
-	ctx context.Context, matchUUID uuid.UUID,
-) ([]*matchEntity.Participant, error) {
-	return m.fn(ctx, matchUUID)
-}
-
 func TestGetMatchParticipants(t *testing.T) {
 	masterUUID := uuid.New()
 	otherUUID := uuid.New()
@@ -50,7 +40,6 @@ func TestGetMatchParticipants(t *testing.T) {
 		name             string
 		userUUID         uuid.UUID
 		matchMock        *testutil.MockMatchRepo
-		participantMock  *mockParticipantReader
 		checker          *mockParticipationChecker
 		wantErr          error
 		wantLen          int
@@ -63,9 +52,7 @@ func TestGetMatchParticipants(t *testing.T) {
 				GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 					return privateMatch, nil
 				},
-			},
-			participantMock: &mockParticipantReader{
-				fn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+				ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
 					return twoParticipants, nil
 				},
 			},
@@ -80,9 +67,7 @@ func TestGetMatchParticipants(t *testing.T) {
 				GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 					return publicMatch, nil
 				},
-			},
-			participantMock: &mockParticipantReader{
-				fn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+				ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
 					return twoParticipants, nil
 				},
 			},
@@ -97,9 +82,7 @@ func TestGetMatchParticipants(t *testing.T) {
 				GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 					return privateMatch, nil
 				},
-			},
-			participantMock: &mockParticipantReader{
-				fn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+				ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
 					t.Fatal("participant reader should NOT be called")
 					return nil, nil
 				},
@@ -116,9 +99,7 @@ func TestGetMatchParticipants(t *testing.T) {
 				GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 					return nil, matchPg.ErrMatchNotFound
 				},
-			},
-			participantMock: &mockParticipantReader{
-				fn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+				ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
 					t.Fatal("should not be called")
 					return nil, nil
 				},
@@ -133,9 +114,7 @@ func TestGetMatchParticipants(t *testing.T) {
 				GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 					return privateMatch, nil
 				},
-			},
-			participantMock: &mockParticipantReader{
-				fn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+				ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
 					return nil, errors.New("db error")
 				},
 			},
@@ -146,11 +125,7 @@ func TestGetMatchParticipants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewGetMatchParticipantsUC(
-				tt.matchMock,
-				tt.participantMock,
-				tt.checker,
-			)
+			uc := domainMatch.NewGetMatchParticipantsUC(tt.matchMock, tt.checker)
 			result, err := uc.Get(context.Background(), matchUUID, tt.userUUID)
 
 			if tt.wantErr != nil {

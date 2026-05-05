@@ -149,7 +149,7 @@ func main() {
 	listMatchesUC := domainMatch.NewListMatchesUC(matchRepo)
 	listPublicUpcomingMatchesUC := domainMatch.NewListPublicUpcomingMatchesUC(matchRepo)
 	listMatchEnrollmentsUC := domainMatch.NewListMatchEnrollmentsUC(matchRepo, enrollmentRepo, characterSheetRepo)
-	getMatchParticipantsUC := domainMatch.NewGetMatchParticipantsUC(matchRepo, matchRepo, characterSheetRepo)
+	getMatchParticipantsUC := domainMatch.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
 
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),

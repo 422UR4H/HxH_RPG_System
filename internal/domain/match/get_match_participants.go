@@ -10,12 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type IMatchParticipantReader interface {
-	ListParticipantsByMatchUUID(
-		ctx context.Context, matchUUID uuid.UUID,
-	) ([]*matchEntity.Participant, error)
-}
-
 type GetMatchParticipantsResult struct {
 	Participants   []*matchEntity.Participant
 	ViewerIsMaster bool
@@ -27,18 +21,15 @@ type IGetMatchParticipants interface {
 
 type GetMatchParticipantsUC struct {
 	matchRepo            IRepository
-	participantRepo      IMatchParticipantReader
 	participationChecker CampaignParticipationChecker
 }
 
 func NewGetMatchParticipantsUC(
 	matchRepo IRepository,
-	participantRepo IMatchParticipantReader,
 	participationChecker CampaignParticipationChecker,
 ) *GetMatchParticipantsUC {
 	return &GetMatchParticipantsUC{
 		matchRepo:            matchRepo,
-		participantRepo:      participantRepo,
 		participationChecker: participationChecker,
 	}
 }
@@ -67,7 +58,7 @@ func (uc *GetMatchParticipantsUC) Get(
 		}
 	}
 
-	participants, err := uc.participantRepo.ListParticipantsByMatchUUID(ctx, matchUUID)
+	participants, err := uc.matchRepo.ListParticipantsByMatchUUID(ctx, matchUUID)
 	if err != nil {
 		return nil, err
 	}

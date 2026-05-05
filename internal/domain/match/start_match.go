@@ -17,27 +17,18 @@ type IEnrollmentRepository interface {
 	RejectPendingEnrollments(ctx context.Context, matchUUID uuid.UUID) error
 }
 
-type IMatchParticipantWriter interface {
-	RegisterFromAcceptedEnrollments(
-		ctx context.Context, matchUUID uuid.UUID, gameStartAt time.Time,
-	) error
-}
-
 type StartMatchUC struct {
-	matchRepo       IRepository
-	enrollmentRepo  IEnrollmentRepository
-	participantRepo IMatchParticipantWriter
+	matchRepo      IRepository
+	enrollmentRepo IEnrollmentRepository
 }
 
 func NewStartMatchUC(
 	matchRepo IRepository,
 	enrollmentRepo IEnrollmentRepository,
-	participantRepo IMatchParticipantWriter,
 ) *StartMatchUC {
 	return &StartMatchUC{
-		matchRepo:       matchRepo,
-		enrollmentRepo:  enrollmentRepo,
-		participantRepo: participantRepo,
+		matchRepo:      matchRepo,
+		enrollmentRepo: enrollmentRepo,
 	}
 }
 
@@ -71,5 +62,5 @@ func (uc *StartMatchUC) Start(
 	if err := uc.enrollmentRepo.RejectPendingEnrollments(ctx, matchUUID); err != nil {
 		return err
 	}
-	return uc.participantRepo.RegisterFromAcceptedEnrollments(ctx, matchUUID, gameStartAt)
+	return uc.matchRepo.RegisterFromAcceptedEnrollments(ctx, matchUUID, gameStartAt)
 }

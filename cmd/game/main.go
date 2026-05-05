@@ -41,7 +41,7 @@ func main() {
 	matchRepository := matchPg.NewRepository(pgPool)
 	enrollmentRepository := enrollmentPg.NewRepository(pgPool)
 
-	startMatchUC := domainMatch.NewStartMatchUC(matchRepository, enrollmentRepository, matchRepository)
+	startMatchUC := domainMatch.NewStartMatchUC(matchRepository, enrollmentRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
 
 	hub := game.NewHub()
