@@ -56,6 +56,7 @@ func (uc *StartMatchUC) Start(
 	}
 
 	gameStartAt := time.Now()
+	// TODO: consider transactionality here
 	if err := uc.matchRepo.StartMatch(ctx, matchUUID, gameStartAt); err != nil {
 		return err
 	}
