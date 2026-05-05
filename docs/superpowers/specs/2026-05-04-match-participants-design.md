@@ -40,13 +40,14 @@ CREATE TABLE match_participants (
     match_uuid           UUID NOT NULL REFERENCES matches(uuid),
     character_sheet_uuid UUID NOT NULL REFERENCES character_sheets(uuid),
 
-    -- Timestamp-based participation tracking (all orthogonal):
+    -- Timestamp-based participation tracking:
     --   joined_at vs match.game_start_at → whether they joined late
     --   left_at IS NULL + match.story_end_at IS NOT NULL → completed normally
-    --   died_at IS NOT NULL → died during match (independent of left_at)
+    --   death: character_sheets.dead_at is the single source of truth;
+    --          a participant with sheet.dead_at != nil died in this match
+    --          (dead characters cannot enroll in future matches, so the inference is safe)
     joined_at TIMESTAMP NOT NULL,
     left_at   TIMESTAMP,
-    died_at   TIMESTAMP,
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -77,10 +78,9 @@ import (
 type Participant struct {
     UUID      uuid.UUID
     MatchUUID uuid.UUID
-    Sheet     csEntity.Summary
+    Sheet     csEntity.Summary  // Sheet.DeadAt is the single source of truth for death
     JoinedAt  time.Time
     LeftAt    *time.Time
-    DiedAt    *time.Time
     CreatedAt time.Time
     UpdatedAt time.Time
 }
@@ -191,7 +191,7 @@ func (r *Repository) RegisterFromAcceptedEnrollments(
 
 Scan includes `cs.story_start_at`, `cs.story_current_at`, `cs.dead_at` — fields that `ToBaseSummaryResponse` uses and that the enrollment gateway currently omits. Participant summaries must be complete.
 
-**`Participant.DiedAt` vs `csEntity.Summary.DeadAt`:** these are distinct fields. `DiedAt` on `Participant` records when the character died in this specific match (match-scoped event). `DeadAt` on `csEntity.Summary` (from `character_sheets.dead_at`) is the character's canonical story-death date, set separately. Both can be non-nil simultaneously.
+`cs.dead_at` is the single source of truth for death: if a participant's `sheet.DeadAt != nil`, they died in this match. No `died_at` column on `match_participants`.
 
 ### `pg/match/start_match.go` — updated
 
@@ -217,12 +217,12 @@ type ParticipantResponse struct {
     UUID     uuid.UUID                                     `json:"uuid"`
     JoinedAt string                                        `json:"joined_at"`
     LeftAt   *string                                       `json:"left_at,omitempty"`
-    DiedAt   *string                                       `json:"died_at,omitempty"`
     Sheet    apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
 }
 ```
 
-`JoinedLate` omitted from response — front-end computes it from `joined_at` vs `match.game_start_at` (already in `GET /matches/{uuid}`).
+`JoinedLate` omitted — front-end computes from `joined_at` vs `match.game_start_at` (already in `GET /matches/{uuid}`).
+`DiedAt` omitted — death is surfaced via `sheet.character_sheet.dead_at` (already in `CharacterBaseSummaryResponse`).
 
 Handler mirrors `ListMatchEnrollmentsHandler`: same error switch, same `ViewerIsMaster` → `private: null` vs full data.
 

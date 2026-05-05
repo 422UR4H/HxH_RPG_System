@@ -40,13 +40,14 @@ CREATE TABLE match_participants (
     match_uuid           UUID NOT NULL REFERENCES matches(uuid),
     character_sheet_uuid UUID NOT NULL REFERENCES character_sheets(uuid),
 
-    -- Rastreamento de participação por timestamps (todos ortogonais):
+    -- Rastreamento de participação por timestamps:
     --   joined_at vs match.game_start_at → se entrou depois do início
     --   left_at IS NULL + match.story_end_at IS NOT NULL → completou normalmente
-    --   died_at IS NOT NULL → morreu durante a partida (independente de left_at)
+    --   morte: character_sheets.dead_at é a fonte de verdade;
+    --          participante com sheet.dead_at != nil morreu nesta partida
+    --          (personagens mortos não podem se inscrever em partidas futuras — inferência segura)
     joined_at TIMESTAMP NOT NULL,
     left_at   TIMESTAMP,
-    died_at   TIMESTAMP,
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -77,10 +78,9 @@ import (
 type Participant struct {
     UUID      uuid.UUID
     MatchUUID uuid.UUID
-    Sheet     csEntity.Summary
+    Sheet     csEntity.Summary  // Sheet.DeadAt é a fonte de verdade para morte
     JoinedAt  time.Time
     LeftAt    *time.Time
-    DiedAt    *time.Time
     CreatedAt time.Time
     UpdatedAt time.Time
 }
@@ -191,7 +191,7 @@ func (r *Repository) RegisterFromAcceptedEnrollments(
 
 O scan inclui `cs.story_start_at`, `cs.story_current_at`, `cs.dead_at` — campos usados por `ToBaseSummaryResponse` e que o gateway de enrollment atualmente omite. Summaries de participantes devem ser completos.
 
-**`Participant.DiedAt` vs `csEntity.Summary.DeadAt`:** são campos distintos. `DiedAt` em `Participant` registra quando o personagem morreu nesta partida específica (evento scoped à partida). `DeadAt` em `csEntity.Summary` (de `character_sheets.dead_at`) é a data canônica de morte do personagem na história, definida separadamente. Ambos podem ser não-nil simultaneamente.
+`cs.dead_at` é a fonte de verdade para morte: participante com `sheet.DeadAt != nil` morreu nesta partida. Sem coluna `died_at` em `match_participants`.
 
 ### `pg/match/start_match.go` — atualizado
 
@@ -217,12 +217,12 @@ type ParticipantResponse struct {
     UUID     uuid.UUID                                     `json:"uuid"`
     JoinedAt string                                        `json:"joined_at"`
     LeftAt   *string                                       `json:"left_at,omitempty"`
-    DiedAt   *string                                       `json:"died_at,omitempty"`
     Sheet    apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
 }
 ```
 
-`JoinedLate` omitido da resposta — o front-end computa a partir de `joined_at` vs `match.game_start_at` (já presente no `GET /matches/{uuid}`).
+`JoinedLate` omitido — front-end computa a partir de `joined_at` vs `match.game_start_at` (já presente no `GET /matches/{uuid}`).
+`DiedAt` omitido — morte é exposta via `sheet.character_sheet.dead_at` (já em `CharacterBaseSummaryResponse`).
 
 Handler espelha `ListMatchEnrollmentsHandler`: mesmo switch de erros, mesmo `ViewerIsMaster` → `private: null` vs dados completos.
 
