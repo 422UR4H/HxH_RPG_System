@@ -17,6 +17,7 @@ type Api struct {
 	ListMatchesHandler               Handler[struct{}, ListMatchesResponse]
 	ListPublicUpcomingMatchesHandler Handler[struct{}, ListMatchesResponse]
 	ListMatchEnrollmentsHandler      Handler[ListMatchEnrollmentsRequest, ListMatchEnrollmentsResponse]
+	GetMatchParticipantsHandler      Handler[GetMatchParticipantsRequest, GetMatchParticipantsResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -85,4 +86,17 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.ListMatchEnrollmentsHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/matches/{uuid}/participants",
+		Description: "List participants of a match",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusForbidden,
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.GetMatchParticipantsHandler)
 }
