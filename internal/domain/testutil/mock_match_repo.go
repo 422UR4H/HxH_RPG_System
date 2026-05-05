@@ -12,7 +12,7 @@ type MockMatchRepo struct {
 	CreateMatchFn               func(ctx context.Context, match *match.Match) error
 	GetMatchFn                  func(ctx context.Context, uuid uuid.UUID) (*match.Match, error)
 	GetMatchCampaignUUIDFn      func(ctx context.Context, matchUUID uuid.UUID) (uuid.UUID, error)
-	StartMatchFn                func(ctx context.Context, matchUUID uuid.UUID) error
+	StartMatchFn                func(ctx context.Context, matchUUID uuid.UUID, gameStartAt time.Time) error
 	ListMatchesByMasterUUIDFn   func(ctx context.Context, masterUUID uuid.UUID) ([]*match.Summary, error)
 	ListPublicUpcomingMatchesFn func(ctx context.Context, after time.Time, masterUUID uuid.UUID) ([]*match.Summary, error)
 }
@@ -52,9 +52,9 @@ func (m *MockMatchRepo) ListPublicUpcomingMatches(ctx context.Context, after tim
 	return nil, nil
 }
 
-func (m *MockMatchRepo) StartMatch(ctx context.Context, matchUUID uuid.UUID) error {
+func (m *MockMatchRepo) StartMatch(ctx context.Context, matchUUID uuid.UUID, gameStartAt time.Time) error {
 	if m.StartMatchFn != nil {
-		return m.StartMatchFn(ctx, matchUUID)
+		return m.StartMatchFn(ctx, matchUUID, gameStartAt)
 	}
 	return nil
 }

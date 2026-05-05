@@ -136,7 +136,7 @@ func TestStartMatch(t *testing.T) {
 						GameScheduledAt: now,
 					}, nil
 				},
-				StartMatchFn: func(ctx context.Context, id uuid.UUID) error {
+				StartMatchFn: func(ctx context.Context, id uuid.UUID, gameStartAt time.Time) error {
 					return errors.New("db error")
 				},
 			},

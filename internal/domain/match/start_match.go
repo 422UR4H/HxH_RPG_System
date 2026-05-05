@@ -2,6 +2,7 @@ package match
 
 import (
 	"context"
+	"time"
 
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
@@ -54,7 +55,8 @@ func (uc *StartMatchUC) Start(
 		return ErrMatchAlreadyFinished
 	}
 
-	if err := uc.matchRepo.StartMatch(ctx, matchUUID); err != nil {
+	gameStartAt := time.Now()
+	if err := uc.matchRepo.StartMatch(ctx, matchUUID, gameStartAt); err != nil {
 		return err
 	}
 

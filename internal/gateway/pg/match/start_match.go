@@ -9,7 +9,7 @@ import (
 )
 
 func (r *Repository) StartMatch(
-	ctx context.Context, matchUUID uuid.UUID,
+	ctx context.Context, matchUUID uuid.UUID, gameStartAt time.Time,
 ) error {
 	now := time.Now()
 	const query = `
@@ -17,7 +17,7 @@ func (r *Repository) StartMatch(
 		SET game_start_at = $1, updated_at = $2
 		WHERE uuid = $3 AND game_start_at IS NULL
 	`
-	result, err := r.q.Exec(ctx, query, now, now, matchUUID)
+	result, err := r.q.Exec(ctx, query, gameStartAt, now, matchUUID)
 	if err != nil {
 		return fmt.Errorf("failed to start match: %w", err)
 	}
