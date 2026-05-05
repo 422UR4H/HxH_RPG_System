@@ -174,8 +174,8 @@ func InsertTestMatchParticipant(
 	err := pool.QueryRow(ctx,
 		`INSERT INTO match_participants
 		 (uuid, match_uuid, character_sheet_uuid, joined_at, created_at, updated_at)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $4) RETURNING uuid`,
-		matchUUID, sheetUUID, joinedAt, now,
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5) RETURNING uuid`,
+		matchUUID, sheetUUID, joinedAt, now, now,
 	).Scan(&participantUUID)
 	if err != nil {
 		t.Fatalf("failed to insert test match participant: %v", err)

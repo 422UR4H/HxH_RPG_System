@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS match_participants (
     UNIQUE (uuid),
     UNIQUE (match_uuid, character_sheet_uuid)
 );
-CREATE INDEX idx_match_participants_match_uuid ON match_participants(match_uuid);
+CREATE INDEX IF NOT EXISTS idx_match_participants_match_uuid ON match_participants(match_uuid);
 
 COMMIT;
 -- +goose StatementEnd
