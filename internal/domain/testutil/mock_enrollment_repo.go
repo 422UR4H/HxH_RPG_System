@@ -12,7 +12,6 @@ type MockEnrollmentRepo struct {
 	GetEnrollmentByUUIDFn              func(ctx context.Context, enrollmentUUID uuid.UUID) (string, uuid.UUID, error)
 	AcceptEnrollmentFn                 func(ctx context.Context, enrollmentUUID uuid.UUID) error
 	RejectEnrollmentFn                 func(ctx context.Context, enrollmentUUID uuid.UUID) error
-	RejectPendingEnrollmentsFn         func(ctx context.Context, matchUUID uuid.UUID) error
 	RejectEnrollmentByPlayerAndMatchFn func(ctx context.Context, playerUUID uuid.UUID, matchUUID uuid.UUID) error
 }
 
@@ -47,13 +46,6 @@ func (m *MockEnrollmentRepo) AcceptEnrollment(ctx context.Context, enrollmentUUI
 func (m *MockEnrollmentRepo) RejectEnrollment(ctx context.Context, enrollmentUUID uuid.UUID) error {
 	if m.RejectEnrollmentFn != nil {
 		return m.RejectEnrollmentFn(ctx, enrollmentUUID)
-	}
-	return nil
-}
-
-func (m *MockEnrollmentRepo) RejectPendingEnrollments(ctx context.Context, matchUUID uuid.UUID) error {
-	if m.RejectPendingEnrollmentsFn != nil {
-		return m.RejectPendingEnrollmentsFn(ctx, matchUUID)
 	}
 	return nil
 }
