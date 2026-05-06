@@ -22,10 +22,11 @@ func TestListPublicUpcomingCampaignsHandler(t *testing.T) {
 	nextScheduled := now.Add(24 * time.Hour)
 
 	tests := []struct {
-		name       string
-		mockFn     func(ctx context.Context, uid uuid.UUID) ([]*campaignEntity.PublicSummary, error)
-		wantStatus int
-		wantCount  int
+		name              string
+		mockFn            func(ctx context.Context, uid uuid.UUID) ([]*campaignEntity.PublicSummary, error)
+		wantStatus        int
+		wantCount         int
+		wantNextScheduled *bool
 	}{
 		{
 			name: "success_with_upcoming_match",
@@ -46,8 +47,9 @@ func TestListPublicUpcomingCampaignsHandler(t *testing.T) {
 					},
 				}, nil
 			},
-			wantStatus: http.StatusOK,
-			wantCount:  1,
+			wantStatus:        http.StatusOK,
+			wantCount:         1,
+			wantNextScheduled: boolPtr(true),
 		},
 		{
 			name: "success_without_future_match",
@@ -68,8 +70,9 @@ func TestListPublicUpcomingCampaignsHandler(t *testing.T) {
 					},
 				}, nil
 			},
-			wantStatus: http.StatusOK,
-			wantCount:  1,
+			wantStatus:        http.StatusOK,
+			wantCount:         1,
+			wantNextScheduled: boolPtr(false),
 		},
 		{
 			name: "success_empty_list",
@@ -119,7 +122,19 @@ func TestListPublicUpcomingCampaignsHandler(t *testing.T) {
 				if len(campaigns) != tt.wantCount {
 					t.Errorf("got %d campaigns, want %d", len(campaigns), tt.wantCount)
 				}
+				if tt.wantNextScheduled != nil && len(campaigns) > 0 {
+					first := campaigns[0].(map[string]any)
+					_, present := first["next_game_scheduled_at"]
+					if *tt.wantNextScheduled && !present {
+						t.Error("expected next_game_scheduled_at to be present, got absent")
+					}
+					if !*tt.wantNextScheduled && present {
+						t.Errorf("expected next_game_scheduled_at to be absent, got %v", first["next_game_scheduled_at"])
+					}
+				}
 			}
 		})
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }
