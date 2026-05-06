@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
@@ -349,7 +350,7 @@ func (r *Repository) CountCampaignsByMasterUUID(
 	}()
 
 	const query = `
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM campaigns
         WHERE master_uuid = $1
     `
@@ -362,4 +363,80 @@ func (r *Repository) CountCampaignsByMasterUUID(
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return count, nil
+}
+
+func (r *Repository) ListPublicUpcomingCampaigns(
+	ctx context.Context, after time.Time, userUUID uuid.UUID,
+) ([]*campaign.PublicSummary, error) {
+
+	tx, err := r.q.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(ctx)
+			panic(p)
+		}
+		_ = tx.Rollback(ctx)
+	}()
+
+	const query = `
+		WITH next_match AS (
+			SELECT DISTINCT ON (campaign_uuid)
+				campaign_uuid,
+				game_scheduled_at
+			FROM matches
+			WHERE game_scheduled_at > $1
+			ORDER BY campaign_uuid, game_scheduled_at ASC
+		)
+		SELECT
+			c.uuid, c.scenario_uuid,
+			c.name, COALESCE(c.brief_initial_description, ''), c.brief_final_description,
+			c.is_public, c.call_link,
+			c.story_start_at, c.story_current_at, c.story_end_at,
+			c.created_at, c.updated_at,
+			nm.game_scheduled_at
+		FROM campaigns c
+		LEFT JOIN next_match nm ON nm.campaign_uuid = c.uuid
+		WHERE c.is_public = true
+		  AND c.master_uuid != $2
+		ORDER BY nm.game_scheduled_at ASC NULLS LAST
+	`
+	rows, err := tx.Query(ctx, query, after, userUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch public upcoming campaigns: %w", err)
+	}
+	defer rows.Close()
+
+	var campaigns []*campaign.PublicSummary
+	for rows.Next() {
+		var c campaign.PublicSummary
+		err := rows.Scan(
+			&c.UUID,
+			&c.ScenarioUUID,
+			&c.Name,
+			&c.BriefInitialDescription,
+			&c.BriefFinalDescription,
+			&c.IsPublic,
+			&c.CallLink,
+			&c.StoryStartAt,
+			&c.StoryCurrentAt,
+			&c.StoryEndAt,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+			&c.NextGameScheduledAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan public campaign summary: %w", err)
+		}
+		campaigns = append(campaigns, &c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over public campaigns: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return campaigns, nil
 }
