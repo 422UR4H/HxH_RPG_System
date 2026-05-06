@@ -94,7 +94,7 @@ The UC calls `time.Now()` and delegates to the repo, consistent with `ListPublic
 
 ## HTTP Layer
 
-**Route:** `GET /campaigns/public`
+**Route:** `GET /public/campaigns` (consistent with existing `GET /public/matches`)
 **Auth:** required (user UUID from context)
 **Tags:** `campaigns`
 
