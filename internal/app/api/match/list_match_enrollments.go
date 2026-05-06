@@ -27,17 +27,11 @@ type ListMatchEnrollmentsResponseBody struct {
 }
 
 type EnrollmentResponse struct {
-	UUID           uuid.UUID                            `json:"uuid"`
-	Status         string                               `json:"status"`
-	CreatedAt      string                               `json:"created_at"`
-	CharacterSheet CharacterSheetWithVisibilityResponse `json:"character_sheet"`
-	Player         PlayerRefResponse                    `json:"player"`
-}
-
-type CharacterSheetWithVisibilityResponse struct {
-	apiSheet.CharacterBaseSummaryResponse
-	// Pointer with no `omitempty`: serializes as `null` for non-master viewers.
-	Private *apiSheet.CharacterPrivateOnlyResponse `json:"private"`
+	UUID           uuid.UUID                                    `json:"uuid"`
+	Status         string                                       `json:"status"`
+	CreatedAt      string                                       `json:"created_at"`
+	CharacterSheet apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
+	Player         PlayerRefResponse                            `json:"player"`
 }
 
 type PlayerRefResponse struct {
@@ -77,7 +71,7 @@ func ListMatchEnrollmentsHandler(
 }
 
 func toEnrollmentResponse(e *enrollmentEntity.Enrollment, viewerIsMaster bool) EnrollmentResponse {
-	sheet := CharacterSheetWithVisibilityResponse{
+	sheet := apiSheet.CharacterSheetWithVisibilityResponse{
 		CharacterBaseSummaryResponse: apiSheet.ToBaseSummaryResponse(&e.CharacterSheet),
 		Private:                      nil,
 	}

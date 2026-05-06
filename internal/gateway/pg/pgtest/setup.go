@@ -74,7 +74,7 @@ func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 
 	_, err := pool.Exec(ctx, `
 		TRUNCATE TABLE enrollments, submissions, sessions,
-			matches, campaigns, scenarios,
+			match_participants, matches, campaigns, scenarios,
 			joint_proficiencies, proficiencies, character_profiles,
 			character_sheets, users
 		CASCADE
@@ -160,6 +160,27 @@ func InsertTestEnrollment(t *testing.T, pool *pgxpool.Pool, matchUUID, sheetUUID
 		t.Fatalf("failed to insert test enrollment: %v", err)
 	}
 	return enrollmentUUID
+}
+
+func InsertTestMatchParticipant(
+	t *testing.T, pool *pgxpool.Pool,
+	matchUUID, sheetUUID string, joinedAt time.Time,
+) string {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+
+	var participantUUID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO match_participants
+		 (uuid, match_uuid, character_sheet_uuid, joined_at, created_at, updated_at)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5) RETURNING uuid`,
+		matchUUID, sheetUUID, joinedAt, now, now,
+	).Scan(&participantUUID)
+	if err != nil {
+		t.Fatalf("failed to insert test match participant: %v", err)
+	}
+	return participantUUID
 }
 
 func InsertTestCharacterSheet(t *testing.T, pool *pgxpool.Pool, playerUUID *string, masterUUID *string, campaignUUID *string, nick string) string {

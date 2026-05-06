@@ -108,8 +108,11 @@ func ToPublicSummaryResponse(sheet *csEntity.Summary) CharacterPublicSummaryResp
 	}
 }
 
-// ToBaseSummaryResponse exports what was previously the unexported
-// toSummaryBaseResponse so the new match handler can map base summaries.
+type CharacterSheetWithVisibilityResponse struct {
+	CharacterBaseSummaryResponse
+	Private *CharacterPrivateOnlyResponse `json:"private"`
+}
+
 func ToBaseSummaryResponse(sheet *csEntity.Summary) CharacterBaseSummaryResponse {
 	var storyStartAtStr, storyCurrentAtStr, deadAtStr *string
 	if sheet.StoryStartAt != nil {

@@ -2,6 +2,7 @@ package match
 
 import (
 	"context"
+	"time"
 
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
@@ -11,24 +12,12 @@ type IStartMatch interface {
 	Start(ctx context.Context, matchUUID uuid.UUID, masterUUID uuid.UUID) error
 }
 
-// IEnrollmentRepository is a narrow interface to avoid import cycles with the enrollment package.
-type IEnrollmentRepository interface {
-	RejectPendingEnrollments(ctx context.Context, matchUUID uuid.UUID) error
-}
-
 type StartMatchUC struct {
-	matchRepo      IRepository
-	enrollmentRepo IEnrollmentRepository
+	matchRepo IRepository
 }
 
-func NewStartMatchUC(
-	matchRepo IRepository,
-	enrollmentRepo IEnrollmentRepository,
-) *StartMatchUC {
-	return &StartMatchUC{
-		matchRepo:      matchRepo,
-		enrollmentRepo: enrollmentRepo,
-	}
+func NewStartMatchUC(matchRepo IRepository) *StartMatchUC {
+	return &StartMatchUC{matchRepo: matchRepo}
 }
 
 func (uc *StartMatchUC) Start(
@@ -54,9 +43,5 @@ func (uc *StartMatchUC) Start(
 		return ErrMatchAlreadyFinished
 	}
 
-	if err := uc.matchRepo.StartMatch(ctx, matchUUID); err != nil {
-		return err
-	}
-
-	return uc.enrollmentRepo.RejectPendingEnrollments(ctx, matchUUID)
+	return uc.matchRepo.StartMatch(ctx, matchUUID, time.Now())
 }

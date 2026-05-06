@@ -3,8 +3,8 @@ package match_test
 import (
 	"context"
 
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/google/uuid"
 )
 
@@ -48,4 +48,14 @@ type mockListPublicUpcomingMatches struct {
 
 func (m *mockListPublicUpcomingMatches) ListPublicUpcomingMatches(ctx context.Context, userUUID uuid.UUID) ([]*matchEntity.Summary, error) {
 	return m.fn(ctx, userUUID)
+}
+
+type mockGetMatchParticipants struct {
+	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error)
+}
+
+func (m *mockGetMatchParticipants) Get(
+	ctx context.Context, matchUUID, userUUID uuid.UUID,
+) (*domainMatch.GetMatchParticipantsResult, error) {
+	return m.fn(ctx, matchUUID, userUUID)
 }

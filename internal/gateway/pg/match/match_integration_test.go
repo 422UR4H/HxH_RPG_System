@@ -257,13 +257,23 @@ func TestStartMatch(t *testing.T) {
 	repo := pgMatch.NewRepository(pool)
 	ctx := context.Background()
 
-	masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm8", "gm8@hunter.com", "pass"))
-	campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Start Match Campaign"))
+	t.Run("atomically starts match, rejects pending, registers accepted", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
 
-	t.Run("happy path", func(t *testing.T) {
-		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Start Match Session"))
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_start", "gm_start@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Start Campaign"))
+		player1UUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "p1_start", "p1_start@hunter.com", "pass"))
+		player2UUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "p2_start", "p2_start@hunter.com", "pass"))
 
-		if err := repo.StartMatch(ctx, matchUUID); err != nil {
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Start Session"))
+		sheet1UUID := pgtest.InsertTestCharacterSheet(t, pool, &[]string{player1UUID.String()}[0], nil, nil, "Gon")
+		sheet2UUID := pgtest.InsertTestCharacterSheet(t, pool, &[]string{player2UUID.String()}[0], nil, nil, "Killua")
+
+		pgtest.InsertTestEnrollment(t, pool, matchUUID.String(), sheet1UUID, "accepted")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID.String(), sheet2UUID, "pending")
+
+		gameStartAt := time.Now().UTC().Truncate(time.Microsecond)
+		if err := repo.StartMatch(ctx, matchUUID, gameStartAt); err != nil {
 			t.Fatalf("StartMatch() unexpected error: %v", err)
 		}
 
@@ -274,16 +284,50 @@ func TestStartMatch(t *testing.T) {
 		if got.GameStartAt == nil {
 			t.Error("GameStartAt = nil, want non-nil")
 		}
+
+		var pendingCount int
+		if err := pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM enrollments WHERE match_uuid = $1 AND status = 'pending'`, matchUUID,
+		).Scan(&pendingCount); err != nil {
+			t.Fatalf("pending count query: %v", err)
+		}
+		if pendingCount != 0 {
+			t.Errorf("pending enrollments = %d, want 0", pendingCount)
+		}
+
+		var participantCount int
+		if err := pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM match_participants WHERE match_uuid = $1`, matchUUID,
+		).Scan(&participantCount); err != nil {
+			t.Fatalf("participant count query: %v", err)
+		}
+		if participantCount != 1 {
+			t.Errorf("participant count = %d, want 1 (only accepted)", participantCount)
+		}
+
+		var joinedAt time.Time
+		if err := pool.QueryRow(ctx,
+			`SELECT joined_at FROM match_participants WHERE match_uuid = $1`, matchUUID,
+		).Scan(&joinedAt); err != nil {
+			t.Fatalf("joined_at query: %v", err)
+		}
+		if !joinedAt.UTC().Truncate(time.Microsecond).Equal(gameStartAt) {
+			t.Errorf("joined_at = %v, want %v", joinedAt.UTC().Truncate(time.Microsecond), gameStartAt)
+		}
 	})
 
 	t.Run("already started returns error", func(t *testing.T) {
-		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Already Started Session"))
+		pgtest.TruncateAll(t, pool)
 
-		if err := repo.StartMatch(ctx, matchUUID); err != nil {
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_dup", "gm_dup@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Dup Campaign"))
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Dup Session"))
+
+		if err := repo.StartMatch(ctx, matchUUID, time.Now()); err != nil {
 			t.Fatalf("StartMatch() first call unexpected error: %v", err)
 		}
 
-		err := repo.StartMatch(ctx, matchUUID)
+		err := repo.StartMatch(ctx, matchUUID, time.Now())
 		if err == nil {
 			t.Fatal("StartMatch() second call expected error, got nil")
 		}
@@ -293,12 +337,70 @@ func TestStartMatch(t *testing.T) {
 	})
 
 	t.Run("non-existent match returns error", func(t *testing.T) {
-		err := repo.StartMatch(ctx, uuid.New())
+		err := repo.StartMatch(ctx, uuid.New(), time.Now())
 		if err == nil {
 			t.Fatal("StartMatch() expected error, got nil")
 		}
 		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
 			t.Errorf("error = %v, want %v", err, pgMatch.ErrMatchNotFound)
+		}
+	})
+}
+
+func TestListParticipantsByMatchUUID(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("returns participants with sheet data", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_list", "gm_list@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "List Campaign"))
+		playerUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "p_list", "p_list@hunter.com", "pass"))
+
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "List Session"))
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &[]string{playerUUID.String()}[0], nil, nil, "Leorio")
+
+		joinedAt := time.Now().UTC().Truncate(time.Microsecond)
+		pgtest.InsertTestMatchParticipant(t, pool, matchUUID.String(), sheetUUID, joinedAt)
+
+		participants, err := repo.ListParticipantsByMatchUUID(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("ListParticipantsByMatchUUID() unexpected error: %v", err)
+		}
+		if len(participants) != 1 {
+			t.Fatalf("got %d participants, want 1", len(participants))
+		}
+
+		p := participants[0]
+		if p.MatchUUID != matchUUID {
+			t.Errorf("MatchUUID = %v, want %v", p.MatchUUID, matchUUID)
+		}
+		if p.Sheet.NickName != "Leorio" {
+			t.Errorf("NickName = %q, want %q", p.Sheet.NickName, "Leorio")
+		}
+		if !p.JoinedAt.UTC().Truncate(time.Microsecond).Equal(joinedAt) {
+			t.Errorf("JoinedAt = %v, want %v", p.JoinedAt, joinedAt)
+		}
+		if p.LeftAt != nil {
+			t.Errorf("LeftAt = %v, want nil", p.LeftAt)
+		}
+	})
+
+	t.Run("returns empty slice when no participants", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_empty", "gm_empty@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Empty Campaign"))
+		matchUUID := mustParseUUID(t, pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Empty Session"))
+
+		participants, err := repo.ListParticipantsByMatchUUID(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("ListParticipantsByMatchUUID() unexpected error: %v", err)
+		}
+		if len(participants) != 0 {
+			t.Errorf("got %d participants, want 0", len(participants))
 		}
 	})
 }
