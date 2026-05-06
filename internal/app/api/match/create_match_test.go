@@ -155,6 +155,9 @@ func TestCreateMatchHandler(t *testing.T) {
 				if matchData["title"] != "Test Match" {
 					t.Errorf("got title %v, want 'Test Match'", matchData["title"])
 				}
+				if matchData["master_uuid"] != userUUID.String() {
+					t.Errorf("got master_uuid %v, want %v", matchData["master_uuid"], userUUID.String())
+				}
 			}
 		})
 	}
