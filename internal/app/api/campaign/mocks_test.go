@@ -31,3 +31,11 @@ type mockListCampaigns struct {
 func (m *mockListCampaigns) ListCampaigns(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.Summary, error) {
 	return m.fn(ctx, userUUID)
 }
+
+type mockListPublicUpcomingCampaigns struct {
+	fn func(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.PublicSummary, error)
+}
+
+func (m *mockListPublicUpcomingCampaigns) ListPublicUpcomingCampaigns(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.PublicSummary, error) {
+	return m.fn(ctx, userUUID)
+}
