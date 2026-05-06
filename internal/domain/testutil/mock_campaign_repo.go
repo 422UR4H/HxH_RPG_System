@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/google/uuid"
@@ -14,6 +15,7 @@ type MockCampaignRepo struct {
 	GetCampaignStoryDatesFn      func(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error)
 	CountCampaignsByMasterUUIDFn func(ctx context.Context, masterUUID uuid.UUID) (int, error)
 	ListCampaignsByMasterUUIDFn  func(ctx context.Context, masterUUID uuid.UUID) ([]*campaign.Summary, error)
+	ListPublicUpcomingCampaignsFn func(ctx context.Context, after time.Time, userUUID uuid.UUID) ([]*campaign.PublicSummary, error)
 }
 
 func (m *MockCampaignRepo) CreateCampaign(ctx context.Context, c *campaign.Campaign) error {
@@ -54,6 +56,13 @@ func (m *MockCampaignRepo) CountCampaignsByMasterUUID(ctx context.Context, maste
 func (m *MockCampaignRepo) ListCampaignsByMasterUUID(ctx context.Context, masterUUID uuid.UUID) ([]*campaign.Summary, error) {
 	if m.ListCampaignsByMasterUUIDFn != nil {
 		return m.ListCampaignsByMasterUUIDFn(ctx, masterUUID)
+	}
+	return nil, nil
+}
+
+func (m *MockCampaignRepo) ListPublicUpcomingCampaigns(ctx context.Context, after time.Time, userUUID uuid.UUID) ([]*campaign.PublicSummary, error) {
+	if m.ListPublicUpcomingCampaignsFn != nil {
+		return m.ListPublicUpcomingCampaignsFn(ctx, after, userUUID)
 	}
 	return nil, nil
 }
