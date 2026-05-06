@@ -61,6 +61,7 @@ func GetMatchHandler(
 
 		response := MatchResponse{
 			UUID:                    match.UUID,
+			MasterUUID:              match.MasterUUID,
 			CampaignUUID:            match.CampaignUUID,
 			Title:                   match.Title,
 			BriefInitialDescription: match.BriefInitialDescription,

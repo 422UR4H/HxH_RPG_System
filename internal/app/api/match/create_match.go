@@ -39,6 +39,7 @@ type CreateMatchResponse struct {
 
 type MatchResponse struct {
 	UUID                    uuid.UUID `json:"uuid"`
+	MasterUUID              uuid.UUID `json:"master_uuid"`
 	CampaignUUID            uuid.UUID `json:"campaign_uuid"`
 	Title                   string    `json:"title"`
 	BriefInitialDescription string    `json:"brief_initial_description"`
