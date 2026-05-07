@@ -90,11 +90,18 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 
 	// campaignUUID is nil: sheet not yet accepted. Check pending submission.
 	subCampUUID, err := uc.submissionLookup.GetSubmissionCampaignUUIDBySheetUUID(ctx, sheetUUID)
-	if err == nil {
-		subCampMasterUUID, err2 := uc.campaignRepo.GetCampaignMasterUUID(ctx, subCampUUID)
-		if err2 == nil && subCampMasterUUID == userUUID {
-			return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
-		}
+	if err != nil {
+		return nil, auth.ErrInsufficientPermissions
+	}
+	subCampMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, subCampUUID)
+	if err == pgCampaign.ErrCampaignNotFound {
+		return nil, domainCampaign.ErrCampaignNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if subCampMasterUUID == userUUID {
+		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
 	}
 	return nil, auth.ErrInsufficientPermissions
 }
