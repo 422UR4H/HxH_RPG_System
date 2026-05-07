@@ -286,6 +286,56 @@ func TestRejectEnrollmentByPlayerAndMatch(t *testing.T) {
 	})
 }
 
+func TestListPlayerEnrollmentStatusesForCampaign(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := enrollmentRepo.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("returns enrollment status for enrolled match", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "master1", "master1@test.com", "pass")
+		playerUUID := pgtest.InsertTestUser(t, pool, "player1", "player1@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Test Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match 1")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "TestNick")
+		pgtest.InsertTestEnrollment(t, pool, matchUUID, sheetUUID, "pending")
+
+		result, err := repo.ListPlayerEnrollmentStatusesForCampaign(ctx,
+			uuid.MustParse(playerUUID), uuid.MustParse(campaignUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(result))
+		}
+		status, ok := result[uuid.MustParse(matchUUID)]
+		if !ok {
+			t.Fatal("expected matchUUID in result")
+		}
+		if status != "pending" {
+			t.Fatalf("expected status 'pending', got %q", status)
+		}
+	})
+
+	t.Run("returns empty map when player has no enrollments in campaign", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		masterUUID := pgtest.InsertTestUser(t, pool, "m2", "m2@test.com", "pass")
+		playerUUID := pgtest.InsertTestUser(t, pool, "p2", "p2@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp2")
+
+		result, err := repo.ListPlayerEnrollmentStatusesForCampaign(ctx,
+			uuid.MustParse(playerUUID), uuid.MustParse(campaignUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result) != 0 {
+			t.Fatalf("expected empty result, got %d", len(result))
+		}
+	})
+}
+
 func TestIsPlayerEnrolledInMatch(t *testing.T) {
 	pool := pgtest.SetupTestDB(t)
 	ctx := context.Background()
