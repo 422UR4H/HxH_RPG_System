@@ -56,6 +56,22 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 			},
 			wantStatus: http.StatusInternalServerError,
 		},
+		{
+			name: "master_can_view_pending_sheet_via_submission_lookup",
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+				cs := buildTestCharacterSheet(t)
+				cs.UUID = id
+				return cs, nil
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "master_cannot_view_sheet_with_no_pending_submission",
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+				return nil, domainAuth.ErrInsufficientPermissions
+			},
+			wantStatus: http.StatusForbidden,
+		},
 	}
 
 	for _, tt := range tests {
