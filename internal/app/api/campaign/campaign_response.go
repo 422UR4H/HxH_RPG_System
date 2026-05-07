@@ -57,13 +57,25 @@ func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {
 	}
 }
 
-func ToPlayerResponse(campaign *campaign.Campaign) CampaignPlayerResponse {
-	characterSheets := make([]sheet.CharacterPublicSummaryResponse, 0, len(campaign.CharacterSheets))
-	for _, cs := range campaign.CharacterSheets {
+func ToPlayerResponse(
+	c *campaign.Campaign,
+	enrollmentStatuses map[uuid.UUID]string,
+) CampaignPlayerResponse {
+	base := toSummaryBaseResponse(c)
+
+	for i, m := range c.Matches {
+		if status, ok := enrollmentStatuses[m.UUID]; ok {
+			s := status
+			base.Matches[i].MyEnrollmentStatus = &s
+		}
+	}
+
+	characterSheets := make([]sheet.CharacterPublicSummaryResponse, 0, len(c.CharacterSheets))
+	for _, cs := range c.CharacterSheets {
 		characterSheets = append(characterSheets, sheet.ToPublicSummaryResponse(&cs))
 	}
 	return CampaignPlayerResponse{
-		CampaignBaseResponse: toSummaryBaseResponse(campaign),
+		CampaignBaseResponse: base,
 		CharacterSheets:      characterSheets,
 	}
 }

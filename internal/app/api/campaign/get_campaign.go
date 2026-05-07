@@ -11,6 +11,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type IListPlayerEnrollmentsForCampaign interface {
+	ListPlayerEnrollmentsForCampaign(
+		ctx context.Context,
+		playerUUID uuid.UUID,
+		campaignUUID uuid.UUID,
+	) (map[uuid.UUID]string, error)
+}
+
 type GetCampaignRequest struct {
 	UUID uuid.UUID `path:"uuid" required:"true" doc:"UUID of the campaign to retrieve"`
 }
@@ -25,6 +33,7 @@ type GetCampaignResponse struct {
 
 func GetCampaignHandler(
 	uc domainCampaign.IGetCampaign,
+	enrollmentUC IListPlayerEnrollmentsForCampaign,
 ) func(context.Context, *GetCampaignRequest) (*GetCampaignResponse, error) {
 
 	return func(ctx context.Context, req *GetCampaignRequest) (*GetCampaignResponse, error) {
@@ -49,7 +58,11 @@ func GetCampaignHandler(
 		if campaign.MasterUUID == userUUID {
 			response = ToMasterResponse(campaign)
 		} else {
-			response = ToPlayerResponse(campaign)
+			statuses, _ := enrollmentUC.ListPlayerEnrollmentsForCampaign(ctx, userUUID, req.UUID)
+			if statuses == nil {
+				statuses = map[uuid.UUID]string{}
+			}
+			response = ToPlayerResponse(campaign, statuses)
 		}
 		return &GetCampaignResponse{
 			Body: GetCampaignResponseBody{
