@@ -20,11 +20,18 @@ type IGetCharacterSheet interface {
 	) (*domainSheet.CharacterSheet, error)
 }
 
+// ISubmissionLookup is a minimal interface to check pending submissions without
+// creating a cross-domain dependency on the submission package.
+type ISubmissionLookup interface {
+	GetSubmissionCampaignUUIDBySheetUUID(ctx context.Context, sheetUUID uuid.UUID) (uuid.UUID, error)
+}
+
 type GetCharacterSheetUC struct {
-	characterSheets *sync.Map
-	factory         *domainSheet.CharacterSheetFactory
-	repo            IRepository
-	campaignRepo    domainCampaign.IRepository
+	characterSheets  *sync.Map
+	factory          *domainSheet.CharacterSheetFactory
+	repo             IRepository
+	campaignRepo     domainCampaign.IRepository
+	submissionLookup ISubmissionLookup
 }
 
 func NewGetCharacterSheetUC(
@@ -32,12 +39,14 @@ func NewGetCharacterSheetUC(
 	factory *domainSheet.CharacterSheetFactory,
 	repo IRepository,
 	campaignRepo domainCampaign.IRepository,
+	submissionLookup ISubmissionLookup,
 ) *GetCharacterSheetUC {
 	return &GetCharacterSheetUC{
-		characterSheets: charSheets,
-		factory:         factory,
-		repo:            repo,
-		campaignRepo:    campaignRepo,
+		characterSheets:  charSheets,
+		factory:          factory,
+		repo:             repo,
+		campaignRepo:     campaignRepo,
+		submissionLookup: submissionLookup,
 	}
 }
 
@@ -65,19 +74,27 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	}
 
 	campaignUUID := charSheet.GetCampaignUUID()
-	if campaignUUID == nil {
+	if campaignUUID != nil {
+		campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *campaignUUID)
+		if err == pgCampaign.ErrCampaignNotFound {
+			return nil, domainCampaign.ErrCampaignNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		if campaignMasterUUID == userUUID {
+			return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+		}
 		return nil, auth.ErrInsufficientPermissions
 	}
 
-	campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *campaignUUID)
-	if err == pgCampaign.ErrCampaignNotFound {
-		return nil, domainCampaign.ErrCampaignNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if campaignMasterUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+	// campaignUUID is nil: sheet not yet accepted. Check pending submission.
+	subCampUUID, err := uc.submissionLookup.GetSubmissionCampaignUUIDBySheetUUID(ctx, sheetUUID)
+	if err == nil {
+		subCampMasterUUID, err2 := uc.campaignRepo.GetCampaignMasterUUID(ctx, subCampUUID)
+		if err2 == nil && subCampMasterUUID == userUUID {
+			return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+		}
 	}
 	return nil, auth.ErrInsufficientPermissions
 }

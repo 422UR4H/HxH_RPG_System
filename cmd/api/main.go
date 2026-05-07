@@ -92,6 +92,7 @@ func main() {
 		characterSheetFactory,
 		characterSheetRepo,
 		campaignRepo,
+		submitRepo,
 	)
 	listCharacterSheetsUC := cs.NewListCharacterSheetsUC(
 		characterSheetRepo,
