@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// TODO: REFACTOR TO IMPLEMENT I_ACTION INTERFACE
 type Action struct {
 	id        uuid.UUID
 	actorID   uuid.UUID
@@ -23,8 +22,8 @@ type Action struct {
 	Defense *Defense
 	Dodge   *Dodge
 
-	openedAt    *time.Time  //nolint:unused // WIP: match system under development
-	confirmedAt *time.Time  //nolint:unused // WIP: match system under development
+	openedAt    *time.Time //nolint:unused // WIP: match system under development
+	confirmedAt *time.Time //nolint:unused // WIP: match system under development
 }
 
 func NewAction(

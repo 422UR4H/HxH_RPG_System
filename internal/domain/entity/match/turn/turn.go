@@ -32,11 +32,15 @@ func (t *Turn) GetAction() action.Action {
 }
 
 func (t *Turn) GetReactions() []action.Action {
-	return t.reactions
+	reactionsCp := make([]action.Action, len(t.reactions))
+	copy(reactionsCp, t.reactions)
+	return reactionsCp
 }
 
 func (t *Turn) GetMasterActions() []action.MasterAction {
-	return t.masterActions
+	masterActionsCp := make([]action.MasterAction, len(t.masterActions))
+	copy(masterActionsCp, t.masterActions)
+	return masterActionsCp
 }
 
 func (t *Turn) GetFinishedAt() *time.Time {
