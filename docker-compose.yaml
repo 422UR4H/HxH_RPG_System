@@ -1,3 +1,5 @@
+name: hxh_rpg_system
+
 services:
   db:
     image: postgres:latest
