@@ -7,31 +7,38 @@ import (
 )
 
 type Turn struct {
+	action        action.Action
+	reactions     []action.Action
 	masterActions []action.MasterAction //nolint:unused // WIP: match system under development
-	actions       []action.Action
-	events        []GameEvent
-	coast         *int       //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
-	finishedAt    *time.Time //nolint:unused // WIP: match system under development
+	finishedAt    *time.Time            //nolint:unused // WIP: match system under development
 }
 
-func NewTurn() *Turn {
+func NewTurn(action action.Action) *Turn {
 	return &Turn{
-		actions: []action.Action{},
-		events:  []GameEvent{},
+		action: action,
 	}
 }
 
-func (t *Turn) AddAction(action *action.Action) {
-	t.actions = append(t.actions, *action)
+func (t *Turn) AddReaction(action *action.Action) {
+	t.reactions = append(t.reactions, *action)
 }
 
-func (t *Turn) GetActions() []action.Action {
-	return t.actions
+func (t *Turn) Close(finishedAt time.Time) {
+	t.finishedAt = &finishedAt
 }
 
-func (t *Turn) GetLastAction() (action.Action, error) {
-	if len(t.actions) == 0 {
-		return action.Action{}, ErrTurnIsEmpty
-	}
-	return t.actions[len(t.actions)-1], nil
+func (t *Turn) GetAction() action.Action {
+	return t.action
+}
+
+func (t *Turn) GetReactions() []action.Action {
+	return t.reactions
+}
+
+func (t *Turn) GetMasterActions() []action.MasterAction {
+	return t.masterActions
+}
+
+func (t *Turn) GetFinishedAt() *time.Time {
+	return t.finishedAt
 }

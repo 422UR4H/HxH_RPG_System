@@ -1,4 +1,4 @@
-package turn
+package round
 
 import (
 	"time"
@@ -6,9 +6,9 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
-// GameEvent represents an event that occurs during a turn/match, such as:
+// GameEvent represents an event that occurs during a round/match, such as:
 // - a change in the game date
-// - a character's death during the turn
+// - a character's death during the round
 // - a breaking news that affects the match
 // - an action rollback (ctrl + z)
 type GameEvent struct {
