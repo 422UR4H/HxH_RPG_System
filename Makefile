@@ -1,6 +1,7 @@
 APP_NAME = hxh_rpg_system
 GO_CMD = go
 GOOSE_CMD = goose
+DOCKER_COMPOSE = docker compose
 DB_URL = postgres://$(PG_DB_USER):$(PG_DB_PASS)@$(PG_DB_HOST):$(PG_DB_PORT)/$(PG_DB_NAME)?sslmode=$(PG_DB_SSLMODE)
 
 # Load environment variables
@@ -16,12 +17,27 @@ build:
 	$(GO_CMD) build -o bin/$(APP_NAME) ./cmd/api/main.go
 
 .PHONY: run
-run: build
+run: db-up db-wait migrate-up build
 	./bin/$(APP_NAME)
 
 .PHONY: run-dev
-run-dev:
+run-dev: db-up db-wait migrate-up
 	$(GO_CMD) run ./cmd/api/main.go
+
+# Database lifecycle
+.PHONY: db-up
+db-up:
+	$(DOCKER_COMPOSE) up -d
+
+.PHONY: db-down
+db-down:
+	$(DOCKER_COMPOSE) down
+
+.PHONY: db-wait
+db-wait:
+	@echo "Waiting for PostgreSQL..."
+	@until $(DOCKER_COMPOSE) exec -T db pg_isready -U $(PG_DB_USER) -d $(PG_DB_NAME) > /dev/null 2>&1; do sleep 1; done
+	@echo "PostgreSQL ready."
 
 # Migration commands
 .PHONY: migrate-up
