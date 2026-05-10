@@ -8,7 +8,7 @@ import (
 )
 
 type Engine struct {
-	mode                enum.TurnMode
+	mode                enum.RoundMode
 	actionQueue         action.PriorityQueue
 	preparedActions     map[uuid.UUID]*action.Action //nolint:unused // WIP: match system under development
 	rounds              []*Round

@@ -1,13 +1,11 @@
 package turn
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/action"
 	"github.com/google/uuid"
 )
 
 type Engine struct {
-	mode               enum.TurnMode
 	actionQueue        action.PriorityQueue
 	turns              []*Turn
 	currentTurn        *Turn
@@ -18,20 +16,17 @@ type Engine struct {
 // TODO: refatorar trocando closeTurnTriggered por um método que chame CloseTurn e faça o trigger, ou algo do tipo, para evitar que o cliente tenha acesso a esse flag
 func NewEngine(actionQueue *[]*action.Action, turns *[]*Turn, closeTurnTriggered *bool) *Engine {
 	if turns == nil {
-		turns = &[]*Turn{NewTurn(enum.Free)}
+		turns = &[]*Turn{NewTurn()}
 	}
 	aq := action.NewActionPriorityQueue(actionQueue)
 
-	mode := enum.Free
 	lenTurns := len(*turns)
 	currentTurn := (*turns)[0]
 	if lenTurns > 0 {
 		currentTurn = (*turns)[lenTurns-1]
-		mode = currentTurn.mode
 	}
 
 	return &Engine{
-		mode:               mode,
 		actionQueue:        aq,
 		turns:              *turns,
 		currentTurn:        currentTurn,
@@ -84,45 +79,15 @@ func (e *Engine) AttachReaction(reaction *action.Action) error {
 	return nil
 }
 
-// CloseTurn finalizes the current turn and starts a new one with the same mode,
-// returning the closed turn.
-// Called by match.engine when the match ends OR before action switching (act open)
+// CloseTurn finalizes the current turn and starts a new one returning the closed turn.
+// Called by round.engine when the round ends OR before action switching (act open)
 func (e *Engine) CloseTurn() *Turn {
 	targetTurn := e.currentTurn
 
-	newTurn := NewTurn(e.mode)
+	newTurn := NewTurn()
 	e.turns = append(e.turns, newTurn)
 	e.currentTurn = newTurn
 	*e.closeTurnTriggered = false
 
 	return targetTurn
-}
-
-// TODO: create and finish Initiative to continue here
-func (e *Engine) ChangeMode(initiative *action.Initiative) {
-	if e.mode == enum.Race {
-		e.mode = enum.Free
-	} else {
-		e.mode = enum.Race
-	}
-
-	if initiative != nil {
-		if e.mode == enum.Free {
-			// TODO: throws domain error
-			return
-		}
-		// TODO: thread initiative
-	}
-
-	// e.switchTurn()
-	*e.closeTurnTriggered = true
-	// return turn?
-}
-
-func (e *Engine) GetCurrentTurn() *Turn {
-	return e.currentTurn
-}
-
-func (e *Engine) GetCurrentAction() *action.Action {
-	return e.currentAction
 }

@@ -1,12 +1,12 @@
 package enum
 
-type TurnMode string
+type RoundMode string
 
 const (
-	Free TurnMode = "Free"
-	Race TurnMode = "Race"
+	Free RoundMode = "Free"
+	Race RoundMode = "Race"
 )
 
-func (tm TurnMode) String() string {
+func (tm RoundMode) String() string {
 	return string(tm)
 }

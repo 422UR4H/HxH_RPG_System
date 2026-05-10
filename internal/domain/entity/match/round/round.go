@@ -6,17 +6,17 @@ import (
 )
 
 type Round struct {
-	mode  enum.TurnMode
+	mode  enum.RoundMode
 	turns []*turn.Turn
 }
 
-func NewRound(mode enum.TurnMode) *Round {
+func NewRound(mode enum.RoundMode) *Round {
 	return &Round{
 		mode:  mode,
 		turns: []*turn.Turn{},
 	}
 }
 
-func (r *Round) GetMode() enum.TurnMode {
+func (r *Round) GetMode() enum.RoundMode {
 	return r.mode
 }

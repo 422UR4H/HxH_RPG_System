@@ -3,7 +3,6 @@ package turn
 import (
 	"time"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/action"
 )
 
@@ -11,14 +10,12 @@ type Turn struct {
 	masterActions []action.MasterAction //nolint:unused // WIP: match system under development
 	actions       []action.Action
 	events        []GameEvent
-	mode          enum.TurnMode
-	coast         *int //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
+	coast         *int       //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
 	finishedAt    *time.Time //nolint:unused // WIP: match system under development
 }
 
-func NewTurn(mode enum.TurnMode) *Turn {
+func NewTurn() *Turn {
 	return &Turn{
-		mode:    mode,
 		actions: []action.Action{},
 		events:  []GameEvent{},
 	}
@@ -26,10 +23,6 @@ func NewTurn(mode enum.TurnMode) *Turn {
 
 func (t *Turn) AddAction(action *action.Action) {
 	t.actions = append(t.actions, *action)
-}
-
-func (t *Turn) GetMode() enum.TurnMode {
-	return t.mode
 }
 
 func (t *Turn) GetActions() []action.Action {
