@@ -19,6 +19,7 @@ type MatchSummaryResponse struct {
 	GameStartAt             *string   `json:"game_start_at,omitempty"`
 	StoryStartAt            string    `json:"story_start_at"`
 	StoryEndAt              *string   `json:"story_end_at,omitempty"`
+	MyEnrollmentStatus      *string   `json:"my_enrollment_status,omitempty"`
 	CreatedAt               string    `json:"created_at"`
 	UpdatedAt               string    `json:"updated_at"`
 }

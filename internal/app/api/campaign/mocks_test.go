@@ -8,6 +8,19 @@ import (
 	"github.com/google/uuid"
 )
 
+type mockListPlayerEnrollments struct {
+	statuses map[uuid.UUID]string
+	err      error
+}
+
+func (m *mockListPlayerEnrollments) ListPlayerEnrollmentsForCampaign(
+	ctx context.Context,
+	playerUUID uuid.UUID,
+	campaignUUID uuid.UUID,
+) (map[uuid.UUID]string, error) {
+	return m.statuses, m.err
+}
+
 type mockCreateCampaign struct {
 	fn func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error)
 }

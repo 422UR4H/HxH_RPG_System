@@ -92,6 +92,7 @@ func main() {
 		characterSheetFactory,
 		characterSheetRepo,
 		campaignRepo,
+		submitRepo,
 	)
 	listCharacterSheetsUC := cs.NewListCharacterSheetsUC(
 		characterSheetRepo,
@@ -138,10 +139,11 @@ func main() {
 	getCampaignUC := domainCampaign.NewGetCampaignUC(campaignRepo)
 	listCampaignsUC := domainCampaign.NewListCampaignsUC(campaignRepo)
 	listPublicUpcomingCampaignsUC := domainCampaign.NewListPublicUpcomingCampaignsUC(campaignRepo)
+	listPlayerEnrollmentsForCampaignUC := domainEnrollment.NewListPlayerEnrollmentsForCampaignUC(enrollmentRepo)
 
 	campaignsApi := campaignHandler.Api{
 		CreateCampaignHandler:              campaignHandler.CreateCampaignHandler(createCampaignUC),
-		GetCampaignHandler:                 campaignHandler.GetCampaignHandler(getCampaignUC),
+		GetCampaignHandler:                 campaignHandler.GetCampaignHandler(getCampaignUC, listPlayerEnrollmentsForCampaignUC),
 		ListCampaignsHandler:               campaignHandler.ListCampaignsHandler(listCampaignsUC),
 		ListPublicUpcomingCampaignsHandler: campaignHandler.ListPublicUpcomingCampaignsHandler(listPublicUpcomingCampaignsUC),
 	}

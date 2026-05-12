@@ -29,9 +29,10 @@ func TestGetCharacterSheet(t *testing.T) {
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, masterUUID)
@@ -58,9 +59,10 @@ func TestGetCharacterSheet(t *testing.T) {
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, playerUUID)
@@ -90,9 +92,10 @@ func TestGetCharacterSheet(t *testing.T) {
 				return campaignMaster, nil
 			},
 		}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, campaignMaster)
@@ -113,9 +116,10 @@ func TestGetCharacterSheet(t *testing.T) {
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		_, err := uc.GetCharacterSheet(ctx, uuid.New(), uuid.New())
@@ -137,9 +141,10 @@ func TestGetCharacterSheet(t *testing.T) {
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		_, err := uc.GetCharacterSheet(ctx, uuid.New(), uuid.New())
@@ -164,9 +169,12 @@ func TestGetCharacterSheet(t *testing.T) {
 			},
 		}
 		mockCampaignRepo := &testutil.MockCampaignRepo{}
+		mockSubLookup := &mockSubmissionLookup{
+			err: errors.New("not found"),
+		}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
@@ -197,9 +205,10 @@ func TestGetCharacterSheet(t *testing.T) {
 				return differentCampaignMaster, nil
 			},
 		}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
@@ -229,9 +238,10 @@ func TestGetCharacterSheet(t *testing.T) {
 				return uuid.Nil, pgCampaign.ErrCampaignNotFound
 			},
 		}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
@@ -262,9 +272,10 @@ func TestGetCharacterSheet(t *testing.T) {
 				return uuid.Nil, repoErr
 			},
 		}
+		mockSubLookup := &mockSubmissionLookup{}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			sheetMap, factory, mockRepo, mockCampaignRepo,
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
 		)
 
 		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, unrelatedUser)
@@ -275,4 +286,88 @@ func TestGetCharacterSheet(t *testing.T) {
 			t.Errorf("expected repo error, got: %v", err)
 		}
 	})
+
+	t.Run("happy path - master can view pending sheet via submission lookup", func(t *testing.T) {
+		sheetMap := newTestSheetMap()
+		factory := newTestFactory()
+		playerUUID := uuid.New()
+		masterUUID := uuid.New()
+		campaignUUID := uuid.New()
+
+		// Sheet has no campaign_uuid (pending submission, not yet accepted)
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
+			},
+		}
+		mockCampaignRepo := &testutil.MockCampaignRepo{
+			GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+				return masterUUID, nil
+			},
+		}
+		mockSubLookup := &mockSubmissionLookup{
+			campaignUUID: campaignUUID,
+			err:          nil,
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
+		)
+
+		result, err := uc.GetCharacterSheet(ctx, domainS.UUID, masterUUID)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if result == nil {
+			t.Fatal("expected character sheet, got nil")
+		}
+		if result.UUID != domainS.UUID {
+			t.Errorf("expected UUID %v, got %v", domainS.UUID, result.UUID)
+		}
+	})
+
+	t.Run("error - master cannot view sheet with no pending submission", func(t *testing.T) {
+		sheetMap := newTestSheetMap()
+		factory := newTestFactory()
+		playerUUID := uuid.New()
+		masterUUID := uuid.New()
+
+		// Sheet has no campaign_uuid and no pending submission
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
+			},
+		}
+		mockCampaignRepo := &testutil.MockCampaignRepo{}
+		mockSubLookup := &mockSubmissionLookup{
+			campaignUUID: uuid.Nil,
+			err:          errors.New("not found"),
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			sheetMap, factory, mockRepo, mockCampaignRepo, mockSubLookup,
+		)
+
+		_, err := uc.GetCharacterSheet(ctx, domainS.UUID, masterUUID)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, auth.ErrInsufficientPermissions) {
+			t.Errorf("expected ErrInsufficientPermissions, got: %v", err)
+		}
+	})
+}
+
+// mockSubmissionLookup implements charactersheet.ISubmissionLookup for testing.
+type mockSubmissionLookup struct {
+	campaignUUID uuid.UUID
+	err          error
+}
+
+func (m *mockSubmissionLookup) GetSubmissionCampaignUUIDBySheetUUID(
+	ctx context.Context, sheetUUID uuid.UUID,
+) (uuid.UUID, error) {
+	return m.campaignUUID, m.err
 }

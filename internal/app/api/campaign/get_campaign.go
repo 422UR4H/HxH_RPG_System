@@ -7,6 +7,7 @@ import (
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
+	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -25,6 +26,7 @@ type GetCampaignResponse struct {
 
 func GetCampaignHandler(
 	uc domainCampaign.IGetCampaign,
+	enrollmentUC domainEnrollment.IListPlayerEnrollmentsForCampaign,
 ) func(context.Context, *GetCampaignRequest) (*GetCampaignResponse, error) {
 
 	return func(ctx context.Context, req *GetCampaignRequest) (*GetCampaignResponse, error) {
@@ -49,7 +51,13 @@ func GetCampaignHandler(
 		if campaign.MasterUUID == userUUID {
 			response = ToMasterResponse(campaign)
 		} else {
-			response = ToPlayerResponse(campaign)
+			// Enrollment status is best-effort: a failure here degrades to no status shown
+			// rather than failing the entire campaign fetch.
+			statuses, _ := enrollmentUC.ListPlayerEnrollmentsForCampaign(ctx, userUUID, req.UUID)
+			if statuses == nil {
+				statuses = map[uuid.UUID]string{}
+			}
+			response = ToPlayerResponse(campaign, statuses)
 		}
 		return &GetCampaignResponse{
 			Body: GetCampaignResponseBody{
