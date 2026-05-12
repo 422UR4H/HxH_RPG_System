@@ -4,19 +4,26 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/google/uuid"
 )
 
 type Turn struct {
+	id            uuid.UUID
 	action        action.Action
 	reactions     []action.Action
 	masterActions []action.MasterAction //nolint:unused // WIP: match system under development
-	finishedAt    *time.Time            //nolint:unused // WIP: match system under development
+	finishedAt    *time.Time
 }
 
 func NewTurn(action action.Action) *Turn {
 	return &Turn{
+		id:     uuid.New(),
 		action: action,
 	}
+}
+
+func (t *Turn) GetID() uuid.UUID {
+	return t.id
 }
 
 func (t *Turn) AddReaction(action *action.Action) {
