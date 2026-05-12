@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"

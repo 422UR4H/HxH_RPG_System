@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 )
 
 func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error {

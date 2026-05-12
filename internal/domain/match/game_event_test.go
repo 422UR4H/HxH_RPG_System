@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 )
 
 func TestNewGameEvent(t *testing.T) {

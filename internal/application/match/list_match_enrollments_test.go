@@ -7,7 +7,7 @@ import (
 
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"

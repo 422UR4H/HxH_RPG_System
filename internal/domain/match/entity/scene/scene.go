@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/turn"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 )
 
 type Scene struct {

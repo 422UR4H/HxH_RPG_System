@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )

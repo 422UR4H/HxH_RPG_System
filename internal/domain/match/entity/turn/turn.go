@@ -3,7 +3,7 @@ package turn
 import (
 	"time"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 )
 
 type Turn struct {

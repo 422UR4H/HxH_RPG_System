@@ -5,7 +5,7 @@ import (
 	"time"
 
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/google/uuid"
 )

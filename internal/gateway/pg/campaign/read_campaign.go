@@ -8,7 +8,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

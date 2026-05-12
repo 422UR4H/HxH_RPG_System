@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"

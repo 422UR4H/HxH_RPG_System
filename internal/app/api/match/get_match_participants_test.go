@@ -12,7 +12,7 @@ import (
 	apiMatch "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"

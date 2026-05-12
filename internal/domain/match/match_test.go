@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/scene"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/google/uuid"
 )
 

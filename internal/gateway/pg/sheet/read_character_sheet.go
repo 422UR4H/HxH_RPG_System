@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"math"
 
-	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"

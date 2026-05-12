@@ -2,8 +2,8 @@ package match
 
 import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/action"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/scene"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 )
 
 type Engine struct {

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/scene"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/turn"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 )
 
 func TestNewScene(t *testing.T) {

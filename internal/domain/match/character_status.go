@@ -1,6 +1,6 @@
 package match
 
-import "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match/action"
+import "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 
 // tentativa de centralizar todos os status dos personagens
 // pensei em trocar de CharacterStatus para Field em Match,

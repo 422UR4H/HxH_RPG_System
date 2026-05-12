@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
