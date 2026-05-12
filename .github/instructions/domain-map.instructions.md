@@ -16,7 +16,9 @@ applyTo: "internal/**"
 | Status Bars | `internal/domain/entity/character_sheet/status/` |
 | Sheet (integration) | `internal/domain/entity/character_sheet/sheet/` |
 | Character Classes | `internal/domain/entity/character_class/` |
-| Match/Combat | `internal/domain/entity/match/` |
+| Match Bounded Context | `internal/domain/match/` |
+| Match Entities | `internal/domain/match/entity/` |
+| Match Domain Services | `internal/domain/match/service/` |
 | Campaign | `internal/domain/entity/campaign/` |
 | Scenario | `internal/domain/entity/scenario/` |
 | User | `internal/domain/entity/user/` |
@@ -27,7 +29,9 @@ applyTo: "internal/**"
 ## Current State
 
 - ✅ `character_sheet/` — Stable, fully tested
-- ⚠️ `match/` — Turn/Round system WIP (semantic refactoring, broken test)
+- ✅ `domain/match/` — Bounded context: entities + 3 domain services (Phase 1 complete)
+- ⏳ `domain/match/matchsession/` — Pending Phase 2
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented)
 - ✅ `app/api/` — HTTP handlers (unit tested with humatest)
 - ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern)
+- ✅ `application/` — Use cases migrated from domain/ (all features)
