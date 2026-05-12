@@ -338,4 +338,67 @@ func TestListCampaigns(t *testing.T) {
 	}
 }
 
+func TestListPublicUpcomingCampaigns(t *testing.T) {
+	userUUID := uuid.New()
 
+	tests := []struct {
+		name    string
+		mock    *testutil.MockCampaignRepo
+		wantErr error
+		wantLen int
+	}{
+		{
+			name: "success with results",
+			mock: &testutil.MockCampaignRepo{
+				ListPublicUpcomingCampaignsFn: func(ctx context.Context, after time.Time, uid uuid.UUID) ([]*campaignEntity.PublicSummary, error) {
+					return []*campaignEntity.PublicSummary{
+						{Summary: campaignEntity.Summary{Name: "C1"}},
+						{Summary: campaignEntity.Summary{Name: "C2"}},
+					}, nil
+				},
+			},
+			wantLen: 2,
+		},
+		{
+			name: "success empty",
+			mock: &testutil.MockCampaignRepo{
+				ListPublicUpcomingCampaignsFn: func(ctx context.Context, after time.Time, uid uuid.UUID) ([]*campaignEntity.PublicSummary, error) {
+					return []*campaignEntity.PublicSummary{}, nil
+				},
+			},
+			wantLen: 0,
+		},
+		{
+			name: "repo error",
+			mock: &testutil.MockCampaignRepo{
+				ListPublicUpcomingCampaignsFn: func(ctx context.Context, after time.Time, uid uuid.UUID) ([]*campaignEntity.PublicSummary, error) {
+					return nil, errors.New("db error")
+				},
+			},
+			wantErr: errors.New("db error"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uc := campaign.NewListPublicUpcomingCampaignsUC(tt.mock)
+			result, err := uc.ListPublicUpcomingCampaigns(context.Background(), userUUID)
+
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tt.wantErr)
+				}
+				if err.Error() != tt.wantErr.Error() {
+					t.Fatalf("expected error %q, got %q", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(result) != tt.wantLen {
+				t.Errorf("expected %d results, got %d", tt.wantLen, len(result))
+			}
+		})
+	}
+}

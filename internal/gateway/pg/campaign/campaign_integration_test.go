@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	entityCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
@@ -300,4 +301,157 @@ func mustParseUUID(t *testing.T, s string) uuid.UUID {
 		t.Fatalf("failed to parse UUID %q: %v", s, err)
 	}
 	return id
+}
+
+func insertMatchWithScheduledAt(
+	t *testing.T, pool *pgxpool.Pool,
+	masterUUID, campaignUUID uuid.UUID,
+	title string, scheduledAt time.Time,
+) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO matches (master_uuid, campaign_uuid, title, game_scheduled_at, story_start_at)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		masterUUID, campaignUUID, title, scheduledAt, time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("insertMatchWithScheduledAt: %v", err)
+	}
+}
+
+func TestListPublicUpcomingCampaigns(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgCampaign.NewRepository(pool)
+	ctx := context.Background()
+	now := time.Now()
+
+	t.Run("returns campaigns ordered by nearest future match asc", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		requester := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "req", "req@hunter.com", "pass"))
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm", "gm@hunter.com", "pass"))
+
+		cFar := newTestCampaign(master, nil, "Far Campaign")
+		cNear := newTestCampaign(master, nil, "Near Campaign")
+		if err := repo.CreateCampaign(ctx, cFar); err != nil {
+			t.Fatalf("CreateCampaign(cFar): %v", err)
+		}
+		if err := repo.CreateCampaign(ctx, cNear); err != nil {
+			t.Fatalf("CreateCampaign(cNear): %v", err)
+		}
+		insertMatchWithScheduledAt(t, pool, master, cFar.UUID, "Far Match", now.Add(48*time.Hour))
+		insertMatchWithScheduledAt(t, pool, master, cNear.UUID, "Near Match", now.Add(24*time.Hour))
+
+		list, err := repo.ListPublicUpcomingCampaigns(ctx, now, requester)
+		if err != nil {
+			t.Fatalf("ListPublicUpcomingCampaigns() unexpected error: %v", err)
+		}
+		if len(list) != 2 {
+			t.Fatalf("expected 2 campaigns, got %d", len(list))
+		}
+		if list[0].UUID != cNear.UUID {
+			t.Errorf("list[0] = %v, want Near Campaign %v", list[0].UUID, cNear.UUID)
+		}
+		if list[1].UUID != cFar.UUID {
+			t.Errorf("list[1] = %v, want Far Campaign %v", list[1].UUID, cFar.UUID)
+		}
+		if list[0].NextGameScheduledAt == nil {
+			t.Error("list[0].NextGameScheduledAt is nil, want non-nil")
+		}
+	})
+
+	t.Run("campaign without future match appears last with nil next_game_scheduled_at", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		requester := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "req", "req@hunter.com", "pass"))
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm", "gm@hunter.com", "pass"))
+
+		cWithMatch := newTestCampaign(master, nil, "Has Future Match")
+		cNoMatch := newTestCampaign(master, nil, "No Future Match")
+		if err := repo.CreateCampaign(ctx, cWithMatch); err != nil {
+			t.Fatalf("CreateCampaign(cWithMatch): %v", err)
+		}
+		if err := repo.CreateCampaign(ctx, cNoMatch); err != nil {
+			t.Fatalf("CreateCampaign(cNoMatch): %v", err)
+		}
+		insertMatchWithScheduledAt(t, pool, master, cWithMatch.UUID, "Future Match", now.Add(24*time.Hour))
+		insertMatchWithScheduledAt(t, pool, master, cNoMatch.UUID, "Past Match", now.Add(-24*time.Hour))
+
+		list, err := repo.ListPublicUpcomingCampaigns(ctx, now, requester)
+		if err != nil {
+			t.Fatalf("ListPublicUpcomingCampaigns() unexpected error: %v", err)
+		}
+		if len(list) != 2 {
+			t.Fatalf("expected 2 campaigns, got %d", len(list))
+		}
+		if list[0].UUID != cWithMatch.UUID {
+			t.Errorf("list[0] = %v, want %v (campaign with future match)", list[0].UUID, cWithMatch.UUID)
+		}
+		if list[0].NextGameScheduledAt == nil {
+			t.Error("list[0].NextGameScheduledAt is nil, want non-nil")
+		}
+		if list[1].UUID != cNoMatch.UUID {
+			t.Errorf("list[1] = %v, want %v (campaign without future match)", list[1].UUID, cNoMatch.UUID)
+		}
+		if list[1].NextGameScheduledAt != nil {
+			t.Errorf("list[1].NextGameScheduledAt = %v, want nil", list[1].NextGameScheduledAt)
+		}
+	})
+
+	t.Run("excludes campaigns owned by requesting user", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		requester := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "req", "req@hunter.com", "pass"))
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm", "gm@hunter.com", "pass"))
+
+		cOwn := newTestCampaign(requester, nil, "Own Campaign")
+		cOther := newTestCampaign(master, nil, "Other Campaign")
+		if err := repo.CreateCampaign(ctx, cOwn); err != nil {
+			t.Fatalf("CreateCampaign(cOwn): %v", err)
+		}
+		if err := repo.CreateCampaign(ctx, cOther); err != nil {
+			t.Fatalf("CreateCampaign(cOther): %v", err)
+		}
+
+		list, err := repo.ListPublicUpcomingCampaigns(ctx, now, requester)
+		if err != nil {
+			t.Fatalf("ListPublicUpcomingCampaigns() unexpected error: %v", err)
+		}
+		if len(list) != 1 {
+			t.Fatalf("expected 1 campaign, got %d", len(list))
+		}
+		if list[0].UUID != cOther.UUID {
+			t.Errorf("list[0] = %v, want Other Campaign %v", list[0].UUID, cOther.UUID)
+		}
+	})
+
+	t.Run("excludes non-public campaigns", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		requester := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "req", "req@hunter.com", "pass"))
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm", "gm@hunter.com", "pass"))
+
+		cPrivate := newTestCampaign(master, nil, "Private Campaign")
+		cPrivate.IsPublic = false
+		if err := repo.CreateCampaign(ctx, cPrivate); err != nil {
+			t.Fatalf("CreateCampaign(cPrivate): %v", err)
+		}
+
+		list, err := repo.ListPublicUpcomingCampaigns(ctx, now, requester)
+		if err != nil {
+			t.Fatalf("ListPublicUpcomingCampaigns() unexpected error: %v", err)
+		}
+		if len(list) != 0 {
+			t.Errorf("expected empty list, got %d campaigns", len(list))
+		}
+	})
+
+	t.Run("empty when no public campaigns from other users", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		requester := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "req", "req@hunter.com", "pass"))
+
+		list, err := repo.ListPublicUpcomingCampaigns(ctx, now, requester)
+		if err != nil {
+			t.Fatalf("ListPublicUpcomingCampaigns() unexpected error: %v", err)
+		}
+		if len(list) != 0 {
+			t.Errorf("expected empty list, got %d campaigns", len(list))
+		}
+	})
 }

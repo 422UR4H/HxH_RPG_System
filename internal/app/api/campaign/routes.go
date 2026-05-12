@@ -12,9 +12,10 @@ import (
 type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
-	CreateCampaignHandler Handler[CreateCampaignRequest, CreateCampaignResponse]
-	GetCampaignHandler    Handler[GetCampaignRequest, GetCampaignResponse]
-	ListCampaignsHandler  Handler[struct{}, ListCampaignsResponse]
+	CreateCampaignHandler              Handler[CreateCampaignRequest, CreateCampaignResponse]
+	GetCampaignHandler                 Handler[GetCampaignRequest, GetCampaignResponse]
+	ListCampaignsHandler               Handler[struct{}, ListCampaignsResponse]
+	ListPublicUpcomingCampaignsHandler Handler[struct{}, ListPublicCampaignsResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -59,4 +60,15 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.ListCampaignsHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/public/campaigns",
+		Description: "List public campaigns from other masters ordered by nearest upcoming match",
+		Tags:        []string{"campaigns"},
+		Errors: []int{
+			http.StatusUnauthorized,
+			http.StatusInternalServerError,
+		},
+	}, a.ListPublicUpcomingCampaignsHandler)
 }

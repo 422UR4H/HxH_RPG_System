@@ -137,11 +137,13 @@ func main() {
 	createCampaignUC := domainCampaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
 	getCampaignUC := domainCampaign.NewGetCampaignUC(campaignRepo)
 	listCampaignsUC := domainCampaign.NewListCampaignsUC(campaignRepo)
+	listPublicUpcomingCampaignsUC := domainCampaign.NewListPublicUpcomingCampaignsUC(campaignRepo)
 
 	campaignsApi := campaignHandler.Api{
-		CreateCampaignHandler: campaignHandler.CreateCampaignHandler(createCampaignUC),
-		GetCampaignHandler:    campaignHandler.GetCampaignHandler(getCampaignUC),
-		ListCampaignsHandler:  campaignHandler.ListCampaignsHandler(listCampaignsUC),
+		CreateCampaignHandler:              campaignHandler.CreateCampaignHandler(createCampaignUC),
+		GetCampaignHandler:                 campaignHandler.GetCampaignHandler(getCampaignUC),
+		ListCampaignsHandler:               campaignHandler.ListCampaignsHandler(listCampaignsUC),
+		ListPublicUpcomingCampaignsHandler: campaignHandler.ListPublicUpcomingCampaignsHandler(listPublicUpcomingCampaignsUC),
 	}
 
 	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
