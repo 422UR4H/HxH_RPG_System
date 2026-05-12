@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )

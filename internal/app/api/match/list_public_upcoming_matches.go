@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )

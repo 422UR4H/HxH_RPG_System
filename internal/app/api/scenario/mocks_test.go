@@ -3,7 +3,7 @@ package scenario_test
 import (
 	"context"
 
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
+	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	scenarioEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/google/uuid"
 )

@@ -8,9 +8,9 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"

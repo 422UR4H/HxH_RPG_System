@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	characterclass "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )

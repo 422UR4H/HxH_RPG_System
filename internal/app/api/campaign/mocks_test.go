@@ -3,7 +3,7 @@ package campaign_test
 import (
 	"context"
 
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/google/uuid"
 )

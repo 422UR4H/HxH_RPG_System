@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/google/uuid"
 )
 

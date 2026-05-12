@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/domain/enrollment"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )

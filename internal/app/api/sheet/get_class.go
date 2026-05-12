@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/danielgtaylor/huma/v2"
 )
 
