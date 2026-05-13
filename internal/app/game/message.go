@@ -23,6 +23,20 @@ const (
 	MsgTypeStartMatch MessageType = "start_match"
 	MsgTypeKickPlayer MessageType = "kick_player"
 	MsgTypeChat       MessageType = "chat"
+
+	// Client → Server (game actions)
+	MsgTypeEnqueueAction  MessageType = "enqueue_action"
+	MsgTypeOpenNextAction MessageType = "open_next_action"
+	MsgTypePullAction     MessageType = "pull_action"
+	MsgTypeAttachReaction MessageType = "attach_reaction"
+	MsgTypeCloseTurn      MessageType = "close_turn"
+	MsgTypeCloseRound     MessageType = "close_round"
+
+	// Server → Client (game events)
+	MsgTypeTurnOpened       MessageType = "turn_opened"
+	MsgTypeTurnClosed       MessageType = "turn_closed"
+	MsgTypeRoundClosed      MessageType = "round_closed"
+	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 )
 
 type Message struct {
@@ -67,6 +81,39 @@ type PlayerKickedPayload struct {
 	UUID     uuid.UUID `json:"uuid"`
 	Nickname string    `json:"nickname"`
 	Reason   string    `json:"reason"`
+}
+
+type EnqueueActionPayload struct {
+	ActionType string    `json:"action_type"`
+	TargetID   uuid.UUID `json:"target_id,omitempty"`
+}
+
+type PullActionPayload struct {
+	ActionID uuid.UUID `json:"action_id"`
+}
+
+type AttachReactionPayload struct {
+	ReactToID  uuid.UUID `json:"react_to_id"`
+	ActionType string    `json:"action_type"`
+}
+
+type TurnOpenedPayload struct {
+	TurnID     uuid.UUID `json:"turn_id"`
+	ActorID    uuid.UUID `json:"actor_id"`
+	ActionType string    `json:"action_type"`
+}
+
+type TurnClosedPayload struct {
+	TurnID uuid.UUID `json:"turn_id"`
+}
+
+type RoundClosedPayload struct {
+	RoundMode string `json:"round_mode"`
+}
+
+type ResolutionUpdatedPayload struct {
+	TurnID    uuid.UUID `json:"turn_id"`
+	IsSettled bool      `json:"is_settled"`
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {
