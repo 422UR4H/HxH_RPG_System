@@ -25,7 +25,7 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - Go idiomatic: implicit interfaces, short var names, error wrapping `%w`
 - **User vs Player vs Master:** `User` = generic auth entity. Use `Player`/`Master` for role-specific contexts.
 - **Domain Services:** stateless structs in `domain/match/service/` — receive entities, apply RPG rules, return results. No I/O, no state.
-- **MatchSession:** stateful in-memory match state, lives in Room — see Phase 2 plan.
+- **MatchSession:** stateful in-memory match state (`matchsession/`), lives in Room. Initialized by `InitMatchSessionUC` on `StartMatch`. Holds active Round, action priority queue, and char-sheet cache keyed by playerUUID.
 - **Use Cases:** in `application/<feature>/` — orchestrate domain + gateway. No RPG rules.
 - XP cascade: skill → attribute → ability → character (`CascadeUpgrade`/`CascadeUpgradeTrigger`)
 - DDD-lite: value objects, entities, domain services, use cases, repository interfaces
@@ -84,4 +84,11 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 
 ## Known Issues
 
-(Phase 1 complete — no outstanding issues)
+(Phase 2 complete — no outstanding issues)
+
+**Deferred to Phase 3:**
+- Turn/Round DB persistence (INSERT on CloseTurn/CloseRound — no schema yet)
+- Reaction visibility: players see reactions only when master reveals (currently master-only)
+- Scene management (`activeScene`, `ChangeScene`)
+- Initiative handling in `ChangeMode`
+- `EnqueueMasterAction` (NPC queue)

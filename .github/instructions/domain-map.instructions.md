@@ -30,7 +30,7 @@ applyTo: "internal/**"
 
 - ✅ `character_sheet/` — Stable, fully tested
 - ✅ `domain/match/` — Bounded context: entities + 3 domain services (Phase 1 complete)
-- ⏳ `domain/match/matchsession/` — Pending Phase 2
+- ✅ `domain/match/matchsession/` — In-memory match state: MatchSession + 6 session methods (Phase 2 complete)
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented)
 - ✅ `app/api/` — HTTP handlers (unit tested with humatest)
 - ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern)
