@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	du "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"

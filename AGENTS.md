@@ -8,11 +8,13 @@ Go 1.23 backend for a Hunter × Hunter tabletop RPG. Module: `github.com/422UR4H
 
 ```
 internal/
-├── app/       ← HTTP/WS handlers (api/ + game/)
-├── domain/    ← Use cases + domain services (engines)
-│   └── entity/ ← Pure domain model (no I/O)
-├── gateway/   ← PostgreSQL repositories (pg/)
-└── config/    ← Configuration loading
+├── app/         ← Delivery: HTTP handlers (api/) + WebSocket server (game/)
+├── application/ ← Use Cases: orchestrate domain + I/O (one package per feature)
+├── domain/      ← Domain: entities + domain services (pure, no I/O)
+│   ├── match/   ← Match bounded context (entity/, service/, matchsession/)
+│   └── entity/  ← Shared entities (character_sheet/, enum/, die/, ...)
+├── gateway/     ← Infrastructure: PostgreSQL repositories
+└── config/      ← Configuration loading
 ```
 
 Dependency: entity ← domain ← app, entity ← gateway. Entities never import outer layers.
@@ -22,7 +24,9 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - **NEVER remove TODO comments** — intentional markers by the owner
 - Go idiomatic: implicit interfaces, short var names, error wrapping `%w`
 - **User vs Player vs Master:** `User` = generic auth entity. Use `Player`/`Master` for role-specific contexts.
-- Engines = domain services under `internal/domain/` correlating entities
+- **Domain Services:** stateless structs in `domain/match/service/` — receive entities, apply RPG rules, return results. No I/O, no state.
+- **MatchSession:** stateful in-memory match state, lives in Room — see Phase 2 plan.
+- **Use Cases:** in `application/<feature>/` — orchestrate domain + gateway. No RPG rules.
 - XP cascade: skill → attribute → ability → character (`CascadeUpgrade`/`CascadeUpgradeTrigger`)
 - DDD-lite: value objects, entities, domain services, use cases, repository interfaces
 
@@ -80,4 +84,4 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 
 ## Known Issues
 
-- `match/` Turn/Round test broken — semantic refactoring in progress
+(Phase 1 complete — no outstanding issues)

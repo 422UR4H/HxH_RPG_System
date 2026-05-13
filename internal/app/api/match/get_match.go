@@ -7,8 +7,8 @@ import (
 	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )

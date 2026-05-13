@@ -3,7 +3,7 @@ package auth_test
 import (
 	"context"
 
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/domain/auth"
+	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 )
 
 type mockRegister struct {

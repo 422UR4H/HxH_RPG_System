@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/danielgtaylor/huma/v2"

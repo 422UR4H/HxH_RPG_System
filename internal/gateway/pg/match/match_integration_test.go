@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	entityMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/match"
+	entityMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	pgMatch "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 )

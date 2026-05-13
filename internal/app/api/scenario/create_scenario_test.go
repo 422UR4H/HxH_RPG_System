@@ -10,7 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
+	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	scenarioEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"

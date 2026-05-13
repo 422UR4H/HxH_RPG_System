@@ -7,15 +7,5 @@ import (
 )
 
 var (
-	ErrMatchNotFound      = domain.NewValidationError(errors.New("match not found"))
-	ErrMinTitleLength     = domain.NewValidationError(errors.New("title must be at least 5 characters"))
-	ErrMaxTitleLength     = domain.NewValidationError(errors.New("title cannot exceed 32 characters"))
-	ErrMinOfStoryStartAt  = domain.NewValidationError(errors.New("story start date must be after campaign start date"))
-	ErrMaxOfStoryStartAt  = domain.NewValidationError(errors.New("story start date must be before campaign end date"))
-	ErrMinOfGameScheduledAt = domain.NewValidationError(errors.New("game scheduled at cannot be in the past"))
-	ErrMaxOfGameScheduledAt = domain.NewValidationError(errors.New("game scheduled at cannot be greater than one year from now"))
-	ErrMaxBriefDescLength   = domain.NewValidationError(errors.New("brief description cannot exceed 64 characters"))
-	ErrMatchAlreadyStarted  = domain.NewValidationError(errors.New("match has already started"))
-	ErrMatchAlreadyFinished = domain.NewValidationError(errors.New("match has already finished"))
-	ErrNotMatchMaster       = domain.NewValidationError(errors.New("user is not the match master"))
+	ErrMatchIsNil = domain.NewValidationError(errors.New("match cannot be nil"))
 )

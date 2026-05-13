@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/session"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/session"
 	jwtAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/danielgtaylor/huma/v2"
 )

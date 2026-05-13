@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/domain/character_sheet"
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -82,18 +82,6 @@ func (m *mockUpdateNenHexagonValue) UpdateNenHexagonValue(
 	ctx context.Context, charSheet *domainSheet.CharacterSheet, method string,
 ) (*spiritual.NenHexagonUpdateResult, error) {
 	return m.fn(ctx, charSheet, method)
-}
-
-// mockSubmissionLookup implements charactersheet.ISubmissionLookup
-type mockSubmissionLookup struct {
-	campaignUUID uuid.UUID
-	err          error
-}
-
-func (m *mockSubmissionLookup) GetSubmissionCampaignUUIDBySheetUUID(
-	ctx context.Context, sheetUUID uuid.UUID,
-) (uuid.UUID, error) {
-	return m.campaignUUID, m.err
 }
 
 // Test helpers

@@ -8,8 +8,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/domain/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/scenario"
+	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
