@@ -194,6 +194,114 @@ func TestMatchSession_OpenNextAction(t *testing.T) {
 	})
 }
 
+func makeReactionTo(actorID, targetActionID uuid.UUID) *action.Action {
+	return action.NewAction(actorID, nil, targetActionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+}
+
+func TestMatchSession_AttachReaction(t *testing.T) {
+	t.Run("attaches reaction to current turn and returns resolution", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s := sessionWithParticipants(playerA, playerB)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 10)) //nolint:errcheck
+		_, opened, _ := s.OpenNextAction()
+		act := opened.GetAction()
+		actionID := act.GetID()
+
+		reaction := makeReactionTo(playerB, actionID)
+		res, err := s.AttachReaction(reaction)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res == nil {
+			t.Fatal("expected non-nil TurnResolution")
+		}
+		if len(opened.GetReactions()) != 1 {
+			t.Errorf("expected 1 reaction, got %d", len(opened.GetReactions()))
+		}
+	})
+
+	t.Run("returns ErrReactionNotCompatible for wrong target", func(t *testing.T) {
+		playerA := uuid.New()
+		s := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
+
+		reaction := makeReactionTo(playerA, uuid.New()) // wrong target
+		_, err := s.AttachReaction(reaction)
+		if !errors.Is(err, service.ErrReactionNotCompatible) {
+			t.Errorf("expected ErrReactionNotCompatible, got %v", err)
+		}
+	})
+}
+
+func TestMatchSession_CloseTurn(t *testing.T) {
+	t.Run("closes current open turn", func(t *testing.T) {
+		playerA := uuid.New()
+		s := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		_, opened, _ := s.OpenNextAction()
+
+		closed, err := s.CloseTurn()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if closed == nil {
+			t.Fatal("expected non-nil closed turn")
+		}
+		if closed != opened {
+			t.Error("expected closed turn to be the opened turn")
+		}
+		if closed.GetFinishedAt() == nil {
+			t.Error("expected finishedAt to be set")
+		}
+	})
+
+	t.Run("returns ErrNoCurrentTurn when no turns exist", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		_, err := s.CloseTurn()
+		if !errors.Is(err, service.ErrNoCurrentTurn) {
+			t.Errorf("expected ErrNoCurrentTurn, got %v", err)
+		}
+	})
+}
+
+func TestMatchSession_CloseRound(t *testing.T) {
+	t.Run("closes round and starts a new one with same mode", func(t *testing.T) {
+		playerA := uuid.New()
+		s := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
+		s.CloseTurn()                                              //nolint:errcheck
+
+		closedRound, err := s.CloseRound()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if closedRound == nil {
+			t.Fatal("expected non-nil closed round")
+		}
+		if closedRound.GetFinishedAt() == nil {
+			t.Error("expected finishedAt to be set on closed round")
+		}
+		if s.GetActiveRound() == closedRound {
+			t.Error("expected activeRound to be a new round after CloseRound")
+		}
+	})
+
+	t.Run("returns ErrRoundHasOpenTurn when a turn is still open", func(t *testing.T) {
+		playerA := uuid.New()
+		s := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
+		// turn is still open — no CloseTurn called
+
+		_, err := s.CloseRound()
+		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
+			t.Errorf("expected ErrRoundHasOpenTurn, got %v", err)
+		}
+	})
+}
+
 func TestMatchSession_PullAction(t *testing.T) {
 	t.Run("opens Turn for specific action UUID", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()

@@ -71,6 +71,34 @@ func (s *MatchSession) PullAction(id uuid.UUID) (closed *turn.Turn, opened *turn
 	return
 }
 
+// AttachReaction validates that the reaction targets the current turn's action,
+// appends it, and returns the updated TurnResolution snapshot.
+func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution, error) {
+	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
+		return nil, err
+	}
+	t := s.activeRound.CurrentTurn()
+	return s.combatRes.Resolve(t, s.charSheets), nil
+}
+
+// CloseTurn closes the current open turn and returns it.
+// Returns ErrNoCurrentTurn if the round has no turns yet.
+func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
+	return s.roundOrch.CloseTurnErr(s.activeRound, time.Now())
+}
+
+// CloseRound closes the active round and initialises a fresh one with the same mode.
+// Returns ErrRoundHasOpenTurn if a turn is still open.
+func (s *MatchSession) CloseRound() (*round.Round, error) {
+	if s.activeRound.HasOpenTurn() {
+		return nil, ErrRoundHasOpenTurn
+	}
+	mode := s.activeRound.GetMode()
+	closed := s.roundOrch.CloseRound(s.activeRound, time.Now())
+	s.activeRound = round.NewRound(mode)
+	return closed, nil
+}
+
 // EnqueueAction adds a player's action to the priority queue.
 // playerUUID must be a known participant and must match a.GetActorID().
 func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) error {
