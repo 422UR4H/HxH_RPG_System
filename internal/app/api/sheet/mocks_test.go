@@ -84,18 +84,6 @@ func (m *mockUpdateNenHexagonValue) UpdateNenHexagonValue(
 	return m.fn(ctx, charSheet, method)
 }
 
-// mockSubmissionLookup implements charactersheet.ISubmissionLookup
-type mockSubmissionLookup struct {
-	campaignUUID uuid.UUID
-	err          error
-}
-
-func (m *mockSubmissionLookup) GetSubmissionCampaignUUIDBySheetUUID(
-	ctx context.Context, sheetUUID uuid.UUID,
-) (uuid.UUID, error) {
-	return m.campaignUUID, m.err
-}
-
 // Test helpers
 
 func buildTestCharacterSheet(t *testing.T) *domainSheet.CharacterSheet {
