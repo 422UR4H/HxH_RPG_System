@@ -7,12 +7,13 @@ import (
 )
 
 type MockEnrollmentRepo struct {
-	EnrollCharacterSheetFn             func(ctx context.Context, matchUUID uuid.UUID, characterSheetUUID uuid.UUID) error
-	ExistsEnrolledCharacterSheetFn     func(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (bool, error)
-	GetEnrollmentByUUIDFn              func(ctx context.Context, enrollmentUUID uuid.UUID) (string, uuid.UUID, error)
-	AcceptEnrollmentFn                 func(ctx context.Context, enrollmentUUID uuid.UUID) error
-	RejectEnrollmentFn                 func(ctx context.Context, enrollmentUUID uuid.UUID) error
-	RejectEnrollmentByPlayerAndMatchFn func(ctx context.Context, playerUUID uuid.UUID, matchUUID uuid.UUID) error
+	EnrollCharacterSheetFn                      func(ctx context.Context, matchUUID uuid.UUID, characterSheetUUID uuid.UUID) error
+	ExistsEnrolledCharacterSheetFn              func(ctx context.Context, characterSheetUUID uuid.UUID, matchUUID uuid.UUID) (bool, error)
+	GetEnrollmentByUUIDFn                       func(ctx context.Context, enrollmentUUID uuid.UUID) (string, uuid.UUID, error)
+	AcceptEnrollmentFn                          func(ctx context.Context, enrollmentUUID uuid.UUID) error
+	RejectEnrollmentFn                          func(ctx context.Context, enrollmentUUID uuid.UUID) error
+	RejectEnrollmentByPlayerAndMatchFn          func(ctx context.Context, playerUUID uuid.UUID, matchUUID uuid.UUID) error
+	ListPlayerEnrollmentStatusesForCampaignFn   func(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (map[uuid.UUID]string, error)
 }
 
 func (m *MockEnrollmentRepo) EnrollCharacterSheet(ctx context.Context, matchUUID uuid.UUID, characterSheetUUID uuid.UUID) error {
@@ -55,4 +56,11 @@ func (m *MockEnrollmentRepo) RejectEnrollmentByPlayerAndMatch(ctx context.Contex
 		return m.RejectEnrollmentByPlayerAndMatchFn(ctx, playerUUID, matchUUID)
 	}
 	return nil
+}
+
+func (m *MockEnrollmentRepo) ListPlayerEnrollmentStatusesForCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (map[uuid.UUID]string, error) {
+	if m.ListPlayerEnrollmentStatusesForCampaignFn != nil {
+		return m.ListPlayerEnrollmentStatusesForCampaignFn(ctx, playerUUID, campaignUUID)
+	}
+	return map[uuid.UUID]string{}, nil
 }
