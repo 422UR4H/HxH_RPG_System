@@ -25,7 +25,6 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - Go idiomatic: implicit interfaces, short var names, error wrapping `%w`
 - **User vs Player vs Master:** `User` = generic auth entity. Use `Player`/`Master` for role-specific contexts.
 - **Domain Services:** stateless structs in `domain/match/service/` — receive entities, apply RPG rules, return results. No I/O, no state.
-- **MatchSession:** stateful in-memory match state (`matchsession/`), lives in Room. Initialized by `InitMatchSessionUC` on `StartMatch`. Holds active Round, action priority queue, and char-sheet cache keyed by playerUUID.
 - **Use Cases:** in `application/<feature>/` — orchestrate domain + gateway. No RPG rules.
 - XP cascade: skill → attribute → ability → character (`CascadeUpgrade`/`CascadeUpgradeTrigger`)
 - DDD-lite: value objects, entities, domain services, use cases, repository interfaces
@@ -81,6 +80,7 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 - `glossary.instructions.md` — EN↔PT-BR terminology (when working on `docs/game/`)
 - `integration-tests.instructions.md` — test patterns, helpers, DB setup (when working on `internal/gateway/pg/`)
 - `gateway-conventions.instructions.md` — SQL/repository patterns (when working on `internal/gateway/`)
+- `game-server.instructions.md` — MatchSession, Room/Client/Hub pattern, message routing (when working on `internal/app/game/`)
 
 ## Known Issues
 
