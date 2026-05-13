@@ -61,14 +61,23 @@ Never accept Haiku default for code-writing sub-agents. When in doubt, prefer So
 
 **Prefer CI over local runs** (saves tokens). Local only for TDD iteration or debugging.
 
+After each task touching `internal/`: `go vet -tags=integration ./internal/gateway/pg/...` (no DB needed, catches build errors cheaply).
+After modifying gateway code directly: also run `go test -tags=integration ./internal/gateway/pg/...`.
+Do NOT poll CI proactively — only check if a failure is reported.
+
 ```bash
-# CI (default):
+# After each task (always):
+go vet -tags=integration ./internal/gateway/pg/...
+
+# After modifying gateway code:
+go test -tags=integration ./internal/gateway/pg/...
+
+# CI (on failure only):
 rtk gh run list --workflow=ci.yml --limit=1   # check status
 rtk gh run view <run-id> --log-failed         # failure logs
 
-# Local (when needed):
-go test ./...                                         # all tests
-go test -tags=integration ./internal/gateway/pg/...   # integration tests
+# Other local:
+go test ./...                                         # all unit tests
 make build / make run-dev
 make migrate-up / migrate-down / migrate-create name=X
 ```
