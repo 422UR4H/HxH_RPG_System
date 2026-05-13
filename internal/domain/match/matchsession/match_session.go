@@ -55,9 +55,6 @@ func (s *MatchSession) GetCharSheet(playerUUID uuid.UUID) (*csSheet.CharacterShe
 	return sheet, nil
 }
 
-// OpenNextAction closes any open Turn, then extracts the highest-priority
-// Action from the queue and opens a new Turn. Returns the closed turn (nil
-// if there was no open turn) and the newly opened turn.
 func (s *MatchSession) OpenNextAction() (closed *turn.Turn, opened *turn.Turn, err error) {
 	if s.activeRound.HasOpenTurn() {
 		closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
@@ -66,8 +63,6 @@ func (s *MatchSession) OpenNextAction() (closed *turn.Turn, opened *turn.Turn, e
 	return
 }
 
-// PullAction closes any open Turn, then extracts the Action with the given
-// UUID from the queue and opens a new Turn.
 func (s *MatchSession) PullAction(id uuid.UUID) (closed *turn.Turn, opened *turn.Turn, err error) {
 	if s.activeRound.HasOpenTurn() {
 		closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
