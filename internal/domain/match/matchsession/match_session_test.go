@@ -286,6 +286,9 @@ func TestMatchSession_CloseRound(t *testing.T) {
 		if s.GetActiveRound() == closedRound {
 			t.Error("expected activeRound to be a new round after CloseRound")
 		}
+		if s.GetActiveRound().GetMode() != enum.Free {
+			t.Error("expected new round to preserve the previous round mode")
+		}
 	})
 
 	t.Run("returns ErrRoundHasOpenTurn when a turn is still open", func(t *testing.T) {
