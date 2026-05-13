@@ -87,7 +87,7 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 (Phase 2 complete — no outstanding issues)
 
 **Deferred to Phase 3:**
-- Turn/Round DB persistence (INSERT on CloseTurn/CloseRound — no schema yet)
+- Turn/Round DB persistence (no schema yet — turns close automatically on NextAction/PullAction; round close is system-triggered)
 - Reaction visibility: players see reactions only when master reveals (currently master-only)
 - Scene management (`activeScene`, `ChangeScene`)
 - Initiative handling in `ChangeMode`
