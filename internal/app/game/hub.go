@@ -41,6 +41,13 @@ func (h *Hub) GetOrCreateRoom(
 	matchUUID, masterUUID uuid.UUID,
 	startMatchUC IStartMatch,
 	kickPlayerUC IKickPlayer,
+	initSessionUC IInitMatchSession,
+	openNextActionUC IOpenNextAction,
+	pullActionUC IPullAction,
+	enqueueActionUC IEnqueueAction,
+	attachReactionUC IAttachReaction,
+	closeTurnUC ICloseTurn,
+	closeRoundUC ICloseRound,
 ) *Room {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -49,7 +56,13 @@ func (h *Hub) GetOrCreateRoom(
 		return room
 	}
 
-	room := NewRoom(matchUUID, masterUUID, startMatchUC, kickPlayerUC)
+	room := NewRoom(
+		matchUUID, masterUUID,
+		startMatchUC, kickPlayerUC,
+		initSessionUC, openNextActionUC, pullActionUC,
+		enqueueActionUC, attachReactionUC,
+		closeTurnUC, closeRoundUC,
+	)
 	h.rooms[matchUUID] = room
 	go room.Run()
 	return room

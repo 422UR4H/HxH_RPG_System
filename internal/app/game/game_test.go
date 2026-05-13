@@ -1,13 +1,90 @@
 package game_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
+
+// ---------------------------------------------------------------------------
+// mocks (game_test.go only — handler_test.go has its own mockStartMatchUC etc.)
+// ---------------------------------------------------------------------------
+
+type mockInitSessionUC struct{}
+
+func (m *mockInitSessionUC) Init(_ context.Context, _ uuid.UUID) (*matchsession.MatchSession, error) {
+	return matchsession.NewMatchSession(uuid.New(), nil, nil), nil
+}
+
+type mockOpenNextActionUC struct{}
+
+func (m *mockOpenNextActionUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*appmatch.OpenNextActionResult, error) {
+	return nil, nil
+}
+
+type mockPullActionUC struct{}
+
+func (m *mockPullActionUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ uuid.UUID) (*appmatch.PullActionResult, error) {
+	return nil, nil
+}
+
+type mockEnqueueActionUC struct{}
+
+func (m *mockEnqueueActionUC) Execute(_ context.Context, _ *matchsession.MatchSession, _ uuid.UUID, _ *action.Action) error {
+	return nil
+}
+
+type mockAttachReactionUC struct{}
+
+func (m *mockAttachReactionUC) Execute(_ context.Context, _ *matchsession.MatchSession, _ uuid.UUID, _ *action.Action) (*appmatch.AttachReactionResult, error) {
+	return nil, nil
+}
+
+type mockCloseTurnUC struct{}
+
+func (m *mockCloseTurnUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*turn.Turn, error) {
+	return nil, nil
+}
+
+type mockCloseRoundUC struct{}
+
+func (m *mockCloseRoundUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*round.Round, error) {
+	return nil, nil
+}
+
+// mockStartMatchUCLocal and mockKickPlayerUCLocal are local duplicates to avoid
+// conflicts with handler_test.go's unexported types in the same test package.
+type mockStartMatchUCLocal struct{}
+
+func (m *mockStartMatchUCLocal) Start(_ context.Context, _, _ uuid.UUID) error { return nil }
+
+type mockKickPlayerUCLocal struct{}
+
+func (m *mockKickPlayerUCLocal) Kick(_ context.Context, _, _, _ uuid.UUID) error { return nil }
+
+func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
+	return game.NewRoom(
+		matchUUID, masterUUID,
+		&mockStartMatchUCLocal{},
+		&mockKickPlayerUCLocal{},
+		&mockInitSessionUC{},
+		&mockOpenNextActionUC{},
+		&mockPullActionUC{},
+		&mockEnqueueActionUC{},
+		&mockAttachReactionUC{},
+		&mockCloseTurnUC{},
+		&mockCloseRoundUC{},
+	)
+}
 
 func TestNewServerMessage(t *testing.T) {
 	payload := game.ChatPayload{Message: "hello"}
@@ -100,7 +177,18 @@ func TestHub(t *testing.T) {
 		t.Errorf("expected 0 rooms, got %d", hub.RoomCount())
 	}
 
-	room := hub.GetOrCreateRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
+	room := hub.GetOrCreateRoom(
+		matchUUID, masterUUID,
+		&mockStartMatchUCLocal{},
+		&mockKickPlayerUCLocal{},
+		&mockInitSessionUC{},
+		&mockOpenNextActionUC{},
+		&mockPullActionUC{},
+		&mockEnqueueActionUC{},
+		&mockAttachReactionUC{},
+		&mockCloseTurnUC{},
+		&mockCloseRoundUC{},
+	)
 	if room == nil {
 		t.Fatal("expected room to be created")
 	}
@@ -108,7 +196,18 @@ func TestHub(t *testing.T) {
 		t.Errorf("expected 1 room, got %d", hub.RoomCount())
 	}
 
-	room2 := hub.GetOrCreateRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
+	room2 := hub.GetOrCreateRoom(
+		matchUUID, masterUUID,
+		&mockStartMatchUCLocal{},
+		&mockKickPlayerUCLocal{},
+		&mockInitSessionUC{},
+		&mockOpenNextActionUC{},
+		&mockPullActionUC{},
+		&mockEnqueueActionUC{},
+		&mockAttachReactionUC{},
+		&mockCloseTurnUC{},
+		&mockCloseRoundUC{},
+	)
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
 	}
@@ -117,7 +216,18 @@ func TestHub(t *testing.T) {
 	}
 
 	otherMatchUUID := uuid.New()
-	otherRoom := hub.GetOrCreateRoom(otherMatchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
+	otherRoom := hub.GetOrCreateRoom(
+		otherMatchUUID, masterUUID,
+		&mockStartMatchUCLocal{},
+		&mockKickPlayerUCLocal{},
+		&mockInitSessionUC{},
+		&mockOpenNextActionUC{},
+		&mockPullActionUC{},
+		&mockEnqueueActionUC{},
+		&mockAttachReactionUC{},
+		&mockCloseTurnUC{},
+		&mockCloseRoundUC{},
+	)
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")
 	}
@@ -140,7 +250,7 @@ func TestRoom(t *testing.T) {
 	matchUUID := uuid.New()
 	masterUUID := uuid.New()
 
-	room := game.NewRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
+	room := newTestRoom(matchUUID, masterUUID)
 	go room.Run()
 	defer room.Stop()
 
@@ -164,7 +274,7 @@ func TestRoomStartMatch(t *testing.T) {
 	masterUUID := uuid.New()
 	playerUUID := uuid.New()
 
-	room := game.NewRoom(matchUUID, masterUUID, &mockStartMatchUC{}, &mockKickPlayerUC{})
+	room := newTestRoom(matchUUID, masterUUID)
 	go room.Run()
 	defer room.Stop()
 

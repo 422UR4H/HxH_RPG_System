@@ -14,6 +14,7 @@ import (
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/joho/godotenv"
 )
@@ -40,13 +41,27 @@ func main() {
 
 	matchRepository := matchPg.NewRepository(pgPool)
 	enrollmentRepository := enrollmentPg.NewRepository(pgPool)
+	sheetRepository := sheetPg.NewRepository(pgPool)
 
 	startMatchUC := domainMatch.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
+	initSessionUC := domainMatch.NewInitMatchSessionUC(matchRepository, sheetRepository)
+	openNextActionUC := domainMatch.NewOpenNextActionUC()
+	pullActionUC := domainMatch.NewPullActionUC()
+	enqueueActionUC := domainMatch.NewEnqueueActionUC()
+	attachReactionUC := domainMatch.NewAttachReactionUC()
+	closeTurnUC := domainMatch.NewCloseTurnUC()
+	closeRoundUC := domainMatch.NewCloseRoundUC()
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
-	handler := game.NewHandler(hub, matchRepository, enrollmentRepository, startMatchUC, kickPlayerUC)
+	handler := game.NewHandler(
+		hub, matchRepository, enrollmentRepository,
+		startMatchUC, kickPlayerUC,
+		initSessionUC, openNextActionUC, pullActionUC,
+		enqueueActionUC, attachReactionUC,
+		closeTurnUC, closeRoundUC,
+	)
 	server := game.NewServer(addr, hub, handler)
 
 	quit := make(chan os.Signal, 1)
