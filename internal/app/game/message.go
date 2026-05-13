@@ -37,6 +37,7 @@ const (
 	MsgTypeTurnClosed       MessageType = "turn_closed"
 	MsgTypeRoundClosed      MessageType = "round_closed"
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
+	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 )
 
 type Message struct {

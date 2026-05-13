@@ -76,7 +76,7 @@ type Room struct {
 	stop       chan struct{}
 	mu         sync.RWMutex
 
-	session *matchsession.MatchSession // nil until match starts
+	session *matchsession.MatchSession
 
 	startMatchUC     IStartMatch
 	kickPlayerUC     IKickPlayer
@@ -366,11 +366,6 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 
 	case MsgTypeEnqueueAction:
-		var payload EnqueueActionPayload
-		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid enqueue_action payload"))
-			return
-		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
@@ -379,7 +374,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
-		client.SendMessage(NewServerMessage(MsgTypeError, ErrorPayload{Code: "ok", Message: "action enqueued"}))
+		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
 
 	case MsgTypeAttachReaction:
 		var payload AttachReactionPayload
