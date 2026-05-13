@@ -51,3 +51,16 @@ func (s *MatchSession) GetCharSheet(playerUUID uuid.UUID) (*csSheet.CharacterShe
 	}
 	return sheet, nil
 }
+
+// EnqueueAction adds a player's action to the priority queue.
+// playerUUID must be a known participant and must match a.GetActorID().
+func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) error {
+	if _, ok := s.participants[playerUUID]; !ok {
+		return ErrParticipantNotFound
+	}
+	if a.GetActorID() != playerUUID {
+		return ErrActionActorMismatch
+	}
+	s.activeQueue.Insert(a)
+	return nil
+}

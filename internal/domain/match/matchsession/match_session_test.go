@@ -8,6 +8,7 @@ import (
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -85,4 +86,38 @@ func makeParticipant(matchUUID uuid.UUID, playerUUID *uuid.UUID) *match.Particip
 			PlayerUUID: playerUUID,
 		},
 	}
+}
+
+func makeAction(actorID uuid.UUID) *action.Action {
+	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+}
+
+func TestMatchSession_EnqueueAction(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+
+	t.Run("enqueues action for known participant", func(t *testing.T) {
+		a := makeAction(playerUUID)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("returns ErrParticipantNotFound for unknown player", func(t *testing.T) {
+		a := makeAction(uuid.New())
+		err := s.EnqueueAction(uuid.New(), a)
+		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
+			t.Errorf("expected ErrParticipantNotFound, got %v", err)
+		}
+	})
+
+	t.Run("returns ErrActionActorMismatch when actorID does not match playerUUID", func(t *testing.T) {
+		a := makeAction(uuid.New()) // actorID is a different UUID
+		err := s.EnqueueAction(playerUUID, a)
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Errorf("expected ErrActionActorMismatch, got %v", err)
+		}
+	})
 }
