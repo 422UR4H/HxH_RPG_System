@@ -9,8 +9,6 @@ import (
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -57,14 +55,6 @@ type IAttachReaction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID uuid.UUID, r *action.Action) (*appmatch.AttachReactionResult, error)
 }
 
-type ICloseTurn interface {
-	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID) (*turn.Turn, error)
-}
-
-type ICloseRound interface {
-	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID) (*round.Round, error)
-}
-
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -85,8 +75,6 @@ type Room struct {
 	pullActionUC     IPullAction
 	enqueueActionUC  IEnqueueAction
 	attachReactionUC IAttachReaction
-	closeTurnUC      ICloseTurn
-	closeRoundUC     ICloseRound
 }
 
 func NewRoom(
@@ -98,8 +86,6 @@ func NewRoom(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
-	closeTurnUC ICloseTurn,
-	closeRoundUC ICloseRound,
 ) *Room {
 	return &Room{
 		matchUUID:        matchUUID,
@@ -117,8 +103,6 @@ func NewRoom(
 		pullActionUC:     pullActionUC,
 		enqueueActionUC:  enqueueActionUC,
 		attachReactionUC: attachReactionUC,
-		closeTurnUC:      closeTurnUC,
-		closeRoundUC:     closeRoundUC,
 	}
 }
 
@@ -396,40 +380,6 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
 			masterClient.SendMessage(out)
 		}
-
-	case MsgTypeCloseTurn:
-		if !r.IsMaster(client.userUUID) {
-			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
-			return
-		}
-		r.mu.RLock()
-		session := r.session
-		r.mu.RUnlock()
-		closed, err := r.closeTurnUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
-		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
-			return
-		}
-		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closed.GetID()})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
-
-	case MsgTypeCloseRound:
-		if !r.IsMaster(client.userUUID) {
-			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
-			return
-		}
-		r.mu.RLock()
-		session := r.session
-		r.mu.RUnlock()
-		closedRound, err := r.closeRoundUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
-		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
-			return
-		}
-		out := NewServerMessage(MsgTypeRoundClosed, RoundClosedPayload{RoundMode: string(closedRound.GetMode())})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))

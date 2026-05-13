@@ -9,8 +9,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -49,18 +47,6 @@ func (m *mockAttachReactionUC) Execute(_ context.Context, _ *matchsession.MatchS
 	return nil, nil
 }
 
-type mockCloseTurnUC struct{}
-
-func (m *mockCloseTurnUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*turn.Turn, error) {
-	return nil, nil
-}
-
-type mockCloseRoundUC struct{}
-
-func (m *mockCloseRoundUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*round.Round, error) {
-	return nil, nil
-}
-
 // mockStartMatchUCLocal and mockKickPlayerUCLocal are local duplicates to avoid
 // conflicts with handler_test.go's unexported types in the same test package.
 type mockStartMatchUCLocal struct{}
@@ -81,8 +67,6 @@ func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
-		&mockCloseTurnUC{},
-		&mockCloseRoundUC{},
 	)
 }
 
@@ -186,8 +170,6 @@ func TestHub(t *testing.T) {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
-		&mockCloseTurnUC{},
-		&mockCloseRoundUC{},
 	)
 	if room == nil {
 		t.Fatal("expected room to be created")
@@ -205,8 +187,6 @@ func TestHub(t *testing.T) {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
-		&mockCloseTurnUC{},
-		&mockCloseRoundUC{},
 	)
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
@@ -225,8 +205,6 @@ func TestHub(t *testing.T) {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
-		&mockCloseTurnUC{},
-		&mockCloseRoundUC{},
 	)
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")

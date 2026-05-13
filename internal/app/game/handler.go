@@ -39,8 +39,6 @@ type Handler struct {
 	pullActionUC     IPullAction
 	enqueueActionUC  IEnqueueAction
 	attachReactionUC IAttachReaction
-	closeTurnUC      ICloseTurn
-	closeRoundUC     ICloseRound
 }
 
 func NewHandler(
@@ -54,8 +52,6 @@ func NewHandler(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
-	closeTurnUC ICloseTurn,
-	closeRoundUC ICloseRound,
 ) *Handler {
 	return &Handler{
 		hub:              hub,
@@ -68,8 +64,6 @@ func NewHandler(
 		pullActionUC:     pullActionUC,
 		enqueueActionUC:  enqueueActionUC,
 		attachReactionUC: attachReactionUC,
-		closeTurnUC:      closeTurnUC,
-		closeRoundUC:     closeRoundUC,
 	}
 }
 
@@ -122,7 +116,6 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		h.startMatchUC, h.kickPlayerUC,
 		h.initSessionUC, h.openNextActionUC, h.pullActionUC,
 		h.enqueueActionUC, h.attachReactionUC,
-		h.closeTurnUC, h.closeRoundUC,
 	)
 	client := NewClient(userUUID, conn, nickname)
 

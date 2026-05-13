@@ -29,12 +29,9 @@ const (
 	MsgTypeOpenNextAction MessageType = "open_next_action"
 	MsgTypePullAction     MessageType = "pull_action"
 	MsgTypeAttachReaction MessageType = "attach_reaction"
-	MsgTypeCloseTurn      MessageType = "close_turn"
-	MsgTypeCloseRound     MessageType = "close_round"
 
 	// Server → Client (game events)
 	MsgTypeTurnOpened       MessageType = "turn_opened"
-	MsgTypeTurnClosed       MessageType = "turn_closed"
 	MsgTypeRoundClosed      MessageType = "round_closed"
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
@@ -102,10 +99,6 @@ type TurnOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turn_id"`
 	ActorID    uuid.UUID `json:"actor_id"`
 	ActionType string    `json:"action_type"`
-}
-
-type TurnClosedPayload struct {
-	TurnID uuid.UUID `json:"turn_id"`
 }
 
 type RoundClosedPayload struct {

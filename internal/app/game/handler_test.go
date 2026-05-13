@@ -12,8 +12,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
@@ -84,18 +82,6 @@ func (m *mockAttachReactionUCHandler) Execute(_ context.Context, _ *matchsession
 	return nil, nil
 }
 
-type mockCloseTurnUCHandler struct{}
-
-func (m *mockCloseTurnUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*turn.Turn, error) {
-	return nil, nil
-}
-
-type mockCloseRoundUCHandler struct{}
-
-func (m *mockCloseRoundUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*round.Round, error) {
-	return nil, nil
-}
-
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {
 	hub := game.NewHub()
 	go hub.Run()
@@ -112,8 +98,6 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockPullActionUCHandler{},
 		&mockEnqueueActionUCHandler{},
 		&mockAttachReactionUCHandler{},
-		&mockCloseTurnUCHandler{},
-		&mockCloseRoundUCHandler{},
 	)
 
 	mux := http.NewServeMux()

@@ -50,8 +50,6 @@ func main() {
 	pullActionUC := domainMatch.NewPullActionUC()
 	enqueueActionUC := domainMatch.NewEnqueueActionUC()
 	attachReactionUC := domainMatch.NewAttachReactionUC()
-	closeTurnUC := domainMatch.NewCloseTurnUC()
-	closeRoundUC := domainMatch.NewCloseRoundUC()
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -60,7 +58,6 @@ func main() {
 		startMatchUC, kickPlayerUC,
 		initSessionUC, openNextActionUC, pullActionUC,
 		enqueueActionUC, attachReactionUC,
-		closeTurnUC, closeRoundUC,
 	)
 	server := game.NewServer(addr, hub, handler)
 
