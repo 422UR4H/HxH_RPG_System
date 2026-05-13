@@ -89,6 +89,4 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 **Deferred to Phase 3:**
 - Turn/Round DB persistence (no schema yet — turns close automatically on NextAction/PullAction; round close is system-triggered)
 - Reaction visibility: players see reactions only when master reveals (currently master-only)
-- Scene management (`activeScene`, `ChangeScene`)
-- Initiative handling in `ChangeMode`
-- `EnqueueMasterAction` (NPC queue)
+- `EnqueueMasterAction` — master's own action within a turn (WIP field in `Turn`/`Round`; domain design still open)
