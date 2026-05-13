@@ -1,6 +1,7 @@
 package matchsession_test
 
 import (
+	"errors"
 	"testing"
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
@@ -52,10 +53,25 @@ func TestMatchSession_GetCharSheet(t *testing.T) {
 
 	t.Run("returns ErrCharSheetNotFound for unknown player", func(t *testing.T) {
 		_, err := s.GetCharSheet(uuid.New())
-		if err != matchsession.ErrCharSheetNotFound {
+		if !errors.Is(err, matchsession.ErrCharSheetNotFound) {
 			t.Errorf("expected ErrCharSheetNotFound, got %v", err)
 		}
 	})
+}
+
+func TestNewMatchSession_NPCParticipantSkipped(t *testing.T) {
+	matchUUID := uuid.New()
+	// NPC participant: Sheet.PlayerUUID is nil
+	npcParticipant := makeParticipant(matchUUID, nil)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{npcParticipant})
+	if s == nil {
+		t.Fatal("expected non-nil MatchSession even with NPC participant")
+	}
+	// Attempting to get a char sheet for any UUID should fail (nothing was loaded)
+	_, err := s.GetCharSheet(uuid.New())
+	if !errors.Is(err, matchsession.ErrCharSheetNotFound) {
+		t.Errorf("expected ErrCharSheetNotFound, got %v", err)
+	}
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
