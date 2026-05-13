@@ -9,19 +9,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// PullActionResult holds the outcome of pulling a specific action from the queue.
 type PullActionResult struct {
 	ClosedTurn *turn.Turn
 	OpenedTurn *turn.Turn
 	Resolution *service.TurnResolution
 }
 
-// IPullAction is the interface for the PullAction use case.
 type IPullAction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, actionID uuid.UUID) (*PullActionResult, error)
 }
 
-// PullActionUC is the use case that pulls a specific action from the queue by ID.
 type PullActionUC struct{}
 
 func NewPullActionUC() *PullActionUC { return &PullActionUC{} }

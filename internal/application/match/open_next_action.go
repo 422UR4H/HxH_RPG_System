@@ -9,19 +9,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// OpenNextActionResult holds the outcome of opening the next action in the queue.
 type OpenNextActionResult struct {
 	ClosedTurn *turn.Turn
 	OpenedTurn *turn.Turn
 	Resolution *service.TurnResolution
 }
 
-// IOpenNextAction is the interface for the OpenNextAction use case.
 type IOpenNextAction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID) (*OpenNextActionResult, error)
 }
 
-// OpenNextActionUC is the use case that opens the next action in the queue.
 type OpenNextActionUC struct{}
 
 func NewOpenNextActionUC() *OpenNextActionUC { return &OpenNextActionUC{} }
