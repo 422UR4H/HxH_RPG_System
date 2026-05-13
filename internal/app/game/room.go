@@ -7,6 +7,9 @@ import (
 	"log"
 	"sync"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
 
@@ -32,6 +35,26 @@ type IKickPlayer interface {
 	Kick(ctx context.Context, matchUUID uuid.UUID, playerUUID uuid.UUID, masterUUID uuid.UUID) error
 }
 
+type IInitMatchSession interface {
+	Init(ctx context.Context, matchUUID uuid.UUID) (*matchsession.MatchSession, error)
+}
+
+type IOpenNextAction interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID) (*appmatch.OpenNextActionResult, error)
+}
+
+type IPullAction interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, actionID uuid.UUID) (*appmatch.PullActionResult, error)
+}
+
+type IEnqueueAction interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, playerUUID uuid.UUID, a *action.Action) error
+}
+
+type IAttachReaction interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID uuid.UUID, r *action.Action) (*appmatch.AttachReactionResult, error)
+}
+
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -43,26 +66,43 @@ type Room struct {
 	stop       chan struct{}
 	mu         sync.RWMutex
 
-	startMatchUC IStartMatch
-	kickPlayerUC IKickPlayer
+	session *matchsession.MatchSession
+
+	startMatchUC     IStartMatch
+	kickPlayerUC     IKickPlayer
+	initSessionUC    IInitMatchSession
+	openNextActionUC IOpenNextAction
+	pullActionUC     IPullAction
+	enqueueActionUC  IEnqueueAction
+	attachReactionUC IAttachReaction
 }
 
 func NewRoom(
 	matchUUID, masterUUID uuid.UUID,
 	startMatchUC IStartMatch,
 	kickPlayerUC IKickPlayer,
+	initSessionUC IInitMatchSession,
+	openNextActionUC IOpenNextAction,
+	pullActionUC IPullAction,
+	enqueueActionUC IEnqueueAction,
+	attachReactionUC IAttachReaction,
 ) *Room {
 	return &Room{
-		matchUUID:    matchUUID,
-		masterUUID:   masterUUID,
-		state:        RoomStateLobby,
-		clients:      make(map[uuid.UUID]*Client),
-		broadcast:    make(chan []byte, 256),
-		register:     make(chan *Client),
-		unregister:   make(chan *Client),
-		stop:         make(chan struct{}),
-		startMatchUC: startMatchUC,
-		kickPlayerUC: kickPlayerUC,
+		matchUUID:        matchUUID,
+		masterUUID:       masterUUID,
+		state:            RoomStateLobby,
+		clients:          make(map[uuid.UUID]*Client),
+		broadcast:        make(chan []byte, 256),
+		register:         make(chan *Client),
+		unregister:       make(chan *Client),
+		stop:             make(chan struct{}),
+		startMatchUC:     startMatchUC,
+		kickPlayerUC:     kickPlayerUC,
+		initSessionUC:    initSessionUC,
+		openNextActionUC: openNextActionUC,
+		pullActionUC:     pullActionUC,
+		enqueueActionUC:  enqueueActionUC,
+		attachReactionUC: attachReactionUC,
 	}
 }
 
@@ -169,11 +209,18 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	}
 	r.mu.RUnlock()
 
-	if err := r.startMatchUC.Start(context.Background(), r.matchUUID, userUUID); err != nil {
+	ctx := context.Background()
+	if err := r.startMatchUC.Start(ctx, r.matchUUID, userUUID); err != nil {
+		return err
+	}
+
+	session, err := r.initSessionUC.Init(ctx, r.matchUUID)
+	if err != nil {
 		return err
 	}
 
 	r.mu.Lock()
+	r.session = session
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
 
@@ -255,8 +302,112 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		data, _ := json.Marshal(outMsg)
 		r.broadcast <- data
 
+	case MsgTypeOpenNextAction:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		result, err := r.openNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		act := result.OpenedTurn.GetAction()
+		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
+			TurnID:  result.OpenedTurn.GetID(),
+			ActorID: act.GetActorID(),
+		})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+
+	case MsgTypePullAction:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload PullActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid pull_action payload"))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		result, err := r.pullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		act := result.OpenedTurn.GetAction()
+		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
+			TurnID:  result.OpenedTurn.GetID(),
+			ActorID: act.GetActorID(),
+		})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+
+	case MsgTypeEnqueueAction:
+		var payload ActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
+			return
+		}
+		if payload.Dodge != nil && payload.ReactToID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_action", "dodge must be a reaction — set react_to_id"))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		// TODO: consider collapsing enqueue_action and attach_reaction into a single message type
+		if payload.ReactToID != uuid.Nil {
+			r.handleReaction(client, session, payload)
+			return
+		}
+		a := buildAction(client.userUUID, payload)
+		if err := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a); err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
+
+	case MsgTypeAttachReaction:
+		var payload ActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
+			return
+		}
+		if payload.ReactToID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_action", "reaction requires react_to_id"))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		r.handleReaction(client, session, payload)
+
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
+	}
+}
+
+func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
+	r.mu.RLock()
+	masterClient, hasMaster := r.clients[r.masterUUID]
+	r.mu.RUnlock()
+
+	reaction := buildAction(client.userUUID, payload)
+	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
+	if err != nil {
+		client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		return
+	}
+	if hasMaster {
+		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
+		masterClient.SendMessage(out)
 	}
 }
 

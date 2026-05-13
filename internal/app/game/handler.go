@@ -29,11 +29,16 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	hub            *Hub
-	matchRepo      MatchRepository
-	enrollmentRepo EnrollmentChecker
-	startMatchUC   IStartMatch
-	kickPlayerUC   IKickPlayer
+	hub              *Hub
+	matchRepo        MatchRepository
+	enrollmentRepo   EnrollmentChecker
+	startMatchUC     IStartMatch
+	kickPlayerUC     IKickPlayer
+	initSessionUC    IInitMatchSession
+	openNextActionUC IOpenNextAction
+	pullActionUC     IPullAction
+	enqueueActionUC  IEnqueueAction
+	attachReactionUC IAttachReaction
 }
 
 func NewHandler(
@@ -42,13 +47,23 @@ func NewHandler(
 	enrollmentRepo EnrollmentChecker,
 	startMatchUC IStartMatch,
 	kickPlayerUC IKickPlayer,
+	initSessionUC IInitMatchSession,
+	openNextActionUC IOpenNextAction,
+	pullActionUC IPullAction,
+	enqueueActionUC IEnqueueAction,
+	attachReactionUC IAttachReaction,
 ) *Handler {
 	return &Handler{
-		hub:            hub,
-		matchRepo:      matchRepo,
-		enrollmentRepo: enrollmentRepo,
-		startMatchUC:   startMatchUC,
-		kickPlayerUC:   kickPlayerUC,
+		hub:              hub,
+		matchRepo:        matchRepo,
+		enrollmentRepo:   enrollmentRepo,
+		startMatchUC:     startMatchUC,
+		kickPlayerUC:     kickPlayerUC,
+		initSessionUC:    initSessionUC,
+		openNextActionUC: openNextActionUC,
+		pullActionUC:     pullActionUC,
+		enqueueActionUC:  enqueueActionUC,
+		attachReactionUC: attachReactionUC,
 	}
 }
 
@@ -96,7 +111,12 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		nickname = userUUID.String()[:8]
 	}
 
-	room := h.hub.GetOrCreateRoom(matchUUID, masterUUID, h.startMatchUC, h.kickPlayerUC)
+	room := h.hub.GetOrCreateRoom(
+		matchUUID, masterUUID,
+		h.startMatchUC, h.kickPlayerUC,
+		h.initSessionUC, h.openNextActionUC, h.pullActionUC,
+		h.enqueueActionUC, h.attachReactionUC,
+	)
 	client := NewClient(userUUID, conn, nickname)
 
 	room.Register(client)

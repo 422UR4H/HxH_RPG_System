@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -49,6 +52,36 @@ func (m *mockKickPlayerUC) Kick(_ context.Context, _, _, _ uuid.UUID) error {
 	return m.err
 }
 
+type mockInitSessionUCHandler struct{}
+
+func (m *mockInitSessionUCHandler) Init(_ context.Context, _ uuid.UUID) (*matchsession.MatchSession, error) {
+	return matchsession.NewMatchSession(uuid.New(), nil, nil), nil
+}
+
+type mockOpenNextActionUCHandler struct{}
+
+func (m *mockOpenNextActionUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*appmatch.OpenNextActionResult, error) {
+	return nil, nil
+}
+
+type mockPullActionUCHandler struct{}
+
+func (m *mockPullActionUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ uuid.UUID) (*appmatch.PullActionResult, error) {
+	return nil, nil
+}
+
+type mockEnqueueActionUCHandler struct{}
+
+func (m *mockEnqueueActionUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _ uuid.UUID, _ *action.Action) error {
+	return nil
+}
+
+type mockAttachReactionUCHandler struct{}
+
+func (m *mockAttachReactionUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _ uuid.UUID, _ *action.Action) (*appmatch.AttachReactionResult, error) {
+	return nil, nil
+}
+
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {
 	hub := game.NewHub()
 	go hub.Run()
@@ -57,7 +90,15 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 	enrollmentRepo := &mockEnrollmentChecker{enrolled: enrolled}
 	startUC := &mockStartMatchUC{}
 	kickUC := &mockKickPlayerUC{}
-	handler := game.NewHandler(hub, matchRepo, enrollmentRepo, startUC, kickUC)
+	handler := game.NewHandler(
+		hub, matchRepo, enrollmentRepo,
+		startUC, kickUC,
+		&mockInitSessionUCHandler{},
+		&mockOpenNextActionUCHandler{},
+		&mockPullActionUCHandler{},
+		&mockEnqueueActionUCHandler{},
+		&mockAttachReactionUCHandler{},
+	)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", handler.HandleWebSocket)
