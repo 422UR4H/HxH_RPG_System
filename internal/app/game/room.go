@@ -350,10 +350,24 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 
 	case MsgTypeEnqueueAction:
+		var payload ActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
+			return
+		}
+		if payload.Dodge != nil && payload.ReactToID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_action", "dodge must be a reaction — set react_to_id"))
+			return
+		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
-		a := action.NewAction(client.userUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+		// TODO: consider collapsing enqueue_action and attach_reaction into a single message type
+		if payload.ReactToID != uuid.Nil {
+			r.handleReaction(client, session, payload)
+			return
+		}
+		a := buildAction(client.userUUID, payload)
 		if err := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a); err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -361,28 +375,39 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
 
 	case MsgTypeAttachReaction:
-		var payload AttachReactionPayload
+		var payload ActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid attach_reaction payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
+			return
+		}
+		if payload.ReactToID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_action", "reaction requires react_to_id"))
 			return
 		}
 		r.mu.RLock()
 		session := r.session
-		masterClient, hasMaster := r.clients[r.masterUUID]
 		r.mu.RUnlock()
-		reaction := action.NewAction(client.userUUID, nil, payload.ReactToID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
-		result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
-		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
-			return
-		}
-		if hasMaster {
-			out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
-			masterClient.SendMessage(out)
-		}
+		r.handleReaction(client, session, payload)
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
+	}
+}
+
+func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
+	r.mu.RLock()
+	masterClient, hasMaster := r.clients[r.masterUUID]
+	r.mu.RUnlock()
+
+	reaction := buildAction(client.userUUID, payload)
+	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
+	if err != nil {
+		client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		return
+	}
+	if hasMaster {
+		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
+		masterClient.SendMessage(out)
 	}
 }
 

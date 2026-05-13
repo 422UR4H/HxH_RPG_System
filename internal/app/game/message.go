@@ -81,18 +81,61 @@ type PlayerKickedPayload struct {
 	Reason   string    `json:"reason"`
 }
 
-type EnqueueActionPayload struct {
-	ActionType string    `json:"action_type"`
-	TargetID   uuid.UUID `json:"target_id,omitempty"`
-}
-
 type PullActionPayload struct {
 	ActionID uuid.UUID `json:"action_id"`
 }
 
-type AttachReactionPayload struct {
-	ReactToID  uuid.UUID `json:"react_to_id"`
-	ActionType string    `json:"action_type"`
+// ActionPayload is the unified shape for both enqueue_action and attach_reaction messages.
+// The presence of ReactToID determines routing: non-zero means it is a reaction.
+// The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
+type ActionPayload struct {
+	ReactToID uuid.UUID           `json:"react_to_id,omitempty"`
+	TargetID  []uuid.UUID         `json:"target_id,omitempty"`
+	Skills    []ActionSkillPayload `json:"skills,omitempty"`
+	Speed     *ActionSpeedPayload  `json:"speed,omitempty"`
+	Feint     *RollCheckPayload    `json:"feint,omitempty"`
+	Move      *MovePayload         `json:"move,omitempty"`
+	Attack    *AttackPayload       `json:"attack,omitempty"`
+	Defense   *DefensePayload      `json:"defense,omitempty"`
+	Dodge     *DodgePayload        `json:"dodge,omitempty"`
+}
+
+type RollCheckPayload struct {
+	SkillName string `json:"skill_name"`
+}
+
+type DodgePayload struct {
+	Category  string            `json:"category"`
+	RollCheck *RollCheckPayload `json:"roll_check,omitempty"`
+}
+
+type AttackPayload struct {
+	Weapon *string           `json:"weapon,omitempty"`
+	Hit    RollCheckPayload  `json:"hit"`
+	Damage RollCheckPayload  `json:"damage"`
+	Charge *RollCheckPayload `json:"charge,omitempty"`
+}
+
+type DefensePayload struct {
+	Weapon    *string          `json:"weapon,omitempty"`
+	RollCheck RollCheckPayload `json:"roll_check"`
+}
+
+type MovePayload struct {
+	Category string            `json:"category"`
+	Position [3]int            `json:"position"`
+	Speed    *RollCheckPayload `json:"speed,omitempty"`
+	Charge   *RollCheckPayload `json:"charge,omitempty"`
+}
+
+type ActionSpeedPayload struct {
+	Bar       int               `json:"bar"`
+	RollCheck *RollCheckPayload `json:"roll_check,omitempty"`
+}
+
+type ActionSkillPayload struct {
+	SkillName  string `json:"skill_name"`
+	Difficulty *int   `json:"difficulty,omitempty"`
 }
 
 type TurnOpenedPayload struct {
