@@ -65,6 +65,22 @@ func TestFeatureName(t *testing.T) {
 | `InsertTestCharacterSheet(t, pool, playerUUID*, masterUUID*, nick)` | UUID string | Sheet + profile |
 | `InsertTestEnrollment(t, pool, matchUUID, sheetUUID, status)` | UUID string | Enrollment |
 
+## Mandatory Verification (per task)
+
+After every task that touches `internal/`, run vet before committing — no DB required, catches build errors in integration-tagged files:
+
+```bash
+go vet -tags=integration ./internal/gateway/pg/...
+```
+
+After modifying gateway code directly, also run the full suite:
+
+```bash
+go test -tags=integration ./internal/gateway/pg/...
+```
+
+Do **not** poll CI proactively — only check if a failure is reported.
+
 ## Running
 
 ```bash
