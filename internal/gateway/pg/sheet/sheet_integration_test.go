@@ -17,6 +17,7 @@ import (
 	pgcampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	pgsubmission "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
 	"github.com/google/uuid"
 )
 
@@ -468,6 +469,7 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 
 	sheetRepo := sheet.NewRepository(pool)
 	campaignRepo := pgcampaign.NewRepository(pool)
+	submissionRepo := pgsubmission.NewRepository(pool)
 	factory := domainsheet.NewCharacterSheetFactory()
 
 	t.Run("normalizes stale curr in returned entity", func(t *testing.T) {
@@ -492,7 +494,7 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 		}
 
 		uc := charactersheet.NewGetCharacterSheetUC(
-			&sync.Map{}, factory, sheetRepo, campaignRepo,
+			&sync.Map{}, factory, sheetRepo, campaignRepo, submissionRepo,
 		)
 
 		result, err := uc.GetCharacterSheet(ctx, s.UUID, playerUUID)
