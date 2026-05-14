@@ -212,3 +212,77 @@ func TestFindActiveSession(t *testing.T) {
 		}
 	})
 }
+
+func TestCloseSceneAndRound(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path — sets finished_at on both scene and round", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm1", "gm1@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
+
+		sceneUUID := pgtest.InsertTestScene(t, pool, matchUUID, "Battle")
+		roundUUID := pgtest.InsertTestRound(t, pool, sceneUUID, "Free")
+
+		sceneUUIDParsed, _ := uuid.Parse(sceneUUID)
+		roundUUIDParsed, _ := uuid.Parse(roundUUID)
+		at := time.Now().UTC().Truncate(time.Microsecond)
+
+		err := repo.CloseSceneAndRound(ctx, sceneUUIDParsed, roundUUIDParsed, at)
+		if err != nil {
+			t.Fatalf("CloseSceneAndRound error: %v", err)
+		}
+
+		var sceneFinishedAt, roundFinishedAt time.Time
+		pool.QueryRow(ctx, `SELECT finished_at FROM scenes WHERE uuid = $1`, sceneUUID).Scan(&sceneFinishedAt) //nolint:errcheck
+		pool.QueryRow(ctx, `SELECT finished_at FROM rounds WHERE uuid = $1`, roundUUID).Scan(&roundFinishedAt) //nolint:errcheck
+
+		if !sceneFinishedAt.Truncate(time.Microsecond).Equal(at) {
+			t.Errorf("scene finished_at: got %v, want %v", sceneFinishedAt, at)
+		}
+		if !roundFinishedAt.Truncate(time.Microsecond).Equal(at) {
+			t.Errorf("round finished_at: got %v, want %v", roundFinishedAt, at)
+		}
+	})
+}
+
+func TestCloseRound(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path — sets finished_at on round only", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm1", "gm1@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
+
+		sceneUUID := pgtest.InsertTestScene(t, pool, matchUUID, "Battle")
+		roundUUID := pgtest.InsertTestRound(t, pool, sceneUUID, "Race")
+
+		roundUUIDParsed, _ := uuid.Parse(roundUUID)
+		at := time.Now().UTC().Truncate(time.Microsecond)
+
+		err := repo.CloseRound(ctx, roundUUIDParsed, at)
+		if err != nil {
+			t.Fatalf("CloseRound error: %v", err)
+		}
+
+		var roundFinishedAt time.Time
+		pool.QueryRow(ctx, `SELECT finished_at FROM rounds WHERE uuid = $1`, roundUUID).Scan(&roundFinishedAt) //nolint:errcheck
+
+		if !roundFinishedAt.Truncate(time.Microsecond).Equal(at) {
+			t.Errorf("round finished_at: got %v, want %v", roundFinishedAt, at)
+		}
+
+		// Scene must NOT be closed
+		var sceneFinishedAt *time.Time
+		pool.QueryRow(ctx, `SELECT finished_at FROM scenes WHERE uuid = $1`, sceneUUID).Scan(&sceneFinishedAt) //nolint:errcheck
+		if sceneFinishedAt != nil {
+			t.Error("expected scene finished_at to remain NULL")
+		}
+	})
+}
