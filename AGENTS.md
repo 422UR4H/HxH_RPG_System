@@ -84,9 +84,10 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 
 ## Known Issues
 
-(Phase 2 complete — no outstanding issues)
+(Phase 3 complete — no outstanding issues)
 
-**Deferred to Phase 3:**
-- Turn/Round DB persistence (no schema yet — turns close automatically on NextAction/PullAction; round close is system-triggered)
+**Deferred to Phase 4:**
 - Reaction visibility: players see reactions only when master reveals (currently master-only)
-- `EnqueueMasterAction` — master's own action within a turn (WIP field in `Turn`/`Round`; domain design still open)
+- Initiative handling in `ChangeMode`
+- `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
+- Full Move/Attack mapping in `buildMasterAction` (pending frontend contract finalization)
