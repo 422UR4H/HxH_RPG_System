@@ -510,13 +510,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
-		out := NewServerMessage(MsgTypeMasterActionEnqueued, MasterActionEnqueuedPayload{
-			TargetIDs:   payload.TargetIDs,
-			Skills:      payload.Skills,
-			Move:        payload.Move,
-			Attack:      payload.Attack,
-			ActionSpeed: payload.ActionSpeed,
-		})
+		out := NewServerMessage(MsgTypeMasterActionEnqueued, MasterActionEnqueuedPayload(payload))
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 
