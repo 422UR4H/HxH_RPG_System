@@ -62,3 +62,37 @@ func TestRound_Close(t *testing.T) {
 func makeAction() action.Action {
 	return action.Action{ReactToID: uuid.Nil}
 }
+
+func TestRound_GetID(t *testing.T) {
+	r := round.NewRound(enum.Free)
+	if r.GetID() == (uuid.UUID{}) {
+		t.Error("expected non-zero ID from NewRound")
+	}
+}
+
+func TestRound_GetCreatedAt(t *testing.T) {
+	before := time.Now()
+	r := round.NewRound(enum.Free)
+	after := time.Now()
+	if r.GetCreatedAt().Before(before) || r.GetCreatedAt().After(after) {
+		t.Errorf("createdAt %v not in [%v, %v]", r.GetCreatedAt(), before, after)
+	}
+}
+
+func TestReconstructRound(t *testing.T) {
+	id := uuid.New()
+	now := time.Now()
+	r := round.ReconstructRound(id, enum.Race, now)
+	if r.GetID() != id {
+		t.Errorf("expected ID %v, got %v", id, r.GetID())
+	}
+	if r.GetMode() != enum.Race {
+		t.Errorf("expected mode Race, got %v", r.GetMode())
+	}
+	if !r.GetCreatedAt().Equal(now) {
+		t.Errorf("expected createdAt %v, got %v", now, r.GetCreatedAt())
+	}
+	if r.GetFinishedAt() != nil {
+		t.Error("expected nil finishedAt on reconstructed round")
+	}
+}

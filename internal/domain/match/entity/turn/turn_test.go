@@ -16,3 +16,14 @@ func TestTurn_GetID(t *testing.T) {
 		t.Error("expected non-nil UUID")
 	}
 }
+
+func TestTurn_AddMasterAction(t *testing.T) {
+	a := action.Action{}
+	tRn := turn.NewTurn(a)
+	ma := action.NewMasterAction()
+	tRn.AddMasterAction(*ma)
+	got := tRn.GetMasterActions()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 master action, got %d", len(got))
+	}
+}

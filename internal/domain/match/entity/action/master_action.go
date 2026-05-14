@@ -8,7 +8,7 @@ import (
 
 type MasterAction struct {
 	TargetID    []uuid.UUID
-	skills      []Skill //nolint:unused // WIP: match system under development
+	Skills      []Skill
 	Move        *Move
 	Attack      *Attack
 	ActionSpeed *RollCheck
@@ -25,10 +25,12 @@ func (ma *MasterAction) GetHappenedAt() time.Time {
 	return ma.happenedAt
 }
 
+func (ma *MasterAction) SetHappenedAt(t time.Time) {
+	ma.happenedAt = t
+}
+
 func (ma *MasterAction) GetSkills() []Skill {
-	// 1. create a new slice with the exact same length
-	skillsCopy := make([]Skill, len(ma.skills))
-	// 2. Copy the data from the original slice to the new one
-	copy(skillsCopy, ma.skills)
+	skillsCopy := make([]Skill, len(ma.Skills))
+	copy(skillsCopy, ma.Skills)
 	return skillsCopy
 }
