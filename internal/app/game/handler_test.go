@@ -11,7 +11,11 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
@@ -82,6 +86,33 @@ func (m *mockAttachReactionUCHandler) Execute(_ context.Context, _ *matchsession
 	return nil, nil
 }
 
+type mockChangeSceneUCHandler struct{}
+
+func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string) (*scene.Scene, *roundentity.Round, error) {
+	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil
+}
+
+type mockRoundRepoHandler struct{}
+
+func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+	return nil
+}
+func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
+	return nil, nil
+}
+func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+func (m *mockRoundRepoHandler) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+
+type mockEnqueueMasterActionUCHandler struct{}
+
+func (m *mockEnqueueMasterActionUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction) error {
+	return nil
+}
+
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {
 	hub := game.NewHub()
 	go hub.Run()
@@ -98,6 +129,9 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockPullActionUCHandler{},
 		&mockEnqueueActionUCHandler{},
 		&mockAttachReactionUCHandler{},
+		&mockChangeSceneUCHandler{},
+		&mockRoundRepoHandler{},
+		&mockEnqueueMasterActionUCHandler{},
 	)
 
 	mux := http.NewServeMux()

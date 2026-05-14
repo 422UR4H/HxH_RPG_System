@@ -8,7 +8,11 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -57,6 +61,33 @@ type mockKickPlayerUCLocal struct{}
 
 func (m *mockKickPlayerUCLocal) Kick(_ context.Context, _, _, _ uuid.UUID) error { return nil }
 
+type mockChangeSceneUC struct{}
+
+func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSession, _, _ uuid.UUID, category enum.SceneCategory, briefDesc string) (*scene.Scene, *roundentity.Round, error) {
+	return scene.NewScene(category, briefDesc), roundentity.NewRound(enum.Free), nil
+}
+
+type mockRoundRepoGame struct{}
+
+func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+	return nil
+}
+func (m *mockRoundRepoGame) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
+	return nil, nil
+}
+func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+func (m *mockRoundRepoGame) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+
+type mockEnqueueMasterActionUC struct{}
+
+func (m *mockEnqueueMasterActionUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction) error {
+	return nil
+}
+
 func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 	return game.NewRoom(
 		matchUUID, masterUUID,
@@ -67,6 +98,9 @@ func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
+		&mockChangeSceneUC{},
+		&mockRoundRepoGame{},
+		&mockEnqueueMasterActionUC{},
 	)
 }
 
@@ -170,6 +204,9 @@ func TestHub(t *testing.T) {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
+		&mockChangeSceneUC{},
+		&mockRoundRepoGame{},
+		&mockEnqueueMasterActionUC{},
 	)
 	if room == nil {
 		t.Fatal("expected room to be created")
@@ -187,6 +224,9 @@ func TestHub(t *testing.T) {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
+		&mockChangeSceneUC{},
+		&mockRoundRepoGame{},
+		&mockEnqueueMasterActionUC{},
 	)
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
@@ -205,6 +245,9 @@ func TestHub(t *testing.T) {
 		&mockPullActionUC{},
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
+		&mockChangeSceneUC{},
+		&mockRoundRepoGame{},
+		&mockEnqueueMasterActionUC{},
 	)
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")
@@ -244,6 +287,22 @@ func TestRoom(t *testing.T) {
 	playerUUID := uuid.New()
 	if room.IsMaster(playerUUID) {
 		t.Error("expected playerUUID to NOT be master")
+	}
+}
+
+func TestChangeSceneMessage(t *testing.T) {
+	payload := game.ChangeScenePayload{Category: "Battle", BriefInitialDescription: "Arena fight"}
+	msg := game.NewServerMessage(game.MsgTypeChangeScene, payload)
+	if msg.Type != game.MsgTypeChangeScene {
+		t.Errorf("expected type change_scene, got %s", msg.Type)
+	}
+}
+
+func TestEnqueueMasterActionMessage(t *testing.T) {
+	payload := game.MasterActionPayload{TargetIDs: []uuid.UUID{uuid.New()}}
+	msg := game.NewServerMessage(game.MsgTypeEnqueueMasterAction, payload)
+	if msg.Type != game.MsgTypeEnqueueMasterAction {
+		t.Errorf("expected type enqueue_master_action, got %s", msg.Type)
 	}
 }
 

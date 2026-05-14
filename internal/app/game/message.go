@@ -35,6 +35,18 @@ const (
 	MsgTypeRoundClosed      MessageType = "round_closed"
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
+
+	// Client → Server (scene management)
+	MsgTypeChangeScene MessageType = "change_scene"
+
+	// Server → Client (scene events)
+	MsgTypeSceneChanged MessageType = "scene_changed"
+
+	// Client → Server (master NPC actions)
+	MsgTypeEnqueueMasterAction MessageType = "enqueue_master_action"
+
+	// Server → Client
+	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
 )
 
 type Message struct {
@@ -178,4 +190,31 @@ func NewErrorMessage(code, message string) Message {
 		Code:    code,
 		Message: message,
 	})
+}
+
+type ChangeScenePayload struct {
+	Category                string `json:"category"`
+	BriefInitialDescription string `json:"brief_initial_description"`
+}
+
+type SceneChangedPayload struct {
+	SceneID                 uuid.UUID `json:"scene_id"`
+	Category                string    `json:"category"`
+	BriefInitialDescription string    `json:"brief_initial_description"`
+}
+
+type MasterActionPayload struct {
+	TargetIDs   []uuid.UUID          `json:"target_ids"`
+	Skills      []ActionSkillPayload  `json:"skills,omitempty"`
+	Move        *MovePayload          `json:"move,omitempty"`
+	Attack      *AttackPayload        `json:"attack,omitempty"`
+	ActionSpeed *RollCheckPayload     `json:"action_speed,omitempty"`
+}
+
+type MasterActionEnqueuedPayload struct {
+	TargetIDs   []uuid.UUID          `json:"target_ids"`
+	Skills      []ActionSkillPayload  `json:"skills,omitempty"`
+	Move        *MovePayload          `json:"move,omitempty"`
+	Attack      *AttackPayload        `json:"attack,omitempty"`
+	ActionSpeed *RollCheckPayload     `json:"action_speed,omitempty"`
 }
