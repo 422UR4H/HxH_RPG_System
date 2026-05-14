@@ -9,6 +9,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -330,6 +332,156 @@ func TestMatchSession_PullAction(t *testing.T) {
 		_, _, err := s.PullAction(uuid.New())
 		if !errors.Is(err, service.ErrActionNotFound) {
 			t.Errorf("expected ErrActionNotFound, got %v", err)
+		}
+	})
+}
+
+func TestMatchSession_GetMatchUUID(t *testing.T) {
+	id := uuid.New()
+	s := matchsession.NewMatchSession(id, nil, nil)
+	if s.GetMatchUUID() != id {
+		t.Errorf("expected %v, got %v", id, s.GetMatchUUID())
+	}
+}
+
+func TestMatchSession_GetActiveScene(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	if s.GetActiveScene() == nil {
+		t.Fatal("expected non-nil active scene")
+	}
+	if s.GetActiveScene().GetCategory() != enum.Roleplay {
+		t.Errorf("expected initial scene category Roleplay, got %v", s.GetActiveScene().GetCategory())
+	}
+}
+
+func TestMatchSession_ChangeScene(t *testing.T) {
+	t.Run("changes scene and resets round when no open turn", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		originalScene := s.GetActiveScene()
+		originalRound := s.GetActiveRound()
+
+		oldScene, oldRound, err := s.ChangeScene(enum.Battle, "Arena fight")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if oldScene != originalScene {
+			t.Error("expected returned old scene to be the original")
+		}
+		if oldRound != originalRound {
+			t.Error("expected returned old round to be the original")
+		}
+		if oldScene.GetFinishedAt() == nil {
+			t.Error("expected old scene to be closed")
+		}
+		if oldRound.GetFinishedAt() == nil {
+			t.Error("expected old round to be closed")
+		}
+		if s.GetActiveScene() == originalScene {
+			t.Error("expected new active scene after ChangeScene")
+		}
+		if s.GetActiveScene().GetCategory() != enum.Battle {
+			t.Errorf("expected new scene category Battle, got %v", s.GetActiveScene().GetCategory())
+		}
+		if s.GetActiveRound() == originalRound {
+			t.Error("expected new active round after ChangeScene")
+		}
+	})
+
+	t.Run("returns ErrRoundHasOpenTurn when turn is open", func(t *testing.T) {
+		playerA := uuid.New()
+		s := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
+
+		_, _, err := s.ChangeScene(enum.Battle, "desc")
+		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
+			t.Errorf("expected ErrRoundHasOpenTurn, got %v", err)
+		}
+	})
+}
+
+func TestMatchSession_EnqueueMasterAction(t *testing.T) {
+	t.Run("enqueues master action on current open turn", func(t *testing.T) {
+		playerA := uuid.New()
+		s := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		_, opened, _ := s.OpenNextAction()
+
+		ma := action.NewMasterAction()
+		if err := s.EnqueueMasterAction(ma); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(opened.GetMasterActions()) != 1 {
+			t.Errorf("expected 1 master action on turn, got %d", len(opened.GetMasterActions()))
+		}
+		if ma.GetHappenedAt().IsZero() {
+			t.Error("expected happenedAt to be set by EnqueueMasterAction")
+		}
+	})
+
+	t.Run("returns ErrNoActiveTurn when no open turn", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		ma := action.NewMasterAction()
+		err := s.EnqueueMasterAction(ma)
+		if !errors.Is(err, matchsession.ErrNoActiveTurn) {
+			t.Errorf("expected ErrNoActiveTurn, got %v", err)
+		}
+	})
+}
+
+func TestMatchSession_PersistenceFlags(t *testing.T) {
+	t.Run("new session has flags false", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		if s.IsRoundPersisted() {
+			t.Error("expected roundPersisted false on new session")
+		}
+		if s.IsScenePersisted() {
+			t.Error("expected scenePersisted false on new session")
+		}
+	})
+
+	t.Run("MarkRoundPersisted sets both flags", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		s.MarkRoundPersisted()
+		if !s.IsRoundPersisted() {
+			t.Error("expected roundPersisted true after MarkRoundPersisted")
+		}
+		if !s.IsScenePersisted() {
+			t.Error("expected scenePersisted true after MarkRoundPersisted")
+		}
+	})
+
+	t.Run("NewMatchSessionWithState has flags true", func(t *testing.T) {
+		sc := scene.NewScene(enum.Battle, "Arena")
+		r := round.NewRound(enum.Free)
+		s := matchsession.NewMatchSessionWithState(uuid.New(), nil, nil, sc, r)
+		if !s.IsRoundPersisted() {
+			t.Error("expected roundPersisted true from WithState ctor")
+		}
+		if !s.IsScenePersisted() {
+			t.Error("expected scenePersisted true from WithState ctor")
+		}
+		if s.GetActiveScene() != sc {
+			t.Error("expected same scene pointer")
+		}
+		if s.GetActiveRound() != r {
+			t.Error("expected same round pointer")
+		}
+	})
+
+	t.Run("ChangeScene resets flags to false", func(t *testing.T) {
+		sc := scene.NewScene(enum.Battle, "Arena")
+		r := round.NewRound(enum.Free)
+		s := matchsession.NewMatchSessionWithState(uuid.New(), nil, nil, sc, r)
+		_, _, err := s.ChangeScene(enum.Roleplay, "Town")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if s.IsRoundPersisted() {
+			t.Error("expected roundPersisted false after ChangeScene")
+		}
+		if s.IsScenePersisted() {
+			t.Error("expected scenePersisted false after ChangeScene")
 		}
 	})
 }

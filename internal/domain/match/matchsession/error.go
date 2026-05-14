@@ -7,4 +7,5 @@ var (
 	ErrActionActorMismatch = errors.New("action actor does not match player")
 	ErrRoundHasOpenTurn    = errors.New("cannot close round: current turn is still open")
 	ErrCharSheetNotFound   = errors.New("character sheet not found in session")
+	ErrNoActiveTurn        = errors.New("no active turn in current round")
 )
