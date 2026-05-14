@@ -137,3 +137,78 @@ func TestPersistTurnClose(t *testing.T) {
 		}
 	})
 }
+
+func TestFindActiveSession(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("returns nil when no active session exists", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm1", "gm1@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
+		matchUUIDParsed, _ := uuid.Parse(matchUUID)
+
+		data, err := repo.FindActiveSession(ctx, matchUUIDParsed)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data != nil {
+			t.Errorf("expected nil, got %+v", data)
+		}
+	})
+
+	t.Run("returns active session when scene and round are open", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm2", "gm2@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp2")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match2")
+		matchUUIDParsed, _ := uuid.Parse(matchUUID)
+
+		sceneUUID := pgtest.InsertTestScene(t, pool, matchUUID, "Battle")
+		roundUUID := pgtest.InsertTestRound(t, pool, sceneUUID, "Free")
+
+		data, err := repo.FindActiveSession(ctx, matchUUIDParsed)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data == nil {
+			t.Fatal("expected non-nil ActiveSessionData")
+		}
+		if data.SceneID.String() != sceneUUID {
+			t.Errorf("expected SceneID %s, got %s", sceneUUID, data.SceneID)
+		}
+		if data.RoundID.String() != roundUUID {
+			t.Errorf("expected RoundID %s, got %s", roundUUID, data.RoundID)
+		}
+		if data.Category != "Battle" {
+			t.Errorf("expected category Battle, got %q", data.Category)
+		}
+		if data.Mode != "Free" {
+			t.Errorf("expected mode Free, got %q", data.Mode)
+		}
+	})
+
+	t.Run("ignores finished scenes", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm3", "gm3@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp3")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match3")
+		matchUUIDParsed, _ := uuid.Parse(matchUUID)
+
+		sceneUUID := pgtest.InsertTestScene(t, pool, matchUUID, "Roleplay")
+		pgtest.InsertTestRound(t, pool, sceneUUID, "Free")
+
+		// Close the scene
+		pool.Exec(ctx, `UPDATE scenes SET finished_at = $1 WHERE uuid = $2`, time.Now(), sceneUUID) //nolint:errcheck
+
+		data, err := repo.FindActiveSession(ctx, matchUUIDParsed)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data != nil {
+			t.Errorf("expected nil for finished scene, got %+v", data)
+		}
+	})
+}
