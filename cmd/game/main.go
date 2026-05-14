@@ -14,6 +14,7 @@ import (
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/joho/godotenv"
@@ -42,10 +43,11 @@ func main() {
 	matchRepository := matchPg.NewRepository(pgPool)
 	enrollmentRepository := enrollmentPg.NewRepository(pgPool)
 	sheetRepository := sheetPg.NewRepository(pgPool)
+	roundRepository := roundPg.NewRepository(pgPool)
 
 	startMatchUC := domainMatch.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
-	initSessionUC := domainMatch.NewInitMatchSessionUC(matchRepository, sheetRepository)
+	initSessionUC := domainMatch.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository)
 	openNextActionUC := domainMatch.NewOpenNextActionUC()
 	pullActionUC := domainMatch.NewPullActionUC()
 	enqueueActionUC := domainMatch.NewEnqueueActionUC()
