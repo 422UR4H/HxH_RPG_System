@@ -121,13 +121,19 @@ func (r *Repository) PersistTurnClose(
 		reactToUUID = &v
 	}
 
+	// target_ids: ensure it's never nil (use empty slice if nil)
+	targetIDs := act.TargetID
+	if targetIDs == nil {
+		targetIDs = []uuid.UUID{}
+	}
+
 	_, err = tx.Exec(ctx,
 		`INSERT INTO actions
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, feint, trigger, created_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 		act.GetID(), t.GetID(), act.GetActorID(), reactToUUID,
-		act.TargetID, deriveActionType(act),
+		targetIDs, deriveActionType(act),
 		speedJSON, skillsJSON, moveJSON, attackJSON,
 		defenseJSON, dodgeJSON, feintJSON, triggerJSON,
 		finishedAt,
