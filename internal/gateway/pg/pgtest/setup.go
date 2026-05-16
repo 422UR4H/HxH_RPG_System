@@ -73,7 +73,8 @@ func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 	ctx := context.Background()
 
 	_, err := pool.Exec(ctx, `
-		TRUNCATE TABLE enrollments, submissions, sessions,
+		TRUNCATE TABLE actions, turns, rounds, scenes,
+			enrollments, submissions, sessions,
 			match_participants, matches, campaigns, scenarios,
 			joint_proficiencies, proficiencies, character_profiles,
 			character_sheets, users
@@ -206,4 +207,53 @@ func InsertTestCharacterSheet(t *testing.T, pool *pgxpool.Pool, playerUUID *stri
 		t.Fatalf("failed to insert test character profile: %v", err)
 	}
 	return sheetUUID
+}
+
+func InsertTestScene(t *testing.T, pool *pgxpool.Pool, matchUUID, category string) string {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+
+	var sceneUUID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO scenes (match_uuid, category, brief_initial_description, created_at)
+		 VALUES ($1, $2, $3, $4) RETURNING uuid`,
+		matchUUID, category, "test scene", now,
+	).Scan(&sceneUUID)
+	if err != nil {
+		t.Fatalf("failed to insert test scene: %v", err)
+	}
+	return sceneUUID
+}
+
+func InsertTestRound(t *testing.T, pool *pgxpool.Pool, sceneUUID, mode string) string {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+
+	var roundUUID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO rounds (scene_uuid, mode, created_at) VALUES ($1, $2, $3) RETURNING uuid`,
+		sceneUUID, mode, now,
+	).Scan(&roundUUID)
+	if err != nil {
+		t.Fatalf("failed to insert test round: %v", err)
+	}
+	return roundUUID
+}
+
+func InsertTestTurn(t *testing.T, pool *pgxpool.Pool, roundUUID string) string {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+
+	var turnUUID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO turns (round_uuid, created_at, finished_at) VALUES ($1, $2, $3) RETURNING uuid`,
+		roundUUID, now, now,
+	).Scan(&turnUUID)
+	if err != nil {
+		t.Fatalf("failed to insert test turn: %v", err)
+	}
+	return turnUUID
 }

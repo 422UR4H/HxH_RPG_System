@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -29,16 +30,19 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	hub              *Hub
-	matchRepo        MatchRepository
-	enrollmentRepo   EnrollmentChecker
-	startMatchUC     IStartMatch
-	kickPlayerUC     IKickPlayer
-	initSessionUC    IInitMatchSession
-	openNextActionUC IOpenNextAction
-	pullActionUC     IPullAction
-	enqueueActionUC  IEnqueueAction
-	attachReactionUC IAttachReaction
+	hub                   *Hub
+	matchRepo             MatchRepository
+	enrollmentRepo        EnrollmentChecker
+	startMatchUC          IStartMatch
+	kickPlayerUC          IKickPlayer
+	initSessionUC         IInitMatchSession
+	openNextActionUC      IOpenNextAction
+	pullActionUC          IPullAction
+	enqueueActionUC       IEnqueueAction
+	attachReactionUC      IAttachReaction
+	changeSceneUC         IChangeScene
+	roundRepo             appmatch.IRoundRepository
+	enqueueMasterActionUC IEnqueueMasterAction
 }
 
 func NewHandler(
@@ -52,18 +56,24 @@ func NewHandler(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
+	changeSceneUC IChangeScene,
+	roundRepo appmatch.IRoundRepository,
+	enqueueMasterActionUC IEnqueueMasterAction,
 ) *Handler {
 	return &Handler{
-		hub:              hub,
-		matchRepo:        matchRepo,
-		enrollmentRepo:   enrollmentRepo,
-		startMatchUC:     startMatchUC,
-		kickPlayerUC:     kickPlayerUC,
-		initSessionUC:    initSessionUC,
-		openNextActionUC: openNextActionUC,
-		pullActionUC:     pullActionUC,
-		enqueueActionUC:  enqueueActionUC,
-		attachReactionUC: attachReactionUC,
+		hub:                   hub,
+		matchRepo:             matchRepo,
+		enrollmentRepo:        enrollmentRepo,
+		startMatchUC:          startMatchUC,
+		kickPlayerUC:          kickPlayerUC,
+		initSessionUC:         initSessionUC,
+		openNextActionUC:      openNextActionUC,
+		pullActionUC:          pullActionUC,
+		enqueueActionUC:       enqueueActionUC,
+		attachReactionUC:      attachReactionUC,
+		changeSceneUC:         changeSceneUC,
+		roundRepo:             roundRepo,
+		enqueueMasterActionUC: enqueueMasterActionUC,
 	}
 }
 
@@ -116,6 +126,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		h.startMatchUC, h.kickPlayerUC,
 		h.initSessionUC, h.openNextActionUC, h.pullActionUC,
 		h.enqueueActionUC, h.attachReactionUC,
+		h.changeSceneUC, h.roundRepo, h.enqueueMasterActionUC,
 	)
 	client := NewClient(userUUID, conn, nickname)
 

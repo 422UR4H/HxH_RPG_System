@@ -11,7 +11,7 @@ type Turn struct {
 	id            uuid.UUID
 	action        action.Action
 	reactions     []action.Action
-	masterActions []action.MasterAction //nolint:unused // WIP: match system under development
+	masterActions []action.MasterAction
 	finishedAt    *time.Time
 }
 
@@ -24,6 +24,10 @@ func NewTurn(action action.Action) *Turn {
 
 func (t *Turn) GetID() uuid.UUID {
 	return t.id
+}
+
+func (t *Turn) AddMasterAction(ma action.MasterAction) {
+	t.masterActions = append(t.masterActions, ma)
 }
 
 func (t *Turn) AddReaction(action *action.Action) {

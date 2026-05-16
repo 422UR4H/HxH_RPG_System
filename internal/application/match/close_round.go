@@ -12,9 +12,13 @@ type ICloseRound interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID) (*round.Round, error)
 }
 
-type CloseRoundUC struct{}
+type CloseRoundUC struct {
+	roundRepo IRoundRepository
+}
 
-func NewCloseRoundUC() *CloseRoundUC { return &CloseRoundUC{} }
+func NewCloseRoundUC(roundRepo IRoundRepository) *CloseRoundUC {
+	return &CloseRoundUC{roundRepo: roundRepo}
+}
 
 func (uc *CloseRoundUC) Execute(
 	ctx context.Context,
@@ -24,5 +28,15 @@ func (uc *CloseRoundUC) Execute(
 	if callerUUID != masterUUID {
 		return nil, ErrNotMatchMaster
 	}
-	return session.CloseRound()
+	wasPersisted := session.IsRoundPersisted()
+	closedRound, err := session.CloseRound()
+	if err != nil {
+		return nil, err
+	}
+	if wasPersisted && closedRound.GetFinishedAt() != nil {
+		if dbErr := uc.roundRepo.CloseRound(ctx, closedRound.GetID(), *closedRound.GetFinishedAt()); dbErr != nil {
+			_ = dbErr // log in production
+		}
+	}
+	return closedRound, nil
 }

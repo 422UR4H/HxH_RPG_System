@@ -2,10 +2,12 @@ package scene_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
+	"github.com/google/uuid"
 )
 
 func TestNewScene(t *testing.T) {
@@ -93,5 +95,53 @@ func TestScene_FinishScene_AlreadyFinished(t *testing.T) {
 	err := s.FinishScene("Done again")
 	if err == nil {
 		t.Error("expected error when finishing already finished scene")
+	}
+}
+
+func TestScene_GetID(t *testing.T) {
+	s := scene.NewScene(enum.Roleplay, "start")
+	if s.GetID() == (uuid.UUID{}) {
+		t.Error("expected non-zero ID from NewScene")
+	}
+}
+
+func TestScene_Close(t *testing.T) {
+	s := scene.NewScene(enum.Battle, "Arena")
+	at := time.Now()
+	s.Close(at)
+	if s.GetFinishedAt() == nil {
+		t.Error("expected finishedAt to be set after Close")
+	}
+}
+
+func TestScene_Close_Idempotent(t *testing.T) {
+	s := scene.NewScene(enum.Battle, "Arena")
+	first := time.Now()
+	s.Close(first)
+	second := first.Add(time.Second)
+	s.Close(second)
+	if !s.GetFinishedAt().Equal(first) {
+		t.Errorf("expected finishedAt %v, got %v", first, *s.GetFinishedAt())
+	}
+}
+
+func TestReconstructScene(t *testing.T) {
+	id := uuid.New()
+	now := time.Now()
+	s := scene.ReconstructScene(id, enum.Battle, "Forest", now)
+	if s.GetID() != id {
+		t.Errorf("expected ID %v, got %v", id, s.GetID())
+	}
+	if s.GetCategory() != enum.Battle {
+		t.Errorf("expected Battle, got %v", s.GetCategory())
+	}
+	if s.BriefInitialDescription != "Forest" {
+		t.Errorf("expected 'Forest', got %q", s.BriefInitialDescription)
+	}
+	if !s.GetCreatedAt().Equal(now) {
+		t.Errorf("expected createdAt %v, got %v", now, s.GetCreatedAt())
+	}
+	if s.GetFinishedAt() != nil {
+		t.Error("expected nil finishedAt")
 	}
 }

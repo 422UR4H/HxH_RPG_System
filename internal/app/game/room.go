@@ -8,7 +8,10 @@ import (
 	"sync"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -55,6 +58,14 @@ type IAttachReaction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID uuid.UUID, r *action.Action) (*appmatch.AttachReactionResult, error)
 }
 
+type IChangeScene interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string) (*sceneentity.Scene, *roundentity.Round, error)
+}
+
+type IEnqueueMasterAction interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, ma *action.MasterAction) error
+}
+
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -68,13 +79,16 @@ type Room struct {
 
 	session *matchsession.MatchSession
 
-	startMatchUC     IStartMatch
-	kickPlayerUC     IKickPlayer
-	initSessionUC    IInitMatchSession
-	openNextActionUC IOpenNextAction
-	pullActionUC     IPullAction
-	enqueueActionUC  IEnqueueAction
-	attachReactionUC IAttachReaction
+	startMatchUC          IStartMatch
+	kickPlayerUC          IKickPlayer
+	initSessionUC         IInitMatchSession
+	openNextActionUC      IOpenNextAction
+	pullActionUC          IPullAction
+	enqueueActionUC       IEnqueueAction
+	attachReactionUC      IAttachReaction
+	changeSceneUC         IChangeScene
+	roundRepo             appmatch.IRoundRepository
+	enqueueMasterActionUC IEnqueueMasterAction
 }
 
 func NewRoom(
@@ -86,23 +100,29 @@ func NewRoom(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
+	changeSceneUC IChangeScene,
+	roundRepo appmatch.IRoundRepository,
+	enqueueMasterActionUC IEnqueueMasterAction,
 ) *Room {
 	return &Room{
-		matchUUID:        matchUUID,
-		masterUUID:       masterUUID,
-		state:            RoomStateLobby,
-		clients:          make(map[uuid.UUID]*Client),
-		broadcast:        make(chan []byte, 256),
-		register:         make(chan *Client),
-		unregister:       make(chan *Client),
-		stop:             make(chan struct{}),
-		startMatchUC:     startMatchUC,
-		kickPlayerUC:     kickPlayerUC,
-		initSessionUC:    initSessionUC,
-		openNextActionUC: openNextActionUC,
-		pullActionUC:     pullActionUC,
-		enqueueActionUC:  enqueueActionUC,
-		attachReactionUC: attachReactionUC,
+		matchUUID:             matchUUID,
+		masterUUID:            masterUUID,
+		state:                 RoomStateLobby,
+		clients:               make(map[uuid.UUID]*Client),
+		broadcast:             make(chan []byte, 256),
+		register:              make(chan *Client),
+		unregister:            make(chan *Client),
+		stop:                  make(chan struct{}),
+		startMatchUC:          startMatchUC,
+		kickPlayerUC:          kickPlayerUC,
+		initSessionUC:         initSessionUC,
+		openNextActionUC:      openNextActionUC,
+		pullActionUC:          pullActionUC,
+		enqueueActionUC:       enqueueActionUC,
+		attachReactionUC:      attachReactionUC,
+		changeSceneUC:         changeSceneUC,
+		roundRepo:             roundRepo,
+		enqueueMasterActionUC: enqueueMasterActionUC,
 	}
 }
 
@@ -315,6 +335,24 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+
+		if result.ClosedTurn != nil {
+			closedTurn := result.ClosedTurn
+			closedAct := closedTurn.GetAction()
+			r.mu.RLock()
+			activeScene := session.GetActiveScene()
+			activeRound := session.GetActiveRound()
+			matchUUID := session.GetMatchUUID()
+			r.mu.RUnlock()
+			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
+				log.Printf("PersistTurnClose error: %v", err2)
+			} else {
+				r.mu.Lock()
+				session.MarkRoundPersisted()
+				r.mu.Unlock()
+			}
+		}
+
 		act := result.OpenedTurn.GetAction()
 		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  result.OpenedTurn.GetID(),
@@ -341,6 +379,24 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+
+		if result.ClosedTurn != nil {
+			closedTurn := result.ClosedTurn
+			closedAct := closedTurn.GetAction()
+			r.mu.RLock()
+			activeScene := session.GetActiveScene()
+			activeRound := session.GetActiveRound()
+			matchUUID := session.GetMatchUUID()
+			r.mu.RUnlock()
+			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
+				log.Printf("PersistTurnClose error: %v", err2)
+			} else {
+				r.mu.Lock()
+				session.MarkRoundPersisted()
+				r.mu.Unlock()
+			}
+		}
+
 		act := result.OpenedTurn.GetAction()
 		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  result.OpenedTurn.GetID(),
@@ -388,6 +444,75 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		r.mu.RUnlock()
 		r.handleReaction(client, session, payload)
+
+	case MsgTypeChangeScene:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload ChangeScenePayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_scene payload"))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		// Capture persisted flag BEFORE ChangeScene resets it
+		sceneWasPersisted := session.IsScenePersisted()
+		r.mu.RUnlock()
+
+		oldScene, oldRound, err := r.changeSceneUC.Execute(
+			context.Background(), session,
+			r.masterUUID, client.userUUID,
+			enum.SceneCategory(payload.Category), payload.BriefInitialDescription,
+		)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+
+		if sceneWasPersisted && oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
+			if dbErr := r.roundRepo.CloseSceneAndRound(
+				context.Background(),
+				oldScene.GetID(), oldRound.GetID(), *oldRound.GetFinishedAt(),
+			); dbErr != nil {
+				log.Printf("CloseSceneAndRound error: %v", dbErr)
+			}
+		}
+
+		r.mu.RLock()
+		activeScene := session.GetActiveScene()
+		r.mu.RUnlock()
+
+		out := NewServerMessage(MsgTypeSceneChanged, SceneChangedPayload{
+			SceneID:                 activeScene.GetID(),
+			Category:                string(activeScene.GetCategory()),
+			BriefInitialDescription: activeScene.BriefInitialDescription,
+		})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+
+	case MsgTypeEnqueueMasterAction:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload MasterActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid enqueue_master_action payload"))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		ma := buildMasterAction(client.userUUID, payload)
+		if err := r.enqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		out := NewServerMessage(MsgTypeMasterActionEnqueued, MasterActionEnqueuedPayload(payload))
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))

@@ -4,6 +4,9 @@ import (
 	"context"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -15,10 +18,11 @@ type IInitMatchSession interface {
 type InitMatchSessionUC struct {
 	matchRepo   IRepository
 	sheetLoader ICharSheetLoader
+	roundRepo   IRoundRepository
 }
 
-func NewInitMatchSessionUC(matchRepo IRepository, sheetLoader ICharSheetLoader) *InitMatchSessionUC {
-	return &InitMatchSessionUC{matchRepo: matchRepo, sheetLoader: sheetLoader}
+func NewInitMatchSessionUC(matchRepo IRepository, sheetLoader ICharSheetLoader, roundRepo IRoundRepository) *InitMatchSessionUC {
+	return &InitMatchSessionUC{matchRepo: matchRepo, sheetLoader: sheetLoader, roundRepo: roundRepo}
 }
 
 func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*matchsession.MatchSession, error) {
@@ -41,6 +45,15 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 		}
 	}
 
+	data, err := uc.roundRepo.FindActiveSession(ctx, matchUUID)
+	if err != nil {
+		return nil, err
+	}
+	if data != nil {
+		sc := sceneentity.ReconstructScene(data.SceneID, enum.SceneCategory(data.Category), data.BriefInitDesc, data.SceneCreatedAt)
+		r := roundentity.ReconstructRound(data.RoundID, enum.RoundMode(data.Mode), data.RoundCreatedAt)
+		return matchsession.NewMatchSessionWithState(matchUUID, charSheets, participants, sc, r), nil
+	}
 	return matchsession.NewMatchSession(matchUUID, charSheets, participants), nil
 }
 

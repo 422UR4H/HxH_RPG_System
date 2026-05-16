@@ -3,6 +3,7 @@ package game
 import (
 	"sync"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/google/uuid"
 )
 
@@ -46,6 +47,9 @@ func (h *Hub) GetOrCreateRoom(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
+	changeSceneUC IChangeScene,
+	roundRepo appmatch.IRoundRepository,
+	enqueueMasterActionUC IEnqueueMasterAction,
 ) *Room {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -59,6 +63,7 @@ func (h *Hub) GetOrCreateRoom(
 		startMatchUC, kickPlayerUC,
 		initSessionUC, openNextActionUC, pullActionUC,
 		enqueueActionUC, attachReactionUC,
+		changeSceneUC, roundRepo, enqueueMasterActionUC,
 	)
 	h.rooms[matchUUID] = room
 	go room.Run()
