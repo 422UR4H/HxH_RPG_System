@@ -198,10 +198,11 @@ func InsertTestCharacterSheet(t *testing.T, pool *pgxpool.Pool, playerUUID *stri
 		t.Fatalf("failed to insert test character sheet: %v", err)
 	}
 
+	birthday := time.Date(0, 5, 15, 0, 0, 0, 0, time.UTC)
 	_, err = pool.Exec(ctx,
 		`INSERT INTO character_profiles (character_sheet_uuid, nickname, fullname, alignment, character_class, birthday, age)
-		 VALUES ($1, $2, $3, 'Neutral', 'Swordsman', '0000-05-15', 20)`,
-		sheetUUID, nick, nick+" FullName",
+		 VALUES ($1, $2, $3, 'Neutral', 'Swordsman', $4, 20)`,
+		sheetUUID, nick, nick+" FullName", birthday,
 	)
 	if err != nil {
 		t.Fatalf("failed to insert test character profile: %v", err)
