@@ -200,7 +200,7 @@ func InsertTestCharacterSheet(t *testing.T, pool *pgxpool.Pool, playerUUID *stri
 
 	_, err = pool.Exec(ctx,
 		`INSERT INTO character_profiles (character_sheet_uuid, nickname, fullname, alignment, character_class, birthday, age)
-		 VALUES ($1, $2, $3, 'Neutral', 'Swordsman', '2000-01-01', 20)`,
+		 VALUES ($1, $2, $3, 'Neutral', 'Swordsman', '0000-05-15', 20)`,
 		sheetUUID, nick, nick+" FullName",
 	)
 	if err != nil {
