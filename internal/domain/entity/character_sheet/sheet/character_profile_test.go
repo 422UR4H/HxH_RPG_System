@@ -2,6 +2,7 @@ package sheet_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 )
@@ -14,8 +15,18 @@ func TestCharacterProfile_Validate(t *testing.T) {
 			Alignment:        "Chaotic-Good",
 			BriefDescription: "A young hunter",
 			Age:              12,
+			Birthday:         time.Date(0, 5, 15, 0, 0, 0, 0, time.UTC),
 		}
 	}
+
+	t.Run("birthday not set", func(t *testing.T) {
+		p := validProfile()
+		p.Birthday = time.Time{}
+		err := p.Validate()
+		if err == nil {
+			t.Error("should reject zero birthday")
+		}
+	})
 
 	t.Run("valid profile", func(t *testing.T) {
 		p := validProfile()

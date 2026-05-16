@@ -29,9 +29,8 @@ func buildTestSheet(playerUUID *uuid.UUID) *domainsheet.CharacterSheet {
 		Alignment:        "Neutral",
 		Description:      "A test character",
 		BriefDescription: "Test",
+		Birthday:         time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
-	birthday := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	profile.Birthday = &birthday
 
 	s, err := factory.Build(playerUUID, nil, nil, profile, nil, nil, nil)
 	if err != nil {
@@ -49,9 +48,8 @@ func buildMasterTestSheet(masterUUID *uuid.UUID) *domainsheet.CharacterSheet {
 		Alignment:        "Neutral",
 		Description:      "A master-owned test character",
 		BriefDescription: "Master",
+		Birthday:         time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
-	birthday := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	profile.Birthday = &birthday
 
 	s, err := factory.Build(nil, masterUUID, nil, profile, nil, nil, nil)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
@@ -260,13 +261,17 @@ func (r *Repository) GetCharacterSheetRelationshipUUIDs(
 
 // modelToProfile converts a pg/model CharacterProfile to the domain entity profile.
 func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfile {
+	birthday := time.Time{}
+	if profile.Birthday != nil {
+		birthday = *profile.Birthday
+	}
 	return &domainSheet.CharacterProfile{
 		NickName:         profile.NickName,
 		FullName:         profile.FullName,
 		Alignment:        profile.Alignment,
 		Description:      profile.Description,
 		BriefDescription: profile.BriefDescription,
-		Birthday:         profile.Birthday,
+		Birthday:         birthday,
 	}
 }
 
