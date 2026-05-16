@@ -3,6 +3,7 @@ package sheet_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
@@ -90,10 +91,13 @@ func buildTestCharacterSheet(t *testing.T) *domainSheet.CharacterSheet {
 	t.Helper()
 	factory := domainSheet.NewCharacterSheetFactory()
 	playerUUID := uuid.New()
+	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
 	profile := domainSheet.CharacterProfile{
 		NickName:  "Gon",
 		FullName:  "Gon Freecss",
 		Alignment: "Chaotic-Good",
+		Birthday:  birthday,
+		Age:       12,
 	}
 	cs, err := factory.Build(&playerUUID, nil, nil, profile, nil, nil, nil)
 	if err != nil {
@@ -108,10 +112,13 @@ func buildTestCharacterSheetWithHex(t *testing.T) *domainSheet.CharacterSheet {
 	factory := domainSheet.NewCharacterSheetFactory()
 	playerUUID := uuid.New()
 	hexValue := 3
+	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
 	profile := domainSheet.CharacterProfile{
 		NickName:  "Gon",
 		FullName:  "Gon Freecss",
 		Alignment: "Chaotic-Good",
+		Birthday:  birthday,
+		Age:       12,
 	}
 	cs, err := factory.Build(&playerUUID, nil, nil, profile, &hexValue, nil, nil)
 	if err != nil {
@@ -124,9 +131,12 @@ func buildTestCharacterSheetWithHex(t *testing.T) *domainSheet.CharacterSheet {
 func buildTestHalfSheet(t *testing.T) domainSheet.HalfSheet {
 	t.Helper()
 	factory := domainSheet.NewCharacterSheetFactory()
+	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
 	profile := domainSheet.CharacterProfile{
 		NickName:  "Hunter",
 		FullName:  "Hunter Class",
+		Birthday:  birthday,
+		Age:       0,
 	}
 	hs, err := factory.BuildHalfSheet(profile, nil)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 type MockSubmissionRepo struct {
 	SubmitCharacterSheetFn                 func(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, createdAt time.Time) error
 	ExistsSubmittedCharacterSheetFn        func(ctx context.Context, uuid uuid.UUID) (bool, error)
-	AcceptCharacterSheetSubmissionFn       func(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID) error
+	AcceptCharacterSheetSubmissionFn       func(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, birthday time.Time) error
 	GetSubmissionCampaignUUIDBySheetUUIDFn func(ctx context.Context, sheetUUID uuid.UUID) (uuid.UUID, error)
 	RejectCharacterSheetSubmissionFn       func(ctx context.Context, sheetUUID uuid.UUID) error
 }
@@ -29,9 +29,9 @@ func (m *MockSubmissionRepo) ExistsSubmittedCharacterSheet(ctx context.Context, 
 	return false, nil
 }
 
-func (m *MockSubmissionRepo) AcceptCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID) error {
+func (m *MockSubmissionRepo) AcceptCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, birthday time.Time) error {
 	if m.AcceptCharacterSheetSubmissionFn != nil {
-		return m.AcceptCharacterSheetSubmissionFn(ctx, sheetUUID, campaignUUID)
+		return m.AcceptCharacterSheetSubmissionFn(ctx, sheetUUID, campaignUUID, birthday)
 	}
 	return nil
 }

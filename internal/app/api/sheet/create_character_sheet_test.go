@@ -26,7 +26,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 			"description":       "A young hunter",
 			"brief_description": "Hunter boy",
 			"age":               12,
-			"birthday":          nil,
+			"birthday":          "0000-05-15T00:00:00Z",
 		},
 		"character_class":    "Hunter",
 		"skills_exps":        map[string]any{},
@@ -66,6 +66,26 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 				return nil, errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name: "missing_birthday_returns_422",
+			body: func() map[string]any {
+				b := map[string]any{}
+				for k, v := range validBody {
+					b[k] = v
+				}
+				profile := map[string]any{}
+				for k, v := range validBody["profile"].(map[string]any) {
+					profile[k] = v
+				}
+				delete(profile, "birthday")
+				b["profile"] = profile
+				return b
+			}(),
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+				return nil, nil
+			},
+			wantStatus: http.StatusUnprocessableEntity,
 		},
 	}
 

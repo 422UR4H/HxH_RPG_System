@@ -10,7 +10,7 @@ import (
 type IRepository interface {
 	SubmitCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, createdAt time.Time) error
 	ExistsSubmittedCharacterSheet(ctx context.Context, uuid uuid.UUID) (bool, error)
-	AcceptCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID) error
+	AcceptCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, birthday time.Time) error
 	GetSubmissionCampaignUUIDBySheetUUID(ctx context.Context, sheetUUID uuid.UUID) (uuid.UUID, error)
 	RejectCharacterSheetSubmission(ctx context.Context, sheetUUID uuid.UUID) error
 }

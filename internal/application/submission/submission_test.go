@@ -10,6 +10,7 @@ import (
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/submission"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
+	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	submissionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
@@ -177,11 +178,61 @@ func TestSubmitCharacterSheet(t *testing.T) {
 	}
 }
 
+func Test_calcBirthYear(t *testing.T) {
+	tests := []struct {
+		name     string
+		refDate  time.Time
+		birthday time.Time
+		age      int
+		want     int
+	}{
+		{
+			name:     "birthday already passed this year",
+			refDate:  time.Date(2045, 10, 15, 0, 0, 0, 0, time.UTC),
+			birthday: time.Date(0, 3, 1, 0, 0, 0, 0, time.UTC),
+			age:      25,
+			want:     2020,
+		},
+		{
+			name:     "birthday not yet this year",
+			refDate:  time.Date(2045, 3, 1, 0, 0, 0, 0, time.UTC),
+			birthday: time.Date(0, 12, 25, 0, 0, 0, 0, time.UTC),
+			age:      25,
+			want:     2019,
+		},
+		{
+			name:     "birthday is today",
+			refDate:  time.Date(2045, 7, 4, 0, 0, 0, 0, time.UTC),
+			birthday: time.Date(0, 7, 4, 0, 0, 0, 0, time.UTC),
+			age:      30,
+			want:     2015,
+		},
+		{
+			name:     "uses story_current_at",
+			refDate:  time.Date(2060, 1, 1, 0, 0, 0, 0, time.UTC),
+			birthday: time.Date(0, 6, 15, 0, 0, 0, 0, time.UTC),
+			age:      40,
+			want:     2019,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := submission.CalcBirthYear(tt.refDate, tt.birthday, tt.age)
+			if got != tt.want {
+				t.Errorf("CalcBirthYear() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAcceptCharacterSheetSubmission(t *testing.T) {
 	masterUUID := uuid.New()
 	otherUUID := uuid.New()
 	sheetUUID := uuid.New()
 	campaignUUID := uuid.New()
+
+	storyStart := time.Date(2045, 3, 1, 0, 0, 0, 0, time.UTC)
+	birthdayMonthDay := time.Date(0, 5, 15, 0, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name         string
@@ -189,6 +240,7 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 		masterUUID   uuid.UUID
 		subMock      *testutil.MockSubmissionRepo
 		campaignMock *testutil.MockCampaignRepo
+		sheetMock    *testutil.MockSheetBirthdayReader
 		wantErr      error
 	}{
 		{
@@ -204,6 +256,17 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 					return masterUUID, nil
 				},
+				GetCampaignStoryDatesFn: func(ctx context.Context, id uuid.UUID) (*campaignEntity.Campaign, error) {
+					return &campaignEntity.Campaign{
+						StoryStartAt:   storyStart,
+						StoryCurrentAt: nil,
+					}, nil
+				},
+			},
+			sheetMock: &testutil.MockSheetBirthdayReader{
+				GetCharacterSheetBirthInfoFn: func(ctx context.Context, sUUID uuid.UUID) (time.Time, int, error) {
+					return birthdayMonthDay, 25, nil
+				},
 			},
 			wantErr: nil,
 		},
@@ -217,6 +280,7 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{},
+			sheetMock:    &testutil.MockSheetBirthdayReader{},
 			wantErr:      submission.ErrSubmissionNotFound,
 		},
 		{
@@ -233,7 +297,8 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 					return uuid.Nil, campaignPg.ErrCampaignNotFound
 				},
 			},
-			wantErr: campaign.ErrCampaignNotFound,
+			sheetMock: &testutil.MockSheetBirthdayReader{},
+			wantErr:   campaign.ErrCampaignNotFound,
 		},
 		{
 			name:       "not campaign master",
@@ -249,13 +314,14 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 					return masterUUID, nil
 				},
 			},
-			wantErr: submission.ErrNotCampaignMaster,
+			sheetMock: &testutil.MockSheetBirthdayReader{},
+			wantErr:   submission.ErrNotCampaignMaster,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := submission.NewAcceptCharacterSheetSubmissionUC(tt.subMock, tt.campaignMock)
+			uc := submission.NewAcceptCharacterSheetSubmissionUC(tt.subMock, tt.campaignMock, tt.sheetMock)
 			err := uc.Accept(context.Background(), tt.sheetUUID, tt.masterUUID)
 
 			if tt.wantErr != nil {

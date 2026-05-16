@@ -95,10 +95,19 @@ mappings:
     dev_docs:
       - path: docs/dev/character-sheet/factory.md
         confidence: directly_affected
+      - path: docs/dev/api/character-sheet.md
+        confidence: possibly_affected
     game_docs:
       - path: docs/game/classes.md
         confidence: possibly_affected
     notes: Sheet factory, class-based initialization
+
+  # ─── API Contracts ───
+  - code_path: internal/app/api/handler/character_sheet/
+    dev_docs:
+      - path: docs/dev/api/character-sheet.md
+        confidence: directly_affected
+    notes: Character sheet creation and consolidation endpoints (birthday day/month + birth year calculation)
 
   # ─── Character Classes ───
   - code_path: internal/domain/entity/character_class/

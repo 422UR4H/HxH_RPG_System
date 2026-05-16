@@ -29,9 +29,8 @@ func buildTestSheet(playerUUID *uuid.UUID) *domainsheet.CharacterSheet {
 		Alignment:        "Neutral",
 		Description:      "A test character",
 		BriefDescription: "Test",
+		Birthday:         time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
-	birthday := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	profile.Birthday = &birthday
 
 	s, err := factory.Build(playerUUID, nil, nil, profile, nil, nil, nil)
 	if err != nil {
@@ -49,9 +48,8 @@ func buildMasterTestSheet(masterUUID *uuid.UUID) *domainsheet.CharacterSheet {
 		Alignment:        "Neutral",
 		Description:      "A master-owned test character",
 		BriefDescription: "Master",
+		Birthday:         time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
-	birthday := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	profile.Birthday = &birthday
 
 	s, err := factory.Build(nil, masterUUID, nil, profile, nil, nil, nil)
 	if err != nil {
@@ -459,6 +457,43 @@ func TestExistsSheetInCampaign(t *testing.T) {
 		}
 		if got {
 			t.Error("ExistsSheetInCampaign() = true, want false")
+		}
+	})
+}
+
+func TestGetCharacterSheetBirthInfo(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "master1", "m@test.com", "pass")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, nil, &masterUUID, nil, "TestNick")
+
+		birthday, age, err := repo.GetCharacterSheetBirthInfo(ctx, uuid.MustParse(sheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if birthday.Year() != 0 {
+			t.Errorf("expected year 0, got %d", birthday.Year())
+		}
+		if int(birthday.Month()) != 5 {
+			t.Errorf("expected month 5, got %d", birthday.Month())
+		}
+		if birthday.Day() != 15 {
+			t.Errorf("expected day 15, got %d", birthday.Day())
+		}
+		if age != 20 {
+			t.Errorf("expected age 20, got %d", age)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		_, _, err := repo.GetCharacterSheetBirthInfo(ctx, uuid.New())
+		if err == nil {
+			t.Error("expected error for non-existent sheet UUID")
 		}
 	})
 }

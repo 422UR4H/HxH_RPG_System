@@ -131,7 +131,7 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 	}
 
 	t.Run("happy path", func(t *testing.T) {
-		err := repo.AcceptCharacterSheetSubmission(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID))
+		err := repo.AcceptCharacterSheetSubmission(ctx, uuid.MustParse(sheetUUID), uuid.MustParse(campaignUUID), time.Date(2000, 5, 15, 0, 0, 0, 0, time.UTC))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

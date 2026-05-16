@@ -7,13 +7,13 @@ import (
 )
 
 type CharacterProfile struct {
-	NickName         string     `json:"nickname"`
-	FullName         string     `json:"fullname"`
-	Alignment        string     `json:"alignment"`
-	Description      string     `json:"description"`
-	BriefDescription string     `json:"brief_description"`
-	Birthday         *time.Time `json:"birthday"`
-	Age              int        `json:"age"`
+	NickName         string    `json:"nickname"`
+	FullName         string    `json:"fullname"`
+	Alignment        string    `json:"alignment"`
+	Description      string    `json:"description"`
+	BriefDescription string    `json:"brief_description"`
+	Birthday         time.Time `json:"birthday"`
+	Age              int       `json:"age"`
 }
 
 func (cp *CharacterProfile) Validate() error {
@@ -25,6 +25,9 @@ func (cp *CharacterProfile) Validate() error {
 	}
 	if len(cp.BriefDescription) > 255 {
 		return NewInvalidBriefDescriptionError(cp.BriefDescription)
+	}
+	if cp.Birthday.IsZero() {
+		return NewInvalidBirthdayError()
 	}
 	if cp.Age < 0 {
 		return NewInvalidAgeError()
