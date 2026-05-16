@@ -6,15 +6,12 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/r2"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
-// PresignResult holds the URLs returned by the R2 presign operation.
-type PresignResult struct {
-	UploadURL string
-	PublicURL string
-}
+type PresignResult = r2.PresignResult
 
 // IR2Client is the interface for generating presigned PUT URLs against R2.
 type IR2Client interface {
