@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -88,6 +89,11 @@ func CreateCharacterSheetHandler(
 func castRequest(
 	body *CreateCharacterSheetRequestBody,
 ) (*charactersheet.CreateCharacterSheetInput, error) {
+
+	if !body.Profile.Birthday.IsZero() {
+		b := body.Profile.Birthday
+		body.Profile.Birthday = time.Date(0, b.Month(), b.Day(), 0, 0, 0, 0, time.UTC)
+	}
 
 	if err := body.Profile.Validate(); err != nil {
 		return nil, fmt.Errorf("character profile error: %w", err)
