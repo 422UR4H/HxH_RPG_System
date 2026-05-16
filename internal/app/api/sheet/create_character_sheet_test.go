@@ -26,7 +26,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 			"description":       "A young hunter",
 			"brief_description": "Hunter boy",
 			"age":               12,
-			"birthday":          nil,
+			"birthday":          "2005-05-16T00:00:00Z",
 		},
 		"character_class":    "Hunter",
 		"skills_exps":        map[string]any{},

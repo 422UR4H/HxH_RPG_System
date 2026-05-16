@@ -203,7 +203,7 @@ func charSheetToModel(sheet *domainSheet.CharacterSheet) *model.CharacterSheet {
 			Alignment:        profile.Alignment,
 			Description:      profile.Description,
 			BriefDescription: profile.BriefDescription,
-			Birthday:         &profile.Birthday,
+			Birthday:         profile.Birthday,
 			Age:              profile.Age,
 			CreatedAt:        now,
 			UpdatedAt:        now,
