@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/danielgtaylor/huma/v2"
@@ -22,8 +22,9 @@ type CreateCharacterSheetRequestBody struct {
 	CharacterClass    string                 `json:"character_class"`
 	SkillsExps        map[string]int         `json:"skills_exps"`
 	ProficienciesExps map[string]int         `json:"proficiencies_exps"`
-	Categories        map[string]bool        `json:"categories"`
-	InitialHexValue   *int                   `json:"initial_hex_value"`
+	// TODO: move to consolidate (accept submission) flow
+	// Categories        map[string]bool        `json:"categories"`
+	// InitialHexValue   *int                   `json:"initial_hex_value"`
 }
 
 type CreateCharacterSheetRequest struct {
@@ -122,17 +123,18 @@ func castRequest(
 		return nil, err
 	}
 
-	categories := make(map[enum.CategoryName]bool)
-	for k, v := range body.Categories {
-		categoryName, err := enum.CategoryNameFrom(k)
-		if err != nil {
-			return nil, err
-		}
-		categories[categoryName] = v
-	}
-	talentByCategorySet, err := sheet.NewTalentByCategorySet(
-		categories, body.InitialHexValue,
-	)
+	// TODO: move to consolidate (accept submission) flow
+	// categories := make(map[enum.CategoryName]bool)
+	// for k, v := range body.Categories {
+	// 	categoryName, err := enum.CategoryNameFrom(k)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	categories[categoryName] = v
+	// }
+	// talentByCategorySet, err := sheet.NewTalentByCategorySet(
+	// 	categories, body.InitialHexValue,
+	// )
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +143,6 @@ func castRequest(
 		CampaignUUID:      body.CampaignUUID,
 		Profile:           body.Profile,
 		CharacterClass:    charClassName,
-		CategorySet:       *talentByCategorySet,
 		SkillsExps:        skillsExps,
 		ProficienciesExps: proficienciesExps,
 	}, nil
