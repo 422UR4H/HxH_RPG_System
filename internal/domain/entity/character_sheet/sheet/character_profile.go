@@ -12,6 +12,8 @@ type CharacterProfile struct {
 	Alignment        string    `json:"alignment"`
 	Description      string    `json:"description"`
 	BriefDescription string    `json:"brief_description"`
+	AvatarURL        *string   `json:"avatar_url,omitempty"`
+	CoverURL         *string   `json:"cover_url,omitempty"`
 	Birthday         time.Time `json:"birthday"`
 	Age              int       `json:"age"`
 }

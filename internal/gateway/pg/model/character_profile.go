@@ -16,6 +16,8 @@ type CharacterProfile struct {
 	CharacterClass   string
 	Description      string
 	BriefDescription string
+	AvatarURL        *string
+	CoverURL         *string
 	Birthday         time.Time
 	Age              int
 
