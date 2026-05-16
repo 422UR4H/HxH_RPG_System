@@ -42,7 +42,7 @@ const (
 	// Server → Client (scene events)
 	MsgTypeSceneChanged MessageType = "scene_changed"
 
-	// Client → Server (master NPC actions)
+	// Client → Server (master actions)
 	MsgTypeEnqueueMasterAction MessageType = "enqueue_master_action"
 
 	// Server → Client
@@ -101,8 +101,8 @@ type PullActionPayload struct {
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
 type ActionPayload struct {
-	ReactToID uuid.UUID           `json:"react_to_id,omitempty"`
-	TargetID  []uuid.UUID         `json:"target_id,omitempty"`
+	ReactToID uuid.UUID            `json:"react_to_id,omitempty"`
+	TargetID  []uuid.UUID          `json:"target_id,omitempty"`
 	Skills    []ActionSkillPayload `json:"skills,omitempty"`
 	Speed     *ActionSpeedPayload  `json:"speed,omitempty"`
 	Feint     *RollCheckPayload    `json:"feint,omitempty"`
@@ -205,16 +205,16 @@ type SceneChangedPayload struct {
 
 type MasterActionPayload struct {
 	TargetIDs   []uuid.UUID          `json:"target_ids"`
-	Skills      []ActionSkillPayload  `json:"skills,omitempty"`
-	Move        *MovePayload          `json:"move,omitempty"`
-	Attack      *AttackPayload        `json:"attack,omitempty"`
-	ActionSpeed *RollCheckPayload     `json:"action_speed,omitempty"`
+	Skills      []ActionSkillPayload `json:"skills,omitempty"`
+	Move        *MovePayload         `json:"move,omitempty"`
+	Attack      *AttackPayload       `json:"attack,omitempty"`
+	ActionSpeed *RollCheckPayload    `json:"action_speed,omitempty"`
 }
 
 type MasterActionEnqueuedPayload struct {
 	TargetIDs   []uuid.UUID          `json:"target_ids"`
-	Skills      []ActionSkillPayload  `json:"skills,omitempty"`
-	Move        *MovePayload          `json:"move,omitempty"`
-	Attack      *AttackPayload        `json:"attack,omitempty"`
-	ActionSpeed *RollCheckPayload     `json:"action_speed,omitempty"`
+	Skills      []ActionSkillPayload `json:"skills,omitempty"`
+	Move        *MovePayload         `json:"move,omitempty"`
+	Attack      *AttackPayload       `json:"attack,omitempty"`
+	ActionSpeed *RollCheckPayload    `json:"action_speed,omitempty"`
 }
