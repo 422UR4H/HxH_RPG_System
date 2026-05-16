@@ -16,6 +16,8 @@ import (
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	submissionHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
+	uploadHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/upload"
+	r2gw "github.com/422UR4H/HxH_RPG_System/internal/gateway/r2"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
@@ -41,9 +43,14 @@ import (
 )
 
 type config struct {
-	ServerAddr         string        `conf:"env:SERVER_ADDR,default:localhost:5000"`
-	ServerReadTimeout  time.Duration `conf:"default:30s"`
-	ServerWriteTimeout time.Duration `conf:"default:30s"`
+	ServerAddr           string        `conf:"env:SERVER_ADDR,default:localhost:5000"`
+	ServerReadTimeout    time.Duration `conf:"default:30s"`
+	ServerWriteTimeout   time.Duration `conf:"default:30s"`
+	R2AccountID          string        `conf:"env:R2_ACCOUNT_ID"`
+	R2AccessKeyID        string        `conf:"env:R2_ACCESS_KEY_ID"`
+	R2SecretAccessKey    string        `conf:"env:R2_SECRET_ACCESS_KEY"`
+	R2BucketName         string        `conf:"env:R2_BUCKET_NAME"`
+	R2PublicURL          string        `conf:"env:R2_PUBLIC_URL"`
 }
 
 var dryCharacterClasses sync.Map
@@ -68,6 +75,14 @@ func main() {
 		panic(fmt.Errorf("error creating pg pool: %w", err))
 	}
 	defer pgPool.Close()
+
+	r2Client := r2gw.NewClient(
+		cfg.R2AccountID,
+		cfg.R2AccessKeyID,
+		cfg.R2SecretAccessKey,
+		cfg.R2BucketName,
+		cfg.R2PublicURL,
+	)
 
 	initDryCharacterClasses()
 
@@ -117,12 +132,17 @@ func main() {
 		characterSheetRepo,
 	)
 	characterSheetsApi := sheetHandler.Api{
-		CreateCharacterSheetHandler:  sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
-		GetCharacterSheetHandler:     sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
-		ListCharacterSheetsHandler:   sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
-		ListClassesHandler:           sheetHandler.ListClassesHandler(listCharacterClassesUC),
-		GetClassHandler:              sheetHandler.GetClassHandler(getCharacterClassUC),
-		UpdateNenHexagonValueHandler: sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
+		CreateCharacterSheetHandler:       sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
+		GetCharacterSheetHandler:          sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
+		ListCharacterSheetsHandler:        sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
+		ListClassesHandler:                sheetHandler.ListClassesHandler(listCharacterClassesUC),
+		GetClassHandler:                   sheetHandler.GetClassHandler(getCharacterClassUC),
+		UpdateNenHexagonValueHandler:      sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
+		PatchCharacterSheetProfileHandler: sheetHandler.PatchCharacterSheetProfileHandler(characterSheetRepo),
+	}
+
+	uploadApi := &uploadHandler.Api{
+		PresignedURLHandler: uploadHandler.PresignedURLHandler(r2Client),
 	}
 
 	createScenarioUC := domainScenario.NewCreateScenarioUC(scenarioRepo)
@@ -216,6 +236,7 @@ func main() {
 		MatchHandler:          &matchesApi,
 		SubmissionHandler:     &submissionsApi,
 		EnrollmentHandler:     &enrollmentApi,
+		UploadHandler:         uploadApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}
