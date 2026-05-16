@@ -12,6 +12,7 @@ func (r *Repository) AcceptCharacterSheetSubmission(
 	ctx context.Context,
 	sheetUUID uuid.UUID,
 	campaignUUID uuid.UUID,
+	birthday time.Time,
 ) error {
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
@@ -34,6 +35,16 @@ func (r *Repository) AcceptCharacterSheetSubmission(
 	_, err = tx.Exec(ctx, updateSheetQuery, campaignUUID, now, sheetUUID)
 	if err != nil {
 		return fmt.Errorf("failed to update character sheet with campaign: %w", err)
+	}
+
+	const updateBirthdayQuery = `
+        UPDATE character_profiles
+        SET birthday = $1, updated_at = $2
+        WHERE character_sheet_uuid = $3
+    `
+	_, err = tx.Exec(ctx, updateBirthdayQuery, birthday, now, sheetUUID)
+	if err != nil {
+		return fmt.Errorf("failed to update character profile birthday: %w", err)
 	}
 
 	const deleteSubmissionQuery = `

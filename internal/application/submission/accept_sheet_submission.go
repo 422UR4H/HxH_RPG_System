@@ -2,12 +2,17 @@ package submission
 
 import (
 	"context"
+	"time"
 
 	campaignDomain "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	submissionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
 	"github.com/google/uuid"
 )
+
+type ISheetBirthdayReader interface {
+	GetCharacterSheetBirthInfo(ctx context.Context, sheetUUID uuid.UUID) (time.Time, int, error)
+}
 
 type IAcceptCharacterSheetSubmission interface {
 	Accept(ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID) error
@@ -16,15 +21,18 @@ type IAcceptCharacterSheetSubmission interface {
 type AcceptCharacterSheetSubmissionUC struct {
 	repo         IRepository
 	campaignRepo campaignDomain.IRepository
+	sheetRepo    ISheetBirthdayReader
 }
 
 func NewAcceptCharacterSheetSubmissionUC(
 	repo IRepository,
 	campaignRepo campaignDomain.IRepository,
+	sheetRepo ISheetBirthdayReader,
 ) *AcceptCharacterSheetSubmissionUC {
 	return &AcceptCharacterSheetSubmissionUC{
 		repo:         repo,
 		campaignRepo: campaignRepo,
+		sheetRepo:    sheetRepo,
 	}
 }
 
@@ -53,9 +61,30 @@ func (uc *AcceptCharacterSheetSubmissionUC) Accept(
 		return ErrNotCampaignMaster
 	}
 
-	err = uc.repo.AcceptCharacterSheetSubmission(ctx, sheetUUID, campaignUUID)
+	campaign, err := uc.campaignRepo.GetCampaignStoryDates(ctx, campaignUUID)
 	if err != nil {
 		return err
 	}
-	return nil
+	ref := campaign.StoryCurrentAt
+	if ref == nil {
+		ref = &campaign.StoryStartAt
+	}
+
+	birthday, age, err := uc.sheetRepo.GetCharacterSheetBirthInfo(ctx, sheetUUID)
+	if err != nil {
+		return err
+	}
+	birthYear := CalcBirthYear(*ref, birthday, age)
+	fullBirthday := time.Date(birthYear, birthday.Month(), birthday.Day(), 0, 0, 0, 0, time.UTC)
+
+	return uc.repo.AcceptCharacterSheetSubmission(ctx, sheetUUID, campaignUUID, fullBirthday)
+}
+
+func CalcBirthYear(refDate time.Time, birthday time.Time, age int) int {
+	year := refDate.Year() - age
+	if int(birthday.Month()) > int(refDate.Month()) ||
+		(birthday.Month() == refDate.Month() && birthday.Day() > refDate.Day()) {
+		year--
+	}
+	return year
 }

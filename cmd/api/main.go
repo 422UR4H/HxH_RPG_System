@@ -172,6 +172,7 @@ func main() {
 	acceptCharacterSheetSubmissionUC := domainSubmission.NewAcceptCharacterSheetSubmissionUC(
 		submitRepo,
 		campaignRepo,
+		characterSheetRepo,
 	)
 	rejectCharacterSheetSubmissionUC := domainSubmission.NewRejectCharacterSheetSubmissionUC(
 		submitRepo,
