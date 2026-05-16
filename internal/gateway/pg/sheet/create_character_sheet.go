@@ -86,14 +86,17 @@ func (r *Repository) CreateCharacterSheet(
 
 	const profileQuery = `
 		INSERT INTO character_profiles (
-			uuid, character_sheet_uuid, nickname, fullname, alignment, character_class, long_description, brief_description, birthday, age, created_at, updated_at
+			uuid, character_sheet_uuid, nickname, fullname, alignment, character_class,
+			long_description, brief_description, birthday, age, avatar_url, cover_url,
+			created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 		)
 	`
 	_, err = tx.Exec(ctx, profileQuery,
 		m.Profile.UUID, m.UUID, m.Profile.NickName, m.Profile.FullName, m.Profile.Alignment,
-		m.Profile.CharacterClass, m.Profile.Description, m.Profile.BriefDescription, m.Profile.Birthday, m.Profile.Age,
+		m.Profile.CharacterClass, m.Profile.Description, m.Profile.BriefDescription,
+		m.Profile.Birthday, m.Profile.Age, m.Profile.AvatarURL, m.Profile.CoverURL,
 		m.Profile.CreatedAt, m.Profile.UpdatedAt,
 	)
 	if err != nil {
@@ -205,6 +208,8 @@ func charSheetToModel(sheet *domainSheet.CharacterSheet) *model.CharacterSheet {
 			BriefDescription: profile.BriefDescription,
 			Birthday:         profile.Birthday,
 			Age:              profile.Age,
+			AvatarURL:        profile.AvatarURL,
+			CoverURL:         profile.CoverURL,
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		},
