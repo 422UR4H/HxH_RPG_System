@@ -17,7 +17,8 @@ type Api struct {
 	ListCharacterSheetsHandler   Handler[struct{}, ListCharacterSheetsResponse]
 	ListClassesHandler           Handler[struct{}, ListCharacterClassesResponse]
 	GetClassHandler              Handler[GetCharacterClassRequest, GetCharacterClassResponse]
-	UpdateNenHexagonValueHandler Handler[UpdateNenHexagonValueRequest, UpdateNenHexagonValueResponse]
+	UpdateNenHexagonValueHandler          Handler[UpdateNenHexagonValueRequest, UpdateNenHexagonValueResponse]
+	PatchCharacterSheetProfileHandler Handler[PatchCharacterSheetProfileRequest, PatchCharacterSheetProfileResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -100,4 +101,18 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusOK,
 	}, a.UpdateNenHexagonValueHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPatch,
+		Path:        "/charactersheets/{uuid}/profile",
+		Description: "Update avatar and cover URLs of a character sheet profile",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusNotFound,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusNoContent,
+	}, a.PatchCharacterSheetProfileHandler)
 }
