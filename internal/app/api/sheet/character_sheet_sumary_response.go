@@ -13,6 +13,8 @@ type CharacterBaseSummaryResponse struct {
 	MasterUUID     *uuid.UUID `json:"master_uuid,omitempty"`
 	CampaignUUID   *uuid.UUID `json:"campaign_uuid,omitempty"`
 	NickName       string     `json:"nick_name"`
+	AvatarURL      *string    `json:"avatar_url,omitempty"`
+	CoverURL       *string    `json:"cover_url,omitempty"`
 	StoryStartAt   *string    `json:"story_start_at,omitempty"`
 	StoryCurrentAt *string    `json:"story_current_at,omitempty"`
 	DeadAt         *string    `json:"dead_at,omitempty"`
@@ -134,6 +136,8 @@ func ToBaseSummaryResponse(sheet *csEntity.Summary) CharacterBaseSummaryResponse
 		MasterUUID:     sheet.MasterUUID,
 		CampaignUUID:   sheet.CampaignUUID,
 		NickName:       sheet.NickName,
+		AvatarURL:      sheet.AvatarURL,
+		CoverURL:       sheet.CoverURL,
 		StoryStartAt:   storyStartAtStr,
 		StoryCurrentAt: storyCurrentAtStr,
 		DeadAt:         deadAtStr,
