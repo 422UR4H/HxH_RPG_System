@@ -122,6 +122,18 @@ func (cs *CharacterSheet) ReconstructPrimaryPhysicalPoints(
 	return cs.status.Upgrade()
 }
 
+// ReconstructPrimaryMentalPoints sets primary mental attribute points
+// without validating against ability level. Only for gateway reconstruction
+// from trusted DB data — not for user-driven distribution flows.
+func (cs *CharacterSheet) ReconstructPrimaryMentalPoints(
+	name enum.AttributeName, points int,
+) error {
+	if _, err := cs.attribute.IncreasePrimaryMentalPts(name, points); err != nil {
+		return err
+	}
+	return cs.status.Upgrade()
+}
+
 func (cs *CharacterSheet) ApplyInitialAttributePoints(
 	attrPoints map[enum.AttributeName]int,
 ) error {

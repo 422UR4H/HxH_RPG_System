@@ -298,14 +298,28 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 		}
 	}
 
-	// TODO: add mental attributes points or remove from modelSheet
-	mentalAttrs := map[enum.AttributeName]int{
+	mentalPrimaryAttrs := map[enum.AttributeName]int{
+		enum.Resilience:   m.ResiliencePts,
+		enum.Adaptability: m.AdaptabilityPts,
+		enum.Weighting:    m.WeightingPts,
+		enum.Creativity:   m.CreativityPts,
+	}
+	for name, points := range mentalPrimaryAttrs {
+		if points == 0 {
+			continue
+		}
+		if err := charSheet.ReconstructPrimaryMentalPoints(name, points); err != nil {
+			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
+		}
+	}
+
+	mentalExps := map[enum.AttributeName]int{
 		enum.Resilience:   m.ResilienceExp,
 		enum.Adaptability: m.AdaptabilityExp,
 		enum.Weighting:    m.WeightingExp,
 		enum.Creativity:   m.CreativityExp,
 	}
-	for name, exp := range mentalAttrs {
+	for name, exp := range mentalExps {
 		if exp == 0 {
 			continue
 		}

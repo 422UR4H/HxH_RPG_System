@@ -269,6 +269,25 @@ func TestCharacterSheet_ApplyInitialAttributePoints(t *testing.T) {
 	})
 }
 
+func TestCharacterSheet_ReconstructPrimaryMentalPoints(t *testing.T) {
+	t.Run("restores mental points even when mentLvl is zero (no class applied)", func(t *testing.T) {
+		cs := buildTestSheet(t) // mentLvl=0
+
+		err := cs.ReconstructPrimaryMentalPoints(enum.Resilience, 2)
+		if err != nil {
+			t.Errorf("expected no error restoring Resilience=2, got: %v", err)
+		}
+
+		pts, err := cs.GetPointsOfAttribute(enum.Resilience)
+		if err != nil {
+			t.Fatalf("GetPointsOfAttribute: %v", err)
+		}
+		if pts != 2 {
+			t.Errorf("expected Resilience points=2, got %d", pts)
+		}
+	})
+}
+
 func TestCharacterSheet_ReconstructPrimaryPhysicalPoints(t *testing.T) {
 	t.Run("restores primary points even when physLvl is zero (no class applied)", func(t *testing.T) {
 		// Gateway reconstruction: sheet built without a class (AddDryCharacterClass
