@@ -3,6 +3,7 @@ package sheet
 import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	s "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
@@ -29,7 +30,7 @@ type ClassProfileResponse struct {
 
 type DistributionResponse struct {
 	SkillPoints          []int    `json:"skill_points"`
-	ProficiencyPoints    []int    `json:"proficiency_points"`
+	ProficiencyPoints    []LvlExp `json:"proficiency_points"`
 	SkillsAllowed        []string `json:"skills_allowed"`
 	ProficienciesAllowed []string `json:"proficiencies_allowed"`
 }
@@ -177,9 +178,14 @@ func NewCharacterClassResponse(
 			proficienciesAllowed[i] = v.String()
 		}
 
+		expTable := experience.NewDefaultExpTable()
+		profPoints := make([]LvlExp, len(ccDistribution.ProficiencyPoints))
+		for i, xp := range ccDistribution.ProficiencyPoints {
+			profPoints[i] = LvlExp{Level: expTable.GetLvlByExp(xp), Exp: xp}
+		}
 		distribution = &DistributionResponse{
 			SkillPoints:          ccDistribution.SkillPoints,
-			ProficiencyPoints:    ccDistribution.ProficiencyPoints,
+			ProficiencyPoints:    profPoints,
 			SkillsAllowed:        skillsAllowed,
 			ProficienciesAllowed: proficienciesAllowed,
 		}
