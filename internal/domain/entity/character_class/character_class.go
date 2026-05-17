@@ -1,6 +1,7 @@
 package characterclass
 
 import (
+	"fmt"
 	"slices"
 
 	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
@@ -114,7 +115,8 @@ func (cc *CharacterClass) ValidateProficiencies(
 	d := *cc.Distribution
 	profPts := slices.Clone(d.ProficiencyPoints)
 	if len(profPts) != len(proficiencies) {
-		return NewProficienciesCountMismatchError(cc.GetNameString())
+		str := fmt.Sprintf("profPts: %d, proficiencies: %d", len(profPts), len(proficiencies))
+		return NewProficienciesCountMismatchError(str)
 	}
 	for name := range proficiencies {
 		if !d.AllowProficiency(name) {
