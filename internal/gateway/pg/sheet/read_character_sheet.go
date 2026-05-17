@@ -278,17 +278,16 @@ func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfi
 func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCorrected bool, err error) {
 	charSheet.UUID = m.UUID
 
-	physicalAttrs := map[enum.AttributeName]int{
-		enum.Resistance:   m.ResistancePts,
-		enum.Strength:     m.StrengthPts,
-		enum.Agility:      m.AgilityPts,
-		enum.Celerity:     m.CelerityPts,
-		enum.Flexibility:  m.FlexibilityPts,
-		enum.Dexterity:    m.DexterityPts,
-		enum.Sense:        m.SensePts,
-		enum.Constitution: m.ConstitutionPts,
+	// Only primary physical attributes are restored; middle ones (Strength,
+	// Celerity, Dexterity, Constitution) are derived from primaries and
+	// recalculated automatically by the domain entity.
+	physicalPrimaryAttrs := map[enum.AttributeName]int{
+		enum.Resistance:  m.ResistancePts,
+		enum.Agility:     m.AgilityPts,
+		enum.Flexibility: m.FlexibilityPts,
+		enum.Sense:       m.SensePts,
 	}
-	for name, points := range physicalAttrs {
+	for name, points := range physicalPrimaryAttrs {
 		if points == 0 {
 			continue
 		}
