@@ -116,3 +116,22 @@ Ambos opcionais. Enviar `null` para limpar.
 - `401` - Unauthorized
 - `404` - ficha não encontrada ou não pertence ao usuário
 - `500` - Internal Server Error
+
+---
+
+## Campos de imagem nos summaries
+
+Os endpoints que retornam listas de fichas (`GET /charactersheets`,
+`GET /campaigns/:id`, enrollments e participants de partida) incluem
+`avatar_url` e `cover_url` opcionais em cada summary de ficha:
+
+```json
+{
+  "uuid": "...",
+  "nick_name": "Gon",
+  "avatar_url": "https://pub.r2.dev/avatar/uuid.webp",
+  "cover_url": "https://pub.r2.dev/cover/uuid.webp"
+}
+```
+
+Ambos são `omitempty` — ausentes quando o personagem ainda não tem imagem.
