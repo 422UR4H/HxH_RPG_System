@@ -24,6 +24,7 @@ func (r *Repository) ListByMatchUUID(
 			COALESCE(cs.aura_min_pts, 0), COALESCE(cs.aura_curr_pts, 0), COALESCE(cs.aura_max_pts, 0),
 			cs.created_at, cs.updated_at,
 			cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday,
+			cp.avatar_url, cp.cover_url,
 			u.uuid, u.nick
 		FROM enrollments e
 		JOIN character_sheets cs   ON cs.uuid = e.character_sheet_uuid
@@ -54,6 +55,7 @@ func (r *Repository) ListByMatchUUID(
 			&s.Aura.Min, &s.Aura.Curr, &s.Aura.Max,
 			&s.CreatedAt, &s.UpdatedAt,
 			&s.NickName, &s.FullName, &s.Alignment, &s.CharacterClass, &s.Birthday,
+			&s.AvatarURL, &s.CoverURL,
 			&e.Player.UUID, &e.Player.Nick,
 		)
 		if err != nil {

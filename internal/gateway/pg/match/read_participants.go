@@ -26,6 +26,7 @@ func (r *Repository) ListParticipantsByMatchUUID(
 			COALESCE(cs.aura_min_pts, 0), COALESCE(cs.aura_curr_pts, 0), COALESCE(cs.aura_max_pts, 0),
 			cs.created_at, cs.updated_at,
 			cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday,
+			cp.avatar_url, cp.cover_url,
 			cs.story_start_at, cs.story_current_at, cs.dead_at
 		FROM match_participants mp
 		JOIN character_sheets cs   ON cs.uuid = mp.character_sheet_uuid
@@ -58,6 +59,7 @@ func (r *Repository) ListParticipantsByMatchUUID(
 			&s.Aura.Min, &s.Aura.Curr, &s.Aura.Max,
 			&s.CreatedAt, &s.UpdatedAt,
 			&s.NickName, &s.FullName, &s.Alignment, &s.CharacterClass, &s.Birthday,
+			&s.AvatarURL, &s.CoverURL,
 			&s.StoryStartAt, &s.StoryCurrentAt, &s.DeadAt,
 		)
 		if err != nil {
