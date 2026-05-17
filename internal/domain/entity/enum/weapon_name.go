@@ -1,6 +1,5 @@
 package enum
 
-import "fmt"
 
 type WeaponName string
 
@@ -103,5 +102,5 @@ func WeaponNameFrom(s string) (WeaponName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "weapon", s)
+	return "", newInvalidNameOfError("weapon", s)
 }

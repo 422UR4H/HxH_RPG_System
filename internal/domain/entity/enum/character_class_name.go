@@ -1,6 +1,5 @@
 package enum
 
-import "fmt"
 
 type CharacterClassName string
 
@@ -55,5 +54,5 @@ func CharacterClassNameFrom(s string) (CharacterClassName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "character class", s)
+	return "", newInvalidNameOfError("character class", s)
 }

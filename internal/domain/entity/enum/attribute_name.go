@@ -1,7 +1,5 @@
 package enum
 
-import "fmt"
-
 type AttributeName string
 
 const (
@@ -44,5 +42,5 @@ func AttributeNameFrom(s string) (AttributeName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "attribute", s)
+	return "", newInvalidNameOfError("attribute", s)
 }

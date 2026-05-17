@@ -1,6 +1,5 @@
 package enum
 
-import "fmt"
 
 type CategoryName string
 
@@ -34,5 +33,5 @@ func CategoryNameFrom(s string) (CategoryName, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("%w%s: %s", ErrInvalidNameOf, "category", s)
+	return "", newInvalidNameOfError("category", s)
 }
