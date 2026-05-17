@@ -1,8 +1,6 @@
 package attribute
 
 import (
-	"math"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
@@ -65,7 +63,7 @@ func (ma *MiddleAttribute) GetPoints() int {
 	for _, primaryAttr := range ma.primaryAttrs {
 		points += primaryAttr.points
 	}
-	return int(math.Round(float64(points) / float64(len(ma.primaryAttrs))))
+	return points / len(ma.primaryAttrs)
 }
 
 func (ma *MiddleAttribute) GetValue() int {
