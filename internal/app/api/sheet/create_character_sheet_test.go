@@ -31,6 +31,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 		"character_class":    "Hunter",
 		"skills_exps":        map[string]any{},
 		"proficiencies_exps": map[string]any{},
+		"attribute_points":   map[string]any{"Resistance": 1, "Agility": 1, "Flexibility": 1},
 	}
 
 	tests := []struct {
@@ -82,6 +83,21 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 				return nil, nil
 			},
 			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name: "invalid attribute name returns 400",
+			body: func() map[string]any {
+				b := map[string]any{}
+				for k, v := range validBody {
+					b[k] = v
+				}
+				b["attribute_points"] = map[string]any{"Stamina": 1}
+				return b
+			}(),
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+				return nil, nil
+			},
+			wantStatus: http.StatusBadRequest,
 		},
 	}
 

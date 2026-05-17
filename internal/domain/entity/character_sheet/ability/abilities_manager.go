@@ -142,6 +142,14 @@ func (m *Manager) GetPhysicalsLevel() (int, error) {
 	return phys.GetLevel(), nil
 }
 
+func (m *Manager) GetMentalsLevel() (int, error) {
+	ment, err := m.Get(enum.Mentals)
+	if err != nil {
+		return 0, err
+	}
+	return ment.GetLevel(), nil
+}
+
 func (m *Manager) GetCharacterNextLvlAggregateExp() int {
 	return m.characterExp.GetNextLvlAggregateExp()
 }

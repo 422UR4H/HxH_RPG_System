@@ -54,6 +54,7 @@ type CreateCharacterSheetInput struct {
 	CharacterClass    enum.CharacterClassName
 	SkillsExps        map[enum.SkillName]int
 	ProficienciesExps map[enum.WeaponName]int
+	AttributePoints   map[enum.AttributeName]int
 }
 
 func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
@@ -117,6 +118,13 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	if err != nil {
 		return nil, err
 	}
+
+	if len(input.AttributePoints) > 0 {
+		if err := characterSheet.ApplyInitialAttributePoints(input.AttributePoints); err != nil {
+			return nil, err
+		}
+	}
+
 	// TODO: move to consolidate (accept submission) flow
 	// talentLvl := set.GetTalentLvl()
 	// characterSheet.InitTalentWithLvl(talentLvl)

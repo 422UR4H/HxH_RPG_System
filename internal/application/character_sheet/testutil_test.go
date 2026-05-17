@@ -39,14 +39,20 @@ func newValidProfile() sheet.CharacterProfile {
 
 func newValidCreateInput() *charactersheet.CreateCharacterSheetInput {
 	playerUUID := uuid.New()
+	// Swordsman physLvl=3; must distribute exactly 3 primary physical points.
 	return &charactersheet.CreateCharacterSheetInput{
-		PlayerUUID:        &playerUUID,
-		MasterUUID:        nil,
-		CampaignUUID:      nil,
-		Profile:           newValidProfile(),
-		CharacterClass:    enum.Swordsman,
-		SkillsExps:        map[enum.SkillName]int{},
+		PlayerUUID:     &playerUUID,
+		MasterUUID:     nil,
+		CampaignUUID:   nil,
+		Profile:        newValidProfile(),
+		CharacterClass: enum.Swordsman,
+		SkillsExps:     map[enum.SkillName]int{},
 		ProficienciesExps: map[enum.WeaponName]int{},
+		AttributePoints: map[enum.AttributeName]int{
+			enum.Resistance:  1,
+			enum.Agility:     1,
+			enum.Flexibility: 1,
+		},
 	}
 }
 

@@ -110,6 +110,83 @@ func (cs *CharacterSheet) IncreasePtsForPhysPrimaryAttr(
 	return attrPts, maxStatusValues, nil
 }
 
+// ReconstructPrimaryPhysicalPoints sets primary physical attribute points
+// without validating against ability level. Only for gateway reconstruction
+// from trusted DB data — not for user-driven distribution flows.
+func (cs *CharacterSheet) ReconstructPrimaryPhysicalPoints(
+	name enum.AttributeName, points int,
+) error {
+	if _, err := cs.attribute.IncreasePrimaryPhysicalPts(name, points); err != nil {
+		return err
+	}
+	return cs.status.Upgrade()
+}
+
+// ReconstructPrimaryMentalPoints sets primary mental attribute points
+// without validating against ability level. Only for gateway reconstruction
+// from trusted DB data — not for user-driven distribution flows.
+func (cs *CharacterSheet) ReconstructPrimaryMentalPoints(
+	name enum.AttributeName, points int,
+) error {
+	if _, err := cs.attribute.IncreasePrimaryMentalPts(name, points); err != nil {
+		return err
+	}
+	return cs.status.Upgrade()
+}
+
+func (cs *CharacterSheet) ApplyInitialAttributePoints(
+	attrPoints map[enum.AttributeName]int,
+) error {
+	physAllowed := cs.attribute.GetPhysicalsPrimaryPoints()
+	mentAllowed := cs.attribute.GetMentalsPrimaryPoints()
+
+	var physSum, mentSum int
+	for name, pts := range attrPoints {
+		if pts <= 0 {
+			continue
+		}
+		if _, ok := physAllowed[name]; ok {
+			physSum += pts
+		} else if _, ok := mentAllowed[name]; ok {
+			mentSum += pts
+		} else {
+			return ErrInvalidDistributionPoints
+		}
+	}
+
+	physLvl, err := cs.ability.GetPhysicalsLevel()
+	if err != nil {
+		return err
+	}
+	if physSum != physLvl {
+		return ErrInvalidDistributionPoints
+	}
+
+	mentLvl, err := cs.ability.GetMentalsLevel()
+	if err != nil {
+		return err
+	}
+	if mentSum != mentLvl {
+		return ErrInvalidDistributionPoints
+	}
+
+	for name, pts := range attrPoints {
+		if pts <= 0 {
+			continue
+		}
+		if _, ok := physAllowed[name]; ok {
+			if _, err := cs.attribute.IncreasePrimaryPhysicalPts(name, pts); err != nil {
+				return err
+			}
+		} else {
+			if _, err := cs.attribute.IncreasePrimaryMentalPts(name, pts); err != nil {
+				return err
+			}
+		}
+	}
+	return cs.status.Upgrade()
+}
+
 // AddJointSkill only supports physical skills yet
 func (cs *CharacterSheet) AddJointSkill(
 	skill *skill.JointSkill,

@@ -50,7 +50,7 @@ func TestLoadCORS_FixedFields(t *testing.T) {
 	if c.MaxAge != 300 {
 		t.Errorf("got MaxAge %d, want 300", c.MaxAge)
 	}
-	if len(c.AllowedMethods) != 5 {
-		t.Errorf("got %d methods, want 5", len(c.AllowedMethods))
+	if len(c.AllowedMethods) != 6 {
+		t.Errorf("got %d methods, want 6", len(c.AllowedMethods))
 	}
 }

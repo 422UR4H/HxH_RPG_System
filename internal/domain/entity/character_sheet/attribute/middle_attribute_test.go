@@ -38,7 +38,7 @@ func TestMiddleAttribute_InitialState(t *testing.T) {
 	}
 }
 
-func TestMiddleAttribute_GetPoints_RoundsUp(t *testing.T) {
+func TestMiddleAttribute_GetPoints_FloorsDown(t *testing.T) {
 	buff := 0
 	p1 := newTestPrimaryAttribute(enum.Resistance, &buff)
 	p2 := newTestPrimaryAttribute(enum.Strength, &buff)
@@ -47,10 +47,25 @@ func TestMiddleAttribute_GetPoints_RoundsUp(t *testing.T) {
 	p1.IncreasePoints(3)
 	p2.IncreasePoints(4)
 
-	// avg(3, 4) = 3.5 → math.Round → 4
+	// avg(3, 4) = 3.5 → floor → 3
 	got := mid.GetPoints()
-	if got != 4 {
-		t.Errorf("GetPoints avg(3,4): got %d, want 4", got)
+	if got != 3 {
+		t.Errorf("GetPoints avg(3,4): got %d, want 3", got)
+	}
+}
+
+func TestMiddleAttribute_GetPoints_HalfPointFloorsToZero(t *testing.T) {
+	buff := 0
+	p1 := newTestPrimaryAttribute(enum.Flexibility, &buff)
+	p2 := newTestPrimaryAttribute(enum.Agility, &buff)
+	mid := newTestMiddleAttribute(enum.Celerity, &buff, p1, p2)
+
+	p1.IncreasePoints(1) // FLX=1, AGI=0
+
+	// avg(1, 0) = 0.5 → floor → 0
+	got := mid.GetPoints()
+	if got != 0 {
+		t.Errorf("GetPoints avg(1,0): got %d, want 0", got)
 	}
 }
 

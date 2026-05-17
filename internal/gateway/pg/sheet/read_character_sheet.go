@@ -278,33 +278,48 @@ func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfi
 func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCorrected bool, err error) {
 	charSheet.UUID = m.UUID
 
-	physicalAttrs := map[enum.AttributeName]int{
-		enum.Resistance:   m.ResistancePts,
-		enum.Strength:     m.StrengthPts,
-		enum.Agility:      m.AgilityPts,
-		enum.Celerity:     m.CelerityPts,
-		enum.Flexibility:  m.FlexibilityPts,
-		enum.Dexterity:    m.DexterityPts,
-		enum.Sense:        m.SensePts,
-		enum.Constitution: m.ConstitutionPts,
+	// Only primary physical attributes are restored; middle ones (Strength,
+	// Celerity, Dexterity, Constitution) are derived from primaries and
+	// recalculated automatically by the domain entity.
+	// Use ReconstructPrimaryPhysicalPoints (no capacity validation) because
+	// AddDryCharacterClass does not apply ability levels, so physLvl=0 here.
+	physicalPrimaryAttrs := map[enum.AttributeName]int{
+		enum.Resistance:  m.ResistancePts,
+		enum.Agility:     m.AgilityPts,
+		enum.Flexibility: m.FlexibilityPts,
+		enum.Sense:       m.SensePts,
 	}
-	for name, points := range physicalAttrs {
+	for name, points := range physicalPrimaryAttrs {
 		if points == 0 {
 			continue
 		}
-		if _, _, err := charSheet.IncreasePtsForPhysPrimaryAttr(name, points); err != nil {
+		if err := charSheet.ReconstructPrimaryPhysicalPoints(name, points); err != nil {
 			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePhysAttrPts, name, err)
 		}
 	}
 
-	// TODO: add mental attributes points or remove from modelSheet
-	mentalAttrs := map[enum.AttributeName]int{
+	mentalPrimaryAttrs := map[enum.AttributeName]int{
+		enum.Resilience:   m.ResiliencePts,
+		enum.Adaptability: m.AdaptabilityPts,
+		enum.Weighting:    m.WeightingPts,
+		enum.Creativity:   m.CreativityPts,
+	}
+	for name, points := range mentalPrimaryAttrs {
+		if points == 0 {
+			continue
+		}
+		if err := charSheet.ReconstructPrimaryMentalPoints(name, points); err != nil {
+			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
+		}
+	}
+
+	mentalExps := map[enum.AttributeName]int{
 		enum.Resilience:   m.ResilienceExp,
 		enum.Adaptability: m.AdaptabilityExp,
 		enum.Weighting:    m.WeightingExp,
 		enum.Creativity:   m.CreativityExp,
 	}
-	for name, exp := range mentalAttrs {
+	for name, exp := range mentalExps {
 		if exp == 0 {
 			continue
 		}
