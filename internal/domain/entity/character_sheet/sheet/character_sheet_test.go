@@ -268,3 +268,45 @@ func TestCharacterSheet_ApplyInitialAttributePoints(t *testing.T) {
 		}
 	})
 }
+
+func TestCharacterSheet_ReconstructPrimaryPhysicalPoints(t *testing.T) {
+	t.Run("restores primary points even when physLvl is zero (no class applied)", func(t *testing.T) {
+		// Gateway reconstruction: sheet built without a class (AddDryCharacterClass
+		// sets only the name, not ability levels), so physLvl=0. The capacity check
+		// in IncreasePtsForPhysPrimaryAttr would reject any points > 0.
+		cs := buildTestSheet(t) // physLvl=0
+
+		err := cs.ReconstructPrimaryPhysicalPoints(enum.Resistance, 1)
+		if err != nil {
+			t.Errorf("expected no error restoring Resistance=1, got: %v", err)
+		}
+
+		pts, err := cs.GetPointsOfAttribute(enum.Resistance)
+		if err != nil {
+			t.Fatalf("GetPointsOfAttribute: %v", err)
+		}
+		if pts != 1 {
+			t.Errorf("expected Resistance points=1, got %d", pts)
+		}
+	})
+
+	t.Run("updates derived middle attributes after primary restore", func(t *testing.T) {
+		cs := buildTestSheet(t)
+
+		if err := cs.ReconstructPrimaryPhysicalPoints(enum.Agility, 2); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if err := cs.ReconstructPrimaryPhysicalPoints(enum.Flexibility, 2); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Celerity = (Agility + Flexibility) / 2 = (2+2)/2 = 2
+		pts, err := cs.GetPointsOfAttribute(enum.Celerity)
+		if err != nil {
+			t.Fatalf("GetPointsOfAttribute Celerity: %v", err)
+		}
+		if pts != 2 {
+			t.Errorf("expected Celerity points=2, got %d", pts)
+		}
+	})
+}

@@ -281,6 +281,8 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 	// Only primary physical attributes are restored; middle ones (Strength,
 	// Celerity, Dexterity, Constitution) are derived from primaries and
 	// recalculated automatically by the domain entity.
+	// Use ReconstructPrimaryPhysicalPoints (no capacity validation) because
+	// AddDryCharacterClass does not apply ability levels, so physLvl=0 here.
 	physicalPrimaryAttrs := map[enum.AttributeName]int{
 		enum.Resistance:  m.ResistancePts,
 		enum.Agility:     m.AgilityPts,
@@ -291,7 +293,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 		if points == 0 {
 			continue
 		}
-		if _, _, err := charSheet.IncreasePtsForPhysPrimaryAttr(name, points); err != nil {
+		if err := charSheet.ReconstructPrimaryPhysicalPoints(name, points); err != nil {
 			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePhysAttrPts, name, err)
 		}
 	}
