@@ -75,7 +75,8 @@ func (r *Repository) GetCampaign(
             cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
 						cs.story_start_at, cs.story_current_at, cs.dead_at,
             cs.created_at, cs.updated_at,
-            cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
+            cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday,
+            cp.avatar_url, cp.cover_url
         FROM submissions s
         INNER JOIN character_sheets cs ON s.character_sheet_uuid = cs.uuid
         INNER JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
@@ -102,6 +103,7 @@ func (r *Repository) GetCampaign(
 			&sheet.StoryStartAt, &sheet.StoryCurrentAt, &sheet.DeadAt,
 			&sheet.CreatedAt, &sheet.UpdatedAt,
 			&sheet.NickName, &sheet.FullName, &sheet.Alignment, &sheet.CharacterClass, &sheet.Birthday,
+			&sheet.AvatarURL, &sheet.CoverURL,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan character sheet summary: %w", err)
@@ -124,7 +126,8 @@ func (r *Repository) GetCampaign(
             cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
             cs.story_start_at, cs.story_current_at, cs.dead_at,
             cs.created_at, cs.updated_at,
-            cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday
+            cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.birthday,
+            cp.avatar_url, cp.cover_url
         FROM character_sheets cs
         JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
         WHERE cs.campaign_uuid = $1
@@ -150,6 +153,7 @@ func (r *Repository) GetCampaign(
 			&sheet.StoryStartAt, &sheet.StoryCurrentAt, &sheet.DeadAt,
 			&sheet.CreatedAt, &sheet.UpdatedAt,
 			&sheet.NickName, &sheet.FullName, &sheet.Alignment, &sheet.CharacterClass, &sheet.Birthday,
+			&sheet.AvatarURL, &sheet.CoverURL,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan character sheet summary: %w", err)

@@ -40,4 +40,6 @@ type Summary struct {
 	DeadAt         *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	AvatarURL      *string
+	CoverURL       *string
 }
