@@ -24,14 +24,10 @@ func NewClient(accountID, accessKeyID, secretAccessKey, bucket, publicURL string
 		Credentials: credentials.NewStaticCredentialsProvider(
 			accessKeyID, secretAccessKey, "",
 		),
-		EndpointResolverWithOptions: aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			},
-		),
 	}
 
 	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
 	})
 
