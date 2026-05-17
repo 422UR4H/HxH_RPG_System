@@ -31,10 +31,6 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 		"character_class":    "Hunter",
 		"skills_exps":        map[string]any{},
 		"proficiencies_exps": map[string]any{},
-		"categories": map[string]any{
-			"Reinforcement": true,
-		},
-		"initial_hex_value": nil,
 	}
 
 	tests := []struct {

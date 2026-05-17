@@ -52,7 +52,6 @@ type CreateCharacterSheetInput struct {
 	CampaignUUID      *uuid.UUID
 	Profile           sheet.CharacterProfile
 	CharacterClass    enum.CharacterClassName
-	CategorySet       sheet.TalentByCategorySet
 	SkillsExps        map[enum.SkillName]int
 	ProficienciesExps map[enum.WeaponName]int
 }
@@ -106,21 +105,21 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 		}
 	}
 
-	set := input.CategorySet
 	characterSheet, err := uc.factory.Build(
 		input.PlayerUUID,
 		input.MasterUUID,
 		input.CampaignUUID,
 		input.Profile,
-		set.GetInitialHexValue(),
+		nil,
 		nil,
 		&charClass,
 	)
 	if err != nil {
 		return nil, err
 	}
-	talentLvl := set.GetTalentLvl()
-	characterSheet.InitTalentWithLvl(talentLvl)
+	// TODO: move to consolidate (accept submission) flow
+	// talentLvl := set.GetTalentLvl()
+	// characterSheet.InitTalentWithLvl(talentLvl)
 
 	characterSheet.UUID = uuid.New()
 	uc.characterSheets.Store(characterSheet.UUID, characterSheet)

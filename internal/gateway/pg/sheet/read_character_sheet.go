@@ -51,6 +51,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 			cs.reinforcement_exp, cs.transmutation_exp, cs.materialization_exp, cs.specialization_exp, cs.manipulation_exp, cs.emission_exp,
 			cs.created_at, cs.updated_at,
 			cp.uuid, cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.long_description, cp.brief_description, cp.birthday,
+			cp.avatar_url, cp.cover_url,
 			cp.created_at, cp.updated_at
 		FROM character_sheets cs
 		JOIN character_profiles cp ON cs.uuid = cp.character_sheet_uuid
@@ -77,6 +78,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 		&m.ReinforcementExp, &m.TransmutationExp, &m.MaterializationExp, &m.SpecializationExp, &m.ManipulationExp, &m.EmissionExp,
 		&m.CreatedAt, &m.UpdatedAt,
 		&profile.UUID, &profile.NickName, &profile.FullName, &profile.Alignment, &profile.CharacterClass, &profile.Description, &profile.BriefDescription, &profile.Birthday,
+		&profile.AvatarURL, &profile.CoverURL,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -267,6 +269,8 @@ func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfi
 		Description:      profile.Description,
 		BriefDescription: profile.BriefDescription,
 		Birthday:         profile.Birthday,
+		AvatarURL:        profile.AvatarURL,
+		CoverURL:         profile.CoverURL,
 	}
 }
 

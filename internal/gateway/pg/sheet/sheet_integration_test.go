@@ -545,3 +545,43 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 		// Only the in-memory normalization is verified here.
 	})
 }
+
+func TestUpdateCharacterSheetProfile(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+	playerUUID := uuid.MustParse(playerStr)
+
+	s := buildTestSheet(&playerUUID)
+	if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+		t.Fatalf("setup: failed to create sheet: %v", err)
+	}
+
+	sheetUUID := s.UUID
+
+	avatarURL := "https://pub.r2.dev/avatar/abc.webp"
+	coverURL := "https://pub.r2.dev/cover/abc.webp"
+
+	err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, &avatarURL, &coverURL)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verificar que os valores foram salvos
+	got, _, err := repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+	if err != nil {
+		t.Fatalf("sheet not found after update: %v", err)
+	}
+	if got.GetProfile().AvatarURL == nil || *got.GetProfile().AvatarURL != avatarURL {
+		t.Errorf("expected avatar_url %q, got %v", avatarURL, got.GetProfile().AvatarURL)
+	}
+
+	t.Run("wrong player returns error", func(t *testing.T) {
+		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, uuid.New(), &avatarURL, &coverURL)
+		if err == nil {
+			t.Error("expected error for wrong player UUID, got nil")
+		}
+	})
+}

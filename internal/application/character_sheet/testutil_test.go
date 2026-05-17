@@ -45,18 +45,9 @@ func newValidCreateInput() *charactersheet.CreateCharacterSheetInput {
 		CampaignUUID:      nil,
 		Profile:           newValidProfile(),
 		CharacterClass:    enum.Swordsman,
-		CategorySet:       *newValidCategorySet(),
 		SkillsExps:        map[enum.SkillName]int{},
 		ProficienciesExps: map[enum.WeaponName]int{},
 	}
-}
-
-func newValidCategorySet() *sheet.TalentByCategorySet {
-	categories := map[enum.CategoryName]bool{
-		enum.Reinforcement: true,
-	}
-	set, _ := sheet.NewTalentByCategorySet(categories, nil)
-	return set
 }
 
 func newValidDomainSheet(playerUUID, masterUUID, campaignUUID *uuid.UUID) *sheet.CharacterSheet {

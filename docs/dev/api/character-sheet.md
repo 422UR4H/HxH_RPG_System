@@ -64,3 +64,55 @@ se (birthday.month, birthday.day) > (ref.month, ref.day): birth_year -= 1
 | 200 | Ficha consolidada; birthday atualizado com ano correto |
 | 404 | Submissão ou campanha não encontrada |
 | 403 | Usuário não é o mestre da campanha |
+
+---
+
+## POST /upload/presigned-url
+
+**Auth:** Bearer JWT obrigatório
+
+**Request:**
+```json
+{
+  "file_type": "avatar",
+  "sheet_uuid": "uuid-v4"
+}
+```
+
+**Response 200:**
+```json
+{
+  "upload_url": "https://...r2.cloudflarestorage.com/...",
+  "public_url": "https://pub.r2.dev/avatar/uuid.webp"
+}
+```
+
+**Erros:**
+- `400` - sheet_uuid inválido
+- `422` - file_type inválido
+- `401` - Unauthorized
+- `500` - Internal Server Error
+
+---
+
+## PATCH /charactersheets/{uuid}/profile
+
+**Auth:** Bearer JWT (apenas o dono da ficha)
+
+**Request:**
+```json
+{
+  "avatar_url": "https://...",
+  "cover_url": "https://..."
+}
+```
+
+Ambos opcionais. Enviar `null` para limpar.
+
+**Response:** 204 No Content
+
+**Erros:**
+- `400` - Bad Request
+- `401` - Unauthorized
+- `404` - ficha não encontrada ou não pertence ao usuário
+- `500` - Internal Server Error
