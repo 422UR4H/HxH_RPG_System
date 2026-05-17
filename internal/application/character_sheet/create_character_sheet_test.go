@@ -353,4 +353,75 @@ func TestCreateCharacterSheet(t *testing.T) {
 			t.Errorf("expected repo error, got: %v", err)
 		}
 	})
+
+	t.Run("error - too many physical attribute points", func(t *testing.T) {
+		classMap := newTestClassMap()
+		sheetMap := newTestSheetMap()
+		factory := newTestFactory()
+		mockRepo := &testutil.MockCharacterSheetRepo{}
+		mockCampaignRepo := &testutil.MockCampaignRepo{}
+
+		uc := charactersheet.NewCreateCharacterSheetUC(
+			classMap, sheetMap, factory, mockRepo, mockCampaignRepo,
+		)
+		input := newValidCreateInput()
+		// Swordsman physLvl=3; sending 4 physical pts should fail
+		input.AttributePoints = map[enum.AttributeName]int{
+			enum.Resistance:  2,
+			enum.Agility:     2,
+		}
+
+		_, err := uc.CreateCharacterSheet(ctx, input)
+		if err == nil {
+			t.Fatal("expected error for over-distributed points, got nil")
+		}
+	})
+
+	t.Run("error - incomplete physical attribute points", func(t *testing.T) {
+		classMap := newTestClassMap()
+		sheetMap := newTestSheetMap()
+		factory := newTestFactory()
+		mockRepo := &testutil.MockCharacterSheetRepo{}
+		mockCampaignRepo := &testutil.MockCampaignRepo{}
+
+		uc := charactersheet.NewCreateCharacterSheetUC(
+			classMap, sheetMap, factory, mockRepo, mockCampaignRepo,
+		)
+		input := newValidCreateInput()
+		// Swordsman physLvl=3; only 2 pts distributed should fail
+		input.AttributePoints = map[enum.AttributeName]int{
+			enum.Resistance: 1,
+			enum.Agility:    1,
+		}
+
+		_, err := uc.CreateCharacterSheet(ctx, input)
+		if err == nil {
+			t.Fatal("expected error for incomplete distribution, got nil")
+		}
+	})
+
+	t.Run("attribute points are saved on character sheet", func(t *testing.T) {
+		classMap := newTestClassMap()
+		sheetMap := newTestSheetMap()
+		factory := newTestFactory()
+		mockRepo := &testutil.MockCharacterSheetRepo{}
+		mockCampaignRepo := &testutil.MockCampaignRepo{}
+
+		uc := charactersheet.NewCreateCharacterSheetUC(
+			classMap, sheetMap, factory, mockRepo, mockCampaignRepo,
+		)
+		input := newValidCreateInput() // already has valid 3-pt distribution
+
+		result, err := uc.CreateCharacterSheet(ctx, input)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		pts, err := result.GetPointsOfAttribute(enum.Resistance)
+		if err != nil {
+			t.Fatalf("GetPointsOfAttribute error: %v", err)
+		}
+		if pts != 1 {
+			t.Errorf("expected Resistance points=1, got %d", pts)
+		}
+	})
 }

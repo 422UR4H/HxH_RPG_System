@@ -23,6 +23,7 @@ type CreateCharacterSheetRequestBody struct {
 	CharacterClass    string                 `json:"character_class"`
 	SkillsExps        map[string]int         `json:"skills_exps"`
 	ProficienciesExps map[string]int         `json:"proficiencies_exps"`
+	AttributePoints   map[string]int         `json:"attribute_points" required:"false"`
 	// TODO: move to consolidate (accept submission) flow
 	// Categories        map[string]bool        `json:"categories"`
 	// InitialHexValue   *int                   `json:"initial_hex_value"`
@@ -127,6 +128,18 @@ func castRequest(
 		return nil, err
 	}
 
+	attrPoints := make(map[enum.AttributeName]int)
+	for k, v := range body.AttributePoints {
+		if v <= 0 {
+			continue
+		}
+		attrName, err := enum.AttributeNameFrom(k)
+		if err != nil {
+			return nil, err
+		}
+		attrPoints[attrName] = v
+	}
+
 	// TODO: move to consolidate (accept submission) flow
 	// categories := make(map[enum.CategoryName]bool)
 	// for k, v := range body.Categories {
@@ -149,5 +162,6 @@ func castRequest(
 		CharacterClass:    charClassName,
 		SkillsExps:        skillsExps,
 		ProficienciesExps: proficienciesExps,
+		AttributePoints:   attrPoints,
 	}, nil
 }

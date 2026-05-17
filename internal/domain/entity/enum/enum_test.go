@@ -7,6 +7,79 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
+func TestAttributeNameFrom(t *testing.T) {
+	t.Run("valid physical names", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected enum.AttributeName
+		}{
+			{"Resistance", enum.Resistance},
+			{"Strength", enum.Strength},
+			{"Agility", enum.Agility},
+			{"Celerity", enum.Celerity},
+			{"Flexibility", enum.Flexibility},
+			{"Dexterity", enum.Dexterity},
+			{"Sense", enum.Sense},
+			{"Constitution", enum.Constitution},
+		}
+		for _, tt := range tests {
+			t.Run(tt.input, func(t *testing.T) {
+				result, err := enum.AttributeNameFrom(tt.input)
+				if err != nil {
+					t.Fatalf("error = %v", err)
+				}
+				if result != tt.expected {
+					t.Errorf("result = %v, want %v", result, tt.expected)
+				}
+			})
+		}
+	})
+
+	t.Run("valid mental names", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected enum.AttributeName
+		}{
+			{"Resilience", enum.Resilience},
+			{"Adaptability", enum.Adaptability},
+			{"Weighting", enum.Weighting},
+			{"Creativity", enum.Creativity},
+		}
+		for _, tt := range tests {
+			t.Run(tt.input, func(t *testing.T) {
+				result, err := enum.AttributeNameFrom(tt.input)
+				if err != nil {
+					t.Fatalf("error = %v", err)
+				}
+				if result != tt.expected {
+					t.Errorf("result = %v, want %v", result, tt.expected)
+				}
+			})
+		}
+	})
+
+	t.Run("invalid name", func(t *testing.T) {
+		_, err := enum.AttributeNameFrom("Stamina")
+		if !errors.Is(err, enum.ErrInvalidNameOf) {
+			t.Errorf("error = %v, want ErrInvalidNameOf", err)
+		}
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		_, err := enum.AttributeNameFrom("")
+		if !errors.Is(err, enum.ErrInvalidNameOf) {
+			t.Errorf("error = %v, want ErrInvalidNameOf", err)
+		}
+	})
+}
+
+func TestAllAttributeNames(t *testing.T) {
+	names := enum.AllAttributeNames()
+	if len(names) != 14 {
+		t.Errorf("AllAttributeNames() len = %d, want 14", len(names))
+	}
+}
+
 func TestCharacterClassNameFrom(t *testing.T) {
 	t.Run("valid names", func(t *testing.T) {
 		tests := []struct {
