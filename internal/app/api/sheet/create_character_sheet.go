@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -111,6 +112,9 @@ func castRequest(
 
 	proficienciesExps := make(map[enum.WeaponName]int)
 	for k, v := range body.ProficienciesExps {
+		if len(k) > 0 {
+			k = strings.ToUpper(k[:1]) + k[1:]
+		}
 		weaponName, err := enum.WeaponNameFrom(k)
 		if err != nil {
 			return nil, err
