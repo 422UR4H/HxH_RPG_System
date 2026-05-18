@@ -16,7 +16,8 @@ var (
 	ErrMaxCharacterSheetsLimit   = domain.NewValidationError(errors.New("player cannot have more than 10 character sheets"))
 	ErrNotCharacterSheetOwner    = domain.NewValidationError(errors.New("not the owner of the character sheet"))
 	ErrCharacterSheetHasNoOwner  = domain.NewDomainError(errors.New("the character sheet has no playerUUID or masterUUID"))
-	ErrInvalidUpdateHexValMethod = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
+	ErrInvalidUpdateHexValMethod    = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
+	ErrCharacterSheetNotFreeToManage = domain.NewValidationError(errors.New("character sheet is not free to manage"))
 )
 
 func NewCharacterClassNotFoundError(className string) error {
