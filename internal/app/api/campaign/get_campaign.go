@@ -57,7 +57,7 @@ func GetCampaignHandler(
 			if statuses == nil {
 				statuses = map[uuid.UUID]string{}
 			}
-			response = ToPlayerResponse(campaign, statuses)
+			response = ToPlayerResponse(campaign, statuses, userUUID)
 		}
 		return &GetCampaignResponse{
 			Body: GetCampaignResponseBody{
