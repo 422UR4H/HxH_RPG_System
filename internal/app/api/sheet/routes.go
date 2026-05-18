@@ -18,7 +18,9 @@ type Api struct {
 	ListClassesHandler           Handler[struct{}, ListCharacterClassesResponse]
 	GetClassHandler              Handler[GetCharacterClassRequest, GetCharacterClassResponse]
 	UpdateNenHexagonValueHandler          Handler[UpdateNenHexagonValueRequest, UpdateNenHexagonValueResponse]
-	PatchCharacterSheetProfileHandler Handler[PatchCharacterSheetProfileRequest, PatchCharacterSheetProfileResponse]
+	PatchCharacterSheetProfileHandler     Handler[PatchCharacterSheetProfileRequest, PatchCharacterSheetProfileResponse]
+	DeleteCharacterSheetHandler           Handler[DeleteCharacterSheetRequest, DeleteCharacterSheetResponse]
+	UpdateCharacterSheetHandler           Handler[UpdateCharacterSheetRequest, UpdateCharacterSheetResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -115,4 +117,36 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusNoContent,
 	}, a.PatchCharacterSheetProfileHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodDelete,
+		Path:        "/charactersheets/{uuid}",
+		Description: "Delete a character sheet (owner only, free state)",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusNotFound,
+			http.StatusForbidden,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusNoContent,
+	}, a.DeleteCharacterSheetHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPatch,
+		Path:        "/charactersheets/{uuid}",
+		Description: "Full update of a character sheet (owner only, free state)",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusNotFound,
+			http.StatusForbidden,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusOK,
+	}, a.UpdateCharacterSheetHandler)
 }

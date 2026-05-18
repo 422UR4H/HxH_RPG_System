@@ -564,7 +564,7 @@ func TestUpdateCharacterSheetProfile(t *testing.T) {
 	avatarURL := "https://pub.r2.dev/avatar/abc.webp"
 	coverURL := "https://pub.r2.dev/cover/abc.webp"
 
-	err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, &avatarURL, &coverURL)
+	err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, &avatarURL, &coverURL, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -579,7 +579,7 @@ func TestUpdateCharacterSheetProfile(t *testing.T) {
 	}
 
 	t.Run("wrong player returns error", func(t *testing.T) {
-		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, uuid.New(), &avatarURL, &coverURL)
+		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, uuid.New(), &avatarURL, &coverURL, nil)
 		if err == nil {
 			t.Error("expected error for wrong player UUID, got nil")
 		}

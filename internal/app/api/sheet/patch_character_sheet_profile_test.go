@@ -28,7 +28,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 		pathUUID   string
 		body       any
 		ctx        context.Context
-		mockFn     func(ctx context.Context, su, pu uuid.UUID, av, cv *string) error
+		mockFn     func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error
 		wantStatus int
 	}{
 		{
@@ -36,7 +36,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 			pathUUID: sheetUUID.String(),
 			body:     validBody,
 			ctx:      context.WithValue(context.Background(), auth.UserIDKey, userUUID),
-			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv *string) error {
+			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error {
 				return nil
 			},
 			wantStatus: http.StatusNoContent,
@@ -46,7 +46,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 			pathUUID: sheetUUID.String(),
 			body:     validBody,
 			ctx:      context.WithValue(context.Background(), auth.UserIDKey, userUUID),
-			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv *string) error {
+			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error {
 				return charactersheet.ErrCharacterSheetNotFound
 			},
 			wantStatus: http.StatusNotFound,
@@ -56,7 +56,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 			pathUUID: sheetUUID.String(),
 			body:     validBody,
 			ctx:      context.WithValue(context.Background(), auth.UserIDKey, userUUID),
-			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv *string) error {
+			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error {
 				return errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -66,7 +66,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 			pathUUID: "not-a-valid-uuid",
 			body:     validBody,
 			ctx:      context.WithValue(context.Background(), auth.UserIDKey, userUUID),
-			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv *string) error {
+			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error {
 				t.Fatal("UpdateCharacterSheetProfile should not be called with invalid UUID")
 				return nil
 			},
@@ -77,7 +77,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 			pathUUID: sheetUUID.String(),
 			body:     validBody,
 			ctx:      context.Background(),
-			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv *string) error {
+			mockFn: func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error {
 				t.Fatal("UpdateCharacterSheetProfile should not be called when userID is missing")
 				return nil
 			},

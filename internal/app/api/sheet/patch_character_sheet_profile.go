@@ -12,12 +12,13 @@ import (
 )
 
 type IProfileImageUpdater interface {
-	UpdateCharacterSheetProfile(ctx context.Context, sheetUUID, playerUUID uuid.UUID, avatarURL, coverURL *string) error
+	UpdateCharacterSheetProfile(ctx context.Context, sheetUUID, playerUUID uuid.UUID, avatarURL, coverURL, description *string) error
 }
 
 type PatchCharacterSheetProfileRequestBody struct {
-	AvatarURL *string `json:"avatar_url,omitempty"`
-	CoverURL  *string `json:"cover_url,omitempty"`
+	AvatarURL   *string `json:"avatar_url,omitempty"`
+	CoverURL    *string `json:"cover_url,omitempty"`
+	Description *string `json:"brief_description,omitempty"`
 }
 
 type PatchCharacterSheetProfileRequest struct {
@@ -43,7 +44,7 @@ func PatchCharacterSheetProfileHandler(
 			return nil, huma.Error400BadRequest("invalid uuid")
 		}
 
-		err = repo.UpdateCharacterSheetProfile(ctx, sheetUUID, userUUID, req.Body.AvatarURL, req.Body.CoverURL)
+		err = repo.UpdateCharacterSheetProfile(ctx, sheetUUID, userUUID, req.Body.AvatarURL, req.Body.CoverURL, req.Body.Description)
 		if err != nil {
 			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
 				return nil, huma.Error404NotFound(err.Error())

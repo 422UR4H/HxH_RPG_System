@@ -87,13 +87,13 @@ func (m *mockUpdateNenHexagonValue) UpdateNenHexagonValue(
 
 // mockProfileUpdater implements sheet.IProfileImageUpdater
 type mockProfileUpdater struct {
-	fn func(ctx context.Context, sheetUUID, playerUUID uuid.UUID, avatarURL, coverURL *string) error
+	fn func(ctx context.Context, sheetUUID, playerUUID uuid.UUID, avatarURL, coverURL, description *string) error
 }
 
 func (m *mockProfileUpdater) UpdateCharacterSheetProfile(
-	ctx context.Context, sheetUUID, playerUUID uuid.UUID, avatarURL, coverURL *string,
+	ctx context.Context, sheetUUID, playerUUID uuid.UUID, avatarURL, coverURL, description *string,
 ) error {
-	return m.fn(ctx, sheetUUID, playerUUID, avatarURL, coverURL)
+	return m.fn(ctx, sheetUUID, playerUUID, avatarURL, coverURL, description)
 }
 
 // Test helpers

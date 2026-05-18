@@ -9,13 +9,22 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
 )
+
+type mockSubmissionFetcher struct {
+	info *cs.SubmissionInfo
+	err  error
+}
+
+func (m *mockSubmissionFetcher) GetSubmissionInfoBySheetUUID(ctx context.Context, sheetUUID uuid.UUID) (*cs.SubmissionInfo, error) {
+	return m.info, m.err
+}
 
 func TestGetCharacterSheetHandler(t *testing.T) {
 	userUUID := uuid.New()
@@ -38,7 +47,7 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 		{
 			name: "not_found",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
-				return nil, charactersheet.ErrCharacterSheetNotFound
+				return nil, cs.ErrCharacterSheetNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -79,7 +88,8 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 			_, api := humatest.New(t)
 
 			mock := &mockGetCharacterSheet{fn: tt.mockFn}
-			handler := sheet.GetCharacterSheetHandler(mock)
+			submissionFetcher := &mockSubmissionFetcher{}
+			handler := sheet.GetCharacterSheetHandler(mock, submissionFetcher)
 
 			huma.Register(api, huma.Operation{
 				Method: http.MethodGet,

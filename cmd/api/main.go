@@ -131,14 +131,23 @@ func main() {
 		&characterSheets,
 		characterSheetRepo,
 	)
+	deleteCharacterSheetUC := cs.NewDeleteCharacterSheetUC(characterSheetRepo, submitRepo)
+	updateCharacterSheetUC := cs.NewUpdateCharacterSheetUC(
+		&dryCharacterClasses,
+		characterSheetFactory,
+		characterSheetRepo,
+		submitRepo,
+	)
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler:       sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
-		GetCharacterSheetHandler:          sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
+		GetCharacterSheetHandler:          sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC, submitRepo),
 		ListCharacterSheetsHandler:        sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
 		ListClassesHandler:                sheetHandler.ListClassesHandler(listCharacterClassesUC),
 		GetClassHandler:                   sheetHandler.GetClassHandler(getCharacterClassUC),
 		UpdateNenHexagonValueHandler:      sheetHandler.UpdateNenHexagonValueHandler(updateNenHexValUC, getCharacterSheetUC),
 		PatchCharacterSheetProfileHandler: sheetHandler.PatchCharacterSheetProfileHandler(characterSheetRepo),
+		DeleteCharacterSheetHandler:       sheetHandler.DeleteCharacterSheetHandler(deleteCharacterSheetUC),
+		UpdateCharacterSheetHandler:       sheetHandler.UpdateCharacterSheetHandler(updateCharacterSheetUC, getCharacterSheetUC),
 	}
 
 	uploadApi := &uploadHandler.Api{

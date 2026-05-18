@@ -50,7 +50,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 			cs.ten_exp, cs.zetsu_exp, cs.ren_exp, cs.gyo_exp, cs.shu_exp, cs.kou_exp, cs.ken_exp, cs.ryu_exp, cs.in_exp, cs.en_exp, cs.aura_control_exp, cs.aop_exp,
 			cs.reinforcement_exp, cs.transmutation_exp, cs.materialization_exp, cs.specialization_exp, cs.manipulation_exp, cs.emission_exp,
 			cs.created_at, cs.updated_at,
-			cp.uuid, cp.nickname, cp.fullname, cp.alignment, cp.character_class, cp.long_description, cp.brief_description, cp.birthday,
+			cp.uuid, cp.nickname, cp.fullname, COALESCE(cp.alignment, ''), cp.character_class, COALESCE(cp.long_description, ''), COALESCE(cp.brief_description, ''), cp.birthday,
 			cp.avatar_url, cp.cover_url,
 			cp.created_at, cp.updated_at
 		FROM character_sheets cs

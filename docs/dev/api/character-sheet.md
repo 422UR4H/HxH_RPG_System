@@ -95,6 +95,130 @@ se (birthday.month, birthday.day) > (ref.month, ref.day): birth_year -= 1
 
 ---
 
+## GET /charactersheets/{uuid}
+
+**Auth:** Bearer JWT obrigatório
+
+### Parâmetros de Query
+
+- `include` (opcional): Se `include=submission`, adiciona campo `submission` à resposta
+
+### Response 200
+
+```json
+{
+  "uuid": "...",
+  "user_uuid": "...",
+  "nickname": "Gon",
+  "fullname": "Gon Freecss",
+  "alignment": "Chaotic-Good",
+  "description": "Descrição longa opcional",
+  "brief_description": "Máx 255 chars",
+  "birthday": "0000-05-15T00:00:00Z",
+  "age": 12,
+  "character_class": "Hunter",
+  "skills_exps": {},
+  "proficiencies_exps": {},
+  "categories": { "Reinforcement": true },
+  "avatar_url": "https://...",
+  "cover_url": "https://..."
+}
+```
+
+Quando `include=submission` é enviado:
+
+```json
+{
+  "...": "campos anteriores",
+  "submission": {
+    "campaign_uuid": "...",
+    "created_at": "2026-05-17T12:00:00Z"
+  }
+}
+```
+
+ou `"submission": null` se nenhuma submissão está pendente.
+
+### Erros
+
+| Status | Situação |
+|--------|----------|
+| 200 | Ficha retornada (com ou sem submission) |
+| 400 | UUID inválido |
+| 403 | Acesso negado (não é o dono) |
+| 404 | Ficha não encontrada |
+| 500 | Internal Server Error |
+
+---
+
+## PATCH /charactersheets/{uuid}
+
+**Auth:** Bearer JWT (apenas o dono da ficha)
+
+**Pré-condição:** Ficha deve estar livre (sem campanha e sem submissão pendente). Caso contrário, retorna `422 ErrCharacterSheetNotFreeToManage`.
+
+### Request
+
+```json
+{
+  "character_class": "Hunter",
+  "skills_exps": {},
+  "proficiencies_exps": {},
+  "attribute_points": 10,
+  "profile": {
+    "nickname": "Gon",
+    "fullname": "Gon Freecss",
+    "alignment": "Chaotic-Good",
+    "description": "Descrição longa opcional",
+    "brief_description": "Máx 255 chars",
+    "birthday": "0000-05-15T00:00:00Z",
+    "age": 12
+  }
+}
+```
+
+Todos os campos obrigatórios (mesmo formato que `POST /character-sheets`).
+
+### Response 200
+
+Retorna a ficha atualizada (mesmo formato que `GET /charactersheets/{uuid}`).
+
+### Erros
+
+| Status | Situação |
+|--------|----------|
+| 200 | Ficha atualizada |
+| 400 | UUID ou dados inválidos |
+| 403 | Acesso negado (não é o dono) |
+| 404 | Ficha ou classe de personagem não encontrada |
+| 422 | Ficha não está livre para editar (está em campanha ou com submissão pendente) |
+| 500 | Internal Server Error |
+
+---
+
+## DELETE /charactersheets/{uuid}
+
+**Auth:** Bearer JWT (apenas o dono da ficha)
+
+**Pré-condição:** Ficha deve estar livre (sem campanha e sem submissão pendente). Caso contrário, retorna `422 ErrCharacterSheetNotFreeToManage`.
+
+### Response 204
+
+Ficha deletada com sucesso. Nenhum corpo na resposta.
+
+### Erros
+
+| Status | Situação |
+|--------|----------|
+| 204 | Ficha deletada |
+| 400 | UUID inválido |
+| 403 | Acesso negado (não é o dono) |
+| 404 | Ficha não encontrada |
+| 422 | Ficha não está livre para deletar (está em campanha ou com submissão pendente) |
+| 500 | Internal Server Error |
+
+---
+
 ## PATCH /charactersheets/{uuid}/profile
 
 **Auth:** Bearer JWT (apenas o dono da ficha)
@@ -103,11 +227,12 @@ se (birthday.month, birthday.day) > (ref.month, ref.day): birth_year -= 1
 ```json
 {
   "avatar_url": "https://...",
-  "cover_url": "https://..."
+  "cover_url": "https://...",
+  "brief_description": "Máx 255 chars"
 }
 ```
 
-Ambos opcionais. Enviar `null` para limpar.
+Todos opcionais. Enviar `null` para limpar `avatar_url` ou `cover_url`. Campo `brief_description` também opcional.
 
 **Response:** 204 No Content
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
@@ -20,10 +21,20 @@ type IGetCharacterSheet interface {
 	) (*domainSheet.CharacterSheet, error)
 }
 
-// ISubmissionLookup is a minimal interface to check pending submissions without
-// creating a cross-domain dependency on the submission package.
+// ISubmissionLookup lets the GET use case check pending submissions for authorization.
 type ISubmissionLookup interface {
 	GetSubmissionCampaignUUIDBySheetUUID(ctx context.Context, sheetUUID uuid.UUID) (uuid.UUID, error)
+}
+
+// SubmissionInfo is returned by ISubmissionFetcher for the optional ?include=submission.
+type SubmissionInfo struct {
+	CampaignUUID uuid.UUID
+	CreatedAt    time.Time
+}
+
+// ISubmissionFetcher is satisfied by the submission gateway; used by the HTTP handler only.
+type ISubmissionFetcher interface {
+	GetSubmissionInfoBySheetUUID(ctx context.Context, sheetUUID uuid.UUID) (*SubmissionInfo, error)
 }
 
 type GetCharacterSheetUC struct {

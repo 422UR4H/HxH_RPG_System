@@ -11,7 +11,8 @@ type CharacterSheetResponse struct {
 	UUID         uuid.UUID  `json:"uuid"`
 	PlayerUUID   *uuid.UUID `json:"player_uuid,omitempty"`
 	MasterUUID   *uuid.UUID `json:"master_uuid,omitempty"`
-	CampaignUUID *uuid.UUID `json:"campaign_uuid,omitempty"`
+	CampaignUUID *uuid.UUID        `json:"campaign_uuid,omitempty"`
+	Submission   *SubmissionResponse `json:"submission,omitempty"`
 
 	CharacterClass string                       `json:"character_class"`
 	CategoryName   string                       `json:"category_name"`
@@ -99,6 +100,11 @@ type StatusResponse struct {
 	Min     int `json:"min"`
 	Current int `json:"current"`
 	Max     int `json:"max"`
+}
+
+type SubmissionResponse struct {
+	CampaignUUID string `json:"campaign_uuid"`
+	CreatedAt    string `json:"created_at"`
 }
 
 func NewCharacterSheetResponse(
