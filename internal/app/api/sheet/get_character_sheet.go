@@ -3,6 +3,7 @@ package sheet
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -53,6 +54,7 @@ func GetCharacterSheetHandler(
 			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
+				log.Printf("[ERROR] GetCharacterSheet uuid=%s: %v", req.UUID, err)
 				return nil, huma.Error500InternalServerError(err.Error())
 			}
 		}
@@ -62,6 +64,7 @@ func GetCharacterSheetHandler(
 		if req.Include == "submission" || containsInclude(req.Include, "submission") {
 			info, err := submissionFetcher.GetSubmissionInfoBySheetUUID(ctx, charSheetId)
 			if err != nil {
+				log.Printf("[ERROR] GetSubmissionInfo uuid=%s: %v", req.UUID, err)
 				return nil, huma.Error500InternalServerError(err.Error())
 			}
 			if info != nil {

@@ -3,6 +3,7 @@ package sheet
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -63,12 +64,14 @@ func UpdateCharacterSheetHandler(
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
+				log.Printf("[ERROR] UpdateCharacterSheet uuid=%s: %v", req.UUID, err)
 				return nil, huma.Error500InternalServerError(err.Error())
 			}
 		}
 
 		charSheet, err := getUC.GetCharacterSheet(ctx, sheetUUID, userUUID)
 		if err != nil {
+			log.Printf("[ERROR] UpdateCharacterSheet post-update GET uuid=%s: %v", req.UUID, err)
 			return nil, huma.Error500InternalServerError(err.Error())
 		}
 
