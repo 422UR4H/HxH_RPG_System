@@ -133,7 +133,7 @@ func main() {
 	)
 	characterSheetsApi := sheetHandler.Api{
 		CreateCharacterSheetHandler:       sheetHandler.CreateCharacterSheetHandler(createCharacterSheetUC),
-		GetCharacterSheetHandler:          sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC),
+		GetCharacterSheetHandler:          sheetHandler.GetCharacterSheetHandler(getCharacterSheetUC, submitRepo),
 		ListCharacterSheetsHandler:        sheetHandler.ListCharacterSheetsHandler(listCharacterSheetsUC),
 		ListClassesHandler:                sheetHandler.ListClassesHandler(listCharacterClassesUC),
 		GetClassHandler:                   sheetHandler.GetClassHandler(getCharacterClassUC),
