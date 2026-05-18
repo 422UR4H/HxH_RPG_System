@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 )
 
 func (r *Repository) GetSubmissionCampaignUUIDBySheetUUID(
@@ -44,4 +46,23 @@ func (r *Repository) ExistsSubmittedCharacterSheet(
 		return false, fmt.Errorf("failed to check if character is submitted: %w", err)
 	}
 	return exists, nil
+}
+
+func (r *Repository) GetSubmissionInfoBySheetUUID(
+	ctx context.Context, sheetUUID uuid.UUID,
+) (*charactersheet.SubmissionInfo, error) {
+	const query = `
+		SELECT campaign_uuid, created_at
+		FROM submissions
+		WHERE character_sheet_uuid = $1
+	`
+	var info charactersheet.SubmissionInfo
+	err := r.q.QueryRow(ctx, query, sheetUUID).Scan(&info.CampaignUUID, &info.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get submission info: %w", err)
+	}
+	return &info, nil
 }
