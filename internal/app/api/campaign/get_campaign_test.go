@@ -13,6 +13,7 @@ import (
 	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -193,5 +194,83 @@ func TestGetCampaignHandler_PlayerEnrollmentStatus(t *testing.T) {
 	}
 	if status != "pending" {
 		t.Errorf("got my_enrollment_status %v, want 'pending'", status)
+	}
+}
+
+func TestGetCampaignHandler_PlayerSeesOwnPendingSheet(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	otherPlayerUUID := uuid.New()
+	campaignUUID := uuid.New()
+	sheetUUID := uuid.New()
+	otherSheetUUID := uuid.New()
+	now := time.Now()
+
+	_, api := humatest.New(t)
+
+	mockGet := &mockGetCampaign{
+		fn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error) {
+			return &campaignEntity.Campaign{
+				UUID:                    id,
+				MasterUUID:              masterUUID,
+				Name:                    "Player Campaign",
+				BriefInitialDescription: "Brief",
+				Description:             "Full",
+				IsPublic:                true,
+				CallLink:                "https://meet.example.com",
+				StoryStartAt:            now,
+				CreatedAt:               now,
+				UpdatedAt:               now,
+				PendingSheets: []csEntity.Summary{
+					{
+						UUID:       otherSheetUUID,
+						PlayerUUID: &otherPlayerUUID,
+						NickName:   "Other",
+						Birthday:   now,
+						CreatedAt:  now,
+						UpdatedAt:  now,
+					},
+					{
+						UUID:       sheetUUID,
+						PlayerUUID: &playerUUID,
+						NickName:   "MyChar",
+						Birthday:   now,
+						CreatedAt:  now,
+						UpdatedAt:  now,
+					},
+				},
+			}, nil
+		},
+	}
+
+	handler := campaign.GetCampaignHandler(mockGet, &mockListPlayerEnrollments{})
+
+	huma.Register(api, huma.Operation{
+		Method: http.MethodGet,
+		Path:   "/campaigns/{uuid}",
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, playerUUID)
+	resp := api.GetCtx(ctx, "/campaigns/"+campaignUUID.String())
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d. Body: %s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	campaignData := result["campaign"].(map[string]any)
+
+	mySheet, ok := campaignData["my_pending_sheet"].(map[string]any)
+	if !ok {
+		t.Fatal("expected 'my_pending_sheet' field in player response")
+	}
+	if mySheet["nick_name"] != "MyChar" {
+		t.Errorf("got nick_name %v, want 'MyChar'", mySheet["nick_name"])
+	}
+	if mySheet["uuid"] != sheetUUID.String() {
+		t.Errorf("got uuid %v, want %s", mySheet["uuid"], sheetUUID.String())
 	}
 }

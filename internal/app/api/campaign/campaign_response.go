@@ -36,7 +36,8 @@ type CampaignMasterResponse struct {
 
 type CampaignPlayerResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPublicSummaryResponse `json:"character_sheets"`
+	CharacterSheets []sheet.CharacterPublicSummaryResponse  `json:"character_sheets"`
+	MyPendingSheet  *sheet.CharacterPrivateSummaryResponse  `json:"my_pending_sheet,omitempty"`
 }
 
 func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {
@@ -60,6 +61,7 @@ func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {
 func ToPlayerResponse(
 	c *campaign.Campaign,
 	enrollmentStatuses map[uuid.UUID]string,
+	playerUUID uuid.UUID,
 ) CampaignPlayerResponse {
 	base := toSummaryBaseResponse(c)
 
@@ -74,9 +76,20 @@ func ToPlayerResponse(
 	for _, cs := range c.CharacterSheets {
 		characterSheets = append(characterSheets, sheet.ToPublicSummaryResponse(&cs))
 	}
+
+	var myPendingSheet *sheet.CharacterPrivateSummaryResponse
+	for _, ps := range c.PendingSheets {
+		if ps.PlayerUUID != nil && *ps.PlayerUUID == playerUUID {
+			r := sheet.ToPrivateSummaryResponse(&ps)
+			myPendingSheet = &r
+			break
+		}
+	}
+
 	return CampaignPlayerResponse{
 		CampaignBaseResponse: base,
 		CharacterSheets:      characterSheets,
+		MyPendingSheet:       myPendingSheet,
 	}
 }
 
