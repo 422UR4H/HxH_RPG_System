@@ -12,7 +12,7 @@ func (r *Repository) UpdateCharacterSheet(
 	ctx context.Context, sheet *domainSheet.CharacterSheet,
 ) error {
 	m := charSheetToModel(sheet)
-	m.UpdatedAt = time.Now()
+	now := time.Now()
 
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
@@ -42,7 +42,7 @@ func (r *Repository) UpdateCharacterSheet(
 			ten_exp = $65, zetsu_exp = $66, ren_exp = $67, gyo_exp = $68, shu_exp = $69, kou_exp = $70, ken_exp = $71, ryu_exp = $72, in_exp = $73, en_exp = $74, aura_control_exp = $75, aop_exp = $76,
 			reinforcement_exp = $77, transmutation_exp = $78, materialization_exp = $79, specialization_exp = $80, manipulation_exp = $81, emission_exp = $82,
 			updated_at = $83
-		WHERE uuid = $84
+		WHERE uuid = $84 AND player_uuid = $85
 	`
 
 	result, err := tx.Exec(ctx, sheetQuery,
@@ -59,7 +59,7 @@ func (r *Repository) UpdateCharacterSheet(
 		m.NenExp, m.FocusExp, m.WillPowerExp,
 		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
 		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
-		m.UpdatedAt, m.UUID,
+		now, m.UUID, m.PlayerUUID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update character sheet: %w", err)
@@ -73,14 +73,15 @@ func (r *Repository) UpdateCharacterSheet(
 	const profileQuery = `
 		UPDATE character_profiles SET
 			nickname = $1, fullname = $2, alignment = $3, character_class = $4,
-			long_description = $5, brief_description = $6, birthday = $7,
-			avatar_url = $8, cover_url = $9, updated_at = $10
-		WHERE character_sheet_uuid = $11
+			long_description = $5, brief_description = $6, birthday = $7, age = $8,
+			updated_at = $9
+		WHERE character_sheet_uuid = $10
 	`
 	_, err = tx.Exec(ctx, profileQuery,
 		m.Profile.NickName, m.Profile.FullName, m.Profile.Alignment, m.Profile.CharacterClass,
-		m.Profile.Description, m.Profile.BriefDescription, m.Profile.Birthday,
-		m.Profile.AvatarURL, m.Profile.CoverURL, m.UpdatedAt, m.UUID,
+		m.Profile.Description, m.Profile.BriefDescription, m.Profile.Birthday, m.Profile.Age,
+		now,
+		m.UUID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update character profile: %w", err)
