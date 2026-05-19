@@ -4,8 +4,15 @@ import (
 	"time"
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
+
+// charExpTable is used only to compute curr_exp / next_lvl_base_exp for summary responses.
+// It must use CHARACTER_COEFF to match the domain entity. The authoritative values always
+// come from CharacterExp.GetCurrentExp / GetNextLvlBaseExp after full sheet reconstruction.
+var charExpTable = experience.NewExpTable(domainSheet.CHARACTER_COEFF)
 
 type CharacterBaseSummaryResponse struct {
 	UUID           uuid.UUID  `json:"uuid"`
@@ -34,6 +41,10 @@ type CharacterPrivateOnlyResponse struct {
 	CurrHexValue   *int      `json:"curr_hex_value,omitempty"`
 	Level          int       `json:"level"`
 	Points         int       `json:"points"`
+	// CurrExp and NxtLvlBaseExp are derived from char_exp (denormalized) + charExpTable.
+	// Do NOT use for game logic — always use the full sheet build for that.
+	CurrExp        int       `json:"curr_exp"`
+	NxtLvlBaseExp  int       `json:"next_lvl_base_exp"`
 	TalentLvl      int       `json:"talent_lvl"`
 	PhysicalsLvl   int       `json:"physicals_lvl"`
 	MentalsLvl     int       `json:"mentals_lvl"`
@@ -72,8 +83,10 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		Birthday:       sheet.Birthday.Format("2006-01-02"),
 		CategoryName:   sheet.CategoryName,
 		CurrHexValue:   sheet.CurrHexValue,
-		Level:          sheet.Level,
-		Points:         sheet.Points,
+		Level:         sheet.Level,
+		Points:        sheet.Points,
+		CurrExp:       sheet.CharExp - charExpTable.GetAggregateExpByLvl(sheet.Level),
+		NxtLvlBaseExp: charExpTable.GetBaseExpByLvl(sheet.Level + 1),
 		TalentLvl:      sheet.TalentLvl,
 		PhysicalsLvl:   sheet.PhysicalsLvl,
 		MentalsLvl:     sheet.MentalsLvl,

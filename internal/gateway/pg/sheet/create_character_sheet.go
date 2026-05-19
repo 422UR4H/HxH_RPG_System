@@ -45,6 +45,7 @@ func (r *Repository) CreateCharacterSheet(
 			nen_exp, focus_exp, will_power_exp,
 			ten_exp, zetsu_exp, ren_exp, gyo_exp, shu_exp, kou_exp, ken_exp, ryu_exp, in_exp, en_exp, aura_control_exp, aop_exp,
 			reinforcement_exp, transmutation_exp, materialization_exp, specialization_exp, manipulation_exp, emission_exp,
+			char_exp,
 			created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5,
@@ -60,7 +61,7 @@ func (r *Repository) CreateCharacterSheet(
 			$64, $65, $66,
 			$67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77,
 			$78, $79, $80, $81, $82, $83,
-			$84, $85, $86
+			$84, $85, $86, $87
 		) RETURNING id
 	`
 	var sheetID int
@@ -78,6 +79,7 @@ func (r *Repository) CreateCharacterSheet(
 		m.NenExp, m.FocusExp, m.WillPowerExp,
 		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
 		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
+		m.CharExp,
 		m.CreatedAt, m.UpdatedAt,
 	).Scan(&sheetID)
 	if err != nil {
@@ -217,8 +219,10 @@ func charSheetToModel(sheet *domainSheet.CharacterSheet) *model.CharacterSheet {
 		CurrHexValue: sheet.GetCurrHexValue(),
 		TalentExp:    sheet.GetTalentExpPoints(),
 
-		Level:         sheet.GetLevel(),
-		Points:        sheet.GetCharacterPoints(),
+		Level:  sheet.GetLevel(),
+		Points: sheet.GetCharacterPoints(),
+		// CharExp is a denormalized copy for summary queries; authoritative value is the domain entity.
+		CharExp: sheet.GetExpPoints(),
 		TalentLvl:     sheet.GetTalentLevel(),
 		PhysicalsLvl:  physicalsLvl,
 		MentalsLvl:    mentalsLvl,
