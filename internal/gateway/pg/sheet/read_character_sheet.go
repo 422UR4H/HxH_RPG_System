@@ -406,36 +406,6 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 		}
 	}
 
-	type statusEntry struct {
-		name   enum.StatusName
-		curr   int
-		oldMax int
-	}
-	for _, e := range []statusEntry{
-		{enum.Health, m.Health.Curr, m.Health.Max},
-		{enum.Stamina, m.Stamina.Curr, m.Stamina.Max},
-		{enum.Aura, m.Aura.Curr, m.Aura.Max},
-	} {
-		newMax, err := charSheet.GetMaxOfStatus(e.name)
-		if err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
-		}
-		minVal, err := charSheet.GetMinOfStatus(e.name)
-		if err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
-		}
-		corrected, correctionApplied := normalizeStatus(e.curr, e.oldMax, newMax, minVal)
-		if correctionApplied {
-			wasCorrected = true
-		}
-		if newMax == 0 {
-			continue
-		}
-		if err := charSheet.SetCurrStatus(e.name, corrected); err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToSetStatus, e.name, err)
-		}
-	}
-
 	physSkExp, err := charSheet.GetPhysSkillExpReference()
 	if err != nil {
 		return false, domainSheet.ErrFailedToGetPhysSkillExpRef
@@ -471,6 +441,43 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 	}
 
 	charSheet.IncreaseExpForTalent(m.TalentExp)
+
+	// Normalization runs after full restoration so that GetMaxOfStatus reflects
+	// the final domain-computed max (including proficiency bonuses). Running it
+	// mid-wrap causes Upgrade() calls from proficiency restoration to undo the
+	// SetCurrStatus correction (curr==max triggers curr=newMaxVal in Upgrade).
+	type statusEntry struct {
+		name   enum.StatusName
+		curr   int
+		oldMax int
+	}
+	for _, e := range []statusEntry{
+		{enum.Health, m.Health.Curr, m.Health.Max},
+		{enum.Stamina, m.Stamina.Curr, m.Stamina.Max},
+		{enum.Aura, m.Aura.Curr, m.Aura.Max},
+	} {
+		newMax, err := charSheet.GetMaxOfStatus(e.name)
+		if err != nil {
+			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
+		}
+		minVal, err := charSheet.GetMinOfStatus(e.name)
+		if err != nil {
+			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
+		}
+		corrected, correctionApplied := normalizeStatus(e.curr, e.oldMax, newMax, minVal)
+		if correctionApplied {
+			wasCorrected = true
+		}
+		if newMax == 0 {
+			if e.name != enum.Aura {
+				fmt.Printf("TODO(logger): status normalized anomaly: newMax is 0, curr %d not corrected\n", e.curr)
+			}
+			continue
+		}
+		if err := charSheet.SetCurrStatus(e.name, corrected); err != nil {
+			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToSetStatus, e.name, err)
+		}
+	}
 	return wasCorrected, nil
 }
 
@@ -539,7 +546,6 @@ func (r *Repository) CountCharactersByPlayerUUID(ctx context.Context, playerUUID
 // normalizeStatus corrects curr when it exceeds the recalculated newMax.
 func normalizeStatus(curr, oldMax, newMax, minVal int) (int, bool) {
 	if newMax == 0 {
-		fmt.Printf("TODO(logger): status normalized anomaly: newMax is 0, curr %d not corrected\n", curr)
 		return curr, false
 	}
 	if curr <= newMax {
