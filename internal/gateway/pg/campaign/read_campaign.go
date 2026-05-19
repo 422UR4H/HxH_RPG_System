@@ -65,10 +65,10 @@ func (r *Repository) GetCampaign(
 	}
 
 	const pendingSheetsQuery = `
-        SELECT 
+        SELECT
             cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
             cs.category_name, cs.curr_hex_value,
-            cs.level, cs.points, cs.talent_lvl, cs.skills_lvl,
+            cs.level, cs.points, cs.char_exp, cs.talent_lvl, cs.skills_lvl,
             cs.physicals_lvl, cs.mentals_lvl, cs.spirituals_lvl,
             cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
             cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
@@ -95,7 +95,7 @@ func (r *Repository) GetCampaign(
 		err := rows.Scan(
 			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
 			&sheet.CategoryName, &sheet.CurrHexValue,
-			&sheet.Level, &sheet.Points, &sheet.TalentLvl, &sheet.SkillsLvl,
+			&sheet.Level, &sheet.Points, &sheet.CharExp, &sheet.TalentLvl, &sheet.SkillsLvl,
 			&sheet.PhysicalsLvl, &sheet.MentalsLvl, &sheet.SpiritualsLvl,
 			&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
 			&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,
@@ -116,10 +116,10 @@ func (r *Repository) GetCampaign(
 	c.PendingSheets = pendingSheets
 
 	const characterSheetsQuery = `
-        SELECT 
+        SELECT
             cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
             cs.category_name, cs.curr_hex_value,
-            cs.level, cs.points, cs.talent_lvl, cs.skills_lvl,
+            cs.level, cs.points, cs.char_exp, cs.talent_lvl, cs.skills_lvl,
             cs.physicals_lvl, cs.mentals_lvl, cs.spirituals_lvl,
             cs.health_min_pts, cs.health_curr_pts, cs.health_max_pts,
             cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
@@ -145,7 +145,7 @@ func (r *Repository) GetCampaign(
 		err := rows.Scan(
 			&sheet.ID, &sheet.UUID, &sheet.PlayerUUID, &sheet.MasterUUID, &sheet.CampaignUUID,
 			&sheet.CategoryName, &sheet.CurrHexValue,
-			&sheet.Level, &sheet.Points, &sheet.TalentLvl, &sheet.SkillsLvl,
+			&sheet.Level, &sheet.Points, &sheet.CharExp, &sheet.TalentLvl, &sheet.SkillsLvl,
 			&sheet.PhysicalsLvl, &sheet.MentalsLvl, &sheet.SpiritualsLvl,
 			&sheet.Health.Min, &sheet.Health.Curr, &sheet.Health.Max,
 			&sheet.Stamina.Min, &sheet.Stamina.Curr, &sheet.Stamina.Max,

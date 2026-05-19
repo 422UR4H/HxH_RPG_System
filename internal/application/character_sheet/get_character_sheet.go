@@ -70,7 +70,8 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	// 	return charSheet.(*sheet.CharacterSheet), nil
 	// }
 
-	charSheet, wasCorrected, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+	sheetUUIDStr := sheetUUID.String()
+	charSheet, wasCorrected, err := uc.repo.GetCharacterSheetByUUID(ctx, sheetUUIDStr)
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +79,10 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	playerUUID := charSheet.GetPlayerUUID()
 
 	if masterUUID != nil && *masterUUID == userUUID {
-		return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
+		return uc.checkAndNormalize(sheetUUIDStr, charSheet, wasCorrected)
 	}
 	if playerUUID != nil && *playerUUID == userUUID {
-		return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
+		return uc.checkAndNormalize(sheetUUIDStr, charSheet, wasCorrected)
 	}
 
 	campaignUUID := charSheet.GetCampaignUUID()
@@ -94,7 +95,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 			return nil, err
 		}
 		if campaignMasterUUID == userUUID {
-			return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
+			return uc.checkAndNormalize(sheetUUIDStr, charSheet, wasCorrected)
 		}
 		return nil, auth.ErrInsufficientPermissions
 	}
@@ -112,7 +113,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 	if subCampMasterUUID == userUUID {
-		return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
+		return uc.checkAndNormalize(sheetUUIDStr, charSheet, wasCorrected)
 	}
 	return nil, auth.ErrInsufficientPermissions
 }
@@ -122,24 +123,27 @@ func (uc *GetCharacterSheetUC) checkAndNormalize(
 	charSheet *domainSheet.CharacterSheet,
 	wasCorrected bool,
 ) (*domainSheet.CharacterSheet, error) {
-	// Always refresh char_exp so rows created before the char_exp migration self-heal on first access.
-	// wasCorrected covers status-bar normalization; char_exp staleness is independent.
-	if wasCorrected || charSheet.GetExpPoints() > 0 {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("TODO(logger): panic in persistNormalized for sheet %s: %v\n", sheetUUID, r)
-				}
-			}()
-			ctx := context.Background()
-			if wasCorrected {
-				uc.persistNormalizedStatus(ctx, sheetUUID, charSheet)
-			}
-			if err := uc.repo.UpdateCharExp(ctx, sheetUUID, charSheet.GetExpPoints()); err != nil {
-				fmt.Printf("TODO(logger): failed to refresh char_exp for sheet %s: %v\n", sheetUUID, err)
+	expPoints := charSheet.GetExpPoints()
+	if !wasCorrected && expPoints == 0 {
+		return charSheet, nil
+	}
+	// Both status-bar normalization and char_exp refresh are best-effort; run async.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("TODO(logger): panic in background normalization for sheet %s: %v\n", sheetUUID, r)
 			}
 		}()
-	}
+		ctx := context.Background()
+		if wasCorrected {
+			uc.persistNormalizedStatus(ctx, sheetUUID, charSheet)
+		}
+		if expPoints > 0 {
+			if err := uc.repo.UpdateCharExp(ctx, sheetUUID, expPoints); err != nil {
+				fmt.Printf("TODO(logger): failed to refresh char_exp for sheet %s: %v\n", sheetUUID, err)
+			}
+		}
+	}()
 	return charSheet, nil
 }
 

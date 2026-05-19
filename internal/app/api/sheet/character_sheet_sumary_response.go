@@ -85,8 +85,8 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		CurrHexValue:   sheet.CurrHexValue,
 		Level:         sheet.Level,
 		Points:        sheet.Points,
-		CurrExp:       deriveCurrExp(sheet.CharExp, sheet.Level),
-		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp, sheet.Level),
+		CurrExp:       deriveCurrExp(sheet.CharExp),
+		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp),
 		TalentLvl:      sheet.TalentLvl,
 		PhysicalsLvl:   sheet.PhysicalsLvl,
 		MentalsLvl:     sheet.MentalsLvl,
@@ -111,9 +111,11 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 }
 
 // deriveCurrExp returns the exp accumulated within the current level.
-// Clamped to 0 for rows where char_exp was not yet populated (DEFAULT 0 migration without
-// backfill). Those rows show an empty bar until the sheet is next updated via create/update.
-func deriveCurrExp(charExp, level int) int {
+// Level is derived from charExp itself (not from sheet.Level) because the stored level
+// can be inconsistent with the accumulated exp — deriving from charExp always matches
+// how the domain entity computes GetCurrentExp().
+func deriveCurrExp(charExp int) int {
+	level := charExpTable.GetLvlByExp(charExp)
 	v := charExp - charExpTable.GetAggregateExpByLvl(level)
 	if v < 0 {
 		return 0
@@ -121,8 +123,10 @@ func deriveCurrExp(charExp, level int) int {
 	return v
 }
 
-// deriveNxtLvlBaseExp is always derived from level; it does not depend on char_exp.
-func deriveNxtLvlBaseExp(_ int, level int) int {
+// deriveNxtLvlBaseExp derives the base exp for the next level from charExp directly.
+// Same reasoning as deriveCurrExp: uses charExp to compute level, not sheet.Level.
+func deriveNxtLvlBaseExp(charExp int) int {
+	level := charExpTable.GetLvlByExp(charExp)
 	return charExpTable.GetBaseExpByLvl(level + 1)
 }
 
