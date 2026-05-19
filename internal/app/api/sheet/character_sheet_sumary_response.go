@@ -85,8 +85,8 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		CurrHexValue:   sheet.CurrHexValue,
 		Level:         sheet.Level,
 		Points:        sheet.Points,
-		CurrExp:       sheet.CharExp - charExpTable.GetAggregateExpByLvl(sheet.Level),
-		NxtLvlBaseExp: charExpTable.GetBaseExpByLvl(sheet.Level + 1),
+		CurrExp:       deriveCurrExp(sheet.CharExp, sheet.Level),
+		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp, sheet.Level),
 		TalentLvl:      sheet.TalentLvl,
 		PhysicalsLvl:   sheet.PhysicalsLvl,
 		MentalsLvl:     sheet.MentalsLvl,
@@ -108,6 +108,27 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		// 	Max:  aura.Max,
 		// },
 	}
+}
+
+// deriveCurrExp returns the exp accumulated within the current level.
+// Returns 0 when charExp is 0 and level > 0, which indicates a row created before the
+// char_exp column was added (DEFAULT 0 migration without backfill). These rows will show
+// an empty bar until the sheet is next updated via create/update, which repopulates char_exp.
+func deriveCurrExp(charExp, level int) int {
+	v := charExp - charExpTable.GetAggregateExpByLvl(level)
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+// deriveNxtLvlBaseExp returns 0 for the same uninitialized-row case, so the EXP bar
+// hides its label entirely rather than showing 0/N with a misleading denominator.
+func deriveNxtLvlBaseExp(charExp, level int) int {
+	if charExp == 0 && level > 0 {
+		return 0
+	}
+	return charExpTable.GetBaseExpByLvl(level + 1)
 }
 
 func ToPrivateSummaryResponse(sheet *csEntity.Summary) CharacterPrivateSummaryResponse {
