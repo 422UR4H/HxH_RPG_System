@@ -9,12 +9,12 @@ import (
 )
 
 type CharacterClassResponse struct {
-	Profile       ClassProfileResponse    `json:"profile"`
-	Abilities     map[string]Ability      `json:"abilities"`
-	Attributes    map[string]Attribute    `json:"attributes"`
-	Skills        map[string]Skill        `json:"skills"`
-	JointSkills   map[string]s.JointSkill `json:"joint_skills"`
-	Proficiencies map[string]LvlExp       `json:"proficiencies"`
+	Profile       ClassProfileResponse         `json:"profile"`
+	Abilities     map[string]Ability           `json:"abilities"`
+	Attributes    map[string]Attribute         `json:"attributes"`
+	Skills        map[string]Skill             `json:"skills"`
+	JointSkills   map[string]s.JointSkill      `json:"joint_skills"`
+	Proficiencies map[string]ExperienceResponse `json:"proficiencies"`
 	// JointProficiencies  map[string]p.JointProficiency `json:"joint_proficiencies"`
 	JointProficiencies  []JointProf           `json:"joint_proficiencies"`
 	IndicatedCategories []string              `json:"indicated_categories"`
@@ -41,23 +41,23 @@ type LvlExp struct {
 }
 
 type Ability struct {
-	LvlExp
+	ExperienceResponse
 	Bonus float64 `json:"bonus"`
 }
 
 type Attribute struct {
-	LvlExp
+	ExperienceResponse
 	Points int `json:"points"`
 	Power  int `json:"power"`
 }
 
 type Skill struct {
-	LvlExp
+	ExperienceResponse
 	Value int `json:"value"`
 }
 
 type JointProf struct {
-	LvlExp
+	ExperienceResponse
 	Name string `json:"name"`
 }
 
@@ -69,9 +69,11 @@ func NewCharacterClassResponse(
 	for abilityName, ability := range abilitiesList {
 		if ability.GetExpPoints() > 0 {
 			abilities[abilityName.String()] = Ability{
-				LvlExp: LvlExp{
-					Level: ability.GetLevel(),
-					Exp:   ability.GetExpPoints(),
+				ExperienceResponse: ExperienceResponse{
+					Level:         ability.GetLevel(),
+					Exp:           ability.GetExpPoints(),
+					CurrentExp:    ability.GetCurrentExp(),
+					NxtLvlBaseExp: ability.GetNextLvlBaseExp(),
 				},
 				Bonus: ability.GetBonus(),
 			}
@@ -84,9 +86,11 @@ func NewCharacterClassResponse(
 	for attrName, attr := range physAttrs {
 		if attr.GetExpPoints() > 0 {
 			attributes[attrName.String()] = Attribute{
-				LvlExp: LvlExp{
-					Level: attr.GetLevel(),
-					Exp:   attr.GetExpPoints(),
+				ExperienceResponse: ExperienceResponse{
+					Level:         attr.GetLevel(),
+					Exp:           attr.GetExpPoints(),
+					CurrentExp:    attr.GetCurrentExp(),
+					NxtLvlBaseExp: attr.GetNextLvlBaseExp(),
 				},
 				Points: attr.GetPoints(),
 				Power:  attr.GetPower(),
@@ -97,9 +101,11 @@ func NewCharacterClassResponse(
 	for attrName, attr := range mentalAttrs {
 		if attr.GetExpPoints() > 0 {
 			attributes[attrName.String()] = Attribute{
-				LvlExp: LvlExp{
-					Level: attr.GetLevel(),
-					Exp:   attr.GetExpPoints(),
+				ExperienceResponse: ExperienceResponse{
+					Level:         attr.GetLevel(),
+					Exp:           attr.GetExpPoints(),
+					CurrentExp:    attr.GetCurrentExp(),
+					NxtLvlBaseExp: attr.GetNextLvlBaseExp(),
 				},
 				Points: attr.GetPoints(),
 				Power:  attr.GetPower(),
@@ -113,9 +119,11 @@ func NewCharacterClassResponse(
 	for skillName, skill := range physSkills {
 		if skill.GetExpPoints() > 0 {
 			skills[skillName.String()] = Skill{
-				LvlExp: LvlExp{
-					Level: skill.GetLevel(),
-					Exp:   skill.GetExpPoints(),
+				ExperienceResponse: ExperienceResponse{
+					Level:         skill.GetLevel(),
+					Exp:           skill.GetExpPoints(),
+					CurrentExp:    skill.GetCurrentExp(),
+					NxtLvlBaseExp: skill.GetNextLvlBaseExp(),
 				},
 				Value: skill.GetValueForTest(),
 			}
@@ -125,21 +133,25 @@ func NewCharacterClassResponse(
 	for skillName, skill := range mentalSkills {
 		if skill.GetExpPoints() > 0 {
 			skills[skillName.String()] = Skill{
-				LvlExp: LvlExp{
-					Level: skill.GetLevel(),
-					Exp:   skill.GetExpPoints(),
+				ExperienceResponse: ExperienceResponse{
+					Level:         skill.GetLevel(),
+					Exp:           skill.GetExpPoints(),
+					CurrentExp:    skill.GetCurrentExp(),
+					NxtLvlBaseExp: skill.GetNextLvlBaseExp(),
 				},
 				Value: skill.GetValueForTest(),
 			}
 		}
 	}
 
-	proficiencies := make(map[string]LvlExp)
+	proficiencies := make(map[string]ExperienceResponse)
 	commonProfs := classSheet.GetCommonProficiencies()
 	for weaponName, prof := range commonProfs {
-		proficiencies[weaponName.String()] = LvlExp{
-			Level: prof.GetLevel(),
-			Exp:   prof.GetExpPoints(),
+		proficiencies[weaponName.String()] = ExperienceResponse{
+			Level:         prof.GetLevel(),
+			Exp:           prof.GetExpPoints(),
+			CurrentExp:    prof.GetCurrentExp(),
+			NxtLvlBaseExp: prof.GetNextLvlBaseExp(),
 		}
 	}
 
@@ -147,9 +159,11 @@ func NewCharacterClassResponse(
 	classJointProfs := classSheet.GetJointProficiencies()
 	for profName, prof := range classJointProfs {
 		jointProficiencies = append(jointProficiencies, JointProf{
-			LvlExp: LvlExp{
-				Level: prof.GetLevel(),
-				Exp:   prof.GetExpPoints(),
+			ExperienceResponse: ExperienceResponse{
+				Level:         prof.GetLevel(),
+				Exp:           prof.GetExpPoints(),
+				CurrentExp:    prof.GetCurrentExp(),
+				NxtLvlBaseExp: prof.GetNextLvlBaseExp(),
 			},
 			Name: profName,
 		})
