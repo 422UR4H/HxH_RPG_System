@@ -122,14 +122,22 @@ func (uc *GetCharacterSheetUC) checkAndNormalize(
 	charSheet *domainSheet.CharacterSheet,
 	wasCorrected bool,
 ) (*domainSheet.CharacterSheet, error) {
-	if wasCorrected {
+	// Always refresh char_exp so rows created before the char_exp migration self-heal on first access.
+	// wasCorrected covers status-bar normalization; char_exp staleness is independent.
+	if wasCorrected || charSheet.GetExpPoints() > 0 {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("TODO(logger): panic in persistNormalizedStatus for sheet %s: %v\n", sheetUUID, r)
+					fmt.Printf("TODO(logger): panic in persistNormalized for sheet %s: %v\n", sheetUUID, r)
 				}
 			}()
-			uc.persistNormalizedStatus(context.Background(), sheetUUID, charSheet)
+			ctx := context.Background()
+			if wasCorrected {
+				uc.persistNormalizedStatus(ctx, sheetUUID, charSheet)
+			}
+			if err := uc.repo.UpdateCharExp(ctx, sheetUUID, charSheet.GetExpPoints()); err != nil {
+				fmt.Printf("TODO(logger): failed to refresh char_exp for sheet %s: %v\n", sheetUUID, err)
+			}
 		}()
 	}
 	return charSheet, nil

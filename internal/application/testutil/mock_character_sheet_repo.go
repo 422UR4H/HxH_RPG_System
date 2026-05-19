@@ -21,6 +21,7 @@ type MockCharacterSheetRepo struct {
 	GetCharacterSheetRelationshipUUIDsFn func(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)
 	ExistsSheetInCampaignFn              func(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
 	UpdateStatusBarsFn                   func(ctx context.Context, uuid string, health, stamina, aura status.IStatusBar) error
+	UpdateCharExpFn                       func(ctx context.Context, sheetUUID string, charExp int) error
 	DeleteCharacterSheetFn               func(ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID) error
 	UpdateCharacterSheetFn               func(ctx context.Context, sheet *sheet.CharacterSheet) error
 }
@@ -112,6 +113,13 @@ func (m *MockCharacterSheetRepo) DeleteCharacterSheet(ctx context.Context, sheet
 func (m *MockCharacterSheetRepo) UpdateCharacterSheet(ctx context.Context, s *sheet.CharacterSheet) error {
 	if m.UpdateCharacterSheetFn != nil {
 		return m.UpdateCharacterSheetFn(ctx, s)
+	}
+	return nil
+}
+
+func (m *MockCharacterSheetRepo) UpdateCharExp(ctx context.Context, sheetUUID string, charExp int) error {
+	if m.UpdateCharExpFn != nil {
+		return m.UpdateCharExpFn(ctx, sheetUUID, charExp)
 	}
 	return nil
 }

@@ -21,6 +21,7 @@ type IRepository interface {
 	GetCharacterSheetRelationshipUUIDs(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)
 	ExistsSheetInCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
 	UpdateStatusBars(ctx context.Context, sheetUUID string, health, stamina, aura status.IStatusBar) error
+	UpdateCharExp(ctx context.Context, sheetUUID string, charExp int) error
 	DeleteCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID) error
 	UpdateCharacterSheet(ctx context.Context, sheet *sheet.CharacterSheet) error
 }
