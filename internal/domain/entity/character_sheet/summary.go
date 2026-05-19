@@ -27,6 +27,9 @@ type Summary struct {
 	CurrHexValue   *int
 	Level          int
 	Points         int
+	// CharExp is a denormalized copy of the character accumulated exp, sourced from
+	// char_exp in character_sheets. Only used for summary list responses; never for game logic.
+	CharExp        int
 	TalentLvl      int
 	PhysicalsLvl   int
 	MentalsLvl     int

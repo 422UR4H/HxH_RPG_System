@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/google/uuid"
 )
@@ -356,6 +360,141 @@ func TestGetCharacterSheet(t *testing.T) {
 		}
 		if !errors.Is(err, auth.ErrInsufficientPermissions) {
 			t.Errorf("expected ErrInsufficientPermissions, got: %v", err)
+		}
+	})
+}
+
+func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("UpdateCharExp not called when sheet has no exp", func(t *testing.T) {
+		playerUUID := uuid.New()
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
+		// fresh sheet: GetExpPoints() == 0
+
+		updateCharExpCalled := false
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
+			},
+			UpdateCharExpFn: func(ctx context.Context, sheetUUID string, charExp int) error {
+				updateCharExpCalled = true
+				return nil
+			},
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			newTestSheetMap(), newTestFactory(), mockRepo, &testutil.MockCampaignRepo{}, &mockSubmissionLookup{},
+		)
+
+		if _, err := uc.GetCharacterSheet(ctx, domainS.UUID, playerUUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if updateCharExpCalled {
+			t.Error("UpdateCharExp should not be called when GetExpPoints() == 0")
+		}
+	})
+
+	t.Run("UpdateCharExp called async with correct value when sheet has exp", func(t *testing.T) {
+		playerUUID := uuid.New()
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
+		if err := domainS.IncreaseExpForSkill(experience.NewUpgradeCascade(500), enum.Vitality); err != nil {
+			t.Fatalf("failed to add exp to sheet: %v", err)
+		}
+		expectedExp := domainS.GetExpPoints()
+		if expectedExp == 0 {
+			t.Fatal("test setup error: expected GetExpPoints() > 0 after IncreaseExpForSkill")
+		}
+
+		type captureArgs struct {
+			uuid string
+			exp  int
+		}
+		captured := make(chan captureArgs, 1)
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil
+			},
+			UpdateCharExpFn: func(ctx context.Context, sheetUUID string, charExp int) error {
+				captured <- captureArgs{uuid: sheetUUID, exp: charExp}
+				return nil
+			},
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			newTestSheetMap(), newTestFactory(), mockRepo, &testutil.MockCampaignRepo{}, &mockSubmissionLookup{},
+		)
+
+		if _, err := uc.GetCharacterSheet(ctx, domainS.UUID, playerUUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		select {
+		case args := <-captured:
+			if args.exp != expectedExp {
+				t.Errorf("UpdateCharExp called with exp=%d, want %d", args.exp, expectedExp)
+			}
+			if args.uuid != domainS.UUID.String() {
+				t.Errorf("UpdateCharExp called with uuid=%s, want %s", args.uuid, domainS.UUID.String())
+			}
+		case <-time.After(500 * time.Millisecond):
+			t.Error("UpdateCharExp was not called within timeout when GetExpPoints() > 0")
+		}
+	})
+
+	t.Run("UpdateStatusBars called async when wasCorrected", func(t *testing.T) {
+		playerUUID := uuid.New()
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
+
+		done := make(chan struct{})
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, true, nil // wasCorrected = true
+			},
+			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
+				close(done)
+				return nil
+			},
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			newTestSheetMap(), newTestFactory(), mockRepo, &testutil.MockCampaignRepo{}, &mockSubmissionLookup{},
+		)
+
+		if _, err := uc.GetCharacterSheet(ctx, domainS.UUID, playerUUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		select {
+		case <-done:
+		case <-time.After(500 * time.Millisecond):
+			t.Error("UpdateStatusBars was not called within timeout when wasCorrected=true")
+		}
+	})
+
+	t.Run("UpdateStatusBars not called when not wasCorrected", func(t *testing.T) {
+		playerUUID := uuid.New()
+		domainS := newValidDomainSheet(&playerUUID, nil, nil)
+
+		updateStatusBarsCalled := false
+		mockRepo := &testutil.MockCharacterSheetRepo{
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+				return domainS, false, nil // wasCorrected = false
+			},
+			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
+				updateStatusBarsCalled = true
+				return nil
+			},
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			newTestSheetMap(), newTestFactory(), mockRepo, &testutil.MockCampaignRepo{}, &mockSubmissionLookup{},
+		)
+
+		if _, err := uc.GetCharacterSheet(ctx, domainS.UUID, playerUUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// No goroutine is launched when wasCorrected=false; no need to wait.
+		if updateStatusBarsCalled {
+			t.Error("UpdateStatusBars should not be called when wasCorrected=false")
 		}
 	})
 }

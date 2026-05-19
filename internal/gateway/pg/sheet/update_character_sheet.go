@@ -41,8 +41,9 @@ func (r *Repository) UpdateCharacterSheet(
 			nen_exp = $62, focus_exp = $63, will_power_exp = $64,
 			ten_exp = $65, zetsu_exp = $66, ren_exp = $67, gyo_exp = $68, shu_exp = $69, kou_exp = $70, ken_exp = $71, ryu_exp = $72, in_exp = $73, en_exp = $74, aura_control_exp = $75, aop_exp = $76,
 			reinforcement_exp = $77, transmutation_exp = $78, materialization_exp = $79, specialization_exp = $80, manipulation_exp = $81, emission_exp = $82,
-			updated_at = $83
-		WHERE uuid = $84 AND player_uuid = $85
+			char_exp = $83,
+			updated_at = $84
+		WHERE uuid = $85 AND player_uuid = $86
 	`
 
 	result, err := tx.Exec(ctx, sheetQuery,
@@ -59,6 +60,7 @@ func (r *Repository) UpdateCharacterSheet(
 		m.NenExp, m.FocusExp, m.WillPowerExp,
 		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
 		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
+		m.CharExp,
 		now, m.UUID, m.PlayerUUID,
 	)
 	if err != nil {

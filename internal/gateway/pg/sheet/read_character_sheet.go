@@ -191,6 +191,8 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 			cs.id, cs.uuid, cs.player_uuid, cs.master_uuid, cs.campaign_uuid,
 			cs.category_name, cs.curr_hex_value,
 			COALESCE(cs.level, 0), COALESCE(cs.points, 0),
+			-- char_exp is a denormalized copy for summary responses; do NOT use for game logic.
+			COALESCE(cs.char_exp, 0),
 			COALESCE(cs.talent_lvl, 0), COALESCE(cs.skills_lvl, 0),
 			COALESCE(cs.physicals_lvl, 0), COALESCE(cs.mentals_lvl, 0), COALESCE(cs.spirituals_lvl, 0),
 			COALESCE(cs.health_min_pts, 0), COALESCE(cs.health_curr_pts, 0), COALESCE(cs.health_max_pts, 0),
@@ -217,7 +219,7 @@ func (r *Repository) ListCharacterSheetsByPlayerUUID(
 		err := rows.Scan(
 			&s.ID, &s.UUID, &s.PlayerUUID, &s.MasterUUID, &s.CampaignUUID,
 			&s.CategoryName, &s.CurrHexValue,
-			&s.Level, &s.Points, &s.TalentLvl, &s.SkillsLvl,
+			&s.Level, &s.Points, &s.CharExp, &s.TalentLvl, &s.SkillsLvl,
 			&s.PhysicalsLvl, &s.MentalsLvl, &s.SpiritualsLvl,
 			&s.Health.Min, &s.Health.Curr, &s.Health.Max,
 			&s.Stamina.Min, &s.Stamina.Curr, &s.Stamina.Max,

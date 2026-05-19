@@ -4,8 +4,15 @@ import (
 	"time"
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
+
+// charExpTable is used only to compute curr_exp / next_lvl_base_exp for summary responses.
+// It must use CHARACTER_COEFF to match the domain entity. The authoritative values always
+// come from CharacterExp.GetCurrentExp / GetNextLvlBaseExp after full sheet reconstruction.
+var charExpTable = experience.NewExpTable(domainSheet.CHARACTER_COEFF)
 
 type CharacterBaseSummaryResponse struct {
 	UUID           uuid.UUID  `json:"uuid"`
@@ -34,6 +41,10 @@ type CharacterPrivateOnlyResponse struct {
 	CurrHexValue   *int      `json:"curr_hex_value,omitempty"`
 	Level          int       `json:"level"`
 	Points         int       `json:"points"`
+	// CurrExp and NxtLvlBaseExp are derived from char_exp (denormalized) + charExpTable.
+	// Do NOT use for game logic — always use the full sheet build for that.
+	CurrExp        int       `json:"curr_exp"`
+	NxtLvlBaseExp  int       `json:"next_lvl_base_exp"`
 	TalentLvl      int       `json:"talent_lvl"`
 	PhysicalsLvl   int       `json:"physicals_lvl"`
 	MentalsLvl     int       `json:"mentals_lvl"`
@@ -72,8 +83,10 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		Birthday:       sheet.Birthday.Format("2006-01-02"),
 		CategoryName:   sheet.CategoryName,
 		CurrHexValue:   sheet.CurrHexValue,
-		Level:          sheet.Level,
-		Points:         sheet.Points,
+		Level:         sheet.Level,
+		Points:        sheet.Points,
+		CurrExp:       deriveCurrExp(sheet.CharExp),
+		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp),
 		TalentLvl:      sheet.TalentLvl,
 		PhysicalsLvl:   sheet.PhysicalsLvl,
 		MentalsLvl:     sheet.MentalsLvl,
@@ -95,6 +108,26 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		// 	Max:  aura.Max,
 		// },
 	}
+}
+
+// deriveCurrExp returns the exp accumulated within the current level.
+// Level is derived from charExp itself (not from sheet.Level) because the stored level
+// can be inconsistent with the accumulated exp — deriving from charExp always matches
+// how the domain entity computes GetCurrentExp().
+func deriveCurrExp(charExp int) int {
+	level := charExpTable.GetLvlByExp(charExp)
+	v := charExp - charExpTable.GetAggregateExpByLvl(level)
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+// deriveNxtLvlBaseExp derives the base exp for the next level from charExp directly.
+// Same reasoning as deriveCurrExp: uses charExp to compute level, not sheet.Level.
+func deriveNxtLvlBaseExp(charExp int) int {
+	level := charExpTable.GetLvlByExp(charExp)
+	return charExpTable.GetBaseExpByLvl(level + 1)
 }
 
 func ToPrivateSummaryResponse(sheet *csEntity.Summary) CharacterPrivateSummaryResponse {

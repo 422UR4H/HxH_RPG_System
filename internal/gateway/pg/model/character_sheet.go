@@ -24,6 +24,9 @@ type CharacterSheet struct {
 	// Levels
 	Level         int
 	Points        int
+	// CharExp is a denormalized copy of CharacterExp.GetExpPoints(), persisted for fast summary
+	// queries. Authoritative value is always the domain entity after full sheet reconstruction.
+	CharExp int
 	TalentLvl     int
 	PhysicalsLvl  int
 	MentalsLvl    int

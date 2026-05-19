@@ -286,3 +286,32 @@ Os endpoints que retornam listas de fichas (`GET /charactersheets`,
 ```
 
 Ambos são `omitempty` — ausentes quando o personagem ainda não tem imagem.
+
+---
+
+## `curr_exp` / `next_lvl_base_exp` nos summaries
+
+Os summaries privados (`CharacterPrivateSummaryResponse`) incluem `curr_exp` e
+`next_lvl_base_exp` para alimentar a barra de EXP nas telas de listagem.
+
+```json
+{
+  "level": 3,
+  "points": 2,
+  "curr_exp": 450,
+  "next_lvl_base_exp": 800
+}
+```
+
+### Fonte dos dados
+
+| Contexto | Fonte |
+|----------|-------|
+| Ficha completa (GET /character-sheets/:uuid) | `CharacterExp.GetCurrentExp()` / `GetNextLvlBaseExp()` — calculado pelo domínio após rebuild completo da ficha. **Esta é a fonte da verdade.** |
+| Summary de lista (GET /character-sheets) | `char_exp` (coluna desnormalizada em `character_sheets`) + `charExpTable` — apenas para exibição. |
+
+### Por que desnormalizar?
+
+O `char_exp` real é o acúmulo de todas as cascatas de XP (skills → atributos → habilidades → personagem). Computar esse valor a partir do zero exigiria restaurar a ficha inteira para cada item da lista. A coluna `char_exp` armazena esse valor já computado no momento do create/update da ficha.
+
+**Regra:** Nunca use `char_exp` da tabela para lógica de jogo. Qualquer operação que dependa de XP correto deve usar o domínio completo.
