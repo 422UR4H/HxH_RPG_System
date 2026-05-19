@@ -43,6 +43,9 @@ func TestSubmitCharacterSheet(t *testing.T) {
 				GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 					return playerUUID, nil
 				},
+				GetCharacterSheetNickFn: func(ctx context.Context, id uuid.UUID) (string, error) {
+					return "Gon", nil
+				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
 				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
@@ -98,6 +101,27 @@ func TestSubmitCharacterSheet(t *testing.T) {
 			wantErr:      submission.ErrCharacterAlreadySubmitted,
 		},
 		{
+			name:         "nick already in campaign",
+			userUUID:     playerUUID,
+			sheetUUID:    sheetUUID,
+			campaignUUID: campaignUUID,
+			subMock: &testutil.MockSubmissionRepo{
+				ExistsOtherCharacterWithNickInCampaignFn: func(ctx context.Context, nick string, cUUID uuid.UUID, excludedUUID uuid.UUID) (bool, error) {
+					return true, nil
+				},
+			},
+			sheetMock: &testutil.MockCharacterSheetRepo{
+				GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return playerUUID, nil
+				},
+				GetCharacterSheetNickFn: func(ctx context.Context, id uuid.UUID) (string, error) {
+					return "Gon", nil
+				},
+			},
+			campaignMock: &testutil.MockCampaignRepo{},
+			wantErr:      submission.ErrNickAlreadyInCampaign,
+		},
+		{
 			name:         "campaign not found",
 			userUUID:     playerUUID,
 			sheetUUID:    sheetUUID,
@@ -106,6 +130,9 @@ func TestSubmitCharacterSheet(t *testing.T) {
 			sheetMock: &testutil.MockCharacterSheetRepo{
 				GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 					return playerUUID, nil
+				},
+				GetCharacterSheetNickFn: func(ctx context.Context, id uuid.UUID) (string, error) {
+					return "Gon", nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -124,6 +151,9 @@ func TestSubmitCharacterSheet(t *testing.T) {
 			sheetMock: &testutil.MockCharacterSheetRepo{
 				GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 					return masterUUID, nil
+				},
+				GetCharacterSheetNickFn: func(ctx context.Context, id uuid.UUID) (string, error) {
+					return "Gon", nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -146,6 +176,9 @@ func TestSubmitCharacterSheet(t *testing.T) {
 			sheetMock: &testutil.MockCharacterSheetRepo{
 				GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 					return playerUUID, nil
+				},
+				GetCharacterSheetNickFn: func(ctx context.Context, id uuid.UUID) (string, error) {
+					return "Gon", nil
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{
@@ -264,11 +297,38 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 				},
 			},
 			sheetMock: &testutil.MockSheetBirthdayReader{
+				GetCharacterSheetNickFn: func(ctx context.Context, sUUID uuid.UUID) (string, error) {
+					return "Gon", nil
+				},
 				GetCharacterSheetBirthInfoFn: func(ctx context.Context, sUUID uuid.UUID) (time.Time, int, error) {
 					return birthdayMonthDay, 25, nil
 				},
 			},
 			wantErr: nil,
+		},
+		{
+			name:      "nick already in campaign",
+			sheetUUID: sheetUUID,
+			masterUUID: masterUUID,
+			subMock: &testutil.MockSubmissionRepo{
+				GetSubmissionCampaignUUIDBySheetUUIDFn: func(ctx context.Context, sUUID uuid.UUID) (uuid.UUID, error) {
+					return campaignUUID, nil
+				},
+				ExistsOtherCharacterWithNickInCampaignFn: func(ctx context.Context, nick string, cUUID uuid.UUID, excludedUUID uuid.UUID) (bool, error) {
+					return true, nil
+				},
+			},
+			campaignMock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return masterUUID, nil
+				},
+			},
+			sheetMock: &testutil.MockSheetBirthdayReader{
+				GetCharacterSheetNickFn: func(ctx context.Context, sUUID uuid.UUID) (string, error) {
+					return "Gon", nil
+				},
+			},
+			wantErr: submission.ErrNickAlreadyInCampaign,
 		},
 		{
 			name:       "submission not found",

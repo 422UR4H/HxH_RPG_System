@@ -63,6 +63,18 @@ func (uc *SubmitCharacterSheetUC) Submit(
 		return ErrCharacterAlreadySubmitted
 	}
 
+	nick, err := uc.sheetRepo.GetCharacterSheetNick(ctx, sheetUUID)
+	if err != nil {
+		return err
+	}
+	nickTaken, err := uc.repo.ExistsOtherCharacterWithNickInCampaign(ctx, nick, campaignUUID, sheetUUID)
+	if err != nil {
+		return err
+	}
+	if nickTaken {
+		return ErrNickAlreadyInCampaign
+	}
+
 	masterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, campaignUUID)
 	if err == campaignPg.ErrCampaignNotFound {
 		return campaignDomain.ErrCampaignNotFound

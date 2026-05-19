@@ -44,6 +44,7 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusBadRequest,
 			http.StatusUnauthorized,
 			http.StatusForbidden,
+			http.StatusConflict,
 			http.StatusInternalServerError,
 		},
 	}, a.AcceptSheetSubmissionHandler)

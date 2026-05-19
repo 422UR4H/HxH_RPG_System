@@ -12,6 +12,7 @@ import (
 
 type ISheetBirthdayReader interface {
 	GetCharacterSheetBirthInfo(ctx context.Context, sheetUUID uuid.UUID) (time.Time, int, error)
+	GetCharacterSheetNick(ctx context.Context, sheetUUID uuid.UUID) (string, error)
 }
 
 type IAcceptCharacterSheetSubmission interface {
@@ -61,6 +62,18 @@ func (uc *AcceptCharacterSheetSubmissionUC) Accept(
 		return ErrNotCampaignMaster
 	}
 
+	nick, err := uc.sheetRepo.GetCharacterSheetNick(ctx, sheetUUID)
+	if err != nil {
+		return err
+	}
+	nickTaken, err := uc.repo.ExistsOtherCharacterWithNickInCampaign(ctx, nick, campaignUUID, sheetUUID)
+	if err != nil {
+		return err
+	}
+	if nickTaken {
+		return ErrNickAlreadyInCampaign
+	}
+
 	campaign, err := uc.campaignRepo.GetCampaignStoryDates(ctx, campaignUUID)
 	if err != nil {
 		return err
@@ -77,7 +90,13 @@ func (uc *AcceptCharacterSheetSubmissionUC) Accept(
 	birthYear := CalcBirthYear(*ref, birthday, age)
 	fullBirthday := time.Date(birthYear, birthday.Month(), birthday.Day(), 0, 0, 0, 0, time.UTC)
 
-	return uc.repo.AcceptCharacterSheetSubmission(ctx, sheetUUID, campaignUUID, fullBirthday)
+	if err = uc.repo.AcceptCharacterSheetSubmission(ctx, sheetUUID, campaignUUID, fullBirthday); err != nil {
+		if err == submissionPg.ErrNickConflict {
+			return ErrNickAlreadyInCampaign
+		}
+		return err
+	}
+	return nil
 }
 
 func CalcBirthYear(refDate time.Time, birthday time.Time, age int) int {

@@ -49,6 +49,8 @@ func SubmitCharacterSheetHandler(
 				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, domainSubmission.ErrCharacterAlreadySubmitted):
 				return nil, huma.Error409Conflict(err.Error())
+			case errors.Is(err, domainSubmission.ErrNickAlreadyInCampaign):
+				return nil, huma.Error409Conflict(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

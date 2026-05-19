@@ -44,6 +44,8 @@ func AcceptSheetSubmissionHandler(
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, domainSubmission.ErrNotCampaignMaster):
 				return nil, huma.Error403Forbidden(err.Error())
+			case errors.Is(err, domainSubmission.ErrNickAlreadyInCampaign):
+				return nil, huma.Error409Conflict(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

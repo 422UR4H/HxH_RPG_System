@@ -45,9 +45,34 @@
 
 ---
 
+## POST /submissions/charactersheets/submit — Submeter ficha
+
+**Auth:** JWT (player dono da ficha)
+
+**Request:**
+```json
+{
+  "sheet_uuid": "uuid-v4",
+  "campaign_uuid": "uuid-v4"
+}
+```
+
+### Respostas
+
+| Status | Situação |
+|--------|----------|
+| 201 | Ficha submetida com sucesso |
+| 403 | Usuário não é dono da ficha / master não pode submeter própria ficha |
+| 404 | Ficha ou campanha não encontrada |
+| 409 | Ficha já submetida / nick já existe nesta campanha (aceito ou pendente) |
+
+---
+
 ## POST /submissions/:sheet_uuid/accept — Consolidar ficha
 
 **Auth:** JWT (master da campanha)
+
+Valida unicidade de nick na campanha (aceitos + submissions pendentes) antes de consolidar.
 
 Calcula e persiste o ano de nascimento:
 
@@ -62,8 +87,9 @@ se (birthday.month, birthday.day) > (ref.month, ref.day): birth_year -= 1
 | Status | Situação |
 |--------|----------|
 | 200 | Ficha consolidada; birthday atualizado com ano correto |
-| 404 | Submissão ou campanha não encontrada |
 | 403 | Usuário não é o mestre da campanha |
+| 404 | Submissão ou campanha não encontrada |
+| 409 | Nick já existe nesta campanha (outro personagem aceito ou pendente) |
 
 ---
 
