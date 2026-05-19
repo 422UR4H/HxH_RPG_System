@@ -48,6 +48,31 @@ func (r *Repository) ExistsSubmittedCharacterSheet(
 	return exists, nil
 }
 
+func (r *Repository) ExistsOtherCharacterWithNickInCampaign(
+	ctx context.Context,
+	nick string,
+	campaignUUID uuid.UUID,
+	excludedSheetUUID uuid.UUID,
+) (bool, error) {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM character_profiles cp
+			JOIN character_sheets cs ON cp.character_sheet_uuid = cs.uuid
+			LEFT JOIN submissions s ON s.character_sheet_uuid = cs.uuid AND s.campaign_uuid = $2
+			WHERE cp.nickname = $1
+			  AND cs.uuid != $3
+			  AND (cs.campaign_uuid = $2 OR s.character_sheet_uuid IS NOT NULL)
+		)
+	`
+	var exists bool
+	err := r.q.QueryRow(ctx, query, nick, campaignUUID, excludedSheetUUID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check nick uniqueness in campaign: %w", err)
+	}
+	return exists, nil
+}
+
 func (r *Repository) GetSubmissionInfoBySheetUUID(
 	ctx context.Context, sheetUUID uuid.UUID,
 ) (*charactersheet.SubmissionInfo, error) {

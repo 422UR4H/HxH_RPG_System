@@ -159,6 +159,92 @@ func TestAcceptCharacterSheetSubmission(t *testing.T) {
 	})
 }
 
+func TestExistsOtherCharacterWithNickInCampaign(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := submission.NewRepository(pool)
+	ctx := context.Background()
+
+	masterUUID := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
+	playerUUID := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+
+	t.Run("no conflict — nick unique in campaign", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID = pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID = pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
+		playerUUID = pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Gon")
+
+		exists, err := repo.ExistsOtherCharacterWithNickInCampaign(ctx, "Gon", uuid.MustParse(campaignUUID), uuid.MustParse(sheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exists {
+			t.Fatal("expected false (no other character), got true")
+		}
+	})
+
+	t.Run("conflict — nick taken by accepted character in campaign", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID = pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID = pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
+		playerUUID = pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		player2UUID := pgtest.InsertTestUser(t, pool, "player2", "player2@test.com", "pass123")
+
+		acceptedSheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &player2UUID, nil, &campaignUUID, "Gon")
+		submittingSheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Gon")
+
+		exists, err := repo.ExistsOtherCharacterWithNickInCampaign(ctx, "Gon", uuid.MustParse(campaignUUID), uuid.MustParse(submittingSheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !exists {
+			t.Fatalf("expected true (conflict with accepted sheet %s), got false", acceptedSheetUUID)
+		}
+	})
+
+	t.Run("conflict — nick taken by pending submission in campaign", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID = pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID = pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
+		playerUUID = pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		player2UUID := pgtest.InsertTestUser(t, pool, "player2", "player2@test.com", "pass123")
+
+		pendingSheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &player2UUID, nil, nil, "Gon")
+		submittingSheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, nil, "Gon")
+
+		err := repo.SubmitCharacterSheet(ctx, uuid.MustParse(pendingSheetUUID), uuid.MustParse(campaignUUID), time.Now())
+		if err != nil {
+			t.Fatalf("setup: failed to submit pending sheet: %v", err)
+		}
+
+		exists, err := repo.ExistsOtherCharacterWithNickInCampaign(ctx, "Gon", uuid.MustParse(campaignUUID), uuid.MustParse(submittingSheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !exists {
+			t.Fatal("expected true (conflict with pending submission), got false")
+		}
+	})
+
+	t.Run("no conflict — same sheet excluded", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID = pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID = pgtest.InsertTestCampaign(t, pool, masterUUID, "TestCampaign")
+		playerUUID = pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerUUID, nil, &campaignUUID, "Gon")
+
+		// The sheet itself is in the campaign but is excluded from the check
+		exists, err := repo.ExistsOtherCharacterWithNickInCampaign(ctx, "Gon", uuid.MustParse(campaignUUID), uuid.MustParse(sheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exists {
+			t.Fatal("expected false (only the excluded sheet has this nick), got true")
+		}
+	})
+}
+
 func TestRejectCharacterSheetSubmission(t *testing.T) {
 	pool := pgtest.SetupTestDB(t)
 	repo := submission.NewRepository(pool)

@@ -9,9 +9,9 @@ import (
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
+	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
@@ -416,6 +416,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 		{enum.Aura, m.Aura.Curr, m.Aura.Max},
 	} {
 		newMax, err := charSheet.GetMaxOfStatus(e.name)
+		fmt.Println("newMax ", newMax, e.name)
 		if err != nil {
 			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
 		}
@@ -471,6 +472,23 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 
 	charSheet.IncreaseExpForTalent(m.TalentExp)
 	return wasCorrected, nil
+}
+
+func (r *Repository) GetCharacterSheetNick(ctx context.Context, sheetUUID uuid.UUID) (string, error) {
+	const query = `
+		SELECT nickname
+		FROM character_profiles
+		WHERE character_sheet_uuid = $1
+	`
+	var nick string
+	err := r.q.QueryRow(ctx, query, sheetUUID).Scan(&nick)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrCharacterSheetNotFound
+		}
+		return "", fmt.Errorf("failed to fetch character sheet nickname: %w", err)
+	}
+	return nick, nil
 }
 
 func (r *Repository) ExistsCharacterWithNick(ctx context.Context, nick string) (bool, error) {

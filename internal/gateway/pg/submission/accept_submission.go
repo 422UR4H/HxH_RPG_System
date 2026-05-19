@@ -2,10 +2,12 @@ package submission
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (r *Repository) AcceptCharacterSheetSubmission(
@@ -34,6 +36,10 @@ func (r *Repository) AcceptCharacterSheetSubmission(
     `
 	_, err = tx.Exec(ctx, updateSheetQuery, campaignUUID, now, sheetUUID)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return ErrNickConflict
+		}
 		return fmt.Errorf("failed to update character sheet with campaign: %w", err)
 	}
 

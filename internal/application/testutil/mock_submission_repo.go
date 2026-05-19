@@ -12,7 +12,8 @@ type MockSubmissionRepo struct {
 	ExistsSubmittedCharacterSheetFn        func(ctx context.Context, uuid uuid.UUID) (bool, error)
 	AcceptCharacterSheetSubmissionFn       func(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, birthday time.Time) error
 	GetSubmissionCampaignUUIDBySheetUUIDFn func(ctx context.Context, sheetUUID uuid.UUID) (uuid.UUID, error)
-	RejectCharacterSheetSubmissionFn       func(ctx context.Context, sheetUUID uuid.UUID) error
+	RejectCharacterSheetSubmissionFn                   func(ctx context.Context, sheetUUID uuid.UUID) error
+	ExistsOtherCharacterWithNickInCampaignFn           func(ctx context.Context, nick string, campaignUUID uuid.UUID, excludedSheetUUID uuid.UUID) (bool, error)
 }
 
 func (m *MockSubmissionRepo) SubmitCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, campaignUUID uuid.UUID, createdAt time.Time) error {
@@ -48,4 +49,11 @@ func (m *MockSubmissionRepo) RejectCharacterSheetSubmission(ctx context.Context,
 		return m.RejectCharacterSheetSubmissionFn(ctx, sheetUUID)
 	}
 	return nil
+}
+
+func (m *MockSubmissionRepo) ExistsOtherCharacterWithNickInCampaign(ctx context.Context, nick string, campaignUUID uuid.UUID, excludedSheetUUID uuid.UUID) (bool, error) {
+	if m.ExistsOtherCharacterWithNickInCampaignFn != nil {
+		return m.ExistsOtherCharacterWithNickInCampaignFn(ctx, nick, campaignUUID, excludedSheetUUID)
+	}
+	return false, nil
 }

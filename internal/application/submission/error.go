@@ -11,4 +11,5 @@ var (
 	ErrMasterCannotSubmitOwnSheet = domain.NewValidationError(errors.New("master cannot submit own character sheet"))
 	ErrSubmissionNotFound         = domain.NewValidationError(errors.New("character sheet submission not found"))
 	ErrNotCampaignMaster          = domain.NewValidationError(errors.New("user is not the campaign master"))
+	ErrNickAlreadyInCampaign      = domain.NewValidationError(errors.New("a character with this nickname already exists in the campaign"))
 )
