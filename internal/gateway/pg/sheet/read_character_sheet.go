@@ -417,7 +417,6 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 		{enum.Aura, m.Aura.Curr, m.Aura.Max},
 	} {
 		newMax, err := charSheet.GetMaxOfStatus(e.name)
-		fmt.Println("newMax ", newMax, e.name)
 		if err != nil {
 			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
 		}

@@ -78,10 +78,10 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	playerUUID := charSheet.GetPlayerUUID()
 
 	if masterUUID != nil && *masterUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+		return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
 	}
 	if playerUUID != nil && *playerUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+		return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
 	}
 
 	campaignUUID := charSheet.GetCampaignUUID()
@@ -94,7 +94,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 			return nil, err
 		}
 		if campaignMasterUUID == userUUID {
-			return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+			return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
 		}
 		return nil, auth.ErrInsufficientPermissions
 	}
@@ -112,19 +112,25 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 		return nil, err
 	}
 	if subCampMasterUUID == userUUID {
-		return uc.checkAndNormalize(ctx, sheetUUID.String(), charSheet, wasCorrected)
+		return uc.checkAndNormalize(sheetUUID.String(), charSheet, wasCorrected)
 	}
 	return nil, auth.ErrInsufficientPermissions
 }
 
 func (uc *GetCharacterSheetUC) checkAndNormalize(
-	ctx context.Context,
 	sheetUUID string,
 	charSheet *domainSheet.CharacterSheet,
 	wasCorrected bool,
 ) (*domainSheet.CharacterSheet, error) {
 	if wasCorrected {
-		go uc.persistNormalizedStatus(ctx, sheetUUID, charSheet)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("TODO(logger): panic in persistNormalizedStatus for sheet %s: %v\n", sheetUUID, r)
+				}
+			}()
+			uc.persistNormalizedStatus(context.Background(), sheetUUID, charSheet)
+		}()
 	}
 	return charSheet, nil
 }
