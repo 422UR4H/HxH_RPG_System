@@ -50,7 +50,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 			cs.ten_exp, cs.zetsu_exp, cs.ren_exp, cs.gyo_exp, cs.shu_exp, cs.kou_exp, cs.ken_exp, cs.ryu_exp, cs.in_exp, cs.en_exp, cs.aura_control_exp, cs.aop_exp,
 			cs.reinforcement_exp, cs.transmutation_exp, cs.materialization_exp, cs.specialization_exp, cs.manipulation_exp, cs.emission_exp,
 			cs.created_at, cs.updated_at,
-			cp.uuid, cp.nickname, cp.fullname, COALESCE(cp.alignment, ''), cp.character_class, COALESCE(cp.long_description, ''), COALESCE(cp.brief_description, ''), cp.birthday,
+			cp.uuid, cp.nickname, cp.fullname, COALESCE(cp.alignment, ''), cp.character_class, COALESCE(cp.long_description, ''), COALESCE(cp.brief_description, ''), cp.birthday, cp.age,
 			cp.avatar_url, cp.cover_url,
 			cp.created_at, cp.updated_at
 		FROM character_sheets cs
@@ -77,7 +77,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 		&m.TenExp, &m.ZetsuExp, &m.RenExp, &m.GyoExp, &m.ShuExp, &m.KouExp, &m.KenExp, &m.RyuExp, &m.InExp, &m.EnExp, &m.AuraControlExp, &m.AopExp,
 		&m.ReinforcementExp, &m.TransmutationExp, &m.MaterializationExp, &m.SpecializationExp, &m.ManipulationExp, &m.EmissionExp,
 		&m.CreatedAt, &m.UpdatedAt,
-		&profile.UUID, &profile.NickName, &profile.FullName, &profile.Alignment, &profile.CharacterClass, &profile.Description, &profile.BriefDescription, &profile.Birthday,
+		&profile.UUID, &profile.NickName, &profile.FullName, &profile.Alignment, &profile.CharacterClass, &profile.Description, &profile.BriefDescription, &profile.Birthday, &profile.Age,
 		&profile.AvatarURL, &profile.CoverURL,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
@@ -271,6 +271,7 @@ func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfi
 		Description:      profile.Description,
 		BriefDescription: profile.BriefDescription,
 		Birthday:         profile.Birthday,
+		Age:              profile.Age,
 		AvatarURL:        profile.AvatarURL,
 		CoverURL:         profile.CoverURL,
 	}
