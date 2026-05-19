@@ -111,9 +111,8 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 }
 
 // deriveCurrExp returns the exp accumulated within the current level.
-// Returns 0 when charExp is 0 and level > 0, which indicates a row created before the
-// char_exp column was added (DEFAULT 0 migration without backfill). These rows will show
-// an empty bar until the sheet is next updated via create/update, which repopulates char_exp.
+// Clamped to 0 for rows where char_exp was not yet populated (DEFAULT 0 migration without
+// backfill). Those rows show an empty bar until the sheet is next updated via create/update.
 func deriveCurrExp(charExp, level int) int {
 	v := charExp - charExpTable.GetAggregateExpByLvl(level)
 	if v < 0 {
@@ -122,12 +121,8 @@ func deriveCurrExp(charExp, level int) int {
 	return v
 }
 
-// deriveNxtLvlBaseExp returns 0 for the same uninitialized-row case, so the EXP bar
-// hides its label entirely rather than showing 0/N with a misleading denominator.
-func deriveNxtLvlBaseExp(charExp, level int) int {
-	if charExp == 0 && level > 0 {
-		return 0
-	}
+// deriveNxtLvlBaseExp is always derived from level; it does not depend on char_exp.
+func deriveNxtLvlBaseExp(_ int, level int) int {
 	return charExpTable.GetBaseExpByLvl(level + 1)
 }
 
