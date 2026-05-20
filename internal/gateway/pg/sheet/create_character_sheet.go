@@ -32,7 +32,7 @@ func (r *Repository) CreateCharacterSheet(
 
 	const sheetQuery = `
 		INSERT INTO character_sheets (
-			uuid, player_uuid, category_name, curr_hex_value, talent_exp,
+			uuid, player_uuid, master_uuid, campaign_uuid, category_name, curr_hex_value, talent_exp,
 			level, points, talent_lvl, physicals_lvl, mentals_lvl, spirituals_lvl, skills_lvl,
 			health_min_pts, health_curr_pts, health_max_pts,
 			stamina_min_pts, stamina_curr_pts, stamina_max_pts,
@@ -48,25 +48,25 @@ func (r *Repository) CreateCharacterSheet(
 			char_exp,
 			created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9, $10, $11, $12,
-			$13, $14, $15,
-			$16, $17, $18,
-			$19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29,
-			$30, $31, $32, $33, $34, $35, $36, $37,
-			$38, $39, $40, $41, $42, $43, $44, $45, $46,
-			$47, $48, $49, $50, $51, $52, $53, $54, $55,
-			$56, $57, $58, $59, $60, $61, $62, $63,
-			$64, $65, $66,
-			$67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77,
-			$78, $79, $80, $81, $82, $83,
-			$84, $85, $86, $87
+			$1, $2, $3, $4, $5, $6, $7,
+			$8, $9, $10, $11, $12, $13, $14,
+			$15, $16, $17,
+			$18, $19, $20,
+			$21, $22, $23,
+			$24, $25, $26, $27, $28, $29, $30, $31,
+			$32, $33, $34, $35, $36, $37, $38, $39,
+			$40, $41, $42, $43, $44, $45, $46, $47, $48,
+			$49, $50, $51, $52, $53, $54, $55, $56, $57,
+			$58, $59, $60, $61, $62, $63, $64, $65,
+			$66, $67, $68,
+			$69, $70, $71, $72, $73, $74, $75, $76, $77, $78, $79,
+			$80, $81, $82, $83, $84, $85,
+			$86, $87, $88, $89
 		) RETURNING id
 	`
 	var sheetID int
 	err = tx.QueryRow(ctx, sheetQuery,
-		m.UUID, m.PlayerUUID, m.CategoryName, m.CurrHexValue, m.TalentExp,
+		m.UUID, m.PlayerUUID, m.MasterUUID, m.CampaignUUID, m.CategoryName, m.CurrHexValue, m.TalentExp,
 		m.Level, m.Points, m.TalentLvl, m.PhysicalsLvl, m.MentalsLvl, m.SpiritualsLvl, m.SkillsLvl,
 		m.Health.Min, m.Health.Curr, m.Health.Max,
 		m.Stamina.Min, m.Stamina.Curr, m.Stamina.Max,
@@ -195,10 +195,11 @@ func charSheetToModel(sheet *domainSheet.CharacterSheet) *model.CharacterSheet {
 		})
 	}
 
-	playerUUID := sheet.GetPlayerUUID()
 	return &model.CharacterSheet{
-		UUID:       sheet.UUID,
-		PlayerUUID: playerUUID,
+		UUID:         sheet.UUID,
+		PlayerUUID:   sheet.GetPlayerUUID(),
+		MasterUUID:   sheet.GetMasterUUID(),
+		CampaignUUID: sheet.GetCampaignUUID(),
 
 		Profile: model.CharacterProfile{
 			UUID:             uuid.New(),

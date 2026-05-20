@@ -22,11 +22,8 @@ func TestUpdateCharacterSheet(t *testing.T) {
 
 		updateCalled := false
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-				return playerUUID, nil
-			},
 			GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
-				return csEntity.RelationshipUUIDs{CampaignUUID: nil}, nil
+				return csEntity.RelationshipUUIDs{PlayerUUID: &playerUUID, CampaignUUID: nil}, nil
 			},
 			UpdateCharacterSheetFn: func(ctx context.Context, s *sheet.CharacterSheet) error {
 				updateCalled = true
@@ -79,11 +76,8 @@ func TestUpdateCharacterSheet(t *testing.T) {
 		sheetUUID := uuid.New()
 
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetPlayerUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-				return playerUUID, nil
-			},
 			GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
-				return csEntity.RelationshipUUIDs{CampaignUUID: nil}, nil
+				return csEntity.RelationshipUUIDs{PlayerUUID: &playerUUID, CampaignUUID: nil}, nil
 			},
 		}
 		mockChecker := &mockFreeStateChecker{exists: true, err: nil}

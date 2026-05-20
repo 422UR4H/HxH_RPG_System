@@ -43,7 +43,7 @@ func (r *Repository) UpdateCharacterSheet(
 			reinforcement_exp = $77, transmutation_exp = $78, materialization_exp = $79, specialization_exp = $80, manipulation_exp = $81, emission_exp = $82,
 			char_exp = $83,
 			updated_at = $84
-		WHERE uuid = $85 AND player_uuid = $86
+		WHERE uuid = $85 AND (player_uuid = $86 OR master_uuid = $87)
 	`
 
 	result, err := tx.Exec(ctx, sheetQuery,
@@ -61,7 +61,7 @@ func (r *Repository) UpdateCharacterSheet(
 		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
 		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
 		m.CharExp,
-		now, m.UUID, m.PlayerUUID,
+		now, m.UUID, m.PlayerUUID, m.MasterUUID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update character sheet: %w", err)
