@@ -589,3 +589,88 @@ func TestUpdateCharacterSheetProfile(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteNPCCharacterSheet(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	masterStr := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+	masterUUID := uuid.MustParse(masterStr)
+
+	t.Run("happy path - NPC deleted", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterStr2 := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		masterUUID2 := uuid.MustParse(masterStr2)
+
+		s := buildMasterTestSheet(&masterUUID2)
+		if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("setup: failed to create NPC sheet: %v", err)
+		}
+		if err := repo.DeleteNPCCharacterSheet(ctx, s.UUID, masterUUID2); err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+	})
+
+	t.Run("not found - wrong uuid", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+
+		err := repo.DeleteNPCCharacterSheet(ctx, uuid.New(), masterUUID)
+		if !errors.Is(err, sheet.ErrCharacterSheetNotFound) {
+			t.Fatalf("expected ErrCharacterSheetNotFound, got: %v", err)
+		}
+	})
+
+	t.Run("not found - wrong master uuid", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterStr2 := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		masterUUID2 := uuid.MustParse(masterStr2)
+
+		s := buildMasterTestSheet(&masterUUID2)
+		if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("setup: failed to create NPC sheet: %v", err)
+		}
+		err := repo.DeleteNPCCharacterSheet(ctx, s.UUID, uuid.New())
+		if !errors.Is(err, sheet.ErrCharacterSheetNotFound) {
+			t.Fatalf("expected ErrCharacterSheetNotFound, got: %v", err)
+		}
+	})
+}
+
+func TestExistsMatchParticipantForSheet(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("not participated", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterStr := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, nil, &masterStr, nil, "NPC1")
+		exists, err := repo.ExistsMatchParticipantForSheet(ctx, uuid.MustParse(sheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exists {
+			t.Fatal("expected false, got true")
+		}
+	})
+
+	t.Run("participated in match", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterStr := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass123")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterStr, "Campaign")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterStr, campaignUUID, "Match")
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, nil, &masterStr, nil, "NPC1")
+		pgtest.InsertTestMatchParticipant(t, pool, matchUUID, sheetUUID, time.Now())
+
+		exists, err := repo.ExistsMatchParticipantForSheet(ctx, uuid.MustParse(sheetUUID))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !exists {
+			t.Fatal("expected true, got false")
+		}
+	})
+}

@@ -23,6 +23,8 @@ type MockCharacterSheetRepo struct {
 	UpdateStatusBarsFn                   func(ctx context.Context, uuid string, health, stamina, aura status.IStatusBar) error
 	UpdateCharExpFn                       func(ctx context.Context, sheetUUID string, charExp int) error
 	DeleteCharacterSheetFn               func(ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID) error
+	DeleteNPCCharacterSheetFn            func(ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID) error
+	ExistsMatchParticipantForSheetFn     func(ctx context.Context, sheetUUID uuid.UUID) (bool, error)
 	UpdateCharacterSheetFn               func(ctx context.Context, sheet *sheet.CharacterSheet) error
 }
 
@@ -108,6 +110,20 @@ func (m *MockCharacterSheetRepo) DeleteCharacterSheet(ctx context.Context, sheet
 		return m.DeleteCharacterSheetFn(ctx, sheetUUID, playerUUID)
 	}
 	return nil
+}
+
+func (m *MockCharacterSheetRepo) DeleteNPCCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID) error {
+	if m.DeleteNPCCharacterSheetFn != nil {
+		return m.DeleteNPCCharacterSheetFn(ctx, sheetUUID, masterUUID)
+	}
+	return nil
+}
+
+func (m *MockCharacterSheetRepo) ExistsMatchParticipantForSheet(ctx context.Context, sheetUUID uuid.UUID) (bool, error) {
+	if m.ExistsMatchParticipantForSheetFn != nil {
+		return m.ExistsMatchParticipantForSheetFn(ctx, sheetUUID)
+	}
+	return false, nil
 }
 
 func (m *MockCharacterSheetRepo) UpdateCharacterSheet(ctx context.Context, s *sheet.CharacterSheet) error {

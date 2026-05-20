@@ -28,22 +28,42 @@ func NewDeleteCharacterSheetUC(repo IRepository, checker IFreeStateChecker) *Del
 func (uc *DeleteCharacterSheetUC) DeleteCharacterSheet(
 	ctx context.Context, sheetUUID uuid.UUID, userUUID uuid.UUID,
 ) error {
-	playerUUID, err := uc.repo.GetCharacterSheetPlayerUUID(ctx, sheetUUID)
-	if err != nil {
-		return err
-	}
-	if playerUUID != userUUID {
-		return auth.ErrInsufficientPermissions
-	}
-
 	rel, err := uc.repo.GetCharacterSheetRelationshipUUIDs(ctx, sheetUUID)
 	if err != nil {
 		return err
 	}
-	if rel.CampaignUUID != nil {
+
+	if rel.MasterUUID != nil {
+		return uc.deleteNPCSheet(ctx, sheetUUID, *rel.MasterUUID, userUUID)
+	}
+	return uc.deletePlayerSheet(ctx, sheetUUID, *rel.PlayerUUID, rel.CampaignUUID, userUUID)
+}
+
+func (uc *DeleteCharacterSheetUC) deleteNPCSheet(
+	ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID, userUUID uuid.UUID,
+) error {
+	if masterUUID != userUUID {
+		return auth.ErrInsufficientPermissions
+	}
+	hasParticipated, err := uc.repo.ExistsMatchParticipantForSheet(ctx, sheetUUID)
+	if err != nil {
+		return err
+	}
+	if hasParticipated {
 		return ErrCharacterSheetNotFreeToManage
 	}
+	return uc.repo.DeleteNPCCharacterSheet(ctx, sheetUUID, masterUUID)
+}
 
+func (uc *DeleteCharacterSheetUC) deletePlayerSheet(
+	ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID, campaignUUID *uuid.UUID, userUUID uuid.UUID,
+) error {
+	if playerUUID != userUUID {
+		return auth.ErrInsufficientPermissions
+	}
+	if campaignUUID != nil {
+		return ErrCharacterSheetNotFreeToManage
+	}
 	hasSubmission, err := uc.checker.ExistsSubmittedCharacterSheet(ctx, sheetUUID)
 	if err != nil {
 		return err
@@ -51,6 +71,5 @@ func (uc *DeleteCharacterSheetUC) DeleteCharacterSheet(
 	if hasSubmission {
 		return ErrCharacterSheetNotFreeToManage
 	}
-
-	return uc.repo.DeleteCharacterSheet(ctx, sheetUUID, userUUID)
+	return uc.repo.DeleteCharacterSheet(ctx, sheetUUID, playerUUID)
 }

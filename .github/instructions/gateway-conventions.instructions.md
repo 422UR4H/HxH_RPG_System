@@ -46,3 +46,11 @@ defer func() {
 ```
 
 **Why:** Shadowed `err` variables inside the defer capture the outer `err` at closure creation time, not at call time — connection leaks on panic paths.
+
+## Indexes
+
+Every column used in `WHERE` or `JOIN ON` must have an index. Add it in the same migration that creates the table or the query.
+
+Two non-obvious cases to watch:
+- **FKs do not auto-create indexes in PostgreSQL** — always add `CREATE INDEX` explicitly.
+- **Composite index `(a, b)` does not cover `WHERE b = $1`** — add a single-column index on `b` if you need it.
