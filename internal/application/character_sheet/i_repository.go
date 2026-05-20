@@ -23,5 +23,7 @@ type IRepository interface {
 	UpdateStatusBars(ctx context.Context, sheetUUID string, health, stamina, aura status.IStatusBar) error
 	UpdateCharExp(ctx context.Context, sheetUUID string, charExp int) error
 	DeleteCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID) error
+	DeleteNPCCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID) error
+	ExistsMatchParticipantForSheet(ctx context.Context, sheetUUID uuid.UUID) (bool, error)
 	UpdateCharacterSheet(ctx context.Context, sheet *sheet.CharacterSheet) error
 }
