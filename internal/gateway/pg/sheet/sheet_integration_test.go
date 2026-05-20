@@ -95,16 +95,20 @@ func TestCreateCharacterSheet(t *testing.T) {
 		}
 	})
 
-	t.Run("master-owned sheet not insertable via player-only repo", func(t *testing.T) {
+	t.Run("happy path master-owned NPC sheet", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
-		// NOTE: CreateCharacterSheet only inserts player_uuid, not master_uuid.
-		// A master-owned sheet (playerUUID=nil, masterUUID=non-nil) hits the DB XOR constraint.
 		masterStr := pgtest.InsertTestUser(t, pool, "master", "master@test.com", "pass")
 		masterID := uuid.MustParse(masterStr)
 		s := buildMasterTestSheet(&masterID)
-		err := repo.CreateCharacterSheet(ctx, s)
-		if err == nil {
-			t.Fatal("expected error for master-owned sheet, got nil")
+		if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("expected no error for master-owned sheet, got: %v", err)
+		}
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+		if err != nil {
+			t.Fatalf("expected sheet to be readable after create, got: %v", err)
+		}
+		if got.UUID != s.UUID {
+			t.Fatalf("expected UUID %s, got %s", s.UUID, got.UUID)
 		}
 	})
 }
