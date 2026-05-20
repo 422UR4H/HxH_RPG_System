@@ -22,7 +22,7 @@ func (r *Repository) UpdateCharacterSheetProfile(
 		FROM character_sheets cs
 		WHERE cp.character_sheet_uuid = cs.uuid
 		  AND cs.uuid = $5
-		  AND cs.player_uuid = $6
+		  AND (cs.player_uuid = $6 OR cs.master_uuid = $6)
 	`
 	tag, err := r.q.Exec(ctx, query, avatarURL, coverURL, description, time.Now(), sheetUUID, playerUUID)
 	if err != nil {

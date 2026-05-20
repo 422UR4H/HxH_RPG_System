@@ -38,28 +38,31 @@ func NewUpdateCharacterSheetUC(
 func (uc *UpdateCharacterSheetUC) UpdateCharacterSheet(
 	ctx context.Context, sheetUUID uuid.UUID, userUUID uuid.UUID, input *CreateCharacterSheetInput,
 ) error {
-	playerUUID, err := uc.repo.GetCharacterSheetPlayerUUID(ctx, sheetUUID)
-	if err != nil {
-		return err
-	}
-	if playerUUID != userUUID {
-		return auth.ErrInsufficientPermissions
-	}
-
 	rel, err := uc.repo.GetCharacterSheetRelationshipUUIDs(ctx, sheetUUID)
 	if err != nil {
 		return err
 	}
-	if rel.CampaignUUID != nil {
-		return ErrCharacterSheetNotFreeToManage
+
+	isPlayerOwner := rel.PlayerUUID != nil && *rel.PlayerUUID == userUUID
+	isMasterNpc := rel.MasterUUID != nil && *rel.MasterUUID == userUUID && rel.PlayerUUID == nil
+
+	if !isPlayerOwner && !isMasterNpc {
+		return auth.ErrInsufficientPermissions
 	}
 
-	hasSubmission, err := uc.checker.ExistsSubmittedCharacterSheet(ctx, sheetUUID)
-	if err != nil {
-		return err
-	}
-	if hasSubmission {
-		return ErrCharacterSheetNotFreeToManage
+	// Player-owned sheets must be free (no campaign, no pending submission).
+	// NPC sheets belong to the master and are always editable.
+	if isPlayerOwner {
+		if rel.CampaignUUID != nil {
+			return ErrCharacterSheetNotFreeToManage
+		}
+		hasSubmission, err := uc.checker.ExistsSubmittedCharacterSheet(ctx, sheetUUID)
+		if err != nil {
+			return err
+		}
+		if hasSubmission {
+			return ErrCharacterSheetNotFreeToManage
+		}
 	}
 
 	class, exists := uc.characterClasses.Load(input.CharacterClass)
@@ -77,8 +80,7 @@ func (uc *UpdateCharacterSheetUC) UpdateCharacterSheet(
 	charClass.ApplySkills(input.SkillsExps)
 	charClass.ApplyProficiencies(input.ProficienciesExps)
 
-	pUUID := userUUID
-	charSheet, err := uc.factory.Build(&pUUID, nil, nil, input.Profile, nil, nil, &charClass)
+	charSheet, err := uc.factory.Build(rel.PlayerUUID, rel.MasterUUID, rel.CampaignUUID, input.Profile, nil, nil, &charClass)
 	if err != nil {
 		return err
 	}
