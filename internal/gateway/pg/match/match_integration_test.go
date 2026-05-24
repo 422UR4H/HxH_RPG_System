@@ -413,3 +413,92 @@ func mustParseUUID(t *testing.T, s string) uuid.UUID {
 	}
 	return id
 }
+
+func TestUpdateMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path updates fields and bumps updated_at", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_upd", "gm_upd@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Update Campaign"))
+
+		m := newTestMatch(masterUUID, campaignUUID, "Original", true, time.Now().Add(24*time.Hour))
+		if err := repo.CreateMatch(ctx, m); err != nil {
+			t.Fatalf("CreateMatch() unexpected error: %v", err)
+		}
+
+		original, err := repo.GetMatch(ctx, m.UUID)
+		if err != nil {
+			t.Fatalf("GetMatch() after create: %v", err)
+		}
+		originalUpdated := original.UpdatedAt
+
+		time.Sleep(10 * time.Millisecond) // ensure UpdatedAt differs measurably
+		original.Title = "Patched"
+		original.BriefInitialDescription = "Patched brief"
+		original.Description = "Patched description"
+		original.IsPublic = false
+		original.GameScheduledAt = time.Now().Add(72 * time.Hour).Truncate(time.Microsecond)
+		original.StoryStartAt = time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+		original.UpdatedAt = time.Now().Truncate(time.Microsecond)
+
+		if err := repo.UpdateMatch(ctx, original); err != nil {
+			t.Fatalf("UpdateMatch() unexpected error: %v", err)
+		}
+
+		got, err := repo.GetMatch(ctx, m.UUID)
+		if err != nil {
+			t.Fatalf("GetMatch() after update: %v", err)
+		}
+		if got.Title != "Patched" {
+			t.Errorf("Title = %q, want %q", got.Title, "Patched")
+		}
+		if got.IsPublic != false {
+			t.Errorf("IsPublic = %v, want false", got.IsPublic)
+		}
+		if !got.UpdatedAt.After(originalUpdated) {
+			t.Errorf("UpdatedAt = %v, want after %v", got.UpdatedAt, originalUpdated)
+		}
+	})
+
+	t.Run("race guard — already started rejects update", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_race", "gm_race@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Race Campaign"))
+
+		m := newTestMatch(masterUUID, campaignUUID, "Will Start", true, time.Now().Add(24*time.Hour))
+		if err := repo.CreateMatch(ctx, m); err != nil {
+			t.Fatalf("CreateMatch() unexpected error: %v", err)
+		}
+		if err := repo.StartMatch(ctx, m.UUID, time.Now()); err != nil {
+			t.Fatalf("StartMatch() unexpected error: %v", err)
+		}
+
+		m.Title = "Should not persist"
+		m.UpdatedAt = time.Now()
+		err := repo.UpdateMatch(ctx, m)
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("UpdateMatch() after start: got %v, want ErrMatchNotFound", err)
+		}
+	})
+
+	t.Run("unknown uuid returns not found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		m := &entityMatch.Match{
+			UUID:                    uuid.New(),
+			Title:                   "Ghost",
+			BriefInitialDescription: "x",
+			Description:             "x",
+			IsPublic:                true,
+			GameScheduledAt:         time.Now(),
+			StoryStartAt:            time.Now(),
+			UpdatedAt:               time.Now(),
+		}
+		err := repo.UpdateMatch(ctx, m)
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("UpdateMatch() for unknown uuid: got %v, want ErrMatchNotFound", err)
+		}
+	})
+}
