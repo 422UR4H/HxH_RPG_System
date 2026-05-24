@@ -299,6 +299,13 @@ mappings:
     game_docs: []
     notes: API entrypoint — usually no doc impact unless adding new routes
 
+  # ─── Match: REST API ───
+  - code_path: internal/app/api/match/
+    dev_docs:
+      - path: docs/dev/api/match.md
+        confidence: directly_affected
+    notes: Match REST surface — create/get/update/list/enrollments/participants
+
   - code_path: internal/app/api/
     dev_docs:
       - path: docs/dev/overview.md

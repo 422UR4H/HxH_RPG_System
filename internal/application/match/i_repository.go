@@ -15,6 +15,7 @@ import (
 
 type IRepository interface {
 	CreateMatch(ctx context.Context, match *match.Match) error
+	UpdateMatch(ctx context.Context, match *match.Match) error
 	GetMatch(ctx context.Context, uuid uuid.UUID) (*match.Match, error)
 	GetMatchCampaignUUID(ctx context.Context, matchUUID uuid.UUID) (uuid.UUID, error)
 	StartMatch(ctx context.Context, matchUUID uuid.UUID, gameStartAt time.Time) error

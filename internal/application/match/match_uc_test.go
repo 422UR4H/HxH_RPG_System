@@ -531,3 +531,286 @@ func TestListPublicUpcomingMatches(t *testing.T) {
 		})
 	}
 }
+
+func validUpdateMatchInput(matchUUID, masterUUID uuid.UUID) *domainMatch.UpdateMatchInput {
+	title := "Updated Title"
+	brief := "Updated brief"
+	desc := "Updated description"
+	isPublic := false
+	gameAt := time.Now().Add(48 * time.Hour)
+	storyAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	return &domainMatch.UpdateMatchInput{
+		MatchUUID:               matchUUID,
+		MasterUUID:              masterUUID,
+		Title:                   &title,
+		BriefInitialDescription: &brief,
+		Description:             &desc,
+		IsPublic:                &isPublic,
+		GameScheduledAt:         &gameAt,
+		StoryStartAt:            &storyAt,
+	}
+}
+
+func loadMatchFn(m *matchEntity.Match) func(context.Context, uuid.UUID) (*matchEntity.Match, error) {
+	return func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+		copy := *m
+		return &copy, nil
+	}
+}
+
+func TestUpdateMatch(t *testing.T) {
+	matchUUID := uuid.New()
+	masterUUID := uuid.New()
+
+	baseMatch := &matchEntity.Match{
+		UUID:                    matchUUID,
+		MasterUUID:              masterUUID,
+		CampaignUUID:            uuid.New(),
+		Title:                   "Original Title",
+		BriefInitialDescription: "Original brief",
+		Description:             "Original description",
+		IsPublic:                true,
+		GameScheduledAt:         time.Now().Add(24 * time.Hour),
+		StoryStartAt:            time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+		CreatedAt:               time.Now().Add(-24 * time.Hour),
+		UpdatedAt:               time.Now().Add(-24 * time.Hour),
+	}
+
+	validCampaign := func() *campaignEntity.Campaign {
+		return &campaignEntity.Campaign{
+			MasterUUID:   masterUUID,
+			StoryStartAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		}
+	}
+
+	t.Run("success full patch", func(t *testing.T) {
+		input := validUpdateMatchInput(matchUUID, masterUUID)
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn:    loadMatchFn(baseMatch),
+			UpdateMatchFn: func(_ context.Context, m *matchEntity.Match) error { return nil },
+		}
+		campaignRepo := &testutil.MockCampaignRepo{
+			GetCampaignStoryDatesFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.Campaign, error) {
+				return validCampaign(), nil
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+
+		got, err := uc.Update(context.Background(), input)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Title != *input.Title {
+			t.Errorf("title = %q, want %q", got.Title, *input.Title)
+		}
+		if got.IsPublic != *input.IsPublic {
+			t.Errorf("isPublic = %v, want %v", got.IsPublic, *input.IsPublic)
+		}
+	})
+
+	t.Run("success partial patch — title only", func(t *testing.T) {
+		title := "Only Title Changed"
+		input := &domainMatch.UpdateMatchInput{
+			MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &title,
+		}
+		updateCalled := false
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: loadMatchFn(baseMatch),
+			UpdateMatchFn: func(_ context.Context, m *matchEntity.Match) error {
+				updateCalled = true
+				if m.Title != title {
+					t.Errorf("persisted title = %q, want %q", m.Title, title)
+				}
+				if m.BriefInitialDescription != baseMatch.BriefInitialDescription {
+					t.Errorf("brief mutated unexpectedly")
+				}
+				return nil
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+
+		_, err := uc.Update(context.Background(), input)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !updateCalled {
+			t.Fatal("UpdateMatch should have been called")
+		}
+	})
+
+	t.Run("no-op when all fields nil", func(t *testing.T) {
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: loadMatchFn(baseMatch),
+			UpdateMatchFn: func(_ context.Context, _ *matchEntity.Match) error {
+				t.Fatal("UpdateMatch should NOT be called for no-op input")
+				return nil
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+
+		got, err := uc.Update(context.Background(), input)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.Title != baseMatch.Title {
+			t.Errorf("title changed unexpectedly")
+		}
+	})
+
+	t.Run("match not found", func(t *testing.T) {
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return nil, matchPg.ErrMatchNotFound
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
+		if !errors.Is(err, domainMatch.ErrMatchNotFound) {
+			t.Fatalf("got %v, want ErrMatchNotFound", err)
+		}
+	})
+
+	t.Run("not master", func(t *testing.T) {
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		input := validUpdateMatchInput(matchUUID, uuid.New())
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrNotMatchMaster) {
+			t.Fatalf("got %v, want ErrNotMatchMaster", err)
+		}
+	})
+
+	t.Run("match already started", func(t *testing.T) {
+		started := *baseMatch
+		now := time.Now()
+		started.GameStartAt = &now
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(&started)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
+		if !errors.Is(err, domainMatch.ErrMatchAlreadyStarted) {
+			t.Fatalf("got %v, want ErrMatchAlreadyStarted", err)
+		}
+	})
+
+	t.Run("match already finished", func(t *testing.T) {
+		finished := *baseMatch
+		end := time.Now()
+		finished.StoryEndAt = &end
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(&finished)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
+		if !errors.Is(err, domainMatch.ErrMatchAlreadyFinished) {
+			t.Fatalf("got %v, want ErrMatchAlreadyFinished", err)
+		}
+	})
+
+	t.Run("title too short", func(t *testing.T) {
+		short := "ab"
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &short}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMinTitleLength) {
+			t.Fatalf("got %v, want ErrMinTitleLength", err)
+		}
+	})
+
+	t.Run("title too long", func(t *testing.T) {
+		long := "this title is way too long for the maximum limit"
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &long}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMaxTitleLength) {
+			t.Fatalf("got %v, want ErrMaxTitleLength", err)
+		}
+	})
+
+	t.Run("brief too long", func(t *testing.T) {
+		brief := string(make([]byte, 65))
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, BriefInitialDescription: &brief}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMaxBriefDescLength) {
+			t.Fatalf("got %v, want ErrMaxBriefDescLength", err)
+		}
+	})
+
+	t.Run("game scheduled in past", func(t *testing.T) {
+		past := time.Now().Add(-1 * time.Hour)
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, GameScheduledAt: &past}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMinOfGameScheduledAt) {
+			t.Fatalf("got %v, want ErrMinOfGameScheduledAt", err)
+		}
+	})
+
+	t.Run("game scheduled too far", func(t *testing.T) {
+		far := time.Now().AddDate(1, 1, 0)
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, GameScheduledAt: &far}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMaxOfGameScheduledAt) {
+			t.Fatalf("got %v, want ErrMaxOfGameScheduledAt", err)
+		}
+	})
+
+	t.Run("story start before campaign start", func(t *testing.T) {
+		before := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, StoryStartAt: &before}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		campaignRepo := &testutil.MockCampaignRepo{
+			GetCampaignStoryDatesFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.Campaign, error) {
+				return validCampaign(), nil
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMinOfStoryStartAt) {
+			t.Fatalf("got %v, want ErrMinOfStoryStartAt", err)
+		}
+	})
+
+	t.Run("story start after campaign end", func(t *testing.T) {
+		end := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+		after := time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)
+		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, StoryStartAt: &after}
+		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
+		campaignRepo := &testutil.MockCampaignRepo{
+			GetCampaignStoryDatesFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.Campaign, error) {
+				c := validCampaign()
+				c.StoryEndAt = &end
+				return c, nil
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		_, err := uc.Update(context.Background(), input)
+		if !errors.Is(err, domainMatch.ErrMaxOfStoryStartAt) {
+			t.Fatalf("got %v, want ErrMaxOfStoryStartAt", err)
+		}
+	})
+
+	t.Run("repo update returns not found — race with start", func(t *testing.T) {
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: loadMatchFn(baseMatch),
+			UpdateMatchFn: func(_ context.Context, _ *matchEntity.Match) error {
+				return matchPg.ErrMatchNotFound
+			},
+		}
+		campaignRepo := &testutil.MockCampaignRepo{
+			GetCampaignStoryDatesFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.Campaign, error) {
+				return validCampaign(), nil
+			},
+		}
+		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
+		if !errors.Is(err, domainMatch.ErrMatchAlreadyStarted) {
+			t.Fatalf("got %v, want ErrMatchAlreadyStarted (race mapping)", err)
+		}
+	})
+}
