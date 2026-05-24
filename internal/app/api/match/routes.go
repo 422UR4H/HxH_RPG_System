@@ -13,6 +13,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 
 type Api struct {
 	CreateMatchHandler               Handler[CreateMatchRequest, CreateMatchResponse]
+	UpdateMatchHandler               Handler[UpdateMatchRequest, UpdateMatchResponse]
 	GetMatchHandler                  Handler[GetMatchRequest, GetMatchResponse]
 	ListMatchesHandler               Handler[struct{}, ListMatchesResponse]
 	ListPublicUpcomingMatchesHandler Handler[struct{}, ListMatchesResponse]
@@ -36,6 +37,21 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusCreated,
 	}, a.CreateMatchHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPatch,
+		Path:        "/matches/{uuid}",
+		Description: "Update a match (master only, before game starts)",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusForbidden,
+			http.StatusUnauthorized,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+	}, a.UpdateMatchHandler)
 
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
