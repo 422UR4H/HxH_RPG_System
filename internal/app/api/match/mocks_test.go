@@ -59,3 +59,13 @@ func (m *mockGetMatchParticipants) Get(
 ) (*domainMatch.GetMatchParticipantsResult, error) {
 	return m.fn(ctx, matchUUID, userUUID)
 }
+
+type mockUpdateMatch struct {
+	fn func(ctx context.Context, input *domainMatch.UpdateMatchInput) (*matchEntity.Match, error)
+}
+
+func (m *mockUpdateMatch) Update(
+	ctx context.Context, input *domainMatch.UpdateMatchInput,
+) (*matchEntity.Match, error) {
+	return m.fn(ctx, input)
+}
