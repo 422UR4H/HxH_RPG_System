@@ -11,6 +11,7 @@ import (
 type MockMatchRepo struct {
 	CreateMatchFn                        func(ctx context.Context, match *match.Match) error
 	UpdateMatchFn                        func(ctx context.Context, match *match.Match) error
+	DeleteMatchFn                        func(ctx context.Context, matchUUID uuid.UUID) error
 	GetMatchFn                           func(ctx context.Context, uuid uuid.UUID) (*match.Match, error)
 	GetMatchCampaignUUIDFn               func(ctx context.Context, matchUUID uuid.UUID) (uuid.UUID, error)
 	StartMatchFn                  func(ctx context.Context, matchUUID uuid.UUID, gameStartAt time.Time) error
@@ -29,6 +30,13 @@ func (m *MockMatchRepo) CreateMatch(ctx context.Context, mt *match.Match) error 
 func (m *MockMatchRepo) UpdateMatch(ctx context.Context, mt *match.Match) error {
 	if m.UpdateMatchFn != nil {
 		return m.UpdateMatchFn(ctx, mt)
+	}
+	return nil
+}
+
+func (m *MockMatchRepo) DeleteMatch(ctx context.Context, matchUUID uuid.UUID) error {
+	if m.DeleteMatchFn != nil {
+		return m.DeleteMatchFn(ctx, matchUUID)
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ type Handler[I, O any] func(context.Context, *I) (*O, error)
 type Api struct {
 	CreateMatchHandler               Handler[CreateMatchRequest, CreateMatchResponse]
 	UpdateMatchHandler               Handler[UpdateMatchRequest, UpdateMatchResponse]
+	DeleteMatchHandler               Handler[DeleteMatchRequest, DeleteMatchResponse]
 	GetMatchHandler                  Handler[GetMatchRequest, GetMatchResponse]
 	ListMatchesHandler               Handler[struct{}, ListMatchesResponse]
 	ListPublicUpcomingMatchesHandler Handler[struct{}, ListMatchesResponse]
@@ -52,6 +53,22 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.UpdateMatchHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodDelete,
+		Path:        "/matches/{uuid}",
+		Description: "Delete a match (master only, before game starts; cascades enrollments)",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusForbidden,
+			http.StatusUnauthorized,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusNoContent,
+	}, a.DeleteMatchHandler)
 
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
