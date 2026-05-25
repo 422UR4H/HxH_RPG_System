@@ -814,3 +814,99 @@ func TestUpdateMatch(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteMatch(t *testing.T) {
+	masterUUID := uuid.New()
+	matchUUID := uuid.New()
+
+	baseMatch := &matchEntity.Match{
+		UUID:         matchUUID,
+		MasterUUID:   masterUUID,
+		CampaignUUID: uuid.New(),
+		Title:        "Test Match",
+	}
+	loadMatchFn := func(m *matchEntity.Match) func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+		copy := *m
+		return func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+			c := copy
+			return &c, nil
+		}
+	}
+
+	input := func() *domainMatch.DeleteMatchInput {
+		return &domainMatch.DeleteMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
+	}
+
+	t.Run("success", func(t *testing.T) {
+		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+			GetMatchFn:    loadMatchFn(baseMatch),
+			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error { return nil },
+		})
+		if err := uc.Delete(context.Background(), input()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("match not found", func(t *testing.T) {
+		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return nil, matchPg.ErrMatchNotFound
+			},
+			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error {
+				t.Fatal("DeleteMatch should not be called when GetMatch returns not found")
+				return nil
+			},
+		})
+		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrMatchNotFound) {
+			t.Fatal("expected ErrMatchNotFound")
+		}
+	})
+
+	t.Run("not master", func(t *testing.T) {
+		otherMaster := uuid.New()
+		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				m := *baseMatch
+				m.MasterUUID = otherMaster
+				return &m, nil
+			},
+			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error {
+				t.Fatal("DeleteMatch should not be called when user is not master")
+				return nil
+			},
+		})
+		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrNotMatchMaster) {
+			t.Fatal("expected ErrNotMatchMaster")
+		}
+	})
+
+	t.Run("already started", func(t *testing.T) {
+		started := time.Now()
+		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				m := *baseMatch
+				m.GameStartAt = &started
+				return &m, nil
+			},
+			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error {
+				t.Fatal("DeleteMatch should not be called when match is started")
+				return nil
+			},
+		})
+		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrMatchAlreadyStarted) {
+			t.Fatal("expected ErrMatchAlreadyStarted")
+		}
+	})
+
+	t.Run("repo delete returns not found — race with start", func(t *testing.T) {
+		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+			GetMatchFn: loadMatchFn(baseMatch),
+			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error {
+				return matchPg.ErrMatchNotFound
+			},
+		})
+		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrMatchAlreadyStarted) {
+			t.Fatal("expected ErrMatchAlreadyStarted (race mapping)")
+		}
+	})
+}

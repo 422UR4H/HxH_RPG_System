@@ -134,6 +134,26 @@ Mesmo formato de `GET /matches/{uuid}` — partida com campos atualizados.
 
 ---
 
+## DELETE /matches/{uuid} — Excluir partida
+
+**Auth:** JWT (apenas o mestre da partida)
+
+**Pré-condição:** `game_start_at IS NULL`. Se a partida já foi iniciada, retorna 422. Inscrições são removidas automaticamente via `ON DELETE CASCADE` na FK `enrollments.match_uuid`.
+
+### Response
+
+| Status | Situação |
+|---|---|
+| 204 | Partida e inscrições excluídas |
+| 400 | UUID inválido |
+| 401 | Sem JWT |
+| 403 | Usuário não é o mestre da partida |
+| 404 | Partida não encontrada |
+| 422 | Partida já iniciada (`game_start_at IS NOT NULL`) |
+| 500 | Erro interno |
+
+---
+
 ## GET /matches — Listar partidas do mestre
 
 **Auth:** JWT obrigatório

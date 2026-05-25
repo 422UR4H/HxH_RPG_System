@@ -502,3 +502,55 @@ func TestUpdateMatch(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path — deletes match and cascades enrollments", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_d1", "gm_d1@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Camp D1"))
+		playerStr := pgtest.InsertTestUser(t, pool, "pl_d1", "pl_d1@hunter.com", "pass")
+
+		matchUUIDStr := pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Match D1")
+		matchUUID := mustParseUUID(t, matchUUIDStr)
+
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &playerStr, nil, nil, "Nick")
+		pgtest.InsertTestEnrollment(t, pool, matchUUIDStr, sheetUUID, "pending")
+
+		if err := repo.DeleteMatch(ctx, matchUUID); err != nil {
+			t.Fatalf("DeleteMatch() unexpected error: %v", err)
+		}
+
+		_, err := repo.GetMatch(ctx, matchUUID)
+		if !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("match should be gone after delete, got: %v", err)
+		}
+	})
+
+	t.Run("race guard — game_start_at IS NOT NULL returns ErrMatchNotFound", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gm_d2", "gm_d2@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Camp D2"))
+
+		matchUUIDStr := pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Started D2")
+		matchUUID := mustParseUUID(t, matchUUIDStr)
+
+		if err := repo.StartMatch(ctx, matchUUID, time.Now()); err != nil {
+			t.Fatalf("StartMatch() failed: %v", err)
+		}
+
+		if err := repo.DeleteMatch(ctx, matchUUID); !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("DeleteMatch() on started match: got %v, want ErrMatchNotFound", err)
+		}
+	})
+
+	t.Run("unknown uuid returns ErrMatchNotFound", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		if err := repo.DeleteMatch(ctx, uuid.New()); !errors.Is(err, pgMatch.ErrMatchNotFound) {
+			t.Errorf("got %v, want ErrMatchNotFound", err)
+		}
+	})
+}

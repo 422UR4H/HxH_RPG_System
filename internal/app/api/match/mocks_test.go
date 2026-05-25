@@ -69,3 +69,11 @@ func (m *mockUpdateMatch) Update(
 ) (*matchEntity.Match, error) {
 	return m.fn(ctx, input)
 }
+
+type mockDeleteMatch struct {
+	fn func(ctx context.Context, input *domainMatch.DeleteMatchInput) error
+}
+
+func (m *mockDeleteMatch) Delete(ctx context.Context, input *domainMatch.DeleteMatchInput) error {
+	return m.fn(ctx, input)
+}

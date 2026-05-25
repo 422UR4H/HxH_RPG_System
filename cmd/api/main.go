@@ -179,6 +179,7 @@ func main() {
 
 	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
 	updateMatchUC := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+	deleteMatchUC := domainMatch.NewDeleteMatchUC(matchRepo)
 	getMatchUC := domainMatch.NewGetMatchUC(matchRepo, characterSheetRepo)
 	listMatchesUC := domainMatch.NewListMatchesUC(matchRepo)
 	listPublicUpcomingMatchesUC := domainMatch.NewListPublicUpcomingMatchesUC(matchRepo)
@@ -188,6 +189,7 @@ func main() {
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),
 		UpdateMatchHandler:               matchHandler.UpdateMatchHandler(updateMatchUC),
+		DeleteMatchHandler:               matchHandler.DeleteMatchHandler(deleteMatchUC),
 		GetMatchHandler:                  matchHandler.GetMatchHandler(getMatchUC),
 		ListMatchesHandler:               matchHandler.ListMatchesHandler(listMatchesUC),
 		ListPublicUpcomingMatchesHandler: matchHandler.ListPublicUpcomingMatchesHandler(listPublicUpcomingMatchesUC),
