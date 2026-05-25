@@ -7,8 +7,8 @@ import (
 	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -26,7 +26,7 @@ type GetMatchResponse struct {
 }
 
 func GetMatchHandler(
-	uc domainMatch.IGetMatch,
+	uc matchUC.IGetMatch,
 ) func(context.Context, *GetMatchRequest) (*GetMatchResponse, error) {
 
 	return func(ctx context.Context, req *GetMatchRequest) (*GetMatchResponse, error) {
@@ -38,9 +38,9 @@ func GetMatchHandler(
 		match, err := uc.GetMatch(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

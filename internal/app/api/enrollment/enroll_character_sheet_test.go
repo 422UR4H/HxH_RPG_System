@@ -9,8 +9,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -43,7 +43,7 @@ func TestEnrollCharacterHandler(t *testing.T) {
 				"match_uuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
-				return domainMatch.ErrMatchNotFound
+				return match.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -76,7 +76,7 @@ func TestEnrollCharacterHandler(t *testing.T) {
 				"match_uuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
-				return domainEnrollment.ErrCharacterNotInCampaign
+				return enrollment.ErrCharacterNotInCampaign
 			},
 			wantStatus: http.StatusForbidden,
 		},
@@ -87,7 +87,7 @@ func TestEnrollCharacterHandler(t *testing.T) {
 				"match_uuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
-				return domainEnrollment.ErrCharacterAlreadyEnrolled
+				return enrollment.ErrCharacterAlreadyEnrolled
 			},
 			wantStatus: http.StatusConflict,
 		},

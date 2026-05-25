@@ -10,8 +10,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	scenarioEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -46,14 +46,14 @@ func TestGetScenarioHandler(t *testing.T) {
 		{
 			name: "not_found",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*scenarioEntity.Scenario, error) {
-				return nil, domainScenario.ErrScenarioNotFound
+				return nil, scenario.ErrScenarioNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "forbidden_insufficient_permissions",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*scenarioEntity.Scenario, error) {
-				return nil, domainAuth.ErrInsufficientPermissions
+				return nil, auth.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},

@@ -4,18 +4,18 @@ import (
 	"context"
 	"net/http"
 
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	du "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 )
 
 type AuthHandler struct {
-	registerUC domainAuth.IRegister
-	loginUC    domainAuth.ILogin
+	registerUC authUC.IRegister
+	loginUC    authUC.ILogin
 }
 
-func NewAuthHandler(registerUC domainAuth.IRegister, loginUC domainAuth.ILogin) *AuthHandler {
+func NewAuthHandler(registerUC authUC.IRegister, loginUC authUC.ILogin) *AuthHandler {
 	return &AuthHandler{registerUC: registerUC, loginUC: loginUC}
 }
 
@@ -23,7 +23,7 @@ func (h *AuthHandler) Register(
 	ctx context.Context, req *RegisterRequest,
 ) (*RegisterResponse, error) {
 
-	input := &domainAuth.RegisterInput{
+	input := &authUC.RegisterInput{
 		Nick:        req.Body.Nick,
 		Email:       req.Body.Email,
 		Password:    req.Body.Password,
@@ -60,7 +60,7 @@ func (h *AuthHandler) Login(
 	ctx context.Context, req *LoginRequest,
 ) (*LoginResponse, error) {
 
-	input := &domainAuth.LoginInput{
+	input := &authUC.LoginInput{
 		Email:    req.Body.Email,
 		Password: req.Body.Password,
 	}
@@ -74,7 +74,7 @@ func (h *AuthHandler) Login(
 			du.ErrPasswordMinLenght,
 			du.ErrPasswordMaxLenght:
 			return nil, huma.Error422UnprocessableEntity(err.Error())
-		case domainAuth.ErrUnauthorized:
+		case authUC.ErrUnauthorized:
 			return nil, huma.Error401Unauthorized(err.Error())
 		default:
 			return nil, huma.Error500InternalServerError(err.Error())

@@ -11,7 +11,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
@@ -45,15 +45,15 @@ func main() {
 	sheetRepository := sheetPg.NewRepository(pgPool)
 	roundRepository := roundPg.NewRepository(pgPool)
 
-	startMatchUC := domainMatch.NewStartMatchUC(matchRepository)
+	startMatchUC := match.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
-	initSessionUC := domainMatch.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository)
-	openNextActionUC := domainMatch.NewOpenNextActionUC()
-	pullActionUC := domainMatch.NewPullActionUC()
-	enqueueActionUC := domainMatch.NewEnqueueActionUC()
-	attachReactionUC := domainMatch.NewAttachReactionUC()
-	changeSceneUC := domainMatch.NewChangeSceneUC()
-	enqueueMasterActionUC := domainMatch.NewEnqueueMasterActionUC()
+	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository)
+	openNextActionUC := match.NewOpenNextActionUC()
+	pullActionUC := match.NewPullActionUC()
+	enqueueActionUC := match.NewEnqueueActionUC()
+	attachReactionUC := match.NewAttachReactionUC()
+	changeSceneUC := match.NewChangeSceneUC()
+	enqueueMasterActionUC := match.NewEnqueueMasterActionUC()
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package

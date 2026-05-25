@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -25,8 +25,8 @@ type GetCampaignResponse struct {
 }
 
 func GetCampaignHandler(
-	uc domainCampaign.IGetCampaign,
-	enrollmentUC domainEnrollment.IListPlayerEnrollmentsForCampaign,
+	uc campaignUC.IGetCampaign,
+	enrollmentUC enrollment.IListPlayerEnrollmentsForCampaign,
 ) func(context.Context, *GetCampaignRequest) (*GetCampaignResponse, error) {
 
 	return func(ctx context.Context, req *GetCampaignRequest) (*GetCampaignResponse, error) {
@@ -38,9 +38,9 @@ func GetCampaignHandler(
 		campaign, err := uc.GetCampaign(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainCampaign.ErrCampaignNotFound):
+			case errors.Is(err, campaignUC.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

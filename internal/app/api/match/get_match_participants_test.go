@@ -10,10 +10,10 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiMatch "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -43,14 +43,14 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error)
+		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*match.GetMatchParticipantsResult, error)
 		wantStatus     int
 		wantPrivateNil bool // when status==200, asserts the first row's character_sheet.private nullness
 	}{
 		{
 			name: "200 with private populated when ViewerIsMaster",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error) {
-				return &domainMatch.GetMatchParticipantsResult{
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
+				return &match.GetMatchParticipantsResult{
 					Participants:   makeFixture(),
 					ViewerIsMaster: true,
 				}, nil
@@ -60,8 +60,8 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 		},
 		{
 			name: "200 with private null when not master",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error) {
-				return &domainMatch.GetMatchParticipantsResult{
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
+				return &match.GetMatchParticipantsResult{
 					Participants:   makeFixture(),
 					ViewerIsMaster: false,
 				}, nil
@@ -71,8 +71,8 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 		},
 		{
 			name: "200 with empty list",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error) {
-				return &domainMatch.GetMatchParticipantsResult{
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
+				return &match.GetMatchParticipantsResult{
 					Participants:   []*matchEntity.Participant{},
 					ViewerIsMaster: true,
 				}, nil
@@ -81,21 +81,21 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 		},
 		{
 			name: "404 on ErrMatchNotFound",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error) {
-				return nil, domainMatch.ErrMatchNotFound
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
+				return nil, match.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "403 on ErrInsufficientPermissions",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error) {
-				return nil, domainAuth.ErrInsufficientPermissions
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
+				return nil, auth.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name: "500 on generic error",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error) {
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
 				return nil, errors.New("boom")
 			},
 			wantStatus: http.StatusInternalServerError,

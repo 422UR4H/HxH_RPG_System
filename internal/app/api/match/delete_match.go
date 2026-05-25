@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -20,7 +20,7 @@ type DeleteMatchResponse struct {
 }
 
 func DeleteMatchHandler(
-	uc domainMatch.IDeleteMatch,
+	uc matchUC.IDeleteMatch,
 ) func(context.Context, *DeleteMatchRequest) (*DeleteMatchResponse, error) {
 	return func(ctx context.Context, req *DeleteMatchRequest) (*DeleteMatchResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
@@ -33,17 +33,17 @@ func DeleteMatchHandler(
 			return nil, huma.Error400BadRequest("invalid uuid")
 		}
 
-		err = uc.Delete(ctx, &domainMatch.DeleteMatchInput{
+		err = uc.Delete(ctx, &matchUC.DeleteMatchInput{
 			MatchUUID:  matchUUID,
 			MasterUUID: userUUID,
 		})
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainMatch.ErrNotMatchMaster):
+			case errors.Is(err, matchUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, domainMatch.ErrMatchAlreadyStarted):
+			case errors.Is(err, matchUC.ErrMatchAlreadyStarted):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

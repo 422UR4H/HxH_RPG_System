@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -25,7 +25,7 @@ type ListPublicCampaignsResponse struct {
 }
 
 func ListPublicUpcomingCampaignsHandler(
-	uc domainCampaign.IListPublicUpcomingCampaigns,
+	uc campaignUC.IListPublicUpcomingCampaigns,
 ) func(context.Context, *struct{}) (*ListPublicCampaignsResponse, error) {
 
 	return func(ctx context.Context, _ *struct{}) (*ListPublicCampaignsResponse, error) {

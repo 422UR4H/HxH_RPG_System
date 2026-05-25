@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -55,7 +55,7 @@ type MatchResponse struct {
 }
 
 func CreateMatchHandler(
-	uc domainMatch.ICreateMatch,
+	uc matchUC.ICreateMatch,
 ) func(context.Context, *CreateMatchRequest) (*CreateMatchResponse, error) {
 
 	return func(ctx context.Context, req *CreateMatchRequest) (*CreateMatchResponse, error) {
@@ -76,7 +76,7 @@ func CreateMatchHandler(
 				"invalid game_scheduled_at date format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
 		}
 
-		input := &domainMatch.CreateMatchInput{
+		input := &matchUC.CreateMatchInput{
 			MasterUUID:              userUUID,
 			CampaignUUID:            req.Body.CampaignUUID,
 			Title:                   req.Body.Title,

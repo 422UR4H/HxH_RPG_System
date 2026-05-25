@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
@@ -28,7 +28,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(nil, &masterUUID, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -58,7 +58,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -87,7 +87,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -115,7 +115,7 @@ func TestGetCharacterSheet(t *testing.T) {
 		sheetMap := newTestSheetMap()
 		factory := newTestFactory()
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return nil, false, charactersheet.ErrCharacterSheetNotFound
 			},
 		}
@@ -140,7 +140,7 @@ func TestGetCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		repoErr := errors.New("database connection failed")
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return nil, false, repoErr
 			},
 		}
@@ -168,7 +168,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -200,7 +200,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -233,7 +233,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -252,7 +252,7 @@ func TestGetCharacterSheet(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, domainCampaign.ErrCampaignNotFound) {
+		if !errors.Is(err, campaign.ErrCampaignNotFound) {
 			t.Errorf("expected ErrCampaignNotFound, got: %v", err)
 		}
 	})
@@ -267,7 +267,7 @@ func TestGetCharacterSheet(t *testing.T) {
 
 		domainS := newValidDomainSheet(&playerUUID, nil, &campaignUUID)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -301,7 +301,7 @@ func TestGetCharacterSheet(t *testing.T) {
 		// Sheet has no campaign_uuid (pending submission, not yet accepted)
 		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -340,7 +340,7 @@ func TestGetCharacterSheet(t *testing.T) {
 		// Sheet has no campaign_uuid and no pending submission
 		domainS := newValidDomainSheet(&playerUUID, nil, nil)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 		}
@@ -374,7 +374,7 @@ func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
 
 		updateCharExpCalled := false
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 			UpdateCharExpFn: func(ctx context.Context, sheetUUID string, charExp int) error {
@@ -412,7 +412,7 @@ func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
 		}
 		captured := make(chan captureArgs, 1)
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil
 			},
 			UpdateCharExpFn: func(ctx context.Context, sheetUUID string, charExp int) error {
@@ -447,7 +447,7 @@ func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
 
 		done := make(chan struct{})
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, true, nil // wasCorrected = true
 			},
 			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
@@ -476,7 +476,7 @@ func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
 
 		updateStatusBarsCalled := false
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*domainSheet.CharacterSheet, bool, error) {
+			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil // wasCorrected = false
 			},
 			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {

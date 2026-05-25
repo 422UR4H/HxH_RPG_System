@@ -9,7 +9,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 )
@@ -18,7 +18,7 @@ func TestGetClassHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		getClassFn func(name string) (cc.CharacterClass, error)
-		getSheetFn func(name string) (domainSheet.HalfSheet, error)
+		getSheetFn func(name string) (sheetEntity.HalfSheet, error)
 		wantStatus int
 	}{
 		{
@@ -26,7 +26,7 @@ func TestGetClassHandler(t *testing.T) {
 			getClassFn: func(name string) (cc.CharacterClass, error) {
 				return cc.CharacterClass{}, nil
 			},
-			getSheetFn: func(name string) (domainSheet.HalfSheet, error) {
+			getSheetFn: func(name string) (sheetEntity.HalfSheet, error) {
 				return buildTestHalfSheet(t), nil
 			},
 			wantStatus: http.StatusOK,
@@ -36,9 +36,9 @@ func TestGetClassHandler(t *testing.T) {
 			getClassFn: func(name string) (cc.CharacterClass, error) {
 				return cc.CharacterClass{}, errors.New("invalid class name")
 			},
-			getSheetFn: func(name string) (domainSheet.HalfSheet, error) {
+			getSheetFn: func(name string) (sheetEntity.HalfSheet, error) {
 				t.Fatal("GetClassSheet should not be called when GetCharacterClass fails")
-				return domainSheet.HalfSheet{}, nil
+				return sheetEntity.HalfSheet{}, nil
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
@@ -47,8 +47,8 @@ func TestGetClassHandler(t *testing.T) {
 			getClassFn: func(name string) (cc.CharacterClass, error) {
 				return cc.CharacterClass{}, nil
 			},
-			getSheetFn: func(name string) (domainSheet.HalfSheet, error) {
-				return domainSheet.HalfSheet{}, errors.New("unexpected error")
+			getSheetFn: func(name string) (sheetEntity.HalfSheet, error) {
+				return sheetEntity.HalfSheet{}, errors.New("unexpected error")
 			},
 			wantStatus: http.StatusInternalServerError,
 		},

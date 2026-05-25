@@ -7,7 +7,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 )
@@ -16,7 +16,7 @@ func TestListClassesHandler(t *testing.T) {
 	tests := []struct {
 		name          string
 		listClassesFn func() []cc.CharacterClass
-		listSheetsFn  func() []domainSheet.HalfSheet
+		listSheetsFn  func() []sheetEntity.HalfSheet
 		wantStatus    int
 	}{
 		{
@@ -24,8 +24,8 @@ func TestListClassesHandler(t *testing.T) {
 			listClassesFn: func() []cc.CharacterClass {
 				return []cc.CharacterClass{}
 			},
-			listSheetsFn: func() []domainSheet.HalfSheet {
-				return []domainSheet.HalfSheet{}
+			listSheetsFn: func() []sheetEntity.HalfSheet {
+				return []sheetEntity.HalfSheet{}
 			},
 			wantStatus: http.StatusOK,
 		},
@@ -36,9 +36,9 @@ func TestListClassesHandler(t *testing.T) {
 			listClassesFn: func() []cc.CharacterClass {
 				return []cc.CharacterClass{{}}
 			},
-			listSheetsFn: func() []domainSheet.HalfSheet {
+			listSheetsFn: func() []sheetEntity.HalfSheet {
 				hs := buildTestHalfSheet(t)
-				return []domainSheet.HalfSheet{hs}
+				return []sheetEntity.HalfSheet{hs}
 			},
 			wantStatus: http.StatusOK,
 		},

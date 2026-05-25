@@ -7,7 +7,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
@@ -105,7 +105,7 @@ func TestGetMatchParticipants(t *testing.T) {
 				},
 			},
 			checker: &mockParticipationChecker{},
-			wantErr: domainMatch.ErrMatchNotFound,
+			wantErr: match.ErrMatchNotFound,
 		},
 		{
 			name:     "participant repo error propagated",
@@ -125,7 +125,7 @@ func TestGetMatchParticipants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewGetMatchParticipantsUC(tt.matchMock, tt.checker)
+			uc := match.NewGetMatchParticipantsUC(tt.matchMock, tt.checker)
 			result, err := uc.Get(context.Background(), matchUUID, tt.userUUID)
 
 			if tt.wantErr != nil {

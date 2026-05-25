@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/google/uuid"
 )
 
@@ -24,7 +24,7 @@ type MatchSummaryResponse struct {
 	UpdatedAt               string    `json:"updated_at"`
 }
 
-func ToSummaryResponse(m *domainMatch.Summary) MatchSummaryResponse {
+func ToSummaryResponse(m *matchEntity.Summary) MatchSummaryResponse {
 	var storyEndAtStr *string
 	if m.StoryEndAt != nil {
 		formatted := m.StoryEndAt.Format("2006-01-02")

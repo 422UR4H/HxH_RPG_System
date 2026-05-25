@@ -8,7 +8,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -50,7 +50,7 @@ type CreateCampaignResponse struct {
 }
 
 func CreateCampaignHandler(
-	uc domainCampaign.ICreateCampaign,
+	uc campaignUC.ICreateCampaign,
 ) func(context.Context, *CreateCampaignRequest) (*CreateCampaignResponse, error) {
 
 	return func(ctx context.Context, req *CreateCampaignRequest) (*CreateCampaignResponse, error) {
@@ -73,7 +73,7 @@ func CreateCampaignHandler(
 			storyCurrentAtPtr = &storyCurrentAt
 		}
 
-		input := &domainCampaign.CreateCampaignInput{
+		input := &campaignUC.CreateCampaignInput{
 			MasterUUID:              userUUID,
 			ScenarioUUID:            nil, //req.Body.ScenarioUUID,
 			Name:                    req.Body.Name,
@@ -88,7 +88,7 @@ func CreateCampaignHandler(
 		campaign, err := uc.CreateCampaign(ctx, input)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainCampaign.ErrMaxCampaignsLimit):
+			case errors.Is(err, campaignUC.ErrMaxCampaignsLimit):
 				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, scenario.ErrScenarioNotFound):
 				return nil, huma.Error404NotFound(err.Error())

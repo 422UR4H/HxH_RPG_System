@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -27,7 +27,7 @@ type ScenarioSummaryResponse struct {
 }
 
 func ListScenariosHandler(
-	uc domainScenario.IListScenarios,
+	uc scenarioUC.IListScenarios,
 ) func(context.Context, *struct{}) (*ListScenariosResponse, error) {
 
 	return func(ctx context.Context, _ *struct{}) (*ListScenariosResponse, error) {

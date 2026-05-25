@@ -8,7 +8,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -21,13 +21,13 @@ func TestDeleteMatchHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		uuidPath   string
-		mockFn     func(ctx context.Context, input *domainMatch.DeleteMatchInput) error
+		mockFn     func(ctx context.Context, input *match.DeleteMatchInput) error
 		wantStatus int
 	}{
 		{
 			name:     "success",
 			uuidPath: matchUUID.String(),
-			mockFn: func(_ context.Context, input *domainMatch.DeleteMatchInput) error {
+			mockFn: func(_ context.Context, input *match.DeleteMatchInput) error {
 				if input.MatchUUID != matchUUID {
 					t.Errorf("match uuid not forwarded: got %v", input.MatchUUID)
 				}
@@ -41,37 +41,37 @@ func TestDeleteMatchHandler(t *testing.T) {
 		{
 			name:       "invalid_uuid",
 			uuidPath:   "not-a-uuid",
-			mockFn:     func(_ context.Context, _ *domainMatch.DeleteMatchInput) error { return nil },
+			mockFn:     func(_ context.Context, _ *match.DeleteMatchInput) error { return nil },
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:     "match_not_found",
 			uuidPath: matchUUID.String(),
-			mockFn: func(_ context.Context, _ *domainMatch.DeleteMatchInput) error {
-				return domainMatch.ErrMatchNotFound
+			mockFn: func(_ context.Context, _ *match.DeleteMatchInput) error {
+				return match.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:     "not_master",
 			uuidPath: matchUUID.String(),
-			mockFn: func(_ context.Context, _ *domainMatch.DeleteMatchInput) error {
-				return domainMatch.ErrNotMatchMaster
+			mockFn: func(_ context.Context, _ *match.DeleteMatchInput) error {
+				return match.ErrNotMatchMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:     "already_started",
 			uuidPath: matchUUID.String(),
-			mockFn: func(_ context.Context, _ *domainMatch.DeleteMatchInput) error {
-				return domainMatch.ErrMatchAlreadyStarted
+			mockFn: func(_ context.Context, _ *match.DeleteMatchInput) error {
+				return match.ErrMatchAlreadyStarted
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name:     "internal_server_error",
 			uuidPath: matchUUID.String(),
-			mockFn: func(_ context.Context, _ *domainMatch.DeleteMatchInput) error {
+			mockFn: func(_ context.Context, _ *match.DeleteMatchInput) error {
 				return errors.New("db error")
 			},
 			wantStatus: http.StatusInternalServerError,

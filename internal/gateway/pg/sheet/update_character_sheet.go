@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 )
 
 func (r *Repository) UpdateCharacterSheet(
-	ctx context.Context, sheet *domainSheet.CharacterSheet,
+	ctx context.Context, sheet *sheetEntity.CharacterSheet,
 ) error {
 	m := charSheetToModel(sheet)
 	now := time.Now()

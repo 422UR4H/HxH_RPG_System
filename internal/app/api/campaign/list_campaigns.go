@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -33,7 +33,7 @@ type CampaignSummaryResponse struct {
 }
 
 func ListCampaignsHandler(
-	uc domainCampaign.IListCampaigns,
+	uc campaignUC.IListCampaigns,
 ) func(context.Context, *struct{}) (*ListCampaignsResponse, error) {
 
 	return func(ctx context.Context, _ *struct{}) (*ListCampaignsResponse, error) {

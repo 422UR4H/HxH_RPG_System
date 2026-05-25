@@ -19,16 +19,16 @@ import (
 	uploadHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/upload"
 	r2gw "github.com/422UR4H/HxH_RPG_System/internal/gateway/r2"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
-	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/application/submission"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/submission"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
@@ -95,8 +95,8 @@ func main() {
 	submitRepo := submissionPg.NewRepository(pgPool)
 	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
 
-	registerUC := domainAuth.NewRegisterUC(authRepo)
-	loginUC := domainAuth.NewLoginUC(&sessions, authRepo, sessionRepo)
+	registerUC := authUC.NewRegisterUC(authRepo)
+	loginUC := authUC.NewLoginUC(&sessions, authRepo, sessionRepo)
 	authHandler := auth.NewAuthHandler(registerUC, loginUC)
 
 	characterSheetFactory := sheet.NewCharacterSheetFactory()
@@ -154,9 +154,9 @@ func main() {
 		PresignedURLHandler: uploadHandler.PresignedURLHandler(r2Client),
 	}
 
-	createScenarioUC := domainScenario.NewCreateScenarioUC(scenarioRepo)
-	getScenarioUC := domainScenario.NewGetScenarioUC(scenarioRepo)
-	listScenariosUC := domainScenario.NewListScenariosUC(scenarioRepo)
+	createScenarioUC := scenario.NewCreateScenarioUC(scenarioRepo)
+	getScenarioUC := scenario.NewGetScenarioUC(scenarioRepo)
+	listScenariosUC := scenario.NewListScenariosUC(scenarioRepo)
 
 	scenariosApi := scenarioHandler.Api{
 		CreateScenarioHandler: scenarioHandler.CreateScenarioHandler(createScenarioUC),
@@ -164,11 +164,11 @@ func main() {
 		ListScenariosHandler:  scenarioHandler.ListScenariosHandler(listScenariosUC),
 	}
 
-	createCampaignUC := domainCampaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
-	getCampaignUC := domainCampaign.NewGetCampaignUC(campaignRepo)
-	listCampaignsUC := domainCampaign.NewListCampaignsUC(campaignRepo)
-	listPublicUpcomingCampaignsUC := domainCampaign.NewListPublicUpcomingCampaignsUC(campaignRepo)
-	listPlayerEnrollmentsForCampaignUC := domainEnrollment.NewListPlayerEnrollmentsForCampaignUC(enrollmentRepo)
+	createCampaignUC := campaign.NewCreateCampaignUC(campaignRepo, scenarioRepo)
+	getCampaignUC := campaign.NewGetCampaignUC(campaignRepo)
+	listCampaignsUC := campaign.NewListCampaignsUC(campaignRepo)
+	listPublicUpcomingCampaignsUC := campaign.NewListPublicUpcomingCampaignsUC(campaignRepo)
+	listPlayerEnrollmentsForCampaignUC := enrollment.NewListPlayerEnrollmentsForCampaignUC(enrollmentRepo)
 
 	campaignsApi := campaignHandler.Api{
 		CreateCampaignHandler:              campaignHandler.CreateCampaignHandler(createCampaignUC),
@@ -177,14 +177,14 @@ func main() {
 		ListPublicUpcomingCampaignsHandler: campaignHandler.ListPublicUpcomingCampaignsHandler(listPublicUpcomingCampaignsUC),
 	}
 
-	createMatchUC := domainMatch.NewCreateMatchUC(matchRepo, campaignRepo)
-	updateMatchUC := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
-	deleteMatchUC := domainMatch.NewDeleteMatchUC(matchRepo)
-	getMatchUC := domainMatch.NewGetMatchUC(matchRepo, characterSheetRepo)
-	listMatchesUC := domainMatch.NewListMatchesUC(matchRepo)
-	listPublicUpcomingMatchesUC := domainMatch.NewListPublicUpcomingMatchesUC(matchRepo)
-	listMatchEnrollmentsUC := domainMatch.NewListMatchEnrollmentsUC(matchRepo, enrollmentRepo, characterSheetRepo)
-	getMatchParticipantsUC := domainMatch.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
+	createMatchUC := match.NewCreateMatchUC(matchRepo, campaignRepo)
+	updateMatchUC := match.NewUpdateMatchUC(matchRepo, campaignRepo)
+	deleteMatchUC := match.NewDeleteMatchUC(matchRepo)
+	getMatchUC := match.NewGetMatchUC(matchRepo, characterSheetRepo)
+	listMatchesUC := match.NewListMatchesUC(matchRepo)
+	listPublicUpcomingMatchesUC := match.NewListPublicUpcomingMatchesUC(matchRepo)
+	listMatchEnrollmentsUC := match.NewListMatchEnrollmentsUC(matchRepo, enrollmentRepo, characterSheetRepo)
+	getMatchParticipantsUC := match.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
 
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),
@@ -197,17 +197,17 @@ func main() {
 		GetMatchParticipantsHandler:      matchHandler.GetMatchParticipantsHandler(getMatchParticipantsUC),
 	}
 
-	submitCharacterSheetUC := domainSubmission.NewSubmitCharacterSheetUC(
+	submitCharacterSheetUC := submission.NewSubmitCharacterSheetUC(
 		submitRepo,
 		characterSheetRepo,
 		campaignRepo,
 	)
-	acceptCharacterSheetSubmissionUC := domainSubmission.NewAcceptCharacterSheetSubmissionUC(
+	acceptCharacterSheetSubmissionUC := submission.NewAcceptCharacterSheetSubmissionUC(
 		submitRepo,
 		campaignRepo,
 		characterSheetRepo,
 	)
-	rejectCharacterSheetSubmissionUC := domainSubmission.NewRejectCharacterSheetSubmissionUC(
+	rejectCharacterSheetSubmissionUC := submission.NewRejectCharacterSheetSubmissionUC(
 		submitRepo,
 		campaignRepo,
 	)
@@ -217,17 +217,17 @@ func main() {
 		RejectSheetSubmissionHandler: submissionHandler.RejectSheetSubmissionHandler(rejectCharacterSheetSubmissionUC),
 	}
 
-	enrollCharacterSheetUC := domainEnrollment.NewEnrollCharacterInMatchUC(
+	enrollCharacterSheetUC := enrollment.NewEnrollCharacterInMatchUC(
 		enrollmentRepo,
 		matchRepo,
 		characterSheetRepo,
 	)
-	acceptEnrollmentUC := domainEnrollment.NewAcceptEnrollmentUC(
+	acceptEnrollmentUC := enrollment.NewAcceptEnrollmentUC(
 		enrollmentRepo,
 		matchRepo,
 		campaignRepo,
 	)
-	rejectEnrollmentUC := domainEnrollment.NewRejectEnrollmentUC(
+	rejectEnrollmentUC := enrollment.NewRejectEnrollmentUC(
 		enrollmentRepo,
 		matchRepo,
 		campaignRepo,

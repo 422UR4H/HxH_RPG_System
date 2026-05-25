@@ -7,11 +7,11 @@ import (
 	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
@@ -147,7 +147,7 @@ func TestEnrollCharacterSheet(t *testing.T) {
 					}, nil
 				},
 			},
-			wantErr: domainMatch.ErrMatchNotFound,
+			wantErr: match.ErrMatchNotFound,
 		},
 		{
 			name:       "character not in campaign",
@@ -339,7 +339,7 @@ func TestAcceptEnrollment(t *testing.T) {
 				},
 			},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMatchNotFound,
+			wantErr:      match.ErrMatchNotFound,
 		},
 		{
 			name:       "campaign not found",
@@ -363,7 +363,7 @@ func TestAcceptEnrollment(t *testing.T) {
 					return uuid.Nil, campaignPg.ErrCampaignNotFound
 				},
 			},
-			wantErr: domainCampaign.ErrCampaignNotFound,
+			wantErr: campaign.ErrCampaignNotFound,
 		},
 		{
 			name:       "not campaign master",
@@ -588,7 +588,7 @@ return nil, matchPg.ErrMatchNotFound
 },
 },
 campaignMock: &testutil.MockCampaignRepo{},
-wantErr:      domainMatch.ErrMatchNotFound,
+wantErr:      match.ErrMatchNotFound,
 },
 {
 name:       "campaign not found",
@@ -612,7 +612,7 @@ GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, err
 return uuid.Nil, campaignPg.ErrCampaignNotFound
 },
 },
-wantErr: domainCampaign.ErrCampaignNotFound,
+wantErr: campaign.ErrCampaignNotFound,
 },
 {
 name:       "not campaign master",

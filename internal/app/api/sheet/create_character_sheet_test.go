@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -37,13 +37,13 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error)
+		mockFn     func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error)
 		wantStatus int
 	}{
 		{
 			name: "success",
 			body: validBody,
-			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
 				return buildTestCharacterSheet(t), nil
 			},
 			wantStatus: http.StatusCreated,
@@ -51,7 +51,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 		{
 			name: "conflict_nickname_already_exists",
 			body: validBody,
-			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
 				return nil, charactersheet.ErrNicknameAlreadyExists
 			},
 			wantStatus: http.StatusConflict,
@@ -59,7 +59,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 		{
 			name: "internal_server_error",
 			body: validBody,
-			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
 				return nil, errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -79,7 +79,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 				b["profile"] = profile
 				return b
 			}(),
-			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
 				return nil, nil
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -94,7 +94,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 				b["attribute_points"] = map[string]any{"Stamina": 1}
 				return b
 			}(),
-			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
 				return nil, nil
 			},
 			wantStatus: http.StatusBadRequest,

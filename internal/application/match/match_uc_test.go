@@ -10,15 +10,15 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )
 
-func validCreateMatchInput() *domainMatch.CreateMatchInput {
-	return &domainMatch.CreateMatchInput{
+func validCreateMatchInput() *match.CreateMatchInput {
+	return &match.CreateMatchInput{
 		MasterUUID:              uuid.New(),
 		CampaignUUID:            uuid.New(),
 		Title:                   "Valid Title",
@@ -33,14 +33,14 @@ func validCreateMatchInput() *domainMatch.CreateMatchInput {
 func TestCreateMatch(t *testing.T) {
 	tests := []struct {
 		name         string
-		input        *domainMatch.CreateMatchInput
+		input        *match.CreateMatchInput
 		matchMock    *testutil.MockMatchRepo
 		campaignMock *testutil.MockCampaignRepo
 		wantErr      error
 	}{
 		{
 			name: "success",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				return i
 			}(),
@@ -58,62 +58,62 @@ func TestCreateMatch(t *testing.T) {
 		},
 		{
 			name: "title too short",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				i.Title = "ab"
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMinTitleLength,
+			wantErr:      match.ErrMinTitleLength,
 		},
 		{
 			name: "title too long",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				i.Title = "this title is way too long for the maximum limit"
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMaxTitleLength,
+			wantErr:      match.ErrMaxTitleLength,
 		},
 		{
 			name: "brief description too long",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				i.BriefInitialDescription = string(make([]byte, 256))
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMaxBriefDescLength,
+			wantErr:      match.ErrMaxBriefDescLength,
 		},
 		{
 			name: "game scheduled at in the past",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				i.GameScheduledAt = time.Now().Add(-1 * time.Hour)
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMinOfGameScheduledAt,
+			wantErr:      match.ErrMinOfGameScheduledAt,
 		},
 		{
 			name: "game scheduled at more than 1 year ahead",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				i.GameScheduledAt = time.Now().AddDate(1, 1, 0)
 				return i
 			}(),
 			matchMock:    &testutil.MockMatchRepo{},
 			campaignMock: &testutil.MockCampaignRepo{},
-			wantErr:      domainMatch.ErrMaxOfGameScheduledAt,
+			wantErr:      match.ErrMaxOfGameScheduledAt,
 		},
 		{
 			name: "campaign not found",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				return i
 			}(),
@@ -127,7 +127,7 @@ func TestCreateMatch(t *testing.T) {
 		},
 		{
 			name: "not campaign owner",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				return i
 			}(),
@@ -144,7 +144,7 @@ func TestCreateMatch(t *testing.T) {
 		},
 		{
 			name: "story start before campaign start",
-			input: func() *domainMatch.CreateMatchInput {
+			input: func() *match.CreateMatchInput {
 				i := validCreateMatchInput()
 				i.StoryStartAt = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 				return i
@@ -159,7 +159,7 @@ func TestCreateMatch(t *testing.T) {
 					}, nil
 				},
 			},
-			wantErr: domainMatch.ErrMinOfStoryStartAt,
+			wantErr: match.ErrMinOfStoryStartAt,
 		},
 	}
 
@@ -176,7 +176,7 @@ func TestCreateMatch(t *testing.T) {
 				}
 			}
 
-			uc := domainMatch.NewCreateMatchUC(tt.matchMock, tt.campaignMock)
+			uc := match.NewCreateMatchUC(tt.matchMock, tt.campaignMock)
 			result, err := uc.CreateMatch(context.Background(), tt.input)
 
 			if tt.wantErr != nil {
@@ -288,7 +288,7 @@ func TestGetMatch(t *testing.T) {
 				},
 			},
 			checker: checkerNeverCalled,
-			wantErr: domainMatch.ErrMatchNotFound,
+			wantErr: match.ErrMatchNotFound,
 		},
 		{
 			name:     "repo error",
@@ -306,7 +306,7 @@ func TestGetMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewGetMatchUC(tt.mock, tt.checker(t))
+			uc := match.NewGetMatchUC(tt.mock, tt.checker(t))
 			result, err := uc.GetMatch(context.Background(), tt.uuid, tt.userUUID)
 
 			if tt.wantErr != nil {
@@ -349,7 +349,7 @@ func TestGetMatch(t *testing.T) {
 			}
 			return true, nil
 		}}
-		uc := domainMatch.NewGetMatchUC(matchRepo, checker)
+		uc := match.NewGetMatchUC(matchRepo, checker)
 
 		got, err := uc.GetMatch(context.Background(), matchUUID, userUUID)
 		if err != nil {
@@ -375,7 +375,7 @@ func TestGetMatch(t *testing.T) {
 		checker := &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
 			return false, nil
 		}}
-		uc := domainMatch.NewGetMatchUC(matchRepo, checker)
+		uc := match.NewGetMatchUC(matchRepo, checker)
 
 		_, err := uc.GetMatch(context.Background(), matchUUID, userUUID)
 		if !errors.Is(err, auth.ErrInsufficientPermissions) {
@@ -399,7 +399,7 @@ func TestGetMatch(t *testing.T) {
 		checker := &mockParticipationChecker{fn: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
 			return false, wantErr
 		}}
-		uc := domainMatch.NewGetMatchUC(matchRepo, checker)
+		uc := match.NewGetMatchUC(matchRepo, checker)
 
 		_, err := uc.GetMatch(context.Background(), matchUUID, userUUID)
 		if err == nil || err.Error() != wantErr.Error() {
@@ -448,7 +448,7 @@ func TestListMatches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewListMatchesUC(tt.mock)
+			uc := match.NewListMatchesUC(tt.mock)
 			result, err := uc.ListMatches(context.Background(), userUUID)
 
 			if tt.wantErr != nil {
@@ -510,7 +510,7 @@ func TestListPublicUpcomingMatches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewListPublicUpcomingMatchesUC(tt.mock)
+			uc := match.NewListPublicUpcomingMatchesUC(tt.mock)
 			result, err := uc.ListPublicUpcomingMatches(context.Background(), userUUID)
 
 			if tt.wantErr != nil {
@@ -532,14 +532,14 @@ func TestListPublicUpcomingMatches(t *testing.T) {
 	}
 }
 
-func validUpdateMatchInput(matchUUID, masterUUID uuid.UUID) *domainMatch.UpdateMatchInput {
+func validUpdateMatchInput(matchUUID, masterUUID uuid.UUID) *match.UpdateMatchInput {
 	title := "Updated Title"
 	brief := "Updated brief"
 	desc := "Updated description"
 	isPublic := false
 	gameAt := time.Now().Add(48 * time.Hour)
 	storyAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	return &domainMatch.UpdateMatchInput{
+	return &match.UpdateMatchInput{
 		MatchUUID:               matchUUID,
 		MasterUUID:              masterUUID,
 		Title:                   &title,
@@ -594,7 +594,7 @@ func TestUpdateMatch(t *testing.T) {
 				return validCampaign(), nil
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		uc := match.NewUpdateMatchUC(matchRepo, campaignRepo)
 
 		got, err := uc.Update(context.Background(), input)
 		if err != nil {
@@ -610,7 +610,7 @@ func TestUpdateMatch(t *testing.T) {
 
 	t.Run("success partial patch — title only", func(t *testing.T) {
 		title := "Only Title Changed"
-		input := &domainMatch.UpdateMatchInput{
+		input := &match.UpdateMatchInput{
 			MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &title,
 		}
 		updateCalled := false
@@ -627,7 +627,7 @@ func TestUpdateMatch(t *testing.T) {
 				return nil
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 
 		_, err := uc.Update(context.Background(), input)
 		if err != nil {
@@ -639,7 +639,7 @@ func TestUpdateMatch(t *testing.T) {
 	})
 
 	t.Run("no-op when all fields nil", func(t *testing.T) {
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
 		matchRepo := &testutil.MockMatchRepo{
 			GetMatchFn: loadMatchFn(baseMatch),
 			UpdateMatchFn: func(_ context.Context, _ *matchEntity.Match) error {
@@ -647,7 +647,7 @@ func TestUpdateMatch(t *testing.T) {
 				return nil
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 
 		got, err := uc.Update(context.Background(), input)
 		if err != nil {
@@ -664,19 +664,19 @@ func TestUpdateMatch(t *testing.T) {
 				return nil, matchPg.ErrMatchNotFound
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
-		if !errors.Is(err, domainMatch.ErrMatchNotFound) {
+		if !errors.Is(err, match.ErrMatchNotFound) {
 			t.Fatalf("got %v, want ErrMatchNotFound", err)
 		}
 	})
 
 	t.Run("not master", func(t *testing.T) {
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		input := validUpdateMatchInput(matchUUID, uuid.New())
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrNotMatchMaster) {
+		if !errors.Is(err, match.ErrNotMatchMaster) {
 			t.Fatalf("got %v, want ErrNotMatchMaster", err)
 		}
 	})
@@ -686,9 +686,9 @@ func TestUpdateMatch(t *testing.T) {
 		now := time.Now()
 		started.GameStartAt = &now
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(&started)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
-		if !errors.Is(err, domainMatch.ErrMatchAlreadyStarted) {
+		if !errors.Is(err, match.ErrMatchAlreadyStarted) {
 			t.Fatalf("got %v, want ErrMatchAlreadyStarted", err)
 		}
 	})
@@ -698,80 +698,80 @@ func TestUpdateMatch(t *testing.T) {
 		end := time.Now()
 		finished.StoryEndAt = &end
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(&finished)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
-		if !errors.Is(err, domainMatch.ErrMatchAlreadyFinished) {
+		if !errors.Is(err, match.ErrMatchAlreadyFinished) {
 			t.Fatalf("got %v, want ErrMatchAlreadyFinished", err)
 		}
 	})
 
 	t.Run("title too short", func(t *testing.T) {
 		short := "ab"
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &short}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &short}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMinTitleLength) {
+		if !errors.Is(err, match.ErrMinTitleLength) {
 			t.Fatalf("got %v, want ErrMinTitleLength", err)
 		}
 	})
 
 	t.Run("title too long", func(t *testing.T) {
 		long := "this title is way too long for the maximum limit"
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &long}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, Title: &long}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMaxTitleLength) {
+		if !errors.Is(err, match.ErrMaxTitleLength) {
 			t.Fatalf("got %v, want ErrMaxTitleLength", err)
 		}
 	})
 
 	t.Run("brief too long", func(t *testing.T) {
 		brief := string(make([]byte, 65))
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, BriefInitialDescription: &brief}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, BriefInitialDescription: &brief}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMaxBriefDescLength) {
+		if !errors.Is(err, match.ErrMaxBriefDescLength) {
 			t.Fatalf("got %v, want ErrMaxBriefDescLength", err)
 		}
 	})
 
 	t.Run("game scheduled in past", func(t *testing.T) {
 		past := time.Now().Add(-1 * time.Hour)
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, GameScheduledAt: &past}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, GameScheduledAt: &past}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMinOfGameScheduledAt) {
+		if !errors.Is(err, match.ErrMinOfGameScheduledAt) {
 			t.Fatalf("got %v, want ErrMinOfGameScheduledAt", err)
 		}
 	})
 
 	t.Run("game scheduled too far", func(t *testing.T) {
 		far := time.Now().AddDate(1, 1, 0)
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, GameScheduledAt: &far}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, GameScheduledAt: &far}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMaxOfGameScheduledAt) {
+		if !errors.Is(err, match.ErrMaxOfGameScheduledAt) {
 			t.Fatalf("got %v, want ErrMaxOfGameScheduledAt", err)
 		}
 	})
 
 	t.Run("story start before campaign start", func(t *testing.T) {
 		before := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, StoryStartAt: &before}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, StoryStartAt: &before}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
 		campaignRepo := &testutil.MockCampaignRepo{
 			GetCampaignStoryDatesFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.Campaign, error) {
 				return validCampaign(), nil
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		uc := match.NewUpdateMatchUC(matchRepo, campaignRepo)
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMinOfStoryStartAt) {
+		if !errors.Is(err, match.ErrMinOfStoryStartAt) {
 			t.Fatalf("got %v, want ErrMinOfStoryStartAt", err)
 		}
 	})
@@ -779,7 +779,7 @@ func TestUpdateMatch(t *testing.T) {
 	t.Run("story start after campaign end", func(t *testing.T) {
 		end := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 		after := time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)
-		input := &domainMatch.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, StoryStartAt: &after}
+		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, StoryStartAt: &after}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
 		campaignRepo := &testutil.MockCampaignRepo{
 			GetCampaignStoryDatesFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.Campaign, error) {
@@ -788,9 +788,9 @@ func TestUpdateMatch(t *testing.T) {
 				return c, nil
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		uc := match.NewUpdateMatchUC(matchRepo, campaignRepo)
 		_, err := uc.Update(context.Background(), input)
-		if !errors.Is(err, domainMatch.ErrMaxOfStoryStartAt) {
+		if !errors.Is(err, match.ErrMaxOfStoryStartAt) {
 			t.Fatalf("got %v, want ErrMaxOfStoryStartAt", err)
 		}
 	})
@@ -807,9 +807,9 @@ func TestUpdateMatch(t *testing.T) {
 				return validCampaign(), nil
 			},
 		}
-		uc := domainMatch.NewUpdateMatchUC(matchRepo, campaignRepo)
+		uc := match.NewUpdateMatchUC(matchRepo, campaignRepo)
 		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))
-		if !errors.Is(err, domainMatch.ErrMatchAlreadyStarted) {
+		if !errors.Is(err, match.ErrMatchAlreadyStarted) {
 			t.Fatalf("got %v, want ErrMatchAlreadyStarted (race mapping)", err)
 		}
 	})
@@ -833,12 +833,12 @@ func TestDeleteMatch(t *testing.T) {
 		}
 	}
 
-	input := func() *domainMatch.DeleteMatchInput {
-		return &domainMatch.DeleteMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
+	input := func() *match.DeleteMatchInput {
+		return &match.DeleteMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
 	}
 
 	t.Run("success", func(t *testing.T) {
-		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+		uc := match.NewDeleteMatchUC(&testutil.MockMatchRepo{
 			GetMatchFn:    loadMatchFn(baseMatch),
 			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error { return nil },
 		})
@@ -848,7 +848,7 @@ func TestDeleteMatch(t *testing.T) {
 	})
 
 	t.Run("match not found", func(t *testing.T) {
-		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+		uc := match.NewDeleteMatchUC(&testutil.MockMatchRepo{
 			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 				return nil, matchPg.ErrMatchNotFound
 			},
@@ -857,14 +857,14 @@ func TestDeleteMatch(t *testing.T) {
 				return nil
 			},
 		})
-		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrMatchNotFound) {
+		if !errors.Is(uc.Delete(context.Background(), input()), match.ErrMatchNotFound) {
 			t.Fatal("expected ErrMatchNotFound")
 		}
 	})
 
 	t.Run("not master", func(t *testing.T) {
 		otherMaster := uuid.New()
-		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+		uc := match.NewDeleteMatchUC(&testutil.MockMatchRepo{
 			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 				m := *baseMatch
 				m.MasterUUID = otherMaster
@@ -875,14 +875,14 @@ func TestDeleteMatch(t *testing.T) {
 				return nil
 			},
 		})
-		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrNotMatchMaster) {
+		if !errors.Is(uc.Delete(context.Background(), input()), match.ErrNotMatchMaster) {
 			t.Fatal("expected ErrNotMatchMaster")
 		}
 	})
 
 	t.Run("already started", func(t *testing.T) {
 		started := time.Now()
-		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+		uc := match.NewDeleteMatchUC(&testutil.MockMatchRepo{
 			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
 				m := *baseMatch
 				m.GameStartAt = &started
@@ -893,19 +893,19 @@ func TestDeleteMatch(t *testing.T) {
 				return nil
 			},
 		})
-		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrMatchAlreadyStarted) {
+		if !errors.Is(uc.Delete(context.Background(), input()), match.ErrMatchAlreadyStarted) {
 			t.Fatal("expected ErrMatchAlreadyStarted")
 		}
 	})
 
 	t.Run("repo delete returns not found — race with start", func(t *testing.T) {
-		uc := domainMatch.NewDeleteMatchUC(&testutil.MockMatchRepo{
+		uc := match.NewDeleteMatchUC(&testutil.MockMatchRepo{
 			GetMatchFn: loadMatchFn(baseMatch),
 			DeleteMatchFn: func(_ context.Context, _ uuid.UUID) error {
 				return matchPg.ErrMatchNotFound
 			},
 		})
-		if !errors.Is(uc.Delete(context.Background(), input()), domainMatch.ErrMatchAlreadyStarted) {
+		if !errors.Is(uc.Delete(context.Background(), input()), match.ErrMatchAlreadyStarted) {
 			t.Fatal("expected ErrMatchAlreadyStarted (race mapping)")
 		}
 	})

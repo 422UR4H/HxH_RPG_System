@@ -11,7 +11,7 @@ import (
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
@@ -20,7 +20,7 @@ import (
 
 func (r *Repository) GetCharacterSheetByUUID(
 	ctx context.Context, uuid string,
-) (*domainSheet.CharacterSheet, bool, error) {
+) (*sheetEntity.CharacterSheet, bool, error) {
 	tx, err := r.q.Begin(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to begin transaction: %w", err)
@@ -133,7 +133,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 
 	domainProfile := modelToProfile(&m.Profile)
 	categoryName := (*enum.CategoryName)(&m.CategoryName)
-	factory := domainSheet.NewCharacterSheetFactory()
+	factory := sheetEntity.NewCharacterSheetFactory()
 	charSheet, err := factory.Build(
 		m.PlayerUUID,
 		m.MasterUUID,
@@ -265,8 +265,8 @@ func (r *Repository) GetCharacterSheetRelationshipUUIDs(
 }
 
 // modelToProfile converts a pg/model CharacterProfile to the domain entity profile.
-func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfile {
-	return &domainSheet.CharacterProfile{
+func modelToProfile(profile *model.CharacterProfile) *sheetEntity.CharacterProfile {
+	return &sheetEntity.CharacterProfile{
 		NickName:         profile.NickName,
 		FullName:         profile.FullName,
 		Alignment:        profile.Alignment,
@@ -280,7 +280,7 @@ func modelToProfile(profile *model.CharacterProfile) *domainSheet.CharacterProfi
 }
 
 // wrap populates charSheet with experience and status values from the DB model.
-func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCorrected bool, err error) {
+func wrap(charSheet *sheetEntity.CharacterSheet, m *model.CharacterSheet) (wasCorrected bool, err error) {
 	charSheet.UUID = m.UUID
 
 	// Only primary physical attributes are restored; middle ones (Strength,
@@ -299,7 +299,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.ReconstructPrimaryPhysicalPoints(name, points); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePhysAttrPts, name, err)
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreasePhysAttrPts, name, err)
 		}
 	}
 
@@ -314,7 +314,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.ReconstructPrimaryMentalPoints(name, points); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreaseMentalExp, name, err)
 		}
 	}
 
@@ -329,7 +329,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.IncreaseExpForMentals(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseMentalExp, name, err)
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreaseMentalExp, name, err)
 		}
 	}
 
@@ -366,7 +366,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseSkillExp, name, err)
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreaseSkillExp, name, err)
 		}
 	}
 
@@ -387,7 +387,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.IncreaseExpForPrinciple(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreasePrincipleExp, name, err)
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreasePrincipleExp, name, err)
 		}
 	}
 
@@ -404,27 +404,27 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.IncreaseExpForCategory(experience.NewUpgradeCascade(exp), name); err != nil {
-			return false, fmt.Errorf("%w %s: %v", domainSheet.ErrFailedToIncreaseCategoryExp, name, err)
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreaseCategoryExp, name, err)
 		}
 	}
 
 	physSkExp, err := charSheet.GetPhysSkillExpReference()
 	if err != nil {
-		return false, domainSheet.ErrFailedToGetPhysSkillExpRef
+		return false, sheetEntity.ErrFailedToGetPhysSkillExpRef
 	}
-	expTable := experience.NewExpTable(domainSheet.PHYSICAL_SKILLS_COEFF)
+	expTable := experience.NewExpTable(sheetEntity.PHYSICAL_SKILLS_COEFF)
 	newExp := experience.NewExperience(expTable)
 	for _, prof := range m.Proficiencies {
 		domainProf := proficiency.NewProficiency(
 			enum.WeaponName(prof.Weapon), *newExp, physSkExp,
 		)
 		if err := charSheet.AddCommonProficiency(enum.WeaponName(prof.Weapon), domainProf); err != nil {
-			return false, fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddCommonProficiency, err)
+			return false, fmt.Errorf("%w: %v", sheetEntity.ErrFailedToAddCommonProficiency, err)
 		}
 		if err := charSheet.IncreaseExpForProficiency(
 			experience.NewUpgradeCascade(prof.Exp), enum.WeaponName(prof.Weapon),
 		); err != nil {
-			return false, fmt.Errorf("%w: %v", domainSheet.ErrFailedToIncreaseProficiencyExp, err)
+			return false, fmt.Errorf("%w: %v", sheetEntity.ErrFailedToIncreaseProficiencyExp, err)
 		}
 	}
 
@@ -437,7 +437,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			*newExp, jointProf.Name, weapons,
 		)
 		if err := charSheet.AddJointProficiency(domainJointProf); err != nil {
-			return false, fmt.Errorf("%w: %v", domainSheet.ErrFailedToAddJointProficiency, err)
+			return false, fmt.Errorf("%w: %v", sheetEntity.ErrFailedToAddJointProficiency, err)
 		}
 		// TODO: implement for create and add here too
 	}
@@ -460,11 +460,11 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 	} {
 		newMax, err := charSheet.GetMaxOfStatus(e.name)
 		if err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
+			return false, fmt.Errorf("%w (%s): %v", sheetEntity.ErrFailedToGetStatus, e.name, err)
 		}
 		minVal, err := charSheet.GetMinOfStatus(e.name)
 		if err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToGetStatus, e.name, err)
+			return false, fmt.Errorf("%w (%s): %v", sheetEntity.ErrFailedToGetStatus, e.name, err)
 		}
 		corrected, correctionApplied := normalizeStatus(e.curr, e.oldMax, newMax, minVal)
 		if correctionApplied {
@@ -477,7 +477,7 @@ func wrap(charSheet *domainSheet.CharacterSheet, m *model.CharacterSheet) (wasCo
 			continue
 		}
 		if err := charSheet.SetCurrStatus(e.name, corrected); err != nil {
-			return false, fmt.Errorf("%w (%s): %v", domainSheet.ErrFailedToSetStatus, e.name, err)
+			return false, fmt.Errorf("%w (%s): %v", sheetEntity.ErrFailedToSetStatus, e.name, err)
 		}
 	}
 	return wasCorrected, nil

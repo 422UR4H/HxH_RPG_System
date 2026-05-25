@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/application/submission"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	submissionUC "github.com/422UR4H/HxH_RPG_System/internal/application/submission"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -21,7 +21,7 @@ type AcceptSheetSubmissionResponse struct {
 }
 
 func AcceptSheetSubmissionHandler(
-	uc domainSubmission.IAcceptCharacterSheetSubmission,
+	uc submissionUC.IAcceptCharacterSheetSubmission,
 ) func(context.Context, *AcceptSheetSubmissionRequest) (*AcceptSheetSubmissionResponse, error) {
 
 	return func(ctx context.Context, req *AcceptSheetSubmissionRequest) (*AcceptSheetSubmissionResponse, error) {
@@ -38,13 +38,13 @@ func AcceptSheetSubmissionHandler(
 		err = uc.Accept(ctx, sheetUUID, masterUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainCampaign.ErrCampaignNotFound):
+			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainSubmission.ErrSubmissionNotFound):
+			case errors.Is(err, submissionUC.ErrSubmissionNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainSubmission.ErrNotCampaignMaster):
+			case errors.Is(err, submissionUC.ErrNotCampaignMaster):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, domainSubmission.ErrNickAlreadyInCampaign):
+			case errors.Is(err, submissionUC.ErrNickAlreadyInCampaign):
 				return nil, huma.Error409Conflict(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
