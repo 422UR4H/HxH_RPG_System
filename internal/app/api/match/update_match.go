@@ -8,8 +8,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -37,7 +37,7 @@ type UpdateMatchResponse struct {
 }
 
 func UpdateMatchHandler(
-	uc domainMatch.IUpdateMatch,
+	uc matchUC.IUpdateMatch,
 ) func(context.Context, *UpdateMatchRequest) (*UpdateMatchResponse, error) {
 
 	return func(ctx context.Context, req *UpdateMatchRequest) (*UpdateMatchResponse, error) {
@@ -46,7 +46,7 @@ func UpdateMatchHandler(
 			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
-		input := &domainMatch.UpdateMatchInput{
+		input := &matchUC.UpdateMatchInput{
 			MatchUUID:               req.UUID,
 			MasterUUID:              userUUID,
 			Title:                   req.Body.Title,
@@ -75,14 +75,14 @@ func UpdateMatchHandler(
 		m, err := uc.Update(ctx, input)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainCampaign.ErrCampaignNotFound):
+			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainMatch.ErrNotMatchMaster):
+			case errors.Is(err, matchUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, domainMatch.ErrMatchAlreadyStarted),
-				errors.Is(err, domainMatch.ErrMatchAlreadyFinished):
+			case errors.Is(err, matchUC.ErrMatchAlreadyStarted),
+				errors.Is(err, matchUC.ErrMatchAlreadyFinished):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())

@@ -5,17 +5,17 @@ import (
 	"errors"
 	"testing"
 
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )
 
 type mockMatchRepoForList struct {
 	getMatchFn func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error)
-	domainMatch.IRepository
+	match.IRepository
 }
 
 func (m *mockMatchRepoForList) GetMatch(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
@@ -143,7 +143,7 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 					return false, nil
 				}}
 			},
-			wantErr: domainAuth.ErrInsufficientPermissions,
+			wantErr: auth.ErrInsufficientPermissions,
 		},
 		{
 			name:     "checker error is propagated",
@@ -173,7 +173,7 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 				return nil, nil
 			},
 			checker: checkerNeverCalled,
-			wantErr: domainMatch.ErrMatchNotFound,
+			wantErr: match.ErrMatchNotFound,
 		},
 		{
 			name:     "lister error is propagated (master path)",
@@ -191,7 +191,7 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			uc := domainMatch.NewListMatchEnrollmentsUC(
+			uc := match.NewListMatchEnrollmentsUC(
 				&mockMatchRepoForList{getMatchFn: tc.matchFn},
 				&mockEnrollmentLister{fn: tc.listFn},
 				tc.checker(t),
@@ -204,12 +204,12 @@ func TestListMatchEnrollmentsUC(t *testing.T) {
 					t.Fatalf("expected error %v, got nil", tc.wantErr)
 				}
 				switch {
-				case errors.Is(tc.wantErr, domainMatch.ErrMatchNotFound):
-					if !errors.Is(err, domainMatch.ErrMatchNotFound) {
+				case errors.Is(tc.wantErr, match.ErrMatchNotFound):
+					if !errors.Is(err, match.ErrMatchNotFound) {
 						t.Fatalf("expected ErrMatchNotFound, got %v", err)
 					}
-				case errors.Is(tc.wantErr, domainAuth.ErrInsufficientPermissions):
-					if !errors.Is(err, domainAuth.ErrInsufficientPermissions) {
+				case errors.Is(tc.wantErr, auth.ErrInsufficientPermissions):
+					if !errors.Is(err, auth.ErrInsufficientPermissions) {
 						t.Fatalf("expected ErrInsufficientPermissions, got %v", err)
 					}
 				default:

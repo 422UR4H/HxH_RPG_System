@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -35,13 +35,13 @@ func TestRegisterHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *domainAuth.RegisterInput) error
+		mockFn     func(ctx context.Context, input *auth.RegisterInput) error
 		wantStatus int
 	}{
 		{
 			name: "success",
 			body: validRegisterBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.RegisterInput) error {
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
 				return nil
 			},
 			wantStatus: http.StatusCreated,
@@ -49,7 +49,7 @@ func TestRegisterHandler(t *testing.T) {
 		{
 			name: "bad_request_missing_nick",
 			body: validRegisterBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.RegisterInput) error {
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
 				return user.ErrMissingNick
 			},
 			wantStatus: http.StatusBadRequest,
@@ -57,7 +57,7 @@ func TestRegisterHandler(t *testing.T) {
 		{
 			name: "conflict_nick_already_exists",
 			body: validRegisterBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.RegisterInput) error {
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
 				return user.ErrNickAlreadyExists
 			},
 			wantStatus: http.StatusConflict,
@@ -65,7 +65,7 @@ func TestRegisterHandler(t *testing.T) {
 		{
 			name: "unprocessable_entity_invalid_nick_length",
 			body: validRegisterBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.RegisterInput) error {
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
 				return user.ErrInvalidNickLength
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -73,7 +73,7 @@ func TestRegisterHandler(t *testing.T) {
 		{
 			name: "internal_server_error",
 			body: validRegisterBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.RegisterInput) error {
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
 				return errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -86,8 +86,8 @@ func TestRegisterHandler(t *testing.T) {
 
 			mock := &mockRegister{fn: tt.mockFn}
 			handler := apiAuth.NewAuthHandler(mock, &mockLogin{
-				fn: func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error) {
-					return domainAuth.LoginOutput{}, nil
+				fn: func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error) {
+					return auth.LoginOutput{}, nil
 				},
 			})
 
@@ -113,14 +113,14 @@ func TestLoginHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error)
+		mockFn     func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error)
 		wantStatus int
 	}{
 		{
 			name: "success",
 			body: validLoginBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error) {
-				return domainAuth.LoginOutput{
+			mockFn: func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error) {
+				return auth.LoginOutput{
 					Token: "tok",
 					User:  &user.User{UUID: userUUID, Nick: "test", Email: "test@test.com"},
 				}, nil
@@ -130,32 +130,32 @@ func TestLoginHandler(t *testing.T) {
 		{
 			name: "bad_request_missing_email",
 			body: validLoginBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error) {
-				return domainAuth.LoginOutput{}, user.ErrMissingEmail
+			mockFn: func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error) {
+				return auth.LoginOutput{}, user.ErrMissingEmail
 			},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name: "unauthorized",
 			body: validLoginBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error) {
-				return domainAuth.LoginOutput{}, domainAuth.ErrUnauthorized
+			mockFn: func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error) {
+				return auth.LoginOutput{}, auth.ErrUnauthorized
 			},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name: "unprocessable_entity_invalid_email_length",
 			body: validLoginBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error) {
-				return domainAuth.LoginOutput{}, user.ErrInvalidEmailLength
+			mockFn: func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error) {
+				return auth.LoginOutput{}, user.ErrInvalidEmailLength
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "internal_server_error",
 			body: validLoginBody(),
-			mockFn: func(ctx context.Context, input *domainAuth.LoginInput) (domainAuth.LoginOutput, error) {
-				return domainAuth.LoginOutput{}, errors.New("unexpected db error")
+			mockFn: func(ctx context.Context, input *auth.LoginInput) (auth.LoginOutput, error) {
+				return auth.LoginOutput{}, errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,
 		},
@@ -167,7 +167,7 @@ func TestLoginHandler(t *testing.T) {
 
 			mock := &mockLogin{fn: tt.mockFn}
 			handler := apiAuth.NewAuthHandler(&mockRegister{
-				fn: func(ctx context.Context, input *domainAuth.RegisterInput) error {
+				fn: func(ctx context.Context, input *auth.RegisterInput) error {
 					return nil
 				},
 			}, mock)

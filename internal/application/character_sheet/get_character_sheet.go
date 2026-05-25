@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/google/uuid"
@@ -18,7 +18,7 @@ import (
 type IGetCharacterSheet interface {
 	GetCharacterSheet(
 		ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID,
-	) (*domainSheet.CharacterSheet, error)
+	) (*sheetEntity.CharacterSheet, error)
 }
 
 // ISubmissionLookup lets the GET use case check pending submissions for authorization.
@@ -39,17 +39,17 @@ type ISubmissionFetcher interface {
 
 type GetCharacterSheetUC struct {
 	characterSheets  *sync.Map
-	factory          *domainSheet.CharacterSheetFactory
+	factory          *sheetEntity.CharacterSheetFactory
 	repo             IRepository
-	campaignRepo     domainCampaign.IRepository
+	campaignRepo     campaign.IRepository
 	submissionLookup ISubmissionLookup
 }
 
 func NewGetCharacterSheetUC(
 	charSheets *sync.Map,
-	factory *domainSheet.CharacterSheetFactory,
+	factory *sheetEntity.CharacterSheetFactory,
 	repo IRepository,
-	campaignRepo domainCampaign.IRepository,
+	campaignRepo campaign.IRepository,
 	submissionLookup ISubmissionLookup,
 ) *GetCharacterSheetUC {
 	return &GetCharacterSheetUC{
@@ -63,7 +63,7 @@ func NewGetCharacterSheetUC(
 
 func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	ctx context.Context, sheetUUID uuid.UUID, userUUID uuid.UUID,
-) (*domainSheet.CharacterSheet, error) {
+) (*sheetEntity.CharacterSheet, error) {
 
 	// TODO: fix, move after auth validations or remove
 	// if charSheet, ok := uc.characterSheets.Load(sheetUUID); ok {
@@ -89,7 +89,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	if campaignUUID != nil {
 		campaignMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *campaignUUID)
 		if err == pgCampaign.ErrCampaignNotFound {
-			return nil, domainCampaign.ErrCampaignNotFound
+			return nil, campaign.ErrCampaignNotFound
 		}
 		if err != nil {
 			return nil, err
@@ -107,7 +107,7 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 	}
 	subCampMasterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, subCampUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
-		return nil, domainCampaign.ErrCampaignNotFound
+		return nil, campaign.ErrCampaignNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -120,9 +120,9 @@ func (uc *GetCharacterSheetUC) GetCharacterSheet(
 
 func (uc *GetCharacterSheetUC) checkAndNormalize(
 	sheetUUID string,
-	charSheet *domainSheet.CharacterSheet,
+	charSheet *sheetEntity.CharacterSheet,
 	wasCorrected bool,
-) (*domainSheet.CharacterSheet, error) {
+) (*sheetEntity.CharacterSheet, error) {
 	expPoints := charSheet.GetExpPoints()
 	if !wasCorrected && expPoints == 0 {
 		return charSheet, nil
@@ -150,7 +150,7 @@ func (uc *GetCharacterSheetUC) checkAndNormalize(
 func (uc *GetCharacterSheetUC) persistNormalizedStatus(
 	ctx context.Context,
 	sheetUUID string,
-	charSheet *domainSheet.CharacterSheet,
+	charSheet *sheetEntity.CharacterSheet,
 ) {
 	allBars := charSheet.GetAllStatusBar()
 	if err := uc.repo.UpdateStatusBars(ctx, sheetUUID,

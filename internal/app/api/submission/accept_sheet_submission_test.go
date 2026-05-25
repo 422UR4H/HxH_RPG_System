@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainSubmission "github.com/422UR4H/HxH_RPG_System/internal/application/submission"
+	submissionUC "github.com/422UR4H/HxH_RPG_System/internal/application/submission"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -53,7 +53,7 @@ func TestAcceptSheetSubmissionHandler(t *testing.T) {
 			name:     "submission_not_found",
 			pathUUID: sheetUUID.String(),
 			mockFn: func(ctx context.Context, sheetUUID, masterUUID uuid.UUID) error {
-				return domainSubmission.ErrSubmissionNotFound
+				return submissionUC.ErrSubmissionNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -61,7 +61,7 @@ func TestAcceptSheetSubmissionHandler(t *testing.T) {
 			name:     "not_campaign_master",
 			pathUUID: sheetUUID.String(),
 			mockFn: func(ctx context.Context, sheetUUID, masterUUID uuid.UUID) error {
-				return domainSubmission.ErrNotCampaignMaster
+				return submissionUC.ErrNotCampaignMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},

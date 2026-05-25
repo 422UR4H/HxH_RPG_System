@@ -7,7 +7,7 @@ import (
 	"time"
 
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
@@ -53,7 +53,7 @@ func TestStartMatch(t *testing.T) {
 					return nil, matchPg.ErrMatchNotFound
 				},
 			},
-			wantErr: domainMatch.ErrMatchNotFound,
+			wantErr: match.ErrMatchNotFound,
 		},
 		{
 			name:       "not match master",
@@ -69,7 +69,7 @@ func TestStartMatch(t *testing.T) {
 					}, nil
 				},
 			},
-			wantErr: domainMatch.ErrNotMatchMaster,
+			wantErr: match.ErrNotMatchMaster,
 		},
 		{
 			name:       "match already started",
@@ -86,7 +86,7 @@ func TestStartMatch(t *testing.T) {
 					}, nil
 				},
 			},
-			wantErr: domainMatch.ErrMatchAlreadyStarted,
+			wantErr: match.ErrMatchAlreadyStarted,
 		},
 		{
 			name:       "match already finished",
@@ -103,7 +103,7 @@ func TestStartMatch(t *testing.T) {
 					}, nil
 				},
 			},
-			wantErr: domainMatch.ErrMatchAlreadyFinished,
+			wantErr: match.ErrMatchAlreadyFinished,
 		},
 		{
 			name:       "repo error on GetMatch",
@@ -139,7 +139,7 @@ func TestStartMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := domainMatch.NewStartMatchUC(tt.matchMock)
+			uc := match.NewStartMatchUC(tt.matchMock)
 			err := uc.Start(context.Background(), tt.matchUUID, tt.masterUUID)
 
 			if tt.wantErr != nil {

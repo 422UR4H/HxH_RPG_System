@@ -3,7 +3,7 @@ package sheet
 import (
 	"strings"
 
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
 
@@ -16,7 +16,7 @@ type CharacterSheetResponse struct {
 
 	CharacterClass string                       `json:"character_class"`
 	CategoryName   string                       `json:"category_name"`
-	Profile        domainSheet.CharacterProfile `json:"profile"`
+	Profile        sheetEntity.CharacterProfile `json:"profile"`
 
 	CharacterExp CharacterExpResponse `json:"character_exp"`
 	Talent       TalentResponse       `json:"talent"`
@@ -108,7 +108,7 @@ type SubmissionResponse struct {
 }
 
 func NewCharacterSheetResponse(
-	charSheet *domainSheet.CharacterSheet) *CharacterSheetResponse {
+	charSheet *sheetEntity.CharacterSheet) *CharacterSheetResponse {
 
 	categoryName, err := charSheet.GetCategoryName()
 	strCategoryName := categoryName.String()

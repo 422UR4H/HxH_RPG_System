@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -39,7 +39,7 @@ func DeleteCharacterSheetHandler(
 			switch {
 			case errors.Is(err, cs.ErrCharacterSheetNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, cs.ErrCharacterSheetNotFreeToManage):
 				return nil, huma.Error422UnprocessableEntity(err.Error())

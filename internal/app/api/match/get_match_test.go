@@ -10,8 +10,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -50,14 +50,14 @@ func TestGetMatchHandler(t *testing.T) {
 		{
 			name: "not_found",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*matchEntity.Match, error) {
-				return nil, domainMatch.ErrMatchNotFound
+				return nil, matchUC.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "forbidden_insufficient_permissions",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*matchEntity.Match, error) {
-				return nil, domainAuth.ErrInsufficientPermissions
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},

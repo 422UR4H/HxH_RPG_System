@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -55,7 +55,7 @@ func UpdateCharacterSheetHandler(
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, cs.ErrCharacterClassNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, cs.ErrCharacterSheetNotFreeToManage):
 				return nil, huma.Error422UnprocessableEntity(err.Error())

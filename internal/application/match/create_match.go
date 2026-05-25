@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	"github.com/google/uuid"
@@ -27,12 +27,12 @@ type CreateMatchInput struct {
 
 type CreateMatchUC struct {
 	matchRepo    IRepository
-	campaignRepo domainCampaign.IRepository
+	campaignRepo campaign.IRepository
 }
 
 func NewCreateMatchUC(
 	matchRepo IRepository,
-	campaignRepo domainCampaign.IRepository,
+	campaignRepo campaign.IRepository,
 ) *CreateMatchUC {
 	return &CreateMatchUC{
 		matchRepo:    matchRepo,
@@ -61,22 +61,22 @@ func (uc *CreateMatchUC) CreateMatch(
 		return nil, ErrMaxOfGameScheduledAt
 	}
 
-	campaign, err := uc.campaignRepo.GetCampaignStoryDates(ctx, input.CampaignUUID)
+	c, err := uc.campaignRepo.GetCampaignStoryDates(ctx, input.CampaignUUID)
 	if err == pgCampaign.ErrCampaignNotFound {
-		return nil, domainCampaign.ErrCampaignNotFound
+		return nil, campaign.ErrCampaignNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	if campaign.MasterUUID != input.MasterUUID {
-		return nil, domainCampaign.ErrNotCampaignOwner
+	if c.MasterUUID != input.MasterUUID {
+		return nil, campaign.ErrNotCampaignOwner
 	}
 
-	if input.StoryStartAt.Before(campaign.StoryStartAt) {
+	if input.StoryStartAt.Before(c.StoryStartAt) {
 		return nil, ErrMinOfStoryStartAt
 	}
-	if campaign.StoryEndAt != nil && input.StoryStartAt.After(*campaign.StoryEndAt) {
+	if c.StoryEndAt != nil && input.StoryStartAt.After(*c.StoryEndAt) {
 		return nil, ErrMaxOfStoryStartAt
 	}
 

@@ -12,7 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -26,7 +26,7 @@ func TestCreateMatchHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error)
+		mockFn     func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error)
 		wantStatus int
 	}{
 		{
@@ -40,7 +40,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
-			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return &matchEntity.Match{
 					UUID:                    uuid.New(),
 					CampaignUUID:            input.CampaignUUID,
@@ -68,7 +68,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
-			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, campaign.ErrCampaignNotFound
 			},
 			wantStatus: http.StatusNotFound,
@@ -84,7 +84,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
-			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, campaign.ErrNotCampaignOwner
 			},
 			wantStatus: http.StatusForbidden,
@@ -100,7 +100,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
-			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, domain.ErrValidation
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -116,7 +116,7 @@ func TestCreateMatchHandler(t *testing.T) {
 				"game_scheduled_at":        "2026-06-15T19:30:00Z",
 				"story_start_at":           "2026-06-15",
 			},
-			mockFn: func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,

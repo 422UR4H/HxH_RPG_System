@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -24,7 +24,7 @@ type CreateCharacterSheetUC struct {
 	characterSheets  *sync.Map
 	factory          *sheet.CharacterSheetFactory
 	repo             IRepository
-	campaignRepo     domainCampaign.IRepository
+	campaignRepo     campaign.IRepository
 }
 
 func NewCreateCharacterSheetUC(
@@ -32,7 +32,7 @@ func NewCreateCharacterSheetUC(
 	charSheets *sync.Map,
 	factory *sheet.CharacterSheetFactory,
 	repo IRepository,
-	campaignRepo domainCampaign.IRepository,
+	campaignRepo campaign.IRepository,
 ) *CreateCharacterSheetUC {
 	return &CreateCharacterSheetUC{
 		characterClasses: charClasses,
@@ -96,13 +96,13 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	if input.CampaignUUID != nil {
 		masterUUID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, *input.CampaignUUID)
 		if err == pgCampaign.ErrCampaignNotFound {
-			return nil, domainCampaign.ErrCampaignNotFound
+			return nil, campaign.ErrCampaignNotFound
 		}
 		if err != nil {
 			return nil, err
 		}
 		if *input.MasterUUID != masterUUID {
-			return nil, domainCampaign.ErrNotCampaignOwner
+			return nil, campaign.ErrNotCampaignOwner
 		}
 	}
 

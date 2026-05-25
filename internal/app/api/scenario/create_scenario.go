@@ -7,7 +7,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -41,7 +41,7 @@ type ScenarioResponse struct {
 }
 
 func CreateScenarioHandler(
-	uc domainScenario.ICreateScenario,
+	uc scenarioUC.ICreateScenario,
 ) func(context.Context, *CreateScenarioRequest) (*CreateScenarioResponse, error) {
 
 	return func(ctx context.Context, req *CreateScenarioRequest) (*CreateScenarioResponse, error) {
@@ -50,7 +50,7 @@ func CreateScenarioHandler(
 			return nil, huma.Error500InternalServerError("failed to get userID in context")
 		}
 
-		input := &domainScenario.CreateScenarioInput{
+		input := &scenarioUC.CreateScenarioInput{
 			UserUUID:         userUUID,
 			Name:             req.Body.Name,
 			BriefDescription: req.Body.BriefDescription,
@@ -59,7 +59,7 @@ func CreateScenarioHandler(
 		scenario, err := uc.CreateScenario(ctx, input)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainScenario.ErrScenarioNameAlreadyExists):
+			case errors.Is(err, scenarioUC.ErrScenarioNameAlreadyExists):
 				return nil, huma.Error409Conflict(err.Error())
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())

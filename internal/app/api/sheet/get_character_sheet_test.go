@@ -10,8 +10,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -32,12 +32,12 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		mockFn     func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error)
+		mockFn     func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error)
 		wantStatus int
 	}{
 		{
 			name: "success",
-			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				cs := buildTestCharacterSheet(t)
 				cs.UUID = id
 				return cs, nil
@@ -46,28 +46,28 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 		},
 		{
 			name: "not_found",
-			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				return nil, cs.ErrCharacterSheetNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "forbidden_insufficient_permissions",
-			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
-				return nil, domainAuth.ErrInsufficientPermissions
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name: "internal_server_error",
-			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				return nil, errors.New("unexpected error")
 			},
 			wantStatus: http.StatusInternalServerError,
 		},
 		{
 			name: "master_can_view_pending_sheet_via_submission_lookup",
-			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				cs := buildTestCharacterSheet(t)
 				cs.UUID = id
 				return cs, nil
@@ -76,8 +76,8 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 		},
 		{
 			name: "master_cannot_view_sheet_with_no_pending_submission",
-			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
-				return nil, domainAuth.ErrInsufficientPermissions
+			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},

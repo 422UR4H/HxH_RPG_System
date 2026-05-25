@@ -11,7 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/danielgtaylor/huma/v2"
@@ -26,7 +26,7 @@ func TestCreateCampaignHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error)
+		mockFn     func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error)
 		wantStatus int
 	}{
 		{
@@ -39,7 +39,7 @@ func TestCreateCampaignHandler(t *testing.T) {
 				"call_link":                 "https://meet.example.com",
 				"story_start_at":            "2026-01-15",
 			},
-			mockFn: func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error) {
+			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return &campaignEntity.Campaign{
 					UUID:                    uuid.New(),
 					MasterUUID:              input.MasterUUID,
@@ -66,8 +66,8 @@ func TestCreateCampaignHandler(t *testing.T) {
 				"call_link":                 "https://meet.example.com",
 				"story_start_at":            "2026-01-15",
 			},
-			mockFn: func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error) {
-				return nil, domainCampaign.ErrMaxCampaignsLimit
+			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
+				return nil, campaignUC.ErrMaxCampaignsLimit
 			},
 			wantStatus: http.StatusForbidden,
 		},
@@ -81,7 +81,7 @@ func TestCreateCampaignHandler(t *testing.T) {
 				"call_link":                 "https://meet.example.com",
 				"story_start_at":            "2026-01-15",
 			},
-			mockFn: func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error) {
+			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, scenario.ErrScenarioNotFound
 			},
 			wantStatus: http.StatusNotFound,
@@ -96,7 +96,7 @@ func TestCreateCampaignHandler(t *testing.T) {
 				"call_link":                 "https://meet.example.com",
 				"story_start_at":            "2026-01-15",
 			},
-			mockFn: func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error) {
+			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, domain.NewValidationError(errors.New("name too short"))
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -111,7 +111,7 @@ func TestCreateCampaignHandler(t *testing.T) {
 				"call_link":                 "https://meet.example.com",
 				"story_start_at":            "2026-01-15",
 			},
-			mockFn: func(ctx context.Context, input *domainCampaign.CreateCampaignInput) (*campaignEntity.Campaign, error) {
+			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,

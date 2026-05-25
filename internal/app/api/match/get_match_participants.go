@@ -7,9 +7,9 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiSheet "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -34,7 +34,7 @@ type GetMatchParticipantsResponse struct {
 }
 
 func GetMatchParticipantsHandler(
-	uc domainMatch.IGetMatchParticipants,
+	uc matchUC.IGetMatchParticipants,
 ) func(context.Context, *GetMatchParticipantsRequest) (*GetMatchParticipantsResponse, error) {
 	return func(ctx context.Context, req *GetMatchParticipantsRequest) (*GetMatchParticipantsResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
@@ -45,9 +45,9 @@ func GetMatchParticipantsHandler(
 		result, err := uc.Get(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

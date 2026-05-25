@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -22,7 +22,7 @@ type RejectEnrollmentResponse struct {
 }
 
 func RejectEnrollmentHandler(
-	uc domainEnrollment.IRejectEnrollment,
+	uc enrollmentUC.IRejectEnrollment,
 ) func(context.Context, *RejectEnrollmentRequest) (*RejectEnrollmentResponse, error) {
 
 	return func(ctx context.Context, req *RejectEnrollmentRequest) (*RejectEnrollmentResponse, error) {
@@ -39,13 +39,13 @@ func RejectEnrollmentHandler(
 		err = uc.Reject(ctx, enrollmentUUID, masterUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainEnrollment.ErrEnrollmentNotFound):
+			case errors.Is(err, enrollmentUC.ErrEnrollmentNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, match.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainCampaign.ErrCampaignNotFound):
+			case errors.Is(err, campaign.ErrCampaignNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainEnrollment.ErrNotMatchMaster):
+			case errors.Is(err, enrollmentUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	pgMatch "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
@@ -29,12 +29,12 @@ type UpdateMatchInput struct {
 
 type UpdateMatchUC struct {
 	matchRepo    IRepository
-	campaignRepo domainCampaign.IRepository
+	campaignRepo campaign.IRepository
 }
 
 func NewUpdateMatchUC(
 	matchRepo IRepository,
-	campaignRepo domainCampaign.IRepository,
+	campaignRepo campaign.IRepository,
 ) *UpdateMatchUC {
 	return &UpdateMatchUC{matchRepo: matchRepo, campaignRepo: campaignRepo}
 }
@@ -86,17 +86,17 @@ func (uc *UpdateMatchUC) Update(
 		}
 	}
 	if input.StoryStartAt != nil {
-		campaign, err := uc.campaignRepo.GetCampaignStoryDates(ctx, m.CampaignUUID)
+		c, err := uc.campaignRepo.GetCampaignStoryDates(ctx, m.CampaignUUID)
 		if err == pgCampaign.ErrCampaignNotFound {
-			return nil, domainCampaign.ErrCampaignNotFound
+			return nil, campaign.ErrCampaignNotFound
 		}
 		if err != nil {
 			return nil, err
 		}
-		if input.StoryStartAt.Before(campaign.StoryStartAt) {
+		if input.StoryStartAt.Before(c.StoryStartAt) {
 			return nil, ErrMinOfStoryStartAt
 		}
-		if campaign.StoryEndAt != nil && input.StoryStartAt.After(*campaign.StoryEndAt) {
+		if c.StoryEndAt != nil && input.StoryStartAt.After(*c.StoryEndAt) {
 			return nil, ErrMaxOfStoryStartAt
 		}
 	}

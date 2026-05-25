@@ -5,14 +5,14 @@ import (
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
 
 // charExpTable is used only to compute curr_exp / next_lvl_base_exp for summary responses.
 // It must use CHARACTER_COEFF to match the domain entity. The authoritative values always
 // come from CharacterExp.GetCurrentExp / GetNextLvlBaseExp after full sheet reconstruction.
-var charExpTable = experience.NewExpTable(domainSheet.CHARACTER_COEFF)
+var charExpTable = experience.NewExpTable(sheetEntity.CHARACTER_COEFF)
 
 type CharacterBaseSummaryResponse struct {
 	UUID           uuid.UUID  `json:"uuid"`

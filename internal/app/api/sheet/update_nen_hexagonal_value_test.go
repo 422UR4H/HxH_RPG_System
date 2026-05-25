@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/danielgtaylor/huma/v2"
@@ -23,18 +23,18 @@ func TestUpdateNenHexagonValueHandler(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		getSheetFn  func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error)
-		updateHexFn func(ctx context.Context, cs *domainSheet.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error)
+		getSheetFn  func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error)
+		updateHexFn func(ctx context.Context, cs *sheetEntity.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error)
 		wantStatus  int
 	}{
 		{
 			name: "success",
-			getSheetFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			getSheetFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				cs := buildTestCharacterSheetWithHex(t)
 				cs.UUID = id
 				return cs, nil
 			},
-			updateHexFn: func(ctx context.Context, cs *domainSheet.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error) {
+			updateHexFn: func(ctx context.Context, cs *sheetEntity.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error) {
 				return &spiritual.NenHexagonUpdateResult{
 					PercentList:   map[enum.CategoryName]float64{enum.Reinforcement: 100.0},
 					CategoryName:  enum.Reinforcement,
@@ -45,10 +45,10 @@ func TestUpdateNenHexagonValueHandler(t *testing.T) {
 		},
 		{
 			name: "sheet_not_found",
-			getSheetFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			getSheetFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				return nil, charactersheet.ErrCharacterSheetNotFound
 			},
-			updateHexFn: func(ctx context.Context, cs *domainSheet.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error) {
+			updateHexFn: func(ctx context.Context, cs *sheetEntity.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error) {
 				t.Fatal("UpdateNenHexagonValue should not be called when GetCharacterSheet fails")
 				return nil, nil
 			},
@@ -56,10 +56,10 @@ func TestUpdateNenHexagonValueHandler(t *testing.T) {
 		},
 		{
 			name: "internal_server_error",
-			getSheetFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*domainSheet.CharacterSheet, error) {
+			getSheetFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
 				return nil, errors.New("db connection failed")
 			},
-			updateHexFn: func(ctx context.Context, cs *domainSheet.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error) {
+			updateHexFn: func(ctx context.Context, cs *sheetEntity.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error) {
 				t.Fatal("UpdateNenHexagonValue should not be called when GetCharacterSheet fails")
 				return nil, nil
 			},

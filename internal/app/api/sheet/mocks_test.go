@@ -8,30 +8,30 @@ import (
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
 	"github.com/google/uuid"
 )
 
 // mockCreateCharacterSheet implements charactersheet.ICreateCharacterSheet
 type mockCreateCharacterSheet struct {
-	fn func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*domainSheet.CharacterSheet, error)
+	fn func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error)
 }
 
 func (m *mockCreateCharacterSheet) CreateCharacterSheet(
 	ctx context.Context, input *charactersheet.CreateCharacterSheetInput,
-) (*domainSheet.CharacterSheet, error) {
+) (*sheetEntity.CharacterSheet, error) {
 	return m.fn(ctx, input)
 }
 
 // mockGetCharacterSheet implements charactersheet.IGetCharacterSheet
 type mockGetCharacterSheet struct {
-	fn func(ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID) (*domainSheet.CharacterSheet, error)
+	fn func(ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID) (*sheetEntity.CharacterSheet, error)
 }
 
 func (m *mockGetCharacterSheet) GetCharacterSheet(
 	ctx context.Context, charSheetId uuid.UUID, playerId uuid.UUID,
-) (*domainSheet.CharacterSheet, error) {
+) (*sheetEntity.CharacterSheet, error) {
 	return m.fn(ctx, charSheetId, playerId)
 }
 
@@ -49,38 +49,38 @@ func (m *mockListCharacterSheets) ListCharacterSheets(
 // mockListCharacterClasses implements charactersheet.IListCharacterClasses
 type mockListCharacterClasses struct {
 	listClassesFn func() []cc.CharacterClass
-	listSheetsFn  func() []domainSheet.HalfSheet
+	listSheetsFn  func() []sheetEntity.HalfSheet
 }
 
 func (m *mockListCharacterClasses) ListCharacterClasses() []cc.CharacterClass {
 	return m.listClassesFn()
 }
 
-func (m *mockListCharacterClasses) ListClassSheets() []domainSheet.HalfSheet {
+func (m *mockListCharacterClasses) ListClassSheets() []sheetEntity.HalfSheet {
 	return m.listSheetsFn()
 }
 
 // mockGetCharacterClass implements charactersheet.IGetCharacterClass
 type mockGetCharacterClass struct {
 	getClassFn func(name string) (cc.CharacterClass, error)
-	getSheetFn func(name string) (domainSheet.HalfSheet, error)
+	getSheetFn func(name string) (sheetEntity.HalfSheet, error)
 }
 
 func (m *mockGetCharacterClass) GetCharacterClass(name string) (cc.CharacterClass, error) {
 	return m.getClassFn(name)
 }
 
-func (m *mockGetCharacterClass) GetClassSheet(name string) (domainSheet.HalfSheet, error) {
+func (m *mockGetCharacterClass) GetClassSheet(name string) (sheetEntity.HalfSheet, error) {
 	return m.getSheetFn(name)
 }
 
 // mockUpdateNenHexagonValue implements charactersheet.IUpdateNenHexagonValue
 type mockUpdateNenHexagonValue struct {
-	fn func(ctx context.Context, charSheet *domainSheet.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error)
+	fn func(ctx context.Context, charSheet *sheetEntity.CharacterSheet, method string) (*spiritual.NenHexagonUpdateResult, error)
 }
 
 func (m *mockUpdateNenHexagonValue) UpdateNenHexagonValue(
-	ctx context.Context, charSheet *domainSheet.CharacterSheet, method string,
+	ctx context.Context, charSheet *sheetEntity.CharacterSheet, method string,
 ) (*spiritual.NenHexagonUpdateResult, error) {
 	return m.fn(ctx, charSheet, method)
 }
@@ -98,12 +98,12 @@ func (m *mockProfileUpdater) UpdateCharacterSheetProfile(
 
 // Test helpers
 
-func buildTestCharacterSheet(t *testing.T) *domainSheet.CharacterSheet {
+func buildTestCharacterSheet(t *testing.T) *sheetEntity.CharacterSheet {
 	t.Helper()
-	factory := domainSheet.NewCharacterSheetFactory()
+	factory := sheetEntity.NewCharacterSheetFactory()
 	playerUUID := uuid.New()
 	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
-	profile := domainSheet.CharacterProfile{
+	profile := sheetEntity.CharacterProfile{
 		NickName:  "Gon",
 		FullName:  "Gon Freecss",
 		Alignment: "Chaotic-Good",
@@ -118,13 +118,13 @@ func buildTestCharacterSheet(t *testing.T) *domainSheet.CharacterSheet {
 	return cs
 }
 
-func buildTestCharacterSheetWithHex(t *testing.T) *domainSheet.CharacterSheet {
+func buildTestCharacterSheetWithHex(t *testing.T) *sheetEntity.CharacterSheet {
 	t.Helper()
-	factory := domainSheet.NewCharacterSheetFactory()
+	factory := sheetEntity.NewCharacterSheetFactory()
 	playerUUID := uuid.New()
 	hexValue := 3
 	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
-	profile := domainSheet.CharacterProfile{
+	profile := sheetEntity.CharacterProfile{
 		NickName:  "Gon",
 		FullName:  "Gon Freecss",
 		Alignment: "Chaotic-Good",
@@ -139,11 +139,11 @@ func buildTestCharacterSheetWithHex(t *testing.T) *domainSheet.CharacterSheet {
 	return cs
 }
 
-func buildTestHalfSheet(t *testing.T) domainSheet.HalfSheet {
+func buildTestHalfSheet(t *testing.T) sheetEntity.HalfSheet {
 	t.Helper()
-	factory := domainSheet.NewCharacterSheetFactory()
+	factory := sheetEntity.NewCharacterSheetFactory()
 	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
-	profile := domainSheet.CharacterProfile{
+	profile := sheetEntity.CharacterProfile{
 		NickName:  "Hunter",
 		FullName:  "Hunter Class",
 		Birthday:  birthday,

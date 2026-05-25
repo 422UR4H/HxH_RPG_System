@@ -10,10 +10,10 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiMatch "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -43,14 +43,14 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error)
+		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*match.ListMatchEnrollmentsResult, error)
 		wantStatus     int
 		wantPrivateNil bool // when status==200, asserts the first row's character_sheet.private nullness
 	}{
 		{
 			name: "200 with private populated when ViewerIsMaster",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error) {
-				return &domainMatch.ListMatchEnrollmentsResult{
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
+				return &match.ListMatchEnrollmentsResult{
 					Enrollments:    makeFixture(),
 					ViewerIsMaster: true,
 				}, nil
@@ -60,8 +60,8 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 		},
 		{
 			name: "200 with private null when not master",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error) {
-				return &domainMatch.ListMatchEnrollmentsResult{
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
+				return &match.ListMatchEnrollmentsResult{
 					Enrollments:    makeFixture(),
 					ViewerIsMaster: false,
 				}, nil
@@ -71,8 +71,8 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 		},
 		{
 			name: "200 with empty list",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error) {
-				return &domainMatch.ListMatchEnrollmentsResult{
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
+				return &match.ListMatchEnrollmentsResult{
 					Enrollments:    []*enrollmentEntity.Enrollment{},
 					ViewerIsMaster: true,
 				}, nil
@@ -81,21 +81,21 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 		},
 		{
 			name: "404 on ErrMatchNotFound",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error) {
-				return nil, domainMatch.ErrMatchNotFound
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
+				return nil, match.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "403 on ErrInsufficientPermissions",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error) {
-				return nil, domainAuth.ErrInsufficientPermissions
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name: "500 on generic error",
-			ucFn: func(_ context.Context, _, _ uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error) {
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
 				return nil, errors.New("boom")
 			},
 			wantStatus: http.StatusInternalServerError,

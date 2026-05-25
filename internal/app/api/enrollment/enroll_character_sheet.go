@@ -7,8 +7,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -27,7 +27,7 @@ type EnrollCharacterResponse struct {
 }
 
 func EnrollCharacterHandler(
-	uc domainEnrollment.IEnrollCharacterInMatch,
+	uc enrollmentUC.IEnrollCharacterInMatch,
 ) func(context.Context, *EnrollCharacterRequest) (*EnrollCharacterResponse, error) {
 
 	return func(ctx context.Context, req *EnrollCharacterRequest) (*EnrollCharacterResponse, error) {
@@ -39,15 +39,15 @@ func EnrollCharacterHandler(
 		err := uc.Enroll(ctx, req.Body.MatchUUID, req.Body.SheetUUID, playerUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, match.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, charactersheet.ErrCharacterSheetNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, charactersheet.ErrNotCharacterSheetOwner):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, domainEnrollment.ErrCharacterNotInCampaign):
+			case errors.Is(err, enrollmentUC.ErrCharacterNotInCampaign):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, domainEnrollment.ErrCharacterAlreadyEnrolled):
+			case errors.Is(err, enrollmentUC.ErrCharacterAlreadyEnrolled):
 				return nil, huma.Error409Conflict(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

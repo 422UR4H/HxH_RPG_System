@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	pgCampaign "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
@@ -261,7 +261,7 @@ func TestCreateCharacterSheet(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, domainCampaign.ErrCampaignNotFound) {
+		if !errors.Is(err, campaign.ErrCampaignNotFound) {
 			t.Errorf("expected ErrCampaignNotFound, got: %v", err)
 		}
 	})
@@ -323,7 +323,7 @@ func TestCreateCharacterSheet(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, domainCampaign.ErrNotCampaignOwner) {
+		if !errors.Is(err, campaign.ErrNotCampaignOwner) {
 			t.Errorf("expected ErrNotCampaignOwner, got: %v", err)
 		}
 	})
@@ -334,7 +334,7 @@ func TestCreateCharacterSheet(t *testing.T) {
 		factory := newTestFactory()
 		repoErr := errors.New("insert failed")
 		mockRepo := &testutil.MockCharacterSheetRepo{
-			CreateCharacterSheetFn: func(ctx context.Context, s *domainSheet.CharacterSheet) error {
+			CreateCharacterSheetFn: func(ctx context.Context, s *sheetEntity.CharacterSheet) error {
 				return repoErr
 			},
 		}

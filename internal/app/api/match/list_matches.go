@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -18,7 +18,7 @@ type ListMatchesResponse struct {
 }
 
 func ListMatchesHandler(
-	uc domainMatch.IListMatches,
+	uc matchUC.IListMatches,
 ) func(context.Context, *struct{}) (*ListMatchesResponse, error) {
 
 	return func(ctx context.Context, _ *struct{}) (*ListMatchesResponse, error) {

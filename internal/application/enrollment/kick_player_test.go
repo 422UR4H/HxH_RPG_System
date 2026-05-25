@@ -8,7 +8,7 @@ import (
 
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
@@ -61,7 +61,7 @@ func TestKickPlayer(t *testing.T) {
 				},
 			},
 			enrollMock: &testutil.MockEnrollmentRepo{},
-			wantErr:    domainMatch.ErrMatchNotFound,
+			wantErr:    match.ErrMatchNotFound,
 		},
 		{
 			name:       "not match master",

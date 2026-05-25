@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	domainSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/model"
 	"github.com/google/uuid"
 )
 
 func (r *Repository) CreateCharacterSheet(
-	ctx context.Context, sheet *domainSheet.CharacterSheet,
+	ctx context.Context, sheet *sheetEntity.CharacterSheet,
 ) error {
 	m := charSheetToModel(sheet)
 
@@ -145,7 +145,7 @@ func (r *Repository) CreateCharacterSheet(
 
 // charSheetToModel converts a domain CharacterSheet entity to the pg/model used for persistence.
 // TODO: refactor these maps (inherited from domain use case)
-func charSheetToModel(sheet *domainSheet.CharacterSheet) *model.CharacterSheet {
+func charSheetToModel(sheet *sheetEntity.CharacterSheet) *model.CharacterSheet {
 	now := time.Now()
 	profile := sheet.GetProfile()
 	physAttrs := sheet.GetPhysicalAttributes()

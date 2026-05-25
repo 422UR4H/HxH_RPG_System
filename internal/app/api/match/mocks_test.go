@@ -4,25 +4,25 @@ import (
 	"context"
 
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/google/uuid"
 )
 
 type mockListMatchEnrollments struct {
-	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*domainMatch.ListMatchEnrollmentsResult, error)
+	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*match.ListMatchEnrollmentsResult, error)
 }
 
 func (m *mockListMatchEnrollments) List(
 	ctx context.Context, matchUUID, userUUID uuid.UUID,
-) (*domainMatch.ListMatchEnrollmentsResult, error) {
+) (*match.ListMatchEnrollmentsResult, error) {
 	return m.fn(ctx, matchUUID, userUUID)
 }
 
 type mockCreateMatch struct {
-	fn func(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error)
+	fn func(ctx context.Context, input *match.CreateMatchInput) (*matchEntity.Match, error)
 }
 
-func (m *mockCreateMatch) CreateMatch(ctx context.Context, input *domainMatch.CreateMatchInput) (*matchEntity.Match, error) {
+func (m *mockCreateMatch) CreateMatch(ctx context.Context, input *match.CreateMatchInput) (*matchEntity.Match, error) {
 	return m.fn(ctx, input)
 }
 
@@ -51,29 +51,29 @@ func (m *mockListPublicUpcomingMatches) ListPublicUpcomingMatches(ctx context.Co
 }
 
 type mockGetMatchParticipants struct {
-	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*domainMatch.GetMatchParticipantsResult, error)
+	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*match.GetMatchParticipantsResult, error)
 }
 
 func (m *mockGetMatchParticipants) Get(
 	ctx context.Context, matchUUID, userUUID uuid.UUID,
-) (*domainMatch.GetMatchParticipantsResult, error) {
+) (*match.GetMatchParticipantsResult, error) {
 	return m.fn(ctx, matchUUID, userUUID)
 }
 
 type mockUpdateMatch struct {
-	fn func(ctx context.Context, input *domainMatch.UpdateMatchInput) (*matchEntity.Match, error)
+	fn func(ctx context.Context, input *match.UpdateMatchInput) (*matchEntity.Match, error)
 }
 
 func (m *mockUpdateMatch) Update(
-	ctx context.Context, input *domainMatch.UpdateMatchInput,
+	ctx context.Context, input *match.UpdateMatchInput,
 ) (*matchEntity.Match, error) {
 	return m.fn(ctx, input)
 }
 
 type mockDeleteMatch struct {
-	fn func(ctx context.Context, input *domainMatch.DeleteMatchInput) error
+	fn func(ctx context.Context, input *match.DeleteMatchInput) error
 }
 
-func (m *mockDeleteMatch) Delete(ctx context.Context, input *domainMatch.DeleteMatchInput) error {
+func (m *mockDeleteMatch) Delete(ctx context.Context, input *match.DeleteMatchInput) error {
 	return m.fn(ctx, input)
 }

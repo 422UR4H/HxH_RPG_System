@@ -7,9 +7,9 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiSheet "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -40,7 +40,7 @@ type PlayerRefResponse struct {
 }
 
 func ListMatchEnrollmentsHandler(
-	uc domainMatch.IListMatchEnrollments,
+	uc matchUC.IListMatchEnrollments,
 ) func(context.Context, *ListMatchEnrollmentsRequest) (*ListMatchEnrollmentsResponse, error) {
 	return func(ctx context.Context, req *ListMatchEnrollmentsRequest) (*ListMatchEnrollmentsResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
@@ -51,9 +51,9 @@ func ListMatchEnrollmentsHandler(
 		result, err := uc.List(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainMatch.ErrMatchNotFound):
+			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

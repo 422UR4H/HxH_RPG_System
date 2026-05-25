@@ -8,9 +8,9 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
-	domainCampaign "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	domainEnrollment "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
-	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -46,7 +46,7 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 			name:     "enrollment not found",
 			pathUUID: enrollmentUUID.String(),
 			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
-				return domainEnrollment.ErrEnrollmentNotFound
+				return enrollmentUC.ErrEnrollmentNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -54,7 +54,7 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 			name:     "match not found",
 			pathUUID: enrollmentUUID.String(),
 			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
-				return domainMatch.ErrMatchNotFound
+				return match.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -62,7 +62,7 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 			name:     "campaign not found",
 			pathUUID: enrollmentUUID.String(),
 			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
-				return domainCampaign.ErrCampaignNotFound
+				return campaign.ErrCampaignNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -70,7 +70,7 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 			name:     "not match master",
 			pathUUID: enrollmentUUID.String(),
 			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
-				return domainEnrollment.ErrNotMatchMaster
+				return enrollmentUC.ErrNotMatchMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},

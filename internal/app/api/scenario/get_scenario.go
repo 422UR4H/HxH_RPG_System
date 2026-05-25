@@ -7,8 +7,8 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
-	domainAuth "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -37,7 +37,7 @@ type ScenarioWithCampaignsResponse struct {
 }
 
 func GetScenarioHandler(
-	uc domainScenario.IGetScenario,
+	uc scenarioUC.IGetScenario,
 ) func(context.Context, *GetScenarioRequest) (*GetScenarioResponse, error) {
 
 	return func(ctx context.Context, req *GetScenarioRequest) (*GetScenarioResponse, error) {
@@ -49,9 +49,9 @@ func GetScenarioHandler(
 		scenario, err := uc.GetScenario(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
-			case errors.Is(err, domainScenario.ErrScenarioNotFound):
+			case errors.Is(err, scenarioUC.ErrScenarioNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, domainAuth.ErrInsufficientPermissions):
+			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

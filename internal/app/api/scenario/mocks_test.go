@@ -3,16 +3,16 @@ package scenario_test
 import (
 	"context"
 
-	domainScenario "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	scenarioEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/google/uuid"
 )
 
 type mockCreateScenario struct {
-	fn func(ctx context.Context, input *domainScenario.CreateScenarioInput) (*scenarioEntity.Scenario, error)
+	fn func(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error)
 }
 
-func (m *mockCreateScenario) CreateScenario(ctx context.Context, input *domainScenario.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
+func (m *mockCreateScenario) CreateScenario(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
 	return m.fn(ctx, input)
 }
 
