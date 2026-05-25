@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -46,7 +46,7 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 			name:     "enrollment not found",
 			pathUUID: enrollmentUUID.String(),
 			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
-				return enrollment.ErrEnrollmentNotFound
+				return enrollmentUC.ErrEnrollmentNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
@@ -70,7 +70,7 @@ func TestAcceptEnrollmentHandler(t *testing.T) {
 			name:     "not match master",
 			pathUUID: enrollmentUUID.String(),
 			mockFn: func(ctx context.Context, eUUID, mUUID uuid.UUID) error {
-				return enrollment.ErrNotMatchMaster
+				return enrollmentUC.ErrNotMatchMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},

@@ -11,7 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -42,7 +42,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *match.UpdateMatchInput) (*matchEntity.Match, error)
+		mockFn     func(ctx context.Context, input *matchUC.UpdateMatchInput) (*matchEntity.Match, error)
 		wantStatus int
 	}{
 		{
@@ -55,7 +55,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 				"game_scheduled_at":         "2026-07-20T19:30:00Z",
 				"story_start_at":            "2026-07-20",
 			},
-			mockFn: func(_ context.Context, input *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, input *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				if input.Title == nil || *input.Title != "Patched Title" {
 					t.Errorf("title not forwarded: %+v", input.Title)
 				}
@@ -66,7 +66,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "success_partial_patch_title_only",
 			body: map[string]any{"title": "Only Title"},
-			mockFn: func(_ context.Context, input *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, input *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				if input.BriefInitialDescription != nil {
 					t.Errorf("brief should be nil, got %+v", *input.BriefInitialDescription)
 				}
@@ -77,7 +77,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "success_empty_body_is_noop",
 			body: map[string]any{},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				return baseResp("Original"), nil
 			},
 			wantStatus: http.StatusOK,
@@ -85,7 +85,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "invalid_game_scheduled_at",
 			body: map[string]any{"game_scheduled_at": "not-a-date"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				t.Fatal("UC should not be called when date parsing fails")
 				return nil, nil
 			},
@@ -94,7 +94,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "invalid_story_start_at",
 			body: map[string]any{"story_start_at": "not-a-date"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				t.Fatal("UC should not be called when date parsing fails")
 				return nil, nil
 			},
@@ -103,39 +103,39 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "match_not_found",
 			body: map[string]any{"title": "anything"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
-				return nil, match.ErrMatchNotFound
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
+				return nil, matchUC.ErrMatchNotFound
 			},
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name: "not_master",
 			body: map[string]any{"title": "anything"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
-				return nil, match.ErrNotMatchMaster
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
+				return nil, matchUC.ErrNotMatchMaster
 			},
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name: "already_started",
 			body: map[string]any{"title": "anything"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
-				return nil, match.ErrMatchAlreadyStarted
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
+				return nil, matchUC.ErrMatchAlreadyStarted
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "already_finished",
 			body: map[string]any{"title": "anything"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
-				return nil, match.ErrMatchAlreadyFinished
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
+				return nil, matchUC.ErrMatchAlreadyFinished
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "validation_error",
 			body: map[string]any{"title": "anything"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				return nil, domain.ErrValidation
 			},
 			wantStatus: http.StatusUnprocessableEntity,
@@ -143,7 +143,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "internal_server_error",
 			body: map[string]any{"title": "anything"},
-			mockFn: func(_ context.Context, _ *match.UpdateMatchInput) (*matchEntity.Match, error) {
+			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				return nil, errors.New("db down")
 			},
 			wantStatus: http.StatusInternalServerError,

@@ -10,7 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	scenarioEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -24,14 +24,14 @@ func TestCreateScenarioHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       map[string]any
-		mockFn     func(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error)
+		mockFn     func(ctx context.Context, input *scenarioUC.CreateScenarioInput) (*scenarioEntity.Scenario, error)
 		wantStatus int
 		useAuth    bool
 	}{
 		{
 			name: "success",
 			body: map[string]any{"name": "Test Scenario", "brief_description": "A test", "description": "Full desc"},
-			mockFn: func(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
+			mockFn: func(ctx context.Context, input *scenarioUC.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
 				return &scenarioEntity.Scenario{
 					UUID:             uuid.New(),
 					UserUUID:         input.UserUUID,
@@ -48,8 +48,8 @@ func TestCreateScenarioHandler(t *testing.T) {
 		{
 			name: "conflict_name_already_exists",
 			body: map[string]any{"name": "Existing Scenario", "brief_description": "desc", "description": "full"},
-			mockFn: func(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
-				return nil, scenario.ErrScenarioNameAlreadyExists
+			mockFn: func(ctx context.Context, input *scenarioUC.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
+				return nil, scenarioUC.ErrScenarioNameAlreadyExists
 			},
 			wantStatus: http.StatusConflict,
 			useAuth:    true,
@@ -57,8 +57,8 @@ func TestCreateScenarioHandler(t *testing.T) {
 		{
 			name: "unprocessable_entity_validation_error",
 			body: map[string]any{"name": "ab", "brief_description": "desc", "description": "full"},
-			mockFn: func(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
-				return nil, scenario.ErrMinNameLength
+			mockFn: func(ctx context.Context, input *scenarioUC.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
+				return nil, scenarioUC.ErrMinNameLength
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 			useAuth:    true,
@@ -66,7 +66,7 @@ func TestCreateScenarioHandler(t *testing.T) {
 		{
 			name: "internal_server_error",
 			body: map[string]any{"name": "Valid Name", "brief_description": "desc", "description": "full"},
-			mockFn: func(ctx context.Context, input *scenario.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
+			mockFn: func(ctx context.Context, input *scenarioUC.CreateScenarioInput) (*scenarioEntity.Scenario, error) {
 				return nil, errors.New("unexpected db error")
 			},
 			wantStatus: http.StatusInternalServerError,

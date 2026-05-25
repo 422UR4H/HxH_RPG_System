@@ -9,7 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -76,7 +76,7 @@ func TestEnrollCharacterHandler(t *testing.T) {
 				"match_uuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
-				return enrollment.ErrCharacterNotInCampaign
+				return enrollmentUC.ErrCharacterNotInCampaign
 			},
 			wantStatus: http.StatusForbidden,
 		},
@@ -87,7 +87,7 @@ func TestEnrollCharacterHandler(t *testing.T) {
 				"match_uuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
-				return enrollment.ErrCharacterAlreadyEnrolled
+				return enrollmentUC.ErrCharacterAlreadyEnrolled
 			},
 			wantStatus: http.StatusConflict,
 		},

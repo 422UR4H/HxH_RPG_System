@@ -10,7 +10,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -54,7 +54,7 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 		{
 			name: "forbidden_insufficient_permissions",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
-				return nil, auth.ErrInsufficientPermissions
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},
@@ -77,7 +77,7 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 		{
 			name: "master_cannot_view_sheet_with_no_pending_submission",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
-				return nil, auth.ErrInsufficientPermissions
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},

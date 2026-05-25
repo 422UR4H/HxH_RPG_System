@@ -10,8 +10,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -53,7 +53,7 @@ func TestGetCampaignHandler(t *testing.T) {
 		{
 			name: "not_found",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error) {
-				return nil, campaign.ErrCampaignNotFound
+				return nil, campaignUC.ErrCampaignNotFound
 			},
 			enrollmentMock: &mockListPlayerEnrollments{},
 			wantStatus:     http.StatusNotFound,
@@ -61,7 +61,7 @@ func TestGetCampaignHandler(t *testing.T) {
 		{
 			name: "forbidden_insufficient_permissions",
 			mockFn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error) {
-				return nil, auth.ErrInsufficientPermissions
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			enrollmentMock: &mockListPlayerEnrollments{},
 			wantStatus:     http.StatusForbidden,

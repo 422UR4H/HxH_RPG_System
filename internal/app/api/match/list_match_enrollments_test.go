@@ -10,7 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiMatch "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
@@ -89,7 +89,7 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 		{
 			name: "403 on ErrInsufficientPermissions",
 			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.ListMatchEnrollmentsResult, error) {
-				return nil, auth.ErrInsufficientPermissions
+				return nil, authUC.ErrInsufficientPermissions
 			},
 			wantStatus: http.StatusForbidden,
 		},
