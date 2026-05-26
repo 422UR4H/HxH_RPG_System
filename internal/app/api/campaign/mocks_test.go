@@ -52,3 +52,11 @@ type mockListPublicUpcomingCampaigns struct {
 func (m *mockListPublicUpcomingCampaigns) ListPublicUpcomingCampaigns(ctx context.Context, userUUID uuid.UUID) ([]*campaignEntity.PublicSummary, error) {
 	return m.fn(ctx, userUUID)
 }
+
+type mockDeleteCampaign struct {
+	fn func(ctx context.Context, input *campaign.DeleteCampaignInput) error
+}
+
+func (m *mockDeleteCampaign) Delete(ctx context.Context, input *campaign.DeleteCampaignInput) error {
+	return m.fn(ctx, input)
+}
