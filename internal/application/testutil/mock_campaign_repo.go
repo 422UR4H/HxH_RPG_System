@@ -9,13 +9,14 @@ import (
 )
 
 type MockCampaignRepo struct {
-	CreateCampaignFn             func(ctx context.Context, campaign *campaign.Campaign) error
-	GetCampaignFn                func(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error)
-	GetCampaignMasterUUIDFn      func(ctx context.Context, uuid uuid.UUID) (uuid.UUID, error)
-	GetCampaignStoryDatesFn      func(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error)
-	CountCampaignsByMasterUUIDFn func(ctx context.Context, masterUUID uuid.UUID) (int, error)
-	ListCampaignsByMasterUUIDFn  func(ctx context.Context, masterUUID uuid.UUID) ([]*campaign.Summary, error)
+	CreateCampaignFn              func(ctx context.Context, campaign *campaign.Campaign) error
+	GetCampaignFn                 func(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error)
+	GetCampaignMasterUUIDFn       func(ctx context.Context, uuid uuid.UUID) (uuid.UUID, error)
+	GetCampaignStoryDatesFn       func(ctx context.Context, uuid uuid.UUID) (*campaign.Campaign, error)
+	CountCampaignsByMasterUUIDFn  func(ctx context.Context, masterUUID uuid.UUID) (int, error)
+	ListCampaignsByMasterUUIDFn   func(ctx context.Context, masterUUID uuid.UUID) ([]*campaign.Summary, error)
 	ListPublicUpcomingCampaignsFn func(ctx context.Context, after time.Time, userUUID uuid.UUID) ([]*campaign.PublicSummary, error)
+	DeleteCampaignFn              func(ctx context.Context, uuid uuid.UUID) error
 }
 
 func (m *MockCampaignRepo) CreateCampaign(ctx context.Context, c *campaign.Campaign) error {
@@ -65,4 +66,11 @@ func (m *MockCampaignRepo) ListPublicUpcomingCampaigns(ctx context.Context, afte
 		return m.ListPublicUpcomingCampaignsFn(ctx, after, userUUID)
 	}
 	return nil, nil
+}
+
+func (m *MockCampaignRepo) DeleteCampaign(ctx context.Context, id uuid.UUID) error {
+	if m.DeleteCampaignFn != nil {
+		return m.DeleteCampaignFn(ctx, id)
+	}
+	return nil
 }

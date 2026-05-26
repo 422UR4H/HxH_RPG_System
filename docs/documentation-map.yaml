@@ -228,6 +228,28 @@ mappings:
         confidence: possibly_affected
     notes: Campaign use cases
 
+  # ─── Campaign: REST API ───
+  - code_path: internal/app/api/campaign/delete_campaign.go
+    dev_docs:
+      - path: docs/dev/api/campaign.md
+        confidence: directly_affected
+    game_docs: []
+    notes: "DELETE /campaigns/{uuid} handler"
+
+  - code_path: internal/application/campaign/delete_campaign.go
+    dev_docs:
+      - path: docs/dev/api/campaign.md
+        confidence: directly_affected
+    game_docs: []
+    notes: "DeleteCampaignUC"
+
+  - code_path: internal/gateway/pg/campaign/delete_campaign.go
+    dev_docs:
+      - path: docs/dev/api/campaign.md
+        confidence: directly_affected
+    game_docs: []
+    notes: "DeleteCampaign gateway"
+
   # ─── Scenario ───
   - code_path: internal/domain/entity/scenario/
     dev_docs:

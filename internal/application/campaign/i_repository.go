@@ -16,4 +16,5 @@ type IRepository interface {
 	CountCampaignsByMasterUUID(ctx context.Context, masterUUID uuid.UUID) (int, error)
 	ListCampaignsByMasterUUID(ctx context.Context, masterUUID uuid.UUID) ([]*campaign.Summary, error)
 	ListPublicUpcomingCampaigns(ctx context.Context, after time.Time, userUUID uuid.UUID) ([]*campaign.PublicSummary, error)
+	DeleteCampaign(ctx context.Context, uuid uuid.UUID) error
 }

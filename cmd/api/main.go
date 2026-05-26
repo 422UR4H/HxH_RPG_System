@@ -168,6 +168,7 @@ func main() {
 	getCampaignUC := campaign.NewGetCampaignUC(campaignRepo)
 	listCampaignsUC := campaign.NewListCampaignsUC(campaignRepo)
 	listPublicUpcomingCampaignsUC := campaign.NewListPublicUpcomingCampaignsUC(campaignRepo)
+	deleteCampaignUC := campaign.NewDeleteCampaignUC(campaignRepo)
 	listPlayerEnrollmentsForCampaignUC := enrollment.NewListPlayerEnrollmentsForCampaignUC(enrollmentRepo)
 
 	campaignsApi := campaignHandler.Api{
@@ -175,6 +176,7 @@ func main() {
 		GetCampaignHandler:                 campaignHandler.GetCampaignHandler(getCampaignUC, listPlayerEnrollmentsForCampaignUC),
 		ListCampaignsHandler:               campaignHandler.ListCampaignsHandler(listCampaignsUC),
 		ListPublicUpcomingCampaignsHandler: campaignHandler.ListPublicUpcomingCampaignsHandler(listPublicUpcomingCampaignsUC),
+		DeleteCampaignHandler:              campaignHandler.DeleteCampaignHandler(deleteCampaignUC),
 	}
 
 	createMatchUC := match.NewCreateMatchUC(matchRepo, campaignRepo)

@@ -294,6 +294,71 @@ func TestCountCampaignsByMasterUUID(t *testing.T) {
 	})
 }
 
+func TestDeleteCampaign(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgCampaign.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy_path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "delmaster", "delmaster@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Campaign To Delete"))
+
+		if err := repo.DeleteCampaign(ctx, campaignUUID); err != nil {
+			t.Fatalf("DeleteCampaign() unexpected error: %v", err)
+		}
+
+		_, err := repo.GetCampaignMasterUUID(ctx, campaignUUID)
+		if !errors.Is(err, pgCampaign.ErrCampaignNotFound) {
+			t.Errorf("expected ErrCampaignNotFound after delete, got: %v", err)
+		}
+	})
+
+	t.Run("not_found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		err := repo.DeleteCampaign(ctx, uuid.New())
+		if !errors.Is(err, pgCampaign.ErrCampaignNotFound) {
+			t.Errorf("expected ErrCampaignNotFound, got: %v", err)
+		}
+	})
+
+	t.Run("has_started_match", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "delmaster2", "delmaster2@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Campaign With Started Match"))
+		matchUUIDStr := pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Started Match")
+
+		if _, err := pool.Exec(ctx, `UPDATE matches SET game_start_at = $1 WHERE uuid = $2`, time.Now(), matchUUIDStr); err != nil {
+			t.Fatalf("failed to set game_start_at: %v", err)
+		}
+
+		err := repo.DeleteCampaign(ctx, campaignUUID)
+		if !errors.Is(err, pgCampaign.ErrCampaignNotFound) {
+			t.Errorf("expected ErrCampaignNotFound (campaign has started match), got: %v", err)
+		}
+	})
+
+	t.Run("cascade_unstarted_match", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "delmaster3", "delmaster3@hunter.com", "pass"))
+		campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Campaign With Pending Match"))
+		matchUUIDStr := pgtest.InsertTestMatch(t, pool, masterUUID.String(), campaignUUID.String(), "Pending Match")
+
+		if err := repo.DeleteCampaign(ctx, campaignUUID); err != nil {
+			t.Fatalf("DeleteCampaign() unexpected error: %v", err)
+		}
+
+		var count int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM matches WHERE uuid = $1`, matchUUIDStr).Scan(&count); err != nil {
+			t.Fatalf("failed to check match existence: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("expected match to be cascade deleted, but found %d row(s)", count)
+		}
+	})
+}
+
 func mustParseUUID(t *testing.T, s string) uuid.UUID {
 	t.Helper()
 	id, err := uuid.Parse(s)

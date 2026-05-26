@@ -16,6 +16,7 @@ type Api struct {
 	GetCampaignHandler                 Handler[GetCampaignRequest, GetCampaignResponse]
 	ListCampaignsHandler               Handler[struct{}, ListCampaignsResponse]
 	ListPublicUpcomingCampaignsHandler Handler[struct{}, ListPublicCampaignsResponse]
+	DeleteCampaignHandler              Handler[DeleteCampaignRequest, DeleteCampaignResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -71,4 +72,20 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.ListPublicUpcomingCampaignsHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodDelete,
+		Path:        "/campaigns/{uuid}",
+		Description: "Delete a campaign by UUID",
+		Tags:        []string{"campaigns"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+			http.StatusNotFound,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusNoContent,
+	}, a.DeleteCampaignHandler)
 }
