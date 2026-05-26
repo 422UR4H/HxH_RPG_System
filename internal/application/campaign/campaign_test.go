@@ -338,6 +338,128 @@ func TestListCampaigns(t *testing.T) {
 	}
 }
 
+func TestDeleteCampaignUC(t *testing.T) {
+	masterUUID := uuid.New()
+	otherUUID := uuid.New()
+	campaignUUID := uuid.New()
+	genericErr := errors.New("db error")
+
+	tests := []struct {
+		name    string
+		input   *campaign.DeleteCampaignInput
+		mock    *testutil.MockCampaignRepo
+		wantErr error
+	}{
+		{
+			name: "success",
+			input: &campaign.DeleteCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return masterUUID, nil
+				},
+				DeleteCampaignFn: func(ctx context.Context, id uuid.UUID) error {
+					return nil
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "campaign_not_found",
+			input: &campaign.DeleteCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return uuid.Nil, campaignPg.ErrCampaignNotFound
+				},
+			},
+			wantErr: campaign.ErrCampaignNotFound,
+		},
+		{
+			name: "not_owner",
+			input: &campaign.DeleteCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return otherUUID, nil
+				},
+			},
+			wantErr: campaign.ErrNotCampaignOwner,
+		},
+		{
+			name: "has_started_match",
+			input: &campaign.DeleteCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return masterUUID, nil
+				},
+				DeleteCampaignFn: func(ctx context.Context, id uuid.UUID) error {
+					return campaignPg.ErrCampaignNotFound
+				},
+			},
+			wantErr: campaign.ErrCampaignHasStartedMatch,
+		},
+		{
+			name: "internal_error_on_get",
+			input: &campaign.DeleteCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return uuid.Nil, genericErr
+				},
+			},
+			wantErr: genericErr,
+		},
+		{
+			name: "internal_error_on_delete",
+			input: &campaign.DeleteCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignMasterUUIDFn: func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+					return masterUUID, nil
+				},
+				DeleteCampaignFn: func(ctx context.Context, id uuid.UUID) error {
+					return genericErr
+				},
+			},
+			wantErr: genericErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uc := campaign.NewDeleteCampaignUC(tt.mock)
+			err := uc.Delete(context.Background(), tt.input)
+
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tt.wantErr)
+				}
+				if err.Error() != tt.wantErr.Error() {
+					t.Fatalf("expected error %q, got %q", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestListPublicUpcomingCampaigns(t *testing.T) {
 	userUUID := uuid.New()
 
