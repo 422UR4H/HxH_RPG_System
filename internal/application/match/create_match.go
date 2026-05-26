@@ -2,6 +2,7 @@ package match
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
@@ -62,7 +63,7 @@ func (uc *CreateMatchUC) CreateMatch(
 	}
 
 	c, err := uc.campaignRepo.GetCampaignStoryDates(ctx, input.CampaignUUID)
-	if err == pgCampaign.ErrCampaignNotFound {
+	if errors.Is(err, pgCampaign.ErrCampaignNotFound) {
 		return nil, campaign.ErrCampaignNotFound
 	}
 	if err != nil {

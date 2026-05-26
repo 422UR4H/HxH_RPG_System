@@ -16,8 +16,8 @@ import (
 
 type CreateMatchRequestBody struct {
 	CampaignUUID            uuid.UUID `json:"campaign_uuid" required:"true" doc:"UUID of the campaign this match is based on"`
-	Title                   string    `json:"title" required:"true" maxLength:"32" doc:"Title of the match"`
-	BriefInitialDescription string    `json:"brief_initial_description" maxLength:"64" doc:"Brief description of the match"`
+	Title                   string    `json:"title" required:"true" doc:"Title of the match (5-32 characters)"`
+	BriefInitialDescription string    `json:"brief_initial_description" doc:"Brief description of the match (max 255 characters)"`
 	Description             string    `json:"description" doc:"Full description of the match"`
 	IsPublic                bool      `json:"is_public" default:"true" doc:"If the match is public or private"`
 	GameScheduledAt         string    `json:"game_scheduled_at" required:"true" doc:"Date and time when the game is scheduled (ISO 8601)"`
