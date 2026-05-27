@@ -73,7 +73,7 @@ func (uc *UpdateMatchUC) Update(
 			return nil, ErrMaxTitleLength
 		}
 	}
-	if input.BriefInitialDescription != nil && len(*input.BriefInitialDescription) > 64 {
+	if input.BriefInitialDescription != nil && len(*input.BriefInitialDescription) > 255 {
 		return nil, ErrMaxBriefDescLength
 	}
 	if input.GameScheduledAt != nil {

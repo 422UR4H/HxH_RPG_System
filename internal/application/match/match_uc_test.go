@@ -728,7 +728,7 @@ func TestUpdateMatch(t *testing.T) {
 	})
 
 	t.Run("brief too long", func(t *testing.T) {
-		brief := string(make([]byte, 65))
+		brief := string(make([]byte, 256))
 		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID, BriefInitialDescription: &brief}
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(baseMatch)}
 		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})

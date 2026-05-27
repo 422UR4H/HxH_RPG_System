@@ -13,6 +13,7 @@ var (
 	ErrMaxNameLength      = domain.NewValidationError(errors.New("name cannot exceed 32 characters"))
 	ErrInvalidStartDate   = domain.NewValidationError(errors.New("story start date cannot be empty"))
 	ErrMaxCampaignsLimit  = domain.NewValidationError(errors.New("user cannot have more than 10 campaigns"))
-	ErrMaxBriefDescLength      = domain.NewValidationError(errors.New("brief description cannot exceed 64 characters"))
+	ErrMaxBriefDescLength      = domain.NewValidationError(errors.New("brief description cannot exceed 255 characters"))
+	ErrMaxCallLinkLength       = domain.NewValidationError(errors.New("call link cannot exceed 255 characters"))
 	ErrCampaignHasStartedMatch = domain.NewValidationError(errors.New("campaign has a match that has already started"))
 )

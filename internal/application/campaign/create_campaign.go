@@ -59,6 +59,9 @@ func (uc *CreateCampaignUC) CreateCampaign(
 	if len(input.BriefInitialDescription) > 255 {
 		return nil, ErrMaxBriefDescLength
 	}
+	if len(input.CallLink) > 255 {
+		return nil, ErrMaxCallLinkLength
+	}
 
 	campaignsCount, err := uc.campaignRepo.CountCampaignsByMasterUUID(
 		ctx, input.MasterUUID,
