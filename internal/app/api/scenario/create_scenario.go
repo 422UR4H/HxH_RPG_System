@@ -13,8 +13,8 @@ import (
 )
 
 type CreateScenarioRequestBody struct {
-	Name             string `json:"name" required:"true" maxLength:"32" doc:"Name of the scenario"`
-	BriefDescription string `json:"brief_description" maxLength:"64" doc:"Brief description of the scenario"`
+	Name             string `json:"name" required:"true" doc:"Name of the scenario (5-32 characters)"`
+	BriefDescription string `json:"brief_description" doc:"Brief description of the scenario (max 64 characters)"`
 	Description      string `json:"description" doc:"Full description of the scenario"`
 }
 

@@ -15,8 +15,8 @@ import (
 )
 
 type UpdateMatchRequestBody struct {
-	Title                   *string `json:"title,omitempty" minLength:"5" maxLength:"32" doc:"New title (5-32 chars)"`
-	BriefInitialDescription *string `json:"brief_initial_description,omitempty" maxLength:"64" doc:"New brief description"`
+	Title                   *string `json:"title,omitempty" doc:"New title (5-32 characters)"`
+	BriefInitialDescription *string `json:"brief_initial_description,omitempty" doc:"New brief description (max 255 characters)"`
 	Description             *string `json:"description,omitempty" doc:"New full description"`
 	IsPublic                *bool   `json:"is_public,omitempty" doc:"New public/private flag"`
 	GameScheduledAt         *string `json:"game_scheduled_at,omitempty" doc:"ISO 8601 date-time"`
