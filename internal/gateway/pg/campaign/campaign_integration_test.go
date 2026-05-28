@@ -359,6 +359,105 @@ func TestDeleteCampaign(t *testing.T) {
 	})
 }
 
+func TestGetCampaignForUpdate(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgCampaign.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("not found", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		_, err := repo.GetCampaignForUpdate(ctx, uuid.New())
+		if !errors.Is(err, pgCampaign.ErrCampaignNotFound) {
+			t.Fatalf("expected ErrCampaignNotFound, got %v", err)
+		}
+	})
+
+	t.Run("no started match", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "m_gfu2", "gfu2@test.com", "pass"))
+		camp := newTestCampaign(master, nil, "ForUpdate Campaign")
+		if err := repo.CreateCampaign(ctx, camp); err != nil {
+			t.Fatal(err)
+		}
+		got, err := repo.GetCampaignForUpdate(ctx, camp.UUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.MasterUUID != master {
+			t.Errorf("MasterUUID = %v, want %v", got.MasterUUID, master)
+		}
+		if got.Name != camp.Name {
+			t.Errorf("Name = %q, want %q", got.Name, camp.Name)
+		}
+		if got.HasStartedMatch {
+			t.Error("HasStartedMatch should be false")
+		}
+	})
+
+	t.Run("has started match", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "m_gfu3", "gfu3@test.com", "pass"))
+		campUUID := pgtest.InsertTestCampaign(t, pool, master.String(), "Has Started Match Camp")
+		matchUUID := pgtest.InsertTestMatch(t, pool, master.String(), campUUID, "Match A")
+		_, err := pool.Exec(ctx,
+			`UPDATE matches SET game_start_at = $1 WHERE uuid = $2`, time.Now(), matchUUID)
+		if err != nil {
+			t.Fatalf("failed to start match: %v", err)
+		}
+		campParsedUUID := mustParseUUID(t, campUUID)
+		got, err := repo.GetCampaignForUpdate(ctx, campParsedUUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got.HasStartedMatch {
+			t.Error("HasStartedMatch should be true")
+		}
+	})
+}
+
+func TestUpdateCampaign(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgCampaign.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("happy path", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		master := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "m_upd", "upd@test.com", "pass"))
+		c := newTestCampaign(master, nil, "Before Update")
+		if err := repo.CreateCampaign(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		c.Name = "After Update"
+		c.IsPublic = false
+		c.UpdatedAt = time.Now().Truncate(time.Microsecond)
+
+		if err := repo.UpdateCampaign(ctx, c); err != nil {
+			t.Fatalf("UpdateCampaign() unexpected error: %v", err)
+		}
+		got, err := repo.GetCampaignForUpdate(ctx, c.UUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Name != "After Update" {
+			t.Errorf("Name = %q, want %q", got.Name, "After Update")
+		}
+		if got.IsPublic {
+			t.Error("IsPublic should be false")
+		}
+	})
+
+	t.Run("not found returns ErrCampaignNotFound", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		c := newTestCampaign(uuid.New(), nil, "Ghost")
+		c.UUID = uuid.New()
+		c.UpdatedAt = time.Now()
+		err := repo.UpdateCampaign(ctx, c)
+		if !errors.Is(err, pgCampaign.ErrCampaignNotFound) {
+			t.Fatalf("expected ErrCampaignNotFound, got %v", err)
+		}
+	})
+}
+
 func mustParseUUID(t *testing.T, s string) uuid.UUID {
 	t.Helper()
 	id, err := uuid.Parse(s)
