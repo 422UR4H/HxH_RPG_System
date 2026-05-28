@@ -524,3 +524,299 @@ func TestListPublicUpcomingCampaigns(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateCampaign(t *testing.T) {
+	masterUUID := uuid.New()
+	otherUUID := uuid.New()
+	campaignUUID := uuid.New()
+	now := time.Now()
+
+	baseCtx := func(opts ...func(*campaign.CampaignUpdateContext)) *campaign.CampaignUpdateContext {
+		c := &campaign.CampaignUpdateContext{
+			MasterUUID:              masterUUID,
+			Name:                    "Valid Name",
+			BriefInitialDescription: "Brief",
+			Description:             "Desc",
+			IsPublic:                false,
+			CallLink:                "https://discord.gg/abc",
+			StoryStartAt:            now,
+			HasStartedMatch:         false,
+		}
+		for _, o := range opts {
+			o(c)
+		}
+		return c
+	}
+
+	tests := []struct {
+		name    string
+		input   *campaign.UpdateCampaignInput
+		mock    *testutil.MockCampaignRepo
+		wantErr error
+		check   func(t *testing.T, result *campaignEntity.Campaign)
+	}{
+		{
+			name: "success_full_free_mode",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("New Name"),
+				StoryStartAt: &now,
+				IsPublic:     boolPtr(true),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: nil,
+			check: func(t *testing.T, c *campaignEntity.Campaign) {
+				if c.Name != "New Name" {
+					t.Errorf("Name = %q, want %q", c.Name, "New Name")
+				}
+				if !c.IsPublic {
+					t.Error("IsPublic should be true")
+				}
+			},
+		},
+		{
+			name: "success_partial_always_editable",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				CallLink:     strPtr("https://meet.new"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "success_noop_empty_body",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "not_found",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("X"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return nil, campaignPg.ErrCampaignNotFound
+				},
+			},
+			wantErr: campaign.ErrCampaignNotFound,
+		},
+		{
+			name: "not_owner",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   otherUUID,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: campaign.ErrNotCampaignOwner,
+		},
+		{
+			name: "already_ended",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("X"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					ended := now
+					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.StoryEndAt = &ended }), nil
+				},
+			},
+			wantErr: campaign.ErrCampaignAlreadyEnded,
+		},
+		{
+			name: "locked_name_after_match_start",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("Locked"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
+				},
+			},
+			wantErr: campaign.ErrLockedAfterMatchStart,
+		},
+		{
+			name: "locked_story_start_at_after_match_start",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				StoryStartAt: &now,
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
+				},
+			},
+			wantErr: campaign.ErrLockedAfterMatchStart,
+		},
+		{
+			name: "cannot_regress_story_current_at",
+			input: func() *campaign.UpdateCampaignInput {
+				past := now.AddDate(0, 0, -1)
+				return &campaign.UpdateCampaignInput{
+					CampaignUUID:   campaignUUID,
+					MasterUUID:     masterUUID,
+					StoryCurrentAt: &past,
+				}
+			}(),
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaign.CampaignUpdateContext) {
+						c.HasStartedMatch = true
+						c.StoryCurrentAt = &now
+					}), nil
+				},
+			},
+			wantErr: campaign.ErrCannotRegressStoryCurrentAt,
+		},
+		{
+			name: "story_current_at_null_is_free_in_restricted_mode",
+			input: func() *campaign.UpdateCampaignInput {
+				past := now.AddDate(0, -1, 0)
+				return &campaign.UpdateCampaignInput{
+					CampaignUUID:   campaignUUID,
+					MasterUUID:     masterUUID,
+					StoryCurrentAt: &past,
+				}
+			}(),
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaign.CampaignUpdateContext) {
+						c.HasStartedMatch = true
+						c.StoryCurrentAt = nil
+					}), nil
+				},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "name_too_short",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("ab"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: campaign.ErrMinNameLength,
+		},
+		{
+			name: "name_too_long",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("this name is way too long for the limit"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: campaign.ErrMaxNameLength,
+		},
+		{
+			name: "brief_too_long",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID:            campaignUUID,
+				MasterUUID:              masterUUID,
+				BriefInitialDescription: strPtr(string(make([]byte, 256))),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: campaign.ErrMaxBriefDescLength,
+		},
+		{
+			name: "call_link_too_long",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				CallLink:     strPtr(string(make([]byte, 256))),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: campaign.ErrMaxCallLinkLength,
+		},
+		{
+			name: "repo_error_on_update",
+			input: &campaign.UpdateCampaignInput{
+				CampaignUUID: campaignUUID,
+				MasterUUID:   masterUUID,
+				Name:         strPtr("Valid"),
+			},
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+				UpdateCampaignFn: func(_ context.Context, _ *campaignEntity.Campaign) error {
+					return errors.New("db down")
+				},
+			},
+			wantErr: errors.New("db down"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uc := campaign.NewUpdateCampaignUC(tt.mock)
+			result, err := uc.Update(context.Background(), tt.input)
+
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tt.wantErr)
+				}
+				if err.Error() != tt.wantErr.Error() {
+					t.Fatalf("expected error %q, got %q", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected non-nil campaign")
+			}
+			if tt.check != nil {
+				tt.check(t, result)
+			}
+		})
+	}
+}
+
+func strPtr(s string) *string { return &s }
+func boolPtr(b bool) *bool    { return &b }
