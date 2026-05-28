@@ -17,6 +17,7 @@ type Api struct {
 	ListCampaignsHandler               Handler[struct{}, ListCampaignsResponse]
 	ListPublicUpcomingCampaignsHandler Handler[struct{}, ListPublicCampaignsResponse]
 	DeleteCampaignHandler              Handler[DeleteCampaignRequest, DeleteCampaignResponse]
+	UpdateCampaignHandler              Handler[UpdateCampaignRequest, UpdateCampaignResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -88,4 +89,19 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusNoContent,
 	}, a.DeleteCampaignHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPatch,
+		Path:        "/campaigns/{uuid}",
+		Description: "Update a campaign (master only; name and story_start_at locked after match starts)",
+		Tags:        []string{"campaigns"},
+		Errors: []int{
+			http.StatusNotFound,
+			http.StatusBadRequest,
+			http.StatusForbidden,
+			http.StatusUnauthorized,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+	}, a.UpdateCampaignHandler)
 }
