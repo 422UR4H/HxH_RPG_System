@@ -8,18 +8,6 @@ import (
 )
 
 func (r *Repository) UpdateCampaign(ctx context.Context, c *campaignEntity.Campaign) error {
-	tx, err := r.q.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback(ctx)
-			panic(p)
-		}
-		_ = tx.Rollback(ctx)
-	}()
-
 	const query = `
         UPDATE campaigns SET
             name = $1,
@@ -32,7 +20,7 @@ func (r *Repository) UpdateCampaign(ctx context.Context, c *campaignEntity.Campa
             updated_at = $8
         WHERE uuid = $9
     `
-	result, err := tx.Exec(ctx, query,
+	result, err := r.q.Exec(ctx, query,
 		c.Name, c.BriefInitialDescription, c.Description,
 		c.IsPublic, c.CallLink, c.StoryStartAt, c.StoryCurrentAt,
 		c.UpdatedAt, c.UUID,
@@ -43,5 +31,5 @@ func (r *Repository) UpdateCampaign(ctx context.Context, c *campaignEntity.Campa
 	if result.RowsAffected() == 0 {
 		return ErrCampaignNotFound
 	}
-	return tx.Commit(ctx)
+	return nil
 }

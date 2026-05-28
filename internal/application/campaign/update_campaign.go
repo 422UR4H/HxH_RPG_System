@@ -124,5 +124,6 @@ func buildFromContext(campaignUUID uuid.UUID, d *campaignEntity.CampaignUpdateCo
 		CallLink:                d.CallLink,
 		StoryStartAt:            d.StoryStartAt,
 		StoryCurrentAt:          d.StoryCurrentAt,
+		StoryEndAt:              d.StoryEndAt,
 	}
 }

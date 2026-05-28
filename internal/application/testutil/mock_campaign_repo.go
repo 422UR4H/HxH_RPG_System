@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
@@ -81,7 +82,7 @@ func (m *MockCampaignRepo) GetCampaignForUpdate(ctx context.Context, id uuid.UUI
 	if m.GetCampaignForUpdateFn != nil {
 		return m.GetCampaignForUpdateFn(ctx, id)
 	}
-	return nil, nil
+	return nil, errors.New("campaign not found")
 }
 
 func (m *MockCampaignRepo) UpdateCampaign(ctx context.Context, c *campaignEntity.Campaign) error {
