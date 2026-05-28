@@ -531,8 +531,8 @@ func TestUpdateCampaign(t *testing.T) {
 	campaignUUID := uuid.New()
 	now := time.Now()
 
-	baseCtx := func(opts ...func(*campaign.CampaignUpdateContext)) *campaign.CampaignUpdateContext {
-		c := &campaign.CampaignUpdateContext{
+	baseCtx := func(opts ...func(*campaignEntity.CampaignUpdateContext)) *campaignEntity.CampaignUpdateContext {
+		c := &campaignEntity.CampaignUpdateContext{
 			MasterUUID:              masterUUID,
 			Name:                    "Valid Name",
 			BriefInitialDescription: "Brief",
@@ -565,7 +565,7 @@ func TestUpdateCampaign(t *testing.T) {
 				IsPublic:     boolPtr(true),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -587,8 +587,8 @@ func TestUpdateCampaign(t *testing.T) {
 				CallLink:     strPtr("https://meet.new"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
-					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
 				},
 			},
 			wantErr: nil,
@@ -600,7 +600,7 @@ func TestUpdateCampaign(t *testing.T) {
 				MasterUUID:   masterUUID,
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -614,7 +614,7 @@ func TestUpdateCampaign(t *testing.T) {
 				Name:         strPtr("X"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return nil, campaignPg.ErrCampaignNotFound
 				},
 			},
@@ -627,7 +627,7 @@ func TestUpdateCampaign(t *testing.T) {
 				MasterUUID:   otherUUID,
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -641,9 +641,9 @@ func TestUpdateCampaign(t *testing.T) {
 				Name:         strPtr("X"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					ended := now
-					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.StoryEndAt = &ended }), nil
+					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) { c.StoryEndAt = &ended }), nil
 				},
 			},
 			wantErr: campaign.ErrCampaignAlreadyEnded,
@@ -656,8 +656,8 @@ func TestUpdateCampaign(t *testing.T) {
 				Name:         strPtr("Locked"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
-					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
 				},
 			},
 			wantErr: campaign.ErrLockedAfterMatchStart,
@@ -670,8 +670,8 @@ func TestUpdateCampaign(t *testing.T) {
 				StoryStartAt: &now,
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
-					return baseCtx(func(c *campaign.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) { c.HasStartedMatch = true }), nil
 				},
 			},
 			wantErr: campaign.ErrLockedAfterMatchStart,
@@ -687,8 +687,8 @@ func TestUpdateCampaign(t *testing.T) {
 				}
 			}(),
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
-					return baseCtx(func(c *campaign.CampaignUpdateContext) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) {
 						c.HasStartedMatch = true
 						c.StoryCurrentAt = &now
 					}), nil
@@ -707,8 +707,8 @@ func TestUpdateCampaign(t *testing.T) {
 				}
 			}(),
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
-					return baseCtx(func(c *campaign.CampaignUpdateContext) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) {
 						c.HasStartedMatch = true
 						c.StoryCurrentAt = nil
 					}), nil
@@ -724,7 +724,7 @@ func TestUpdateCampaign(t *testing.T) {
 				Name:         strPtr("ab"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -738,7 +738,7 @@ func TestUpdateCampaign(t *testing.T) {
 				Name:         strPtr("this name is way too long for the limit"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -752,7 +752,7 @@ func TestUpdateCampaign(t *testing.T) {
 				BriefInitialDescription: strPtr(string(make([]byte, 256))),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -766,7 +766,7 @@ func TestUpdateCampaign(t *testing.T) {
 				CallLink:     strPtr(string(make([]byte, 256))),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 			},
@@ -780,7 +780,7 @@ func TestUpdateCampaign(t *testing.T) {
 				Name:         strPtr("Valid"),
 			},
 			mock: &testutil.MockCampaignRepo{
-				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaign.CampaignUpdateContext, error) {
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 					return baseCtx(), nil
 				},
 				UpdateCampaignFn: func(_ context.Context, _ *campaignEntity.Campaign) error {

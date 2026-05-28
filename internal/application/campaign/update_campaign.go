@@ -14,21 +14,6 @@ type IUpdateCampaign interface {
 	Update(ctx context.Context, input *UpdateCampaignInput) (*campaignEntity.Campaign, error)
 }
 
-// CampaignUpdateContext is returned by GetCampaignForUpdate: all editable fields
-// plus validation flags, fetched in a single query.
-type CampaignUpdateContext struct {
-	MasterUUID              uuid.UUID
-	Name                    string
-	BriefInitialDescription string
-	Description             string
-	IsPublic                bool
-	CallLink                string
-	StoryStartAt            time.Time
-	StoryCurrentAt          *time.Time
-	StoryEndAt              *time.Time
-	HasStartedMatch         bool
-}
-
 type UpdateCampaignInput struct {
 	CampaignUUID uuid.UUID
 	MasterUUID   uuid.UUID
@@ -128,7 +113,7 @@ func (uc *UpdateCampaignUC) Update(
 	return c, nil
 }
 
-func buildFromContext(campaignUUID uuid.UUID, d *CampaignUpdateContext) *campaignEntity.Campaign {
+func buildFromContext(campaignUUID uuid.UUID, d *campaignEntity.CampaignUpdateContext) *campaignEntity.Campaign {
 	return &campaignEntity.Campaign{
 		UUID:                    campaignUUID,
 		MasterUUID:              d.MasterUUID,

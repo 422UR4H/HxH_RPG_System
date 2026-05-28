@@ -18,5 +18,5 @@ type IRepository interface {
 	ListPublicUpcomingCampaigns(ctx context.Context, after time.Time, userUUID uuid.UUID) ([]*campaign.PublicSummary, error)
 	DeleteCampaign(ctx context.Context, uuid uuid.UUID) error
 	UpdateCampaign(ctx context.Context, campaign *campaign.Campaign) error
-	GetCampaignForUpdate(ctx context.Context, uuid uuid.UUID) (*CampaignUpdateContext, error)
+	GetCampaignForUpdate(ctx context.Context, uuid uuid.UUID) (*campaign.CampaignUpdateContext, error)
 }

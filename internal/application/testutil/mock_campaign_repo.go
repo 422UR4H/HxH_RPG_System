@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	campaignApp "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/google/uuid"
 )
@@ -18,7 +17,7 @@ type MockCampaignRepo struct {
 	ListCampaignsByMasterUUIDFn   func(ctx context.Context, masterUUID uuid.UUID) ([]*campaignEntity.Summary, error)
 	ListPublicUpcomingCampaignsFn func(ctx context.Context, after time.Time, userUUID uuid.UUID) ([]*campaignEntity.PublicSummary, error)
 	DeleteCampaignFn              func(ctx context.Context, uuid uuid.UUID) error
-	GetCampaignForUpdateFn        func(ctx context.Context, uuid uuid.UUID) (*campaignApp.CampaignUpdateContext, error)
+	GetCampaignForUpdateFn        func(ctx context.Context, uuid uuid.UUID) (*campaignEntity.CampaignUpdateContext, error)
 	UpdateCampaignFn              func(ctx context.Context, c *campaignEntity.Campaign) error
 }
 
@@ -78,7 +77,7 @@ func (m *MockCampaignRepo) DeleteCampaign(ctx context.Context, id uuid.UUID) err
 	return nil
 }
 
-func (m *MockCampaignRepo) GetCampaignForUpdate(ctx context.Context, id uuid.UUID) (*campaignApp.CampaignUpdateContext, error) {
+func (m *MockCampaignRepo) GetCampaignForUpdate(ctx context.Context, id uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
 	if m.GetCampaignForUpdateFn != nil {
 		return m.GetCampaignForUpdateFn(ctx, id)
 	}
