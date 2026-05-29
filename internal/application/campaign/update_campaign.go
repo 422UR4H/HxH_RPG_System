@@ -55,6 +55,9 @@ func (uc *UpdateCampaignUC) Update(
 	if ctxData.HasStartedMatch && (input.Name != nil || input.StoryStartAt != nil) {
 		return nil, ErrLockedAfterMatchStart
 	}
+	if input.StoryCurrentAt != nil && input.StoryCurrentAt.Before(ctxData.StoryStartAt) {
+		return nil, ErrStoryCurrentBeforeStart
+	}
 	if input.StoryCurrentAt != nil && ctxData.StoryCurrentAt != nil &&
 		input.StoryCurrentAt.Before(*ctxData.StoryCurrentAt) {
 		return nil, ErrCannotRegressStoryCurrentAt

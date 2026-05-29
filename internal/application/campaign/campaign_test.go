@@ -679,11 +679,11 @@ func TestUpdateCampaign(t *testing.T) {
 		{
 			name: "cannot_regress_story_current_at",
 			input: func() *campaign.UpdateCampaignInput {
-				past := now.AddDate(0, 0, -1)
+				oneMonthAgo := now.AddDate(0, -1, 0)
 				return &campaign.UpdateCampaignInput{
 					CampaignUUID:   campaignUUID,
 					MasterUUID:     masterUUID,
-					StoryCurrentAt: &past,
+					StoryCurrentAt: &oneMonthAgo,
 				}
 			}(),
 			mock: &testutil.MockCampaignRepo{
@@ -691,6 +691,7 @@ func TestUpdateCampaign(t *testing.T) {
 					return baseCtx(func(c *campaignEntity.CampaignUpdateContext) {
 						c.HasStartedMatch = true
 						c.StoryCurrentAt = &now
+						c.StoryStartAt = now.AddDate(-1, 0, 0) // 1 year ago, before oneMonthAgo
 					}), nil
 				},
 			},
@@ -699,11 +700,11 @@ func TestUpdateCampaign(t *testing.T) {
 		{
 			name: "story_current_at_null_is_free_in_restricted_mode",
 			input: func() *campaign.UpdateCampaignInput {
-				past := now.AddDate(0, -1, 0)
+				future := now.AddDate(0, 1, 0)
 				return &campaign.UpdateCampaignInput{
 					CampaignUUID:   campaignUUID,
 					MasterUUID:     masterUUID,
-					StoryCurrentAt: &past,
+					StoryCurrentAt: &future,
 				}
 			}(),
 			mock: &testutil.MockCampaignRepo{
@@ -715,6 +716,23 @@ func TestUpdateCampaign(t *testing.T) {
 				},
 			},
 			wantErr: nil,
+		},
+		{
+			name: "story_current_at_before_story_start_at",
+			input: func() *campaign.UpdateCampaignInput {
+				before := now.AddDate(0, -1, 0)
+				return &campaign.UpdateCampaignInput{
+					CampaignUUID:   campaignUUID,
+					MasterUUID:     masterUUID,
+					StoryCurrentAt: &before,
+				}
+			}(),
+			mock: &testutil.MockCampaignRepo{
+				GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+					return baseCtx(), nil
+				},
+			},
+			wantErr: campaign.ErrStoryCurrentBeforeStart,
 		},
 		{
 			name: "name_too_short",

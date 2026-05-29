@@ -94,7 +94,8 @@ func UpdateCampaignHandler(
 				return nil, huma.Error403Forbidden(err.Error())
 			case errors.Is(err, campaignUC.ErrCampaignAlreadyEnded),
 				errors.Is(err, campaignUC.ErrLockedAfterMatchStart),
-				errors.Is(err, campaignUC.ErrCannotRegressStoryCurrentAt):
+				errors.Is(err, campaignUC.ErrCannotRegressStoryCurrentAt),
+				errors.Is(err, campaignUC.ErrStoryCurrentBeforeStart):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
