@@ -101,6 +101,26 @@ func TestKickPlayer(t *testing.T) {
 			wantErr:    enrollment.ErrMatchAlreadyStarted,
 		},
 		{
+			name:       "match already finished",
+			matchUUID:  matchUUID,
+			playerUUID: playerUUID,
+			masterUUID: masterUUID,
+			matchMock: &testutil.MockMatchRepo{
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					finishedAt := now.Add(-30 * time.Minute)
+					return &matchEntity.Match{
+						UUID:            matchUUID,
+						MasterUUID:      masterUUID,
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: now,
+						StoryEndAt:      &finishedAt,
+					}, nil
+				},
+			},
+			enrollMock: &testutil.MockEnrollmentRepo{},
+			wantErr:    enrollment.ErrMatchAlreadyFinished,
+		},
+		{
 			name:       "cannot kick self (master)",
 			matchUUID:  matchUUID,
 			playerUUID: masterUUID,

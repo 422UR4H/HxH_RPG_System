@@ -198,6 +198,58 @@ func TestEnrollCharacterSheet(t *testing.T) {
 			wantErr: enrollment.ErrCharacterNotInCampaign,
 		},
 		{
+			name:       "match already started",
+			matchUUID:  matchUUID,
+			sheetUUID:  sheetUUID,
+			playerUUID: playerUUID,
+			enrollMock: &testutil.MockEnrollmentRepo{},
+			matchMock: &testutil.MockMatchRepo{
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					gameStartAt := time.Now()
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+						GameStartAt:     &gameStartAt,
+					}, nil
+				},
+			},
+			sheetMock: &testutil.MockCharacterSheetRepo{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
+						PlayerUUID:   &playerUUID,
+						CampaignUUID: &campaignUUID,
+					}, nil
+				},
+			},
+			wantErr: enrollment.ErrMatchAlreadyStarted,
+		},
+		{
+			name:       "match already finished",
+			matchUUID:  matchUUID,
+			sheetUUID:  sheetUUID,
+			playerUUID: playerUUID,
+			enrollMock: &testutil.MockEnrollmentRepo{},
+			matchMock: &testutil.MockMatchRepo{
+				GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
+					storyEndAt := time.Now()
+					return &matchEntity.Match{
+						CampaignUUID:    campaignUUID,
+						GameScheduledAt: time.Now(),
+						StoryEndAt:      &storyEndAt,
+					}, nil
+				},
+			},
+			sheetMock: &testutil.MockCharacterSheetRepo{
+				GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+					return csEntity.RelationshipUUIDs{
+						PlayerUUID:   &playerUUID,
+						CampaignUUID: &campaignUUID,
+					}, nil
+				},
+			},
+			wantErr: enrollment.ErrMatchAlreadyFinished,
+		},
+		{
 			name:       "repo error on relationship fetch",
 			matchUUID:  matchUUID,
 			sheetUUID:  sheetUUID,
