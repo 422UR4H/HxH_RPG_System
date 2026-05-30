@@ -60,3 +60,11 @@ type mockDeleteCampaign struct {
 func (m *mockDeleteCampaign) Delete(ctx context.Context, input *campaign.DeleteCampaignInput) error {
 	return m.fn(ctx, input)
 }
+
+type mockUpdateCampaign struct {
+	fn func(ctx context.Context, input *campaign.UpdateCampaignInput) (*campaignEntity.Campaign, error)
+}
+
+func (m *mockUpdateCampaign) Update(ctx context.Context, input *campaign.UpdateCampaignInput) (*campaignEntity.Campaign, error) {
+	return m.fn(ctx, input)
+}

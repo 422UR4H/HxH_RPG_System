@@ -16,4 +16,8 @@ var (
 	ErrMaxBriefDescLength      = domain.NewValidationError(errors.New("brief description cannot exceed 255 characters"))
 	ErrMaxCallLinkLength       = domain.NewValidationError(errors.New("call link cannot exceed 255 characters"))
 	ErrCampaignHasStartedMatch = domain.NewValidationError(errors.New("campaign has a match that has already started"))
+	ErrCampaignAlreadyEnded        = domain.NewValidationError(errors.New("campaign has already ended"))
+	ErrLockedAfterMatchStart       = domain.NewValidationError(errors.New("name and story_start_at cannot be changed after a match has started"))
+	ErrCannotRegressStoryCurrentAt = domain.NewValidationError(errors.New("story_current_at cannot be set to a date earlier than the current value"))
+	ErrStoryCurrentBeforeStart     = domain.NewValidationError(errors.New("story_current_at cannot be before story_start_at"))
 )
