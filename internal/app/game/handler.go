@@ -126,8 +126,12 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		room, ok := h.hub.GetRoom(matchUUID)
 		if !ok {
 			msg := NewServerMessage(MsgTypeLobbyNotOpen, struct{}{})
-			data, _ := json.Marshal(msg)
-			_ = conn.WriteMessage(websocket.TextMessage, data)
+			data, err := json.Marshal(msg)
+			if err != nil {
+				log.Printf("failed to marshal lobby_not_open: %v", err)
+			} else if wErr := conn.WriteMessage(websocket.TextMessage, data); wErr != nil {
+				log.Printf("lobby_not_open write failed: %v", wErr)
+			}
 			_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4001, "lobby not open"))
 			conn.Close()
 			return

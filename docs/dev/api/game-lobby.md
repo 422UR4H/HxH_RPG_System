@@ -24,7 +24,7 @@ Sent to a participant who tries to connect before the master has opened the lobb
 { "type": "lobby_not_open", "payload": "{}" }
 ```
 
-The server closes the connection with code 4001 immediately after.
+The server immediately follows with a WebSocket close frame (code 4001, reason: "lobby not open") and closes the connection.
 
 ### Client → Server
 
