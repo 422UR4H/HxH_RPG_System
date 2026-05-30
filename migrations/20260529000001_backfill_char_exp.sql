@@ -1,7 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
--- Corrective backfill: each exp column contributes to CharacterExp.exp.points
--- according to the cascade multiplier defined by the domain's wrap() function.
+-- Backfill char_exp for character sheets created before the self-heal mechanism
+-- (20260519000000_add_char_exp_to_character_sheets.sql added char_exp with DEFAULT 0).
+-- Each exp column contributes to char_exp according to the cascade multiplier
+-- defined by the domain's wrap() function:
 --
 -- Mental attrs (PrimaryAttribute → MentalsAbility → CharacterExp): ×1
 -- Physical skills via PrimaryAttribute (attr→physAbility + physSkills→skillsAbility): ×2
@@ -10,8 +12,7 @@
 --   Flexibility-based: acrobatics, evasion, sneak
 --   Sense-based:      vision, hearing, smell, tact, taste
 -- Physical skills via MiddleAttribute (lenAttrs=2):
---   MiddleAttribute divides exp by 2 before propagating to each of its 2 primary attrs.
---   Per group: (sum/2)*2 via attrs + sum/2 via physSkills = floor(groupSum/2)*3
+--   Per group: floor(groupSum/2)*3
 --   Strength-based (Resistance+Agility):   push, grab, carry
 --   Celerity-based (Agility+Flexibility):  legerity, repel, feint
 --   Dexterity-based (Flexibility+Sense):   reflex, accuracy, stealth
@@ -20,7 +21,10 @@
 -- Spiritual categories (hatsu→conscienceNen→spiritualsAbility→CharacterExp): ×1
 -- Proficiencies (physAbility→CharacterExp): ×1
 -- Excluded: talent_exp (separate system), nen/focus/will_power/aura_control/aop (not applied in wrap).
-UPDATE character_sheets SET exp_points = (
+--
+-- Only updates rows where char_exp is still 0 to avoid overwriting values already
+-- set correctly by create/update or the self-heal mechanism.
+UPDATE character_sheets SET char_exp = (
     -- Mental attributes (×1)
     COALESCE(resilience_exp,     0) + COALESCE(adaptability_exp,    0) +
     COALESCE(weighting_exp,      0) + COALESCE(creativity_exp,      0) +
@@ -56,10 +60,11 @@ UPDATE character_sheets SET exp_points = (
          WHERE p.character_sheet_uuid = character_sheets.uuid),
         0
     )
-);
+)
+WHERE char_exp = 0;
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-UPDATE character_sheets SET exp_points = 0;
+UPDATE character_sheets SET char_exp = 0;
 -- +goose StatementEnd

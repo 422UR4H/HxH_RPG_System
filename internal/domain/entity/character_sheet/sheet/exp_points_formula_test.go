@@ -1,8 +1,8 @@
 package sheet_test
 
 // TestExpPointsFormula_* verifies that the SQL backfill formula in
-// migrations/20260529000002_fix_exp_points_backfill.sql produces exactly the
-// same exp_points value that the domain computes via wrap().
+// migrations/20260529000001_backfill_char_exp.sql produces exactly the
+// same accumulated exp that the domain computes via wrap().
 //
 // If any of these tests fail after a domain change, the SQL migration formula
 // MUST be updated to match the new cascade math.
