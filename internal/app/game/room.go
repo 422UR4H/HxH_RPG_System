@@ -294,6 +294,13 @@ func (r *Room) CloseLobby(masterUUID uuid.UUID) error {
 		return ErrNotMaster
 	}
 
+	r.mu.RLock()
+	state := r.state
+	r.mu.RUnlock()
+	if state != RoomStateLobby {
+		return ErrAlreadyPlaying // room is not in lobby state
+	}
+
 	msg := NewServerMessage(MsgTypeLobbyClosed, struct{}{})
 	data, _ := json.Marshal(msg)
 

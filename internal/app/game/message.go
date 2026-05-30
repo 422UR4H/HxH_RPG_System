@@ -50,7 +50,8 @@ const (
 
 	// Server → Client (lobby lifecycle)
 	MsgTypeLobbyClosed  MessageType = "lobby_closed"   // master cancelled the lobby
-	MsgTypeLobbyNotOpen MessageType = "lobby_not_open" // room does not exist for this participant
+	// MsgTypeLobbyNotOpen is sent by handler.go when a participant tries to connect before the master opens the lobby
+	MsgTypeLobbyNotOpen MessageType = "lobby_not_open"
 
 	// Client → Server (lobby lifecycle)
 	MsgTypeCancelLobby MessageType = "cancel_lobby" // master requests lobby cancellation
