@@ -544,6 +544,11 @@ func TestMasterReceivesLobbyClosed(t *testing.T) {
 	if received.Type != game.MsgTypeLobbyClosed {
 		t.Errorf("expected lobby_closed for player, got %s", received.Type)
 	}
+
+	masterReceived := readMessage(t, masterConn)
+	if masterReceived.Type != game.MsgTypeLobbyClosed {
+		t.Errorf("expected master to get lobby_closed, got %s", masterReceived.Type)
+	}
 }
 
 func TestPlayerCannotCancelLobby(t *testing.T) {
