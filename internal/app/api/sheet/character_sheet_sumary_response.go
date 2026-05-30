@@ -83,7 +83,7 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		Birthday:       sheet.Birthday.Format("2006-01-02"),
 		CategoryName:   sheet.CategoryName,
 		CurrHexValue:   sheet.CurrHexValue,
-		Level:         sheet.Level,
+		Level:         charExpTable.GetLvlByExp(sheet.CharExp),
 		Points:        sheet.Points,
 		CurrExp:       deriveCurrExp(sheet.CharExp),
 		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp),
