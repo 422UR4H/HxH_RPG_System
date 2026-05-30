@@ -289,6 +289,27 @@ func (r *Room) KickPlayer(masterUUID uuid.UUID, playerUUID uuid.UUID) error {
 	return nil
 }
 
+func (r *Room) CloseLobby(masterUUID uuid.UUID) error {
+	if !r.IsMaster(masterUUID) {
+		return ErrNotMaster
+	}
+
+	msg := NewServerMessage(MsgTypeLobbyClosed, struct{}{})
+	data, _ := json.Marshal(msg)
+
+	r.mu.RLock()
+	for _, c := range r.clients {
+		select {
+		case c.send <- data:
+		default:
+		}
+	}
+	r.mu.RUnlock()
+
+	r.Stop()
+	return nil
+}
+
 func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	var incoming Message
 	if err := json.Unmarshal(rawMsg, &incoming); err != nil {
@@ -491,6 +512,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+
+	case MsgTypeCancelLobby:
+		if err := r.CloseLobby(client.userUUID); err != nil {
+			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
+		}
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
