@@ -269,6 +269,13 @@ func TestPlayerCanConnect(t *testing.T) {
 	defer server.Close()
 	defer hub.Stop()
 
+	// master must open the lobby first
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close() //nolint:errcheck
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
 	conn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer conn.Close() //nolint:errcheck
 
@@ -363,9 +370,16 @@ func TestPlayerCannotStartMatch(t *testing.T) {
 	defer server.Close()
 	defer hub.Stop()
 
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close() //nolint:errcheck
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
+	_ = readMessage(t, masterConn) // player_joined
 
 	startMsg := game.Message{
 		Type:    game.MsgTypeStartMatch,
@@ -429,9 +443,16 @@ func TestPlayerCannotKick(t *testing.T) {
 	defer server.Close()
 	defer hub.Stop()
 
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close() //nolint:errcheck
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
+	_ = readMessage(t, masterConn) // player_joined
 
 	kickMsg := game.Message{
 		Type:    game.MsgTypeKickPlayer,
@@ -440,6 +461,117 @@ func TestPlayerCannotKick(t *testing.T) {
 	data, _ := json.Marshal(kickMsg)
 	if err := playerConn.WriteMessage(websocket.TextMessage, data); err != nil {
 		t.Fatalf("failed to send kick_player: %v", err)
+	}
+
+	received := readMessage(t, playerConn)
+	if received.Type != game.MsgTypeError {
+		t.Errorf("expected error, got %s", received.Type)
+	}
+}
+
+func TestPlayerGetsLobbyNotOpenWhenNoRoom(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	// player connects without master having opened the lobby first
+	conn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer conn.Close() //nolint:errcheck
+
+	msg := readMessage(t, conn)
+	if msg.Type != game.MsgTypeLobbyNotOpen {
+		t.Errorf("expected lobby_not_open, got %s", msg.Type)
+	}
+}
+
+func TestPlayerCanConnectAfterMasterOpensLobby(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	// master opens lobby first
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close() //nolint:errcheck
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
+	// now player can connect
+	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer playerConn.Close() //nolint:errcheck
+
+	msg := readMessage(t, playerConn)
+	if msg.Type != game.MsgTypeRoomState {
+		t.Errorf("expected room_state, got %s", msg.Type)
+	}
+}
+
+func TestMasterReceivesLobbyClosed(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close() //nolint:errcheck
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
+	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer playerConn.Close() //nolint:errcheck
+	_ = readMessage(t, playerConn) // room_state
+	_ = readMessage(t, masterConn) // player_joined
+
+	cancelMsg := game.Message{
+		Type:    game.MsgTypeCancelLobby,
+		Payload: json.RawMessage(`{}`),
+	}
+	data, _ := json.Marshal(cancelMsg)
+	if err := masterConn.WriteMessage(websocket.TextMessage, data); err != nil {
+		t.Fatalf("failed to send cancel_lobby: %v", err)
+	}
+
+	received := readMessage(t, playerConn)
+	if received.Type != game.MsgTypeLobbyClosed {
+		t.Errorf("expected lobby_closed for player, got %s", received.Type)
+	}
+}
+
+func TestPlayerCannotCancelLobby(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	masterConn := connectWS(t, server.URL, masterUUID, matchUUID)
+	defer masterConn.Close() //nolint:errcheck
+	_ = readMessage(t, masterConn) // room_state
+
+	time.Sleep(50 * time.Millisecond)
+
+	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer playerConn.Close() //nolint:errcheck
+	_ = readMessage(t, playerConn) // room_state
+	_ = readMessage(t, masterConn) // player_joined
+
+	cancelMsg := game.Message{
+		Type:    game.MsgTypeCancelLobby,
+		Payload: json.RawMessage(`{}`),
+	}
+	data, _ := json.Marshal(cancelMsg)
+	if err := playerConn.WriteMessage(websocket.TextMessage, data); err != nil {
+		t.Fatalf("failed to send cancel_lobby: %v", err)
 	}
 
 	received := readMessage(t, playerConn)

@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -119,6 +120,23 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	nickname := r.URL.Query().Get("nickname")
 	if nickname == "" {
 		nickname = userUUID.String()[:8]
+	}
+
+	if !isMaster {
+		room, ok := h.hub.GetRoom(matchUUID)
+		if !ok {
+			msg := NewServerMessage(MsgTypeLobbyNotOpen, struct{}{})
+			data, _ := json.Marshal(msg)
+			_ = conn.WriteMessage(websocket.TextMessage, data)
+			_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4001, "lobby not open"))
+			conn.Close()
+			return
+		}
+		client := NewClient(userUUID, conn, nickname)
+		room.Register(client)
+		go client.WritePump()
+		go client.ReadPump()
+		return
 	}
 
 	room := h.hub.GetOrCreateRoom(
