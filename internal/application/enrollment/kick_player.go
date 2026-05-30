@@ -48,6 +48,9 @@ func (uc *KickPlayerUC) Kick(
 	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
+	if match.StoryEndAt != nil {
+		return ErrMatchAlreadyFinished
+	}
 
 	err = uc.repo.RejectEnrollmentByPlayerAndMatch(ctx, playerUUID, matchUUID)
 	if err != nil {

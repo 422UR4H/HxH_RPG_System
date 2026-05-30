@@ -49,7 +49,6 @@ func (uc *RejectEnrollmentUC) Reject(
 		return nil
 	}
 
-	// TODO: check if match has already started (temporal guard)
 	match, err := uc.matchRepo.GetMatch(ctx, matchUUID)
 	if err == matchPg.ErrMatchNotFound {
 		return matchDomain.ErrMatchNotFound
