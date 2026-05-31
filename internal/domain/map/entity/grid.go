@@ -1,12 +1,12 @@
 package entity
 
-type GridKind  string
+type GridKind string
 type LineStyle string
 
 const (
-	GridKindSquare GridKind  = "square"
-	GridKindHex    GridKind  = "hex"
-	LineStyleSolid LineStyle = "solid"
+	GridKindSquare  GridKind  = "square"
+	GridKindHex     GridKind  = "hex"
+	LineStyleSolid  LineStyle = "solid"
 	LineStyleDashed LineStyle = "dashed"
 )
 
