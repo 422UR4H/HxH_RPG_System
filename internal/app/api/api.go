@@ -26,6 +26,7 @@ type Api struct {
 	MatchHandler          IApi
 	SubmissionHandler     IApi
 	EnrollmentHandler     IApi
+	MapHandler            IApi
 	UploadHandler         IApi
 	AuthHandler           *auth.AuthHandler
 	Logger                *zap.Logger
@@ -47,6 +48,7 @@ func (a *Api) Routes(r *chi.Mux, authMiddleware func(ctx huma.Context, next func
 	a.MatchHandler.RegisterRoutes(r, api, a.Logger)
 	a.SubmissionHandler.RegisterRoutes(r, api, a.Logger)
 	a.EnrollmentHandler.RegisterRoutes(r, api, a.Logger)
+	a.MapHandler.RegisterRoutes(r, api, a.Logger)
 	a.UploadHandler.RegisterRoutes(r, api, a.Logger)
 
 	return api
