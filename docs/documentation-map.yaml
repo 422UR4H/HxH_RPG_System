@@ -331,6 +331,13 @@ mappings:
     game_docs: []
     notes: API entrypoint — usually no doc impact unless adding new routes
 
+  # ─── Map: REST API ───
+  - code_path: internal/app/api/map/
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: Map REST surface — create/list/get/update/delete
+
   # ─── Match: REST API ───
   - code_path: internal/app/api/match/
     dev_docs:
