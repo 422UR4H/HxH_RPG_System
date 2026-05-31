@@ -31,16 +31,16 @@ func NewCreateMapUC(repo IRepository, campaignRepo campaignApp.IRepository) *Cre
 }
 
 func (uc *CreateMapUC) CreateMap(ctx context.Context, input *CreateMapInput) (*entity.TacticalMap, error) {
-	if err := service.ValidateMap(input.Name, entity.DefaultGrid()); err != nil {
-		return nil, err
-	}
-
 	masterID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, input.CampaignID)
 	if err != nil {
 		return nil, err
 	}
 	if masterID != input.RequesterID {
 		return nil, ErrNotMapMaster
+	}
+
+	if err := service.ValidateMap(input.Name, entity.DefaultGrid()); err != nil {
+		return nil, err
 	}
 
 	m := entity.NewTacticalMap(input.CampaignID, input.Name, input.Description)

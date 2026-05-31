@@ -12,7 +12,7 @@ import (
 )
 
 type IGetMap interface {
-	GetMap(ctx context.Context, requesterID, mapID uuid.UUID) (*entity.TacticalMap, error)
+	GetMap(ctx context.Context, mapID uuid.UUID) (*entity.TacticalMap, error)
 }
 
 type GetMapUC struct {
@@ -24,7 +24,7 @@ func NewGetMapUC(repo IRepository, campaignRepo campaignApp.IRepository) *GetMap
 	return &GetMapUC{repo: repo, campaignRepo: campaignRepo}
 }
 
-func (uc *GetMapUC) GetMap(ctx context.Context, requesterID, mapID uuid.UUID) (*entity.TacticalMap, error) {
+func (uc *GetMapUC) GetMap(ctx context.Context, mapID uuid.UUID) (*entity.TacticalMap, error) {
 	m, err := uc.repo.GetMap(ctx, mapID)
 	if err != nil {
 		if errors.Is(err, pgmap.ErrMapNotFound) {
