@@ -308,10 +308,20 @@ mappings:
     dev_docs:
       - path: docs/dev/websocket.md
         confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: possibly_affected
     game_docs:
       - path: docs/game/partidas.md
         confidence: possibly_affected
     notes: Hub/Room/Client pattern, real-time communication
+
+  # ─── Game Server: Lobby WS API ───
+  - code_path: internal/app/game/room.go
+    dev_docs:
+      - path: docs/dev/api/game-lobby.md
+        confidence: directly_affected
+    game_docs: []
+    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open)
 
   # ─── REST API ───
   - code_path: cmd/api/

@@ -54,7 +54,7 @@ func (h *Hub) GetOrCreateRoom(
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if room, ok := h.rooms[matchUUID]; ok {
+	if room, ok := h.rooms[matchUUID]; ok && room.GetState() != RoomStateClosed {
 		return room
 	}
 
@@ -74,6 +74,9 @@ func (h *Hub) GetRoom(matchUUID uuid.UUID) (*Room, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	room, ok := h.rooms[matchUUID]
+	if !ok || room.GetState() == RoomStateClosed {
+		return nil, false
+	}
 	return room, ok
 }
 

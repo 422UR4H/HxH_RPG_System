@@ -2,9 +2,11 @@ package game
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
@@ -119,6 +121,39 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	nickname := r.URL.Query().Get("nickname")
 	if nickname == "" {
 		nickname = userUUID.String()[:8]
+	}
+
+	if !isMaster {
+		room, ok := h.hub.GetRoom(matchUUID)
+		if !ok {
+			msg := NewServerMessage(MsgTypeLobbyNotOpen, struct{}{})
+			data, err := json.Marshal(msg)
+			if err != nil {
+				log.Printf("failed to marshal lobby_not_open: %v", err)
+			} else if wErr := conn.WriteMessage(websocket.TextMessage, data); wErr != nil {
+				log.Printf("lobby_not_open write failed: %v", wErr)
+			}
+			_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4001, "lobby not open"))
+			// Drain in a separate goroutine so the HTTP handler returns immediately
+			// while the close handshake completes. Without this, conn.Close() may
+			// send a TCP RST before the browser receives the text frame above,
+			// causing onclose to fire with code 1006 instead of 4001.
+			go func() {
+				_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+				for {
+					if _, _, err := conn.ReadMessage(); err != nil {
+						break
+					}
+				}
+				_ = conn.Close()
+			}()
+			return
+		}
+		client := NewClient(userUUID, conn, nickname)
+		room.Register(client)
+		go client.WritePump()
+		go client.ReadPump()
+		return
 	}
 
 	room := h.hub.GetOrCreateRoom(
