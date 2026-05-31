@@ -28,6 +28,7 @@ COMMIT;
 -- +goose StatementBegin
 BEGIN;
 
+DROP INDEX IF EXISTS idx_maps_campaign_uuid;
 DROP TABLE IF EXISTS maps;
 
 COMMIT;
