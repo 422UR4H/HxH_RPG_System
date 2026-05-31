@@ -487,6 +487,39 @@ func TestPlayerGetsLobbyNotOpenWhenNoRoom(t *testing.T) {
 	}
 }
 
+func TestLobbyNotOpenTextFrameArrivesBeforeCloseFrame(t *testing.T) {
+	// Regression: conn.Close() was called immediately after the close frame,
+	// which could send a TCP RST before the browser processed the text frame.
+	// The goroutine drain in handler.go ensures the text frame is delivered first.
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	matchUUID := uuid.New()
+	server, hub := setupTestServer(masterUUID, true)
+	defer server.Close()
+	defer hub.Stop()
+
+	conn := connectWS(t, server.URL, playerUUID, matchUUID)
+	defer conn.Close() //nolint:errcheck
+
+	// The FIRST thing received must be the lobby_not_open text frame,
+	// not a close frame (which would be delivered as an error from ReadMessage).
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second)) //nolint:errcheck
+	msgType, data, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("expected lobby_not_open text frame first, got read error: %v", err)
+	}
+	if msgType != websocket.TextMessage {
+		t.Errorf("expected text frame first, got frame type %d", msgType)
+	}
+	var msg game.Message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("failed to unmarshal first message: %v", err)
+	}
+	if msg.Type != game.MsgTypeLobbyNotOpen {
+		t.Errorf("expected lobby_not_open in text frame, got %s", msg.Type)
+	}
+}
+
 func TestPlayerCanConnectAfterMasterOpensLobby(t *testing.T) {
 	masterUUID := uuid.New()
 	playerUUID := uuid.New()
