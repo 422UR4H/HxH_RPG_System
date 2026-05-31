@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func newTestMap(campaignID, userID uuid.UUID, name string) *entity.TacticalMap {
+func newTestMap(campaignID uuid.UUID, name string) *entity.TacticalMap {
 	now := time.Now().UTC()
 	return &entity.TacticalMap{
 		ID:          uuid.New(),
@@ -42,7 +42,7 @@ func TestCreateMapHandler_Success(t *testing.T) {
 	_, api := humatest.New(t)
 
 	mock := &mockCreateMap{
-		result: newTestMap(campaignID, userID, mapName),
+		result: newTestMap(campaignID, mapName),
 		err:    nil,
 	}
 	handler := mapapi.CreateMapHandler(mock)
