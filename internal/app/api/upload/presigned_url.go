@@ -20,8 +20,9 @@ type IR2Client interface {
 
 // PresignedURLRequestBody carries the JSON body of the presigned-URL request.
 type PresignedURLRequestBody struct {
-	FileType  string `json:"file_type" doc:"'avatar' or 'cover'"`
+	FileType  string `json:"file_type" doc:"'avatar', 'cover', or 'map_bg'"`
 	SheetUUID string `json:"sheet_uuid"`
+	MapUUID   string `json:"map_uuid,omitempty"`
 }
 
 // PresignedURLRequest is the huma input type for the presigned-URL endpoint.
@@ -53,19 +54,26 @@ func PresignedURLHandler(
 		}
 
 		fileType := req.Body.FileType
-		if fileType != "avatar" && fileType != "cover" {
-			return nil, huma.Error422UnprocessableEntity("file_type must be 'avatar' or 'cover'")
+		var key string
+		switch fileType {
+		case "avatar", "cover":
+			sheetUUID, err := uuid.Parse(req.Body.SheetUUID)
+			if err != nil {
+				return nil, huma.Error400BadRequest("invalid sheet_uuid")
+			}
+			key = fileType + "/" + sheetUUID.String() + ".webp"
+		case "map_bg":
+			mapUUID, err := uuid.Parse(req.Body.MapUUID)
+			if err != nil {
+				return nil, huma.Error400BadRequest("invalid map_uuid")
+			}
+			key = "map_bg/" + mapUUID.String() + ".webp"
+		default:
+			return nil, huma.Error422UnprocessableEntity("file_type must be 'avatar', 'cover', or 'map_bg'")
 		}
-
-		sheetUUID, err := uuid.Parse(req.Body.SheetUUID)
-		if err != nil {
-			return nil, huma.Error400BadRequest("invalid sheet_uuid")
-		}
-
-		key := fileType + "/" + sheetUUID.String() + ".webp"
 		result, err := r2Client.NewPresignedPutURL(ctx, key, 5*time.Minute)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, huma.Error500InternalServerError("failed to generate upload URL")
 		}
 
 		return &PresignedURLResponse{

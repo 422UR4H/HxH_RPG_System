@@ -2,6 +2,7 @@ package upload_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -55,5 +56,52 @@ func TestPresignedURLHandler_ValidRequest(t *testing.T) {
 	}
 	if resp.Body.UploadURL != mock.uploadURL {
 		t.Errorf("unexpected upload_url: %s", resp.Body.UploadURL)
+	}
+}
+
+func TestPresignedURLHandler_MapBg(t *testing.T) {
+	mapUUID := uuid.New()
+	mock := &mockR2Client{
+		uploadURL: "https://r2.example.com/map_bg/" + mapUUID.String() + ".webp?sig=x",
+		publicURL: "https://pub.r2.dev/map_bg/" + mapUUID.String() + ".webp",
+	}
+	handler := upload.PresignedURLHandler(mock)
+
+	req := &upload.PresignedURLRequest{
+		Body: upload.PresignedURLRequestBody{FileType: "map_bg", MapUUID: mapUUID.String()},
+	}
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	resp, err := handler(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Body.PublicURL != mock.publicURL {
+		t.Errorf("unexpected public_url: %s", resp.Body.PublicURL)
+	}
+}
+
+func TestPresignedURLHandler_MapBg_InvalidUUID(t *testing.T) {
+	mock := &mockR2Client{}
+	handler := upload.PresignedURLHandler(mock)
+	req := &upload.PresignedURLRequest{
+		Body: upload.PresignedURLRequestBody{FileType: "map_bg", MapUUID: "not-a-uuid"},
+	}
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	_, err := handler(ctx, req)
+	if err == nil {
+		t.Fatal("expected error for invalid map_uuid, got nil")
+	}
+}
+
+func TestPresignedURLHandler_R2Error(t *testing.T) {
+	mock := &mockR2Client{err: errors.New("storage unavailable")}
+	handler := upload.PresignedURLHandler(mock)
+	req := &upload.PresignedURLRequest{
+		Body: upload.PresignedURLRequestBody{FileType: "avatar", SheetUUID: uuid.New().String()},
+	}
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	_, err := handler(ctx, req)
+	if err == nil {
+		t.Fatal("expected error when r2 client fails, got nil")
 	}
 }
