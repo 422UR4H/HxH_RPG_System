@@ -15,17 +15,17 @@ type Round struct {
 	turns         []*turn.Turn
 	masterActions []action.MasterAction //nolint:unused // WIP: match system under development // think more about this field and its usage
 	events        []GameEvent
-	coast         *int       //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
+	coast         *int //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
 	createdAt     time.Time
 	finishedAt    *time.Time
 }
 
 func NewRound(mode enum.RoundMode) *Round {
 	return &Round{
-		id:     uuid.New(),
-		mode:   mode,
-		turns:  []*turn.Turn{},
-		events: []GameEvent{},
+		id:        uuid.New(),
+		mode:      mode,
+		turns:     []*turn.Turn{},
+		events:    []GameEvent{},
 		createdAt: time.Now(),
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	campaignApp "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	pgmap "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type UpdateMapInput struct {
 	MapID       uuid.UUID
 	Name        string
 	Description string
+	Grid        *entity.GridShape
 }
 
 type UpdateMapUC struct {
@@ -48,11 +50,16 @@ func (uc *UpdateMapUC) UpdateMap(ctx context.Context, input *UpdateMapInput) err
 		return ErrNotMapMaster
 	}
 
-	if err := service.ValidateMap(input.Name, m.Grid); err != nil {
+	grid := m.Grid
+	if input.Grid != nil {
+		grid = *input.Grid
+	}
+	if err := service.ValidateMap(input.Name, grid); err != nil {
 		return err
 	}
 
 	m.Name = input.Name
 	m.Description = input.Description
+	m.Grid = grid
 	return uc.repo.UpdateMap(ctx, m)
 }

@@ -8,13 +8,15 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
+	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
 type CreateMapRequestBody struct {
-	Name        string `json:"name" required:"true" doc:"Name of the map"`
-	Description string `json:"description" required:"false" doc:"Description of the map"`
+	Name        string             `json:"name" required:"true" doc:"Name of the map"`
+	Description string             `json:"description" required:"false" doc:"Description of the map"`
+	Grid        *entity.GridShape  `json:"grid" required:"false" doc:"Grid configuration; defaults to 25x25 64px if omitted"`
 }
 
 type CreateMapRequest struct {
@@ -42,6 +44,7 @@ func CreateMapHandler(uc mapuc.ICreateMap) func(context.Context, *CreateMapReque
 			CampaignID:  req.CampaignID,
 			Name:        req.Body.Name,
 			Description: req.Body.Description,
+			Grid:        req.Body.Grid,
 		})
 		if err != nil {
 			switch {

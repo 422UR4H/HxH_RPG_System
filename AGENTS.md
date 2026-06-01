@@ -68,7 +68,7 @@ rtk gh run view <run-id> --log-failed         # failure logs
 # Local (when needed):
 go test ./...                                         # all tests
 go test -tags=integration ./internal/gateway/pg/...   # integration tests
-make build / make run-dev
+make build / make dev-api / make dev-game   # dev-* usa air (hot reload); run-dev sem hot reload
 make migrate-up / migrate-down / migrate-create name=X
 ```
 

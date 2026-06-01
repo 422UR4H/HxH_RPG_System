@@ -8,13 +8,15 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
+	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
 type UpdateMapRequestBody struct {
-	Name        string `json:"name" required:"true"`
-	Description string `json:"description" required:"false"`
+	Name        string            `json:"name" required:"true"`
+	Description string            `json:"description" required:"false"`
+	Grid        *entity.GridShape `json:"grid" required:"false" doc:"Grid configuration; keeps existing grid if omitted"`
 }
 
 type UpdateMapRequest struct {
@@ -38,6 +40,7 @@ func UpdateMapHandler(uc mapuc.IUpdateMap) func(context.Context, *UpdateMapReque
 			MapID:       req.MapID,
 			Name:        req.Body.Name,
 			Description: req.Body.Description,
+			Grid:        req.Body.Grid,
 		})
 		if err != nil {
 			switch {

@@ -35,3 +35,4 @@ bin/
 *.png
 .superpowers/
 .worktrees/
+tmp/
