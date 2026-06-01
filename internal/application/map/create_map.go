@@ -19,6 +19,7 @@ type CreateMapInput struct {
 	CampaignID  uuid.UUID
 	Name        string
 	Description string
+	Grid        *entity.GridShape
 }
 
 type CreateMapUC struct {
@@ -39,11 +40,16 @@ func (uc *CreateMapUC) CreateMap(ctx context.Context, input *CreateMapInput) (*e
 		return nil, ErrNotMapMaster
 	}
 
-	if err := service.ValidateMap(input.Name, entity.DefaultGrid()); err != nil {
+	grid := entity.DefaultGrid()
+	if input.Grid != nil {
+		grid = *input.Grid
+	}
+	if err := service.ValidateMap(input.Name, grid); err != nil {
 		return nil, err
 	}
 
 	m := entity.NewTacticalMap(input.CampaignID, input.Name, input.Description)
+	m.Grid = grid
 	if err := uc.repo.CreateMap(ctx, m); err != nil {
 		return nil, err
 	}
