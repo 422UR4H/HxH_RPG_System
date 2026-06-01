@@ -14,7 +14,7 @@ import (
 
 type CreateMapRequestBody struct {
 	Name        string `json:"name" required:"true" doc:"Name of the map"`
-	Description string `json:"description" doc:"Description of the map"`
+	Description string `json:"description" required:"false" doc:"Description of the map"`
 }
 
 type CreateMapRequest struct {
