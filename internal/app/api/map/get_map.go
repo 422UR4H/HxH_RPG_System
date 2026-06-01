@@ -15,7 +15,9 @@ type GetMapRequest struct {
 	MapID uuid.UUID `path:"map_id"`
 }
 
-type GetMapResponseBody struct{ MapResponse }
+type GetMapResponseBody struct {
+	Map MapResponse `json:"map"`
+}
 type GetMapResponse struct {
 	Body   GetMapResponseBody
 	Status int
@@ -30,6 +32,6 @@ func GetMapHandler(uc mapuc.IGetMap) func(context.Context, *GetMapRequest) (*Get
 			}
 			return nil, huma.Error500InternalServerError(err.Error())
 		}
-		return &GetMapResponse{Body: GetMapResponseBody{toMapResponse(m)}, Status: http.StatusOK}, nil
+		return &GetMapResponse{Body: GetMapResponseBody{Map: toMapResponse(m)}, Status: http.StatusOK}, nil
 	}
 }
