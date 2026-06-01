@@ -14,7 +14,7 @@ import (
 
 type CreateMapRequestBody struct {
 	Name        string `json:"name" required:"true" doc:"Name of the map"`
-	Description string `json:"description" doc:"Description of the map"`
+	Description string `json:"description" required:"false" doc:"Description of the map"`
 }
 
 type CreateMapRequest struct {
@@ -22,7 +22,9 @@ type CreateMapRequest struct {
 	Body       CreateMapRequestBody `json:"body"`
 }
 
-type CreateMapResponseBody struct{ MapResponse }
+type CreateMapResponseBody struct {
+	Map MapResponse `json:"map"`
+}
 type CreateMapResponse struct {
 	Body   CreateMapResponseBody
 	Status int
@@ -51,6 +53,6 @@ func CreateMapHandler(uc mapuc.ICreateMap) func(context.Context, *CreateMapReque
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}
 		}
-		return &CreateMapResponse{Body: CreateMapResponseBody{toMapResponse(m)}, Status: http.StatusCreated}, nil
+		return &CreateMapResponse{Body: CreateMapResponseBody{Map: toMapResponse(m)}, Status: http.StatusCreated}, nil
 	}
 }

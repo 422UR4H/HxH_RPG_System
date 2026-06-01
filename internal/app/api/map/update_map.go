@@ -14,7 +14,7 @@ import (
 
 type UpdateMapRequestBody struct {
 	Name        string `json:"name" required:"true"`
-	Description string `json:"description"`
+	Description string `json:"description" required:"false"`
 }
 
 type UpdateMapRequest struct {
