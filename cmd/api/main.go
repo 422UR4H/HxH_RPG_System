@@ -12,6 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
 	enrollmentHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
+	mapHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/map"
 	matchHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
@@ -23,6 +24,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
+	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -31,6 +33,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/submission"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sessionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/session"
@@ -94,6 +97,7 @@ func main() {
 	matchRepo := matchPg.NewRepository(pgPool)
 	submitRepo := submissionPg.NewRepository(pgPool)
 	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
+	mapRepo := mapPg.NewRepository(pgPool)
 
 	registerUC := authUC.NewRegisterUC(authRepo)
 	loginUC := authUC.NewLoginUC(&sessions, authRepo, sessionRepo)
@@ -242,6 +246,20 @@ func main() {
 		RejectEnrollmentHandler: enrollmentHandler.RejectEnrollmentHandler(rejectEnrollmentUC),
 	}
 
+	createMapUC := mapuc.NewCreateMapUC(mapRepo, campaignRepo)
+	listMapsUC := mapuc.NewListMapsUC(mapRepo, campaignRepo)
+	getMapUC := mapuc.NewGetMapUC(mapRepo, campaignRepo)
+	updateMapUC := mapuc.NewUpdateMapUC(mapRepo, campaignRepo)
+	deleteMapUC := mapuc.NewDeleteMapUC(mapRepo, campaignRepo)
+
+	mapsApi := mapHandler.Api{
+		CreateMapHandler: mapHandler.CreateMapHandler(createMapUC),
+		ListMapsHandler:  mapHandler.ListMapsHandler(listMapsUC),
+		GetMapHandler:    mapHandler.GetMapHandler(getMapUC),
+		UpdateMapHandler: mapHandler.UpdateMapHandler(updateMapUC),
+		DeleteMapHandler: mapHandler.DeleteMapHandler(deleteMapUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -253,6 +271,7 @@ func main() {
 		MatchHandler:          &matchesApi,
 		SubmissionHandler:     &submissionsApi,
 		EnrollmentHandler:     &enrollmentApi,
+		MapHandler:            &mapsApi,
 		UploadHandler:         uploadApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,

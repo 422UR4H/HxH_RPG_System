@@ -75,7 +75,7 @@ func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 	_, err := pool.Exec(ctx, `
 		TRUNCATE TABLE actions, turns, rounds, scenes,
 			enrollments, submissions, sessions,
-			match_participants, matches, campaigns, scenarios,
+			match_participants, matches, maps, campaigns, scenarios,
 			joint_proficiencies, proficiencies, character_profiles,
 			character_sheets, users
 		CASCADE

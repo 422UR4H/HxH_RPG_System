@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -73,8 +74,10 @@ func TestValidateToken_EmptyToken(t *testing.T) {
 func TestValidateToken_TamperedToken(t *testing.T) {
 	token, _ := auth.GenerateToken(uuid.New())
 
-	// tamper with the last character
-	tampered := token[:len(token)-1] + "X"
+	// Replace the entire signature part so the HMAC is guaranteed to be wrong.
+	parts := strings.Split(token, ".")
+	parts[2] = "aW52YWxpZHNpZ25hdHVyZVhYWFhYWFhYWFhYWFhYWA"
+	tampered := strings.Join(parts, ".")
 
 	_, err := auth.ValidateToken(tampered)
 	if err == nil {
