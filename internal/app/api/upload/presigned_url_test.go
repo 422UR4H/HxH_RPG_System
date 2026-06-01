@@ -22,13 +22,15 @@ func (m *mockR2Client) NewPresignedPutURL(_ context.Context, key string, _ time.
 	return upload.PresignResult{UploadURL: m.uploadURL, PublicURL: m.publicURL}, m.err
 }
 
+func strPtr(s string) *string { return &s }
+
 func TestPresignedURLHandler_InvalidFileType(t *testing.T) {
 	mock := &mockR2Client{}
 	handler := upload.PresignedURLHandler(mock)
 
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
 	req := &upload.PresignedURLRequest{
-		Body: upload.PresignedURLRequestBody{FileType: "invalid", SheetUUID: uuid.New().String()},
+		Body: upload.PresignedURLRequestBody{FileType: "invalid", SheetUUID: strPtr(uuid.New().String())},
 	}
 
 	_, err := handler(ctx, req)
@@ -42,9 +44,8 @@ func TestPresignedURLHandler_ValidRequest(t *testing.T) {
 	handler := upload.PresignedURLHandler(mock)
 
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
-	sheetUUID := uuid.New().String()
 	req := &upload.PresignedURLRequest{
-		Body: upload.PresignedURLRequestBody{FileType: "avatar", SheetUUID: sheetUUID},
+		Body: upload.PresignedURLRequestBody{FileType: "avatar", SheetUUID: strPtr(uuid.New().String())},
 	}
 
 	resp, err := handler(ctx, req)
@@ -68,7 +69,7 @@ func TestPresignedURLHandler_MapBg(t *testing.T) {
 	handler := upload.PresignedURLHandler(mock)
 
 	req := &upload.PresignedURLRequest{
-		Body: upload.PresignedURLRequestBody{FileType: "map_bg", MapUUID: mapUUID.String()},
+		Body: upload.PresignedURLRequestBody{FileType: "map_bg", MapUUID: strPtr(mapUUID.String())},
 	}
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
 	resp, err := handler(ctx, req)
@@ -84,7 +85,7 @@ func TestPresignedURLHandler_MapBg_InvalidUUID(t *testing.T) {
 	mock := &mockR2Client{}
 	handler := upload.PresignedURLHandler(mock)
 	req := &upload.PresignedURLRequest{
-		Body: upload.PresignedURLRequestBody{FileType: "map_bg", MapUUID: "not-a-uuid"},
+		Body: upload.PresignedURLRequestBody{FileType: "map_bg", MapUUID: strPtr("not-a-uuid")},
 	}
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
 	_, err := handler(ctx, req)
@@ -97,7 +98,7 @@ func TestPresignedURLHandler_R2Error(t *testing.T) {
 	mock := &mockR2Client{err: errors.New("storage unavailable")}
 	handler := upload.PresignedURLHandler(mock)
 	req := &upload.PresignedURLRequest{
-		Body: upload.PresignedURLRequestBody{FileType: "avatar", SheetUUID: uuid.New().String()},
+		Body: upload.PresignedURLRequestBody{FileType: "avatar", SheetUUID: strPtr(uuid.New().String())},
 	}
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
 	_, err := handler(ctx, req)

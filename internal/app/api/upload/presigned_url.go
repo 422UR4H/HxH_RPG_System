@@ -20,9 +20,9 @@ type IR2Client interface {
 
 // PresignedURLRequestBody carries the JSON body of the presigned-URL request.
 type PresignedURLRequestBody struct {
-	FileType  string `json:"file_type" doc:"'avatar', 'cover', or 'map_bg'"`
-	SheetUUID string `json:"sheet_uuid"`
-	MapUUID   string `json:"map_uuid,omitempty"`
+	FileType  string  `json:"file_type" doc:"'avatar', 'cover', or 'map_bg'"`
+	SheetUUID *string `json:"sheet_uuid,omitempty"`
+	MapUUID   *string `json:"map_uuid,omitempty"`
 }
 
 // PresignedURLRequest is the huma input type for the presigned-URL endpoint.
@@ -57,13 +57,19 @@ func PresignedURLHandler(
 		var key string
 		switch fileType {
 		case "avatar", "cover":
-			sheetUUID, err := uuid.Parse(req.Body.SheetUUID)
+			if req.Body.SheetUUID == nil {
+				return nil, huma.Error400BadRequest("sheet_uuid is required for avatar/cover")
+			}
+			sheetUUID, err := uuid.Parse(*req.Body.SheetUUID)
 			if err != nil {
 				return nil, huma.Error400BadRequest("invalid sheet_uuid")
 			}
 			key = fileType + "/" + sheetUUID.String() + ".webp"
 		case "map_bg":
-			mapUUID, err := uuid.Parse(req.Body.MapUUID)
+			if req.Body.MapUUID == nil {
+				return nil, huma.Error400BadRequest("map_uuid is required for map_bg")
+			}
+			mapUUID, err := uuid.Parse(*req.Body.MapUUID)
 			if err != nil {
 				return nil, huma.Error400BadRequest("invalid map_uuid")
 			}
