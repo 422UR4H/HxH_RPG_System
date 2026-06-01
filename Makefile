@@ -20,9 +20,23 @@ build:
 run: db-up db-wait migrate-up build
 	./bin/$(APP_NAME)
 
+# Dev com hot reload (air) — reinicia automaticamente ao salvar qualquer .go
+# Requer: go install github.com/air-verse/air@latest
 .PHONY: run-dev
 run-dev: db-up db-wait migrate-up
-	$(GO_CMD) run ./cmd/api/main.go
+	@trap 'kill 0' EXIT; \
+	air -c .air.api.toml & \
+	air -c .air.game.toml; \
+	wait
+
+# Targets individuais (sem db setup) — úteis para rodar isolado em terminal próprio
+.PHONY: dev-api
+dev-api:
+	air -c .air.api.toml
+
+.PHONY: dev-game
+dev-game:
+	air -c .air.game.toml
 
 # Database lifecycle
 .PHONY: db-up
