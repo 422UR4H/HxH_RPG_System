@@ -22,6 +22,7 @@ type UpdateMapInput struct {
 	Name        string
 	Description string
 	Grid        *entity.GridShape
+	Bg          *entity.BgImage
 }
 
 type UpdateMapUC struct {
@@ -61,5 +62,8 @@ func (uc *UpdateMapUC) UpdateMap(ctx context.Context, input *UpdateMapInput) err
 	m.Name = input.Name
 	m.Description = input.Description
 	m.Grid = grid
+	if input.Bg != nil {
+		m.Bg = input.Bg
+	}
 	return uc.repo.UpdateMap(ctx, m)
 }

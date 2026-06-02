@@ -14,9 +14,10 @@ import (
 )
 
 type CreateMapRequestBody struct {
-	Name        string             `json:"name" required:"true" doc:"Name of the map"`
-	Description string             `json:"description" required:"false" doc:"Description of the map"`
-	Grid        *entity.GridShape  `json:"grid" required:"false" doc:"Grid configuration; defaults to 25x25 64px if omitted"`
+	Name        string            `json:"name" required:"true" doc:"Name of the map"`
+	Description string            `json:"description" required:"false" doc:"Description of the map"`
+	Grid        *entity.GridShape `json:"grid" required:"false" doc:"Grid configuration; defaults to 25x25 64px if omitted"`
+	Bg          *entity.BgImage   `json:"bg" required:"false" doc:"Background image configuration"`
 }
 
 type CreateMapRequest struct {
@@ -45,6 +46,7 @@ func CreateMapHandler(uc mapuc.ICreateMap) func(context.Context, *CreateMapReque
 			Name:        req.Body.Name,
 			Description: req.Body.Description,
 			Grid:        req.Body.Grid,
+			Bg:          req.Body.Bg,
 		})
 		if err != nil {
 			switch {
