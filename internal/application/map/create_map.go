@@ -20,6 +20,7 @@ type CreateMapInput struct {
 	Name        string
 	Description string
 	Grid        *entity.GridShape
+	Bg          *entity.BgImage
 }
 
 type CreateMapUC struct {
@@ -50,6 +51,9 @@ func (uc *CreateMapUC) CreateMap(ctx context.Context, input *CreateMapInput) (*e
 
 	m := entity.NewTacticalMap(input.CampaignID, input.Name, input.Description)
 	m.Grid = grid
+	if input.Bg != nil {
+		m.Bg = input.Bg
+	}
 	if err := uc.repo.CreateMap(ctx, m); err != nil {
 		return nil, err
 	}
