@@ -21,6 +21,7 @@ type CreateMapInput struct {
 	Description string
 	Grid        *entity.GridShape
 	Bg          *entity.BgImage
+	Pieces      []entity.Piece
 }
 
 type CreateMapUC struct {
@@ -53,6 +54,9 @@ func (uc *CreateMapUC) CreateMap(ctx context.Context, input *CreateMapInput) (*e
 	m.Grid = grid
 	if input.Bg != nil {
 		m.Bg = input.Bg
+	}
+	if len(input.Pieces) > 0 {
+		m.Pieces = input.Pieces
 	}
 	if err := uc.repo.CreateMap(ctx, m); err != nil {
 		return nil, err

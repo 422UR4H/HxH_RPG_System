@@ -9,7 +9,10 @@
 ```json
 {
   "name": "Floresta do Norte",
-  "description": "Área densa ao norte da cidade, cheia de armadilhas"
+  "description": "Área densa ao norte da cidade, cheia de armadilhas",
+  "grid": { "kind": "square", "cols": 25, "rows": 25, "cell_size": 64, "skew_ratio": 1.0, "rotation": 0, "color": "#ffffff", "opacity": 0.5, "line_style": "solid" },
+  "bg": null,
+  "pieces": []
 }
 ```
 
@@ -17,6 +20,9 @@
 |---|---|
 | `name` | obrigatório, não vazio |
 | `description` | opcional |
+| `grid` | opcional; usa grid padrão 25×25 64px se omitido |
+| `bg` | opcional |
+| `pieces` | opcional; lista de peças iniciais (geralmente `[]` na criação) |
 
 ### Respostas
 
@@ -135,19 +141,27 @@
 
 **Auth:** JWT (master da campanha)
 
-### Request — todos os campos opcionais
+### Request
 
 ```json
 {
   "name": "Floresta do Norte — Revisado",
-  "description": "Nova descrição do mapa"
+  "description": "Nova descrição do mapa",
+  "grid": { "kind": "square", "cols": 25, "rows": 25, "cell_size": 64, "skew_ratio": 1.0, "rotation": 0, "color": "#ffffff", "opacity": 0.5, "line_style": "solid" },
+  "bg": null,
+  "pieces": [
+    { "id": "uuid", "character_id": "uuid", "coord": { "slot": { "kind": "square", "col": 3, "row": 5 }, "z": 0 }, "visible": true }
+  ]
 }
 ```
 
 | Campo | Regra (se enviado) |
 |---|---|
-| `name` | não vazio |
+| `name` | obrigatório, não vazio |
 | `description` | opcional |
+| `grid` | opcional; mantém grid existente se omitido |
+| `bg` | opcional; omitir mantém existente |
+| `pieces` | opcional; omitir mantém existente; `[]` remove todas as peças |
 
 ### Respostas
 
@@ -214,6 +228,6 @@ Sem body.
 
 ### Notas gerais
 
-- Fase 1: body de criação/atualização aceita apenas `name` e `description`. Campos de grid, bg, pieces, walls, decorations e items são gerenciados por endpoints futuros.
+- Criação e atualização aceitam `name`, `description`, `grid`, `bg` e `pieces`. `walls`, `decorations` e `items` são gerenciados por endpoints futuros.
 - Campos JSONB (`pieces`, `walls`, `decorations`, `items`) têm default `[]`; `bg` tem default `null`.
 - Todos os endpoints requerem JWT Bearer token no header `Authorization`.

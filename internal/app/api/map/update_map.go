@@ -18,6 +18,7 @@ type UpdateMapRequestBody struct {
 	Description string            `json:"description" required:"false"`
 	Grid        *entity.GridShape `json:"grid" required:"false" doc:"Grid configuration; keeps existing grid if omitted"`
 	Bg          *entity.BgImage   `json:"bg" required:"false" doc:"Background image; omit to keep existing, send null to clear"`
+	Pieces      *[]entity.Piece   `json:"pieces" required:"false" doc:"Pieces on the map; omit to keep existing, send empty array to clear all"`
 }
 
 type UpdateMapRequest struct {
@@ -43,6 +44,7 @@ func UpdateMapHandler(uc mapuc.IUpdateMap) func(context.Context, *UpdateMapReque
 			Description: req.Body.Description,
 			Grid:        req.Body.Grid,
 			Bg:          req.Body.Bg,
+			Pieces:      req.Body.Pieces,
 		})
 		if err != nil {
 			switch {
