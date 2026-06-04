@@ -55,6 +55,10 @@ const (
 
 	// Client → Server (lobby lifecycle)
 	MsgTypeCancelLobby MessageType = "cancel_lobby" // master requests lobby cancellation
+
+	// Client → Server (lobby map sync)
+	// lobby_ prefix distinguishes from future in-game events (Phase 7+).
+	MsgTypeLobbyPieceMoved MessageType = "lobby_piece_moved"
 )
 
 type Message struct {
@@ -99,6 +103,20 @@ type PlayerKickedPayload struct {
 	UUID     uuid.UUID `json:"uuid"`
 	Nickname string    `json:"nickname"`
 	Reason   string    `json:"reason"`
+}
+
+// SlotPayload represents a grid slot coordinate (square or hex).
+type SlotPayload struct {
+	Kind string `json:"kind"`          // "square" | "hex"
+	Col  *int   `json:"col,omitempty"` // square only
+	Row  *int   `json:"row,omitempty"` // square only
+	Q    *int   `json:"q,omitempty"`   // hex only
+	R    *int   `json:"r,omitempty"`   // hex only
+}
+
+type LobbyPieceMovedPayload struct {
+	PieceID string      `json:"piece_id"`
+	Slot    SlotPayload `json:"slot"`
 }
 
 type PullActionPayload struct {

@@ -525,6 +525,30 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
 		}
 
+	case MsgTypeLobbyPieceMoved:
+		// Broadcast piece move to all OTHER participants in the lobby.
+		// No server-side piece ownership validation in Phase 6 — client restricts
+		// drag to allowed pieces. TODO: validate piece ownership per user (Phase 7+)
+		var payload LobbyPieceMovedPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_moved payload"))
+			return
+		}
+		outMsg := NewClientMessage(MsgTypeLobbyPieceMoved, client.userUUID, payload)
+		data, _ := json.Marshal(outMsg)
+		r.mu.RLock()
+		for id, c := range r.clients {
+			if id == client.userUUID {
+				continue
+			}
+			select {
+			case c.send <- data:
+			default:
+				log.Printf("dropping lobby_piece_moved for slow client %s", id)
+			}
+		}
+		r.mu.RUnlock()
+
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
