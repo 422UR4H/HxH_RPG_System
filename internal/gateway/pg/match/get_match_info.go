@@ -22,7 +22,7 @@ func (r *Repository) GetMatchInfo(ctx context.Context, matchUUID uuid.UUID) (*ma
 	err := r.q.QueryRow(ctx, query, matchUUID).Scan(&masterUUID, &gameStartAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrMatchNotFound
+			return nil, matchmapuc.ErrMatchNotFound
 		}
 		return nil, fmt.Errorf("get match info: %w", err)
 	}
