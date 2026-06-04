@@ -315,14 +315,6 @@ mappings:
         confidence: possibly_affected
     notes: Hub/Room/Client pattern, real-time communication
 
-  # ─── Game Server: Lobby WS API ───
-  - code_path: internal/app/game/room.go
-    dev_docs:
-      - path: docs/dev/api/game-lobby.md
-        confidence: directly_affected
-    game_docs: []
-    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open)
-
   # ─── REST API ───
   - code_path: cmd/api/
     dev_docs:
@@ -344,6 +336,41 @@ mappings:
       - path: docs/dev/api/match.md
         confidence: directly_affected
     notes: Match REST surface — create/get/update/list/enrollments/participants
+
+  # ─── Match: Maps REST + WS API ───
+  - code_path: internal/app/api/matchmap/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: Match-Maps REST (POST/GET/DELETE /matches/{match_uuid}/map) + lobby_piece_moved WS
+
+  - code_path: internal/gateway/pg/matchmap/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: Match-Maps gateway (upsert/get/delete match_maps table)
+
+  - code_path: internal/application/matchmap/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: Match-Maps use cases (AttachMap, GetMap, DetachMap)
+
+  - code_path: internal/app/game/message.go
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: possibly_affected
+    notes: lobby_piece_moved message type definition
+
+  - code_path: internal/app/game/room.go
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: directly_affected
+    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) + lobby_piece_moved broadcast
 
   - code_path: internal/app/api/
     dev_docs:
