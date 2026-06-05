@@ -115,8 +115,10 @@ type SlotPayload struct {
 }
 
 type LobbyPieceMovedPayload struct {
-	PieceID string      `json:"piece_id"`
-	Slot    SlotPayload `json:"slot"`
+	PieceID     string      `json:"piece_id"`
+	Slot        SlotPayload `json:"slot"`
+	CharacterID string      `json:"character_id,omitempty"`
+	Visible     *bool       `json:"visible,omitempty"`
 }
 
 type PullActionPayload struct {
