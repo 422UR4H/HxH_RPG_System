@@ -175,12 +175,23 @@ func (r *Room) Run() {
 			r.broadcastPlayerJoined(client)
 
 		case client := <-r.unregister:
+			// Guard: only remove if this exact client pointer is still registered.
+			// A reconnecting user (e.g. React Strict Mode double-invoke) may have
+			// already replaced the map entry before the old goroutine unregisters —
+			// without this check the new connection would be evicted and the room
+			// would close spuriously.
 			r.mu.Lock()
-			if _, ok := r.clients[client.userUUID]; ok {
+			removed := false
+			if current, ok := r.clients[client.userUUID]; ok && current == client {
 				delete(r.clients, client.userUUID)
 				close(client.send)
+				removed = true
 			}
 			r.mu.Unlock()
+
+			if !removed {
+				continue
+			}
 
 			r.broadcastPlayerLeft(client)
 
