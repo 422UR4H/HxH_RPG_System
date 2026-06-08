@@ -71,6 +71,10 @@ type Room struct {
 	masterUUID uuid.UUID
 	state      RoomState
 	clients    map[uuid.UUID]*Client
+	// lobbyPieces holds the authoritative in-memory board state during the lobby
+	// phase. Updated on every lobby_piece_moved / lobby_piece_removed. Sent to
+	// every new client on register so late-joiners always see the current board.
+	lobbyPieces map[string]LobbyPieceMovedPayload // keyed by piece_id
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -109,6 +113,7 @@ func NewRoom(
 		masterUUID:            masterUUID,
 		state:                 RoomStateLobby,
 		clients:               make(map[uuid.UUID]*Client),
+		lobbyPieces:           make(map[string]LobbyPieceMovedPayload),
 		broadcast:             make(chan []byte, 256),
 		register:              make(chan *Client),
 		unregister:            make(chan *Client),
@@ -172,6 +177,7 @@ func (r *Room) Run() {
 			r.mu.Unlock()
 
 			r.sendRoomState(client)
+			r.sendLobbyFullState(client)
 			r.broadcastPlayerJoined(client)
 
 		case client := <-r.unregister:
@@ -545,6 +551,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_moved payload"))
 			return
 		}
+		// Keep in-memory board state current so late-joiners get the right board.
+		r.mu.Lock()
+		r.lobbyPieces[payload.PieceID] = payload
+		r.mu.Unlock()
 		outMsg := NewClientMessage(MsgTypeLobbyPieceMoved, client.userUUID, payload)
 		data, _ := json.Marshal(outMsg)
 		r.mu.RLock()
@@ -559,6 +569,49 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 		}
 		r.mu.RUnlock()
+
+	case MsgTypeLobbyPieceRemoved:
+		var payload LobbyPieceRemovedPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_removed payload"))
+			return
+		}
+		r.mu.Lock()
+		delete(r.lobbyPieces, payload.PieceID)
+		r.mu.Unlock()
+		outMsg := NewClientMessage(MsgTypeLobbyPieceRemoved, client.userUUID, payload)
+		data, _ := json.Marshal(outMsg)
+		r.mu.RLock()
+		for id, c := range r.clients {
+			if id == client.userUUID {
+				continue
+			}
+			select {
+			case c.send <- data:
+			default:
+				log.Printf("dropping lobby_piece_removed for slow client %s", id)
+			}
+		}
+		r.mu.RUnlock()
+
+	case MsgTypeLobbyStateSync:
+		// Only the master may seed the in-memory board (initial DB state on connect).
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload LobbyPiecesPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_state_sync payload"))
+			return
+		}
+		r.mu.Lock()
+		r.lobbyPieces = make(map[string]LobbyPieceMovedPayload, len(payload.Pieces))
+		for _, p := range payload.Pieces {
+			r.lobbyPieces[p.PieceID] = p
+		}
+		r.mu.Unlock()
+		// No relay — this only seeds the server's in-memory state.
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
@@ -602,6 +655,17 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
 		masterClient.SendMessage(out)
 	}
+}
+
+func (r *Room) sendLobbyFullState(client *Client) {
+	r.mu.RLock()
+	pieces := make([]LobbyPieceMovedPayload, 0, len(r.lobbyPieces))
+	for _, p := range r.lobbyPieces {
+		pieces = append(pieces, p)
+	}
+	r.mu.RUnlock()
+	msg := NewServerMessage(MsgTypeLobbyFullState, LobbyPiecesPayload{Pieces: pieces})
+	client.SendMessage(msg)
 }
 
 func (r *Room) sendRoomState(client *Client) {
