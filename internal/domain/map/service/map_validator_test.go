@@ -21,8 +21,15 @@ func TestValidateMap_ValidMap(t *testing.T) {
 
 func TestValidateMap_EmptyName(t *testing.T) {
 	err := service.ValidateMap("", validGrid())
-	if !errors.Is(err, service.ErrEmptyName) {
-		t.Errorf("expected ErrEmptyName, got %v", err)
+	if !errors.Is(err, service.ErrNameTooShort) {
+		t.Errorf("expected ErrNameTooShort, got %v", err)
+	}
+}
+
+func TestValidateMap_NameTooShort(t *testing.T) {
+	err := service.ValidateMap("Ab", validGrid())
+	if !errors.Is(err, service.ErrNameTooShort) {
+		t.Errorf("expected ErrNameTooShort, got %v", err)
 	}
 }
 

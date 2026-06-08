@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ErrEmptyName        = errors.New("map name cannot be empty")
+	ErrNameTooShort     = errors.New("map name must be at least 3 characters")
 	ErrInvalidCellSize  = errors.New("cell_size must be > 0")
 	ErrInvalidCols      = errors.New("cols must be > 0")
 	ErrInvalidRows      = errors.New("rows must be > 0")
@@ -15,8 +15,8 @@ var (
 )
 
 func ValidateMap(name string, grid entity.GridShape) error {
-	if name == "" {
-		return ErrEmptyName
+	if len(name) < 3 {
+		return ErrNameTooShort
 	}
 	if grid.CellSize <= 0 {
 		return ErrInvalidCellSize
