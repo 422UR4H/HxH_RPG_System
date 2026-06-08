@@ -177,7 +177,12 @@ func (r *Room) Run() {
 			r.mu.Unlock()
 
 			r.sendRoomState(client)
-			r.sendLobbyFullState(client)
+			r.mu.RLock()
+			hasPieces := len(r.lobbyPieces) > 0
+			r.mu.RUnlock()
+			if hasPieces {
+				r.sendLobbyFullState(client)
+			}
 			r.broadcastPlayerJoined(client)
 
 		case client := <-r.unregister:
