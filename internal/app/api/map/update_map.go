@@ -14,7 +14,7 @@ import (
 )
 
 type UpdateMapRequestBody struct {
-	Name        string            `json:"name" required:"true"`
+	Name        *string           `json:"name" required:"false" minLength:"3" doc:"Map name; omit to keep existing"`
 	Description string            `json:"description" required:"false"`
 	Grid        *entity.GridShape `json:"grid" required:"false" doc:"Grid configuration; keeps existing grid if omitted"`
 	Bg          *entity.BgImage   `json:"bg" required:"false" doc:"Background image; omit to keep existing, send null to clear"`

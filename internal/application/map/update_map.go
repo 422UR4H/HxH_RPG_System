@@ -19,7 +19,7 @@ type IUpdateMap interface {
 type UpdateMapInput struct {
 	RequesterID uuid.UUID
 	MapID       uuid.UUID
-	Name        string
+	Name        *string // nil = keep existing name
 	Description string
 	Grid        *entity.GridShape
 	Bg          *entity.BgImage
@@ -56,11 +56,15 @@ func (uc *UpdateMapUC) UpdateMap(ctx context.Context, input *UpdateMapInput) err
 	if input.Grid != nil {
 		grid = *input.Grid
 	}
-	if err := service.ValidateMap(input.Name, grid); err != nil {
+	name := m.Name
+	if input.Name != nil {
+		name = *input.Name
+	}
+	if err := service.ValidateMap(name, grid); err != nil {
 		return err
 	}
 
-	m.Name = input.Name
+	m.Name = name
 	m.Description = input.Description
 	m.Grid = grid
 	if input.Bg != nil {

@@ -55,6 +55,17 @@ const (
 
 	// Client → Server (lobby lifecycle)
 	MsgTypeCancelLobby MessageType = "cancel_lobby" // master requests lobby cancellation
+
+	// Client → Server (lobby map sync)
+	// lobby_ prefix distinguishes from future in-game events (Phase 7+).
+	MsgTypeLobbyPieceMoved  MessageType = "lobby_piece_moved"
+	MsgTypeLobbyPieceRemoved MessageType = "lobby_piece_removed"
+	// Sent by master on WS connect to seed backend in-memory state from DB.
+	MsgTypeLobbyStateSync   MessageType = "lobby_state_sync"
+
+	// Server → Client (lobby map sync)
+	// Sent to every client that registers, so late-joiners get the current board.
+	MsgTypeLobbyFullState   MessageType = "lobby_full_state"
 )
 
 type Message struct {
@@ -99,6 +110,32 @@ type PlayerKickedPayload struct {
 	UUID     uuid.UUID `json:"uuid"`
 	Nickname string    `json:"nickname"`
 	Reason   string    `json:"reason"`
+}
+
+// SlotPayload represents a grid slot coordinate (square or hex).
+type SlotPayload struct {
+	Kind string `json:"kind"`          // "square" | "hex"
+	Col  *int   `json:"col,omitempty"` // square only
+	Row  *int   `json:"row,omitempty"` // square only
+	Q    *int   `json:"q,omitempty"`   // hex only
+	R    *int   `json:"r,omitempty"`   // hex only
+}
+
+type LobbyPieceMovedPayload struct {
+	PieceID     string      `json:"piece_id"`
+	Slot        SlotPayload `json:"slot"`
+	CharacterID string      `json:"character_id,omitempty"`
+	Visible     *bool       `json:"visible,omitempty"`
+}
+
+type LobbyPieceRemovedPayload struct {
+	PieceID string `json:"piece_id"`
+}
+
+// LobbyPiecesPayload is shared by lobby_state_sync (client→server) and
+// lobby_full_state (server→client). Both carry the complete current board.
+type LobbyPiecesPayload struct {
+	Pieces []LobbyPieceMovedPayload `json:"pieces"`
 }
 
 type PullActionPayload struct {

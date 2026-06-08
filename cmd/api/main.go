@@ -13,6 +13,7 @@ import (
 	campaignHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
 	enrollmentHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/enrollment"
 	mapHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/map"
+	matchmapHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/matchmap"
 	matchHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
@@ -25,6 +26,7 @@ import (
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
+	matchmapuc "github.com/422UR4H/HxH_RPG_System/internal/application/matchmap"
 	ccEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -34,6 +36,7 @@ import (
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
+	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sessionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/session"
@@ -260,6 +263,17 @@ func main() {
 		DeleteMapHandler: mapHandler.DeleteMapHandler(deleteMapUC),
 	}
 
+	matchmapRepo := matchmapPg.NewRepository(pgPool)
+	attachMatchMapUC := matchmapuc.NewAttachMatchMapUC(matchmapRepo, matchRepo)
+	getMatchMapUC := matchmapuc.NewGetMatchMapUC(matchmapRepo)
+	detachMatchMapUC := matchmapuc.NewDetachMatchMapUC(matchmapRepo, matchRepo)
+
+	matchMapsApi := matchmapHandler.Api{
+		AttachMatchMapHandler: matchmapHandler.AttachMatchMapHandler(attachMatchMapUC),
+		GetMatchMapHandler:    matchmapHandler.GetMatchMapHandler(getMatchMapUC),
+		DetachMatchMapHandler: matchmapHandler.DetachMatchMapHandler(detachMatchMapUC),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -272,6 +286,7 @@ func main() {
 		SubmissionHandler:     &submissionsApi,
 		EnrollmentHandler:     &enrollmentApi,
 		MapHandler:            &mapsApi,
+		MatchMapHandler:       &matchMapsApi,
 		UploadHandler:         uploadApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,

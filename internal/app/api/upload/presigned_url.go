@@ -60,20 +60,22 @@ func PresignedURLHandler(
 			if req.Body.SheetUUID == nil {
 				return nil, huma.Error400BadRequest("sheet_uuid is required for avatar/cover")
 			}
-			sheetUUID, err := uuid.Parse(*req.Body.SheetUUID)
-			if err != nil {
+			if _, err := uuid.Parse(*req.Body.SheetUUID); err != nil {
 				return nil, huma.Error400BadRequest("invalid sheet_uuid")
 			}
-			key = fileType + "/" + sheetUUID.String() + ".webp"
+			// Use a fresh UUID as the filename so every upload produces a new CDN
+			// cache entry. Reusing the entity UUID would cause stale CDN responses
+			// when the same entity's image is updated (overwrite same key, CDN serves old).
+			key = fileType + "/" + uuid.New().String() + ".webp"
 		case "map_bg":
 			if req.Body.MapUUID == nil {
 				return nil, huma.Error400BadRequest("map_uuid is required for map_bg")
 			}
-			mapUUID, err := uuid.Parse(*req.Body.MapUUID)
+			_, err := uuid.Parse(*req.Body.MapUUID)
 			if err != nil {
 				return nil, huma.Error400BadRequest("invalid map_uuid")
 			}
-			key = "map_bg/" + mapUUID.String() + ".webp"
+			key = "map_bg/" + uuid.New().String() + ".webp"
 		default:
 			return nil, huma.Error422UnprocessableEntity("file_type must be 'avatar', 'cover', or 'map_bg'")
 		}
