@@ -138,3 +138,77 @@ func TestMapRepository_GetMap_NotFound(t *testing.T) {
 		t.Errorf("expected ErrMapNotFound, got %v", err)
 	}
 }
+
+func TestMapRepository_WallsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := pgmap.NewRepository(pool)
+
+	masterStr := pgtest.InsertTestUser(t, pool, "master_wrt", "master_wrt@hunter.com", "pass")
+	campaignStr := pgtest.InsertTestCampaign(t, pool, masterStr, "Test Campaign WRT")
+	campaignID, err := uuid.Parse(campaignStr)
+	if err != nil {
+		t.Fatalf("parse campaign uuid: %v", err)
+	}
+
+	m := entity.NewTacticalMap(campaignID, "Walled Room", "")
+	if err := repo.CreateMap(ctx, m); err != nil {
+		t.Fatalf("CreateMap: %v", err)
+	}
+
+	doorSubtype := entity.DoorSubtypeBasic
+	m.Walls = []entity.WallSegment{
+		{
+			ID:         "wall-uuid-0001",
+			P1:         [2]float64{0, 0},
+			P2:         [2]float64{64, 0},
+			WallType:   entity.WallTypeWall,
+			Material:   entity.WallMaterialStone,
+			Move:       true,
+			Sense:      entity.SenseFull,
+			Direction:  entity.WallDirectionBoth,
+			HP:         100,
+			MaxHP:      100,
+			Resistance: 5,
+		},
+		{
+			ID:          "wall-uuid-0002",
+			P1:          [2]float64{64, 0},
+			P2:          [2]float64{64, 64},
+			WallType:    entity.WallTypeDoor,
+			Material:    entity.WallMaterialWood,
+			DoorSubtype: &doorSubtype,
+			Move:        true,
+			Sense:       entity.SenseFull,
+			Direction:   entity.WallDirectionBoth,
+			Open:        false,
+			Locked:      true,
+			HP:          40,
+			MaxHP:       40,
+			Resistance:  2,
+		},
+	}
+	if err := repo.UpdateMap(ctx, m); err != nil {
+		t.Fatalf("UpdateMap with walls: %v", err)
+	}
+
+	got, err := repo.GetMap(ctx, m.ID)
+	if err != nil {
+		t.Fatalf("GetMap: %v", err)
+	}
+	if len(got.Walls) != 2 {
+		t.Fatalf("expected 2 walls, got %d", len(got.Walls))
+	}
+	if got.Walls[0].WallType != entity.WallTypeWall {
+		t.Errorf("expected WallTypeWall, got %s", got.Walls[0].WallType)
+	}
+	if got.Walls[1].WallType != entity.WallTypeDoor {
+		t.Errorf("expected WallTypeDoor, got %s", got.Walls[1].WallType)
+	}
+	if got.Walls[1].DoorSubtype == nil || *got.Walls[1].DoorSubtype != entity.DoorSubtypeBasic {
+		t.Errorf("expected DoorSubtypeBasic, got %v", got.Walls[1].DoorSubtype)
+	}
+	if !got.Walls[1].Locked {
+		t.Error("expected wall[1].Locked = true")
+	}
+}
