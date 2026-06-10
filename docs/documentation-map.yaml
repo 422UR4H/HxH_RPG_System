@@ -323,6 +323,13 @@ mappings:
     game_docs: []
     notes: API entrypoint — usually no doc impact unless adding new routes
 
+  # ─── Map: Domain Entity + Service ───
+  - code_path: internal/domain/map/
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: Map entity (TacticalMap, WallSegment, GridShape, Piece, etc.) and validator — any shape change affects the REST contract
+
   # ─── Map: REST API ───
   - code_path: internal/app/api/map/
     dev_docs:

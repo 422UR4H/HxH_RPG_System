@@ -26,7 +26,7 @@ func newTestMap(campaignID uuid.UUID, name string) *entity.TacticalMap {
 		Description: "test description",
 		Grid:        entity.DefaultGrid(),
 		Pieces:      []entity.Piece{},
-		Walls:       []entity.Wall{},
+		Walls:       []entity.WallSegment{},
 		Decorations: []entity.Decoration{},
 		Items:       []entity.MapItem{},
 		CreatedAt:   now,

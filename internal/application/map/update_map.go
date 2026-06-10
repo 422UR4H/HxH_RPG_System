@@ -24,6 +24,7 @@ type UpdateMapInput struct {
 	Grid        *entity.GridShape
 	Bg          *entity.BgImage
 	Pieces      *[]entity.Piece
+	Walls       *[]entity.WallSegment // nil = keep existing; empty slice = clear all
 }
 
 type UpdateMapUC struct {
@@ -72,6 +73,12 @@ func (uc *UpdateMapUC) UpdateMap(ctx context.Context, input *UpdateMapInput) err
 	}
 	if input.Pieces != nil {
 		m.Pieces = *input.Pieces
+	}
+	if input.Walls != nil {
+		if err := service.ValidateWallSegments(*input.Walls); err != nil {
+			return err
+		}
+		m.Walls = *input.Walls
 	}
 	return uc.repo.UpdateMap(ctx, m)
 }

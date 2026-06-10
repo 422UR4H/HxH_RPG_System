@@ -151,6 +151,24 @@
   "bg": null,
   "pieces": [
     { "id": "uuid", "character_id": "uuid", "coord": { "slot": { "kind": "square", "col": 3, "row": 5 }, "z": 0 }, "visible": true }
+  ],
+  "walls": [
+    {
+      "id": "uuid",
+      "p1": [0, 0],
+      "p2": [64, 0],
+      "wall_type": "wall",
+      "material": "stone",
+      "move": true,
+      "sense": "full",
+      "direction": "both",
+      "open": false,
+      "locked": false,
+      "hp": 100,
+      "max_hp": 100,
+      "resistance": 5,
+      "destroyed": false
+    }
   ]
 }
 ```
@@ -162,6 +180,7 @@
 | `grid` | opcional; mantém grid existente se omitido |
 | `bg` | opcional; omitir mantém existente |
 | `pieces` | opcional; omitir mantém existente; `[]` remove todas as peças |
+| `walls` | opcional; omitir mantém existente; `[]` remove todas as paredes |
 
 ### Respostas
 
@@ -218,7 +237,24 @@ Sem body.
   },
   "bg": null,
   "pieces": [],
-  "walls": [],
+  "walls": [
+    {
+      "id": "uuid",
+      "p1": [0, 0],
+      "p2": [64, 0],
+      "wall_type": "wall",
+      "material": "stone",
+      "move": true,
+      "sense": "full",
+      "direction": "both",
+      "open": false,
+      "locked": false,
+      "hp": 100,
+      "max_hp": 100,
+      "resistance": 5,
+      "destroyed": false
+    }
+  ],
   "decorations": [],
   "items": [],
   "created_at": "2026-05-31T00:00:00Z",
@@ -228,6 +264,66 @@ Sem body.
 
 ### Notas gerais
 
-- Criação e atualização aceitam `name`, `description`, `grid`, `bg` e `pieces`. `walls`, `decorations` e `items` são gerenciados por endpoints futuros.
+- `POST /campaigns/:id/maps` (criação) aceita `name`, `description`, `grid`, `bg` e `pieces`. `walls`, `decorations` e `items` ficam `[]` na criação.
+- `PUT /maps/:id` aceita adicionalmente `walls` como lista de `WallSegment`. `decorations` e `items` ainda não são suportados no request (gerenciados por fases futuras).
 - Campos JSONB (`pieces`, `walls`, `decorations`, `items`) têm default `[]`; `bg` tem default `null`.
 - Todos os endpoints requerem JWT Bearer token no header `Authorization`.
+
+---
+
+## WallSegment — Formato do segmento de parede
+
+```json
+{
+  "id": "uuid-string",
+  "p1": [0.0, 0.0],
+  "p2": [64.0, 0.0],
+  "wall_type": "wall | door | window | secret_door | terrain",
+  "material": "stone | wood | iron | magical",
+  "door_subtype": "basic | double | portcullis | drawbridge",
+  "window_subtype": "basic | barred | shuttered",
+  "move": true,
+  "sense": "full | sight | none",
+  "direction": "both | left | right",
+  "open": false,
+  "locked": false,
+  "hp": 100,
+  "max_hp": 100,
+  "resistance": 5,
+  "destroyed": false
+}
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `id` | string (UUID) | Identificador único do segmento, gerado pelo frontend via `crypto.randomUUID()` |
+| `p1`, `p2` | `[number, number]` | Endpoints em coordenadas de mundo (pré-transform); `p1 ≠ p2` |
+| `wall_type` | enum | Comportamento funcional |
+| `material` | enum | Propriedades físicas (HP, resistência, cor) |
+| `door_subtype` | enum? | Presente apenas quando `wall_type = "door"` |
+| `window_subtype` | enum? | Presente apenas quando `wall_type = "window"` |
+| `move` | bool | Bloqueia movimento físico |
+| `sense` | enum | O que bloqueia em termos de percepção |
+| `direction` | enum | Direção de bloqueio (both = nos dois sentidos) |
+| `open` | bool | Porta/janela está aberta (só relevante para door/window) |
+| `locked` | bool | Porta trancada |
+| `hp` | int | Pontos de vida atuais (≥ 0) |
+| `max_hp` | int | Pontos de vida máximos |
+| `resistance` | int | Dano absorvido por ataque |
+| `destroyed` | bool | Segmento destruído (visual alterado) |
+
+### Defaults por tipo (aplicados pelo frontend ao criar o segmento)
+
+| `wall_type` | `move` | `sense` | `direction` | `material` padrão |
+|---|---|---|---|---|
+| `wall` | `true` | `full` | `both` | `stone` |
+| `door` | `true` | `full` | `both` | `wood` |
+| `window` | `true` | `none` | `both` | `wood` |
+| `secret_door` | `true` | `full` | `both` | `stone` |
+| `terrain` | `true` | `none` | `left` | — |
+
+### Notas gerais de validação (backend)
+
+- `PUT /maps/:id` aceita `walls` como campo opcional. `null` ou ausente = mantém as paredes existentes. `[]` = remove todas.
+- Validações: `p1 ≠ p2`; `wall_type` deve ser um dos 5 valores válidos; `hp ≥ 0`.
+- O backend não calcula defaults — o frontend envia o objeto completo.

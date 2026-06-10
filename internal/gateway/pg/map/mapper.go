@@ -44,7 +44,7 @@ func toEntity(m *pgModel) (*entity.TacticalMap, error) {
 		return nil, fmt.Errorf("unmarshal pieces: %w", err)
 	}
 
-	walls := []entity.Wall{}
+	walls := []entity.WallSegment{}
 	if err := json.Unmarshal(m.Walls, &walls); err != nil {
 		return nil, fmt.Errorf("unmarshal walls: %w", err)
 	}

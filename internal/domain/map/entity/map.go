@@ -14,7 +14,7 @@ type TacticalMap struct {
 	Grid        GridShape    `json:"grid"`
 	Bg          *BgImage     `json:"bg"`
 	Pieces      []Piece      `json:"pieces"`
-	Walls       []Wall       `json:"walls"`
+	Walls       []WallSegment `json:"walls"`
 	Decorations []Decoration `json:"decorations"`
 	Items       []MapItem    `json:"items"`
 	CreatedAt   time.Time    `json:"created_at"`
@@ -31,7 +31,7 @@ func NewTacticalMap(campaignID uuid.UUID, name, description string) *TacticalMap
 		Grid:        DefaultGrid(),
 		Bg:          nil,
 		Pieces:      []Piece{},
-		Walls:       []Wall{},
+		Walls:       []WallSegment{},
 		Decorations: []Decoration{},
 		Items:       []MapItem{},
 		CreatedAt:   now,

@@ -1,11 +1,5 @@
 package entity
 
-type Wall struct {
-	ID        string       `json:"id"`
-	Points    [][2]float64 `json:"points"`
-	Thickness float64      `json:"thickness"`
-}
-
 type Decoration struct {
 	ID       string  `json:"id"`
 	URL      string  `json:"url"`

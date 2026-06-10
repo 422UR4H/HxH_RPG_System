@@ -26,7 +26,7 @@ type MapResponse struct {
 	Grid        GridShapeResponse `json:"grid"`
 	Bg          any               `json:"bg"`
 	Pieces      any               `json:"pieces"`
-	Walls       any               `json:"walls"`
+	Walls       []entity.WallSegment `json:"walls"`
 	Decorations any               `json:"decorations"`
 	Items       any               `json:"items"`
 	CreatedAt   string            `json:"created_at"`
@@ -40,7 +40,7 @@ func toMapResponse(m *entity.TacticalMap) MapResponse {
 	}
 	walls := m.Walls
 	if walls == nil {
-		walls = []entity.Wall{}
+		walls = []entity.WallSegment{}
 	}
 	decorations := m.Decorations
 	if decorations == nil {
