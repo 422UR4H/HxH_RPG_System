@@ -22,60 +22,105 @@ Paredes em VTTs de referência (FoundryVTT, Owlbear Rodeo) são segmentos indivi
 
 ### 2.1 WallSegment (frontend — `src/types/tacticalMap.ts`)
 
+`wallType` e `material` são conceitos ortogonais: `wallType` define o **comportamento** (pode abrir? bloqueia visão por padrão?); `material` define as **propriedades físicas** (HP, resistência, cor). Uma porta de ferro tem `wallType="door"` e `material="iron"`.
+
 ```ts
+// Comportamento funcional do segmento
 export type WallType =
-  | "stone"       // pedra — espessa, alta resistência
-  | "wood"        // madeira — destruível por força
-  | "iron"        // ferro/aço — quase indestrutível
-  | "magical"     // barreira mágica — vulnerável a magia, passável por não-magos (futuro)
-  | "terrain"     // terreno — borda de penhasco, obstáculo natural
+  | "wall"        // parede sólida — uso geral
   | "door"        // porta — abre/fecha, pode ser trancada
-  | "window"      // janela — bloqueia movimento, permite visão
+  | "window"      // janela — bloqueia movimento, permite visão por padrão
   | "secret_door" // porta secreta — invisível para jogadores até ser encontrada
+  | "terrain"     // terreno — borda de penhasco, obstáculo natural
+
+// Material físico — determina HP, resistência e visual padrão
+export type WallMaterial =
+  | "stone"   // pedra — alta resistência, HP alto
+  | "wood"    // madeira — baixa resistência, destruível por força
+  | "iron"    // ferro/aço — resistência máxima, HP muito alto
+  | "magical" // barreira mágica — resistência vs magia; passabilidade por não-magos = futuro
+
+// Subtipos opcionais — sobrescrevem defaults de sense e comportamento interativo
+export type DoorSubtype =
+  | "basic"       // porta simples
+  | "double"      // porta dupla (ocupa 2 segmentos adjacentes visualmente)
+  | "portcullis"  // grade: move=true, sense=none (vê através), iron por padrão
+  | "drawbridge"  // ponte levadiça: quando fechada bloqueia passagem sobre fosso
+
+export type WindowSubtype =
+  | "basic"     // janela simples: move=true, sense=none
+  | "barred"    // com grades: move=true, sense=none, HP/resistência de iron
+  | "shuttered" // com veneziana: pode abrir (toggle), quando aberta sense=none
 
 export type SenseKind =
-  | "full"        // bloqueia toda percepção (sight, hearing, etc.)
-  | "sight"       // bloqueia só visão (audição passa)
-  | "none"        // não bloqueia percepção (apenas visual/decorativo)
+  | "full"  // bloqueia toda percepção (sight, hearing, etc.)
+  | "sight" // bloqueia só visão (audição passa)
+  | "none"  // não bloqueia percepção (apenas obstáculo físico ou decorativo)
+
+// "both" = bloqueia nos dois sentidos (padrão para quase todos os tipos).
+// "left"/"right" = bloqueia só do lado esquerdo/direito do vetor p1→p2.
+// Mesma convenção do FoundryVTT (0/1/2 → both/left/right).
+// O editor exibe seta visual no segmento quando direction ≠ "both".
+export type WallDirection = "both" | "left" | "right"
 
 export type WallSegment = {
-  id:        string           // uuid próprio do segmento
-  p1:        [number, number] // coords de mundo (antes de applyTransform)
-  p2:        [number, number] // coords de mundo
-  wallType:  WallType
+  id:       string           // uuid próprio do segmento
+  p1:       [number, number] // coords de mundo (antes de applyTransform)
+  p2:       [number, number] // coords de mundo
+  wallType: WallType
+  material: WallMaterial
+
+  // Subtipos opcionais — só presentes quando wallType = "door" ou "window"
+  doorSubtype?:   DoorSubtype
+  windowSubtype?: WindowSubtype
 
   // Atributos de bloqueio (consumidos por 10-B e 10-D)
-  move:      boolean          // bloqueia movimento físico?
-  sense:     SenseKind        // o que bloqueia em termos de percepção
-  oneWay:    boolean          // só bloqueia de um lado (ex: borda de penhasco)
-  // Nota sobre oneWay: a direção "bloqueada" é determinada pela normal do segmento.
-  // p1→p2 define a direção; bloqueio ocorre pelo lado esquerdo do vetor.
+  move:      boolean        // bloqueia movimento físico?
+  sense:     SenseKind      // o que bloqueia em termos de percepção
+  direction: WallDirection  // direção de bloqueio
 
   // Estado interativo (consumido por 10-B)
-  open:      boolean          // porta/janela está aberta?
-  locked:    boolean          // porta está trancada?
+  open:   boolean  // porta/janela está aberta?
+  locked: boolean  // porta está trancada?
 
   // Estado destrutível (consumido por mecânica de combate, 10-C+)
-  hp:        number           // 0 = indestrutível (terrain, iron por padrão)
-  maxHp:     number
-  destroyed: boolean          // muda o visual (linha tracejada + opacidade reduzida)
+  hp:         number  // pontos de vida do segmento
+  maxHp:      number
+  resistance: number  // dano absorvido; colisionador aplica: efetivo = max(0, bruto - resistance)
+  destroyed:  boolean // muda o visual (linha tracejada + opacidade reduzida)
 }
 ```
 
 > **Nota:** O tipo `Wall` existente em `tacticalMap.ts` (`{ id, points, thickness }`) será **substituído** por `WallSegment`. O campo `walls: Wall[]` em `TacticalMap` passa a ser `walls: WallSegment[]`.
 
-### 2.2 Valores padrão por tipo
+### 2.2 Valores padrão por material e tipo
 
-| wallType    | move  | sense  | oneWay | locked | hp padrão | observação |
-|-------------|-------|--------|--------|--------|-----------|------------|
-| stone       | true  | full   | false  | false  | 100       | |
-| wood        | true  | full   | false  | false  | 40        | |
-| iron        | true  | full   | false  | false  | 0 (∞)     | hp=0 → indestrutível |
-| magical     | true  | full   | false  | false  | variável  | passabilidade por não-magos = futuro |
-| terrain     | true  | none   | true   | false  | 0 (∞)     | borda de penhasco — não bloqueia visão |
-| door        | true  | full   | false  | false  | 30        | open=false por padrão |
-| window      | true  | none   | false  | false  | 20        | bloqueia movimento, não bloqueia visão |
-| secret_door | true  | full   | false  | false  | 30        | invisível para players até reveal |
+**Por material** (determina HP, resistência e cor base):
+
+| material | hp  | maxHp | resistance | cor base  | espessura | observação |
+|----------|-----|-------|------------|-----------|-----------|------------|
+| stone    | 100 | 100   | 5          | `#94a3b8` | 4px       | |
+| wood     | 40  | 40    | 2          | `#a16207` | 3px       | |
+| iron     | 500 | 500   | 15         | `#64748b` | 5px       | HP alto mas não infinito |
+| magical  | 80  | 80    | 0          | `#a855f7` | 3px       | sem resistência física — vulnerável a magia |
+
+**Por wallType** (determina move, sense, direction e locked padrão):
+
+| wallType    | move  | sense  | direction | locked | observação |
+|-------------|-------|--------|-----------|--------|------------|
+| wall        | true  | full   | both      | false  | material padrão: stone |
+| door        | true  | full   | both      | false  | open=false; material padrão: wood |
+| window      | true  | none   | both      | false  | material padrão: wood |
+| secret_door | true  | full   | both      | false  | invisível para players até reveal; material padrão: stone |
+| terrain     | true  | none   | left      | false  | borda de penhasco — direction padrão "left" |
+
+**Subtype sobrescreve defaults** (exemplos relevantes):
+
+| subtype     | sobrescreve |
+|-------------|-------------|
+| portcullis  | sense=none (vê através da grade), material padrão: iron |
+| barred      | material padrão: iron, sense=none |
+| shuttered   | toggle disponível; quando open: sense=none |
 
 ### 2.3 Backend — entidade Go (`System_X_System`)
 
@@ -84,14 +129,34 @@ export type WallSegment = {
 
 type WallType string
 const (
-    WallTypeStone      WallType = "stone"
-    WallTypeWood       WallType = "wood"
-    WallTypeIron       WallType = "iron"
-    WallTypeMagical    WallType = "magical"
-    WallTypeTerrain    WallType = "terrain"
+    WallTypeWall       WallType = "wall"
     WallTypeDoor       WallType = "door"
     WallTypeWindow     WallType = "window"
     WallTypeSecretDoor WallType = "secret_door"
+    WallTypeTerrain    WallType = "terrain"
+)
+
+type WallMaterial string
+const (
+    WallMaterialStone   WallMaterial = "stone"
+    WallMaterialWood    WallMaterial = "wood"
+    WallMaterialIron    WallMaterial = "iron"
+    WallMaterialMagical WallMaterial = "magical"
+)
+
+type DoorSubtype string
+const (
+    DoorSubtypeBasic      DoorSubtype = "basic"
+    DoorSubtypeDouble     DoorSubtype = "double"
+    DoorSubtypePortcullis DoorSubtype = "portcullis"
+    DoorSubtypeDrawbridge DoorSubtype = "drawbridge"
+)
+
+type WindowSubtype string
+const (
+    WindowSubtypeBasic    WindowSubtype = "basic"
+    WindowSubtypeBarred   WindowSubtype = "barred"
+    WindowSubtypeShuttered WindowSubtype = "shuttered"
 )
 
 type SenseKind string
@@ -101,38 +166,59 @@ const (
     SenseNone  SenseKind = "none"
 )
 
+type WallDirection string
+const (
+    WallDirectionBoth  WallDirection = "both"
+    WallDirectionLeft  WallDirection = "left"
+    WallDirectionRight WallDirection = "right"
+)
+
 type WallSegment struct {
-    ID       uuid.UUID
-    P1       [2]float64
-    P2       [2]float64
-    WallType WallType
-    Move     bool
-    Sense    SenseKind
-    OneWay   bool
-    Open     bool
-    Locked   bool
-    HP       int     // 0 = indestrutível
-    MaxHP    int
-    Destroyed bool
+    ID           uuid.UUID
+    P1           [2]float64
+    P2           [2]float64
+    WallType     WallType
+    Material     WallMaterial
+    DoorSubtype  *DoorSubtype   // nil quando WallType != door
+    WindowSubtype *WindowSubtype // nil quando WallType != window
+    Move         bool
+    Sense        SenseKind
+    Direction    WallDirection
+    Open         bool
+    Locked       bool
+    HP           int
+    MaxHP        int
+    Resistance   int  // dano absorvido; colisionador aplica: efetivo = max(0, bruto - Resistance)
+    Destroyed    bool
 }
 ```
 
 O campo `walls JSONB` da tabela `maps` já existe. Sem migração — apenas o shape do objeto muda. O mapper Go (`maps_mapper.go`) precisa ser atualizado para serializar/deserializar `[]WallSegment`.
 
-### 2.4 Visual por tipo e estado
+### 2.4 Visual por material e tipo
 
-Renderizado com `PIXI.Graphics.moveTo/lineTo`. Sem assets externos.
+Renderizado com `PIXI.Graphics.moveTo/lineTo`. Sem assets externos. A cor base vem do **material**; o dash pattern vem do **wallType**. Subtype pode sobrescrever dash (ex: portcullis usa dash de grade).
 
-| wallType    | cor hex   | espessura | dash |
-|-------------|-----------|-----------|------|
-| stone       | `#94a3b8` | 4px       | sólida |
-| wood        | `#a16207` | 3px       | sólida |
-| iron        | `#64748b` | 5px       | sólida |
-| magical     | `#a855f7` | 3px       | tracejada 8,4 |
-| terrain     | `#16a34a` | 2.5px     | pontilhada 3,3 |
-| door        | `#f59e0b` | 3px       | sólida (fechada) / gap central (aberta) |
-| window      | `#38bdf8` | 2px       | tracejada 4,2 |
-| secret_door | `#94a3b8` | 4px       | sólida — **não renderizada para players** |
+**Por material** (cor e espessura da linha):
+
+| material | cor hex   | espessura |
+|----------|-----------|-----------|
+| stone    | `#94a3b8` | 4px       |
+| wood     | `#a16207` | 3px       |
+| iron     | `#64748b` | 5px       |
+| magical  | `#a855f7` | 3px       |
+
+**Por wallType** (dash pattern):
+
+| wallType    | dash pattern | observação |
+|-------------|--------------|------------|
+| wall        | sólida       | |
+| door        | sólida (fechada) / gap central 30% (aberta) | |
+| window      | tracejada 4,2 | |
+| secret_door | sólida — **não renderizada para players** | |
+| terrain     | pontilhada 3,3 | |
+
+**Seta direcional:** quando `direction ≠ "both"`, renderizar uma seta perpendicular ao meio do segmento apontando para o lado bloqueado. Visível apenas no editor com ferramenta "Paredes" ativa.
 
 **Estado destrutível:**
 
@@ -173,19 +259,28 @@ Itera os slots visíveis na viewport e coleta candidatos de snap. Retorna o cand
 
 Ferramenta "Paredes" ativa na toolbar do editor. Botão toggle — ao ativar, o cursor muda para crosshair.
 
-**Fluxo (híbrido polilinha → segmentos):**
+**Fluxo (híbrido polilinha → segmentos auto-subdivididos):**
 
-1. Primeiro clique: define `p1` do primeiro segmento. Uma linha "ghost" acompanha o cursor (preview).
-2. Cliques seguintes: definem `p2` do segmento atual e imediatamente `p1` do próximo. Encadeamento automático.
+1. Primeiro clique: define `p1`. Uma linha "ghost" acompanha o cursor (preview).
+2. Cliques seguintes: definem `p2` do trecho atual e `p1` do próximo. Encadeamento automático.
 3. **Encerramento:**
-   - `Esc` ou botão direito: encerra a polilinha no último ponto.
+   - `Esc` ou botão direito: encerra no último ponto.
    - Duplo clique: encerra no ponto clicado.
-   - Clique no primeiro ponto da polilinha atual: fecha o polígono (o último segmento retorna ao ponto inicial).
-4. Cada segmento da polilinha é explodido em um `WallSegment` independente com UUID próprio ao confirmar.
+   - Clique no primeiro ponto da polilinha: fecha o polígono.
+4. Ao confirmar, cada trecho (par de pontos clicados) passa por **auto-subdivisão**: `explodePolyline` percorre a reta parametricamente, encontra todos os pontos de snap do grid que caem sobre ela, e cria um `WallSegment` independente entre cada par consecutivo.
 
-**Snap:** aplicado a cada clique via `snapWallPoint`.
+**Princípio de granularidade:** a granularidade de destruição é determinada pelo grid, não pelo mestre. Um único clique-e-arrasta de 5 células cria tantos segmentos quanto vértices de grid existam sobre a reta — cada segmento tem UUID, HP e `destroyed` próprios. Isso permite destruição parcial (derrubar a seção do meio de uma parede) independente de como o mestre a desenhou.
 
-**Tipo ativo:** definido na toolbar antes de desenhar. Todos os segmentos da polilinha atual herdam o tipo ativo. Para tipos diferentes, encerre e inicie nova polilinha.
+**`explodePolyline` — algoritmo:**
+- Input: `p1`, `p2` (ambos já snapped), `grid: GridShape`, atributos herdados (wallType, material, etc.)
+- Calcula todos os snap candidates do grid (via `collectSnapCandidates(grid, viewport)`) que satisfazem: distância à reta `p1→p2` < ε (1e-4px) E projeção paramétrica t ∈ (0, 1) (excluindo os extremos)
+- Ordena por t crescente; insere como vértices intermediários
+- Produz `WallSegment[]`: [p1→v1], [v1→v2], ..., [vN→p2], cada um com `uuid` gerado via `crypto.randomUUID()`
+- Se nenhum snap point intermediário existir (ex: diagonal sem vértice no meio): retorna 1 segmento único — correto
+
+**Snap:** aplicado a cada clique via `snapWallPoint`. Shift desativa.
+
+**Tipo e material ativos:** definidos na toolbar. Todos os segmentos gerados herdam. Para combinações diferentes, encerre e inicie nova polilinha.
 
 ### 4.2 Edição de segmentos existentes
 
@@ -195,11 +290,28 @@ Com a ferramenta "Paredes" ativa:
 - **Mover endpoint:** drag no handle → snap aplica-se → segmento atualiza em tempo real.
 - **Mover segmento inteiro:** drag no meio do segmento (não nos handles) → ambos os endpoints se movem.
 - **Mudar tipo:** chips de seleção de tipo no painel de propriedades.
-- **Toggle atributos:** checkboxes `move`, `oneWay`, `locked` no painel.
+- **Toggle atributos:** checkboxes `move`, `locked`, select de `direction` (both/left/right) e `sense` no painel.
 - **Deletar:** tecla `Delete`/`Backspace` com segmento selecionado, ou botão no painel.
 - **Multi-seleção:** `Shift+clique` em múltiplos segmentos → delete em lote ou mudança de tipo em lote.
 
-### 4.3 Undo/redo
+### 4.3 Renderização — estratégia de batch e hit testing
+
+**Batch rendering (obrigatório):** Com potencialmente centenas de segmentos num mapa 60×60, um `PIXI.Graphics` por segmento é inviável. A `WallsLayer` agrupa segmentos por material e faz um único draw call por grupo:
+
+```
+Graphics["stone"]    → moveTo/lineTo de TODOS os segmentos stone não-selecionados
+Graphics["wood"]     → idem
+Graphics["iron"]     → idem
+Graphics["magical"]  → idem
+Graphics["selected"] → apenas segmentos selecionados (highlight + handles)
+Graphics["preview"]  → linha ghost durante o desenho
+```
+
+Ao mudar `destroyed` ou `open` de um segmento, invalida apenas o Graphics do material afetado (não redesenha tudo).
+
+**Hit testing (seleção por clique):** Não usamos `hitArea` Pixi por segmento. No `pointerdown` da `WallsLayer`, calculamos a distância do ponto clicado (em coords de mundo) a cada `WallSegment` usando a fórmula de distância ponto-segmento. O segmento mais próximo dentro de threshold (~8px em screen space, convertido para world space via viewport scale) é selecionado. Para ≤ 7.200 segmentos (60×60 grid com todas as arestas preenchidas) isso é O(N) e imperceptível.
+
+### 4.4 Undo/redo
 
 Operações de parede integram o `editorStore` (Zustand + zundo) existente. Cada gesto completo (polilinha confirmada, endpoint movido, tipo alterado, delete) = 1 entry no histórico. Consistente com o padrão `beginGesture/endGesture` já usado para outros elementos.
 
