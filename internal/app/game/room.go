@@ -9,6 +9,7 @@ import (
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -74,7 +75,9 @@ type Room struct {
 	// lobbyPieces holds the authoritative in-memory board state during the lobby
 	// phase. Updated on every lobby_piece_moved / lobby_piece_removed. Sent to
 	// every new client on register so late-joiners always see the current board.
-	lobbyPieces map[string]LobbyPieceMovedPayload // keyed by piece_id
+	lobbyPieces  map[string]LobbyPieceMovedPayload  // keyed by piece_id
+	lobbyWalls   map[string]mapentity.WallSegment   // in-memory runtime wall state; keyed by wall ID
+	lobbyGridSize float64                            // cell size in world coords; used for movement blocking
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -114,6 +117,8 @@ func NewRoom(
 		state:                 RoomStateLobby,
 		clients:               make(map[uuid.UUID]*Client),
 		lobbyPieces:           make(map[string]LobbyPieceMovedPayload),
+		lobbyWalls:            make(map[string]mapentity.WallSegment),
+		lobbyGridSize:         64, // default; overridden by lobby_state_sync
 		broadcast:             make(chan []byte, 256),
 		register:              make(chan *Client),
 		unregister:            make(chan *Client),
@@ -605,7 +610,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
 			return
 		}
-		var payload LobbyPiecesPayload
+		var payload LobbyStateSyncPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_state_sync payload"))
 			return
@@ -615,8 +620,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		for _, p := range payload.Pieces {
 			r.lobbyPieces[p.PieceID] = p
 		}
+		r.lobbyWalls = make(map[string]mapentity.WallSegment, len(payload.Walls))
+		for _, w := range payload.Walls {
+			r.lobbyWalls[w.ID] = w
+		}
+		if payload.Grid != nil && payload.Grid.CellSize > 0 {
+			r.lobbyGridSize = payload.Grid.CellSize
+		}
 		r.mu.Unlock()
-		// No relay — this only seeds the server's in-memory state.
+		// No relay — only seeds the server's in-memory state.
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
