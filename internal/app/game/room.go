@@ -644,6 +644,24 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		r.mu.RUnlock()
 		ma := buildMasterAction(client.userUUID, payload)
+		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
+		if ma.Interact != nil && len(ma.TargetID) > 0 {
+			for _, targetID := range ma.TargetID {
+				newOpen, newLocked, ok := r.applyWallInteract(targetID.String(), ma.Interact)
+				if !ok {
+					// Wall not in in-memory state — skip silently.
+					continue
+				}
+				evt := NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+					WallID: targetID.String(),
+					Open:   newOpen,
+					Locked: newLocked,
+				})
+				data, _ := json.Marshal(evt)
+				go func() { r.broadcast <- data }()
+			}
+			return
+		}
 		if err := r.enqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -672,6 +690,30 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
 		masterClient.SendMessage(out)
 	}
+}
+
+// applyWallInteract updates in-memory wall state for open/close/toggle.
+// Returns (newOpen, newLocked, ok). ok=false means wall not found or interaction
+// not applicable (e.g. lockpick/examine are player-only actions requiring rolls).
+func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open, locked bool, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, exists := r.lobbyWalls[wallID]
+	if !exists {
+		return false, false, false
+	}
+	switch interact.Kind {
+	case action.InteractOpen:
+		w.Open = true
+	case action.InteractClose:
+		w.Open = false
+	case action.InteractToggle:
+		w.Open = !w.Open
+	default:
+		return false, false, false
+	}
+	r.lobbyWalls[wallID] = w
+	return w.Open, w.Locked, true
 }
 
 func (r *Room) sendLobbyFullState(client *Client) {
