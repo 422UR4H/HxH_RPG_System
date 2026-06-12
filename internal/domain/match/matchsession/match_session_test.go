@@ -92,7 +92,7 @@ func makeParticipant(matchUUID uuid.UUID, playerUUID *uuid.UUID) *match.Particip
 }
 
 func makeAction(actorID uuid.UUID) *action.Action {
-	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func sessionWithParticipants(playerUUIDs ...uuid.UUID) *matchsession.MatchSession {
@@ -106,7 +106,7 @@ func sessionWithParticipants(playerUUIDs ...uuid.UUID) *matchsession.MatchSessio
 }
 
 func makeActionWithSpeed(actorID uuid.UUID, speed int) *action.Action {
-	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: speed}}, nil, nil, nil, nil, nil, nil)
+	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: speed}}, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func TestMatchSession_EnqueueAction(t *testing.T) {
@@ -197,7 +197,7 @@ func TestMatchSession_OpenNextAction(t *testing.T) {
 }
 
 func makeReactionTo(actorID, targetActionID uuid.UUID) *action.Action {
-	return action.NewAction(actorID, nil, targetActionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+	return action.NewAction(actorID, nil, targetActionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func TestMatchSession_AttachReaction(t *testing.T) {

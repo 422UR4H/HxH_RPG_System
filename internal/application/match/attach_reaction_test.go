@@ -33,13 +33,13 @@ func TestAttachReactionUC(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
 		session := sessionWithPlayers(playerA, playerB)
 
-		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}}, nil, nil, nil, nil, nil, nil)
+		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
 		_, opened, _ := session.OpenNextAction()
 		openedAction := opened.GetAction()
 		actionID := openedAction.GetID()
 
-		reaction := action.NewAction(playerB, nil, actionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+		reaction := action.NewAction(playerB, nil, actionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewAttachReactionUC()
 		result, err := uc.Execute(context.Background(), session, playerB, reaction)
 		if err != nil {
@@ -57,11 +57,11 @@ func TestAttachReactionUC(t *testing.T) {
 		playerA := uuid.New()
 		session := sessionWithPlayers(playerA)
 
-		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil)
+		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
 		session.OpenNextAction()              //nolint:errcheck
 
-		reaction := action.NewAction(playerA, nil, uuid.New(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+		reaction := action.NewAction(playerA, nil, uuid.New(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewAttachReactionUC()
 		_, err := uc.Execute(context.Background(), session, playerA, reaction)
 		if !errors.Is(err, service.ErrReactionNotCompatible) {

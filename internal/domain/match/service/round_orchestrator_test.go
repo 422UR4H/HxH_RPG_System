@@ -210,7 +210,7 @@ func makeActionWithSpeed(speed int) *action.Action {
 		uuid.Nil,
 		nil,
 		action.ActionSpeed{RollCheck: action.RollCheck{Result: speed}},
-		nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil,
 	)
 }
 
@@ -221,7 +221,7 @@ func makeReactionTo(targetID uuid.UUID) *action.Action {
 		targetID,
 		nil,
 		action.ActionSpeed{},
-		nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil,
 	)
 	a.ReactToID = targetID
 	return a

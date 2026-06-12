@@ -36,7 +36,7 @@ func TestOpenNextActionUC(t *testing.T) {
 			Sheet:     csEntity.Summary{UUID: uuid.New(), PlayerUUID: &pUUID},
 		}
 		session := matchsession.NewMatchSession(matchUUID, nil, []*matchDomain.Participant{p})
-		a := action.NewAction(playerUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+		a := action.NewAction(playerUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerUUID, a) //nolint:errcheck
 
 		uc := match.NewOpenNextActionUC()

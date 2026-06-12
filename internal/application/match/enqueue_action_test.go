@@ -23,7 +23,7 @@ func TestEnqueueActionUC(t *testing.T) {
 			Sheet:     csEntity.Summary{UUID: uuid.New(), PlayerUUID: &playerUUID},
 		}
 		session := matchsession.NewMatchSession(matchUUID, nil, []*matchDomain.Participant{p})
-		a := action.NewAction(playerUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+		a := action.NewAction(playerUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewEnqueueActionUC()
 		if err := uc.Execute(context.Background(), session, playerUUID, a); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -33,7 +33,7 @@ func TestEnqueueActionUC(t *testing.T) {
 	t.Run("returns ErrParticipantNotFound for unknown player", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
 		unknownUUID := uuid.New()
-		a := action.NewAction(unknownUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil)
+		a := action.NewAction(unknownUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewEnqueueActionUC()
 		err := uc.Execute(context.Background(), session, unknownUUID, a)
 		if !errors.Is(err, matchsession.ErrParticipantNotFound) {

@@ -39,7 +39,7 @@ func TestPersistTurnClose(t *testing.T) {
 			uuid.Nil,
 			nil,
 			action.ActionSpeed{},
-			nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil,
 		)
 		actCopy := *act
 		tRn := turnentity.NewTurn(actCopy)
@@ -93,7 +93,7 @@ func TestPersistTurnClose(t *testing.T) {
 			uuid.Nil,
 			nil,
 			action.ActionSpeed{},
-			nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil,
 		)
 		act1Copy := *act1
 		tRn1 := turnentity.NewTurn(act1Copy)
@@ -109,7 +109,7 @@ func TestPersistTurnClose(t *testing.T) {
 			uuid.Nil,
 			nil,
 			action.ActionSpeed{},
-			nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil,
 		)
 		act2Copy := *act2
 		tRn2 := turnentity.NewTurn(act2Copy)
