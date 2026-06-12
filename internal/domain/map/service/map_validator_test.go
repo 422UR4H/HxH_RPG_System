@@ -86,7 +86,7 @@ func validWallSegment() entity.WallSegment {
 }
 
 func TestValidateWallSegments_Empty(t *testing.T) {
-	err := service.ValidateWallSegments([]entity.WallSegment{})
+	err := service.ValidateWallSegments([]entity.WallSegment{}, validGrid())
 	if err != nil {
 		t.Errorf("expected nil for empty walls, got %v", err)
 	}
@@ -94,7 +94,7 @@ func TestValidateWallSegments_Empty(t *testing.T) {
 
 func TestValidateWallSegments_Valid(t *testing.T) {
 	ws := validWallSegment()
-	err := service.ValidateWallSegments([]entity.WallSegment{ws})
+	err := service.ValidateWallSegments([]entity.WallSegment{ws}, validGrid())
 	if err != nil {
 		t.Errorf("expected nil, got %v", err)
 	}
@@ -103,7 +103,7 @@ func TestValidateWallSegments_Valid(t *testing.T) {
 func TestValidateWallSegments_SameEndpoints(t *testing.T) {
 	ws := validWallSegment()
 	ws.P2 = ws.P1 // same point
-	err := service.ValidateWallSegments([]entity.WallSegment{ws})
+	err := service.ValidateWallSegments([]entity.WallSegment{ws}, validGrid())
 	if !errors.Is(err, service.ErrWallSameEndpoints) {
 		t.Errorf("expected ErrWallSameEndpoints, got %v", err)
 	}
@@ -112,7 +112,7 @@ func TestValidateWallSegments_SameEndpoints(t *testing.T) {
 func TestValidateWallSegments_InvalidWallType(t *testing.T) {
 	ws := validWallSegment()
 	ws.WallType = "invalid"
-	err := service.ValidateWallSegments([]entity.WallSegment{ws})
+	err := service.ValidateWallSegments([]entity.WallSegment{ws}, validGrid())
 	if !errors.Is(err, service.ErrWallInvalidType) {
 		t.Errorf("expected ErrWallInvalidType, got %v", err)
 	}
@@ -121,8 +121,19 @@ func TestValidateWallSegments_InvalidWallType(t *testing.T) {
 func TestValidateWallSegments_NegativeHP(t *testing.T) {
 	ws := validWallSegment()
 	ws.HP = -1
-	err := service.ValidateWallSegments([]entity.WallSegment{ws})
+	err := service.ValidateWallSegments([]entity.WallSegment{ws}, validGrid())
 	if !errors.Is(err, service.ErrWallNegativeHP) {
 		t.Errorf("expected ErrWallNegativeHP, got %v", err)
+	}
+}
+
+func TestValidateWallSegments_OutOfBounds(t *testing.T) {
+	g := validGrid()
+	maxX := float64(g.Cols) * g.CellSize
+	ws := validWallSegment()
+	ws.P2 = [2]float64{maxX + 1, 0} // one pixel beyond grid boundary
+	err := service.ValidateWallSegments([]entity.WallSegment{ws}, g)
+	if !errors.Is(err, service.ErrWallOutOfBounds) {
+		t.Errorf("expected ErrWallOutOfBounds, got %v", err)
 	}
 }

@@ -75,7 +75,7 @@ func (uc *UpdateMapUC) UpdateMap(ctx context.Context, input *UpdateMapInput) err
 		m.Pieces = *input.Pieces
 	}
 	if input.Walls != nil {
-		if err := service.ValidateWallSegments(*input.Walls); err != nil {
+		if err := service.ValidateWallSegments(*input.Walls, grid); err != nil {
 			return err
 		}
 		m.Walls = *input.Walls
