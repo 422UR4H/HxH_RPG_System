@@ -486,14 +486,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			to := a.Move.Position
 			// Only validate when the client provided a non-zero From (zero means "not provided").
 			if from != ([3]int{}) {
-				fromWorld := [2]float64{float64(from[0]) * r.lobbyGridSize, float64(from[1]) * r.lobbyGridSize}
-				toWorld := [2]float64{float64(to[0]) * r.lobbyGridSize, float64(to[1]) * r.lobbyGridSize}
 				r.mu.RLock()
+				gridSize := r.lobbyGridSize
 				walls := make([]mapentity.WallSegment, 0, len(r.lobbyWalls))
 				for _, w := range r.lobbyWalls {
 					walls = append(walls, w)
 				}
 				r.mu.RUnlock()
+				fromWorld := [2]float64{float64(from[0]) * gridSize, float64(from[1]) * gridSize}
+				toWorld := [2]float64{float64(to[0]) * gridSize, float64(to[1]) * gridSize}
 				if mapservice.IsPathBlocked(fromWorld, toWorld, walls) {
 					client.SendMessage(NewErrorMessage("move_blocked", "movement blocked by a wall"))
 					return
