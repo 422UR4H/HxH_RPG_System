@@ -10,21 +10,19 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestCombatResolver_Resolve(t *testing.T) {
-	resolver := service.CombatResolver{}
+func TestTurnResolver_Resolve(t *testing.T) {
+	resolver := service.TurnResolver{}
 
 	t.Run("returns non-nil TurnResolution for a Turn with only an action", func(t *testing.T) {
-		tRn := makeCombatTurn()
-
+		tRn := makeTurn()
 		res := resolver.Resolve(tRn, nil)
-
 		if res == nil {
 			t.Fatal("expected non-nil TurnResolution")
 		}
 	})
 
 	t.Run("IsSettled is false when turn has no finishedAt", func(t *testing.T) {
-		tRn := makeCombatTurn()
+		tRn := makeTurn()
 		res := resolver.Resolve(tRn, nil)
 		if res.IsSettled {
 			t.Error("expected IsSettled=false for open turn")
@@ -32,7 +30,7 @@ func TestCombatResolver_Resolve(t *testing.T) {
 	})
 
 	t.Run("IsSettled is true when turn is closed", func(t *testing.T) {
-		tRn := makeCombatTurn()
+		tRn := makeTurn()
 		tRn.Close(time.Now())
 		res := resolver.Resolve(tRn, nil)
 		if !res.IsSettled {
@@ -41,9 +39,9 @@ func TestCombatResolver_Resolve(t *testing.T) {
 	})
 
 	t.Run("ReactionResults has one entry per reaction", func(t *testing.T) {
-		tRn := makeCombatTurn()
+		tRn := makeTurn()
 		act := tRn.GetAction()
-		reaction := makeCombatReactionTo((&act).GetID())
+		reaction := makeReactionTo((&act).GetID())
 		tRn.AddReaction(reaction)
 
 		res := resolver.Resolve(tRn, nil)
@@ -54,7 +52,7 @@ func TestCombatResolver_Resolve(t *testing.T) {
 	})
 }
 
-func makeCombatTurn() *turn.Turn {
+func makeTurn() *turn.Turn {
 	a := action.NewAction(
 		uuid.New(),
 		[]uuid.UUID{uuid.New()},
@@ -64,17 +62,4 @@ func makeCombatTurn() *turn.Turn {
 		nil, nil, nil, nil, nil, nil, nil,
 	)
 	return turn.NewTurn(*a)
-}
-
-func makeCombatReactionTo(targetID uuid.UUID) *action.Action {
-	a := action.NewAction(
-		uuid.New(),
-		nil,
-		targetID,
-		nil,
-		action.ActionSpeed{},
-		nil, nil, nil, nil, nil, nil, nil,
-	)
-	a.ReactToID = targetID
-	return a
 }

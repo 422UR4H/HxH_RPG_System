@@ -7,7 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// TurnResolution is the snapshot of a Turn's combat result.
+// TurnResolution is the snapshot of a Turn's result — character combat, wall
+// interactions, or any mix thereof.
 type TurnResolution struct {
 	ActionResult    RollResult
 	ReactionResults []ReactionResult
@@ -29,12 +30,13 @@ type ReactionResult struct {
 	Roll      RollResult
 }
 
-// CombatResolver is a stateless domain service that calculates Turn resolution.
-type CombatResolver struct{}
+// TurnResolver is a stateless domain service that calculates Turn resolution
+// for any action type: character combat, wall attacks, door interactions, etc.
+type TurnResolver struct{}
 
 // Resolve calculates the current resolution snapshot for the given Turn.
 // sheets maps participant UUIDs to their character sheets; nil is valid.
-func (cr CombatResolver) Resolve(t *turn.Turn, sheets map[uuid.UUID]*csSheet.CharacterSheet) *TurnResolution {
+func (tr TurnResolver) Resolve(t *turn.Turn, sheets map[uuid.UUID]*csSheet.CharacterSheet) *TurnResolution {
 	res := &TurnResolution{
 		IsSettled: t.GetFinishedAt() != nil,
 	}

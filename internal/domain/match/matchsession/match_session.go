@@ -22,7 +22,7 @@ type MatchSession struct {
 	charSheets     map[uuid.UUID]*csSheet.CharacterSheet // keyed by playerUUID
 	participants   map[uuid.UUID]*match.Participant       // keyed by playerUUID
 	roundOrch      service.RoundOrchestrator
-	combatRes      service.CombatResolver
+	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
 }
@@ -46,7 +46,7 @@ func NewMatchSession(
 		charSheets:   charSheets,
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
-		combatRes:    service.CombatResolver{},
+		turnResolver: service.TurnResolver{},
 	}
 }
 
@@ -71,7 +71,7 @@ func NewMatchSessionWithState(
 		charSheets:     charSheets,
 		participants:   pMap,
 		roundOrch:      service.RoundOrchestrator{},
-		combatRes:      service.CombatResolver{},
+		turnResolver:   service.TurnResolver{},
 		scenePersisted: true,
 		roundPersisted: true,
 	}
@@ -146,7 +146,7 @@ func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution
 		return nil, err
 	}
 	t := s.activeRound.CurrentTurn()
-	return s.combatRes.Resolve(t, s.charSheets), nil
+	return s.turnResolver.Resolve(t, s.charSheets), nil
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {

@@ -36,6 +36,6 @@ func (uc *PullActionUC) Execute(
 	if err != nil {
 		return nil, err
 	}
-	resolution := service.CombatResolver{}.Resolve(opened, nil)
+	resolution := service.TurnResolver{}.Resolve(opened, nil)
 	return &PullActionResult{ClosedTurn: closed, OpenedTurn: opened, Resolution: resolution}, nil
 }
