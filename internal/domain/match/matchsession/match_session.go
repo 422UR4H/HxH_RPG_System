@@ -149,7 +149,7 @@ func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution
 		return nil, err
 	}
 	t := s.activeRound.CurrentTurn()
-	return s.turnResolver.Resolve(t, s.charSheets), nil
+	return s.turnResolver.Resolve(t, s.charSheets, s), nil
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
@@ -209,3 +209,15 @@ func (s *MatchSession) GetWalls() []mapentity.WallSegment {
 }
 
 func (s *MatchSession) GetGridSize() float64 { return s.gridSize }
+
+// CategorizeTarget returns the kind of entity the given UUID identifies.
+// Participants are checked first so character UUIDs are never mis-routed as walls.
+func (s *MatchSession) CategorizeTarget(id uuid.UUID) service.TargetKind {
+	if _, ok := s.participants[id]; ok {
+		return service.TargetKindCharacter
+	}
+	if _, ok := s.walls[id.String()]; ok {
+		return service.TargetKindWallSegment
+	}
+	return service.TargetKindUnknown
+}

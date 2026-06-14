@@ -35,6 +35,6 @@ func (uc *OpenNextActionUC) Execute(
 	if err != nil {
 		return nil, err
 	}
-	resolution := service.TurnResolver{}.Resolve(opened, nil)
+	resolution := service.TurnResolver{}.Resolve(opened, nil, session)
 	return &OpenNextActionResult{ClosedTurn: closed, OpenedTurn: opened, Resolution: resolution}, nil
 }
