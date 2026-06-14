@@ -20,11 +20,24 @@ func buildAction(actorID uuid.UUID, p ActionPayload) *action.Action {
 			RollCheck: rc,
 		}
 	}
-	// TODO: map Move, Attack, Defense, Feint, Skills, Speed once the frontend payload contract is finalized
+	var move *action.Move
+	if p.Move != nil {
+		move = &action.Move{
+			Category: enum.MoveCategory(p.Move.Category),
+			From:     p.Move.From,
+			Position: p.Move.Position,
+		}
+		// TODO: map Speed, Charge, FinalSpeed once frontend contract is finalized
+	}
+	var interact *action.Interact
+	if p.Interact != nil {
+		interact = &action.Interact{Kind: action.InteractKind(p.Interact.Kind)}
+	}
+	// TODO: map Attack, Defense, Feint, Skills, Speed once frontend payload contract is finalized
 	return action.NewAction(
 		actorID, p.TargetID, p.ReactToID,
 		nil, action.ActionSpeed{},
-		nil, nil, nil, nil, dodge, nil,
+		nil, move, nil, nil, dodge, nil, interact,
 	)
 }
 
@@ -47,6 +60,9 @@ func buildMasterAction(masterUUID uuid.UUID, p MasterActionPayload) *action.Mast
 	if p.Attack != nil {
 		// TODO: map Attack once frontend contract is finalized
 		_ = p.Attack
+	}
+	if p.Interact != nil {
+		ma.Interact = &action.Interact{Kind: action.InteractKind(p.Interact.Kind)}
 	}
 	return ma
 }

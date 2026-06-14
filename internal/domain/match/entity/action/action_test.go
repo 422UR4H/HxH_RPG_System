@@ -17,7 +17,7 @@ func TestNewAction(t *testing.T) {
 	a := action.NewAction(
 		actorID, targetIDs, reactToID, nil,
 		action.ActionSpeed{Bar: 5, RollCheck: action.RollCheck{Result: 42}},
-		nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil,
 	)
 
 	if a.GetID() == uuid.Nil {

@@ -50,7 +50,7 @@ func TestCloseRoundUC(t *testing.T) {
 		playerA := uuid.New()
 		session := sessionWithPlayers(playerA)
 
-		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil)
+		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
 		session.OpenNextAction()              //nolint:errcheck
 		session.CloseTurn()                   //nolint:errcheck
@@ -72,7 +72,7 @@ func TestCloseRoundUC(t *testing.T) {
 		playerA := uuid.New()
 		session := sessionWithPlayers(playerA)
 
-		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil)
+		aAct := action.NewAction(playerA, nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
 		session.OpenNextAction()              //nolint:errcheck
 		// turn is still open — no CloseTurn called

@@ -61,7 +61,7 @@ func makeCombatTurn() *turn.Turn {
 		uuid.Nil,
 		nil,
 		action.ActionSpeed{},
-		nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil,
 	)
 	return turn.NewTurn(*a)
 }
@@ -73,7 +73,7 @@ func makeCombatReactionTo(targetID uuid.UUID) *action.Action {
 		targetID,
 		nil,
 		action.ActionSpeed{},
-		nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil,
 	)
 	a.ReactToID = targetID
 	return a

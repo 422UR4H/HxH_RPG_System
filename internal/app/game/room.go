@@ -9,6 +9,8 @@ import (
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -74,7 +76,9 @@ type Room struct {
 	// lobbyPieces holds the authoritative in-memory board state during the lobby
 	// phase. Updated on every lobby_piece_moved / lobby_piece_removed. Sent to
 	// every new client on register so late-joiners always see the current board.
-	lobbyPieces map[string]LobbyPieceMovedPayload // keyed by piece_id
+	lobbyPieces  map[string]LobbyPieceMovedPayload  // keyed by piece_id
+	lobbyWalls   map[string]mapentity.WallSegment   // in-memory runtime wall state; keyed by wall ID
+	lobbyGridSize float64                            // cell size in world coords; used for movement blocking
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -114,6 +118,8 @@ func NewRoom(
 		state:                 RoomStateLobby,
 		clients:               make(map[uuid.UUID]*Client),
 		lobbyPieces:           make(map[string]LobbyPieceMovedPayload),
+		lobbyWalls:            make(map[string]mapentity.WallSegment),
+		lobbyGridSize:         64, // default; overridden by lobby_state_sync
 		broadcast:             make(chan []byte, 256),
 		register:              make(chan *Client),
 		unregister:            make(chan *Client),
@@ -474,6 +480,27 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		a := buildAction(client.userUUID, payload)
+		// Movement blocking: validate path against walls with move=true and !open.
+		if a.Move != nil {
+			from := a.Move.From
+			to := a.Move.Position
+			// Only validate when the client provided a non-zero From (zero means "not provided").
+			if from != ([3]int{}) {
+				r.mu.RLock()
+				gridSize := r.lobbyGridSize
+				walls := make([]mapentity.WallSegment, 0, len(r.lobbyWalls))
+				for _, w := range r.lobbyWalls {
+					walls = append(walls, w)
+				}
+				r.mu.RUnlock()
+				fromWorld := [2]float64{float64(from[0]) * gridSize, float64(from[1]) * gridSize}
+				toWorld := [2]float64{float64(to[0]) * gridSize, float64(to[1]) * gridSize}
+				if mapservice.IsPathBlocked(fromWorld, toWorld, walls) {
+					client.SendMessage(NewErrorMessage("move_blocked", "movement blocked by a wall"))
+					return
+				}
+			}
+		}
 		if err := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a); err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -605,7 +632,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
 			return
 		}
-		var payload LobbyPiecesPayload
+		var payload LobbyStateSyncPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_state_sync payload"))
 			return
@@ -615,8 +642,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		for _, p := range payload.Pieces {
 			r.lobbyPieces[p.PieceID] = p
 		}
+		r.lobbyWalls = make(map[string]mapentity.WallSegment, len(payload.Walls))
+		for _, w := range payload.Walls {
+			r.lobbyWalls[w.ID] = w
+		}
+		if payload.Grid != nil && payload.Grid.CellSize > 0 {
+			r.lobbyGridSize = payload.Grid.CellSize
+		}
 		r.mu.Unlock()
-		// No relay — this only seeds the server's in-memory state.
+		// No relay — only seeds the server's in-memory state.
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
@@ -632,6 +666,24 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		r.mu.RUnlock()
 		ma := buildMasterAction(client.userUUID, payload)
+		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
+		if ma.Interact != nil && len(ma.TargetID) > 0 {
+			for _, targetID := range ma.TargetID {
+				newOpen, newLocked, ok := r.applyWallInteract(targetID.String(), ma.Interact)
+				if !ok {
+					// Wall not in in-memory state — skip silently.
+					continue
+				}
+				evt := NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+					WallID: targetID.String(),
+					Open:   newOpen,
+					Locked: newLocked,
+				})
+				data, _ := json.Marshal(evt)
+				go func() { r.broadcast <- data }()
+			}
+			return
+		}
 		if err := r.enqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -660,6 +712,30 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
 		masterClient.SendMessage(out)
 	}
+}
+
+// applyWallInteract updates in-memory wall state for open/close/toggle.
+// Returns (newOpen, newLocked, ok). ok=false means wall not found or interaction
+// not applicable (e.g. lockpick/examine are player-only actions requiring rolls).
+func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open, locked bool, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, exists := r.lobbyWalls[wallID]
+	if !exists {
+		return false, false, false
+	}
+	switch interact.Kind {
+	case action.InteractOpen:
+		w.Open = true
+	case action.InteractClose:
+		w.Open = false
+	case action.InteractToggle:
+		w.Open = !w.Open
+	default:
+		return false, false, false
+	}
+	r.lobbyWalls[wallID] = w
+	return w.Open, w.Locked, true
 }
 
 func (r *Room) sendLobbyFullState(client *Client) {

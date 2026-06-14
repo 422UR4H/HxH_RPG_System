@@ -19,8 +19,9 @@ type Action struct {
 	Feint   *RollCheck
 	Move    *Move
 	Attack  *Attack
-	Defense *Defense
-	Dodge   *Dodge
+	Defense  *Defense
+	Dodge    *Dodge
+	Interact *Interact
 
 	openedAt    *time.Time //nolint:unused // WIP: match system under development
 	confirmedAt *time.Time //nolint:unused // WIP: match system under development
@@ -38,6 +39,7 @@ func NewAction(
 	defense *Defense,
 	dodge *Dodge,
 	trigger *Trigger,
+	interact *Interact,
 ) *Action {
 	return &Action{
 		id:        uuid.New(),
@@ -52,6 +54,7 @@ func NewAction(
 		Defense:   defense,
 		Dodge:     dodge,
 		Trigger:   trigger,
+		Interact:  interact,
 	}
 }
 

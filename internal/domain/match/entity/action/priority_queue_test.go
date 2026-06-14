@@ -20,6 +20,7 @@ func makeAction(speed int) *action.Action {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 }
 

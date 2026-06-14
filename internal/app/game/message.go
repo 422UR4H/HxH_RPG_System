@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 )
 
 type MessageType string
@@ -66,6 +68,9 @@ const (
 	// Server → Client (lobby map sync)
 	// Sent to every client that registers, so late-joiners get the current board.
 	MsgTypeLobbyFullState   MessageType = "lobby_full_state"
+
+	// Server → Client (wall events)
+	MsgTypeWallStateChanged MessageType = "wall_state_changed"
 )
 
 type Message struct {
@@ -155,6 +160,7 @@ type ActionPayload struct {
 	Attack    *AttackPayload       `json:"attack,omitempty"`
 	Defense   *DefensePayload      `json:"defense,omitempty"`
 	Dodge     *DodgePayload        `json:"dodge,omitempty"`
+	Interact  *InteractPayload     `json:"interact,omitempty"`
 }
 
 type RollCheckPayload struct {
@@ -178,8 +184,13 @@ type DefensePayload struct {
 	RollCheck RollCheckPayload `json:"roll_check"`
 }
 
+type InteractPayload struct {
+	Kind string `json:"kind"` // "open" | "close" | "toggle" | "lockpick" | "examine"
+}
+
 type MovePayload struct {
 	Category string            `json:"category"`
+	From     [3]int            `json:"from,omitempty"` // source grid position [col, row, z]; zero = not provided
 	Position [3]int            `json:"position"`
 	Speed    *RollCheckPayload `json:"speed,omitempty"`
 	Charge   *RollCheckPayload `json:"charge,omitempty"`
@@ -254,6 +265,7 @@ type MasterActionPayload struct {
 	Move        *MovePayload         `json:"move,omitempty"`
 	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"action_speed,omitempty"`
+	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
 
 type MasterActionEnqueuedPayload struct {
@@ -262,4 +274,27 @@ type MasterActionEnqueuedPayload struct {
 	Move        *MovePayload         `json:"move,omitempty"`
 	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"action_speed,omitempty"`
+	Interact    *InteractPayload     `json:"interact,omitempty"`
+}
+
+// WallStateChangedPayload is broadcast to all clients when a wall's open/locked state changes.
+type WallStateChangedPayload struct {
+	WallID string `json:"wall_id"`
+	Open   bool   `json:"open"`
+	Locked bool   `json:"locked"`
+}
+
+// LobbyStateSyncPayload extends the original LobbyPiecesPayload to include walls and grid.
+// Sent by the master on WS connect to seed the room's in-memory state from the DB.
+// Walls are full WallSegment objects so the room can perform movement blocking without
+// additional DB queries.
+type LobbyStateSyncPayload struct {
+	Pieces []LobbyPieceMovedPayload `json:"pieces"`
+	Walls  []mapentity.WallSegment  `json:"walls,omitempty"`
+	Grid   *GridSyncEntry           `json:"grid,omitempty"`
+}
+
+// GridSyncEntry carries the cell size used to convert grid slot coords to world coords.
+type GridSyncEntry struct {
+	CellSize float64 `json:"cell_size"`
 }

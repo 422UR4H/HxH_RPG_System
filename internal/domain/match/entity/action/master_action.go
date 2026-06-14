@@ -12,6 +12,7 @@ type MasterAction struct {
 	Move        *Move
 	Attack      *Attack
 	ActionSpeed *RollCheck
+	Interact    *Interact
 	happenedAt  time.Time
 	// Initiative *Initiative ?
 	// Penalidade *Penalty ?
