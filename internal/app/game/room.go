@@ -15,6 +15,7 @@ import (
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
 
@@ -73,12 +74,12 @@ type Room struct {
 	masterUUID uuid.UUID
 	state      RoomState
 	clients    map[uuid.UUID]*Client
-	// lobbyPieces holds the authoritative in-memory board state during the lobby
-	// phase. Updated on every lobby_piece_moved / lobby_piece_removed. Sent to
-	// every new client on register so late-joiners always see the current board.
-	lobbyPieces  map[string]PieceMovedPayload  // keyed by piece_id
-	lobbyWalls   map[string]mapentity.WallSegment   // in-memory runtime wall state; keyed by wall ID
-	lobbyGridSize float64                            // cell size in world coords; used for movement blocking
+	// pieces holds the authoritative in-memory board state. Updated on every
+	// piece_moved / piece_removed. Sent to every new client on register so
+	// late-joiners always see the current board.
+	pieces   map[string]PieceMovedPayload      // keyed by piece_id
+	walls    map[string]mapentity.WallSegment  // in-memory runtime wall state; keyed by wall ID
+	gridSize float64                           // cell size in world coords; used for movement blocking
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -117,9 +118,9 @@ func NewRoom(
 		masterUUID:            masterUUID,
 		state:                 RoomStateLobby,
 		clients:               make(map[uuid.UUID]*Client),
-		lobbyPieces:           make(map[string]PieceMovedPayload),
-		lobbyWalls:            make(map[string]mapentity.WallSegment),
-		lobbyGridSize:         64, // default; overridden by lobby_state_sync
+		pieces:                make(map[string]PieceMovedPayload),
+		walls:                 make(map[string]mapentity.WallSegment),
+		gridSize:              64, // default; overridden by map_state_sync
 		broadcast:             make(chan []byte, 256),
 		register:              make(chan *Client),
 		unregister:            make(chan *Client),
@@ -184,10 +185,10 @@ func (r *Room) Run() {
 
 			r.sendRoomState(client)
 			r.mu.RLock()
-			hasPieces := len(r.lobbyPieces) > 0
+			hasPieces := len(r.pieces) > 0
 			r.mu.RUnlock()
 			if hasPieces {
-				r.sendLobbyFullState(client)
+				r.sendMapFullState(client)
 			}
 			r.broadcastPlayerJoined(client)
 
@@ -269,6 +270,11 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 
 	r.mu.Lock()
 	r.session = session
+	wallSlice := make([]mapentity.WallSegment, 0, len(r.walls))
+	for _, w := range r.walls {
+		wallSlice = append(wallSlice, w)
+	}
+	r.session.SyncMapState(wallSlice, r.gridSize)
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
 
@@ -487,10 +493,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// Only validate when the client provided a non-zero From (zero means "not provided").
 			if from != ([3]int{}) {
 				r.mu.RLock()
-				gridSize := r.lobbyGridSize
-				walls := make([]mapentity.WallSegment, 0, len(r.lobbyWalls))
-				for _, w := range r.lobbyWalls {
-					walls = append(walls, w)
+				sess := r.session
+				var gridSize float64
+				var walls []mapentity.WallSegment
+				if sess != nil {
+					gridSize = sess.GetGridSize()
+					walls = sess.GetWalls()
+				} else {
+					gridSize = r.gridSize
+					walls = make([]mapentity.WallSegment, 0, len(r.walls))
+					for _, w := range r.walls {
+						walls = append(walls, w)
+					}
 				}
 				r.mu.RUnlock()
 				fromWorld := [2]float64{float64(from[0]) * gridSize, float64(from[1]) * gridSize}
@@ -585,7 +599,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		// Keep in-memory board state current so late-joiners get the right board.
 		r.mu.Lock()
-		r.lobbyPieces[payload.PieceID] = payload
+		r.pieces[payload.PieceID] = payload
 		r.mu.Unlock()
 		outMsg := NewClientMessage(MsgTypePieceMoved, client.userUUID, payload)
 		data, _ := json.Marshal(outMsg)
@@ -609,7 +623,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		r.mu.Lock()
-		delete(r.lobbyPieces, payload.PieceID)
+		delete(r.pieces, payload.PieceID)
 		r.mu.Unlock()
 		outMsg := NewClientMessage(MsgTypePieceRemoved, client.userUUID, payload)
 		data, _ := json.Marshal(outMsg)
@@ -634,22 +648,30 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload MapStateSyncPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_state_sync payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid map_state_sync payload"))
 			return
 		}
 		r.mu.Lock()
-		r.lobbyPieces = make(map[string]PieceMovedPayload, len(payload.Pieces))
+		r.pieces = make(map[string]PieceMovedPayload, len(payload.Pieces))
 		for _, p := range payload.Pieces {
-			r.lobbyPieces[p.PieceID] = p
+			r.pieces[p.PieceID] = p
 		}
-		r.lobbyWalls = make(map[string]mapentity.WallSegment, len(payload.Walls))
+		r.walls = make(map[string]mapentity.WallSegment, len(payload.Walls))
 		for _, w := range payload.Walls {
-			r.lobbyWalls[w.ID] = w
+			r.walls[w.ID] = w
 		}
 		if payload.Grid != nil && payload.Grid.CellSize > 0 {
-			r.lobbyGridSize = payload.Grid.CellSize
+			r.gridSize = payload.Grid.CellSize
 		}
+		sess := r.session
 		r.mu.Unlock()
+		if sess != nil {
+			wallSlice := make([]mapentity.WallSegment, 0, len(payload.Walls))
+			for _, w := range payload.Walls {
+				wallSlice = append(wallSlice, w)
+			}
+			sess.SyncMapState(wallSlice, r.gridSize)
+		}
 		// No relay — only seeds the server's in-memory state.
 
 	case MsgTypeEnqueueMasterAction:
@@ -718,30 +740,34 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 // Returns (newOpen, newLocked, ok). ok=false means wall not found or interaction
 // not applicable (e.g. lockpick/examine are player-only actions requiring rolls).
 func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open, locked bool, ok bool) {
+	r.mu.RLock()
+	sess := r.session
+	r.mu.RUnlock()
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	w, exists := r.lobbyWalls[wallID]
+	w, exists := r.walls[wallID]
 	if !exists {
+		r.mu.Unlock()
 		return false, false, false
 	}
-	switch interact.Kind {
-	case action.InteractOpen:
-		w.Open = true
-	case action.InteractClose:
-		w.Open = false
-	case action.InteractToggle:
-		w.Open = !w.Open
-	default:
+	updated, ok := domainservice.ApplyWallInteract(w, interact)
+	if !ok {
+		r.mu.Unlock()
 		return false, false, false
 	}
-	r.lobbyWalls[wallID] = w
-	return w.Open, w.Locked, true
+	r.walls[wallID] = updated
+	r.mu.Unlock()
+
+	if sess != nil {
+		sess.UpdateWall(updated)
+	}
+	return updated.Open, updated.Locked, true
 }
 
-func (r *Room) sendLobbyFullState(client *Client) {
+func (r *Room) sendMapFullState(client *Client) {
 	r.mu.RLock()
-	pieces := make([]PieceMovedPayload, 0, len(r.lobbyPieces))
-	for _, p := range r.lobbyPieces {
+	pieces := make([]PieceMovedPayload, 0, len(r.pieces))
+	for _, p := range r.pieces {
 		pieces = append(pieces, p)
 	}
 	r.mu.RUnlock()
