@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +26,8 @@ type MatchSession struct {
 	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
+	walls    map[string]mapentity.WallSegment // keyed by wall ID; nil until SyncMapState
+	gridSize float64                          // cell size in world coords; 0 until SyncMapState
 }
 
 func NewMatchSession(
@@ -174,3 +177,35 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	s.activeQueue.Insert(a)
 	return nil
 }
+
+// SyncMapState seeds or replaces the session's in-memory map state.
+// Called by room.go when the match starts, seeding from pre-match lobby state.
+func (s *MatchSession) SyncMapState(walls []mapentity.WallSegment, gridSize float64) {
+	s.walls = make(map[string]mapentity.WallSegment, len(walls))
+	for _, w := range walls {
+		s.walls[w.ID] = w
+	}
+	s.gridSize = gridSize
+}
+
+func (s *MatchSession) GetWall(id string) (mapentity.WallSegment, bool) {
+	w, ok := s.walls[id]
+	return w, ok
+}
+
+func (s *MatchSession) UpdateWall(w mapentity.WallSegment) {
+	if s.walls == nil {
+		s.walls = make(map[string]mapentity.WallSegment)
+	}
+	s.walls[w.ID] = w
+}
+
+func (s *MatchSession) GetWalls() []mapentity.WallSegment {
+	result := make([]mapentity.WallSegment, 0, len(s.walls))
+	for _, w := range s.walls {
+		result = append(result, w)
+	}
+	return result
+}
+
+func (s *MatchSession) GetGridSize() float64 { return s.gridSize }
