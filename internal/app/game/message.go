@@ -59,18 +59,20 @@ const (
 	MsgTypeCancelLobby MessageType = "cancel_lobby" // master requests lobby cancellation
 
 	// Client → Server (lobby map sync)
-	// lobby_ prefix distinguishes from future in-game events (Phase 7+).
-	MsgTypeLobbyPieceMoved  MessageType = "lobby_piece_moved"
-	MsgTypeLobbyPieceRemoved MessageType = "lobby_piece_removed"
+	MsgTypePieceMoved   MessageType = "piece_moved"
+	MsgTypePieceRemoved MessageType = "piece_removed"
 	// Sent by master on WS connect to seed backend in-memory state from DB.
-	MsgTypeLobbyStateSync   MessageType = "lobby_state_sync"
+	MsgTypeMapStateSync MessageType = "map_state_sync"
 
 	// Server → Client (lobby map sync)
 	// Sent to every client that registers, so late-joiners get the current board.
-	MsgTypeLobbyFullState   MessageType = "lobby_full_state"
+	MsgTypeMapFullState MessageType = "map_full_state"
 
 	// Server → Client (wall events)
 	MsgTypeWallStateChanged MessageType = "wall_state_changed"
+
+	// Server → Client (wall HP/structural events)
+	MsgTypeWallHpChanged MessageType = "wall_hp_changed"
 )
 
 type Message struct {
@@ -126,21 +128,21 @@ type SlotPayload struct {
 	R    *int   `json:"r,omitempty"`   // hex only
 }
 
-type LobbyPieceMovedPayload struct {
+type PieceMovedPayload struct {
 	PieceID     string      `json:"piece_id"`
 	Slot        SlotPayload `json:"slot"`
 	CharacterID string      `json:"character_id,omitempty"`
 	Visible     *bool       `json:"visible,omitempty"`
 }
 
-type LobbyPieceRemovedPayload struct {
+type PieceRemovedPayload struct {
 	PieceID string `json:"piece_id"`
 }
 
-// LobbyPiecesPayload is shared by lobby_state_sync (client→server) and
-// lobby_full_state (server→client). Both carry the complete current board.
-type LobbyPiecesPayload struct {
-	Pieces []LobbyPieceMovedPayload `json:"pieces"`
+// MapPiecesPayload is shared by map_state_sync (client→server) and
+// map_full_state (server→client). Both carry the complete current board.
+type MapPiecesPayload struct {
+	Pieces []PieceMovedPayload `json:"pieces"`
 }
 
 type PullActionPayload struct {
@@ -284,12 +286,20 @@ type WallStateChangedPayload struct {
 	Locked bool   `json:"locked"`
 }
 
-// LobbyStateSyncPayload extends the original LobbyPiecesPayload to include walls and grid.
+// WallHpChangedPayload is broadcast to all clients when a wall's HP or destroyed state changes.
+type WallHpChangedPayload struct {
+	WallID    string `json:"wall_id"`
+	HP        int    `json:"hp"`
+	MaxHP     int    `json:"max_hp"`
+	Destroyed bool   `json:"destroyed"`
+}
+
+// MapStateSyncPayload extends MapPiecesPayload to include walls and grid.
 // Sent by the master on WS connect to seed the room's in-memory state from the DB.
 // Walls are full WallSegment objects so the room can perform movement blocking without
 // additional DB queries.
-type LobbyStateSyncPayload struct {
-	Pieces []LobbyPieceMovedPayload `json:"pieces"`
+type MapStateSyncPayload struct {
+	Pieces []PieceMovedPayload `json:"pieces"`
 	Walls  []mapentity.WallSegment  `json:"walls,omitempty"`
 	Grid   *GridSyncEntry           `json:"grid,omitempty"`
 }

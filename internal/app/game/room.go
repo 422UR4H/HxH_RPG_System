@@ -76,7 +76,7 @@ type Room struct {
 	// lobbyPieces holds the authoritative in-memory board state during the lobby
 	// phase. Updated on every lobby_piece_moved / lobby_piece_removed. Sent to
 	// every new client on register so late-joiners always see the current board.
-	lobbyPieces  map[string]LobbyPieceMovedPayload  // keyed by piece_id
+	lobbyPieces  map[string]PieceMovedPayload  // keyed by piece_id
 	lobbyWalls   map[string]mapentity.WallSegment   // in-memory runtime wall state; keyed by wall ID
 	lobbyGridSize float64                            // cell size in world coords; used for movement blocking
 	broadcast  chan []byte
@@ -117,7 +117,7 @@ func NewRoom(
 		masterUUID:            masterUUID,
 		state:                 RoomStateLobby,
 		clients:               make(map[uuid.UUID]*Client),
-		lobbyPieces:           make(map[string]LobbyPieceMovedPayload),
+		lobbyPieces:           make(map[string]PieceMovedPayload),
 		lobbyWalls:            make(map[string]mapentity.WallSegment),
 		lobbyGridSize:         64, // default; overridden by lobby_state_sync
 		broadcast:             make(chan []byte, 256),
@@ -574,11 +574,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
 		}
 
-	case MsgTypeLobbyPieceMoved:
+	case MsgTypePieceMoved:
 		// Broadcast piece move to all OTHER participants in the lobby.
 		// No server-side piece ownership validation in Phase 6 — client restricts
 		// drag to allowed pieces. TODO: validate piece ownership per user (Phase 7+)
-		var payload LobbyPieceMovedPayload
+		var payload PieceMovedPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_moved payload"))
 			return
@@ -587,7 +587,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		r.lobbyPieces[payload.PieceID] = payload
 		r.mu.Unlock()
-		outMsg := NewClientMessage(MsgTypeLobbyPieceMoved, client.userUUID, payload)
+		outMsg := NewClientMessage(MsgTypePieceMoved, client.userUUID, payload)
 		data, _ := json.Marshal(outMsg)
 		r.mu.RLock()
 		for id, c := range r.clients {
@@ -602,8 +602,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.RUnlock()
 
-	case MsgTypeLobbyPieceRemoved:
-		var payload LobbyPieceRemovedPayload
+	case MsgTypePieceRemoved:
+		var payload PieceRemovedPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_removed payload"))
 			return
@@ -611,7 +611,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		delete(r.lobbyPieces, payload.PieceID)
 		r.mu.Unlock()
-		outMsg := NewClientMessage(MsgTypeLobbyPieceRemoved, client.userUUID, payload)
+		outMsg := NewClientMessage(MsgTypePieceRemoved, client.userUUID, payload)
 		data, _ := json.Marshal(outMsg)
 		r.mu.RLock()
 		for id, c := range r.clients {
@@ -626,19 +626,19 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.RUnlock()
 
-	case MsgTypeLobbyStateSync:
+	case MsgTypeMapStateSync:
 		// Only the master may seed the in-memory board (initial DB state on connect).
 		if !r.IsMaster(client.userUUID) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
 			return
 		}
-		var payload LobbyStateSyncPayload
+		var payload MapStateSyncPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_state_sync payload"))
 			return
 		}
 		r.mu.Lock()
-		r.lobbyPieces = make(map[string]LobbyPieceMovedPayload, len(payload.Pieces))
+		r.lobbyPieces = make(map[string]PieceMovedPayload, len(payload.Pieces))
 		for _, p := range payload.Pieces {
 			r.lobbyPieces[p.PieceID] = p
 		}
@@ -740,12 +740,12 @@ func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open
 
 func (r *Room) sendLobbyFullState(client *Client) {
 	r.mu.RLock()
-	pieces := make([]LobbyPieceMovedPayload, 0, len(r.lobbyPieces))
+	pieces := make([]PieceMovedPayload, 0, len(r.lobbyPieces))
 	for _, p := range r.lobbyPieces {
 		pieces = append(pieces, p)
 	}
 	r.mu.RUnlock()
-	msg := NewServerMessage(MsgTypeLobbyFullState, LobbyPiecesPayload{Pieces: pieces})
+	msg := NewServerMessage(MsgTypeMapFullState, MapPiecesPayload{Pieces: pieces})
 	client.SendMessage(msg)
 }
 
