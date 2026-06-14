@@ -422,6 +422,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+		if result.Resolution != nil {
+			r.broadcastWallResults(session, result.Resolution.WallResults)
+		}
 
 	case MsgTypePullAction:
 		if !r.IsMaster(client.userUUID) {
@@ -466,6 +469,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+		if result.Resolution != nil {
+			r.broadcastWallResults(session, result.Resolution.WallResults)
+		}
 
 	case MsgTypeEnqueueAction:
 		var payload ActionPayload
@@ -830,5 +836,34 @@ func (r *Room) broadcastPlayerLeft(client *Client) {
 		case c.send <- data:
 		default:
 		}
+	}
+}
+
+func (r *Room) broadcastWallResults(session *matchsession.MatchSession, results []domainservice.WallResult) {
+	for _, wr := range results {
+		session.UpdateWall(wr.UpdatedWall)
+		r.mu.Lock()
+		r.walls[wr.UpdatedWall.ID] = wr.UpdatedWall
+		r.mu.Unlock()
+		var msg Message
+		switch wr.Kind {
+		case domainservice.WallResultKindAttack:
+			msg = NewServerMessage(MsgTypeWallHpChanged, WallHpChangedPayload{
+				WallID:    wr.UpdatedWall.ID,
+				HP:        wr.UpdatedWall.HP,
+				MaxHP:     wr.UpdatedWall.MaxHP,
+				Destroyed: wr.UpdatedWall.Destroyed,
+			})
+		case domainservice.WallResultKindInteract:
+			msg = NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+				WallID: wr.UpdatedWall.ID,
+				Open:   wr.UpdatedWall.Open,
+				Locked: wr.UpdatedWall.Locked,
+			})
+		default:
+			continue
+		}
+		data, _ := json.Marshal(msg)
+		go func(d []byte) { r.broadcast <- d }(data)
 	}
 }
