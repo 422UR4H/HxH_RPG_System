@@ -82,6 +82,44 @@ func (tr TurnResolver) Resolve(
 		IsSettled: t.GetFinishedAt() != nil,
 	}
 
+	if targets != nil {
+		a := t.GetAction()
+		for _, targetID := range a.TargetID {
+			switch targets.CategorizeTarget(targetID) {
+			case TargetKindCharacter:
+				// TODO: implement character combat rolls (existing path)
+
+			case TargetKindWallSegment:
+				wall, ok := targets.GetWall(targetID.String())
+				if !ok {
+					continue
+				}
+				if a.Attack != nil {
+					rawDamage := 0 // TODO: extract from a.Attack.Damage roll when contrato finalizar
+					sdr := ApplyStructuralDamage(wall, rawDamage)
+					res.WallResults = append(res.WallResults, WallResult{
+						UpdatedWall:     sdr.UpdatedWall,
+						EffectiveDamage: sdr.EffectiveDamage,
+						ReboundDamage:   sdr.ReboundDamage,
+						Kind:            WallResultKindAttack,
+					})
+				}
+				if a.Interact != nil {
+					updated, ok := ApplyWallInteract(wall, a.Interact)
+					if ok {
+						res.WallResults = append(res.WallResults, WallResult{
+							UpdatedWall: updated,
+							Kind:        WallResultKindInteract,
+						})
+					}
+				}
+
+			case TargetKindUnknown:
+				// TODO: record unknown-target error in resolution for caller to surface
+			}
+		}
+	}
+
 	// TODO: implement ActionResult calculation using RollCalculator + sheets
 
 	reactions := t.GetReactions()

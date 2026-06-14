@@ -73,3 +73,104 @@ func makeTurn() *turn.Turn {
 	)
 	return turn.NewTurn(*a)
 }
+
+// mockWallReader implements TargetReader with one pre-configured wall.
+type mockWallReader struct {
+	wallID string
+	wall   mapentity.WallSegment
+}
+
+func (m mockWallReader) CategorizeTarget(id uuid.UUID) service.TargetKind {
+	if id.String() == m.wallID {
+		return service.TargetKindWallSegment
+	}
+	return service.TargetKindUnknown
+}
+
+func (m mockWallReader) GetWall(id string) (mapentity.WallSegment, bool) {
+	if id == m.wallID {
+		return m.wall, true
+	}
+	return mapentity.WallSegment{}, false
+}
+
+func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
+	resolver := service.TurnResolver{}
+	wallID := uuid.New()
+	wall := mapentity.WallSegment{
+		ID:         wallID.String(),
+		HP:         40,
+		MaxHP:      40,
+		Resistance: 5,
+	}
+	reader := mockWallReader{wallID: wallID.String(), wall: wall}
+
+	t.Run("Attack on wall produces WallResult with Kind=attack", func(t *testing.T) {
+		a := action.NewAction(
+			uuid.New(),
+			[]uuid.UUID{wallID},
+			uuid.Nil,
+			nil,
+			action.ActionSpeed{},
+			nil, nil,
+			&action.Attack{},
+			nil, nil, nil, nil,
+		)
+		tRn := turn.NewTurn(*a)
+
+		res := resolver.Resolve(tRn, nil, reader)
+
+		if len(res.WallResults) != 1 {
+			t.Fatalf("expected 1 WallResult, got %d", len(res.WallResults))
+		}
+		if res.WallResults[0].Kind != service.WallResultKindAttack {
+			t.Errorf("expected Kind=attack, got %s", res.WallResults[0].Kind)
+		}
+		if res.WallResults[0].UpdatedWall.ID != wallID.String() {
+			t.Errorf("UpdatedWall.ID mismatch")
+		}
+	})
+
+	t.Run("Interact (open) on wall produces WallResult with Kind=interact", func(t *testing.T) {
+		a := action.NewAction(
+			uuid.New(),
+			[]uuid.UUID{wallID},
+			uuid.Nil,
+			nil,
+			action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil,
+			&action.Interact{Kind: action.InteractOpen},
+		)
+		tRn := turn.NewTurn(*a)
+
+		res := resolver.Resolve(tRn, nil, reader)
+
+		if len(res.WallResults) != 1 {
+			t.Fatalf("expected 1 WallResult, got %d", len(res.WallResults))
+		}
+		if res.WallResults[0].Kind != service.WallResultKindInteract {
+			t.Errorf("expected Kind=interact, got %s", res.WallResults[0].Kind)
+		}
+		if !res.WallResults[0].UpdatedWall.Open {
+			t.Error("expected UpdatedWall.Open=true after InteractOpen")
+		}
+	})
+
+	t.Run("nil targets skips wall routing", func(t *testing.T) {
+		a := action.NewAction(
+			uuid.New(),
+			[]uuid.UUID{wallID},
+			uuid.Nil,
+			nil,
+			action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil,
+		)
+		tRn := turn.NewTurn(*a)
+
+		res := resolver.Resolve(tRn, nil, nil)
+
+		if len(res.WallResults) != 0 {
+			t.Errorf("expected 0 WallResults when targets=nil, got %d", len(res.WallResults))
+		}
+	})
+}
