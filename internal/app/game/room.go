@@ -486,6 +486,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		// TODO: consider collapsing enqueue_action and attach_reaction into a single message type
 		if payload.ReactToID != uuid.Nil {
 			r.handleReaction(client, session, payload)
@@ -540,6 +544,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		r.handleReaction(client, session, payload)
 
 	case MsgTypeChangeScene:
@@ -554,6 +562,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.RLock()
 		session := r.session
+		if session == nil {
+			r.mu.RUnlock()
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		// Capture persisted flag BEFORE ChangeScene resets it
 		sceneWasPersisted := session.IsScenePersisted()
 		r.mu.RUnlock()
@@ -710,6 +723,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				data, _ := json.Marshal(evt)
 				go func() { r.broadcast <- data }()
 			}
+			return
+		}
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
 		if err := r.enqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
