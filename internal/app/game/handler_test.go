@@ -31,6 +31,10 @@ func (m *mockMatchRepo) GetMatchMaster(_ context.Context, _ uuid.UUID) (uuid.UUI
 	return m.masterUUID, m.err
 }
 
+func (m *mockMatchRepo) IsStarted(_ context.Context, _ uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 type mockEnrollmentChecker struct {
 	enrolled bool
 	err      error

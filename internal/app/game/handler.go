@@ -16,6 +16,7 @@ import (
 
 type MatchRepository interface {
 	GetMatchMaster(ctx context.Context, matchUUID uuid.UUID) (uuid.UUID, error)
+	IsStarted(ctx context.Context, matchUUID uuid.UUID) (bool, error)
 }
 
 type EnrollmentChecker interface {
@@ -163,6 +164,20 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		h.enqueueActionUC, h.attachReactionUC,
 		h.changeSceneUC, h.roundRepo, h.enqueueMasterActionUC,
 	)
+
+	// After a backend restart the Room is freshly created with nil session.
+	// If the match was already started in DB, rehydrate the session so
+	// players can take actions without a full match restart.
+	if room.GetSession() == nil {
+		if started, err := h.matchRepo.IsStarted(r.Context(), matchUUID); err == nil && started {
+			if session, err := h.initSessionUC.Init(r.Context(), matchUUID); err == nil {
+				room.RehydrateSession(session)
+			} else {
+				log.Printf("failed to rehydrate session for match %s: %v", matchUUID, err)
+			}
+		}
+	}
+
 	client := NewClient(userUUID, conn, nickname)
 
 	room.Register(client)

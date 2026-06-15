@@ -148,6 +148,29 @@ func (r *Room) GetState() RoomState {
 	return r.state
 }
 
+func (r *Room) GetSession() *matchsession.MatchSession {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.session
+}
+
+// RehydrateSession restores session after a backend restart. Only called when
+// the match was already started in DB but the in-memory Room has no session.
+func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.session != nil {
+		return // another goroutine already rehydrated
+	}
+	r.session = session
+	wallSlice := make([]mapentity.WallSegment, 0, len(r.walls))
+	for _, w := range r.walls {
+		wallSlice = append(wallSlice, w)
+	}
+	r.session.SyncMapState(wallSlice, r.gridSize)
+	r.state = RoomStatePlaying
+}
+
 func (r *Room) IsMaster(userUUID uuid.UUID) bool {
 	return r.masterUUID == userUUID
 }
