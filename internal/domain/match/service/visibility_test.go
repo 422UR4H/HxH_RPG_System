@@ -88,3 +88,13 @@ func TestComputeVisibility_OneWay_BlocksFromOneSide(t *testing.T) {
 		t.Fatalf("one-way wall must block from exactly one side (A=%v B=%v)", behindFromA, behindFromB)
 	}
 }
+
+func TestCellsInPolygon_Square(t *testing.T) {
+	g := mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 10, Rows: 10, CellSize: 64, SkewRatio: 1}
+	// A polygon covering roughly cells (0,0),(1,0),(0,1),(1,1) centers.
+	poly := VisibilityPolygon{Vertices: []Point2D{{0, 0}, {128, 0}, {128, 128}, {0, 128}}}
+	cells := CellsInPolygon(poly, g)
+	if len(cells) != 4 {
+		t.Fatalf("want 4 cells, got %d (%+v)", len(cells), cells)
+	}
+}
