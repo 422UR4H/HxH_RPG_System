@@ -47,14 +47,21 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 
 ## Agent Model Strategy
 
+Pick the cheapest model that will get the task right.
+
 | Role | Model |
 |------|-------|
 | Orchestration/Planning | Opus (main) |
-| Code Implementation | Sonnet 4.6 (always override) |
-| Code Review/Critique | Sonnet 4.6+ (auto) |
-| Exploration/Commands | Haiku 4.5 |
+| Heavy / multi-file integration (e.g. rewiring a large delivery file) | Opus |
+| Code with logic, branching, integration, or "match the real code shapes" judgment | Sonnet 4.6 |
+| Well-specified boilerplate (data structs, enums, WS message types/payloads, repo stubs, mechanical edits where the plan gives complete code) | Haiku 4.5 |
+| Code Review / Critique | Sonnet 4.6+ |
+| Exploration / read-only / commands | Haiku 4.5 |
 
-Never accept Haiku default for code-writing sub-agents. When in doubt, prefer Sonnet.
+Haiku is preferred for well-specified boilerplate — it is fast, cheap, and reliable when
+the spec is complete. Escalate to Sonnet the moment a task needs branching logic, multi-file
+integration, correctness reasoning, or adapting to real code shapes. Use Opus for planning
+and heavy integration. When genuinely unsure between Haiku and Sonnet, prefer Sonnet.
 
 ## Commands
 
