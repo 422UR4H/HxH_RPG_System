@@ -75,6 +75,10 @@ const (
 
 	// Server → Client (wall HP/structural events)
 	MsgTypeWallHpChanged MessageType = "wall_hp_changed"
+
+	// Server → Client (fog of war events)
+	MsgTypeVisibilityUpdated MessageType = "visibility_updated"
+	MsgTypeWallRevealed      MessageType = "wall_revealed"
 )
 
 type Message struct {
@@ -309,4 +313,27 @@ type MapStateSyncPayload struct {
 // GridSyncEntry carries the cell size used to convert grid slot coords to world coords.
 type GridSyncEntry struct {
 	CellSize float64 `json:"cell_size"`
+}
+
+type Point2DPayload struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type VisibilityUpdatedPayload struct {
+	VisiblePolygons [][]Point2DPayload `json:"visible_polygons"`
+	ExploredDelta   [][2]int           `json:"explored_delta,omitempty"`
+}
+
+type WallRevealedPayload struct {
+	Wall mapentity.WallSegment `json:"wall"`
+}
+
+// MapFullStatePayload replaces MapPiecesPayload for map_full_state (server→client).
+type MapFullStatePayload struct {
+	Pieces          []PieceMovedPayload     `json:"pieces"`
+	Walls           []mapentity.WallSegment `json:"walls,omitempty"`
+	VisiblePolygons [][]Point2DPayload      `json:"visible_polygons,omitempty"`
+	ExploredCells   [][2]int                `json:"explored_cells,omitempty"`
+	FogMode         string                  `json:"fog_mode"`
 }
