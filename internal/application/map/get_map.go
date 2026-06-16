@@ -11,8 +11,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// IGetMap fetches a tactical map and returns whether the requester is its campaign master.
+// The isMaster flag drives role-aware filtering in the handler.
 type IGetMap interface {
-	GetMap(ctx context.Context, mapID uuid.UUID) (*entity.TacticalMap, error)
+	GetMap(ctx context.Context, mapID uuid.UUID, requesterID uuid.UUID) (*entity.TacticalMap, bool, error)
 }
 
 type GetMapUC struct {
@@ -24,13 +26,18 @@ func NewGetMapUC(repo IRepository, campaignRepo campaignApp.IRepository) *GetMap
 	return &GetMapUC{repo: repo, campaignRepo: campaignRepo}
 }
 
-func (uc *GetMapUC) GetMap(ctx context.Context, mapID uuid.UUID) (*entity.TacticalMap, error) {
+func (uc *GetMapUC) GetMap(ctx context.Context, mapID uuid.UUID, requesterID uuid.UUID) (*entity.TacticalMap, bool, error) {
 	m, err := uc.repo.GetMap(ctx, mapID)
 	if err != nil {
 		if errors.Is(err, pgmap.ErrMapNotFound) {
-			return nil, ErrMapNotFound
+			return nil, false, ErrMapNotFound
 		}
-		return nil, err
+		return nil, false, err
 	}
-	return m, nil
+	masterID, err := uc.campaignRepo.GetCampaignMasterUUID(ctx, m.CampaignID)
+	if err != nil {
+		// Best-effort: if we cannot determine master, treat as non-master (safe default).
+		return m, false, nil
+	}
+	return m, masterID == requesterID, nil
 }
