@@ -48,3 +48,43 @@ func TestIsVisible_AnyPolygon(t *testing.T) {
 		t.Fatal("should not be visible")
 	}
 }
+
+func TestComputeVisibility_WallOccludes(t *testing.T) {
+	// Vertical wall at x=10 from y=-5..5. Origin at (0,0).
+	// A point behind the wall (20,0) must NOT be visible; (5,0) in front must be.
+	walls := []WallSegmentLOS{
+		{ID: "w", P1: Point2D{10, -5}, P2: Point2D{10, 5}, Direction: "both"},
+	}
+	poly := ComputeVisibilityPolygon(Point2D{0, 0}, walls)
+	if PointInPolygon(Point2D{20, 0}, poly.Vertices) {
+		t.Fatal("point behind wall must be occluded")
+	}
+	if !PointInPolygon(Point2D{5, 0}, poly.Vertices) {
+		t.Fatal("point in front of wall must be visible")
+	}
+}
+
+func TestComputeVisibility_NoWalls_SeesFar(t *testing.T) {
+	poly := ComputeVisibilityPolygon(Point2D{0, 0}, nil)
+	if !PointInPolygon(Point2D{100, 100}, poly.Vertices) {
+		t.Fatal("with no walls, far point should be visible")
+	}
+}
+
+func TestComputeVisibility_OneWay_BlocksFromOneSide(t *testing.T) {
+	// One-way wall blocking only its "left" side relative to P1->P2.
+	// P1->P2 points +Y; left side (by (P2-P1) x (origin-P1) sign) is -X.
+	// Origin on the blocking side should be occluded; on the other side, not.
+	wallLeft := []WallSegmentLOS{
+		{ID: "w", P1: Point2D{0, -5}, P2: Point2D{0, 5}, Direction: "left"},
+	}
+	// Origin at +X looking at the wall: depending on side it blocks or not.
+	polyA := ComputeVisibilityPolygon(Point2D{10, 0}, wallLeft)
+	polyB := ComputeVisibilityPolygon(Point2D{-10, 0}, wallLeft)
+	behindFromA := PointInPolygon(Point2D{-1, 0}, polyA.Vertices)
+	behindFromB := PointInPolygon(Point2D{1, 0}, polyB.Vertices)
+	// Exactly one side must be blocked (XOR): the wall is one-way.
+	if behindFromA == behindFromB {
+		t.Fatalf("one-way wall must block from exactly one side (A=%v B=%v)", behindFromA, behindFromB)
+	}
+}
