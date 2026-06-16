@@ -388,13 +388,64 @@ mappings:
         confidence: directly_affected
     notes: Match-Maps use cases (AttachMap, GetMap, DetachMap)
 
+  # ─── Fog of War / Visibility (Phase 10-D) ───
+  - code_path: internal/domain/match/entity/fog/
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: FogMode enum, CellCoord, PlayerFogState — fog domain entities; any change affects WS payload semantics documented in maps.md
+
+  - code_path: internal/domain/match/service/visibility.go
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: Angular-sweep LOS computation; ToLOSWalls, IsVisible, CellsInPolygon — drives visible_polygons and explored_cells in WS payloads
+
+  - code_path: internal/domain/match/service/filter_map_state.go
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: FilterMapState — central visibility policy; reused by REST handler and WS dispatch; any policy change affects both GET /maps/:id and map_full_state
+
+  - code_path: internal/domain/match/service/mask_secret_door.go
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: MaskSecretDoorForPlayer — maps secret_door → plain wall for non-master; field-level masking documented in maps.md fog section
+
+  - code_path: internal/domain/map/service/coords.go
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: SlotToWorld / WorldToSlot (square, hex, iso) — coordinate conversion used to map LOS polygons to explored_cells grid coords
+
+  - code_path: internal/application/fog/
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: possibly_affected
+    notes: IFogStateRepository interface (fog state persistence scaffold); currently a stub — impacts maps.md if persistence behavior changes
+
+  - code_path: internal/gateway/pg/fog/
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: possibly_affected
+    notes: FogStateRepository PG implementation (stub); impacts maps.md when fog persistence is fully wired
+
+  - code_path: migrations/20260616000000_fog_state.sql
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: possibly_affected
+    notes: ALTER maps ADD fog_mode + CREATE player_fog_states; schema backing the fog_mode field and explored-cell persistence
+
   - code_path: internal/app/game/message.go
     dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
       - path: docs/dev/api/match-maps.md
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: possibly_affected
-    notes: WS message type definitions — piece_moved, piece_removed, map_state_sync, map_full_state, wall_hp_changed, wall_state_changed
+    notes: WS message type definitions — piece_moved, piece_removed, map_state_sync, map_full_state (extended with visible_polygons/explored_cells/fog_mode), wall_hp_changed, wall_state_changed, visibility_updated, wall_revealed
 
   - code_path: internal/app/game/room.go
     dev_docs:
