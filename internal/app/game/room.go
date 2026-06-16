@@ -863,7 +863,11 @@ func (r *Room) broadcastPlayerJoined(client *Client) {
 }
 
 func (r *Room) broadcastPlayerLeft(client *Client) {
-	msg := NewServerMessage(MsgTypePlayerLeft, PlayerPayload{
+	msgType := MsgTypePlayerLeft
+	if r.IsMaster(client.userUUID) {
+		msgType = MsgTypeMasterLeft
+	}
+	msg := NewServerMessage(msgType, PlayerPayload{
 		UUID:     client.userUUID,
 		Nickname: client.nickname,
 	})

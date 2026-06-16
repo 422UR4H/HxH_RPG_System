@@ -16,6 +16,7 @@ const (
 	MsgTypeRoomState    MessageType = "room_state"
 	MsgTypePlayerJoined MessageType = "player_joined"
 	MsgTypePlayerLeft   MessageType = "player_left"
+	MsgTypeMasterLeft   MessageType = "master_left"
 	MsgTypePlayerKicked MessageType = "player_kicked"
 	MsgTypeMatchStarted MessageType = "match_started"
 	MsgTypeChatMessage  MessageType = "chat_message"
