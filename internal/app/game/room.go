@@ -1032,9 +1032,9 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	fogMode := fogentity.FogModeLive
 	var explored map[fogentity.CellCoord]struct{}
 	charToPlayer := map[string]uuid.UUID{}
-	// Fog filtering only applies once a match is live. In the lobby (no session) the
-	// board is shared unfiltered, so non-masters are treated as "unfiltered" too.
-	unfiltered := isMaster || r.session == nil
+	// LOS fog applies only once a match is live. In the lobby (no session) there is no LOS,
+	// but secret doors are still masked and invisible pieces hidden from non-master players.
+	isLobby := r.session == nil
 	if r.session != nil {
 		polys = r.session.GetVisibility(playerID)
 		fogMode = r.session.GetFogMode()
@@ -1045,18 +1045,45 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	}
 	r.mu.RUnlock()
 
-	walls, visIDs := domainservice.FilterMapState(
-		allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, unfiltered,
-	)
+	var walls []mapentity.WallSegment
+	var visIDs map[string]bool
+	switch {
+	case isMaster:
+		// Master sees the true board, unmasked, with every piece.
+		walls, visIDs = domainservice.FilterMapState(
+			allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, true,
+		)
+	case isLobby:
+		// Lobby: no LOS gating, but mask unrevealed secret doors and hide invisible pieces.
+		walls = make([]mapentity.WallSegment, 0, len(allWalls))
+		for _, w := range allWalls {
+			if w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
+				walls = append(walls, domainservice.MaskSecretDoorForPlayer(w))
+			} else {
+				walls = append(walls, w)
+			}
+		}
+		visIDs = make(map[string]bool, len(pieceProj))
+		for _, p := range pieceProj {
+			if p.Visible {
+				visIDs[p.ID] = true
+			}
+		}
+	default:
+		// In-match player: full per-player LOS filtering.
+		walls, visIDs = domainservice.FilterMapState(
+			allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, false,
+		)
+	}
 
 	pieces := make([]PieceMovedPayload, 0, len(allPieces))
 	for _, p := range allPieces {
-		if unfiltered || visIDs[p.PieceID] {
+		if isMaster || visIDs[p.PieceID] {
 			pieces = append(pieces, p)
 		}
 	}
 	payload := MapFullStatePayload{Pieces: pieces, Walls: walls, FogMode: string(fogMode)}
-	if !unfiltered {
+	if !isMaster && !isLobby {
 		payload.VisiblePolygons = polysToPayload(polys)
 		if fogMode == fogentity.FogModeExplored && explored != nil {
 			payload.ExploredCells = cellsToPayload(explored)

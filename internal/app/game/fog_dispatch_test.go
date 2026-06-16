@@ -157,3 +157,65 @@ func TestBuildMapFullState_PlayerGetsPolygons_MasterDoesNot(t *testing.T) {
 		t.Fatal("master view must not carry visible polygons")
 	}
 }
+
+// In the lobby (no live session) there is no LOS, but a player must still not see
+// secret-door identity or invisible pieces — the backend masks/hides regardless of phase.
+func TestBuildMapFullState_LobbyMasksSecretsWithoutLOS(t *testing.T) {
+	room := newFogRoom(uuid.New(), uuid.New())
+	room.grid = mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 20, Rows: 20, CellSize: 64, SkewRatio: 1}
+	// No session set → lobby phase.
+
+	sub := mapentity.DoorSubtypeBasic
+	door := mapentity.WallSegment{
+		ID: "sd1", P1: [2]float64{20, 20}, P2: [2]float64{40, 20},
+		WallType: mapentity.WallTypeSecretDoor, Material: mapentity.WallMaterialStone,
+		DoorSubtype: &sub, Open: true, Locked: true, HP: 80, MaxHP: 100,
+	}
+	normal := mapentity.WallSegment{
+		ID: "w1", P1: [2]float64{0, 0}, P2: [2]float64{64, 0},
+		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone, HP: 100, MaxHP: 100,
+	}
+	room.walls[door.ID] = door
+	room.walls[normal.ID] = normal
+
+	visiblePiece := PieceMovedPayload{PieceID: "pv", CharacterID: uuid.New().String(), Slot: squareSlot(0, 0)}
+	no := false
+	hiddenPiece := PieceMovedPayload{PieceID: "ph", CharacterID: uuid.New().String(), Slot: squareSlot(1, 1), Visible: &no}
+	room.pieces[visiblePiece.PieceID] = visiblePiece
+	room.pieces[hiddenPiece.PieceID] = hiddenPiece
+
+	view := decodeMapFull(t, room.buildMapFullState(uuid.New(), false))
+
+	var sd, nw *mapentity.WallSegment
+	for i := range view.Walls {
+		switch view.Walls[i].ID {
+		case "sd1":
+			sd = &view.Walls[i]
+		case "w1":
+			nw = &view.Walls[i]
+		}
+	}
+	if sd == nil || sd.WallType != mapentity.WallTypeWall {
+		t.Fatal("lobby: secret door must be masked as a plain wall for players")
+	}
+	if sd.DoorSubtype != nil || sd.Open || sd.Locked {
+		t.Fatal("lobby: masked door must not leak subtype/open/locked")
+	}
+	if nw == nil {
+		t.Fatal("lobby: normal wall must be visible (no LOS gating in lobby)")
+	}
+
+	ids := map[string]bool{}
+	for _, p := range view.Pieces {
+		ids[p.PieceID] = true
+	}
+	if !ids["pv"] {
+		t.Fatal("lobby: a visible piece must be shown")
+	}
+	if ids["ph"] {
+		t.Fatal("lobby: an invisible piece must never reach players")
+	}
+	if len(view.VisiblePolygons) != 0 {
+		t.Fatal("lobby view must not carry visibility polygons")
+	}
+}
