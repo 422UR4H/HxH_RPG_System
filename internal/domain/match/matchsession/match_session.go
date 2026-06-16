@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
 
@@ -22,9 +23,11 @@ type MatchSession struct {
 	charSheets     map[uuid.UUID]*csSheet.CharacterSheet // keyed by playerUUID
 	participants   map[uuid.UUID]*match.Participant       // keyed by playerUUID
 	roundOrch      service.RoundOrchestrator
-	combatRes      service.CombatResolver
+	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
+	walls    map[string]mapentity.WallSegment // keyed by wall ID; nil until SyncMapState
+	gridSize float64                          // cell size in world coords; 0 until SyncMapState
 }
 
 func NewMatchSession(
@@ -46,7 +49,7 @@ func NewMatchSession(
 		charSheets:   charSheets,
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
-		combatRes:    service.CombatResolver{},
+		turnResolver: service.TurnResolver{},
 	}
 }
 
@@ -71,7 +74,7 @@ func NewMatchSessionWithState(
 		charSheets:     charSheets,
 		participants:   pMap,
 		roundOrch:      service.RoundOrchestrator{},
-		combatRes:      service.CombatResolver{},
+		turnResolver:   service.TurnResolver{},
 		scenePersisted: true,
 		roundPersisted: true,
 	}
@@ -146,7 +149,7 @@ func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution
 		return nil, err
 	}
 	t := s.activeRound.CurrentTurn()
-	return s.combatRes.Resolve(t, s.charSheets), nil
+	return s.turnResolver.Resolve(t, s.charSheets, s), nil
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
@@ -173,4 +176,48 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	}
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// SyncMapState seeds or replaces the session's in-memory map state.
+// Called by room.go when the match starts, seeding from pre-match lobby state.
+func (s *MatchSession) SyncMapState(walls []mapentity.WallSegment, gridSize float64) {
+	s.walls = make(map[string]mapentity.WallSegment, len(walls))
+	for _, w := range walls {
+		s.walls[w.ID] = w
+	}
+	s.gridSize = gridSize
+}
+
+func (s *MatchSession) GetWall(id string) (mapentity.WallSegment, bool) {
+	w, ok := s.walls[id]
+	return w, ok
+}
+
+func (s *MatchSession) UpdateWall(w mapentity.WallSegment) {
+	if s.walls == nil {
+		s.walls = make(map[string]mapentity.WallSegment)
+	}
+	s.walls[w.ID] = w
+}
+
+func (s *MatchSession) GetWalls() []mapentity.WallSegment {
+	result := make([]mapentity.WallSegment, 0, len(s.walls))
+	for _, w := range s.walls {
+		result = append(result, w)
+	}
+	return result
+}
+
+func (s *MatchSession) GetGridSize() float64 { return s.gridSize }
+
+// CategorizeTarget returns the kind of entity the given UUID identifies.
+// Participants are checked first so character UUIDs are never mis-routed as walls.
+func (s *MatchSession) CategorizeTarget(id uuid.UUID) service.TargetKind {
+	if _, ok := s.participants[id]; ok {
+		return service.TargetKindCharacter
+	}
+	if _, ok := s.walls[id.String()]; ok {
+		return service.TargetKindWallSegment
+	}
+	return service.TargetKindUnknown
 }

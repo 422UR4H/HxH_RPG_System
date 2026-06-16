@@ -31,6 +31,10 @@ func (m *mockMatchRepo) GetMatchMaster(_ context.Context, _ uuid.UUID) (uuid.UUI
 	return m.masterUUID, m.err
 }
 
+func (m *mockMatchRepo) IsStarted(_ context.Context, _ uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 type mockEnrollmentChecker struct {
 	enrolled bool
 	err      error
@@ -303,7 +307,7 @@ func TestChatFlow(t *testing.T) {
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
 
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	chatMsg := game.Message{
 		Type:    game.MsgTypeChat,
@@ -340,7 +344,7 @@ func TestStartMatchFlow(t *testing.T) {
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	startMsg := game.Message{
 		Type:    game.MsgTypeStartMatch,
@@ -379,7 +383,7 @@ func TestPlayerCannotStartMatch(t *testing.T) {
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	startMsg := game.Message{
 		Type:    game.MsgTypeStartMatch,
@@ -413,7 +417,7 @@ func TestKickPlayerFlow(t *testing.T) {
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	kickMsg := game.Message{
 		Type:    game.MsgTypeKickPlayer,
@@ -452,7 +456,7 @@ func TestPlayerCannotKick(t *testing.T) {
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	kickMsg := game.Message{
 		Type:    game.MsgTypeKickPlayer,
@@ -562,7 +566,7 @@ func TestMasterReceivesLobbyClosed(t *testing.T) {
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	cancelMsg := game.Message{
 		Type:    game.MsgTypeCancelLobby,
@@ -601,7 +605,7 @@ func TestPlayerCannotCancelLobby(t *testing.T) {
 	playerConn := connectWS(t, server.URL, playerUUID, matchUUID)
 	defer playerConn.Close() //nolint:errcheck
 	_ = readMessage(t, playerConn) // room_state
-	_ = readMessage(t, masterConn) // player_joined
+	_ = readMessage(t, masterConn) // master_joined
 
 	cancelMsg := game.Message{
 		Type:    game.MsgTypeCancelLobby,

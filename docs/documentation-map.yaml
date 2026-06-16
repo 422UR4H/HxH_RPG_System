@@ -323,6 +323,31 @@ mappings:
     game_docs: []
     notes: API entrypoint — usually no doc impact unless adding new routes
 
+  # ─── Match: Domain Services (TurnResolver, structural damage, wall interact) ───
+  - code_path: internal/domain/match/service/turn_resolver.go
+    dev_docs:
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+    notes: TurnResolver — routes Action targets (character vs wall) and computes resolution
+
+  - code_path: internal/domain/match/service/structural_damage.go
+    dev_docs:
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/paredes.md
+        confidence: directly_affected
+    notes: ApplyStructuralDamage — wall HP, resistance, destroyed flag, rebound candidate
+
+  - code_path: internal/domain/match/service/wall_interact.go
+    dev_docs:
+      - path: docs/dev/match/actions.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/paredes.md
+        confidence: directly_affected
+    notes: ApplyWallInteract — open/close/toggle; lockpick/examine are TODO (roll check)
+
   # ─── Map: Domain Entity + Service ───
   - code_path: internal/domain/map/
     dev_docs:
@@ -369,7 +394,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: possibly_affected
-    notes: lobby_piece_moved message type definition
+    notes: WS message type definitions — piece_moved, piece_removed, map_state_sync, map_full_state, wall_hp_changed, wall_state_changed
 
   - code_path: internal/app/game/room.go
     dev_docs:
@@ -377,7 +402,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: directly_affected
-    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) + lobby_piece_moved broadcast
+    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) + piece_moved/piece_removed/map_state_sync/map_full_state broadcast; wall_hp_changed + wall_state_changed from WallResults
 
   - code_path: internal/app/api/
     dev_docs:
