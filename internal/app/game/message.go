@@ -15,6 +15,7 @@ const (
 	// Server → Client
 	MsgTypeRoomState    MessageType = "room_state"
 	MsgTypePlayerJoined MessageType = "player_joined"
+	MsgTypeMasterJoined MessageType = "master_joined"
 	MsgTypePlayerLeft   MessageType = "player_left"
 	MsgTypeMasterLeft   MessageType = "master_left"
 	MsgTypePlayerKicked MessageType = "player_kicked"

@@ -844,7 +844,11 @@ func (r *Room) sendRoomState(client *Client) {
 }
 
 func (r *Room) broadcastPlayerJoined(client *Client) {
-	msg := NewServerMessage(MsgTypePlayerJoined, PlayerPayload{
+	msgType := MsgTypePlayerJoined
+	if r.IsMaster(client.userUUID) {
+		msgType = MsgTypeMasterJoined
+	}
+	msg := NewServerMessage(msgType, PlayerPayload{
 		UUID:     client.userUUID,
 		Nickname: client.nickname,
 	})
