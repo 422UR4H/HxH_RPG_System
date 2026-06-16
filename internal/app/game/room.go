@@ -170,6 +170,15 @@ func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	}
 	r.session.SyncMapState(wallSlice, r.grid)
 	r.session.SetPieceSource(r)
+	// Seed fog exactly as StartMatch does; otherwise a post-restart session has an empty
+	// fog mode ("") and no per-player visibility, breaking LOS until the next move.
+	// TODO(10-D persistence): load persisted fog_mode + explored sets here instead of nil.
+	r.session.SyncFogStates(nil, fogentity.FogModeExplored)
+	for _, pid := range r.session.PlayerIDs() {
+		if _, _, err := r.session.RecomputeVisibility(pid); err != nil {
+			log.Printf("rehydrate recompute visibility for %s: %v", pid, err)
+		}
+	}
 	r.state = RoomStatePlaying
 }
 
@@ -737,7 +746,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					// Wall not in in-memory state — skip silently.
 					continue
 				}
-				r.broadcastWallStateChanged(targetID.String(), newOpen, newLocked)
+				r.broadcastWallStateChangedGated(targetID.String(), newOpen, newLocked)
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
@@ -781,26 +790,22 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 // Returns (newOpen, newLocked, ok). ok=false means wall not found or interaction
 // not applicable (e.g. lockpick/examine are player-only actions requiring rolls).
 func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open, locked bool, ok bool) {
-	r.mu.RLock()
-	sess := r.session
-	r.mu.RUnlock()
-
+	// Hold the write lock across the session update too: MatchSession has no internal
+	// lock, so r.mu is the only thing serializing access to its wall map.
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	w, exists := r.walls[wallID]
 	if !exists {
-		r.mu.Unlock()
 		return false, false, false
 	}
 	updated, ok := domainservice.ApplyWallInteract(w, interact)
 	if !ok {
-		r.mu.Unlock()
 		return false, false, false
 	}
 	r.walls[wallID] = updated
-	r.mu.Unlock()
-
-	if sess != nil {
-		sess.UpdateWall(updated)
+	if r.session != nil {
+		r.session.UpdateWall(updated)
 	}
 	return updated.Open, updated.Locked, true
 }
@@ -846,6 +851,25 @@ func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
 	})
 	data, _ := json.Marshal(msg)
 	go func() { r.broadcast <- data }()
+}
+
+// broadcastWallStateChangedGated sends wall_state_changed to everyone, except that an
+// unrevealed secret door's open/locked change goes to the master only. Players see such a
+// door as a plain wall, and a plain wall has no open/locked state — broadcasting it would
+// leak the door's identity. Mirrors the WallResultKindInteract gate in broadcastWallResults.
+func (r *Room) broadcastWallStateChangedGated(wallID string, open, locked bool) {
+	r.mu.RLock()
+	w, ok := r.walls[wallID]
+	r.mu.RUnlock()
+	if ok && w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
+		r.sendToMaster(NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+			WallID: wallID,
+			Open:   open,
+			Locked: locked,
+		}))
+		return
+	}
+	r.broadcastWallStateChanged(wallID, open, locked)
 }
 
 // broadcastWallHpChanged dispatches wall_hp_changed only to clients who can see the wall.
@@ -949,6 +973,8 @@ func (r *Room) visibilityFor(pid uuid.UUID) []domainservice.VisibilityPolygon {
 
 // gridShape returns the session's grid when a match is live, else the room's grid.
 func (r *Room) gridShape() mapentity.GridShape {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if r.session != nil {
 		return r.session.GetGrid()
 	}
@@ -990,7 +1016,9 @@ func (r *Room) PlayerPiecePositions(playerID uuid.UUID) []domainservice.Point2D 
 	}
 	out := make([]domainservice.Point2D, 0)
 	for _, p := range r.pieces {
-		if charToPlayer != nil && charToPlayer[p.CharacterID] != playerID {
+		// Safe default: if the char→player map is missing, own nothing rather than
+		// treating every piece as this player's LOS origin.
+		if charToPlayer == nil || charToPlayer[p.CharacterID] != playerID {
 			continue
 		}
 		x, y := slotPayloadToWorld(p.Slot, grid)

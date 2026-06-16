@@ -7,6 +7,7 @@ import (
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -67,7 +68,7 @@ func fogTestRoom(t *testing.T) (*Room, uuid.UUID, string) {
 
 	session.SyncMapState([]mapentity.WallSegment{door}, grid)
 	session.SetPieceSource(room)
-	session.SyncFogStates(nil, "explored")
+	session.SyncFogStates(nil, fogentity.FogModeExplored)
 	if _, _, err := session.RecomputeVisibility(playerUUID); err != nil {
 		t.Fatalf("recompute visibility: %v", err)
 	}
@@ -160,6 +161,46 @@ func TestBuildMapFullState_PlayerGetsPolygons_MasterDoesNot(t *testing.T) {
 
 // In the lobby (no live session) there is no LOS, but a player must still not see
 // secret-door identity or invisible pieces — the backend masks/hides regardless of phase.
+// An unrevealed secret door's open/locked change must reach the master only. Players see
+// the door as a plain wall, and a plain wall has no open/locked state — broadcasting it
+// would leak the door's identity. Guards the master-action interact path (C-1).
+func TestBroadcastWallStateChangedGated_UnrevealedSecretDoorIsMasterOnly(t *testing.T) {
+	masterUUID := uuid.New()
+	playerUUID := uuid.New()
+	room := newFogRoom(uuid.New(), masterUUID)
+
+	room.walls["sd1"] = mapentity.WallSegment{
+		ID: "sd1", WallType: mapentity.WallTypeSecretDoor, Revealed: false,
+		P1: [2]float64{0, 0}, P2: [2]float64{10, 0},
+	}
+
+	master := NewClient(masterUUID, nil, "gm")
+	player := NewClient(playerUUID, nil, "p1")
+	room.clients[masterUUID] = master
+	room.clients[playerUUID] = player
+
+	room.broadcastWallStateChangedGated("sd1", true, false)
+
+	select {
+	case data := <-master.send:
+		var m Message
+		if err := json.Unmarshal(data, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if m.Type != MsgTypeWallStateChanged {
+			t.Fatalf("master got %s, want wall_state_changed", m.Type)
+		}
+	default:
+		t.Fatal("master must receive the secret door's state change")
+	}
+
+	select {
+	case <-player.send:
+		t.Fatal("player must NOT receive wall_state_changed for an unrevealed secret door")
+	default:
+	}
+}
+
 func TestBuildMapFullState_LobbyMasksSecretsWithoutLOS(t *testing.T) {
 	room := newFogRoom(uuid.New(), uuid.New())
 	room.grid = mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 20, Rows: 20, CellSize: 64, SkewRatio: 1}
