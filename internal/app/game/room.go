@@ -708,10 +708,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		sess := r.session
 		r.mu.Unlock()
 		if sess != nil {
-			wallSlice := make([]mapentity.WallSegment, 0, len(payload.Walls))
-			for _, w := range payload.Walls {
-				wallSlice = append(wallSlice, w)
-			}
+			wallSlice := append([]mapentity.WallSegment(nil), payload.Walls...)
 			sess.SyncMapState(wallSlice, r.gridSize)
 		}
 		// No relay — only seeds the server's in-memory state.
