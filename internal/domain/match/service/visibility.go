@@ -155,7 +155,8 @@ func sortFloats(a []float64) {
 }
 
 // CellsInPolygon returns the grid cells whose center falls inside poly.
-// Bounds are derived from the polygon's world AABB mapped back to slot space.
+// Bounds are derived from the polygon's world AABB mapped back to slot space,
+// then clamped to grid.Cols × grid.Rows when those are set.
 func CellsInPolygon(poly VisibilityPolygon, grid mapentity.GridShape) []fog.CellCoord {
 	if len(poly.Vertices) == 0 {
 		return nil
@@ -170,6 +171,24 @@ func CellsInPolygon(poly VisibilityPolygon, grid mapentity.GridShape) []fog.Cell
 	}
 	// Convert the four AABB corners to slot space and take the integer envelope.
 	aLo, bLo, aHi, bHi := slotEnvelope(minX, minY, maxX, maxY, grid)
+
+	// Clamp to actual grid dimensions when available to avoid iterating huge areas.
+	if grid.Cols > 0 {
+		if aLo < 0 {
+			aLo = 0
+		}
+		if aHi >= grid.Cols {
+			aHi = grid.Cols - 1
+		}
+	}
+	if grid.Rows > 0 {
+		if bLo < 0 {
+			bLo = 0
+		}
+		if bHi >= grid.Rows {
+			bHi = grid.Rows - 1
+		}
+	}
 
 	out := make([]fog.CellCoord, 0, 32)
 	for a := aLo; a <= aHi; a++ {

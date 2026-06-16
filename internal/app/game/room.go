@@ -167,7 +167,7 @@ func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	for _, w := range r.walls {
 		wallSlice = append(wallSlice, w)
 	}
-	r.session.SyncMapState(wallSlice, r.gridSize)
+	r.session.SyncMapState(wallSlice, mapentity.GridShape{Kind: mapentity.GridKindSquare, CellSize: r.gridSize, SkewRatio: 1})
 	r.state = RoomStatePlaying
 }
 
@@ -297,7 +297,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	for _, w := range r.walls {
 		wallSlice = append(wallSlice, w)
 	}
-	r.session.SyncMapState(wallSlice, r.gridSize)
+	r.session.SyncMapState(wallSlice, mapentity.GridShape{Kind: mapentity.GridKindSquare, CellSize: r.gridSize, SkewRatio: 1})
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
 
@@ -709,7 +709,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Unlock()
 		if sess != nil {
 			wallSlice := append([]mapentity.WallSegment(nil), payload.Walls...)
-			sess.SyncMapState(wallSlice, r.gridSize)
+			sess.SyncMapState(wallSlice, mapentity.GridShape{Kind: mapentity.GridKindSquare, CellSize: r.gridSize, SkewRatio: 1})
 		}
 		// No relay — only seeds the server's in-memory state.
 

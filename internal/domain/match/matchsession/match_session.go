@@ -7,6 +7,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
@@ -14,6 +15,13 @@ import (
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
+
+// PiecePositionSource yields the current world positions of a player's pieces.
+// Implemented by room.go (which owns the live piece payloads), keeping the session
+// decoupled from delivery types.
+type PiecePositionSource interface {
+	PlayerPiecePositions(playerID uuid.UUID) []service.Point2D
+}
 
 type MatchSession struct {
 	matchUUID      uuid.UUID
@@ -26,8 +34,13 @@ type MatchSession struct {
 	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
-	walls    map[string]mapentity.WallSegment // keyed by wall ID; nil until SyncMapState
-	gridSize float64                          // cell size in world coords; 0 until SyncMapState
+	walls        map[string]mapentity.WallSegment         // keyed by wall ID; nil until SyncMapState
+	grid         mapentity.GridShape                      // full grid shape; CellSize 0 until SyncMapState
+	fogMode      fog.FogMode
+	fogStates    map[uuid.UUID]*fog.PlayerFogState
+	visCache     map[uuid.UUID][]service.VisibilityPolygon
+	charToPlayer map[string]uuid.UUID
+	pieceSource  PiecePositionSource
 }
 
 func NewMatchSession(
@@ -36,9 +49,14 @@ func NewMatchSession(
 	participants []*match.Participant,
 ) *MatchSession {
 	pMap := make(map[uuid.UUID]*match.Participant, len(participants))
+	charToPlayer := make(map[string]uuid.UUID)
 	for _, p := range participants {
 		if p.Sheet.PlayerUUID != nil {
 			pMap[*p.Sheet.PlayerUUID] = p
+			// Map sheet UUID (used as CharacterID on board pieces) → player UUID.
+			if p.Sheet.UUID != uuid.Nil {
+				charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.PlayerUUID
+			}
 		}
 	}
 	return &MatchSession{
@@ -50,6 +68,9 @@ func NewMatchSession(
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
 		turnResolver: service.TurnResolver{},
+		charToPlayer: charToPlayer,
+		fogStates:    make(map[uuid.UUID]*fog.PlayerFogState),
+		visCache:     make(map[uuid.UUID][]service.VisibilityPolygon),
 	}
 }
 
@@ -61,9 +82,14 @@ func NewMatchSessionWithState(
 	activeRound *round.Round,
 ) *MatchSession {
 	pMap := make(map[uuid.UUID]*match.Participant, len(participants))
+	charToPlayer := make(map[string]uuid.UUID)
 	for _, p := range participants {
 		if p.Sheet.PlayerUUID != nil {
 			pMap[*p.Sheet.PlayerUUID] = p
+			// Map sheet UUID (used as CharacterID on board pieces) → player UUID.
+			if p.Sheet.UUID != uuid.Nil {
+				charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.PlayerUUID
+			}
 		}
 	}
 	return &MatchSession{
@@ -77,6 +103,9 @@ func NewMatchSessionWithState(
 		turnResolver:   service.TurnResolver{},
 		scenePersisted: true,
 		roundPersisted: true,
+		charToPlayer:   charToPlayer,
+		fogStates:      make(map[uuid.UUID]*fog.PlayerFogState),
+		visCache:       make(map[uuid.UUID][]service.VisibilityPolygon),
 	}
 }
 
@@ -180,12 +209,12 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 
 // SyncMapState seeds or replaces the session's in-memory map state.
 // Called by room.go when the match starts, seeding from pre-match lobby state.
-func (s *MatchSession) SyncMapState(walls []mapentity.WallSegment, gridSize float64) {
+func (s *MatchSession) SyncMapState(walls []mapentity.WallSegment, grid mapentity.GridShape) {
 	s.walls = make(map[string]mapentity.WallSegment, len(walls))
 	for _, w := range walls {
 		s.walls[w.ID] = w
 	}
-	s.gridSize = gridSize
+	s.grid = grid
 }
 
 func (s *MatchSession) GetWall(id string) (mapentity.WallSegment, bool) {
@@ -208,7 +237,8 @@ func (s *MatchSession) GetWalls() []mapentity.WallSegment {
 	return result
 }
 
-func (s *MatchSession) GetGridSize() float64 { return s.gridSize }
+func (s *MatchSession) GetGrid() mapentity.GridShape { return s.grid }
+func (s *MatchSession) GetGridSize() float64         { return s.grid.CellSize }
 
 // CategorizeTarget returns the kind of entity the given UUID identifies.
 // Participants are checked first so character UUIDs are never mis-routed as walls.
@@ -220,4 +250,102 @@ func (s *MatchSession) CategorizeTarget(id uuid.UUID) service.TargetKind {
 		return service.TargetKindWallSegment
 	}
 	return service.TargetKindUnknown
+}
+
+func (s *MatchSession) SetPieceSource(src PiecePositionSource) { s.pieceSource = src }
+
+// SyncFogStates seeds fog state from persisted records (nil seeds empty states).
+// Resets the visibility cache.
+func (s *MatchSession) SyncFogStates(states []fog.PlayerFogState, mode fog.FogMode) {
+	s.fogMode = mode
+	s.fogStates = make(map[uuid.UUID]*fog.PlayerFogState, len(states))
+	for i := range states {
+		st := states[i]
+		s.fogStates[st.PlayerID] = &st
+	}
+	s.visCache = make(map[uuid.UUID][]service.VisibilityPolygon)
+}
+
+// fogStateFor returns the existing fog state for playerID, or lazily creates one.
+func (s *MatchSession) fogStateFor(playerID uuid.UUID) *fog.PlayerFogState {
+	if s.fogStates == nil {
+		s.fogStates = make(map[uuid.UUID]*fog.PlayerFogState)
+	}
+	st, ok := s.fogStates[playerID]
+	if !ok {
+		st = fog.NewPlayerFogState(playerID, s.matchUUID, uuid.Nil, string(s.grid.Kind))
+		s.fogStates[playerID] = st
+	}
+	return st
+}
+
+// RecomputeVisibility recomputes a player's LOS, caches polygons, unions explored cells
+// (explored mode only), and returns the polygons and the newly explored delta.
+func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.VisibilityPolygon, []fog.CellCoord, error) {
+	losWalls := service.ToLOSWalls(s.GetWalls())
+	var positions []service.Point2D
+	if s.pieceSource != nil {
+		positions = s.pieceSource.PlayerPiecePositions(playerID)
+	}
+	polys := make([]service.VisibilityPolygon, 0, len(positions))
+	var delta []fog.CellCoord
+	for _, pos := range positions {
+		poly := service.ComputeVisibilityPolygon(pos, losWalls)
+		polys = append(polys, poly)
+		if s.fogMode == fog.FogModeExplored {
+			cells := service.CellsInPolygon(poly, s.grid)
+			delta = append(delta, s.fogStateFor(playerID).AddExplored(cells)...)
+		}
+	}
+	if s.visCache == nil {
+		s.visCache = make(map[uuid.UUID][]service.VisibilityPolygon)
+	}
+	s.visCache[playerID] = polys
+	return polys, delta, nil
+}
+
+// RecomputeAllVisibility recomputes LOS for all participants.
+func (s *MatchSession) RecomputeAllVisibility() error {
+	for pid := range s.participants {
+		if _, _, err := s.RecomputeVisibility(pid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetVisibility returns the cached visibility polygons for a player.
+func (s *MatchSession) GetVisibility(playerID uuid.UUID) []service.VisibilityPolygon {
+	return s.visCache[playerID]
+}
+
+// InvalidateVisibilityCache clears all cached visibility polygons.
+func (s *MatchSession) InvalidateVisibilityCache() {
+	s.visCache = make(map[uuid.UUID][]service.VisibilityPolygon)
+}
+
+// RevealSecretDoor marks a wall as revealed (secret door is now visible to all)
+// and invalidates the visibility cache so the next recompute sees the change.
+func (s *MatchSession) RevealSecretDoor(wallID string) {
+	if w, ok := s.walls[wallID]; ok {
+		w.Revealed = true
+		s.walls[wallID] = w
+	}
+	s.InvalidateVisibilityCache()
+}
+
+func (s *MatchSession) GetFogMode() fog.FogMode                { return s.fogMode }
+func (s *MatchSession) GetCharToPlayer() map[string]uuid.UUID  { return s.charToPlayer }
+
+func (s *MatchSession) GetFogState(playerID uuid.UUID) (*fog.PlayerFogState, bool) {
+	st, ok := s.fogStates[playerID]
+	return st, ok
+}
+
+func (s *MatchSession) GetAllFogStates() []fog.PlayerFogState {
+	out := make([]fog.PlayerFogState, 0, len(s.fogStates))
+	for _, st := range s.fogStates {
+		out = append(out, *st)
+	}
+	return out
 }
