@@ -145,12 +145,6 @@ type PieceRemovedPayload struct {
 	PieceID string `json:"piece_id"`
 }
 
-// MapPiecesPayload is shared by map_state_sync (client→server) and
-// map_full_state (server→client). Both carry the complete current board.
-type MapPiecesPayload struct {
-	Pieces []PieceMovedPayload `json:"pieces"`
-}
-
 type PullActionPayload struct {
 	ActionID uuid.UUID `json:"action_id"`
 }
@@ -300,19 +294,14 @@ type WallHpChangedPayload struct {
 	Destroyed bool   `json:"destroyed"`
 }
 
-// MapStateSyncPayload extends MapPiecesPayload to include walls and grid.
+// MapStateSyncPayload carries pieces, walls and grid.
 // Sent by the master on WS connect to seed the room's in-memory state from the DB.
 // Walls are full WallSegment objects so the room can perform movement blocking without
 // additional DB queries.
 type MapStateSyncPayload struct {
-	Pieces []PieceMovedPayload `json:"pieces"`
+	Pieces []PieceMovedPayload      `json:"pieces"`
 	Walls  []mapentity.WallSegment  `json:"walls,omitempty"`
-	Grid   *GridSyncEntry           `json:"grid,omitempty"`
-}
-
-// GridSyncEntry carries the cell size used to convert grid slot coords to world coords.
-type GridSyncEntry struct {
-	CellSize float64 `json:"cell_size"`
+	Grid   *mapentity.GridShape     `json:"grid,omitempty"`
 }
 
 type Point2DPayload struct {
@@ -329,7 +318,7 @@ type WallRevealedPayload struct {
 	Wall mapentity.WallSegment `json:"wall"`
 }
 
-// MapFullStatePayload replaces MapPiecesPayload for map_full_state (server→client).
+// MapFullStatePayload is the per-player map_full_state (server→client).
 type MapFullStatePayload struct {
 	Pieces          []PieceMovedPayload     `json:"pieces"`
 	Walls           []mapentity.WallSegment `json:"walls,omitempty"`

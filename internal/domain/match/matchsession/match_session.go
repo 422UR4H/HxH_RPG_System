@@ -349,3 +349,12 @@ func (s *MatchSession) GetAllFogStates() []fog.PlayerFogState {
 	}
 	return out
 }
+
+// PlayerIDs returns the player UUIDs of all participants.
+func (s *MatchSession) PlayerIDs() []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(s.participants))
+	for pid := range s.participants {
+		out = append(out, pid)
+	}
+	return out
+}
