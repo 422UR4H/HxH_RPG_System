@@ -100,7 +100,12 @@ func rayHit(origin, dir, a, b Point2D) (float64, bool) {
 }
 
 // ComputeVisibilityPolygon performs an angular sweep from origin over the blocking walls.
-func ComputeVisibilityPolygon(origin Point2D, walls []WallSegmentLOS) VisibilityPolygon {
+// maxRadius bounds the polygon when there are no walls in a direction; if <= 0 it falls
+// back to the visRadius constant so callers that don't yet know the map size still work.
+func ComputeVisibilityPolygon(origin Point2D, walls []WallSegmentLOS, maxRadius float64) VisibilityPolygon {
+	if maxRadius <= 0 {
+		maxRadius = visRadius
+	}
 	// Active blockers for this origin (respect one-way).
 	active := make([]WallSegmentLOS, 0, len(walls))
 	for _, w := range walls {
@@ -130,7 +135,7 @@ func ComputeVisibilityPolygon(origin Point2D, walls []WallSegmentLOS) Visibility
 	verts := make([]Point2D, 0, len(angles))
 	for _, ang := range angles {
 		dir := Point2D{math.Cos(ang), math.Sin(ang)}
-		best := visRadius
+		best := maxRadius
 		for _, w := range active {
 			if t, ok := rayHit(origin, dir, w.P1, w.P2); ok && t < best {
 				best = t
@@ -170,25 +175,9 @@ func CellsInPolygon(poly VisibilityPolygon, grid mapentity.GridShape) []fog.Cell
 		maxY = math.Max(maxY, v.Y)
 	}
 	// Convert the four AABB corners to slot space and take the integer envelope.
+	// No grid-dimension clamp here: hex axial coords can be negative, and with a
+	// map-bounded polygon the envelope is already finite and close to map size.
 	aLo, bLo, aHi, bHi := slotEnvelope(minX, minY, maxX, maxY, grid)
-
-	// Clamp to actual grid dimensions when available to avoid iterating huge areas.
-	if grid.Cols > 0 {
-		if aLo < 0 {
-			aLo = 0
-		}
-		if aHi >= grid.Cols {
-			aHi = grid.Cols - 1
-		}
-	}
-	if grid.Rows > 0 {
-		if bLo < 0 {
-			bLo = 0
-		}
-		if bHi >= grid.Rows {
-			bHi = grid.Rows - 1
-		}
-	}
 
 	out := make([]fog.CellCoord, 0, 32)
 	for a := aLo; a <= aHi; a++ {

@@ -1,6 +1,7 @@
 package matchsession
 
 import (
+	"math"
 	"time"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -283,6 +284,10 @@ func (s *MatchSession) fogStateFor(playerID uuid.UUID) *fog.PlayerFogState {
 // (explored mode only), and returns the polygons and the newly explored delta.
 func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.VisibilityPolygon, []fog.CellCoord, error) {
 	losWalls := service.ToLOSWalls(s.GetWalls())
+	// Bound the visibility polygon to the map diagonal (+ 20% margin) so that the
+	// no-walls polygon is finite and CellsInPolygon iterates only a map-sized area.
+	// Falls back to visRadius when CellSize is 0 (map not yet synced).
+	maxRadius := math.Hypot(float64(s.grid.Cols)*s.grid.CellSize, float64(s.grid.Rows)*s.grid.CellSize) * 1.2
 	var positions []service.Point2D
 	if s.pieceSource != nil {
 		positions = s.pieceSource.PlayerPiecePositions(playerID)
@@ -290,7 +295,7 @@ func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.Visibi
 	polys := make([]service.VisibilityPolygon, 0, len(positions))
 	var delta []fog.CellCoord
 	for _, pos := range positions {
-		poly := service.ComputeVisibilityPolygon(pos, losWalls)
+		poly := service.ComputeVisibilityPolygon(pos, losWalls, maxRadius)
 		polys = append(polys, poly)
 		if s.fogMode == fog.FogModeExplored {
 			cells := service.CellsInPolygon(poly, s.grid)

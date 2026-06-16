@@ -3,6 +3,7 @@ package service
 import (
 	"testing"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 )
 
@@ -55,7 +56,7 @@ func TestComputeVisibility_WallOccludes(t *testing.T) {
 	walls := []WallSegmentLOS{
 		{ID: "w", P1: Point2D{10, -5}, P2: Point2D{10, 5}, Direction: "both"},
 	}
-	poly := ComputeVisibilityPolygon(Point2D{0, 0}, walls)
+	poly := ComputeVisibilityPolygon(Point2D{0, 0}, walls, 1e4)
 	if PointInPolygon(Point2D{20, 0}, poly.Vertices) {
 		t.Fatal("point behind wall must be occluded")
 	}
@@ -65,7 +66,8 @@ func TestComputeVisibility_WallOccludes(t *testing.T) {
 }
 
 func TestComputeVisibility_NoWalls_SeesFar(t *testing.T) {
-	poly := ComputeVisibilityPolygon(Point2D{0, 0}, nil)
+	// maxRadius 1e4 is large enough to include (100,100) at distance ~141.
+	poly := ComputeVisibilityPolygon(Point2D{0, 0}, nil, 1e4)
 	if !PointInPolygon(Point2D{100, 100}, poly.Vertices) {
 		t.Fatal("with no walls, far point should be visible")
 	}
@@ -79,8 +81,8 @@ func TestComputeVisibility_OneWay_BlocksFromOneSide(t *testing.T) {
 		{ID: "w", P1: Point2D{0, -5}, P2: Point2D{0, 5}, Direction: "left"},
 	}
 	// Origin at +X looking at the wall: depending on side it blocks or not.
-	polyA := ComputeVisibilityPolygon(Point2D{10, 0}, wallLeft)
-	polyB := ComputeVisibilityPolygon(Point2D{-10, 0}, wallLeft)
+	polyA := ComputeVisibilityPolygon(Point2D{10, 0}, wallLeft, 1e4)
+	polyB := ComputeVisibilityPolygon(Point2D{-10, 0}, wallLeft, 1e4)
 	behindFromA := PointInPolygon(Point2D{-1, 0}, polyA.Vertices)
 	behindFromB := PointInPolygon(Point2D{1, 0}, polyB.Vertices)
 	// Exactly one side must be blocked (XOR): the wall is one-way.
@@ -96,5 +98,50 @@ func TestCellsInPolygon_Square(t *testing.T) {
 	cells := CellsInPolygon(poly, g)
 	if len(cells) != 4 {
 		t.Fatalf("want 4 cells, got %d (%+v)", len(cells), cells)
+	}
+}
+
+// TestCellsInPolygon_HexNegativeAxial verifies that CellsInPolygon correctly includes
+// hex cells with negative axial coordinates (q<0 or r<0).
+//
+// For a pointy-top hex grid with CellSize=64 (size=32, SkewRatio=1):
+//   - Cell (-1, 0): world ≈ (-55.4, 0)
+//   - Cell (0, -1): world ≈ (-27.7, -48)
+//   - Cell (-1, 1): world ≈ (-27.7, +48)
+//
+// All are within maxRadius=200 of origin (0,0). Before the clamp removal these
+// cells were wrongly excluded because the old code forced aLo/bLo ≥ 0.
+func TestCellsInPolygon_HexNegativeAxial(t *testing.T) {
+	g := mapentity.GridShape{
+		Kind:      mapentity.GridKindHex,
+		Cols:      6,
+		Rows:      6,
+		CellSize:  64,
+		SkewRatio: 1,
+	}
+	// Origin at (0,0), maxRadius large enough to cover cells with negative axial coords.
+	poly := ComputeVisibilityPolygon(Point2D{0, 0}, nil, 200)
+	cells := CellsInPolygon(poly, g)
+
+	hasNegative := false
+	for _, c := range cells {
+		if c.A < 0 || c.B < 0 {
+			hasNegative = true
+			break
+		}
+	}
+	if !hasNegative {
+		t.Fatalf("expected at least one cell with negative axial coord (A<0 or B<0), got %v", cells)
+	}
+	// Spot-check: cell (-1,0) whose center is ≈(-55.4, 0) must be in the result.
+	found := false
+	for _, c := range cells {
+		if c == (fog.CellCoord{A: -1, B: 0}) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("cell (-1,0) must be visible from origin but was absent; got %v", cells)
 	}
 }
