@@ -274,6 +274,10 @@ func (s *MatchSession) fogStateFor(playerID uuid.UUID) *fog.PlayerFogState {
 	}
 	st, ok := s.fogStates[playerID]
 	if !ok {
+		// TODO(10-D persistence): MapID is uuid.Nil here because MatchSession doesn't yet
+		// carry the active map's UUID. Before wiring fogStateRepo.Upsert, thread the real
+		// mapUUID into the session (constructor or SyncFogStates) so persisted rows don't
+		// all collide on the (match_id, map_id, player_id) unique key with map_id = Nil.
 		st = fog.NewPlayerFogState(playerID, s.matchUUID, uuid.Nil, string(s.grid.Kind))
 		s.fogStates[playerID] = st
 	}
