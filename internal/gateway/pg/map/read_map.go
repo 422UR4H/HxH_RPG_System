@@ -14,7 +14,7 @@ import (
 func (r *Repository) GetMap(ctx context.Context, id uuid.UUID) (*entity.TacticalMap, error) {
 	const query = `
 		SELECT uuid, campaign_uuid, name, description,
-		       grid, bg, pieces, walls, decorations, items,
+		       fog_mode, grid, bg, pieces, walls, decorations, items,
 		       created_at, updated_at
 		FROM maps WHERE uuid = $1
 	`
@@ -22,7 +22,7 @@ func (r *Repository) GetMap(ctx context.Context, id uuid.UUID) (*entity.Tactical
 	m := &pgModel{}
 	err := row.Scan(
 		&m.ID, &m.CampaignID, &m.Name, &m.Description,
-		&m.Grid, &m.Bg, &m.Pieces, &m.Walls, &m.Decorations, &m.Items,
+		&m.FogMode, &m.Grid, &m.Bg, &m.Pieces, &m.Walls, &m.Decorations, &m.Items,
 		&m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {

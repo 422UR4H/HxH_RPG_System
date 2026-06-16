@@ -7,6 +7,7 @@ import (
 	"time"
 
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/google/uuid"
 )
 
@@ -15,6 +16,7 @@ type pgModel struct {
 	CampaignID  uuid.UUID  // scanned from column: campaign_uuid
 	Name        string
 	Description string
+	FogMode     string // scanned from column: fog_mode
 	Grid        []byte
 	Bg          []byte
 	Pieces      []byte
@@ -59,6 +61,11 @@ func toEntity(m *pgModel) (*entity.TacticalMap, error) {
 		return nil, fmt.Errorf("unmarshal items: %w", err)
 	}
 
+	fogMode := fog.FogMode(m.FogMode)
+	if !fogMode.IsValid() {
+		fogMode = fog.FogModeExplored
+	}
+
 	return &entity.TacticalMap{
 		ID:          m.ID,
 		CampaignID:  m.CampaignID,
@@ -70,6 +77,7 @@ func toEntity(m *pgModel) (*entity.TacticalMap, error) {
 		Walls:       walls,
 		Decorations: decorations,
 		Items:       items,
+		FogMode:     fogMode,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}, nil

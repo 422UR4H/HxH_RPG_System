@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 	ErrWallInvalidType   = errors.New("invalid wall_type")
 	ErrWallNegativeHP    = errors.New("wall hp must be >= 0")
 	ErrWallOutOfBounds   = errors.New("wall segment out of grid bounds")
+	ErrInvalidFogMode    = errors.New("invalid fog_mode: must be 'live' or 'explored'")
 )
 
 func ValidateMap(name string, grid entity.GridShape) error {
@@ -33,6 +35,15 @@ func ValidateMap(name string, grid entity.GridShape) error {
 	}
 	if grid.SkewRatio < 0 || grid.SkewRatio > 1 {
 		return ErrInvalidSkewRatio
+	}
+	return nil
+}
+
+// ValidateFogMode rejects a non-empty fog mode that is not a known value.
+// An empty fog mode is allowed (the mapper defaults it to FogModeExplored on read).
+func ValidateFogMode(m fog.FogMode) error {
+	if m != "" && !m.IsValid() {
+		return ErrInvalidFogMode
 	}
 	return nil
 }

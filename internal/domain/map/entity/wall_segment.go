@@ -69,4 +69,6 @@ type WallSegment struct {
 	MaxHP         int            `json:"max_hp"`
 	Resistance    int            `json:"resistance"`
 	Destroyed     bool           `json:"destroyed"`
+	Revealed      bool           `json:"revealed"`
+	// TODO(future): RevealedTo map[uuid.UUID]bool for per-player reveal via examine
 }

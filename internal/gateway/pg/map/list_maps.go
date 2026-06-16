@@ -14,7 +14,7 @@ func (r *Repository) ListMapsByCampaign(
 ) ([]*entity.TacticalMap, error) {
 	const query = `
 		SELECT uuid, campaign_uuid, name, description,
-		       grid, bg, pieces, walls, decorations, items,
+		       fog_mode, grid, bg, pieces, walls, decorations, items,
 		       created_at, updated_at
 		FROM maps WHERE campaign_uuid = $1
 		ORDER BY created_at ASC
@@ -30,7 +30,7 @@ func (r *Repository) ListMapsByCampaign(
 		m := &pgModel{}
 		if err := rows.Scan(
 			&m.ID, &m.CampaignID, &m.Name, &m.Description,
-			&m.Grid, &m.Bg, &m.Pieces, &m.Walls, &m.Decorations, &m.Items,
+			&m.FogMode, &m.Grid, &m.Bg, &m.Pieces, &m.Walls, &m.Decorations, &m.Items,
 			&m.CreatedAt, &m.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan map row: %w", err)
