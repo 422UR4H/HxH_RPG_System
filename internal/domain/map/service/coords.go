@@ -45,6 +45,38 @@ func baseCenter(a, b int, g entity.GridShape) (float64, float64) {
 	return (float64(a) + 0.5) * g.CellSize, (float64(b) + 0.5) * g.CellSize
 }
 
+// GridLocalBounds returns the axis-aligned extent of the grid's cells in LOCAL
+// (pre-transform) space. Square cells tile from the origin; hex cells are centered on
+// their grid points, so the grid reaches half a hex-width left of x=0 and one hex
+// radius above y=0. Derived from the same geometry as baseCenter.
+func GridLocalBounds(g entity.GridShape) (minX, minY, maxX, maxY float64) {
+	if g.Kind == entity.GridKindHex {
+		size := g.CellSize / 2
+		hexW := size * math.Sqrt(3)
+		hexH := size * 1.5
+		maxCx := float64(g.Cols-1) * hexW
+		if g.Rows >= 2 {
+			maxCx += hexW / 2 // odd rows are shifted right by half a hex
+		}
+		return -hexW / 2, -size, maxCx + hexW/2, float64(g.Rows-1)*hexH + size
+	}
+	return 0, 0, float64(g.Cols) * g.CellSize, float64(g.Rows) * g.CellSize
+}
+
+// GridWorldCorners returns the grid's bounding quad in world space, wound TL→TR→BR→BL.
+// Under rotation the quad is no longer axis-aligned, which is why it is returned as four
+// points rather than a rectangle.
+func GridWorldCorners(g entity.GridShape) [4][2]float64 {
+	minX, minY, maxX, maxY := GridLocalBounds(g)
+	local := [4][2]float64{{minX, minY}, {maxX, minY}, {maxX, maxY}, {minX, maxY}}
+	var out [4][2]float64
+	for i, p := range local {
+		x, y := applyTransform(p[0], p[1], g)
+		out[i] = [2]float64{x, y}
+	}
+	return out
+}
+
 // SlotCenterToWorld returns the transformed world position of cell (a,b)'s center.
 func SlotCenterToWorld(a, b int, g entity.GridShape) (float64, float64) {
 	bx, by := baseCenter(a, b, g)

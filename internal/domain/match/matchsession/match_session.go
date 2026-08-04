@@ -287,7 +287,10 @@ func (s *MatchSession) fogStateFor(playerID uuid.UUID) *fog.PlayerFogState {
 // RecomputeVisibility recomputes a player's LOS, caches polygons, unions explored cells
 // (explored mode only), and returns the polygons and the newly explored delta.
 func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.VisibilityPolygon, []fog.CellCoord, error) {
-	losWalls := service.ToLOSWalls(s.GetWalls())
+	// The board edges block vision too, which keeps the polygon (and therefore the
+	// explored set the client has to draw) inside the map instead of spilling out to
+	// maxRadius in every open direction.
+	losWalls := append(service.ToLOSWalls(s.GetWalls()), service.BoundaryLOSWalls(s.grid)...)
 	// Bound the visibility polygon to the map diagonal (+ 20% margin) so that the
 	// no-walls polygon is finite and CellsInPolygon iterates only a map-sized area.
 	// Falls back to visRadius when CellSize is 0 (map not yet synced).

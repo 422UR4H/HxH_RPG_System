@@ -237,7 +237,9 @@ func (r *Room) Run() {
 			removed := false
 			if current, ok := r.clients[client.userUUID]; ok && current == client {
 				delete(r.clients, client.userUUID)
-				close(client.send)
+				// Signal shutdown via done, never by closing send: a concurrent
+				// SendMessage on a closed channel panics and kills the process.
+				client.Close()
 				removed = true
 			}
 			r.mu.Unlock()
@@ -273,7 +275,7 @@ func (r *Room) Run() {
 			r.mu.Lock()
 			r.state = RoomStateClosed
 			for _, client := range r.clients {
-				close(client.send)
+				client.Close()
 			}
 			r.clients = make(map[uuid.UUID]*Client)
 			r.mu.Unlock()
@@ -698,9 +700,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		r.mu.Lock()
-		r.pieces = make(map[string]PieceMovedPayload, len(payload.Pieces))
-		for _, p := range payload.Pieces {
-			r.pieces[p.PieceID] = p
+		// A nil Pieces field means "no piece information in this sync" — keep the board.
+		// Only an explicitly present array replaces it (empty array = board is empty).
+		if payload.Pieces != nil {
+			r.pieces = make(map[string]PieceMovedPayload, len(*payload.Pieces))
+			for _, p := range *payload.Pieces {
+				r.pieces[p.PieceID] = p
+			}
 		}
 		r.walls = make(map[string]mapentity.WallSegment, len(payload.Walls))
 		for _, w := range payload.Walls {
@@ -711,12 +717,30 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		grid := r.grid
 		sess := r.session
-		r.mu.Unlock()
 		if sess != nil {
 			wallSlice := append([]mapentity.WallSegment(nil), payload.Walls...)
 			sess.SyncMapState(wallSlice, grid)
+			// The board just changed, so every player's cached LOS is stale — and
+			// buildMapFullState serves the cache. Recompute here (still under the write
+			// lock, as PlayerPiecePositions requires) so the refreshed state pushed below
+			// reflects the board that was just seeded.
+			for _, pid := range sess.PlayerIDs() {
+				if _, _, err := sess.RecomputeVisibility(pid); err != nil {
+					log.Printf("map_state_sync recompute visibility for %s: %v", pid, err)
+				}
+			}
 		}
-		// No relay — only seeds the server's in-memory state.
+		r.mu.Unlock()
+
+		// Re-push the full board to everyone. This is what makes the feature converge
+		// regardless of connect order: whether the master syncs before or after a player
+		// joins, and whether the server was restarted mid-match, each client ends up with
+		// state built from the seeded board.
+		if sess != nil {
+			r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+				return r.buildMapFullState(pid, isMaster)
+			})
+		}
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
@@ -1003,9 +1027,14 @@ func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64)
 
 // PlayerPiecePositions implements matchsession.PiecePositionSource. It returns the world
 // positions of the pieces owned by playerID (resolved via the session's char→player map).
+//
+// LOCKING: the caller MUST already hold r.mu. This method deliberately takes no lock of
+// its own because the session calls it back from inside RecomputeVisibility, which every
+// caller invokes while holding r.mu for writing — taking r.mu.RLock() here would be an
+// RLock inside a Lock on the same goroutine, which deadlocks Go's RWMutex permanently.
+// This matches the room-owns-the-lock invariant documented in game-server.instructions.md.
+// Guarded by TestRecomputeVisibilityUnderRoomWriteLock_DoesNotDeadlock.
 func (r *Room) PlayerPiecePositions(playerID uuid.UUID) []domainservice.Point2D {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
 	grid := r.grid
 	if r.session != nil {
 		grid = r.session.GetGrid()

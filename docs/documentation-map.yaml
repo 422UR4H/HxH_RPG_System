@@ -453,7 +453,13 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: directly_affected
-    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) + piece_moved/piece_removed/map_state_sync/map_full_state broadcast; wall_hp_changed + wall_state_changed from WallResults
+    notes: Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) + piece_moved/piece_removed/map_state_sync/map_full_state broadcast; wall_hp_changed + wall_state_changed from WallResults; map_state_sync seeds the board, recomputes LOS and re-pushes map_full_state per player
+
+  - code_path: internal/app/game/client.go
+    dev_docs:
+      - path: docs/dev/api/game-lobby.md
+        confidence: directly_affected
+    notes: WS read/write pumps and frame limits — maxMessageSize must fit the master's full map_state_sync (board grows with wall/piece count)
 
   - code_path: internal/app/api/
     dev_docs:

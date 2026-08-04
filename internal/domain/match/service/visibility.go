@@ -40,6 +40,38 @@ func ToLOSWalls(walls []mapentity.WallSegment) []WallSegmentLOS {
 	return out
 }
 
+// BoundaryLOSWalls returns the grid's outer edges as vision blockers, so a visibility
+// polygon can never reach past the board.
+//
+// Without them the sweep is only bounded by maxRadius (the map diagonal plus a margin),
+// so a polygon on a 3360x3360 board spans roughly 7500x9700 world units. That has two
+// costly consequences downstream: CellsInPolygon walks a slot envelope far wider than
+// the grid and marks thousands of off-board cells as explored, and the client has to
+// rasterize the polygon into an erase-blended render texture whose size then exceeds
+// what WebGL will allocate, so the fog renders as a black smear.
+//
+// Boundary edges are bidirectional (empty Direction) and carry a reserved ID; they never
+// enter the wall state and are never sent to a client.
+func BoundaryLOSWalls(grid mapentity.GridShape) []WallSegmentLOS {
+	if grid.CellSize <= 0 || grid.Cols <= 0 || grid.Rows <= 0 {
+		return nil
+	}
+	c := mapservice.GridWorldCorners(grid)
+	out := make([]WallSegmentLOS, 0, 4)
+	for i := range 4 {
+		a, b := c[i], c[(i+1)%4]
+		out = append(out, WallSegmentLOS{
+			ID: BoundaryWallID,
+			P1: Point2D{X: a[0], Y: a[1]},
+			P2: Point2D{X: b[0], Y: b[1]},
+		})
+	}
+	return out
+}
+
+// BoundaryWallID marks the synthetic board-edge blockers added by BoundaryLOSWalls.
+const BoundaryWallID = "__board_edge__"
+
 // PointInPolygon does ray casting; O(V).
 func PointInPolygon(p Point2D, poly []Point2D) bool {
 	inside := false

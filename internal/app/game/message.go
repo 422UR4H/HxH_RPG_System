@@ -298,8 +298,13 @@ type WallHpChangedPayload struct {
 // Sent by the master on WS connect to seed the room's in-memory state from the DB.
 // Walls are full WallSegment objects so the room can perform movement blocking without
 // additional DB queries.
+// Pieces is a pointer so the room can tell "this sync carries no piece information"
+// (field absent → nil → keep the current board) apart from "the board is empty"
+// (field present but empty → clear it). The in-match master client syncs walls only;
+// treating its absent pieces as an empty board would erase every LOS origin and leave
+// players with no visibility polygons at all.
 type MapStateSyncPayload struct {
-	Pieces []PieceMovedPayload      `json:"pieces"`
+	Pieces *[]PieceMovedPayload     `json:"pieces,omitempty"`
 	Walls  []mapentity.WallSegment  `json:"walls,omitempty"`
 	Grid   *mapentity.GridShape     `json:"grid,omitempty"`
 }
