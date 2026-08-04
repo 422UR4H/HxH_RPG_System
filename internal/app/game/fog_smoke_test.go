@@ -137,7 +137,7 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 	}
 
 	master := smokeDial(t, masterUUID, matchUUID)
-	defer master.Close()
+	defer master.Close() //nolint:errcheck
 	t.Log("master connected (session rehydrated without deadlock)")
 
 	// Exactly what the fixed useMatchWs sends once the REST map has loaded.
@@ -165,7 +165,7 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 	}
 
 	player := smokeDial(t, playerUUID, matchUUID)
-	defer player.Close()
+	defer player.Close() //nolint:errcheck
 	t.Log("player connected")
 
 	if err := master.WriteMessage(websocket.TextMessage, raw); err != nil {
