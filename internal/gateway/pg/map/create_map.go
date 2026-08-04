@@ -41,13 +41,13 @@ func (r *Repository) CreateMap(ctx context.Context, m *entity.TacticalMap) error
 	const query = `
 		INSERT INTO maps (
 			uuid, campaign_uuid, name, description,
-			grid, bg, pieces, walls, decorations, items,
+			fog_mode, grid, bg, pieces, walls, decorations, items,
 			created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 	`
 	_, err = r.q.Exec(ctx, query,
 		m.ID, m.CampaignID, m.Name, m.Description,
-		grid, bg, pieces, walls, decorations, items,
+		string(m.FogMode), grid, bg, pieces, walls, decorations, items,
 		m.CreatedAt, m.UpdatedAt,
 	)
 	if err != nil {

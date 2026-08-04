@@ -42,12 +42,12 @@ func (r *Repository) UpdateMap(ctx context.Context, m *entity.TacticalMap) error
 
 	const query = `
 		UPDATE maps SET
-			name=$1, description=$2, grid=$3, bg=$4,
-			pieces=$5, walls=$6, decorations=$7, items=$8, updated_at=$9
-		WHERE uuid=$10
+			name=$1, description=$2, fog_mode=$3, grid=$4, bg=$5,
+			pieces=$6, walls=$7, decorations=$8, items=$9, updated_at=$10
+		WHERE uuid=$11
 	`
 	_, err = r.q.Exec(ctx, query,
-		m.Name, m.Description, grid, bg,
+		m.Name, m.Description, string(m.FogMode), grid, bg,
 		pieces, walls, decorations, items, m.UpdatedAt,
 		m.ID,
 	)

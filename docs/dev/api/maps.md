@@ -327,3 +327,173 @@ Sem body.
 - `PUT /maps/:id` aceita `walls` como campo opcional. `null` ou ausente = mantém as paredes existentes. `[]` = remove todas.
 - Validações: `p1 ≠ p2`; `wall_type` deve ser um dos 5 valores válidos; `hp ≥ 0`.
 - O backend não calcula defaults — o frontend envia o objeto completo.
+
+---
+
+## Fog of War / Visibilidade (Fase 10-D)
+
+### `GET /maps/:id` — Filtragem por papel
+
+O endpoint é **role-aware**: o resultado varia conforme o papel do usuário autenticado na campanha.
+
+| Papel | Comportamento |
+|---|---|
+| Master | Resposta completa e sem máscara. Todas as paredes (incluindo `secret_door` não reveladas) são retornadas com seus campos reais. |
+| Jogador (não-master) | `secret_door` não reveladas (`revealed=false`) são mascaradas como parede comum. Peças com `visible=false` são removidas da resposta. Sem filtragem LOS — LOS é delegado ao WS. |
+
+#### Máscara de porta secreta não revelada
+
+Quando um jogador recebe um `WallSegment` com `wall_type = "secret_door"` e `revealed = false`, o backend substitui os campos identificadores da porta pelo equivalente de uma parede comum, preservando todos os campos de combate:
+
+| Campo | Valor mascarado |
+|---|---|
+| `wall_type` | `"wall"` (em vez de `"secret_door"`) |
+| `door_subtype` | ausente (`null` / omitido) |
+| `window_subtype` | ausente (`null` / omitido) |
+| `open` | `false` |
+| `locked` | `false` |
+| `id`, `p1`, `p2`, `material`, `hp`, `max_hp`, `resistance`, `move`, `sense`, `direction`, `destroyed` | preservados sem alteração |
+
+> **Nota LOS-at-REST:** O `GET /maps/:id` não aplica filtragem de linha de visão (LOS). Ele só remove o que visivelmente não existe para jogadores (peças invisíveis e identidade de portas secretas não reveladas). LOS exato por jogador é entregue pelo WebSocket via `map_full_state` e `visibility_updated` quando a partida está em andamento.
+
+---
+
+### Campo `fog_mode` no mapa
+
+O `TacticalMap` possui o campo `fog_mode`, persistido no banco, que controla o comportamento de exploração durante a partida:
+
+| Valor | Comportamento |
+|---|---|
+| `"explored"` | Paredes já vistas em turnos anteriores continuam visíveis (mesmo fora do LOS atual). **Default** quando o campo está vazio no banco. |
+| `"live"` | Apenas o LOS do turno atual é visível; nenhuma memória de exploração. |
+
+O campo `fog_mode` é enviado pelo servidor no payload WS `map_full_state` (ver abaixo). Ele não é exposto na resposta REST de `GET /maps/:id` atualmente — apenas o WebSocket o carrega para o cliente.
+
+---
+
+### Eventos WebSocket — Fog of War (servidor → cliente)
+
+Todos os payloads usam snake_case. Esses eventos são enviados durante uma partida em andamento (após `start_match`).
+
+---
+
+#### `map_full_state` (estendido — Fase 10-D)
+
+Enviado a cada cliente que se conecta, e re-enviado após operações que alteram o estado do tabuleiro. Cada cliente recebe uma versão filtrada por papel.
+
+**Payload (jogador não-master):**
+
+```json
+{
+  "pieces": [
+    {
+      "piece_id": "uuid-string",
+      "slot": { "kind": "square", "col": 3, "row": 5 },
+      "character_id": "uuid-string",
+      "visible": true
+    }
+  ],
+  "walls": [ /* WallSegment[] filtrados e mascarados por LOS + masking de secret_door */ ],
+  "visible_polygons": [
+    [ { "x": 0.0, "y": 0.0 }, { "x": 64.0, "y": 0.0 }, { "x": 64.0, "y": 64.0 } ]
+  ],
+  "explored_cells": [ [0, 0], [1, 0], [0, 1] ],
+  "fog_mode": "explored"
+}
+```
+
+**Payload (master):**
+
+```json
+{
+  "pieces": [ /* todas as peças, sem filtro */ ],
+  "walls": [ /* todas as paredes, sem máscara */ ],
+  "fog_mode": "explored"
+}
+```
+
+> O master não recebe `visible_polygons` nem `explored_cells` — campos omitidos.
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. |
+| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, filtradas por LOS/exploração; portas secretas não reveladas mascaradas como `"wall"`. |
+| `visible_polygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). |
+| `explored_cells` | `[int, int][]` | Células já exploradas: `[A, B]` = `[col, row]` (square) ou `[q, r]` (hex axial). Presente somente quando `fog_mode = "explored"` e há estado de exploração. Omitido para o master. |
+| `fog_mode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
+
+---
+
+#### `visibility_updated`
+
+Enviado a cada jogador individual quando seu LOS muda (ex.: após movimento de peça ou revelação de porta secreta). Nunca enviado ao master.
+
+```json
+{
+  "visible_polygons": [
+    [ { "x": 0.0, "y": 0.0 }, { "x": 128.0, "y": 0.0 } ]
+  ],
+  "explored_delta": [ [2, 0], [3, 1] ]
+}
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `visible_polygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador. |
+| `explored_delta` | `[int, int][]` | Células **recém-exploradas** neste update (delta, não o total). `[A, B]` = `[col, row]` / `[q, r]`. Omitido se vazio. |
+
+---
+
+#### `wall_revealed`
+
+Broadcast para **todos os clientes** quando o master revela uma porta secreta. Após este evento, todos os clientes devem substituir a entrada correspondente em seu estado local pelo `WallSegment` completo e real recebido.
+
+```json
+{
+  "wall": {
+    "id": "uuid-string",
+    "p1": [0.0, 0.0],
+    "p2": [64.0, 0.0],
+    "wall_type": "secret_door",
+    "material": "wood",
+    "door_subtype": "basic",
+    "move": true,
+    "sense": "full",
+    "direction": "both",
+    "open": false,
+    "locked": false,
+    "hp": 80,
+    "max_hp": 80,
+    "resistance": 3,
+    "destroyed": false,
+    "revealed": true
+  }
+}
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `wall` | `WallSegment` | O `WallSegment` completo e real da porta secreta, agora com `revealed=true`. |
+
+> O master aciona a revelação via `enqueue_master_action` com `interact.kind = "reveal"` e `target_ids` contendo o(s) ID(s) da(s) parede(s).
+
+---
+
+### Comportamento de eventos existentes com fog of war
+
+#### `wall_hp_changed`
+
+Enviado apenas aos clientes que conseguem **ver** o midpoint da parede afetada (LOS ativo). O master sempre recebe. O payload não carrega `wall_type`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
+
+#### `wall_state_changed`
+
+Para uma `secret_door` **não revelada**, o evento é enviado **apenas ao master**. Para paredes reveladas ou outros tipos, é broadcast normal a todos.
+
+---
+
+### Fluxo de reveal de porta secreta
+
+1. Master envia `enqueue_master_action` com `interact.kind = "reveal"` e `target_ids: ["<wall-uuid>"]`.
+2. O servidor marca a parede como `revealed = true` no `MatchSession` e em memória.
+3. Servidor emite `wall_revealed` (broadcast a todos) com o `WallSegment` completo e real.
+4. Servidor recalcula o LOS de cada jogador e emite `visibility_updated` por jogador.

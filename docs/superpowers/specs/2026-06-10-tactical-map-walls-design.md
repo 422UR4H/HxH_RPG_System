@@ -584,6 +584,18 @@ Cada sub-fase = sessão de planejamento (Sonnet/Opus) + sessão de implementaç�
 
 ### Fase 10-D — Visão / Line of Sight / Fog of War
 
+> **Nota de atualização (Fase 10-D, 2026-06-16):** brainstorm concluído. Spec detalhado em
+> `2026-06-16-tactical-map-walls-10d-design.md`. Decisões que **revisam** o que estava abaixo:
+> (1) **Algoritmo: Geometric Angular Sweep**, não recursive shadowcasting — shadowcasting
+> quebra com grid isométrico/rotacionado, paredes free-draw (Shift) e one-way; o sweep opera
+> em world coords e cobre todos os casos.
+> (2) **Modo de fog default = `explored`** (experiência completa); sem UI de config nesta fase.
+> (3) `secret_door` é **mascarada** como parede (não removida) — jogador a vê/ataca como parede.
+> (4) `ToLOSWalls` exclui `sense=none` **e** `destroyed` **e** `open`.
+> (5) Filtragem em REST **e** WS via `FilterMapState` único; broadcast por-player.
+> (6) `explored_cells` enviado por **delta** (já implementado nesta fase).
+> (7) Persistência inicial concreta no `start_match`; turn-close fica como TODO de wire-up.
+
 > **Sessão de brainstorm:** Obrigatória, completa. Invocar `brainstorming` com nível de detalhe **alto**.
 > **Pré-requisito:** Aguardar estabilização do fluxo de partida (turns, rounds, broadcast WS). Esta fase depende da arquitetura de broadcast por-player que será definida com o fluxo de partida.
 > **Motivo:** (1) Shadow casting em Go requer escolha de algoritmo (recursive shadowcasting, RPAS, ou variante). (2) A mudança de broadcast para all → por-player é uma mudança arquitetural significativa em `room.go`. (3) Performance: re-computar LOS para cada player a cada evento de mapa pode ser custoso — precisa de estratégia de cache/invalidação. (4) Portas secretas: o reveal via `examine` muda a visibilidade permanentemente? Ou por sessão?

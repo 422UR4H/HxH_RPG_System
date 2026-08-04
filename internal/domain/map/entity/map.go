@@ -3,6 +3,7 @@ package entity
 import (
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/google/uuid"
 )
 
@@ -17,6 +18,7 @@ type TacticalMap struct {
 	Walls       []WallSegment `json:"walls"`
 	Decorations []Decoration `json:"decorations"`
 	Items       []MapItem    `json:"items"`
+	FogMode     fog.FogMode  `json:"fog_mode"` // default FogModeExplored when zero
 	CreatedAt   time.Time    `json:"created_at"`
 	UpdatedAt   time.Time    `json:"updated_at"`
 }

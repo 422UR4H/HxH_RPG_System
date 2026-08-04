@@ -9,12 +9,30 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
+
+// fakePieceSource is a test double for matchsession.PiecePositionSource.
+type fakePieceSource struct {
+	positions map[uuid.UUID][]service.Point2D
+}
+
+func (f *fakePieceSource) PlayerPiecePositions(playerID uuid.UUID) []service.Point2D {
+	return f.positions[playerID]
+}
+
+func (f *fakePieceSource) setPosition(playerID uuid.UUID, pts ...service.Point2D) {
+	if f.positions == nil {
+		f.positions = make(map[uuid.UUID][]service.Point2D)
+	}
+	f.positions[playerID] = pts
+}
 
 func TestNewMatchSession(t *testing.T) {
 	matchUUID := uuid.New()
@@ -484,4 +502,54 @@ func TestMatchSession_PersistenceFlags(t *testing.T) {
 			t.Error("expected scenePersisted false after ChangeScene")
 		}
 	})
+}
+
+func TestSession_RecomputeVisibility_SeedsExploredAndReturnsDelta(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	sheetUUID := uuid.New()
+
+	participant := &match.Participant{
+		UUID:      uuid.New(),
+		MatchUUID: matchUUID,
+		Sheet: csEntity.Summary{
+			UUID:       sheetUUID,
+			PlayerUUID: &playerUUID,
+		},
+	}
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+
+	squareGrid := mapentity.GridShape{
+		Kind:      mapentity.GridKindSquare,
+		Cols:      20,
+		Rows:      20,
+		CellSize:  64,
+		SkewRatio: 1,
+	}
+	s.SyncMapState(nil, squareGrid)
+	s.SyncFogStates(nil, fog.FogModeExplored)
+
+	src := &fakePieceSource{}
+	src.setPosition(playerUUID, service.Point2D{X: 50, Y: 50})
+	s.SetPieceSource(src)
+
+	polys, delta, err := s.RecomputeVisibility(playerUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(polys) == 0 {
+		t.Fatal("expected non-empty visibility polygons")
+	}
+	if len(delta) == 0 {
+		t.Fatal("expected non-empty explored delta on first recompute")
+	}
+
+	// Second recompute from the same spot yields no new cells.
+	_, delta2, err := s.RecomputeVisibility(playerUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(delta2) != 0 {
+		t.Fatalf("re-recompute from same position should add no cells, got %d", len(delta2))
+	}
 }

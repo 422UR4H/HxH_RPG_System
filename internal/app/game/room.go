@@ -12,6 +12,7 @@ import (
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -77,9 +78,9 @@ type Room struct {
 	// pieces holds the authoritative in-memory board state. Updated on every
 	// piece_moved / piece_removed. Sent to every new client on register so
 	// late-joiners always see the current board.
-	pieces   map[string]PieceMovedPayload      // keyed by piece_id
-	walls    map[string]mapentity.WallSegment  // in-memory runtime wall state; keyed by wall ID
-	gridSize float64                           // cell size in world coords; used for movement blocking
+	pieces map[string]PieceMovedPayload     // keyed by piece_id
+	walls  map[string]mapentity.WallSegment // in-memory runtime wall state; keyed by wall ID
+	grid   mapentity.GridShape              // full grid shape; used for movement blocking and fog coords
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -120,7 +121,7 @@ func NewRoom(
 		clients:               make(map[uuid.UUID]*Client),
 		pieces:                make(map[string]PieceMovedPayload),
 		walls:                 make(map[string]mapentity.WallSegment),
-		gridSize:              64, // default; overridden by map_state_sync
+		grid:                  mapentity.DefaultGrid(), // default; overridden by map_state_sync
 		broadcast:             make(chan []byte, 256),
 		register:              make(chan *Client),
 		unregister:            make(chan *Client),
@@ -167,7 +168,17 @@ func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	for _, w := range r.walls {
 		wallSlice = append(wallSlice, w)
 	}
-	r.session.SyncMapState(wallSlice, r.gridSize)
+	r.session.SyncMapState(wallSlice, r.grid)
+	r.session.SetPieceSource(r)
+	// Seed fog exactly as StartMatch does; otherwise a post-restart session has an empty
+	// fog mode ("") and no per-player visibility, breaking LOS until the next move.
+	// TODO(10-D persistence): load persisted fog_mode + explored sets here instead of nil.
+	r.session.SyncFogStates(nil, fogentity.FogModeExplored)
+	for _, pid := range r.session.PlayerIDs() {
+		if _, _, err := r.session.RecomputeVisibility(pid); err != nil {
+			log.Printf("rehydrate recompute visibility for %s: %v", pid, err)
+		}
+	}
 	r.state = RoomStatePlaying
 }
 
@@ -211,7 +222,8 @@ func (r *Room) Run() {
 			hasPieces := len(r.pieces) > 0
 			r.mu.RUnlock()
 			if hasPieces {
-				r.sendMapFullState(client)
+				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
+				client.SendMessage(*msg)
 			}
 			r.broadcastPlayerJoined(client)
 
@@ -225,7 +237,9 @@ func (r *Room) Run() {
 			removed := false
 			if current, ok := r.clients[client.userUUID]; ok && current == client {
 				delete(r.clients, client.userUUID)
-				close(client.send)
+				// Signal shutdown via done, never by closing send: a concurrent
+				// SendMessage on a closed channel panics and kills the process.
+				client.Close()
 				removed = true
 			}
 			r.mu.Unlock()
@@ -261,7 +275,7 @@ func (r *Room) Run() {
 			r.mu.Lock()
 			r.state = RoomStateClosed
 			for _, client := range r.clients {
-				close(client.send)
+				client.Close()
 			}
 			r.clients = make(map[uuid.UUID]*Client)
 			r.mu.Unlock()
@@ -297,13 +311,38 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	for _, w := range r.walls {
 		wallSlice = append(wallSlice, w)
 	}
-	r.session.SyncMapState(wallSlice, r.gridSize)
+	r.session.SyncMapState(wallSlice, r.grid)
+	r.session.SetPieceSource(r)
+	// Seed fog state. loadInitialFogStates returns nil for now (persistence TODO),
+	// which seeds empty per-player explored sets. mapFogMode defaults to explored.
+	r.session.SyncFogStates(nil, fogentity.FogModeExplored)
+	playerIDs := r.session.PlayerIDs()
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
 
-	msg := NewServerMessage(MsgTypeMatchStarted, struct{}{})
-	data, _ := json.Marshal(msg)
-	go func() { r.broadcast <- data }()
+	for _, pid := range playerIDs {
+		r.mu.Lock()
+		_, _, err := r.session.RecomputeVisibility(pid)
+		r.mu.Unlock()
+		if err != nil {
+			log.Printf("recompute visibility for %s: %v", pid, err)
+		}
+		// TODO(10-D persistence): fogStateRepo.Upsert(session.GetFogState(pid))
+	}
+
+	// Send match_started directly per-client (in order) so it always precedes the
+	// per-player map_full_state that follows. Using the broadcast channel here would
+	// race against the direct sends below.
+	startedMsg := NewServerMessage(MsgTypeMatchStarted, struct{}{})
+	r.dispatchPerPlayer(func(_ uuid.UUID, _ bool) *Message {
+		m := startedMsg
+		return &m
+	})
+
+	// Push the filtered full board state to each client (master unfiltered).
+	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		return r.buildMapFullState(pid, isMaster)
+	})
 	return nil
 }
 
@@ -533,7 +572,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					gridSize = sess.GetGridSize()
 					walls = sess.GetWalls()
 				} else {
-					gridSize = r.gridSize
+					gridSize = r.grid.CellSize
 					walls = make([]mapentity.WallSegment, 0, len(r.walls))
 					for _, w := range r.walls {
 						walls = append(walls, w)
@@ -631,7 +670,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 
 	case MsgTypePieceMoved:
-		// Broadcast piece move to all OTHER participants in the lobby.
+		// Relay piece moves per-player with fog-of-war filtering.
 		// No server-side piece ownership validation in Phase 6 — client restricts
 		// drag to allowed pieces. TODO: validate piece ownership per user (Phase 7+)
 		var payload PieceMovedPayload
@@ -639,24 +678,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_moved payload"))
 			return
 		}
-		// Keep in-memory board state current so late-joiners get the right board.
-		r.mu.Lock()
-		r.pieces[payload.PieceID] = payload
-		r.mu.Unlock()
-		outMsg := NewClientMessage(MsgTypePieceMoved, client.userUUID, payload)
-		data, _ := json.Marshal(outMsg)
-		r.mu.RLock()
-		for id, c := range r.clients {
-			if id == client.userUUID {
-				continue
-			}
-			select {
-			case c.send <- data:
-			default:
-				log.Printf("dropping lobby_piece_moved for slow client %s", id)
-			}
-		}
-		r.mu.RUnlock()
+		r.handlePieceMoved(client, payload)
 
 	case MsgTypePieceRemoved:
 		var payload PieceRemovedPayload
@@ -664,23 +686,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_removed payload"))
 			return
 		}
-		r.mu.Lock()
-		delete(r.pieces, payload.PieceID)
-		r.mu.Unlock()
-		outMsg := NewClientMessage(MsgTypePieceRemoved, client.userUUID, payload)
-		data, _ := json.Marshal(outMsg)
-		r.mu.RLock()
-		for id, c := range r.clients {
-			if id == client.userUUID {
-				continue
-			}
-			select {
-			case c.send <- data:
-			default:
-				log.Printf("dropping lobby_piece_removed for slow client %s", id)
-			}
-		}
-		r.mu.RUnlock()
+		r.handlePieceRemoved(client, payload)
 
 	case MsgTypeMapStateSync:
 		// Only the master may seed the in-memory board (initial DB state on connect).
@@ -694,24 +700,47 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		r.mu.Lock()
-		r.pieces = make(map[string]PieceMovedPayload, len(payload.Pieces))
-		for _, p := range payload.Pieces {
-			r.pieces[p.PieceID] = p
+		// A nil Pieces field means "no piece information in this sync" — keep the board.
+		// Only an explicitly present array replaces it (empty array = board is empty).
+		if payload.Pieces != nil {
+			r.pieces = make(map[string]PieceMovedPayload, len(*payload.Pieces))
+			for _, p := range *payload.Pieces {
+				r.pieces[p.PieceID] = p
+			}
 		}
 		r.walls = make(map[string]mapentity.WallSegment, len(payload.Walls))
 		for _, w := range payload.Walls {
 			r.walls[w.ID] = w
 		}
 		if payload.Grid != nil && payload.Grid.CellSize > 0 {
-			r.gridSize = payload.Grid.CellSize
+			r.grid = *payload.Grid
 		}
+		grid := r.grid
 		sess := r.session
-		r.mu.Unlock()
 		if sess != nil {
 			wallSlice := append([]mapentity.WallSegment(nil), payload.Walls...)
-			sess.SyncMapState(wallSlice, r.gridSize)
+			sess.SyncMapState(wallSlice, grid)
+			// The board just changed, so every player's cached LOS is stale — and
+			// buildMapFullState serves the cache. Recompute here (still under the write
+			// lock, as PlayerPiecePositions requires) so the refreshed state pushed below
+			// reflects the board that was just seeded.
+			for _, pid := range sess.PlayerIDs() {
+				if _, _, err := sess.RecomputeVisibility(pid); err != nil {
+					log.Printf("map_state_sync recompute visibility for %s: %v", pid, err)
+				}
+			}
 		}
-		// No relay — only seeds the server's in-memory state.
+		r.mu.Unlock()
+
+		// Re-push the full board to everyone. This is what makes the feature converge
+		// regardless of connect order: whether the master syncs before or after a player
+		// joins, and whether the server was restarted mid-match, each client ends up with
+		// state built from the seeded board.
+		if sess != nil {
+			r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+				return r.buildMapFullState(pid, isMaster)
+			})
+		}
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
@@ -727,6 +756,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		r.mu.RUnlock()
 		ma := buildMasterAction(client.userUUID, payload)
+		// Reveal: master-only secret-door reveal. Marks the wall revealed in the session
+		// and broadcasts the full real WallSegment to ALL clients.
+		if ma.Interact != nil && ma.Interact.Kind == action.InteractReveal && len(ma.TargetID) > 0 {
+			r.revealSecretDoors(ma.TargetID)
+			return
+		}
 		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
 		if ma.Interact != nil && len(ma.TargetID) > 0 {
 			for _, targetID := range ma.TargetID {
@@ -735,14 +770,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					// Wall not in in-memory state — skip silently.
 					continue
 				}
-				evt := NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
-					WallID: targetID.String(),
-					Open:   newOpen,
-					Locked: newLocked,
-				})
-				data, _ := json.Marshal(evt)
-				go func() { r.broadcast <- data }()
+				r.broadcastWallStateChangedGated(targetID.String(), newOpen, newLocked)
 			}
+			// Wall geometry may have changed (open/close) → recompute and push LOS.
+			r.pushVisibilityUpdates()
 			return
 		}
 		if session == nil {
@@ -783,39 +814,478 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 // Returns (newOpen, newLocked, ok). ok=false means wall not found or interaction
 // not applicable (e.g. lockpick/examine are player-only actions requiring rolls).
 func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open, locked bool, ok bool) {
-	r.mu.RLock()
-	sess := r.session
-	r.mu.RUnlock()
-
+	// Hold the write lock across the session update too: MatchSession has no internal
+	// lock, so r.mu is the only thing serializing access to its wall map.
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	w, exists := r.walls[wallID]
 	if !exists {
-		r.mu.Unlock()
 		return false, false, false
 	}
 	updated, ok := domainservice.ApplyWallInteract(w, interact)
 	if !ok {
-		r.mu.Unlock()
 		return false, false, false
 	}
 	r.walls[wallID] = updated
-	r.mu.Unlock()
-
-	if sess != nil {
-		sess.UpdateWall(updated)
+	if r.session != nil {
+		r.session.UpdateWall(updated)
 	}
 	return updated.Open, updated.Locked, true
 }
 
-func (r *Room) sendMapFullState(client *Client) {
+// ---------------------------------------------------------------------------
+// Fog of war: per-player dispatch + filtering helpers
+// ---------------------------------------------------------------------------
+
+// dispatchPerPlayer sends a per-player-built message to each client. build returns nil to skip.
+func (r *Room) dispatchPerPlayer(build func(playerID uuid.UUID, isMaster bool) *Message) {
 	r.mu.RLock()
-	pieces := make([]PieceMovedPayload, 0, len(r.pieces))
-	for _, p := range r.pieces {
-		pieces = append(pieces, p)
+	type entry struct {
+		c        *Client
+		isMaster bool
+	}
+	entries := make(map[uuid.UUID]entry, len(r.clients))
+	for id, c := range r.clients {
+		entries[id] = entry{c: c, isMaster: id == r.masterUUID}
 	}
 	r.mu.RUnlock()
-	msg := NewServerMessage(MsgTypeMapFullState, MapPiecesPayload{Pieces: pieces})
-	client.SendMessage(msg)
+
+	for id, e := range entries {
+		if msg := build(id, e.isMaster); msg != nil {
+			e.c.SendMessage(*msg)
+		}
+	}
+}
+
+func (r *Room) sendToMaster(msg Message) {
+	r.mu.RLock()
+	c, ok := r.clients[r.masterUUID]
+	r.mu.RUnlock()
+	if ok {
+		c.SendMessage(msg)
+	}
+}
+
+func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
+	msg := NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+		WallID: wallID,
+		Open:   open,
+		Locked: locked,
+	})
+	data, _ := json.Marshal(msg)
+	go func() { r.broadcast <- data }()
+}
+
+// broadcastWallStateChangedGated sends wall_state_changed to everyone, except that an
+// unrevealed secret door's open/locked change goes to the master only. Players see such a
+// door as a plain wall, and a plain wall has no open/locked state — broadcasting it would
+// leak the door's identity. Mirrors the WallResultKindInteract gate in broadcastWallResults.
+func (r *Room) broadcastWallStateChangedGated(wallID string, open, locked bool) {
+	r.mu.RLock()
+	w, ok := r.walls[wallID]
+	r.mu.RUnlock()
+	if ok && w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
+		r.sendToMaster(NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+			WallID: wallID,
+			Open:   open,
+			Locked: locked,
+		}))
+		return
+	}
+	r.broadcastWallStateChanged(wallID, open, locked)
+}
+
+// broadcastWallHpChanged dispatches wall_hp_changed only to clients who can see the wall.
+// The master always receives it. The payload carries no wall type, so this never leaks
+// secret-door identity.
+func (r *Room) broadcastWallHpChanged(w mapentity.WallSegment) {
+	mid := domainservice.Point2D{
+		X: (w.P1[0] + w.P2[0]) / 2,
+		Y: (w.P1[1] + w.P2[1]) / 2,
+	}
+	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		if !isMaster && !domainservice.IsVisible(mid, r.visibilityFor(pid)) {
+			return nil
+		}
+		m := NewServerMessage(MsgTypeWallHpChanged, WallHpChangedPayload{
+			WallID:    w.ID,
+			HP:        w.HP,
+			MaxHP:     w.MaxHP,
+			Destroyed: w.Destroyed,
+		})
+		return &m
+	})
+}
+
+// revealSecretDoors marks each target wall revealed in the session and broadcasts the full
+// real WallSegment to ALL clients. Master-only; the caller gates on master.
+func (r *Room) revealSecretDoors(targetIDs []uuid.UUID) {
+	r.mu.Lock()
+	sess := r.session
+	for _, targetID := range targetIDs {
+		wallID := targetID.String()
+		if sess != nil {
+			sess.RevealSecretDoor(wallID)
+			if w, ok := sess.GetWall(wallID); ok {
+				r.walls[wallID] = w
+			}
+		} else if w, ok := r.walls[wallID]; ok {
+			w.Revealed = true
+			r.walls[wallID] = w
+		}
+	}
+	r.mu.Unlock()
+
+	for _, targetID := range targetIDs {
+		wallID := targetID.String()
+		r.mu.RLock()
+		var w mapentity.WallSegment
+		var ok bool
+		if sess != nil {
+			w, ok = sess.GetWall(wallID)
+		} else {
+			w, ok = r.walls[wallID]
+		}
+		r.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		msg := NewServerMessage(MsgTypeWallRevealed, WallRevealedPayload{Wall: w})
+		data, _ := json.Marshal(msg)
+		go func(d []byte) { r.broadcast <- d }(data)
+	}
+	// Revealing changes nothing about geometry but the cache must reflect Revealed; push LOS.
+	r.pushVisibilityUpdates()
+}
+
+// pushVisibilityUpdates recomputes each player's LOS and sends them a visibility_updated.
+func (r *Room) pushVisibilityUpdates() {
+	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		if isMaster {
+			return nil
+		}
+		polys, delta, err := func() ([]domainservice.VisibilityPolygon, []fogentity.CellCoord, error) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if r.session == nil {
+				return nil, nil, nil
+			}
+			return r.session.RecomputeVisibility(pid)
+		}()
+		if err != nil || polys == nil {
+			return nil
+		}
+		payload := VisibilityUpdatedPayload{VisiblePolygons: polysToPayload(polys)}
+		for _, c := range delta {
+			payload.ExploredDelta = append(payload.ExploredDelta, [2]int{c.A, c.B})
+		}
+		msg := NewServerMessage(MsgTypeVisibilityUpdated, payload)
+		return &msg
+	})
+}
+
+// visibilityFor returns the cached visibility polygons for a player (nil if no session).
+func (r *Room) visibilityFor(pid uuid.UUID) []domainservice.VisibilityPolygon {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.session == nil {
+		return nil
+	}
+	return r.session.GetVisibility(pid)
+}
+
+// gridShape returns the session's grid when a match is live, else the room's grid.
+func (r *Room) gridShape() mapentity.GridShape {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.session != nil {
+		return r.session.GetGrid()
+	}
+	return r.grid
+}
+
+func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64) {
+	a, b := 0, 0
+	if s.Kind == "hex" {
+		if s.Q != nil {
+			a = *s.Q
+		}
+		if s.R != nil {
+			b = *s.R
+		}
+	} else {
+		if s.Col != nil {
+			a = *s.Col
+		}
+		if s.Row != nil {
+			b = *s.Row
+		}
+	}
+	return mapservice.SlotCenterToWorld(a, b, g)
+}
+
+// PlayerPiecePositions implements matchsession.PiecePositionSource. It returns the world
+// positions of the pieces owned by playerID (resolved via the session's char→player map).
+//
+// LOCKING: the caller MUST already hold r.mu. This method deliberately takes no lock of
+// its own because the session calls it back from inside RecomputeVisibility, which every
+// caller invokes while holding r.mu for writing — taking r.mu.RLock() here would be an
+// RLock inside a Lock on the same goroutine, which deadlocks Go's RWMutex permanently.
+// This matches the room-owns-the-lock invariant documented in game-server.instructions.md.
+// Guarded by TestRecomputeVisibilityUnderRoomWriteLock_DoesNotDeadlock.
+func (r *Room) PlayerPiecePositions(playerID uuid.UUID) []domainservice.Point2D {
+	grid := r.grid
+	if r.session != nil {
+		grid = r.session.GetGrid()
+	}
+	var charToPlayer map[string]uuid.UUID
+	if r.session != nil {
+		charToPlayer = r.session.GetCharToPlayer()
+	}
+	out := make([]domainservice.Point2D, 0)
+	for _, p := range r.pieces {
+		// Safe default: if the char→player map is missing, own nothing rather than
+		// treating every piece as this player's LOS origin.
+		if charToPlayer == nil || charToPlayer[p.CharacterID] != playerID {
+			continue
+		}
+		x, y := slotPayloadToWorld(p.Slot, grid)
+		out = append(out, domainservice.Point2D{X: x, Y: y})
+	}
+	return out
+}
+
+// buildMapFullState builds the filtered map_full_state for one viewer. Master gets the
+// unfiltered board with no polygons; players get LOS-filtered walls/pieces plus their
+// visible polygons and explored cells.
+func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
+	r.mu.RLock()
+	allWalls := make([]mapentity.WallSegment, 0, len(r.walls))
+	for _, w := range r.walls {
+		allWalls = append(allWalls, w)
+	}
+	allPieces := make([]PieceMovedPayload, 0, len(r.pieces))
+	pieceProj := make([]domainservice.PieceVisibility, 0, len(r.pieces))
+	grid := r.grid
+	if r.session != nil {
+		grid = r.session.GetGrid()
+	}
+	for _, p := range r.pieces {
+		allPieces = append(allPieces, p)
+		x, y := slotPayloadToWorld(p.Slot, grid)
+		visible := true
+		if p.Visible != nil {
+			visible = *p.Visible
+		}
+		pieceProj = append(pieceProj, domainservice.PieceVisibility{
+			ID:          p.PieceID,
+			CharacterID: p.CharacterID,
+			Pos:         domainservice.Point2D{X: x, Y: y},
+			Visible:     visible,
+		})
+	}
+	var polys []domainservice.VisibilityPolygon
+	fogMode := fogentity.FogModeLive
+	var explored map[fogentity.CellCoord]struct{}
+	charToPlayer := map[string]uuid.UUID{}
+	// LOS fog applies only once a match is live. In the lobby (no session) there is no LOS,
+	// but secret doors are still masked and invisible pieces hidden from non-master players.
+	isLobby := r.session == nil
+	if r.session != nil {
+		polys = r.session.GetVisibility(playerID)
+		fogMode = r.session.GetFogMode()
+		charToPlayer = r.session.GetCharToPlayer()
+		if st, ok := r.session.GetFogState(playerID); ok {
+			explored = st.ExploredCells
+		}
+	}
+	r.mu.RUnlock()
+
+	var walls []mapentity.WallSegment
+	var visIDs map[string]bool
+	switch {
+	case isMaster:
+		// Master sees the true board, unmasked, with every piece.
+		walls, visIDs = domainservice.FilterMapState(
+			allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, true,
+		)
+	case isLobby:
+		// Lobby: no LOS gating, but mask unrevealed secret doors and hide invisible pieces.
+		walls = make([]mapentity.WallSegment, 0, len(allWalls))
+		for _, w := range allWalls {
+			if w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
+				walls = append(walls, domainservice.MaskSecretDoorForPlayer(w))
+			} else {
+				walls = append(walls, w)
+			}
+		}
+		visIDs = make(map[string]bool, len(pieceProj))
+		for _, p := range pieceProj {
+			if p.Visible {
+				visIDs[p.ID] = true
+			}
+		}
+	default:
+		// In-match player: full per-player LOS filtering.
+		walls, visIDs = domainservice.FilterMapState(
+			allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, false,
+		)
+	}
+
+	pieces := make([]PieceMovedPayload, 0, len(allPieces))
+	for _, p := range allPieces {
+		if isMaster || visIDs[p.PieceID] {
+			pieces = append(pieces, p)
+		}
+	}
+	payload := MapFullStatePayload{Pieces: pieces, Walls: walls, FogMode: string(fogMode)}
+	if !isMaster && !isLobby {
+		payload.VisiblePolygons = polysToPayload(polys)
+		if fogMode == fogentity.FogModeExplored && explored != nil {
+			payload.ExploredCells = cellsToPayload(explored)
+		}
+	}
+	msg := NewServerMessage(MsgTypeMapFullState, payload)
+	return &msg
+}
+
+func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload {
+	out := make([][]Point2DPayload, 0, len(polys))
+	for _, poly := range polys {
+		pts := make([]Point2DPayload, 0, len(poly.Vertices))
+		for _, v := range poly.Vertices {
+			pts = append(pts, Point2DPayload{X: v.X, Y: v.Y})
+		}
+		out = append(out, pts)
+	}
+	return out
+}
+
+func cellsToPayload(set map[fogentity.CellCoord]struct{}) [][2]int {
+	out := make([][2]int, 0, len(set))
+	for c := range set {
+		out = append(out, [2]int{c.A, c.B})
+	}
+	return out
+}
+
+// handlePieceMoved updates the board and relays the move per-player with fog filtering.
+func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+	r.mu.Lock()
+	old, hadOld := r.pieces[payload.PieceID]
+	r.pieces[payload.PieceID] = payload
+	r.mu.Unlock()
+
+	grid := r.gridShape()
+	newX, newY := slotPayloadToWorld(payload.Slot, grid)
+	var oldX, oldY float64
+	if hadOld {
+		oldX, oldY = slotPayloadToWorld(old.Slot, grid)
+	}
+	hidden := payload.Visible != nil && !*payload.Visible
+
+	moved := NewClientMessage(MsgTypePieceMoved, client.userUUID, payload)
+	removed := NewClientMessage(MsgTypePieceRemoved, client.userUUID, PieceRemovedPayload{PieceID: payload.PieceID})
+
+	r.mu.RLock()
+	live := r.session != nil
+	r.mu.RUnlock()
+
+	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		if pid == client.userUUID {
+			return nil // mover already applied the move locally
+		}
+		if isMaster {
+			m := moved
+			return &m
+		}
+		if !live {
+			// Lobby phase: no fog, share the move with everyone.
+			m := moved
+			return &m
+		}
+		if hidden {
+			return nil // hidden pieces never reach players
+		}
+		polys := r.visibilityFor(pid)
+		seesNew := domainservice.IsVisible(domainservice.Point2D{X: newX, Y: newY}, polys)
+		seesOld := hadOld && domainservice.IsVisible(domainservice.Point2D{X: oldX, Y: oldY}, polys)
+		switch {
+		case seesNew:
+			m := moved
+			return &m
+		case seesOld:
+			m := removed
+			return &m
+		default:
+			return nil
+		}
+	})
+
+	// When the mover moves their OWN piece, recompute their LOS and resend the full state.
+	r.mu.RLock()
+	sess := r.session
+	var ownsPiece bool
+	if sess != nil {
+		ownsPiece = sess.GetCharToPlayer()[payload.CharacterID] == client.userUUID
+	}
+	r.mu.RUnlock()
+	if sess != nil && ownsPiece {
+		r.mu.Lock()
+		_, _, err := r.session.RecomputeVisibility(client.userUUID)
+		r.mu.Unlock()
+		if err == nil {
+			msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
+			client.SendMessage(*msg)
+		}
+	}
+}
+
+// handlePieceRemoved removes a piece and relays the removal per-player.
+// A hidden piece (visible=false) is treated as master-only.
+func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
+	r.mu.Lock()
+	old, hadOld := r.pieces[payload.PieceID]
+	delete(r.pieces, payload.PieceID)
+	r.mu.Unlock()
+
+	hidden := hadOld && old.Visible != nil && !*old.Visible
+	grid := r.gridShape()
+	var oldX, oldY float64
+	if hadOld {
+		oldX, oldY = slotPayloadToWorld(old.Slot, grid)
+	}
+
+	removed := NewClientMessage(MsgTypePieceRemoved, client.userUUID, payload)
+
+	r.mu.RLock()
+	live := r.session != nil
+	r.mu.RUnlock()
+
+	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		if pid == client.userUUID {
+			return nil
+		}
+		if isMaster {
+			m := removed
+			return &m
+		}
+		if !live {
+			// Lobby phase: no fog, share the removal with everyone.
+			m := removed
+			return &m
+		}
+		if hidden {
+			return nil
+		}
+		// Only notify players who could see the piece at its last known position.
+		if hadOld && !domainservice.IsVisible(domainservice.Point2D{X: oldX, Y: oldY}, r.visibilityFor(pid)) {
+			return nil
+		}
+		m := removed
+		return &m
+	})
 }
 
 func (r *Room) sendRoomState(client *Client) {
@@ -885,30 +1355,35 @@ func (r *Room) broadcastPlayerLeft(client *Client) {
 }
 
 func (r *Room) broadcastWallResults(session *matchsession.MatchSession, results []domainservice.WallResult) {
+	changed := false
 	for _, wr := range results {
 		session.UpdateWall(wr.UpdatedWall)
 		r.mu.Lock()
 		r.walls[wr.UpdatedWall.ID] = wr.UpdatedWall
 		r.mu.Unlock()
-		var msg Message
 		switch wr.Kind {
 		case domainservice.WallResultKindAttack:
-			msg = NewServerMessage(MsgTypeWallHpChanged, WallHpChangedPayload{
-				WallID:    wr.UpdatedWall.ID,
-				HP:        wr.UpdatedWall.HP,
-				MaxHP:     wr.UpdatedWall.MaxHP,
-				Destroyed: wr.UpdatedWall.Destroyed,
-			})
+			// HP changes are gated per-player by line of sight to the wall midpoint.
+			// The payload carries no wall type, so this is safe even for secret doors.
+			r.broadcastWallHpChanged(wr.UpdatedWall)
+			changed = true
 		case domainservice.WallResultKindInteract:
-			msg = NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
-				WallID: wr.UpdatedWall.ID,
-				Open:   wr.UpdatedWall.Open,
-				Locked: wr.UpdatedWall.Locked,
-			})
+			// Unrevealed secret doors must not leak their open/locked state to players.
+			if wr.UpdatedWall.WallType == mapentity.WallTypeSecretDoor && !wr.UpdatedWall.Revealed {
+				r.sendToMaster(NewServerMessage(MsgTypeWallStateChanged, WallStateChangedPayload{
+					WallID: wr.UpdatedWall.ID,
+					Open:   wr.UpdatedWall.Open,
+					Locked: wr.UpdatedWall.Locked,
+				}))
+			} else {
+				r.broadcastWallStateChanged(wr.UpdatedWall.ID, wr.UpdatedWall.Open, wr.UpdatedWall.Locked)
+			}
+			changed = true
 		default:
 			continue
 		}
-		data, _ := json.Marshal(msg)
-		go func(d []byte) { r.broadcast <- d }(data)
+	}
+	if changed {
+		r.pushVisibilityUpdates()
 	}
 }
