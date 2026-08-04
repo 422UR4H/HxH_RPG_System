@@ -309,6 +309,62 @@ func TestSendMessageDuringRoomShutdown_DoesNotPanic(t *testing.T) {
 	wg.Wait()
 }
 
+// A wall that blocks the player's vision must still be sent to them: they have to see
+// the wall (and doors) bounding their view in order to interact with it, even though
+// they cannot see what lies behind it. Such a wall sits exactly ON the boundary of the
+// visibility polygon, so testing its midpoint for containment reports "not visible" and
+// the wall silently disappears from the player's screen.
+func TestBuildMapFullState_PlayerSeesTheWallThatBlocksTheirVision(t *testing.T) {
+	room, _, playerUUID, _ := liveMatchRoom(t)
+
+	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
+		room.mu.Lock()
+		defer room.mu.Unlock()
+		_, _, _ = room.session.RecomputeVisibility(playerUUID)
+	})
+
+	view := decodeMapFull(t, room.buildMapFullState(playerUUID, false))
+	found := false
+	for _, w := range view.Walls {
+		if w.ID == "w1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("player cannot see the wall blocking their line of sight (got %d walls)",
+			len(view.Walls))
+	}
+}
+
+// A wall the player has no line of sight to must stay hidden — the fix above must not
+// turn into "players see every wall on the map".
+func TestBuildMapFullState_PlayerDoesNotSeeWallBehindAnother(t *testing.T) {
+	room, _, playerUUID, _ := liveMatchRoom(t)
+
+	// Directly in w1's shadow: same span, just past it. The nudge that makes a blocking
+	// wall visible must not leak the wall immediately behind it.
+	hidden := mapentity.WallSegment{
+		ID: "w-far", P1: [2]float64{208, 32}, P2: [2]float64{208, 288},
+		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
+		Sense: mapentity.SenseSight, HP: 100, MaxHP: 100,
+	}
+	room.walls[hidden.ID] = hidden
+	room.session.SyncMapState([]mapentity.WallSegment{room.walls["w1"], hidden}, room.grid)
+
+	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
+		room.mu.Lock()
+		defer room.mu.Unlock()
+		_, _, _ = room.session.RecomputeVisibility(playerUUID)
+	})
+
+	view := decodeMapFull(t, room.buildMapFullState(playerUUID, false))
+	for _, w := range view.Walls {
+		if w.ID == "w-far" {
+			t.Fatal("player must not see a wall they have no line of sight to")
+		}
+	}
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 func mustSyncMessage(t *testing.T, p MapStateSyncPayload) []byte {

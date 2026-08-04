@@ -90,6 +90,14 @@ paredes e peças; o limite de leitura do servidor é 1 MiB (`maxMessageSize` em
 `internal/app/game/client.go`). Um limite menor faz o servidor fechar a conexão do mestre
 no meio do sync — o mestre reconecta e reenvia em loop, e nenhum jogador recebe tabuleiro.
 
+**Paredes que o jogador recebe.** Uma parede é enviada quando qualquer trecho dela está
+na linha de visão do jogador — o teste amostra ao longo do segmento e desloca cada amostra
+em direção ao observador. Isso é necessário porque uma parede que **bloqueia** a visão fica
+exatamente sobre a borda do polígono de visibilidade: testar o ponto médio pela regra de
+contenção responde "não visível", e a parede some da tela do jogador justamente quando ele
+mais precisa dela (para abrir uma porta, arrombar, atacar). Paredes atrás de outra
+continuam ocultas. Em modo `explored`, paredes já vistas permanecem visíveis.
+
 Erro se o remetente não for o mestre:
 
 ```json
