@@ -51,7 +51,7 @@ func runMigrations(t *testing.T, dbURL string) {
 	if err != nil {
 		t.Fatalf("failed to open DB for migrations: %v", err)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck
 
 	migrationsDir := findMigrationsDir()
 	if err := goose.SetDialect("postgres"); err != nil {
