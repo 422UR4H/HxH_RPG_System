@@ -9,7 +9,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
-	matchservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -51,30 +50,25 @@ func GetMapHandler(uc mapuc.IGetMap) func(context.Context, *GetMapRequest) (*Get
 //
 // Master: no filtering — receives the full unmasked board.
 //
-// Non-master player (lobby path — no live match session at REST):
-//   - Unrevealed secret doors are masked as plain walls (type="wall", door subtype/open/locked cleared).
-//   - Pieces with visible=false are removed.
+// Non-master: receives the map SHELL only — grid, background, fog mode — with no pieces
+// and no walls at all.
 //
-// LOS-at-REST is deferred to the WS layer (live match) which has exact per-player polygons.
-// TODO(10-D): wire live fog state here once a /maps/:id REST endpoint is called mid-match.
+// That is deliberate, and it is not over-caution. GET /maps/:id is served by the REST
+// process (cmd/api). Everything needed to decide what a player may see — the per-player
+// visibility polygons — lives in MatchSession, in the RAM of a DIFFERENT process
+// (cmd/game), and is recomputed on every move. REST cannot filter by line of sight and
+// never could, so it used to answer with the whole board: any player could read every
+// wall and every character position straight off the endpoint with their own token.
+//
+// The game server already computes exactly this, per player, and pushes it over
+// map_full_state — in the lobby as well as in a live match. It is the only place that
+// can, so it is the only place that does.
 func applyRoleFilter(m *mapentity.TacticalMap, isMaster bool) {
 	if isMaster {
 		return
 	}
-
-	// Mask unrevealed secret doors as plain walls.
-	for i := range m.Walls {
-		if m.Walls[i].WallType == mapentity.WallTypeSecretDoor && !m.Walls[i].Revealed {
-			m.Walls[i] = matchservice.MaskSecretDoorForPlayer(m.Walls[i])
-		}
-	}
-
-	// Remove invisible pieces (visible=false pieces are master-only).
-	visible := m.Pieces[:0]
-	for _, p := range m.Pieces {
-		if p.Visible {
-			visible = append(visible, p)
-		}
-	}
-	m.Pieces = visible
+	// Empty slices, not nil: the JSON stays `[]` instead of flipping to `null`, so no
+	// client has to learn a second shape for "nothing here".
+	m.Pieces = []mapentity.Piece{}
+	m.Walls = []mapentity.WallSegment{}
 }
