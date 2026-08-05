@@ -1086,6 +1086,8 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	fogMode := fogentity.FogModeLive
 	var memory *fogentity.PlayerMemory
 	charToPlayer := map[string]uuid.UUID{}
+	// LOS fog applies only once a match is live. In the lobby (no session) there is no LOS,
+	// but secret doors are still masked and invisible pieces hidden from non-master players.
 	isLobby := r.session == nil
 	if r.session != nil {
 		polys = r.session.GetVisibility(playerID)
