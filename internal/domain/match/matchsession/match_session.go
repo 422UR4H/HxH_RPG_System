@@ -38,7 +38,7 @@ type MatchSession struct {
 	walls        map[string]mapentity.WallSegment         // keyed by wall ID; nil until SyncMapState
 	grid         mapentity.GridShape                      // full grid shape; CellSize 0 until SyncMapState
 	fogMode      fog.FogMode
-	fogStates    map[uuid.UUID]*fog.PlayerFogState
+	memories     map[uuid.UUID]*fog.PlayerMemory
 	visCache     map[uuid.UUID][]service.VisibilityPolygon
 	charToPlayer map[string]uuid.UUID
 	pieceSource  PiecePositionSource
@@ -70,7 +70,7 @@ func NewMatchSession(
 		roundOrch:    service.RoundOrchestrator{},
 		turnResolver: service.TurnResolver{},
 		charToPlayer: charToPlayer,
-		fogStates:    make(map[uuid.UUID]*fog.PlayerFogState),
+		memories:     make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:     make(map[uuid.UUID][]service.VisibilityPolygon),
 	}
 }
@@ -105,7 +105,7 @@ func NewMatchSessionWithState(
 		scenePersisted: true,
 		roundPersisted: true,
 		charToPlayer:   charToPlayer,
-		fogStates:      make(map[uuid.UUID]*fog.PlayerFogState),
+		memories:       make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:       make(map[uuid.UUID][]service.VisibilityPolygon),
 	}
 }
@@ -255,71 +255,73 @@ func (s *MatchSession) CategorizeTarget(id uuid.UUID) service.TargetKind {
 
 func (s *MatchSession) SetPieceSource(src PiecePositionSource) { s.pieceSource = src }
 
-// SyncFogStates seeds fog state from persisted records (nil seeds empty states).
-// Resets the visibility cache.
-func (s *MatchSession) SyncFogStates(states []fog.PlayerFogState, mode fog.FogMode) {
+// SyncPlayerMemories seeds per-player memory from persisted records (nil seeds empty
+// memories). Resets the visibility cache.
+func (s *MatchSession) SyncPlayerMemories(mems []fog.PlayerMemory, mode fog.FogMode) {
 	s.fogMode = mode
-	s.fogStates = make(map[uuid.UUID]*fog.PlayerFogState, len(states))
-	for i := range states {
-		st := states[i]
-		s.fogStates[st.PlayerID] = &st
+	s.memories = make(map[uuid.UUID]*fog.PlayerMemory, len(mems))
+	for i := range mems {
+		m := mems[i]
+		s.memories[m.PlayerID] = &m
 	}
 	s.visCache = make(map[uuid.UUID][]service.VisibilityPolygon)
 }
 
-// fogStateFor returns the existing fog state for playerID, or lazily creates one.
-func (s *MatchSession) fogStateFor(playerID uuid.UUID) *fog.PlayerFogState {
-	if s.fogStates == nil {
-		s.fogStates = make(map[uuid.UUID]*fog.PlayerFogState)
+// memoryFor returns the existing memory for playerID, or lazily creates one.
+func (s *MatchSession) memoryFor(playerID uuid.UUID) *fog.PlayerMemory {
+	if s.memories == nil {
+		s.memories = make(map[uuid.UUID]*fog.PlayerMemory)
 	}
-	st, ok := s.fogStates[playerID]
+	m, ok := s.memories[playerID]
 	if !ok {
-		// TODO(10-D persistence): MapID is uuid.Nil here because MatchSession doesn't yet
-		// carry the active map's UUID. Before wiring fogStateRepo.Upsert, thread the real
-		// mapUUID into the session (constructor or SyncFogStates) so persisted rows don't
-		// all collide on the (match_id, map_id, player_id) unique key with map_id = Nil.
-		st = fog.NewPlayerFogState(playerID, s.matchUUID, uuid.Nil, string(s.grid.Kind))
-		s.fogStates[playerID] = st
+		// TODO(persistence): MapID is uuid.Nil because MatchSession doesn't carry the
+		// active map's UUID yet. Thread the real mapUUID in (constructor or
+		// SyncPlayerMemories) before wiring the repository, so persisted rows don't all
+		// collide on the (match_id, map_id, player_id) unique key with map_id = Nil.
+		m = fog.NewPlayerMemory(playerID, s.matchUUID, uuid.Nil)
+		s.memories[playerID] = m
 	}
-	return st
+	return m
 }
 
-// RecomputeVisibility recomputes a player's LOS, caches polygons, unions explored cells
-// (explored mode only), and returns the polygons and the newly explored delta.
-func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.VisibilityPolygon, []fog.CellCoord, error) {
-	// The board edges block vision too, which keeps the polygon (and therefore the
-	// explored set the client has to draw) inside the map instead of spilling out to
-	// maxRadius in every open direction.
-	losWalls := append(service.ToLOSWalls(s.GetWalls()), service.BoundaryLOSWalls(s.grid)...)
-	// Bound the visibility polygon to the map diagonal (+ 20% margin) so that the
-	// no-walls polygon is finite and CellsInPolygon iterates only a map-sized area.
-	// Falls back to visRadius when CellSize is 0 (map not yet synced).
+// RecomputeVisibility recomputes a player's LOS, caches the polygons, and (in explored
+// mode) records every wall now in sight into that player's memory.
+func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.VisibilityPolygon, error) {
+	walls := s.GetWalls()
+	// The board edges block vision too, which keeps the polygon inside the map instead
+	// of spilling out to maxRadius in every open direction.
+	losWalls := append(service.ToLOSWalls(walls), service.BoundaryLOSWalls(s.grid)...)
+	// Bound the polygon to the map diagonal (+20% margin) so a wall-less map still
+	// produces a finite polygon. Falls back to visRadius when CellSize is 0.
 	maxRadius := math.Hypot(float64(s.grid.Cols)*s.grid.CellSize, float64(s.grid.Rows)*s.grid.CellSize) * 1.2
+
 	var positions []service.Point2D
 	if s.pieceSource != nil {
 		positions = s.pieceSource.PlayerPiecePositions(playerID)
 	}
 	polys := make([]service.VisibilityPolygon, 0, len(positions))
-	var delta []fog.CellCoord
 	for _, pos := range positions {
-		poly := service.ComputeVisibilityPolygon(pos, losWalls, maxRadius)
-		polys = append(polys, poly)
-		if s.fogMode == fog.FogModeExplored {
-			cells := service.CellsInPolygon(poly, s.grid)
-			delta = append(delta, s.fogStateFor(playerID).AddExplored(cells)...)
-		}
+		polys = append(polys, service.ComputeVisibilityPolygon(pos, losWalls, maxRadius))
 	}
+
+	// One call, after the loop: wallInLOS already iterates every polygon internally.
+	// `walls`, never `losWalls` — the latter carries phantom board-edge segments that
+	// must never enter a player's memory.
+	if s.fogMode == fog.FogModeExplored {
+		s.memoryFor(playerID).Remember(service.SeenWalls(walls, polys))
+	}
+
 	if s.visCache == nil {
 		s.visCache = make(map[uuid.UUID][]service.VisibilityPolygon)
 	}
 	s.visCache[playerID] = polys
-	return polys, delta, nil
+	return polys, nil
 }
 
 // RecomputeAllVisibility recomputes LOS for all participants.
 func (s *MatchSession) RecomputeAllVisibility() error {
 	for pid := range s.participants {
-		if _, _, err := s.RecomputeVisibility(pid); err != nil {
+		if _, err := s.RecomputeVisibility(pid); err != nil {
 			return err
 		}
 	}
@@ -349,15 +351,16 @@ func (s *MatchSession) RevealSecretDoor(wallID string) {
 func (s *MatchSession) GetFogMode() fog.FogMode                { return s.fogMode }
 func (s *MatchSession) GetCharToPlayer() map[string]uuid.UUID  { return s.charToPlayer }
 
-func (s *MatchSession) GetFogState(playerID uuid.UUID) (*fog.PlayerFogState, bool) {
-	st, ok := s.fogStates[playerID]
-	return st, ok
+// GetPlayerMemory returns the player's memory, or nil when they have none yet.
+func (s *MatchSession) GetPlayerMemory(playerID uuid.UUID) (*fog.PlayerMemory, bool) {
+	m, ok := s.memories[playerID]
+	return m, ok
 }
 
-func (s *MatchSession) GetAllFogStates() []fog.PlayerFogState {
-	out := make([]fog.PlayerFogState, 0, len(s.fogStates))
-	for _, st := range s.fogStates {
-		out = append(out, *st)
+func (s *MatchSession) GetAllPlayerMemories() []fog.PlayerMemory {
+	out := make([]fog.PlayerMemory, 0, len(s.memories))
+	for _, m := range s.memories {
+		out = append(out, *m)
 	}
 	return out
 }

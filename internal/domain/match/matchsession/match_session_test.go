@@ -504,7 +504,7 @@ func TestMatchSession_PersistenceFlags(t *testing.T) {
 	})
 }
 
-func TestSession_RecomputeVisibility_SeedsExploredAndReturnsDelta(t *testing.T) {
+func TestSession_RecomputeVisibility_RecordsSeenWallsInMemory(t *testing.T) {
 	matchUUID := uuid.New()
 	playerUUID := uuid.New()
 	sheetUUID := uuid.New()
@@ -526,30 +526,37 @@ func TestSession_RecomputeVisibility_SeedsExploredAndReturnsDelta(t *testing.T) 
 		CellSize:  64,
 		SkewRatio: 1,
 	}
-	s.SyncMapState(nil, squareGrid)
-	s.SyncFogStates(nil, fog.FogModeExplored)
+	wall := mapentity.WallSegment{
+		ID: "w1", P1: [2]float64{100, 0}, P2: [2]float64{100, 100},
+		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
+		Sense: mapentity.SenseSight, HP: 100, MaxHP: 100,
+	}
+	s.SyncMapState([]mapentity.WallSegment{wall}, squareGrid)
+	s.SyncPlayerMemories(nil, fog.FogModeExplored)
 
 	src := &fakePieceSource{}
 	src.setPosition(playerUUID, service.Point2D{X: 50, Y: 50})
 	s.SetPieceSource(src)
 
-	polys, delta, err := s.RecomputeVisibility(playerUUID)
+	polys, err := s.RecomputeVisibility(playerUUID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(polys) == 0 {
 		t.Fatal("expected non-empty visibility polygons")
 	}
-	if len(delta) == 0 {
-		t.Fatal("expected non-empty explored delta on first recompute")
+
+	memory, ok := s.GetPlayerMemory(playerUUID)
+	if !ok || !memory.Has(fog.FeatureWall, "w1") {
+		t.Fatal("expected the wall in line of sight to be recorded in the player's memory")
 	}
 
-	// Second recompute from the same spot yields no new cells.
-	_, delta2, err := s.RecomputeVisibility(playerUUID)
-	if err != nil {
+	// Second recompute from the same spot must not panic or duplicate the entry.
+	if _, err := s.RecomputeVisibility(playerUUID); err != nil {
 		t.Fatal(err)
 	}
-	if len(delta2) != 0 {
-		t.Fatalf("re-recompute from same position should add no cells, got %d", len(delta2))
+	memory, _ = s.GetPlayerMemory(playerUUID)
+	if len(memory.Seen) != 1 {
+		t.Fatalf("re-recompute from same position should not duplicate memory entries, got %d", len(memory.Seen))
 	}
 }
