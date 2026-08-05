@@ -10,7 +10,6 @@ import (
 
 func TestFilterMapState_PlayerSeesOnlyVisibleAndOwn(t *testing.T) {
 	player := uuid.New()
-	grid := mapentity.GridShape{Kind: mapentity.GridKindSquare, CellSize: 64, SkewRatio: 1}
 	// Visibility polygon covering a small box near origin.
 	polys := []VisibilityPolygon{{Vertices: []Point2D{{0, 0}, {100, 0}, {100, 100}, {0, 100}}}}
 
@@ -28,7 +27,7 @@ func TestFilterMapState_PlayerSeesOnlyVisibleAndOwn(t *testing.T) {
 
 	walls, visIDs := FilterMapState(
 		[]mapentity.WallSegment{sd, normal, far}, pieces, polys, nil,
-		fog.FogModeLive, grid, player, charToPlayer, false,
+		fog.FogModeLive, player, charToPlayer, false,
 	)
 
 	if !visIDs["own"] || !visIDs["seen"] {
@@ -54,11 +53,10 @@ func TestFilterMapState_PlayerSeesOnlyVisibleAndOwn(t *testing.T) {
 }
 
 func TestFilterMapState_MasterSeesEverythingUnmasked(t *testing.T) {
-	grid := mapentity.GridShape{Kind: mapentity.GridKindSquare, CellSize: 64, SkewRatio: 1}
 	sd := mapentity.WallSegment{ID: "sd", WallType: mapentity.WallTypeSecretDoor}
 	pieces := []PieceVisibility{{ID: "p", CharacterID: "c", Pos: Point2D{9, 9}, Visible: false}}
 	walls, visIDs := FilterMapState([]mapentity.WallSegment{sd}, pieces, nil, nil,
-		fog.FogModeLive, grid, uuid.New(), nil, true)
+		fog.FogModeLive, uuid.New(), nil, true)
 	if walls[0].WallType != mapentity.WallTypeSecretDoor {
 		t.Fatal("master must see real secret door type")
 	}

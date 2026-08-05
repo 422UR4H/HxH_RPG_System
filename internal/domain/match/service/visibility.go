@@ -5,7 +5,6 @@ import (
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 )
 
 type Point2D struct{ X, Y float64 }
@@ -191,53 +190,3 @@ func sortFloats(a []float64) {
 	}
 }
 
-// CellsInPolygon returns the grid cells whose center falls inside poly.
-// Bounds are derived from the polygon's world AABB mapped back to slot space,
-// then clamped to grid.Cols × grid.Rows when those are set.
-func CellsInPolygon(poly VisibilityPolygon, grid mapentity.GridShape) []fog.CellCoord {
-	if len(poly.Vertices) == 0 {
-		return nil
-	}
-	minX, minY := poly.Vertices[0].X, poly.Vertices[0].Y
-	maxX, maxY := minX, minY
-	for _, v := range poly.Vertices {
-		minX = math.Min(minX, v.X)
-		minY = math.Min(minY, v.Y)
-		maxX = math.Max(maxX, v.X)
-		maxY = math.Max(maxY, v.Y)
-	}
-	// Convert the four AABB corners to slot space and take the integer envelope.
-	// No grid-dimension clamp here: hex axial coords can be negative, and with a
-	// map-bounded polygon the envelope is already finite and close to map size.
-	aLo, bLo, aHi, bHi := slotEnvelope(minX, minY, maxX, maxY, grid)
-
-	out := make([]fog.CellCoord, 0, 32)
-	for a := aLo; a <= aHi; a++ {
-		for b := bLo; b <= bHi; b++ {
-			cx, cy := mapservice.SlotCenterToWorld(a, b, grid)
-			if PointInPolygon(Point2D{cx, cy}, poly.Vertices) {
-				out = append(out, fog.CellCoord{A: a, B: b})
-			}
-		}
-	}
-	return out
-}
-
-func slotEnvelope(minX, minY, maxX, maxY float64, g mapentity.GridShape) (aLo, bLo, aHi, bHi int) {
-	corners := [4][2]float64{{minX, minY}, {maxX, minY}, {minX, maxY}, {maxX, maxY}}
-	first := true
-	for _, c := range corners {
-		a, b := mapservice.WorldToSlot(c[0], c[1], g)
-		if first {
-			aLo, aHi, bLo, bHi, first = a, a, b, b, false
-			continue
-		}
-		aLo, aHi = minInt(aLo, a), maxInt(aHi, a)
-		bLo, bHi = minInt(bLo, b), maxInt(bHi, b)
-	}
-	// Pad by 1 to cover cells whose center lies just inside near the AABB edge.
-	return aLo - 1, bLo - 1, aHi + 1, bHi + 1
-}
-
-func minInt(a, b int) int { if a < b { return a }; return b }
-func maxInt(a, b int) int { if a > b { return a }; return b }

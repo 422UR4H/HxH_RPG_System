@@ -3,7 +3,6 @@ package service
 import (
 	"testing"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 )
 
@@ -91,57 +90,3 @@ func TestComputeVisibility_OneWay_BlocksFromOneSide(t *testing.T) {
 	}
 }
 
-func TestCellsInPolygon_Square(t *testing.T) {
-	g := mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 10, Rows: 10, CellSize: 64, SkewRatio: 1}
-	// A polygon covering roughly cells (0,0),(1,0),(0,1),(1,1) centers.
-	poly := VisibilityPolygon{Vertices: []Point2D{{0, 0}, {128, 0}, {128, 128}, {0, 128}}}
-	cells := CellsInPolygon(poly, g)
-	if len(cells) != 4 {
-		t.Fatalf("want 4 cells, got %d (%+v)", len(cells), cells)
-	}
-}
-
-// TestCellsInPolygon_HexNegativeAxial verifies that CellsInPolygon correctly includes
-// hex cells with negative axial coordinates (q<0 or r<0).
-//
-// For a pointy-top hex grid with CellSize=64 (size=32, SkewRatio=1):
-//   - Cell (-1, 0): world ≈ (-55.4, 0)
-//   - Cell (0, -1): world ≈ (-27.7, -48)
-//   - Cell (-1, 1): world ≈ (-27.7, +48)
-//
-// All are within maxRadius=200 of origin (0,0). Before the clamp removal these
-// cells were wrongly excluded because the old code forced aLo/bLo ≥ 0.
-func TestCellsInPolygon_HexNegativeAxial(t *testing.T) {
-	g := mapentity.GridShape{
-		Kind:      mapentity.GridKindHex,
-		Cols:      6,
-		Rows:      6,
-		CellSize:  64,
-		SkewRatio: 1,
-	}
-	// Origin at (0,0), maxRadius large enough to cover cells with negative axial coords.
-	poly := ComputeVisibilityPolygon(Point2D{0, 0}, nil, 200)
-	cells := CellsInPolygon(poly, g)
-
-	hasNegative := false
-	for _, c := range cells {
-		if c.A < 0 || c.B < 0 {
-			hasNegative = true
-			break
-		}
-	}
-	if !hasNegative {
-		t.Fatalf("expected at least one cell with negative axial coord (A<0 or B<0), got %v", cells)
-	}
-	// Spot-check: cell (-1,0) whose center is ≈(-55.4, 0) must be in the result.
-	found := false
-	for _, c := range cells {
-		if c == (fog.CellCoord{A: -1, B: 0}) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("cell (-1,0) must be visible from origin but was absent; got %v", cells)
-	}
-}
