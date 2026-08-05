@@ -362,6 +362,12 @@ mappings:
         confidence: directly_affected
     notes: Map REST surface — create/list/get/update/delete
 
+  - code_path: internal/app/api/map/get_map.go
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: GET /maps/:id handler — filtro de papel é casca-apenas (grid/background/fog_mode/nome, pieces/walls vazios) para quem não é mestre; o REST não tem como aplicar LOS porque os polígonos de visibilidade vivem na memória do processo do game server (cmd/game), separado do processo REST (cmd/api)
+
   # ─── Match: REST API ───
   - code_path: internal/app/api/match/
     dev_docs:

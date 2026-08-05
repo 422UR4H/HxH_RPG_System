@@ -135,6 +135,18 @@
 
 - Acessível a todos os participantes da campanha (não apenas o master) para suportar a feature de lobby futura.
 
+**O que cada papel recebe.** O mestre recebe o mapa completo, sem máscara. Quem não é
+mestre recebe apenas a **casca**: grid, background, `fog_mode`, nome — com `pieces` e
+`walls` **vazios**.
+
+Isso não é uma limitação temporária. `GET /maps/:id` é servido pelo processo REST
+(`cmd/api`), e o que decide o que um jogador pode ver — os polígonos de visibilidade —
+vive na memória do processo do game server (`cmd/game`), recalculado a cada movimento. O
+REST não tem como filtrar por linha de visão, então não envia tabuleiro nenhum.
+
+O tabuleiro do jogador chega **exclusivamente** por `map_full_state` no WebSocket, tanto
+no lobby quanto em partida. Ver a seção de eventos WS abaixo.
+
 ---
 
 ## PUT /maps/{id} — Atualizar mapa
@@ -415,7 +427,7 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. |
+| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. Cada peça inclui `z` (elevação em metros, 0 = chão, omitido quando 0). |
 | `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
 | `visible_polygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
 | `fog_mode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
