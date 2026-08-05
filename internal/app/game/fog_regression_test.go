@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/json"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -404,4 +405,38 @@ func hasPieceForCharacter(pieces []PieceMovedPayload, characterID string) bool {
 		}
 	}
 	return false
+}
+
+// A piece standing behind a wall, outside the player's line of sight, must never reach
+// that player — not the piece payload, not its position. Seeing where an enemy stands
+// through the fog is the whole thing the feature exists to prevent.
+func TestBuildMapFullState_PlayerDoesNotSeePieceBehindWall(t *testing.T) {
+	room, masterUUID, playerUUID, _ := liveMatchRoom(t)
+
+	// liveMatchRoom puts w1 at x=192 spanning y 0..320, and the player's piece at
+	// slot (1,1) → world (96,96). Slot (4,1) → world (288,96) is on the far side.
+	room.pieces["enemy"] = PieceMovedPayload{
+		PieceID: "enemy", CharacterID: uuid.New().String(), Slot: squareSlot(4, 1),
+	}
+
+	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
+		room.mu.Lock()
+		defer room.mu.Unlock()
+		_, _ = room.session.RecomputeVisibility(playerUUID)
+	})
+
+	playerView := decodeMapFull(t, room.buildMapFullState(playerUUID, false))
+	for _, p := range playerView.Pieces {
+		if p.PieceID == "enemy" {
+			t.Fatal("a piece behind a wall was sent to the player — position leak through the fog")
+		}
+	}
+
+	// The master still sees it: the filtering is per-viewer, not a global drop.
+	masterView := decodeMapFull(t, room.buildMapFullState(masterUUID, true))
+	if !slices.ContainsFunc(masterView.Pieces, func(p PieceMovedPayload) bool {
+		return p.PieceID == "enemy"
+	}) {
+		t.Fatal("master must see every piece")
+	}
 }
