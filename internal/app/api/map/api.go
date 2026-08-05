@@ -56,7 +56,7 @@ func (a *Api) RegisterRoutes(_ *chi.Mux, api huma.API, _ *zap.Logger) {
 		OperationID: "get-map",
 		Method:      http.MethodGet,
 		Path:        "/maps/{map_id}",
-		Description: "Get a tactical map by ID",
+		Description: "Get a tactical map by ID (non-master callers receive the map shell: no pieces, no walls)",
 		Tags:        []string{"maps"},
 		Errors: []int{
 			http.StatusBadRequest,

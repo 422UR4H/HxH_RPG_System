@@ -135,6 +135,18 @@
 
 - Acessível a todos os participantes da campanha (não apenas o master) para suportar a feature de lobby futura.
 
+**O que cada papel recebe.** O mestre recebe o mapa completo, sem máscara. Quem não é
+mestre recebe apenas a **casca**: grid, background, nome — com `pieces` e
+`walls` **vazios**.
+
+Isso não é uma limitação temporária. `GET /maps/:id` é servido pelo processo REST
+(`cmd/api`), e o que decide o que um jogador pode ver — os polígonos de visibilidade —
+vive na memória do processo do game server (`cmd/game`), recalculado a cada movimento. O
+REST não tem como filtrar por linha de visão, então não envia tabuleiro nenhum.
+
+O tabuleiro do jogador chega **exclusivamente** por `map_full_state` no WebSocket, tanto
+no lobby quanto em partida. Ver a seção de eventos WS abaixo.
+
 ---
 
 ## PUT /maps/{id} — Atualizar mapa
@@ -334,27 +346,15 @@ Sem body.
 
 ### `GET /maps/:id` — Filtragem por papel
 
-O endpoint é **role-aware**: o resultado varia conforme o papel do usuário autenticado na campanha.
+O endpoint é **role-aware**, mas de forma binária, sem máscara campo a campo: o mestre
+recebe o mapa completo, sem máscara; qualquer outro participante recebe apenas a casca
+(`pieces` e `walls` vazios). Ver "O que cada papel recebe" na seção
+`GET /maps/{id} — Obter mapa` acima para o detalhe completo e o porquê (separação de
+processos REST/game server).
 
-| Papel | Comportamento |
-|---|---|
-| Master | Resposta completa e sem máscara. Todas as paredes (incluindo `secret_door` não reveladas) são retornadas com seus campos reais. |
-| Jogador (não-master) | `secret_door` não reveladas (`revealed=false`) são mascaradas como parede comum. Peças com `visible=false` são removidas da resposta. Sem filtragem LOS — LOS é delegado ao WS. |
-
-#### Máscara de porta secreta não revelada
-
-Quando um jogador recebe um `WallSegment` com `wall_type = "secret_door"` e `revealed = false`, o backend substitui os campos identificadores da porta pelo equivalente de uma parede comum, preservando todos os campos de combate:
-
-| Campo | Valor mascarado |
-|---|---|
-| `wall_type` | `"wall"` (em vez de `"secret_door"`) |
-| `door_subtype` | ausente (`null` / omitido) |
-| `window_subtype` | ausente (`null` / omitido) |
-| `open` | `false` |
-| `locked` | `false` |
-| `id`, `p1`, `p2`, `material`, `hp`, `max_hp`, `resistance`, `move`, `sense`, `direction`, `destroyed` | preservados sem alteração |
-
-> **Nota LOS-at-REST:** O `GET /maps/:id` não aplica filtragem de linha de visão (LOS). Ele só remove o que visivelmente não existe para jogadores (peças invisíveis e identidade de portas secretas não reveladas). LOS exato por jogador é entregue pelo WebSocket via `map_full_state` e `visibility_updated` quando a partida está em andamento.
+A máscara de porta secreta não revelada e a filtragem por LOS/visibilidade não acontecem
+mais na camada REST — são responsabilidade exclusiva do WebSocket, entregues via
+`map_full_state` (ver abaixo).
 
 ---
 
@@ -415,10 +415,28 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. |
+| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. Cada peça inclui `z` (elevação em metros, 0 = chão, omitido quando 0). |
 | `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
 | `visible_polygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
 | `fog_mode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
+
+##### Máscara de porta secreta não revelada
+
+Quando um jogador recebe, dentro de `walls`, um `WallSegment` com `wall_type = "secret_door"`
+e `revealed = false`, o game server substitui os campos identificadores da porta pelo
+equivalente de uma parede comum, preservando todos os campos de combate:
+
+| Campo | Valor mascarado |
+|---|---|
+| `wall_type` | `"wall"` (em vez de `"secret_door"`) |
+| `door_subtype` | ausente (`null` / omitido) |
+| `window_subtype` | ausente (`null` / omitido) |
+| `open` | `false` |
+| `locked` | `false` |
+| `id`, `p1`, `p2`, `material`, `hp`, `max_hp`, `resistance`, `move`, `sense`, `direction`, `destroyed` | preservados sem alteração |
+
+Aplicado por `MaskSecretDoorForPlayer`, chamado pelo `FilterMapState` do processo do game
+server (`cmd/game`) — nunca pelo processo REST (`cmd/api`), que não tem acesso a esse estado.
 
 ---
 

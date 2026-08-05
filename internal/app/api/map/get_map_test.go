@@ -68,8 +68,12 @@ func newTestMapWithWalls(campaignID uuid.UUID) *entity.TacticalMap {
 			},
 		},
 		Pieces: []entity.Piece{
-			{ID: "p1", CharacterID: "c1", Visible: false}, // invisible — must be hidden from player
-			{ID: "p2", CharacterID: "c2", Visible: true},  // visible — shown to player
+			// Neither piece reaches a non-master caller under the current contract — REST
+			// sends zero pieces regardless of visibility. These two exist so the "0 pieces"
+			// assertion below is checking something real (a map that actually has pieces
+			// to filter out), not a vacuous pass on an already-empty slice.
+			{ID: "p1", CharacterID: "c1", Visible: false},
+			{ID: "p2", CharacterID: "c2", Visible: true},
 		},
 		Decorations: []entity.Decoration{},
 		Items:       []entity.MapItem{},
@@ -88,10 +92,12 @@ func registerGetMapHandler(t *testing.T, mock mapuc.IGetMap) humatest.TestAPI {
 	return api
 }
 
-// TestGetMap_PlayerGetsMaskedSecretDoor asserts the two non-negotiable guarantees:
-//   - A non-master player never receives the real secret_door wall_type.
-//   - A non-master player never receives invisible pieces.
-func TestGetMap_PlayerGetsMaskedSecretDoor(t *testing.T) {
+// TestGetMap_PlayerGetsShellOnly asserts the non-negotiable guarantee for a non-master
+// caller: the REST response carries the map shell (e.g. grid) but no pieces and no walls
+// at all. The REST process has no access to the visibility polygons (they live in the
+// game server's memory), so it cannot decide which wall or which piece this player may
+// see — and therefore sends none. map_full_state over the WS is what fills the board.
+func TestGetMap_PlayerGetsShellOnly(t *testing.T) {
 	campaignID := uuid.New()
 	userID := uuid.New()
 	m := newTestMapWithWalls(campaignID)
@@ -116,49 +122,29 @@ func TestGetMap_PlayerGetsMaskedSecretDoor(t *testing.T) {
 		t.Fatalf("response missing 'map' key, got: %v", body)
 	}
 
-	// Walls: secret_door must be masked as "wall".
-	walls, ok := mapObj["walls"].([]any)
-	if !ok {
-		t.Fatalf("walls missing from response: %v", mapObj)
-	}
-	for _, w := range walls {
-		wall, _ := w.(map[string]any)
-		if wall["id"] == "secret1" {
-			if wall["wall_type"] != "wall" {
-				t.Errorf("secret door must be masked as 'wall' for non-master, got %q", wall["wall_type"])
-			}
-			// door_subtype must not leak
-			if _, hasSubtype := wall["door_subtype"]; hasSubtype && wall["door_subtype"] != nil {
-				t.Errorf("masked secret door must not expose door_subtype, got %v", wall["door_subtype"])
-			}
-			// open and locked must be false
-			if open, _ := wall["open"].(bool); open {
-				t.Errorf("masked secret door must not expose open=true")
-			}
-			if locked, _ := wall["locked"].(bool); locked {
-				t.Errorf("masked secret door must not expose locked=true")
-			}
-		}
-	}
-
-	// Pieces: invisible piece (p1) must not appear; visible piece (p2) must appear.
+	// A player gets the map shell and nothing else. The REST process has no access to
+	// the visibility polygons (they live in the game server's memory), so it cannot
+	// decide which wall or which piece this player may see — and therefore sends none.
+	// map_full_state over the WS is what fills the board.
 	pieces, ok := mapObj["pieces"].([]any)
 	if !ok {
 		t.Fatalf("pieces missing from response: %v", mapObj)
 	}
-	pieceIDs := make(map[string]bool)
-	for _, p := range pieces {
-		if pm, ok := p.(map[string]any); ok {
-			if id, ok := pm["id"].(string); ok {
-				pieceIDs[id] = true
-			}
-		}
+	if len(pieces) != 0 {
+		t.Fatalf("player must receive no pieces from REST, got %d", len(pieces))
 	}
-	if pieceIDs["p1"] {
-		t.Error("invisible piece p1 must not appear for non-master player")
+
+	walls, ok := mapObj["walls"].([]any)
+	if !ok {
+		t.Fatalf("walls missing from response: %v", mapObj)
 	}
-	if !pieceIDs["p2"] {
-		t.Error("visible piece p2 must appear for non-master player")
+	if len(walls) != 0 {
+		t.Fatalf("player must receive no walls from REST, got %d", len(walls))
+	}
+
+	// The shell is still there — without it the client cannot draw the map at all.
+	if mapObj["grid"] == nil {
+		t.Fatal("player must still receive the grid")
 	}
 }
 

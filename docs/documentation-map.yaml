@@ -362,6 +362,12 @@ mappings:
         confidence: directly_affected
     notes: Map REST surface — create/list/get/update/delete
 
+  - code_path: internal/app/api/map/get_map.go
+    dev_docs:
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+    notes: GET /maps/:id handler — role filter is shell-only (grid/background/name, pieces/walls empty) for non-master viewers; REST cannot apply LOS because the visibility polygons live in the game server process's memory (cmd/game), separate from the REST process (cmd/api)
+
   # ─── Match: REST API ───
   - code_path: internal/app/api/match/
     dev_docs:
@@ -409,7 +415,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: directly_affected
-    notes: FilterMapState + SeenWalls — central visibility policy; reused by REST handler and WS dispatch. SeenWalls shares wallInLOS with FilterMapState on purpose (the predicate that reveals a wall is the one that records it into PlayerMemory); any policy change affects both GET /maps/:id and map_full_state
+    notes: FilterMapState + SeenWalls — central visibility policy; used exclusively by WS dispatch (map_full_state) now, no longer by the REST handler (GET /maps/:id returns shell-only since Task 1 of the rest-map-board-leak fix). SeenWalls shares wallInLOS with FilterMapState on purpose (the predicate that reveals a wall is the one that records it into PlayerMemory); any policy change affects map_full_state
 
   - code_path: internal/domain/match/service/mask_secret_door.go
     dev_docs:
