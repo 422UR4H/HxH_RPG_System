@@ -415,7 +415,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: directly_affected
-    notes: FilterMapState + SeenWalls — central visibility policy; reused by REST handler and WS dispatch. SeenWalls shares wallInLOS with FilterMapState on purpose (the predicate that reveals a wall is the one that records it into PlayerMemory); any policy change affects both GET /maps/:id and map_full_state
+    notes: FilterMapState + SeenWalls — central visibility policy; used exclusively by WS dispatch (map_full_state) now, no longer by the REST handler (GET /maps/:id returns shell-only since Task 1 of the rest-map-board-leak fix). SeenWalls shares wallInLOS with FilterMapState on purpose (the predicate that reveals a wall is the one that records it into PlayerMemory); any policy change affects map_full_state
 
   - code_path: internal/domain/match/service/mask_secret_door.go
     dev_docs:
