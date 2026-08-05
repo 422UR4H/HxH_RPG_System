@@ -139,6 +139,12 @@ type PieceMovedPayload struct {
 	Slot        SlotPayload `json:"slot"`
 	CharacterID string      `json:"character_id,omitempty"`
 	Visible     *bool       `json:"visible,omitempty"`
+	// Z is the piece's virtual height in metres (0 = ground). The game server never
+	// reads it: line of sight is computed in 2D, so elevation rides through as opaque
+	// passthrough exactly like Slot does. It is on the wire because the client used to
+	// recover it from GET /maps/:id, and that endpoint no longer hands a player any
+	// pieces — without this field every piece would flatten to the ground for players.
+	Z float64 `json:"z,omitempty"`
 }
 
 type PieceRemovedPayload struct {
