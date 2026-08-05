@@ -364,7 +364,7 @@ O `TacticalMap` possui o campo `fog_mode`, persistido no banco, que controla o c
 
 | Valor | Comportamento |
 |---|---|
-| `"explored"` | Paredes já vistas em turnos anteriores continuam visíveis (mesmo fora do LOS atual). **Default** quando o campo está vazio no banco. |
+| `"explored"` | Paredes já vistas continuam visíveis (mesmo fora do LOS atual), gravadas na memória do jogador por id de parede. **Default** quando o campo está vazio no banco. |
 | `"live"` | Apenas o LOS do turno atual é visível; nenhuma memória de exploração. |
 
 O campo `fog_mode` é enviado pelo servidor no payload WS `map_full_state` (ver abaixo). Ele não é exposto na resposta REST de `GET /maps/:id` atualmente — apenas o WebSocket o carrega para o cliente.
@@ -377,7 +377,7 @@ Todos os payloads usam snake_case. Esses eventos são enviados durante uma parti
 
 ---
 
-#### `map_full_state` (estendido — Fase 10-D)
+#### `map_full_state`
 
 Enviado a cada cliente que se conecta, e re-enviado após operações que alteram o estado do tabuleiro. Cada cliente recebe uma versão filtrada por papel.
 
@@ -397,7 +397,6 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
   "visible_polygons": [
     [ { "x": 0.0, "y": 0.0 }, { "x": 64.0, "y": 0.0 }, { "x": 64.0, "y": 64.0 } ]
   ],
-  "explored_cells": [ [0, 0], [1, 0], [0, 1] ],
   "fog_mode": "explored"
 }
 ```
@@ -412,14 +411,13 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 }
 ```
 
-> O master não recebe `visible_polygons` nem `explored_cells` — campos omitidos.
+> O master não recebe `visible_polygons` — campo omitido.
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. |
-| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, filtradas por LOS/exploração; portas secretas não reveladas mascaradas como `"wall"`. |
-| `visible_polygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). |
-| `explored_cells` | `[int, int][]` | Células já exploradas: `[A, B]` = `[col, row]` (square) ou `[q, r]` (hex axial). Presente somente quando `fog_mode = "explored"` e há estado de exploração. Omitido para o master. |
+| `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. |
+| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
+| `visible_polygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
 | `fog_mode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
 
 ---
@@ -432,15 +430,13 @@ Enviado a cada jogador individual quando seu LOS muda (ex.: após movimento de p
 {
   "visible_polygons": [
     [ { "x": 0.0, "y": 0.0 }, { "x": 128.0, "y": 0.0 } ]
-  ],
-  "explored_delta": [ [2, 0], [3, 1] ]
+  ]
 }
 ```
 
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `visible_polygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador. |
-| `explored_delta` | `[int, int][]` | Células **recém-exploradas** neste update (delta, não o total). `[A, B]` = `[col, row]` / `[q, r]`. Omitido se vazio. |
 
 ---
 

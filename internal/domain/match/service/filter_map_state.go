@@ -4,7 +4,6 @@ import (
 	"math"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
-	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/google/uuid"
 )
@@ -47,21 +46,26 @@ func wallInLOS(w mapentity.WallSegment, polys []VisibilityPolygon) bool {
 	return false
 }
 
-// wallInExploredCells reports whether any stretch of the wall lies in a cell the viewer
-// has already explored, so walls stay on screen after the player moves away.
-func wallInExploredCells(
-	w mapentity.WallSegment,
-	explored map[fog.CellCoord]struct{},
-	grid mapentity.GridShape,
-) bool {
-	for i := range wallSampleCount {
-		px, py := wallSample(w, i)
-		a, b := mapservice.WorldToSlot(px, py, grid)
-		if _, ok := explored[fog.CellCoord{A: a, B: b}]; ok {
-			return true
+// SeenWalls returns a memory reference for every wall currently in the viewer's line of
+// sight, so the caller can union them into the player's PlayerMemory.
+//
+// INVARIANT — the predicate that reveals is the predicate that records.
+// This uses the exact same wallInLOS as FilterMapState, in the same package, on purpose.
+// If the two ever diverge, a player can see a wall that never reaches memory, and it
+// vanishes the instant they step away — the false negative that the cell-based model
+// suffered from. Guarded by TestSeenWallsAgreesWithFilterMapState.
+//
+// Pass the REAL walls here, never the LOS wall set: RecomputeVisibility appends
+// BoundaryLOSWalls (ID == BoundaryWallID) to bound the sweep, and those are phantom
+// board edges that must never enter a player's memory.
+func SeenWalls(allWalls []mapentity.WallSegment, polys []VisibilityPolygon) []fog.FeatureRef {
+	refs := make([]fog.FeatureRef, 0, len(allWalls))
+	for _, w := range allWalls {
+		if wallInLOS(w, polys) {
+			refs = append(refs, fog.FeatureRef{Kind: fog.FeatureWall, ID: w.ID})
 		}
 	}
-	return false
+	return refs
 }
 
 // PieceVisibility is the domain projection of a piece for filtering (no delivery types).
@@ -78,9 +82,8 @@ func FilterMapState(
 	allWalls []mapentity.WallSegment,
 	pieces []PieceVisibility,
 	polys []VisibilityPolygon,
-	explored map[fog.CellCoord]struct{},
+	memory *fog.PlayerMemory,
 	fogMode fog.FogMode,
-	grid mapentity.GridShape,
 	playerID uuid.UUID,
 	charToPlayer map[string]uuid.UUID,
 	isMaster bool,
@@ -106,11 +109,11 @@ func FilterMapState(
 		}
 	}
 
-	// Walls: any part in LOS, or (explored mode) any part in an explored cell.
+	// Walls: any part in LOS now, or (explored mode) observed at some point in the past.
 	for _, w := range allWalls {
 		seen := wallInLOS(w, polys)
-		if !seen && fogMode == fog.FogModeExplored && explored != nil {
-			seen = wallInExploredCells(w, explored, grid)
+		if !seen && fogMode == fog.FogModeExplored {
+			seen = memory.Has(fog.FeatureWall, w.ID)
 		}
 		if !seen {
 			continue

@@ -68,8 +68,8 @@ func fogTestRoom(t *testing.T) (*Room, uuid.UUID, string) {
 
 	session.SyncMapState([]mapentity.WallSegment{door}, grid)
 	session.SetPieceSource(room)
-	session.SyncFogStates(nil, fogentity.FogModeExplored)
-	if _, _, err := session.RecomputeVisibility(playerUUID); err != nil {
+	session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
+	if _, err := session.RecomputeVisibility(playerUUID); err != nil {
 		t.Fatalf("recompute visibility: %v", err)
 	}
 

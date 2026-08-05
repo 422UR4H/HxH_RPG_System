@@ -137,7 +137,7 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 	}
 
 	master := smokeDial(t, masterUUID, matchUUID)
-	defer master.Close()
+	defer master.Close() //nolint:errcheck
 	t.Log("master connected (session rehydrated without deadlock)")
 
 	// Exactly what the fixed useMatchWs sends once the REST map has loaded.
@@ -165,7 +165,7 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 	}
 
 	player := smokeDial(t, playerUUID, matchUUID)
-	defer player.Close()
+	defer player.Close() //nolint:errcheck
 	t.Log("player connected")
 
 	if err := master.WriteMessage(websocket.TextMessage, raw); err != nil {
@@ -210,14 +210,12 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 	boardH := float64(board.Grid.Rows) * board.Grid.CellSize
 	t.Logf("POLYGON EXTENT: x[%.0f..%.0f] y[%.0f..%.0f]  (board is %.0fx%.0f)",
 		minX, maxX, minY, maxY, boardW, boardH)
-	t.Logf("EXPLORED CELLS: %d", len(playerView.ExploredCells))
 
 	// Optional: persist the player's real payload so the frontend can be tested
 	// against production data instead of a hand-written fixture.
 	if dump := os.Getenv("SMOKE_DUMP"); dump != "" {
 		out, err := json.Marshal(map[string]any{
 			"visible_polygons": playerView.VisiblePolygons,
-			"explored_cells":   playerView.ExploredCells,
 			"fog_mode":         playerView.FogMode,
 			"grid":             board.Grid,
 		})
