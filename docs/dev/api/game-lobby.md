@@ -96,7 +96,18 @@ em direção ao observador. Isso é necessário porque uma parede que **bloqueia
 exatamente sobre a borda do polígono de visibilidade: testar o ponto médio pela regra de
 contenção responde "não visível", e a parede some da tela do jogador justamente quando ele
 mais precisa dela (para abrir uma porta, arrombar, atacar). Paredes atrás de outra
-continuam ocultas. Em modo `explored`, paredes já vistas permanecem visíveis.
+continuam ocultas.
+
+Em modo `explored`, toda parede que passou nesse teste é gravada na **memória** do
+jogador e continua a ser enviada mesmo depois que ele sai da linha de visão. A memória
+registra a parede observada (por id), não a região do mapa: um modelo por célula gerava
+falso negativo (parede vista cujo centro de célula nunca entrou no polígono era
+esquecida) e falso positivo (trecho ocluído numa célula iluminada era lembrado). Em modo
+`live` não há memória — a parede some ao sair da visão.
+
+O servidor **não** envia dado de memória ao cliente. O cliente desenha todas as paredes
+que recebeu e usa o polígono de visibilidade para decidir o brilho de cada pixel: nítido
+dentro da linha de visão, esmaecido fora dela.
 
 Erro se o remetente não for o mestre:
 
