@@ -1,5 +1,11 @@
 # Fase 10-E — Fog de polígono (borda de luz suave)
 
+> **Parcialmente superseded por** `2026-08-05-tactical-map-wall-memory-design.md`.
+> A borda de luz poligonal por máscara invertida descrita aqui **permanece válida**.
+> A camada de fog "lembrado" (alpha 0.5 por célula) foi **removida**: na tela, o bloco
+> quadriculado ao lado de uma fronteira lisa ficou visualmente ruim, e a memória passou
+> a registrar estrutura estática (paredes por id) em vez de região do mapa.
+
 **Status:** aprovado, pronto para implementação
 **Escopo:** frontend apenas (o backend entra só com a correção de lint da 10-D)
 **Branch:** `feat/tactical-map-fog-polygon-10e` (nos dois repos)
