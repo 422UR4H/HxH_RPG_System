@@ -1109,20 +1109,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 		)
 	case isLobby:
 		// Lobby: no LOS gating, but mask unrevealed secret doors and hide invisible pieces.
-		walls = make([]mapentity.WallSegment, 0, len(allWalls))
-		for _, w := range allWalls {
-			if w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
-				walls = append(walls, domainservice.MaskSecretDoorForPlayer(w))
-			} else {
-				walls = append(walls, w)
-			}
-		}
-		visIDs = make(map[string]bool, len(pieceProj))
-		for _, p := range pieceProj {
-			if p.Visible {
-				visIDs[p.ID] = true
-			}
-		}
+		walls, visIDs = computeLobbyMapState(allWalls, pieceProj)
 	default:
 		// In-match player: full per-player LOS filtering.
 		walls, visIDs = domainservice.FilterMapState(
@@ -1160,6 +1147,28 @@ func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload 
 		out = append(out, pts)
 	}
 	return out
+}
+
+// computeLobbyMapState computes masked walls and piece visibility for the lobby phase.
+// It masks unrevealed secret doors (calling MaskSecretDoorForPlayer) and passes through
+// normal walls. This wiring must remain testable independently since the computed walls
+// are not sent to clients (see buildMapFullState override at ~line 1144).
+func computeLobbyMapState(allWalls []mapentity.WallSegment, pieceProj []domainservice.PieceVisibility) ([]mapentity.WallSegment, map[string]bool) {
+	walls := make([]mapentity.WallSegment, 0, len(allWalls))
+	for _, w := range allWalls {
+		if w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
+			walls = append(walls, domainservice.MaskSecretDoorForPlayer(w))
+		} else {
+			walls = append(walls, w)
+		}
+	}
+	visIDs := make(map[string]bool, len(pieceProj))
+	for _, p := range pieceProj {
+		if p.Visible {
+			visIDs[p.ID] = true
+		}
+	}
+	return walls, visIDs
 }
 
 // handlePieceMoved updates the board and relays the move per-player with fog filtering.

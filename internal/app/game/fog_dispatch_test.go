@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
 
@@ -201,7 +202,10 @@ func TestBroadcastWallStateChangedGated_UnrevealedSecretDoorIsMasterOnly(t *test
 	}
 }
 
-func TestBuildMapFullState_LobbyMasksSecretsWithoutLOS(t *testing.T) {
+func TestBuildMapFullState_LobbyHidesWallsFromPlayers(t *testing.T) {
+	// Verify that non-master lobby players do not receive walls in the payload.
+	// The masking computation (computeLobbyMapState) is still performed internally
+	// and verified separately in TestComputeLobbyMapState_MasksSecretDoors.
 	room := newFogRoom(uuid.New(), uuid.New())
 	room.grid = mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 20, Rows: 20, CellSize: 64, SkewRatio: 1}
 	// No session set → lobby phase.
@@ -244,5 +248,65 @@ func TestBuildMapFullState_LobbyMasksSecretsWithoutLOS(t *testing.T) {
 	}
 	if len(view.VisiblePolygons) != 0 {
 		t.Fatal("lobby view must not carry visibility polygons")
+	}
+}
+
+func TestComputeLobbyMapState_MasksSecretDoors(t *testing.T) {
+	// Verify that computeLobbyMapState correctly masks unrevealed secret doors
+	// and passes through normal walls. This tests the masking wiring that
+	// buildMapFullState uses but doesn't expose to players (for now).
+	sub := mapentity.DoorSubtypeBasic
+	revealedSecret := mapentity.WallSegment{
+		ID: "sd_revealed", P1: [2]float64{10, 10}, P2: [2]float64{20, 10},
+		WallType: mapentity.WallTypeSecretDoor, Material: mapentity.WallMaterialStone,
+		DoorSubtype: &sub, Open: true, Locked: true, HP: 80, MaxHP: 100, Revealed: true,
+	}
+	unrevealed := mapentity.WallSegment{
+		ID: "sd_unrevealed", P1: [2]float64{30, 30}, P2: [2]float64{40, 30},
+		WallType: mapentity.WallTypeSecretDoor, Material: mapentity.WallMaterialStone,
+		DoorSubtype: &sub, Open: true, Locked: true, HP: 80, MaxHP: 100, Revealed: false,
+	}
+	normal := mapentity.WallSegment{
+		ID: "w_normal", P1: [2]float64{0, 0}, P2: [2]float64{64, 0},
+		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone, HP: 100, MaxHP: 100,
+	}
+
+	allWalls := []mapentity.WallSegment{revealedSecret, unrevealed, normal}
+	pieceProj := []domainservice.PieceVisibility{
+		{ID: "visible", Visible: true},
+		{ID: "hidden", Visible: false},
+	}
+
+	walls, visIDs := computeLobbyMapState(allWalls, pieceProj)
+
+	// Should have 3 walls: revealed secret (unchanged), masked unrevealed secret, normal wall
+	if len(walls) != 3 {
+		t.Fatalf("expected 3 walls, got %d", len(walls))
+	}
+
+	// Verify revealed secret is passed through unchanged
+	if walls[0].ID != "sd_revealed" || walls[0].WallType != mapentity.WallTypeSecretDoor {
+		t.Fatal("revealed secret door should pass through unchanged")
+	}
+	if walls[0].DoorSubtype == nil || walls[0].Open != true || walls[0].Locked != true {
+		t.Fatal("revealed secret door metadata must be preserved")
+	}
+
+	// Verify unrevealed secret is masked as a plain wall
+	if walls[1].ID != "sd_unrevealed" || walls[1].WallType != mapentity.WallTypeWall {
+		t.Fatal("unrevealed secret door should be masked as a plain wall")
+	}
+	if walls[1].DoorSubtype != nil || walls[1].Open || walls[1].Locked {
+		t.Fatal("masked secret door must not leak subtype/open/locked")
+	}
+
+	// Verify normal wall is passed through
+	if walls[2].ID != "w_normal" || walls[2].WallType != mapentity.WallTypeWall {
+		t.Fatal("normal wall should pass through unchanged")
+	}
+
+	// Verify visIDs contains only visible pieces
+	if !visIDs["visible"] || visIDs["hidden"] {
+		t.Fatal("visIDs must contain only visible pieces")
 	}
 }
