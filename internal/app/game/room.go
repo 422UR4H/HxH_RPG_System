@@ -172,10 +172,10 @@ func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	r.session.SetPieceSource(r)
 	// Seed fog exactly as StartMatch does; otherwise a post-restart session has an empty
 	// fog mode ("") and no per-player visibility, breaking LOS until the next move.
-	// TODO(10-D persistence): load persisted fog_mode + explored sets here instead of nil.
-	r.session.SyncFogStates(nil, fogentity.FogModeExplored)
+	// TODO(persistence): load persisted fog_mode + player memories here instead of nil.
+	r.session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
 	for _, pid := range r.session.PlayerIDs() {
-		if _, _, err := r.session.RecomputeVisibility(pid); err != nil {
+		if _, err := r.session.RecomputeVisibility(pid); err != nil {
 			log.Printf("rehydrate recompute visibility for %s: %v", pid, err)
 		}
 	}
@@ -313,21 +313,21 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	}
 	r.session.SyncMapState(wallSlice, r.grid)
 	r.session.SetPieceSource(r)
-	// Seed fog state. loadInitialFogStates returns nil for now (persistence TODO),
-	// which seeds empty per-player explored sets. mapFogMode defaults to explored.
-	r.session.SyncFogStates(nil, fogentity.FogModeExplored)
+	// Seed player memories. loadInitialPlayerMemories returns nil for now (persistence
+	// TODO), which seeds empty per-player memories. mapFogMode defaults to explored.
+	r.session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
 	playerIDs := r.session.PlayerIDs()
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
 
 	for _, pid := range playerIDs {
 		r.mu.Lock()
-		_, _, err := r.session.RecomputeVisibility(pid)
+		_, err := r.session.RecomputeVisibility(pid)
 		r.mu.Unlock()
 		if err != nil {
 			log.Printf("recompute visibility for %s: %v", pid, err)
 		}
-		// TODO(10-D persistence): fogStateRepo.Upsert(session.GetFogState(pid))
+		// TODO(persistence): playerMemoryRepo.Upsert(session.GetPlayerMemory(pid))
 	}
 
 	// Send match_started directly per-client (in order) so it always precedes the
@@ -725,7 +725,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// lock, as PlayerPiecePositions requires) so the refreshed state pushed below
 			// reflects the board that was just seeded.
 			for _, pid := range sess.PlayerIDs() {
-				if _, _, err := sess.RecomputeVisibility(pid); err != nil {
+				if _, err := sess.RecomputeVisibility(pid); err != nil {
 					log.Printf("map_state_sync recompute visibility for %s: %v", pid, err)
 				}
 			}
@@ -965,11 +965,11 @@ func (r *Room) pushVisibilityUpdates() {
 		if isMaster {
 			return nil
 		}
-		polys, delta, err := func() ([]domainservice.VisibilityPolygon, []fogentity.CellCoord, error) {
+		polys, err := func() ([]domainservice.VisibilityPolygon, error) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			if r.session == nil {
-				return nil, nil, nil
+				return nil, nil
 			}
 			return r.session.RecomputeVisibility(pid)
 		}()
@@ -977,9 +977,6 @@ func (r *Room) pushVisibilityUpdates() {
 			return nil
 		}
 		payload := VisibilityUpdatedPayload{VisiblePolygons: polysToPayload(polys)}
-		for _, c := range delta {
-			payload.ExploredDelta = append(payload.ExploredDelta, [2]int{c.A, c.B})
-		}
 		msg := NewServerMessage(MsgTypeVisibilityUpdated, payload)
 		return &msg
 	})
@@ -1087,17 +1084,15 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	}
 	var polys []domainservice.VisibilityPolygon
 	fogMode := fogentity.FogModeLive
-	var explored map[fogentity.CellCoord]struct{}
+	var memory *fogentity.PlayerMemory
 	charToPlayer := map[string]uuid.UUID{}
-	// LOS fog applies only once a match is live. In the lobby (no session) there is no LOS,
-	// but secret doors are still masked and invisible pieces hidden from non-master players.
 	isLobby := r.session == nil
 	if r.session != nil {
 		polys = r.session.GetVisibility(playerID)
 		fogMode = r.session.GetFogMode()
 		charToPlayer = r.session.GetCharToPlayer()
-		if st, ok := r.session.GetFogState(playerID); ok {
-			explored = st.ExploredCells
+		if m, ok := r.session.GetPlayerMemory(playerID); ok {
+			memory = m
 		}
 	}
 	r.mu.RUnlock()
@@ -1108,7 +1103,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	case isMaster:
 		// Master sees the true board, unmasked, with every piece.
 		walls, visIDs = domainservice.FilterMapState(
-			allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, true,
+			allWalls, pieceProj, polys, memory, fogMode, playerID, charToPlayer, true,
 		)
 	case isLobby:
 		// Lobby: no LOS gating, but mask unrevealed secret doors and hide invisible pieces.
@@ -1129,7 +1124,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	default:
 		// In-match player: full per-player LOS filtering.
 		walls, visIDs = domainservice.FilterMapState(
-			allWalls, pieceProj, polys, explored, fogMode, grid, playerID, charToPlayer, false,
+			allWalls, pieceProj, polys, memory, fogMode, playerID, charToPlayer, false,
 		)
 	}
 
@@ -1142,9 +1137,6 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	payload := MapFullStatePayload{Pieces: pieces, Walls: walls, FogMode: string(fogMode)}
 	if !isMaster && !isLobby {
 		payload.VisiblePolygons = polysToPayload(polys)
-		if fogMode == fogentity.FogModeExplored && explored != nil {
-			payload.ExploredCells = cellsToPayload(explored)
-		}
 	}
 	msg := NewServerMessage(MsgTypeMapFullState, payload)
 	return &msg
@@ -1158,14 +1150,6 @@ func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload 
 			pts = append(pts, Point2DPayload{X: v.X, Y: v.Y})
 		}
 		out = append(out, pts)
-	}
-	return out
-}
-
-func cellsToPayload(set map[fogentity.CellCoord]struct{}) [][2]int {
-	out := make([][2]int, 0, len(set))
-	for c := range set {
-		out = append(out, [2]int{c.A, c.B})
 	}
 	return out
 }
@@ -1233,7 +1217,7 @@ func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 	r.mu.RUnlock()
 	if sess != nil && ownsPiece {
 		r.mu.Lock()
-		_, _, err := r.session.RecomputeVisibility(client.userUUID)
+		_, err := r.session.RecomputeVisibility(client.userUUID)
 		r.mu.Unlock()
 		if err == nil {
 			msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))

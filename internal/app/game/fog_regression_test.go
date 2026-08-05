@@ -51,7 +51,7 @@ func liveMatchRoom(t *testing.T) (room *Room, masterUUID, playerUUID uuid.UUID, 
 	room.session = session
 	session.SyncMapState([]mapentity.WallSegment{wall}, room.grid)
 	session.SetPieceSource(room)
-	session.SyncFogStates(nil, fogentity.FogModeExplored)
+	session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
 	room.state = RoomStatePlaying
 
 	return room, masterUUID, playerUUID, sheetUUID
@@ -85,7 +85,7 @@ func TestRecomputeVisibilityUnderRoomWriteLock_DoesNotDeadlock(t *testing.T) {
 	withinTimeout(t, 3*time.Second, "RecomputeVisibility under r.mu.Lock()", func() {
 		room.mu.Lock()
 		defer room.mu.Unlock()
-		if _, _, err := room.session.RecomputeVisibility(playerUUID); err != nil {
+		if _, err := room.session.RecomputeVisibility(playerUUID); err != nil {
 			t.Errorf("recompute visibility: %v", err)
 		}
 	})
@@ -170,7 +170,7 @@ func TestMapStateSync_RefreshesPlayerVisibilityAndRepushesState(t *testing.T) {
 		room.mu.Lock()
 		defer room.mu.Unlock()
 		room.pieces = make(map[string]PieceMovedPayload)
-		_, _, _ = room.session.RecomputeVisibility(playerUUID)
+		_, _ = room.session.RecomputeVisibility(playerUUID)
 		room.pieces = saved
 	})
 	if len(room.visibilityFor(playerUUID)) != 0 {
@@ -213,7 +213,7 @@ func TestPlayerSeesOwnPieceAndMasterHasNoFog(t *testing.T) {
 	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
 		room.mu.Lock()
 		defer room.mu.Unlock()
-		_, _, _ = room.session.RecomputeVisibility(playerUUID)
+		_, _ = room.session.RecomputeVisibility(playerUUID)
 	})
 
 	playerView := decodeMapFull(t, room.buildMapFullState(playerUUID, false))
@@ -236,18 +236,17 @@ func TestPlayerSeesOwnPieceAndMasterHasNoFog(t *testing.T) {
 	}
 }
 
-// A visibility polygon must stay inside the board. When it does not, the explored set
-// covers far more cells than the grid has, and the client cannot rasterize the erase
-// layer — the fog renders as a black smear spilling past the background image.
-func TestRecomputeVisibility_PolygonAndExploredStayInsideTheBoard(t *testing.T) {
+// A visibility polygon must stay inside the board. When it does not, the client cannot
+// rasterize the LOS mask correctly — the fog renders as a black smear spilling past the
+// background image.
+func TestRecomputeVisibility_PolygonStaysInsideTheBoard(t *testing.T) {
 	room, _, playerUUID, _ := liveMatchRoom(t)
 
 	var polys []domainservice.VisibilityPolygon
-	var delta []fogentity.CellCoord
 	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
 		room.mu.Lock()
 		defer room.mu.Unlock()
-		polys, delta, _ = room.session.RecomputeVisibility(playerUUID)
+		polys, _ = room.session.RecomputeVisibility(playerUUID)
 	})
 	if len(polys) == 0 {
 		t.Fatal("expected a visibility polygon")
@@ -264,16 +263,6 @@ func TestRecomputeVisibility_PolygonAndExploredStayInsideTheBoard(t *testing.T) 
 				t.Fatalf("polygon vertex (%.0f, %.0f) is outside the %.0fx%.0f board",
 					v.X, v.Y, boardW, boardH)
 			}
-		}
-	}
-
-	maxCells := grid.Cols * grid.Rows
-	if len(delta) > maxCells {
-		t.Fatalf("explored %d cells on a board that only has %d", len(delta), maxCells)
-	}
-	for _, c := range delta {
-		if c.A < 0 || c.A >= grid.Cols || c.B < 0 || c.B >= grid.Rows {
-			t.Fatalf("explored cell (%d,%d) is off the %dx%d grid", c.A, c.B, grid.Cols, grid.Rows)
 		}
 	}
 }
@@ -320,7 +309,7 @@ func TestBuildMapFullState_PlayerSeesTheWallThatBlocksTheirVision(t *testing.T) 
 	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
 		room.mu.Lock()
 		defer room.mu.Unlock()
-		_, _, _ = room.session.RecomputeVisibility(playerUUID)
+		_, _ = room.session.RecomputeVisibility(playerUUID)
 	})
 
 	view := decodeMapFull(t, room.buildMapFullState(playerUUID, false))
@@ -354,7 +343,7 @@ func TestBuildMapFullState_PlayerDoesNotSeeWallBehindAnother(t *testing.T) {
 	withinTimeout(t, 3*time.Second, "RecomputeVisibility", func() {
 		room.mu.Lock()
 		defer room.mu.Unlock()
-		_, _, _ = room.session.RecomputeVisibility(playerUUID)
+		_, _ = room.session.RecomputeVisibility(playerUUID)
 	})
 
 	view := decodeMapFull(t, room.buildMapFullState(playerUUID, false))

@@ -316,7 +316,6 @@ type Point2DPayload struct {
 
 type VisibilityUpdatedPayload struct {
 	VisiblePolygons [][]Point2DPayload `json:"visible_polygons"`
-	ExploredDelta   [][2]int           `json:"explored_delta,omitempty"`
 }
 
 type WallRevealedPayload struct {
@@ -328,6 +327,5 @@ type MapFullStatePayload struct {
 	Pieces          []PieceMovedPayload     `json:"pieces"`
 	Walls           []mapentity.WallSegment `json:"walls,omitempty"`
 	VisiblePolygons [][]Point2DPayload      `json:"visible_polygons,omitempty"`
-	ExploredCells   [][2]int                `json:"explored_cells,omitempty"`
 	FogMode         string                  `json:"fog_mode"`
 }
