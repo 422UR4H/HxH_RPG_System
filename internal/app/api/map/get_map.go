@@ -50,7 +50,7 @@ func GetMapHandler(uc mapuc.IGetMap) func(context.Context, *GetMapRequest) (*Get
 //
 // Master: no filtering — receives the full unmasked board.
 //
-// Non-master: receives the map SHELL only — grid, background, fog mode — with no pieces
+// Non-master: receives the map SHELL only — grid, background — with no pieces
 // and no walls at all.
 //
 // That is deliberate, and it is not over-caution. GET /maps/:id is served by the REST

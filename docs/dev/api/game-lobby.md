@@ -58,7 +58,8 @@ mapa inteiro.
         "piece_id": "<uuid>",
         "slot": { "kind": "square", "col": 18, "row": 19 },
         "character_id": "<sheet-uuid>",
-        "visible": true
+        "visible": true,
+        "z": 1.5
       }
     ],
     "walls": [ { "id": "<uuid>", "p1": [0, 0], "p2": [96, 0], "wall_type": "wall", "...": "..." } ],
@@ -66,6 +67,10 @@ mapa inteiro.
   }
 }
 ```
+
+`z` (elevação em metros, 0 = chão) é *passthrough* opaco assim como `slot`: o servidor
+nunca calcula nem preenche um default para ele, então o cliente precisa enviá-lo aqui —
+e em `piece_moved` — sempre que quiser preservar a elevação da peça.
 
 **Semântica de `pieces`** — o campo é *nullable* e os dois casos são distintos:
 

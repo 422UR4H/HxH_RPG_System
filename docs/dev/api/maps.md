@@ -136,7 +136,7 @@
 - Acessível a todos os participantes da campanha (não apenas o master) para suportar a feature de lobby futura.
 
 **O que cada papel recebe.** O mestre recebe o mapa completo, sem máscara. Quem não é
-mestre recebe apenas a **casca**: grid, background, `fog_mode`, nome — com `pieces` e
+mestre recebe apenas a **casca**: grid, background, nome — com `pieces` e
 `walls` **vazios**.
 
 Isso não é uma limitação temporária. `GET /maps/:id` é servido pelo processo REST

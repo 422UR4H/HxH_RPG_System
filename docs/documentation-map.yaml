@@ -366,7 +366,7 @@ mappings:
     dev_docs:
       - path: docs/dev/api/maps.md
         confidence: directly_affected
-    notes: GET /maps/:id handler — filtro de papel é casca-apenas (grid/background/fog_mode/nome, pieces/walls vazios) para quem não é mestre; o REST não tem como aplicar LOS porque os polígonos de visibilidade vivem na memória do processo do game server (cmd/game), separado do processo REST (cmd/api)
+    notes: GET /maps/:id handler — role filter is shell-only (grid/background/name, pieces/walls empty) for non-master viewers; REST cannot apply LOS because the visibility polygons live in the game server process's memory (cmd/game), separate from the REST process (cmd/api)
 
   # ─── Match: REST API ───
   - code_path: internal/app/api/match/

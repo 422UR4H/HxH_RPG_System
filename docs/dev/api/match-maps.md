@@ -85,7 +85,8 @@ Detach the map from a match.
       "kind": "square",
       "col": 3,
       "row": 5
-    }
+    },
+    "z": 1.5
   }
 }
 ```
@@ -104,12 +105,16 @@ Hex slot:
   "sender_id": "user-uuid",
   "payload": {
     "piece_id": "...",
-    "slot": { "kind": "square", "col": 3, "row": 5 }
+    "slot": { "kind": "square", "col": 3, "row": 5 },
+    "z": 1.5
   }
 }
 ```
 
 **Notes:**
 - Server broadcasts to all lobby participants EXCEPT the sender.
+- `z` (elevation in metres, 0 = ground) is opaque passthrough, same as `slot`: the server
+  never computes or defaults it, so the client must send it here if it wants the piece's
+  elevation preserved.
 - No server-side piece ownership validation in Phase 6. Client restricts drag to allowed pieces.
 - TODO: validate piece ownership per user (Phase 7+).

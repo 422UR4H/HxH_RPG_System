@@ -75,7 +75,7 @@ a sessão a partir do handler HTTP, parou no lugar errado.
 
 ## 3. A solução
 
-**O REST devolve a *casca* do mapa para quem não é mestre: grid, background, `fog_mode`,
+**O REST devolve a *casca* do mapa para quem não é mestre: grid, background,
 nome — com `pieces` e `walls` vazios.**
 
 Isso não é uma mitigação, é um estreitamento: o endpoint deixa de carregar um dado que
@@ -274,7 +274,7 @@ Na seção de `GET /maps/:id`, deixe explícito o que cada papel recebe. Acresce
 
 ```markdown
 **O que cada papel recebe.** O mestre recebe o mapa completo, sem máscara. Quem não é
-mestre recebe apenas a **casca**: grid, background, `fog_mode`, nome — com `pieces` e
+mestre recebe apenas a **casca**: grid, background, nome — com `pieces` e
 `walls` **vazios**.
 
 Isso não é uma limitação temporária. `GET /maps/:id` é servido pelo processo REST

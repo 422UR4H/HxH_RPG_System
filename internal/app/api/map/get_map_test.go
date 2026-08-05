@@ -68,8 +68,12 @@ func newTestMapWithWalls(campaignID uuid.UUID) *entity.TacticalMap {
 			},
 		},
 		Pieces: []entity.Piece{
-			{ID: "p1", CharacterID: "c1", Visible: false}, // invisible — must be hidden from player
-			{ID: "p2", CharacterID: "c2", Visible: true},  // visible — shown to player
+			// Neither piece reaches a non-master caller under the current contract — REST
+			// sends zero pieces regardless of visibility. These two exist so the "0 pieces"
+			// assertion below is checking something real (a map that actually has pieces
+			// to filter out), not a vacuous pass on an already-empty slice.
+			{ID: "p1", CharacterID: "c1", Visible: false},
+			{ID: "p2", CharacterID: "c2", Visible: true},
 		},
 		Decorations: []entity.Decoration{},
 		Items:       []entity.MapItem{},
