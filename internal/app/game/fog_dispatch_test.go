@@ -227,23 +227,9 @@ func TestBuildMapFullState_LobbyMasksSecretsWithoutLOS(t *testing.T) {
 
 	view := decodeMapFull(t, room.buildMapFullState(uuid.New(), false))
 
-	var sd, nw *mapentity.WallSegment
-	for i := range view.Walls {
-		switch view.Walls[i].ID {
-		case "sd1":
-			sd = &view.Walls[i]
-		case "w1":
-			nw = &view.Walls[i]
-		}
-	}
-	if sd == nil || sd.WallType != mapentity.WallTypeWall {
-		t.Fatal("lobby: secret door must be masked as a plain wall for players")
-	}
-	if sd.DoorSubtype != nil || sd.Open || sd.Locked {
-		t.Fatal("lobby: masked door must not leak subtype/open/locked")
-	}
-	if nw == nil {
-		t.Fatal("lobby: normal wall must be visible (no LOS gating in lobby)")
+	// Non-master lobby players do not receive walls (frontend doesn't consume them yet)
+	if len(view.Walls) != 0 {
+		t.Fatal("lobby: walls must not be sent to non-master players")
 	}
 
 	ids := map[string]bool{}
