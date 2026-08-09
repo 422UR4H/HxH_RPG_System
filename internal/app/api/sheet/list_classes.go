@@ -10,8 +10,10 @@ import (
 )
 
 type ListCharacterClassesBody struct {
-	// TODO: change to character_classes in json
-	CharacterClasses []CharacterClassResponse
+	// PascalCase de propósito: formato explícito, não mudança. Fase 8 do frontend
+	// unifica todo o wire da API para camelCase via DTO — esse campo muda junto,
+	// não isoladamente.
+	CharacterClasses []CharacterClassResponse `json:"CharacterClasses"`
 }
 
 type ListCharacterClassesResponse struct {
