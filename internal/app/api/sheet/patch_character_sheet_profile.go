@@ -16,9 +16,9 @@ type IProfileImageUpdater interface {
 }
 
 type PatchCharacterSheetProfileRequestBody struct {
-	AvatarURL   *string `json:"avatar_url,omitempty"`
-	CoverURL    *string `json:"cover_url,omitempty"`
-	Description *string `json:"brief_description,omitempty"`
+	AvatarURL   *string `json:"avatarUrl,omitempty"`
+	CoverURL    *string `json:"coverUrl,omitempty"`
+	Description *string `json:"briefDescription,omitempty"`
 }
 
 type PatchCharacterSheetProfileRequest struct {

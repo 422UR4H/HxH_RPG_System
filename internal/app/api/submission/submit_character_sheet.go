@@ -14,8 +14,8 @@ import (
 )
 
 type SubmitCharacterRequestBody struct {
-	SheetUUID    uuid.UUID `json:"sheet_uuid" required:"true" doc:"UUID of the character sheet"`
-	CampaignUUID uuid.UUID `json:"campaign_uuid" required:"true" doc:"UUID of the campaign"`
+	SheetUUID    uuid.UUID `json:"sheetUuid" required:"true" doc:"UUID of the character sheet"`
+	CampaignUUID uuid.UUID `json:"campaignUuid" required:"true" doc:"UUID of the campaign"`
 }
 
 type SubmitCharacterRequest struct {

@@ -179,8 +179,8 @@ func TestGetMap_MasterSeesRealSecretDoor(t *testing.T) {
 		wall, _ := w.(map[string]any)
 		if wall["id"] == "secret1" {
 			foundSecret = true
-			if wall["wall_type"] != "secret_door" {
-				t.Errorf("master must see real 'secret_door', got %q", wall["wall_type"])
+			if wall["wallType"] != "secret_door" {
+				t.Errorf("master must see real 'secret_door', got %q", wall["wallType"])
 			}
 		}
 	}

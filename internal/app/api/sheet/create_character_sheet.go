@@ -18,15 +18,41 @@ import (
 )
 
 type CreateCharacterSheetRequestBody struct {
-	CampaignUUID      *uuid.UUID             `json:"campaign_uuid" required:"false"`
-	Profile           sheet.CharacterProfile `json:"profile"`
-	CharacterClass    string                 `json:"character_class"`
-	SkillsExps        map[string]int         `json:"skills_exps"`
-	ProficienciesExps map[string]int         `json:"proficiencies_exps"`
-	AttributePoints   map[string]int         `json:"attribute_points" required:"false"`
+	CampaignUUID      *uuid.UUID     `json:"campaignUuid" required:"false"`
+	Profile           ProfileRequest `json:"profile"`
+	CharacterClass    string         `json:"characterClass"`
+	SkillsExps        map[string]int `json:"skillsExps"`
+	ProficienciesExps map[string]int `json:"proficienciesExps"`
+	AttributePoints   map[string]int `json:"attributePoints" required:"false"`
 	// TODO: move to consolidate (accept submission) flow
 	// Categories        map[string]bool        `json:"categories"`
-	// InitialHexValue   *int                   `json:"initial_hex_value"`
+	// InitialHexValue   *int                   `json:"initialHexValue"`
+}
+
+type ProfileRequest struct {
+	NickName         string    `json:"nickname"`
+	FullName         string    `json:"fullname"`
+	Alignment        string    `json:"alignment"`
+	Description      string    `json:"description"`
+	BriefDescription string    `json:"briefDescription"`
+	AvatarURL        *string   `json:"avatarUrl,omitempty"`
+	CoverURL         *string   `json:"coverUrl,omitempty"`
+	Birthday         time.Time `json:"birthday"`
+	Age              int       `json:"age"`
+}
+
+func toEntityCharacterProfile(p ProfileRequest) sheet.CharacterProfile {
+	return sheet.CharacterProfile{
+		NickName:         p.NickName,
+		FullName:         p.FullName,
+		Alignment:        p.Alignment,
+		Description:      p.Description,
+		BriefDescription: p.BriefDescription,
+		AvatarURL:        p.AvatarURL,
+		CoverURL:         p.CoverURL,
+		Birthday:         p.Birthday,
+		Age:              p.Age,
+	}
 }
 
 type CreateCharacterSheetRequest struct {
@@ -34,7 +60,7 @@ type CreateCharacterSheetRequest struct {
 }
 
 type CreateCharacterSheetResponseBody struct {
-	CharacterSheet CharacterSheetResponse `json:"character_sheet"`
+	CharacterSheet CharacterSheetResponse `json:"characterSheet"`
 }
 
 type CreateCharacterSheetResponse struct {
@@ -93,12 +119,14 @@ func castRequest(
 	body *CreateCharacterSheetRequestBody,
 ) (*charactersheet.CreateCharacterSheetInput, error) {
 
-	if !body.Profile.Birthday.IsZero() {
-		b := body.Profile.Birthday
-		body.Profile.Birthday = time.Date(0, b.Month(), b.Day(), 0, 0, 0, 0, time.UTC)
+	profile := toEntityCharacterProfile(body.Profile)
+
+	if !profile.Birthday.IsZero() {
+		b := profile.Birthday
+		profile.Birthday = time.Date(0, b.Month(), b.Day(), 0, 0, 0, 0, time.UTC)
 	}
 
-	if err := body.Profile.Validate(); err != nil {
+	if err := profile.Validate(); err != nil {
 		return nil, fmt.Errorf("character profile error: %w", err)
 	}
 
@@ -158,7 +186,7 @@ func castRequest(
 
 	return &charactersheet.CreateCharacterSheetInput{
 		CampaignUUID:      body.CampaignUUID,
-		Profile:           body.Profile,
+		Profile:           profile,
 		CharacterClass:    charClassName,
 		SkillsExps:        skillsExps,
 		ProficienciesExps: proficienciesExps,

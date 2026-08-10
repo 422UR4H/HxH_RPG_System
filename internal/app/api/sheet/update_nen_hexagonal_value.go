@@ -20,9 +20,9 @@ type UpdateNenHexagonValueRequest struct {
 }
 
 type UpdateNenHexagonValueResponseBody struct {
-	PercentList     map[enum.CategoryName]float64 `json:"percent_list"`
-	CategoryName    enum.CategoryName             `json:"category_name"`
-	CurrentHexValue int                           `json:"current_hex_value"`
+	PercentList     map[enum.CategoryName]float64 `json:"percentList"`
+	CategoryName    enum.CategoryName             `json:"categoryName"`
+	CurrentHexValue int                           `json:"currentHexValue"`
 }
 
 type UpdateNenHexagonValueResponse struct {

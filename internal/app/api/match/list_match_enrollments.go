@@ -8,8 +8,8 @@ import (
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiSheet "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -27,11 +27,11 @@ type ListMatchEnrollmentsResponseBody struct {
 }
 
 type EnrollmentResponse struct {
-	UUID           uuid.UUID                                    `json:"uuid"`
-	Status         string                                       `json:"status"`
-	CreatedAt      string                                       `json:"created_at"`
-	CharacterSheet apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
-	Player         PlayerRefResponse                            `json:"player"`
+	UUID           uuid.UUID                                     `json:"uuid"`
+	Status         string                                        `json:"status"`
+	CreatedAt      string                                        `json:"createdAt"`
+	CharacterSheet apiSheet.CharacterSheetWithVisibilityResponse `json:"characterSheet"`
+	Player         PlayerRefResponse                             `json:"player"`
 }
 
 type PlayerRefResponse struct {

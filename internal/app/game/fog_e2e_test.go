@@ -153,10 +153,15 @@ func (f *fogFixture) sendBoardSync(t *testing.T, conn *websocket.Conn) {
 func (f *fogFixture) sendBoardSyncWithWalls(t *testing.T, conn *websocket.Conn, walls []mapentity.WallSegment) {
 	t.Helper()
 	pieces := []game.PieceMovedPayload{f.piece}
+	wallPayloads := make([]game.WallSegmentPayload, len(walls))
+	for i, w := range walls {
+		wallPayloads[i] = toWallSegmentPayload(w)
+	}
+	grid := toGridShapePayload(f.grid)
 	payload, err := json.Marshal(game.MapStateSyncPayload{
 		Pieces: &pieces,
-		Walls:  walls,
-		Grid:   &f.grid,
+		Walls:  wallPayloads,
+		Grid:   &grid,
 	})
 	if err != nil {
 		t.Fatalf("marshal sync payload: %v", err)
@@ -228,7 +233,7 @@ func TestE2E_MasterSyncsThenPlayerJoins_PlayerSeesFogLiftedAroundOwnPiece(t *tes
 	f := newFogFixture(t)
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	f.sendBoardSync(t, master)
@@ -247,11 +252,11 @@ func TestE2E_PlayerJoinsBeforeSync_ServerRepushesLineOfSight(t *testing.T) {
 	f := newFogFixture(t)
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	player := f.connectPlayer(t)
-	defer player.Close() //nolint:errcheck
+	defer player.Close()               //nolint:errcheck
 	time.Sleep(200 * time.Millisecond) // player is registered on the empty board
 
 	f.sendBoardSync(t, master)
@@ -277,7 +282,7 @@ func TestE2E_LargeBoardSyncIsNotRejected(t *testing.T) {
 	}
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	player := f.connectPlayer(t)
@@ -300,7 +305,7 @@ func TestE2E_MasterSeesWholeBoardWithoutFog(t *testing.T) {
 	f := newFogFixture(t)
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	f.sendBoardSync(t, master)
@@ -314,5 +319,56 @@ func TestE2E_MasterSeesWholeBoardWithoutFog(t *testing.T) {
 	}
 	if len(view.Pieces) != 1 {
 		t.Fatalf("master must see every piece: got %d, want 1", len(view.Pieces))
+	}
+}
+
+// ─── wire-format conversion helpers ────────────────────────────────────────
+//
+// This file lives in package game_test (a real end-to-end test driving the actual
+// WS handler), so it has no access to game's unexported entity<->payload converters.
+// map_state_sync is master->server only, so production code never needed the reverse
+// (entity -> payload) direction either — these mirror message.go's toWallSegmentPayload
+// and its grid counterpart purely to build the wire message this test sends.
+
+func toWallSegmentPayload(w mapentity.WallSegment) game.WallSegmentPayload {
+	p := game.WallSegmentPayload{
+		ID:         w.ID,
+		P1:         w.P1,
+		P2:         w.P2,
+		WallType:   string(w.WallType),
+		Material:   string(w.Material),
+		Move:       w.Move,
+		Sense:      string(w.Sense),
+		Direction:  string(w.Direction),
+		Open:       w.Open,
+		Locked:     w.Locked,
+		HP:         w.HP,
+		MaxHP:      w.MaxHP,
+		Resistance: w.Resistance,
+		Destroyed:  w.Destroyed,
+		Revealed:   w.Revealed,
+	}
+	if w.DoorSubtype != nil {
+		s := string(*w.DoorSubtype)
+		p.DoorSubtype = &s
+	}
+	if w.WindowSubtype != nil {
+		s := string(*w.WindowSubtype)
+		p.WindowSubtype = &s
+	}
+	return p
+}
+
+func toGridShapePayload(g mapentity.GridShape) game.GridShapePayload {
+	return game.GridShapePayload{
+		Kind:      string(g.Kind),
+		Cols:      g.Cols,
+		Rows:      g.Rows,
+		CellSize:  g.CellSize,
+		SkewRatio: g.SkewRatio,
+		Rotation:  g.Rotation,
+		Color:     g.Color,
+		Opacity:   g.Opacity,
+		LineStyle: string(g.LineStyle),
 	}
 }

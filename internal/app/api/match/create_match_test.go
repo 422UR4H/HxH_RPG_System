@@ -10,9 +10,9 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -32,13 +32,13 @@ func TestCreateMatchHandler(t *testing.T) {
 		{
 			name: "success",
 			body: map[string]any{
-				"campaign_uuid":            uuid.New().String(),
-				"title":                    "Test Match",
-				"brief_initial_description": "brief",
-				"description":              "full",
-				"is_public":                true,
-				"game_scheduled_at":        "2026-06-15T19:30:00Z",
-				"story_start_at":           "2026-06-15",
+				"campaignUuid":            uuid.New().String(),
+				"title":                   "Test Match",
+				"briefInitialDescription": "brief",
+				"description":             "full",
+				"isPublic":                true,
+				"gameScheduledAt":         "2026-06-15T19:30:00Z",
+				"storyStartAt":            "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return &matchEntity.Match{
@@ -60,13 +60,13 @@ func TestCreateMatchHandler(t *testing.T) {
 		{
 			name: "campaign_not_found",
 			body: map[string]any{
-				"campaign_uuid":            uuid.New().String(),
-				"title":                    "Test Match",
-				"brief_initial_description": "brief",
-				"description":              "full",
-				"is_public":                true,
-				"game_scheduled_at":        "2026-06-15T19:30:00Z",
-				"story_start_at":           "2026-06-15",
+				"campaignUuid":            uuid.New().String(),
+				"title":                   "Test Match",
+				"briefInitialDescription": "brief",
+				"description":             "full",
+				"isPublic":                true,
+				"gameScheduledAt":         "2026-06-15T19:30:00Z",
+				"storyStartAt":            "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, campaign.ErrCampaignNotFound
@@ -76,13 +76,13 @@ func TestCreateMatchHandler(t *testing.T) {
 		{
 			name: "not_campaign_owner",
 			body: map[string]any{
-				"campaign_uuid":            uuid.New().String(),
-				"title":                    "Test Match",
-				"brief_initial_description": "brief",
-				"description":              "full",
-				"is_public":                true,
-				"game_scheduled_at":        "2026-06-15T19:30:00Z",
-				"story_start_at":           "2026-06-15",
+				"campaignUuid":            uuid.New().String(),
+				"title":                   "Test Match",
+				"briefInitialDescription": "brief",
+				"description":             "full",
+				"isPublic":                true,
+				"gameScheduledAt":         "2026-06-15T19:30:00Z",
+				"storyStartAt":            "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, campaign.ErrNotCampaignOwner
@@ -92,13 +92,13 @@ func TestCreateMatchHandler(t *testing.T) {
 		{
 			name: "validation_error",
 			body: map[string]any{
-				"campaign_uuid":            uuid.New().String(),
-				"title":                    "Test Match",
-				"brief_initial_description": "brief",
-				"description":              "full",
-				"is_public":                true,
-				"game_scheduled_at":        "2026-06-15T19:30:00Z",
-				"story_start_at":           "2026-06-15",
+				"campaignUuid":            uuid.New().String(),
+				"title":                   "Test Match",
+				"briefInitialDescription": "brief",
+				"description":             "full",
+				"isPublic":                true,
+				"gameScheduledAt":         "2026-06-15T19:30:00Z",
+				"storyStartAt":            "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, domain.ErrValidation
@@ -108,13 +108,13 @@ func TestCreateMatchHandler(t *testing.T) {
 		{
 			name: "internal_server_error",
 			body: map[string]any{
-				"campaign_uuid":            uuid.New().String(),
-				"title":                    "Test Match",
-				"brief_initial_description": "brief",
-				"description":              "full",
-				"is_public":                true,
-				"game_scheduled_at":        "2026-06-15T19:30:00Z",
-				"story_start_at":           "2026-06-15",
+				"campaignUuid":            uuid.New().String(),
+				"title":                   "Test Match",
+				"briefInitialDescription": "brief",
+				"description":             "full",
+				"isPublic":                true,
+				"gameScheduledAt":         "2026-06-15T19:30:00Z",
+				"storyStartAt":            "2026-06-15",
 			},
 			mockFn: func(ctx context.Context, input *matchUC.CreateMatchInput) (*matchEntity.Match, error) {
 				return nil, errors.New("unexpected db error")
@@ -155,8 +155,8 @@ func TestCreateMatchHandler(t *testing.T) {
 				if matchData["title"] != "Test Match" {
 					t.Errorf("got title %v, want 'Test Match'", matchData["title"])
 				}
-				if matchData["master_uuid"] != userUUID.String() {
-					t.Errorf("got master_uuid %v, want %v", matchData["master_uuid"], userUUID.String())
+				if matchData["masterUuid"] != userUUID.String() {
+					t.Errorf("got masterUuid %v, want %v", matchData["masterUuid"], userUUID.String())
 				}
 			}
 		})

@@ -8,8 +8,8 @@ import (
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiSheet "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -20,9 +20,9 @@ type GetMatchParticipantsRequest struct {
 
 type ParticipantResponse struct {
 	UUID     uuid.UUID                                     `json:"uuid"`
-	JoinedAt string                                        `json:"joined_at"`
-	LeftAt   *string                                       `json:"left_at,omitempty"`
-	Sheet    apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
+	JoinedAt string                                        `json:"joinedAt"`
+	LeftAt   *string                                       `json:"leftAt,omitempty"`
+	Sheet    apiSheet.CharacterSheetWithVisibilityResponse `json:"characterSheet"`
 }
 
 type GetMatchParticipantsResponseBody struct {

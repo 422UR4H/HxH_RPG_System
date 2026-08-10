@@ -2,38 +2,39 @@ package sheet
 
 import (
 	"strings"
+	"time"
 
 	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
 )
 
 type CharacterSheetResponse struct {
-	UUID         uuid.UUID  `json:"uuid"`
-	PlayerUUID   *uuid.UUID `json:"player_uuid,omitempty"`
-	MasterUUID   *uuid.UUID `json:"master_uuid,omitempty"`
-	CampaignUUID *uuid.UUID        `json:"campaign_uuid,omitempty"`
+	UUID         uuid.UUID           `json:"uuid"`
+	PlayerUUID   *uuid.UUID          `json:"playerUuid,omitempty"`
+	MasterUUID   *uuid.UUID          `json:"masterUuid,omitempty"`
+	CampaignUUID *uuid.UUID          `json:"campaignUuid,omitempty"`
 	Submission   *SubmissionResponse `json:"submission,omitempty"`
 
-	CharacterClass string                       `json:"character_class"`
-	CategoryName   string                       `json:"category_name"`
-	Profile        sheetEntity.CharacterProfile `json:"profile"`
+	CharacterClass string          `json:"characterClass"`
+	CategoryName   string          `json:"categoryName"`
+	Profile        ProfileResponse `json:"profile"`
 
-	CharacterExp CharacterExpResponse `json:"character_exp"`
+	CharacterExp CharacterExpResponse `json:"characterExp"`
 	Talent       TalentResponse       `json:"talent"`
-	NenHexValue  *int                 `json:"nen_hex_value,omitempty"`
+	NenHexValue  *int                 `json:"nenHexValue,omitempty"`
 
 	Abilities           map[string]AbilityResponse            `json:"abilities"`
-	PhysicalAttributes  map[string]AttributeResponse          `json:"physical_attributes"`
-	MentalAttributes    map[string]AttributeResponse          `json:"mental_attributes"`
-	SpiritualAttributes map[string]SpiritualAttributeResponse `json:"spiritual_attributes"`
-	PhysicalSkills      map[string]SkillResponse              `json:"physical_skills"`
-	MentalSkills        map[string]SkillResponse              `json:"mental_skills"`
-	SpiritualSkills     map[string]SkillResponse              `json:"spiritual_skills"`
+	PhysicalAttributes  map[string]AttributeResponse          `json:"physicalAttributes"`
+	MentalAttributes    map[string]AttributeResponse          `json:"mentalAttributes"`
+	SpiritualAttributes map[string]SpiritualAttributeResponse `json:"spiritualAttributes"`
+	PhysicalSkills      map[string]SkillResponse              `json:"physicalSkills"`
+	MentalSkills        map[string]SkillResponse              `json:"mentalSkills"`
+	SpiritualSkills     map[string]SkillResponse              `json:"spiritualSkills"`
 	Principles          map[string]PrincipleResponse          `json:"principles"`
 	Categories          map[string]CategoryResponse           `json:"categories"`
-	// JointSkills         map[string]skill.JointSkill             `json:"joint_skills"`
-	Proficiencies      map[string]CommonProficiencyResponse `json:"common_proficiencies"`
-	JointProficiencies map[string]JointProficiencyResponse  `json:"joint_proficiencies"`
+	// JointSkills         map[string]skill.JointSkill             `json:"jointSkills"`
+	Proficiencies      map[string]CommonProficiencyResponse `json:"commonProficiencies"`
+	JointProficiencies map[string]JointProficiencyResponse  `json:"jointProficiencies"`
 	Status             map[string]StatusResponse            `json:"status"`
 }
 
@@ -41,8 +42,8 @@ type CharacterSheetResponse struct {
 type ExperienceResponse struct {
 	Level         int `json:"level"`
 	Exp           int `json:"exp"`
-	CurrentExp    int `json:"curr_exp"`
-	NxtLvlBaseExp int `json:"next_lvl_base_exp"`
+	CurrentExp    int `json:"currExp"`
+	NxtLvlBaseExp int `json:"nextLvlBaseExp"`
 }
 
 type CharacterExpResponse struct {
@@ -103,8 +104,34 @@ type StatusResponse struct {
 }
 
 type SubmissionResponse struct {
-	CampaignUUID string `json:"campaign_uuid"`
-	CreatedAt    string `json:"created_at"`
+	CampaignUUID string `json:"campaignUuid"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+type ProfileResponse struct {
+	NickName         string    `json:"nickname"`
+	FullName         string    `json:"fullname"`
+	Alignment        string    `json:"alignment"`
+	Description      string    `json:"description"`
+	BriefDescription string    `json:"briefDescription"`
+	AvatarURL        *string   `json:"avatarUrl,omitempty"`
+	CoverURL         *string   `json:"coverUrl,omitempty"`
+	Birthday         time.Time `json:"birthday"`
+	Age              int       `json:"age"`
+}
+
+func toProfileResponse(p sheetEntity.CharacterProfile) ProfileResponse {
+	return ProfileResponse{
+		NickName:         p.NickName,
+		FullName:         p.FullName,
+		Alignment:        p.Alignment,
+		Description:      p.Description,
+		BriefDescription: p.BriefDescription,
+		AvatarURL:        p.AvatarURL,
+		CoverURL:         p.CoverURL,
+		Birthday:         p.Birthday,
+		Age:              p.Age,
+	}
 }
 
 func NewCharacterSheetResponse(
@@ -304,7 +331,7 @@ func NewCharacterSheetResponse(
 		PlayerUUID:          charSheet.GetPlayerUUID(),
 		MasterUUID:          charSheet.GetMasterUUID(),
 		CampaignUUID:        charSheet.GetCampaignUUID(),
-		Profile:             charSheet.GetProfile(),
+		Profile:             toProfileResponse(charSheet.GetProfile()),
 		CharacterClass:      charClass.String(),
 		CategoryName:        strCategoryName,
 		CharacterExp:        charExp,

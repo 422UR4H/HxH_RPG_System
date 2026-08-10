@@ -28,8 +28,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "success",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return nil
@@ -39,8 +39,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "match_not_found",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return match.ErrMatchNotFound
@@ -50,8 +50,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "sheet_not_found",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return charactersheet.ErrCharacterSheetNotFound
@@ -61,8 +61,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "not_sheet_owner",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return charactersheet.ErrNotCharacterSheetOwner
@@ -72,8 +72,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "not_in_campaign",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return enrollmentUC.ErrCharacterNotInCampaign
@@ -83,8 +83,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "already_enrolled",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return enrollmentUC.ErrCharacterAlreadyEnrolled
@@ -94,8 +94,8 @@ func TestEnrollCharacterHandler(t *testing.T) {
 		{
 			name: "generic_error",
 			body: map[string]any{
-				"sheet_uuid": uuid.New().String(),
-				"match_uuid": uuid.New().String(),
+				"sheetUuid": uuid.New().String(),
+				"matchUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, matchUUID, sheetUUID, playerUUID uuid.UUID) error {
 				return errors.New("unexpected database error")

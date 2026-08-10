@@ -83,9 +83,9 @@ func TestListCharacterSheetsHandler(t *testing.T) {
 				if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
-				sheets, ok := result["character_sheets"].([]any)
+				sheets, ok := result["characterSheets"].([]any)
 				if !ok {
-					t.Fatal("response missing 'character_sheets' field")
+					t.Fatal("response missing 'characterSheets' field")
 				}
 				if len(sheets) != tt.wantCount {
 					t.Errorf("got %d sheets, want %d", len(sheets), tt.wantCount)

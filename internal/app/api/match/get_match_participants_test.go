@@ -11,9 +11,9 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiMatch "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -45,7 +45,7 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 		name           string
 		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*match.GetMatchParticipantsResult, error)
 		wantStatus     int
-		wantPrivateNil bool // when status==200, asserts the first row's character_sheet.private nullness
+		wantPrivateNil bool // when status==200, asserts the first row's characterSheet.private nullness
 	}{
 		{
 			name: "200 with private populated when ViewerIsMaster",
@@ -133,7 +133,7 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 				return // empty-list case
 			}
 			row := participants[0].(map[string]any)
-			sheet := row["character_sheet"].(map[string]any)
+			sheet := row["characterSheet"].(map[string]any)
 			privateField, present := sheet["private"]
 			if !present {
 				t.Fatal("character_sheet.private must be present (null or populated), not omitted")

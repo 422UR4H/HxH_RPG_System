@@ -16,42 +16,42 @@ var charExpTable = experience.NewExpTable(sheetEntity.CHARACTER_COEFF)
 
 type CharacterBaseSummaryResponse struct {
 	UUID           uuid.UUID  `json:"uuid"`
-	PlayerUUID     *uuid.UUID `json:"player_uuid,omitempty"`
-	MasterUUID     *uuid.UUID `json:"master_uuid,omitempty"`
-	CampaignUUID   *uuid.UUID `json:"campaign_uuid,omitempty"`
-	NickName       string     `json:"nick_name"`
-	AvatarURL      *string    `json:"avatar_url,omitempty"`
-	CoverURL       *string    `json:"cover_url,omitempty"`
-	StoryStartAt   *string    `json:"story_start_at,omitempty"`
-	StoryCurrentAt *string    `json:"story_current_at,omitempty"`
-	DeadAt         *string    `json:"dead_at,omitempty"`
-	CreatedAt      string     `json:"created_at"`
-	UpdatedAt      string     `json:"updated_at"`
+	PlayerUUID     *uuid.UUID `json:"playerUuid,omitempty"`
+	MasterUUID     *uuid.UUID `json:"masterUuid,omitempty"`
+	CampaignUUID   *uuid.UUID `json:"campaignUuid,omitempty"`
+	NickName       string     `json:"nickName"`
+	AvatarURL      *string    `json:"avatarUrl,omitempty"`
+	CoverURL       *string    `json:"coverUrl,omitempty"`
+	StoryStartAt   *string    `json:"storyStartAt,omitempty"`
+	StoryCurrentAt *string    `json:"storyCurrentAt,omitempty"`
+	DeadAt         *string    `json:"deadAt,omitempty"`
+	CreatedAt      string     `json:"createdAt"`
+	UpdatedAt      string     `json:"updatedAt"`
 }
 
 // CharacterPrivateOnlyResponse holds the fields that are private to the sheet
 // owner (and to the master of a match the sheet is enrolled in). It does NOT
 // embed the base — it is meant to be nested under a base-typed parent.
 type CharacterPrivateOnlyResponse struct {
-	FullName       string    `json:"full_name"`
-	Alignment      string    `json:"alignment"`
-	CharacterClass string    `json:"character_class"`
-	Birthday       string    `json:"birthday"`
-	CategoryName   string    `json:"category_name"`
-	CurrHexValue   *int      `json:"curr_hex_value,omitempty"`
-	Level          int       `json:"level"`
-	Points         int       `json:"points"`
+	FullName       string `json:"fullName"`
+	Alignment      string `json:"alignment"`
+	CharacterClass string `json:"characterClass"`
+	Birthday       string `json:"birthday"`
+	CategoryName   string `json:"categoryName"`
+	CurrHexValue   *int   `json:"currHexValue,omitempty"`
+	Level          int    `json:"level"`
+	Points         int    `json:"points"`
 	// CurrExp and NxtLvlBaseExp are derived from char_exp (denormalized) + charExpTable.
 	// Do NOT use for game logic — always use the full sheet build for that.
-	CurrExp        int       `json:"curr_exp"`
-	NxtLvlBaseExp  int       `json:"next_lvl_base_exp"`
-	TalentLvl      int       `json:"talent_lvl"`
-	PhysicalsLvl   int       `json:"physicals_lvl"`
-	MentalsLvl     int       `json:"mentals_lvl"`
-	SpiritualsLvl  int       `json:"spirituals_lvl"`
-	SkillsLvl      int       `json:"skills_lvl"`
-	Stamina        StatusBar `json:"stamina"`
-	Health         StatusBar `json:"health"`
+	CurrExp       int       `json:"currExp"`
+	NxtLvlBaseExp int       `json:"nextLvlBaseExp"`
+	TalentLvl     int       `json:"talentLvl"`
+	PhysicalsLvl  int       `json:"physicalsLvl"`
+	MentalsLvl    int       `json:"mentalsLvl"`
+	SpiritualsLvl int       `json:"spiritualsLvl"`
+	SkillsLvl     int       `json:"skillsLvl"`
+	Stamina       StatusBar `json:"stamina"`
+	Health        StatusBar `json:"health"`
 	// Aura           StatusBar  `json:"aura"`
 }
 
@@ -83,10 +83,10 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		Birthday:       sheet.Birthday.Format("2006-01-02"),
 		CategoryName:   sheet.CategoryName,
 		CurrHexValue:   sheet.CurrHexValue,
-		Level:         charExpTable.GetLvlByExp(sheet.CharExp),
-		Points:        sheet.Points,
-		CurrExp:       deriveCurrExp(sheet.CharExp),
-		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp),
+		Level:          charExpTable.GetLvlByExp(sheet.CharExp),
+		Points:         sheet.Points,
+		CurrExp:        deriveCurrExp(sheet.CharExp),
+		NxtLvlBaseExp:  deriveNxtLvlBaseExp(sheet.CharExp),
 		TalentLvl:      sheet.TalentLvl,
 		PhysicalsLvl:   sheet.PhysicalsLvl,
 		MentalsLvl:     sheet.MentalsLvl,

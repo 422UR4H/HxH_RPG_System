@@ -10,8 +10,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -48,12 +48,12 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "success_full_patch",
 			body: map[string]any{
-				"title":                     "Patched Title",
-				"brief_initial_description": "Patched brief",
-				"description":               "Patched desc",
-				"is_public":                 false,
-				"game_scheduled_at":         "2026-07-20T19:30:00Z",
-				"story_start_at":            "2026-07-20",
+				"title":                   "Patched Title",
+				"briefInitialDescription": "Patched brief",
+				"description":             "Patched desc",
+				"isPublic":                false,
+				"gameScheduledAt":         "2026-07-20T19:30:00Z",
+				"storyStartAt":            "2026-07-20",
 			},
 			mockFn: func(_ context.Context, input *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				if input.Title == nil || *input.Title != "Patched Title" {
@@ -84,7 +84,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		},
 		{
 			name: "invalid_game_scheduled_at",
-			body: map[string]any{"game_scheduled_at": "not-a-date"},
+			body: map[string]any{"gameScheduledAt": "not-a-date"},
 			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				t.Fatal("UC should not be called when date parsing fails")
 				return nil, nil
@@ -93,7 +93,7 @@ func TestUpdateMatchHandler(t *testing.T) {
 		},
 		{
 			name: "invalid_story_start_at",
-			body: map[string]any{"story_start_at": "not-a-date"},
+			body: map[string]any{"storyStartAt": "not-a-date"},
 			mockFn: func(_ context.Context, _ *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
 				t.Fatal("UC should not be called when date parsing fails")
 				return nil, nil
@@ -177,8 +177,8 @@ func TestUpdateMatchHandler(t *testing.T) {
 				if !ok {
 					t.Fatal("response missing 'match' field")
 				}
-				if matchData["master_uuid"] != userUUID.String() {
-					t.Errorf("master_uuid = %v, want %v", matchData["master_uuid"], userUUID.String())
+				if matchData["masterUuid"] != userUUID.String() {
+					t.Errorf("masterUuid = %v, want %v", matchData["masterUuid"], userUUID.String())
 				}
 			}
 		})

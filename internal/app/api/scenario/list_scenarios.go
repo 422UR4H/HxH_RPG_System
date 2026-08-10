@@ -21,9 +21,9 @@ type ListScenariosResponse struct {
 type ScenarioSummaryResponse struct {
 	UUID             uuid.UUID `json:"uuid"`
 	Name             string    `json:"name"`
-	BriefDescription string    `json:"brief_description"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
+	BriefDescription string    `json:"briefDescription"`
+	CreatedAt        string    `json:"createdAt"`
+	UpdatedAt        string    `json:"updatedAt"`
 }
 
 func ListScenariosHandler(

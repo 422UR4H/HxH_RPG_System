@@ -9,8 +9,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -108,10 +108,100 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 				if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
-				if _, ok := result["character_sheet"].(map[string]any); !ok {
-					t.Fatal("response missing 'character_sheet' field")
+				charSheet, ok := result["characterSheet"].(map[string]any)
+				if !ok {
+					t.Fatal("response missing 'characterSheet' field")
+				}
+
+				profile, ok := charSheet["profile"].(map[string]any)
+				if !ok {
+					t.Fatal("response missing 'characterSheet.profile' field")
+				}
+				if _, exists := profile["brief_description"]; exists {
+					t.Error("response profile leaked snake_case key 'brief_description'")
+				}
+				if _, exists := profile["avatar_url"]; exists {
+					t.Error("response profile leaked snake_case key 'avatar_url'")
+				}
+				if got := profile["briefDescription"]; got != "Hunter boy" {
+					t.Errorf("profile.briefDescription = %v, want %q", got, "Hunter boy")
+				}
+				if got := profile["avatarUrl"]; got != "https://example.com/avatar.png" {
+					t.Errorf("profile.avatarUrl = %v, want %q", got, "https://example.com/avatar.png")
+				}
+				if got := profile["coverUrl"]; got != "https://example.com/cover.png" {
+					t.Errorf("profile.coverUrl = %v, want %q", got, "https://example.com/cover.png")
 				}
 			}
 		})
+	}
+}
+
+// TestGetCharacterSheetHandler_ProfileUsesCamelCase guards against the
+// entity-leak regression where CharacterSheetResponse.Profile embedded
+// sheetEntity.CharacterProfile directly, shipping snake_case field names
+// (profile.brief_description, profile.avatar_url, profile.cover_url) in
+// every character-sheet response.
+func TestGetCharacterSheetHandler_ProfileUsesCamelCase(t *testing.T) {
+	userUUID := uuid.New()
+	sheetUUID := uuid.New()
+
+	_, api := humatest.New(t)
+
+	mock := &mockGetCharacterSheet{
+		fn: func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*sheetEntity.CharacterSheet, error) {
+			charSheet := buildTestCharacterSheet(t)
+			charSheet.UUID = id
+			return charSheet, nil
+		},
+	}
+	submissionFetcher := &mockSubmissionFetcher{}
+	handler := sheet.GetCharacterSheetHandler(mock, submissionFetcher)
+
+	huma.Register(api, huma.Operation{
+		Method: http.MethodGet,
+		Path:   "/charactersheets/{uuid}",
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+	resp := api.GetCtx(ctx, "/charactersheets/"+sheetUUID.String())
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d. Body: %s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	charSheetBody, ok := result["characterSheet"].(map[string]any)
+	if !ok {
+		t.Fatal("response missing 'characterSheet' field")
+	}
+
+	profile, ok := charSheetBody["profile"].(map[string]any)
+	if !ok {
+		t.Fatal("response missing 'characterSheet.profile' field")
+	}
+
+	if _, exists := profile["brief_description"]; exists {
+		t.Error("response profile leaked snake_case key 'brief_description'")
+	}
+	if _, exists := profile["avatar_url"]; exists {
+		t.Error("response profile leaked snake_case key 'avatar_url'")
+	}
+	if _, exists := profile["cover_url"]; exists {
+		t.Error("response profile leaked snake_case key 'cover_url'")
+	}
+
+	if got := profile["briefDescription"]; got != "Hunter boy" {
+		t.Errorf("profile.briefDescription = %v, want %q", got, "Hunter boy")
+	}
+	if got := profile["avatarUrl"]; got != "https://example.com/avatar.png" {
+		t.Errorf("profile.avatarUrl = %v, want %q", got, "https://example.com/avatar.png")
+	}
+	if got := profile["coverUrl"]; got != "https://example.com/cover.png" {
+		t.Errorf("profile.coverUrl = %v, want %q", got, "https://example.com/cover.png")
 	}
 }

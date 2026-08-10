@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
 type UpdateMatchRequestBody struct {
 	Title                   *string `json:"title,omitempty" doc:"New title (5-32 characters)"`
-	BriefInitialDescription *string `json:"brief_initial_description,omitempty" doc:"New brief description (max 255 characters)"`
+	BriefInitialDescription *string `json:"briefInitialDescription,omitempty" doc:"New brief description (max 255 characters)"`
 	Description             *string `json:"description,omitempty" doc:"New full description"`
-	IsPublic                *bool   `json:"is_public,omitempty" doc:"New public/private flag"`
-	GameScheduledAt         *string `json:"game_scheduled_at,omitempty" doc:"ISO 8601 date-time"`
-	StoryStartAt            *string `json:"story_start_at,omitempty" doc:"YYYY-MM-DD"`
+	IsPublic                *bool   `json:"isPublic,omitempty" doc:"New public/private flag"`
+	GameScheduledAt         *string `json:"gameScheduledAt,omitempty" doc:"ISO 8601 date-time"`
+	StoryStartAt            *string `json:"storyStartAt,omitempty" doc:"YYYY-MM-DD"`
 }
 
 type UpdateMatchRequest struct {

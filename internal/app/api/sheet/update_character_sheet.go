@@ -16,12 +16,12 @@ import (
 )
 
 type UpdateCharacterSheetRequest struct {
-	UUID string                           `path:"uuid" required:"true"`
+	UUID string `path:"uuid" required:"true"`
 	Body CreateCharacterSheetRequestBody
 }
 
 type UpdateCharacterSheetResponseBody struct {
-	CharacterSheet CharacterSheetResponse `json:"character_sheet"`
+	CharacterSheet CharacterSheetResponse `json:"characterSheet"`
 }
 
 type UpdateCharacterSheetResponse struct {

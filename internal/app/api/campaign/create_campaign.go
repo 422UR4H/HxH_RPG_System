@@ -7,23 +7,23 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
 // ScenarioUUID will now only be enabled for shared scenario
 type CreateCampaignRequestBody struct {
-	// ScenarioUUID     uuid.UUID `json:"scenario_uuid" required:"true" doc:"UUID of the scenario this campaign is based on"`
+	// ScenarioUUID     uuid.UUID `json:"scenarioUuid" required:"true" doc:"UUID of the scenario this campaign is based on"`
 	Name                    string  `json:"name" required:"true" doc:"Name of the campaign (5-32 characters)"`
-	BriefInitialDescription string  `json:"brief_initial_description" doc:"Brief initial description of the campaign (max 255 characters)"`
+	BriefInitialDescription string  `json:"briefInitialDescription" doc:"Brief initial description of the campaign (max 255 characters)"`
 	Description             string  `json:"description" doc:"Full description of the campaign"`
-	IsPublic                bool    `json:"is_public" default:"false" doc:"Whether the campaign is public or private"`
-	CallLink                string  `json:"call_link" doc:"Link to the campaign call, e.g. Discord (max 255 characters)"`
-	StoryStartAt            string  `json:"story_start_at" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
-	StoryCurrentAt          *string `json:"story_current_at,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
+	IsPublic                bool    `json:"isPublic" default:"false" doc:"Whether the campaign is public or private"`
+	CallLink                string  `json:"callLink" doc:"Link to the campaign call, e.g. Discord (max 255 characters)"`
+	StoryStartAt            string  `json:"storyStartAt" required:"true" doc:"Date when the campaign story starts (YYYY-MM-DD)"`
+	StoryCurrentAt          *string `json:"storyCurrentAt,omitempty" doc:"Current date and time in the campaign story (ISO 8601)"`
 }
 
 type CreateCampaignRequest struct {
@@ -32,16 +32,16 @@ type CreateCampaignRequest struct {
 
 type CreateCampaignResponseBody struct {
 	UUID uuid.UUID `json:"uuid"`
-	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
+	// ScenarioUUID     uuid.UUID `json:"scenarioUuid"`
 	Name                    string  `json:"name"`
-	BriefInitialDescription string  `json:"brief_initial_description"`
+	BriefInitialDescription string  `json:"briefInitialDescription"`
 	Description             string  `json:"description"`
-	IsPublic                bool    `json:"is_public"`
-	CallLink                string  `json:"call_link"`
-	StoryStartAt            string  `json:"story_start_at"`
-	StoryCurrentAt          *string `json:"story_current_at,omitempty"`
-	CreatedAt               string  `json:"created_at"`
-	UpdatedAt               string  `json:"updated_at"`
+	IsPublic                bool    `json:"isPublic"`
+	CallLink                string  `json:"callLink"`
+	StoryStartAt            string  `json:"storyStartAt"`
+	StoryCurrentAt          *string `json:"storyCurrentAt,omitempty"`
+	CreatedAt               string  `json:"createdAt"`
+	UpdatedAt               string  `json:"updatedAt"`
 }
 
 type CreateCampaignResponse struct {

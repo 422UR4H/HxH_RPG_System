@@ -111,7 +111,7 @@ func TestBuildMapFullState_MasksSecretDoorForPlayer(t *testing.T) {
 	masterView := decodeMapFull(t, room.buildMapFullState(uuid.New(), true))
 
 	// Master sees the real secret door.
-	var masterWall *mapentity.WallSegment
+	var masterWall *WallSegmentPayload
 	for i := range masterView.Walls {
 		if masterView.Walls[i].ID == doorID {
 			masterWall = &masterView.Walls[i]
@@ -120,12 +120,12 @@ func TestBuildMapFullState_MasksSecretDoorForPlayer(t *testing.T) {
 	if masterWall == nil {
 		t.Fatal("master must see the secret door")
 	}
-	if masterWall.WallType != mapentity.WallTypeSecretDoor {
+	if masterWall.WallType != string(mapentity.WallTypeSecretDoor) {
 		t.Fatalf("master must see real type secret_door, got %s", masterWall.WallType)
 	}
 
 	// Player sees the same wall masked as a plain wall, with no leaked door fields.
-	var playerWall *mapentity.WallSegment
+	var playerWall *WallSegmentPayload
 	for i := range playerView.Walls {
 		if playerView.Walls[i].ID == doorID {
 			playerWall = &playerView.Walls[i]
@@ -134,7 +134,7 @@ func TestBuildMapFullState_MasksSecretDoorForPlayer(t *testing.T) {
 	if playerWall == nil {
 		t.Fatal("player should see the door's geometry, masked as a wall")
 	}
-	if playerWall.WallType != mapentity.WallTypeWall {
+	if playerWall.WallType != string(mapentity.WallTypeWall) {
 		t.Fatalf("player must see masked type wall, got %s", playerWall.WallType)
 	}
 	if playerWall.DoorSubtype != nil || playerWall.Open || playerWall.Locked {

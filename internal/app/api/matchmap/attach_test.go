@@ -9,8 +9,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchmapapi "github.com/422UR4H/HxH_RPG_System/internal/app/api/matchmap"
-	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/matchmap/entity"
 	matchmapuc "github.com/422UR4H/HxH_RPG_System/internal/application/matchmap"
+	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/matchmap/entity"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -52,7 +52,7 @@ func TestAttachMatchMapHandler_Success(t *testing.T) {
 	}, handler)
 
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
-	body := map[string]any{"map_uuid": mapUUID.String()}
+	body := map[string]any{"mapUuid": mapUUID.String()}
 	resp := api.PostCtx(ctx, "/matches/"+matchUUID.String()+"/map", body)
 
 	if resp.Code != http.StatusOK {
@@ -63,12 +63,12 @@ func TestAttachMatchMapHandler_Success(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
-	mm, ok := result["match_map"].(map[string]any)
+	mm, ok := result["matchMap"].(map[string]any)
 	if !ok {
-		t.Fatal("response missing 'match_map' field")
+		t.Fatal("response missing 'matchMap' field")
 	}
-	if mm["map_uuid"] != mapUUID.String() {
-		t.Errorf("got map_uuid %v, want %v", mm["map_uuid"], mapUUID.String())
+	if mm["mapUuid"] != mapUUID.String() {
+		t.Errorf("got mapUuid %v, want %v", mm["mapUuid"], mapUUID.String())
 	}
 }
 
@@ -95,7 +95,7 @@ func TestAttachMatchMapHandler_NotMaster_Returns403(t *testing.T) {
 	}, handler)
 
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
-	body := map[string]any{"map_uuid": mapUUID.String()}
+	body := map[string]any{"mapUuid": mapUUID.String()}
 	resp := api.PostCtx(ctx, "/matches/"+matchUUID.String()+"/map", body)
 
 	if resp.Code != http.StatusForbidden {
@@ -126,7 +126,7 @@ func TestAttachMatchMapHandler_AlreadyStarted_Returns422(t *testing.T) {
 	}, handler)
 
 	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
-	body := map[string]any{"map_uuid": mapUUID.String()}
+	body := map[string]any{"mapUuid": mapUUID.String()}
 	resp := api.PostCtx(ctx, "/matches/"+matchUUID.String()+"/map", body)
 
 	if resp.Code != http.StatusUnprocessableEntity {

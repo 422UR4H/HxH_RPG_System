@@ -7,21 +7,21 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
 type CreateMatchRequestBody struct {
-	CampaignUUID            uuid.UUID `json:"campaign_uuid" required:"true" doc:"UUID of the campaign this match is based on"`
+	CampaignUUID            uuid.UUID `json:"campaignUuid" required:"true" doc:"UUID of the campaign this match is based on"`
 	Title                   string    `json:"title" required:"true" doc:"Title of the match (5-32 characters)"`
-	BriefInitialDescription string    `json:"brief_initial_description" doc:"Brief description of the match (max 255 characters)"`
+	BriefInitialDescription string    `json:"briefInitialDescription" doc:"Brief description of the match (max 255 characters)"`
 	Description             string    `json:"description" doc:"Full description of the match"`
-	IsPublic                bool      `json:"is_public" default:"true" doc:"If the match is public or private"`
-	GameScheduledAt         string    `json:"game_scheduled_at" required:"true" doc:"Date and time when the game is scheduled (ISO 8601)"`
-	StoryStartAt            string    `json:"story_start_at" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
+	IsPublic                bool      `json:"isPublic" default:"true" doc:"If the match is public or private"`
+	GameScheduledAt         string    `json:"gameScheduledAt" required:"true" doc:"Date and time when the game is scheduled (ISO 8601)"`
+	StoryStartAt            string    `json:"storyStartAt" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
 }
 
 type CreateMatchRequest struct {
@@ -39,19 +39,19 @@ type CreateMatchResponse struct {
 
 type MatchResponse struct {
 	UUID                    uuid.UUID `json:"uuid"`
-	MasterUUID              uuid.UUID `json:"master_uuid"`
-	CampaignUUID            uuid.UUID `json:"campaign_uuid"`
+	MasterUUID              uuid.UUID `json:"masterUuid"`
+	CampaignUUID            uuid.UUID `json:"campaignUuid"`
 	Title                   string    `json:"title"`
-	BriefInitialDescription string    `json:"brief_initial_description"`
-	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
+	BriefInitialDescription string    `json:"briefInitialDescription"`
+	BriefFinalDescription   *string   `json:"briefFinalDescription,omitempty"`
 	Description             string    `json:"description"`
-	IsPublic                bool      `json:"is_public"`
-	GameScheduledAt         string    `json:"game_scheduled_at"`
-	GameStartAt             *string   `json:"game_start_at,omitempty"`
-	StoryStartAt            string    `json:"story_start_at"`
-	StoryEndAt              *string   `json:"story_end_at,omitempty"`
-	CreatedAt               string    `json:"created_at"`
-	UpdatedAt               string    `json:"updated_at"`
+	IsPublic                bool      `json:"isPublic"`
+	GameScheduledAt         string    `json:"gameScheduledAt"`
+	GameStartAt             *string   `json:"gameStartAt,omitempty"`
+	StoryStartAt            string    `json:"storyStartAt"`
+	StoryEndAt              *string   `json:"storyEndAt,omitempty"`
+	CreatedAt               string    `json:"createdAt"`
+	UpdatedAt               string    `json:"updatedAt"`
 }
 
 func CreateMatchHandler(

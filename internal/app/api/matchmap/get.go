@@ -15,7 +15,7 @@ type GetMatchMapRequest struct {
 }
 
 type GetMatchMapResponseBody struct {
-	MatchMap MatchMapResponse `json:"match_map"`
+	MatchMap MatchMapResponse `json:"matchMap"`
 }
 
 type GetMatchMapResponse struct {

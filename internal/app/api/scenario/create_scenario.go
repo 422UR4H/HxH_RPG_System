@@ -6,15 +6,15 @@ import (
 	"net/http"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
 type CreateScenarioRequestBody struct {
 	Name             string `json:"name" required:"true" doc:"Name of the scenario (5-32 characters)"`
-	BriefDescription string `json:"brief_description" doc:"Brief description of the scenario (max 64 characters)"`
+	BriefDescription string `json:"briefDescription" doc:"Brief description of the scenario (max 64 characters)"`
 	Description      string `json:"description" doc:"Full description of the scenario"`
 }
 
@@ -34,10 +34,10 @@ type CreateScenarioResponse struct {
 type ScenarioResponse struct {
 	UUID             uuid.UUID `json:"uuid"`
 	Name             string    `json:"name"`
-	BriefDescription string    `json:"brief_description"`
+	BriefDescription string    `json:"briefDescription"`
 	Description      string    `json:"description"`
-	CreatedAt        string    `json:"created_at"`
-	UpdatedAt        string    `json:"updated_at"`
+	CreatedAt        string    `json:"createdAt"`
+	UpdatedAt        string    `json:"updatedAt"`
 }
 
 func CreateScenarioHandler(

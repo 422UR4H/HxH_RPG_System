@@ -81,7 +81,7 @@ func (h *AuthHandler) Login(
 		}
 	}
 	return &LoginResponse{
-		Body:   LoginResponseBody{Token: output.Token, User: *output.User},
+		Body:   LoginResponseBody{Token: output.Token, User: toUserResponse(*output.User)},
 		Status: http.StatusOK,
 	}, nil
 }

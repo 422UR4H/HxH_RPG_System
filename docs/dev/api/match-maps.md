@@ -16,14 +16,14 @@ Attach a map to a match. Replaces any previously attached map (upsert).
 **Request body:**
 ```json
 {
-  "map_uuid": "uuid"
+  "mapUuid": "uuid"
 }
 ```
 
 **Responses:**
 | Status | Description |
 |--------|-------------|
-| 200 | Map attached. Body: `{"match_map": {"match_uuid": "...", "map_uuid": "...", "attached_at": "ISO8601"}}` |
+| 200 | Map attached. Body: `{"matchMap": {"matchUuid": "...", "mapUuid": "...", "attachedAt": "ISO8601"}}` |
 | 400 | Bad request (invalid UUID) |
 | 401 | Unauthenticated |
 | 403 | Not the match master |
@@ -42,7 +42,7 @@ Get the map currently attached to a match.
 **Responses:**
 | Status | Description |
 |--------|-------------|
-| 200 | Map attached. Body: `{"match_map": {"match_uuid": "...", "map_uuid": "...", "attached_at": "ISO8601"}}` |
+| 200 | Map attached. Body: `{"matchMap": {"matchUuid": "...", "mapUuid": "...", "attachedAt": "ISO8601"}}` |
 | 204 | No map attached |
 | 400 | Bad request |
 | 401 | Unauthenticated |
@@ -80,7 +80,7 @@ Detach the map from a match.
 {
   "type": "lobby_piece_moved",
   "payload": {
-    "piece_id": "uuid-string",
+    "pieceId": "uuid-string",
     "slot": {
       "kind": "square",
       "col": 3,
@@ -102,9 +102,9 @@ Hex slot:
 ```json
 {
   "type": "lobby_piece_moved",
-  "sender_id": "user-uuid",
+  "senderId": "user-uuid",
   "payload": {
-    "piece_id": "...",
+    "pieceId": "...",
     "slot": { "kind": "square", "col": 3, "row": 5 },
     "z": 1.5
   }

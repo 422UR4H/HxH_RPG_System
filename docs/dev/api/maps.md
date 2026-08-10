@@ -10,7 +10,7 @@
 {
   "name": "Floresta do Norte",
   "description": "Área densa ao norte da cidade, cheia de armadilhas",
-  "grid": { "kind": "square", "cols": 25, "rows": 25, "cell_size": 64, "skew_ratio": 1.0, "rotation": 0, "color": "#ffffff", "opacity": 0.5, "line_style": "solid" },
+  "grid": { "kind": "square", "cols": 25, "rows": 25, "cellSize": 64, "skewRatio": 1.0, "rotation": 0, "color": "#ffffff", "opacity": 0.5, "lineStyle": "solid" },
   "bg": null,
   "pieces": []
 }
@@ -33,7 +33,7 @@
 | 401 | Sem JWT |
 | 403 | Usuário não é o master da campanha |
 | 404 | Campanha não encontrada |
-| 422 | `name` vazio, `cell_size ≤ 0`, `cols/rows ≤ 0`, `skew_ratio ∉ [0,1]` |
+| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]` |
 | 500 | Erro interno |
 
 ---
@@ -49,27 +49,27 @@
   "maps": [
     {
       "id": "uuid",
-      "campaign_id": "uuid",
+      "campaignId": "uuid",
       "name": "Floresta do Norte",
       "description": "Área densa ao norte da cidade, cheia de armadilhas",
       "grid": {
         "kind": "square",
         "cols": 25,
         "rows": 25,
-        "cell_size": 64,
-        "skew_ratio": 1.0,
+        "cellSize": 64,
+        "skewRatio": 1.0,
         "rotation": 0,
         "color": "#ffffff",
         "opacity": 0.5,
-        "line_style": "solid"
+        "lineStyle": "solid"
       },
       "bg": null,
       "pieces": [],
       "walls": [],
       "decorations": [],
       "items": [],
-      "created_at": "2026-05-31T00:00:00Z",
-      "updated_at": "2026-05-31T00:00:00Z"
+      "createdAt": "2026-05-31T00:00:00Z",
+      "updatedAt": "2026-05-31T00:00:00Z"
     }
   ]
 }
@@ -97,27 +97,27 @@
 {
   "map": {
     "id": "uuid",
-    "campaign_id": "uuid",
+    "campaignId": "uuid",
     "name": "Floresta do Norte",
     "description": "Área densa ao norte da cidade, cheia de armadilhas",
     "grid": {
       "kind": "square",
       "cols": 25,
       "rows": 25,
-      "cell_size": 64,
-      "skew_ratio": 1.0,
+      "cellSize": 64,
+      "skewRatio": 1.0,
       "rotation": 0,
       "color": "#ffffff",
       "opacity": 0.5,
-      "line_style": "solid"
+      "lineStyle": "solid"
     },
     "bg": null,
     "pieces": [],
     "walls": [],
     "decorations": [],
     "items": [],
-    "created_at": "2026-05-31T00:00:00Z",
-    "updated_at": "2026-05-31T00:00:00Z"
+    "createdAt": "2026-05-31T00:00:00Z",
+    "updatedAt": "2026-05-31T00:00:00Z"
   }
 }
 ```
@@ -159,17 +159,17 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 {
   "name": "Floresta do Norte — Revisado",
   "description": "Nova descrição do mapa",
-  "grid": { "kind": "square", "cols": 25, "rows": 25, "cell_size": 64, "skew_ratio": 1.0, "rotation": 0, "color": "#ffffff", "opacity": 0.5, "line_style": "solid" },
+  "grid": { "kind": "square", "cols": 25, "rows": 25, "cellSize": 64, "skewRatio": 1.0, "rotation": 0, "color": "#ffffff", "opacity": 0.5, "lineStyle": "solid" },
   "bg": null,
   "pieces": [
-    { "id": "uuid", "character_id": "uuid", "coord": { "slot": { "kind": "square", "col": 3, "row": 5 }, "z": 0 }, "visible": true }
+    { "id": "uuid", "characterId": "uuid", "coord": { "slot": { "kind": "square", "col": 3, "row": 5 }, "z": 0 }, "visible": true }
   ],
   "walls": [
     {
       "id": "uuid",
       "p1": [0, 0],
       "p2": [64, 0],
-      "wall_type": "wall",
+      "wallType": "wall",
       "material": "stone",
       "move": true,
       "sense": "full",
@@ -177,9 +177,10 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
       "open": false,
       "locked": false,
       "hp": 100,
-      "max_hp": 100,
+      "maxHp": 100,
       "resistance": 5,
-      "destroyed": false
+      "destroyed": false,
+      "revealed": false
     }
   ]
 }
@@ -203,7 +204,7 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | 401 | Sem JWT |
 | 403 | Usuário não é o master da campanha |
 | 404 | Mapa não encontrado |
-| 422 | `name` vazio, `cell_size ≤ 0`, `cols/rows ≤ 0`, `skew_ratio ∉ [0,1]` |
+| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]` |
 | 500 | Erro interno |
 
 ---
@@ -233,19 +234,19 @@ Sem body.
 ```json
 {
   "id": "uuid",
-  "campaign_id": "uuid",
+  "campaignId": "uuid",
   "name": "Floresta do Norte",
   "description": "Área densa ao norte da cidade, cheia de armadilhas",
   "grid": {
     "kind": "square",
     "cols": 25,
     "rows": 25,
-    "cell_size": 64,
-    "skew_ratio": 1.0,
+    "cellSize": 64,
+    "skewRatio": 1.0,
     "rotation": 0,
     "color": "#ffffff",
     "opacity": 0.5,
-    "line_style": "solid"
+    "lineStyle": "solid"
   },
   "bg": null,
   "pieces": [],
@@ -254,7 +255,7 @@ Sem body.
       "id": "uuid",
       "p1": [0, 0],
       "p2": [64, 0],
-      "wall_type": "wall",
+      "wallType": "wall",
       "material": "stone",
       "move": true,
       "sense": "full",
@@ -262,15 +263,16 @@ Sem body.
       "open": false,
       "locked": false,
       "hp": 100,
-      "max_hp": 100,
+      "maxHp": 100,
       "resistance": 5,
-      "destroyed": false
+      "destroyed": false,
+      "revealed": false
     }
   ],
   "decorations": [],
   "items": [],
-  "created_at": "2026-05-31T00:00:00Z",
-  "updated_at": "2026-05-31T00:00:00Z"
+  "createdAt": "2026-05-31T00:00:00Z",
+  "updatedAt": "2026-05-31T00:00:00Z"
 }
 ```
 
@@ -290,19 +292,20 @@ Sem body.
   "id": "uuid-string",
   "p1": [0.0, 0.0],
   "p2": [64.0, 0.0],
-  "wall_type": "wall | door | window | secret_door | terrain",
+  "wallType": "wall | door | window | secret_door | terrain",
   "material": "stone | wood | iron | magical",
-  "door_subtype": "basic | double | portcullis | drawbridge",
-  "window_subtype": "basic | barred | shuttered",
+  "doorSubtype": "basic | double | portcullis | drawbridge",
+  "windowSubtype": "basic | barred | shuttered",
   "move": true,
   "sense": "full | sight | none",
   "direction": "both | left | right",
   "open": false,
   "locked": false,
   "hp": 100,
-  "max_hp": 100,
+  "maxHp": 100,
   "resistance": 5,
-  "destroyed": false
+  "destroyed": false,
+  "revealed": false
 }
 ```
 
@@ -310,23 +313,24 @@ Sem body.
 |---|---|---|
 | `id` | string (UUID) | Identificador único do segmento, gerado pelo frontend via `crypto.randomUUID()` |
 | `p1`, `p2` | `[number, number]` | Endpoints em coordenadas de mundo (pré-transform); `p1 ≠ p2` |
-| `wall_type` | enum | Comportamento funcional |
+| `wallType` | enum | Comportamento funcional |
 | `material` | enum | Propriedades físicas (HP, resistência, cor) |
-| `door_subtype` | enum? | Presente apenas quando `wall_type = "door"` |
-| `window_subtype` | enum? | Presente apenas quando `wall_type = "window"` |
+| `doorSubtype` | enum? | Presente apenas quando `wallType = "door"` |
+| `windowSubtype` | enum? | Presente apenas quando `wallType = "window"` |
 | `move` | bool | Bloqueia movimento físico |
 | `sense` | enum | O que bloqueia em termos de percepção |
 | `direction` | enum | Direção de bloqueio (both = nos dois sentidos) |
 | `open` | bool | Porta/janela está aberta (só relevante para door/window) |
 | `locked` | bool | Porta trancada |
 | `hp` | int | Pontos de vida atuais (≥ 0) |
-| `max_hp` | int | Pontos de vida máximos |
+| `maxHp` | int | Pontos de vida máximos |
 | `resistance` | int | Dano absorvido por ataque |
 | `destroyed` | bool | Segmento destruído (visual alterado) |
+| `revealed` | bool | Porta secreta já revelada pelo master (sempre `false` para paredes que não são `secret_door`) — ver seção Fog of War abaixo |
 
 ### Defaults por tipo (aplicados pelo frontend ao criar o segmento)
 
-| `wall_type` | `move` | `sense` | `direction` | `material` padrão |
+| `wallType` | `move` | `sense` | `direction` | `material` padrão |
 |---|---|---|---|---|
 | `wall` | `true` | `full` | `both` | `stone` |
 | `door` | `true` | `full` | `both` | `wood` |
@@ -337,7 +341,7 @@ Sem body.
 ### Notas gerais de validação (backend)
 
 - `PUT /maps/:id` aceita `walls` como campo opcional. `null` ou ausente = mantém as paredes existentes. `[]` = remove todas.
-- Validações: `p1 ≠ p2`; `wall_type` deve ser um dos 5 valores válidos; `hp ≥ 0`.
+- Validações: `p1 ≠ p2`; `wallType` deve ser um dos 5 valores válidos; `hp ≥ 0`.
 - O backend não calcula defaults — o frontend envia o objeto completo.
 
 ---
@@ -367,13 +371,13 @@ O `TacticalMap` possui o campo `fog_mode`, persistido no banco, que controla o c
 | `"explored"` | Paredes já vistas continuam visíveis (mesmo fora do LOS atual), gravadas na memória do jogador por id de parede. **Default** quando o campo está vazio no banco. |
 | `"live"` | Apenas o LOS do turno atual é visível; nenhuma memória de exploração. |
 
-O campo `fog_mode` é enviado pelo servidor no payload WS `map_full_state` (ver abaixo). Ele não é exposto na resposta REST de `GET /maps/:id` atualmente — apenas o WebSocket o carrega para o cliente.
+O campo é enviado pelo servidor no payload WS `map_full_state` como `fogMode` (ver abaixo). Ele não é exposto na resposta REST de `GET /maps/:id` atualmente — apenas o WebSocket o carrega para o cliente.
 
 ---
 
 ### Eventos WebSocket — Fog of War (servidor → cliente)
 
-Todos os payloads usam snake_case. Esses eventos são enviados durante uma partida em andamento (após `start_match`).
+Todos os payloads usam camelCase. Esses eventos são enviados durante uma partida em andamento (após `start_match`).
 
 ---
 
@@ -387,17 +391,17 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 {
   "pieces": [
     {
-      "piece_id": "uuid-string",
+      "pieceId": "uuid-string",
       "slot": { "kind": "square", "col": 3, "row": 5 },
-      "character_id": "uuid-string",
+      "characterId": "uuid-string",
       "visible": true
     }
   ],
   "walls": [ /* WallSegment[] filtrados e mascarados por LOS + masking de secret_door */ ],
-  "visible_polygons": [
+  "visiblePolygons": [
     [ { "x": 0.0, "y": 0.0 }, { "x": 64.0, "y": 0.0 }, { "x": 64.0, "y": 64.0 } ]
   ],
-  "fog_mode": "explored"
+  "fogMode": "explored"
 }
 ```
 
@@ -407,33 +411,33 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 {
   "pieces": [ /* todas as peças, sem filtro */ ],
   "walls": [ /* todas as paredes, sem máscara */ ],
-  "fog_mode": "explored"
+  "fogMode": "explored"
 }
 ```
 
-> O master não recebe `visible_polygons` — campo omitido.
+> O master não recebe `visiblePolygons` — campo omitido.
 
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. Cada peça inclui `z` (elevação em metros, 0 = chão, omitido quando 0). |
 | `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
-| `visible_polygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
-| `fog_mode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
+| `visiblePolygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
+| `fogMode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
 
 ##### Máscara de porta secreta não revelada
 
-Quando um jogador recebe, dentro de `walls`, um `WallSegment` com `wall_type = "secret_door"`
+Quando um jogador recebe, dentro de `walls`, um `WallSegment` com `wallType = "secret_door"`
 e `revealed = false`, o game server substitui os campos identificadores da porta pelo
 equivalente de uma parede comum, preservando todos os campos de combate:
 
 | Campo | Valor mascarado |
 |---|---|
-| `wall_type` | `"wall"` (em vez de `"secret_door"`) |
-| `door_subtype` | ausente (`null` / omitido) |
-| `window_subtype` | ausente (`null` / omitido) |
+| `wallType` | `"wall"` (em vez de `"secret_door"`) |
+| `doorSubtype` | ausente (`null` / omitido) |
+| `windowSubtype` | ausente (`null` / omitido) |
 | `open` | `false` |
 | `locked` | `false` |
-| `id`, `p1`, `p2`, `material`, `hp`, `max_hp`, `resistance`, `move`, `sense`, `direction`, `destroyed` | preservados sem alteração |
+| `id`, `p1`, `p2`, `material`, `hp`, `maxHp`, `resistance`, `move`, `sense`, `direction`, `destroyed` | preservados sem alteração |
 
 Aplicado por `MaskSecretDoorForPlayer`, chamado pelo `FilterMapState` do processo do game
 server (`cmd/game`) — nunca pelo processo REST (`cmd/api`), que não tem acesso a esse estado.
@@ -446,7 +450,7 @@ Enviado a cada jogador individual quando seu LOS muda (ex.: após movimento de p
 
 ```json
 {
-  "visible_polygons": [
+  "visiblePolygons": [
     [ { "x": 0.0, "y": 0.0 }, { "x": 128.0, "y": 0.0 } ]
   ]
 }
@@ -454,7 +458,7 @@ Enviado a cada jogador individual quando seu LOS muda (ex.: após movimento de p
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `visible_polygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador. |
+| `visiblePolygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador. |
 
 ---
 
@@ -468,16 +472,16 @@ Broadcast para **todos os clientes** quando o master revela uma porta secreta. A
     "id": "uuid-string",
     "p1": [0.0, 0.0],
     "p2": [64.0, 0.0],
-    "wall_type": "secret_door",
+    "wallType": "secret_door",
     "material": "wood",
-    "door_subtype": "basic",
+    "doorSubtype": "basic",
     "move": true,
     "sense": "full",
     "direction": "both",
     "open": false,
     "locked": false,
     "hp": 80,
-    "max_hp": 80,
+    "maxHp": 80,
     "resistance": 3,
     "destroyed": false,
     "revealed": true
@@ -489,7 +493,7 @@ Broadcast para **todos os clientes** quando o master revela uma porta secreta. A
 |---|---|---|
 | `wall` | `WallSegment` | O `WallSegment` completo e real da porta secreta, agora com `revealed=true`. |
 
-> O master aciona a revelação via `enqueue_master_action` com `interact.kind = "reveal"` e `target_ids` contendo o(s) ID(s) da(s) parede(s).
+> O master aciona a revelação via `enqueue_master_action` com `interact.kind = "reveal"` e `targetIds` contendo o(s) ID(s) da(s) parede(s).
 
 ---
 
@@ -497,7 +501,7 @@ Broadcast para **todos os clientes** quando o master revela uma porta secreta. A
 
 #### `wall_hp_changed`
 
-Enviado apenas aos clientes que conseguem **ver** o midpoint da parede afetada (LOS ativo). O master sempre recebe. O payload não carrega `wall_type`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
+Enviado apenas aos clientes que conseguem **ver** o midpoint da parede afetada (LOS ativo). O master sempre recebe. O payload não carrega `wallType`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
 
 #### `wall_state_changed`
 
@@ -507,7 +511,7 @@ Para uma `secret_door` **não revelada**, o evento é enviado **apenas ao master
 
 ### Fluxo de reveal de porta secreta
 
-1. Master envia `enqueue_master_action` com `interact.kind = "reveal"` e `target_ids: ["<wall-uuid>"]`.
+1. Master envia `enqueue_master_action` com `interact.kind = "reveal"` e `targetIds: ["<wall-uuid>"]`.
 2. O servidor marca a parede como `revealed = true` no `MatchSession` e em memória.
 3. Servidor emite `wall_revealed` (broadcast a todos) com o `WallSegment` completo e real.
 4. Servidor recalcula o LOS de cada jogador e emite `visibility_updated` por jogador.

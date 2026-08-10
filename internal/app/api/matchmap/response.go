@@ -6,9 +6,9 @@ import (
 )
 
 type MatchMapResponse struct {
-	MatchUUID  string `json:"match_uuid"`
-	MapUUID    string `json:"map_uuid"`
-	AttachedAt string `json:"attached_at"`
+	MatchUUID  string `json:"matchUuid"`
+	MapUUID    string `json:"mapUuid"`
+	AttachedAt string `json:"attachedAt"`
 }
 
 func toMatchMapResponse(mm *entity.MatchMap) MatchMapResponse {

@@ -52,8 +52,8 @@ func TestGetMatchMapHandler_WithMap_Returns200(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
-	if _, ok := result["match_map"]; !ok {
-		t.Fatal("response missing 'match_map' field")
+	if _, ok := result["matchMap"]; !ok {
+		t.Fatal("response missing 'matchMap' field")
 	}
 }
 
@@ -109,4 +109,3 @@ func TestGetMatchMapHandler_InternalError_Returns500(t *testing.T) {
 		t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusInternalServerError, resp.Body.String())
 	}
 }
-

@@ -26,10 +26,10 @@ func TestGetCampaignHandler(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name            string
-		mockFn          func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error)
-		enrollmentMock  *mockListPlayerEnrollments
-		wantStatus      int
+		name           string
+		mockFn         func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error)
+		enrollmentMock *mockListPlayerEnrollments
+		wantStatus     int
 	}{
 		{
 			name: "success",
@@ -188,12 +188,12 @@ func TestGetCampaignHandler_PlayerEnrollmentStatus(t *testing.T) {
 	if !ok {
 		t.Fatal("expected first match to be an object")
 	}
-	status, ok := firstMatch["my_enrollment_status"]
+	status, ok := firstMatch["myEnrollmentStatus"]
 	if !ok {
-		t.Fatal("expected 'my_enrollment_status' field in match")
+		t.Fatal("expected 'myEnrollmentStatus' field in match")
 	}
 	if status != "pending" {
-		t.Errorf("got my_enrollment_status %v, want 'pending'", status)
+		t.Errorf("got myEnrollmentStatus %v, want 'pending'", status)
 	}
 }
 
@@ -263,12 +263,12 @@ func TestGetCampaignHandler_PlayerSeesOwnPendingSheet(t *testing.T) {
 	}
 	campaignData := result["campaign"].(map[string]any)
 
-	mySheet, ok := campaignData["my_pending_sheet"].(map[string]any)
+	mySheet, ok := campaignData["myPendingSheet"].(map[string]any)
 	if !ok {
 		t.Fatal("expected 'my_pending_sheet' field in player response")
 	}
-	if mySheet["nick_name"] != "MyChar" {
-		t.Errorf("got nick_name %v, want 'MyChar'", mySheet["nick_name"])
+	if mySheet["nickName"] != "MyChar" {
+		t.Errorf("got nickName %v, want 'MyChar'", mySheet["nickName"])
 	}
 	if mySheet["uuid"] != sheetUUID.String() {
 		t.Errorf("got uuid %v, want %s", mySheet["uuid"], sheetUUID.String())

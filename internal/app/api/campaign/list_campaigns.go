@@ -21,15 +21,15 @@ type ListCampaignsResponse struct {
 type CampaignSummaryResponse struct {
 	UUID                    uuid.UUID `json:"uuid"`
 	Name                    string    `json:"name"`
-	BriefInitialDescription string    `json:"brief_initial_description"`
-	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
-	IsPublic                bool      `json:"is_public"`
-	CallLink                string    `json:"call_link"`
-	StoryStartAt            string    `json:"story_start_at"`
-	StoryCurrentAt          *string   `json:"story_current_at,omitempty"`
-	StoryEndAt              *string   `json:"story_end_at,omitempty"`
-	CreatedAt               string    `json:"created_at"`
-	UpdatedAt               string    `json:"updated_at"`
+	BriefInitialDescription string    `json:"briefInitialDescription"`
+	BriefFinalDescription   *string   `json:"briefFinalDescription,omitempty"`
+	IsPublic                bool      `json:"isPublic"`
+	CallLink                string    `json:"callLink"`
+	StoryStartAt            string    `json:"storyStartAt"`
+	StoryCurrentAt          *string   `json:"storyCurrentAt,omitempty"`
+	StoryEndAt              *string   `json:"storyEndAt,omitempty"`
+	CreatedAt               string    `json:"createdAt"`
+	UpdatedAt               string    `json:"updatedAt"`
 }
 
 func ListCampaignsHandler(

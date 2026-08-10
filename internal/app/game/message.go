@@ -53,7 +53,7 @@ const (
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
 
 	// Server → Client (lobby lifecycle)
-	MsgTypeLobbyClosed  MessageType = "lobby_closed"   // master cancelled the lobby
+	MsgTypeLobbyClosed MessageType = "lobby_closed" // master cancelled the lobby
 	// MsgTypeLobbyNotOpen is sent by handler.go when a participant tries to connect before the master opens the lobby
 	MsgTypeLobbyNotOpen MessageType = "lobby_not_open"
 
@@ -84,7 +84,7 @@ const (
 type Message struct {
 	Type      MessageType     `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
-	SenderID  uuid.UUID       `json:"sender_id"`
+	SenderID  uuid.UUID       `json:"senderId"`
 	Timestamp time.Time       `json:"timestamp"`
 }
 
@@ -99,7 +99,7 @@ type PlayerPayload struct {
 }
 
 type RoomStatePayload struct {
-	MatchUUID uuid.UUID    `json:"match_uuid"`
+	MatchUUID uuid.UUID    `json:"matchUuid"`
 	State     string       `json:"state"`
 	Players   []PlayerInfo `json:"players"`
 }
@@ -107,8 +107,8 @@ type RoomStatePayload struct {
 type PlayerInfo struct {
 	UUID     uuid.UUID `json:"uuid"`
 	Nickname string    `json:"nickname"`
-	IsMaster bool      `json:"is_master"`
-	IsOnline bool      `json:"is_online"`
+	IsMaster bool      `json:"isMaster"`
+	IsOnline bool      `json:"isOnline"`
 }
 
 type ChatPayload struct {
@@ -116,7 +116,7 @@ type ChatPayload struct {
 }
 
 type KickPlayerPayload struct {
-	PlayerUUID uuid.UUID `json:"player_uuid"`
+	PlayerUUID uuid.UUID `json:"playerUuid"`
 }
 
 type PlayerKickedPayload struct {
@@ -135,9 +135,9 @@ type SlotPayload struct {
 }
 
 type PieceMovedPayload struct {
-	PieceID     string      `json:"piece_id"`
+	PieceID     string      `json:"pieceId"`
 	Slot        SlotPayload `json:"slot"`
-	CharacterID string      `json:"character_id,omitempty"`
+	CharacterID string      `json:"characterId,omitempty"`
 	Visible     *bool       `json:"visible,omitempty"`
 	// Z is the piece's virtual height in metres (0 = ground). The game server never
 	// reads it: line of sight is computed in 2D, so elevation rides through as opaque
@@ -148,19 +148,19 @@ type PieceMovedPayload struct {
 }
 
 type PieceRemovedPayload struct {
-	PieceID string `json:"piece_id"`
+	PieceID string `json:"pieceId"`
 }
 
 type PullActionPayload struct {
-	ActionID uuid.UUID `json:"action_id"`
+	ActionID uuid.UUID `json:"actionId"`
 }
 
 // ActionPayload is the unified shape for both enqueue_action and attach_reaction messages.
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
 type ActionPayload struct {
-	ReactToID uuid.UUID            `json:"react_to_id,omitempty"`
-	TargetID  []uuid.UUID          `json:"target_id,omitempty"`
+	ReactToID uuid.UUID            `json:"reactToId,omitempty"`
+	TargetID  []uuid.UUID          `json:"targetId,omitempty"`
 	Skills    []ActionSkillPayload `json:"skills,omitempty"`
 	Speed     *ActionSpeedPayload  `json:"speed,omitempty"`
 	Feint     *RollCheckPayload    `json:"feint,omitempty"`
@@ -172,12 +172,12 @@ type ActionPayload struct {
 }
 
 type RollCheckPayload struct {
-	SkillName string `json:"skill_name"`
+	SkillName string `json:"skillName"`
 }
 
 type DodgePayload struct {
 	Category  string            `json:"category"`
-	RollCheck *RollCheckPayload `json:"roll_check,omitempty"`
+	RollCheck *RollCheckPayload `json:"rollCheck,omitempty"`
 }
 
 type AttackPayload struct {
@@ -189,7 +189,7 @@ type AttackPayload struct {
 
 type DefensePayload struct {
 	Weapon    *string          `json:"weapon,omitempty"`
-	RollCheck RollCheckPayload `json:"roll_check"`
+	RollCheck RollCheckPayload `json:"rollCheck"`
 }
 
 type InteractPayload struct {
@@ -206,27 +206,27 @@ type MovePayload struct {
 
 type ActionSpeedPayload struct {
 	Bar       int               `json:"bar"`
-	RollCheck *RollCheckPayload `json:"roll_check,omitempty"`
+	RollCheck *RollCheckPayload `json:"rollCheck,omitempty"`
 }
 
 type ActionSkillPayload struct {
-	SkillName  string `json:"skill_name"`
+	SkillName  string `json:"skillName"`
 	Difficulty *int   `json:"difficulty,omitempty"`
 }
 
 type TurnOpenedPayload struct {
-	TurnID     uuid.UUID `json:"turn_id"`
-	ActorID    uuid.UUID `json:"actor_id"`
-	ActionType string    `json:"action_type"`
+	TurnID     uuid.UUID `json:"turnId"`
+	ActorID    uuid.UUID `json:"actorId"`
+	ActionType string    `json:"actionType"`
 }
 
 type RoundClosedPayload struct {
-	RoundMode string `json:"round_mode"`
+	RoundMode string `json:"roundMode"`
 }
 
 type ResolutionUpdatedPayload struct {
-	TurnID    uuid.UUID `json:"turn_id"`
-	IsSettled bool      `json:"is_settled"`
+	TurnID    uuid.UUID `json:"turnId"`
+	IsSettled bool      `json:"isSettled"`
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {
@@ -258,45 +258,45 @@ func NewErrorMessage(code, message string) Message {
 
 type ChangeScenePayload struct {
 	Category                string `json:"category"`
-	BriefInitialDescription string `json:"brief_initial_description"`
+	BriefInitialDescription string `json:"briefInitialDescription"`
 }
 
 type SceneChangedPayload struct {
-	SceneID                 uuid.UUID `json:"scene_id"`
+	SceneID                 uuid.UUID `json:"sceneId"`
 	Category                string    `json:"category"`
-	BriefInitialDescription string    `json:"brief_initial_description"`
+	BriefInitialDescription string    `json:"briefInitialDescription"`
 }
 
 type MasterActionPayload struct {
-	TargetIDs   []uuid.UUID          `json:"target_ids"`
+	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
 	Attack      *AttackPayload       `json:"attack,omitempty"`
-	ActionSpeed *RollCheckPayload    `json:"action_speed,omitempty"`
+	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
 
 type MasterActionEnqueuedPayload struct {
-	TargetIDs   []uuid.UUID          `json:"target_ids"`
+	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
 	Attack      *AttackPayload       `json:"attack,omitempty"`
-	ActionSpeed *RollCheckPayload    `json:"action_speed,omitempty"`
+	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
 
 // WallStateChangedPayload is broadcast to all clients when a wall's open/locked state changes.
 type WallStateChangedPayload struct {
-	WallID string `json:"wall_id"`
+	WallID string `json:"wallId"`
 	Open   bool   `json:"open"`
 	Locked bool   `json:"locked"`
 }
 
 // WallHpChangedPayload is broadcast to all clients when a wall's HP or destroyed state changes.
 type WallHpChangedPayload struct {
-	WallID    string `json:"wall_id"`
+	WallID    string `json:"wallId"`
 	HP        int    `json:"hp"`
-	MaxHP     int    `json:"max_hp"`
+	MaxHP     int    `json:"maxHp"`
 	Destroyed bool   `json:"destroyed"`
 }
 
@@ -310,9 +310,9 @@ type WallHpChangedPayload struct {
 // treating its absent pieces as an empty board would erase every LOS origin and leave
 // players with no visibility polygons at all.
 type MapStateSyncPayload struct {
-	Pieces *[]PieceMovedPayload     `json:"pieces,omitempty"`
-	Walls  []mapentity.WallSegment  `json:"walls,omitempty"`
-	Grid   *mapentity.GridShape     `json:"grid,omitempty"`
+	Pieces *[]PieceMovedPayload `json:"pieces,omitempty"`
+	Walls  []WallSegmentPayload `json:"walls,omitempty"`
+	Grid   *GridShapePayload    `json:"grid,omitempty"`
 }
 
 type Point2DPayload struct {
@@ -321,17 +321,125 @@ type Point2DPayload struct {
 }
 
 type VisibilityUpdatedPayload struct {
-	VisiblePolygons [][]Point2DPayload `json:"visible_polygons"`
+	VisiblePolygons [][]Point2DPayload `json:"visiblePolygons"`
 }
 
 type WallRevealedPayload struct {
-	Wall mapentity.WallSegment `json:"wall"`
+	Wall WallSegmentPayload `json:"wall"`
 }
 
 // MapFullStatePayload is the per-player map_full_state (server→client).
 type MapFullStatePayload struct {
-	Pieces          []PieceMovedPayload     `json:"pieces"`
-	Walls           []mapentity.WallSegment `json:"walls,omitempty"`
-	VisiblePolygons [][]Point2DPayload      `json:"visible_polygons,omitempty"`
-	FogMode         string                  `json:"fog_mode"`
+	Pieces          []PieceMovedPayload  `json:"pieces"`
+	Walls           []WallSegmentPayload `json:"walls,omitempty"`
+	VisiblePolygons [][]Point2DPayload   `json:"visiblePolygons,omitempty"`
+	FogMode         string               `json:"fogMode"`
+}
+
+// WallSegmentPayload is the WS wire-format mirror of entity.WallSegment, camelCase-tagged.
+// Kept local to the game package (not shared with internal/app/api/map) so this delivery
+// channel stays self-contained, mirroring the REST boundary DTOs in map_request.go/map_response.go.
+type WallSegmentPayload struct {
+	ID            string     `json:"id"`
+	P1            [2]float64 `json:"p1"`
+	P2            [2]float64 `json:"p2"`
+	WallType      string     `json:"wallType"`
+	Material      string     `json:"material"`
+	DoorSubtype   *string    `json:"doorSubtype,omitempty"`
+	WindowSubtype *string    `json:"windowSubtype,omitempty"`
+	Move          bool       `json:"move"`
+	Sense         string     `json:"sense"`
+	Direction     string     `json:"direction"`
+	Open          bool       `json:"open"`
+	Locked        bool       `json:"locked"`
+	HP            int        `json:"hp"`
+	MaxHP         int        `json:"maxHp"`
+	Resistance    int        `json:"resistance"`
+	Destroyed     bool       `json:"destroyed"`
+	Revealed      bool       `json:"revealed"`
+}
+
+// GridShapePayload is the WS wire-format mirror of entity.GridShape, camelCase-tagged.
+type GridShapePayload struct {
+	Kind      string  `json:"kind"`
+	Cols      int     `json:"cols"`
+	Rows      int     `json:"rows"`
+	CellSize  float64 `json:"cellSize"`
+	SkewRatio float64 `json:"skewRatio"`
+	Rotation  float64 `json:"rotation"`
+	Color     string  `json:"color"`
+	Opacity   float64 `json:"opacity"`
+	LineStyle string  `json:"lineStyle"`
+}
+
+func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {
+	p := WallSegmentPayload{
+		ID:         w.ID,
+		P1:         w.P1,
+		P2:         w.P2,
+		WallType:   string(w.WallType),
+		Material:   string(w.Material),
+		Move:       w.Move,
+		Sense:      string(w.Sense),
+		Direction:  string(w.Direction),
+		Open:       w.Open,
+		Locked:     w.Locked,
+		HP:         w.HP,
+		MaxHP:      w.MaxHP,
+		Resistance: w.Resistance,
+		Destroyed:  w.Destroyed,
+		Revealed:   w.Revealed,
+	}
+	if w.DoorSubtype != nil {
+		s := string(*w.DoorSubtype)
+		p.DoorSubtype = &s
+	}
+	if w.WindowSubtype != nil {
+		s := string(*w.WindowSubtype)
+		p.WindowSubtype = &s
+	}
+	return p
+}
+
+func toEntityWallSegment(w WallSegmentPayload) mapentity.WallSegment {
+	seg := mapentity.WallSegment{
+		ID:         w.ID,
+		P1:         w.P1,
+		P2:         w.P2,
+		WallType:   mapentity.WallType(w.WallType),
+		Material:   mapentity.WallMaterial(w.Material),
+		Move:       w.Move,
+		Sense:      mapentity.SenseKind(w.Sense),
+		Direction:  mapentity.WallDirection(w.Direction),
+		Open:       w.Open,
+		Locked:     w.Locked,
+		HP:         w.HP,
+		MaxHP:      w.MaxHP,
+		Resistance: w.Resistance,
+		Destroyed:  w.Destroyed,
+		Revealed:   w.Revealed,
+	}
+	if w.DoorSubtype != nil {
+		d := mapentity.DoorSubtype(*w.DoorSubtype)
+		seg.DoorSubtype = &d
+	}
+	if w.WindowSubtype != nil {
+		wi := mapentity.WindowSubtype(*w.WindowSubtype)
+		seg.WindowSubtype = &wi
+	}
+	return seg
+}
+
+func toEntityGridShape(g GridShapePayload) mapentity.GridShape {
+	return mapentity.GridShape{
+		Kind:      mapentity.GridKind(g.Kind),
+		Cols:      g.Cols,
+		Rows:      g.Rows,
+		CellSize:  g.CellSize,
+		SkewRatio: g.SkewRatio,
+		Rotation:  g.Rotation,
+		Color:     g.Color,
+		Opacity:   g.Opacity,
+		LineStyle: mapentity.LineStyle(g.LineStyle),
+	}
 }
