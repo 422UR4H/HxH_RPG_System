@@ -55,15 +55,15 @@ mapa inteiro.
   "payload": {
     "pieces": [
       {
-        "piece_id": "<uuid>",
+        "pieceId": "<uuid>",
         "slot": { "kind": "square", "col": 18, "row": 19 },
-        "character_id": "<sheet-uuid>",
+        "characterId": "<sheet-uuid>",
         "visible": true,
         "z": 1.5
       }
     ],
-    "walls": [ { "id": "<uuid>", "p1": [0, 0], "p2": [96, 0], "wall_type": "wall", "...": "..." } ],
-    "grid": { "kind": "square", "cols": 35, "rows": 35, "cell_size": 96, "skew_ratio": 1 }
+    "walls": [ { "id": "<uuid>", "p1": [0, 0], "p2": [96, 0], "wallType": "wall", "...": "..." } ],
+    "grid": { "kind": "square", "cols": 35, "rows": 35, "cellSize": 96, "skewRatio": 1 }
   }
 }
 ```

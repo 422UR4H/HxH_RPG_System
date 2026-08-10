@@ -16,12 +16,12 @@ JWT required (`Authorization: Bearer <token>`). Only the campaign's master may c
 ```json
 {
   "name": "string (5-32 chars)",
-  "brief_initial_description": "string (max 255)",
+  "briefInitialDescription": "string (max 255)",
   "description": "string",
-  "is_public": true,
-  "call_link": "string (max 255)",
-  "story_start_at": "YYYY-MM-DD",
-  "story_current_at": "ISO 8601 (e.g. 2026-07-20T10:00:00Z)"
+  "isPublic": true,
+  "callLink": "string (max 255)",
+  "storyStartAt": "YYYY-MM-DD",
+  "storyCurrentAt": "ISO 8601 (e.g. 2026-07-20T10:00:00Z)"
 }
 ```
 
@@ -32,14 +32,14 @@ Empty body is a valid noop (returns current state).
 | Field | Free (no match started) | Restricted (match started) |
 |-------|------------------------|---------------------------|
 | `name` | ✅ editable | ❌ locked |
-| `story_start_at` | ✅ editable | ❌ locked |
-| `story_current_at` | ✅ any value | ✅ cannot go earlier than current value |
-| `brief_initial_description` | ✅ | ✅ |
+| `storyStartAt` | ✅ editable | ❌ locked |
+| `storyCurrentAt` | ✅ any value | ✅ cannot go earlier than current value |
+| `briefInitialDescription` | ✅ | ✅ |
 | `description` | ✅ | ✅ |
-| `is_public` | ✅ | ✅ |
-| `call_link` | ✅ | ✅ |
+| `isPublic` | ✅ | ✅ |
+| `callLink` | ✅ | ✅ |
 
-**`story_current_at` non-regression:** if the campaign already has a `story_current_at` value, the new value must be ≥ the current one. If the current value is null, any value is accepted.
+**`storyCurrentAt` non-regression:** if the campaign already has a `storyCurrentAt` value, the new value must be ≥ the current one. If the current value is null, any value is accepted.
 
 ## Success Response `200 OK`
 
@@ -47,15 +47,15 @@ Empty body is a valid noop (returns current state).
 {
   "campaign": {
     "uuid": "uuid",
-    "master_uuid": "uuid",
+    "masterUuid": "uuid",
     "name": "string",
-    "brief_initial_description": "string",
+    "briefInitialDescription": "string",
     "description": "string",
-    "is_public": true,
-    "call_link": "string",
-    "story_start_at": "YYYY-MM-DD",
-    "story_current_at": "ISO 8601 | omitted if null",
-    "updated_at": "RFC 1123"
+    "isPublic": true,
+    "callLink": "string",
+    "storyStartAt": "YYYY-MM-DD",
+    "storyCurrentAt": "ISO 8601 | omitted if null",
+    "updatedAt": "RFC 1123"
   }
 }
 ```
@@ -66,9 +66,9 @@ Empty body is a valid noop (returns current state).
 |--------|-----------|
 | 403 | Caller is not the campaign master |
 | 404 | Campaign not found |
-| 422 | Campaign has ended (story_end_at set) |
-| 422 | `name` or `story_start_at` sent after match has started |
-| 422 | `story_current_at` would go back in time |
+| 422 | Campaign has ended (storyEndAt set) |
+| 422 | `name` or `storyStartAt` sent after match has started |
+| 422 | `storyCurrentAt` would go back in time |
 | 422 | Validation error (name length, brief desc length, call link length) |
 | 422 | Invalid date format |
 | 500 | Unexpected server error |

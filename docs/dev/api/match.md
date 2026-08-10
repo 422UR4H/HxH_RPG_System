@@ -8,23 +8,23 @@
 
 ```json
 {
-  "campaign_uuid": "uuid-v4",
+  "campaignUuid": "uuid-v4",
   "title": "Greed Island - Session 1",
-  "brief_initial_description": "Os heróis chegam à ilha (máx 64 chars)",
+  "briefInitialDescription": "Os heróis chegam à ilha (máx 64 chars)",
   "description": "Descrição completa apenas para o mestre",
-  "is_public": true,
-  "game_scheduled_at": "2026-06-15T19:30:00Z",
-  "story_start_at": "2026-06-15"
+  "isPublic": true,
+  "gameScheduledAt": "2026-06-15T19:30:00Z",
+  "storyStartAt": "2026-06-15"
 }
 ```
 
 | Campo | Regra |
 |---|---|
 | `title` | obrigatório, 5–32 chars |
-| `brief_initial_description` | ≤ 64 chars |
-| `game_scheduled_at` | ISO 8601, futuro, ≤ +1 ano |
-| `story_start_at` | YYYY-MM-DD, dentro da janela da campanha |
-| `is_public` | default `true` |
+| `briefInitialDescription` | ≤ 64 chars |
+| `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
+| `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
+| `isPublic` | default `true` |
 
 ### Respostas
 
@@ -56,19 +56,19 @@
 {
   "match": {
     "uuid": "...",
-    "master_uuid": "...",
-    "campaign_uuid": "...",
+    "masterUuid": "...",
+    "campaignUuid": "...",
     "title": "Greed Island - Session 1",
-    "brief_initial_description": "...",
-    "brief_final_description": null,
+    "briefInitialDescription": "...",
+    "briefFinalDescription": null,
     "description": "...",
-    "is_public": true,
-    "game_scheduled_at": "2026-06-15T19:30:00Z",
-    "game_start_at": null,
-    "story_start_at": "2026-06-15",
-    "story_end_at": null,
-    "created_at": "...",
-    "updated_at": "..."
+    "isPublic": true,
+    "gameScheduledAt": "2026-06-15T19:30:00Z",
+    "gameStartAt": null,
+    "storyStartAt": "2026-06-15",
+    "storyEndAt": null,
+    "createdAt": "...",
+    "updatedAt": "..."
   }
 }
 ```
@@ -97,22 +97,22 @@
 ```json
 {
   "title": "Novo título",
-  "brief_initial_description": "Novo brief",
+  "briefInitialDescription": "Novo brief",
   "description": "Nova descrição",
-  "is_public": false,
-  "game_scheduled_at": "2026-07-20T19:30:00Z",
-  "story_start_at": "2026-07-20"
+  "isPublic": false,
+  "gameScheduledAt": "2026-07-20T19:30:00Z",
+  "storyStartAt": "2026-07-20"
 }
 ```
 
 | Campo | Regra (se enviado) |
 |---|---|
 | `title` | 5–32 chars |
-| `brief_initial_description` | ≤ 64 chars |
-| `game_scheduled_at` | ISO 8601, futuro, ≤ +1 ano |
-| `story_start_at` | YYYY-MM-DD, dentro da janela da campanha |
+| `briefInitialDescription` | ≤ 64 chars |
+| `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
+| `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
 
-`campaign_uuid` é imutável — não enviar.
+`campaignUuid` é imutável — não enviar.
 
 Body vazio (`{}`) é no-op idempotente, retorna 200 com a partida atual.
 
@@ -158,7 +158,7 @@ Mesmo formato de `GET /matches/{uuid}` — partida com campos atualizados.
 
 **Auth:** JWT obrigatório
 
-Retorna todas as partidas em que o usuário é mestre, ordenadas por `story_start_at` ASC.
+Retorna todas as partidas em que o usuário é mestre, ordenadas por `storyStartAt` ASC.
 
 ### Response 200
 
@@ -167,17 +167,17 @@ Retorna todas as partidas em que o usuário é mestre, ordenadas por `story_star
   "matches": [
     {
       "uuid": "...",
-      "campaign_uuid": "...",
+      "campaignUuid": "...",
       "title": "...",
-      "brief_initial_description": "...",
-      "brief_final_description": null,
-      "is_public": true,
-      "game_scheduled_at": "...",
-      "game_start_at": null,
-      "story_start_at": "...",
-      "story_end_at": null,
-      "created_at": "...",
-      "updated_at": "..."
+      "briefInitialDescription": "...",
+      "briefFinalDescription": null,
+      "isPublic": true,
+      "gameScheduledAt": "...",
+      "gameStartAt": null,
+      "storyStartAt": "...",
+      "storyEndAt": null,
+      "createdAt": "...",
+      "updatedAt": "..."
     }
   ]
 }
@@ -233,12 +233,20 @@ Visibilidade por linha:
     {
       "uuid": "...",
       "status": "pending | accepted | rejected",
-      "created_at": "...",
-      "character_sheet": {
+      "createdAt": "...",
+      "characterSheet": {
         "uuid": "...",
-        "nick_name": "Gon",
-        "avatar_url": "...",
-        "cover_url": "...",
+        "playerUuid": "...",
+        "masterUuid": "...",
+        "campaignUuid": "...",
+        "nickName": "Gon",
+        "avatarUrl": "...",
+        "coverUrl": "...",
+        "storyStartAt": "...",
+        "storyCurrentAt": "...",
+        "deadAt": null,
+        "createdAt": "...",
+        "updatedAt": "...",
         "private": { }
       },
       "player": { "uuid": "...", "nick": "..." }
@@ -246,6 +254,8 @@ Visibilidade por linha:
   ]
 }
 ```
+
+`characterSheet.private` é sempre enviado, mas vem `null` para quem não vê o resumo privado da ficha (regra de visibilidade acima).
 
 ### Erros
 
@@ -271,19 +281,29 @@ Lista personagens que entraram na partida (snapshot a partir de `StartMatch`).
   "participants": [
     {
       "uuid": "...",
-      "joined_at": "...",
-      "left_at": null,
-      "character_sheet": {
+      "joinedAt": "...",
+      "leftAt": null,
+      "characterSheet": {
         "uuid": "...",
-        "nick_name": "Killua",
-        "avatar_url": "...",
-        "cover_url": "...",
+        "playerUuid": "...",
+        "masterUuid": "...",
+        "campaignUuid": "...",
+        "nickName": "Killua",
+        "avatarUrl": "...",
+        "coverUrl": "...",
+        "storyStartAt": "...",
+        "storyCurrentAt": "...",
+        "deadAt": null,
+        "createdAt": "...",
+        "updatedAt": "...",
         "private": { }
       }
     }
   ]
 }
 ```
+
+`characterSheet.private` é enviado apenas ao mestre da partida; para os demais vem `null`.
 
 ### Erros
 
