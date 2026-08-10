@@ -33,7 +33,7 @@
 
 - `campaignUuid`: opcional.
   - `null`/ausente → a ficha é criada **livre**, pertencente ao usuário autenticado (`playerUuid` na resposta).
-  - presente → a ficha é criada **diretamente vinculada a uma campanha**, pertencente ao mestre autenticado (`masterUuid` na resposta); o back-end valida que o usuário é de fato o mestre daquela campanha (`403` via `campaign.ErrNotCampaignOwner` caso não seja — mapeado para erro de domínio, ver tabela de respostas).
+  - presente → a ficha é criada **diretamente vinculada a uma campanha**, pertencente ao mestre autenticado (`masterUuid` na resposta); o back-end valida que o usuário é de fato o mestre daquela campanha e que a campanha existe. `campaign.ErrNotCampaignOwner` e `campaign.ErrCampaignNotFound` são ambos construídos via `domain.NewValidationError` (`internal/application/campaign/error.go`) e o handler (`internal/app/api/sheet/create_character_sheet.go`) não tem `case` explícito para nenhum dos dois — caem no `case errors.Is(err, domain.ErrValidation)`, resultando em **`422`, não `403`** (ver tabela de respostas).
 - `profile`: objeto `ProfileRequest` (ver validações abaixo). `avatarUrl`/`coverUrl` também podem ser enviados aqui (opcionais), embora normalmente sejam setados depois via `PATCH /charactersheets/{uuid}/profile`.
 - `characterClass`: nome de uma classe válida (ex.: `Hunter`, `Swordsman`, `Ninja`...).
 - `skillsExps`: `map[string]int`. Chave deve bater **exatamente** (case-sensitive) com um `SkillName` conhecido (ex.: `Vitality`, `Accuracy`, `Focus`). Valor é EXP a aplicar na skill na criação.
@@ -67,8 +67,8 @@ Envelope `{ "characterSheet": {...} }` — ver shape completo em [Shape de `char
 | 400 | UUID da campanha inválido, enum inválido (classe/skill/proficiência/atributo) |
 | 409 | Nickname já existe |
 | 404 | Classe de personagem não encontrada |
-| 403 | Limite de fichas atingido (jogador) / usuário não é o mestre da campanha informada |
-| 422 | Perfil inválido (birthday ausente, nickname/fullname fora do tamanho, alignment mal formatado, etc.) |
+| 403 | Limite de fichas atingido (jogador) |
+| 422 | Perfil inválido (birthday ausente, nickname/fullname fora do tamanho, alignment mal formatado, etc.) / usuário não é o mestre da campanha informada (`campaign.ErrNotCampaignOwner`) / campanha não encontrada (`campaign.ErrCampaignNotFound`) — ambos caem no fallback `domain.ErrValidation` do handler |
 
 ---
 
@@ -348,6 +348,8 @@ Retorna as fichas do jogador autenticado, no shape de summary privado (ver [Shap
 
 **Mesmo formato exato que `POST /charactersheets`** — o handler reutiliza o mesmo `CreateCharacterSheetRequestBody` (verificado em `internal/app/api/sheet/update_character_sheet.go`: `Body CreateCharacterSheetRequestBody`). Isso inclui `campaignUuid`, `profile`, `characterClass`, `skillsExps`, `proficienciesExps` e `attributePoints` — todos com as mesmas regras de validação do create.
 
+**Exceção: `campaignUuid` é ignorado no update.** `UpdateCharacterSheetUC.UpdateCharacterSheet` (`internal/application/character_sheet/update_character_sheet.go`) nunca lê `input.CampaignUUID` — a ficha atualizada é reconstruída com `rel.CampaignUUID`, obtido do registro existente no banco (`rel, err := uc.repo.GetCharacterSheetRelationshipUUIDs(...)`, ~linha 83). Ou seja, qualquer valor de `campaignUuid` enviado no corpo do PATCH é silenciosamente descartado — **PATCH não move uma ficha entre campanhas**.
+
 ```json
 {
   "campaignUuid": null,
@@ -447,7 +449,7 @@ Ficha deletada com sucesso. Nenhum corpo na resposta.
 ## Shapes de summary
 
 Os endpoints que retornam listas/summaries de fichas (`GET /charactersheets`,
-`GET /campaigns/:id`, enrollments e participants de partida — ver
+`GET /campaigns/{uuid}`, enrollments e participants de partida — ver
 `internal/app/api/campaign/campaign_response.go`,
 `internal/app/api/match/list_match_enrollments.go` e
 `internal/app/api/match/get_match_participants.go`) usam os tipos definidos
