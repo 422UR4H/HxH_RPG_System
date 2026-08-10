@@ -24,7 +24,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 			"fullname":          "Gon Freecss",
 			"alignment":         "Chaotic-Good",
 			"description":       "A young hunter",
-			"brief_description": "Hunter boy",
+			"briefDescription":  "Hunter boy",
 			"age":               12,
 			"birthday":          "0000-05-15T00:00:00Z",
 		},
