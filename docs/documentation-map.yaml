@@ -449,7 +449,18 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: possibly_affected
-    notes: WS message type definitions — piece_moved, piece_removed, map_state_sync, map_full_state (visible_polygons/fog_mode; explored_cells/explored_delta removed in Phase 10-E), wall_hp_changed, wall_state_changed, visibility_updated, wall_revealed
+      - path: System_X_System_React/docs/dev/http-boundary-inventory.md
+        confidence: possibly_affected
+    notes: >
+      WS message type definitions — piece_moved, piece_removed, map_state_sync,
+      map_full_state (visible_polygons/fog_mode; explored_cells/explored_delta
+      removed in Phase 10-E), wall_hp_changed, wall_state_changed,
+      visibility_updated, wall_revealed.
+      http-boundary-inventory.md (frontend repo) maps every message type this
+      file defines that useLobbyWs.ts/useMatchWs.ts actually consume, to the
+      exact field names each hook reads and whether it runs objToCamelCase or
+      reads the wire snake_case fields raw — a payload field rename here is
+      exactly the kind of change that doc tracks.
 
   - code_path: internal/app/game/room.go
     dev_docs:
@@ -469,8 +480,16 @@ mappings:
     dev_docs:
       - path: docs/dev/overview.md
         confidence: possibly_affected
+      - path: System_X_System_React/docs/dev/http-boundary-inventory.md
+        confidence: possibly_affected
     game_docs: []
-    notes: HTTP handlers — doc impact depends on whether behavior changes
+    notes: >
+      HTTP handlers — doc impact depends on whether behavior changes.
+      http-boundary-inventory.md (frontend repo) maps every REST endpoint's
+      response envelope/struct to the frontend service that consumes it and
+      whether it goes through objToCamelCase/objToSnakeCase — a json tag
+      rename on any *_response.go struct is exactly the kind of change that
+      doc tracks; written for Fase 8 (React) of the case-conversion unification.
 
   # ─── Domain Services (Engines/Use Cases) ───
   - code_path: internal/domain/character_sheet/
