@@ -20,13 +20,13 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 
 	validBody := map[string]any{
 		"profile": map[string]any{
-			"nickname":          "Gon",
-			"fullname":          "Gon Freecss",
-			"alignment":         "Chaotic-Good",
-			"description":       "A young hunter",
-			"briefDescription":  "Hunter boy",
-			"age":               12,
-			"birthday":          "0000-05-15T00:00:00Z",
+			"nickname":         "Gon",
+			"fullname":         "Gon Freecss",
+			"alignment":        "Chaotic-Good",
+			"description":      "A young hunter",
+			"briefDescription": "Hunter boy",
+			"age":              12,
+			"birthday":         "0000-05-15T00:00:00Z",
 		},
 		"characterClass":    "Hunter",
 		"skillsExps":        map[string]any{},

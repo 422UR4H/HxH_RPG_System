@@ -16,7 +16,7 @@ import (
 )
 
 type UpdateCharacterSheetRequest struct {
-	UUID string                           `path:"uuid" required:"true"`
+	UUID string `path:"uuid" required:"true"`
 	Body CreateCharacterSheetRequestBody
 }
 

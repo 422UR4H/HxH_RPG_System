@@ -36,8 +36,8 @@ type CampaignMasterResponse struct {
 
 type CampaignPlayerResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPublicSummaryResponse  `json:"characterSheets"`
-	MyPendingSheet  *sheet.CharacterPrivateSummaryResponse  `json:"myPendingSheet,omitempty"`
+	CharacterSheets []sheet.CharacterPublicSummaryResponse `json:"characterSheets"`
+	MyPendingSheet  *sheet.CharacterPrivateSummaryResponse `json:"myPendingSheet,omitempty"`
 }
 
 func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {

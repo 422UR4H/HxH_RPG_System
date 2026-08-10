@@ -26,10 +26,10 @@ func TestGetCampaignHandler(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name            string
-		mockFn          func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error)
-		enrollmentMock  *mockListPlayerEnrollments
-		wantStatus      int
+		name           string
+		mockFn         func(ctx context.Context, id uuid.UUID, uid uuid.UUID) (*campaignEntity.Campaign, error)
+		enrollmentMock *mockListPlayerEnrollments
+		wantStatus     int
 	}{
 		{
 			name: "success",

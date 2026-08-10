@@ -233,7 +233,7 @@ func TestE2E_MasterSyncsThenPlayerJoins_PlayerSeesFogLiftedAroundOwnPiece(t *tes
 	f := newFogFixture(t)
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	f.sendBoardSync(t, master)
@@ -252,11 +252,11 @@ func TestE2E_PlayerJoinsBeforeSync_ServerRepushesLineOfSight(t *testing.T) {
 	f := newFogFixture(t)
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	player := f.connectPlayer(t)
-	defer player.Close() //nolint:errcheck
+	defer player.Close()               //nolint:errcheck
 	time.Sleep(200 * time.Millisecond) // player is registered on the empty board
 
 	f.sendBoardSync(t, master)
@@ -282,7 +282,7 @@ func TestE2E_LargeBoardSyncIsNotRejected(t *testing.T) {
 	}
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	player := f.connectPlayer(t)
@@ -305,7 +305,7 @@ func TestE2E_MasterSeesWholeBoardWithoutFog(t *testing.T) {
 	f := newFogFixture(t)
 
 	master := f.connectMaster(t)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	f.sendBoardSync(t, master)

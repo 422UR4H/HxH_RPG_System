@@ -9,8 +9,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
-	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"

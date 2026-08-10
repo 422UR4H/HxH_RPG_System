@@ -10,8 +10,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -46,11 +46,11 @@ func TestUpdateCampaignHandler(t *testing.T) {
 		{
 			name: "success_full_patch",
 			body: map[string]any{
-				"name":                      "New Name",
+				"name":                    "New Name",
 				"briefInitialDescription": "new brief",
-				"description":               "new desc",
-				"isPublic":                 false,
-				"callLink":                 "https://meet.new",
+				"description":             "new desc",
+				"isPublic":                false,
+				"callLink":                "https://meet.new",
 				"storyStartAt":            "2026-07-20",
 				"storyCurrentAt":          "2026-07-20T10:00:00Z",
 			},

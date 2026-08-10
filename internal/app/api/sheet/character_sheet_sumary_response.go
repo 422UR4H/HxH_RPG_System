@@ -33,25 +33,25 @@ type CharacterBaseSummaryResponse struct {
 // owner (and to the master of a match the sheet is enrolled in). It does NOT
 // embed the base — it is meant to be nested under a base-typed parent.
 type CharacterPrivateOnlyResponse struct {
-	FullName       string    `json:"fullName"`
-	Alignment      string    `json:"alignment"`
-	CharacterClass string    `json:"characterClass"`
-	Birthday       string    `json:"birthday"`
-	CategoryName   string    `json:"categoryName"`
-	CurrHexValue   *int      `json:"currHexValue,omitempty"`
-	Level          int       `json:"level"`
-	Points         int       `json:"points"`
+	FullName       string `json:"fullName"`
+	Alignment      string `json:"alignment"`
+	CharacterClass string `json:"characterClass"`
+	Birthday       string `json:"birthday"`
+	CategoryName   string `json:"categoryName"`
+	CurrHexValue   *int   `json:"currHexValue,omitempty"`
+	Level          int    `json:"level"`
+	Points         int    `json:"points"`
 	// CurrExp and NxtLvlBaseExp are derived from char_exp (denormalized) + charExpTable.
 	// Do NOT use for game logic — always use the full sheet build for that.
-	CurrExp        int       `json:"currExp"`
-	NxtLvlBaseExp  int       `json:"nextLvlBaseExp"`
-	TalentLvl      int       `json:"talentLvl"`
-	PhysicalsLvl   int       `json:"physicalsLvl"`
-	MentalsLvl     int       `json:"mentalsLvl"`
-	SpiritualsLvl  int       `json:"spiritualsLvl"`
-	SkillsLvl      int       `json:"skillsLvl"`
-	Stamina        StatusBar `json:"stamina"`
-	Health         StatusBar `json:"health"`
+	CurrExp       int       `json:"currExp"`
+	NxtLvlBaseExp int       `json:"nextLvlBaseExp"`
+	TalentLvl     int       `json:"talentLvl"`
+	PhysicalsLvl  int       `json:"physicalsLvl"`
+	MentalsLvl    int       `json:"mentalsLvl"`
+	SpiritualsLvl int       `json:"spiritualsLvl"`
+	SkillsLvl     int       `json:"skillsLvl"`
+	Stamina       StatusBar `json:"stamina"`
+	Health        StatusBar `json:"health"`
 	// Aura           StatusBar  `json:"aura"`
 }
 
@@ -83,10 +83,10 @@ func ToPrivateOnlyResponse(sheet *csEntity.Summary) CharacterPrivateOnlyResponse
 		Birthday:       sheet.Birthday.Format("2006-01-02"),
 		CategoryName:   sheet.CategoryName,
 		CurrHexValue:   sheet.CurrHexValue,
-		Level:         charExpTable.GetLvlByExp(sheet.CharExp),
-		Points:        sheet.Points,
-		CurrExp:       deriveCurrExp(sheet.CharExp),
-		NxtLvlBaseExp: deriveNxtLvlBaseExp(sheet.CharExp),
+		Level:          charExpTable.GetLvlByExp(sheet.CharExp),
+		Points:         sheet.Points,
+		CurrExp:        deriveCurrExp(sheet.CharExp),
+		NxtLvlBaseExp:  deriveNxtLvlBaseExp(sheet.CharExp),
 		TalentLvl:      sheet.TalentLvl,
 		PhysicalsLvl:   sheet.PhysicalsLvl,
 		MentalsLvl:     sheet.MentalsLvl,

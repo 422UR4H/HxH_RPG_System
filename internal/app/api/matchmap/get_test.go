@@ -109,4 +109,3 @@ func TestGetMatchMapHandler_InternalError_Returns500(t *testing.T) {
 		t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusInternalServerError, resp.Body.String())
 	}
 }
-

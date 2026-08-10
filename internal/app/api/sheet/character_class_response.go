@@ -2,18 +2,18 @@ package sheet
 
 import (
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
-	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
+	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	s "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/skill"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
 type CharacterClassResponse struct {
-	Profile       ClassProfileResponse         `json:"profile"`
-	Abilities     map[string]Ability           `json:"abilities"`
-	Attributes    map[string]Attribute         `json:"attributes"`
-	Skills        map[string]Skill             `json:"skills"`
-	JointSkills   map[string]s.JointSkill      `json:"jointSkills"`
+	Profile       ClassProfileResponse          `json:"profile"`
+	Abilities     map[string]Ability            `json:"abilities"`
+	Attributes    map[string]Attribute          `json:"attributes"`
+	Skills        map[string]Skill              `json:"skills"`
+	JointSkills   map[string]s.JointSkill       `json:"jointSkills"`
 	Proficiencies map[string]ExperienceResponse `json:"proficiencies"`
 	// JointProficiencies  map[string]p.JointProficiency `json:"jointProficiencies"`
 	JointProficiencies  []JointProf           `json:"jointProficiencies"`

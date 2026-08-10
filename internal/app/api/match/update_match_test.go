@@ -10,8 +10,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -48,10 +48,10 @@ func TestUpdateMatchHandler(t *testing.T) {
 		{
 			name: "success_full_patch",
 			body: map[string]any{
-				"title":                     "Patched Title",
+				"title":                   "Patched Title",
 				"briefInitialDescription": "Patched brief",
-				"description":               "Patched desc",
-				"isPublic":                 false,
+				"description":             "Patched desc",
+				"isPublic":                false,
 				"gameScheduledAt":         "2026-07-20T19:30:00Z",
 				"storyStartAt":            "2026-07-20",
 			},

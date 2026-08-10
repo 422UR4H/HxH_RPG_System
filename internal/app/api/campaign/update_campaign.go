@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -24,7 +24,7 @@ type UpdateCampaignRequestBody struct {
 }
 
 type UpdateCampaignRequest struct {
-	UUID uuid.UUID                 `path:"uuid" required:"true" doc:"UUID of the campaign to update"`
+	UUID uuid.UUID `path:"uuid" required:"true" doc:"UUID of the campaign to update"`
 	Body UpdateCampaignRequestBody
 }
 

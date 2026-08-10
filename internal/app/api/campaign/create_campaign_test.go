@@ -10,10 +10,10 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/campaign"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
+	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -32,11 +32,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 		{
 			name: "success",
 			body: map[string]any{
-				"name":                      "Test Campaign",
+				"name":                    "Test Campaign",
 				"briefInitialDescription": "A brief description",
-				"description":               "Full description of the campaign",
-				"isPublic":                 true,
-				"callLink":                 "https://meet.example.com",
+				"description":             "Full description of the campaign",
+				"isPublic":                true,
+				"callLink":                "https://meet.example.com",
 				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
@@ -59,11 +59,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 		{
 			name: "forbidden_max_campaigns_limit",
 			body: map[string]any{
-				"name":                      "Another Campaign",
+				"name":                    "Another Campaign",
 				"briefInitialDescription": "desc",
-				"description":               "full",
-				"isPublic":                 false,
-				"callLink":                 "https://meet.example.com",
+				"description":             "full",
+				"isPublic":                false,
+				"callLink":                "https://meet.example.com",
 				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
@@ -74,11 +74,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 		{
 			name: "not_found_scenario",
 			body: map[string]any{
-				"name":                      "Campaign X",
+				"name":                    "Campaign X",
 				"briefInitialDescription": "desc",
-				"description":               "full",
-				"isPublic":                 false,
-				"callLink":                 "https://meet.example.com",
+				"description":             "full",
+				"isPublic":                false,
+				"callLink":                "https://meet.example.com",
 				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
@@ -89,11 +89,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 		{
 			name: "unprocessable_entity_validation_error",
 			body: map[string]any{
-				"name":                      "Bad",
+				"name":                    "Bad",
 				"briefInitialDescription": "desc",
-				"description":               "full",
-				"isPublic":                 false,
-				"callLink":                 "https://meet.example.com",
+				"description":             "full",
+				"isPublic":                false,
+				"callLink":                "https://meet.example.com",
 				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
@@ -104,11 +104,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 		{
 			name: "internal_server_error",
 			body: map[string]any{
-				"name":                      "Valid Campaign",
+				"name":                    "Valid Campaign",
 				"briefInitialDescription": "desc",
-				"description":               "full",
-				"isPublic":                 false,
-				"callLink":                 "https://meet.example.com",
+				"description":             "full",
+				"isPublic":                false,
+				"callLink":                "https://meet.example.com",
 				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {

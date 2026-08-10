@@ -9,8 +9,8 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchmapapi "github.com/422UR4H/HxH_RPG_System/internal/app/api/matchmap"
-	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/matchmap/entity"
 	matchmapuc "github.com/422UR4H/HxH_RPG_System/internal/application/matchmap"
+	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/matchmap/entity"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"

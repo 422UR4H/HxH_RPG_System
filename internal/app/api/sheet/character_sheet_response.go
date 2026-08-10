@@ -9,10 +9,10 @@ import (
 )
 
 type CharacterSheetResponse struct {
-	UUID         uuid.UUID  `json:"uuid"`
-	PlayerUUID   *uuid.UUID `json:"playerUuid,omitempty"`
-	MasterUUID   *uuid.UUID `json:"masterUuid,omitempty"`
-	CampaignUUID *uuid.UUID        `json:"campaignUuid,omitempty"`
+	UUID         uuid.UUID           `json:"uuid"`
+	PlayerUUID   *uuid.UUID          `json:"playerUuid,omitempty"`
+	MasterUUID   *uuid.UUID          `json:"masterUuid,omitempty"`
+	CampaignUUID *uuid.UUID          `json:"campaignUuid,omitempty"`
 	Submission   *SubmissionResponse `json:"submission,omitempty"`
 
 	CharacterClass string          `json:"characterClass"`

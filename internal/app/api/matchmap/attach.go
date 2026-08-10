@@ -16,7 +16,7 @@ type AttachMatchMapRequestBody struct {
 }
 
 type AttachMatchMapRequest struct {
-	MatchUUID uuid.UUID                 `path:"match_uuid"`
+	MatchUUID uuid.UUID `path:"match_uuid"`
 	Body      AttachMatchMapRequestBody
 }
 

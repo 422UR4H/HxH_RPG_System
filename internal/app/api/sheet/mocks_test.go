@@ -149,10 +149,10 @@ func buildTestHalfSheet(t *testing.T) sheetEntity.HalfSheet {
 	factory := sheetEntity.NewCharacterSheetFactory()
 	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
 	profile := sheetEntity.CharacterProfile{
-		NickName:  "Hunter",
-		FullName:  "Hunter Class",
-		Birthday:  birthday,
-		Age:       0,
+		NickName: "Hunter",
+		FullName: "Hunter Class",
+		Birthday: birthday,
+		Age:      0,
 	}
 	hs, err := factory.BuildHalfSheet(profile, nil)
 	if err != nil {
