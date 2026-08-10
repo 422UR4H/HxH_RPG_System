@@ -16,9 +16,9 @@ import (
 type CreateMapRequestBody struct {
 	Name        string            `json:"name" required:"true" doc:"Name of the map"`
 	Description string            `json:"description" required:"false" doc:"Description of the map"`
-	Grid        *entity.GridShape `json:"grid" required:"false" doc:"Grid configuration; defaults to 25x25 64px if omitted"`
-	Bg          *entity.BgImage   `json:"bg" required:"false" doc:"Background image configuration"`
-	Pieces      []entity.Piece    `json:"pieces" required:"false" doc:"Initial pieces to place on the map"`
+	Grid        *GridShapeRequest `json:"grid" required:"false" doc:"Grid configuration; defaults to 25x25 64px if omitted"`
+	Bg          *BgImageRequest   `json:"bg" required:"false" doc:"Background image configuration"`
+	Pieces      []PieceRequest    `json:"pieces" required:"false" doc:"Initial pieces to place on the map"`
 }
 
 type CreateMapRequest struct {
@@ -41,14 +41,29 @@ func CreateMapHandler(uc mapuc.ICreateMap) func(context.Context, *CreateMapReque
 			return nil, huma.Error500InternalServerError("failed to get userID")
 		}
 
+		var grid *entity.GridShape
+		if req.Body.Grid != nil {
+			g := toEntityGridShape(*req.Body.Grid)
+			grid = &g
+		}
+		var bg *entity.BgImage
+		if req.Body.Bg != nil {
+			b := toEntityBgImage(*req.Body.Bg)
+			bg = &b
+		}
+		pieces := make([]entity.Piece, len(req.Body.Pieces))
+		for i, p := range req.Body.Pieces {
+			pieces[i] = toEntityPiece(p)
+		}
+
 		m, err := uc.CreateMap(ctx, &mapuc.CreateMapInput{
 			RequesterID: userID,
 			CampaignID:  req.CampaignID,
 			Name:        req.Body.Name,
 			Description: req.Body.Description,
-			Grid:        req.Body.Grid,
-			Bg:          req.Body.Bg,
-			Pieces:      req.Body.Pieces,
+			Grid:        grid,
+			Bg:          bg,
+			Pieces:      pieces,
 		})
 		if err != nil {
 			switch {
