@@ -37,7 +37,10 @@ import (
 
 const smokeWsURL = "ws://localhost:8081"
 
-// smokeBoard is the subset of a map the game server needs to seed a room.
+// smokeBoard is the subset of a map the game server needs to seed a room. It decodes
+// the raw storage-format JSON dumped straight from Postgres (see the psql query above),
+// NOT the wire format — so its tags must match internal/domain/map/entity, snake_case
+// included. Do not "fix" these to camelCase.
 type smokeBoard struct {
 	Pieces []struct {
 		ID    string `json:"id"`
@@ -45,7 +48,7 @@ type smokeBoard struct {
 			Slot game.SlotPayload `json:"slot"`
 		} `json:"coord"`
 		Visible     bool   `json:"visible"`
-		CharacterID string `json:"characterId"`
+		CharacterID string `json:"character_id"`
 	} `json:"pieces"`
 	Walls []mapentity.WallSegment `json:"walls"`
 	Grid  mapentity.GridShape     `json:"grid"`
@@ -151,8 +154,13 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 			Visible:     &visible,
 		})
 	}
+	wallPayloads := make([]game.WallSegmentPayload, len(board.Walls))
+	for i, w := range board.Walls {
+		wallPayloads[i] = toWallSegmentPayload(w)
+	}
+	grid := toGridShapePayload(board.Grid)
 	payload, err := json.Marshal(game.MapStateSyncPayload{
-		Pieces: &pieces, Walls: board.Walls, Grid: &board.Grid,
+		Pieces: &pieces, Walls: wallPayloads, Grid: &grid,
 	})
 	if err != nil {
 		t.Fatalf("marshal sync: %v", err)
