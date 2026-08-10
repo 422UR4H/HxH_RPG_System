@@ -53,7 +53,7 @@ const (
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
 
 	// Server → Client (lobby lifecycle)
-	MsgTypeLobbyClosed  MessageType = "lobby_closed"   // master cancelled the lobby
+	MsgTypeLobbyClosed MessageType = "lobby_closed" // master cancelled the lobby
 	// MsgTypeLobbyNotOpen is sent by handler.go when a participant tries to connect before the master opens the lobby
 	MsgTypeLobbyNotOpen MessageType = "lobby_not_open"
 
@@ -310,9 +310,9 @@ type WallHpChangedPayload struct {
 // treating its absent pieces as an empty board would erase every LOS origin and leave
 // players with no visibility polygons at all.
 type MapStateSyncPayload struct {
-	Pieces *[]PieceMovedPayload     `json:"pieces,omitempty"`
-	Walls  []mapentity.WallSegment  `json:"walls,omitempty"`
-	Grid   *mapentity.GridShape     `json:"grid,omitempty"`
+	Pieces *[]PieceMovedPayload `json:"pieces,omitempty"`
+	Walls  []WallSegmentPayload `json:"walls,omitempty"`
+	Grid   *GridShapePayload    `json:"grid,omitempty"`
 }
 
 type Point2DPayload struct {
@@ -325,13 +325,121 @@ type VisibilityUpdatedPayload struct {
 }
 
 type WallRevealedPayload struct {
-	Wall mapentity.WallSegment `json:"wall"`
+	Wall WallSegmentPayload `json:"wall"`
 }
 
 // MapFullStatePayload is the per-player map_full_state (server→client).
 type MapFullStatePayload struct {
-	Pieces          []PieceMovedPayload     `json:"pieces"`
-	Walls           []mapentity.WallSegment `json:"walls,omitempty"`
-	VisiblePolygons [][]Point2DPayload      `json:"visiblePolygons,omitempty"`
-	FogMode         string                  `json:"fogMode"`
+	Pieces          []PieceMovedPayload  `json:"pieces"`
+	Walls           []WallSegmentPayload `json:"walls,omitempty"`
+	VisiblePolygons [][]Point2DPayload   `json:"visiblePolygons,omitempty"`
+	FogMode         string               `json:"fogMode"`
+}
+
+// WallSegmentPayload is the WS wire-format mirror of entity.WallSegment, camelCase-tagged.
+// Kept local to the game package (not shared with internal/app/api/map) so this delivery
+// channel stays self-contained, mirroring the REST boundary DTOs in map_request.go/map_response.go.
+type WallSegmentPayload struct {
+	ID            string     `json:"id"`
+	P1            [2]float64 `json:"p1"`
+	P2            [2]float64 `json:"p2"`
+	WallType      string     `json:"wallType"`
+	Material      string     `json:"material"`
+	DoorSubtype   *string    `json:"doorSubtype,omitempty"`
+	WindowSubtype *string    `json:"windowSubtype,omitempty"`
+	Move          bool       `json:"move"`
+	Sense         string     `json:"sense"`
+	Direction     string     `json:"direction"`
+	Open          bool       `json:"open"`
+	Locked        bool       `json:"locked"`
+	HP            int        `json:"hp"`
+	MaxHP         int        `json:"maxHp"`
+	Resistance    int        `json:"resistance"`
+	Destroyed     bool       `json:"destroyed"`
+	Revealed      bool       `json:"revealed"`
+}
+
+// GridShapePayload is the WS wire-format mirror of entity.GridShape, camelCase-tagged.
+type GridShapePayload struct {
+	Kind      string  `json:"kind"`
+	Cols      int     `json:"cols"`
+	Rows      int     `json:"rows"`
+	CellSize  float64 `json:"cellSize"`
+	SkewRatio float64 `json:"skewRatio"`
+	Rotation  float64 `json:"rotation"`
+	Color     string  `json:"color"`
+	Opacity   float64 `json:"opacity"`
+	LineStyle string  `json:"lineStyle"`
+}
+
+func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {
+	p := WallSegmentPayload{
+		ID:         w.ID,
+		P1:         w.P1,
+		P2:         w.P2,
+		WallType:   string(w.WallType),
+		Material:   string(w.Material),
+		Move:       w.Move,
+		Sense:      string(w.Sense),
+		Direction:  string(w.Direction),
+		Open:       w.Open,
+		Locked:     w.Locked,
+		HP:         w.HP,
+		MaxHP:      w.MaxHP,
+		Resistance: w.Resistance,
+		Destroyed:  w.Destroyed,
+		Revealed:   w.Revealed,
+	}
+	if w.DoorSubtype != nil {
+		s := string(*w.DoorSubtype)
+		p.DoorSubtype = &s
+	}
+	if w.WindowSubtype != nil {
+		s := string(*w.WindowSubtype)
+		p.WindowSubtype = &s
+	}
+	return p
+}
+
+func toEntityWallSegment(w WallSegmentPayload) mapentity.WallSegment {
+	seg := mapentity.WallSegment{
+		ID:         w.ID,
+		P1:         w.P1,
+		P2:         w.P2,
+		WallType:   mapentity.WallType(w.WallType),
+		Material:   mapentity.WallMaterial(w.Material),
+		Move:       w.Move,
+		Sense:      mapentity.SenseKind(w.Sense),
+		Direction:  mapentity.WallDirection(w.Direction),
+		Open:       w.Open,
+		Locked:     w.Locked,
+		HP:         w.HP,
+		MaxHP:      w.MaxHP,
+		Resistance: w.Resistance,
+		Destroyed:  w.Destroyed,
+		Revealed:   w.Revealed,
+	}
+	if w.DoorSubtype != nil {
+		d := mapentity.DoorSubtype(*w.DoorSubtype)
+		seg.DoorSubtype = &d
+	}
+	if w.WindowSubtype != nil {
+		wi := mapentity.WindowSubtype(*w.WindowSubtype)
+		seg.WindowSubtype = &wi
+	}
+	return seg
+}
+
+func toEntityGridShape(g GridShapePayload) mapentity.GridShape {
+	return mapentity.GridShape{
+		Kind:      mapentity.GridKind(g.Kind),
+		Cols:      g.Cols,
+		Rows:      g.Rows,
+		CellSize:  g.CellSize,
+		SkewRatio: g.SkewRatio,
+		Rotation:  g.Rotation,
+		Color:     g.Color,
+		Opacity:   g.Opacity,
+		LineStyle: mapentity.LineStyle(g.LineStyle),
+	}
 }

@@ -78,9 +78,9 @@ type Room struct {
 	// pieces holds the authoritative in-memory board state. Updated on every
 	// piece_moved / piece_removed. Sent to every new client on register so
 	// late-joiners always see the current board.
-	pieces map[string]PieceMovedPayload     // keyed by piece_id
-	walls  map[string]mapentity.WallSegment // in-memory runtime wall state; keyed by wall ID
-	grid   mapentity.GridShape              // full grid shape; used for movement blocking and fog coords
+	pieces     map[string]PieceMovedPayload     // keyed by piece_id
+	walls      map[string]mapentity.WallSegment // in-memory runtime wall state; keyed by wall ID
+	grid       mapentity.GridShape              // full grid shape; used for movement blocking and fog coords
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -699,6 +699,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid map_state_sync payload"))
 			return
 		}
+		walls := make([]mapentity.WallSegment, len(payload.Walls))
+		for i, w := range payload.Walls {
+			walls[i] = toEntityWallSegment(w)
+		}
+		var grid *mapentity.GridShape
+		if payload.Grid != nil {
+			g := toEntityGridShape(*payload.Grid)
+			grid = &g
+		}
 		r.mu.Lock()
 		// A nil Pieces field means "no piece information in this sync" — keep the board.
 		// Only an explicitly present array replaces it (empty array = board is empty).
@@ -708,18 +717,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				r.pieces[p.PieceID] = p
 			}
 		}
-		r.walls = make(map[string]mapentity.WallSegment, len(payload.Walls))
-		for _, w := range payload.Walls {
+		r.walls = make(map[string]mapentity.WallSegment, len(walls))
+		for _, w := range walls {
 			r.walls[w.ID] = w
 		}
-		if payload.Grid != nil && payload.Grid.CellSize > 0 {
-			r.grid = *payload.Grid
+		if grid != nil && grid.CellSize > 0 {
+			r.grid = *grid
 		}
-		grid := r.grid
+		roomGrid := r.grid
 		sess := r.session
 		if sess != nil {
-			wallSlice := append([]mapentity.WallSegment(nil), payload.Walls...)
-			sess.SyncMapState(wallSlice, grid)
+			wallSlice := append([]mapentity.WallSegment(nil), walls...)
+			sess.SyncMapState(wallSlice, roomGrid)
 			// The board just changed, so every player's cached LOS is stale — and
 			// buildMapFullState serves the cache. Recompute here (still under the write
 			// lock, as PlayerPiecePositions requires) so the refreshed state pushed below
@@ -951,7 +960,7 @@ func (r *Room) revealSecretDoors(targetIDs []uuid.UUID) {
 		if !ok {
 			continue
 		}
-		msg := NewServerMessage(MsgTypeWallRevealed, WallRevealedPayload{Wall: w})
+		msg := NewServerMessage(MsgTypeWallRevealed, WallRevealedPayload{Wall: toWallSegmentPayload(w)})
 		data, _ := json.Marshal(msg)
 		go func(d []byte) { r.broadcast <- d }(data)
 	}
@@ -1123,12 +1132,16 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 			pieces = append(pieces, p)
 		}
 	}
-	payload := MapFullStatePayload{Pieces: pieces, Walls: walls, FogMode: string(fogMode)}
+	wallPayloads := make([]WallSegmentPayload, len(walls))
+	for i, w := range walls {
+		wallPayloads[i] = toWallSegmentPayload(w)
+	}
+	payload := MapFullStatePayload{Pieces: pieces, Walls: wallPayloads, FogMode: string(fogMode)}
 	if !isMaster && isLobby {
 		// Disabled until the frontend consumes payload.Walls in lobby mode
 		// (useLobbyWs.ts currently drops it). The masking computation above is intact —
-		// flip this back to `payload.Walls = walls` to re-enable.
-		payload.Walls = []mapentity.WallSegment{}
+		// flip this back to `payload.Walls = wallPayloads` to re-enable.
+		payload.Walls = []WallSegmentPayload{}
 	}
 	if !isMaster && !isLobby {
 		payload.VisiblePolygons = polysToPayload(polys)
