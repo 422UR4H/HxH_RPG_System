@@ -17,10 +17,10 @@ import (
 
 func validRegisterBody() map[string]any {
 	return map[string]any{
-		"nick":         "testuser",
-		"email":        "testuser@example.com",
-		"password":     "securepassword",
-		"confirm_pass": "securepassword",
+		"nick":        "testuser",
+		"email":       "testuser@example.com",
+		"password":    "securepassword",
+		"confirmPass": "securepassword",
 	}
 }
 

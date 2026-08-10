@@ -28,10 +28,10 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 			"age":               12,
 			"birthday":          "0000-05-15T00:00:00Z",
 		},
-		"character_class":    "Hunter",
-		"skills_exps":        map[string]any{},
-		"proficiencies_exps": map[string]any{},
-		"attribute_points":   map[string]any{"Resistance": 1, "Agility": 1, "Flexibility": 1},
+		"characterClass":    "Hunter",
+		"skillsExps":        map[string]any{},
+		"proficienciesExps": map[string]any{},
+		"attributePoints":   map[string]any{"Resistance": 1, "Agility": 1, "Flexibility": 1},
 	}
 
 	tests := []struct {
@@ -91,7 +91,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 				for k, v := range validBody {
 					b[k] = v
 				}
-				b["attribute_points"] = map[string]any{"Stamina": 1}
+				b["attributePoints"] = map[string]any{"Stamina": 1}
 				return b
 			}(),
 			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {

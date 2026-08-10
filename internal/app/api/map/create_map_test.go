@@ -75,8 +75,8 @@ func TestCreateMapHandler_Success(t *testing.T) {
 	if mapObj["name"] != mapName {
 		t.Errorf("got name %v, want %q", mapObj["name"], mapName)
 	}
-	if mapObj["campaign_id"] != campaignID.String() {
-		t.Errorf("got campaign_id %v, want %v", mapObj["campaign_id"], campaignID.String())
+	if mapObj["campaignId"] != campaignID.String() {
+		t.Errorf("got campaignId %v, want %v", mapObj["campaignId"], campaignID.String())
 	}
 }
 

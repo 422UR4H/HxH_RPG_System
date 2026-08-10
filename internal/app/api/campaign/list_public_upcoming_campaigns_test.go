@@ -124,12 +124,12 @@ func TestListPublicUpcomingCampaignsHandler(t *testing.T) {
 				}
 				if tt.wantNextScheduled != nil && len(campaigns) > 0 {
 					first := campaigns[0].(map[string]any)
-					_, present := first["next_game_scheduled_at"]
+					_, present := first["nextGameScheduledAt"]
 					if *tt.wantNextScheduled && !present {
-						t.Error("expected next_game_scheduled_at to be present, got absent")
+						t.Error("expected nextGameScheduledAt to be present, got absent")
 					}
 					if !*tt.wantNextScheduled && present {
-						t.Errorf("expected next_game_scheduled_at to be absent, got %v", first["next_game_scheduled_at"])
+						t.Errorf("expected nextGameScheduledAt to be absent, got %v", first["nextGameScheduledAt"])
 					}
 				}
 			}

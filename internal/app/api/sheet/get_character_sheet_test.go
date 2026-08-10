@@ -108,8 +108,8 @@ func TestGetCharacterSheetHandler(t *testing.T) {
 				if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
-				if _, ok := result["character_sheet"].(map[string]any); !ok {
-					t.Fatal("response missing 'character_sheet' field")
+				if _, ok := result["characterSheet"].(map[string]any); !ok {
+					t.Fatal("response missing 'characterSheet' field")
 				}
 			}
 		})

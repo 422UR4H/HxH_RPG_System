@@ -111,10 +111,11 @@ func TestMapStateSync_WithoutPieceInfoKeepsBoard(t *testing.T) {
 	room.clients[masterUUID] = master
 
 	wall := room.walls["w1"]
+	grid := toGridShapePayload(room.grid)
 	raw := mustSyncMessage(t, MapStateSyncPayload{
 		Pieces: nil, // field absent → "this sync carries no piece information"
-		Walls:  []mapentity.WallSegment{wall},
-		Grid:   &room.grid,
+		Walls:  []WallSegmentPayload{toWallSegmentPayload(wall)},
+		Grid:   &grid,
 	})
 
 	withinTimeout(t, 3*time.Second, "handleClientMessage(map_state_sync)", func() {
@@ -137,10 +138,11 @@ func TestMapStateSync_ExplicitEmptyArrayClearsBoard(t *testing.T) {
 	room.clients[masterUUID] = master
 
 	empty := []PieceMovedPayload{}
+	grid := toGridShapePayload(room.grid)
 	raw := mustSyncMessage(t, MapStateSyncPayload{
 		Pieces: &empty,
-		Walls:  []mapentity.WallSegment{room.walls["w1"]},
-		Grid:   &room.grid,
+		Walls:  []WallSegmentPayload{toWallSegmentPayload(room.walls["w1"])},
+		Grid:   &grid,
 	})
 
 	withinTimeout(t, 3*time.Second, "handleClientMessage(map_state_sync)", func() {
@@ -179,10 +181,11 @@ func TestMapStateSync_RefreshesPlayerVisibilityAndRepushesState(t *testing.T) {
 	}
 
 	pieces := []PieceMovedPayload{saved["p1"]}
+	grid := toGridShapePayload(room.grid)
 	raw := mustSyncMessage(t, MapStateSyncPayload{
 		Pieces: &pieces,
-		Walls:  []mapentity.WallSegment{room.walls["w1"]},
-		Grid:   &room.grid,
+		Walls:  []WallSegmentPayload{toWallSegmentPayload(room.walls["w1"])},
+		Grid:   &grid,
 	})
 
 	withinTimeout(t, 3*time.Second, "handleClientMessage(map_state_sync)", func() {
@@ -356,6 +359,24 @@ func TestBuildMapFullState_PlayerDoesNotSeeWallBehindAnother(t *testing.T) {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+// toGridShapePayload is the test-only mirror of message.go's toWallSegmentPayload:
+// production code never sends a GridShape back out over the wire (map_state_sync is
+// master→server only), so no entity→payload conversion exists there. Tests that need to
+// simulate that inbound sync build the payload directly instead.
+func toGridShapePayload(g mapentity.GridShape) GridShapePayload {
+	return GridShapePayload{
+		Kind:      string(g.Kind),
+		Cols:      g.Cols,
+		Rows:      g.Rows,
+		CellSize:  g.CellSize,
+		SkewRatio: g.SkewRatio,
+		Rotation:  g.Rotation,
+		Color:     g.Color,
+		Opacity:   g.Opacity,
+		LineStyle: string(g.LineStyle),
+	}
+}
 
 func mustSyncMessage(t *testing.T, p MapStateSyncPayload) []byte {
 	t.Helper()

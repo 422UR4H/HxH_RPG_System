@@ -33,11 +33,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 			name: "success",
 			body: map[string]any{
 				"name":                      "Test Campaign",
-				"brief_initial_description": "A brief description",
+				"briefInitialDescription": "A brief description",
 				"description":               "Full description of the campaign",
-				"is_public":                 true,
-				"call_link":                 "https://meet.example.com",
-				"story_start_at":            "2026-01-15",
+				"isPublic":                 true,
+				"callLink":                 "https://meet.example.com",
+				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return &campaignEntity.Campaign{
@@ -60,11 +60,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 			name: "forbidden_max_campaigns_limit",
 			body: map[string]any{
 				"name":                      "Another Campaign",
-				"brief_initial_description": "desc",
+				"briefInitialDescription": "desc",
 				"description":               "full",
-				"is_public":                 false,
-				"call_link":                 "https://meet.example.com",
-				"story_start_at":            "2026-01-15",
+				"isPublic":                 false,
+				"callLink":                 "https://meet.example.com",
+				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, campaignUC.ErrMaxCampaignsLimit
@@ -75,11 +75,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 			name: "not_found_scenario",
 			body: map[string]any{
 				"name":                      "Campaign X",
-				"brief_initial_description": "desc",
+				"briefInitialDescription": "desc",
 				"description":               "full",
-				"is_public":                 false,
-				"call_link":                 "https://meet.example.com",
-				"story_start_at":            "2026-01-15",
+				"isPublic":                 false,
+				"callLink":                 "https://meet.example.com",
+				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, scenario.ErrScenarioNotFound
@@ -90,11 +90,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 			name: "unprocessable_entity_validation_error",
 			body: map[string]any{
 				"name":                      "Bad",
-				"brief_initial_description": "desc",
+				"briefInitialDescription": "desc",
 				"description":               "full",
-				"is_public":                 false,
-				"call_link":                 "https://meet.example.com",
-				"story_start_at":            "2026-01-15",
+				"isPublic":                 false,
+				"callLink":                 "https://meet.example.com",
+				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, domain.NewValidationError(errors.New("name too short"))
@@ -105,11 +105,11 @@ func TestCreateCampaignHandler(t *testing.T) {
 			name: "internal_server_error",
 			body: map[string]any{
 				"name":                      "Valid Campaign",
-				"brief_initial_description": "desc",
+				"briefInitialDescription": "desc",
 				"description":               "full",
-				"is_public":                 false,
-				"call_link":                 "https://meet.example.com",
-				"story_start_at":            "2026-01-15",
+				"isPublic":                 false,
+				"callLink":                 "https://meet.example.com",
+				"storyStartAt":            "2026-01-15",
 			},
 			mockFn: func(ctx context.Context, input *campaignUC.CreateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, errors.New("unexpected db error")

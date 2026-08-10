@@ -28,8 +28,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "success",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return nil
@@ -39,8 +39,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "sheet_not_found",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return charactersheet.ErrCharacterSheetNotFound
@@ -50,8 +50,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "campaign_not_found",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return campaign.ErrCampaignNotFound
@@ -61,8 +61,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "not_sheet_owner",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return charactersheet.ErrNotCharacterSheetOwner
@@ -72,8 +72,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "master_cannot_submit_own_sheet",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return submissionUC.ErrMasterCannotSubmitOwnSheet
@@ -83,8 +83,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "already_submitted",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return submissionUC.ErrCharacterAlreadySubmitted
@@ -94,8 +94,8 @@ func TestSubmitCharacterSheetHandler(t *testing.T) {
 		{
 			name: "generic_error",
 			body: map[string]any{
-				"sheet_uuid":    uuid.New().String(),
-				"campaign_uuid": uuid.New().String(),
+				"sheetUuid":    uuid.New().String(),
+				"campaignUuid": uuid.New().String(),
 			},
 			mockFn: func(ctx context.Context, userUUID, sheetUUID, campaignUUID uuid.UUID) error {
 				return errors.New("unexpected database error")

@@ -45,7 +45,7 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 		name           string
 		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*match.ListMatchEnrollmentsResult, error)
 		wantStatus     int
-		wantPrivateNil bool // when status==200, asserts the first row's character_sheet.private nullness
+		wantPrivateNil bool // when status==200, asserts the first row's characterSheet.private nullness
 	}{
 		{
 			name: "200 with private populated when ViewerIsMaster",
@@ -133,18 +133,18 @@ func TestListMatchEnrollmentsHandler(t *testing.T) {
 				return // empty-list case
 			}
 			row := enrollments[0].(map[string]any)
-			sheet := row["character_sheet"].(map[string]any)
+			sheet := row["characterSheet"].(map[string]any)
 			privateField, present := sheet["private"]
 			if !present {
-				t.Fatal("character_sheet.private must be present (null or populated), not omitted")
+				t.Fatal("characterSheet.private must be present (null or populated), not omitted")
 			}
 			if tc.wantPrivateNil {
 				if privateField != nil {
-					t.Errorf("character_sheet.private = %v, want null", privateField)
+					t.Errorf("characterSheet.private = %v, want null", privateField)
 				}
 			} else {
 				if privateField == nil {
-					t.Error("character_sheet.private = null, want populated object")
+					t.Error("characterSheet.private = null, want populated object")
 				}
 			}
 		})

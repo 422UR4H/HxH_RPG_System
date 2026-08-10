@@ -421,7 +421,7 @@ func TestKickPlayerFlow(t *testing.T) {
 
 	kickMsg := game.Message{
 		Type:    game.MsgTypeKickPlayer,
-		Payload: json.RawMessage(`{"player_uuid":"` + playerUUID.String() + `"}`),
+		Payload: json.RawMessage(`{"playerUuid":"` + playerUUID.String() + `"}`),
 	}
 	data, _ := json.Marshal(kickMsg)
 	if err := masterConn.WriteMessage(websocket.TextMessage, data); err != nil {
@@ -460,7 +460,7 @@ func TestPlayerCannotKick(t *testing.T) {
 
 	kickMsg := game.Message{
 		Type:    game.MsgTypeKickPlayer,
-		Payload: json.RawMessage(`{"player_uuid":"` + masterUUID.String() + `"}`),
+		Payload: json.RawMessage(`{"playerUuid":"` + masterUUID.String() + `"}`),
 	}
 	data, _ := json.Marshal(kickMsg)
 	if err := playerConn.WriteMessage(websocket.TextMessage, data); err != nil {

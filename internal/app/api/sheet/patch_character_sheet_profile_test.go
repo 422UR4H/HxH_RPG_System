@@ -20,7 +20,7 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 	avatarURL := "https://pub.r2.dev/avatar/abc.webp"
 
 	validBody := map[string]any{
-		"avatar_url": avatarURL,
+		"avatarUrl": avatarURL,
 	}
 
 	tests := []struct {

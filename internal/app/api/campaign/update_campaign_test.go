@@ -47,12 +47,12 @@ func TestUpdateCampaignHandler(t *testing.T) {
 			name: "success_full_patch",
 			body: map[string]any{
 				"name":                      "New Name",
-				"brief_initial_description": "new brief",
+				"briefInitialDescription": "new brief",
 				"description":               "new desc",
-				"is_public":                 false,
-				"call_link":                 "https://meet.new",
-				"story_start_at":            "2026-07-20",
-				"story_current_at":          "2026-07-20T10:00:00Z",
+				"isPublic":                 false,
+				"callLink":                 "https://meet.new",
+				"storyStartAt":            "2026-07-20",
+				"storyCurrentAt":          "2026-07-20T10:00:00Z",
 			},
 			mockFn: func(_ context.Context, input *campaignUC.UpdateCampaignInput) (*campaignEntity.Campaign, error) {
 				if input.Name == nil || *input.Name != "New Name" {
@@ -64,7 +64,7 @@ func TestUpdateCampaignHandler(t *testing.T) {
 		},
 		{
 			name: "success_partial_always_editable",
-			body: map[string]any{"call_link": "https://new-link.com"},
+			body: map[string]any{"callLink": "https://new-link.com"},
 			mockFn: func(_ context.Context, input *campaignUC.UpdateCampaignInput) (*campaignEntity.Campaign, error) {
 				if input.Name != nil {
 					t.Errorf("name should be nil, got %v", *input.Name)
@@ -83,7 +83,7 @@ func TestUpdateCampaignHandler(t *testing.T) {
 		},
 		{
 			name: "invalid_story_start_at",
-			body: map[string]any{"story_start_at": "not-a-date"},
+			body: map[string]any{"storyStartAt": "not-a-date"},
 			mockFn: func(_ context.Context, _ *campaignUC.UpdateCampaignInput) (*campaignEntity.Campaign, error) {
 				t.Fatal("UC should not be called when date parsing fails")
 				return nil, nil
@@ -92,7 +92,7 @@ func TestUpdateCampaignHandler(t *testing.T) {
 		},
 		{
 			name: "invalid_story_current_at",
-			body: map[string]any{"story_current_at": "not-a-date"},
+			body: map[string]any{"storyCurrentAt": "not-a-date"},
 			mockFn: func(_ context.Context, _ *campaignUC.UpdateCampaignInput) (*campaignEntity.Campaign, error) {
 				t.Fatal("UC should not be called when date parsing fails")
 				return nil, nil
@@ -133,7 +133,7 @@ func TestUpdateCampaignHandler(t *testing.T) {
 		},
 		{
 			name: "cannot_regress_story_current_at",
-			body: map[string]any{"story_current_at": "2024-01-01T00:00:00Z"},
+			body: map[string]any{"storyCurrentAt": "2024-01-01T00:00:00Z"},
 			mockFn: func(_ context.Context, _ *campaignUC.UpdateCampaignInput) (*campaignEntity.Campaign, error) {
 				return nil, campaignUC.ErrCannotRegressStoryCurrentAt
 			},
@@ -183,8 +183,8 @@ func TestUpdateCampaignHandler(t *testing.T) {
 				if !ok {
 					t.Fatal("response missing 'campaign' field")
 				}
-				if c["master_uuid"] != userUUID.String() {
-					t.Errorf("master_uuid = %v, want %v", c["master_uuid"], userUUID.String())
+				if c["masterUuid"] != userUUID.String() {
+					t.Errorf("masterUuid = %v, want %v", c["masterUuid"], userUUID.String())
 				}
 			}
 		})
