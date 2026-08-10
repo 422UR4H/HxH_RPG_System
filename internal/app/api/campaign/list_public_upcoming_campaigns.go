@@ -13,7 +13,7 @@ import (
 
 type PublicCampaignSummaryResponse struct {
 	CampaignSummaryResponse
-	NextGameScheduledAt *string `json:"next_game_scheduled_at,omitempty"`
+	NextGameScheduledAt *string `json:"nextGameScheduledAt,omitempty"`
 }
 
 type ListPublicCampaignsResponseBody struct {

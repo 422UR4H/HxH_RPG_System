@@ -13,11 +13,11 @@ type CharacterClassResponse struct {
 	Abilities     map[string]Ability           `json:"abilities"`
 	Attributes    map[string]Attribute         `json:"attributes"`
 	Skills        map[string]Skill             `json:"skills"`
-	JointSkills   map[string]s.JointSkill      `json:"joint_skills"`
+	JointSkills   map[string]s.JointSkill      `json:"jointSkills"`
 	Proficiencies map[string]ExperienceResponse `json:"proficiencies"`
-	// JointProficiencies  map[string]p.JointProficiency `json:"joint_proficiencies"`
-	JointProficiencies  []JointProf           `json:"joint_proficiencies"`
-	IndicatedCategories []string              `json:"indicated_categories"`
+	// JointProficiencies  map[string]p.JointProficiency `json:"jointProficiencies"`
+	JointProficiencies  []JointProf           `json:"jointProficiencies"`
+	IndicatedCategories []string              `json:"indicatedCategories"`
 	Distribution        *DistributionResponse `json:"distribution,omitempty"`
 }
 
@@ -25,14 +25,14 @@ type ClassProfileResponse struct {
 	Name             string `json:"name"`
 	Alignment        string `json:"alignment"`
 	Description      string `json:"description"`
-	BriefDescription string `json:"brief_description"`
+	BriefDescription string `json:"briefDescription"`
 }
 
 type DistributionResponse struct {
-	SkillPoints          []int    `json:"skill_points"`
-	ProficiencyPoints    []LvlExp `json:"proficiency_points"`
-	SkillsAllowed        []string `json:"skills_allowed"`
-	ProficienciesAllowed []string `json:"proficiencies_allowed"`
+	SkillPoints          []int    `json:"skillPoints"`
+	ProficiencyPoints    []LvlExp `json:"proficiencyPoints"`
+	SkillsAllowed        []string `json:"skillsAllowed"`
+	ProficienciesAllowed []string `json:"proficienciesAllowed"`
 }
 
 type LvlExp struct {

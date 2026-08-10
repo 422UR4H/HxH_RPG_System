@@ -12,7 +12,7 @@ import (
 )
 
 type AttachMatchMapRequestBody struct {
-	MapUUID uuid.UUID `json:"map_uuid" required:"true" doc:"UUID of the map to attach"`
+	MapUUID uuid.UUID `json:"mapUuid" required:"true" doc:"UUID of the map to attach"`
 }
 
 type AttachMatchMapRequest struct {
@@ -21,7 +21,7 @@ type AttachMatchMapRequest struct {
 }
 
 type AttachMatchMapResponseBody struct {
-	MatchMap MatchMapResponse `json:"match_map"`
+	MatchMap MatchMapResponse `json:"matchMap"`
 }
 
 type AttachMatchMapResponse struct {

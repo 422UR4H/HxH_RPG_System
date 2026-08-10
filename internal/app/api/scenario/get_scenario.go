@@ -28,12 +28,12 @@ type GetScenarioResponse struct {
 type ScenarioWithCampaignsResponse struct {
 	UUID             uuid.UUID                          `json:"uuid"`
 	Name             string                             `json:"name"`
-	BriefDescription string                             `json:"brief_description"`
+	BriefDescription string                             `json:"briefDescription"`
 	Description      string                             `json:"description"`
 	Campaigns        []campaign.CampaignSummaryResponse `json:"campaigns"`
 
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func GetScenarioHandler(

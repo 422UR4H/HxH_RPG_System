@@ -11,33 +11,33 @@ import (
 
 type CampaignBaseResponse struct {
 	UUID       uuid.UUID `json:"uuid"`
-	MasterUUID uuid.UUID `json:"master_uuid"`
-	// ScenarioUUID     uuid.UUID `json:"scenario_uuid"`
+	MasterUUID uuid.UUID `json:"masterUuid"`
+	// ScenarioUUID     uuid.UUID `json:"scenarioUuid"`
 	Name                    string  `json:"name"`
-	BriefInitialDescription string  `json:"brief_initial_description"`
-	BriefFinalDescription   *string `json:"brief_final_description,omitempty"`
+	BriefInitialDescription string  `json:"briefInitialDescription"`
+	BriefFinalDescription   *string `json:"briefFinalDescription,omitempty"`
 	Description             string  `json:"description"`
-	IsPublic                bool    `json:"is_public"`
-	CallLink                string  `json:"call_link"`
-	StoryStartAt            string  `json:"story_start_at"`
-	StoryCurrentAt          *string `json:"story_current_at,omitempty"`
-	StoryEndAt              *string `json:"story_end_at,omitempty"`
-	CreatedAt               string  `json:"created_at"`
-	UpdatedAt               string  `json:"updated_at"`
+	IsPublic                bool    `json:"isPublic"`
+	CallLink                string  `json:"callLink"`
+	StoryStartAt            string  `json:"storyStartAt"`
+	StoryCurrentAt          *string `json:"storyCurrentAt,omitempty"`
+	StoryEndAt              *string `json:"storyEndAt,omitempty"`
+	CreatedAt               string  `json:"createdAt"`
+	UpdatedAt               string  `json:"updatedAt"`
 
 	Matches []match.MatchSummaryResponse `json:"matches"`
 }
 
 type CampaignMasterResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPrivateSummaryResponse `json:"character_sheets"`
-	PendingSheets   []sheet.CharacterPrivateSummaryResponse `json:"pending_sheets"`
+	CharacterSheets []sheet.CharacterPrivateSummaryResponse `json:"characterSheets"`
+	PendingSheets   []sheet.CharacterPrivateSummaryResponse `json:"pendingSheets"`
 }
 
 type CampaignPlayerResponse struct {
 	CampaignBaseResponse
-	CharacterSheets []sheet.CharacterPublicSummaryResponse  `json:"character_sheets"`
-	MyPendingSheet  *sheet.CharacterPrivateSummaryResponse  `json:"my_pending_sheet,omitempty"`
+	CharacterSheets []sheet.CharacterPublicSummaryResponse  `json:"characterSheets"`
+	MyPendingSheet  *sheet.CharacterPrivateSummaryResponse  `json:"myPendingSheet,omitempty"`
 }
 
 func ToMasterResponse(campaign *campaign.Campaign) CampaignMasterResponse {

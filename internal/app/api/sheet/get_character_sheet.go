@@ -20,7 +20,7 @@ type GetCharacterSheetRequest struct {
 }
 
 type GetCharacterSheetResponseBody struct {
-	CharacterSheet CharacterSheetResponse `json:"character_sheet"`
+	CharacterSheet CharacterSheetResponse `json:"characterSheet"`
 }
 
 type GetCharacterSheetResponse struct {

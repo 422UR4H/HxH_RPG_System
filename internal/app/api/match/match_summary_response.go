@@ -10,18 +10,18 @@ import (
 
 type MatchSummaryResponse struct {
 	UUID                    uuid.UUID `json:"uuid"`
-	CampaignUUID            uuid.UUID `json:"campaign_uuid"`
+	CampaignUUID            uuid.UUID `json:"campaignUuid"`
 	Title                   string    `json:"title"`
-	BriefInitialDescription string    `json:"brief_initial_description"`
-	BriefFinalDescription   *string   `json:"brief_final_description,omitempty"`
-	IsPublic                bool      `json:"is_public"`
-	GameScheduledAt         string    `json:"game_scheduled_at"`
-	GameStartAt             *string   `json:"game_start_at,omitempty"`
-	StoryStartAt            string    `json:"story_start_at"`
-	StoryEndAt              *string   `json:"story_end_at,omitempty"`
-	MyEnrollmentStatus      *string   `json:"my_enrollment_status,omitempty"`
-	CreatedAt               string    `json:"created_at"`
-	UpdatedAt               string    `json:"updated_at"`
+	BriefInitialDescription string    `json:"briefInitialDescription"`
+	BriefFinalDescription   *string   `json:"briefFinalDescription,omitempty"`
+	IsPublic                bool      `json:"isPublic"`
+	GameScheduledAt         string    `json:"gameScheduledAt"`
+	GameStartAt             *string   `json:"gameStartAt,omitempty"`
+	StoryStartAt            string    `json:"storyStartAt"`
+	StoryEndAt              *string   `json:"storyEndAt,omitempty"`
+	MyEnrollmentStatus      *string   `json:"myEnrollmentStatus,omitempty"`
+	CreatedAt               string    `json:"createdAt"`
+	UpdatedAt               string    `json:"updatedAt"`
 }
 
 func ToSummaryResponse(m *matchEntity.Summary) MatchSummaryResponse {

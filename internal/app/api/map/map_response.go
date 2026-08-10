@@ -10,17 +10,17 @@ type GridShapeResponse struct {
 	Kind      string  `json:"kind"`
 	Cols      int     `json:"cols"`
 	Rows      int     `json:"rows"`
-	CellSize  float64 `json:"cell_size"`
-	SkewRatio float64 `json:"skew_ratio"`
+	CellSize  float64 `json:"cellSize"`
+	SkewRatio float64 `json:"skewRatio"`
 	Rotation  float64 `json:"rotation"`
 	Color     string  `json:"color"`
 	Opacity   float64 `json:"opacity"`
-	LineStyle string  `json:"line_style"`
+	LineStyle string  `json:"lineStyle"`
 }
 
 type MapResponse struct {
 	ID          uuid.UUID         `json:"id"`
-	CampaignID  uuid.UUID         `json:"campaign_id"`
+	CampaignID  uuid.UUID         `json:"campaignId"`
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	Grid        GridShapeResponse `json:"grid"`
@@ -29,8 +29,8 @@ type MapResponse struct {
 	Walls       []entity.WallSegment `json:"walls"`
 	Decorations any               `json:"decorations"`
 	Items       any               `json:"items"`
-	CreatedAt   string            `json:"created_at"`
-	UpdatedAt   string            `json:"updated_at"`
+	CreatedAt   string            `json:"createdAt"`
+	UpdatedAt   string            `json:"updatedAt"`
 }
 
 func toMapResponse(m *entity.TacticalMap) MapResponse {

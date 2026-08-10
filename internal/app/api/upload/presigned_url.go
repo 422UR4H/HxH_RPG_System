@@ -20,9 +20,9 @@ type IR2Client interface {
 
 // PresignedURLRequestBody carries the JSON body of the presigned-URL request.
 type PresignedURLRequestBody struct {
-	FileType  string  `json:"file_type" doc:"'avatar', 'cover', or 'map_bg'"`
-	SheetUUID *string `json:"sheet_uuid,omitempty"`
-	MapUUID   *string `json:"map_uuid,omitempty"`
+	FileType  string  `json:"fileType" doc:"'avatar', 'cover', or 'map_bg'"`
+	SheetUUID *string `json:"sheetUuid,omitempty"`
+	MapUUID   *string `json:"mapUuid,omitempty"`
 }
 
 // PresignedURLRequest is the huma input type for the presigned-URL endpoint.
@@ -32,8 +32,8 @@ type PresignedURLRequest struct {
 
 // PresignedURLResponseBody carries the JSON body of the presigned-URL response.
 type PresignedURLResponseBody struct {
-	UploadURL string `json:"upload_url"`
-	PublicURL string `json:"public_url"`
+	UploadURL string `json:"uploadUrl"`
+	PublicURL string `json:"publicUrl"`
 }
 
 // PresignedURLResponse is the huma output type for the presigned-URL endpoint.

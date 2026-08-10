@@ -14,8 +14,8 @@ import (
 )
 
 type EnrollCharacterRequestBody struct {
-	SheetUUID uuid.UUID `json:"sheet_uuid" required:"true" doc:"UUID of the character sheet"`
-	MatchUUID uuid.UUID `json:"match_uuid" required:"true" doc:"UUID of the match"`
+	SheetUUID uuid.UUID `json:"sheetUuid" required:"true" doc:"UUID of the character sheet"`
+	MatchUUID uuid.UUID `json:"matchUuid" required:"true" doc:"UUID of the match"`
 }
 
 type EnrollCharacterRequest struct {

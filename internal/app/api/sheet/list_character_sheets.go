@@ -11,7 +11,7 @@ import (
 )
 
 type ListCharacterSheetsBody struct {
-	CharacterSheets []CharacterPrivateSummaryResponse `json:"character_sheets"`
+	CharacterSheets []CharacterPrivateSummaryResponse `json:"characterSheets"`
 }
 
 type ListCharacterSheetsResponse struct {

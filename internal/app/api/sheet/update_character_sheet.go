@@ -21,7 +21,7 @@ type UpdateCharacterSheetRequest struct {
 }
 
 type UpdateCharacterSheetResponseBody struct {
-	CharacterSheet CharacterSheetResponse `json:"character_sheet"`
+	CharacterSheet CharacterSheetResponse `json:"characterSheet"`
 }
 
 type UpdateCharacterSheetResponse struct {

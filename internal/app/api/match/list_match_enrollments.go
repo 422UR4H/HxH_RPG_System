@@ -29,8 +29,8 @@ type ListMatchEnrollmentsResponseBody struct {
 type EnrollmentResponse struct {
 	UUID           uuid.UUID                                    `json:"uuid"`
 	Status         string                                       `json:"status"`
-	CreatedAt      string                                       `json:"created_at"`
-	CharacterSheet apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
+	CreatedAt      string                                       `json:"createdAt"`
+	CharacterSheet apiSheet.CharacterSheetWithVisibilityResponse `json:"characterSheet"`
 	Player         PlayerRefResponse                            `json:"player"`
 }
 

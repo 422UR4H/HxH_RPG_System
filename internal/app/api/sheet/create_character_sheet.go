@@ -18,15 +18,15 @@ import (
 )
 
 type CreateCharacterSheetRequestBody struct {
-	CampaignUUID      *uuid.UUID             `json:"campaign_uuid" required:"false"`
+	CampaignUUID      *uuid.UUID             `json:"campaignUuid" required:"false"`
 	Profile           sheet.CharacterProfile `json:"profile"`
-	CharacterClass    string                 `json:"character_class"`
-	SkillsExps        map[string]int         `json:"skills_exps"`
-	ProficienciesExps map[string]int         `json:"proficiencies_exps"`
-	AttributePoints   map[string]int         `json:"attribute_points" required:"false"`
+	CharacterClass    string                 `json:"characterClass"`
+	SkillsExps        map[string]int         `json:"skillsExps"`
+	ProficienciesExps map[string]int         `json:"proficienciesExps"`
+	AttributePoints   map[string]int         `json:"attributePoints" required:"false"`
 	// TODO: move to consolidate (accept submission) flow
 	// Categories        map[string]bool        `json:"categories"`
-	// InitialHexValue   *int                   `json:"initial_hex_value"`
+	// InitialHexValue   *int                   `json:"initialHexValue"`
 }
 
 type CreateCharacterSheetRequest struct {
@@ -34,7 +34,7 @@ type CreateCharacterSheetRequest struct {
 }
 
 type CreateCharacterSheetResponseBody struct {
-	CharacterSheet CharacterSheetResponse `json:"character_sheet"`
+	CharacterSheet CharacterSheetResponse `json:"characterSheet"`
 }
 
 type CreateCharacterSheetResponse struct {

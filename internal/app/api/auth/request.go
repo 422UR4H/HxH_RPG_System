@@ -8,7 +8,7 @@ type RegisterRequestBody struct {
 	Nick        string `json:"nick" required:"true"`
 	Email       string `json:"email" required:"true"`
 	Password    string `json:"password" required:"true"`
-	ConfirmPass string `json:"confirm_pass" required:"true"`
+	ConfirmPass string `json:"confirmPass" required:"true"`
 }
 
 type LoginRequest struct {

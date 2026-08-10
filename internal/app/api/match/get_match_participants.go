@@ -20,9 +20,9 @@ type GetMatchParticipantsRequest struct {
 
 type ParticipantResponse struct {
 	UUID     uuid.UUID                                     `json:"uuid"`
-	JoinedAt string                                        `json:"joined_at"`
-	LeftAt   *string                                       `json:"left_at,omitempty"`
-	Sheet    apiSheet.CharacterSheetWithVisibilityResponse `json:"character_sheet"`
+	JoinedAt string                                        `json:"joinedAt"`
+	LeftAt   *string                                       `json:"leftAt,omitempty"`
+	Sheet    apiSheet.CharacterSheetWithVisibilityResponse `json:"characterSheet"`
 }
 
 type GetMatchParticipantsResponseBody struct {

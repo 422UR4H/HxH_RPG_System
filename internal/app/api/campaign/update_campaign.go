@@ -15,12 +15,12 @@ import (
 
 type UpdateCampaignRequestBody struct {
 	Name                    *string `json:"name,omitempty" doc:"Campaign name (5-32 characters)"`
-	BriefInitialDescription *string `json:"brief_initial_description,omitempty" doc:"Brief description (max 255 characters)"`
+	BriefInitialDescription *string `json:"briefInitialDescription,omitempty" doc:"Brief description (max 255 characters)"`
 	Description             *string `json:"description,omitempty" doc:"Full description"`
-	IsPublic                *bool   `json:"is_public,omitempty" doc:"Public/private flag"`
-	CallLink                *string `json:"call_link,omitempty" doc:"Call link URL (max 255 characters)"`
-	StoryStartAt            *string `json:"story_start_at,omitempty" doc:"YYYY-MM-DD (locked after any match starts)"`
-	StoryCurrentAt          *string `json:"story_current_at,omitempty" doc:"ISO 8601 date-time (cannot regress after match starts)"`
+	IsPublic                *bool   `json:"isPublic,omitempty" doc:"Public/private flag"`
+	CallLink                *string `json:"callLink,omitempty" doc:"Call link URL (max 255 characters)"`
+	StoryStartAt            *string `json:"storyStartAt,omitempty" doc:"YYYY-MM-DD (locked after any match starts)"`
+	StoryCurrentAt          *string `json:"storyCurrentAt,omitempty" doc:"ISO 8601 date-time (cannot regress after match starts)"`
 }
 
 type UpdateCampaignRequest struct {
@@ -30,15 +30,15 @@ type UpdateCampaignRequest struct {
 
 type CampaignEditResponse struct {
 	UUID                    uuid.UUID `json:"uuid"`
-	MasterUUID              uuid.UUID `json:"master_uuid"`
+	MasterUUID              uuid.UUID `json:"masterUuid"`
 	Name                    string    `json:"name"`
-	BriefInitialDescription string    `json:"brief_initial_description"`
+	BriefInitialDescription string    `json:"briefInitialDescription"`
 	Description             string    `json:"description"`
-	IsPublic                bool      `json:"is_public"`
-	CallLink                string    `json:"call_link"`
-	StoryStartAt            string    `json:"story_start_at"`
-	StoryCurrentAt          *string   `json:"story_current_at,omitempty"`
-	UpdatedAt               string    `json:"updated_at"`
+	IsPublic                bool      `json:"isPublic"`
+	CallLink                string    `json:"callLink"`
+	StoryStartAt            string    `json:"storyStartAt"`
+	StoryCurrentAt          *string   `json:"storyCurrentAt,omitempty"`
+	UpdatedAt               string    `json:"updatedAt"`
 }
 
 type UpdateCampaignResponseBody struct {
