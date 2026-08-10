@@ -2,6 +2,7 @@ package sheet
 
 import (
 	"strings"
+	"time"
 
 	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/google/uuid"
@@ -14,9 +15,9 @@ type CharacterSheetResponse struct {
 	CampaignUUID *uuid.UUID        `json:"campaignUuid,omitempty"`
 	Submission   *SubmissionResponse `json:"submission,omitempty"`
 
-	CharacterClass string                       `json:"characterClass"`
-	CategoryName   string                       `json:"categoryName"`
-	Profile        sheetEntity.CharacterProfile `json:"profile"`
+	CharacterClass string          `json:"characterClass"`
+	CategoryName   string          `json:"categoryName"`
+	Profile        ProfileResponse `json:"profile"`
 
 	CharacterExp CharacterExpResponse `json:"characterExp"`
 	Talent       TalentResponse       `json:"talent"`
@@ -105,6 +106,32 @@ type StatusResponse struct {
 type SubmissionResponse struct {
 	CampaignUUID string `json:"campaignUuid"`
 	CreatedAt    string `json:"createdAt"`
+}
+
+type ProfileResponse struct {
+	NickName         string    `json:"nickname"`
+	FullName         string    `json:"fullname"`
+	Alignment        string    `json:"alignment"`
+	Description      string    `json:"description"`
+	BriefDescription string    `json:"briefDescription"`
+	AvatarURL        *string   `json:"avatarUrl,omitempty"`
+	CoverURL         *string   `json:"coverUrl,omitempty"`
+	Birthday         time.Time `json:"birthday"`
+	Age              int       `json:"age"`
+}
+
+func toProfileResponse(p sheetEntity.CharacterProfile) ProfileResponse {
+	return ProfileResponse{
+		NickName:         p.NickName,
+		FullName:         p.FullName,
+		Alignment:        p.Alignment,
+		Description:      p.Description,
+		BriefDescription: p.BriefDescription,
+		AvatarURL:        p.AvatarURL,
+		CoverURL:         p.CoverURL,
+		Birthday:         p.Birthday,
+		Age:              p.Age,
+	}
 }
 
 func NewCharacterSheetResponse(
@@ -304,7 +331,7 @@ func NewCharacterSheetResponse(
 		PlayerUUID:          charSheet.GetPlayerUUID(),
 		MasterUUID:          charSheet.GetMasterUUID(),
 		CampaignUUID:        charSheet.GetCampaignUUID(),
-		Profile:             charSheet.GetProfile(),
+		Profile:             toProfileResponse(charSheet.GetProfile()),
 		CharacterClass:      charClass.String(),
 		CategoryName:        strCategoryName,
 		CharacterExp:        charExp,

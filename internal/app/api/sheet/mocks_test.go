@@ -103,12 +103,17 @@ func buildTestCharacterSheet(t *testing.T) *sheetEntity.CharacterSheet {
 	factory := sheetEntity.NewCharacterSheetFactory()
 	playerUUID := uuid.New()
 	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
+	avatarURL := "https://example.com/avatar.png"
+	coverURL := "https://example.com/cover.png"
 	profile := sheetEntity.CharacterProfile{
-		NickName:  "Gon",
-		FullName:  "Gon Freecss",
-		Alignment: "Chaotic-Good",
-		Birthday:  birthday,
-		Age:       12,
+		NickName:         "Gon",
+		FullName:         "Gon Freecss",
+		Alignment:        "Chaotic-Good",
+		BriefDescription: "Hunter boy",
+		AvatarURL:        &avatarURL,
+		CoverURL:         &coverURL,
+		Birthday:         birthday,
+		Age:              12,
 	}
 	cs, err := factory.Build(&playerUUID, nil, nil, profile, nil, nil, nil)
 	if err != nil {
