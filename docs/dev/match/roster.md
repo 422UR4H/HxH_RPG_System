@@ -63,17 +63,22 @@ O frontend pode descartar a linha do próprio quando já tem a ficha local —
     {
       "uuid": "…",
       "status": "pending",
-      "created_at": "Mon, 02 Jan 2006 15:04:05 GMT",
-      "character_sheet": {
+      "createdAt": "Mon, 02 Jan 2006 15:04:05 GMT",
+      "characterSheet": {
         "uuid": "…",
-        "player_uuid": "…",
-        "campaign_uuid": "…",
-        "nick_name": "Gon",
-        "story_start_at": "2026-01-01",
-        "created_at": "...",
-        "updated_at": "...",
+        "playerUuid": "…",
+        "masterUuid": "…",
+        "campaignUuid": "…",
+        "nickName": "Gon",
+        "avatarUrl": "…",
+        "coverUrl": "…",
+        "storyStartAt": "2026-01-01",
+        "storyCurrentAt": "...",
+        "deadAt": null,
+        "createdAt": "...",
+        "updatedAt": "...",
         "private": {
-          "full_name": "Gon Freecss",
+          "fullName": "Gon Freecss",
           "level": 5,
           "stamina": { "min": 0, "current": 30, "max": 50 }
         }
@@ -86,9 +91,9 @@ O frontend pode descartar a linha do próprio quando já tem a ficha local —
 
 Formatos de data herdados dos summary types existentes
 (`internal/app/api/sheet/character_sheet_sumary_response.go`):
-`http.TimeFormat` para `enrollments[].created_at` (igual ao `MatchResponse`),
-RFC3339 para `created_at`/`updated_at` do sheet, `2006-01-02` para
-`story_start_at`/`story_current_at`, RFC3339 para `dead_at`.
+`http.TimeFormat` para `enrollments[].createdAt` (igual ao `MatchResponse`),
+RFC3339 para `createdAt`/`updatedAt` do sheet, `2006-01-02` para
+`storyStartAt`/`storyCurrentAt`, RFC3339 para `deadAt`.
 
 ## 5. Camadas
 
