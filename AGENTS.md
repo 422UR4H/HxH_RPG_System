@@ -37,6 +37,9 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - Create documentation alongside tests during all development work
 - **Every feature must have integration tests** (not just unit tests)
 - TDD strategy per layer: see `integration-tests.instructions.md` (loaded for `internal/**`)
+- `go vet ./...`/`go test ./...` don't see build-tag-gated files (`smoke`, `integration`, 12 files);
+  broad wire-format/struct-tag migrations should also run `go vet -tags smoke ./...` and
+  `go vet -tags integration ./...` (or the test equivalent) to catch drift there.
 
 ## Git Workflow
 
@@ -98,3 +101,10 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 - Initiative handling in `ChangeMode`
 - `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
 - Full Move/Attack mapping in `buildMasterAction` (pending frontend contract finalization)
+
+**Pendente de configurações de campanha/partida:**
+- `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por
+  `FilterMapState`, mas nenhum endpoint REST o expõe e `room.go` hardcoda `explored`.
+  Será uma configuração de **partida**, escolhida pelo mestre — o mecanismo de
+  configurações ainda não existe no backend. **Não remover** `FogMode`: isso eliminaria
+  o modo `live`. Ver spec do refactor do mapa (repo do front), §3.

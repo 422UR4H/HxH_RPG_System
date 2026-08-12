@@ -170,9 +170,14 @@ func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	}
 	r.session.SyncMapState(wallSlice, r.grid)
 	r.session.SetPieceSource(r)
-	// Seed fog exactly as StartMatch does; otherwise a post-restart session has an empty
-	// fog mode ("") and no per-player visibility, breaking LOS until the next move.
-	// TODO(persistence): load persisted fog_mode + player memories here instead of nil.
+	// fogMode fixo em explored: PENDENTE de configurações de partida.
+	// FogMode é real e usado (filter_map_state.go decide memória de parede por ele), mas
+	// o valor persistido em maps.fog_mode nunca chega aqui porque não existe ainda o
+	// mecanismo de configuração de campanha/partida no backend — fog_mode será uma opção
+	// que o mestre escolhe ao criar/editar a partida. Quando esse mecanismo existir, ler o
+	// modo da configuração da partida e passar aqui. NÃO remover FogMode achando que é
+	// código morto: isso eliminaria o modo `live` do produto.
+	// Ver: System_X_System_React/docs/superpowers/specs/2026-08-06-tactical-map-refactor-design.md §3
 	r.session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
 	for _, pid := range r.session.PlayerIDs() {
 		if _, err := r.session.RecomputeVisibility(pid); err != nil {
@@ -313,8 +318,14 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	}
 	r.session.SyncMapState(wallSlice, r.grid)
 	r.session.SetPieceSource(r)
-	// Seed player memories. loadInitialPlayerMemories returns nil for now (persistence
-	// TODO), which seeds empty per-player memories. mapFogMode defaults to explored.
+	// fogMode fixo em explored: PENDENTE de configurações de partida.
+	// FogMode é real e usado (filter_map_state.go decide memória de parede por ele), mas
+	// o valor persistido em maps.fog_mode nunca chega aqui porque não existe ainda o
+	// mecanismo de configuração de campanha/partida no backend — fog_mode será uma opção
+	// que o mestre escolhe ao criar/editar a partida. Quando esse mecanismo existir, ler o
+	// modo da configuração da partida e passar aqui. NÃO remover FogMode achando que é
+	// código morto: isso eliminaria o modo `live` do produto.
+	// Ver: System_X_System_React/docs/superpowers/specs/2026-08-06-tactical-map-refactor-design.md §3
 	r.session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
 	playerIDs := r.session.PlayerIDs()
 	r.state = RoomStatePlaying
