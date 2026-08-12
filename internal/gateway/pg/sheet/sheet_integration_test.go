@@ -19,6 +19,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgsubmission "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func buildTestSheet(playerUUID *uuid.UUID) *domainsheet.CharacterSheet {
@@ -586,6 +587,165 @@ func TestUpdateCharacterSheetProfile(t *testing.T) {
 		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, uuid.New(), &avatarURL, &coverURL, nil)
 		if err == nil {
 			t.Error("expected error for wrong player UUID, got nil")
+		}
+	})
+}
+
+// seedSheetWithProfile creates a fresh player and a character sheet whose
+// profile already has avatarUrl, coverUrl and briefDescription populated, so
+// partial-PATCH tests can assert that omitted fields survive the update.
+func seedSheetWithProfile(
+	t *testing.T, pool *pgxpool.Pool, repo *sheet.Repository, ctx context.Context,
+	avatarURL, coverURL, briefDescription string,
+) (playerUUID, sheetUUID uuid.UUID) {
+	t.Helper()
+
+	playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+	playerUUID = uuid.MustParse(playerStr)
+
+	factory := domainsheet.NewCharacterSheetFactory()
+	avatar := avatarURL
+	cover := coverURL
+	profile := domainsheet.CharacterProfile{
+		NickName:         "TestChar",
+		FullName:         "Test Character",
+		Alignment:        "Neutral",
+		Description:      "A test character",
+		BriefDescription: briefDescription,
+		AvatarURL:        &avatar,
+		CoverURL:         &cover,
+		Birthday:         time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	s, err := factory.Build(&playerUUID, nil, nil, profile, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("seedSheetWithProfile: failed to build sheet: %v", err)
+	}
+	s.UUID = uuid.New()
+	if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+		t.Fatalf("seedSheetWithProfile: failed to create sheet: %v", err)
+	}
+	return playerUUID, s.UUID
+}
+
+func TestUpdateCharacterSheetProfilePartialUpdate(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	const initialAvatar = "https://pub.r2.dev/avatar/initial.webp"
+	const initialCover = "https://pub.r2.dev/cover/initial.webp"
+	const initialBrief = "Initial brief description"
+
+	t.Run("PATCH with only avatarUrl preserves coverUrl and briefDescription", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerUUID, sheetUUID := seedSheetWithProfile(
+			t, pool, repo, ctx, initialAvatar, initialCover, initialBrief,
+		)
+
+		newAvatar := "https://pub.r2.dev/avatar/updated.webp"
+		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, &newAvatar, nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+		if err != nil {
+			t.Fatalf("sheet not found after update: %v", err)
+		}
+		profile := got.GetProfile()
+		if profile.AvatarURL == nil || *profile.AvatarURL != newAvatar {
+			t.Errorf("expected avatarUrl %q, got %v", newAvatar, profile.AvatarURL)
+		}
+		if profile.CoverURL == nil || *profile.CoverURL != initialCover {
+			t.Errorf("expected coverUrl to be preserved as %q, got %v", initialCover, profile.CoverURL)
+		}
+		if profile.BriefDescription != initialBrief {
+			t.Errorf("expected briefDescription to be preserved as %q, got %q", initialBrief, profile.BriefDescription)
+		}
+	})
+
+	t.Run("PATCH with only coverUrl preserves avatarUrl and briefDescription", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerUUID, sheetUUID := seedSheetWithProfile(
+			t, pool, repo, ctx, initialAvatar, initialCover, initialBrief,
+		)
+
+		newCover := "https://pub.r2.dev/cover/updated.webp"
+		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, nil, &newCover, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+		if err != nil {
+			t.Fatalf("sheet not found after update: %v", err)
+		}
+		profile := got.GetProfile()
+		if profile.CoverURL == nil || *profile.CoverURL != newCover {
+			t.Errorf("expected coverUrl %q, got %v", newCover, profile.CoverURL)
+		}
+		if profile.AvatarURL == nil || *profile.AvatarURL != initialAvatar {
+			t.Errorf("expected avatarUrl to be preserved as %q, got %v", initialAvatar, profile.AvatarURL)
+		}
+		if profile.BriefDescription != initialBrief {
+			t.Errorf("expected briefDescription to be preserved as %q, got %q", initialBrief, profile.BriefDescription)
+		}
+	})
+
+	t.Run("PATCH with all three fields updates all three", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerUUID, sheetUUID := seedSheetWithProfile(
+			t, pool, repo, ctx, initialAvatar, initialCover, initialBrief,
+		)
+
+		newAvatar := "https://pub.r2.dev/avatar/all-updated.webp"
+		newCover := "https://pub.r2.dev/cover/all-updated.webp"
+		newBrief := "Updated brief description"
+		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, &newAvatar, &newCover, &newBrief)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+		if err != nil {
+			t.Fatalf("sheet not found after update: %v", err)
+		}
+		profile := got.GetProfile()
+		if profile.AvatarURL == nil || *profile.AvatarURL != newAvatar {
+			t.Errorf("expected avatarUrl %q, got %v", newAvatar, profile.AvatarURL)
+		}
+		if profile.CoverURL == nil || *profile.CoverURL != newCover {
+			t.Errorf("expected coverUrl %q, got %v", newCover, profile.CoverURL)
+		}
+		if profile.BriefDescription != newBrief {
+			t.Errorf("expected briefDescription %q, got %q", newBrief, profile.BriefDescription)
+		}
+	})
+
+	t.Run("PATCH with all nil leaves everything untouched", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerUUID, sheetUUID := seedSheetWithProfile(
+			t, pool, repo, ctx, initialAvatar, initialCover, initialBrief,
+		)
+
+		err := repo.UpdateCharacterSheetProfile(ctx, sheetUUID, playerUUID, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, sheetUUID.String())
+		if err != nil {
+			t.Fatalf("sheet not found after update: %v", err)
+		}
+		profile := got.GetProfile()
+		if profile.AvatarURL == nil || *profile.AvatarURL != initialAvatar {
+			t.Errorf("expected avatarUrl to be preserved as %q, got %v", initialAvatar, profile.AvatarURL)
+		}
+		if profile.CoverURL == nil || *profile.CoverURL != initialCover {
+			t.Errorf("expected coverUrl to be preserved as %q, got %v", initialCover, profile.CoverURL)
+		}
+		if profile.BriefDescription != initialBrief {
+			t.Errorf("expected briefDescription to be preserved as %q, got %q", initialBrief, profile.BriefDescription)
 		}
 	})
 }

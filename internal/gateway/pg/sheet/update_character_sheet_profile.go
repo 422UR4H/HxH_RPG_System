@@ -16,9 +16,20 @@ func (r *Repository) UpdateCharacterSheetProfile(
 	coverURL *string,
 	description *string,
 ) error {
+	// avatarURL, coverURL and description are *string: Go can't distinguish
+	// an omitted JSON field from an explicit `null` (both unmarshal to nil),
+	// so COALESCE is the only correct semantics here without switching to a
+	// presence-wrapper type. Trade-off: this endpoint can no longer clear a
+	// field to NULL — sending nil now means "leave it as is," not "erase
+	// it." Acceptable today because there's no "remove avatar" UI; if that
+	// ever exists, it will need a sentinel (e.g. empty string) or its own
+	// endpoint.
 	const query = `
 		UPDATE character_profiles cp
-		SET avatar_url = $1, cover_url = $2, brief_description = $3, updated_at = $4
+		SET avatar_url        = COALESCE($1, cp.avatar_url),
+		    cover_url         = COALESCE($2, cp.cover_url),
+		    brief_description = COALESCE($3, cp.brief_description),
+		    updated_at        = $4
 		FROM character_sheets cs
 		WHERE cp.character_sheet_uuid = cs.uuid
 		  AND cs.uuid = $5
