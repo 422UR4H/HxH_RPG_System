@@ -101,3 +101,10 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 - Initiative handling in `ChangeMode`
 - `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
 - Full Move/Attack mapping in `buildMasterAction` (pending frontend contract finalization)
+
+**Pendente de configurações de campanha/partida:**
+- `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por
+  `FilterMapState`, mas nenhum endpoint REST o expõe e `room.go` hardcoda `explored`.
+  Será uma configuração de **partida**, escolhida pelo mestre — o mecanismo de
+  configurações ainda não existe no backend. **Não remover** `FogMode`: isso eliminaria
+  o modo `live`. Ver spec do refactor do mapa (repo do front), §3.
