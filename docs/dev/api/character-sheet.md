@@ -422,18 +422,22 @@ Ficha deletada com sucesso. Nenhum corpo na resposta.
 }
 ```
 
-> **⚠️ Atenção — este endpoint NÃO faz partial update de verdade.** O
-> repositório (`internal/gateway/pg/sheet/update_character_sheet_profile.go`)
-> executa `UPDATE ... SET avatar_url = $1, cover_url = $2, brief_description = $3`
-> **incondicionalmente**, sem `COALESCE` nem checagem de presença de campo. Como
-> os três campos do request body são ponteiros (`*string` com `omitempty`
-> apenas no *marshal*), o Go não distingue "campo omitido" de "campo enviado
-> como `null`" no *unmarshal* — ambos chegam como `nil` no handler. Ou seja: se
-> você enviar `{ "avatarUrl": "..." }` sem `coverUrl` nem `briefDescription`,
-> o back-end vai **zerar (NULL) os outros dois campos no banco**, não apenas
-> deixá-los como estavam. **O front-end deve sempre enviar os três campos
-> juntos** (com os valores atuais para os que não mudaram, ou `null`
-> deliberadamente para limpar).
+> **Partial update de verdade.** O repositório
+> (`internal/gateway/pg/sheet/update_character_sheet_profile.go`) usa
+> `COALESCE($1, cp.avatar_url)` / `COALESCE($2, cp.cover_url)` /
+> `COALESCE($3, cp.brief_description)` no `UPDATE`. Como os três campos do
+> request body são ponteiros (`*string`), Go não distingue "campo omitido" de
+> "campo enviado como `null`" no *unmarshal* — ambos chegam `nil` no handler —
+> então **omitir um campo (ou o front-end enviar `undefined`, que
+> `JSON.stringify` remove do body) deixa a coluna correspondente intacta no
+> banco.** Envie `{ "avatarUrl": "..." }` sozinho e `coverUrl` /
+> `briefDescription` continuam como estavam.
+>
+> **Limitação conhecida:** não existe hoje forma de **limpar** um campo
+> (mandar `null` explicitamente não zera mais a coluna — vira sinônimo de
+> "não mexe"). Isso é aceitável enquanto não existir UI de "remover avatar"
+> ou similar; se um dia existir, este endpoint vai precisar de um sentinela
+> (ex.: string vazia) ou de um endpoint dedicado para clear.
 
 **Response:** 204 No Content
 
