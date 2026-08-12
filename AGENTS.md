@@ -37,6 +37,9 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 - Create documentation alongside tests during all development work
 - **Every feature must have integration tests** (not just unit tests)
 - TDD strategy per layer: see `integration-tests.instructions.md` (loaded for `internal/**`)
+- `go vet ./...`/`go test ./...` don't see build-tag-gated files (`smoke`, `integration`, 12 files);
+  broad wire-format/struct-tag migrations should also run `go vet -tags smoke ./...` and
+  `go vet -tags integration ./...` (or the test equivalent) to catch drift there.
 
 ## Git Workflow
 
