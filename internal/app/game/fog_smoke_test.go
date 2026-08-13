@@ -48,7 +48,7 @@ type smokeBoard struct {
 			Slot game.SlotPayload `json:"slot"`
 		} `json:"coord"`
 		Visible     bool   `json:"visible"`
-		CharacterID string `json:"character_id"`
+		CharacterID string `json:"characterId"`
 	} `json:"pieces"`
 	Walls []mapentity.WallSegment `json:"walls"`
 	Grid  mapentity.GridShape     `json:"grid"`
