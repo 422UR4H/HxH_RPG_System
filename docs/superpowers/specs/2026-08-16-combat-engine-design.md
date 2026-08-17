@@ -234,6 +234,70 @@ Um mapa é reutilizável entre partidas; o estilo de névoa é de **como esta me
 não do desenho. Sobreposição honra a intenção de produto sem orfanar os dados que já existem
 nem forçar toda partida a declarar o campo.
 
+### 4.7 Dano
+
+**Duas famílias de rolagem, não uma.** O teste (acerto, perícia, actionSpeed) usa
+`MatchRules.DiceSet` — 2 D10. O **dano usa os dados da própria arma**: `item.Weapon.dice`
+(Espada = D10 + D4) mais o bônus fixo `Weapon.damage`. O `RollCalculator` da Fase 1 só conhece
+o conjunto de teste; o caminho do dano é outro e nasce na Fase 2.
+
+```
+bruto = dados da arma + Weapon.damage
+
+efetivo = bruto                              // se o alvo NÃO defendeu
+efetivo = max(0, bruto − defesa aplicável)   // se defendeu com sucesso
+```
+
+**A subtração é condicional.** Só se subtrai defesa se o alvo **conseguir defender**. Não é
+redução automática.
+
+#### O que compõe a "defesa aplicável"
+
+| Fonte | Regra |
+|---|---|
+| **Arma × arma** | Defender um ataque armado **com arma** → **não passa dano** |
+| **Ataque desarmado** | Só ataques desarmados geram dano através da defesa |
+| **Armado × defesa desarmada** | A defesa **não tem eficácia** contra perfurante ou cortante. Só funciona contra **concussivo** |
+| **Armadura** | Subtrai também — mas **o mestre controla se o ataque "bate ou não" na armadura** |
+| **Nen** | Vai reduzir o dano final. **Não existe ainda e não entra na conta.** |
+
+> ⚠️ **Aparar (defesa armada) não está bem desenhado.** Implementar com comentário explícito
+> no código marcando que a mecânica é provisória. Não inventar degraus.
+
+#### A margem do acerto **não** entra no dano
+
+Decisão do dono do produto: *"não somará no dano, pelo menos não por enquanto, porque esse
+sistema já é muito punitivo e apelativo."*
+
+> **Registrar em comentário no código:** somar a margem ao dano **será estudado nos testes
+> pós-MVP**. É a única regra do sistema em que a margem não circula, e isso é deliberado.
+
+#### Dry-run: calcular sempre, aplicar uma vez
+
+**Toda colisão produz a redução de HP projetada desde o começo, para o mestre ver — sem tocar
+na ficha.** É um *dry-run*. O `TurnResolution` carrega o dano projetado.
+
+**A aplicação de verdade acontece no fechamento do turno.** Isso resolve o problema de
+recalcular a cada reaction sem aplicar dano várias vezes: calcula-se quantas vezes for
+preciso, aplica-se uma só.
+
+> Convém: o fechamento do turno **já acontece hoje**, implicitamente, dentro de
+> `OpenNextAction`/`PullAction`. A Fase 2 se pendura nele e **não precisa** do encerramento
+> explícito, que é da Fase 5.
+
+#### Visibilidade do resultado
+
+No fechamento, **o dano pode ser mostrado a todos. O HP do alvo, não** — HP é dado privado de
+cada personagem.
+
+#### Em aberto
+
+**Crítico e erro crítico não fazem nada no dano ainda.** O motor da Fase 1 já sinaliza os
+dois e nada os consome. Pelas notas de design, crítico tem consequência **narrativa** (perder
+um olho, ser decepado, morrer — ver Evasão em `reacoes.md`), não um multiplicador. A regra não
+existe; **fora de escopo da Fase 2**, e o resolver deve deixar a flag passar intacta sem
+interpretá-la.
+
 ## 5. As fases
 
 Cada fase é uma sessão e um PR. A ordem foi escolhida para haver **algo visível rodando na
@@ -284,17 +348,42 @@ visível no browser.**
 
 **Escopo:**
 - `buildAction` mapeando o payload **inteiro** (Skills, Speed, Feint, Attack, Defense) — hoje
-  descarta quase tudo.
+  descarta quase tudo. Inclui a fronteira `string → enum.SkillName`, rejeitando nome inválido
+  com erro de WS.
+- **`actorID` passa a ser `sheetUUID`**: entra no `ActionPayload`, `buildAction` o coloca em
+  `Action.actorID`, e a autorização em `EnqueueAction` vira
+  `charToPlayer[actorCharID] == playerUUID`. Ver `flows/05-lacunas.md` §3.
+- **Esquiva por reflexo e defesa passivas** (`Reflexo + 11`; defesa em CD − 10). **Elas sobem
+  para cá**, e a razão é estrutural: sem rolagem oposta não existe CD, sem CD não existe
+  margem, e sem margem não há colisão nenhuma — o nome da fase deixaria de fazer sentido. A
+  Fase 4 fica com as reações **ativas**.
 - `TurnResolver`, ramo `TargetKindCharacter`: chamar o `RollCalculator`, produzir
-  `ActionResult`, popular `Blows` (dar construtor a `battle.Blow`).
-- A escada de margem do repelir e da defesa (`docs/dev/match/combat-engine.md`).
-- Aplicar o resultado: dano na ficha do alvo.
-- `resolution_updated` com payload de verdade (hoje só `IsSettled`, e só para o mestre).
+  `ActionResult`, popular `Blows` (dar construtor e acessores a `battle.Blow`).
+- **A escada de margem como função pura**, sem nenhuma reação ativa ligada nela. A Fase 4 liga
+  o repelir; aqui ela só existe e é testada isoladamente.
+- **Dano** conforme §4.7: dados da arma, subtração condicional, dry-run no `TurnResolution`,
+  aplicação no fechamento do turno via `sheet.Repository.UpdateStatusBars`.
+- `OpenNextAction`/`PullAction` passam a resolver **pelo resolver da sessão, com as fichas**,
+  em vez de `service.TurnResolver{}.Resolve(opened, nil, session)`. Ver `05-lacunas.md` §9.
+- Onde ficam os dados sorteados: `RollCheck` ganha os `RollAttempts`, com o tipo movido para o
+  pacote `action` (`service` importa `action`, nunca o contrário).
+- `resolution_updated` com payload de verdade, **mantido master-only**. Difusão para a mesa e
+  projeção por destinatário são da Fase 5 — antecipar aqui vazaria o cálculo que só o mestre
+  pode ver antes do encerramento. O payload é um **recorte**, não o `TurnResolution` inteiro.
 
-**Fora de escopo:** barras, economia de turno, reações ativas, vários alvos.
+**Fora de escopo:**
+- Barras e economia de turno (Fase 3); reações **ativas** e vários alvos (Fase 4).
+- Encerramento **explícito** de turno e projeção por destinatário (Fase 5).
+- Evento WS de HP e qualquer trabalho de front (Fase 6).
+- Efeito de crítico e erro crítico no dano — a regra não existe (§4.7).
 
-**Pronto quando:** um ataque enviado pelo browser produz dano visível na ficha do alvo, e o
-`TurnResolution` carrega margem e dados individuais.
+**Pronto quando:**
+- Um ataque enviado pelo browser, contra um alvo que não reage, produz dano; o mestre vê a
+  projeção **antes** do fechamento e o HP só muda **depois** que o turno fecha.
+- Recarregando a página, a sidebar mostra o HP novo. **Sem evento WS e sem tocar no front** —
+  a sidebar já lê HP do REST.
+- O `TurnResolution` carrega dados individuais, total, flags de crítico e a margem derivada.
+- A escada de margem tem teste unitário próprio, desacoplada de qualquer reação.
 
 ---
 
@@ -324,9 +413,12 @@ visível no browser.**
 **Objetivo:** o catálogo completo e a cadeia de resolução.
 
 **Escopo:**
-- Reações passivas (esquiva por reflexo → defesa) aplicadas automaticamente, na ordem certa.
-- Reações ativas: escape, escape defensivo, esquiva fechada, escape fechado, repelir, não
+- Reações **ativas**: escape, escape defensivo, esquiva fechada, escape fechado, repelir, não
   fazer nada. Custo por barra conforme a tabela em `combat-engine.md`.
+  > As **passivas** (esquiva por reflexo → defesa) já vieram na Fase 2 — sem elas não haveria
+  > CD nem colisão lá. Aqui elas só ganham a companhia das ativas e o desfecho "não fazer
+  > nada", que recusa até os padrões.
+- Ligar o **repelir** na escada de margem que a Fase 2 escreveu como função pura.
 - Conversão action→reaction com **Desvantagem** (pior das duas), não média.
 - **Resolução em cadeia com vários alvos**: o estado do ataque sai alterado de cada resolução
   e entra na próxima. A ordem de abertura do mestre determina o resultado.
