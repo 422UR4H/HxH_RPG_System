@@ -140,12 +140,28 @@ validade:
 
 ```go
 type Modifier struct {
-    Amount     int
-    AgainstID  *uuid.UUID // nil = vale contra qualquer um
-    ExpiresAt  Scope      // fim do turno | fim do round
-    Reason     string     // para o Action History e para SystemData
+    Amount    int        // ajuste numérico
+    Bias      int        // −1/0/+1 — vantagem/desvantagem NOS DADOS, acumulável
+    Source    Source     // system | master — quem originou
+    AgainstID *uuid.UUID // nil = vale contra qualquer um
+    ExpiresAt Scope      // EndOfTurn | EndOfRound
+    Reason    string     // para o Action History e para SystemData
 }
 ```
+
+⚠️ **`Bias` e `Source` são obrigatórios, não opcionais.** Sem `Bias`, o ledger não consegue
+carregar a Desvantagem que o sistema gera (§4.4) — viés não é um número somável, é uma
+mudança na forma de rolar. Sem `Source`, a auditoria não distingue o que o sistema pôs do que
+o mestre pôs, que é o propósito inteiro do `SystemData`.
+
+```go
+type ResourceBar struct {
+    Balance int   // saldo corrente
+    Speeds  []int // velocidades roladas nesta rodada, para a média
+}
+```
+
+A aritmética de fechamento (média, preço, teto) é da **Fase 3**; a Fase 1 só define a forma.
 
 ### 4.4 ⚠️ Conflito no `Bias`
 
@@ -170,6 +186,54 @@ visibilidade por campo**, não um log.
 separados. O `Room` já faz exatamente isso em `dispatchPerPlayer` para o fog de guerra —
 reusar o padrão em vez de inventar outro.
 
+### 4.6 `MatchRules` — value object primeiro, persistência depois
+
+Uma versão anterior deste spec colocava "o mecanismo de configuração de partida" na Fase 1 e
+dizia que ele destravaria o `fog_mode` hardcoded. **Isso era uma contradição**: a Fase 1 se
+declara pura e sem I/O, e destravar o `fog_mode` exige persistência *e* delivery. Resolvido
+partindo em dois.
+
+**Fase 1 — só a forma.** `MatchRules` é um value object imutável, com padrões embutidos,
+**recebido por parâmetro** por quem precisa dele (o `RollCalculator`, à frente o resolver).
+Não é global, não é lido de lugar nenhum, não persiste.
+
+```go
+type MatchRules struct {
+    DiceSet      DiceSet   // 2D10 (padrão) | D20
+    PassiveValue int       // DERIVADO do DiceSet: 11 para 2D10, 10 para D20
+    LadderStep   int       // 10
+    ReactionTimer *time.Duration // nil = desligado
+    DefaultReactions bool  // true
+    FogMode      *fog.FogMode   // nil = herda do mapa — ver abaixo
+}
+```
+
+`PassiveValue` **nunca é digitado à mão**: é derivado do `DiceSet`, senão trocar os dados
+descalibra todos os testes passivos silenciosamente. Uma sobrescrita explícita pode existir
+depois.
+
+**Fatia própria, mais tarde — persistência + REST.** Onde mora (coluna JSONB em `matches`?
+tabela nova? herança da campanha?), o endpoint para o mestre escolher, e o desbloqueio do
+`fog_mode` em `room.go`. Não bloqueia nenhuma fase do motor: enquanto não existir, o
+construtor usa os padrões.
+
+#### `fog_mode`: o mapa é o padrão, a partida sobrepõe
+
+Hoje `fog_mode` está persistido em **`maps.fog_mode`** (migration `20260616000000`) — nível
+de mapa. O `AGENTS.md` diz que será configuração **de partida**. São escopos diferentes, e é
+tentador achar que um tem que perder.
+
+**Não precisa.** `MatchRules.FogMode` é um ponteiro: `nil` significa *"use o do mapa"*. A
+resolução fica num lugar só:
+
+```
+fogMode = matchRules.FogMode ?? mapa.FogMode ?? explored
+```
+
+Um mapa é reutilizável entre partidas; o estilo de névoa é de **como esta mesa quer jogar**,
+não do desenho. Sobreposição honra a intenção de produto sem orfanar os dados que já existem
+nem forçar toda partida a declarar o campo.
+
 ## 5. As fases
 
 Cada fase é uma sessão e um PR. A ordem foi escolhida para haver **algo visível rodando na
@@ -183,20 +247,33 @@ Fase 2**, em vez de esperar até o fim.
 
 **Escopo:**
 - `CharacterStatus` conforme §4.1, com `ResourceBar` e `ModifierLedger`.
-- Re-chavear `charSheets` para `sheetUUID` e **passar a carregar NPCs** (§4.2). Ajustar
-  `InitMatchSessionUC` e os dois construtores de `MatchSession`.
-- `RollCalculator` de verdade: 2 D10, crítico pela combinação, passivo vs. ativo,
-  vantagem/desvantagem acumulável, e o retorno carregando **a margem** e **os dados
-  individuais**.
-- **Mecanismo de configuração de partida** — o mesmo que destrava o `fog_mode` hardcoded em
-  `room.go` (ver Known Issues do `AGENTS.md`). Padrões: 2 D10, valor médio derivado do
-  conjunto, timer de reação desligado, reação padrão ligada, `fog_mode: explored`.
+- Re-chavear `charSheets` para `sheetUUID` e **tornar a sessão capaz de segurar NPCs** (§4.2).
+  Ajustar `InitMatchSessionUC` e os dois construtores de `MatchSession`.
+- Corrigir `MatchSession.CategorizeTarget`, que **já está errado hoje**: compara `TargetID`
+  (que é o `sheetUUID` da peça) contra `participants`, chaveado por `playerUUID`. Passa a
+  consultar o mapa novo.
+- `RollCalculator`: 2 D10, crítico e erro crítico pela combinação, passivo vs. ativo,
+  vantagem/desvantagem acumulável. Retorna um `RollOutcome` com **os dados individuais**, o
+  total e as flags de crítico. **A margem é derivada** — `outcome.Margin(cd int)` —, porque a
+  CD vem da rolagem oposta, que só existe na Fase 2.
+- `MatchRules` como **value object em memória** (§4.6), com os padrões embutidos, recebido
+  por parâmetro. Sem persistência, sem REST.
 
-**Fora de escopo:** ninguém chama o `RollCalculator` ainda.
+**Fora de escopo:**
+- Ninguém chama o `RollCalculator` ainda.
+- A aritmética de fechamento das barras (média, preço, teto) — é da Fase 3.
+- **Persistência e REST de `MatchRules`, e o desbloqueio do `fog_mode`** — ver §4.6.
+- **Como um NPC entra em `match_participants`** — ver §7.
 
-**Pronto quando:** testes unitários cobrem crítico, erro crítico, passivo, vantagem,
-desvantagem acumulada e margem; `go vet -tags=integration ./internal/...` passa; um NPC
-aparece em `session.charSheets`.
+**Pronto quando:**
+- Testes unitários cobrem crítico, erro crítico, passivo, vantagem, desvantagem acumulada e
+  `Margin(cd)`.
+- Um teste constrói uma sessão com um participante de `PlayerUUID == nil` e assere que a
+  ficha e o `CharacterStatus` dele estão presentes e alcançáveis por `sheetUUID`.
+- `CategorizeTarget` devolve `TargetKindCharacter` para o `sheetUUID` de uma peça.
+- `go vet -tags=integration ./internal/...` passa.
+
+> ⚠️ O critério **não** é "um NPC aparece numa partida real": nada hoje cria um. Ver §7.
 
 ---
 
@@ -313,6 +390,22 @@ as peças e uma sidebar de personagens à direita. Faltam os componentes.
 | Regras mudarem depois do MVP | Números viram configuração de partida; a forma da escada fica em código |
 
 ## 7. Pontas soltas conhecidas
+
+### ⛔ Bloqueador conhecido: não existe caminho para criar um NPC
+
+`start_match.go` popula `match_participants` **apenas a partir de enrollments aceitas**. A
+Fase 1 torna a sessão *capaz* de segurar um NPC — mas **nada no sistema cria um**.
+
+- **Não bloqueia** as Fases 1 a 3: elas operam sobre personagens de jogador.
+- **Bloqueia a Fase 4 em diante**, onde o mestre precisa enviar ações de NPCs.
+
+Precisa virar fatia própria antes da Fase 4, e tem componente de produto: como o mestre
+adiciona um NPC à partida? O desenho fala em *"o mestre adiciona NPCs na primeira cena"* e
+*"mestre pode gerenciar adicionando e removendo personagens a qualquer momento"* — o que
+sugere um caminho de rostering sem enrollment, provavelmente com fichas de `MasterUUID`
+preenchido e `PlayerUUID` nulo.
+
+### Outras pontas soltas
 
 Registradas, **fora de escopo** deste spec:
 
