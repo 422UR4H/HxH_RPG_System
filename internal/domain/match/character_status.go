@@ -2,6 +2,53 @@ package match
 
 import "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 
+// Stance is the character's combat posture: on guard, offensive, defensive, evasive.
+//
+// Reserved. The posture rules do not exist yet, so every character is StanceNone. It is
+// declared now because CharacterStatus touches the bars, the ledger, the posture and the
+// velocity all at once — getting its shape wrong cascades, so the reserved fields are
+// planned up front even without a use. When postures arrive, the closed-escape discount
+// (spending only the move bar) starts requiring the evasive stance; until then it applies
+// unconditionally.
+type Stance string
+
+const StanceNone Stance = ""
+
+// CharacterStatus is a character's live combat state inside a match.
+//
+// Position is deliberately absent: positions live in the Room (they arrive in the WS
+// payloads) and the session already reaches them through matchsession.PiecePositionSource.
+// Duplicating them here would create a second source of truth while the map kept drawing
+// the Room's copy.
+type CharacterStatus struct {
+	ActionBar ResourceBar    // balance + this round's rolled speeds
+	MoveBar   ResourceBar    // same, for movement
+	Ledger    ModifierLedger // accumulated bonuses and penalties
+	Stance    Stance         // reserved; the posture rules do not exist yet
+	Velocity  action.Velocity
+}
+
+func NewCharacterStatus() *CharacterStatus {
+	return &CharacterStatus{
+		ActionBar: ResourceBar{},
+		MoveBar:   ResourceBar{},
+		Ledger:    NewModifierLedger(),
+		Stance:    StanceNone,
+	}
+}
+
+// ExpireModifiers drops every ledger entry whose validity ended at scope. Called at the
+// end of a turn and at the end of a round.
+func (s *CharacterStatus) ExpireModifiers(scope Scope) {
+	s.Ledger.Expire(scope)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Design rationale — the product owner's notes. Kept verbatim: this is the richest
+// record of intent for movement, the two bars, clash, footwork and charge that exists
+// in the repository. Do not trim it.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // tentativa de centralizar todos os status dos personagens
 // pensei em trocar de CharacterStatus para Field em Match,
 // mas lembrei que existem/existirão outros status:
@@ -12,15 +59,6 @@ import "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 // - stamina: cansado, exausto,
 // - sentidos: cego, surdo, "olfato comprometido", - talvez mudo também
 // - mental: confuso, abalado, cansado, exausto, insano
-type CharacterStatus struct {
-	Position  [3]int // x, y, z
-	Velocity  action.Velocity
-	MoveBar   int
-	ActionBar int
-	// Facing enum.Facing // direção que o personagem está olhando - futuro
-	// Stance enum.Stance // posição, postura
-	// Status []enum.MatchStatus
-}
 
 // O CharacterStatus não será persistido
 // ele precisa ser construído dinamicamente à partir das actions
