@@ -234,6 +234,72 @@ Um mapa é reutilizável entre partidas; o estilo de névoa é de **como esta me
 não do desenho. Sobreposição honra a intenção de produto sem orfanar os dados que já existem
 nem forçar toda partida a declarar o campo.
 
+### 4.7 Dano
+
+**Duas famílias de rolagem, não uma.** O teste (acerto, perícia, actionSpeed) usa
+`MatchRules.DiceSet` — 2 D10. O **dano usa os dados da própria arma**: `item.Weapon.dice`
+(Espada = D10 + D4) mais o bônus fixo `Weapon.damage`. O `RollCalculator` da Fase 1 só conhece
+o conjunto de teste; o caminho do dano é outro e nasce na Fase 2.
+
+```
+bruto = dados da arma + Weapon.damage
+
+efetivo = bruto                              // se o alvo NÃO defendeu
+efetivo = max(0, bruto − defesa aplicável)   // se defendeu com sucesso
+```
+
+**A subtração é condicional.** Só se subtrai defesa se o alvo **conseguir defender**. Não é
+redução automática.
+
+#### O que compõe a "defesa aplicável"
+
+| Fonte | Regra |
+|---|---|
+| **Arma × arma** | Defender um ataque armado **com arma** → **não passa dano** |
+| **Ataque desarmado** | Só ataques desarmados geram dano através da defesa |
+| **Armado × defesa desarmada** | A defesa **não tem eficácia** contra perfurante ou cortante. Só funciona contra **concussivo** |
+| **Armadura** | Subtrai também — mas **o mestre controla se o ataque "bate ou não" na armadura** |
+| **Nen** | Vai reduzir o dano final. **Não existe ainda e não entra na conta.** |
+
+> ⚠️ **Aparar (defesa armada) existe desde o início — não é provisório.** O que vem depois do
+> MVP são as complexidades e os detalhes dela, não a mecânica. Implementar a forma inicial e
+> deixar comentário no código dizendo isso: *é a versão inicial, será enriquecida*, e não
+> *é temporária, será substituída*. Não inventar degraus que ainda não foram definidos.
+
+#### A margem do acerto **não** entra no dano
+
+Decisão do dono do produto: *"não somará no dano, pelo menos não por enquanto, porque esse
+sistema já é muito punitivo e apelativo."*
+
+> **Registrar em comentário no código:** somar a margem ao dano **será estudado nos testes
+> pós-MVP**. É a única regra do sistema em que a margem não circula, e isso é deliberado.
+
+#### Dry-run: calcular sempre, aplicar uma vez
+
+**Toda colisão produz a redução de HP projetada desde o começo, para o mestre ver — sem tocar
+na ficha.** É um *dry-run*. O `TurnResolution` carrega o dano projetado.
+
+**A aplicação de verdade acontece no fechamento do turno.** Isso resolve o problema de
+recalcular a cada reaction sem aplicar dano várias vezes: calcula-se quantas vezes for
+preciso, aplica-se uma só.
+
+> Convém: o fechamento do turno **já acontece hoje**, implicitamente, dentro de
+> `OpenNextAction`/`PullAction`. A Fase 2 se pendura nele e **não precisa** do encerramento
+> explícito, que é da Fase 5.
+
+#### Visibilidade do resultado
+
+No fechamento, **o dano pode ser mostrado a todos. O HP do alvo, não** — HP é dado privado de
+cada personagem.
+
+#### Em aberto
+
+**Crítico e erro crítico não fazem nada no dano ainda.** O motor da Fase 1 já sinaliza os
+dois e nada os consome. Pelas notas de design, crítico tem consequência **narrativa** (perder
+um olho, ser decepado, morrer — ver Evasão em `reacoes.md`), não um multiplicador. A regra não
+existe; **fora de escopo da Fase 2**, e o resolver deve deixar a flag passar intacta sem
+interpretá-la.
+
 ## 5. As fases
 
 Cada fase é uma sessão e um PR. A ordem foi escolhida para haver **algo visível rodando na
@@ -284,17 +350,48 @@ visível no browser.**
 
 **Escopo:**
 - `buildAction` mapeando o payload **inteiro** (Skills, Speed, Feint, Attack, Defense) — hoje
-  descarta quase tudo.
+  descarta quase tudo. Inclui a fronteira `string → enum.SkillName`, rejeitando nome inválido
+  com erro de WS.
+- **`actorID` passa a ser `sheetUUID`**: entra no `ActionPayload`, `buildAction` o coloca em
+  `Action.actorID`, e a autorização em `EnqueueAction` vira
+  `charToPlayer[actorCharID] == playerUUID`. Ver `flows/05-lacunas.md` §3.
+- **Esquiva por reflexo e defesa passivas** (`Reflexo + 11`; defesa em CD − 10). **Elas sobem
+  para cá**, e a razão é estrutural: sem rolagem oposta não existe CD, sem CD não existe
+  margem, e sem margem não há colisão nenhuma — o nome da fase deixaria de fazer sentido. A
+  Fase 4 fica com as reações **ativas**.
 - `TurnResolver`, ramo `TargetKindCharacter`: chamar o `RollCalculator`, produzir
-  `ActionResult`, popular `Blows` (dar construtor a `battle.Blow`).
-- A escada de margem do repelir e da defesa (`docs/dev/match/combat-engine.md`).
-- Aplicar o resultado: dano na ficha do alvo.
-- `resolution_updated` com payload de verdade (hoje só `IsSettled`, e só para o mestre).
+  `ActionResult`, popular `Blows` (dar construtor e acessores a `battle.Blow`).
+- **A escada de margem como função pura**, sem nenhuma reação ativa ligada nela. A Fase 4 liga
+  o repelir; aqui ela só existe e é testada isoladamente.
+- **Dano** conforme §4.7: dados da arma, subtração condicional, dry-run no `TurnResolution`,
+  aplicação no fechamento do turno via `sheet.Repository.UpdateStatusBars`.
+- `OpenNextAction`/`PullAction` passam a resolver **pelo resolver da sessão, com as fichas**,
+  em vez de `service.TurnResolver{}.Resolve(opened, nil, session)`. Ver `05-lacunas.md` §9.
+- Onde ficam os dados sorteados: `RollCheck` ganha os `RollAttempts`, com o tipo movido para o
+  pacote `action` (`service` importa `action`, nunca o contrário).
+- **Seam de rolagem determinística.** `RollCalculator.Derive` já é testável — recebe os dados
+  prontos. Mas `Roll` chama `die.NewDie(s).Roll()` direto, sem ponto de injeção, então tudo
+  que passa por ele é irreprodutível. As Fases 3 e 4 têm critérios de pronto com números
+  exatos (a economia do round, a cadeia de vários alvos) que **não podem depender de sorte**.
+  Introduzir aqui o ponto de injeção — quem chama `Roll` recebe a fonte, e os testes passam
+  uma determinística.
+- `resolution_updated` com payload de verdade, **mantido master-only**. Difusão para a mesa e
+  projeção por destinatário são da Fase 5 — antecipar aqui vazaria o cálculo que só o mestre
+  pode ver antes do encerramento. O payload é um **recorte**, não o `TurnResolution` inteiro.
 
-**Fora de escopo:** barras, economia de turno, reações ativas, vários alvos.
+**Fora de escopo:**
+- Barras e economia de turno (Fase 3); reações **ativas** e vários alvos (Fase 4).
+- Encerramento **explícito** de turno e projeção por destinatário (Fase 5).
+- Evento WS de HP e qualquer trabalho de front (Fase 6).
+- Efeito de crítico e erro crítico no dano — a regra não existe (§4.7).
 
-**Pronto quando:** um ataque enviado pelo browser produz dano visível na ficha do alvo, e o
-`TurnResolution` carrega margem e dados individuais.
+**Pronto quando:**
+- Um ataque enviado pelo browser, contra um alvo que não reage, produz dano; o mestre vê a
+  projeção **antes** do fechamento e o HP só muda **depois** que o turno fecha.
+- Recarregando a página, a sidebar mostra o HP novo. **Sem evento WS e sem tocar no front** —
+  a sidebar já lê HP do REST.
+- O `TurnResolution` carrega dados individuais, total, flags de crítico e a margem derivada.
+- A escada de margem tem teste unitário próprio, desacoplada de qualquer reação.
 
 ---
 
@@ -304,18 +401,98 @@ visível no browser.**
 
 **Escopo:**
 - actionSpeed real alimentando `Action.Speed.Result` — a fila passa a ter prioridade.
+  **Perícia base: `Legerity`.**
+- **moveSpeed** — e aqui **a perícia não é fixa**: ela vem da **categoria do movimento**.
+
+  | Movimento | Perícia | Rola? |
+  |---|---|---|
+  | **Dash** (arrancada) | `Accelerate` | sim — `Accelerate + 2 D10` |
+  | **Shift** (controlado) | `Brake` | **não** — usa o valor passivo |
+
+  O mapper lê `Move.Category` e daí tira **qual perícia e se rola**. Isso puxa um pedaço
+  mínimo do sistema de movimento para a Fase 3 — inevitável, porque sem ele a segunda barra
+  não tem número — mas **é pouco**, não o sistema de movimento inteiro.
+
+  **A escolha é do jogador, e é de movimento, não de perícia.** O front expõe os tipos de
+  movimento tático explicitamente; trocar Dash por Shift na bottom sheet **troca a perícia
+  sozinho**. O jogador nunca escolhe perícia de movimento à mão. É o mesmo gesto já descrito
+  para o escape: a interface mostra que ele está fazendo um dash, ele troca ali para shift, e
+  a perícia acompanha.
+
+  ⚠️ **Isso vale só para o início do movimento.** Depois que o personagem está em movimento,
+  quem alimenta a velocidade da move action é a **`Speed`** acumulada em
+  `CharacterStatus.Velocity` — não mais o teste. Mecânica completa (transições Shift↔Dash,
+  teste de `Brake` automático, `Charge` acumulando) em
+  **`docs/dev/match/combat-engine.md` § Movimento**.
+
+  > ❓ Decidir se o momentum (`Charge`) entra na Fase 3 ou fica para a fatia de movimento.
+  > **A barra funciona sem ele** — só fica menos rica.
+
+  > ⛔ **`enum.Velocity` está errado** e deve virar `Quickness`. Alcance: o enum + 12+
+  > ocorrências em `character_class_factory.go` + o que serializa nomes de perícia. **Fatia
+  > própria**, antes ou junto desta fase — não junto de outra coisa. E **não tocar em
+  > `action.Velocity`**, o vetor, que está correto. Detalhe em `combat-engine.md`.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
   retroativa**.
-- Fim de round quando as barras acabam.
+- **`RoundMode.Race` alcançável**: o regime existe e pode ser ligado. Ver a nota abaixo.
+- **Fim de round quando as barras acabam** — e portanto **`CloseRoundUC` plugado aqui**, não
+  na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a fase não entrega o
+  próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e nunca enviado).
 - Ações compostas: ataque amarrado ao **fim do movimento** (`max(tempo do ataque, fim do
   movimento)`), para cait, arremetida e investida.
 
-**Fora de escopo:** iniciativa e `RoundMode.Race` (o `Free` usa o valor passivo 11).
+> **`Race` sem iniciativa — separar o regime da regra que o liga.**
+>
+> **Tudo o que este spec descreve sobre economia de turno é comportamento de `Race`.** A
+> barra, o preço, a média das velocidades, agir de novo, o carry-over — foi tudo desenhado
+> olhando para o turno disputado. **O turno dinâmico em `Free` funciona de outro jeito e
+> ainda não foi desenhado.**
+>
+> Por isso o `Race` precisa ser alcançável aqui: sem ele, a fase implementaria uma economia
+> que não tem regra escrita. A separação é entre **o regime** (`Race` entra na Fase 3,
+> ligável pelo mestre, rolando em vez de usar o passivo) e **a regra de jogo que normalmente
+> o liga** (iniciativa, depois).
+>
+> ⚠️ Uma versão anterior justificava isso dizendo que em `Free` "todo mundo empata em
+> `perícia + 11`". **Isso estava errado** — cada ficha tem o seu valor de perícia, então os
+> totais diferem e a ordenação funciona. O motivo real é o de cima.
+>
+#### O que o `Free` faz
 
-**Pronto quando:** o exemplo canônico da spec de jogo (p1=20, p2=23, p3=11) reproduz a ordem
-`p2 → p1 → p3 → p2` e os saldos `+9 / 0 / −2` em teste automatizado.
+**Free existe para os jogadores terem liberdade sem o mestre aprovar cada gesto** — mover a
+peça, abrir uma porta, investigar um local, pegar um item do chão. Não há disputa para ver
+quem age primeiro porque não há batalha acontecendo.
+
+**Mas não é liberdade sem trava.** Senão um jogador fica movendo a peça indiscriminadamente.
+
+> **A partir da terceira ação do personagem no round, a action cai na fila** para o mestre
+> liberar — ou não.
+
+Duas notas que mudam a implementação:
+
+- **Ações ofensivas não contam nessa contagem.** Qualquer ataque **dispara o fluxo de
+  iniciativa**: já está na fronteira do `Race`, e sai do regime livre por definição.
+- **A trava não é só anti-abuso.** Vários jogadores podem querer agir "ao mesmo tempo", e é
+  aí que o mestre pode **ligar o `Race`** para haver disputa de ação — mesmo fora de batalha.
+  A fila em `Free` é o mecanismo que dá ao mestre a chance de perceber isso e decidir.
+
+**Em `Free` o movimento é normalmente Shift**, que não rola dado — coerente com não haver
+disputa.
+
+⚠️ **A economia de barra descrita neste spec é do `Race`.** Em `Free` o comportamento é o de
+cima: ação livre até a terceira, fila a partir dali. Não há preço de round, média nem
+carry-over enquanto o `Race` não estiver ligado.
+
+**Fora de escopo:** iniciativa como regra; movimento detalhado; posturas.
+
+**Pronto quando:**
+- O exemplo canônico da doc de jogo (p1=20, p2=23, p3=11, segunda rolagem de p2 = 17)
+  reproduz a ordem `p2 → p1 → p3 → p2` e os saldos `+9 / 0 / −2` em teste automatizado, com
+  **as rolagens injetadas** (ver o seam da Fase 2) — um teste de economia não pode depender
+  de sorte.
+- Um round fecha sozinho quando as barras acabam, e `round_closed` chega aos clients.
 
 ---
 
@@ -324,19 +501,30 @@ visível no browser.**
 **Objetivo:** o catálogo completo e a cadeia de resolução.
 
 **Escopo:**
-- Reações passivas (esquiva por reflexo → defesa) aplicadas automaticamente, na ordem certa.
-- Reações ativas: escape, escape defensivo, esquiva fechada, escape fechado, repelir, não
+- Reações **ativas**: escape, escape defensivo, esquiva fechada, escape fechado, repelir, não
   fazer nada. Custo por barra conforme a tabela em `combat-engine.md`.
+  > As **passivas** (esquiva por reflexo → defesa) já vieram na Fase 2 — sem elas não haveria
+  > CD nem colisão lá. Aqui elas só ganham a companhia das ativas e o desfecho "não fazer
+  > nada", que recusa até os padrões.
+- Ligar o **repelir** na escada de margem que a Fase 2 escreveu como função pura.
 - Conversão action→reaction com **Desvantagem** (pior das duas), não média.
+- **Abrir reaction como operação de primeira classe** — mesmo ciclo da action. **Vem para cá,
+  não fica na Fase 5**: a cadeia com vários alvos *é* o mestre abrindo uma reaction por vez, e
+  a ordem de abertura muda o resultado. Sem essa operação, a fase não consegue entregar o
+  próprio objetivo nem provar o critério de pronto.
 - **Resolução em cadeia com vários alvos**: o estado do ataque sai alterado de cada resolução
-  e entra na próxima. A ordem de abertura do mestre determina o resultado.
+  e entra na próxima.
 - Validar que só alvos podem reagir (hoje qualquer um pode).
 - Timer de reação como regra de partida (padrão desligado).
 
-**Fora de escopo:** posturas.
+**Fora de escopo:** posturas; encerramento explícito de turno e projeção por destinatário
+(Fase 5).
+
+⛔ **Bloqueada** pelo rostering de NPCs — ver §7.
 
 **Pronto quando:** teste de integração cobre um ataque em área com três alvos reagindo
-diferente, e a ordem de abertura muda o resultado de forma verificável.
+diferente (um reaction ativa, um "não fazer nada", um sem resposta), e **abrir na ordem
+inversa produz resultado diferente de forma verificável** — com as rolagens injetadas.
 
 ---
 
@@ -345,19 +533,32 @@ diferente, e a ordem de abertura muda o resultado de forma verificável.
 **Objetivo:** a mesa funcionando.
 
 **Escopo:**
-- Abrir reaction como operação de primeira classe (mesmo ciclo da action).
-- Encerrar turno explicitamente, com diálogo de confirmação quando houver reactions enviadas
-  e não abertas — elas entram no cálculo, mas perdem o momento de narrar.
+- Encerrar turno **explicitamente**, com diálogo de confirmação quando houver reactions
+  enviadas e não abertas — elas entram no cálculo, mas perdem o momento de narrar. Até aqui o
+  turno fecha implicitamente dentro de `OpenNextAction`/`PullAction`.
 - Visibilidade por campo, via projeção por destinatário (§4.5): mecânica pública, cálculo só
-  do mestre até o encerramento.
+  do mestre até o encerramento. Inclui a regra do §4.7 — **dano é público, HP não**.
+- `resolution_updated` deixa de ser master-only e passa a ser projetado por destinatário.
 - Notificação de action enfileirada **só para o mestre**.
-- Action History como superfície de jogo, com os campos ocultos respeitados.
-- Tabela `SystemData` — auditoria de toda interferência do mestre.
-- `CloseRoundUC` plugado (hoje não é chamado por nada) e `round_closed` emitido (hoje
-  declarado e nunca enviado).
+- **Action History como superfície de jogo** — inclui o **caminho de leitura**, que não
+  existe: os turnos são persistidos por `PersistTurnClose`, mas nenhum endpoint os devolve.
+  Precisa da consulta e da projeção por campo em cima dela.
 
-**Pronto quando:** dois navegadores logados como jogadores diferentes veem projeções
-distintas do mesmo turno, e a interferência do mestre aparece em `SystemData`.
+  **A resposta é aninhada, não uma lista plana.** As cenas são os blocos lógicos que
+  organizam a partida, e o histórico tem que sair dentro deles — o front renderiza cards de
+  action **dentro do escopo de cada cena**. A hierarquia do domínio (Cena → Round → Turno →
+  Action) é a mesma da resposta; não achatar.
+- Tabela `SystemData` — auditoria de toda interferência do mestre.
+
+> `CloseRoundUC` e `round_closed` **saíram daqui** — foram para a Fase 3, que precisa deles
+> para fechar o round quando as barras acabam. `Abrir reaction` foi para a Fase 4.
+
+**Pronto quando:**
+- **Dois clients WS** conectados como jogadores diferentes recebem, para o mesmo turno,
+  payloads distintos — um com o campo oculto, outro sem. Verificável no backend, **sem
+  depender do front**, que é da Fase 6.
+- O Action History devolve um turno fechado com os campos ocultos respeitados.
+- Uma edição do mestre aparece em `SystemData` com `Source: master`.
 
 ---
 
@@ -377,6 +578,11 @@ as peças e uma sidebar de personagens à direita. Faltam os componentes.
 - Action History.
 
 **Em aberto:** se a sidebar direita de personagens continua onde está.
+
+**Pronto quando:** um jogador compõe e envia uma action pela bottom sheet, vê o balão subir
+quando o mestre a abre, reage clicando num botão ao lado do seu personagem, e acompanha as
+duas barras — tudo sem recarregar a página. É a primeira vez que o loop inteiro é jogável de
+ponta a ponta por uma pessoa, e é o critério que fecha a iniciativa.
 
 ---
 

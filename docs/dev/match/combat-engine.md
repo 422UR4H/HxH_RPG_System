@@ -140,6 +140,86 @@ Para o padrão "mando o movimento, espero, depois mando o ataque" ser usável, o
 O alvo é escolhido clicando no personagem no campo — é isso que abre a bottom sheet. Alvo e
 habilidade são ambos **configuração da action**.
 
+### Movimento: como a velocidade nasce e se acumula
+
+> Escrito para **não precisar ser explicado de novo**. Quando a fatia de movimento for
+> implementada, referencie esta seção.
+
+#### `Velocity` é um vetor; `Speed` é o escalar dentro dele
+
+Já existe em código, e foi preparado exatamente para isto:
+
+```go
+// internal/domain/match/entity/action/velocity.go
+type Velocity struct {
+    Speed         float64 // o escalar — a velocidade de deslocamento
+    DirectionPlan float64 // ângulo no plano (graus)
+    DirectionAlt  float64 // ângulo vertical (graus) — saltos, voo
+}
+```
+
+`CharacterStatus` carrega esse vetor. Os **dois ângulos** existem porque o movimento não é só
+no plano: saltos e voo usam o vertical.
+
+⚠️ **Não confundir com a perícia.** `action.Velocity` (este vetor) está **correto**. O que
+está errado é `enum.Velocity`, uma `SkillName` — ver a nota de renomeação abaixo.
+
+#### Todo movimento começa como Shift ou Dash
+
+| | Perícia | Rola? |
+|---|---|---|
+| **Shift** — deslocamento controlado | `Brake` | não — valor passivo |
+| **Dash** — arrancada | `Accelerate` | sim |
+
+#### As transições não são simétricas
+
+- **Shift → Dash**: basta enviar a próxima move action como Dash. O personagem acelera. Sem
+  teste.
+- **Dash → Shift**: exige um **teste de Brake**, e **o sistema o insere automaticamente** —
+  o jogador não pede. Vale igual para **mudar de direção durante uma corrida**.
+
+O motivo é físico: sair da inércia é uma escolha; interrompê-la ou desviá-la é uma disputa
+contra a própria velocidade que você já carrega.
+
+#### `Charge` acumula na `Speed`
+
+O personagem pode **continuar acelerando**. Isso usa a perícia `Charge`, que **acumula na
+velocidade** — a `Speed` sobe acima do que a perícia base entregaria numa arrancada só.
+
+#### ⭐ Depois que o movimento começou, quem manda é a `Speed`
+
+Este é o ponto que muda a implementação:
+
+> Assim que o personagem está em movimento, a velocidade da move action **deixa de ser o
+> teste de `Accelerate` ou `Brake`** e passa a ser **o resultado produzido pela aceleração —
+> a própria `Speed` com que ele se desloca.**
+
+Ou seja, há dois regimes:
+
+| Momento | O que alimenta a velocidade da move action |
+|---|---|
+| **Iniciando o movimento** | o teste — `Accelerate` (dash) ou `Brake` passivo (shift) |
+| **Já em movimento** | a **`Speed`** acumulada em `CharacterStatus.Velocity` |
+
+E é por isso que `Charge` importa: ele empurra a `Speed`, e a `Speed` é o que passa a contar.
+
+> ❓ O dono do produto escreveu "actionSpeed" ao descrever isto. Registrado como a velocidade
+> da **move action** — a barra de movimento —, porque todo o contexto é deslocamento.
+> Corrigir em uma linha se a intenção era a barra de ação.
+
+#### ⚠️ Renomeação pendente: `enum.Velocity` → `Quickness`
+
+Sob Agilidade devem existir **`Accelerate`, `Brake` e `Quickness`**. Hoje existe
+`enum.Velocity` no lugar de `Quickness`, e `Quickness` não existe no enum — aparece só num
+comentário de `character_status.go` (*"o jogo de pés (Footwork) é um teste de Quickness"*).
+
+**Alcance da mudança:** o enum, mais 12+ ocorrências em
+`character_class_factory.go` (toda classe define um valor), mais o que quer que serialize
+nomes de perícia para o front e para o banco.
+
+**Não fazer junto com outra coisa.** Fatia própria, antes ou junto da fase que usar perícia de
+movimento. E ao fazer, **não tocar em `action.Velocity`** — o vetor está certo.
+
 ### Escala das duas barras
 
 `moveSpeed` e `actionSpeed` estão **na mesma escala** — ambas são `perícia + 2 D10`. A frase
