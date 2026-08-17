@@ -80,16 +80,64 @@ Duas formas, e a escolha é do jogador:
 | Forma | Resolução |
 |---|---|
 | **Duas actions separadas** | cada uma na sua barra, resolvida quando aquela barra chegar. A ordem sai do relógio, não da intenção. Quem quiser ordem garantida **não enfileira as duas de uma vez**: manda o movimento, espera resolver, e só então manda o ataque. |
-| **Ação combinada** | as duas amarradas, resolvidas **juntas, no tempo da mais lenta** |
+| **Ação combinada** (cait, arremetida, investida) | **duas resoluções, com aresta de dependência** — ver abaixo |
 
-| Combinada | Ordem interna |
-|---|---|
-| **Cait** | livre — atacar antes, durante ou ao fim do movimento, conforme qual barra estiver na frente |
-| **Arremetida** (1 slot) | movimento **obrigatoriamente antes** do ataque |
-| **Investida** (2+ slots) | idem |
+⚠️ **Não é "no tempo da mais lenta".** Cada metade resolve no seu próprio tempo; o que existe
+é uma **restrição de ordem**: o ataque está amarrado ao **fim do movimento**.
+
+- Se o personagem é mais rápido para atacar mas **ainda não iniciou o movimento**, o ataque
+  **espera** o turno de mover, e sai na sequência.
+- Se ele já está se movendo, a peça desloca no tempo dela e o ataque sai **quando chegar o
+  turno de ataque**, normalmente.
+
+> Racional do dono do produto: *"um round é praticamente todo mundo agindo ao mesmo tempo. A
+> resolução das actions é discreta, mas estamos numa simulação muito mais próxima da
+> dinamicidade de uma batalha real. Na prática o personagem ainda está deslocando naquele
+> slot e preparando seu ataque, na iminência de atacar."*
+
+Vale igual para **cait**, **arremetida** (1 slot) e **investida** (2+ slots).
 
 Decisão registrada: **não modelar as variações internas do cait** (atacar antes/durante/
 depois). Quem quer controlar a sequência usa duas actions separadas.
+
+### Action enviada no meio do round
+
+Uma action enviada durante a rodada **entra na fila com a actionSpeed que ela rolou**, mesmo
+que esse valor seja maior que o de actions que **já foram resolvidas** naquele round. O
+sistema **não** tenta reordenar retroativamente.
+
+> *"Eu nunca tinha conseguido amarrar isso... acho que o ideal é ignorar e simplesmente
+> enfileirar a action dele com a actionSpeed que ele obteve mesmo. Pelo que definimos sobre o
+> mestre antecipar uma action, também não teria problema ficar na ordem 'errada'."*
+
+Consistente com o `pull_action`, que já quebra a ordem por decisão do mestre.
+
+❌ **Descartado:** o desenho antigo previa *"se o mestre abrir qualquer action do próximo
+turno, as do turno atual são movidas para o próximo"*. Isso **nunca chegou ao código** e fica
+descartado — o receio que o motivava foi resolvido aceitando que a ordem do round não é
+garantia forte. **O histórico não necessariamente terá as actionSpeeds em ordem, e tudo bem.**
+
+### Encerrar o turno com reactions pendentes
+
+O mestre **nunca fica travado**. Se encerrar com reactions enviadas mas não abertas, elas
+**entram no cálculo normalmente** — o jogador não é punido mecanicamente — mas perdem o
+momento de narrar.
+
+Requisito de interface: o sistema **confirma com uma mensagem explicando o que vai
+acontecer** antes de encerrar nessa situação.
+
+### Requisito de front — rascunho da action
+
+Para o padrão "mando o movimento, espero, depois mando o ataque" ser usável, o front
+**precisa preservar o rascunho** da configuração:
+
+- Ao fechar a bottom sheet, a habilidade/arma selecionada **mantém** a configuração deixada,
+  incluindo o alvo.
+- Trocar de alvo ou de habilidade dentro da bottom sheet **migra** a configuração para o novo
+  alvo/habilidade, em vez de resetar.
+
+O alvo é escolhido clicando no personagem no campo — é isso que abre a bottom sheet. Alvo e
+habilidade são ambos **configuração da action**.
 
 ### Escala das duas barras
 
@@ -180,6 +228,10 @@ mantém a rede de segurança.
 
 É aqui que as variantes fechadas se pagam: feitas no instante exato, sem abrir guarda, elas
 devolvem a barra de ação.
+
+⚠️ **Condicionado à postura — quando postura existir.** O desconto do escape fechado
+(consumir só a barra de movimento) passará a exigir **postura evasiva**. Enquanto a regra de
+posturas não existir, o desconto **vale sem essa condição**.
 
 ### A escada de resultados
 

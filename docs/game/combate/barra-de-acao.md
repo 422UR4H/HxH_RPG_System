@@ -116,14 +116,28 @@ movimentar."*
 
 ### Ação combinada
 
-Você também pode amarrar as duas numa ação só. Aí elas acontecem **juntas**, e no tempo da
-**mais lenta** das duas.
+Você também pode amarrar as duas numa ação só. Cada metade continua acontecendo no seu
+próprio tempo — o que muda é que **o ataque fica preso ao fim do movimento**.
 
-| Ação combinada | Como funciona |
-|----------------|---------------|
-| **Cait** | Correr se afastando do inimigo e atacá-lo. A ordem é livre: atacar antes de sair, atacar durante, ou atacar no fim do movimento — depende de qual barra estiver na frente. |
-| **Arremetida** | Percorre 1 quadrado e ataca. O movimento vem **obrigatoriamente antes** do ataque. |
-| **Investida** | Percorre 2 ou mais quadrados e ataca. Também com movimento antes. |
+Se seu personagem é rápido de mão mas ainda não começou a se mover, o ataque **espera** o
+movimento acontecer e sai logo em seguida. Se ele já está se deslocando, a peça anda na hora
+dela e o golpe sai quando chegar a vez do ataque.
+
+> Não é uma trapaça do sistema: um round é praticamente todo mundo agindo ao mesmo tempo.
+> Enquanto a peça se desloca, o personagem já está preparando o golpe — na iminência de
+> atacar.
+
+| Ação combinada | O que é |
+|----------------|---------|
+| **Cait** | Correr se afastando do inimigo e atacá-lo. |
+| **Arremetida** | Percorre 1 quadrado e ataca. |
+| **Investida** | Percorre 2 ou mais quadrados e ataca. |
+
+### Enviar no meio do round
+
+Você pode mandar uma ação a qualquer momento, e ela **entra na fila com a velocidade que
+rolou** — mesmo que essa velocidade seja maior que a de ações que já aconteceram no round. O
+sistema não volta atrás para reordenar o que já foi jogado.
 
 > Se você quer recuar e atacar mas **na sua ordem**, não use o cait: mande as duas ações
 > separadas. O cait existe justamente para quando tanto faz — ou quando você quer as duas ao

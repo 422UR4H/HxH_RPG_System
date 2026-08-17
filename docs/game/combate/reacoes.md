@@ -41,6 +41,9 @@ Se o reflexo não for suficiente, o sistema avisa você. Aí você escolhe:
 > É aqui que as esquivas fechadas se pagam: o **escape padrão custa as duas barras**, o
 > **fechado custa só a de movimento**. Fazer no instante exato, sem abrir guarda, devolve a
 > sua ação.
+>
+> Quando as posturas entrarem no jogo, esse desconto vai exigir que seu personagem esteja em
+> **postura evasiva**. Por enquanto ele vale sempre.
 
 ### Cuidado com o escape
 
