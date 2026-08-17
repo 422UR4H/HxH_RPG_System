@@ -141,6 +141,14 @@ partida e o catálogo de armas. Os UCs não instanciam mais um resolver próprio
 As duas operações do bastão do mestre devolvem um `matchsession.TurnTransition` — turno
 fechado, turno aberto, a resolução de cada um e o que o fechamento aplicou de fato.
 
+## 9b. ✅ Serialização das rotas de sessão (Fase 2)
+
+As quatro rotas que mexem na sessão (`enqueue_action`, `attach_reaction`,
+`open_next_action`, `pull_action`) soltavam o `RLock` antes de chamar o use case — protegiam
+o ponteiro, não o estado. Agora seguram o **write lock durante o `Execute`**, como
+`game-server.instructions.md` sempre mandou. `TestE2E_AttackAgainstACharacterProducesDamage`
+roda sob `-race` e é a rede de segurança.
+
 ## 10. Fila e reação: pontos de decisão em aberto
 
 Não são bugs — são decisões de design ainda não tomadas, que o desenho do fluxo precisa

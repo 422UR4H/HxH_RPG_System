@@ -602,6 +602,17 @@ mappings:
       muda o resultado. Escada de margem com degrau padrão de 10.
 
 
+  - code_path: internal/app/game/combat_e2e_test.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: >-
+      Prova ponta a ponta da primeira colisão, sobre WebSocket real, Room real e use cases
+      reais, com os dados roteirizados (RollSource) para os números serem exatos. Cobre:
+      o mestre vê a projeção antes de qualquer escrita; o jogador recebe turn_opened mas
+      nunca resolution_updated; o HP só muda no fechamento; o mesmo número vai para o
+      gateway. Roda sob -race e é o que guarda a serialização de r.mu nas rotas de sessão.
+
   - code_path: internal/domain/match/service/damage.go
     dev_docs:
       - path: docs/dev/match/combat-engine.md

@@ -416,6 +416,18 @@ nenhuma. A aplicação de verdade acontece em `MatchSession.closeOpenTurn`, no f
 implícito que `OpenNextAction`/`PullAction` já faziam, e devolve `[]DamagedCharacter` para o
 use case persistir com `sheet.Repository.UpdateStatusBars`.
 
+### Serialização: `r.mu` atravessa o `Execute`
+
+`MatchSession` não tem lock próprio — `room.go` é a única serialização. As rotas
+`enqueue_action`, `attach_reaction`, `open_next_action` e `pull_action` **soltavam o
+`RLock` antes de chamar o use case**, então só o ponteiro da sessão estava protegido, não o
+que o use case fazia com ela. Um jogador enfileirando corria com o mestre abrindo, na mesma
+`PriorityQueue`.
+
+A Fase 2 passou a segurar o **write lock durante o `Execute`** nas quatro rotas. Ficou mais
+grave com esta fase porque essas rotas passaram a sortear dados, resolver o turno e escrever
+HP em ficha. Provado pelo `TestE2E_AttackAgainstACharacterProducesDamage` sob `-race`.
+
 ### `actorID` é o `sheetUUID`
 
 `Action.actorID` deixou de ser o jogador autenticado e passou a ser o **personagem** que age —
