@@ -402,13 +402,23 @@ visível no browser.**
 **Escopo:**
 - actionSpeed real alimentando `Action.Speed.Result` — a fila passa a ter prioridade.
   **Perícia base: `Legerity`.**
-- **moveSpeed**, com **perícia base `Velocity`**. É o único jeito de a segunda barra existir:
-  o sistema de movimento detalhado (accelerate/brake/charge, curva, salto) fica fora, mas ele
-  *modifica* o moveSpeed, não o *cria*. A forma é a mesma da actionSpeed — `perícia + 2 D10`.
-  > ❓ Confirmar com o dono do produto: `Legerity` para ação e `Velocity` para movimento. Vem
-  > do desenho (*"legerity provavelmente será utilizado para qualquer actionSpeed"* e
-  > *"correr (run — velocity) funciona como o action speed do movimento"*), não de decisão
-  > explícita.
+- **moveSpeed** — e aqui **a perícia não é fixa**. `Velocity` é o *resultado*, não a entrada:
+  ela é **derivada da categoria do movimento**.
+
+  | Movimento | Perícia | Rola? |
+  |---|---|---|
+  | **Dash** (arrancada) | `Accelerate` | sim — `Accelerate + 2 D10` |
+  | **Shift** (controlado) | `Brake` | **não** — usa o valor passivo |
+
+  Ou seja: o mapper precisa ler `Move.Category` para saber **qual perícia e se rola**. Isso
+  puxa um pedaço mínimo do sistema de movimento para dentro da Fase 3 — inevitável, porque
+  sem isso a segunda barra não tem número.
+
+  > ⚠️ **`Charge` acumula na velocity** quando o personagem está pegando impulso, aumentando
+  > a velocidade além do que a perícia base dá. A complexidade existe e está descrita no
+  > desenho (`accelerate` × `brake` × `charge` como três limitadores distintos). ❓ Decidir se
+  > o momentum entra na Fase 3 ou fica para a fatia de movimento — a barra funciona sem ele,
+  > só fica menos rica.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
@@ -420,15 +430,25 @@ visível no browser.**
 - Ações compostas: ataque amarrado ao **fim do movimento** (`max(tempo do ataque, fim do
   movimento)`), para cait, arremetida e investida.
 
-> **`Race` sem iniciativa — separar o regime da regra que o liga.** Uma versão anterior
-> excluía `RoundMode.Race` desta fase, mas isso tornava o critério de pronto **impossível**:
-> em `Free` a actionSpeed é o valor passivo, todo mundo empata em `perícia + 11`, e o turno
-> dinâmico nunca dispara. O exemplo canônico (20/23/11) só existe com dados rolados, ou seja,
-> em `Race`.
+> **`Race` sem iniciativa — separar o regime da regra que o liga.**
 >
-> A separação: **o regime `Race` entra aqui** (ligar/desligar e rolar em vez de usar o
-> passivo); **a iniciativa** — a regra de jogo que normalmente o liga — fica para depois. Na
-> Fase 3, quem liga é o mestre, direto.
+> **Tudo o que este spec descreve sobre economia de turno é comportamento de `Race`.** A
+> barra, o preço, a média das velocidades, agir de novo, o carry-over — foi tudo desenhado
+> olhando para o turno disputado. **O turno dinâmico em `Free` funciona de outro jeito e
+> ainda não foi desenhado.**
+>
+> Por isso o `Race` precisa ser alcançável aqui: sem ele, a fase implementaria uma economia
+> que não tem regra escrita. A separação é entre **o regime** (`Race` entra na Fase 3,
+> ligável pelo mestre, rolando em vez de usar o passivo) e **a regra de jogo que normalmente
+> o liga** (iniciativa, depois).
+>
+> ⚠️ Uma versão anterior justificava isso dizendo que em `Free` "todo mundo empata em
+> `perícia + 11`". **Isso estava errado** — cada ficha tem o seu valor de perícia, então os
+> totais diferem e a ordenação funciona. O motivo real é o de cima.
+>
+> ❓ **Em aberto:** o que o `Free` faz. Hoje `NewMatchSession` abre a partida em `Free`, então
+> alguma coisa precisa acontecer lá. Enquanto a regra não existir, a Fase 3 exige que o mestre
+> ligue o `Race` para a economia valer.
 
 **Fora de escopo:** iniciativa como regra; movimento detalhado; posturas.
 
@@ -488,6 +508,11 @@ inversa produz resultado diferente de forma verificável** — com as rolagens i
 - **Action History como superfície de jogo** — inclui o **caminho de leitura**, que não
   existe: os turnos são persistidos por `PersistTurnClose`, mas nenhum endpoint os devolve.
   Precisa da consulta e da projeção por campo em cima dela.
+
+  **A resposta é aninhada, não uma lista plana.** As cenas são os blocos lógicos que
+  organizam a partida, e o histórico tem que sair dentro deles — o front renderiza cards de
+  action **dentro do escopo de cada cena**. A hierarquia do domínio (Cena → Round → Turno →
+  Action) é a mesma da resposta; não achatar.
 - Tabela `SystemData` — auditoria de toda interferência do mestre.
 
 > `CloseRoundUC` e `round_closed` **saíram daqui** — foram para a Fase 3, que precisa deles
