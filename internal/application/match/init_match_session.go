@@ -33,15 +33,14 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 
 	charSheets := make(map[uuid.UUID]*csSheet.CharacterSheet, len(participants))
 	for _, p := range participants {
-		if p.Sheet.PlayerUUID == nil {
-			continue
-		}
+		// No PlayerUUID guard: an NPC has PlayerUUID nil and MasterUUID set, and the
+		// master plays it. The sheet loader is keyed by sheet UUID either way.
 		sheet, found, err := uc.sheetLoader.GetCharacterSheetByUUID(ctx, p.Sheet.UUID.String())
 		if err != nil {
 			return nil, err
 		}
 		if found {
-			charSheets[*p.Sheet.PlayerUUID] = sheet
+			charSheets[p.Sheet.UUID] = sheet
 		}
 	}
 
