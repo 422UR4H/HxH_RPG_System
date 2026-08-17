@@ -13,8 +13,48 @@ O sistema utiliza 7 tipos de dados poliédricos:
 | D8   | 8     | Dano médio, armas leves |
 | D10  | 10    | Dano forte, armas intermediárias |
 | D12  | 12    | Dano pesado, armas de grande impacto |
-| D20  | 20    | Testes gerais, testes de habilidade |
+| D20  | 20    | Testes gerais (regra alternativa de partida) |
 | D100 | 100   | Probabilidades especiais, tabelas de evento |
+
+## Testes
+
+Sempre que seu personagem tenta algo cujo sucesso não é garantido — acertar um golpe, executar uma acrobacia, agir mais rápido que o adversário — o sistema faz um **teste**.
+
+### A rolagem padrão: 2 D10
+
+Um teste rola **dois D10 e soma os resultados**. O total vai de 2 a 20, mas os valores do meio são muito mais prováveis que os extremos: você tende a rolar perto de 11, e resultados muito altos ou muito baixos são raros. Isso torna a perícia do seu personagem mais decisiva que a sorte.
+
+Ao resultado dos dados soma-se o valor do personagem no que está sendo testado.
+
+### Crítico e erro crítico
+
+O que define um crítico **não é o total**, e sim os dois dados:
+
+| Situação | Como acontece |
+|----------|---------------|
+| **Crítico** | Ambos os dados saem **10** |
+| **Erro crítico** | Ambos os dados saem **1** |
+
+Ou seja: somar 20 só é possível com dois dez, e somar 2 só com dois uns — mas a leitura é sempre feita nos dados individuais, não na soma.
+
+### Classe de Dificuldade (CD)
+
+Alguns testes têm uma **CD** definida pelo mestre: o número que o resultado precisa alcançar para o teste ter sucesso. Quanto maior a CD, mais difícil a tarefa.
+
+### Vantagem e desvantagem
+
+Sob certas condições, um teste é feito **com vantagem** ou **com desvantagem**:
+
+- **Vantagem** — a rolagem é feita duas vezes e vale o **melhor** resultado.
+- **Desvantagem** — a rolagem é feita duas vezes e vale o **pior** resultado.
+
+Vantagens e desvantagens se acumulam e podem se anular entre si.
+
+Um exemplo de desvantagem em combate: **trocar uma ação que você já havia declarado**. Mudar de ideia no meio da batalha custa caro — não compensa abandonar uma ação para tentar outra que exija muitos testes.
+
+### Regra alternativa: D20
+
+Uma partida pode adotar o **D20** no lugar dos 2 D10 para os testes. A diferença é a distribuição: com D20 todos os resultados são igualmente prováveis, o que torna a partida mais imprevisível e a sorte mais decisiva. O padrão do sistema continua sendo 2 D10.
 
 ## Mecânica de Rolagem
 
