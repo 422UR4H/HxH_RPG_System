@@ -4,8 +4,9 @@
 > dono do produto e as pontas soltas, em
 > [`docs/superpowers/specs/2026-08-14-action-flow-design-notes.md`](../../superpowers/specs/2026-08-14-action-flow-design-notes.md).
 >
-> **Nada disto está implementado.** O esqueleto (Cena → Round → Turno → Action) existe e é
-> correto; o miolo que calcula está vazio. Ver [`flows/05-lacunas.md`](flows/05-lacunas.md).
+> **Fase 1 implementada** (`RollCalculator`, `CharacterStatus`, `MatchRules`, chaveamento
+> por personagem). O restante — colisão, barras, reações, regência — ainda não existe.
+> Ver [`flows/05-lacunas.md`](flows/05-lacunas.md).
 
 ## Princípios
 
@@ -283,21 +284,22 @@ existem e o que cada um faz — fica em código, porque mudá-la muda o jogo.
 | Reação padrão na omissão | ligada |
 | `fog_mode` | `explored` |
 
-> **Convergência:** o mecanismo de configuração de partida **não existe** no backend, e
-> `fog_mode` já esbarra nele (hardcoded em `room.go`, listado nos Known Issues do
-> `AGENTS.md`). São o mesmo buraco.
+> **Fase 1:** `MatchRules` existe como value object, com os padrões da tabela acima,
+> recebido por parâmetro. Persistência, REST e o desbloqueio do `fog_mode` em `room.go`
+> são fatia própria — `MatchRules.FogMode` é ponteiro, e a resolução é
+> `partida ?? mapa ?? explored` em `MatchRules.ResolveFogMode`.
 
 ## Pendências estruturais
 
 | Item | Situação |
 |---|---|
-| `RollCalculator` | retorna 0; ninguém chama |
+| `RollCalculator` | ✅ Fase 1 — `Roll` sorteia os dois conjuntos uma vez, `Derive` recalcula quantas vezes o mestre editar. Ninguém o chama ainda |
 | `TurnResolver` — ramo `character` | vazio |
-| `CharacterStatus` | só comentário; precisa virar código (posturas, barras, livro-razão de bônus/penalidade) |
+| `CharacterStatus` | ✅ Fase 1 — `ResourceBar` (duas barras), `ModifierLedger`, `Stance` reservado |
 | `battle.Blow` | campos privados, sem construtor |
 | `action.Initiative` | órfão; `ChangeMode` ignora o parâmetro |
 | `buildAction` | descarta Skills, Speed, Feint, Attack, Defense |
 | Tabela `SystemData` | auditoria de interferência do mestre — só no desenho |
-| Onde mora a diferença acumulada | `RollContext`? `CharacterStatus`? derivada da action anterior? |
-| Conflito no `Bias` | desvantagem gerada pelo sistema × ajuste do mestre disputam o campo |
+| Onde mora a diferença acumulada | ✅ Fase 1 — `ModifierLedger` no `CharacterStatus`, com `AgainstID`, `ExpiresAt` e `Source` |
+| Conflito no `Bias` | ✅ Fase 1 — `RollCondition.Bias` é do mestre; o viés do sistema é um `Modifier` de `Source: system`, e o `RollCalculator` soma os dois em `Derive` |
 | Tela de enviar action | **não existe no front** |

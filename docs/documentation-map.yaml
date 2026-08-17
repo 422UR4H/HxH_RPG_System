@@ -348,6 +348,36 @@ mappings:
         confidence: directly_affected
     notes: ApplyWallInteract — open/close/toggle; lockpick/examine are TODO (roll check)
 
+  - code_path: internal/domain/match/service/roll_calculator.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/dados.md
+        confidence: directly_affected
+    notes: RollCalculator — Roll (once) + Derive (many); crítico pela combinação, passivo, viés acumulado
+
+  - code_path: internal/domain/match/character_status.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: possibly_affected
+    notes: CharacterStatus — duas ResourceBar, ModifierLedger, Stance reservado
+
+  - code_path: internal/domain/match/modifier.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: ModifierLedger — bônus/penalidade acumulados, com escopo, alvo e origem (system|master)
+
+  - code_path: internal/domain/match/match_rules.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: MatchRules — conjunto de dados, degrau da escada, timer de reação, fog_mode (partida ?? mapa)
+
   # ─── Map: Domain Entity + Service ───
   - code_path: internal/domain/map/
     dev_docs:

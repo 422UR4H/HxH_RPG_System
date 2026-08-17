@@ -71,7 +71,7 @@ type ReactionResult struct {
 type TurnResolver struct{}
 
 // Resolve calculates the current resolution snapshot for the given Turn.
-// sheets maps participant UUIDs to their character sheets; nil is valid.
+// sheets maps character sheet UUIDs to their character sheets; nil is valid.
 // targets is used to categorize action targets; nil disables wall routing.
 func (tr TurnResolver) Resolve(
 	t *turn.Turn,
