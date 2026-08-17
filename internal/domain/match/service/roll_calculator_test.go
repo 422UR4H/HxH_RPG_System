@@ -11,8 +11,8 @@ import (
 
 // attempts builds a RollAttempts with both sets, so tests are deterministic:
 // Roll() uses crypto/rand and has no seam, but Derive() is pure data in, data out.
-func attempts(primary, secondary []int) service.RollAttempts {
-	return service.RollAttempts{Primary: primary, Secondary: secondary}
+func attempts(primary, secondary []int) action.RollAttempts {
+	return action.RollAttempts{Primary: primary, Secondary: secondary}
 }
 
 func TestRollCalculator_Roll(t *testing.T) {
