@@ -261,8 +261,10 @@ redução automática.
 | **Armadura** | Subtrai também — mas **o mestre controla se o ataque "bate ou não" na armadura** |
 | **Nen** | Vai reduzir o dano final. **Não existe ainda e não entra na conta.** |
 
-> ⚠️ **Aparar (defesa armada) não está bem desenhado.** Implementar com comentário explícito
-> no código marcando que a mecânica é provisória. Não inventar degraus.
+> ⚠️ **Aparar (defesa armada) existe desde o início — não é provisório.** O que vem depois do
+> MVP são as complexidades e os detalhes dela, não a mecânica. Implementar a forma inicial e
+> deixar comentário no código dizendo isso: *é a versão inicial, será enriquecida*, e não
+> *é temporária, será substituída*. Não inventar degraus que ainda não foram definidos.
 
 #### A margem do acerto **não** entra no dano
 
@@ -367,6 +369,12 @@ visível no browser.**
   em vez de `service.TurnResolver{}.Resolve(opened, nil, session)`. Ver `05-lacunas.md` §9.
 - Onde ficam os dados sorteados: `RollCheck` ganha os `RollAttempts`, com o tipo movido para o
   pacote `action` (`service` importa `action`, nunca o contrário).
+- **Seam de rolagem determinística.** `RollCalculator.Derive` já é testável — recebe os dados
+  prontos. Mas `Roll` chama `die.NewDie(s).Roll()` direto, sem ponto de injeção, então tudo
+  que passa por ele é irreprodutível. As Fases 3 e 4 têm critérios de pronto com números
+  exatos (a economia do round, a cadeia de vários alvos) que **não podem depender de sorte**.
+  Introduzir aqui o ponto de injeção — quem chama `Roll` recebe a fonte, e os testes passam
+  uma determinística.
 - `resolution_updated` com payload de verdade, **mantido master-only**. Difusão para a mesa e
   projeção por destinatário são da Fase 5 — antecipar aqui vazaria o cálculo que só o mestre
   pode ver antes do encerramento. O payload é um **recorte**, não o `TurnResolution` inteiro.
@@ -393,18 +401,43 @@ visível no browser.**
 
 **Escopo:**
 - actionSpeed real alimentando `Action.Speed.Result` — a fila passa a ter prioridade.
+  **Perícia base: `Legerity`.**
+- **moveSpeed**, com **perícia base `Velocity`**. É o único jeito de a segunda barra existir:
+  o sistema de movimento detalhado (accelerate/brake/charge, curva, salto) fica fora, mas ele
+  *modifica* o moveSpeed, não o *cria*. A forma é a mesma da actionSpeed — `perícia + 2 D10`.
+  > ❓ Confirmar com o dono do produto: `Legerity` para ação e `Velocity` para movimento. Vem
+  > do desenho (*"legerity provavelmente será utilizado para qualquer actionSpeed"* e
+  > *"correr (run — velocity) funciona como o action speed do movimento"*), não de decisão
+  > explícita.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
   retroativa**.
-- Fim de round quando as barras acabam.
+- **`RoundMode.Race` alcançável**: o regime existe e pode ser ligado. Ver a nota abaixo.
+- **Fim de round quando as barras acabam** — e portanto **`CloseRoundUC` plugado aqui**, não
+  na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a fase não entrega o
+  próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e nunca enviado).
 - Ações compostas: ataque amarrado ao **fim do movimento** (`max(tempo do ataque, fim do
   movimento)`), para cait, arremetida e investida.
 
-**Fora de escopo:** iniciativa e `RoundMode.Race` (o `Free` usa o valor passivo 11).
+> **`Race` sem iniciativa — separar o regime da regra que o liga.** Uma versão anterior
+> excluía `RoundMode.Race` desta fase, mas isso tornava o critério de pronto **impossível**:
+> em `Free` a actionSpeed é o valor passivo, todo mundo empata em `perícia + 11`, e o turno
+> dinâmico nunca dispara. O exemplo canônico (20/23/11) só existe com dados rolados, ou seja,
+> em `Race`.
+>
+> A separação: **o regime `Race` entra aqui** (ligar/desligar e rolar em vez de usar o
+> passivo); **a iniciativa** — a regra de jogo que normalmente o liga — fica para depois. Na
+> Fase 3, quem liga é o mestre, direto.
 
-**Pronto quando:** o exemplo canônico da spec de jogo (p1=20, p2=23, p3=11) reproduz a ordem
-`p2 → p1 → p3 → p2` e os saldos `+9 / 0 / −2` em teste automatizado.
+**Fora de escopo:** iniciativa como regra; movimento detalhado; posturas.
+
+**Pronto quando:**
+- O exemplo canônico da doc de jogo (p1=20, p2=23, p3=11, segunda rolagem de p2 = 17)
+  reproduz a ordem `p2 → p1 → p3 → p2` e os saldos `+9 / 0 / −2` em teste automatizado, com
+  **as rolagens injetadas** (ver o seam da Fase 2) — um teste de economia não pode depender
+  de sorte.
+- Um round fecha sozinho quando as barras acabam, e `round_closed` chega aos clients.
 
 ---
 
@@ -420,15 +453,23 @@ visível no browser.**
   > nada", que recusa até os padrões.
 - Ligar o **repelir** na escada de margem que a Fase 2 escreveu como função pura.
 - Conversão action→reaction com **Desvantagem** (pior das duas), não média.
+- **Abrir reaction como operação de primeira classe** — mesmo ciclo da action. **Vem para cá,
+  não fica na Fase 5**: a cadeia com vários alvos *é* o mestre abrindo uma reaction por vez, e
+  a ordem de abertura muda o resultado. Sem essa operação, a fase não consegue entregar o
+  próprio objetivo nem provar o critério de pronto.
 - **Resolução em cadeia com vários alvos**: o estado do ataque sai alterado de cada resolução
-  e entra na próxima. A ordem de abertura do mestre determina o resultado.
+  e entra na próxima.
 - Validar que só alvos podem reagir (hoje qualquer um pode).
 - Timer de reação como regra de partida (padrão desligado).
 
-**Fora de escopo:** posturas.
+**Fora de escopo:** posturas; encerramento explícito de turno e projeção por destinatário
+(Fase 5).
+
+⛔ **Bloqueada** pelo rostering de NPCs — ver §7.
 
 **Pronto quando:** teste de integração cobre um ataque em área com três alvos reagindo
-diferente, e a ordem de abertura muda o resultado de forma verificável.
+diferente (um reaction ativa, um "não fazer nada", um sem resposta), e **abrir na ordem
+inversa produz resultado diferente de forma verificável** — com as rolagens injetadas.
 
 ---
 
@@ -437,19 +478,27 @@ diferente, e a ordem de abertura muda o resultado de forma verificável.
 **Objetivo:** a mesa funcionando.
 
 **Escopo:**
-- Abrir reaction como operação de primeira classe (mesmo ciclo da action).
-- Encerrar turno explicitamente, com diálogo de confirmação quando houver reactions enviadas
-  e não abertas — elas entram no cálculo, mas perdem o momento de narrar.
+- Encerrar turno **explicitamente**, com diálogo de confirmação quando houver reactions
+  enviadas e não abertas — elas entram no cálculo, mas perdem o momento de narrar. Até aqui o
+  turno fecha implicitamente dentro de `OpenNextAction`/`PullAction`.
 - Visibilidade por campo, via projeção por destinatário (§4.5): mecânica pública, cálculo só
-  do mestre até o encerramento.
+  do mestre até o encerramento. Inclui a regra do §4.7 — **dano é público, HP não**.
+- `resolution_updated` deixa de ser master-only e passa a ser projetado por destinatário.
 - Notificação de action enfileirada **só para o mestre**.
-- Action History como superfície de jogo, com os campos ocultos respeitados.
+- **Action History como superfície de jogo** — inclui o **caminho de leitura**, que não
+  existe: os turnos são persistidos por `PersistTurnClose`, mas nenhum endpoint os devolve.
+  Precisa da consulta e da projeção por campo em cima dela.
 - Tabela `SystemData` — auditoria de toda interferência do mestre.
-- `CloseRoundUC` plugado (hoje não é chamado por nada) e `round_closed` emitido (hoje
-  declarado e nunca enviado).
 
-**Pronto quando:** dois navegadores logados como jogadores diferentes veem projeções
-distintas do mesmo turno, e a interferência do mestre aparece em `SystemData`.
+> `CloseRoundUC` e `round_closed` **saíram daqui** — foram para a Fase 3, que precisa deles
+> para fechar o round quando as barras acabam. `Abrir reaction` foi para a Fase 4.
+
+**Pronto quando:**
+- **Dois clients WS** conectados como jogadores diferentes recebem, para o mesmo turno,
+  payloads distintos — um com o campo oculto, outro sem. Verificável no backend, **sem
+  depender do front**, que é da Fase 6.
+- O Action History devolve um turno fechado com os campos ocultos respeitados.
+- Uma edição do mestre aparece em `SystemData` com `Source: master`.
 
 ---
 
@@ -469,6 +518,11 @@ as peças e uma sidebar de personagens à direita. Faltam os componentes.
 - Action History.
 
 **Em aberto:** se a sidebar direita de personagens continua onde está.
+
+**Pronto quando:** um jogador compõe e envia uma action pela bottom sheet, vê o balão subir
+quando o mestre a abre, reage clicando num botão ao lado do seu personagem, e acompanha as
+duas barras — tudo sem recarregar a página. É a primeira vez que o loop inteiro é jogável de
+ponta a ponta por uma pessoa, e é o critério que fecha a iniciativa.
 
 ---
 
