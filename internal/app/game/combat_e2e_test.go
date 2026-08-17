@@ -1,0 +1,556 @@
+package game_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+)
+
+// This file is the end-to-end guarantee for the first real collision: an attack sent over
+// a real WebSocket, against a real Room, resolved by the real use cases, producing damage
+// on the target's sheet.
+//
+// It drives the same sequence a browser would:
+//
+//	player  → enqueue_action  (attack, targeting another character)
+//	master  → open_next_action  (opens the turn; the master receives the projection)
+//	master  → open_next_action  (closes it; the damage is applied and persisted)
+//
+// and asserts the four things the phase owes:
+//
+//  1. the master sees the projected damage BEFORE anything is applied;
+//  2. the player receives no resolution_updated at all — the calculation is the master's;
+//  3. the target's HP does not move while the turn is open;
+//  4. it moves by exactly the projected amount once the turn closes, and the same number
+//     is written through to the sheet gateway.
+//
+// The dice are scripted, so the numbers are exact instead of lucky.
+
+// ─── mocks ──────────────────────────────────────────────────────────────────
+
+// combatSessionUC hands the handler one prepared session, so the test owns the sheets.
+type combatSessionUC struct{ session *matchsession.MatchSession }
+
+func (m *combatSessionUC) Init(_ context.Context, _ uuid.UUID) (*matchsession.MatchSession, error) {
+	return m.session, nil
+}
+
+// recordingStatusWriter stands in for the sheet gateway.
+type recordingStatusWriter struct {
+	mu         sync.Mutex
+	sheetUUIDs []string
+	healthCurr []int
+}
+
+func (w *recordingStatusWriter) UpdateStatusBars(
+	_ context.Context, sheetUUID string, health, _, _ status.IStatusBar,
+) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.sheetUUIDs = append(w.sheetUUIDs, sheetUUID)
+	w.healthCurr = append(w.healthCurr, health.GetCurrent())
+	return nil
+}
+
+// topFaceSource lands every die on its top face, so the attack always clears the passive
+// dodge and the numbers in the assertions are exact.
+type topFaceSource struct{}
+
+func (topFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
+
+// ─── fixture ────────────────────────────────────────────────────────────────
+
+type combatFixture struct {
+	server     *httptest.Server
+	matchUUID  uuid.UUID
+	masterUUID uuid.UUID
+	playerUUID uuid.UUID
+	attackerID uuid.UUID // sheet UUID of the attacking character
+	victimID   uuid.UUID // sheet UUID of the target
+	victim     *csSheet.CharacterSheet
+	writer     *recordingStatusWriter
+}
+
+func newCombatFixture(t *testing.T) *combatFixture {
+	t.Helper()
+
+	f := &combatFixture{
+		matchUUID:  uuid.New(),
+		masterUUID: uuid.New(),
+		playerUUID: uuid.New(),
+		attackerID: uuid.New(),
+		victimID:   uuid.New(),
+		writer:     &recordingStatusWriter{},
+	}
+	// Both characters belong to the same player, which is enough here: authorization is
+	// per player and the test only needs one client to send the attack.
+	victimPlayer := f.playerUUID
+	attacker := &match.Participant{
+		UUID: uuid.New(), MatchUUID: f.matchUUID,
+		Sheet: csEntity.Summary{UUID: f.attackerID, PlayerUUID: &f.playerUUID},
+	}
+	victim := &match.Participant{
+		UUID: uuid.New(), MatchUUID: f.matchUUID,
+		Sheet: csEntity.Summary{UUID: f.victimID, PlayerUUID: &victimPlayer},
+	}
+
+	f.victim = newCombatSheet(t)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		f.attackerID: newCombatSheet(t),
+		f.victimID:   f.victim,
+	}
+	session := matchsession.NewMatchSession(
+		f.matchUUID, sheets, []*match.Participant{attacker, victim},
+	)
+	session.SetRollSource(topFaceSource{})
+
+	hub := game.NewHub()
+	go hub.Run()
+
+	handler := game.NewHandler(
+		hub,
+		&fogMatchRepo{masterUUID: f.masterUUID, started: true},
+		&mockEnrollmentChecker{enrolled: true},
+		&mockStartMatchUC{},
+		&mockKickPlayerUC{},
+		&combatSessionUC{session: session},
+		// The real use cases: this is what makes the test end-to-end rather than a mock
+		// round-trip.
+		appmatch.NewOpenNextActionUC(f.writer),
+		appmatch.NewPullActionUC(f.writer),
+		appmatch.NewEnqueueActionUC(),
+		appmatch.NewAttachReactionUC(),
+		&mockChangeSceneUCHandler{},
+		&mockRoundRepoHandler{},
+		&mockEnqueueMasterActionUCHandler{},
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", handler.HandleWebSocket)
+	f.server = httptest.NewServer(mux)
+	t.Cleanup(func() {
+		f.server.Close()
+		hub.Stop()
+	})
+	return f
+}
+
+// connect dials the master first and then the player. The order matters: the room refuses
+// a player with lobby_not_open until the master has opened it, which is also the path that
+// rehydrates the session for an already-started match.
+func (f *combatFixture) connect(t *testing.T) (master, player *websocket.Conn) {
+	t.Helper()
+	master = connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	readMessage(t, master) // room_state — confirms the client is registered in the room
+	player = connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	readMessage(t, player) // room_state
+	return master, player
+}
+
+func newCombatSheet(t *testing.T) *csSheet.CharacterSheet {
+	t.Helper()
+	playerUUID := uuid.New()
+	cs, err := csSheet.NewCharacterSheetFactory().Build(
+		&playerUUID, nil, nil,
+		csSheet.CharacterProfile{NickName: "Combatant", FullName: "Combat Test Subject"},
+		nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("factory.Build error: %v", err)
+	}
+	return cs
+}
+
+// victimHP reads the live sheet. The room mutates that same sheet from its own goroutine,
+// so callers must only read it when no message is in flight — before anything is sent, and
+// after the writer has confirmed the close persisted.
+func (f *combatFixture) victimHP(t *testing.T) int {
+	t.Helper()
+	bar, ok := f.victim.GetAllStatusBar()[enum.Health]
+	if !ok {
+		t.Fatal("the victim's sheet has no health bar")
+	}
+	return bar.GetCurrent()
+}
+
+// awaitPersisted waits for the gateway to have been written to, which is the room
+// goroutine's last act on the closing path — after it, the sheet is safe to read.
+func (w *recordingStatusWriter) awaitPersisted(d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		w.mu.Lock()
+		n := len(w.sheetUUIDs)
+		w.mu.Unlock()
+		if n > 0 {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+func (w *recordingStatusWriter) snapshot() ([]string, []int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.sheetUUIDs...), append([]int(nil), w.healthCurr...)
+}
+
+func sendWS(t *testing.T, conn *websocket.Conn, msgType string, payload any) {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal %s payload: %v", msgType, err)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"type": msgType, "payload": json.RawMessage(data),
+	})
+	if err != nil {
+		t.Fatalf("marshal %s message: %v", msgType, err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, raw); err != nil {
+		t.Fatalf("send %s: %v", msgType, err)
+	}
+}
+
+// awaitType reads until a message of the given type arrives, or the deadline passes.
+// It returns whether it arrived — used to synchronise the two clients, which are separate
+// connections served by separate goroutines: without waiting for the player's
+// action_enqueued, the master's open_next_action can overtake the enqueue and find an
+// empty queue.
+func awaitType(t *testing.T, conn *websocket.Conn, want game.MessageType, d time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(deadline)
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			return false
+		}
+		var msg game.Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Type == want {
+			return true
+		}
+	}
+	return false
+}
+
+// collector drains a connection in the background into a slice.
+//
+// A blocking read that times out is fatal for a gorilla connection — the socket cannot be
+// read again afterwards. Asserting "this client never received X" by waiting for a timeout
+// would therefore break the very connection the rest of the test still needs, so the
+// player's traffic is collected as it arrives instead.
+type collector struct {
+	mu   sync.Mutex
+	msgs []game.Message
+}
+
+func newCollector(conn *websocket.Conn) *collector {
+	c := &collector{}
+	go func() {
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var msg game.Message
+			if err := json.Unmarshal(data, &msg); err != nil {
+				continue
+			}
+			c.mu.Lock()
+			c.msgs = append(c.msgs, msg)
+			c.mu.Unlock()
+		}
+	}()
+	return c
+}
+
+// await waits for a message of the given type to have arrived.
+func (c *collector) await(want game.MessageType, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if c.count(want) > 0 {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+func (c *collector) count(want game.MessageType) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, m := range c.msgs {
+		if m.Type == want {
+			n++
+		}
+	}
+	return n
+}
+
+// awaitResolution reads until a resolution_updated arrives or the deadline passes.
+func awaitResolution(t *testing.T, conn *websocket.Conn, d time.Duration) *game.ResolutionUpdatedPayload {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(deadline)
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			return nil
+		}
+		var msg game.Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Type != game.MsgTypeResolutionUpdate {
+			continue
+		}
+		var p game.ResolutionUpdatedPayload
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			t.Fatalf("unmarshal resolution_updated: %v", err)
+		}
+		return &p
+	}
+	return nil
+}
+
+// ─── the test ───────────────────────────────────────────────────────────────
+
+func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
+	f := newCombatFixture(t)
+
+	master, player := f.connect(t)
+	defer master.Close()
+	defer player.Close()
+	playerMsgs := newCollector(player)
+
+	hpBefore := f.victimHP(t)
+	if hpBefore <= 0 {
+		t.Fatalf("the victim starts at %d HP — the fixture is wrong", hpBefore)
+	}
+
+	// The player sends an attack, exactly as a bottom sheet would.
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId":  f.attackerID.String(),
+		"targetId": []string{f.victimID.String()},
+		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
+		"attack": map[string]any{
+			"weapon": "Sword",
+			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
+
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+
+	// The master opens it. That is when the projection reaches them.
+	sendWS(t, master, "open_next_action", map[string]any{})
+
+	opened := awaitResolution(t, master, 3*time.Second)
+	if opened == nil {
+		t.Fatal("the master never received a resolution_updated for the opened turn")
+	}
+
+	var projected int
+
+	t.Run("the master sees real dice and a projection", func(t *testing.T) {
+		if len(opened.Action.DiceRolled) != 2 {
+			t.Errorf("DiceRolled = %v, want the two individual 2D10 dice", opened.Action.DiceRolled)
+		}
+		if !opened.Action.IsCritical {
+			t.Error("every die landed on its top face, so this must read as a critical")
+		}
+		if opened.Action.Total != 20 {
+			t.Errorf("Total = %d, want 20 (10 + 10, skills at 0)", opened.Action.Total)
+		}
+		if opened.Action.Margin == nil {
+			t.Fatal("the margin must be derived once the dodge gives the attack a CD")
+		}
+		// The passive reflex dodge is Reflex(0) + 11.
+		if *opened.Action.Margin != 20-11 {
+			t.Errorf("Margin = %d, want %d", *opened.Action.Margin, 20-11)
+		}
+		if len(opened.Targets) != 1 {
+			t.Fatalf("Targets = %+v, want one entry", opened.Targets)
+		}
+		tgt := opened.Targets[0]
+		if tgt.TargetID != f.victimID {
+			t.Errorf("TargetID = %v, want %v", tgt.TargetID, f.victimID)
+		}
+		if tgt.Dodged {
+			t.Error("a total of 20 must beat the passive dodge of 11")
+		}
+		if !tgt.Defended {
+			t.Error("the passive defense should succeed at a CD one ladder step lower")
+		}
+		// A Sword is D10 + D4 with a flat 2: 10 + 4 + 2 = 16. An armed attack against a
+		// bare-handed defense is not reduced while damage types do not exist.
+		if tgt.RawDamage != 16 {
+			t.Errorf("RawDamage = %d, want 16 (10 + 4 dice + 2 flat)", tgt.RawDamage)
+		}
+		if tgt.ProjectedDamage != 16 {
+			t.Errorf("ProjectedDamage = %d, want 16", tgt.ProjectedDamage)
+		}
+		projected = tgt.ProjectedDamage
+	})
+
+	t.Run("the projection does not touch the sheet", func(t *testing.T) {
+		// The gateway is the safe probe here: reading the live sheet from this goroutine
+		// would race the room's, and a dry run that had written would have gone through
+		// the gateway.
+		if persisted, _ := f.writer.snapshot(); len(persisted) != 0 {
+			t.Errorf("nothing should have been persisted yet, got %v", persisted)
+		}
+	})
+
+	t.Run("the player is told the turn opened but not what it computed", func(t *testing.T) {
+		// The mechanics of an action are public when it opens; the calculation is the
+		// master's until the turn closes.
+		if !playerMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+			t.Error("the player should have been told the turn opened")
+		}
+		if n := playerMsgs.count(game.MsgTypeResolutionUpdate); n != 0 {
+			t.Errorf("the player received %d resolution_updated messages, want 0", n)
+		}
+	})
+
+	t.Run("closing the turn applies and persists the damage", func(t *testing.T) {
+		// A second action gives the master something to open, which closes the first turn.
+		sendWS(t, player, "enqueue_action", map[string]any{
+			"actorId": f.attackerID.String(),
+			"speed":   map[string]any{"bar": 0},
+		})
+		if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+			t.Fatal("the second action was never acknowledged as enqueued")
+		}
+		sendWS(t, master, "open_next_action", map[string]any{})
+
+		if !f.writer.awaitPersisted(3 * time.Second) {
+			t.Fatal("the closing turn never persisted the damage")
+		}
+		// Safe to read the sheet now: persisting is the room goroutine's last act on this
+		// path.
+		if got := f.victimHP(t); got != hpBefore-projected {
+			t.Errorf("HP = %d, want %d (%d - %d)", got, hpBefore-projected, hpBefore, projected)
+		}
+		persisted, healths := f.writer.snapshot()
+		if len(persisted) != 1 {
+			t.Fatalf("expected exactly one sheet persisted, got %v", persisted)
+		}
+		if persisted[0] != f.victimID.String() {
+			t.Errorf("persisted %s, want the victim %s", persisted[0], f.victimID)
+		}
+		if healths[0] != hpBefore-projected {
+			t.Errorf("persisted HP = %d, want %d", healths[0], hpBefore-projected)
+		}
+		if n := playerMsgs.count(game.MsgTypeResolutionUpdate); n != 0 {
+			t.Errorf("the player received %d resolution_updated messages even after the close, want 0", n)
+		}
+	})
+}
+
+// A payload without actorId cannot be attributed to a character, so it is refused at the
+// boundary instead of resolving against a sheet nobody owns.
+func TestE2E_AttackWithoutActorIDIsRefused(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close()
+	defer player.Close()
+
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"targetId": []string{f.victimID.String()},
+		"attack": map[string]any{
+			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
+
+	if code := awaitErrorCode(t, player, 2*time.Second); code != "invalid_action" {
+		t.Errorf("error code = %q, want invalid_action", code)
+	}
+}
+
+// An unknown skill name is a client bug and must come back as a WS error, not become a
+// silent zero deep inside the resolver.
+func TestE2E_AttackWithUnknownSkillIsRefused(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close()
+	defer player.Close()
+
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId":  f.attackerID.String(),
+		"targetId": []string{f.victimID.String()},
+		"attack": map[string]any{
+			"hit":    map[string]any{"skillName": "Kamehameha"},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
+
+	if code := awaitErrorCode(t, player, 2*time.Second); code != "invalid_action" {
+		t.Errorf("error code = %q, want invalid_action", code)
+	}
+}
+
+// A player cannot act through a character they do not own.
+func TestE2E_ActingThroughAnotherPlayersCharacterIsRefused(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close()
+	defer player.Close()
+
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId":  uuid.New().String(), // a character nobody in this match owns
+		"targetId": []string{f.victimID.String()},
+	})
+
+	if code := awaitErrorCode(t, player, 2*time.Second); code != "game_error" {
+		t.Errorf("error code = %q, want game_error", code)
+	}
+}
+
+func awaitErrorCode(t *testing.T, conn *websocket.Conn, d time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(deadline)
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			return ""
+		}
+		var msg game.Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Type != game.MsgTypeError {
+			continue
+		}
+		var p game.ErrorPayload
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			t.Fatalf("unmarshal error payload: %v", err)
+		}
+		return p.Code
+	}
+	return ""
+}

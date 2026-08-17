@@ -462,10 +462,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
 			return
 		}
-		r.mu.RLock()
+		// The write lock is held ACROSS Execute, not just around reading the pointer.
+		// MatchSession has no lock of its own — r.mu is the only thing serializing it — and
+		// this path mutates a lot of it: it closes a turn, resolves it, applies damage to
+		// the target sheets, pops the priority queue and resolves the newly opened turn.
+		// A player enqueueing an action at the same moment writes to that same queue.
+		r.mu.Lock()
 		session := r.session
-		r.mu.RUnlock()
-		result, err := r.openNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+		var result *appmatch.OpenNextActionResult
+		var err error
+		if session != nil {
+			result, err = r.openNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -523,10 +536,19 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid pull_action payload"))
 			return
 		}
-		r.mu.RLock()
+		// Write lock across Execute — same reason as open_next_action.
+		r.mu.Lock()
 		session := r.session
-		r.mu.RUnlock()
-		result, err := r.pullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+		var result *appmatch.PullActionResult
+		var err error
+		if session != nil {
+			result, err = r.pullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -634,8 +656,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				}
 			}
 		}
-		if err := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a); err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
+		// action's dice into it, both of which the master's open_next_action reads.
+		r.mu.Lock()
+		errEnqueue := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+		r.mu.Unlock()
+		if errEnqueue != nil {
+			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
@@ -863,7 +890,15 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
 		return
 	}
+	// Write lock across Execute: attaching a reaction rolls its dice and re-resolves the
+	// open turn, and the master may be closing that same turn from another goroutine.
+	r.mu.Lock()
 	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
+	var turnID uuid.UUID
+	if err == nil {
+		turnID = currentTurnID(session)
+	}
+	r.mu.Unlock()
 	if err != nil {
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
 		return
@@ -871,7 +906,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	if hasMaster {
 		masterClient.SendMessage(NewServerMessage(
 			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(currentTurnID(session), result.Resolution),
+			newResolutionUpdatedPayload(turnID, result.Resolution),
 		))
 	}
 }
