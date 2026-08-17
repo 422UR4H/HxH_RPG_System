@@ -369,17 +369,73 @@ existem e o que cada um faz — fica em código, porque mudá-la muda o jogo.
 > são fatia própria — `MatchRules.FogMode` é ponteiro, e a resolução é
 > `partida ?? mapa ?? explored` em `MatchRules.ResolveFogMode`.
 
+## O que a Fase 2 fixou no motor
+
+### Sorteio uma vez, no lugar certo
+
+Os dados caem em **`MatchSession.rollActionDice`**, chamado por `EnqueueAction` e por
+`AttachReaction` — ou seja, no instante em que a action ou a reaction chega — e ficam em
+`action.RollCheck.Attempts` (`RollAttempts{Primary, Secondary}`, movido do pacote `service`
+para `action` para que um `RollCheck` possa carregá-lo).
+
+A consequência é a propriedade que sustenta as fases seguintes: **`TurnResolver.Resolve` é
+uma função pura do turno.** Ele deriva, nunca rola. Recalcular a colisão a cada reaction
+(Fase 4) e a cada edição do mestre (Fase 5) sai de graça e sem re-sortear nada.
+
+Um `RollCheck` cujos dados já caíram é deixado em paz, então chamar o sorteio duas vezes é
+inofensivo.
+
+⚠️ **Duas famílias de rolagem.** O teste usa `MatchRules.DiceSet` (2 D10). O **dano usa os
+dados da própria arma** (`item.Weapon`, Espada = D10 + D4) e vai só em `Primary` — dano não
+tem vantagem. Sem arma = `enum.Fist`, que é uma entrada real do catálogo.
+
+### `RollSource` — o seam determinístico
+
+`RollCalculator.Roll(rules, src)` e `RollCalculator.RollDice(sides, src)` recebem de onde vem
+a face do dado. `nil` = `DiceRoller{}` (produção, crypto/rand); um teste passa uma fonte
+roteirizada. `MatchSession.SetRollSource` existe só para os testes.
+
+Sem isso, os critérios de pronto das Fases 3 e 4 — que citam números exatos — dependeriam de
+sorte.
+
+### A colisão, na ordem das regras
+
+1. **Acerto** — teste ativo do atacante, derivado dos dados que já caíram. O `ModifierLedger`
+   entra como `nil` aqui: a diferença acumulada é sempre de actionSpeed, nunca de acerto.
+2. **Esquiva por reflexo** — passiva (`Reflexo + valor médio`), grátis, automática.
+3. **Defesa** — só se a esquiva falhar, com CD um degrau menor que o ataque.
+4. **Dano** — §4.7 do spec de design.
+
+**Empate favorece o defensor** nos dois testes, como na tabela do repelir, onde cair
+exatamente na CD já é linha de defensor.
+
+### Dry-run: calcula sempre, aplica uma vez
+
+`TurnResolution` carrega `CharacterResults` com o dano **projetado** — nada tocou ficha
+nenhuma. A aplicação de verdade acontece em `MatchSession.closeOpenTurn`, no fechamento
+implícito que `OpenNextAction`/`PullAction` já faziam, e devolve `[]DamagedCharacter` para o
+use case persistir com `sheet.Repository.UpdateStatusBars`.
+
+### `actorID` é o `sheetUUID`
+
+`Action.actorID` deixou de ser o jogador autenticado e passou a ser o **personagem** que age —
+o mesmo ID que a peça do tabuleiro carrega como `CharacterID` e o mesmo que um `TargetID`
+carrega. `ActionPayload.actorId` é obrigatório no wire. A autorização continua por jogador:
+`EnqueueAction` verifica `charToPlayer[actorCharID] == playerUUID`.
+
 ## Pendências estruturais
 
 | Item | Situação |
 |---|---|
-| `RollCalculator` | ✅ Fase 1 — `Roll` sorteia os dois conjuntos uma vez, `Derive` recalcula quantas vezes o mestre editar. Ninguém o chama ainda |
-| `TurnResolver` — ramo `character` | vazio |
+| `RollCalculator` | ✅ Fase 1 — `Roll` sorteia os dois conjuntos uma vez, `Derive` recalcula quantas vezes o mestre editar. ✅ Fase 2 — a `MatchSession` o chama na chegada da action, e ganhou o seam `RollSource` |
+| `TurnResolver` — ramo `character` | ✅ Fase 2 — acerto, esquiva por reflexo e defesa passivas, dano e `CharacterResult` |
 | `CharacterStatus` | ✅ Fase 1 — `ResourceBar` (duas barras), `ModifierLedger`, `Stance` reservado |
-| `battle.Blow` | campos privados, sem construtor |
+| `battle.Blow` | ✅ Fase 2 — construtor e acessores; `defense` virou ponteiro (nil = defesa passiva) |
 | `action.Initiative` | órfão; `ChangeMode` ignora o parâmetro |
-| `buildAction` | descarta Skills, Speed, Feint, Attack, Defense |
+| `buildAction` | ✅ Fase 2 — mapeia o payload inteiro, com a fronteira `string → enum.SkillName` e `→ enum.WeaponName` |
 | Tabela `SystemData` | auditoria de interferência do mestre — só no desenho |
 | Onde mora a diferença acumulada | ✅ Fase 1 — `ModifierLedger` no `CharacterStatus`, com `AgainstID`, `ExpiresAt` e `Source` |
 | Conflito no `Bias` | ✅ Fase 1 — `RollCondition.Bias` é do mestre; o viés do sistema é um `Modifier` de `Source: system`, e o `RollCalculator` soma os dois em `Derive` |
-| Tela de enviar action | **não existe no front** |
+| Tela de enviar action | **não existe no front** — Fase 6 |
+| Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. A Fase 4 liga o repelir |
+| Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars` |

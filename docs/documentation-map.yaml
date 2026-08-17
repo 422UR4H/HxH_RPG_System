@@ -575,14 +575,15 @@ mappings:
         confidence: possibly_affected
     notes: >-
       Motor de rolagem — Roll sorteia os dois conjuntos uma vez; Derive recalcula
-      quantas vezes o mestre editar, sem novo sorteio. Ninguém o chama ainda: a
-      ligação com o TurnResolver é da Fase 2. 2 D10 somados; crítico é "ambos 10",
+      quantas vezes o mestre editar, sem novo sorteio. A MatchSession o chama na
+      chegada da action (Fase 2), e Roll/RollDice recebem um RollSource: nil é
+      produção, os testes passam uma fonte roteirizada. 2 D10 somados; crítico é "ambos 10",
       não "somou 20", então os dados individuais sobrevivem no RollOutcome.
       Passivo usa o valor médio derivado do conjunto (11 para 2 D10, 10 para D20).
       Margin(cd) é derivado sob demanda em vez de guardado no RollOutcome, porque
       o CD vem da rolagem oposta, que só existe quando a colisão for implementada.
 
-  # ─── Motor de batalha (design 2026-08; Fase 1 implementada, resto pendente) ───
+  # ─── Motor de batalha (design 2026-08; Fases 1 e 2 implementadas) ───
   - code_path: internal/domain/match/service/turn_resolver.go
     dev_docs:
       - path: docs/dev/match/combat-engine.md
@@ -591,10 +592,65 @@ mappings:
       - path: docs/game/combate/reacoes.md
         confidence: directly_affected
     notes: >-
-      Colisão action × reaction. Com vários alvos é uma CADEIA sequencial, não um
-      lote: o estado do ataque sai alterado de cada resolução e entra na próxima,
-      e a ordem em que o mestre abre muda o resultado. Escada de margem com degrau
-      padrão de 10.
+      Colisão action × reaction. Fase 2 implementou o ramo de personagem: acerto →
+      esquiva por reflexo passiva → defesa passiva (CD um degrau menor) → dano, com
+      CharacterResult por alvo. Resolve é PURO — os dados já caíram na chegada da
+      action e vivem em RollCheck.Attempts; ele deriva e nunca rola. O dano é
+      projetado (dry-run) e só é aplicado no fechamento do turno. Com vários alvos
+      será uma CADEIA sequencial, não um lote (Fase 4): o estado do ataque sai
+      alterado de cada resolução e entra na próxima, e a ordem em que o mestre abre
+      muda o resultado. Escada de margem com degrau padrão de 10.
+
+
+  - code_path: internal/domain/match/service/damage.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/armas.md
+        confidence: directly_affected
+      - path: docs/game/combate/reacoes.md
+        confidence: possibly_affected
+    notes: >-
+      Duas famílias de rolagem: o teste usa MatchRules.DiceSet (2 D10), o dano usa
+      os dados da própria arma mais o bônus fixo. Sem arma = enum.Fist, entrada real
+      do catálogo. A subtração de defesa é CONDICIONAL (só se o alvo defendeu) e é a
+      forma INICIAL do aparar, não uma provisória — o que falta é o entorno: tipos de
+      dano, armadura e Nen. A margem do acerto NÃO entra no dano, por decisão de
+      produto. Hoje toda arma do catálogo tem defense 0, então a subtração é inerte.
+
+  - code_path: internal/domain/match/service/margin_ladder.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: directly_affected
+    notes: >-
+      A escada de margem como função pura, sem nenhuma reação ligada nela (Fase 2).
+      A forma da escada fica em código; só o degrau é regra de partida
+      (MatchRules.LadderStep). Empate favorece o defensor. A Fase 4 liga o repelir.
+
+  - code_path: internal/domain/match/service/roll_source.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/match/flows/05-lacunas.md
+        confidence: directly_affected
+    notes: >-
+      Seam determinístico das rolagens. nil = DiceRoller{} (crypto/rand, produção);
+      os testes passam uma fonte roteirizada via MatchSession.SetRollSource. Existe
+      porque os critérios de pronto das Fases 3 e 4 citam números exatos.
+
+  - code_path: internal/domain/match/entity/battle/blow.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: >-
+      Construtor e acessores (Fase 2). Carrega o pareamento ataque × defesa, sem
+      números: os números vivem em service.CharacterResult, porque service importa
+      battle e o inverso seria ciclo de import. defense é ponteiro — nil quando o
+      alvo defendeu passivamente.
 
   - code_path: internal/domain/match/character_status.go
     dev_docs:

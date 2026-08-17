@@ -94,9 +94,17 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 
 ## Known Issues
 
-(Phase 3 complete — no outstanding issues)
+**Motor de batalha — Fases 1 e 2 implementadas.** Ver
+`docs/superpowers/specs/2026-08-16-combat-engine-design.md` e `docs/dev/match/combat-engine.md`.
+Duas coisas parecem lacunas e são **deliberadas**:
 
-**Deferred to Phase 4:**
+- `resolution_updated` é **master-only**. O cálculo é do mestre até o turno encerrar;
+  difusão para a mesa e projeção por destinatário são da Fase 5.
+- **Não existe evento WS de HP de personagem.** O dano é persistido em `character_sheets`
+  no fechamento do turno e a sidebar da partida o lê por REST — o caminho ao vivo é
+  trabalho de front, Fase 6.
+
+**Deferred to Phase 4 (reações):**
 - Reaction visibility: players see reactions only when master reveals (currently master-only)
 - Initiative handling in `ChangeMode`
 - `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)

@@ -29,10 +29,10 @@ applyTo: "internal/**"
 ## Current State
 
 - ✅ `character_sheet/` — Stable, fully tested
-- ✅ `domain/match/` — Bounded context: entities + 3 domain services (Phase 1 complete)
+- ✅ `domain/match/` — Bounded context: entities + domain services. Combat engine phases 1–2 complete: `RollCalculator` (+ `RollSource` seam), `MatchRules`, `ModifierLedger`, `TurnResolver` character branch, `ClimbLadder`, damage
 - ✅ `domain/match/entity/round/` — Round entity with UUID id and createdAt; ReconstructRound for DB hydration
 - ✅ `domain/match/entity/scene/` — Scene entity with UUID id, Close(), GetID(); ReconstructScene for DB hydration
-- ✅ `domain/match/matchsession/` — In-memory match state: MatchSession + 9 session methods, persistence flags, NewMatchSessionWithState (Phase 3 complete)
+- ✅ `domain/match/matchsession/` — In-memory match state: MatchSession, persistence flags, NewMatchSessionWithState; rolls an action's dice on arrival, resolves turns and applies damage on turn close (`TurnTransition`)
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented)
 - ✅ `gateway/pg/round/` — PersistTurnClose (atomic), FindActiveSession, CloseSceneAndRound, CloseRound
 - ✅ `app/api/` — HTTP handlers (unit tested with humatest)

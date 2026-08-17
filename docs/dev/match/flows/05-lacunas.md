@@ -13,42 +13,36 @@ flowchart LR
         C["Reação anexada e validada"]
         D["Persistência de turno fechado"]
         E["Paredes: dano estrutural<br/>+ interact + LOS/fog"]
+        F["RollCalculator + colisão<br/>personagem (Fase 2)"]
+        G["Dano na ficha, no<br/>fechamento do turno"]
     end
     subgraph gap["⚠️ Existe como tipo, não como comportamento"]
-        F["RollCalculator"]
-        G["TurnResolver (ramo personagem)"]
-        H["Blow"]
         I["Initiative"]
         J["CharacterStatus / barras"]
-        K["ActionSpeed no wire"]
+        K["ActionSpeed alimentando a fila"]
     end
-    ok -.->|"o que separa os dois lados<br/>é o motor de rolagem"| gap
+    ok -.->|"o motor de rolagem e a colisão<br/>atravessaram na Fase 2"| gap
 ```
 
-## 1. O motor de rolagem existe, mas ainda não está ligado ao turno
+## 1. ✅ O motor de rolagem está ligado ao turno (Fase 2)
 
-`RollCalculator` (Fase 1) já sorteia e deriva: `Roll` lança os dois conjuntos de dados uma
-vez, quando a action ou reaction chega; `Derive` recalcula o resultado a partir desse
-sorteio, quantas vezes o mestre editar, e devolve `RollOutcome` com os dados individuais,
-o total, crítico e erro crítico. O que falta é a fiação — **nem `TurnResolver`, nem a
-sessão, nem os UCs o chamam**. Sem essa ligação, `RollCheck.Result` nunca é preenchido, e
-tudo que depende de um número (ordem da fila, acerto, dano, esquiva) segue inerte. Ligar o
-`RollCalculator` ao ramo `character` do `TurnResolver` é trabalho de Fase 2.
+`RollCalculator` sorteia e deriva desde a Fase 1. A Fase 2 fez a fiação:
 
-Peças que já existem para essa ligação:
-- `die.Die` com `Roll()` (crypto/rand com fallback), `enum.DieSides` D4…D100.
-- `RollCheck { Context RollContext; SkillName; SkillValue; Result }`.
-- `RollContext { Dice []die.Die; Condition *RollCondition; Result *int }`.
-- `RollCondition { Bias int (vantagem/desvantagem, acumula); Modifier int; Description }`.
-- Ficha: `CharacterSheet.GetValueForTestOfSkill(enum.SkillName)` e
-  `GetValueForTestOfAttribute(enum.AttributeName)`.
+- **`MatchSession.rollActionDice`** derruba os dados no instante em que a action ou reaction
+  chega (`EnqueueAction`, `AttachReaction`) e os guarda em `action.RollCheck.Attempts`.
+- **`TurnResolver.Resolve` virou função pura do turno** — deriva, nunca rola. É o que permite
+  recalcular a colisão a cada reaction e a cada edição do mestre sem re-sortear.
+- **`RollSource`** é o ponto de injeção: `nil` = produção (crypto/rand), teste passa uma fonte
+  roteirizada. `MatchSession.SetRollSource` existe só para os testes.
 
-Fricção conhecida: `RollCheck.SkillName` é `string`, mas a ficha indexa por
-`enum.SkillName` — falta a conversão/validação na fronteira. E
-`RollContext.GetDiceResult(d die.Die)` ignora o parâmetro `d` e soma todos os dados. A
-Fase 1 contornou as duas: `RollCalculator.RollInput.SkillValue` recebe o valor **já
-resolvido** pelo chamador, então o motor não indexa a ficha nem lê `RollContext` — a Fase 2,
-ao fazer essa ligação de verdade, é quem vai ter que enfrentar as duas.
+As duas fricções que a Fase 1 contornou foram enfrentadas:
+
+- **`RollCheck.SkillName` é `string`, a ficha indexa por `enum.SkillName`.** A conversão mora
+  agora na fronteira do WS (`buildAction` rejeita nome inválido com erro de WS) e, defensiva-
+  mente, em `service.skillValueOf`, que devolve 0 para um nome que a ficha não conhece em vez
+  de derrubar a resolução inteira.
+- **`RollContext.GetDiceResult(d die.Die)` ignora o parâmetro `d`.** Continua como está e
+  **segue sem chamador**: o motor lê `RollCheck.Attempts`, não `RollContext`.
 
 ## 2. A fila de prioridade não tem prioridade
 
@@ -58,43 +52,38 @@ Resultado: **toda ação entra com `Speed.Result == 0`** e o heap devolve ordem 
 
 O `open_next_action` do mestre funciona, mas "a mais rápida primeiro" ainda não é verdade.
 
-## 3. `TurnResolver`: o ramo `character` está vazio
+## 3. ✅ `TurnResolver`: o ramo `character` (Fase 2)
 
-```
-case TargetKindCharacter:
-    // TODO: implement character combat rolls (existing path)
-```
+O ramo resolve acerto → esquiva por reflexo passiva → defesa passiva → dano, e produz um
+`CharacterResult` por alvo, com os dados individuais, os totais, as flags de crítico, a margem
+derivada e o dano **projetado**. `res.Blows` é populado; `battle.Blow` ganhou construtor e
+acessores.
 
-Também pendentes no mesmo arquivo:
-- `ActionResult` nunca é calculado (`res.ActionResult` fica zero).
-- `ReactionResult` só carrega `ReactorID`; `Roll` fica vazio.
-- `Blows` nunca é populado — `battle.Blow` tem todos os campos privados e nenhum construtor.
+**Os dois eixos foram reconciliados.** `Action.actorID` passou a ser o `sheetUUID` — o mesmo
+ID que a peça carrega como `CharacterID` e o mesmo que um `TargetID` carrega —, então o
+resolver indexa ator e alvo no mesmo mapa. `ActionPayload.actorId` é obrigatório no wire, e a
+autorização continua por jogador: `EnqueueAction` verifica
+`charToPlayer[actorCharID] == playerUUID`.
+
+Ataque a parede também deixou de usar `rawDamage := 0`: rola os dados da arma como qualquer
+outro dano.
+
+Segue pendente no mesmo arquivo:
+
 - `TargetKindUnknown` não registra erro nenhum para o chamador.
-- Ataque a parede usa `rawDamage := 0` literal — o dano do `Attack.Damage` nunca é rolado.
+- Ficha ausente para ator ou alvo é ignorada em silêncio, sem reportar.
+- `ReactionResult` só carrega `ReactorID`; `Roll` fica vazio — Fase 4.
 
-**Os dois eixos, ator e alvo, hoje discordam.** `buildAction(client.userUUID, payload)`
-(`action_mapper.go`) põe `ActorID` como o **jogador** autenticado, e
-`MatchSession.EnqueueAction` reforça isso: `a.GetActorID() == playerUUID` é obrigatório. Mas
-`TargetID` (`[]uuid.UUID`) carrega **sheetUUIDs** — e, desde o rekey da Fase 1, é por `sheetUUID` que
-`charSheets` e `statuses` são indexados. Isso deixa `TurnResolver.Resolve` com um mapa que
-sabe indexar pelo alvo mas não pelo ator: `sheets[a.GetActorID()]` compila e devolve `nil`
-para sempre, porque a chave é um `playerUUID` num mapa de `sheetUUID`. A ponte que existe,
-`charToPlayer`, roda no sentido errado para esse uso (sheetUUID → playerUUID), e com um
-mestre controlando vários personagens o inverso nem é uma função — um `playerUUID` pode
-corresponder a mais de um `sheetUUID`. Reconciliar os dois eixos (ou fazer o `TurnResolver`
-resolver o `sheetUUID` do ator antes de indexar) é trabalho da Fase 2, quando o ramo
-`character` deixar de estar vazio.
+## 4. ✅ `buildAction` mapeia o payload inteiro (Fase 2)
 
-## 4. `buildAction` descarta metade do payload
+`Skills`, `Speed`, `Feint`, `Attack` (com `Weapon`, `Hit`, `Damage`, `Charge`), `Defense`,
+`Move.Speed/Charge` — tudo mapeado. Nome de perícia e nome de arma passam por
+`enum.SkillNameFrom` / `enum.WeaponNameFrom` e um valor desconhecido volta como erro de WS,
+em vez de virar zero silencioso lá no fundo do resolver.
 
-O contrato WS (`ActionPayload`) já carrega `Skills`, `Speed`, `Feint`, `Attack`, `Defense`,
-`Move.Speed/Charge`. O mapper monta apenas `Move` (categoria + posições), `Dodge` (categoria +
-nome da perícia) e `Interact`. O resto vira `nil`.
+O mapper **não rola**: os dados caem na sessão, depois que a action é aceita.
 
-Mesmo problema em `buildMasterAction`: `Move` e `Attack` são explicitamente ignorados.
-
-**Isso significa que o contrato do front já é mais rico que o backend consome.** Antes de
-mexer no mapper, vale conferir o que o front realmente envia hoje.
+`buildMasterAction` continua ignorando `Move` e `Attack` — segue **deferred to Phase 4**.
 
 ## 5. Iniciativa e modo `Race` não estão ligados
 
@@ -135,22 +124,22 @@ deu forma ao struct.
 
 ## 8. Visibilidade da resolução
 
-- `resolution_updated` vai **só para o mestre** (`room.go:827`), e o payload preenche apenas
-  `IsSettled` — `TurnID` fica `uuid.Nil`. Quem reagiu não recebe confirmação nenhuma.
+- `resolution_updated` leva payload de verdade desde a Fase 2 — `TurnID`, os dados
+  individuais, o total, as flags de crítico, a margem e o dano projetado por alvo — mas
+  continua **só para o mestre**, e isso é deliberado: o cálculo é dele até o turno encerrar.
+  Quem reagiu ainda não recebe confirmação nenhuma.
 - Isso está listado em `AGENTS.md` como *deferred to Phase 4*: "players see reactions only when
   master reveals".
 
-## 9. Inconsistência: dois caminhos para `Resolve`
+## 9. ✅ Um caminho só para `Resolve` (Fase 2)
 
-| Caminho | Chamada |
-|---|---|
-| `AttachReaction` | `session.AttachReaction` → `turnResolver.Resolve(t, s.charSheets, s)` — `s.charSheets` agora é chaveado por `sheetUUID` (Fase 1), não mais por `playerUUID` |
-| `OpenNextAction` / `PullAction` | UC chama `service.TurnResolver{}.Resolve(opened, nil, session)` |
+`OpenNextAction`, `PullAction` e `AttachReaction` passam todos por
+`MatchSession.ResolveTurn`, que monta o `service.ResolveInput` com as fichas, as regras da
+partida e o catálogo de armas. Os UCs não instanciam mais um resolver próprio nem passam
+`nil` no lugar das fichas.
 
-O segundo passa `nil` no lugar das fichas e instancia um resolver novo em vez de usar o da
-sessão. Hoje é inócuo (o resolver ignora `sheets`), mas no minuto em que o motor de rolagem
-entrar, abrir um turno resolverá sem ficha nenhuma. **Candidato natural a virar
-`session.OpenNextAction()` devolvendo a resolução, como já faz `AttachReaction`.**
+As duas operações do bastão do mestre devolvem um `matchsession.TurnTransition` — turno
+fechado, turno aberto, a resolução de cada um e o que o fechamento aplicou de fato.
 
 ## 10. Fila e reação: pontos de decisão em aberto
 
@@ -171,7 +160,8 @@ resolver:
 
 ## Resumo em uma frase
 
-O ciclo **Scene → Round → Turn → Action/Reaction** está completo e testado; o **motor que
-transforma isso em números** — `RollCalculator` (Fase 1, já rola e deriva) → `TurnResolver`
-→ `Blow` → efeito na ficha — só tem a primeira peça pronta, e nada a chama. É esse o vão a
-atravessar.
+O ciclo **Scene → Round → Turn → Action/Reaction** está completo e testado, e desde a Fase 2
+o **motor que transforma isso em números** atravessa inteiro: `RollCalculator` →
+`TurnResolver` → `Blow` → dano na ficha. O que falta agora não é o vão, são as camadas em
+cima dele — a economia das barras (Fase 3), as reações ativas e a cadeia com vários alvos
+(Fase 4), a regência e a visibilidade por destinatário (Fase 5), e o front (Fase 6).
