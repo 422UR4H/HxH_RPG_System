@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/die"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
@@ -55,19 +55,21 @@ func (o RollOutcome) Margin(cd int) int { return o.Total - cd }
 type RollCalculator struct{}
 
 // Roll rolls both sets for the given rules. Called once, when the action or reaction
-// arrives.
-func (rc RollCalculator) Roll(rules match.MatchRules) action.RollAttempts {
+// arrives. A nil src means the production roller.
+func (rc RollCalculator) Roll(rules match.MatchRules, src RollSource) action.RollAttempts {
 	return action.RollAttempts{
-		Primary:   rollSet(rules.DiceSet),
-		Secondary: rollSet(rules.DiceSet),
+		Primary:   rc.RollDice(rules.DiceSet.Dice(), src),
+		Secondary: rc.RollDice(rules.DiceSet.Dice(), src),
 	}
 }
 
-func rollSet(set match.DiceSet) []int {
-	sides := set.Dice()
+// RollDice rolls an arbitrary set of dice, in order. Damage needs it: a weapon carries its
+// own dice (a Sword is D10 + D4), which are not the match's test set.
+func (rc RollCalculator) RollDice(sides []enum.DieSides, src RollSource) []int {
+	s := sourceOrDefault(src)
 	out := make([]int, 0, len(sides))
-	for _, s := range sides {
-		out = append(out, die.NewDie(s).Roll())
+	for _, face := range sides {
+		out = append(out, s.RollDie(face))
 	}
 	return out
 }

@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// attempts builds a RollAttempts with both sets, so tests are deterministic:
-// Roll() uses crypto/rand and has no seam, but Derive() is pure data in, data out.
+// attempts builds a RollAttempts with both sets, so a Derive test can name exact numbers
+// without going through Roll at all. Roll itself has a seam now — see RollSource.
 func attempts(primary, secondary []int) action.RollAttempts {
 	return action.RollAttempts{Primary: primary, Secondary: secondary}
 }
@@ -19,7 +19,7 @@ func TestRollCalculator_Roll(t *testing.T) {
 	calc := service.RollCalculator{}
 
 	t.Run("2d10 rolls two dice in both sets", func(t *testing.T) {
-		got := calc.Roll(match.NewDefaultMatchRules())
+		got := calc.Roll(match.NewDefaultMatchRules(), nil)
 
 		for name, set := range map[string][]int{"primary": got.Primary, "secondary": got.Secondary} {
 			if len(set) != 2 {
@@ -37,7 +37,7 @@ func TestRollCalculator_Roll(t *testing.T) {
 		rules := match.NewDefaultMatchRules()
 		rules.DiceSet = match.DiceSetD20
 
-		got := calc.Roll(rules)
+		got := calc.Roll(rules, nil)
 
 		if len(got.Primary) != 1 || len(got.Secondary) != 1 {
 			t.Fatalf("expected 1 die per set, got %d and %d", len(got.Primary), len(got.Secondary))
