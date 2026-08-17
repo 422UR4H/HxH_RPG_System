@@ -207,7 +207,12 @@ func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution
 		return nil, err
 	}
 	t := s.activeRound.CurrentTurn()
-	return s.turnResolver.Resolve(t, s.charSheets, s), nil
+	return s.turnResolver.Resolve(service.ResolveInput{
+		Turn:    t,
+		Sheets:  s.charSheets,
+		Targets: s,
+		Rules:   match.NewDefaultMatchRules(),
+	}), nil
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
