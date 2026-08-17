@@ -211,14 +211,19 @@ func makeAction(actorID uuid.UUID) *action.Action {
 	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 }
 
-func sessionWithParticipants(playerUUIDs ...uuid.UUID) *matchsession.MatchSession {
+// sessionWithParticipants builds a session and returns it together with the sheet UUID of
+// each player's character, in the order the players were given. The tests need the sheet
+// UUIDs because that is what an action's actorID carries.
+func sessionWithParticipants(playerUUIDs ...uuid.UUID) (*matchsession.MatchSession, []uuid.UUID) {
 	matchUUID := uuid.New()
 	participants := make([]*match.Participant, len(playerUUIDs))
+	charIDs := make([]uuid.UUID, len(playerUUIDs))
 	for i, id := range playerUUIDs {
 		pID := id
 		participants[i] = makeParticipant(matchUUID, &pID)
+		charIDs[i] = participants[i].Sheet.UUID
 	}
-	return matchsession.NewMatchSession(matchUUID, nil, participants)
+	return matchsession.NewMatchSession(matchUUID, nil, participants), charIDs
 }
 
 func makeActionWithSpeed(actorID uuid.UUID, speed int) *action.Action {
@@ -229,25 +234,38 @@ func TestMatchSession_EnqueueAction(t *testing.T) {
 	matchUUID := uuid.New()
 	playerUUID := uuid.New()
 	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
 	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
 
-	t.Run("enqueues action for known participant", func(t *testing.T) {
-		a := makeAction(playerUUID)
+	t.Run("enqueues an action whose actor is the player's character", func(t *testing.T) {
+		// The combat entity is the character: actorID is the sheet UUID, the same ID the
+		// board piece carries and the same ID a TargetID carries.
+		a := makeAction(charID)
 		if err := s.EnqueueAction(playerUUID, a); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	t.Run("returns ErrParticipantNotFound for unknown player", func(t *testing.T) {
-		a := makeAction(uuid.New())
+	t.Run("returns ErrParticipantNotFound for an unknown player", func(t *testing.T) {
+		a := makeAction(charID)
 		err := s.EnqueueAction(uuid.New(), a)
 		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
 			t.Errorf("expected ErrParticipantNotFound, got %v", err)
 		}
 	})
 
-	t.Run("returns ErrActionActorMismatch when actorID does not match playerUUID", func(t *testing.T) {
-		a := makeAction(uuid.New()) // actorID is a different UUID
+	t.Run("a player cannot act through a character they do not own", func(t *testing.T) {
+		a := makeAction(uuid.New()) // some other character
+		err := s.EnqueueAction(playerUUID, a)
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Errorf("expected ErrActionActorMismatch, got %v", err)
+		}
+	})
+
+	t.Run("the player UUID is no longer a valid actor", func(t *testing.T) {
+		// It used to be exactly this, and it is what left the resolver unable to find the
+		// actor's sheet.
+		a := makeAction(playerUUID)
 		err := s.EnqueueAction(playerUUID, a)
 		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
 			t.Errorf("expected ErrActionActorMismatch, got %v", err)
@@ -259,10 +277,10 @@ func TestMatchSession_OpenNextAction(t *testing.T) {
 	t.Run("opens Turn from highest-priority action in queue", func(t *testing.T) {
 		playerA := uuid.New()
 		playerB := uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
+		s, chars := sessionWithParticipants(playerA, playerB)
 
-		aHigh := makeActionWithSpeed(playerA, 10)
-		aLow := makeActionWithSpeed(playerB, 3)
+		aHigh := makeActionWithSpeed(chars[0], 10)
+		aLow := makeActionWithSpeed(chars[1], 3)
 		s.EnqueueAction(playerA, aHigh) //nolint:errcheck
 		s.EnqueueAction(playerB, aLow)  //nolint:errcheck
 
@@ -283,9 +301,9 @@ func TestMatchSession_OpenNextAction(t *testing.T) {
 
 	t.Run("closes previous open turn before opening next", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 10)) //nolint:errcheck
-		s.EnqueueAction(playerB, makeActionWithSpeed(playerB, 5))  //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA, playerB)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		s.EnqueueAction(playerB, makeActionWithSpeed(chars[1], 5))  //nolint:errcheck
 
 		_, first, _ := s.OpenNextAction()
 		closed, _, err := s.OpenNextAction()
@@ -319,13 +337,13 @@ func makeReactionTo(actorID, targetActionID uuid.UUID) *action.Action {
 func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("attaches reaction to current turn and returns resolution", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 10)) //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA, playerB)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
 		_, opened, _ := s.OpenNextAction()
 		act := opened.GetAction()
 		actionID := act.GetID()
 
-		reaction := makeReactionTo(playerB, actionID)
+		reaction := makeReactionTo(chars[1], actionID)
 		res, err := s.AttachReaction(reaction)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -340,11 +358,11 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 
 	t.Run("returns ErrReactionNotCompatible for wrong target", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
 
-		reaction := makeReactionTo(playerA, uuid.New()) // wrong target
+		reaction := makeReactionTo(chars[0], uuid.New()) // wrong target
 		_, err := s.AttachReaction(reaction)
 		if !errors.Is(err, service.ErrReactionNotCompatible) {
 			t.Errorf("expected ErrReactionNotCompatible, got %v", err)
@@ -355,8 +373,8 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 func TestMatchSession_CloseTurn(t *testing.T) {
 	t.Run("closes current open turn", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		_, opened, _ := s.OpenNextAction()
 
 		closed, err := s.CloseTurn()
@@ -386,10 +404,10 @@ func TestMatchSession_CloseTurn(t *testing.T) {
 func TestMatchSession_CloseRound(t *testing.T) {
 	t.Run("closes round and starts a new one with same mode", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
-		s.CloseTurn()                                             //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
+		s.CloseTurn()                                              //nolint:errcheck
 
 		closedRound, err := s.CloseRound()
 		if err != nil {
@@ -411,9 +429,9 @@ func TestMatchSession_CloseRound(t *testing.T) {
 
 	t.Run("returns ErrRoundHasOpenTurn when a turn is still open", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
 		// turn is still open — no CloseTurn called
 
 		_, err := s.CloseRound()
@@ -426,9 +444,9 @@ func TestMatchSession_CloseRound(t *testing.T) {
 func TestMatchSession_PullAction(t *testing.T) {
 	t.Run("opens Turn for specific action UUID", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
-		aTarget := makeActionWithSpeed(playerA, 3)
-		aOther := makeActionWithSpeed(playerB, 10)
+		s, chars := sessionWithParticipants(playerA, playerB)
+		aTarget := makeActionWithSpeed(chars[0], 3)
+		aOther := makeActionWithSpeed(chars[1], 10)
 		s.EnqueueAction(playerA, aTarget) //nolint:errcheck
 		s.EnqueueAction(playerB, aOther)  //nolint:errcheck
 		targetID := aTarget.GetID()
@@ -505,9 +523,9 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 
 	t.Run("returns ErrRoundHasOpenTurn when turn is open", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
 
 		_, _, err := s.ChangeScene(enum.Battle, "desc")
 		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
@@ -519,8 +537,8 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 func TestMatchSession_EnqueueMasterAction(t *testing.T) {
 	t.Run("enqueues master action on current open turn", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		_, opened, _ := s.OpenNextAction()
 
 		ma := action.NewMasterAction()

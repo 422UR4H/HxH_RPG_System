@@ -230,11 +230,18 @@ func (s *MatchSession) CloseRound() (*round.Round, error) {
 	return closed, nil
 }
 
+// EnqueueAction validates that playerUUID may act and that the character they are acting
+// through is theirs, then puts the action in the queue.
+//
+// Two axes, deliberately: authorization is a per-PLAYER question, and combat is a
+// per-CHARACTER one. charToPlayer is the bridge. a.actorID is the sheet UUID, so the
+// resolver can index the actor's sheet in the same map it indexes the target's.
 func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) error {
 	if _, ok := s.participants[playerUUID]; !ok {
 		return ErrParticipantNotFound
 	}
-	if a.GetActorID() != playerUUID {
+	owner, ok := s.charToPlayer[a.GetActorID().String()]
+	if !ok || owner != playerUUID {
 		return ErrActionActorMismatch
 	}
 	s.activeQueue.Insert(a)

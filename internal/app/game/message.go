@@ -159,6 +159,11 @@ type PullActionPayload struct {
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
 type ActionPayload struct {
+	// ActorID is the acting character's sheet UUID — the same ID the board piece carries
+	// as CharacterID. It is NOT the player UUID: one person drives several characters (the
+	// master drives every NPC), so the actor has to be named explicitly. The server still
+	// checks that the authenticated player owns that character.
+	ActorID   uuid.UUID            `json:"actorId"`
 	ReactToID uuid.UUID            `json:"reactToId,omitempty"`
 	TargetID  []uuid.UUID          `json:"targetId,omitempty"`
 	Skills    []ActionSkillPayload `json:"skills,omitempty"`
