@@ -204,20 +204,113 @@ func (s *MatchSession) GetCharacterStatus(charID uuid.UUID) (*match.CharacterSta
 	return status, nil
 }
 
-func (s *MatchSession) OpenNextAction() (closed *turn.Turn, opened *turn.Turn, err error) {
-	if s.activeRound.HasOpenTurn() {
-		closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
-	}
-	opened, err = s.roundOrch.NextAction(s.activeRound, &s.activeQueue)
-	return
+// TurnTransition is what one act of the master's baton produces: the turn that closed, the
+// turn that opened, the resolution of each, and whatever the closing actually applied.
+//
+// It is a struct rather than several return values because the two operations that produce
+// it — open the next action, pull one out of order — are the same shape, and opening a
+// reaction will join the list.
+type TurnTransition struct {
+	Closed           *turn.Turn
+	Opened           *turn.Turn
+	ClosedResolution *service.TurnResolution
+	OpenedResolution *service.TurnResolution
+	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
+	// a round, when nothing closed.
+	Damaged []DamagedCharacter
 }
 
-func (s *MatchSession) PullAction(id uuid.UUID) (closed *turn.Turn, opened *turn.Turn, err error) {
-	if s.activeRound.HasOpenTurn() {
-		closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
+// DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
+// the live sheet, the gateway holds the row.
+type DamagedCharacter struct {
+	CharacterID uuid.UUID
+	Sheet       *csSheet.CharacterSheet
+	Damage      int
+	NewHP       int
+}
+
+func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
+	tr := s.closeOpenTurn()
+	opened, err := s.roundOrch.NextAction(s.activeRound, &s.activeQueue)
+	if err != nil {
+		return tr, err
 	}
-	opened, err = s.roundOrch.PullAction(s.activeRound, &s.activeQueue, id)
-	return
+	tr.Opened = opened
+	tr.OpenedResolution = s.ResolveTurn(opened)
+	return tr, nil
+}
+
+func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
+	tr := s.closeOpenTurn()
+	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, id)
+	if err != nil {
+		return tr, err
+	}
+	tr.Opened = opened
+	tr.OpenedResolution = s.ResolveTurn(opened)
+	return tr, nil
+}
+
+// closeOpenTurn ends the turn currently under the baton, resolves it one last time and
+// applies what that resolution says. Both ways of opening the next turn go through it, so
+// the damage lands in exactly one place.
+func (s *MatchSession) closeOpenTurn() *TurnTransition {
+	tr := &TurnTransition{}
+	if !s.activeRound.HasOpenTurn() {
+		return tr
+	}
+	tr.Closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
+	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
+	tr.Damaged = s.applyResolution(tr.ClosedResolution)
+	return tr
+}
+
+// ResolveTurn computes the resolution snapshot for t. Pure — it never touches a sheet.
+// The master reads it as a projection, over and over, as reactions land.
+func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
+	if t == nil {
+		return nil
+	}
+	return s.turnResolver.Resolve(service.ResolveInput{
+		Turn:    t,
+		Sheets:  s.charSheets,
+		Targets: s,
+		Rules:   s.rules,
+		Weapons: s.weapons,
+	})
+}
+
+// applyResolution writes a resolution's effective damage to the target sheets, once.
+//
+// This is the moment the dry run stops being a dry run. Everything before it recalculated
+// freely — every master edit, every colliding reaction — precisely because nothing had been
+// applied. Called only from the turn-closing path.
+func (s *MatchSession) applyResolution(res *service.TurnResolution) []DamagedCharacter {
+	if res == nil {
+		return nil
+	}
+	var out []DamagedCharacter
+	for _, cr := range res.CharacterResults {
+		if cr.EffectiveDamage <= 0 {
+			continue
+		}
+		sheet, ok := s.charSheets[cr.TargetID]
+		if !ok || sheet == nil {
+			continue
+		}
+		bar, ok := sheet.GetAllStatusBar()[enum.Health]
+		if !ok {
+			continue
+		}
+		newHP := bar.DecreaseAt(cr.EffectiveDamage)
+		out = append(out, DamagedCharacter{
+			CharacterID: cr.TargetID,
+			Sheet:       sheet,
+			Damage:      cr.EffectiveDamage,
+			NewHP:       newHP,
+		})
+	}
+	return out
 }
 
 func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution, error) {
@@ -225,13 +318,7 @@ func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
 		return nil, err
 	}
-	t := s.activeRound.CurrentTurn()
-	return s.turnResolver.Resolve(service.ResolveInput{
-		Turn:    t,
-		Sheets:  s.charSheets,
-		Targets: s,
-		Rules:   match.NewDefaultMatchRules(),
-	}), nil
+	return s.ResolveTurn(s.activeRound.CurrentTurn()), nil
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {

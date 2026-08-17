@@ -40,8 +40,8 @@ func TestAttachReactionUC(t *testing.T) {
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		_, opened, _ := session.OpenNextAction()
-		openedAction := opened.GetAction()
+		tr, _ := session.OpenNextAction()
+		openedAction := tr.Opened.GetAction()
 		actionID := openedAction.GetID()
 
 		reaction := action.NewAction(chars[1], nil, actionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
@@ -64,7 +64,7 @@ func TestAttachReactionUC(t *testing.T) {
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		session.OpenNextAction()              //nolint:errcheck
+		session.OpenNextAction()             //nolint:errcheck
 
 		reaction := action.NewAction(chars[0], nil, uuid.New(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewAttachReactionUC()
