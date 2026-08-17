@@ -44,12 +44,20 @@ O sistema usa uma fila de prioridade ordenada por velocidade para resolver as a�
 
 ### Fluxo de uma Rodada
 
-1. Todos os jogadores declaram suas ações
-2. Ações são inseridas na fila de prioridade
-3. O sistema processa a ação mais rápida
-4. Resolve a ação → pode gerar reações
-5. Reações entram na fila com sua própria velocidade
-6. Repete até a fila esvaziar
+1. Os jogadores declaram suas ações — **a qualquer momento**, inclusive durante o turno dos
+   outros. Só o **round 0** tem um momento reservado para isso.
+2. O sistema rola a velocidade de cada ação assim que ela chega e a enfileira.
+3. O mestre **abre** a ação do topo da fila — o que fecha o turno anterior.
+4. Todos veem a mecânica da ação (alvos, arma, perícia); só o mestre vê o resultado. É a vez
+   do dono narrar.
+5. Os alvos podem reagir. Cada reação é aberta pelo mestre, e seu dono narra.
+6. O mestre encerra o turno, e o resultado aparece para todos.
+
+> A fila **nunca esvazia por si só** — ela é permanentemente viva. Quem não declarou nada
+> apenas não age naquele round.
+
+Detalhes da economia de turno em [Barra de Ação](barra-de-acao.md); catálogo completo de
+respostas em [Reações](reacoes.md).
 
 ## Ataque
 

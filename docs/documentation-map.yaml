@@ -505,10 +505,127 @@ mappings:
         confidence: possibly_affected
       - path: docs/dev/match/turns-rounds.md
         confidence: possibly_affected
+      - path: docs/dev/match/flows/01-mapa-de-modulos.md
+        confidence: directly_affected
     game_docs:
       - path: docs/game/partidas.md
         confidence: possibly_affected
     notes: Match use cases / domain services
+
+  # ─── Match: Fluxos (diagramas Mermaid do bounded context) ───
+  - code_path: internal/domain/match/matchsession/
+    dev_docs:
+      - path: docs/dev/match/flows/01-mapa-de-modulos.md
+        confidence: directly_affected
+      - path: docs/dev/match/flows/04-estado-e-persistencia.md
+        confidence: directly_affected
+      - path: docs/dev/match/flows/02-ciclo-de-vida-da-partida.md
+        confidence: possibly_affected
+    notes: >-
+      MatchSession é o único estado vivo da partida e a fachada sobre os domain
+      services. Mudar seus métodos, campos ou as interfaces invertidas
+      (TargetReader, PiecePositionSource) invalida os diagramas de módulos e de
+      propriedade de estado.
+
+  - code_path: internal/application/match/
+    dev_docs:
+      - path: docs/dev/match/flows/01-mapa-de-modulos.md
+        confidence: directly_affected
+      - path: docs/dev/match/flows/03-fluxo-de-acao.md
+        confidence: directly_affected
+    notes: >-
+      Use cases de sessão (stateless, recebem *MatchSession) e de CRUD. Novo UC,
+      mudança de assinatura de Execute ou de política de autorização afeta os
+      diagramas de sequência do fluxo de ação.
+
+  - code_path: internal/domain/match/service/round_orchestrator.go
+    dev_docs:
+      - path: docs/dev/match/flows/03-fluxo-de-acao.md
+        confidence: directly_affected
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+    notes: >-
+      Ciclo Round/Turn (NextAction, PullAction, CloseTurn, AttachReaction,
+      ChangeMode). ChangeMode ainda ignora Initiative — ver flows/05-lacunas.md §5.
+
+  - code_path: internal/domain/match/service/roll_calculator.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/match/flows/05-lacunas.md
+        confidence: directly_affected
+      - path: docs/dev/match/actions.md
+        confidence: possibly_affected
+    game_docs:
+      - path: docs/game/dados.md
+        confidence: directly_affected
+      - path: docs/game/combate/acoes.md
+        confidence: possibly_affected
+    notes: >-
+      Motor de rolagem — hoje retorna 0 e ninguém chama. 2 D10 somados; crítico é
+      "ambos 10", não "somou 20", então os dados individuais precisam sobreviver.
+      Passivo usa o valor médio derivado do conjunto (11 para 2 D10, 10 para D20).
+
+  # ─── Motor de batalha (design 2026-08, não implementado) ───
+  - code_path: internal/domain/match/service/turn_resolver.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: directly_affected
+    notes: >-
+      Colisão action × reaction. Com vários alvos é uma CADEIA sequencial, não um
+      lote: o estado do ataque sai alterado de cada resolução e entra na próxima,
+      e a ordem em que o mestre abre muda o resultado. Escada de margem com degrau
+      padrão de 10.
+
+  - code_path: internal/domain/match/character_status.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: directly_affected
+      - path: docs/game/combate/reacoes.md
+        confidence: possibly_affected
+    notes: >-
+      Hoje é só comentário. Precisa virar código: posturas (em guarda / ofensiva /
+      defensiva / evasiva), as DUAS barras (actionSpeed e moveSpeed) e o livro-razão
+      de bônus e penalidades acumulados (bônus é específico do alvo; penalidade é
+      geral; ambos em actionSpeed, nunca em acerto).
+
+  - code_path: internal/domain/match/entity/action/roll_condition.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/dados.md
+        confidence: directly_affected
+    notes: >-
+      Struct DO MESTRE — Bias são os dados (vantagem/desvantagem), Modifier é o
+      ajuste manual. A diferença acumulada do sistema NÃO mora aqui; onde ela mora
+      é decisão em aberto.
+
+  - code_path: internal/domain/match/entity/action/priority_queue.go
+    dev_docs:
+      - path: docs/dev/match/flows/03-fluxo-de-acao.md
+        confidence: directly_affected
+      - path: docs/dev/match/actions.md
+        confidence: directly_affected
+    notes: >-
+      Max-heap ordenado por Action.Speed.Result. Ordem só passa a valer quando o
+      mapper preencher ActionSpeed — flows/05-lacunas.md §2.
+
+  - code_path: internal/app/game/action_mapper.go
+    dev_docs:
+      - path: docs/dev/match/flows/03-fluxo-de-acao.md
+        confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: possibly_affected
+    notes: >-
+      buildAction/buildMasterAction — fronteira payload WS → entidade de domínio.
+      Hoje descarta Skills, Speed, Feint, Attack e Defense.
 
   # ─── Match: Roster (Enrollments Listing) ───
   - code_path: internal/domain/match/list_match_enrollments.go

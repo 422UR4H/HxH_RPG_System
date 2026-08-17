@@ -20,7 +20,9 @@ applyTo: "docs/**"
 - **Game docs:** PT-BR, player-friendly language (no thechnical jargon for devs)
 - **Dev docs:** PT-BR prose with English code references (type names, methods, paths)
 - **Developer footers:** Game docs include `> 🔧 Para Desenvolvedores` footer linking to dev docs
-- **`.gitignore` note:** Use `git add -f` for files under `docs/game/` (gitignore matches the game binary pattern)
+- **`docs/game/` is tracked normally.** (An older note here claimed it needed `git add -f`; that
+  was wrong — the `/game` pattern in `.gitignore` is root-anchored and only matches the game
+  binary, never `docs/game/`.)
 - **Specs:** EN + PT-BR versions (`.pt-br.md` suffix) committed together
 
 ## Maintenance Workflow
