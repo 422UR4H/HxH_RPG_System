@@ -676,3 +676,93 @@ func TestSession_RecomputeVisibility_RecordsSeenWallsInMemory(t *testing.T) {
 		t.Fatalf("re-recompute from same position should not duplicate memory entries, got %d", len(memory.Seen))
 	}
 }
+
+// fixedSource makes every die land on the same face, so a test can name exact numbers.
+type fixedSource struct{ face int }
+
+func (f fixedSource) RollDie(_ enum.DieSides) int { return f.face }
+
+func TestMatchSession_GetRules(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	rules := s.GetRules()
+
+	if rules.DiceSet != match.DiceSet2D10 {
+		t.Errorf("DiceSet = %q, want 2d10", rules.DiceSet)
+	}
+	if rules.LadderStep != 10 {
+		t.Errorf("LadderStep = %d, want 10", rules.LadderStep)
+	}
+	if rules.PassiveValue() != 11 {
+		t.Errorf("PassiveValue() = %d, want 11", rules.PassiveValue())
+	}
+}
+
+func TestMatchSession_EnqueueAction_RollsTheDiceOnce(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+	s.SetRollSource(fixedSource{face: 7})
+
+	sword := enum.Sword
+	atk := &action.Attack{
+		Weapon: &sword,
+		Hit:    action.RollCheck{SkillName: enum.Accuracy.String()},
+	}
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, atk, nil, nil, nil, nil)
+
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("the hit dice fell, from the match dice set", func(t *testing.T) {
+		if len(a.Attack.Hit.Attempts.Primary) != 2 {
+			t.Fatalf("hit Primary = %v, want 2 dice", a.Attack.Hit.Attempts.Primary)
+		}
+		if a.Attack.Hit.Attempts.Primary[0] != 7 {
+			t.Errorf("hit die = %d, want 7 from the scripted source", a.Attack.Hit.Attempts.Primary[0])
+		}
+		if len(a.Attack.Hit.Attempts.Secondary) != 2 {
+			t.Error("both sets must fall up front, so a later advantage never re-rolls")
+		}
+	})
+
+	t.Run("the damage dice fell, from the weapon's own set", func(t *testing.T) {
+		// A Sword is D10 + D4 — two dice, not the match's 2 D10 by coincidence but by the
+		// weapon's own definition.
+		if len(a.Attack.Damage.Attempts.Primary) != 2 {
+			t.Errorf("damage Primary = %v, want the sword's 2 dice", a.Attack.Damage.Attempts.Primary)
+		}
+		if len(a.Attack.Damage.Attempts.Secondary) != 0 {
+			t.Error("damage has no advantage, so there is no second set")
+		}
+	})
+
+	t.Run("the action speed dice fell", func(t *testing.T) {
+		if a.Speed.Attempts.IsEmpty() {
+			t.Error("expected the actionSpeed dice to fall on arrival too")
+		}
+	})
+}
+
+func TestMatchSession_EnqueueAction_NeverRerolls(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+	s.SetRollSource(fixedSource{face: 3})
+
+	a := action.NewAction(participant.Sheet.UUID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{Hit: action.RollCheck{}}, nil, nil, nil, nil)
+	// Dice that already fell — the master edited, the action came back around, whatever.
+	a.Attack.Hit.Attempts = action.RollAttempts{Primary: []int{10, 10}, Secondary: []int{1, 1}}
+
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Attack.Hit.Attempts.Primary[0] != 10 {
+		t.Error("dice that already fell must never be rolled again")
+	}
+}

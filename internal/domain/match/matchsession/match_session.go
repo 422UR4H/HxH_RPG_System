@@ -6,6 +6,7 @@ import (
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/item"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -48,6 +49,14 @@ type MatchSession struct {
 	visCache       map[uuid.UUID][]service.VisibilityPolygon
 	charToPlayer   map[string]uuid.UUID
 	pieceSource    PiecePositionSource
+	// rules is the per-match configuration. The embedded defaults are used until the REST
+	// surface for the master to choose them exists — that is a slice of its own.
+	rules match.MatchRules
+	// weapons is the static weapon catalogue, the source of the damage dice.
+	weapons *item.WeaponsManager
+	// rollSource is where the dice come from. nil means production. Tests set it so a
+	// phase whose done-criteria name exact numbers never depends on luck.
+	rollSource service.RollSource
 }
 
 func NewMatchSession(
@@ -65,6 +74,8 @@ func NewMatchSession(
 		statuses:     statuses,
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
+		rules:        match.NewDefaultMatchRules(),
+		weapons:      item.NewWeaponsManagerFactory().Build(),
 		turnResolver: service.TurnResolver{},
 		charToPlayer: charToPlayer,
 		memories:     make(map[uuid.UUID]*fog.PlayerMemory),
@@ -89,6 +100,8 @@ func NewMatchSessionWithState(
 		statuses:       statuses,
 		participants:   pMap,
 		roundOrch:      service.RoundOrchestrator{},
+		rules:          match.NewDefaultMatchRules(),
+		weapons:        item.NewWeaponsManagerFactory().Build(),
 		turnResolver:   service.TurnResolver{},
 		scenePersisted: true,
 		roundPersisted: true,
@@ -130,6 +143,11 @@ func (s *MatchSession) GetActiveRound() *round.Round { return s.activeRound }
 func (s *MatchSession) GetActiveScene() *scene.Scene { return s.activeScene }
 func (s *MatchSession) IsRoundPersisted() bool       { return s.roundPersisted }
 func (s *MatchSession) IsScenePersisted() bool       { return s.scenePersisted }
+
+func (s *MatchSession) GetRules() match.MatchRules { return s.rules }
+
+// SetRollSource replaces the dice source. Production never calls it; tests do.
+func (s *MatchSession) SetRollSource(src service.RollSource) { s.rollSource = src }
 
 func (s *MatchSession) MarkRoundPersisted() {
 	s.scenePersisted = true
@@ -203,6 +221,7 @@ func (s *MatchSession) PullAction(id uuid.UUID) (closed *turn.Turn, opened *turn
 }
 
 func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution, error) {
+	s.rollActionDice(r)
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
 		return nil, err
 	}
@@ -244,8 +263,58 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	if !ok || owner != playerUUID {
 		return ErrActionActorMismatch
 	}
+	s.rollActionDice(a)
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// rollActionDice drops the dice for every test the action carries, once, the moment it
+// arrives. Derive is then free to run again on every master edit and on every colliding
+// reaction without a single new die — "the master never re-rolls a player's die".
+//
+// A RollCheck whose dice already fell is left alone, so calling this twice is harmless.
+func (s *MatchSession) rollActionDice(a *action.Action) {
+	if a == nil {
+		return
+	}
+	calc := service.RollCalculator{}
+
+	// test is the match's dice set: hit, skill, actionSpeed, feint, defense, dodge.
+	test := func(rc *action.RollCheck) {
+		if rc == nil || !rc.Attempts.IsEmpty() {
+			return
+		}
+		rc.Attempts = calc.Roll(s.rules, s.rollSource)
+	}
+
+	test(&a.Speed.RollCheck)
+	test(a.Feint)
+	for i := range a.Skills {
+		test(&a.Skills[i].RollCheck)
+	}
+	if a.Move != nil {
+		test(a.Move.Speed)
+		test(a.Move.Charge)
+	}
+	if a.Defense != nil {
+		test(&a.Defense.RollCheck)
+	}
+	if a.Dodge != nil {
+		test(&a.Dodge.RollCheck)
+	}
+	if a.Attack != nil {
+		test(&a.Attack.Hit)
+		test(a.Attack.Charge)
+		// Damage is the OTHER family of roll: the weapon's own dice, not the match set.
+		// Only Primary, because damage has no advantage.
+		if a.Attack.Damage.Attempts.IsEmpty() {
+			if sides, err := service.WeaponDice(a.Attack.Weapon, s.weapons); err == nil {
+				a.Attack.Damage.Attempts = action.RollAttempts{
+					Primary: calc.RollDice(sides, s.rollSource),
+				}
+			}
+		}
+	}
 }
 
 // SyncMapState seeds or replaces the session's in-memory map state.
