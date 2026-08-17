@@ -11,6 +11,35 @@ Aqui não existe fase de espera. **Você declara sua ação a qualquer momento**
 calcula em paralelo, e o mestre vai abrindo as ações na ordem certa. Enquanto um jogador
 narra, os outros já estão montando o que vão fazer.
 
+## Dois regimes: livre e disputado
+
+Nem toda cena é uma batalha. O sistema tem dois regimes, e o mestre decide quando virar de um
+para o outro.
+
+### Turno livre
+
+É o regime da exploração. Você move sua peça, abre uma porta, investiga um canto, pega um
+item do chão — **sem o mestre ter que aprovar cada gesto**. Ninguém está disputando quem age
+primeiro, porque não há luta acontecendo.
+
+Mas não é liberdade sem limite: **a partir da terceira ação do seu personagem, a ação vai
+para a fila** e o mestre libera, ou não.
+
+Isso não existe só para conter quem quer mexer a peça sem parar. Se vários jogadores querem
+agir ao mesmo tempo, é aí que o mestre percebe — e pode **virar para o turno disputado** para
+que haja ordem, mesmo fora de uma batalha.
+
+> **Atacar não conta nessa contagem.** Qualquer ação ofensiva dispara iniciativa e já está
+> saindo do turno livre por conta própria.
+
+No turno livre o deslocamento normalmente é o **Shift**, que não rola dado.
+
+### Turno disputado
+
+É o regime da batalha, e é dele que trata o resto deste documento: velocidade rolada, preço
+de round, barra que se esvazia, ordem que muda. Tudo o que vem abaixo vale quando o turno
+está disputado.
+
 ## Round 0 — o único momento de calma
 
 No começo da batalha todo mundo declara sua primeira ação. Esse é o **round 0**: o único

@@ -402,23 +402,32 @@ visível no browser.**
 **Escopo:**
 - actionSpeed real alimentando `Action.Speed.Result` — a fila passa a ter prioridade.
   **Perícia base: `Legerity`.**
-- **moveSpeed** — e aqui **a perícia não é fixa**. `Velocity` é o *resultado*, não a entrada:
-  ela é **derivada da categoria do movimento**.
+- **moveSpeed** — e aqui **a perícia não é fixa**: ela vem da **categoria do movimento**.
 
   | Movimento | Perícia | Rola? |
   |---|---|---|
   | **Dash** (arrancada) | `Accelerate` | sim — `Accelerate + 2 D10` |
   | **Shift** (controlado) | `Brake` | **não** — usa o valor passivo |
 
-  Ou seja: o mapper precisa ler `Move.Category` para saber **qual perícia e se rola**. Isso
-  puxa um pedaço mínimo do sistema de movimento para dentro da Fase 3 — inevitável, porque
-  sem isso a segunda barra não tem número.
+  O mapper lê `Move.Category` e daí tira **qual perícia e se rola**. Isso puxa um pedaço
+  mínimo do sistema de movimento para a Fase 3 — inevitável, porque sem ele a segunda barra
+  não tem número — mas **é pouco**, não o sistema de movimento inteiro.
 
-  > ⚠️ **`Charge` acumula na velocity** quando o personagem está pegando impulso, aumentando
-  > a velocidade além do que a perícia base dá. A complexidade existe e está descrita no
-  > desenho (`accelerate` × `brake` × `charge` como três limitadores distintos). ❓ Decidir se
-  > o momentum entra na Fase 3 ou fica para a fatia de movimento — a barra funciona sem ele,
-  > só fica menos rica.
+  **A escolha é do jogador, e é de movimento, não de perícia.** O front expõe os tipos de
+  movimento tático explicitamente; trocar Dash por Shift na bottom sheet **troca a perícia
+  sozinho**. O jogador nunca escolhe perícia de movimento à mão. É o mesmo gesto já descrito
+  para o escape: a interface mostra que ele está fazendo um dash, ele troca ali para shift, e
+  a perícia acompanha.
+
+  As três perícias existem no enum, sob Agilidade: `Velocity`, `Accelerate` e `Brake`.
+
+  > ⚠️ **`Velocity` e `Charge` ainda não estão amarrados.** `Velocity` é a perícia de quanto
+  > o personagem corre (quantos slots percorre), distinta de *quando* ele se move — que é o
+  > que a barra mede. E `Charge` acumula quando o personagem está pegando impulso, elevando a
+  > velocidade acima do que a perícia base dá.
+  >
+  > ❓ Decidir se o momentum entra na Fase 3 ou fica para a fatia de movimento. **A barra
+  > funciona sem ele** — só fica menos rica.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
@@ -446,9 +455,31 @@ visível no browser.**
 > `perícia + 11`". **Isso estava errado** — cada ficha tem o seu valor de perícia, então os
 > totais diferem e a ordenação funciona. O motivo real é o de cima.
 >
-> ❓ **Em aberto:** o que o `Free` faz. Hoje `NewMatchSession` abre a partida em `Free`, então
-> alguma coisa precisa acontecer lá. Enquanto a regra não existir, a Fase 3 exige que o mestre
-> ligue o `Race` para a economia valer.
+#### O que o `Free` faz
+
+**Free existe para os jogadores terem liberdade sem o mestre aprovar cada gesto** — mover a
+peça, abrir uma porta, investigar um local, pegar um item do chão. Não há disputa para ver
+quem age primeiro porque não há batalha acontecendo.
+
+**Mas não é liberdade sem trava.** Senão um jogador fica movendo a peça indiscriminadamente.
+
+> **A partir da terceira ação do personagem no round, a action cai na fila** para o mestre
+> liberar — ou não.
+
+Duas notas que mudam a implementação:
+
+- **Ações ofensivas não contam nessa contagem.** Qualquer ataque **dispara o fluxo de
+  iniciativa**: já está na fronteira do `Race`, e sai do regime livre por definição.
+- **A trava não é só anti-abuso.** Vários jogadores podem querer agir "ao mesmo tempo", e é
+  aí que o mestre pode **ligar o `Race`** para haver disputa de ação — mesmo fora de batalha.
+  A fila em `Free` é o mecanismo que dá ao mestre a chance de perceber isso e decidir.
+
+**Em `Free` o movimento é normalmente Shift**, que não rola dado — coerente com não haver
+disputa.
+
+⚠️ **A economia de barra descrita neste spec é do `Race`.** Em `Free` o comportamento é o de
+cima: ação livre até a terceira, fila a partir dali. Não há preço de round, média nem
+carry-over enquanto o `Race` não estiver ligado.
 
 **Fora de escopo:** iniciativa como regra; movimento detalhado; posturas.
 
