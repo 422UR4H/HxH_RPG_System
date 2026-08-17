@@ -572,7 +572,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			r.handleReaction(client, session, payload)
 			return
 		}
-		a := buildAction(payload.ActorID, payload)
+		a, err := buildAction(payload.ActorID, payload)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			return
+		}
 		// Movement blocking: validate path against walls with move=true and !open.
 		if a.Move != nil {
 			from := a.Move.From
@@ -826,7 +830,11 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	masterClient, hasMaster := r.clients[r.masterUUID]
 	r.mu.RUnlock()
 
-	reaction := buildAction(payload.ActorID, payload)
+	reaction, err := buildAction(payload.ActorID, payload)
+	if err != nil {
+		client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+		return
+	}
 	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	if err != nil {
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
