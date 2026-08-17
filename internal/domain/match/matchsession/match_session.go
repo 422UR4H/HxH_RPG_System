@@ -176,7 +176,8 @@ func (s *MatchSession) GetCharSheet(charID uuid.UUID) (*csSheet.CharacterSheet, 
 }
 
 // GetCharacterStatus returns a character's live combat state. The pointer is the
-// session's own: mutating it mutates the session. Callers must hold room.mu.
+// session's own, so mutating it is a write to session state: callers must hold room.mu
+// for writing, not just RLock, even though this method only reads the map.
 func (s *MatchSession) GetCharacterStatus(charID uuid.UUID) (*match.CharacterStatus, error) {
 	status, ok := s.statuses[charID]
 	if !ok {

@@ -31,8 +31,12 @@ type RollInput struct {
 	SkillValue int                   // already resolved from the sheet by the caller
 	Passive    bool                  // take the set's average instead of rolling
 	Condition  *action.RollCondition // master-owned; nil = neutral
-	Ledger     *match.ModifierLedger // character-owned; nil = empty
-	AgainstID  *uuid.UUID            // whom the roll is against; nil = nobody in particular
+	// Ledger is character-owned; nil = empty. The accumulated difference it carries is
+	// always an actionSpeed adjustment, never a hit adjustment — the caller decides whether
+	// the ledger applies at all, by passing nil for a hit roll. Derive does not know which
+	// test is being made and cannot enforce this.
+	Ledger    *match.ModifierLedger
+	AgainstID *uuid.UUID // whom the roll is against; nil = nobody in particular
 }
 
 // RollOutcome is the derived result of one test. The individual dice survive because a
@@ -113,7 +117,7 @@ func (rc RollCalculator) Derive(
 	}
 
 	dice := pickAttempt(attempts, bias)
-	out.Dice = dice
+	out.Dice = append([]int(nil), dice...)
 	out.DiceTotal = sumDice(dice)
 	out.IsCritical = allDiceShow(dice, rules.DiceSet.MaxFace())
 	out.IsCriticalFailure = allDiceShow(dice, 1)

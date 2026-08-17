@@ -57,10 +57,11 @@ sequenceDiagram
 
 Dois detalhes que importam:
 
-- **`charSheets` é chaveado por `playerUUID`, não por `sheetUUID`.** O mapa auxiliar
-  `charToPlayer[sheetUUID] = playerUUID` existe porque as **peças do tabuleiro carregam o
-  `sheetUUID`** como `CharacterID`. Toda vez que o fluxo cruza tabuleiro ↔ ficha, esse mapa
-  é a ponte.
+- **`charSheets` (e `statuses`) é chaveado por `sheetUUID`, não por `playerUUID`.** As
+  **peças do tabuleiro carregam o `sheetUUID`** como `CharacterID`, e é por esse eixo que a
+  ficha e o estado de combate vivo são buscados. `participants` continua chaveado por
+  `playerUUID` (autorização é por jogador); o mapa auxiliar `charToPlayer[sheetUUID] =
+  playerUUID` é a ponte entre os dois eixos toda vez que o fluxo cruza tabuleiro ↔ jogador.
 - **A sessão nasce com uma cena e um round já abertos.** Não existe estado "sem cena".
   Cena inicial: `enum.Roleplay` com descrição vazia; round inicial: `enum.Free`.
 

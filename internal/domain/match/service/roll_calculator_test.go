@@ -301,3 +301,20 @@ func TestRollCalculator_Derive_IsPure(t *testing.T) {
 		t.Errorf("expected a stable derivation, got %d then %d", first.Total, second.Total)
 	}
 }
+
+func TestRollCalculator_Derive_DiceDoesNotAliasAttempts(t *testing.T) {
+	// RollAttempts is the record of what fell. Derive must hand out a copy of the picked
+	// set, not a slice backed by the same array, or mutating one outcome's Dice corrupts
+	// the attempts (and every other outcome derived from them).
+	calc := service.RollCalculator{}
+	rules := match.NewDefaultMatchRules()
+	a := attempts([]int{8, 2}, nil)
+	in := service.RollInput{SkillValue: 4}
+
+	out := calc.Derive(rules, a, in)
+	out.Dice[0] = 99
+
+	if a.Primary[0] != 8 {
+		t.Errorf("expected attempts.Primary to be unaffected by mutating out.Dice, got %d", a.Primary[0])
+	}
+}

@@ -14,7 +14,7 @@ flowchart TB
     subgraph sess["MatchSession — estado da partida"]
         direction TB
         s1["activeScene · activeRound · activeQueue"]
-        s2["charSheets · participants · charToPlayer"]
+        s2["charSheets · statuses · participants · charToPlayer"]
         s3["walls · grid  (cópia sincronizada do Room)"]
         s4["fogMode · memories · visCache"]
         s5["scenePersisted · roundPersisted"]

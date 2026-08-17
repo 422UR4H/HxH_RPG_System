@@ -579,6 +579,8 @@ mappings:
       ligação com o TurnResolver é da Fase 2. 2 D10 somados; crítico é "ambos 10",
       não "somou 20", então os dados individuais sobrevivem no RollOutcome.
       Passivo usa o valor médio derivado do conjunto (11 para 2 D10, 10 para D20).
+      Margin(cd) é derivado sob demanda em vez de guardado no RollOutcome, porque
+      o CD vem da rolagem oposta, que só existe quando a colisão for implementada.
 
   # ─── Motor de batalha (design 2026-08; Fase 1 implementada, resto pendente) ───
   - code_path: internal/domain/match/service/turn_resolver.go
@@ -610,6 +612,16 @@ mappings:
       e Stance reservado, porque a regra de posturas ainda não existe. Position NÃO
       entra: as posições vivem no Room, alcançadas por PiecePositionSource. A
       aritmética de fechamento das barras é da Fase 3.
+
+  - code_path: internal/domain/match/resource_bar.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: >-
+      ResourceBar é a forma das DUAS barras (ActionBar e MoveBar, dentro de
+      CharacterStatus): Balance (saldo que carrega entre rounds) e Speeds (histórico
+      das velocidades roladas no round corrente). Fase 1 só define a forma — a
+      aritmética de fechamento do round (média, preço, teto, carry-over) é da Fase 3.
 
   - code_path: internal/domain/match/entity/action/roll_condition.go
     dev_docs:

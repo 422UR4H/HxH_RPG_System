@@ -72,6 +72,19 @@ Também pendentes no mesmo arquivo:
 - `TargetKindUnknown` não registra erro nenhum para o chamador.
 - Ataque a parede usa `rawDamage := 0` literal — o dano do `Attack.Damage` nunca é rolado.
 
+**Os dois eixos, ator e alvo, hoje discordam.** `buildAction(client.userUUID, payload)`
+(`action_mapper.go`) põe `ActorID` como o **jogador** autenticado, e
+`MatchSession.EnqueueAction` reforça isso: `a.GetActorID() == playerUUID` é obrigatório. Mas
+`TargetID` (`[]uuid.UUID`) carrega **sheetUUIDs** — e, desde o rekey da Fase 1, é por `sheetUUID` que
+`charSheets` e `statuses` são indexados. Isso deixa `TurnResolver.Resolve` com um mapa que
+sabe indexar pelo alvo mas não pelo ator: `sheets[a.GetActorID()]` compila e devolve `nil`
+para sempre, porque a chave é um `playerUUID` num mapa de `sheetUUID`. A ponte que existe,
+`charToPlayer`, roda no sentido errado para esse uso (sheetUUID → playerUUID), e com um
+mestre controlando vários personagens o inverso nem é uma função — um `playerUUID` pode
+corresponder a mais de um `sheetUUID`. Reconciliar os dois eixos (ou fazer o `TurnResolver`
+resolver o `sheetUUID` do ator antes de indexar) é trabalho da Fase 2, quando o ramo
+`character` deixar de estar vazio.
+
 ## 4. `buildAction` descarta metade do payload
 
 O contrato WS (`ActionPayload`) já carrega `Skills`, `Speed`, `Feint`, `Attack`, `Defense`,
