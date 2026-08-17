@@ -486,6 +486,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				session.MarkRoundPersisted()
 				r.mu.Unlock()
 			}
+			// The settled resolution of the turn that just ended — this is the one whose
+			// damage was actually applied.
+			if result.ClosedResolution != nil {
+				r.sendToMaster(NewServerMessage(
+					MsgTypeResolutionUpdate,
+					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
+				))
+			}
 		}
 
 		act := result.OpenedTurn.GetAction()
@@ -497,6 +505,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
+			// The projection for the turn just opened. Master-only: the mechanics are public
+			// when a turn opens, but the calculation stays with the master until it closes.
+			r.sendToMaster(NewServerMessage(
+				MsgTypeResolutionUpdate,
+				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
+			))
 		}
 
 	case MsgTypePullAction:
@@ -533,6 +547,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				session.MarkRoundPersisted()
 				r.mu.Unlock()
 			}
+			// The settled resolution of the turn that just ended — this is the one whose
+			// damage was actually applied.
+			if result.ClosedResolution != nil {
+				r.sendToMaster(NewServerMessage(
+					MsgTypeResolutionUpdate,
+					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
+				))
+			}
 		}
 
 		act := result.OpenedTurn.GetAction()
@@ -544,6 +566,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
+			// The projection for the turn just opened. Master-only: the mechanics are public
+			// when a turn opens, but the calculation stays with the master until it closes.
+			r.sendToMaster(NewServerMessage(
+				MsgTypeResolutionUpdate,
+				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
+			))
 		}
 
 	case MsgTypeEnqueueAction:
@@ -841,9 +869,25 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		return
 	}
 	if hasMaster {
-		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
-		masterClient.SendMessage(out)
+		masterClient.SendMessage(NewServerMessage(
+			MsgTypeResolutionUpdate,
+			newResolutionUpdatedPayload(currentTurnID(session), result.Resolution),
+		))
 	}
+}
+
+// currentTurnID reads the open turn's ID, or uuid.Nil when there is none. The reaction path
+// resolves the turn it attached to, and the master needs to know which one.
+func currentTurnID(session *matchsession.MatchSession) uuid.UUID {
+	r := session.GetActiveRound()
+	if r == nil {
+		return uuid.Nil
+	}
+	t := r.CurrentTurn()
+	if t == nil {
+		return uuid.Nil
+	}
+	return t.GetID()
 }
 
 // applyWallInteract updates in-memory wall state for open/close/toggle.
