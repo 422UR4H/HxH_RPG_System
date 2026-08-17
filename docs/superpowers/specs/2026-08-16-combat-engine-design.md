@@ -419,15 +419,19 @@ visível no browser.**
   para o escape: a interface mostra que ele está fazendo um dash, ele troca ali para shift, e
   a perícia acompanha.
 
-  As três perícias existem no enum, sob Agilidade: `Velocity`, `Accelerate` e `Brake`.
+  ⚠️ **Isso vale só para o início do movimento.** Depois que o personagem está em movimento,
+  quem alimenta a velocidade da move action é a **`Speed`** acumulada em
+  `CharacterStatus.Velocity` — não mais o teste. Mecânica completa (transições Shift↔Dash,
+  teste de `Brake` automático, `Charge` acumulando) em
+  **`docs/dev/match/combat-engine.md` § Movimento**.
 
-  > ⚠️ **`Velocity` e `Charge` ainda não estão amarrados.** `Velocity` é a perícia de quanto
-  > o personagem corre (quantos slots percorre), distinta de *quando* ele se move — que é o
-  > que a barra mede. E `Charge` acumula quando o personagem está pegando impulso, elevando a
-  > velocidade acima do que a perícia base dá.
-  >
-  > ❓ Decidir se o momentum entra na Fase 3 ou fica para a fatia de movimento. **A barra
-  > funciona sem ele** — só fica menos rica.
+  > ❓ Decidir se o momentum (`Charge`) entra na Fase 3 ou fica para a fatia de movimento.
+  > **A barra funciona sem ele** — só fica menos rica.
+
+  > ⛔ **`enum.Velocity` está errado** e deve virar `Quickness`. Alcance: o enum + 12+
+  > ocorrências em `character_class_factory.go` + o que serializa nomes de perícia. **Fatia
+  > própria**, antes ou junto desta fase — não junto de outra coisa. E **não tocar em
+  > `action.Velocity`**, o vetor, que está correto. Detalhe em `combat-engine.md`.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
