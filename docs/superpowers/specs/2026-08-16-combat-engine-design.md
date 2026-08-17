@@ -17,8 +17,9 @@ Fazer a partida ganhar vida: um combate jogável em que os jogadores declaram in
 paralelo, o mestre rege a mesa abrindo ações, e o sistema resolve os números.
 
 **A tese do produto:** em RPG de mesa, a maior parte do tempo é latência — esperar a vez,
-esperar alguém decidir, esperar alguém somar dados. Aqui não existe fase de espera depois do
-round 0. Os jogadores focam em imaginação, criatividade e interpretação; o sistema calcula em
+esperar alguém decidir, esperar alguém somar dados. Aqui não existe fase de espera nem no
+round 0. Nele os jogadores estudam o que fazer e configuram sua action (alvo, arma, etc.).
+Os jogadores focam em imaginação, criatividade e interpretação; o sistema calcula em
 paralelo sob gerência do mestre.
 
 ## 2. Onde estamos
