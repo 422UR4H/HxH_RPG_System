@@ -114,8 +114,11 @@ as que já estavam na fila — e **não muda mais até o round fechar**.
 no próprio valor e pode ser a **próxima a abrir**, passando na frente do que ainda não
 ocorreu. O que não acontece é desfazer o que já foi jogado.
 
-**Só quem rola abaixo do preço fica de fora do round.** Não paga nada, não vai a saldo
-negativo: leva **a rolagem cheia** para o round seguinte.
+**Quem não alcança o preço fica de fora do round.** Não paga nada, não vai a saldo negativo:
+leva **a rolagem cheia** para o round seguinte.
+
+> Medido na **barra** (`carry + rolagem`), não na rolagem crua — ver "Quem pode agir". No
+> round 0 dá no mesmo, porque o carry é zero.
 
 > O teto não é violado nisso. Como o preço é a menor velocidade da mesa no congelamento, quem
 > ficou de fora rolou **abaixo** dele — o que ele carrega já é menor que o teto por
@@ -132,21 +135,48 @@ que já havia sido rejeitado antes.
 **Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
 personagem mandar **já pertence ao round seguinte**.
 
+### Quem pode agir — são DOIS porteiros, não um
+
+⚠️ **A chave de ordenação e o porteiro de elegibilidade são coisas diferentes.** A chave diz
+**quando** a ação sai; o porteiro diz **se** ela sai. Confundir os dois quebra o exemplo
+canônico por uma ação.
+
+| | Porteiro |
+|---|---|
+| **1ª ação do personagem no round** | a **barra** alcança o preço: `carry + rolagem ≥ preço` |
+| **2ª em diante** | o **troco** das que já agiram alcança o preço: `saldo após as anteriores ≥ preço` |
+
+A **chave** — `carry + média(até n) − (n−1) × preço` — **só ordena**. Ela pode ficar abaixo do
+preço sem que isso impeça a ação de acontecer.
+
+**No exemplo canônico:** depois da 1ª ação, p2 tem troco `23 − 11 = 12` ≥ 11, então **ganha**
+a segunda. Só então ela rola 17, a média cai para 20 e a chave dessa segunda ação fica em
+`20 − 11 = 9` — abaixo do preço, e mesmo assim ela acontece, em quarto lugar.
+
+> **A elegibilidade é decidida antes da nova rolagem; a chave, depois dela.** É o que sustenta
+> *"agir de novo sempre acontece quando há saldo — o que a segunda rolagem decide é o custo
+> posterior"*. **O direito, uma vez concedido, não é revogado** por uma rolagem ruim.
+
+⚠️ **O porteiro da 1ª ação é a barra, não a rolagem crua.** A frase *"só quem rola abaixo do
+preço fica de fora"* só é exata quando o carry é zero — isto é, no round 0. Com carry
+positivo, um personagem que rolou abaixo do preço **pode ser resgatado pelo crédito**.
+
 ### Quando o round fecha
 
-> **O round fecha quando não existe nenhuma action pendente cuja chave alcance o preço.**
+> **O round fecha quando nenhuma action pendente passa no porteiro que lhe cabe.**
 
-⚠️ Não é "quando as barras acabam". A barra **não zera** — ela termina em qualquer valor,
-inclusive negativo. O predicado é sobre a **fila**, não sobre o saldo.
+Não é "quando as barras acabam". A barra **não zera** — termina em qualquer valor, inclusive
+negativo. E não é sobre a chave: uma ação com chave abaixo do preço ainda acontece, se já
+tinha passado no porteiro.
 
 **Um personagem que não enviou action não tem saldo.** Saldo só significa alguma coisa se
-houver uma action pendente para pagar com ele. Quem tem crédito sobrando de um round anterior
-mas nunca mandou nada **não segura o round**: simplesmente não age, e a barra é limitada ao
-teto e carregada para o seguinte.
+houver action pendente para pagar com ele. Quem tem crédito sobrando de um round anterior mas
+nunca mandou nada **não segura o round**: simplesmente não age, e a barra é limitada ao teto e
+carregada para o seguinte.
 
 Por isso **não existe deadlock e não é preciso "passar a vez"**. E o round fecha sozinho mesmo
-com alguém muito rápido: quem age várias vezes vê a própria média degradar até a chave cair
-abaixo do preço. É auto-limitante.
+com alguém muito rápido: cada ação extra derruba a média e o troco, até o porteiro fechar. É
+auto-limitante.
 
 ### Como o carry-over entra no round seguinte
 
