@@ -132,6 +132,22 @@ que já havia sido rejeitado antes.
 **Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
 personagem mandar **já pertence ao round seguinte**.
 
+### Quando o round fecha
+
+> **O round fecha quando não existe nenhuma action pendente cuja chave alcance o preço.**
+
+⚠️ Não é "quando as barras acabam". A barra **não zera** — ela termina em qualquer valor,
+inclusive negativo. O predicado é sobre a **fila**, não sobre o saldo.
+
+**Um personagem que não enviou action não tem saldo.** Saldo só significa alguma coisa se
+houver uma action pendente para pagar com ele. Quem tem crédito sobrando de um round anterior
+mas nunca mandou nada **não segura o round**: simplesmente não age, e a barra é limitada ao
+teto e carregada para o seguinte.
+
+Por isso **não existe deadlock e não é preciso "passar a vez"**. E o round fecha sozinho mesmo
+com alguém muito rápido: quem age várias vezes vê a própria média degradar até a chave cair
+abaixo do preço. É auto-limitante.
+
 ### Como o carry-over entra no round seguinte
 
 O saldo que atravessou **soma na barra** do round novo, antes de qualquer pagamento:
@@ -313,7 +329,8 @@ trigonométrico sobre o vetor `targetSpeed` quando o alvo está em movimento.
 **A "regra do 2×" não existe como regra** — é consequência aritmética de o preço ser o menor
 do round.
 
-❓ **Em aberto:** cada barra tem o seu próprio preço, ou as duas compartilham um piso?
+**Cada barra tem o seu próprio preço**, calculado separadamente — mas as duas correm num
+relógio só. Decidido; não reabrir.
 
 ## Ciclo de uma action
 
@@ -426,13 +443,14 @@ padrões embutidos. Motivação: *"a comunidade não gosta de alguma coisa, ent�
 flexibilizo."* Contrapeso: *"não gostaria de um código super complexo para isso."*
 
 **Recomendação:** os **números** viram configuração (degrau de 10, conjunto de dados, valor
-médio derivado, timer de reação, teto do carry-over). A **forma da escada** — quantos degraus
+médio derivado, timer de reação). A **forma da escada** — quantos degraus
 existem e o que cada um faz — fica em código, porque mudá-la muda o jogo.
 
 | Regra | Padrão do MVP |
 |---|---|
 | Conjunto de dados | 2 D10 somados (D20 alternativo) |
 | Valor médio | **derivado do conjunto** — 11 para 2 D10, 10 para D20 |
+| ~~Teto do carry-over~~ | **não configurável** — é sempre o preço do round |
 | Timer de reação | desligado |
 | Reação padrão na omissão | ligada |
 | `fog_mode` | `explored` |

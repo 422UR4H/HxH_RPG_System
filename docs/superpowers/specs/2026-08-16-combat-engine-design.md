@@ -440,8 +440,9 @@ visível no browser.**
 - **Fim de round quando as barras acabam** — e portanto **`CloseRoundUC` plugado aqui**, não
   na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a fase não entrega o
   próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e nunca enviado).
-- Ações compostas: ataque amarrado ao **fim do movimento** (`max(tempo do ataque, fim do
-  movimento)`), para cait, arremetida e investida.
+- Ações compostas: **duas resoluções com aresta de dependência** — o ataque fica preso ao fim
+  do movimento. Não é "no tempo da mais lenta". Forma exata em `combat-engine.md` § Ações
+  compostas, que é a fonte; qualquer divergência resolve-se por lá.
 
 > **`Race` sem iniciativa — separar o regime da regra que o liga.**
 >
@@ -486,6 +487,18 @@ cima: ação livre até a terceira, fila a partir dali. Não há preço de round
 carry-over enquanto o `Race` não estiver ligado.
 
 **Fora de escopo:** iniciativa como regra; movimento detalhado; posturas.
+
+- **A mecânica do modo `Free` sai desta fase.** A Fase 3 implementa a economia do `Race` —
+  que é a única com regra escrita. A trava da terceira ação em `Free`, e o que acontece com
+  as duas primeiras, viram **fatia própria**. Enquanto isso, a fase exige que o mestre ligue
+  o `Race` para a economia valer.
+- **A renomeação `enum.Velocity` → `Quickness` é PR separado, antes desta fase.** A Fase 3
+  usa `Legerity`, `Accelerate` e `Brake` — nenhuma delas é a renomeada —, então é puramente
+  sequenciamento. Separado porque toca `character_class_factory.go` em 12+ pontos e o que
+  serializa nomes de perícia; misturar com o motor tornaria os dois diffs ilegíveis.
+- **O evento WS que carrega as barras nasce aqui.** A Fase 6 precisa desenhar "a sua barra e
+  a barra geral", e hoje nenhuma mensagem as transporta. Ele é da Fase 3 porque é aqui que as
+  barras passam a existir — não adianta a Fase 6 descobrir que não tem de onde ler.
 
 **Pronto quando:**
 - O exemplo canônico da doc de jogo (p1=20, p2=23, p3=11, segunda rolagem de p2 = 17)
