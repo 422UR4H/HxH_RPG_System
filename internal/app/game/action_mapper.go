@@ -1,6 +1,8 @@
 package game
 
 import (
+	"fmt"
+
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
@@ -21,16 +23,12 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		return nil, err
 	}
 
-	speed := action.ActionSpeed{}
-	if p.Speed != nil {
-		speed.Bar = p.Speed.Bar
-		rc, err := buildRollCheck(p.Speed.RollCheck)
-		if err != nil {
-			return nil, err
-		}
-		if rc != nil {
-			speed.RollCheck = *rc
-		}
+	// actionSpeed is ALWAYS Legerity. Whatever the payload carried is discarded: the
+	// player picks a move type or an attack, never the skill behind its speed.
+	// ActionSpeedPayload.Bar is likewise ignored — which bar an action pays from is derived
+	// from its content by Action.Bars(), never trusted from the client.
+	speed := action.ActionSpeed{
+		RollCheck: action.RollCheck{SkillName: enum.Legerity.String()},
 	}
 
 	feint, err := buildRollCheck(p.Feint)
@@ -40,7 +38,7 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 
 	var move *action.Move
 	if p.Move != nil {
-		moveSpeed, err := buildRollCheck(p.Move.Speed)
+		category, moveSkill, err := moveSpeedSkill(p.Move.Category)
 		if err != nil {
 			return nil, err
 		}
@@ -49,11 +47,14 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 			return nil, err
 		}
 		move = &action.Move{
-			Category: enum.MoveCategory(p.Move.Category),
+			Category: category,
 			From:     p.Move.From,
 			Position: p.Move.Position,
-			Speed:    moveSpeed,
-			Charge:   moveCharge,
+			// The skill comes from the category, never from the payload. The front shows the
+			// tactical move types explicitly; switching Dash to Shift in the bottom sheet
+			// switches the skill on its own.
+			Speed:  &action.RollCheck{SkillName: moveSkill.String()},
+			Charge: moveCharge,
 		}
 		// FinalSpeed is computed by the engine, never taken from the client.
 	}
@@ -163,6 +164,27 @@ func buildWeaponName(s *string) (*enum.WeaponName, error) {
 		return nil, err
 	}
 	return &name, nil
+}
+
+// moveSpeedSkill maps a movement category to the skill its speed is tested on.
+//
+//	Dash  (arrancada)            → Accelerate, rolled
+//	Shift (controlled step)      → Brake, taken passively (see MatchSession.deriveSpeeds)
+//
+// enum.MoveCategory has five other values — Back (cait), Roll, Slide, Jump, FlatJump — and
+// they are REFUSED here rather than mapped. Their skills belong to the movement slice, which
+// is where they will actually be exercised. Mapping them by analogy would work silently and
+// wrongly: a leap would cost like a controlled step, and nobody would find out until someone
+// complained at the table.
+func moveSpeedSkill(raw string) (enum.MoveCategory, enum.SkillName, error) {
+	switch enum.MoveCategory(raw) {
+	case enum.Dash:
+		return enum.Dash, enum.Accelerate, nil
+	case enum.Shift:
+		return enum.Shift, enum.Brake, nil
+	default:
+		return "", "", fmt.Errorf("move category %q is not supported yet", raw)
+	}
 }
 
 // buildMasterAction maps a MasterActionPayload received from the WebSocket client to a MasterAction domain entity.
