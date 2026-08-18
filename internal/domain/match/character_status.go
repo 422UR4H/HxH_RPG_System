@@ -43,6 +43,15 @@ func (s *CharacterStatus) ExpireModifiers(scope Scope) {
 	s.Ledger.Expire(scope)
 }
 
+// BarFor returns the resource bar an action on that clock is paid from. The pointer is the
+// status's own, so writing through it is a write to session state.
+func (s *CharacterStatus) BarFor(bar action.Bar) *ResourceBar {
+	if bar == action.BarMove {
+		return &s.MoveBar
+	}
+	return &s.ActionBar
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Design rationale — the product owner's notes. Kept verbatim: this is the richest
 // record of intent for movement, the two bars, clash, footwork and charge that exists

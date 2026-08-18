@@ -39,6 +39,7 @@ type MatchSession struct {
 	// charToPlayer is the bridge between the two axes, and what the fog of war reads.
 	participants   map[uuid.UUID]*match.Participant
 	roundOrch      service.RoundOrchestrator
+	scheduler      service.RoundScheduler
 	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
@@ -74,6 +75,7 @@ func NewMatchSession(
 		statuses:     statuses,
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
+		scheduler:    service.RoundScheduler{},
 		rules:        match.NewDefaultMatchRules(),
 		weapons:      item.NewWeaponsManagerFactory().Build(),
 		turnResolver: service.TurnResolver{},
@@ -100,6 +102,7 @@ func NewMatchSessionWithState(
 		statuses:       statuses,
 		participants:   pMap,
 		roundOrch:      service.RoundOrchestrator{},
+		scheduler:      service.RoundScheduler{},
 		rules:          match.NewDefaultMatchRules(),
 		weapons:        item.NewWeaponsManagerFactory().Build(),
 		turnResolver:   service.TurnResolver{},
@@ -218,6 +221,10 @@ type TurnTransition struct {
 	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
 	// a round, when nothing closed.
 	Damaged []DamagedCharacter
+	// RoundExhausted reports that no pending action passes the gate that applies to it, which
+	// is what ends a Race round. It is not an error: the actions still queued keep the roll
+	// they already made and belong to the next round. The caller closes the round.
+	RoundExhausted bool
 }
 
 // DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
@@ -229,23 +236,100 @@ type DamagedCharacter struct {
 	NewHP       int
 }
 
+// BarState implements service.BarStateSource: the carry that crossed into this round, and the
+// speeds that have already acted on that bar. An unknown character reads as an empty bar
+// rather than failing the whole scheduling pass.
+func (s *MatchSession) BarState(charID uuid.UUID, bar action.Bar) (float64, []int) {
+	status, ok := s.statuses[charID]
+	if !ok {
+		return 0, nil
+	}
+	b := status.BarFor(bar)
+	return b.Balance, b.Speeds
+}
+
+// RoundPrices returns the frozen price of each bar that has priced this round. Read by the
+// delivery layer to publish the general bar.
+func (s *MatchSession) RoundPrices() map[action.Bar]int {
+	out := map[action.Bar]int{}
+	for _, bar := range []action.Bar{action.BarAction, action.BarMove} {
+		if p, frozen := s.activeRound.Price(bar); frozen {
+			out[bar] = p
+		}
+	}
+	return out
+}
+
+// scheduleInput assembles what one scheduling decision reads.
+func (s *MatchSession) scheduleInput() service.ScheduleInput {
+	return service.ScheduleInput{Queue: &s.activeQueue, Round: s.activeRound, Bars: s}
+}
+
 func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
+	// Prices freeze on the first selection that sees a bar with pending work — before any
+	// gate is evaluated, because the gate is measured against the price.
+	s.scheduler.FreezePrices(s.scheduleInput())
+
+	if s.activeRound.GetMode() != enum.Race {
+		// Free has no price, no average and no carry-over; the rolled speed is the order and
+		// nothing gates. An empty queue is still an error there, as it always was.
+		tr := s.closeOpenTurn()
+		opened, err := s.roundOrch.NextAction(s.activeRound, &s.activeQueue)
+		if err != nil {
+			return tr, err
+		}
+		tr.Opened = opened
+		tr.OpenedResolution = s.ResolveTurn(opened)
+		return tr, nil
+	}
+
+	next := s.scheduler.SelectNext(s.scheduleInput())
 	tr := s.closeOpenTurn()
-	opened, err := s.roundOrch.NextAction(s.activeRound, &s.activeQueue)
+	if next == nil {
+		// Nothing pending can still pay. The round is over — the caller closes it.
+		tr.RoundExhausted = true
+		return tr, nil
+	}
+
+	// PullAction is reused deliberately: once the scheduler has chosen, "open the next one"
+	// and "pull this one out of order" are the same operation. The master's explicit
+	// pull_action stays ungated on purpose — anticipating an action is their prerogative.
+	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, next.GetID())
 	if err != nil {
 		return tr, err
 	}
+	s.recordActed(next)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
 	return tr, nil
 }
 
+// recordActed appends an action's speed to EVERY bar it was paid from, at the moment it opens.
+//
+// Every bar, because a combined action charges both: an investida costs a movement and a blow,
+// and both averages move because of it.
+//
+// On OPEN, never on enqueue: ResourceBar.Speeds means "the speeds that acted", and that is
+// what makes an action which never reached the price roll over to the next round untouched.
+func (s *MatchSession) recordActed(a *action.Action) {
+	status, ok := s.statuses[a.GetActorID()]
+	if !ok {
+		return
+	}
+	for _, bar := range a.Bars() {
+		status.BarFor(bar).RecordSpeed(a.SpeedOn(bar))
+	}
+}
+
 func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 	tr := s.closeOpenTurn()
+	s.scheduler.FreezePrices(s.scheduleInput())
 	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, id)
 	if err != nil {
 		return tr, err
 	}
+	act := opened.GetAction()
+	s.recordActed(&act)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
 	return tr, nil
