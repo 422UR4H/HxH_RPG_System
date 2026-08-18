@@ -110,8 +110,16 @@ saldo_final = min(saldo_final, preço do round)          // teto
 O preço é fixado quando o mestre **abre a primeira ação do round** — a menor velocidade entre
 as que já estavam na fila — e **não muda mais até o round fechar**.
 
-**Quem chegar depois com velocidade abaixo do preço simplesmente não age neste round.** Não
-paga nada, não vai a saldo negativo: aquele valor **vira acúmulo para o round seguinte**.
+**Action atrasada ainda age neste round.** Se a velocidade dela for alta, ela entra na fila
+no próprio valor e pode ser a **próxima a abrir**, passando na frente do que ainda não
+ocorreu. O que não acontece é desfazer o que já foi jogado.
+
+**Só quem rola abaixo do preço fica de fora do round.** Não paga nada, não vai a saldo
+negativo: leva **a rolagem cheia** para o round seguinte.
+
+> O teto não é violado nisso. Como o preço é a menor velocidade da mesa no congelamento, quem
+> ficou de fora rolou **abaixo** dele — o que ele carrega já é menor que o teto por
+> construção.
 
 > Decisão do dono do produto, pela simplicidade: *"uma action que chegue depois com valor
 > menor poderia simplesmente não ter custo suficiente pra agir neste turno, então esse valor
@@ -123,6 +131,21 @@ que já havia sido rejeitado antes.
 
 **Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
 personagem mandar **já pertence ao round seguinte**.
+
+### Como o carry-over entra no round seguinte
+
+O saldo que atravessou **soma na barra** do round novo, antes de qualquer pagamento:
+
+> **chave da n-ésima ação = carry + média(velocidades até n) − (n−1) × preço**
+
+Vem do desenho: *"quando um jogador envia sua action, o sistema rola a actionSpeed somada à
+iniciativa (ou não), que define o valor da barra"*, e o excedente *"é um bônus que fica na
+barra de ação"*. É também o que faz o teto estabilizar em vez de crescer: quem fica parado
+com rolagem 20 e preço 11 leva 9; no round seguinte tem `20 + 9 = 29`, paga 11, sobra 18 →
+limitado a 11. Estabiliza.
+
+❓ Derivado, não dito com todas as letras. Vetar em uma linha se o carry não somasse na barra
+e servisse apenas para decidir quantas ações cabem.
 
 ### Ações compostas (move + attack)
 
