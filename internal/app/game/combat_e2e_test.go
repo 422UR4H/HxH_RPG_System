@@ -227,31 +227,6 @@ func sendWS(t *testing.T, conn *websocket.Conn, msgType string, payload any) {
 	}
 }
 
-// awaitType reads until a message of the given type arrives, or the deadline passes.
-// It returns whether it arrived — used to synchronise the two clients, which are separate
-// connections served by separate goroutines: without waiting for the player's
-// action_enqueued, the master's open_next_action can overtake the enqueue and find an
-// empty queue.
-func awaitType(t *testing.T, conn *websocket.Conn, want game.MessageType, d time.Duration) bool {
-	t.Helper()
-	deadline := time.Now().Add(d)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(deadline)
-		_, data, err := conn.ReadMessage()
-		if err != nil {
-			return false
-		}
-		var msg game.Message
-		if err := json.Unmarshal(data, &msg); err != nil {
-			continue
-		}
-		if msg.Type == want {
-			return true
-		}
-	}
-	return false
-}
-
 // collector drains a connection in the background into a slice.
 //
 // A blocking read that times out is fatal for a gorilla connection — the socket cannot be
@@ -339,8 +314,8 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 	f := newCombatFixture(t)
 
 	master, player := f.connect(t)
-	defer master.Close()
-	defer player.Close()
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
 	playerMsgs := newCollector(player)
 
 	hpBefore := f.victimHP(t)
@@ -475,8 +450,8 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 func TestE2E_AttackWithoutActorIDIsRefused(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)
-	defer master.Close()
-	defer player.Close()
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
 
 	sendWS(t, player, "enqueue_action", map[string]any{
 		"targetId": []string{f.victimID.String()},
@@ -496,8 +471,8 @@ func TestE2E_AttackWithoutActorIDIsRefused(t *testing.T) {
 func TestE2E_AttackWithUnknownSkillIsRefused(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)
-	defer master.Close()
-	defer player.Close()
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
 
 	sendWS(t, player, "enqueue_action", map[string]any{
 		"actorId":  f.attackerID.String(),
@@ -517,8 +492,8 @@ func TestE2E_AttackWithUnknownSkillIsRefused(t *testing.T) {
 func TestE2E_ActingThroughAnotherPlayersCharacterIsRefused(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)
-	defer master.Close()
-	defer player.Close()
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
 
 	sendWS(t, player, "enqueue_action", map[string]any{
 		"actorId":  uuid.New().String(), // a character nobody in this match owns
