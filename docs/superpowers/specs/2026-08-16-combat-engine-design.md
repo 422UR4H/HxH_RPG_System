@@ -428,10 +428,9 @@ visível no browser.**
   > ❓ Decidir se o momentum (`Charge`) entra na Fase 3 ou fica para a fatia de movimento.
   > **A barra funciona sem ele** — só fica menos rica.
 
-  > ⛔ **`enum.Velocity` está errado** e deve virar `Quickness`. Alcance: o enum + 12+
-  > ocorrências em `character_class_factory.go` + o que serializa nomes de perícia. **Fatia
-  > própria**, antes ou junto desta fase — não junto de outra coisa. E **não tocar em
-  > `action.Velocity`**, o vetor, que está correto. Detalhe em `combat-engine.md`.
+  > ✅ **`enum.Velocity` virou `Quickness`**, no primeiro commit desta fase — por decisão do
+  > dono do produto, que preferiu não esperar um PR à parte. `action.Velocity`, o vetor, não foi
+  > tocado. Detalhe em `combat-engine.md`.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
@@ -440,9 +439,10 @@ visível no browser.**
 - **Fim de round quando as barras acabam** — e portanto **`CloseRoundUC` plugado aqui**, não
   na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a fase não entrega o
   próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e nunca enviado).
-- Ações compostas: **duas resoluções com aresta de dependência** — o ataque fica preso ao fim
-  do movimento. Não é "no tempo da mais lenta". Forma exata em `combat-engine.md` § Ações
-  compostas, que é a fonte; qualquer divergência resolve-se por lá.
+- Ações compostas: **uma action só**, com `Move` e `Attack` preenchidos, que **cobra as duas
+  barras** e acontece **no tempo da mais lenta** (`min` das duas chaves). Não se divide em duas
+  actions e não abre dois turnos. Forma exata em `combat-engine.md` § Ações compostas, que é a
+  fonte; qualquer divergência resolve-se por lá.
 
 > **`Race` sem iniciativa — separar o regime da regra que o liga.**
 >
@@ -504,10 +504,10 @@ carry-over enquanto o `Race` não estiver ligado.
   que é a única com regra escrita. A trava da terceira ação em `Free`, e o que acontece com
   as duas primeiras, viram **fatia própria**. Enquanto isso, a fase exige que o mestre ligue
   o `Race` para a economia valer.
-- **A renomeação `enum.Velocity` → `Quickness` é PR separado, antes desta fase.** A Fase 3
-  usa `Legerity`, `Accelerate` e `Brake` — nenhuma delas é a renomeada —, então é puramente
-  sequenciamento. Separado porque toca `character_class_factory.go` em 12+ pontos e o que
-  serializa nomes de perícia; misturar com o motor tornaria os dois diffs ilegíveis.
+- **A renomeação `enum.Velocity` → `Quickness` entrou nesta fase**, no primeiro commit, antes
+  de qualquer código de motor — decisão do dono do produto, revertendo o "PR separado" que
+  este spec pedia. Fica isolada no próprio commit para o diff continuar legível. A metade do
+  front (três chaves `velocity`) é PR próprio no repo React, com cross-link.
 - **O evento WS que carrega as barras nasce aqui.** A Fase 6 precisa desenhar "a sua barra e
   a barra geral", e hoje nenhuma mensagem as transporta. Ele é da Fase 3 porque é aqui que as
   barras passam a existir — não adianta a Fase 6 descobrir que não tem de onde ler.

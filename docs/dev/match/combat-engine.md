@@ -94,6 +94,9 @@ saldo_final = média(velocidades das ações daquela barra que AGIRAM no round)
 saldo_final = min(saldo_final, preço do round)          // teto
 ```
 
+- **A média não arredonda.** Ela é guardada com a fração (`float64` no código): truncar seria
+  escolher uma política de arredondamento que a regra não pede, e a diferença se acumula ao
+  longo dos rounds pelo carry. O exemplo canônico continua dando inteiro exato.
 - **A média é por round**, e conta **só as ações que efetivamente agiram**. Uma ação enviada
   mas que não coube no round pertence ao round seguinte e **não entra na média deste**.
 - **Preço do round** (`ActionBarCoast`) = a menor velocidade daquela barra na rodada.
@@ -200,15 +203,30 @@ Duas formas, e a escolha é do jogador:
 | Forma | Resolução |
 |---|---|
 | **Duas actions separadas** | cada uma na sua barra, resolvida quando aquela barra chegar. A ordem sai do relógio, não da intenção. Quem quiser ordem garantida **não enfileira as duas de uma vez**: manda o movimento, espera resolver, e só então manda o ataque. |
-| **Ação combinada** (cait, arremetida, investida) | **duas resoluções, com aresta de dependência** — ver abaixo |
+| **Ação combinada** (cait, arremetida, investida) | **uma action só**, com `Move` e `Attack` preenchidos, que **cobra as duas barras** e acontece **no tempo da mais lenta** |
 
-⚠️ **Não é "no tempo da mais lenta".** Cada metade resolve no seu próprio tempo; o que existe
-é uma **restrição de ordem**: o ataque está amarrado ao **fim do movimento**.
+#### A ação combinada é UMA action
 
-- Se o personagem é mais rápido para atacar mas **ainda não iniciou o movimento**, o ataque
-  **espera** o turno de mover, e sai na sequência.
-- Se ele já está se movendo, a peça desloca no tempo dela e o ataque sai **quando chegar o
-  turno de ataque**, normalmente.
+`Move` e `Attack` vivem dentro da mesma `Action`. O mestre **abre uma vez**, e é **um turno
+só**. Não existe divisão em duas actions, nem duas entradas na fila, nem aresta de dependência
+entre metades: a modelagem foi construída para haver uma action, e o movimento mora dentro dela.
+
+**Ela ocorre no instante da metade mais lenta.** As duas velocidades continuam gravadas na
+action — `Speed.Result` para a barra de ação, `Move.FinalSpeed` para a de movimento — e as duas
+barras são cobradas. O que a combinação decide é apenas **quando** a action acontece:
+
+```
+chave da ação combinada = min(chave na barra de ação, chave na barra de movimento)
+```
+
+Como a chave maior age primeiro, o `min` é a mais lenta. Se o personagem é rápido de mão e
+lento de pé, o golpe espera o pé; se é o contrário, o deslocamento fica "atrasado" até a vez do
+ataque.
+
+**Ela só age se passar no porteiro das duas barras.** Cobra as duas, então precisa poder pagar
+as duas. Uma investida cuja barra de ação não alcança o preço fica de fora do round inteira —
+não só o ataque. O contrário deixaria um personagem sem barra de ação atacar de carona no
+movimento, e a economia deixaria de valer.
 
 > Racional do dono do produto: *"um round é praticamente todo mundo agindo ao mesmo tempo. A
 > resolução das actions é discreta, mas estamos numa simulação muito mais próxima da
@@ -219,6 +237,20 @@ Vale igual para **cait**, **arremetida** (1 slot) e **investida** (2+ slots).
 
 Decisão registrada: **não modelar as variações internas do cait** (atacar antes/durante/
 depois). Quem quer controlar a sequência usa duas actions separadas.
+
+#### ❌ Descartado: duas resoluções com aresta de dependência
+
+Uma versão anterior desta seção dizia *"duas resoluções, com aresta de dependência"* e
+*"não é no tempo da mais lenta"*: cada metade resolveria no seu próprio tempo, com outras
+actions podendo cair entre elas. **Está descartado**, por decisão do dono do produto:
+
+> *"eu tinha conversado a respeito de não ter problema uma investida poder ocorrer com um delay
+> entre o movimento e o ataque... mas essa solução é ruim, então é melhor que ocorra no pior
+> tempo de action mesmo."*
+
+A complexidade técnica não se pagava — duas resoluções de uma action só significam dois turnos
+carregando a mesma `Action`, e a tabela `actions` é chaveada pelo UUID da action. O ganho de
+fidelidade era pequeno perto disso.
 
 ### Action enviada no meio do round
 
@@ -326,18 +358,18 @@ E é por isso que `Charge` importa: ele empurra a `Speed`, e a `Speed` é o que 
 > da **move action** — a barra de movimento —, porque todo o contexto é deslocamento.
 > Corrigir em uma linha se a intenção era a barra de ação.
 
-#### ⚠️ Renomeação pendente: `enum.Velocity` → `Quickness`
+#### ✅ Renomeação feita: `enum.Velocity` → `Quickness` (Fase 3)
 
-Sob Agilidade devem existir **`Accelerate`, `Brake` e `Quickness`**. Hoje existe
-`enum.Velocity` no lugar de `Quickness`, e `Quickness` não existe no enum — aparece só num
-comentário de `character_status.go` (*"o jogo de pés (Footwork) é um teste de Quickness"*).
+Sob Agilidade existem **`Accelerate`, `Brake` e `Quickness`** — começar um movimento, interrompê-lo,
+e o jogo de pés que move o personagem dentro do slot. A terceira se chamava `Velocity`, o que a
+nomeava por uma grandeza em vez de pelo que ela testa, e colidia com `action.Velocity`, o vetor
+de movimento, que é outra coisa e **continua como está**.
 
-**Alcance da mudança:** o enum, mais 12+ ocorrências em
-`character_class_factory.go` (toda classe define um valor), mais o que quer que serialize
-nomes de perícia para o front e para o banco.
-
-**Não fazer junto com outra coisa.** Fatia própria, antes ou junto da fase que usar perícia de
-movimento. E ao fazer, **não tocar em `action.Velocity`** — o vetor está certo.
+Alcance do que foi renomeado: o enum e seu valor serializado (`"Velocity"` → `"Quickness"`), 12
+ocorrências em `character_class_factory.go`, o modelo e as queries do gateway
+(`VelocityExp` → `QuicknessExp`, coluna `velocity_exp` → `quickness_exp` via
+`migrations/20260818000000_rename_velocity_to_quickness.sql`), e as três chaves `velocity` no
+front, que lê o nome serializado em minúscula — PR próprio no repo React.
 
 ### Escala das duas barras
 
