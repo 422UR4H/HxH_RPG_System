@@ -1223,6 +1223,75 @@ func TestMatchSession_FreeRoundStillReportsAnEmptyQueue(t *testing.T) {
 	}
 }
 
+// TestMatchSession_OpenNextAction_RecordsBothBarsForACombinedAction is the regression the
+// product owner's "one action, two bars, opened once" correction needs: recordActed loops
+// a.Bars() so a combined move+attack action charges BOTH bars the moment it opens, not just
+// one. A silent regression to charging a single bar would make every round average involving
+// a charge/investida wrong, with nothing else in the suite to catch it.
+func TestMatchSession_OpenNextAction_RecordsBothBarsForACombinedAction(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+	s.GetActiveRound().SetMode(enum.Race)
+
+	// actionSpeed (Legerity) draws faces[0:4], moveSpeed (Accelerate, Dash) draws faces[4:8] —
+	// Roll always rolls BOTH attempt sets, so each 2D10 check costs four faces, not two. The
+	// attack's Hit check is pre-filled below so it draws nothing, and no Weapon means no
+	// damage roll either: these 8 faces are spent on exactly the two speed checks.
+	s.SetRollSource(&scriptedFaces{faces: []int{3, 3, 3, 3, 6, 6, 6, 6}})
+
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil,
+		&action.Move{Category: enum.Dash, Position: [3]int{2, 2, 0}},
+		&action.Attack{Hit: action.RollCheck{Attempts: action.RollAttempts{Primary: []int{1, 1}}}},
+		nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+
+	wantAction := 6 + skillValue(t, sheets[charID], enum.Legerity)  // actionSpeed: 3+3
+	wantMove := 12 + skillValue(t, sheets[charID], enum.Accelerate) // moveSpeed: 6+6
+	if a.SpeedOn(action.BarAction) != wantAction {
+		t.Fatalf("actionSpeed = %d, want %d", a.SpeedOn(action.BarAction), wantAction)
+	}
+	if a.SpeedOn(action.BarMove) != wantMove {
+		t.Fatalf("moveSpeed = %d, want %d", a.SpeedOn(action.BarMove), wantMove)
+	}
+
+	mustOpenNext(t, s)
+
+	t.Run("the action bar recorded exactly the action speed", func(t *testing.T) {
+		_, acted := s.BarState(charID, action.BarAction)
+		if len(acted) != 1 {
+			t.Fatalf("action bar acted = %v, want exactly one speed", acted)
+		}
+		if acted[0] != wantAction {
+			t.Errorf("action bar recorded %d, want %d", acted[0], wantAction)
+		}
+	})
+
+	t.Run("the move bar recorded exactly the move speed", func(t *testing.T) {
+		_, acted := s.BarState(charID, action.BarMove)
+		if len(acted) != 1 {
+			t.Fatalf("move bar acted = %v, want exactly one speed", acted)
+		}
+		if acted[0] != wantMove {
+			t.Errorf("move bar recorded %d, want %d", acted[0], wantMove)
+		}
+	})
+
+	t.Run("the two bars recorded different speeds, not the same number twice", func(t *testing.T) {
+		_, actionActed := s.BarState(charID, action.BarAction)
+		_, moveActed := s.BarState(charID, action.BarMove)
+		if len(actionActed) == 1 && len(moveActed) == 1 && actionActed[0] == moveActed[0] {
+			t.Errorf("both bars recorded %d — recordActed may be charging one bar twice instead of both", actionActed[0])
+		}
+	})
+}
+
 func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 	matchUUID := uuid.New()
 	p1UUID, p2UUID := uuid.New(), uuid.New()
