@@ -15,9 +15,12 @@ type Round struct {
 	turns         []*turn.Turn
 	masterActions []action.MasterAction //nolint:unused // WIP: match system under development // think more about this field and its usage
 	events        []GameEvent
-	coast         *int //nolint:unused // WIP: match system under development // if nil, the turn is free (no race in this turn)
-	createdAt     time.Time
-	finishedAt    *time.Time
+	// prices are the frozen round prices, one per bar. An absent entry means that bar has
+	// not priced yet — which is also what a Free round looks like all the way through, since
+	// Free has no price at all.
+	prices     map[action.Bar]int
+	createdAt  time.Time
+	finishedAt *time.Time
 }
 
 func NewRound(mode enum.RoundMode) *Round {
@@ -26,6 +29,7 @@ func NewRound(mode enum.RoundMode) *Round {
 		mode:      mode,
 		turns:     []*turn.Turn{},
 		events:    []GameEvent{},
+		prices:    make(map[action.Bar]int),
 		createdAt: time.Now(),
 	}
 }
@@ -36,6 +40,7 @@ func ReconstructRound(id uuid.UUID, mode enum.RoundMode, createdAt time.Time) *R
 		mode:      mode,
 		turns:     []*turn.Turn{},
 		events:    []GameEvent{},
+		prices:    make(map[action.Bar]int),
 		createdAt: createdAt,
 	}
 }
@@ -82,4 +87,47 @@ func (r *Round) ToggleMode() {
 
 func (r *Round) GetMode() enum.RoundMode {
 	return r.mode
+}
+
+// Price returns the frozen price of a bar, and whether it froze at all.
+func (r *Round) Price(bar action.Bar) (int, bool) {
+	p, ok := r.prices[bar]
+	return p, ok
+}
+
+// FreezePrice fixes a bar's price for the rest of the round. The first call wins; every
+// later one is ignored.
+//
+// The price is fixed when the first action on that bar is chosen to open — the smallest speed
+// among the actions pending at that moment — and it does not move again. A slower action
+// arriving later does NOT re-price the round: that would make the same round charge different
+// people different amounts, or reorder what has already been played. Such an action simply
+// does not reach the price, sits the round out, and carries its full roll into the next one.
+func (r *Round) FreezePrice(bar action.Bar, price int) {
+	if r.prices == nil {
+		r.prices = make(map[action.Bar]int)
+	}
+	if _, frozen := r.prices[bar]; frozen {
+		return
+	}
+	r.prices[bar] = price
+}
+
+// HasOpenedAction reports whether an action with this ID has already been given a turn in
+// this round. The dependency edge of a combined action reads it: the attack half waits for
+// the move half to open.
+func (r *Round) HasOpenedAction(id uuid.UUID) bool {
+	for _, t := range r.turns {
+		act := t.GetAction()
+		if (&act).GetID() == id {
+			return true
+		}
+	}
+	return false
+}
+
+// SetMode sets the round regime outright. ToggleMode stays for the paths that flip blindly;
+// this one is what an explicit master request needs, and it is idempotent.
+func (r *Round) SetMode(mode enum.RoundMode) {
+	r.mode = mode
 }

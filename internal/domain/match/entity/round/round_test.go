@@ -96,3 +96,65 @@ func TestReconstructRound(t *testing.T) {
 		t.Error("expected nil finishedAt on reconstructed round")
 	}
 }
+
+func TestRound_Prices(t *testing.T) {
+	t.Run("a fresh round has no price on either bar", func(t *testing.T) {
+		r := round.NewRound(enum.Race)
+		if _, frozen := r.Price(action.BarAction); frozen {
+			t.Error("the action bar must start unfrozen")
+		}
+		if _, frozen := r.Price(action.BarMove); frozen {
+			t.Error("the move bar must start unfrozen")
+		}
+	})
+
+	t.Run("freezing one bar leaves the other alone", func(t *testing.T) {
+		r := round.NewRound(enum.Race)
+		r.FreezePrice(action.BarAction, 11)
+
+		got, frozen := r.Price(action.BarAction)
+		if !frozen || got != 11 {
+			t.Errorf("action price = (%d, %v), want (11, true)", got, frozen)
+		}
+		if _, frozen := r.Price(action.BarMove); frozen {
+			t.Error("the move bar must still be unfrozen — the bars freeze independently")
+		}
+	})
+
+	t.Run("the price never moves once frozen", func(t *testing.T) {
+		r := round.NewRound(enum.Race)
+		r.FreezePrice(action.BarAction, 11)
+		r.FreezePrice(action.BarAction, 4)
+
+		got, _ := r.Price(action.BarAction)
+		if got != 11 {
+			t.Errorf("price = %d, want 11: a later, slower action must not re-price the round", got)
+		}
+	})
+}
+
+func TestRound_HasOpenedAction(t *testing.T) {
+	r := round.NewRound(enum.Race)
+	a := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil)
+
+	if r.HasOpenedAction(a.GetID()) {
+		t.Error("nothing has opened yet")
+	}
+	r.AppendTurn(turn.NewTurn(*a))
+	if !r.HasOpenedAction(a.GetID()) {
+		t.Error("the action opened, so the round must say so — this is what the dependency edge reads")
+	}
+}
+
+func TestRound_SetMode(t *testing.T) {
+	r := round.NewRound(enum.Free)
+	r.SetMode(enum.Race)
+	if r.GetMode() != enum.Race {
+		t.Errorf("mode = %q, want Race", r.GetMode())
+	}
+	r.SetMode(enum.Race)
+	if r.GetMode() != enum.Race {
+		t.Error("SetMode must be idempotent, unlike ToggleMode")
+	}
+}
