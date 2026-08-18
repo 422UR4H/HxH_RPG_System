@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -75,10 +76,10 @@ func TestInitMatchSession(t *testing.T) {
 				},
 			},
 		}
-		loader := &mockSheetLoader{
-			sheet: &csSheet.CharacterSheet{},
-			found: true,
-		}
+		sheet := &csSheet.CharacterSheet{}
+		// An intact sheet: nothing to repair, so wasCorrected is false. This is the normal
+		// case, and it must still land in the session.
+		loader := &mockSheetLoader{sheet: sheet, wasCorrected: false}
 
 		uc := match.NewInitMatchSessionUC(repo, loader, noop)
 		session, err := uc.Init(context.Background(), matchUUID)
@@ -87,6 +88,37 @@ func TestInitMatchSession(t *testing.T) {
 		}
 		if session == nil {
 			t.Fatal("expected non-nil session")
+		}
+		got, err := session.GetCharSheet(sheetUUID)
+		if err != nil {
+			t.Fatalf("the intact sheet is missing from the session: %v", err)
+		}
+		if got != sheet {
+			t.Error("expected the session to hold the loaded sheet")
+		}
+	})
+
+	// Regression: the loader's second return is wasCorrected, not found. Reading it as
+	// "found" kept only the sheets that had to be repaired and silently dropped every
+	// intact one, leaving the session unable to resolve a single collision.
+	t.Run("an intact sheet is not dropped as if it were missing", func(t *testing.T) {
+		pUUID := playerUUID
+		repo := &mockMatchRepo{
+			participants: []*matchDomain.Participant{{
+				UUID:      uuid.New(),
+				MatchUUID: matchUUID,
+				Sheet:     csEntity.Summary{UUID: sheetUUID, PlayerUUID: &pUUID},
+			}},
+		}
+		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, wasCorrected: false}
+
+		uc := match.NewInitMatchSessionUC(repo, loader, noop)
+		session, err := uc.Init(context.Background(), matchUUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, err := session.GetCharSheet(sheetUUID); err != nil {
+			t.Errorf("an intact sheet must be in the session, got %v", err)
 		}
 	})
 
@@ -102,7 +134,7 @@ func TestInitMatchSession(t *testing.T) {
 				},
 			},
 		}
-		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, found: true}
+		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, wasCorrected: true}
 
 		uc := match.NewInitMatchSessionUC(repo, loader, noop)
 		session, err := uc.Init(context.Background(), matchUUID)
@@ -117,7 +149,7 @@ func TestInitMatchSession(t *testing.T) {
 		}
 	})
 
-	t.Run("creates a session when the sheet is not found", func(t *testing.T) {
+	t.Run("skips a participant whose sheet does not exist", func(t *testing.T) {
 		repo := &mockMatchRepo{
 			participants: []*matchDomain.Participant{
 				{
@@ -127,7 +159,8 @@ func TestInitMatchSession(t *testing.T) {
 				},
 			},
 		}
-		loader := &mockSheetLoader{found: false}
+		// A missing sheet is an error from the gateway, not a false.
+		loader := &mockSheetLoader{err: charactersheet.ErrCharacterSheetNotFound}
 
 		uc := match.NewInitMatchSessionUC(repo, loader, noop)
 		session, err := uc.Init(context.Background(), matchUUID)
@@ -142,7 +175,8 @@ func TestInitMatchSession(t *testing.T) {
 
 func TestInitMatchSessionUC_Recovery(t *testing.T) {
 	emptyMatchRepo := &mockMatchRepo{participants: []*matchDomain.Participant{}}
-	emptyLoader := &mockSheetLoader{found: false}
+	// No participants, so the loader is never called.
+	emptyLoader := &mockSheetLoader{}
 
 	t.Run("uses NewMatchSessionWithState when active session found", func(t *testing.T) {
 		sceneID := uuid.New()
@@ -208,10 +242,12 @@ func (m *mockMatchRepo) ListParticipantsByMatchUUID(_ context.Context, _ uuid.UU
 
 type mockSheetLoader struct {
 	sheet *csSheet.CharacterSheet
-	found bool
-	err   error
+	// wasCorrected mirrors the gateway's real second return: whether hydrating the sheet
+	// had to repair it. It is NOT "found" — a missing sheet comes back as an error.
+	wasCorrected bool
+	err          error
 }
 
 func (m *mockSheetLoader) GetCharacterSheetByUUID(_ context.Context, _ string) (*csSheet.CharacterSheet, bool, error) {
-	return m.sheet, m.found, m.err
+	return m.sheet, m.wasCorrected, m.err
 }

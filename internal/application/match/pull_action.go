@@ -12,16 +12,25 @@ import (
 type PullActionResult struct {
 	ClosedTurn *turn.Turn
 	OpenedTurn *turn.Turn
+	// Resolution is the newly opened turn's projection — a dry run, nothing applied.
 	Resolution *service.TurnResolution
+	// ClosedResolution is the resolution that was actually applied when the previous turn
+	// closed. Nil when nothing was open.
+	ClosedResolution *service.TurnResolution
+	Damaged          []matchsession.DamagedCharacter
 }
 
 type IPullAction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, actionID uuid.UUID) (*PullActionResult, error)
 }
 
-type PullActionUC struct{}
+type PullActionUC struct {
+	statusWriter ISheetStatusWriter
+}
 
-func NewPullActionUC() *PullActionUC { return &PullActionUC{} }
+func NewPullActionUC(statusWriter ISheetStatusWriter) *PullActionUC {
+	return &PullActionUC{statusWriter: statusWriter}
+}
 
 func (uc *PullActionUC) Execute(
 	ctx context.Context,
@@ -32,10 +41,17 @@ func (uc *PullActionUC) Execute(
 	if callerUUID != masterUUID {
 		return nil, ErrNotMatchMaster
 	}
-	closed, opened, err := session.PullAction(actionID)
+	tr, err := session.PullAction(actionID)
+	// Persist before the error check — see OpenNextActionUC.Execute for why.
+	persistDamage(ctx, uc.statusWriter, tr.Damaged)
 	if err != nil {
 		return nil, err
 	}
-	resolution := service.TurnResolver{}.Resolve(opened, nil, session)
-	return &PullActionResult{ClosedTurn: closed, OpenedTurn: opened, Resolution: resolution}, nil
+	return &PullActionResult{
+		ClosedTurn:       tr.Closed,
+		OpenedTurn:       tr.Opened,
+		Resolution:       tr.OpenedResolution,
+		ClosedResolution: tr.ClosedResolution,
+		Damaged:          tr.Damaged,
+	}, nil
 }

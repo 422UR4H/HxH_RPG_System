@@ -13,6 +13,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -207,18 +208,33 @@ func makeParticipant(matchUUID uuid.UUID, playerUUID *uuid.UUID) *match.Particip
 	}
 }
 
+// mustOpen opens the next action and hands back the turn it opened.
+func mustOpen(t *testing.T, s *matchsession.MatchSession) *turn.Turn {
+	t.Helper()
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	return tr.Opened
+}
+
 func makeAction(actorID uuid.UUID) *action.Action {
 	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 }
 
-func sessionWithParticipants(playerUUIDs ...uuid.UUID) *matchsession.MatchSession {
+// sessionWithParticipants builds a session and returns it together with the sheet UUID of
+// each player's character, in the order the players were given. The tests need the sheet
+// UUIDs because that is what an action's actorID carries.
+func sessionWithParticipants(playerUUIDs ...uuid.UUID) (*matchsession.MatchSession, []uuid.UUID) {
 	matchUUID := uuid.New()
 	participants := make([]*match.Participant, len(playerUUIDs))
+	charIDs := make([]uuid.UUID, len(playerUUIDs))
 	for i, id := range playerUUIDs {
 		pID := id
 		participants[i] = makeParticipant(matchUUID, &pID)
+		charIDs[i] = participants[i].Sheet.UUID
 	}
-	return matchsession.NewMatchSession(matchUUID, nil, participants)
+	return matchsession.NewMatchSession(matchUUID, nil, participants), charIDs
 }
 
 func makeActionWithSpeed(actorID uuid.UUID, speed int) *action.Action {
@@ -229,25 +245,38 @@ func TestMatchSession_EnqueueAction(t *testing.T) {
 	matchUUID := uuid.New()
 	playerUUID := uuid.New()
 	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
 	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
 
-	t.Run("enqueues action for known participant", func(t *testing.T) {
-		a := makeAction(playerUUID)
+	t.Run("enqueues an action whose actor is the player's character", func(t *testing.T) {
+		// The combat entity is the character: actorID is the sheet UUID, the same ID the
+		// board piece carries and the same ID a TargetID carries.
+		a := makeAction(charID)
 		if err := s.EnqueueAction(playerUUID, a); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	t.Run("returns ErrParticipantNotFound for unknown player", func(t *testing.T) {
-		a := makeAction(uuid.New())
+	t.Run("returns ErrParticipantNotFound for an unknown player", func(t *testing.T) {
+		a := makeAction(charID)
 		err := s.EnqueueAction(uuid.New(), a)
 		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
 			t.Errorf("expected ErrParticipantNotFound, got %v", err)
 		}
 	})
 
-	t.Run("returns ErrActionActorMismatch when actorID does not match playerUUID", func(t *testing.T) {
-		a := makeAction(uuid.New()) // actorID is a different UUID
+	t.Run("a player cannot act through a character they do not own", func(t *testing.T) {
+		a := makeAction(uuid.New()) // some other character
+		err := s.EnqueueAction(playerUUID, a)
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Errorf("expected ErrActionActorMismatch, got %v", err)
+		}
+	})
+
+	t.Run("the player UUID is no longer a valid actor", func(t *testing.T) {
+		// It used to be exactly this, and it is what left the resolver unable to find the
+		// actor's sheet.
+		a := makeAction(playerUUID)
 		err := s.EnqueueAction(playerUUID, a)
 		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
 			t.Errorf("expected ErrActionActorMismatch, got %v", err)
@@ -259,36 +288,38 @@ func TestMatchSession_OpenNextAction(t *testing.T) {
 	t.Run("opens Turn from highest-priority action in queue", func(t *testing.T) {
 		playerA := uuid.New()
 		playerB := uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
+		s, chars := sessionWithParticipants(playerA, playerB)
 
-		aHigh := makeActionWithSpeed(playerA, 10)
-		aLow := makeActionWithSpeed(playerB, 3)
+		aHigh := makeActionWithSpeed(chars[0], 10)
+		aLow := makeActionWithSpeed(chars[1], 3)
 		s.EnqueueAction(playerA, aHigh) //nolint:errcheck
 		s.EnqueueAction(playerB, aLow)  //nolint:errcheck
 
-		closed, opened, err := s.OpenNextAction()
+		tr, err := s.OpenNextAction()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if closed != nil {
+		if tr.Closed != nil {
 			t.Error("expected nil closed turn on first OpenNextAction")
 		}
-		if opened == nil {
+		if tr.Opened == nil {
 			t.Fatal("expected non-nil opened turn")
 		}
-		if opened.GetAction().Speed.Result != 10 {
-			t.Errorf("expected speed 10, got %d", opened.GetAction().Speed.Result)
+		if tr.Opened.GetAction().Speed.Result != 10 {
+			t.Errorf("expected speed 10, got %d", tr.Opened.GetAction().Speed.Result)
 		}
 	})
 
 	t.Run("closes previous open turn before opening next", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 10)) //nolint:errcheck
-		s.EnqueueAction(playerB, makeActionWithSpeed(playerB, 5))  //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA, playerB)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		s.EnqueueAction(playerB, makeActionWithSpeed(chars[1], 5))  //nolint:errcheck
 
-		_, first, _ := s.OpenNextAction()
-		closed, _, err := s.OpenNextAction()
+		tr1, _ := s.OpenNextAction()
+		first := tr1.Opened
+		tr2, err := s.OpenNextAction()
+		closed := tr2.Closed
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -305,7 +336,7 @@ func TestMatchSession_OpenNextAction(t *testing.T) {
 
 	t.Run("returns service.ErrQueueEmpty when queue is empty", func(t *testing.T) {
 		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		_, _, err := s.OpenNextAction()
+		_, err := s.OpenNextAction()
 		if !errors.Is(err, service.ErrQueueEmpty) {
 			t.Errorf("expected ErrQueueEmpty, got %v", err)
 		}
@@ -319,13 +350,13 @@ func makeReactionTo(actorID, targetActionID uuid.UUID) *action.Action {
 func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("attaches reaction to current turn and returns resolution", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 10)) //nolint:errcheck
-		_, opened, _ := s.OpenNextAction()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		opened := mustOpen(t, s)
 		act := opened.GetAction()
 		actionID := act.GetID()
 
-		reaction := makeReactionTo(playerB, actionID)
+		reaction := makeReactionTo(chars[1], actionID)
 		res, err := s.AttachReaction(reaction)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -340,11 +371,11 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 
 	t.Run("returns ErrReactionNotCompatible for wrong target", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
 
-		reaction := makeReactionTo(playerA, uuid.New()) // wrong target
+		reaction := makeReactionTo(chars[0], uuid.New()) // wrong target
 		_, err := s.AttachReaction(reaction)
 		if !errors.Is(err, service.ErrReactionNotCompatible) {
 			t.Errorf("expected ErrReactionNotCompatible, got %v", err)
@@ -355,9 +386,9 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 func TestMatchSession_CloseTurn(t *testing.T) {
 	t.Run("closes current open turn", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		_, opened, _ := s.OpenNextAction()
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		opened := mustOpen(t, s)
 
 		closed, err := s.CloseTurn()
 		if err != nil {
@@ -386,10 +417,10 @@ func TestMatchSession_CloseTurn(t *testing.T) {
 func TestMatchSession_CloseRound(t *testing.T) {
 	t.Run("closes round and starts a new one with same mode", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
-		s.CloseTurn()                                             //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
+		s.CloseTurn()                                              //nolint:errcheck
 
 		closedRound, err := s.CloseRound()
 		if err != nil {
@@ -411,9 +442,9 @@ func TestMatchSession_CloseRound(t *testing.T) {
 
 	t.Run("returns ErrRoundHasOpenTurn when a turn is still open", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
 		// turn is still open — no CloseTurn called
 
 		_, err := s.CloseRound()
@@ -426,18 +457,18 @@ func TestMatchSession_CloseRound(t *testing.T) {
 func TestMatchSession_PullAction(t *testing.T) {
 	t.Run("opens Turn for specific action UUID", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
-		s := sessionWithParticipants(playerA, playerB)
-		aTarget := makeActionWithSpeed(playerA, 3)
-		aOther := makeActionWithSpeed(playerB, 10)
+		s, chars := sessionWithParticipants(playerA, playerB)
+		aTarget := makeActionWithSpeed(chars[0], 3)
+		aOther := makeActionWithSpeed(chars[1], 10)
 		s.EnqueueAction(playerA, aTarget) //nolint:errcheck
 		s.EnqueueAction(playerB, aOther)  //nolint:errcheck
 		targetID := aTarget.GetID()
 
-		_, opened, err := s.PullAction(targetID)
+		tr, err := s.PullAction(targetID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		got := opened.GetAction()
+		got := tr.Opened.GetAction()
 		if got.GetID() != targetID {
 			t.Errorf("expected action %v, got %v", targetID, got.GetID())
 		}
@@ -445,7 +476,7 @@ func TestMatchSession_PullAction(t *testing.T) {
 
 	t.Run("returns service.ErrActionNotFound for unknown UUID", func(t *testing.T) {
 		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		_, _, err := s.PullAction(uuid.New())
+		_, err := s.PullAction(uuid.New())
 		if !errors.Is(err, service.ErrActionNotFound) {
 			t.Errorf("expected ErrActionNotFound, got %v", err)
 		}
@@ -505,9 +536,9 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 
 	t.Run("returns ErrRoundHasOpenTurn when turn is open", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                        //nolint:errcheck
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		s.OpenNextAction()                                         //nolint:errcheck
 
 		_, _, err := s.ChangeScene(enum.Battle, "desc")
 		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
@@ -519,9 +550,9 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 func TestMatchSession_EnqueueMasterAction(t *testing.T) {
 	t.Run("enqueues master action on current open turn", func(t *testing.T) {
 		playerA := uuid.New()
-		s := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		_, opened, _ := s.OpenNextAction()
+		s, chars := sessionWithParticipants(playerA)
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
+		opened := mustOpen(t, s)
 
 		ma := action.NewMasterAction()
 		if err := s.EnqueueMasterAction(ma); err != nil {
@@ -657,4 +688,198 @@ func TestSession_RecomputeVisibility_RecordsSeenWallsInMemory(t *testing.T) {
 	if len(memory.Seen) != 1 {
 		t.Fatalf("re-recompute from same position should not duplicate memory entries, got %d", len(memory.Seen))
 	}
+}
+
+// fixedSource makes every die land on the same face, so a test can name exact numbers.
+type fixedSource struct{ face int }
+
+func (f fixedSource) RollDie(_ enum.DieSides) int { return f.face }
+
+func TestMatchSession_GetRules(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	rules := s.GetRules()
+
+	if rules.DiceSet != match.DiceSet2D10 {
+		t.Errorf("DiceSet = %q, want 2d10", rules.DiceSet)
+	}
+	if rules.LadderStep != 10 {
+		t.Errorf("LadderStep = %d, want 10", rules.LadderStep)
+	}
+	if rules.PassiveValue() != 11 {
+		t.Errorf("PassiveValue() = %d, want 11", rules.PassiveValue())
+	}
+}
+
+func TestMatchSession_EnqueueAction_RollsTheDiceOnce(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+	s.SetRollSource(fixedSource{face: 7})
+
+	sword := enum.Sword
+	atk := &action.Attack{
+		Weapon: &sword,
+		Hit:    action.RollCheck{SkillName: enum.Accuracy.String()},
+	}
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, atk, nil, nil, nil, nil)
+
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("the hit dice fell, from the match dice set", func(t *testing.T) {
+		if len(a.Attack.Hit.Attempts.Primary) != 2 {
+			t.Fatalf("hit Primary = %v, want 2 dice", a.Attack.Hit.Attempts.Primary)
+		}
+		if a.Attack.Hit.Attempts.Primary[0] != 7 {
+			t.Errorf("hit die = %d, want 7 from the scripted source", a.Attack.Hit.Attempts.Primary[0])
+		}
+		if len(a.Attack.Hit.Attempts.Secondary) != 2 {
+			t.Error("both sets must fall up front, so a later advantage never re-rolls")
+		}
+	})
+
+	t.Run("the damage dice fell, from the weapon's own set", func(t *testing.T) {
+		// A Sword is D10 + D4 — two dice, not the match's 2 D10 by coincidence but by the
+		// weapon's own definition.
+		if len(a.Attack.Damage.Attempts.Primary) != 2 {
+			t.Errorf("damage Primary = %v, want the sword's 2 dice", a.Attack.Damage.Attempts.Primary)
+		}
+		if len(a.Attack.Damage.Attempts.Secondary) != 0 {
+			t.Error("damage has no advantage, so there is no second set")
+		}
+	})
+
+	t.Run("the action speed dice fell", func(t *testing.T) {
+		if a.Speed.Attempts.IsEmpty() {
+			t.Error("expected the actionSpeed dice to fall on arrival too")
+		}
+	})
+}
+
+func TestMatchSession_EnqueueAction_NeverRerolls(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+	s.SetRollSource(fixedSource{face: 3})
+
+	a := action.NewAction(participant.Sheet.UUID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{Hit: action.RollCheck{}}, nil, nil, nil, nil)
+	// Dice that already fell — the master edited, the action came back around, whatever.
+	a.Attack.Hit.Attempts = action.RollAttempts{Primary: []int{10, 10}, Secondary: []int{1, 1}}
+
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Attack.Hit.Attempts.Primary[0] != 10 {
+		t.Error("dice that already fell must never be rolled again")
+	}
+}
+
+// fixedTopFaceSource lands every die on its top face.
+type fixedTopFaceSource struct{}
+
+func (fixedTopFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
+
+func buildPlainSheet(t *testing.T) *csSheet.CharacterSheet {
+	t.Helper()
+	playerUUID := uuid.New()
+	cs, err := csSheet.NewCharacterSheetFactory().Build(
+		&playerUUID, nil, nil,
+		csSheet.CharacterProfile{NickName: "Test", FullName: "Test Subject"},
+		nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("factory.Build error: %v", err)
+	}
+	return cs
+}
+
+func currentHP(t *testing.T, cs *csSheet.CharacterSheet) int {
+	t.Helper()
+	bar, ok := cs.GetAllStatusBar()[enum.Health]
+	if !ok {
+		t.Fatal("the sheet has no health bar")
+	}
+	return bar.GetCurrent()
+}
+
+func TestMatchSession_DamageIsAppliedOnlyOnTurnClose(t *testing.T) {
+	matchUUID := uuid.New()
+	playerA, playerB := uuid.New(), uuid.New()
+	pA := makeParticipant(matchUUID, &playerA)
+	pB := makeParticipant(matchUUID, &playerB)
+	attacker, victim := pA.Sheet.UUID, pB.Sheet.UUID
+
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		attacker: buildPlainSheet(t),
+		victim:   buildPlainSheet(t),
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{pA, pB})
+	// Every die lands on its top face, so the hit clears the passive dodge of 11 for sure.
+	s.SetRollSource(fixedTopFaceSource{})
+
+	sword := enum.Sword
+	atk := &action.Attack{Weapon: &sword, Hit: action.RollCheck{SkillName: enum.Accuracy.String()}}
+	a := action.NewAction(attacker, []uuid.UUID{victim}, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}},
+		nil, nil, atk, nil, nil, nil, nil)
+
+	if err := s.EnqueueAction(playerA, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	hpBefore := currentHP(t, sheets[victim])
+
+	// Opening the turn resolves it as a dry run.
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+
+	t.Run("the master sees the projection before anything is applied", func(t *testing.T) {
+		if tr.OpenedResolution == nil || len(tr.OpenedResolution.CharacterResults) != 1 {
+			t.Fatalf("expected one character result, got %+v", tr.OpenedResolution)
+		}
+		if tr.OpenedResolution.CharacterResults[0].EffectiveDamage <= 0 {
+			t.Fatal("expected projected damage from a maximum-roll attack")
+		}
+		if got := currentHP(t, sheets[victim]); got != hpBefore {
+			t.Errorf("HP = %d, want %d — a projection must not touch the sheet", got, hpBefore)
+		}
+	})
+
+	projected := tr.OpenedResolution.CharacterResults[0].EffectiveDamage
+
+	t.Run("closing the turn applies it exactly once", func(t *testing.T) {
+		// Enqueue a second action so there is something to open, which closes the first.
+		a2 := action.NewAction(attacker, nil, uuid.Nil, nil,
+			action.ActionSpeed{RollCheck: action.RollCheck{Result: 1}},
+			nil, nil, nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerA, a2); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+		tr2, err := s.OpenNextAction()
+		if err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if tr2.Closed == nil {
+			t.Fatal("expected the first turn to close")
+		}
+		if len(tr2.Damaged) != 1 {
+			t.Fatalf("expected 1 damaged character, got %d", len(tr2.Damaged))
+		}
+		if tr2.Damaged[0].CharacterID != victim {
+			t.Errorf("damaged = %v, want %v", tr2.Damaged[0].CharacterID, victim)
+		}
+		if tr2.Damaged[0].Damage != projected {
+			t.Errorf("applied %d, projected %d — they must agree", tr2.Damaged[0].Damage, projected)
+		}
+		if got := currentHP(t, sheets[victim]); got != hpBefore-projected {
+			t.Errorf("HP = %d, want %d", got, hpBefore-projected)
+		}
+	})
 }

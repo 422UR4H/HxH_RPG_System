@@ -23,7 +23,8 @@ func TestEnqueueActionUC(t *testing.T) {
 			Sheet:     csEntity.Summary{UUID: uuid.New(), PlayerUUID: &playerUUID},
 		}
 		session := matchsession.NewMatchSession(matchUUID, nil, []*matchDomain.Participant{p})
-		a := action.NewAction(playerUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		// The actor is the character the player drives, not the player.
+		a := action.NewAction(p.Sheet.UUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewEnqueueActionUC()
 		if err := uc.Execute(context.Background(), session, playerUUID, a); err != nil {
 			t.Fatalf("unexpected error: %v", err)

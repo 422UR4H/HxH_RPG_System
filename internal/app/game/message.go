@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 )
 
 type MessageType string
@@ -159,6 +160,11 @@ type PullActionPayload struct {
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
 type ActionPayload struct {
+	// ActorID is the acting character's sheet UUID — the same ID the board piece carries
+	// as CharacterID. It is NOT the player UUID: one person drives several characters (the
+	// master drives every NPC), so the actor has to be named explicitly. The server still
+	// checks that the authenticated player owns that character.
+	ActorID   uuid.UUID            `json:"actorId"`
 	ReactToID uuid.UUID            `json:"reactToId,omitempty"`
 	TargetID  []uuid.UUID          `json:"targetId,omitempty"`
 	Skills    []ActionSkillPayload `json:"skills,omitempty"`
@@ -224,9 +230,73 @@ type RoundClosedPayload struct {
 	RoundMode string `json:"roundMode"`
 }
 
+// ResolutionUpdatedPayload is the master's view of a turn's current resolution.
+//
+// It is a SLICE of service.TurnResolution, not the whole thing: it carries the mechanics and
+// the projection, and nothing that would let a client reconstruct state it is not entitled
+// to. Master-only for now — the calculation belongs to the master until the turn closes, and
+// per-recipient projection is a later slice.
+//
+// Damage is projected, not applied. The HP only moves when the turn closes.
 type ResolutionUpdatedPayload struct {
-	TurnID    uuid.UUID `json:"turnId"`
-	IsSettled bool      `json:"isSettled"`
+	TurnID    uuid.UUID                `json:"turnId"`
+	IsSettled bool                     `json:"isSettled"`
+	Action    RollResultPayload        `json:"action"`
+	Targets   []CharacterResultPayload `json:"targets"`
+}
+
+// RollResultPayload is one test as the master reads it. The individual dice travel because
+// a critical is the combination, not the sum.
+type RollResultPayload struct {
+	SkillName         string `json:"skillName"`
+	SkillValue        int    `json:"skillValue"`
+	DiceRolled        []int  `json:"diceRolled"`
+	Total             int    `json:"total"`
+	IsCritical        bool   `json:"isCritical"`
+	IsCriticalFailure bool   `json:"isCriticalFailure"`
+	Margin            *int   `json:"margin,omitempty"`
+}
+
+// CharacterResultPayload is what one attack did to one target.
+type CharacterResultPayload struct {
+	TargetID        uuid.UUID `json:"targetId"`
+	Dodged          bool      `json:"dodged"`
+	Defended        bool      `json:"defended"`
+	DodgeTotal      int       `json:"dodgeTotal"`
+	DefenseTotal    int       `json:"defenseTotal"`
+	RawDamage       int       `json:"rawDamage"`
+	DefenseApplied  int       `json:"defenseApplied"`
+	ProjectedDamage int       `json:"projectedDamage"`
+}
+
+func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) ResolutionUpdatedPayload {
+	p := ResolutionUpdatedPayload{TurnID: turnID, Targets: []CharacterResultPayload{}}
+	if res == nil {
+		return p
+	}
+	p.IsSettled = res.IsSettled
+	p.Action = RollResultPayload{
+		SkillName:         res.ActionResult.SkillName,
+		SkillValue:        res.ActionResult.SkillValue,
+		DiceRolled:        res.ActionResult.DiceRolled,
+		Total:             res.ActionResult.Total,
+		IsCritical:        res.ActionResult.IsCritical,
+		IsCriticalFailure: res.ActionResult.IsCriticalFailure,
+		Margin:            res.ActionResult.Margin,
+	}
+	for _, cr := range res.CharacterResults {
+		p.Targets = append(p.Targets, CharacterResultPayload{
+			TargetID:        cr.TargetID,
+			Dodged:          cr.Dodged,
+			Defended:        cr.Defended,
+			DodgeTotal:      cr.Dodge.Total,
+			DefenseTotal:    cr.Defense.Total,
+			RawDamage:       cr.RawDamage,
+			DefenseApplied:  cr.DefenseApplied,
+			ProjectedDamage: cr.EffectiveDamage,
+		})
+	}
+	return p
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {

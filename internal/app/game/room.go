@@ -462,10 +462,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
 			return
 		}
-		r.mu.RLock()
+		// The write lock is held ACROSS Execute, not just around reading the pointer.
+		// MatchSession has no lock of its own — r.mu is the only thing serializing it — and
+		// this path mutates a lot of it: it closes a turn, resolves it, applies damage to
+		// the target sheets, pops the priority queue and resolves the newly opened turn.
+		// A player enqueueing an action at the same moment writes to that same queue.
+		r.mu.Lock()
 		session := r.session
-		r.mu.RUnlock()
-		result, err := r.openNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+		var result *appmatch.OpenNextActionResult
+		var err error
+		if session != nil {
+			result, err = r.openNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -486,6 +499,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				session.MarkRoundPersisted()
 				r.mu.Unlock()
 			}
+			// The settled resolution of the turn that just ended — this is the one whose
+			// damage was actually applied.
+			if result.ClosedResolution != nil {
+				r.sendToMaster(NewServerMessage(
+					MsgTypeResolutionUpdate,
+					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
+				))
+			}
 		}
 
 		act := result.OpenedTurn.GetAction()
@@ -497,6 +518,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
+			// The projection for the turn just opened. Master-only: the mechanics are public
+			// when a turn opens, but the calculation stays with the master until it closes.
+			r.sendToMaster(NewServerMessage(
+				MsgTypeResolutionUpdate,
+				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
+			))
 		}
 
 	case MsgTypePullAction:
@@ -509,10 +536,19 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid pull_action payload"))
 			return
 		}
-		r.mu.RLock()
+		// Write lock across Execute — same reason as open_next_action.
+		r.mu.Lock()
 		session := r.session
-		r.mu.RUnlock()
-		result, err := r.pullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+		var result *appmatch.PullActionResult
+		var err error
+		if session != nil {
+			result, err = r.pullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -533,6 +569,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				session.MarkRoundPersisted()
 				r.mu.Unlock()
 			}
+			// The settled resolution of the turn that just ended — this is the one whose
+			// damage was actually applied.
+			if result.ClosedResolution != nil {
+				r.sendToMaster(NewServerMessage(
+					MsgTypeResolutionUpdate,
+					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
+				))
+			}
 		}
 
 		act := result.OpenedTurn.GetAction()
@@ -544,6 +588,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
+			// The projection for the turn just opened. Master-only: the mechanics are public
+			// when a turn opens, but the calculation stays with the master until it closes.
+			r.sendToMaster(NewServerMessage(
+				MsgTypeResolutionUpdate,
+				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
+			))
 		}
 
 	case MsgTypeEnqueueAction:
@@ -554,6 +604,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		if payload.Dodge != nil && payload.ReactToID == uuid.Nil {
 			client.SendMessage(NewErrorMessage("invalid_action", "dodge must be a reaction — set react_to_id"))
+			return
+		}
+		if payload.ActorID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_action", "actorId is required: the acting character's sheet UUID"))
 			return
 		}
 		r.mu.RLock()
@@ -568,7 +622,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			r.handleReaction(client, session, payload)
 			return
 		}
-		a := buildAction(client.userUUID, payload)
+		a, err := buildAction(payload.ActorID, payload)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			return
+		}
 		// Movement blocking: validate path against walls with move=true and !open.
 		if a.Move != nil {
 			from := a.Move.From
@@ -598,8 +656,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				}
 			}
 		}
-		if err := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a); err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
+		// action's dice into it, both of which the master's open_next_action reads.
+		r.mu.Lock()
+		errEnqueue := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+		r.mu.Unlock()
+		if errEnqueue != nil {
+			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
@@ -612,6 +675,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		if payload.ReactToID == uuid.Nil {
 			client.SendMessage(NewErrorMessage("invalid_action", "reaction requires react_to_id"))
+			return
+		}
+		if payload.ActorID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_action", "actorId is required: the acting character's sheet UUID"))
 			return
 		}
 		r.mu.RLock()
@@ -818,16 +885,44 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	masterClient, hasMaster := r.clients[r.masterUUID]
 	r.mu.RUnlock()
 
-	reaction := buildAction(client.userUUID, payload)
+	reaction, err := buildAction(payload.ActorID, payload)
+	if err != nil {
+		client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+		return
+	}
+	// Write lock across Execute: attaching a reaction rolls its dice and re-resolves the
+	// open turn, and the master may be closing that same turn from another goroutine.
+	r.mu.Lock()
 	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
+	var turnID uuid.UUID
+	if err == nil {
+		turnID = currentTurnID(session)
+	}
+	r.mu.Unlock()
 	if err != nil {
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
 		return
 	}
 	if hasMaster {
-		out := NewServerMessage(MsgTypeResolutionUpdate, ResolutionUpdatedPayload{IsSettled: result.Resolution.IsSettled})
-		masterClient.SendMessage(out)
+		masterClient.SendMessage(NewServerMessage(
+			MsgTypeResolutionUpdate,
+			newResolutionUpdatedPayload(turnID, result.Resolution),
+		))
 	}
+}
+
+// currentTurnID reads the open turn's ID, or uuid.Nil when there is none. The reaction path
+// resolves the turn it attached to, and the master needs to know which one.
+func currentTurnID(session *matchsession.MatchSession) uuid.UUID {
+	r := session.GetActiveRound()
+	if r == nil {
+		return uuid.Nil
+	}
+	t := r.CurrentTurn()
+	if t == nil {
+		return uuid.Nil
+	}
+	return t.GetID()
 }
 
 // applyWallInteract updates in-memory wall state for open/close/toggle.

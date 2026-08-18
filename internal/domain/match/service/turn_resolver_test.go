@@ -4,12 +4,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/item"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
-	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
+
+// resolveWith builds the input for a resolution that carries no sheets — the wall and
+// lifecycle paths never touch one.
+func resolveWith(tn *turn.Turn, targets service.TargetReader) service.ResolveInput {
+	return service.ResolveInput{
+		Turn:    tn,
+		Targets: targets,
+		Rules:   match.NewDefaultMatchRules(),
+		Weapons: item.NewWeaponsManagerFactory().Build(),
+	}
+}
 
 type noopTargetReader struct{}
 
@@ -25,7 +38,7 @@ func TestTurnResolver_Resolve(t *testing.T) {
 
 	t.Run("returns non-nil TurnResolution for a Turn with only an action", func(t *testing.T) {
 		tRn := makeTurn()
-		res := resolver.Resolve(tRn, nil, noopTargetReader{})
+		res := resolver.Resolve(resolveWith(tRn, noopTargetReader{}))
 		if res == nil {
 			t.Fatal("expected non-nil TurnResolution")
 		}
@@ -33,7 +46,7 @@ func TestTurnResolver_Resolve(t *testing.T) {
 
 	t.Run("IsSettled is false when turn has no finishedAt", func(t *testing.T) {
 		tRn := makeTurn()
-		res := resolver.Resolve(tRn, nil, noopTargetReader{})
+		res := resolver.Resolve(resolveWith(tRn, noopTargetReader{}))
 		if res.IsSettled {
 			t.Error("expected IsSettled=false for open turn")
 		}
@@ -42,7 +55,7 @@ func TestTurnResolver_Resolve(t *testing.T) {
 	t.Run("IsSettled is true when turn is closed", func(t *testing.T) {
 		tRn := makeTurn()
 		tRn.Close(time.Now())
-		res := resolver.Resolve(tRn, nil, noopTargetReader{})
+		res := resolver.Resolve(resolveWith(tRn, noopTargetReader{}))
 		if !res.IsSettled {
 			t.Error("expected IsSettled=true for closed turn")
 		}
@@ -54,7 +67,7 @@ func TestTurnResolver_Resolve(t *testing.T) {
 		reaction := makeReactionTo((&act).GetID())
 		tRn.AddReaction(reaction)
 
-		res := resolver.Resolve(tRn, nil, noopTargetReader{})
+		res := resolver.Resolve(resolveWith(tRn, noopTargetReader{}))
 
 		if len(res.ReactionResults) != 1 {
 			t.Errorf("expected 1 ReactionResult, got %d", len(res.ReactionResults))
@@ -118,7 +131,7 @@ func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
 		)
 		tRn := turn.NewTurn(*a)
 
-		res := resolver.Resolve(tRn, nil, reader)
+		res := resolver.Resolve(resolveWith(tRn, reader))
 
 		if len(res.WallResults) != 1 {
 			t.Fatalf("expected 1 WallResult, got %d", len(res.WallResults))
@@ -143,7 +156,7 @@ func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
 		)
 		tRn := turn.NewTurn(*a)
 
-		res := resolver.Resolve(tRn, nil, reader)
+		res := resolver.Resolve(resolveWith(tRn, reader))
 
 		if len(res.WallResults) != 1 {
 			t.Fatalf("expected 1 WallResult, got %d", len(res.WallResults))
@@ -167,7 +180,7 @@ func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
 		)
 		tRn := turn.NewTurn(*a)
 
-		res := resolver.Resolve(tRn, nil, nil)
+		res := resolver.Resolve(resolveWith(tRn, nil))
 
 		if len(res.WallResults) != 0 {
 			t.Errorf("expected 0 WallResults when targets=nil, got %d", len(res.WallResults))
