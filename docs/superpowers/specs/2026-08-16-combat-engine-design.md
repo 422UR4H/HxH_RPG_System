@@ -488,6 +488,18 @@ carry-over enquanto o `Race` não estiver ligado.
 
 **Fora de escopo:** iniciativa como regra; movimento detalhado; posturas.
 
+- **Só `Dash` e `Shift` são aceitos.** `enum.MoveCategory` tem 7 valores; as outras cinco —
+  `Back` (cait), `Roll`, `Slide`, `Jump`, `FlatJump` — respondem **erro de WS "categoria ainda
+  não suportada"**. As perícias delas se definem na fatia de movimento, que é onde elas serão
+  de fato exercitadas. **Não mapear por analogia**: tratar tudo que não é Dash como Shift
+  funcionaria silenciosamente errado — um salto custaria como um passo controlado, e ninguém
+  descobriria até alguém reclamar na mesa.
+- **`Charge` fica fora.** O momentum acumulando na `Speed` é da fatia de movimento. A barra
+  funciona sem ele.
+- **O segundo regime de velocidade fica fora** — aquele em que, com o personagem já em
+  movimento, a `Speed` acumulada alimenta a move action no lugar do teste. Ele **depende** de
+  saber quando a `Velocity` é setada e quando decai, e essa regra não existe. Na Fase 3 vale
+  só o primeiro regime: toda move action ou rola (`Dash`) ou usa o passivo (`Shift`).
 - **A mecânica do modo `Free` sai desta fase.** A Fase 3 implementa a economia do `Race` —
   que é a única com regra escrita. A trava da terceira ação em `Free`, e o que acontece com
   as duas primeiras, viram **fatia própria**. Enquanto isso, a fase exige que o mestre ligue
