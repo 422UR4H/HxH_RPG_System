@@ -131,8 +131,8 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		&combatSessionUC{session: session},
 		// The real use cases: this is what makes the test end-to-end rather than a mock
 		// round-trip.
-		appmatch.NewOpenNextActionUC(f.writer),
-		appmatch.NewPullActionUC(f.writer),
+		appmatch.NewOpenNextActionUC(f.writer, nil),
+		appmatch.NewPullActionUC(f.writer, nil),
 		appmatch.NewEnqueueActionUC(),
 		appmatch.NewAttachReactionUC(),
 		&mockChangeSceneUCHandler{},
