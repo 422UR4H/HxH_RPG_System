@@ -61,10 +61,15 @@ func TestBuildAction_MapsTheWholePayload(t *testing.T) {
 	})
 
 	t.Run("speed, skills, feint and defense survive", func(t *testing.T) {
-		// actionSpeed.Bar is ignored (derived from content by Action.Bars(), never from client)
 		// actionSpeed.SkillName is ALWAYS Legerity, whatever the payload sent
 		if a.Speed.SkillName != enum.Legerity.String() {
 			t.Errorf("Speed.SkillName = %q, want Legerity", a.Speed.SkillName)
+		}
+		// Bar is deliberately NOT mapped: which bar an action pays from is derived from its
+		// content by Action.Bars(), never trusted from the client. The payload above sends
+		// Bar: 1 precisely so this assertion fails if someone starts honouring it again.
+		if a.Speed.Bar != 0 {
+			t.Errorf("Speed.Bar = %d, want 0 — the client's bar must be ignored", a.Speed.Bar)
 		}
 		if len(a.Skills) != 1 || a.Skills[0].SkillName != enum.Acrobatics.String() {
 			t.Errorf("Skills = %+v, want one Acrobatics", a.Skills)
