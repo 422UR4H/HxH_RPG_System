@@ -2041,6 +2041,7 @@ func TestMatchSession_EnqueueAction_CombinedActionKeepsBothSpeeds(t *testing.T) 
 		}
 	})
 }
+```
 
 Add these helpers to the test file (beside `makeParticipant`):
 
