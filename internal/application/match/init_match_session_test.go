@@ -90,13 +90,40 @@ func TestInitMatchSession(t *testing.T) {
 		}
 	})
 
-	t.Run("creates session even when sheet not found (NPC case)", func(t *testing.T) {
+	t.Run("loads the sheet of an NPC participant", func(t *testing.T) {
+		npcSheetUUID := uuid.New()
 		repo := &mockMatchRepo{
 			participants: []*matchDomain.Participant{
 				{
 					UUID:      uuid.New(),
 					MatchUUID: matchUUID,
-					Sheet:     csEntity.Summary{UUID: sheetUUID}, // no PlayerUUID
+					// NPC: no PlayerUUID. It used to be skipped before the loader ran.
+					Sheet: csEntity.Summary{UUID: npcSheetUUID},
+				},
+			},
+		}
+		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, found: true}
+
+		uc := match.NewInitMatchSessionUC(repo, loader, noop)
+		session, err := uc.Init(context.Background(), matchUUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, err := session.GetCharSheet(npcSheetUUID); err != nil {
+			t.Errorf("expected the NPC sheet in the session, got %v", err)
+		}
+		if _, err := session.GetCharacterStatus(npcSheetUUID); err != nil {
+			t.Errorf("expected a CharacterStatus for the NPC, got %v", err)
+		}
+	})
+
+	t.Run("creates a session when the sheet is not found", func(t *testing.T) {
+		repo := &mockMatchRepo{
+			participants: []*matchDomain.Participant{
+				{
+					UUID:      uuid.New(),
+					MatchUUID: matchUUID,
+					Sheet:     csEntity.Summary{UUID: uuid.New()},
 				},
 			},
 		}
@@ -108,7 +135,7 @@ func TestInitMatchSession(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if session == nil {
-			t.Fatal("expected non-nil session")
+			t.Fatal("expected a non-nil session")
 		}
 	})
 }

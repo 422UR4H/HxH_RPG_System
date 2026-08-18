@@ -6,6 +6,7 @@ import (
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
@@ -13,7 +14,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
-	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
 
@@ -25,23 +25,29 @@ type PiecePositionSource interface {
 }
 
 type MatchSession struct {
-	matchUUID      uuid.UUID
-	activeScene    *scene.Scene
-	activeRound    *round.Round
-	activeQueue    action.PriorityQueue
-	charSheets     map[uuid.UUID]*csSheet.CharacterSheet // keyed by playerUUID
-	participants   map[uuid.UUID]*match.Participant       // keyed by playerUUID
+	matchUUID   uuid.UUID
+	activeScene *scene.Scene
+	activeRound *round.Round
+	activeQueue action.PriorityQueue
+	// charSheets and statuses are keyed by sheetUUID — the same ID the board pieces
+	// carry as CharacterID. The combat entity is the character, not the player: the
+	// master drives several characters at once, and NPCs have no player at all.
+	charSheets map[uuid.UUID]*csSheet.CharacterSheet
+	statuses   map[uuid.UUID]*match.CharacterStatus
+	// participants stays keyed by playerUUID: authorization is a per-player question.
+	// charToPlayer is the bridge between the two axes, and what the fog of war reads.
+	participants   map[uuid.UUID]*match.Participant
 	roundOrch      service.RoundOrchestrator
 	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
-	walls        map[string]mapentity.WallSegment         // keyed by wall ID; nil until SyncMapState
-	grid         mapentity.GridShape                      // full grid shape; CellSize 0 until SyncMapState
-	fogMode      fog.FogMode
-	memories     map[uuid.UUID]*fog.PlayerMemory
-	visCache     map[uuid.UUID][]service.VisibilityPolygon
-	charToPlayer map[string]uuid.UUID
-	pieceSource  PiecePositionSource
+	walls          map[string]mapentity.WallSegment // keyed by wall ID; nil until SyncMapState
+	grid           mapentity.GridShape              // full grid shape; CellSize 0 until SyncMapState
+	fogMode        fog.FogMode
+	memories       map[uuid.UUID]*fog.PlayerMemory
+	visCache       map[uuid.UUID][]service.VisibilityPolygon
+	charToPlayer   map[string]uuid.UUID
+	pieceSource    PiecePositionSource
 }
 
 func NewMatchSession(
@@ -49,23 +55,14 @@ func NewMatchSession(
 	charSheets map[uuid.UUID]*csSheet.CharacterSheet,
 	participants []*match.Participant,
 ) *MatchSession {
-	pMap := make(map[uuid.UUID]*match.Participant, len(participants))
-	charToPlayer := make(map[string]uuid.UUID)
-	for _, p := range participants {
-		if p.Sheet.PlayerUUID != nil {
-			pMap[*p.Sheet.PlayerUUID] = p
-			// Map sheet UUID (used as CharacterID on board pieces) → player UUID.
-			if p.Sheet.UUID != uuid.Nil {
-				charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.PlayerUUID
-			}
-		}
-	}
+	pMap, charToPlayer, statuses := indexParticipants(participants)
 	return &MatchSession{
 		matchUUID:    matchUUID,
 		activeScene:  scene.NewScene(enum.Roleplay, ""),
 		activeRound:  round.NewRound(enum.Free),
 		activeQueue:  action.NewActionPriorityQueue(nil),
 		charSheets:   charSheets,
+		statuses:     statuses,
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
 		turnResolver: service.TurnResolver{},
@@ -82,23 +79,14 @@ func NewMatchSessionWithState(
 	activeScene *scene.Scene,
 	activeRound *round.Round,
 ) *MatchSession {
-	pMap := make(map[uuid.UUID]*match.Participant, len(participants))
-	charToPlayer := make(map[string]uuid.UUID)
-	for _, p := range participants {
-		if p.Sheet.PlayerUUID != nil {
-			pMap[*p.Sheet.PlayerUUID] = p
-			// Map sheet UUID (used as CharacterID on board pieces) → player UUID.
-			if p.Sheet.UUID != uuid.Nil {
-				charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.PlayerUUID
-			}
-		}
-	}
+	pMap, charToPlayer, statuses := indexParticipants(participants)
 	return &MatchSession{
 		matchUUID:      matchUUID,
 		activeScene:    activeScene,
 		activeRound:    activeRound,
 		activeQueue:    action.NewActionPriorityQueue(nil),
 		charSheets:     charSheets,
+		statuses:       statuses,
 		participants:   pMap,
 		roundOrch:      service.RoundOrchestrator{},
 		turnResolver:   service.TurnResolver{},
@@ -108,6 +96,33 @@ func NewMatchSessionWithState(
 		memories:       make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:       make(map[uuid.UUID][]service.VisibilityPolygon),
 	}
+}
+
+// indexParticipants splits the roster along its two axes: every character gets a
+// combat status (NPCs included), and only player-owned characters get an
+// authorization entry and a fog bridge.
+func indexParticipants(participants []*match.Participant) (
+	map[uuid.UUID]*match.Participant,
+	map[string]uuid.UUID,
+	map[uuid.UUID]*match.CharacterStatus,
+) {
+	pMap := make(map[uuid.UUID]*match.Participant, len(participants))
+	charToPlayer := make(map[string]uuid.UUID)
+	statuses := make(map[uuid.UUID]*match.CharacterStatus, len(participants))
+
+	for _, p := range participants {
+		if p.Sheet.UUID != uuid.Nil {
+			statuses[p.Sheet.UUID] = match.NewCharacterStatus()
+		}
+		if p.Sheet.PlayerUUID == nil {
+			continue // NPC: no player to authorize, no per-player fog memory
+		}
+		pMap[*p.Sheet.PlayerUUID] = p
+		if p.Sheet.UUID != uuid.Nil {
+			charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.PlayerUUID
+		}
+	}
+	return pMap, charToPlayer, statuses
 }
 
 func (s *MatchSession) GetMatchUUID() uuid.UUID      { return s.matchUUID }
@@ -150,12 +165,25 @@ func (s *MatchSession) EnqueueMasterAction(ma *action.MasterAction) error {
 	return nil
 }
 
-func (s *MatchSession) GetCharSheet(playerUUID uuid.UUID) (*csSheet.CharacterSheet, error) {
-	sheet, ok := s.charSheets[playerUUID]
+// GetCharSheet returns a character's sheet. charID is the sheet UUID — the same ID the
+// board pieces carry as CharacterID — not the player UUID.
+func (s *MatchSession) GetCharSheet(charID uuid.UUID) (*csSheet.CharacterSheet, error) {
+	sheet, ok := s.charSheets[charID]
 	if !ok {
 		return nil, ErrCharSheetNotFound
 	}
 	return sheet, nil
+}
+
+// GetCharacterStatus returns a character's live combat state. The pointer is the
+// session's own, so mutating it is a write to session state: callers must hold room.mu
+// for writing, not just RLock, even though this method only reads the map.
+func (s *MatchSession) GetCharacterStatus(charID uuid.UUID) (*match.CharacterStatus, error) {
+	status, ok := s.statuses[charID]
+	if !ok {
+		return nil, ErrCharacterStatusNotFound
+	}
+	return status, nil
 }
 
 func (s *MatchSession) OpenNextAction() (closed *turn.Turn, opened *turn.Turn, err error) {
@@ -242,9 +270,15 @@ func (s *MatchSession) GetGrid() mapentity.GridShape { return s.grid }
 func (s *MatchSession) GetGridSize() float64         { return s.grid.CellSize }
 
 // CategorizeTarget returns the kind of entity the given UUID identifies.
-// Participants are checked first so character UUIDs are never mis-routed as walls.
+//
+// Characters are looked up in statuses, keyed by sheetUUID — which is what an
+// Action.TargetID actually carries, since it comes from a board piece's CharacterID.
+// It used to consult participants, keyed by playerUUID; the two key spaces never
+// intersect, so TargetKindCharacter was unreachable.
+//
+// Characters are checked first so a character UUID is never mis-routed as a wall.
 func (s *MatchSession) CategorizeTarget(id uuid.UUID) service.TargetKind {
-	if _, ok := s.participants[id]; ok {
+	if _, ok := s.statuses[id]; ok {
 		return service.TargetKindCharacter
 	}
 	if _, ok := s.walls[id.String()]; ok {
@@ -348,8 +382,8 @@ func (s *MatchSession) RevealSecretDoor(wallID string) {
 	s.InvalidateVisibilityCache()
 }
 
-func (s *MatchSession) GetFogMode() fog.FogMode                { return s.fogMode }
-func (s *MatchSession) GetCharToPlayer() map[string]uuid.UUID  { return s.charToPlayer }
+func (s *MatchSession) GetFogMode() fog.FogMode               { return s.fogMode }
+func (s *MatchSession) GetCharToPlayer() map[string]uuid.UUID { return s.charToPlayer }
 
 // GetPlayerMemory returns the player's memory, or nil when they have none yet.
 func (s *MatchSession) GetPlayerMemory(playerID uuid.UUID) (*fog.PlayerMemory, bool) {

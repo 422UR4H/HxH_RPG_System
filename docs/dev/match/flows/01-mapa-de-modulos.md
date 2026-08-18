@@ -67,7 +67,7 @@ Ela é **duas coisas ao mesmo tempo**, e vale enxergar isso separado:
 flowchart LR
     subgraph MS["MatchSession"]
         direction TB
-        state["<b>1) Estado da partida</b><br/>activeScene · activeRound<br/>activeQueue (PriorityQueue)<br/>charSheets[playerUUID]<br/>participants[playerUUID]<br/>charToPlayer[sheetUUID]<br/>walls · grid<br/>fogMode · memories · visCache<br/>scenePersisted · roundPersisted"]
+        state["<b>1) Estado da partida</b><br/>activeScene · activeRound<br/>activeQueue (PriorityQueue)<br/>charSheets[sheetUUID] · statuses[sheetUUID]<br/>participants[playerUUID]<br/>charToPlayer[sheetUUID]<br/>walls · grid<br/>fogMode · memories · visCache<br/>scenePersisted · roundPersisted"]
         facade["<b>2) Fachada sobre os services</b><br/>roundOrch  service.RoundOrchestrator<br/>turnResolver  service.TurnResolver"]
     end
     state --- facade

@@ -7,6 +7,7 @@ import (
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
@@ -14,7 +15,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
-	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/google/uuid"
 )
 
@@ -40,7 +40,7 @@ func TestNewMatchSession(t *testing.T) {
 
 	participant := makeParticipant(matchUUID, &playerUUID)
 	sheet := &csSheet.CharacterSheet{}
-	sheets := map[uuid.UUID]*csSheet.CharacterSheet{playerUUID: sheet}
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{participant.Sheet.UUID: sheet}
 
 	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
 
@@ -59,41 +59,139 @@ func TestMatchSession_GetCharSheet(t *testing.T) {
 	matchUUID := uuid.New()
 	playerUUID := uuid.New()
 	participant := makeParticipant(matchUUID, &playerUUID)
+	sheetUUID := participant.Sheet.UUID
 	sheet := &csSheet.CharacterSheet{}
-	sheets := map[uuid.UUID]*csSheet.CharacterSheet{playerUUID: sheet}
+	// Keyed by sheet UUID: the combat entity is the character, not the player.
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{sheetUUID: sheet}
 	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
 
-	t.Run("returns sheet for known player", func(t *testing.T) {
-		got, err := s.GetCharSheet(playerUUID)
+	t.Run("returns the sheet for a known character", func(t *testing.T) {
+		got, err := s.GetCharSheet(sheetUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if got != sheet {
-			t.Error("expected same sheet pointer")
+			t.Error("expected the same sheet pointer")
 		}
 	})
 
-	t.Run("returns ErrCharSheetNotFound for unknown player", func(t *testing.T) {
-		_, err := s.GetCharSheet(uuid.New())
-		if !errors.Is(err, matchsession.ErrCharSheetNotFound) {
+	t.Run("the player UUID is no longer a valid key", func(t *testing.T) {
+		if _, err := s.GetCharSheet(playerUUID); !errors.Is(err, matchsession.ErrCharSheetNotFound) {
+			t.Errorf("expected ErrCharSheetNotFound, got %v", err)
+		}
+	})
+
+	t.Run("returns ErrCharSheetNotFound for an unknown character", func(t *testing.T) {
+		if _, err := s.GetCharSheet(uuid.New()); !errors.Is(err, matchsession.ErrCharSheetNotFound) {
 			t.Errorf("expected ErrCharSheetNotFound, got %v", err)
 		}
 	})
 }
 
-func TestNewMatchSession_NPCParticipantSkipped(t *testing.T) {
+func TestNewMatchSession_HoldsNPCs(t *testing.T) {
 	matchUUID := uuid.New()
-	// NPC participant: Sheet.PlayerUUID is nil
-	npcParticipant := makeParticipant(matchUUID, nil)
-	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{npcParticipant})
-	if s == nil {
-		t.Fatal("expected non-nil MatchSession even with NPC participant")
-	}
-	// Attempting to get a char sheet for any UUID should fail (nothing was loaded)
-	_, err := s.GetCharSheet(uuid.New())
-	if !errors.Is(err, matchsession.ErrCharSheetNotFound) {
-		t.Errorf("expected ErrCharSheetNotFound, got %v", err)
-	}
+	// An NPC: PlayerUUID nil, MasterUUID set. It used to be dropped silently.
+	npc := makeParticipant(matchUUID, nil)
+	masterUUID := uuid.New()
+	npc.Sheet.MasterUUID = &masterUUID
+	npcSheetUUID := npc.Sheet.UUID
+
+	npcSheet := &csSheet.CharacterSheet{}
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{npcSheetUUID: npcSheet}
+
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{npc})
+
+	t.Run("the NPC sheet is reachable by sheet UUID", func(t *testing.T) {
+		got, err := s.GetCharSheet(npcSheetUUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != npcSheet {
+			t.Error("expected the NPC sheet pointer")
+		}
+	})
+
+	t.Run("the NPC has a CharacterStatus", func(t *testing.T) {
+		st, err := s.GetCharacterStatus(npcSheetUUID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if st == nil {
+			t.Fatal("expected a non-nil status")
+		}
+		if st.Stance != match.StanceNone {
+			t.Errorf("expected StanceNone, got %q", st.Stance)
+		}
+	})
+
+	t.Run("the NPC has no authorization entry", func(t *testing.T) {
+		// Authorization stays per player; an NPC has no player to authorize.
+		if got := len(s.PlayerIDs()); got != 0 {
+			t.Errorf("expected no player IDs, got %d", got)
+		}
+		if got := len(s.GetCharToPlayer()); got != 0 {
+			t.Errorf("expected no charToPlayer entries, got %d", got)
+		}
+	})
+}
+
+func TestMatchSession_GetCharacterStatus(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+
+	t.Run("every participant gets a status", func(t *testing.T) {
+		if _, err := s.GetCharacterStatus(participant.Sheet.UUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("returns ErrCharacterStatusNotFound for an unknown character", func(t *testing.T) {
+		if _, err := s.GetCharacterStatus(uuid.New()); !errors.Is(err, matchsession.ErrCharacterStatusNotFound) {
+			t.Errorf("expected ErrCharacterStatusNotFound, got %v", err)
+		}
+	})
+
+	t.Run("the status is mutable through the session", func(t *testing.T) {
+		st, _ := s.GetCharacterStatus(participant.Sheet.UUID)
+		st.ActionBar.RecordSpeed(20)
+
+		again, _ := s.GetCharacterStatus(participant.Sheet.UUID)
+		if len(again.ActionBar.Speeds) != 1 {
+			t.Error("expected the session to hand back the same status pointer")
+		}
+	})
+}
+
+func TestMatchSession_CategorizeTarget(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+
+	t.Run("a piece CharacterID is a character", func(t *testing.T) {
+		// Action.TargetID carries the piece's CharacterID, which is the sheet UUID.
+		got := s.CategorizeTarget(participant.Sheet.UUID)
+		if got != service.TargetKindCharacter {
+			t.Errorf("expected TargetKindCharacter, got %q", got)
+		}
+	})
+
+	t.Run("a wall ID is a wall segment", func(t *testing.T) {
+		wallID := uuid.New()
+		s.SyncMapState([]mapentity.WallSegment{{ID: wallID.String()}}, mapentity.GridShape{})
+
+		if got := s.CategorizeTarget(wallID); got != service.TargetKindWallSegment {
+			t.Errorf("expected TargetKindWallSegment, got %q", got)
+		}
+	})
+
+	t.Run("anything else is unknown", func(t *testing.T) {
+		if got := s.CategorizeTarget(uuid.New()); got != service.TargetKindUnknown {
+			t.Errorf("expected TargetKindUnknown, got %q", got)
+		}
+	})
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -244,7 +342,7 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 		playerA := uuid.New()
 		s := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                         //nolint:errcheck
+		s.OpenNextAction()                                        //nolint:errcheck
 
 		reaction := makeReactionTo(playerA, uuid.New()) // wrong target
 		_, err := s.AttachReaction(reaction)
@@ -290,8 +388,8 @@ func TestMatchSession_CloseRound(t *testing.T) {
 		playerA := uuid.New()
 		s := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                         //nolint:errcheck
-		s.CloseTurn()                                              //nolint:errcheck
+		s.OpenNextAction()                                        //nolint:errcheck
+		s.CloseTurn()                                             //nolint:errcheck
 
 		closedRound, err := s.CloseRound()
 		if err != nil {
@@ -315,7 +413,7 @@ func TestMatchSession_CloseRound(t *testing.T) {
 		playerA := uuid.New()
 		s := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                         //nolint:errcheck
+		s.OpenNextAction()                                        //nolint:errcheck
 		// turn is still open — no CloseTurn called
 
 		_, err := s.CloseRound()
@@ -409,7 +507,7 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 		playerA := uuid.New()
 		s := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(playerA, 5)) //nolint:errcheck
-		s.OpenNextAction()                                         //nolint:errcheck
+		s.OpenNextAction()                                        //nolint:errcheck
 
 		_, _, err := s.ChangeScene(enum.Battle, "desc")
 		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
