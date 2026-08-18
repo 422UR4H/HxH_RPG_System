@@ -149,6 +149,19 @@ o ponteiro, não o estado. Agora seguram o **write lock durante o `Execute`**, c
 `game-server.instructions.md` sempre mandou. `TestE2E_AttackAgainstACharacterProducesDamage`
 roda sob `-race` e é a rede de segurança.
 
+## 9c. ✅ Fichas sumindo da sessão (achado na Fase 2)
+
+`InitMatchSessionUC` lia o segundo retorno de `GetCharacterSheetByUUID` como *found* e só
+guardava a ficha quando ele era `true`. Esse bool é **`wasCorrected`** — se a hidratação
+precisou consertar a ficha. Ou seja: **toda ficha íntegra era descartada em silêncio**, e a
+sessão rodava com `charSheets` vazio. Ficha inexistente volta como **erro**, não como
+`false`; agora esse caso pula o participante em vez de derrubar a partida inteira.
+
+O bug é anterior a esta fase e passou despercebido porque **nada lia `charSheets`** — o
+resolver ignorava as fichas. Apareceu no primeiro ataque real disparado do browser: o
+`resolution_updated` do mestre voltou sem alvo nenhum. Guardado por
+`TestInitMatchSession/an intact sheet is not dropped as if it were missing`.
+
 ## 10. Fila e reação: pontos de decisão em aberto
 
 Não são bugs — são decisões de design ainda não tomadas, que o desenho do fluxo precisa
