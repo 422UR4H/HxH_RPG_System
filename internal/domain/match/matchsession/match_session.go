@@ -413,11 +413,42 @@ func (s *MatchSession) CloseRound() (*round.Round, error) {
 	if s.activeRound.HasOpenTurn() {
 		return nil, ErrRoundHasOpenTurn
 	}
+	s.settleBars()
 	mode := s.activeRound.GetMode()
 	closed := s.roundOrch.CloseRound(s.activeRound, time.Now())
 	s.activeRound = round.NewRound(mode)
 	s.roundPersisted = false
 	return closed, nil
+}
+
+// settleBars turns each character's round into the balance they carry into the next one, then
+// clears the round's speed history.
+//
+//	acted:  min(carry + mean(acted) − len(acted) × price, price)
+//	silent: min(carry + price, price)   — standing still trades an action for time, and the
+//	                                      trade is worth exactly one round's price
+//
+// The ceiling is the price on both branches, which is why standing still stops paying after a
+// single round instead of compounding: whoever acts also reaches the ceiling in a few rounds.
+//
+// A bar that never priced is left untouched — nobody acted on that clock, so no round happened
+// on it, and inventing a floor there would hand out free time.
+//
+// Nothing is done to the queue. An action that never reached the price was never recorded as
+// having acted, so it simply belongs to the next round, carrying the roll it already made.
+func (s *MatchSession) settleBars() {
+	eco := service.BarEconomy{}
+	for _, bar := range []action.Bar{action.BarAction, action.BarMove} {
+		price, frozen := s.activeRound.Price(bar)
+		if !frozen {
+			continue
+		}
+		for _, status := range s.statuses {
+			b := status.BarFor(bar)
+			b.Balance = eco.CloseBalance(b.Balance, b.Speeds, price)
+			b.ResetRound()
+		}
+	}
 }
 
 // EnqueueAction validates that playerUUID may act and that the character they are acting
