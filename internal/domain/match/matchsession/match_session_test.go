@@ -1050,3 +1050,134 @@ func (c *countingSource) RollDie(_ enum.DieSides) int {
 	c.rolls++
 	return c.face
 }
+
+// scriptedFaces hands out faces in order and repeats the last one once exhausted.
+type scriptedFaces struct {
+	faces []int
+	i     int
+}
+
+func (s *scriptedFaces) RollDie(_ enum.DieSides) int {
+	if len(s.faces) == 0 {
+		return 1
+	}
+	if s.i >= len(s.faces) {
+		return s.faces[len(s.faces)-1]
+	}
+	f := s.faces[s.i]
+	s.i++
+	return f
+}
+
+func TestMatchSession_OpenNextAction_UsesTheBarEconomy(t *testing.T) {
+	matchUUID := uuid.New()
+	p1UUID, p2UUID := uuid.New(), uuid.New()
+	p1 := makeParticipant(matchUUID, &p1UUID)
+	p2 := makeParticipant(matchUUID, &p2UUID)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		p1.Sheet.UUID: buildPlainSheet(t),
+		p2.Sheet.UUID: buildPlainSheet(t),
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{p1, p2})
+	s.GetActiveRound().SetMode(enum.Race)
+
+	// Two D10 per action, scripted: p1 gets 4+4 = 8, p2 gets 9+9 = 18.
+	s.SetRollSource(&scriptedFaces{faces: []int{4, 4, 4, 4, 9, 9, 9, 9}})
+
+	enqueue := func(pl uuid.UUID, charID uuid.UUID) {
+		t.Helper()
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(pl, a); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+	}
+	enqueue(p1UUID, p1.Sheet.UUID)
+	enqueue(p2UUID, p2.Sheet.UUID)
+
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+
+	t.Run("the faster character opens first, not whoever was inserted first", func(t *testing.T) {
+		openedAction := tr.Opened.GetAction()
+		if openedAction.GetActorID() != p2.Sheet.UUID {
+			t.Error("p2 rolled higher and must open first — the queue finally has a priority")
+		}
+	})
+
+	t.Run("the action bar priced at the slowest pending speed", func(t *testing.T) {
+		price, frozen := s.GetActiveRound().Price(action.BarAction)
+		if !frozen {
+			t.Fatal("opening the first action must freeze the price")
+		}
+		want := 8 + skillValue(t, sheets[p1.Sheet.UUID], enum.Legerity)
+		if price != want {
+			t.Errorf("price = %d, want p1's speed %d", price, want)
+		}
+	})
+
+	t.Run("the opened action was recorded as having acted", func(t *testing.T) {
+		_, acted := s.BarState(p2.Sheet.UUID, action.BarAction)
+		if len(acted) != 1 {
+			t.Fatalf("acted = %v, want exactly the one speed that opened", acted)
+		}
+		_, p1Acted := s.BarState(p1.Sheet.UUID, action.BarAction)
+		if len(p1Acted) != 0 {
+			t.Error("a pending action must not be recorded as acted")
+		}
+	})
+}
+
+func TestMatchSession_OpenNextAction_ReportsExhaustion(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+	s.GetActiveRound().SetMode(enum.Race)
+	s.SetRollSource(fixedSource{face: 5})
+
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{}, nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	if _, err := s.OpenNextAction(); err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+
+	tr, err := s.OpenNextAction()
+
+	t.Run("exhaustion is a report, not an error", func(t *testing.T) {
+		if err != nil {
+			t.Errorf("err = %v, want nil: an exhausted Race round is a normal outcome", err)
+		}
+		if !tr.RoundExhausted {
+			t.Error("nothing pending passes its gate, so the round is exhausted")
+		}
+		if tr.Opened != nil {
+			t.Error("nothing opened")
+		}
+	})
+
+	t.Run("the turn under the baton still closed and still applied", func(t *testing.T) {
+		if tr.Closed == nil {
+			t.Error("the open turn must close on the way out, exactly as it does on a normal open")
+		}
+	})
+}
+
+func TestMatchSession_FreeRoundStillReportsAnEmptyQueue(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+
+	_, err := s.OpenNextAction()
+	if !errors.Is(err, service.ErrQueueEmpty) {
+		t.Errorf("err = %v, want ErrQueueEmpty: Free has no economy, so an empty queue is still an error", err)
+	}
+}
