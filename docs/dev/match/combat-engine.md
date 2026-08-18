@@ -57,22 +57,72 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
 Cada personagem tem **duas barras independentes**: `actionSpeed` (ataque, item, habilidade) e
 `moveSpeed` (shift, dash, salto, rolamento).
 
-**Fórmula de fechamento do round, por barra:**
+### A chave de prioridade
+
+**A velocidade que rolou e a posição na fila deixaram de ser a mesma coisa.**
+
+> **chave da n-ésima ação de um personagem = média(velocidades até n) − (n−1) × preço**
+
+No exemplo canônico (p1=20, p2=23, p3=11, preço=11, segunda rolagem de p2 = 17):
+
+| | n | média | chave |
+|---|---|---|---|
+| p2, 1ª | 1 | 23 | `23 − 0×11` = **23** |
+| p1, 1ª | 1 | 20 | `20 − 0×11` = **20** |
+| p3, 1ª | 1 | 11 | `11 − 0×11` = **11** |
+| p2, 2ª | 2 | `(23+17)/2` = 20 | `20 − 1×11` = **9** |
+
+Ordem: **p2 → p1 → p3 → p2**. A segunda ação de p2 **rolou 17 e entra na fila em 9** — um
+número que não existe dentro da action. Ele nasce de estado do personagem: a média do round,
+quantas ações já foram tomadas, e o preço.
+
+Simetria útil: **a chave é o saldo antes de pagar aquela ação**; o saldo depois é
+`chave − preço`. É a mesma conta lida em dois momentos.
+
+⚠️ **Consequência estrutural: a fila não pode guardar a chave.** `PriorityQueue` ordena hoje
+por `Action.Speed.Result`, um valor guardado. Mas a chave muda quando o personagem manda outra
+ação (a média se move), e um heap não suporta re-chaveamento de item já inserido — quebra em
+silêncio. **A chave passa a ser calculada na hora de escolher o próximo.** Com uma mesa de 4 a
+6 personagens, varrer a lista custa menos que manter heap — e o `ExtractByID` já varre
+linearmente, então o heap nunca pagou o próprio custo.
+
+### Fechamento do round, por barra
 
 ```
-barra_final = média(velocidades das ações daquela barra no round)
-            − (nº de ações naquela barra × preço do round)
-barra_final = min(barra_final, preço do round)          // teto
+saldo_final = média(velocidades das ações daquela barra que AGIRAM no round)
+            − (nº dessas ações × preço do round)
+saldo_final = min(saldo_final, preço do round)          // teto
 ```
 
-- **Preço do round** (`ActionBarCoast`) = a menor velocidade do round. Igual para todos.
+- **A média é por round**, e conta **só as ações que efetivamente agiram**. Uma ação enviada
+  mas que não coube no round pertence ao round seguinte e **não entra na média deste**.
+- **Preço do round** (`ActionBarCoast`) = a menor velocidade daquela barra na rodada.
 - **Carry-over** atravessa para o round seguinte, como crédito ou débito, limitado ao teto.
 - Quem não agiu carrega o piso. É legítimo e não é punido.
-- **Agir de novo sempre acontece** — o que a segunda rolagem decide é o custo posterior. Uma
-  rolagem fraca puxa a média para baixo, atrasa a própria segunda ação dentro do round e pode
-  deixar débito para o seguinte. Não é uma aposta sobre *se* age; é sobre quanto custa depois.
+- **Agir de novo sempre acontece** quando há saldo — o que a segunda rolagem decide é o custo
+  posterior. Uma rolagem fraca puxa a média para baixo, atrasa a própria segunda ação dentro
+  do round e pode deixar débito para o seguinte.
 - **A recalculação é forward-only.** A primeira action já aconteceu; o que a média move é
   apenas a posição da segunda na fila.
+
+### O preço congela na primeira ação aberta
+
+O preço é fixado quando o mestre **abre a primeira ação do round** — a menor velocidade entre
+as que já estavam na fila — e **não muda mais até o round fechar**.
+
+**Quem chegar depois com velocidade abaixo do preço simplesmente não age neste round.** Não
+paga nada, não vai a saldo negativo: aquele valor **vira acúmulo para o round seguinte**.
+
+> Decisão do dono do produto, pela simplicidade: *"uma action que chegue depois com valor
+> menor poderia simplesmente não ter custo suficiente pra agir neste turno, então esse valor
+> seria um acúmulo para o próximo. Não teria problema algum nisso."*
+
+Descartadas: preço dinâmico que só cai, e recálculo retroativo de tudo. Ambos fariam o mesmo
+round cobrar valores diferentes de pessoas diferentes, ou reordenar o que já foi jogado — o
+que já havia sido rejeitado antes.
+
+**Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
+personagem mandar **já pertence ao round seguinte**.
 
 ### Ações compostas (move + attack)
 
