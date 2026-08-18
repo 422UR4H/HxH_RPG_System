@@ -218,6 +218,47 @@ func mustOpen(t *testing.T, s *matchsession.MatchSession) *turn.Turn {
 	return tr.Opened
 }
 
+func enqueueAttack(t *testing.T, s *matchsession.MatchSession, playerUUID, charID uuid.UUID) *action.Action {
+	t.Helper()
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{}, nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	return a
+}
+
+func mustOpenNext(t *testing.T, s *matchsession.MatchSession) *matchsession.TurnTransition {
+	t.Helper()
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	return tr
+}
+
+// closeExhaustedRound drives the round the way production does: open until the session
+// reports there is nothing left that can pay, and only THEN close.
+//
+// Calling CloseRound directly after an open would fail with ErrRoundHasOpenTurn — the turn
+// under the baton is closed by the open that finds nothing, not by the round close.
+func closeExhaustedRound(t *testing.T, s *matchsession.MatchSession) {
+	t.Helper()
+	for i := 0; i < 20; i++ {
+		tr, err := s.OpenNextAction()
+		if err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if tr.RoundExhausted {
+			if _, err := s.CloseRound(); err != nil {
+				t.Fatalf("CloseRound: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatal("the round never ran out — the gate is letting through more than it should")
+}
+
 func makeAction(actorID uuid.UUID) *action.Action {
 	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 }
@@ -1180,4 +1221,115 @@ func TestMatchSession_FreeRoundStillReportsAnEmptyQueue(t *testing.T) {
 	if !errors.Is(err, service.ErrQueueEmpty) {
 		t.Errorf("err = %v, want ErrQueueEmpty: Free has no economy, so an empty queue is still an error", err)
 	}
+}
+
+func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
+	matchUUID := uuid.New()
+	p1UUID, p2UUID := uuid.New(), uuid.New()
+	p1 := makeParticipant(matchUUID, &p1UUID)
+	p2 := makeParticipant(matchUUID, &p2UUID)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		p1.Sheet.UUID: buildPlainSheet(t),
+		p2.Sheet.UUID: buildPlainSheet(t),
+	}
+
+	newRacingSession := func(faces []int) *matchsession.MatchSession {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{p1, p2})
+		s.GetActiveRound().SetMode(enum.Race)
+		s.SetRollSource(&scriptedFaces{faces: faces})
+		return s
+	}
+
+	t.Run("a character who acted once carries the leftover", func(t *testing.T) {
+		// p1 rolls 4+4 = 8, p2 rolls 7+7 = 14. Legerity is 0 on a factory sheet, so those
+		// ARE the speeds. Price = 8. p2 keeps 14 − 8 = 6, under the ceiling of 8; p1 keeps 0.
+		s := newRacingSession([]int{4, 4, 4, 4, 7, 7, 7, 7})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		carry, acted := s.BarState(p2.Sheet.UUID, action.BarAction)
+		if carry != 6 {
+			t.Errorf("p2 carry = %v, want 6", carry)
+		}
+		if len(acted) != 0 {
+			t.Error("the round's speed history must be cleared; the balance is what crosses over")
+		}
+		if p1Carry, _ := s.BarState(p1.Sheet.UUID, action.BarAction); p1Carry != 0 {
+			t.Errorf("p1 carry = %v, want 0 — the slowest of the round starts the next one from zero", p1Carry)
+		}
+	})
+
+	t.Run("the carry is capped at the round price", func(t *testing.T) {
+		// p1 = 2+2 = 4 (the price), p2 = 10+10 = 20. p2's leftover of 16 blows past the
+		// ceiling of 4 and is clipped to it.
+		s := newRacingSession([]int{2, 2, 2, 2, 10, 10, 10, 10})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry != 4 {
+			t.Errorf("carry = %v, want the ceiling 4 — standing time may not compound", carry)
+		}
+	})
+
+	t.Run("a character who sent nothing carries the floor", func(t *testing.T) {
+		// Only p1 acts, at 6+6 = 12, which is therefore also the price. p1 closes at 0, and
+		// p2 — who never sent anything — closes at the floor, the same number as the ceiling.
+		s := newRacingSession([]int{6, 6, 6, 6})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry != 12 {
+			t.Errorf("p2 carry = %v, want the floor 12: reading the fight instead of acting is a legitimate trade", carry)
+		}
+		if carry, _ := s.BarState(p1.Sheet.UUID, action.BarAction); carry != 0 {
+			t.Errorf("p1 carry = %v, want 0", carry)
+		}
+	})
+
+	t.Run("a bar that never priced is left exactly as it was", func(t *testing.T) {
+		s := newRacingSession([]int{6, 6, 6, 6})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		if carry, _ := s.BarState(p1.Sheet.UUID, action.BarMove); carry != 0 {
+			t.Errorf("move carry = %v, want 0 — nobody moved, so no round happened on that bar", carry)
+		}
+	})
+
+	t.Run("an action that never reached the price keeps its full roll for the next round", func(t *testing.T) {
+		// p1 acts at 7+7 = 14, pricing the bar at 14. Only THEN does p2 send an action worth
+		// 1+1 = 2, which cannot pay and sits the round out.
+		s := newRacingSession([]int{7, 7, 7, 7})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+		mustOpenNext(t, s)
+
+		s.SetRollSource(&scriptedFaces{faces: []int{1, 1, 1, 1}})
+		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
+
+		pending := s.PendingActions()
+		if len(pending) != 1 {
+			t.Fatalf("pending = %d, want 1", len(pending))
+		}
+		speedBefore := pending[0].SpeedOn(action.BarAction)
+
+		closeExhaustedRound(t, s)
+
+		after := s.PendingActions()
+		if len(after) != 1 {
+			t.Fatalf("pending after close = %d, want the action still queued", len(after))
+		}
+		if after[0].SpeedOn(action.BarAction) != speedBefore {
+			t.Errorf("speed = %d, want %d unchanged: it pays nothing and goes to the next round whole",
+				after[0].SpeedOn(action.BarAction), speedBefore)
+		}
+		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry < 0 {
+			t.Errorf("carry = %v — sitting the round out must never put the bar in debt", carry)
+		}
+	})
 }
