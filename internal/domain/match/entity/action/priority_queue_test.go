@@ -151,3 +151,42 @@ func TestPriorityQueue_NewFromExisting(t *testing.T) {
 		t.Errorf("ExtractMax() speed = %d, want 50", max.Speed.Result)
 	}
 }
+
+func TestPriorityQueue_All(t *testing.T) {
+	pq := action.NewActionPriorityQueue(nil)
+	a1, a2, a3 := makeAction(10), makeAction(30), makeAction(20)
+	pq.Insert(a1)
+	pq.Insert(a2)
+	pq.Insert(a3)
+
+	t.Run("hands back every pending action", func(t *testing.T) {
+		all := pq.All()
+		if len(all) != 3 {
+			t.Fatalf("All() returned %d actions, want 3", len(all))
+		}
+		seen := map[uuid.UUID]bool{}
+		for _, a := range all {
+			seen[a.GetID()] = true
+		}
+		for _, want := range []*action.Action{a1, a2, a3} {
+			if !seen[want.GetID()] {
+				t.Errorf("action %v missing from All()", want.GetID())
+			}
+		}
+	})
+
+	t.Run("in insertion order, so ties resolve by who sent first", func(t *testing.T) {
+		all := pq.All()
+		if all[0].GetID() != a1.GetID() || all[2].GetID() != a3.GetID() {
+			t.Error("All() must preserve insertion order")
+		}
+	})
+
+	t.Run("the slice is a copy — the caller cannot reshape the queue", func(t *testing.T) {
+		all := pq.All()
+		all[0] = nil
+		if pq.All()[0] == nil {
+			t.Error("All() handed out the queue's own backing array")
+		}
+	})
+}
