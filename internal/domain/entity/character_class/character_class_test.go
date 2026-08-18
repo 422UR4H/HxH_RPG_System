@@ -13,7 +13,7 @@ func buildClassWithDistribution() *cc.CharacterClass {
 	distribution := &cc.Distribution{
 		SkillPoints:          []int{210, 127},
 		ProficiencyPoints:    []int{127, 127},
-		SkillsAllowed:        []enum.SkillName{enum.Velocity, enum.Reflex, enum.Accuracy},
+		SkillsAllowed:        []enum.SkillName{enum.Quickness, enum.Reflex, enum.Accuracy},
 		ProficienciesAllowed: []enum.WeaponName{enum.Bow, enum.Longbow, enum.Dagger},
 	}
 	return cc.NewCharacterClass(profile, distribution, nil, nil, nil, nil, nil, nil, nil)
@@ -38,7 +38,7 @@ func TestCharacterClass_ValidateSkills(t *testing.T) {
 	t.Run("valid skills", func(t *testing.T) {
 		class := buildClassWithDistribution()
 		skills := map[enum.SkillName]int{
-			enum.Velocity: 210,
+			enum.Quickness: 210,
 			enum.Reflex:   127,
 		}
 		if err := class.ValidateSkills(skills); err != nil {
@@ -55,7 +55,7 @@ func TestCharacterClass_ValidateSkills(t *testing.T) {
 
 	t.Run("no distribution but skills provided", func(t *testing.T) {
 		class := buildClassWithoutDistribution()
-		skills := map[enum.SkillName]int{enum.Velocity: 100}
+		skills := map[enum.SkillName]int{enum.Quickness: 100}
 		err := class.ValidateSkills(skills)
 		if !errors.Is(err, cc.ErrNoSkillDistribution) {
 			t.Errorf("error = %v, want ErrNoSkillDistribution", err)
@@ -65,7 +65,7 @@ func TestCharacterClass_ValidateSkills(t *testing.T) {
 	t.Run("wrong count of skills", func(t *testing.T) {
 		class := buildClassWithDistribution()
 		skills := map[enum.SkillName]int{
-			enum.Velocity: 210,
+			enum.Quickness: 210,
 		}
 		err := class.ValidateSkills(skills)
 		if !errors.Is(err, cc.ErrSkillsCountMismatch) {
@@ -76,7 +76,7 @@ func TestCharacterClass_ValidateSkills(t *testing.T) {
 	t.Run("skill not allowed", func(t *testing.T) {
 		class := buildClassWithDistribution()
 		skills := map[enum.SkillName]int{
-			enum.Velocity: 210,
+			enum.Quickness: 210,
 			enum.Heal:     127,
 		}
 		err := class.ValidateSkills(skills)
@@ -88,7 +88,7 @@ func TestCharacterClass_ValidateSkills(t *testing.T) {
 	t.Run("points mismatch", func(t *testing.T) {
 		class := buildClassWithDistribution()
 		skills := map[enum.SkillName]int{
-			enum.Velocity: 210,
+			enum.Quickness: 210,
 			enum.Reflex:   999,
 		}
 		err := class.ValidateSkills(skills)
@@ -163,13 +163,13 @@ func TestCharacterClass_ValidateProficiencies(t *testing.T) {
 func TestCharacterClass_ApplySkills(t *testing.T) {
 	class := buildClassWithDistribution()
 	skills := map[enum.SkillName]int{
-		enum.Velocity: 210,
+		enum.Quickness: 210,
 		enum.Reflex:   127,
 	}
 	class.ApplySkills(skills)
 
-	if class.SkillsExps[enum.Velocity] != 210 {
-		t.Errorf("SkillsExps[Velocity] = %d, want 210", class.SkillsExps[enum.Velocity])
+	if class.SkillsExps[enum.Quickness] != 210 {
+		t.Errorf("SkillsExps[Quickness] = %d, want 210", class.SkillsExps[enum.Quickness])
 	}
 	if class.SkillsExps[enum.Reflex] != 127 {
 		t.Errorf("SkillsExps[Reflex] = %d, want 127", class.SkillsExps[enum.Reflex])
@@ -190,10 +190,10 @@ func TestCharacterClass_ApplyProficiencies(t *testing.T) {
 
 func TestDistribution_AllowSkill(t *testing.T) {
 	d := &cc.Distribution{
-		SkillsAllowed: []enum.SkillName{enum.Velocity, enum.Reflex},
+		SkillsAllowed: []enum.SkillName{enum.Quickness, enum.Reflex},
 	}
-	if !d.AllowSkill(enum.Velocity) {
-		t.Error("AllowSkill(Velocity) = false, want true")
+	if !d.AllowSkill(enum.Quickness) {
+		t.Error("AllowSkill(Quickness) = false, want true")
 	}
 	if d.AllowSkill(enum.Heal) {
 		t.Error("AllowSkill(Heal) = true, want false")

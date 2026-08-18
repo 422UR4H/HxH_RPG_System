@@ -68,7 +68,7 @@ type CharacterSheet struct {
 	GrabExp  int
 	CarryExp int
 	// Agility
-	VelocityExp   int
+	QuicknessExp   int
 	AccelerateExp int
 	BrakeExp      int
 	// Celerity

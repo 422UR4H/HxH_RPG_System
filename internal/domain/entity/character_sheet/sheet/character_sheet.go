@@ -548,7 +548,7 @@ func (cs *CharacterSheet) ToString() string {
 	sortedSkillNames := []enum.SkillName{
 		enum.Vitality, enum.Energy, enum.Defense,
 		enum.Push, enum.Grab, enum.Carry,
-		enum.Velocity, enum.Accelerate, enum.Brake,
+		enum.Quickness, enum.Accelerate, enum.Brake,
 		enum.Legerity, enum.Repel, enum.Feint,
 		enum.Acrobatics, enum.Evasion, enum.Sneak,
 		enum.Reflex, enum.Accuracy, enum.Stealth,

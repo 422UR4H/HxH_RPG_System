@@ -24,7 +24,7 @@ type expInputs struct {
 
 	// Physical skills via PrimaryAttribute (attr→physAbility + physSkills→skillsAbility): ×2
 	Vitality, Energy, Defense     int // Resistance-based
-	Velocity, Accelerate, Brake   int // Agility-based
+	Quickness, Accelerate, Brake   int // Agility-based
 	Acrobatics, Evasion, Sneak    int // Flexibility-based
 	Vision, Hearing, Smell        int // Sense-based
 	Tact, Taste                   int // Sense-based (continued)
@@ -52,7 +52,7 @@ type expInputs struct {
 func expPointsFormula(e expInputs) int {
 	return e.Resilience + e.Adaptability + e.Weighting + e.Creativity +
 		(e.Vitality+e.Energy+e.Defense)*2 +
-		(e.Velocity+e.Accelerate+e.Brake)*2 +
+		(e.Quickness+e.Accelerate+e.Brake)*2 +
 		(e.Acrobatics+e.Evasion+e.Sneak)*2 +
 		(e.Vision+e.Hearing+e.Smell+e.Tact+e.Taste)*2 +
 		((e.Push+e.Grab+e.Carry)/2)*3 +
@@ -86,7 +86,7 @@ func applyExpToSheet(t *testing.T, cs *sheet.CharacterSheet, e expInputs) {
 	for name, exp := range map[enum.SkillName]int{
 		enum.Vitality: e.Vitality, enum.Energy: e.Energy, enum.Defense: e.Defense,
 		enum.Push: e.Push, enum.Grab: e.Grab, enum.Carry: e.Carry,
-		enum.Velocity: e.Velocity, enum.Accelerate: e.Accelerate, enum.Brake: e.Brake,
+		enum.Quickness: e.Quickness, enum.Accelerate: e.Accelerate, enum.Brake: e.Brake,
 		enum.Legerity: e.Legerity, enum.Repel: e.Repel, enum.Feint: e.Feint,
 		enum.Acrobatics: e.Acrobatics, enum.Evasion: e.Evasion, enum.Sneak: e.Sneak,
 		enum.Reflex: e.Reflex, enum.Accuracy: e.Accuracy, enum.Stealth: e.Stealth,
@@ -177,7 +177,7 @@ func TestExpPointsFormula_AllPrimaryAttrGroups_FactorTwo(t *testing.T) {
 	cs := buildTestSheet(t)
 	e := expInputs{
 		Vitality: 100, Energy: 100, Defense: 100, // Resistance-based
-		Velocity: 100, Accelerate: 100, Brake: 100, // Agility-based
+		Quickness: 100, Accelerate: 100, Brake: 100, // Agility-based
 		Acrobatics: 100, Evasion: 100, Sneak: 100, // Flexibility-based
 		Vision: 100, Hearing: 100, Smell: 100, Tact: 100, Taste: 100, // Sense-based
 	}
@@ -248,7 +248,7 @@ func TestExpPointsFormula_AllTypes_MatchesDomainCascade(t *testing.T) {
 		Resilience: 100, Adaptability: 80, Weighting: 60, Creativity: 40,
 
 		Vitality: 200, Energy: 150, Defense: 100,
-		Velocity: 120, Accelerate: 90, Brake: 70,
+		Quickness: 120, Accelerate: 90, Brake: 70,
 		Acrobatics: 110, Evasion: 85, Sneak: 65,
 		Vision: 130, Hearing: 100, Smell: 75, Tact: 50, Taste: 40,
 
