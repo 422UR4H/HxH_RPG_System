@@ -351,8 +351,85 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 		return ErrActionActorMismatch
 	}
 	s.rollActionDice(a)
+	s.deriveSpeeds(a)
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// PendingActions returns the actions still waiting for the master, in insertion order. Read
+// by the delivery layer to publish the general bar, and by tests.
+func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.All() }
+
+// deriveSpeeds turns the dice that just fell into the numbers the round is ordered by:
+// Action.Speed.Result for the action bar, Move.FinalSpeed for the move bar.
+//
+// It runs once, when the action arrives, and it is the only place a speed is produced. The
+// master never re-rolls a player's die, so nothing downstream ever recomputes it.
+func (s *MatchSession) deriveSpeeds(a *action.Action) {
+	if a == nil {
+		return
+	}
+	sheet := s.charSheets[a.GetActorID()]
+	if sheet == nil {
+		return
+	}
+	calc := service.RollCalculator{}
+	var ledger *match.ModifierLedger
+	if status, ok := s.statuses[a.GetActorID()]; ok {
+		ledger = &status.Ledger
+	}
+
+	// actionSpeed: always Legerity. Passive in Free, rolled in Race.
+	//
+	// The ledger applies here and nowhere else in a collision: the accumulated difference a
+	// character carries is always an actionSpeed adjustment, never a hit adjustment. It is
+	// what makes the repel ladder produce a duel — two characters facing each other speed up
+	// against each other — without anyone programming duels.
+	a.Speed.SkillName = enum.Legerity.String()
+	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
+	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
+		SkillName:  a.Speed.SkillName,
+		SkillValue: a.Speed.SkillValue,
+		Passive:    s.activeRound.GetMode() != enum.Race,
+		Condition:  a.Speed.Context.Condition,
+		Ledger:     ledger,
+	}).Total
+
+	if a.Move == nil {
+		return
+	}
+	// moveSpeed: the skill comes from the category, and so does whether it rolls at all.
+	// Dash is an acceleration and is tested; Shift is controlled and takes the passive value.
+	// Anything else never reaches here — the mapper refuses it at the WS boundary.
+	skill, passive := enum.Accelerate, false
+	if a.Move.Category == enum.Shift {
+		skill, passive = enum.Brake, true
+	}
+	if a.Move.Speed == nil {
+		a.Move.Speed = &action.RollCheck{}
+	}
+	a.Move.Speed.SkillName = skill.String()
+	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
+	a.Move.Speed.Result = calc.Derive(s.rules, a.Move.Speed.Attempts, service.RollInput{
+		SkillName:  a.Move.Speed.SkillName,
+		SkillValue: a.Move.Speed.SkillValue,
+		Passive:    passive,
+		Condition:  a.Move.Speed.Context.Condition,
+		// No ledger on the move bar: the accumulated difference is an actionSpeed bonus.
+	}).Total
+	// Charge is deliberately not read. The momentum accumulating into CharacterStatus.Velocity
+	// is the movement slice's, and the bar works without it (spec §5, Fase 3).
+	a.Move.FinalSpeed = a.Move.Speed.Result
+}
+
+// skillValueOn reads a skill off the sheet, contributing 0 for a name the sheet does not
+// know. The WS boundary already rejects unknown names, so reaching here means an internal one.
+func skillValueOn(cs *csSheet.CharacterSheet, name enum.SkillName) int {
+	v, err := cs.GetValueForTestOfSkill(name)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // rollActionDice drops the dice for every test the action carries, once, the moment it
@@ -374,13 +451,28 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 		rc.Attempts = calc.Roll(s.rules, s.rollSource)
 	}
 
-	test(&a.Speed.RollCheck)
+	// A Free round takes the passive value for actionSpeed — there is no dispute over who
+	// acts first, so there is nothing to roll for.
+	if s.activeRound.GetMode() == enum.Race {
+		test(&a.Speed.RollCheck)
+	}
 	test(a.Feint)
 	for i := range a.Skills {
 		test(&a.Skills[i].RollCheck)
 	}
 	if a.Move != nil {
-		test(a.Move.Speed)
+		// A Shift takes the dice set's average and rolls NOTHING. Rolling anyway would be
+		// harmless in production and poisonous in a test: a scripted RollSource would be
+		// drained by the phantom roll and every number after it would shift.
+		if a.Move.Category != enum.Shift {
+			// A combined action (charge/investida) may arrive with Move.Speed still nil —
+			// only Attack was filled in by the caller. Vivify it here so there is somewhere
+			// for the dice to land; deriveSpeeds fills in the skill afterwards.
+			if a.Move.Speed == nil {
+				a.Move.Speed = &action.RollCheck{}
+			}
+			test(a.Move.Speed)
+		}
 		test(a.Move.Charge)
 	}
 	if a.Defense != nil {

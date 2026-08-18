@@ -716,6 +716,9 @@ func TestMatchSession_EnqueueAction_RollsTheDiceOnce(t *testing.T) {
 	participant := makeParticipant(matchUUID, &playerUUID)
 	charID := participant.Sheet.UUID
 	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+	// Race mode, so actionSpeed is a real test and not the Free round's passive value —
+	// this test is about dice falling, not about which mode derives what.
+	s.GetActiveRound().SetMode(enum.Race)
 	s.SetRollSource(fixedSource{face: 7})
 
 	sword := enum.Sword
@@ -882,4 +885,168 @@ func TestMatchSession_DamageIsAppliedOnlyOnTurnClose(t *testing.T) {
 			t.Errorf("HP = %d, want %d", got, hpBefore-projected)
 		}
 	})
+}
+
+func TestMatchSession_EnqueueAction_DerivesTheSpeed(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+
+	t.Run("a Race actionSpeed rolls Legerity plus the dice", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		s.GetActiveRound().SetMode(enum.Race)
+		s.SetRollSource(fixedSource{face: 6})
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil,
+			action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Two D10 at 6 each, plus the sheet's Legerity.
+		want := 12 + skillValue(t, sheets[charID], enum.Legerity)
+		if a.Speed.Result != want {
+			t.Errorf("Speed.Result = %d, want %d", a.Speed.Result, want)
+		}
+		if bars := a.Bars(); len(bars) != 1 || bars[0] != action.BarAction {
+			t.Errorf("Bars() = %v, want just the action bar", bars)
+		}
+	})
+
+	t.Run("a Free actionSpeed takes the passive value and rolls nothing", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		// A new session starts in Free.
+		s.SetRollSource(fixedSource{face: 10})
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := 11 + skillValue(t, sheets[charID], enum.Legerity)
+		if a.Speed.Result != want {
+			t.Errorf("Speed.Result = %d, want the passive %d — rolling has zero expected gain", a.Speed.Result, want)
+		}
+	})
+
+	t.Run("a Dash rolls Accelerate into the move bar", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		s.GetActiveRound().SetMode(enum.Race)
+		s.SetRollSource(fixedSource{face: 4})
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil,
+			&action.Move{Category: enum.Dash, Speed: &action.RollCheck{SkillName: enum.Accelerate.String()}},
+			nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := 8 + skillValue(t, sheets[charID], enum.Accelerate)
+		if a.Move.FinalSpeed != want {
+			t.Errorf("Move.FinalSpeed = %d, want %d", a.Move.FinalSpeed, want)
+		}
+		if a.SpeedOn(action.BarMove) != want {
+			t.Errorf("SpeedOn(move) = %d, want %d", a.SpeedOn(action.BarMove), want)
+		}
+		if bars := a.Bars(); len(bars) != 1 || bars[0] != action.BarMove {
+			t.Errorf("Bars() = %v, want just the move bar", bars)
+		}
+	})
+
+	t.Run("a Shift takes the passive value of Brake and consumes no dice", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		s.GetActiveRound().SetMode(enum.Race)
+		src := &countingSource{face: 9}
+		s.SetRollSource(src)
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil,
+			&action.Move{Category: enum.Shift, Speed: &action.RollCheck{SkillName: enum.Brake.String()}},
+			nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := 11 + skillValue(t, sheets[charID], enum.Brake)
+		if a.Move.FinalSpeed != want {
+			t.Errorf("Move.FinalSpeed = %d, want the passive %d", a.Move.FinalSpeed, want)
+		}
+		if !a.Move.Speed.Attempts.IsEmpty() {
+			t.Error("a Shift rolls nothing: a phantom roll here silently drains a scripted source and shifts every number downstream")
+		}
+	})
+}
+
+func TestMatchSession_EnqueueAction_CombinedActionKeepsBothSpeeds(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+	s.GetActiveRound().SetMode(enum.Race)
+	s.SetRollSource(fixedSource{face: 5})
+
+	sword := enum.Sword
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil,
+		&action.Move{Category: enum.Dash, Position: [3]int{2, 2, 0}},
+		&action.Attack{Weapon: &sword, Hit: action.RollCheck{SkillName: enum.Accuracy.String()}},
+		nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("it stays ONE action in the queue", func(t *testing.T) {
+		if pending := s.PendingActions(); len(pending) != 1 {
+			t.Fatalf("queued %d actions, want 1 — an investida is a single action with the movement inside it", len(pending))
+		}
+	})
+
+	t.Run("it charges both bars", func(t *testing.T) {
+		bars := a.Bars()
+		if len(bars) != 2 {
+			t.Fatalf("Bars() = %v, want both", bars)
+		}
+	})
+
+	t.Run("both speeds are derived and both survive on the action", func(t *testing.T) {
+		wantAction := 10 + skillValue(t, sheets[charID], enum.Legerity)
+		wantMove := 10 + skillValue(t, sheets[charID], enum.Accelerate)
+		if a.SpeedOn(action.BarAction) != wantAction {
+			t.Errorf("actionSpeed = %d, want %d", a.SpeedOn(action.BarAction), wantAction)
+		}
+		if a.SpeedOn(action.BarMove) != wantMove {
+			t.Errorf("moveSpeed = %d, want %d", a.SpeedOn(action.BarMove), wantMove)
+		}
+	})
+}
+
+// skillValue reads a skill off a sheet the same way the engine does, so a test never hard
+// codes a number the factory owns.
+func skillValue(t *testing.T, cs *csSheet.CharacterSheet, name enum.SkillName) int {
+	t.Helper()
+	v, err := cs.GetValueForTestOfSkill(name)
+	if err != nil {
+		t.Fatalf("GetValueForTestOfSkill(%s): %v", name, err)
+	}
+	return v
+}
+
+// countingSource is a scripted source that also reports how many dice it handed out, so a
+// test can prove a passive check rolled nothing.
+type countingSource struct {
+	face  int
+	rolls int
+}
+
+func (c *countingSource) RollDie(_ enum.DieSides) int {
+	c.rolls++
+	return c.face
 }
