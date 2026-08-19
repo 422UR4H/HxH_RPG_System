@@ -332,7 +332,18 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 //
 // On OPEN, never on enqueue: ResourceBar.Speeds means "the speeds that acted", and that is
 // what makes an action which never reached the price roll over to the next round untouched.
+//
+// And only in Race, because Race is the only regime with an economy. Free freezes no price
+// (RoundScheduler.FreezePrices returns immediately) and settleBars skips every bar that never
+// priced, so a speed recorded under Free would be charged by nothing and reset by nothing. It
+// would survive the moment the master switches the round to Race and make BarEconomy.IsEligible
+// read the character as having already acted, denying their FIRST action of the disputed round.
+// Keeping the gate here rather than at the call site closes it for both callers at once:
+// OpenNextAction only reaches this in Race already, PullAction is ungated by design.
 func (s *MatchSession) recordActed(a *action.Action) {
+	if s.activeRound.GetMode() != enum.Race {
+		return
+	}
 	status, ok := s.statuses[a.GetActorID()]
 	if !ok {
 		return

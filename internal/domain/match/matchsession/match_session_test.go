@@ -1402,3 +1402,55 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 		}
 	})
 }
+
+// TestMatchSession_FreeRoundLeavesNoResidueForRace pins the promise ChangeRoundModeUC and
+// combat-engine.md § "Race é alcançável" both make: switching a live round into Race starts
+// the economy from that moment, and "nobody has acted" as far as the bars are concerned.
+//
+// It used to be false. PullAction is the one way an action opens in Free, and it recorded the
+// speed into ResourceBar.Speeds unconditionally — while FreezePrices no-ops in Free and
+// settleBars skips any bar that never priced. The number was therefore never charged and never
+// reset. On the switch to Race it read as "this character already acted", so IsEligible took
+// its second-action branch — Balance(0, [20], 20) = 0, which is not >= 20 — and the character's
+// FIRST Race action was denied. Nothing pending could pay, so the round reported exhausted and
+// closed with nothing opened.
+func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
+	playerA := uuid.New()
+	s, chars := sessionWithParticipants(playerA)
+
+	// A session starts in Free. The master opens the action by naming it — pull_action is the
+	// only way an action opens in a Free round through the scheduler-less path.
+	first := makeActionWithSpeed(chars[0], 20)
+	if err := s.EnqueueAction(playerA, first); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	if _, err := s.PullAction(first.GetID()); err != nil {
+		t.Fatalf("PullAction: %v", err)
+	}
+
+	if _, acted := s.BarState(chars[0], action.BarAction); len(acted) != 0 {
+		t.Errorf("acted = %v after a Free round, want empty — Free prices nothing, so nothing it opens can be charged or settled", acted)
+	}
+
+	// The master turns the disputed regime on, mid-round.
+	s.SetRoundMode(enum.Race)
+
+	second := makeActionWithSpeed(chars[0], 20)
+	if err := s.EnqueueAction(playerA, second); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	if tr.RoundExhausted {
+		t.Fatal("the round reported exhausted before its first Race action ever opened")
+	}
+	if tr.Opened == nil {
+		t.Fatal("expected the first Race action to open")
+	}
+	if got := tr.Opened.GetAction(); got.GetID() != second.GetID() {
+		t.Errorf("opened action = %v, want %v", got.GetID(), second.GetID())
+	}
+}
