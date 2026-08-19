@@ -378,7 +378,19 @@ func (s *MatchSession) closeOpenTurn() *TurnTransition {
 	tr.Closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
 	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
 	tr.Damaged = s.applyResolution(tr.ClosedResolution)
+	// The ledger moves one turn forward with the turn: what was scoped to this turn dies, and
+	// what was earned FOR the next one becomes live. It happens AFTER applyResolution, so a
+	// modifier that was meant to count in this turn still counted.
+	s.advanceLedgers()
 	return tr
+}
+
+// advanceLedgers moves every character's ledger one turn forward. Every character, not just
+// the ones who acted: a penalty is carried by whoever earned it, and they may not have moved.
+func (s *MatchSession) advanceLedgers() {
+	for _, status := range s.statuses {
+		status.AdvanceTurn()
+	}
 }
 
 // ResolveTurn computes the resolution snapshot for t. Pure — it never touches a sheet.
@@ -446,6 +458,9 @@ func (s *MatchSession) CloseRound() (*round.Round, error) {
 		return nil, ErrRoundHasOpenTurn
 	}
 	s.settleBars()
+	for _, status := range s.statuses {
+		status.ExpireModifiers(match.LifetimeEndOfRound)
+	}
 	mode := s.activeRound.GetMode()
 	closed := s.roundOrch.CloseRound(s.activeRound, time.Now())
 	s.activeRound = round.NewRound(mode)

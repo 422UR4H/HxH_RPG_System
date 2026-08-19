@@ -1454,3 +1454,61 @@ func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
 		t.Errorf("opened action = %v, want %v", got.GetID(), second.GetID())
 	}
 }
+
+func TestMatchSession_ModifiersExpireOnClose(t *testing.T) {
+	t.Run("a next-turn bonus survives its own turn and dies with the following one", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+
+		status, err := s.GetCharacterStatus(chars[0])
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		status.Ledger.Add(match.Modifier{
+			Amount: 5, Applies: match.DimActionSpeed, Source: match.SourceSystem,
+			Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeNextTurn, Reason: "repel bonus",
+		})
+
+		// Turn 1 closes: the bonus is demoted, not dropped — it is earned for the NEXT turn.
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		mustOpen(t, s)
+		s.EnqueueAction(playerB, makeActionWithSpeed(chars[1], 9)) //nolint:errcheck
+		mustOpen(t, s) // opening the next turn closes the first
+
+		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 5 {
+			t.Fatalf("after one close = %d, want 5 — the bonus is for the next turn", got)
+		}
+
+		// Turn 2 closes: now it is spent.
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 8)) //nolint:errcheck
+		mustOpen(t, s)
+		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 0 {
+			t.Fatalf("after two closes = %d, want 0 — the bonus lasted exactly one turn", got)
+		}
+	})
+
+	t.Run("a round-scoped modifier dies when the round closes", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		status, err := s.GetCharacterStatus(chars[0])
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		status.Ledger.Add(match.Modifier{
+			Amount: 3, Applies: match.DimActionSpeed, Against: match.ScopeAnyone(),
+			ExpiresAt: match.LifetimeEndOfRound, Reason: "round penalty",
+		})
+
+		// closeExhaustedRound only terminates in a Race round; sessionWithParticipants starts
+		// in Free with an empty queue, so it can't be used here. There is no open turn and
+		// nothing pending, so CloseRound succeeds directly — and it is the exact call whose
+		// expiry behaviour this subtest exists to prove.
+		if _, err := s.CloseRound(); err != nil {
+			t.Fatalf("CloseRound: %v", err)
+		}
+
+		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 0 {
+			t.Fatalf("after the round closed = %d, want 0", got)
+		}
+	})
+}
