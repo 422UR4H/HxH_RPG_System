@@ -512,6 +512,22 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 		}
 
+		// The round ran out: nothing pending could still pay, so it closed instead of opening
+		// anything. Everyone is told — the regime and the bars are table state.
+		if result.ClosedRound != nil {
+			out := NewServerMessage(MsgTypeRoundClosed, RoundClosedPayload{
+				RoundMode: string(result.ClosedRound.GetMode()),
+			})
+			data, _ := json.Marshal(out)
+			go func() { r.broadcast <- data }()
+			return
+		}
+
+		// Belt and braces: a successful call that opened nothing has nothing to announce.
+		if result.OpenedTurn == nil {
+			return
+		}
+
 		act := result.OpenedTurn.GetAction()
 		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  result.OpenedTurn.GetID(),
@@ -613,6 +629,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
 				))
 			}
+		}
+
+		// Belt and braces: a successful call that opened nothing has nothing to announce.
+		if result.OpenedTurn == nil {
+			return
 		}
 
 		act := result.OpenedTurn.GetAction()

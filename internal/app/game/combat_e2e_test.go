@@ -122,6 +122,7 @@ func newCombatFixture(t *testing.T) *combatFixture {
 	hub := game.NewHub()
 	go hub.Run()
 
+	roundRepo := &mockRoundRepoHandler{}
 	handler := game.NewHandler(
 		hub,
 		&fogMatchRepo{masterUUID: f.masterUUID, started: true},
@@ -130,15 +131,18 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		&mockKickPlayerUC{},
 		&combatSessionUC{session: session},
 		// The real use cases: this is what makes the test end-to-end rather than a mock
-		// round-trip.
-		appmatch.NewOpenNextActionUC(f.writer, nil),
-		appmatch.NewPullActionUC(f.writer, nil),
+		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
+		// round to actually close when the bar economy runs out, not just report it.
+		appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+		appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
 		appmatch.NewEnqueueActionUC(),
 		appmatch.NewAttachReactionUC(),
 		&mockChangeSceneUCHandler{},
-		&mockRoundRepoHandler{},
+		roundRepo,
 		&mockEnqueueMasterActionUCHandler{},
-		&mockChangeRoundModeUCHandler{},
+		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
+		// exists in Race mode, and the mock never actually flips the session's round mode.
+		appmatch.NewChangeRoundModeUC(),
 	)
 
 	mux := http.NewServeMux()
@@ -281,6 +285,14 @@ func (c *collector) count(want game.MessageType) int {
 		}
 	}
 	return n
+}
+
+// snapshotMessages returns a copy of what the collector has gathered so far, so a caller can
+// pull a specific message's payload out after an await has already confirmed it arrived.
+func (c *collector) snapshotMessages() []game.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]game.Message(nil), c.msgs...)
 }
 
 // awaitResolution reads until a resolution_updated arrives or the deadline passes.
@@ -504,6 +516,83 @@ func TestE2E_ActingThroughAnotherPlayersCharacterIsRefused(t *testing.T) {
 	if code := awaitErrorCode(t, player, 2*time.Second); code != "game_error" {
 		t.Errorf("error code = %q, want game_error", code)
 	}
+}
+
+// TestE2E_AnExhaustedRoundClosesItself proves the second done-criterion: the round ends on
+// its own when nothing pending can still pay, and the whole table is told.
+func TestE2E_AnExhaustedRoundClosesItself(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+
+	masterMsgs := newCollector(master)
+	// Started at connect time, before anything is sent — otherwise the round_closed
+	// broadcast can arrive before this test ever asks for it and be missed entirely.
+	playerMsgs := newCollector(player)
+
+	// Race, so the economy is on at all.
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !masterMsgs.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+
+	// One action, from the attacker. topFaceSource gives 10+10 = 20 on every check, so the
+	// price is 20 and the single action pays for itself exactly.
+	sendWS(t, player, string(game.MsgTypeEnqueueAction), game.ActionPayload{
+		ActorID:  f.attackerID,
+		TargetID: []uuid.UUID{f.victimID},
+		Attack:   &game.AttackPayload{Hit: game.RollCheckPayload{SkillName: enum.Accuracy.String()}},
+	})
+	// Wait for the enqueue to land before opening — enqueue_action (player) and
+	// open_next_action (master) travel on different connections with no ordering guarantee
+	// between them, so opening too early would find an empty queue.
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+
+	// First open consumes it; the second finds nothing that can pay.
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the first action never opened")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+
+	if !masterMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
+		t.Fatal("the round ran out and nobody was told")
+	}
+
+	t.Run("the payload names the regime that just ended", func(t *testing.T) {
+		payload := awaitRoundClosed(t, masterMsgs)
+		if payload.RoundMode != string(enum.Race) {
+			t.Errorf("roundMode = %q, want %q", payload.RoundMode, enum.Race)
+		}
+	})
+
+	t.Run("the players hear it too — the round is table state, not master state", func(t *testing.T) {
+		if !playerMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
+			t.Error("the player should have heard round_closed too — it is table state, not master state")
+		}
+	})
+}
+
+// awaitRoundClosed pulls the round_closed payload out of what the collector already has.
+func awaitRoundClosed(t *testing.T, c *collector) game.RoundClosedPayload {
+	t.Helper()
+	for _, m := range c.snapshotMessages() {
+		if m.Type != game.MsgTypeRoundClosed {
+			continue
+		}
+		var p game.RoundClosedPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal round_closed: %v", err)
+		}
+		return p
+	}
+	t.Fatal("no round_closed in the collected messages")
+	return game.RoundClosedPayload{}
 }
 
 func awaitErrorCode(t *testing.T, conn *websocket.Conn, d time.Duration) string {
