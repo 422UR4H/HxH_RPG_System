@@ -266,6 +266,21 @@ func (s *MatchSession) RoundPrices() map[action.Bar]int {
 	return out
 }
 
+// CharacterIDs returns every character the session holds combat state for, NPCs included.
+func (s *MatchSession) CharacterIDs() []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(s.statuses))
+	for id := range s.statuses {
+		out = append(out, id)
+	}
+	return out
+}
+
+// ProjectedOrder is the general bar: the pending actions that can still pay, highest key
+// first. It carries no action identity — the queue is secret, the order is public.
+func (s *MatchSession) ProjectedOrder() []service.OrderSlot {
+	return s.scheduler.ProjectOrder(s.scheduleInput())
+}
+
 // scheduleInput assembles what one scheduling decision reads.
 func (s *MatchSession) scheduleInput() service.ScheduleInput {
 	return service.ScheduleInput{Queue: &s.activeQueue, Round: s.activeRound, Bars: s}

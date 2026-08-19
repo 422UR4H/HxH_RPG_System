@@ -486,6 +486,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		r.broadcastBars(session)
 
 		if result.ClosedTurn != nil {
 			closedTurn := result.ClosedTurn
@@ -577,6 +578,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		out := NewServerMessage(MsgTypeRoundModeChanged, RoundModeChangedPayload{Mode: payload.Mode})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+		r.broadcastBars(session)
 
 	case MsgTypePullAction:
 		if !r.IsMaster(client.userUUID) {
@@ -605,6 +607,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		r.broadcastBars(session)
 
 		if result.ClosedTurn != nil {
 			closedTurn := result.ClosedTurn
@@ -723,6 +726,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
+		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
 		var payload ActionPayload
@@ -1037,6 +1041,55 @@ func (r *Room) sendToMaster(msg Message) {
 	if ok {
 		c.SendMessage(msg)
 	}
+}
+
+// newBarsUpdatedPayload snapshots both clocks for the whole table.
+//
+// The caller holds r.mu — it reads session state that every open and every enqueue mutates.
+func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayload {
+	prices := map[string]int{}
+	for bar, price := range session.RoundPrices() {
+		prices[string(bar)] = price
+	}
+
+	out := BarsUpdatedPayload{Prices: prices}
+	for _, charID := range session.CharacterIDs() {
+		actionCarry, actionSpeeds := session.BarState(charID, action.BarAction)
+		moveCarry, moveSpeeds := session.BarState(charID, action.BarMove)
+		out.Characters = append(out.Characters, CharacterBarsPayload{
+			CharacterID:   charID,
+			ActionBalance: actionCarry,
+			MoveBalance:   moveCarry,
+			ActionSpeeds:  append([]int(nil), actionSpeeds...),
+			MoveSpeeds:    append([]int(nil), moveSpeeds...),
+		})
+	}
+
+	for _, slot := range session.ProjectedOrder() {
+		bars := make([]string, 0, len(slot.Bars))
+		for _, b := range slot.Bars {
+			bars = append(bars, string(b))
+		}
+		out.Order = append(out.Order, BarSlotPayload{
+			ActorID: slot.ActorID,
+			Bars:    bars,
+			Key:     slot.Key,
+		})
+	}
+	return out
+}
+
+// broadcastBars publishes the clocks to everyone. Called after anything that moves them:
+// an action enqueued, a turn opened, a round closed, a regime switched.
+func (r *Room) broadcastBars(session *matchsession.MatchSession) {
+	if session == nil {
+		return
+	}
+	r.mu.RLock()
+	payload := newBarsUpdatedPayload(session)
+	r.mu.RUnlock()
+	data, _ := json.Marshal(NewServerMessage(MsgTypeBarsUpdated, payload))
+	go func() { r.broadcast <- data }()
 }
 
 func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
