@@ -50,7 +50,7 @@
 | Empurrão | Push | Força | Empurrar objetos e oponentes |
 | Agarrar | Grab | Força | Prender oponentes |
 | Carregar | Carry | Força | Capacidade de carga |
-| Velocidade | Velocity | Agilidade | Velocidade máxima de deslocamento |
+| Velocidade | Quickness | Agilidade | Velocidade máxima de deslocamento |
 | Aceleração | Accelerate | Agilidade | Rapidez para ganhar velocidade |
 | Freio | Brake | Agilidade | Capacidade de parar rapidamente |
 | Ligeireza | Legerity | Celeridade | Movimentos rápidos e precisos |

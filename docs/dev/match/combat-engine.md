@@ -630,7 +630,11 @@ round `Free`, que não tem preço nenhum.
 
 `MatchSession.recordActed` grava a velocidade de uma ação em cada barra que ela cobrou, mas só
 quando a ação **abre** (dentro de `OpenNextAction`/`PullAction`) — nunca quando ela chega à
-fila. `deriveSpeeds`, chamado por `EnqueueAction`, só calcula o número da velocidade; não o
+fila — e **só em `Race`**. `Free` não congela preço nenhum e `settleBars` pula toda barra que
+não precificou, então uma velocidade gravada em `Free` seria cobrada por nada e zerada por nada:
+sobreviveria à troca de regime e faria `IsEligible` ler o personagem como quem "já agiu",
+negando a **primeira** ação dele no round disputado. O porteiro fica dentro do próprio
+`recordActed`, fechando para os dois chamadores de uma vez. `deriveSpeeds`, chamado por `EnqueueAction`, só calcula o número da velocidade; não o
 registra em `ResourceBar.Speeds`. Essa separação é o que compra a regra "action atrasada ainda
 age inteira": uma ação que nunca alcançou o preço nunca entrou em `acted`, então não há nada
 para desfazer quando ela rola para o round seguinte — ela simplesmente carrega o valor que já
@@ -675,16 +679,24 @@ finalmente ganha um chamador: o caminho de auto-fechamento em
 mesa não pode ficar sem o bastão por causa de uma falha de fechamento. `bars_updated` e
 `round_closed` saem de `room.go` nessa mesma passada.
 
-⚠️ **`ProjectOrder` e `SelectNext` compartilham o desempate.** Os dois usam "quem entrou
-primeiro vence o empate" — `SelectNext` só troca o melhor quando a chave é **estritamente**
-maior; `ProjectOrder` ordena com `sort.SliceStable`. Divergir os dois faria a barra geral
-mostrar uma ordem que a mesa depois não vê acontecer.
+⚠️ **`ProjectOrder` e `SelectNext` compartilham a pontuação inteira, não só o desempate.** Os
+dois passam pelo mesmo `RoundScheduler.best` — a chave é `keyOf`, e o empate vai para quem
+entrou primeiro (só troca o melhor quando a chave é **estritamente** maior).
+
+E `ProjectOrder` **simula o round para a frente**: escolhe o melhor, registra numa cópia do
+estado das barras que ele abriu, tira da lista e repete. Pontuar tudo de uma vez contra o mesmo
+`acted` só acerta a **primeira** posição — a segunda ação pendente de um personagem seria
+chaveada como se a primeira não tivesse aberto. No exemplo canônico (preço 11; p2 pendente em 23
+e 17, p1 em 20, p3 em 11) a passada única publica p2 → p1 → p2 → p3, e a mesa joga
+p2 → p1 → p3 → p2, porque a chave da segunda de p2 cai para `média(23,17) − 11 = 9` assim que a
+primeira abre. Nada real é mutado: a fila entrega cópia e o estado das barras é lido por um
+overlay que morre com a chamada, então `RoundScheduler{}` continua valendo como zero value.
 
 ### As barras são públicas
 
 `bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é broadcast, não
-projeção por destinatário: carrega os preços congelados, o saldo e o histórico de velocidades
-de cada personagem em ambas as barras, e a ordem projetada
+projeção por destinatário: carrega `seq`, os preços congelados, o saldo e o histórico de
+velocidades de cada personagem em ambas as barras, e a ordem projetada
 (`MatchSession.ProjectedOrder`/`RoundScheduler.ProjectOrder`) — quem age a seguir e em qual
 barra. **Nada que identifique a ação em si** entra no payload: sem ID de ação, arma, alvo ou
 perícia. Isso é o que sustenta "a fila é secreta; a barra e a ordem são públicas" — um jogador
@@ -737,4 +749,4 @@ dali.
 | `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
 | Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
 | `RoundMode.Race` | ✅ Fase 3 — alcançável via `ChangeRoundModeUC`/`change_round_mode`, master only. Iniciativa continua fora — `action.Initiative` segue órfão |
-| `bars_updated` | ✅ Fase 3 — broadcast com preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |
+| `bars_updated` | ✅ Fase 3 — broadcast com `seq`, preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |

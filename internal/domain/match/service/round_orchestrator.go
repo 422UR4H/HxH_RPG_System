@@ -90,6 +90,11 @@ func (ro RoundOrchestrator) AttachReaction(r *round.Round, reaction *action.Acti
 }
 
 // ChangeMode toggles the Round mode between Free and Race.
+//
+// It has no caller. The master's explicit request goes through SetMode below, which names the
+// regime instead of flipping whatever is there — there is no path left that flips blindly. This
+// one is the seat reserved for initiative, the game rule that will normally force Race, and it
+// stays for that: the initiative parameter is already in the signature and ignored.
 // TODO: create and finish Initiative to continue here
 func (ro RoundOrchestrator) ChangeMode(r *round.Round, initiative *action.Initiative) {
 	r.ToggleMode()
@@ -97,9 +102,9 @@ func (ro RoundOrchestrator) ChangeMode(r *round.Round, initiative *action.Initia
 
 // SetMode puts the round into a specific regime.
 //
-// ChangeMode above toggles, and is the seat reserved for initiative — the game rule that will
-// normally force Race. This one is the regime by itself: the master can turn the disputed turn
-// on before that rule exists, which is what makes the whole bar economy reachable.
+// ChangeMode above toggles and has no caller; it is the seat reserved for initiative — the game
+// rule that will normally force Race. This one is the regime by itself: the master can turn the
+// disputed turn on before that rule exists, which is what makes the whole bar economy reachable.
 func (ro RoundOrchestrator) SetMode(r *round.Round, mode enum.RoundMode) {
 	r.SetMode(mode)
 }

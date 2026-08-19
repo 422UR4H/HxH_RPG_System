@@ -340,7 +340,7 @@ func wrap(charSheet *sheetEntity.CharacterSheet, m *model.CharacterSheet) (wasCo
 		enum.Push:       m.PushExp,
 		enum.Grab:       m.GrabExp,
 		enum.Carry:      m.CarryExp,
-		enum.Quickness:   m.QuicknessExp,
+		enum.Quickness:  m.QuicknessExp,
 		enum.Accelerate: m.AccelerateExp,
 		enum.Brake:      m.BrakeExp,
 		enum.Legerity:   m.LegerityExp,

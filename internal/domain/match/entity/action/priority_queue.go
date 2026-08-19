@@ -27,7 +27,7 @@ func NewActionPriorityQueue(actions *[]*Action) PriorityQueue {
 	return PriorityQueue(*actions)
 }
 
-func (aq PriorityQueue) Len() int      { return len(aq) }
+func (aq PriorityQueue) Len() int       { return len(aq) }
 func (aq *PriorityQueue) IsEmpty() bool { return aq.Len() == 0 }
 
 // Insert adds a new action to the back of the queue.

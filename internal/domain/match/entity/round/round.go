@@ -113,9 +113,17 @@ func (r *Round) FreezePrice(bar action.Bar, price int) {
 	r.prices[bar] = price
 }
 
-// HasOpenedAction reports whether an action with this ID has already been given a turn in
-// this round. The dependency edge of a combined action reads it: the attack half waits for
-// the move half to open.
+// HasOpenedAction reports whether an action with this ID has already been given a turn in this
+// round.
+//
+// It has no production caller, and the design it was built for was DISCARDED. It was meant to
+// carry the dependency edge of a split combined action — the attack half waiting for the move
+// half to open — and a combined action is now ONE action: the master opens it once, it is one
+// turn, and it happens at the time of its slower half. See combat-engine.md
+// § "❌ Descartado: duas resoluções com aresta de dependência".
+//
+// The method is a plain, correct question about the round and is kept. The edge is not coming
+// back — do not rebuild it on top of this.
 func (r *Round) HasOpenedAction(id uuid.UUID) bool {
 	for _, t := range r.turns {
 		act := t.GetAction()
@@ -126,8 +134,10 @@ func (r *Round) HasOpenedAction(id uuid.UUID) bool {
 	return false
 }
 
-// SetMode sets the round regime outright. ToggleMode stays for the paths that flip blindly;
-// this one is what an explicit master request needs, and it is idempotent.
+// SetMode sets the round regime outright, and is idempotent. It is what an explicit master
+// request needs: change_round_mode names the regime it wants rather than flipping whatever is
+// there. ToggleMode has no caller and is reserved for initiative — see
+// RoundOrchestrator.ChangeMode.
 func (r *Round) SetMode(mode enum.RoundMode) {
 	r.mode = mode
 }

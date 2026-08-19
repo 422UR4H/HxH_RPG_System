@@ -19,6 +19,15 @@ func moveOnly(speed int) *action.Action {
 		nil, &action.Move{Category: enum.Dash, FinalSpeed: speed}, nil, nil, nil, nil, nil)
 }
 
+// moveWithActionSpeed is a PURE movement that nonetheless carries a rolled actionSpeed.
+// That is not contrived: MatchSession.deriveSpeeds fills Speed.Result on every action it sees,
+// movement included, because actionSpeed is always Legerity and always lands.
+func moveWithActionSpeed(moveSpeed, actionSpeed int) *action.Action {
+	return action.NewAction(uuid.New(), nil, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{Result: actionSpeed}},
+		nil, &action.Move{Category: enum.Dash, FinalSpeed: moveSpeed}, nil, nil, nil, nil, nil)
+}
+
 func combined(actionSpeed, moveSpeed int) *action.Action {
 	return action.NewAction(uuid.New(), nil, uuid.Nil, nil,
 		action.ActionSpeed{RollCheck: action.RollCheck{Result: actionSpeed}},
@@ -77,6 +86,19 @@ func TestAction_SpeedOn(t *testing.T) {
 	t.Run("a bar the action does not charge reads zero", func(t *testing.T) {
 		if got := attackOnly(10).SpeedOn(action.BarMove); got != 0 {
 			t.Errorf("SpeedOn(move) = %d, want 0 — this action does not move", got)
+		}
+	})
+
+	t.Run("a pure movement reads zero on the action bar even carrying an actionSpeed", func(t *testing.T) {
+		// The rolled actionSpeed is there — deriveSpeeds always fills it — and it must not
+		// leak onto a clock this action never charges. Letting 19 through would put a number
+		// into the action bar's price and average for a character who did not act on it.
+		a := moveWithActionSpeed(7, 19)
+		if got := a.SpeedOn(action.BarAction); got != 0 {
+			t.Errorf("SpeedOn(action) = %d, want 0 — a pure movement does not charge the action bar", got)
+		}
+		if got := a.SpeedOn(action.BarMove); got != 7 {
+			t.Errorf("SpeedOn(move) = %d, want 7", got)
 		}
 	})
 }

@@ -353,7 +353,7 @@ Cada grupo é vinculado a um atributo (primário ou intermediário):
 |----------|----------|
 | Resistance | Vitality, Energy, Defense |
 | Strength | Push, Grab, Carry |
-| Agility | Velocity, Accelerate, Brake |
+| Agility | Quickness, Accelerate, Brake |
 | Celerity | Legerity, Repel, Feint |
 | Flexibility | Acrobatics, Evasion, Sneak |
 | Dexterity | Reflex, Accuracy, Stealth |

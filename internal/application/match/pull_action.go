@@ -3,7 +3,6 @@ package match
 import (
 	"context"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -19,11 +18,6 @@ type PullActionResult struct {
 	// closed. Nil when nothing was open.
 	ClosedResolution *service.TurnResolution
 	Damaged          []matchsession.DamagedCharacter
-	// ClosedRound stays nil here: PullAction never reports exhaustion itself — the master
-	// named an action explicitly, so there is always something to open. The collaborator is
-	// still taken, for symmetry with OpenNextActionUC and because it is what the room
-	// already has to hand.
-	ClosedRound *round.Round
 }
 
 type IPullAction interface {
@@ -32,7 +26,11 @@ type IPullAction interface {
 
 type PullActionUC struct {
 	statusWriter ISheetStatusWriter
-	closeRound   ICloseRound
+	// closeRound is held, not used. PullAction never reports exhaustion: the master named an
+	// action explicitly, so there is always something to open. It is kept for the explicit
+	// round-close path a later phase adds — removing the parameter would churn four call sites
+	// for nothing, and re-adding it later would churn them again.
+	closeRound ICloseRound //nolint:unused // reserved for the explicit round-close path
 }
 
 func NewPullActionUC(statusWriter ISheetStatusWriter, closeRound ICloseRound) *PullActionUC {
