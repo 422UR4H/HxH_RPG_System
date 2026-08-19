@@ -139,6 +139,43 @@ que já havia sido rejeitado antes.
 **Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
 personagem mandar **já pertence ao round seguinte**.
 
+### Modificadores: o que cada um modifica, e contra quem
+
+O sistema tem **mais de um tipo de reserva acumulada**, e por isso o `Modifier` precisa dizer
+duas coisas que hoje não diz:
+
+```go
+type Modifier struct {
+    Amount    int
+    Bias      int
+    Applies   Dimension    // ← novo: actionSpeed | dodge | …  o QUE ele modifica
+    Source    Source       // system | master
+    Against   Scope        // ← muda: todos | apenas X | todos MENOS X
+    ExpiresAt Lifetime
+    Reason    string
+}
+```
+
+**`Applies`** existe porque a reserva do duelo (repelir/aparar) modifica `actionSpeed`,
+enquanto a da esquiva fechada modifica **esquiva**. Sem esse campo o ledger não consegue
+segurar as duas.
+
+**`Against` deixa de ser um ponteiro** (`nil` = todos, senão um alvo). Falta a terceira forma:
+**todos menos X** — que é exatamente o que a esquiva fechada produz, um bônus contra
+*terceiros*, isto é, contra qualquer um que não seja o oponente do duelo.
+
+### O bônus da esquiva fechada
+
+A rolagem de **Evasão não soma** à esquiva ou ao escape. Ela entra na **lógica de
+Desvantagem**: rola-se os dois e vale o **pior**.
+
+> **O bônus é a diferença entre os dois valores** — a esquiva que o personagem não precisou
+> gastar. Ele vale **contra terceiros**: qualquer um que tente pegá-lo num instante de guarda
+> aberta.
+
+É literalmente a estratégia do Kuroro: esquivar sem usar o máximo, e guardar a sobra para quem
+vier de fora do duelo.
+
 ### A cadeia em área — o que passa de um alvo para o outro
 
 **Não há regra rígida: é contextual, e o mestre pode alterar em qualquer ponto.** O que existe
@@ -524,7 +561,13 @@ Repelir, com CD = resultado do ataque:
 **Assimetria intencional:** bônus é específico do alvo (você leu *aquele* oponente);
 penalidade é geral (você ficou desequilibrado).
 
-**O bônus acumulado é sempre de `actionSpeed`, nunca de acerto.** Disso emerge a mecânica de
+**O bônus do repelir e a penalidade do aparar são de `actionSpeed`, nunca de acerto.**
+
+⚠️ **Isso vale para o acúmulo do duelo, não é lei global do sistema.** Uma versão anterior
+generalizava para "todo bônus acumulado é de actionSpeed" — **falso**. Existem outras reservas
+com outra natureza; a da esquiva fechada é de esquiva. Cada modificador diz o que modifica.
+
+Disso emerge a mecânica de
 duelo sem ninguém programar duelo: dois personagens que se enfrentam aceleram um contra o
 outro e passam a trocar golpes mais rápido que o resto da batalha.
 
@@ -595,7 +638,7 @@ sorte.
 ### A colisão, na ordem das regras
 
 1. **Acerto** — teste ativo do atacante, derivado dos dados que já caíram. O `ModifierLedger`
-   entra como `nil` aqui: a diferença acumulada é sempre de actionSpeed, nunca de acerto.
+   entra como `nil` aqui: a diferença acumulada do duelo modifica `actionSpeed`, não o acerto.
 2. **Esquiva por reflexo** — passiva (`Reflexo + valor médio`), grátis, automática.
 3. **Defesa** — só se a esquiva falhar, com CD um degrau menor que o ataque.
 4. **Dano** — §4.7 do spec de design.

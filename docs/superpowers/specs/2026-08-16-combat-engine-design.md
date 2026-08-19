@@ -72,8 +72,9 @@ volta-se ao dono do produto.
 - **Depois do round 0 não existe fase de coleta.** A fila é permanentemente viva.
 - **Não há confirmação de action.** Abrir vale como aval; editar recalcula e reavisa.
 - **O mestre sempre encerra o turno**, com ou sem reactions pendentes.
-- **Bônus acumulado é sempre de actionSpeed, nunca de acerto.** Bônus é específico do alvo;
-  penalidade é geral.
+- **O bônus do repelir e a penalidade do aparar são de actionSpeed, nunca de acerto.** Bônus
+  é específico do alvo; penalidade é geral. ⚠️ Isso é do **acúmulo do duelo** — não é lei
+  global. Outras reservas modificam outras coisas; ver `combat-engine.md` § Modificadores.
 
 ## 4. Modelo de domínio proposto
 
