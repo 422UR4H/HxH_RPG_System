@@ -127,7 +127,7 @@ func TestBuildAction_KeepsMappingWhatItAlreadyMapped(t *testing.T) {
 			Position: [3]int{2, 1, 0},
 			Speed:    &RollCheckPayload{SkillName: enum.Accelerate.String()},
 		},
-		Dodge:     &DodgePayload{Category: string(enum.Evasive), RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+		Dodge:     &DodgePayload{Category: "closedDodge", RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
 		Interact:  &InteractPayload{Kind: "open"},
 		ReactToID: uuid.New(),
 	}
@@ -141,8 +141,8 @@ func TestBuildAction_KeepsMappingWhatItAlreadyMapped(t *testing.T) {
 	if a.Move.Speed == nil || a.Move.Speed.SkillName != enum.Accelerate.String() {
 		t.Error("Move.Speed was dropped")
 	}
-	if a.Dodge == nil || a.Dodge.Category != enum.Evasive {
-		t.Errorf("Dodge = %+v, want an Evasive dodge", a.Dodge)
+	if a.Dodge == nil || a.Dodge.SkillName != enum.Reflex.String() {
+		t.Errorf("Dodge = %+v, want its roll check mapped", a.Dodge)
 	}
 	if a.Interact == nil {
 		t.Error("Interact was dropped")

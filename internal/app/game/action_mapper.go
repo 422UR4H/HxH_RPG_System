@@ -104,7 +104,7 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		if err != nil {
 			return nil, err
 		}
-		dodge = &action.Dodge{Category: enum.DodgeCategory(p.Dodge.Category)}
+		dodge = &action.Dodge{}
 		if rc != nil {
 			dodge.RollCheck = *rc
 		}

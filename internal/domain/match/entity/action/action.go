@@ -15,13 +15,20 @@ type Action struct {
 	Speed  ActionSpeed
 	Skills []Skill
 
-	Trigger *Trigger
-	Feint   *RollCheck
-	Move    *Move
-	Attack  *Attack
+	Trigger  *Trigger
+	Feint    *RollCheck
+	Move     *Move
+	Attack   *Attack
 	Defense  *Defense
 	Dodge    *Dodge
+	Repel    *Repel
 	Interact *Interact
+
+	// ReactionKind is set only on a reaction, and it is what decides the cost — never the
+	// shape. It is deliberately a field rather than a constructor parameter: NewAction already
+	// takes twelve positional arguments and is called from dozens of sites, and growing it
+	// buys nothing. The discriminator for "this is a reaction" is still ReactToID.
+	ReactionKind ReactionKind
 
 	openedAt    *time.Time //nolint:unused // WIP: match system under development
 	confirmedAt *time.Time //nolint:unused // WIP: match system under development
