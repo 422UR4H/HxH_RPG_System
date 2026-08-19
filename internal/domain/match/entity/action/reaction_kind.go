@@ -78,6 +78,46 @@ func (k ReactionKind) KeepsDefault() bool {
 	}
 }
 
+// ReactionComponent names one piece of an Action a ReactionKind may require to be well-formed.
+//
+// The mapper enforces these; the kind only declares them. A reaction accepted without a
+// component its kind requires does not fail loudly downstream — it derives against an empty
+// RollCheck, which silently becomes the worst possible outcome for whoever sent it (Total = 0,
+// worse than the passive it was supposed to replace, or a guaranteed RungFailure on a repel).
+type ReactionComponent string
+
+const (
+	ComponentDodge ReactionComponent = "Dodge"
+	ComponentMove  ReactionComponent = "Move"
+	ComponentRepel ReactionComponent = "Repel"
+)
+
+// RequiredComponents lists what this kind needs on the Action to be well-formed.
+//
+//	nothing                        → none
+//	dodge, closedDodge              → Dodge
+//	escape, escapeGuard, closedEscape → Dodge AND Move — they force the dodge BY displacing, so
+//	                                    Move alone (Displaces()) is necessary but not sufficient
+//	repel                          → Repel
+//
+// Move is folded in via Displaces() rather than re-listed per kind, so there is exactly one
+// place that knows which kinds move.
+func (k ReactionKind) RequiredComponents() []ReactionComponent {
+	var out []ReactionComponent
+	switch k {
+	case ReactRepel:
+		return []ReactionComponent{ComponentRepel}
+	case ReactDodge, ReactClosedDodge, ReactEscape, ReactEscapeGuard, ReactClosedEscape:
+		out = append(out, ComponentDodge)
+	default:
+		return nil
+	}
+	if k.Displaces() {
+		out = append(out, ComponentMove)
+	}
+	return out
+}
+
 func (k ReactionKind) IsValid() bool {
 	switch k {
 	case ReactNothing, ReactDodge, ReactClosedDodge,

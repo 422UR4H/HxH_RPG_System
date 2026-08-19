@@ -59,9 +59,13 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		return resolveRepel(in, calc)
 	}
 
-	out.Dodge = deriveDodge(in, calc)
-	if bonus, ok := closedReserve(in, calc, &out); ok {
-		out.Payouts = append(out.Payouts, bonus)
+	dodge, evasion, bonus := dodgeAndReserve(in, calc)
+	out.Dodge = dodge
+	if isClosedKind(in.Kind) {
+		out.Evasion = evasion
+	}
+	if bonus != nil {
+		out.Payouts = append(out.Payouts, *bonus)
 	}
 	out.Avoided = out.Dodge.Total >= in.HitTotal
 	if out.Avoided {
@@ -80,21 +84,49 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 	return out
 }
 
-// deriveDodge is the reflex test behind dodge, closedDodge, escape, escapeGuard and
-// closedEscape. A nil Reaction (nothing sent) takes the passive; every kind that arrives with
-// its own dice rolls instead — that is the "gamble the roll" the table describes. For the
-// closed variants the worse of Reflex and Evasion counts: Evasion does not add to the dodge,
-// it enters the Disadvantage logic.
-func deriveDodge(in ReactionInput, calc RollCalculator) RollOutcome {
+// dodgeAndReserve is the reflex test behind dodge, closedDodge, escape, escapeGuard and
+// closedEscape, plus the closed variants' reserve payout — derived together so the two can
+// never desynchronize. Reflex and, for the closed variants, Evasion are each derived EXACTLY
+// ONCE here: dodgeAndReserve used to be two separate functions that each re-derived both rolls
+// independently, and while Derive is pure so they could not disagree today, nothing stopped a
+// future edit from adding a Ledger, Dimension or AgainstID to only one call site and silently
+// splitting "the dodge" that was compared to the hit from "the dodge" the reserve gap was
+// computed against. Threading one pair of outcomes through both uses removes that seam.
+//
+// A nil Reaction (nothing sent) takes the passive; every kind that arrives with its own dice
+// rolls instead — that is the "gamble the roll" the table describes. For the closed variants
+// the worse of Reflex and Evasion counts as the dodge: Evasion does not add to it, it enters
+// the Disadvantage logic. The reserve banked is |Reflex − Evasion|, for whoever comes at this
+// target next turn, excluding the attacker who was just read; a zero gap banks nothing. Every
+// other kind gets no Evasion roll and no reserve.
+func dodgeAndReserve(in ReactionInput, calc RollCalculator) (dodge, evasion RollOutcome, payout *match.Modifier) {
 	reflex := deriveReflex(in, calc)
 	if !isClosedKind(in.Kind) {
-		return reflex
+		return reflex, RollOutcome{}, nil
 	}
-	evasion := deriveEvasion(in, calc)
+
+	evasion = deriveEvasion(in, calc)
+	dodge = reflex
 	if evasion.Total < reflex.Total {
-		return evasion
+		dodge = evasion
 	}
-	return reflex
+
+	gap := reflex.Total - evasion.Total
+	if gap < 0 {
+		gap = -gap
+	}
+	if gap == 0 {
+		return dodge, evasion, nil
+	}
+	m := match.Modifier{
+		Amount:    gap,
+		Applies:   match.DimDodge,
+		Source:    match.SourceSystem,
+		Against:   match.ScopeAllBut(in.AttackerID),
+		ExpiresAt: match.LifetimeNextTurn,
+		Reason:    "closed dodge reserve",
+	}
+	return dodge, evasion, &m
 }
 
 // deriveReflex derives the Reflex test alone: passive when nothing was sent, rolled off the
@@ -133,35 +165,6 @@ func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 
 func isClosedKind(k action.ReactionKind) bool {
 	return k == action.ReactClosedDodge || k == action.ReactClosedEscape
-}
-
-// closedReserve banks the closed dodge's spare margin — |Reflex − Evasion| — for whoever comes
-// at this target next turn, excluding the attacker who was just read. Every other kind returns
-// ok=false: the reserve is the closed variants' business alone. It also stashes the Evasion
-// outcome onto out, so the caller does not need to derive it twice to report it.
-func closedReserve(in ReactionInput, calc RollCalculator, out *ReactionOutcome) (match.Modifier, bool) {
-	if !isClosedKind(in.Kind) {
-		return match.Modifier{}, false
-	}
-	reflex := deriveReflex(in, calc)
-	evasion := deriveEvasion(in, calc)
-	out.Evasion = evasion
-
-	gap := reflex.Total - evasion.Total
-	if gap < 0 {
-		gap = -gap
-	}
-	if gap == 0 {
-		return match.Modifier{}, false
-	}
-	return match.Modifier{
-		Amount:    gap,
-		Applies:   match.DimDodge,
-		Source:    match.SourceSystem,
-		Against:   match.ScopeAllBut(in.AttackerID),
-		ExpiresAt: match.LifetimeNextTurn,
-		Reason:    "closed dodge reserve",
-	}, true
 }
 
 // resolveRepel reads the repel roll against the ladder built off the attack's hit total, and

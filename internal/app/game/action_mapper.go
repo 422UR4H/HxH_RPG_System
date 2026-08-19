@@ -134,11 +134,26 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		if err != nil {
 			return nil, err
 		}
-		// All three escapes displace by definition; SpeedOn(BarMove) reads Move.FinalSpeed, so
-		// one without a Move would charge the move bar zero. A client bug, refused rather than
-		// defaulted — the same rule as an unsupported move category.
-		if kind.Displaces() && p.Move == nil {
-			return nil, fmt.Errorf("reaction %q must carry a move", p.ReactionKind)
+		// RequiredComponents is where each kind's own requirements live — beside Bars() and
+		// Displaces() — so this is enforcement, not a second copy of the rule. A reaction
+		// missing one of its required components is a client bug: refused here, the same way
+		// an unsupported move category is, rather than let through to derive against an empty
+		// RollCheck deep in the resolver.
+		for _, c := range kind.RequiredComponents() {
+			switch c {
+			case action.ComponentDodge:
+				if dodge == nil {
+					return nil, fmt.Errorf("reaction %q must carry a dodge", p.ReactionKind)
+				}
+			case action.ComponentMove:
+				if p.Move == nil {
+					return nil, fmt.Errorf("reaction %q must carry a move", p.ReactionKind)
+				}
+			case action.ComponentRepel:
+				if repel == nil {
+					return nil, fmt.Errorf("reaction %q must carry a repel", p.ReactionKind)
+				}
+			}
 		}
 	}
 

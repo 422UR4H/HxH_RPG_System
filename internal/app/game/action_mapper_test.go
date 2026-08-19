@@ -300,4 +300,90 @@ func TestBuildAction_Reactions(t *testing.T) {
 			t.Errorf("ReactionKind = %q, want empty on a plain action", a.ReactionKind)
 		}
 	})
+
+	t.Run("nothing requires no component and is accepted bare", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "nothing",
+		})
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		if a.ReactionKind != action.ReactNothing {
+			t.Errorf("ReactionKind = %q, want nothing", a.ReactionKind)
+		}
+	})
+
+	t.Run("dodge without a dodge component is refused", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "dodge",
+		})
+		if err == nil {
+			t.Fatal("a dodge reaction with no Dodge payload must be refused, never derived against an empty roll")
+		}
+	})
+
+	t.Run("dodge with a dodge component is accepted", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "dodge",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+		})
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		if a.Dodge == nil {
+			t.Fatal("the dodge component did not survive the mapping")
+		}
+	})
+
+	t.Run("closedDodge without a dodge component is refused", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedDodge",
+		})
+		if err == nil {
+			t.Fatal("a closedDodge reaction with no Dodge payload must be refused")
+		}
+	})
+
+	t.Run("escapeGuard with a dodge but no move is refused — displacing is still required", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "escapeGuard",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+		})
+		if err == nil {
+			t.Fatal("an escape with a Dodge but no Move must still be refused — it forces the dodge BY displacing")
+		}
+	})
+
+	t.Run("escapeGuard with a move but no dodge is refused — the old Displaces() check alone was not enough", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "escapeGuard",
+			Move: &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("an escape with a Move but no Dodge must be refused too")
+		}
+	})
+
+	t.Run("escapeGuard with both a dodge and a move is accepted", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "escapeGuard",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Move:  &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		if a.Dodge == nil || a.Move == nil {
+			t.Fatal("both components must survive the mapping")
+		}
+	})
+
+	t.Run("repel without a repel component is refused", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "repel",
+		})
+		if err == nil {
+			t.Fatal("a repel reaction with no Repel payload must be refused, never derived against an empty roll into RungFailure")
+		}
+	})
 }
