@@ -1,10 +1,17 @@
 package game
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
 
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
@@ -82,4 +89,103 @@ func TestNewResolutionUpdatedPayload_NilResolution(t *testing.T) {
 	if !strings.Contains(string(b), `"targets":[]`) {
 		t.Errorf("expected an empty array for targets, got %s", string(b))
 	}
+}
+
+// newCombatSheet builds a minimal character sheet for combat fixtures. This package's tests
+// use the INTERNAL test package (package game), so it cannot reach combat_e2e_test.go's copy,
+// which lives in the external package game_test.
+func newCombatSheet(t *testing.T) *csSheet.CharacterSheet {
+	t.Helper()
+	playerUUID := uuid.New()
+	cs, err := csSheet.NewCharacterSheetFactory().Build(
+		&playerUUID, nil, nil,
+		csSheet.CharacterProfile{NickName: "Combatant", FullName: "Combat Test Subject"},
+		nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("factory.Build error: %v", err)
+	}
+	return cs
+}
+
+// topFaceSource lands every die on its top face, so the numbers in the assertions are exact.
+type topFaceSource struct{}
+
+func (topFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
+
+// racingSessionWithTwoActors builds a Race session holding two characters, enqueues one
+// action for each, and opens the first — so the bar has a frozen price, one character with a
+// recorded speed and one still pending.
+func racingSessionWithTwoActors(t *testing.T) (*matchsession.MatchSession, uuid.UUID, uuid.UUID) {
+	t.Helper()
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	char1, char2 := uuid.New(), uuid.New()
+	participants := []*match.Participant{
+		{UUID: uuid.New(), MatchUUID: matchUUID, Sheet: csEntity.Summary{UUID: char1, PlayerUUID: &playerUUID}},
+		{UUID: uuid.New(), MatchUUID: matchUUID, Sheet: csEntity.Summary{UUID: char2, PlayerUUID: &playerUUID}},
+	}
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		char1: newCombatSheet(t),
+		char2: newCombatSheet(t),
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, participants)
+	s.GetActiveRound().SetMode(enum.Race)
+	s.SetRollSource(topFaceSource{})
+
+	for _, charID := range []uuid.UUID{char1, char2} {
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+	}
+	if _, err := s.OpenNextAction(); err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	return s, char1, char2
+}
+
+func TestNewBarsUpdatedPayload(t *testing.T) {
+	session, p1, p2 := racingSessionWithTwoActors(t)
+
+	payload := newBarsUpdatedPayload(session)
+
+	t.Run("carries the frozen price of each bar that priced", func(t *testing.T) {
+		if _, ok := payload.Prices[string(action.BarAction)]; !ok {
+			t.Error("the action bar priced and the table must see it")
+		}
+	})
+
+	t.Run("carries one row per character, both bars", func(t *testing.T) {
+		if len(payload.Characters) != 2 {
+			t.Fatalf("characters = %d, want 2", len(payload.Characters))
+		}
+		for _, c := range payload.Characters {
+			if c.CharacterID != p1 && c.CharacterID != p2 {
+				t.Errorf("unexpected character %v", c.CharacterID)
+			}
+		}
+	})
+
+	t.Run("carries the projected order, and nothing that identifies an action", func(t *testing.T) {
+		if len(payload.Order) == 0 {
+			t.Fatal("something is pending, so the general bar has an order to show")
+		}
+		// Keys descend: this IS the order the master will open them in.
+		for i := 1; i < len(payload.Order); i++ {
+			if payload.Order[i-1].Key < payload.Order[i].Key {
+				t.Error("the order must be sorted by key, highest first")
+			}
+		}
+		raw, err := json.Marshal(payload.Order[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, leak := range []string{"actionId", "attack", "skill", "target"} {
+			if bytes.Contains(bytes.ToLower(raw), []byte(strings.ToLower(leak))) {
+				t.Errorf("the queue is secret — only the bar and the order are public; found %q in %s", leak, raw)
+			}
+		}
+	})
 }
