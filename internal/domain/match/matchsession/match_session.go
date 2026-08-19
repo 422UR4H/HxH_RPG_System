@@ -463,10 +463,72 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	}
 
 	s.rollActionDice(r)
+
+	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
+	// discount: done in the exact instant, without opening the guard, it gives the action back.
+	if !r.ReactionKind.IsFree() {
+		consumed := s.consumePendingFor(r)
+		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
+		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
+		// Amount: RollAttempts already holds both sets and the bias only picks which one.
+		// With nothing queued there was no swap, so there is no penalty.
+		systemBias := 0
+		if consumed {
+			systemBias = -1
+		}
+		s.deriveSpeeds(r, systemBias)
+		s.chargeReactionBars(r)
+	}
+
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
 		return nil, err
 	}
 	return s.ResolveTurn(s.activeRound.CurrentTurn()), nil
+}
+
+// consumePendingFor pulls this character's about-to-open action off the queue, once per bar the
+// reaction charges, and reports whether anything was taken.
+//
+// A combined action sits on both bars and is counted once — it leaves on the first bar that
+// finds it and is simply not there for the second.
+func (s *MatchSession) consumePendingFor(r *action.Action) bool {
+	consumed := false
+	for _, bar := range r.ReactionKind.Bars() {
+		victim := s.scheduler.BestPendingFor(s.scheduleInput(), r.GetActorID(), bar)
+		if victim == nil {
+			continue
+		}
+		s.activeQueue.ExtractByID(victim.GetID())
+		consumed = true
+	}
+	return consumed
+}
+
+// chargeReactionBars debits the reaction's own speed on every bar its kind charges.
+//
+// At ATTACH, not at open, and the difference matters: an action records on open because one
+// that never reaches the price rolls into the next round untouched, so Speeds has to mean "acted
+// for real". A reaction has nowhere to roll to — it lives inside the turn it answered — and
+// opening it is a narration event. Narration must not move a number. The consequence lines up
+// with Phase 5: a reaction attached and never opened has already paid, which is exactly what
+// the close-turn dialogue assumes when it says such a reaction "enters the calculation but
+// loses its moment to narrate".
+//
+// Race-only, for the same reason recordActed is: settleBars skips a bar that never priced, so a
+// speed recorded under Free would be charged by nothing and reset by nothing — and would then
+// make IsEligible read the character as having already acted the moment the master switches to
+// Race, denying them their first action of the disputed round.
+func (s *MatchSession) chargeReactionBars(r *action.Action) {
+	if s.activeRound.GetMode() != enum.Race {
+		return
+	}
+	status, ok := s.statuses[r.GetActorID()]
+	if !ok {
+		return
+	}
+	for _, bar := range r.ReactionKind.Bars() {
+		status.BarFor(bar).RecordSpeed(r.SpeedOn(bar))
+	}
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
@@ -533,7 +595,7 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 		return ErrActionActorMismatch
 	}
 	s.rollActionDice(a)
-	s.deriveSpeeds(a)
+	s.deriveSpeeds(a, 0)
 	s.activeQueue.Insert(a)
 	return nil
 }
@@ -547,7 +609,12 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 //
 // It runs once, when the action arrives, and it is the only place a speed is produced. The
 // master never re-rolls a player's die, so nothing downstream ever recomputes it.
-func (s *MatchSession) deriveSpeeds(a *action.Action) {
+//
+// systemBias is the engine-imposed advantage/disadvantage for this one derivation — a reaction
+// that swapped out a queued action passes -1, everyone else passes 0. It is a MODE of reading
+// the dice that already fell, never an Amount: RollAttempts holds both attempts, and the bias
+// only picks which one pickAttempt reads.
+func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
 	}
@@ -576,6 +643,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action) {
 		Condition:  a.Speed.Context.Condition,
 		Ledger:     ledger,
 		Dimension:  match.DimActionSpeed,
+		SystemBias: systemBias,
 	}).Total
 
 	if a.Move == nil {
@@ -599,6 +667,8 @@ func (s *MatchSession) deriveSpeeds(a *action.Action) {
 		Passive:    passive,
 		Condition:  a.Move.Speed.Context.Condition,
 		// No ledger on the move bar: the accumulated difference is an actionSpeed bonus.
+		Dimension:  match.DimActionSpeed,
+		SystemBias: systemBias,
 	}).Total
 	// Charge is deliberately not read. The momentum accumulating into CharacterStatus.Velocity
 	// is the movement slice's, and the bar works without it (spec §5, Fase 3).

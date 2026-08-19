@@ -1565,3 +1565,91 @@ func TestMatchSession_ModifiersExpireOnClose(t *testing.T) {
 		}
 	})
 }
+
+func TestMatchSession_ReactionCost(t *testing.T) {
+	setup := func(t *testing.T) (*matchsession.MatchSession, []uuid.UUID, uuid.UUID, uuid.UUID, *action.Action) {
+		t.Helper()
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		s.SetRoundMode(enum.Race)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		s.EnqueueAction(playerA, a) //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+		return s, chars, playerA, playerB, &act
+	}
+
+	t.Run("a repel debits the action bar at attach, not at open", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		_, speeds := s.BarState(chars[1], action.BarAction)
+		if len(speeds) != 1 {
+			t.Fatalf("action-bar speeds = %v, want exactly one — the repel charged on arrival", speeds)
+		}
+		_, moveSpeeds := s.BarState(chars[1], action.BarMove)
+		if len(moveSpeeds) != 0 {
+			t.Fatalf("move-bar speeds = %v, want none — a repel spends the action, not the feet", moveSpeeds)
+		}
+	})
+
+	t.Run("a closed dodge charges nothing", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactClosedDodge
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if _, speeds := s.BarState(chars[1], action.BarAction); len(speeds) != 0 {
+			t.Fatalf("action-bar speeds = %v, want none — the closed dodge pays for itself", speeds)
+		}
+	})
+
+	t.Run("a reaction is never refused for lack of balance", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		status, err := s.GetCharacterStatus(chars[1])
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		status.ActionBar.Balance = -100 // deep in debt
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("a reaction must never be denied for lack of balance: %v", err)
+		}
+	})
+
+	t.Run("an active reaction consumes the pending action and rolls at disadvantage", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		pending := makeActionWithSpeed(chars[1], 30)
+		s.EnqueueAction(playerB, pending) //nolint:errcheck
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		for _, p := range s.PendingActions() {
+			if p.GetID() == pending.GetID() {
+				t.Fatal("reacting actively consumes the action that was in the queue")
+			}
+		}
+	})
+
+	t.Run("with nothing pending the reaction simply becomes the action", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if len(s.PendingActions()) != 0 {
+			t.Fatal("there was nothing to consume")
+		}
+	})
+}

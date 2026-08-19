@@ -2,6 +2,7 @@ package service
 
 import (
 	"math"
+	"slices"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -218,6 +219,34 @@ func (rs RoundScheduler) keyOf(in ScheduleInput, a *action.Action) (float64, boo
 		return 0, false
 	}
 	return key, true
+}
+
+// BestPendingFor returns the pending action that would open first for one character on one
+// bar, or nil when they have none there.
+//
+// It exists for the reaction: reacting actively consumes the action you had queued, and the
+// one it consumes is the moment that was about to be spent — the best key. Scoring reuses
+// keyOnBar, so this invents no criterion the round did not already have.
+//
+// The gate is deliberately NOT consulted. An action that could not have opened this round is
+// still the one whose moment the reaction takes; refusing to consume it would let a character
+// react AND keep a queued action, which is the trade the Disadvantage is paying for.
+func (rs RoundScheduler) BestPendingFor(in ScheduleInput, actorID uuid.UUID, bar action.Bar) *action.Action {
+	if in.Queue == nil {
+		return nil
+	}
+	var best *action.Action
+	bestKey := 0.0
+	for _, a := range in.Queue.All() {
+		if a.GetActorID() != actorID || !slices.Contains(a.Bars(), bar) {
+			continue
+		}
+		key, _ := rs.keyOnBar(in, a, bar)
+		if best == nil || key > bestKey {
+			best, bestKey = a, key
+		}
+	}
+	return best
 }
 
 // keyOnBar scores one action against one of the bars it charges.

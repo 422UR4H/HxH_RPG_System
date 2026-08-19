@@ -441,3 +441,30 @@ func TestRoundScheduler_ProjectOrderMatchesWhatIsPlayed(t *testing.T) {
 		}
 	})
 }
+
+func TestRoundScheduler_BestPendingFor(t *testing.T) {
+	t.Run("picks the pending action that would have opened first for that character", func(t *testing.T) {
+		actor, other := uuid.New(), uuid.New()
+		slow := attackAt(actor, 8)
+		fast := attackAt(actor, 20)
+		theirs := attackAt(other, 30)
+		q := action.NewActionPriorityQueue(&[]*action.Action{slow, theirs, fast})
+		r := round.NewRound(enum.Race)
+		in := service.ScheduleInput{Queue: &q, Round: r, Bars: newFakeBars()}
+
+		got := service.RoundScheduler{}.BestPendingFor(in, actor, action.BarAction)
+		if got == nil || got.GetID() != fast.GetID() {
+			t.Fatal("the reaction consumes the moment that was about to be spent, not the leftovers")
+		}
+	})
+
+	t.Run("answers nil when that character has nothing pending on that bar", func(t *testing.T) {
+		actor := uuid.New()
+		q := action.NewActionPriorityQueue(nil)
+		r := round.NewRound(enum.Race)
+		in := service.ScheduleInput{Queue: &q, Round: r, Bars: newFakeBars()}
+		if got := (service.RoundScheduler{}).BestPendingFor(in, actor, action.BarAction); got != nil {
+			t.Fatal("nothing pending means the reaction simply becomes the action")
+		}
+	})
+}
