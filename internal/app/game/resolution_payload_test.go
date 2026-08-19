@@ -2,8 +2,10 @@ package game
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -198,4 +200,46 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestBroadcastBars_StampsARisingSequence pins the ordering guarantee bars_updated needs.
+//
+// The payload is a FULL STATE snapshot and it reaches the broadcast channel from a detached
+// goroutine, so two opens in quick succession race on that send and the older snapshot can be
+// delivered last. Nothing else corrects it — the snapshot that closes the round is the last one
+// the table gets. Seq is what lets a client throw the stale one away.
+func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
+	session, _, _ := racingSessionWithTwoActors(t)
+	r := &Room{broadcast: make(chan []byte, 8)}
+
+	r.broadcastBars(session)
+	r.broadcastBars(session)
+
+	seqs := make([]uint64, 0, 2)
+	for i := 0; i < 2; i++ {
+		select {
+		case data := <-r.broadcast:
+			var msg Message
+			if err := json.Unmarshal(data, &msg); err != nil {
+				t.Fatalf("unmarshal message: %v", err)
+			}
+			if msg.Type != MsgTypeBarsUpdated {
+				t.Fatalf("message type = %q, want %q", msg.Type, MsgTypeBarsUpdated)
+			}
+			var p BarsUpdatedPayload
+			if err := json.Unmarshal(msg.Payload, &p); err != nil {
+				t.Fatalf("unmarshal bars_updated: %v", err)
+			}
+			seqs = append(seqs, p.Seq)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d of 2 bars_updated reached the broadcast channel", i)
+		}
+	}
+
+	sort.Slice(seqs, func(i, j int) bool { return seqs[i] < seqs[j] })
+	// Sorted, because the sends race by design — what is pinned is the stamp, which is taken
+	// under r.mu at snapshot time and is exactly what a receiver reorders by.
+	if seqs[0] != 1 || seqs[1] != 2 {
+		t.Errorf("seqs = %v, want [1 2] — the counter is stamped at snapshot time and rises by one", seqs)
+	}
 }

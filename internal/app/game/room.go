@@ -86,6 +86,10 @@ type Room struct {
 	unregister chan *Client
 	stop       chan struct{}
 	mu         sync.RWMutex
+	// barsSeq stamps every bars_updated snapshot. Bumped under mu at the instant the snapshot
+	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
+	// channel off to a goroutine, and two rapid opens can reach it out of order.
+	barsSeq uint64
 
 	session *matchsession.MatchSession
 
@@ -1045,7 +1049,8 @@ func (r *Room) sendToMaster(msg Message) {
 
 // newBarsUpdatedPayload snapshots both clocks for the whole table.
 //
-// The caller holds r.mu — it reads session state that every open and every enqueue mutates.
+// The caller holds r.mu — it reads session state that every open and every enqueue mutates —
+// and stamps Seq from the room counter in that same critical section.
 func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayload {
 	prices := map[string]int{}
 	for bar, price := range session.RoundPrices() {
@@ -1085,9 +1090,13 @@ func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 	if session == nil {
 		return
 	}
-	r.mu.RLock()
+	// Write-locked, not read-locked: the sequence counter is bumped in the same critical
+	// section that reads the state, so the number and the snapshot it stamps cannot disagree.
+	r.mu.Lock()
+	r.barsSeq++
 	payload := newBarsUpdatedPayload(session)
-	r.mu.RUnlock()
+	payload.Seq = r.barsSeq
+	r.mu.Unlock()
 	data, _ := json.Marshal(NewServerMessage(MsgTypeBarsUpdated, payload))
 	go func() { r.broadcast <- data }()
 }

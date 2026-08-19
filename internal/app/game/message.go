@@ -243,6 +243,16 @@ type RoundClosedPayload struct {
 // action itself. No action ID, no weapon, no target, no skill. Those belong to the master
 // until the turn opens.
 type BarsUpdatedPayload struct {
+	// Seq orders the snapshots, and exists because they can arrive out of order.
+	//
+	// This is a FULL STATE snapshot, and it is handed to the broadcast channel from a detached
+	// goroutine: two opens in quick succession race on that send, and the older snapshot can be
+	// delivered last. There is no later event to self-correct from either — the one that closes
+	// the round is the last bars_updated the table gets.
+	//
+	// It is assigned at the instant the snapshot is taken, not when it is sent, and it rises by
+	// one every time. A client keeps the highest it has applied and DISCARDS anything lower.
+	Seq uint64 `json:"seq"`
 	// Prices maps a bar name to its frozen round price. A bar that has not priced is absent.
 	Prices map[string]int `json:"prices"`
 	// Characters is every character's standing balance on both bars.
