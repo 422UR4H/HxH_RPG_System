@@ -75,19 +75,31 @@ type topFaceSource struct{}
 
 func (topFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
 
-// scriptedFaces hands out faces in order and repeats the last one once exhausted. Same shape
-// as matchsession_test's copy — a different package, so it is not importable from here.
+// scriptedFaces hands out faces in order and NEVER repeats: once exhausted, it records an
+// overrun instead of silently replaying the last face.
+//
+// A silent repeat is a trap. An earlier version of this file's racing-round test scripted only
+// 8 faces assuming a single 2D10 check per action, but MatchSession.rollActionDice rolls every
+// check the action carries at enqueue time — Speed, Hit, and the weapon's damage dice — so an
+// attack consumes far more than 4 faces. The test still passed: the victim's asserted speed of
+// 16 came entirely from the fallback repeating the script's last face (which happened to equal
+// the intended one), not from the script itself. A repeat can never be told apart from a
+// genuine match by the test that relies on it. Failing loudly instead means every asserted
+// number is provably scripted.
+//
+// Deliberately a different type from matchsession_test's same-named helper (which does repeat
+// the last face, and other tests in that package rely on it) — a different package, so it is
+// not importable from here anyway.
 type scriptedFaces struct {
-	faces []int
-	i     int
+	faces   []int
+	i       int
+	overran bool // set once a roll asks for a face beyond what was scripted
 }
 
 func (s *scriptedFaces) RollDie(_ enum.DieSides) int {
-	if len(s.faces) == 0 {
-		return 1
-	}
 	if s.i >= len(s.faces) {
-		return s.faces[len(s.faces)-1]
+		s.overran = true
+		return -1 // an impossible face: anything that accidentally depends on it fails loudly
 	}
 	f := s.faces[s.i]
 	s.i++
@@ -612,9 +624,31 @@ func TestE2E_AnExhaustedRoundClosesItself(t *testing.T) {
 // The dice are scripted, so the numbers are exact instead of lucky.
 func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 	f := newCombatFixture(t)
-	// Legerity is 0 on a factory sheet, so the actionSpeed IS the dice total. Four faces per
-	// check (both attempt sets fall up front): the attacker gets 3+3 = 6, the victim 8+8 = 16.
-	f.setRollSource(&scriptedFaces{faces: []int{3, 3, 3, 3, 8, 8, 8, 8}})
+	// Legerity is 0 on a factory sheet, so actionSpeed IS the dice total. Both enqueued actions
+	// below carry Attack{Hit: Accuracy} with no Weapon (unarmed → Fist, 3 damage dice), and
+	// rollActionDice rolls EVERY check an action carries, once, at enqueue time — not just
+	// Speed. Each action therefore consumes, in this order: Speed (2D10 primary + 2D10
+	// secondary — only the primary pair sums into the result), Hit (same 4-face shape), then
+	// Damage (Fist's 3 dice). 11 faces per action, 22 total, attacker enqueued before victim:
+	//
+	//	attacker Speed   faces[ 0: 4] = 3,3,3,3 → primary 3+3 = 6   (asserted: the frozen price)
+	//	attacker Hit     faces[ 4: 8] = 5,5,5,5 → unasserted
+	//	attacker Damage  faces[ 8:11] = 2,2,2   → unasserted
+	//	victim   Speed   faces[11:15] = 8,8,8,8 → primary 8+8 = 16  (asserted: leads the bar)
+	//	victim   Hit     faces[15:19] = 5,5,5,5 → unasserted
+	//	victim   Damage  faces[19:22] = 2,2,2   → unasserted
+	//
+	// scriptedFaces fails loudly on any roll past face 22 instead of repeating one, so both
+	// asserted numbers are provably driven by the script, not a coincidence of a fallback.
+	src := &scriptedFaces{faces: []int{
+		3, 3, 3, 3, // attacker speed  (asserted: 6)
+		5, 5, 5, 5, // attacker hit    (unasserted)
+		2, 2, 2, // attacker damage    (unasserted)
+		8, 8, 8, 8, // victim speed    (asserted: 16)
+		5, 5, 5, 5, // victim hit      (unasserted)
+		2, 2, 2, // victim damage      (unasserted)
+	}}
+	f.setRollSource(src)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -658,6 +692,14 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 	}
 	enqueue(f.attackerID, 1, 2) // 6
 	enqueue(f.victimID, 2, 3)   // 16
+
+	// All of this round's dice already fell — rollActionDice runs entirely at enqueue time,
+	// never on open — so this is the earliest point an overrun could have happened, and the
+	// only thing that can rescue an under-scripted face list from becoming a silent 16-by-luck
+	// again.
+	if src.overran {
+		t.Fatal("the scripted dice ran out — a roll consumed more faces than this test accounted for")
+	}
 
 	t.Run("bars_updated announces the order before anything opens", func(t *testing.T) {
 		bars := lastBarsUpdated(t, playerMsgs)
