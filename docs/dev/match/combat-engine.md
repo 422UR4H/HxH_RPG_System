@@ -139,6 +139,83 @@ que já havia sido rejeitado antes.
 **Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
 personagem mandar **já pertence ao round seguinte**.
 
+### Modificadores: o que cada um modifica, e contra quem
+
+O sistema tem **mais de um tipo de reserva acumulada**, e por isso o `Modifier` precisa dizer
+duas coisas que hoje não diz:
+
+```go
+type Modifier struct {
+    Amount    int
+    Bias      int
+    Applies   Dimension    // ← novo: actionSpeed | dodge | …  o QUE ele modifica
+    Source    Source       // system | master
+    Against   Scope        // ← muda: todos | apenas X | todos MENOS X
+    ExpiresAt Lifetime
+    Reason    string
+}
+```
+
+**`Applies`** existe porque a reserva do duelo (repelir/aparar) modifica `actionSpeed`,
+enquanto a da esquiva fechada modifica **esquiva**. Sem esse campo o ledger não consegue
+segurar as duas.
+
+**`Against` deixa de ser um ponteiro** (`nil` = todos, senão um alvo). Falta a terceira forma:
+**todos menos X** — que é exatamente o que a esquiva fechada produz, um bônus contra
+*terceiros*, isto é, contra qualquer um que não seja o oponente do duelo.
+
+### O bônus da esquiva fechada
+
+A rolagem de **Evasão não soma** à esquiva ou ao escape. Ela entra na **lógica de
+Desvantagem**: rola-se os dois e vale o **pior**.
+
+> **O bônus é a diferença entre os dois valores** — a esquiva que o personagem não precisou
+> gastar. Ele vale **contra terceiros**: qualquer um que tente pegá-lo num instante de guarda
+> aberta.
+
+É literalmente a estratégia do Kuroro: esquivar sem usar o máximo, e guardar a sobra para quem
+vier de fora do duelo.
+
+### A cadeia em área — o que passa de um alvo para o outro
+
+**Não há regra rígida: é contextual, e o mestre pode alterar em qualquer ponto.** O que existe
+é um **padrão por tipo de reação**, e o mestre sobrepõe quando a cena pedir.
+
+O que a cadeia carrega é o **ataque residual** — o que sobrou do golpe depois de cada alvo.
+
+| O alvo… | O que chega no próximo |
+|---|---|
+| **Esquivou** | o ataque **cheio**, sem alteração — desviar não gasta o golpe |
+| **Repeliu com sucesso** | **nada — o ataque para aqui** |
+| **Foi atingido** | reduzido pela **armadura** do alvo atingido |
+| **Defendeu** | reduzido pela **defesa da arma** com que ele defendeu |
+
+**Repelir encerra o ataque, mas não cancela as reações seguintes.** Elas **acontecem** — quem
+tinha mandado scape se desloca —, só que sem chance de ser atingido. A reação é "desperdiçada"
+no sentido mecânico, não no narrativo.
+
+> ⚠️ **O mestre pode permitir que o ataque siga mesmo após um repelir bem-sucedido.** É
+> sobreposição de regra padrão, não exceção codificada.
+
+**A armadura reduz duas vezes:** para o alvo que a veste **e** para quem vem depois. Vale igual
+para o **Nen**, que funciona como armadura — quando existir.
+
+**A defesa da arma só entra aqui.** É neste ponto da cadeia que o campo `Weapon.defense` tem
+função: ele reduz o que passa adiante quando alguém defende.
+
+#### Ataque sequencial × simultâneo
+
+O padrão acima descreve um ataque **sequencial**, que atravessa os alvos. Existe outro tipo:
+o que **atinge todos ao mesmo tempo**.
+
+No simultâneo, **o ataque não diminui** — todos recebem o mesmo. Mas narrativamente o mestre
+**ainda abre um alvo por vez**, para cada um dizer como reagiu. A cadeia continua sendo o
+gesto de mesa; só a aritmética muda.
+
+> **Reservar na modelagem.** Isso será uma **configuração do tipo de habilidade**. As
+> habilidades especiais **ainda não existem** no sistema e só chegam pós-MVP — mas o modelo do
+> ataque precisa nascer com esse eixo previsto, senão a cadeia vira `if` retrofitado depois.
+
 ### Quem pode agir — são DOIS porteiros, não um
 
 ⚠️ **A chave de ordenação e o porteiro de elegibilidade são coisas diferentes.** A chave diz
@@ -484,9 +561,199 @@ Repelir, com CD = resultado do ataque:
 **Assimetria intencional:** bônus é específico do alvo (você leu *aquele* oponente);
 penalidade é geral (você ficou desequilibrado).
 
-**O bônus acumulado é sempre de `actionSpeed`, nunca de acerto.** Disso emerge a mecânica de
+**O bônus do repelir e a penalidade do aparar são de `actionSpeed`, nunca de acerto.**
+
+⚠️ **Isso vale para o acúmulo do duelo, não é lei global do sistema.** Uma versão anterior
+generalizava para "todo bônus acumulado é de actionSpeed" — **falso**. Existem outras reservas
+com outra natureza; a da esquiva fechada é de esquiva. Cada modificador diz o que modifica.
+
+Disso emerge a mecânica de
 duelo sem ninguém programar duelo: dois personagens que se enfrentam aceleram um contra o
 outro e passam a trocar golpes mais rápido que o resto da batalha.
+
+### O tipo da reação é declarado, não inferido
+
+`Action.Bars()` deriva o custo de **quais componentes estão preenchidos**. Isso resolve as
+actions — mover, agir, ou os dois — e **não consegue expressar o catálogo de reações**:
+
+| Reação | Componentes | `Bars()` responde | Deveria responder |
+|---|---|---|---|
+| Escape padrão | `Dodge{Scape}` + `Move` | `[action, move]` | `[action, move]` ✔ |
+| Escape defensivo | `Dodge{Scape}` + `Move` | `[action, move]` | `[action, move]` ✔ |
+| Escape fechado | `Dodge{Scape}` + `Move` | `[action, move]` | `[move]` ❌ |
+| Esquiva fechada | `Dodge{Close}` | `[action]` | **vazio** ❌ |
+| Repelir | não existe campo | `[action]`, por vazio | `[action]` — por acidente |
+| Não fazer nada | nada | `[action]` | **vazio** ❌ |
+
+Os três escapes têm **exatamente a mesma forma** e custos diferentes. Nenhuma inferência sobre
+campos preenchidos separa os três, porque a informação que falta não está na forma — está na
+**intenção do jogador**. E intenção se declara.
+
+**Decisão: a reação carrega o seu tipo.**
+
+```go
+type ReactionKind string
+
+const (
+    ReactNothing      ReactionKind = "nothing"       // recusa até as passivas
+    ReactDodge        ReactionKind = "dodge"         // esquiva ativa — arriscar a rolagem
+    ReactClosedDodge  ReactionKind = "closedDodge"   // esquiva fechada
+    ReactEscape       ReactionKind = "escape"        // escape padrão
+    ReactEscapeGuard  ReactionKind = "escapeGuard"   // escape defensivo
+    ReactClosedEscape ReactionKind = "closedEscape"  // escape fechado
+    ReactRepel        ReactionKind = "repel"         // repelir
+)
+```
+
+`Action` ganha o campo. **Não é uma struct aninhada** e não é o discriminador de "isto é uma
+reação": esse já existe e é o `ReactToID`, que é `uuid.Nil` numa action. A regra de validação
+é o par — `ReactToID != Nil` exige `ReactionKind != ""`, e o contrário.
+
+Repelir ganha o componente que lhe falta, no mesmo formato da defesa:
+
+```go
+type Repel struct {
+    Weapon *enum.WeaponName
+    RollCheck
+}
+```
+
+**O custo sai do tipo, não da forma:**
+
+```go
+func (k ReactionKind) Bars() []Bar {
+    switch k {
+    case ReactRepel:                    return []Bar{BarAction}
+    case ReactClosedEscape:             return []Bar{BarMove}
+    case ReactEscape, ReactEscapeGuard: return []Bar{BarAction, BarMove}
+    default:                            return nil   // nothing, dodge, closedDodge
+    }
+}
+```
+
+E `Action.Bars()` ganha uma primeira porta: se há `ReactionKind`, é ela quem responde.
+
+⚠️ **A invariante "`Bars()` nunca é vazio" passa a valer só para actions agendadas.** Ela
+existia porque o escalonador precisa precificar toda action por alguma barra — e reação
+**não é agendada**: não entra na `activeQueue`, não é aberta por `OpenNextAction`. Vazio é a
+resposta *correta* para uma reação grátis. Nenhum caller quebra: os quatro do
+`RoundScheduler` só veem a fila, e o `recordActed` itera o slice — iterar vazio é no-op.
+
+**As passivas não são `ReactionKind`.** Esquiva por reflexo e defesa padrão não são enviadas
+por ninguém: são o que o motor aplica quando nada chega. Não precisam de tipo porque não têm
+remetente. `ReactNothing` existe justamente porque **recusar as passivas é um envio** — e a
+única forma de distinguir "não mandou" de "mandou nada" é ter recebido alguma coisa.
+
+**`enum.DodgeCategory` é absorvida.** Ela é hoje `{Evasive, Close, Scape}`, sem nenhum
+consumidor além do passthrough em `action_mapper.go`. É o mesmo eixo do `ReactionKind`, só que
+estritamente menos expressivo: `Scape` sozinho cobre os **três** escapes, que é exatamente a
+distinção que falta. Mapa da absorção — `Evasive → ReactDodge`, `Close → ReactClosedDodge`,
+`Scape → ReactEscape`; os outros dois escapes são novos. `Dodge` fica só com o `RollCheck`.
+
+> Manter as duas seria estado redundante que pode discordar de si mesmo. Estado assim sempre
+> discorda, mais cedo ou mais tarde.
+
+### O custo da reação na economia de barra
+
+Quatro perguntas, porque a reação não passa pela fila e a economia inteira foi escrita para
+quem passa.
+
+#### (a) Que velocidade a reação registra
+
+`AttachReaction` roda `rollActionDice` mas **não** roda `deriveSpeeds`: a reação rola dados e
+nunca vira número. Para as grátis, correto. Para as que cobram barra, não — `ResourceBar.Speeds`
+é a lista das velocidades que **agiram**, e é ela que a média divide pela contagem. Uma reação
+que cobra o preço sem registrar velocidade faria o personagem pagar por uma ação a mais do que
+a média enxerga.
+
+**Decisão:** reação que cobra barra passa por `deriveSpeeds` como qualquer action e registra a
+velocidade que **ela mesma** rolou, em cada barra que ela cobra. Reação grátis não deriva nada
+e não registra nada.
+
+#### (b) O porteiro NÃO se aplica à reação
+
+Os dois porteiros decidem **quem age dentro do round** — é escalonamento. Reação não é
+escalonada: ela acontece agora, em resposta, ou não acontece nunca. Não há "próximo round" para
+onde ela role.
+
+**Decisão: reação nunca é negada por falta de saldo.** Ela debita a barra e o personagem começa
+o round seguinte mais atrás. É a mesma regra da segunda ação — *"a ação acontece de qualquer
+jeito; o que a rolagem decide não é **se** você age, e sim quanto isso vai te custar depois"* —
+e evita a pior experiência possível de mesa: o sistema informar que você não tem permissão para
+se defender.
+
+> Derivada de uma regra já dada, não dada diretamente. Se estiver errada, o lugar de corrigir
+> é aqui.
+
+#### (c) Cobra-se no attach, não no open
+
+Action cobra no **open** porque uma action que nunca alcança o preço rola para o round seguinte
+intacta — o `Speeds` precisa significar "agiu de verdade". Reação não tem para onde rolar:
+ela existe dentro do turno em que foi anexada, e só.
+
+**Decisão: debita no attach.** Três razões que apontam para o mesmo lugar:
+
+1. É o momento em que a reação vira real — `AttachReaction` já chama `ResolveTurn` ali, e a
+   colisão é calculada ali.
+2. O princípio já está escrito: *"o cálculo é feito no momento que a action/reaction chega"*.
+3. Abrir uma reação é um evento de **narração**. Narrar não pode mexer em número.
+
+Consequência que fecha certo com a Fase 5: reação anexada e **nunca aberta** já pagou. É o
+comportamento que o diálogo de encerramento pressupõe — *ela entra no cálculo, mas perde o
+momento de narrar*.
+
+#### (d) A reação consome a action pendente da barra que ela cobra
+
+*"Reagir ativamente consome a ação que você tinha na fila"* — e consome mesmo: sai da
+`activeQueue`. Se ficasse, o personagem reagiria **e** ainda agiria, e a Desvantagem viraria
+punição pura, sem troca.
+
+**Qual, se houver várias:** a que **abriria primeiro para aquele personagem naquela barra** —
+a de melhor chave. É a que teve o momento gasto. O escalonador já sabe ordenar; a escolha não
+inventa critério novo.
+
+| Reação | Consome |
+|---|---|
+| Repelir | a próxima pendente na barra de **ação** |
+| Escape fechado | a próxima pendente na barra de **movimento** |
+| Escape padrão / defensivo | a próxima pendente **em cada** barra (ação combinada conta uma vez, e vai) |
+| Esquiva fechada, esquiva, não fazer nada, passivas | **nada** — é o desconto se pagando |
+
+Se não havia pendente, a reação **vira** a sua ação, sem Desvantagem. Se havia, a Desvantagem
+entra pelo `RollInput` (§ *Onde mora o viés de uma rolagem só*) — e note que Desvantagem é
+**modo de rolagem**, não `Amount`: `RollAttempts` já rola os dois conjuntos, e a Desvantagem só
+escolhe qual ler.
+
+#### Repelir que falha por 10 ou mais
+
+O escape abre mão explicitamente da rede de segurança. Repelir é a reação mais difícil e mais
+recompensadora do catálogo, e o degrau do aparar já entrega **dano zero** numa faixa em que a
+defesa entregaria dano reduzido.
+
+**Decisão: repelir também abre mão das passivas.** Se as passivas ainda valessem, o último
+degrau da escada quase nunca morderia — a defesa amaciaria toda falha grande, e a escada
+deixaria de ser uma escolha de risco. Você comprometeu a arma com o golpe que vinha; não está
+também se abaixando.
+
+> Também derivada, e a mais discutível das quatro. É uma regra de jogo, não de código.
+
+#### O timer de reação não precisa de relógio na Fase 4
+
+O padrão é **desligado**, e o comportamento no estouro é exatamente o de um caminho que já
+existe: o mestre encerra o turno sem reação anexada, e o motor aplica os padrões.
+
+**Decisão: a Fase 4 guarda o número na regra de partida e não implementa relógio nenhum.** Com
+o timer desligado, **encerrar o turno *é* o estouro**. A contagem visível é do front (Fase 6);
+se um dia o servidor precisar forçar, ele força chamando o mesmo encerramento.
+
+### O que a Fase 4 precisa consertar em código já escrito
+
+| Onde | O quê |
+|---|---|
+| `match.Scope` | só tem `end_of_turn` / `end_of_round`. Um bônus criado no turno N com `end_of_turn` morre no fim do **próprio** N — e o bônus do repelir vale **no próximo turno**. Falta o degrau. |
+| `CharacterStatus.ExpireModifiers` | **não tem caller nenhum**. Nada expira hoje. Precisa ser ligado no fechamento de turno e de round. |
+| `Modifier` | ganha `Applies Dimension`, e `AgainstID *uuid.UUID` vira `Against Scope` com três formas — todos / apenas X / **todos menos X** (§ *Modificadores*). |
+| `RollInput.Ledger` (comentário) | ainda afirma que o acumulado *"is always an actionSpeed adjustment, never a hit adjustment"*. Era a invariante generalizada demais. Quem decide a dimensão passa a ser `Modifier.Applies`, não o caller. |
 
 ## Visibilidade
 
@@ -555,7 +822,7 @@ sorte.
 ### A colisão, na ordem das regras
 
 1. **Acerto** — teste ativo do atacante, derivado dos dados que já caíram. O `ModifierLedger`
-   entra como `nil` aqui: a diferença acumulada é sempre de actionSpeed, nunca de acerto.
+   entra como `nil` aqui: a diferença acumulada do duelo modifica `actionSpeed`, não o acerto.
 2. **Esquiva por reflexo** — passiva (`Reflexo + valor médio`), grátis, automática.
 3. **Defesa** — só se a esquiva falhar, com CD um degrau menor que o ataque.
 4. **Dano** — §4.7 do spec de design.
