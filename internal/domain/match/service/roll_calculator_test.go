@@ -177,6 +177,7 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 		out := calc.Derive(rules, both, service.RollInput{
 			Condition: &action.RollCondition{Bias: 1},
 			Ledger:    &ledger,
+			Dimension: match.DimActionSpeed,
 		})
 		if out.Bias != 0 {
 			t.Errorf("expected the biases to cancel out, got %d", out.Bias)
@@ -194,6 +195,7 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 		out := calc.Derive(rules, both, service.RollInput{
 			Condition: &action.RollCondition{Bias: 1},
 			Ledger:    &ledger,
+			Dimension: match.DimActionSpeed,
 		})
 		if out.Bias != -1 {
 			t.Errorf("expected net bias -1, got %d", out.Bias)
@@ -233,6 +235,7 @@ func TestRollCalculator_Derive_Modifiers(t *testing.T) {
 			SkillValue: 10,
 			Condition:  &action.RollCondition{Modifier: 3, Description: "creative move"},
 			Ledger:     &ledger,
+			Dimension:  match.DimActionSpeed,
 			AgainstID:  &enemy,
 		})
 		if out.Modifier != 6 { // 3 master + 5 targeted − 2 general
@@ -247,6 +250,7 @@ func TestRollCalculator_Derive_Modifiers(t *testing.T) {
 		out := calc.Derive(rules, attempts([]int{4, 6}, nil), service.RollInput{
 			SkillValue: 10,
 			Ledger:     &ledger,
+			Dimension:  match.DimActionSpeed,
 			AgainstID:  &other,
 		})
 		if out.Modifier != -2 {
@@ -318,4 +322,66 @@ func TestRollCalculator_Derive_DiceDoesNotAliasAttempts(t *testing.T) {
 	if a.Primary[0] != 8 {
 		t.Errorf("expected attempts.Primary to be unaffected by mutating out.Dice, got %d", a.Primary[0])
 	}
+}
+
+func TestDerive_ThreeBiasOrigins(t *testing.T) {
+	rules := match.NewDefaultMatchRules()
+	// Primary sums 6, Secondary sums 14. Advantage reads Secondary, disadvantage Primary.
+	attempts := action.RollAttempts{Primary: []int{4, 2}, Secondary: []int{9, 5}}
+
+	t.Run("the system's situational bias reads the worse set on its own", func(t *testing.T) {
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, SystemBias: -1, Dimension: match.DimActionSpeed,
+		})
+		if out.DiceTotal != 6 {
+			t.Errorf("DiceTotal = %d, want 6 — disadvantage reads Primary", out.DiceTotal)
+		}
+		if out.Bias != -1 {
+			t.Errorf("Bias = %d, want -1", out.Bias)
+		}
+	})
+
+	t.Run("the master can cancel the system's disadvantage without overwriting it", func(t *testing.T) {
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3,
+			SystemBias: -1,
+			Condition:  &action.RollCondition{Bias: 1},
+			Dimension:  match.DimActionSpeed,
+		})
+		if out.Bias != 0 {
+			t.Errorf("Bias = %d, want 0 — the two cancel, neither is lost", out.Bias)
+		}
+		if out.DiceTotal != 6 {
+			t.Errorf("DiceTotal = %d, want 6 — a neutral bias reads Primary", out.DiceTotal)
+		}
+	})
+
+	t.Run("all three origins sum", func(t *testing.T) {
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Bias: 1, Applies: match.DimActionSpeed, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3,
+			SystemBias: -1,
+			Condition:  &action.RollCondition{Bias: 1},
+			Ledger:     &ledger,
+			Dimension:  match.DimActionSpeed,
+		})
+		if out.Bias != 1 {
+			t.Errorf("Bias = %d, want 1 (master +1, system -1, ledger +1)", out.Bias)
+		}
+		if out.DiceTotal != 14 {
+			t.Errorf("DiceTotal = %d, want 14 — a net advantage reads Secondary", out.DiceTotal)
+		}
+	})
+
+	t.Run("the ledger is read on the caller's dimension, not on everything it holds", func(t *testing.T) {
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Amount: 5, Applies: match.DimDodge, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, Ledger: &ledger, Dimension: match.DimActionSpeed,
+		})
+		if out.Modifier != 0 {
+			t.Errorf("Modifier = %d, want 0 — a dodge reserve does not move actionSpeed", out.Modifier)
+		}
+	})
 }

@@ -555,6 +555,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action) {
 		Passive:    s.activeRound.GetMode() != enum.Race,
 		Condition:  a.Speed.Context.Condition,
 		Ledger:     ledger,
+		Dimension:  match.DimActionSpeed,
 	}).Total
 
 	if a.Move == nil {
