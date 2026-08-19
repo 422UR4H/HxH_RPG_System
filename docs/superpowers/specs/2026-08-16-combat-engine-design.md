@@ -586,7 +586,9 @@ inversa produz resultado diferente de forma verificável** — com as rolagens i
 - Tabela `SystemData` — auditoria de toda interferência do mestre.
 
 > `CloseRoundUC` e `round_closed` **saíram daqui** — foram para a Fase 3, que precisa deles
-> para fechar o round quando as barras acabam. `Abrir reaction` foi para a Fase 4.
+> para fechar o round quando nenhuma action pendente passa no porteiro que lhe cabe — não
+> "quando as barras acabam" (`docs/dev/match/combat-engine.md` é a fonte para o predicado
+> exato). `Abrir reaction` foi para a Fase 4.
 
 **Pronto quando:**
 - **Dois clients WS** conectados como jogadores diferentes recebem, para o mesmo turno,

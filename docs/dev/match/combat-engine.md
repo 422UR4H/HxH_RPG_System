@@ -690,17 +690,31 @@ barra. **Nada que identifique a ação em si** entra no payload: sem ID de açã
 perícia. Isso é o que sustenta "a fila é secreta; a barra e a ordem são públicas" — um jogador
 sem visão da barra geral só descobre que era a vez dele depois que passou.
 
-### Um gotcha de teste: `rollActionDice` rola tudo
+### Um gotcha de teste: `rollActionDice` rola quase tudo, mas não é uniforme
 
-`MatchSession.rollActionDice` sorteia **todo teste que a action carrega** na chegada —
-velocidade, acerto, dano da arma, o que houver — não só a velocidade da action. Um teste que
-usa uma fonte de dados roteirizada precisa contar cada um desses sorteios, na ordem certa; foi
-achado instrumentando a fonte depois que um teste passou com um número que só batia por
-coincidência. Do outro lado, um teste **passivo não pode consumir dado nenhum** — um sorteio
-fantasma é inofensivo em produção e venenoso em teste: drena a fonte roteirizada e desloca todo
-número que vem depois. É por isso que `Shift` (`Move.Category == enum.Shift`) pula o sorteio
-da própria velocidade — ela é passiva por definição, e testá-la mesmo assim quebraria qualquer
-script de dados a partir dali.
+`MatchSession.rollActionDice` sorteia, na chegada, todo teste que a action carrega — mas
+**quantos dados caem depende do regime do round e da categoria de movimento**, não é "tudo,
+sempre":
+
+- **`Speed` (actionSpeed) só rola em `Race`.** Em `Free` ela é passiva — não há disputa sobre
+  quem age primeiro, então não há o que rolar — e nenhum dado cai para ela
+  (`match_session.go:590-594`). Um teste em `Free` que reserva uma face para a velocidade
+  sorteia uma a mais do que o código consome, e todo número depois dela sai deslocado.
+- **Feint, cada `Skill`, `Move.Charge`, `Attack.Hit`, `Attack.Charge` e o dano da arma**
+  (a outra família de rolagem — os dados da própria arma, só `Primary`, sem vantagem) rolam
+  **incondicionalmente**, em qualquer regime, sempre que o campo correspondente existe na
+  action.
+- **`Move.Speed` rola sempre, exceto em `Shift`** — decidido por `Move.Category`, não pelo
+  round: `Dash` rola, `Shift` toma o valor passivo e não consome dado nenhum.
+
+Um teste com fonte de dados roteirizada precisa contar exatamente esses sorteios, na ordem
+certa, para o regime e a categoria de movimento da action em questão; foi achado instrumentando
+a fonte depois que um teste passou com um número que só batia por coincidência. Do outro lado,
+um teste **passivo não pode consumir dado nenhum** — um sorteio fantasma é inofensivo em
+produção e venenoso em teste: drena a fonte roteirizada e desloca todo número que vem depois. É
+por isso que tanto `Speed` em `Free` quanto `Move.Speed` em `Shift` pulam o sorteio — ambas são
+passivas por definição, e testá-las mesmo assim quebraria qualquer script de dados a partir
+dali.
 
 ## Pendências estruturais
 
