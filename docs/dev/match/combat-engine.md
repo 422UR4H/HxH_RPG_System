@@ -700,10 +700,11 @@ sempre":
   quem age primeiro, então não há o que rolar — e nenhum dado cai para ela
   (`match_session.go:590-594`). Um teste em `Free` que reserva uma face para a velocidade
   sorteia uma a mais do que o código consome, e todo número depois dela sai deslocado.
-- **Feint, cada `Skill`, `Move.Charge`, `Attack.Hit`, `Attack.Charge` e o dano da arma**
-  (a outra família de rolagem — os dados da própria arma, só `Primary`, sem vantagem) rolam
-  **incondicionalmente**, em qualquer regime, sempre que o campo correspondente existe na
-  action.
+- **`Feint`, cada `Skill`, `Move.Charge`, `Defense`, `Dodge`, `Attack.Hit`, `Attack.Charge` e
+  o dano da arma** (a outra família de rolagem — os dados da própria arma, só `Primary`, sem
+  vantagem) rolam **sempre que o campo correspondente existe na action**, em qualquer regime —
+  nenhum deles depende de `Race`/`Free` nem de categoria de movimento. Uma action sem
+  `Defense`, por exemplo, não sorteia nada por `Defense`; uma que o carrega, sorteia sempre.
 - **`Move.Speed` rola sempre, exceto em `Shift`** — decidido por `Move.Category`, não pelo
   round: `Dash` rola, `Shift` toma o valor passivo e não consome dado nenhum.
 
