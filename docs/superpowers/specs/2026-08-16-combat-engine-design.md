@@ -555,7 +555,26 @@ carry-over enquanto o `Race` não estiver ligado.
 **Fora de escopo:** posturas; encerramento explícito de turno e projeção por destinatário
 (Fase 5).
 
-⛔ **Bloqueada** pelo rostering de NPCs — ver §7.
+**A Fase 4 roda com personagens de jogador.** O critério de pronto — três alvos reagindo
+diferente — é alcançável com três PCs. O que o rostering de NPCs trava é **o mestre enviar
+ação de NPC**, que não é objetivo desta fase. Fatia própria, antes da Fase 5.
+
+### Onde mora o viés de uma rolagem só
+
+A Desvantagem da conversão action→reaction **não vai para o `ModifierLedger`**. O ledger é do
+personagem e vale até expirar — jogá-la lá aplicaria desvantagem a **todas** as rolagens de
+actionSpeed dele, não só à conversão. E `RollCondition.Bias` é exclusivo do mestre (§4.4).
+
+Falta o terceiro lugar, e ele é o mais óbvio: **o viés de uma rolagem só mora na própria
+rolagem.** `RollInput` ganha um campo de viés de origem sistêmica, somado junto com o do
+mestre e o do ledger no momento de derivar. Três origens, três lugares, nenhuma
+sobrescrevendo a outra:
+
+| Origem | Onde mora | Alcance |
+|---|---|---|
+| Mestre | `RollCondition.Bias` | aquela rolagem |
+| Sistema, situacional | **`RollInput`** ← novo | aquela rolagem |
+| Sistema, acumulado | `ModifierLedger` | até expirar |
 
 **Pronto quando:** teste de integração cobre um ataque em área com três alvos reagindo
 diferente (um reaction ativa, um "não fazer nada", um sem resposta), e **abrir na ordem
