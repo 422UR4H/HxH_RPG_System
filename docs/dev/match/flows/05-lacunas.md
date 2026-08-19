@@ -44,13 +44,14 @@ As duas fricções que a Fase 1 contornou foram enfrentadas:
 - **`RollContext.GetDiceResult(d die.Die)` ignora o parâmetro `d`.** Continua como está e
   **segue sem chamador**: o motor lê `RollCheck.Attempts`, não `RollContext`.
 
-## 2. A fila de prioridade não tem prioridade
+## 2. ✅ A fila de prioridade tem prioridade (Fase 3)
 
-`PriorityQueue.Less` compara `Action.Speed.Result`. Mas `buildAction` (`action_mapper.go:38`)
-passa `action.ActionSpeed{}` literal — `ActionSpeedPayload` chega do cliente e é descartado.
-Resultado: **toda ação entra com `Speed.Result == 0`** e o heap devolve ordem arbitrária.
-
-O `open_next_action` do mestre funciona, mas "a mais rápida primeiro" ainda não é verdade.
+`buildAction` já preenchia `ActionSpeedPayload` desde a Fase 2, mas o motor não tinha onde
+pendurar a ordenação real: a Fase 3 trocou o heap por uma `PriorityQueue` em lista simples e
+moveu a chave para `service.RoundScheduler`, que a calcula na hora da seleção a partir da
+economia de barras (`service.BarEconomy`) — a chave é estado do personagem, não da action, e
+um heap não re-chaveia item já inserido. Ver `combat-engine.md` § "A chave não mora na
+action".
 
 ## 3. ✅ `TurnResolver`: o ramo `character` (Fase 2)
 
@@ -85,12 +86,14 @@ O mapper **não rola**: os dados caem na sessão, depois que a action é aceita.
 
 `buildMasterAction` continua ignorando `Move` e `Attack` — segue **deferred to Phase 4**.
 
-## 5. Iniciativa e modo `Race` não estão ligados
+## 5. ✅ `Race` alcançável; iniciativa continua fora (Fase 3, parcial)
 
-`RoundOrchestrator.ChangeMode(r, initiative)` **ignora o parâmetro `initiative`** e só faz
-`r.ToggleMode()`. Nenhum UC e nenhuma mensagem WS chamam esse método. A entidade
-`action.Initiative` tem `targetID` e `skills` privados, sem construtor. Ou seja:
-`enum.Race` existe como valor, mas não há caminho para entrar nele.
+`RoundOrchestrator.ChangeMode(r, initiative)` continua ignorando o parâmetro `initiative` —
+isso não mudou. O que mudou é que agora existe um caminho **sem** iniciativa:
+`ChangeRoundModeUC` (`application/match/change_round_mode.go`), acionado pela mensagem WS
+`change_round_mode`, troca o regime do round ativo, restrito ao mestre. A entidade
+`action.Initiative` segue órfã, sem construtor, e nenhum UC ou mensagem WS a usa — a regra de
+jogo que normalmente forçaria `Race` (iniciativa) continua sendo fatia futura.
 
 ## 6. `CharacterStatus` virou código, mas ainda não é consumido
 
@@ -116,11 +119,15 @@ deu forma ao struct.
 
 ## 7. Buracos no ciclo do round
 
-- **`CloseRoundUC` não está plugado em nada.** Não há `MsgTypeCloseRound`, nem campo no `Room`,
-  nem construtor chamado. O round só termina indiretamente, via `change_scene`.
-- **`MsgTypeRoundClosed` está declarado e nunca é emitido.**
+- ~~**`CloseRoundUC` não está plugado em nada.** Não há `MsgTypeCloseRound`, nem campo no
+  `Room`, nem construtor chamado. O round só termina indiretamente, via `change_scene`.~~ ✅
+  Resolvido na Fase 3: o fechamento automático em `open_next_action.go` o chama quando
+  `RoundScheduler.AnyEligible` nega. Ver `combat-engine.md` § "O round fecha sozinho".
+- ~~**`MsgTypeRoundClosed` está declarado e nunca é emitido.**~~ ✅ Resolvido na Fase 3: sai de
+  `room.go` no mesmo caminho de auto-fechamento.
 - **`MatchSession.CloseTurn()`** existe e nenhuma rota a chama (fechar turno acontece
-  implicitamente dentro de `OpenNextAction`/`PullAction`).
+  implicitamente dentro de `OpenNextAction`/`PullAction`). Continua em aberto — o encerramento
+  **explícito** de turno é da Fase 5.
 
 ## 8. Visibilidade da resolução
 
@@ -183,6 +190,8 @@ resolver:
 
 O ciclo **Scene → Round → Turn → Action/Reaction** está completo e testado, e desde a Fase 2
 o **motor que transforma isso em números** atravessa inteiro: `RollCalculator` →
-`TurnResolver` → `Blow` → dano na ficha. O que falta agora não é o vão, são as camadas em
-cima dele — a economia das barras (Fase 3), as reações ativas e a cadeia com vários alvos
-(Fase 4), a regência e a visibilidade por destinatário (Fase 5), e o front (Fase 6).
+`TurnResolver` → `Blow` → dano na ficha. Desde a Fase 3, a **economia das barras** também
+atravessa inteira: preço por barra, porteiro duplo, chave calculada na hora, fechamento
+automático do round. O que falta agora não é o vão, são as camadas em cima dele — as reações
+ativas e a cadeia com vários alvos (Fase 4), a regência e a visibilidade por destinatário
+(Fase 5), e o front (Fase 6).

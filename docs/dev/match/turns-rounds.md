@@ -76,3 +76,39 @@ Erro adicional: `ErrCloseRoundTriggeredCantBeNil`.
 | `round/round.go`     | Struct `Round` (mode, turns)                      |
 | `round/engine.go`    | `Engine` novo (preparedActions, CloseRound)       |
 | `round/error.go`     | `ErrCloseRoundTriggeredCantBeNil`                 |
+
+## Fase 3 — economia por barra e fechamento automático do round
+
+> O ciclo Round/Turn que roda hoje vive em `service.RoundOrchestrator` e
+> `matchsession.MatchSession`, não nos `Engine`s descritos acima — a Fase 3 não mexeu nessa
+> dívida de nomenclatura. O que ela acrescentou foi a economia que faltava para o round fechar
+> sozinho. Detalhamento completo em
+> [`combat-engine.md`](../combat-engine.md#o-que-a-fase-3-fixou-no-motor) § "O que a Fase 3
+> fixou no motor"; aqui só o que muda no ciclo Round/Turn em si.
+
+### Preço por barra
+
+`Round.prices` substitui o antigo campo único `coast` mencionado nas tabelas acima: é um preço
+por `action.Bar` (`action`/`move`), congelado por `RoundScheduler.FreezePrices` na primeira
+seleção que vê trabalho pendente naquela barra, e nunca mais alterado no round corrente.
+
+### Fechamento automático
+
+`MatchSession.OpenNextAction` consulta `RoundScheduler.SelectNext` a cada chamada. Quando
+nada pendente passa no porteiro que lhe cabe, a resposta vem com
+`TurnTransition.RoundExhausted = true`, e `OpenNextActionUC`
+(`internal/application/match/open_next_action.go`) chama `CloseRoundUC` na hora — o primeiro
+chamador que esse use case ganha. O round não depende mais só do caminho indireto via
+`change_scene`.
+
+### Duas mensagens WS novas
+
+- **`round_mode_changed`** — broadcast em resposta a `change_round_mode` (o mestre pede a
+  troca de regime; `RoundModeChangedPayload` avisa a mesa inteira do novo `mode`).
+- **`bars_updated`** — broadcast depois de qualquer operação que mexe nas barras
+  (`open_next_action`, `pull_action`, `change_round_mode`): preços congelados, saldo e
+  velocidades já registradas de cada personagem, e a ordem projetada. Nada que identifique a
+  ação em si.
+
+`round_closed` já existia declarado desde a Fase 2 (ver `flows/05-lacunas.md` §7) e **passa a
+ser emitido de fato** no fechamento automático descrito acima.

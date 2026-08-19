@@ -397,6 +397,10 @@ visível no browser.**
 
 ### Fase 3 — A economia do turno
 
+> ✅ **Implementada** (2026-08-18). O comportamento final — incluindo os pontos que
+> divergiram deste plano — está registrado em `docs/dev/match/combat-engine.md` § "O que a
+> Fase 3 fixou no motor", que passa a ser a fonte de verdade a partir de agora.
+
 **Objetivo:** o turno vira dinâmico.
 
 **Escopo:**
@@ -436,9 +440,13 @@ visível no browser.**
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
   retroativa**.
 - **`RoundMode.Race` alcançável**: o regime existe e pode ser ligado. Ver a nota abaixo.
-- **Fim de round quando as barras acabam** — e portanto **`CloseRoundUC` plugado aqui**, não
-  na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a fase não entrega o
-  próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e nunca enviado).
+- **Fim de round quando nenhuma action pendente passa no porteiro que lhe cabe** — não
+  "quando as barras acabam" (a barra não zera; termina em qualquer valor, débito incluso).
+  `docs/dev/match/combat-engine.md` é a fonte para o predicado exato; qualquer divergência
+  resolve-se por lá, como já vale para as ações compostas. E portanto **`CloseRoundUC`
+  plugado aqui**, não na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a
+  fase não entrega o próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e
+  nunca enviado).
 - Ações compostas: **uma action só**, com `Move` e `Attack` preenchidos, que **cobra as duas
   barras** e acontece **no tempo da mais lenta** (`min` das duas chaves). Não se divide em duas
   actions e não abre dois turnos. Forma exata em `combat-engine.md` § Ações compostas, que é a
@@ -517,7 +525,9 @@ carry-over enquanto o `Race` não estiver ligado.
   reproduz a ordem `p2 → p1 → p3 → p2` e os saldos `+9 / 0 / −2` em teste automatizado, com
   **as rolagens injetadas** (ver o seam da Fase 2) — um teste de economia não pode depender
   de sorte.
-- Um round fecha sozinho quando as barras acabam, e `round_closed` chega aos clients.
+- Um round fecha sozinho quando nenhuma action pendente passa no porteiro que lhe cabe — não
+  "quando as barras acabam" (`docs/dev/match/combat-engine.md` § "Quando o round fecha" é a
+  fonte) —, e `round_closed` chega aos clients.
 
 ---
 

@@ -4,9 +4,10 @@
 > dono do produto e as pontas soltas, em
 > [`docs/superpowers/specs/2026-08-14-action-flow-design-notes.md`](../../superpowers/specs/2026-08-14-action-flow-design-notes.md).
 >
-> **Fase 1 implementada** (`RollCalculator`, `CharacterStatus`, `MatchRules`, chaveamento
-> por personagem). O restante — colisão, barras, reações, regência — ainda não existe.
-> Ver [`flows/05-lacunas.md`](flows/05-lacunas.md).
+> **Fases 1 a 3 implementadas** (`RollCalculator`, `CharacterStatus`, `MatchRules`, colisão de
+> personagem, as duas barras com preço/média/porteiro duplo e o fechamento automático do
+> round). Reações ativas, cadeia com vários alvos, regência da mesa e projeção por
+> destinatário ainda não existem. Ver [`flows/05-lacunas.md`](flows/05-lacunas.md).
 
 ## Princípios
 
@@ -588,6 +589,119 @@ o mesmo ID que a peça do tabuleiro carrega como `CharacterID` e o mesmo que um 
 carrega. `ActionPayload.actorId` é obrigatório no wire. A autorização continua por jogador:
 `EnqueueAction` verifica `charToPlayer[actorCharID] == playerUUID`.
 
+## O que a Fase 3 fixou no motor
+
+### A chave não mora na action
+
+`PriorityQueue` deixou de ser heap — `entity/action/priority_queue.go` agora é uma lista
+simples, em ordem de inserção. A razão é estrutural, não de gosto: a chave de uma ação
+pendente,
+
+```
+carry + média(velocidades até n) − (n−1) × preço
+```
+
+é estado do **personagem**, não da action, e se move toda vez que esse personagem manda outra
+ação — a média do round desliza sob ela. Um heap não sabe re-chavear um item que já guarda;
+continuaria devolvendo uma ordem obsoleta, em silêncio. Por isso a chave passa a ser calculada
+**na hora da seleção**, por `service.RoundScheduler` (`round_scheduler.go`, privados
+`keyOf`/`keyOnBar`) — nunca guardada. Com 4 a 6 personagens numa mesa, varrer a lista custa
+menos que manter o heap, e `ExtractByID` já varria linearmente desde sempre.
+
+### Os dois porteiros em código
+
+`service.BarEconomy.IsEligible` (`bar_economy.go`) é literalmente os dois porteiros da seção
+"Quem pode agir" acima: primeira ação do personagem no round mede a **barra** contra o preço
+(`carry + rolagem ≥ preço`); segunda em diante mede o **troco** das que já agiram
+(`Balance(...) ≥ preço`). `BarEconomy.Key` é a chave — ordena, nunca decide se a ação
+acontece. Os dois vivem separados no código exatamente como vivem separados na regra: nada
+chama `Key` para decidir elegibilidade, nem `IsEligible` para decidir ordem.
+
+### Onde o preço mora
+
+`Round.prices` (`entity/round/round.go`) substituiu o antigo campo único `coast` por um mapa
+`action.Bar → int`, um preço por barra. `RoundScheduler.FreezePrices` o congela na primeira
+seleção que enxerga trabalho pendente **naquela barra** — não no round inteiro — e
+`Round.FreezePrice` é idempotente: a primeira chamada vence, toda chamada seguinte é
+ignorada. Uma barra ausente do mapa ainda não precificou; é também a leitura constante de um
+round `Free`, que não tem preço nenhum.
+
+### `Speeds` são as que agiram
+
+`MatchSession.recordActed` grava a velocidade de uma ação em cada barra que ela cobrou, mas só
+quando a ação **abre** (dentro de `OpenNextAction`/`PullAction`) — nunca quando ela chega à
+fila. `deriveSpeeds`, chamado por `EnqueueAction`, só calcula o número da velocidade; não o
+registra em `ResourceBar.Speeds`. Essa separação é o que compra a regra "action atrasada ainda
+age inteira": uma ação que nunca alcançou o preço nunca entrou em `acted`, então não há nada
+para desfazer quando ela rola para o round seguinte — ela simplesmente carrega o valor que já
+tinha.
+
+### A média não trunca
+
+`BarEconomy.Mean` — uma função, sem `math.Floor` nem divisão inteira — devolve
+`float64(soma)/float64(n)` e guarda a fração. Truncar seria escolher uma política de
+arredondamento que a regra nunca pediu, e o erro se acumularia round a round pelo carry; o
+exemplo canônico continua fechando em número inteiro exato porque os números do exemplo foram
+escolhidos para isso, não porque o código arredonda.
+
+### A ação combinada é UMA action, na prática
+
+O desenho já registrado em "Ações compostas" acima chegou ao código sem desvio: `action.Bars()`
+(`entity/action/bar.go`) devolve as duas barras quando a action carrega `Move` e algo que cobra
+a barra de ação; `SpeedOn(bar)` devolve a velocidade certa para cada uma, sem re-rolar nada; e
+`RoundScheduler.keyOf` agenda pelo `min` das duas chaves, gatilhando o porteiro **das duas
+barras** — não só uma. O mestre abre uma vez, é um turno só, e a versão descartada com duas
+resoluções e aresta de dependência entre metades não foi construída: a modelagem inteira
+pressupõe uma `Action`, e não haveria onde pendurar uma segunda resolução sem duas entradas na
+fila — o que a tabela `actions`, chaveada pelo UUID da action, não comporta de graça.
+
+### `Race` é alcançável
+
+`ChangeRoundModeUC` (`application/match/change_round_mode.go`) troca o regime do round ativo
+via `MatchSession.SetRoundMode` → `Round.SetMode`, restrito ao mestre (`ErrNotMatchMaster`
+para qualquer outro chamador). Trocar no meio do round é permitido de propósito: a economia
+simplesmente recomeça a contar dali — ninguém "já agiu" do ponto de vista das barras, e os
+preços congelam na próxima seleção. **Iniciativa continua de fora**: é a regra de jogo que
+normalmente forçaria `Race`, e fica para uma fatia futura; esta fase só entrega o regime em
+si, ligável pelo mestre.
+
+### O round fecha sozinho
+
+O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem". Quando
+nenhuma ação pendente passa no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca
+`TurnTransition.RoundExhausted = true` em vez de abrir algo, e é aí que `CloseRoundUC`
+finalmente ganha um chamador: o caminho de auto-fechamento em
+`application/match/open_next_action.go` o executa na hora, loga e segue adiante se falhar — a
+mesa não pode ficar sem o bastão por causa de uma falha de fechamento. `bars_updated` e
+`round_closed` saem de `room.go` nessa mesma passada.
+
+⚠️ **`ProjectOrder` e `SelectNext` compartilham o desempate.** Os dois usam "quem entrou
+primeiro vence o empate" — `SelectNext` só troca o melhor quando a chave é **estritamente**
+maior; `ProjectOrder` ordena com `sort.SliceStable`. Divergir os dois faria a barra geral
+mostrar uma ordem que a mesa depois não vê acontecer.
+
+### As barras são públicas
+
+`bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é broadcast, não
+projeção por destinatário: carrega os preços congelados, o saldo e o histórico de velocidades
+de cada personagem em ambas as barras, e a ordem projetada
+(`MatchSession.ProjectedOrder`/`RoundScheduler.ProjectOrder`) — quem age a seguir e em qual
+barra. **Nada que identifique a ação em si** entra no payload: sem ID de ação, arma, alvo ou
+perícia. Isso é o que sustenta "a fila é secreta; a barra e a ordem são públicas" — um jogador
+sem visão da barra geral só descobre que era a vez dele depois que passou.
+
+### Um gotcha de teste: `rollActionDice` rola tudo
+
+`MatchSession.rollActionDice` sorteia **todo teste que a action carrega** na chegada —
+velocidade, acerto, dano da arma, o que houver — não só a velocidade da action. Um teste que
+usa uma fonte de dados roteirizada precisa contar cada um desses sorteios, na ordem certa; foi
+achado instrumentando a fonte depois que um teste passou com um número que só batia por
+coincidência. Do outro lado, um teste **passivo não pode consumir dado nenhum** — um sorteio
+fantasma é inofensivo em produção e venenoso em teste: drena a fonte roteirizada e desloca todo
+número que vem depois. É por isso que `Shift` (`Move.Category == enum.Shift`) pula o sorteio
+da própria velocidade — ela é passiva por definição, e testá-la mesmo assim quebraria qualquer
+script de dados a partir dali.
+
 ## Pendências estruturais
 
 | Item | Situação |
@@ -604,3 +718,8 @@ carrega. `ActionPayload.actorId` é obrigatório no wire. A autorização contin
 | Tela de enviar action | **não existe no front** — Fase 6 |
 | Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. A Fase 4 liga o repelir |
 | Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars` |
+| `PriorityQueue` | ✅ Fase 3 — deixou de ser heap; virou lista simples, chave calculada em `RoundScheduler` na hora da seleção |
+| `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
+| Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
+| `RoundMode.Race` | ✅ Fase 3 — alcançável via `ChangeRoundModeUC`/`change_round_mode`, master only. Iniciativa continua fora — `action.Initiative` segue órfão |
+| `bars_updated` | ✅ Fase 3 — broadcast com preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |
