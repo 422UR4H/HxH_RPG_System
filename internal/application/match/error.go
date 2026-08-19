@@ -18,4 +18,5 @@ var (
 	ErrMatchAlreadyStarted  = domain.NewValidationError(errors.New("match has already started"))
 	ErrMatchAlreadyFinished = domain.NewValidationError(errors.New("match has already finished"))
 	ErrNotMatchMaster       = domain.NewValidationError(errors.New("user is not the match master"))
+	ErrInvalidRoundMode     = errors.New("round mode must be Free or Race")
 )

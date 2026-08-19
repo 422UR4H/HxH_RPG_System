@@ -99,6 +99,7 @@ type Room struct {
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
+	changeRoundModeUC     appmatch.IChangeRoundMode
 }
 
 func NewRoom(
@@ -113,6 +114,7 @@ func NewRoom(
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
+	changeRoundModeUC appmatch.IChangeRoundMode,
 ) *Room {
 	return &Room{
 		matchUUID:             matchUUID,
@@ -136,6 +138,7 @@ func NewRoom(
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
+		changeRoundModeUC:     changeRoundModeUC,
 	}
 }
 
@@ -525,6 +528,39 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
 			))
 		}
+
+	case MsgTypeChangeRoundMode:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload ChangeRoundModePayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_round_mode payload"))
+			return
+		}
+		// Write lock across Execute — the regime decides how every later selection is scored.
+		r.mu.Lock()
+		session := r.session
+		var err error
+		if session != nil {
+			err = r.changeRoundModeUC.Execute(
+				context.Background(), session, r.masterUUID, client.userUUID,
+				enum.RoundMode(payload.Mode),
+			)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		out := NewServerMessage(MsgTypeRoundModeChanged, RoundModeChangedPayload{Mode: payload.Mode})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
 
 	case MsgTypePullAction:
 		if !r.IsMaster(client.userUUID) {

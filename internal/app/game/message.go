@@ -49,9 +49,11 @@ const (
 
 	// Client → Server (master actions)
 	MsgTypeEnqueueMasterAction MessageType = "enqueue_master_action"
+	MsgTypeChangeRoundMode     MessageType = "change_round_mode"
 
 	// Server → Client
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
+	MsgTypeRoundModeChanged     MessageType = "round_mode_changed"
 
 	// Server → Client (lobby lifecycle)
 	MsgTypeLobbyClosed MessageType = "lobby_closed" // master cancelled the lobby
@@ -353,6 +355,17 @@ type MasterActionEnqueuedPayload struct {
 	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
+}
+
+// ChangeRoundModePayload asks to switch the round regime. Master only.
+type ChangeRoundModePayload struct {
+	Mode string `json:"mode"` // "Free" | "Race"
+}
+
+// RoundModeChangedPayload announces the new regime to the whole table. The regime is public:
+// everyone needs to know whether the bars are running.
+type RoundModeChangedPayload struct {
+	Mode string `json:"mode"`
 }
 
 // WallStateChangedPayload is broadcast to all clients when a wall's open/locked state changes.

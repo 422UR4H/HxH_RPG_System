@@ -46,6 +46,7 @@ type Handler struct {
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
+	changeRoundModeUC     appmatch.IChangeRoundMode
 }
 
 func NewHandler(
@@ -62,6 +63,7 @@ func NewHandler(
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
+	changeRoundModeUC appmatch.IChangeRoundMode,
 ) *Handler {
 	return &Handler{
 		hub:                   hub,
@@ -77,6 +79,7 @@ func NewHandler(
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
+		changeRoundModeUC:     changeRoundModeUC,
 	}
 }
 
@@ -163,6 +166,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		h.initSessionUC, h.openNextActionUC, h.pullActionUC,
 		h.enqueueActionUC, h.attachReactionUC,
 		h.changeSceneUC, h.roundRepo, h.enqueueMasterActionUC,
+		h.changeRoundModeUC,
 	)
 
 	// After a backend restart the Room is freshly created with nil session.

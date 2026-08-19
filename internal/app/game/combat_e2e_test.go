@@ -138,6 +138,7 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		&mockChangeSceneUCHandler{},
 		&mockRoundRepoHandler{},
 		&mockEnqueueMasterActionUCHandler{},
+		&mockChangeRoundModeUCHandler{},
 	)
 
 	mux := http.NewServeMux()

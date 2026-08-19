@@ -176,6 +176,12 @@ func (s *MatchSession) ChangeScene(category enum.SceneCategory, briefDesc string
 	return oldScene, oldRound, nil
 }
 
+// SetRoundMode puts the active round into a regime. Callers hold room.mu for writing: this
+// changes how every later selection is scored.
+func (s *MatchSession) SetRoundMode(mode enum.RoundMode) {
+	s.roundOrch.SetMode(s.activeRound, mode)
+}
+
 func (s *MatchSession) EnqueueMasterAction(ma *action.MasterAction) error {
 	t := s.activeRound.CurrentTurn()
 	if t == nil || t.GetFinishedAt() != nil {

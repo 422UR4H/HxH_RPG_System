@@ -55,6 +55,7 @@ func main() {
 	attachReactionUC := match.NewAttachReactionUC()
 	changeSceneUC := match.NewChangeSceneUC()
 	enqueueMasterActionUC := match.NewEnqueueMasterActionUC()
+	changeRoundModeUC := match.NewChangeRoundModeUC()
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -65,6 +66,7 @@ func main() {
 		enqueueActionUC, attachReactionUC,
 		changeSceneUC, roundRepository,
 		enqueueMasterActionUC,
+		changeRoundModeUC,
 	)
 	server := game.NewServer(addr, hub, handler)
 
