@@ -384,4 +384,34 @@ func TestDerive_ThreeBiasOrigins(t *testing.T) {
 			t.Errorf("Modifier = %d, want 0 — a dodge reserve does not move actionSpeed", out.Modifier)
 		}
 	})
+
+	// The two subtests below pin that in.Dimension is the field actually read by Derive, not
+	// just a value every other subtest happens to set to match.DimActionSpeed. A regression to
+	// a hardcoded match.DimActionSpeed literal (the Task 1 placeholder this task removed) would
+	// pass every subtest above unchanged, because they all target DimActionSpeed already.
+
+	t.Run("pins that a non-actionSpeed dimension is actually plumbed through", func(t *testing.T) {
+		// Would read 0 under a hardcoded match.DimActionSpeed Derive, since the entry is DimDodge.
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Amount: 5, Applies: match.DimDodge, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, Ledger: &ledger, Dimension: match.DimDodge,
+		})
+		if out.Modifier != 5 {
+			t.Errorf("Modifier = %d, want 5 — the caller asked for DimDodge and the ledger holds it", out.Modifier)
+		}
+	})
+
+	t.Run("pins that the zero-value Dimension reads nothing", func(t *testing.T) {
+		// Would read 5 under a hardcoded match.DimActionSpeed Derive, since the entry is
+		// DimActionSpeed and Dimension is left at its zero value here.
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Amount: 5, Applies: match.DimActionSpeed, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, Ledger: &ledger,
+		})
+		if out.Modifier != 0 {
+			t.Errorf("Modifier = %d, want 0 — no Dimension was named, so no reserve applies", out.Modifier)
+		}
+	})
 }
