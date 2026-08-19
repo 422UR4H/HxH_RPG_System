@@ -2,7 +2,6 @@ package service
 
 import (
 	"math"
-	"sort"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -76,19 +75,36 @@ func (RoundScheduler) FreezePrices(in ScheduleInput) {
 // Nil in a Race round is the round-close signal: everything still queued belongs to the next
 // round, carrying the roll it already made.
 func (rs RoundScheduler) SelectNext(in ScheduleInput) *action.Action {
-	var best *action.Action
-	var bestKey float64
-	for _, a := range in.Queue.All() {
+	if in.Queue == nil {
+		return nil
+	}
+	candidates := in.Queue.All()
+	idx, _ := rs.best(in, candidates)
+	if idx < 0 {
+		return nil
+	}
+	return candidates[idx]
+}
+
+// best is the single scoring pass: the highest-keyed candidate that passes its gate, and where
+// it sits. It answers -1 when nothing does.
+//
+// SelectNext and ProjectOrder both go through it, and that is the point — the order the table
+// plays and the order the table is shown are computed by the same code, so they cannot drift
+// apart.
+func (rs RoundScheduler) best(in ScheduleInput, candidates []*action.Action) (int, float64) {
+	bestIdx, bestKey := -1, 0.0
+	for i, a := range candidates {
 		key, ok := rs.keyOf(in, a)
 		if !ok {
 			continue
 		}
 		// Strictly greater, so a tie goes to whoever was inserted first.
-		if best == nil || key > bestKey {
-			best, bestKey = a, key
+		if bestIdx == -1 || key > bestKey {
+			bestIdx, bestKey = i, key
 		}
 	}
-	return best
+	return bestIdx, bestKey
 }
 
 // AnyEligible reports whether any pending action passes the gate that applies to it. Its
@@ -101,21 +117,84 @@ func (rs RoundScheduler) AnyEligible(in ScheduleInput) bool {
 	return rs.SelectNext(in) != nil
 }
 
-// ProjectOrder returns every pending action that passes its gate, highest key first. It is
-// SelectNext generalised from "the next one" to "all of them, in order", which is what the
-// general bar shows — including a character who is going to act more than once.
+// ProjectOrder returns the round as it is going to be played: every pending action that can
+// still pay, in the order the master will open them. It is what the general bar publishes.
+//
+// It SIMULATES THE ROUND FORWARD rather than scoring everything once. Scoring once is wrong
+// past the first slot, because a character's second pending action is keyed and gated against
+// the state their FIRST one leaves behind — the average slides as soon as that first action
+// opens. In the canonical example (price 11; p2 pending at 23 and 17, p1 at 20, p3 at 11) a
+// single pass publishes p2 → p1 → p2 → p3, keying p2's second action at 17 as if it were their
+// first; the table then plays p2 → p1 → p3 → p2, because that second key drops to
+// mean(23,17) − 11 = 9 the moment the first one opens. Position 1 was the only one guaranteed
+// right.
+//
+// So it walks a copy of the bar state, picks the best candidate exactly as SelectNext would,
+// records it as opened in the copy, drops it from the candidates, and repeats until nothing
+// passes its gate. Nothing real is mutated: the queue hands out a copy and the bar state is
+// read through an overlay.
 func (rs RoundScheduler) ProjectOrder(in ScheduleInput) []OrderSlot {
-	var slots []OrderSlot
-	for _, a := range in.Queue.All() {
-		key, ok := rs.keyOf(in, a)
-		if !ok {
-			continue
-		}
-		slots = append(slots, OrderSlot{ActorID: a.GetActorID(), Bars: a.Bars(), Key: key})
+	if in.Queue == nil {
+		return nil
 	}
-	// Stable, so equal keys keep insertion order — the same tie-break SelectNext uses.
-	sort.SliceStable(slots, func(i, j int) bool { return slots[i].Key > slots[j].Key })
+	sim := &simulatedBars{base: in.Bars, extra: map[simKey][]int{}}
+	simIn := in
+	simIn.Bars = sim
+
+	remaining := in.Queue.All() // already a copy — reshaping it cannot touch the queue
+	var slots []OrderSlot
+	for len(remaining) > 0 {
+		idx, key := rs.best(simIn, remaining)
+		if idx < 0 {
+			break
+		}
+		a := remaining[idx]
+		slots = append(slots, OrderSlot{ActorID: a.GetActorID(), Bars: a.Bars(), Key: key})
+		sim.open(a)
+		remaining = append(remaining[:idx], remaining[idx+1:]...)
+	}
 	return slots
+}
+
+// simKey addresses one character's one clock.
+type simKey struct {
+	char uuid.UUID
+	bar  action.Bar
+}
+
+// simulatedBars is a read-only overlay on the real bar state, used only while ProjectOrder
+// walks the round forward. It never writes through: extra holds the speeds the simulation has
+// opened, appended to whatever the session actually reports.
+//
+// It keeps RoundScheduler stateless — it is created per call and dies with it.
+type simulatedBars struct {
+	base  BarStateSource
+	extra map[simKey][]int
+}
+
+func (s *simulatedBars) BarState(charID uuid.UUID, bar action.Bar) (float64, []int) {
+	var carry float64
+	var acted []int
+	if s.base != nil {
+		carry, acted = s.base.BarState(charID, bar)
+	}
+	extra := s.extra[simKey{char: charID, bar: bar}]
+	if len(extra) == 0 {
+		return carry, acted
+	}
+	out := make([]int, 0, len(acted)+len(extra))
+	out = append(out, acted...)
+	out = append(out, extra...)
+	return carry, out
+}
+
+// open records, inside the simulation only, that an action opened — on every bar it charges,
+// because a combined action moves both averages.
+func (s *simulatedBars) open(a *action.Action) {
+	for _, bar := range a.Bars() {
+		k := simKey{char: a.GetActorID(), bar: bar}
+		s.extra[k] = append(s.extra[k], a.SpeedOn(bar))
+	}
 }
 
 // keyOf returns where an action sits in the order, and whether it may open at all.

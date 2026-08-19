@@ -363,3 +363,81 @@ func TestRoundScheduler_ProjectOrder(t *testing.T) {
 		t.Errorf("slot[0].Key = %v, want 23", slots[0].Key)
 	}
 }
+
+// TestRoundScheduler_ProjectOrderMatchesWhatIsPlayed pins the promise combat-engine.md makes
+// about the general bar: what ProjectOrder publishes is what SelectNext then plays.
+//
+// The canonical numbers, with p2's second action already pending: price 11, p2 at 23 and 17,
+// p1 at 20, p3 at 11. The published order must be p2 → p1 → p3 → p2, with keys 23, 20, 11 and
+// 9 — NOT p2 → p1 → p2 → p3, which is what scoring every entry against the same untouched
+// `acted` produces, because it keys p2's second action at 17 as though the first had not
+// opened. Position 1 is right either way; everything after it is not.
+func TestRoundScheduler_ProjectOrderMatchesWhatIsPlayed(t *testing.T) {
+	sch := service.RoundScheduler{}
+	bars := newFakeBars()
+	p1, p2, p3 := uuid.New(), uuid.New(), uuid.New()
+
+	r := round.NewRound(enum.Race)
+	q := action.NewActionPriorityQueue(nil)
+	q.Insert(attackAt(p1, 20))
+	q.Insert(attackAt(p2, 23))
+	q.Insert(attackAt(p3, 11))
+	q.Insert(attackAt(p2, 17))
+	in := service.ScheduleInput{Queue: &q, Round: r, Bars: bars}
+
+	sch.FreezePrices(in)
+	if price, frozen := r.Price(action.BarAction); !frozen || price != 11 {
+		t.Fatalf("frozen price = (%d, %v), want (11, true)", price, frozen)
+	}
+
+	wantOrder := []uuid.UUID{p2, p1, p3, p2}
+	wantKeys := []float64{23, 20, 11, 9}
+
+	t.Run("the projection walks the round forward", func(t *testing.T) {
+		slots := sch.ProjectOrder(in)
+		if len(slots) != len(wantOrder) {
+			t.Fatalf("slots = %d, want %d", len(slots), len(wantOrder))
+		}
+		for i := range wantOrder {
+			if slots[i].ActorID != wantOrder[i] {
+				t.Errorf("slot[%d] actor = %v, want %v", i, slots[i].ActorID, wantOrder[i])
+			}
+			if !closeTo(slots[i].Key, wantKeys[i]) {
+				t.Errorf("slot[%d].Key = %v, want %v", i, slots[i].Key, wantKeys[i])
+			}
+		}
+	})
+
+	t.Run("and the round is played in exactly that order", func(t *testing.T) {
+		projected := sch.ProjectOrder(in)
+
+		var played []uuid.UUID
+		var playedKeys []float64
+		for {
+			// The key SelectNext scores against is read before the action opens — the same
+			// instant ProjectOrder read it in its own walk.
+			slots := sch.ProjectOrder(in)
+			next := sch.SelectNext(in)
+			if next == nil {
+				break
+			}
+			played = append(played, next.GetActorID())
+			playedKeys = append(playedKeys, slots[0].Key)
+			q.ExtractByID(next.GetID())
+			r.AppendTurn(turn.NewTurn(*next))
+			bars.act(next)
+		}
+
+		if len(played) != len(projected) {
+			t.Fatalf("played %d actions, projected %d", len(played), len(projected))
+		}
+		for i := range played {
+			if played[i] != projected[i].ActorID {
+				t.Errorf("position %d: played %v, projected %v", i, played[i], projected[i].ActorID)
+			}
+			if !closeTo(playedKeys[i], projected[i].Key) {
+				t.Errorf("position %d: played key %v, projected %v", i, playedKeys[i], projected[i].Key)
+			}
+		}
+	})
+}
