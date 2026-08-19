@@ -392,13 +392,15 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("attaches reaction to current turn and returns resolution", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
 		s, chars := sessionWithParticipants(playerA, playerB)
-		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]} // playerB's character must be a target to react
+		s.EnqueueAction(playerA, a)        //nolint:errcheck
 		opened := mustOpen(t, s)
 		act := opened.GetAction()
 		actionID := act.GetID()
 
 		reaction := makeReactionTo(chars[1], actionID)
-		res, err := s.AttachReaction(reaction)
+		res, err := s.AttachReaction(playerB, reaction)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -413,13 +415,64 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("returns ErrReactionNotCompatible for wrong target", func(t *testing.T) {
 		playerA := uuid.New()
 		s, chars := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
-		s.OpenNextAction()                                         //nolint:errcheck
+		a := makeActionWithSpeed(chars[0], 5)
+		a.TargetID = []uuid.UUID{chars[0]} // must be a target to clear the new reactor check
+		s.EnqueueAction(playerA, a)        //nolint:errcheck
+		s.OpenNextAction()                 //nolint:errcheck
 
-		reaction := makeReactionTo(chars[0], uuid.New()) // wrong target
-		_, err := s.AttachReaction(reaction)
+		reaction := makeReactionTo(chars[0], uuid.New()) // wrong target action ID
+		_, err := s.AttachReaction(playerA, reaction)
 		if !errors.Is(err, service.ErrReactionNotCompatible) {
 			t.Errorf("expected ErrReactionNotCompatible, got %v", err)
+		}
+	})
+
+	t.Run("refuses a reaction sent through someone else's character", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		s.EnqueueAction(playerA, a) //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		// playerA drives chars[0]; chars[1] is not theirs to answer with.
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerA, r); err == nil {
+			t.Fatal("a player must not react through a character that is not theirs")
+		}
+	})
+
+	t.Run("refuses a reaction from someone the action never targeted", func(t *testing.T) {
+		playerA, playerB, playerC := uuid.New(), uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB, playerC)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]} // C is a bystander
+		s.EnqueueAction(playerA, a)        //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		r := makeReactionTo(chars[2], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerC, r); err == nil {
+			t.Fatal("a bystander must not be able to react")
+		}
+	})
+
+	t.Run("accepts a reaction from a target, through their own character", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		s.EnqueueAction(playerA, a) //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("a target reacting through their own character: %v", err)
 		}
 	})
 }

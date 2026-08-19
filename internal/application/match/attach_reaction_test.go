@@ -39,7 +39,8 @@ func TestAttachReactionUC(t *testing.T) {
 		session, chars := sessionWithPlayers(playerA, playerB)
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}}, nil, nil, nil, nil, nil, nil, nil)
-		session.EnqueueAction(playerA, aAct) //nolint:errcheck
+		aAct.TargetID = []uuid.UUID{chars[1]} // playerB's character must be a target to react
+		session.EnqueueAction(playerA, aAct)  //nolint:errcheck
 		tr, _ := session.OpenNextAction()
 		openedAction := tr.Opened.GetAction()
 		actionID := openedAction.GetID()
@@ -63,8 +64,9 @@ func TestAttachReactionUC(t *testing.T) {
 		session, chars := sessionWithPlayers(playerA)
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
-		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		session.OpenNextAction()             //nolint:errcheck
+		aAct.TargetID = []uuid.UUID{chars[0]} // must be a target to clear the new reactor check
+		session.EnqueueAction(playerA, aAct)  //nolint:errcheck
+		session.OpenNextAction()              //nolint:errcheck
 
 		reaction := action.NewAction(chars[0], nil, uuid.New(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 		uc := match.NewAttachReactionUC()

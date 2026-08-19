@@ -2,6 +2,7 @@ package matchsession
 
 import (
 	"math"
+	"slices"
 	"time"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -441,7 +442,26 @@ func (s *MatchSession) applyResolution(res *service.TurnResolution) []DamagedCha
 	return out
 }
 
-func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution, error) {
+// AttachReaction validates that the caller may answer this attack, then attaches the reaction
+// to the open turn and re-resolves it.
+//
+// Two axes, exactly as EnqueueAction: authorization is a per-PLAYER question and combat is a
+// per-CHARACTER one, bridged by charToPlayer. On top of that, a reaction has a third
+// constraint an action does not — only someone the attack is AIMED AT may answer it.
+func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*service.TurnResolution, error) {
+	owner, ok := s.charToPlayer[r.GetActorID().String()]
+	if !ok || owner != playerUUID {
+		return nil, ErrReactionActorMismatch
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil {
+		return nil, service.ErrNoCurrentTurn
+	}
+	act := t.GetAction()
+	if !slices.Contains(act.TargetID, r.GetActorID()) {
+		return nil, ErrReactorNotTargeted
+	}
+
 	s.rollActionDice(r)
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
 		return nil, err
