@@ -53,6 +53,7 @@ func main() {
 	pullActionUC := match.NewPullActionUC(sheetRepository, closeRoundUC)
 	enqueueActionUC := match.NewEnqueueActionUC()
 	attachReactionUC := match.NewAttachReactionUC()
+	openReactionUC := match.NewOpenReactionUC()
 	changeSceneUC := match.NewChangeSceneUC()
 	enqueueMasterActionUC := match.NewEnqueueMasterActionUC()
 	changeRoundModeUC := match.NewChangeRoundModeUC()
@@ -63,7 +64,7 @@ func main() {
 		hub, matchRepository, enrollmentRepository,
 		startMatchUC, kickPlayerUC,
 		initSessionUC, openNextActionUC, pullActionUC,
-		enqueueActionUC, attachReactionUC,
+		enqueueActionUC, attachReactionUC, openReactionUC,
 		changeSceneUC, roundRepository,
 		enqueueMasterActionUC,
 		changeRoundModeUC,

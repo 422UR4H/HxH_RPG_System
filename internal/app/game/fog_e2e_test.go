@@ -107,6 +107,7 @@ func newFogFixture(t *testing.T) *fogFixture {
 		&mockPullActionUCHandler{},
 		&mockEnqueueActionUCHandler{},
 		&mockAttachReactionUCHandler{},
+		&mockOpenReactionUCHandler{},
 		&mockChangeSceneUCHandler{},
 		&mockRoundRepoHandler{},
 		&mockEnqueueMasterActionUCHandler{},

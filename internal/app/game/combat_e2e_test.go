@@ -176,6 +176,7 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
 		appmatch.NewEnqueueActionUC(),
 		appmatch.NewAttachReactionUC(),
+		appmatch.NewOpenReactionUC(),
 		&mockChangeSceneUCHandler{},
 		roundRepo,
 		&mockEnqueueMasterActionUCHandler{},

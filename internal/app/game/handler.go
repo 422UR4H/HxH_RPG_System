@@ -43,6 +43,7 @@ type Handler struct {
 	pullActionUC          IPullAction
 	enqueueActionUC       IEnqueueAction
 	attachReactionUC      IAttachReaction
+	openReactionUC        IOpenReaction
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
@@ -60,6 +61,7 @@ func NewHandler(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
+	openReactionUC IOpenReaction,
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
@@ -76,6 +78,7 @@ func NewHandler(
 		pullActionUC:          pullActionUC,
 		enqueueActionUC:       enqueueActionUC,
 		attachReactionUC:      attachReactionUC,
+		openReactionUC:        openReactionUC,
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
@@ -164,7 +167,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		matchUUID, masterUUID,
 		h.startMatchUC, h.kickPlayerUC,
 		h.initSessionUC, h.openNextActionUC, h.pullActionUC,
-		h.enqueueActionUC, h.attachReactionUC,
+		h.enqueueActionUC, h.attachReactionUC, h.openReactionUC,
 		h.changeSceneUC, h.roundRepo, h.enqueueMasterActionUC,
 		h.changeRoundModeUC,
 	)

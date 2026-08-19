@@ -62,6 +62,10 @@ type IAttachReaction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID uuid.UUID, r *action.Action) (*appmatch.AttachReactionResult, error)
 }
 
+type IOpenReaction interface {
+	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID, reactionID uuid.UUID) (*appmatch.OpenReactionResult, error)
+}
+
 type IChangeScene interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string) (*sceneentity.Scene, *roundentity.Round, error)
 }
@@ -100,6 +104,7 @@ type Room struct {
 	pullActionUC          IPullAction
 	enqueueActionUC       IEnqueueAction
 	attachReactionUC      IAttachReaction
+	openReactionUC        IOpenReaction
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
@@ -115,6 +120,7 @@ func NewRoom(
 	pullActionUC IPullAction,
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
+	openReactionUC IOpenReaction,
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
@@ -139,6 +145,7 @@ func NewRoom(
 		pullActionUC:          pullActionUC,
 		enqueueActionUC:       enqueueActionUC,
 		attachReactionUC:      attachReactionUC,
+		openReactionUC:        openReactionUC,
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
@@ -768,6 +775,42 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		r.handleReaction(client, session, payload)
+
+	case MsgTypeOpenReaction:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload OpenReactionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid open_reaction payload"))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		r.mu.Lock()
+		result, err := r.openReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
+		turnID := currentTurnID(session)
+		r.mu.Unlock()
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		// Whose turn it is to narrate is public; the calculation is not, until Phase 5.
+		out := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
+			TurnID: turnID, ReactionID: payload.ReactionID,
+		})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+		r.sendToMaster(NewServerMessage(
+			MsgTypeResolutionUpdate,
+			newResolutionUpdatedPayload(turnID, result.Resolution),
+		))
 
 	case MsgTypeChangeScene:
 		if !r.IsMaster(client.userUUID) {

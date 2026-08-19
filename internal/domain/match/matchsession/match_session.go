@@ -531,6 +531,27 @@ func (s *MatchSession) chargeReactionBars(r *action.Action) {
 	}
 }
 
+// OpenReaction passes the microphone to one reaction on the open turn and re-resolves it.
+//
+// Opening is table conduct — "now it is this person's turn to narrate". The recomputation is
+// the side effect, and it recomputes rather than re-rolling: every die fell at attach.
+//
+// It does NOT charge anything. The bars were debited when the reaction arrived (see
+// chargeReactionBars) precisely so that narrating cannot move a number.
+func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*service.TurnResolution, error) {
+	t := s.activeRound.CurrentTurn()
+	if t == nil {
+		return nil, service.ErrNoCurrentTurn
+	}
+	if t.GetFinishedAt() != nil {
+		return nil, ErrTurnAlreadyClosed
+	}
+	if !t.OpenReaction(reactionID) {
+		return nil, ErrReactionNotFound
+	}
+	return s.ResolveTurn(t), nil
+}
+
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
 	return s.roundOrch.CloseTurnErr(s.activeRound, time.Now())
 }

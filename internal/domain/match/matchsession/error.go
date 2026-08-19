@@ -14,4 +14,9 @@ var (
 	ErrReactionActorMismatch = errors.New("the reacting character does not belong to this player")
 	// ErrReactorNotTargeted means the caller was not aimed at. Bystanders watch.
 	ErrReactorNotTargeted = errors.New("only a target of the open action may react to it")
+	// ErrTurnAlreadyClosed means the turn the caller tried to open a reaction on has already
+	// finished — there is no one left to narrate for.
+	ErrTurnAlreadyClosed = errors.New("cannot open a reaction: turn already closed")
+	// ErrReactionNotFound means the given id is not attached to the open turn.
+	ErrReactionNotFound = errors.New("reaction not found on the current turn")
 )

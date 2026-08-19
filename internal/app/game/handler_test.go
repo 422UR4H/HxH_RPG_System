@@ -90,6 +90,12 @@ func (m *mockAttachReactionUCHandler) Execute(_ context.Context, _ *matchsession
 	return nil, nil
 }
 
+type mockOpenReactionUCHandler struct{}
+
+func (m *mockOpenReactionUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID) (*appmatch.OpenReactionResult, error) {
+	return nil, nil
+}
+
 type mockChangeSceneUCHandler struct{}
 
 func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string) (*scene.Scene, *roundentity.Round, error) {
@@ -139,6 +145,7 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockPullActionUCHandler{},
 		&mockEnqueueActionUCHandler{},
 		&mockAttachReactionUCHandler{},
+		&mockOpenReactionUCHandler{},
 		&mockChangeSceneUCHandler{},
 		&mockRoundRepoHandler{},
 		&mockEnqueueMasterActionUCHandler{},

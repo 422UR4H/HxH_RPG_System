@@ -34,6 +34,7 @@ const (
 	MsgTypeOpenNextAction MessageType = "open_next_action"
 	MsgTypePullAction     MessageType = "pull_action"
 	MsgTypeAttachReaction MessageType = "attach_reaction"
+	MsgTypeOpenReaction   MessageType = "open_reaction"
 
 	// Server → Client (game events)
 	MsgTypeTurnOpened       MessageType = "turn_opened"
@@ -41,6 +42,7 @@ const (
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
+	MsgTypeReactionOpened   MessageType = "reaction_opened"
 
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
@@ -159,6 +161,12 @@ type PullActionPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 }
 
+// OpenReactionPayload names which attached reaction the master is giving the floor to. The
+// order is theirs, and it changes the result.
+type OpenReactionPayload struct {
+	ReactionID uuid.UUID `json:"reactionId"`
+}
+
 // ActionPayload is the unified shape for both enqueue_action and attach_reaction messages.
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
@@ -243,6 +251,13 @@ type TurnOpenedPayload struct {
 
 type RoundClosedPayload struct {
 	RoundMode string `json:"roundMode"`
+}
+
+// ReactionOpenedPayload announces who narrates next. It is BROADCAST — whose turn it is to
+// narrate is public — while the resolution it triggers stays master-only until Phase 5.
+type ReactionOpenedPayload struct {
+	TurnID     uuid.UUID `json:"turnId"`
+	ReactionID uuid.UUID `json:"reactionId"`
 }
 
 // BarsUpdatedPayload is the two clocks as the whole table sees them.
