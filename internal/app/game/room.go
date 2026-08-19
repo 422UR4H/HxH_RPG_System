@@ -86,6 +86,10 @@ type Room struct {
 	unregister chan *Client
 	stop       chan struct{}
 	mu         sync.RWMutex
+	// barsSeq stamps every bars_updated snapshot. Bumped under mu at the instant the snapshot
+	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
+	// channel off to a goroutine, and two rapid opens can reach it out of order.
+	barsSeq uint64
 
 	session *matchsession.MatchSession
 
@@ -99,6 +103,7 @@ type Room struct {
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
+	changeRoundModeUC     appmatch.IChangeRoundMode
 }
 
 func NewRoom(
@@ -113,6 +118,7 @@ func NewRoom(
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
+	changeRoundModeUC appmatch.IChangeRoundMode,
 ) *Room {
 	return &Room{
 		matchUUID:             matchUUID,
@@ -136,6 +142,7 @@ func NewRoom(
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
+		changeRoundModeUC:     changeRoundModeUC,
 	}
 }
 
@@ -483,6 +490,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		r.broadcastBars(session)
 
 		if result.ClosedTurn != nil {
 			closedTurn := result.ClosedTurn
@@ -509,6 +517,22 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 		}
 
+		// The round ran out: nothing pending could still pay, so it closed instead of opening
+		// anything. Everyone is told — the regime and the bars are table state.
+		if result.ClosedRound != nil {
+			out := NewServerMessage(MsgTypeRoundClosed, RoundClosedPayload{
+				RoundMode: string(result.ClosedRound.GetMode()),
+			})
+			data, _ := json.Marshal(out)
+			go func() { r.broadcast <- data }()
+			return
+		}
+
+		// Belt and braces: a successful call that opened nothing has nothing to announce.
+		if result.OpenedTurn == nil {
+			return
+		}
+
 		act := result.OpenedTurn.GetAction()
 		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  result.OpenedTurn.GetID(),
@@ -525,6 +549,44 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
 			))
 		}
+
+	case MsgTypeChangeRoundMode:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload ChangeRoundModePayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_round_mode payload"))
+			return
+		}
+		// Write lock across Execute — the regime decides how every later selection is scored.
+		// The regime the table is told is read back from the session under the same lock, not
+		// echoed from the client's request: what is public is the round's actual state.
+		r.mu.Lock()
+		session := r.session
+		var err error
+		var newMode enum.RoundMode
+		if session != nil {
+			err = r.changeRoundModeUC.Execute(
+				context.Background(), session, r.masterUUID, client.userUUID,
+				enum.RoundMode(payload.Mode),
+			)
+			newMode = session.GetActiveRound().GetMode()
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		out := NewServerMessage(MsgTypeRoundModeChanged, RoundModeChangedPayload{Mode: string(newMode)})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+		r.broadcastBars(session)
 
 	case MsgTypePullAction:
 		if !r.IsMaster(client.userUUID) {
@@ -553,6 +615,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		r.broadcastBars(session)
 
 		if result.ClosedTurn != nil {
 			closedTurn := result.ClosedTurn
@@ -577,6 +640,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
 				))
 			}
+		}
+
+		// Belt and braces: a successful call that opened nothing has nothing to announce.
+		if result.OpenedTurn == nil {
+			return
 		}
 
 		act := result.OpenedTurn.GetAction()
@@ -666,6 +734,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
+		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
 		var payload ActionPayload
@@ -980,6 +1049,60 @@ func (r *Room) sendToMaster(msg Message) {
 	if ok {
 		c.SendMessage(msg)
 	}
+}
+
+// newBarsUpdatedPayload snapshots both clocks for the whole table.
+//
+// The caller holds r.mu — it reads session state that every open and every enqueue mutates —
+// and stamps Seq from the room counter in that same critical section.
+func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayload {
+	prices := map[string]int{}
+	for bar, price := range session.RoundPrices() {
+		prices[string(bar)] = price
+	}
+
+	out := BarsUpdatedPayload{Prices: prices}
+	for _, charID := range session.CharacterIDs() {
+		actionCarry, actionSpeeds := session.BarState(charID, action.BarAction)
+		moveCarry, moveSpeeds := session.BarState(charID, action.BarMove)
+		out.Characters = append(out.Characters, CharacterBarsPayload{
+			CharacterID:   charID,
+			ActionBalance: actionCarry,
+			MoveBalance:   moveCarry,
+			ActionSpeeds:  append([]int(nil), actionSpeeds...),
+			MoveSpeeds:    append([]int(nil), moveSpeeds...),
+		})
+	}
+
+	for _, slot := range session.ProjectedOrder() {
+		bars := make([]string, 0, len(slot.Bars))
+		for _, b := range slot.Bars {
+			bars = append(bars, string(b))
+		}
+		out.Order = append(out.Order, BarSlotPayload{
+			ActorID: slot.ActorID,
+			Bars:    bars,
+			Key:     slot.Key,
+		})
+	}
+	return out
+}
+
+// broadcastBars publishes the clocks to everyone. Called after anything that moves them:
+// an action enqueued, a turn opened, a round closed, a regime switched.
+func (r *Room) broadcastBars(session *matchsession.MatchSession) {
+	if session == nil {
+		return
+	}
+	// Write-locked, not read-locked: the sequence counter is bumped in the same critical
+	// section that reads the state, so the number and the snapshot it stamps cannot disagree.
+	r.mu.Lock()
+	r.barsSeq++
+	payload := newBarsUpdatedPayload(session)
+	payload.Seq = r.barsSeq
+	r.mu.Unlock()
+	data, _ := json.Marshal(NewServerMessage(MsgTypeBarsUpdated, payload))
+	go func() { r.broadcast <- data }()
 }
 
 func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {

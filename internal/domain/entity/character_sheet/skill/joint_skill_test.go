@@ -62,10 +62,10 @@ func TestJointSkill_GetValueForTest(t *testing.T) {
 }
 
 func TestJointSkill_Contains(t *testing.T) {
-	js := newTestJointSkill("athletics", 3, enum.Velocity, enum.Acrobatics)
+	js := newTestJointSkill("athletics", 3, enum.Quickness, enum.Acrobatics)
 
-	if !js.Contains(enum.Velocity) {
-		t.Error("should contain Velocity")
+	if !js.Contains(enum.Quickness) {
+		t.Error("should contain Quickness")
 	}
 	if js.Contains(enum.Stealth) {
 		t.Error("should not contain Stealth")

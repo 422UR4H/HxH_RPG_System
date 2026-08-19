@@ -45,7 +45,7 @@ func BuildSwordsman() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Velocity:   210,
+		enum.Quickness:  210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
@@ -106,7 +106,7 @@ func BuildSamurai() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Velocity:   210,
+		enum.Quickness:  210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
@@ -157,7 +157,7 @@ func BuildNinja() CharacterClass {
 
 		enum.Push: 210,
 
-		enum.Velocity:   210,
+		enum.Quickness:  210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
@@ -219,7 +219,7 @@ func BuildRogue() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Velocity:   210,
+		enum.Quickness:  210,
 		enum.Accelerate: 328,
 		enum.Brake:      69,
 
@@ -275,7 +275,7 @@ func BuildNetrunner() CharacterClass {
 	skills := map[enum.SkillName]int{
 		enum.Energy: 69,
 
-		enum.Velocity:   127,
+		enum.Quickness:  127,
 		enum.Accelerate: 127,
 		enum.Brake:      69,
 
@@ -337,7 +337,7 @@ func BuildPirate() CharacterClass {
 		enum.Grab:  210,
 		enum.Carry: 210,
 
-		enum.Velocity:   69,
+		enum.Quickness:  69,
 		enum.Accelerate: 127,
 
 		enum.Legerity: 69,
@@ -395,7 +395,7 @@ func BuildMercenary() CharacterClass {
 		enum.Grab:  69,
 		enum.Carry: 127,
 
-		enum.Velocity:   127,
+		enum.Quickness:  127,
 		enum.Accelerate: 69,
 
 		enum.Legerity: 69,
@@ -471,7 +471,7 @@ func BuildTerrorist() CharacterClass {
 		enum.Grab:  127,
 		enum.Carry: 210,
 
-		enum.Velocity: 127,
+		enum.Quickness: 127,
 
 		enum.Repel: 127,
 
@@ -525,7 +525,7 @@ func BuildMonk() CharacterClass {
 		enum.Grab:  127,
 		enum.Carry: 127,
 
-		enum.Velocity:   127,
+		enum.Quickness:  127,
 		enum.Accelerate: 127,
 		enum.Brake:      127,
 
@@ -593,7 +593,7 @@ func BuildMilitary() CharacterClass {
 		enum.Grab:  69,
 		enum.Carry: 127,
 
-		enum.Velocity: 127,
+		enum.Quickness: 127,
 
 		enum.Reflex:   127,
 		enum.Accuracy: 328,
@@ -647,7 +647,7 @@ func BuildHunter() CharacterClass {
 
 		enum.Carry: 127,
 
-		enum.Velocity:   210,
+		enum.Quickness:  210,
 		enum.Accelerate: 127,
 		enum.Brake:      69,
 
@@ -723,7 +723,7 @@ func BuildWeaponsMaster() CharacterClass {
 		enum.Grab:  127,
 		enum.Carry: 210,
 
-		enum.Velocity:   210,
+		enum.Quickness:  210,
 		enum.Accelerate: 69,
 		enum.Brake:      69,
 

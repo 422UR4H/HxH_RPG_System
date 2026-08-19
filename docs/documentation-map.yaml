@@ -583,7 +583,7 @@ mappings:
       Margin(cd) é derivado sob demanda em vez de guardado no RollOutcome, porque
       o CD vem da rolagem oposta, que só existe quando a colisão for implementada.
 
-  # ─── Motor de batalha (design 2026-08; Fases 1 e 2 implementadas) ───
+  # ─── Motor de batalha (design 2026-08; Fases 1 a 3 implementadas) ───
   - code_path: internal/domain/match/service/turn_resolver.go
     dev_docs:
       - path: docs/dev/match/combat-engine.md
@@ -678,7 +678,7 @@ mappings:
       específico do alvo; penalidade é geral; ambos em actionSpeed, nunca em acerto)
       e Stance reservado, porque a regra de posturas ainda não existe. Position NÃO
       entra: as posições vivem no Room, alcançadas por PiecePositionSource. A
-      aritmética de fechamento das barras é da Fase 3.
+      aritmética de fechamento das barras chegou na Fase 3 — ver service.BarEconomy.
 
   - code_path: internal/domain/match/resource_bar.go
     dev_docs:
@@ -687,8 +687,9 @@ mappings:
     notes: >-
       ResourceBar é a forma das DUAS barras (ActionBar e MoveBar, dentro de
       CharacterStatus): Balance (saldo que carrega entre rounds) e Speeds (histórico
-      das velocidades roladas no round corrente). Fase 1 só define a forma — a
-      aritmética de fechamento do round (média, preço, teto, carry-over) é da Fase 3.
+      das velocidades roladas no round corrente). Fase 1 só definiu a forma — a
+      aritmética de fechamento do round (média, preço, teto, carry-over) chegou na
+      Fase 3, em service.BarEconomy e service.RoundScheduler.
 
   - code_path: internal/domain/match/entity/action/roll_condition.go
     dev_docs:
@@ -709,9 +710,71 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/match/actions.md
         confidence: directly_affected
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
     notes: >-
-      Max-heap ordenado por Action.Speed.Result. Ordem só passa a valer quando o
-      mapper preencher ActionSpeed — flows/05-lacunas.md §2.
+      Deixou de ser heap na Fase 3: virou lista simples, em ordem de inserção. A
+      chave de uma ação pendente é estado do personagem (a média do round se move
+      sob ela), não da action, e um heap não re-chaveia item já inserido — a
+      ordenação passou para service.RoundScheduler, calculada na hora da seleção.
+      flows/05-lacunas.md §2 (resolvido na Fase 3).
+
+  - code_path: internal/domain/match/entity/action/bar.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: directly_affected
+    notes: >-
+      Bar (action/move) e Bars() — quais barras uma action cobra; uma ação combinada
+      (Move + Attack na mesma Action) cobra as duas. SpeedOn(bar) devolve a
+      velocidade certa por barra, sem re-rolar nada. Fase 3.
+
+  - code_path: internal/domain/match/service/bar_economy.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: directly_affected
+    notes: >-
+      Aritmética de uma barra, stateless: Mean (float64, nunca trunca), Balance,
+      Key (só ordena) e IsEligible (os DOIS porteiros — primeira ação contra a
+      barra, segunda em diante contra o troco), CloseBalance (carry-over com teto).
+      Entradas são int; tudo derivado é float64. Fase 3.
+
+  - code_path: internal/domain/match/service/round_scheduler.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: directly_affected
+    notes: >-
+      FreezePrices congela o preço por barra na primeira seleção que vê trabalho
+      pendente nela. SelectNext escolhe a próxima ação a abrir; AnyEligible é o
+      predicado de fechamento do round (sua negação); ProjectOrder é a barra geral
+      publicada. keyOf/keyOnBar computam a chave na hora — nunca guardada — e
+      agendam ação combinada pelo min das duas barras, gatilhando o porteiro das
+      duas. Fase 3.
+
+  - code_path: internal/application/match/change_round_mode.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/match/turns-rounds.md
+        confidence: directly_affected
+      - path: docs/dev/match/flows/05-lacunas.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: directly_affected
+    notes: >-
+      ChangeRoundModeUC troca o round ativo entre Free e Race, restrito ao mestre.
+      Alcançável via change_round_mode/round_mode_changed. Iniciativa — a regra de
+      jogo que normalmente forçaria Race — continua fora; isto só liga o regime.
+      Fase 3.
 
   - code_path: internal/app/game/action_mapper.go
     dev_docs:

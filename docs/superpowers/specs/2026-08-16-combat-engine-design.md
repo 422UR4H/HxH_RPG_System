@@ -397,6 +397,10 @@ visível no browser.**
 
 ### Fase 3 — A economia do turno
 
+> ✅ **Implementada** (2026-08-18). O comportamento final — incluindo os pontos que
+> divergiram deste plano — está registrado em `docs/dev/match/combat-engine.md` § "O que a
+> Fase 3 fixou no motor", que passa a ser a fonte de verdade a partir de agora.
+
 **Objetivo:** o turno vira dinâmico.
 
 **Escopo:**
@@ -428,21 +432,25 @@ visível no browser.**
   > ❓ Decidir se o momentum (`Charge`) entra na Fase 3 ou fica para a fatia de movimento.
   > **A barra funciona sem ele** — só fica menos rica.
 
-  > ⛔ **`enum.Velocity` está errado** e deve virar `Quickness`. Alcance: o enum + 12+
-  > ocorrências em `character_class_factory.go` + o que serializa nomes de perícia. **Fatia
-  > própria**, antes ou junto desta fase — não junto de outra coisa. E **não tocar em
-  > `action.Velocity`**, o vetor, que está correto. Detalhe em `combat-engine.md`.
+  > ✅ **`enum.Velocity` virou `Quickness`**, no primeiro commit desta fase — por decisão do
+  > dono do produto, que preferiu não esperar um PR à parte. `action.Velocity`, o vetor, não foi
+  > tocado. Detalhe em `combat-engine.md`.
 - As duas barras, com preço por barra, média das velocidades, carry-over e teto.
 - Recalculação forward-only da posição quando a média muda.
 - Action enviada no meio do round entra com a velocidade rolada, **sem reordenação
   retroativa**.
 - **`RoundMode.Race` alcançável**: o regime existe e pode ser ligado. Ver a nota abaixo.
-- **Fim de round quando as barras acabam** — e portanto **`CloseRoundUC` plugado aqui**, não
-  na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a fase não entrega o
-  próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e nunca enviado).
-- Ações compostas: **duas resoluções com aresta de dependência** — o ataque fica preso ao fim
-  do movimento. Não é "no tempo da mais lenta". Forma exata em `combat-engine.md` § Ações
-  compostas, que é a fonte; qualquer divergência resolve-se por lá.
+- **Fim de round quando nenhuma action pendente passa no porteiro que lhe cabe** — não
+  "quando as barras acabam" (a barra não zera; termina em qualquer valor, débito incluso).
+  `docs/dev/match/combat-engine.md` é a fonte para o predicado exato; qualquer divergência
+  resolve-se por lá, como já vale para as ações compostas. E portanto **`CloseRoundUC`
+  plugado aqui**, não na Fase 5. Hoje ele existe e nada o chama; sem ele o round não fecha e a
+  fase não entrega o próprio objetivo. `round_closed` passa a ser emitido (hoje é declarado e
+  nunca enviado).
+- Ações compostas: **uma action só**, com `Move` e `Attack` preenchidos, que **cobra as duas
+  barras** e acontece **no tempo da mais lenta** (`min` das duas chaves). Não se divide em duas
+  actions e não abre dois turnos. Forma exata em `combat-engine.md` § Ações compostas, que é a
+  fonte; qualquer divergência resolve-se por lá.
 
 > **`Race` sem iniciativa — separar o regime da regra que o liga.**
 >
@@ -504,10 +512,10 @@ carry-over enquanto o `Race` não estiver ligado.
   que é a única com regra escrita. A trava da terceira ação em `Free`, e o que acontece com
   as duas primeiras, viram **fatia própria**. Enquanto isso, a fase exige que o mestre ligue
   o `Race` para a economia valer.
-- **A renomeação `enum.Velocity` → `Quickness` é PR separado, antes desta fase.** A Fase 3
-  usa `Legerity`, `Accelerate` e `Brake` — nenhuma delas é a renomeada —, então é puramente
-  sequenciamento. Separado porque toca `character_class_factory.go` em 12+ pontos e o que
-  serializa nomes de perícia; misturar com o motor tornaria os dois diffs ilegíveis.
+- **A renomeação `enum.Velocity` → `Quickness` entrou nesta fase**, no primeiro commit, antes
+  de qualquer código de motor — decisão do dono do produto, revertendo o "PR separado" que
+  este spec pedia. Fica isolada no próprio commit para o diff continuar legível. A metade do
+  front (três chaves `velocity`) é PR próprio no repo React, com cross-link.
 - **O evento WS que carrega as barras nasce aqui.** A Fase 6 precisa desenhar "a sua barra e
   a barra geral", e hoje nenhuma mensagem as transporta. Ele é da Fase 3 porque é aqui que as
   barras passam a existir — não adianta a Fase 6 descobrir que não tem de onde ler.
@@ -517,7 +525,9 @@ carry-over enquanto o `Race` não estiver ligado.
   reproduz a ordem `p2 → p1 → p3 → p2` e os saldos `+9 / 0 / −2` em teste automatizado, com
   **as rolagens injetadas** (ver o seam da Fase 2) — um teste de economia não pode depender
   de sorte.
-- Um round fecha sozinho quando as barras acabam, e `round_closed` chega aos clients.
+- Um round fecha sozinho quando nenhuma action pendente passa no porteiro que lhe cabe — não
+  "quando as barras acabam" (`docs/dev/match/combat-engine.md` § "Quando o round fecha" é a
+  fonte) —, e `round_closed` chega aos clients.
 
 ---
 
@@ -576,7 +586,9 @@ inversa produz resultado diferente de forma verificável** — com as rolagens i
 - Tabela `SystemData` — auditoria de toda interferência do mestre.
 
 > `CloseRoundUC` e `round_closed` **saíram daqui** — foram para a Fase 3, que precisa deles
-> para fechar o round quando as barras acabam. `Abrir reaction` foi para a Fase 4.
+> para fechar o round quando nenhuma action pendente passa no porteiro que lhe cabe — não
+> "quando as barras acabam" (`docs/dev/match/combat-engine.md` é a fonte para o predicado
+> exato). `Abrir reaction` foi para a Fase 4.
 
 **Pronto quando:**
 - **Dois clients WS** conectados como jogadores diferentes recebem, para o mesmo turno,

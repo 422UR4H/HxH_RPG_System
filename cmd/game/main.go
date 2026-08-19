@@ -48,12 +48,14 @@ func main() {
 	startMatchUC := match.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
 	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository)
-	openNextActionUC := match.NewOpenNextActionUC(sheetRepository)
-	pullActionUC := match.NewPullActionUC(sheetRepository)
+	closeRoundUC := match.NewCloseRoundUC(roundRepository)
+	openNextActionUC := match.NewOpenNextActionUC(sheetRepository, closeRoundUC)
+	pullActionUC := match.NewPullActionUC(sheetRepository, closeRoundUC)
 	enqueueActionUC := match.NewEnqueueActionUC()
 	attachReactionUC := match.NewAttachReactionUC()
 	changeSceneUC := match.NewChangeSceneUC()
 	enqueueMasterActionUC := match.NewEnqueueMasterActionUC()
+	changeRoundModeUC := match.NewChangeRoundModeUC()
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -64,6 +66,7 @@ func main() {
 		enqueueActionUC, attachReactionUC,
 		changeSceneUC, roundRepository,
 		enqueueMasterActionUC,
+		changeRoundModeUC,
 	)
 	server := game.NewServer(addr, hub, handler)
 

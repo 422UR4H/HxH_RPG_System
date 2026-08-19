@@ -4,9 +4,10 @@
 > dono do produto e as pontas soltas, em
 > [`docs/superpowers/specs/2026-08-14-action-flow-design-notes.md`](../../superpowers/specs/2026-08-14-action-flow-design-notes.md).
 >
-> **Fase 1 implementada** (`RollCalculator`, `CharacterStatus`, `MatchRules`, chaveamento
-> por personagem). O restante — colisão, barras, reações, regência — ainda não existe.
-> Ver [`flows/05-lacunas.md`](flows/05-lacunas.md).
+> **Fases 1 a 3 implementadas** (`RollCalculator`, `CharacterStatus`, `MatchRules`, colisão de
+> personagem, as duas barras com preço/média/porteiro duplo e o fechamento automático do
+> round). Reações ativas, cadeia com vários alvos, regência da mesa e projeção por
+> destinatário ainda não existem. Ver [`flows/05-lacunas.md`](flows/05-lacunas.md).
 
 ## Princípios
 
@@ -94,6 +95,9 @@ saldo_final = média(velocidades das ações daquela barra que AGIRAM no round)
 saldo_final = min(saldo_final, preço do round)          // teto
 ```
 
+- **A média não arredonda.** Ela é guardada com a fração (`float64` no código): truncar seria
+  escolher uma política de arredondamento que a regra não pede, e a diferença se acumula ao
+  longo dos rounds pelo carry. O exemplo canônico continua dando inteiro exato.
 - **A média é por round**, e conta **só as ações que efetivamente agiram**. Uma ação enviada
   mas que não coube no round pertence ao round seguinte e **não entra na média deste**.
 - **Preço do round** (`ActionBarCoast`) = a menor velocidade daquela barra na rodada.
@@ -200,15 +204,30 @@ Duas formas, e a escolha é do jogador:
 | Forma | Resolução |
 |---|---|
 | **Duas actions separadas** | cada uma na sua barra, resolvida quando aquela barra chegar. A ordem sai do relógio, não da intenção. Quem quiser ordem garantida **não enfileira as duas de uma vez**: manda o movimento, espera resolver, e só então manda o ataque. |
-| **Ação combinada** (cait, arremetida, investida) | **duas resoluções, com aresta de dependência** — ver abaixo |
+| **Ação combinada** (cait, arremetida, investida) | **uma action só**, com `Move` e `Attack` preenchidos, que **cobra as duas barras** e acontece **no tempo da mais lenta** |
 
-⚠️ **Não é "no tempo da mais lenta".** Cada metade resolve no seu próprio tempo; o que existe
-é uma **restrição de ordem**: o ataque está amarrado ao **fim do movimento**.
+#### A ação combinada é UMA action
 
-- Se o personagem é mais rápido para atacar mas **ainda não iniciou o movimento**, o ataque
-  **espera** o turno de mover, e sai na sequência.
-- Se ele já está se movendo, a peça desloca no tempo dela e o ataque sai **quando chegar o
-  turno de ataque**, normalmente.
+`Move` e `Attack` vivem dentro da mesma `Action`. O mestre **abre uma vez**, e é **um turno
+só**. Não existe divisão em duas actions, nem duas entradas na fila, nem aresta de dependência
+entre metades: a modelagem foi construída para haver uma action, e o movimento mora dentro dela.
+
+**Ela ocorre no instante da metade mais lenta.** As duas velocidades continuam gravadas na
+action — `Speed.Result` para a barra de ação, `Move.FinalSpeed` para a de movimento — e as duas
+barras são cobradas. O que a combinação decide é apenas **quando** a action acontece:
+
+```
+chave da ação combinada = min(chave na barra de ação, chave na barra de movimento)
+```
+
+Como a chave maior age primeiro, o `min` é a mais lenta. Se o personagem é rápido de mão e
+lento de pé, o golpe espera o pé; se é o contrário, o deslocamento fica "atrasado" até a vez do
+ataque.
+
+**Ela só age se passar no porteiro das duas barras.** Cobra as duas, então precisa poder pagar
+as duas. Uma investida cuja barra de ação não alcança o preço fica de fora do round inteira —
+não só o ataque. O contrário deixaria um personagem sem barra de ação atacar de carona no
+movimento, e a economia deixaria de valer.
 
 > Racional do dono do produto: *"um round é praticamente todo mundo agindo ao mesmo tempo. A
 > resolução das actions é discreta, mas estamos numa simulação muito mais próxima da
@@ -219,6 +238,20 @@ Vale igual para **cait**, **arremetida** (1 slot) e **investida** (2+ slots).
 
 Decisão registrada: **não modelar as variações internas do cait** (atacar antes/durante/
 depois). Quem quer controlar a sequência usa duas actions separadas.
+
+#### ❌ Descartado: duas resoluções com aresta de dependência
+
+Uma versão anterior desta seção dizia *"duas resoluções, com aresta de dependência"* e
+*"não é no tempo da mais lenta"*: cada metade resolveria no seu próprio tempo, com outras
+actions podendo cair entre elas. **Está descartado**, por decisão do dono do produto:
+
+> *"eu tinha conversado a respeito de não ter problema uma investida poder ocorrer com um delay
+> entre o movimento e o ataque... mas essa solução é ruim, então é melhor que ocorra no pior
+> tempo de action mesmo."*
+
+A complexidade técnica não se pagava — duas resoluções de uma action só significam dois turnos
+carregando a mesma `Action`, e a tabela `actions` é chaveada pelo UUID da action. O ganho de
+fidelidade era pequeno perto disso.
 
 ### Action enviada no meio do round
 
@@ -326,18 +359,18 @@ E é por isso que `Charge` importa: ele empurra a `Speed`, e a `Speed` é o que 
 > da **move action** — a barra de movimento —, porque todo o contexto é deslocamento.
 > Corrigir em uma linha se a intenção era a barra de ação.
 
-#### ⚠️ Renomeação pendente: `enum.Velocity` → `Quickness`
+#### ✅ Renomeação feita: `enum.Velocity` → `Quickness` (Fase 3)
 
-Sob Agilidade devem existir **`Accelerate`, `Brake` e `Quickness`**. Hoje existe
-`enum.Velocity` no lugar de `Quickness`, e `Quickness` não existe no enum — aparece só num
-comentário de `character_status.go` (*"o jogo de pés (Footwork) é um teste de Quickness"*).
+Sob Agilidade existem **`Accelerate`, `Brake` e `Quickness`** — começar um movimento, interrompê-lo,
+e o jogo de pés que move o personagem dentro do slot. A terceira se chamava `Velocity`, o que a
+nomeava por uma grandeza em vez de pelo que ela testa, e colidia com `action.Velocity`, o vetor
+de movimento, que é outra coisa e **continua como está**.
 
-**Alcance da mudança:** o enum, mais 12+ ocorrências em
-`character_class_factory.go` (toda classe define um valor), mais o que quer que serialize
-nomes de perícia para o front e para o banco.
-
-**Não fazer junto com outra coisa.** Fatia própria, antes ou junto da fase que usar perícia de
-movimento. E ao fazer, **não tocar em `action.Velocity`** — o vetor está certo.
+Alcance do que foi renomeado: o enum e seu valor serializado (`"Velocity"` → `"Quickness"`), 12
+ocorrências em `character_class_factory.go`, o modelo e as queries do gateway
+(`VelocityExp` → `QuicknessExp`, coluna `velocity_exp` → `quickness_exp` via
+`migrations/20260818000000_rename_velocity_to_quickness.sql`), e as três chaves `velocity` no
+front, que lê o nome serializado em minúscula — PR próprio no repo React.
 
 ### Escala das duas barras
 
@@ -556,6 +589,146 @@ o mesmo ID que a peça do tabuleiro carrega como `CharacterID` e o mesmo que um 
 carrega. `ActionPayload.actorId` é obrigatório no wire. A autorização continua por jogador:
 `EnqueueAction` verifica `charToPlayer[actorCharID] == playerUUID`.
 
+## O que a Fase 3 fixou no motor
+
+### A chave não mora na action
+
+`PriorityQueue` deixou de ser heap — `entity/action/priority_queue.go` agora é uma lista
+simples, em ordem de inserção. A razão é estrutural, não de gosto: a chave de uma ação
+pendente,
+
+```
+carry + média(velocidades até n) − (n−1) × preço
+```
+
+é estado do **personagem**, não da action, e se move toda vez que esse personagem manda outra
+ação — a média do round desliza sob ela. Um heap não sabe re-chavear um item que já guarda;
+continuaria devolvendo uma ordem obsoleta, em silêncio. Por isso a chave passa a ser calculada
+**na hora da seleção**, por `service.RoundScheduler` (`round_scheduler.go`, privados
+`keyOf`/`keyOnBar`) — nunca guardada. Com 4 a 6 personagens numa mesa, varrer a lista custa
+menos que manter o heap, e `ExtractByID` já varria linearmente desde sempre.
+
+### Os dois porteiros em código
+
+`service.BarEconomy.IsEligible` (`bar_economy.go`) é literalmente os dois porteiros da seção
+"Quem pode agir" acima: primeira ação do personagem no round mede a **barra** contra o preço
+(`carry + rolagem ≥ preço`); segunda em diante mede o **troco** das que já agiram
+(`Balance(...) ≥ preço`). `BarEconomy.Key` é a chave — ordena, nunca decide se a ação
+acontece. Os dois vivem separados no código exatamente como vivem separados na regra: nada
+chama `Key` para decidir elegibilidade, nem `IsEligible` para decidir ordem.
+
+### Onde o preço mora
+
+`Round.prices` (`entity/round/round.go`) substituiu o antigo campo único `coast` por um mapa
+`action.Bar → int`, um preço por barra. `RoundScheduler.FreezePrices` o congela na primeira
+seleção que enxerga trabalho pendente **naquela barra** — não no round inteiro — e
+`Round.FreezePrice` é idempotente: a primeira chamada vence, toda chamada seguinte é
+ignorada. Uma barra ausente do mapa ainda não precificou; é também a leitura constante de um
+round `Free`, que não tem preço nenhum.
+
+### `Speeds` são as que agiram
+
+`MatchSession.recordActed` grava a velocidade de uma ação em cada barra que ela cobrou, mas só
+quando a ação **abre** (dentro de `OpenNextAction`/`PullAction`) — nunca quando ela chega à
+fila — e **só em `Race`**. `Free` não congela preço nenhum e `settleBars` pula toda barra que
+não precificou, então uma velocidade gravada em `Free` seria cobrada por nada e zerada por nada:
+sobreviveria à troca de regime e faria `IsEligible` ler o personagem como quem "já agiu",
+negando a **primeira** ação dele no round disputado. O porteiro fica dentro do próprio
+`recordActed`, fechando para os dois chamadores de uma vez. `deriveSpeeds`, chamado por `EnqueueAction`, só calcula o número da velocidade; não o
+registra em `ResourceBar.Speeds`. Essa separação é o que compra a regra "action atrasada ainda
+age inteira": uma ação que nunca alcançou o preço nunca entrou em `acted`, então não há nada
+para desfazer quando ela rola para o round seguinte — ela simplesmente carrega o valor que já
+tinha.
+
+### A média não trunca
+
+`BarEconomy.Mean` — uma função, sem `math.Floor` nem divisão inteira — devolve
+`float64(soma)/float64(n)` e guarda a fração. Truncar seria escolher uma política de
+arredondamento que a regra nunca pediu, e o erro se acumularia round a round pelo carry; o
+exemplo canônico continua fechando em número inteiro exato porque os números do exemplo foram
+escolhidos para isso, não porque o código arredonda.
+
+### A ação combinada é UMA action, na prática
+
+O desenho já registrado em "Ações compostas" acima chegou ao código sem desvio: `action.Bars()`
+(`entity/action/bar.go`) devolve as duas barras quando a action carrega `Move` e algo que cobra
+a barra de ação; `SpeedOn(bar)` devolve a velocidade certa para cada uma, sem re-rolar nada; e
+`RoundScheduler.keyOf` agenda pelo `min` das duas chaves, gatilhando o porteiro **das duas
+barras** — não só uma. O mestre abre uma vez, é um turno só, e a versão descartada com duas
+resoluções e aresta de dependência entre metades não foi construída: a modelagem inteira
+pressupõe uma `Action`, e não haveria onde pendurar uma segunda resolução sem duas entradas na
+fila — o que a tabela `actions`, chaveada pelo UUID da action, não comporta de graça.
+
+### `Race` é alcançável
+
+`ChangeRoundModeUC` (`application/match/change_round_mode.go`) troca o regime do round ativo
+via `MatchSession.SetRoundMode` → `Round.SetMode`, restrito ao mestre (`ErrNotMatchMaster`
+para qualquer outro chamador). Trocar no meio do round é permitido de propósito: a economia
+simplesmente recomeça a contar dali — ninguém "já agiu" do ponto de vista das barras, e os
+preços congelam na próxima seleção. **Iniciativa continua de fora**: é a regra de jogo que
+normalmente forçaria `Race`, e fica para uma fatia futura; esta fase só entrega o regime em
+si, ligável pelo mestre.
+
+### O round fecha sozinho
+
+O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem". Quando
+nenhuma ação pendente passa no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca
+`TurnTransition.RoundExhausted = true` em vez de abrir algo, e é aí que `CloseRoundUC`
+finalmente ganha um chamador: o caminho de auto-fechamento em
+`application/match/open_next_action.go` o executa na hora, loga e segue adiante se falhar — a
+mesa não pode ficar sem o bastão por causa de uma falha de fechamento. `bars_updated` e
+`round_closed` saem de `room.go` nessa mesma passada.
+
+⚠️ **`ProjectOrder` e `SelectNext` compartilham a pontuação inteira, não só o desempate.** Os
+dois passam pelo mesmo `RoundScheduler.best` — a chave é `keyOf`, e o empate vai para quem
+entrou primeiro (só troca o melhor quando a chave é **estritamente** maior).
+
+E `ProjectOrder` **simula o round para a frente**: escolhe o melhor, registra numa cópia do
+estado das barras que ele abriu, tira da lista e repete. Pontuar tudo de uma vez contra o mesmo
+`acted` só acerta a **primeira** posição — a segunda ação pendente de um personagem seria
+chaveada como se a primeira não tivesse aberto. No exemplo canônico (preço 11; p2 pendente em 23
+e 17, p1 em 20, p3 em 11) a passada única publica p2 → p1 → p2 → p3, e a mesa joga
+p2 → p1 → p3 → p2, porque a chave da segunda de p2 cai para `média(23,17) − 11 = 9` assim que a
+primeira abre. Nada real é mutado: a fila entrega cópia e o estado das barras é lido por um
+overlay que morre com a chamada, então `RoundScheduler{}` continua valendo como zero value.
+
+### As barras são públicas
+
+`bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é broadcast, não
+projeção por destinatário: carrega `seq`, os preços congelados, o saldo e o histórico de
+velocidades de cada personagem em ambas as barras, e a ordem projetada
+(`MatchSession.ProjectedOrder`/`RoundScheduler.ProjectOrder`) — quem age a seguir e em qual
+barra. **Nada que identifique a ação em si** entra no payload: sem ID de ação, arma, alvo ou
+perícia. Isso é o que sustenta "a fila é secreta; a barra e a ordem são públicas" — um jogador
+sem visão da barra geral só descobre que era a vez dele depois que passou.
+
+### Um gotcha de teste: `rollActionDice` rola quase tudo, mas não é uniforme
+
+`MatchSession.rollActionDice` sorteia, na chegada, todo teste que a action carrega — mas
+**quantos dados caem depende do regime do round e da categoria de movimento**, não é "tudo,
+sempre":
+
+- **`Speed` (actionSpeed) só rola em `Race`.** Em `Free` ela é passiva — não há disputa sobre
+  quem age primeiro, então não há o que rolar — e nenhum dado cai para ela
+  (`match_session.go:590-594`). Um teste em `Free` que reserva uma face para a velocidade
+  sorteia uma a mais do que o código consome, e todo número depois dela sai deslocado.
+- **`Feint`, cada `Skill`, `Move.Charge`, `Defense`, `Dodge`, `Attack.Hit`, `Attack.Charge` e
+  o dano da arma** (a outra família de rolagem — os dados da própria arma, só `Primary`, sem
+  vantagem) rolam **sempre que o campo correspondente existe na action**, em qualquer regime —
+  nenhum deles depende de `Race`/`Free` nem de categoria de movimento. Uma action sem
+  `Defense`, por exemplo, não sorteia nada por `Defense`; uma que o carrega, sorteia sempre.
+- **`Move.Speed` rola sempre, exceto em `Shift`** — decidido por `Move.Category`, não pelo
+  round: `Dash` rola, `Shift` toma o valor passivo e não consome dado nenhum.
+
+Um teste com fonte de dados roteirizada precisa contar exatamente esses sorteios, na ordem
+certa, para o regime e a categoria de movimento da action em questão; foi achado instrumentando
+a fonte depois que um teste passou com um número que só batia por coincidência. Do outro lado,
+um teste **passivo não pode consumir dado nenhum** — um sorteio fantasma é inofensivo em
+produção e venenoso em teste: drena a fonte roteirizada e desloca todo número que vem depois. É
+por isso que tanto `Speed` em `Free` quanto `Move.Speed` em `Shift` pulam o sorteio — ambas são
+passivas por definição, e testá-las mesmo assim quebraria qualquer script de dados a partir
+dali.
+
 ## Pendências estruturais
 
 | Item | Situação |
@@ -572,3 +745,8 @@ carrega. `ActionPayload.actorId` é obrigatório no wire. A autorização contin
 | Tela de enviar action | **não existe no front** — Fase 6 |
 | Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. A Fase 4 liga o repelir |
 | Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars` |
+| `PriorityQueue` | ✅ Fase 3 — deixou de ser heap; virou lista simples, chave calculada em `RoundScheduler` na hora da seleção |
+| `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
+| Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
+| `RoundMode.Race` | ✅ Fase 3 — alcançável via `ChangeRoundModeUC`/`change_round_mode`, master only. Iniciativa continua fora — `action.Initiative` segue órfão |
+| `bars_updated` | ✅ Fase 3 — broadcast com `seq`, preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |

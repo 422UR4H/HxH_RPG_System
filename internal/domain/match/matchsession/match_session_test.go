@@ -218,6 +218,47 @@ func mustOpen(t *testing.T, s *matchsession.MatchSession) *turn.Turn {
 	return tr.Opened
 }
 
+func enqueueAttack(t *testing.T, s *matchsession.MatchSession, playerUUID, charID uuid.UUID) *action.Action {
+	t.Helper()
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{}, nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	return a
+}
+
+func mustOpenNext(t *testing.T, s *matchsession.MatchSession) *matchsession.TurnTransition {
+	t.Helper()
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	return tr
+}
+
+// closeExhaustedRound drives the round the way production does: open until the session
+// reports there is nothing left that can pay, and only THEN close.
+//
+// Calling CloseRound directly after an open would fail with ErrRoundHasOpenTurn — the turn
+// under the baton is closed by the open that finds nothing, not by the round close.
+func closeExhaustedRound(t *testing.T, s *matchsession.MatchSession) {
+	t.Helper()
+	for i := 0; i < 20; i++ {
+		tr, err := s.OpenNextAction()
+		if err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if tr.RoundExhausted {
+			if _, err := s.CloseRound(); err != nil {
+				t.Fatalf("CloseRound: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatal("the round never ran out — the gate is letting through more than it should")
+}
+
 func makeAction(actorID uuid.UUID) *action.Action {
 	return action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
 }
@@ -716,6 +757,9 @@ func TestMatchSession_EnqueueAction_RollsTheDiceOnce(t *testing.T) {
 	participant := makeParticipant(matchUUID, &playerUUID)
 	charID := participant.Sheet.UUID
 	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+	// Race mode, so actionSpeed is a real test and not the Free round's passive value —
+	// this test is about dice falling, not about which mode derives what.
+	s.GetActiveRound().SetMode(enum.Race)
 	s.SetRollSource(fixedSource{face: 7})
 
 	sword := enum.Sword
@@ -882,4 +926,531 @@ func TestMatchSession_DamageIsAppliedOnlyOnTurnClose(t *testing.T) {
 			t.Errorf("HP = %d, want %d", got, hpBefore-projected)
 		}
 	})
+}
+
+func TestMatchSession_EnqueueAction_DerivesTheSpeed(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+
+	t.Run("a Race actionSpeed rolls Legerity plus the dice", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		s.GetActiveRound().SetMode(enum.Race)
+		s.SetRollSource(fixedSource{face: 6})
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil,
+			action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Two D10 at 6 each, plus the sheet's Legerity.
+		want := 12 + skillValue(t, sheets[charID], enum.Legerity)
+		if a.Speed.Result != want {
+			t.Errorf("Speed.Result = %d, want %d", a.Speed.Result, want)
+		}
+		if bars := a.Bars(); len(bars) != 1 || bars[0] != action.BarAction {
+			t.Errorf("Bars() = %v, want just the action bar", bars)
+		}
+	})
+
+	t.Run("a Free actionSpeed takes the passive value and rolls nothing", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		// A new session starts in Free.
+		s.SetRollSource(fixedSource{face: 10})
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := 11 + skillValue(t, sheets[charID], enum.Legerity)
+		if a.Speed.Result != want {
+			t.Errorf("Speed.Result = %d, want the passive %d — rolling has zero expected gain", a.Speed.Result, want)
+		}
+	})
+
+	t.Run("a Dash rolls Accelerate into the move bar", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		s.GetActiveRound().SetMode(enum.Race)
+		s.SetRollSource(fixedSource{face: 4})
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil,
+			&action.Move{Category: enum.Dash, Speed: &action.RollCheck{SkillName: enum.Accelerate.String()}},
+			nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := 8 + skillValue(t, sheets[charID], enum.Accelerate)
+		if a.Move.FinalSpeed != want {
+			t.Errorf("Move.FinalSpeed = %d, want %d", a.Move.FinalSpeed, want)
+		}
+		if a.SpeedOn(action.BarMove) != want {
+			t.Errorf("SpeedOn(move) = %d, want %d", a.SpeedOn(action.BarMove), want)
+		}
+		if bars := a.Bars(); len(bars) != 1 || bars[0] != action.BarMove {
+			t.Errorf("Bars() = %v, want just the move bar", bars)
+		}
+	})
+
+	t.Run("a Shift takes the passive value of Brake and consumes no dice", func(t *testing.T) {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+		s.GetActiveRound().SetMode(enum.Race)
+		src := &countingSource{face: 9}
+		s.SetRollSource(src)
+
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil,
+			&action.Move{Category: enum.Shift, Speed: &action.RollCheck{SkillName: enum.Brake.String()}},
+			nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := 11 + skillValue(t, sheets[charID], enum.Brake)
+		if a.Move.FinalSpeed != want {
+			t.Errorf("Move.FinalSpeed = %d, want the passive %d", a.Move.FinalSpeed, want)
+		}
+		if !a.Move.Speed.Attempts.IsEmpty() {
+			t.Error("a Shift rolls nothing: a phantom roll here silently drains a scripted source and shifts every number downstream")
+		}
+	})
+}
+
+func TestMatchSession_EnqueueAction_CombinedActionKeepsBothSpeeds(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+	s.GetActiveRound().SetMode(enum.Race)
+	s.SetRollSource(fixedSource{face: 5})
+
+	sword := enum.Sword
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil,
+		&action.Move{Category: enum.Dash, Position: [3]int{2, 2, 0}},
+		&action.Attack{Weapon: &sword, Hit: action.RollCheck{SkillName: enum.Accuracy.String()}},
+		nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("it stays ONE action in the queue", func(t *testing.T) {
+		if pending := s.PendingActions(); len(pending) != 1 {
+			t.Fatalf("queued %d actions, want 1 — an investida is a single action with the movement inside it", len(pending))
+		}
+	})
+
+	t.Run("it charges both bars", func(t *testing.T) {
+		bars := a.Bars()
+		if len(bars) != 2 {
+			t.Fatalf("Bars() = %v, want both", bars)
+		}
+	})
+
+	t.Run("both speeds are derived and both survive on the action", func(t *testing.T) {
+		wantAction := 10 + skillValue(t, sheets[charID], enum.Legerity)
+		wantMove := 10 + skillValue(t, sheets[charID], enum.Accelerate)
+		if a.SpeedOn(action.BarAction) != wantAction {
+			t.Errorf("actionSpeed = %d, want %d", a.SpeedOn(action.BarAction), wantAction)
+		}
+		if a.SpeedOn(action.BarMove) != wantMove {
+			t.Errorf("moveSpeed = %d, want %d", a.SpeedOn(action.BarMove), wantMove)
+		}
+	})
+}
+
+// skillValue reads a skill off a sheet the same way the engine does, so a test never hard
+// codes a number the factory owns.
+func skillValue(t *testing.T, cs *csSheet.CharacterSheet, name enum.SkillName) int {
+	t.Helper()
+	v, err := cs.GetValueForTestOfSkill(name)
+	if err != nil {
+		t.Fatalf("GetValueForTestOfSkill(%s): %v", name, err)
+	}
+	return v
+}
+
+// countingSource is a scripted source that also reports how many dice it handed out, so a
+// test can prove a passive check rolled nothing.
+type countingSource struct {
+	face  int
+	rolls int
+}
+
+func (c *countingSource) RollDie(_ enum.DieSides) int {
+	c.rolls++
+	return c.face
+}
+
+// scriptedFaces hands out faces in order and repeats the last one once exhausted.
+type scriptedFaces struct {
+	faces []int
+	i     int
+}
+
+func (s *scriptedFaces) RollDie(_ enum.DieSides) int {
+	if len(s.faces) == 0 {
+		return 1
+	}
+	if s.i >= len(s.faces) {
+		return s.faces[len(s.faces)-1]
+	}
+	f := s.faces[s.i]
+	s.i++
+	return f
+}
+
+func TestMatchSession_OpenNextAction_UsesTheBarEconomy(t *testing.T) {
+	matchUUID := uuid.New()
+	p1UUID, p2UUID := uuid.New(), uuid.New()
+	p1 := makeParticipant(matchUUID, &p1UUID)
+	p2 := makeParticipant(matchUUID, &p2UUID)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		p1.Sheet.UUID: buildPlainSheet(t),
+		p2.Sheet.UUID: buildPlainSheet(t),
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{p1, p2})
+	s.GetActiveRound().SetMode(enum.Race)
+
+	// Two D10 per action, scripted: p1 gets 4+4 = 8, p2 gets 9+9 = 18.
+	s.SetRollSource(&scriptedFaces{faces: []int{4, 4, 4, 4, 9, 9, 9, 9}})
+
+	enqueue := func(pl uuid.UUID, charID uuid.UUID) {
+		t.Helper()
+		a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(pl, a); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+	}
+	enqueue(p1UUID, p1.Sheet.UUID)
+	enqueue(p2UUID, p2.Sheet.UUID)
+
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+
+	t.Run("the faster character opens first, not whoever was inserted first", func(t *testing.T) {
+		openedAction := tr.Opened.GetAction()
+		if openedAction.GetActorID() != p2.Sheet.UUID {
+			t.Error("p2 rolled higher and must open first — the queue finally has a priority")
+		}
+	})
+
+	t.Run("the action bar priced at the slowest pending speed", func(t *testing.T) {
+		price, frozen := s.GetActiveRound().Price(action.BarAction)
+		if !frozen {
+			t.Fatal("opening the first action must freeze the price")
+		}
+		want := 8 + skillValue(t, sheets[p1.Sheet.UUID], enum.Legerity)
+		if price != want {
+			t.Errorf("price = %d, want p1's speed %d", price, want)
+		}
+	})
+
+	t.Run("the opened action was recorded as having acted", func(t *testing.T) {
+		_, acted := s.BarState(p2.Sheet.UUID, action.BarAction)
+		if len(acted) != 1 {
+			t.Fatalf("acted = %v, want exactly the one speed that opened", acted)
+		}
+		_, p1Acted := s.BarState(p1.Sheet.UUID, action.BarAction)
+		if len(p1Acted) != 0 {
+			t.Error("a pending action must not be recorded as acted")
+		}
+	})
+}
+
+func TestMatchSession_OpenNextAction_ReportsExhaustion(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+	s.GetActiveRound().SetMode(enum.Race)
+	s.SetRollSource(fixedSource{face: 5})
+
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{}, nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	if _, err := s.OpenNextAction(); err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+
+	tr, err := s.OpenNextAction()
+
+	t.Run("exhaustion is a report, not an error", func(t *testing.T) {
+		if err != nil {
+			t.Errorf("err = %v, want nil: an exhausted Race round is a normal outcome", err)
+		}
+		if !tr.RoundExhausted {
+			t.Error("nothing pending passes its gate, so the round is exhausted")
+		}
+		if tr.Opened != nil {
+			t.Error("nothing opened")
+		}
+	})
+
+	t.Run("the turn under the baton still closed and still applied", func(t *testing.T) {
+		if tr.Closed == nil {
+			t.Error("the open turn must close on the way out, exactly as it does on a normal open")
+		}
+	})
+}
+
+func TestMatchSession_FreeRoundStillReportsAnEmptyQueue(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{participant})
+
+	_, err := s.OpenNextAction()
+	if !errors.Is(err, service.ErrQueueEmpty) {
+		t.Errorf("err = %v, want ErrQueueEmpty: Free has no economy, so an empty queue is still an error", err)
+	}
+}
+
+// TestMatchSession_OpenNextAction_RecordsBothBarsForACombinedAction is the regression the
+// product owner's "one action, two bars, opened once" correction needs: recordActed loops
+// a.Bars() so a combined move+attack action charges BOTH bars the moment it opens, not just
+// one. A silent regression to charging a single bar would make every round average involving
+// a charge/investida wrong, with nothing else in the suite to catch it.
+func TestMatchSession_OpenNextAction_RecordsBothBarsForACombinedAction(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	participant := makeParticipant(matchUUID, &playerUUID)
+	charID := participant.Sheet.UUID
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{charID: buildPlainSheet(t)}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
+	s.GetActiveRound().SetMode(enum.Race)
+
+	// actionSpeed (Legerity) draws faces[0:4], moveSpeed (Accelerate, Dash) draws faces[4:8] —
+	// Roll always rolls BOTH attempt sets, so each 2D10 check costs four faces, not two. The
+	// attack's Hit check is pre-filled below so it draws nothing, and no Weapon means no
+	// damage roll either: these 8 faces are spent on exactly the two speed checks.
+	s.SetRollSource(&scriptedFaces{faces: []int{3, 3, 3, 3, 6, 6, 6, 6}})
+
+	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil,
+		&action.Move{Category: enum.Dash, Position: [3]int{2, 2, 0}},
+		&action.Attack{Hit: action.RollCheck{Attempts: action.RollAttempts{Primary: []int{1, 1}}}},
+		nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerUUID, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+
+	wantAction := 6 + skillValue(t, sheets[charID], enum.Legerity)  // actionSpeed: 3+3
+	wantMove := 12 + skillValue(t, sheets[charID], enum.Accelerate) // moveSpeed: 6+6
+	if a.SpeedOn(action.BarAction) != wantAction {
+		t.Fatalf("actionSpeed = %d, want %d", a.SpeedOn(action.BarAction), wantAction)
+	}
+	if a.SpeedOn(action.BarMove) != wantMove {
+		t.Fatalf("moveSpeed = %d, want %d", a.SpeedOn(action.BarMove), wantMove)
+	}
+
+	mustOpenNext(t, s)
+
+	t.Run("the action bar recorded exactly the action speed", func(t *testing.T) {
+		_, acted := s.BarState(charID, action.BarAction)
+		if len(acted) != 1 {
+			t.Fatalf("action bar acted = %v, want exactly one speed", acted)
+		}
+		if acted[0] != wantAction {
+			t.Errorf("action bar recorded %d, want %d", acted[0], wantAction)
+		}
+	})
+
+	t.Run("the move bar recorded exactly the move speed", func(t *testing.T) {
+		_, acted := s.BarState(charID, action.BarMove)
+		if len(acted) != 1 {
+			t.Fatalf("move bar acted = %v, want exactly one speed", acted)
+		}
+		if acted[0] != wantMove {
+			t.Errorf("move bar recorded %d, want %d", acted[0], wantMove)
+		}
+	})
+
+	t.Run("the two bars recorded different speeds, not the same number twice", func(t *testing.T) {
+		_, actionActed := s.BarState(charID, action.BarAction)
+		_, moveActed := s.BarState(charID, action.BarMove)
+		if len(actionActed) == 1 && len(moveActed) == 1 && actionActed[0] == moveActed[0] {
+			t.Errorf("both bars recorded %d — recordActed may be charging one bar twice instead of both", actionActed[0])
+		}
+	})
+}
+
+func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
+	matchUUID := uuid.New()
+	p1UUID, p2UUID := uuid.New(), uuid.New()
+	p1 := makeParticipant(matchUUID, &p1UUID)
+	p2 := makeParticipant(matchUUID, &p2UUID)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		p1.Sheet.UUID: buildPlainSheet(t),
+		p2.Sheet.UUID: buildPlainSheet(t),
+	}
+
+	newRacingSession := func(faces []int) *matchsession.MatchSession {
+		s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{p1, p2})
+		s.GetActiveRound().SetMode(enum.Race)
+		s.SetRollSource(&scriptedFaces{faces: faces})
+		return s
+	}
+
+	t.Run("a character who acted once carries the leftover", func(t *testing.T) {
+		// p1 rolls 4+4 = 8, p2 rolls 7+7 = 14. Legerity is 0 on a factory sheet, so those
+		// ARE the speeds. Price = 8. p2 keeps 14 − 8 = 6, under the ceiling of 8; p1 keeps 0.
+		s := newRacingSession([]int{4, 4, 4, 4, 7, 7, 7, 7})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		carry, acted := s.BarState(p2.Sheet.UUID, action.BarAction)
+		if carry != 6 {
+			t.Errorf("p2 carry = %v, want 6", carry)
+		}
+		if len(acted) != 0 {
+			t.Error("the round's speed history must be cleared; the balance is what crosses over")
+		}
+		if p1Carry, _ := s.BarState(p1.Sheet.UUID, action.BarAction); p1Carry != 0 {
+			t.Errorf("p1 carry = %v, want 0 — the slowest of the round starts the next one from zero", p1Carry)
+		}
+	})
+
+	t.Run("the carry is capped at the round price", func(t *testing.T) {
+		// p1 = 2+2 = 4 (the price), p2 = 10+10 = 20. p2's leftover of 16 blows past the
+		// ceiling of 4 and is clipped to it.
+		s := newRacingSession([]int{2, 2, 2, 2, 10, 10, 10, 10})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry != 4 {
+			t.Errorf("carry = %v, want the ceiling 4 — standing time may not compound", carry)
+		}
+	})
+
+	t.Run("a character who sent nothing carries the floor", func(t *testing.T) {
+		// Only p1 acts, at 6+6 = 12, which is therefore also the price. p1 closes at 0, and
+		// p2 — who never sent anything — closes at the floor, the same number as the ceiling.
+		s := newRacingSession([]int{6, 6, 6, 6})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry != 12 {
+			t.Errorf("p2 carry = %v, want the floor 12: reading the fight instead of acting is a legitimate trade", carry)
+		}
+		if carry, _ := s.BarState(p1.Sheet.UUID, action.BarAction); carry != 0 {
+			t.Errorf("p1 carry = %v, want 0", carry)
+		}
+	})
+
+	t.Run("a bar that never priced is left exactly as it was", func(t *testing.T) {
+		s := newRacingSession([]int{6, 6, 6, 6})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+
+		closeExhaustedRound(t, s)
+
+		if carry, _ := s.BarState(p1.Sheet.UUID, action.BarMove); carry != 0 {
+			t.Errorf("move carry = %v, want 0 — nobody moved, so no round happened on that bar", carry)
+		}
+	})
+
+	t.Run("an action that never reached the price keeps its full roll for the next round", func(t *testing.T) {
+		// p1 acts at 7+7 = 14, pricing the bar at 14. Only THEN does p2 send an action worth
+		// 1+1 = 2, which cannot pay and sits the round out.
+		s := newRacingSession([]int{7, 7, 7, 7})
+		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
+		mustOpenNext(t, s)
+
+		s.SetRollSource(&scriptedFaces{faces: []int{1, 1, 1, 1}})
+		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
+
+		pending := s.PendingActions()
+		if len(pending) != 1 {
+			t.Fatalf("pending = %d, want 1", len(pending))
+		}
+		speedBefore := pending[0].SpeedOn(action.BarAction)
+
+		closeExhaustedRound(t, s)
+
+		after := s.PendingActions()
+		if len(after) != 1 {
+			t.Fatalf("pending after close = %d, want the action still queued", len(after))
+		}
+		if after[0].SpeedOn(action.BarAction) != speedBefore {
+			t.Errorf("speed = %d, want %d unchanged: it pays nothing and goes to the next round whole",
+				after[0].SpeedOn(action.BarAction), speedBefore)
+		}
+		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry < 0 {
+			t.Errorf("carry = %v — sitting the round out must never put the bar in debt", carry)
+		}
+	})
+}
+
+// TestMatchSession_FreeRoundLeavesNoResidueForRace pins the promise ChangeRoundModeUC and
+// combat-engine.md § "Race é alcançável" both make: switching a live round into Race starts
+// the economy from that moment, and "nobody has acted" as far as the bars are concerned.
+//
+// It used to be false. PullAction is the one way an action opens in Free, and it recorded the
+// speed into ResourceBar.Speeds unconditionally — while FreezePrices no-ops in Free and
+// settleBars skips any bar that never priced. The number was therefore never charged and never
+// reset. On the switch to Race it read as "this character already acted", so IsEligible took
+// its second-action branch — Balance(0, [20], 20) = 0, which is not >= 20 — and the character's
+// FIRST Race action was denied. Nothing pending could pay, so the round reported exhausted and
+// closed with nothing opened.
+func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
+	playerA := uuid.New()
+	s, chars := sessionWithParticipants(playerA)
+
+	// A session starts in Free. The master opens the action by naming it — pull_action is the
+	// only way an action opens in a Free round through the scheduler-less path.
+	first := makeActionWithSpeed(chars[0], 20)
+	if err := s.EnqueueAction(playerA, first); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	if _, err := s.PullAction(first.GetID()); err != nil {
+		t.Fatalf("PullAction: %v", err)
+	}
+
+	if _, acted := s.BarState(chars[0], action.BarAction); len(acted) != 0 {
+		t.Errorf("acted = %v after a Free round, want empty — Free prices nothing, so nothing it opens can be charged or settled", acted)
+	}
+
+	// The master turns the disputed regime on, mid-round.
+	s.SetRoundMode(enum.Race)
+
+	second := makeActionWithSpeed(chars[0], 20)
+	if err := s.EnqueueAction(playerA, second); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+
+	tr, err := s.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	if tr.RoundExhausted {
+		t.Fatal("the round reported exhausted before its first Race action ever opened")
+	}
+	if tr.Opened == nil {
+		t.Fatal("expected the first Race action to open")
+	}
+	if got := tr.Opened.GetAction(); got.GetID() != second.GetID() {
+		t.Errorf("opened action = %v, want %v", got.GetID(), second.GetID())
+	}
 }

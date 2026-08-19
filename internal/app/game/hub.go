@@ -50,6 +50,7 @@ func (h *Hub) GetOrCreateRoom(
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
+	changeRoundModeUC appmatch.IChangeRoundMode,
 ) *Room {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -64,6 +65,7 @@ func (h *Hub) GetOrCreateRoom(
 		initSessionUC, openNextActionUC, pullActionUC,
 		enqueueActionUC, attachReactionUC,
 		changeSceneUC, roundRepo, enqueueMasterActionUC,
+		changeRoundModeUC,
 	)
 	h.rooms[matchUUID] = room
 	go room.Run()

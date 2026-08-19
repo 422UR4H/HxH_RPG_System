@@ -46,7 +46,7 @@ func TestResourceBar_RecordAndReset(t *testing.T) {
 		t.Errorf("expected the speed history cleared, got %d entries", got)
 	}
 	if s.ActionBar.Balance != 9 {
-		t.Errorf("expected the carry-over balance to survive the round reset, got %d", s.ActionBar.Balance)
+		t.Errorf("expected the carry-over balance to survive the round reset, got %v", s.ActionBar.Balance)
 	}
 }
 

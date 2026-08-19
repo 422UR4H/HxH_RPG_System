@@ -293,8 +293,8 @@ func (csf *CharacterSheetFactory) BuildPhysSkills(
 	if err != nil {
 		return nil, err
 	}
-	agiSkill := skill.NewCommonSkill(enum.Velocity, *exp.Clone(), agi, physSkills)
-	skills[enum.Velocity] = agiSkill
+	agiSkill := skill.NewCommonSkill(enum.Quickness, *exp.Clone(), agi, physSkills)
+	skills[enum.Quickness] = agiSkill
 	skills[enum.Accelerate] = agiSkill.Clone(enum.Accelerate)
 	skills[enum.Brake] = agiSkill.Clone(enum.Brake)
 

@@ -40,6 +40,7 @@ const (
 	MsgTypeRoundClosed      MessageType = "round_closed"
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
+	MsgTypeBarsUpdated      MessageType = "bars_updated"
 
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
@@ -49,9 +50,11 @@ const (
 
 	// Client → Server (master actions)
 	MsgTypeEnqueueMasterAction MessageType = "enqueue_master_action"
+	MsgTypeChangeRoundMode     MessageType = "change_round_mode"
 
 	// Server → Client
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
+	MsgTypeRoundModeChanged     MessageType = "round_mode_changed"
 
 	// Server → Client (lobby lifecycle)
 	MsgTypeLobbyClosed MessageType = "lobby_closed" // master cancelled the lobby
@@ -230,6 +233,56 @@ type RoundClosedPayload struct {
 	RoundMode string `json:"roundMode"`
 }
 
+// BarsUpdatedPayload is the two clocks as the whole table sees them.
+//
+// It is BROADCAST, not projected per recipient, and that is deliberate: combat-engine.md says
+// "A fila é secreta; a barra e a ordem são públicas". A player who cannot see the general bar
+// only finds out it was their turn after it passed.
+//
+// Order therefore carries who acts next and on which bar — and NOTHING that identifies the
+// action itself. No action ID, no weapon, no target, no skill. Those belong to the master
+// until the turn opens.
+type BarsUpdatedPayload struct {
+	// Seq orders the snapshots, and exists because they can arrive out of order.
+	//
+	// This is a FULL STATE snapshot, and it is handed to the broadcast channel from a detached
+	// goroutine: two opens in quick succession race on that send, and the older snapshot can be
+	// delivered last. There is no later event to self-correct from either — the one that closes
+	// the round is the last bars_updated the table gets.
+	//
+	// It is assigned at the instant the snapshot is taken, not when it is sent, and it rises by
+	// one every time. A client keeps the highest it has applied and DISCARDS anything lower.
+	Seq uint64 `json:"seq"`
+	// Prices maps a bar name to its frozen round price. A bar that has not priced is absent.
+	Prices map[string]int `json:"prices"`
+	// Characters is every character's standing balance on both bars.
+	Characters []CharacterBarsPayload `json:"characters"`
+	// Order is the projection of who acts next, highest key first.
+	Order []BarSlotPayload `json:"order"`
+}
+
+type CharacterBarsPayload struct {
+	CharacterID uuid.UUID `json:"characterId"`
+	// ActionBalance and MoveBalance are the standing credit or debt on each clock. They are
+	// fractional: the average behind them rarely divides evenly, and the fraction is kept
+	// rather than rounded away.
+	ActionBalance float64 `json:"actionBalance"`
+	MoveBalance   float64 `json:"moveBalance"`
+	// ActionSpeeds and MoveSpeeds are the speeds that have already acted this round. They
+	// are public because the average they produce is what everyone is being ordered by.
+	ActionSpeeds []int `json:"actionSpeeds"`
+	MoveSpeeds   []int `json:"moveSpeeds"`
+}
+
+// BarSlotPayload is one slot of the general bar: who acts, which clocks it charges, and where
+// in the round it lands. A combined action reports both bars and a single key — the one from
+// its slower half.
+type BarSlotPayload struct {
+	ActorID uuid.UUID `json:"actorId"`
+	Bars    []string  `json:"bars"`
+	Key     float64   `json:"key"`
+}
+
 // ResolutionUpdatedPayload is the master's view of a turn's current resolution.
 //
 // It is a SLICE of service.TurnResolution, not the whole thing: it carries the mechanics and
@@ -353,6 +406,17 @@ type MasterActionEnqueuedPayload struct {
 	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
+}
+
+// ChangeRoundModePayload asks to switch the round regime. Master only.
+type ChangeRoundModePayload struct {
+	Mode string `json:"mode"` // "Free" | "Race"
+}
+
+// RoundModeChangedPayload announces the new regime to the whole table. The regime is public:
+// everyone needs to know whether the bars are running.
+type RoundModeChangedPayload struct {
+	Mode string `json:"mode"`
 }
 
 // WallStateChangedPayload is broadcast to all clients when a wall's open/locked state changes.

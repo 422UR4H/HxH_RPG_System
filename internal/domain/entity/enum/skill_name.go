@@ -17,7 +17,7 @@ const (
 	Carry SkillName = "Carry"
 
 	// Agility
-	Velocity   SkillName = "Velocity"
+	Quickness  SkillName = "Quickness"
 	Accelerate SkillName = "Accelerate"
 	Brake      SkillName = "Brake"
 
@@ -77,7 +77,7 @@ func AllSkillNames() []SkillName {
 	return []SkillName{
 		Vitality, Energy, Defense,
 		Push, Grab, Carry,
-		Velocity, Accelerate, Brake,
+		Quickness, Accelerate, Brake,
 		Legerity, Repel, Feint,
 		Acrobatics, Evasion, Sneak,
 		Reflex, Accuracy, Stealth,

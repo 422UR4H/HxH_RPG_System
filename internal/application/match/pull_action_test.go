@@ -16,7 +16,7 @@ func TestPullActionUC(t *testing.T) {
 
 	t.Run("returns ErrNotMatchMaster when caller is not master", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		uc := match.NewPullActionUC(&fakeStatusWriter{})
+		uc := match.NewPullActionUC(&fakeStatusWriter{}, nil)
 		_, err := uc.Execute(context.Background(), session, masterUUID, uuid.New(), uuid.New())
 		if !errors.Is(err, match.ErrNotMatchMaster) {
 			t.Errorf("expected ErrNotMatchMaster, got %v", err)
@@ -25,7 +25,7 @@ func TestPullActionUC(t *testing.T) {
 
 	t.Run("returns ErrActionNotFound for unknown actionID", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		uc := match.NewPullActionUC(&fakeStatusWriter{})
+		uc := match.NewPullActionUC(&fakeStatusWriter{}, nil)
 		_, err := uc.Execute(context.Background(), session, masterUUID, masterUUID, uuid.New())
 		if !errors.Is(err, service.ErrActionNotFound) {
 			t.Errorf("expected ErrActionNotFound, got %v", err)

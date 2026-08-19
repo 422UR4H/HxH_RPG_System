@@ -39,6 +39,7 @@ type MatchSession struct {
 	// charToPlayer is the bridge between the two axes, and what the fog of war reads.
 	participants   map[uuid.UUID]*match.Participant
 	roundOrch      service.RoundOrchestrator
+	scheduler      service.RoundScheduler
 	turnResolver   service.TurnResolver
 	scenePersisted bool
 	roundPersisted bool
@@ -74,6 +75,7 @@ func NewMatchSession(
 		statuses:     statuses,
 		participants: pMap,
 		roundOrch:    service.RoundOrchestrator{},
+		scheduler:    service.RoundScheduler{},
 		rules:        match.NewDefaultMatchRules(),
 		weapons:      item.NewWeaponsManagerFactory().Build(),
 		turnResolver: service.TurnResolver{},
@@ -100,6 +102,7 @@ func NewMatchSessionWithState(
 		statuses:       statuses,
 		participants:   pMap,
 		roundOrch:      service.RoundOrchestrator{},
+		scheduler:      service.RoundScheduler{},
 		rules:          match.NewDefaultMatchRules(),
 		weapons:        item.NewWeaponsManagerFactory().Build(),
 		turnResolver:   service.TurnResolver{},
@@ -173,6 +176,12 @@ func (s *MatchSession) ChangeScene(category enum.SceneCategory, briefDesc string
 	return oldScene, oldRound, nil
 }
 
+// SetRoundMode puts the active round into a regime. Callers hold room.mu for writing: this
+// changes how every later selection is scored.
+func (s *MatchSession) SetRoundMode(mode enum.RoundMode) {
+	s.roundOrch.SetMode(s.activeRound, mode)
+}
+
 func (s *MatchSession) EnqueueMasterAction(ma *action.MasterAction) error {
 	t := s.activeRound.CurrentTurn()
 	if t == nil || t.GetFinishedAt() != nil {
@@ -218,6 +227,10 @@ type TurnTransition struct {
 	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
 	// a round, when nothing closed.
 	Damaged []DamagedCharacter
+	// RoundExhausted reports that no pending action passes the gate that applies to it, which
+	// is what ends a Race round. It is not an error: the actions still queued keep the roll
+	// they already made and belong to the next round. The caller closes the round.
+	RoundExhausted bool
 }
 
 // DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
@@ -229,23 +242,126 @@ type DamagedCharacter struct {
 	NewHP       int
 }
 
+// BarState implements service.BarStateSource: the carry that crossed into this round, and the
+// speeds that have already acted on that bar. An unknown character reads as an empty bar
+// rather than failing the whole scheduling pass.
+func (s *MatchSession) BarState(charID uuid.UUID, bar action.Bar) (float64, []int) {
+	status, ok := s.statuses[charID]
+	if !ok {
+		return 0, nil
+	}
+	b := status.BarFor(bar)
+	return b.Balance, b.Speeds
+}
+
+// RoundPrices returns the frozen price of each bar that has priced this round. Read by the
+// delivery layer to publish the general bar.
+func (s *MatchSession) RoundPrices() map[action.Bar]int {
+	out := map[action.Bar]int{}
+	for _, bar := range []action.Bar{action.BarAction, action.BarMove} {
+		if p, frozen := s.activeRound.Price(bar); frozen {
+			out[bar] = p
+		}
+	}
+	return out
+}
+
+// CharacterIDs returns every character the session holds combat state for, NPCs included.
+func (s *MatchSession) CharacterIDs() []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(s.statuses))
+	for id := range s.statuses {
+		out = append(out, id)
+	}
+	return out
+}
+
+// ProjectedOrder is the general bar: the pending actions that can still pay, highest key
+// first. It carries no action identity — the queue is secret, the order is public.
+func (s *MatchSession) ProjectedOrder() []service.OrderSlot {
+	return s.scheduler.ProjectOrder(s.scheduleInput())
+}
+
+// scheduleInput assembles what one scheduling decision reads.
+func (s *MatchSession) scheduleInput() service.ScheduleInput {
+	return service.ScheduleInput{Queue: &s.activeQueue, Round: s.activeRound, Bars: s}
+}
+
 func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
+	// Prices freeze on the first selection that sees a bar with pending work — before any
+	// gate is evaluated, because the gate is measured against the price.
+	s.scheduler.FreezePrices(s.scheduleInput())
+
+	if s.activeRound.GetMode() != enum.Race {
+		// Free has no price, no average and no carry-over; the rolled speed is the order and
+		// nothing gates. An empty queue is still an error there, as it always was.
+		tr := s.closeOpenTurn()
+		opened, err := s.roundOrch.NextAction(s.activeRound, &s.activeQueue)
+		if err != nil {
+			return tr, err
+		}
+		tr.Opened = opened
+		tr.OpenedResolution = s.ResolveTurn(opened)
+		return tr, nil
+	}
+
+	next := s.scheduler.SelectNext(s.scheduleInput())
 	tr := s.closeOpenTurn()
-	opened, err := s.roundOrch.NextAction(s.activeRound, &s.activeQueue)
+	if next == nil {
+		// Nothing pending can still pay. The round is over — the caller closes it.
+		tr.RoundExhausted = true
+		return tr, nil
+	}
+
+	// PullAction is reused deliberately: once the scheduler has chosen, "open the next one"
+	// and "pull this one out of order" are the same operation. The master's explicit
+	// pull_action stays ungated on purpose — anticipating an action is their prerogative.
+	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, next.GetID())
 	if err != nil {
 		return tr, err
 	}
+	s.recordActed(next)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
 	return tr, nil
 }
 
+// recordActed appends an action's speed to EVERY bar it was paid from, at the moment it opens.
+//
+// Every bar, because a combined action charges both: an investida costs a movement and a blow,
+// and both averages move because of it.
+//
+// On OPEN, never on enqueue: ResourceBar.Speeds means "the speeds that acted", and that is
+// what makes an action which never reached the price roll over to the next round untouched.
+//
+// And only in Race, because Race is the only regime with an economy. Free freezes no price
+// (RoundScheduler.FreezePrices returns immediately) and settleBars skips every bar that never
+// priced, so a speed recorded under Free would be charged by nothing and reset by nothing. It
+// would survive the moment the master switches the round to Race and make BarEconomy.IsEligible
+// read the character as having already acted, denying their FIRST action of the disputed round.
+// Keeping the gate here rather than at the call site closes it for both callers at once:
+// OpenNextAction only reaches this in Race already, PullAction is ungated by design.
+func (s *MatchSession) recordActed(a *action.Action) {
+	if s.activeRound.GetMode() != enum.Race {
+		return
+	}
+	status, ok := s.statuses[a.GetActorID()]
+	if !ok {
+		return
+	}
+	for _, bar := range a.Bars() {
+		status.BarFor(bar).RecordSpeed(a.SpeedOn(bar))
+	}
+}
+
 func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 	tr := s.closeOpenTurn()
+	s.scheduler.FreezePrices(s.scheduleInput())
 	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, id)
 	if err != nil {
 		return tr, err
 	}
+	act := opened.GetAction()
+	s.recordActed(&act)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
 	return tr, nil
@@ -329,11 +445,42 @@ func (s *MatchSession) CloseRound() (*round.Round, error) {
 	if s.activeRound.HasOpenTurn() {
 		return nil, ErrRoundHasOpenTurn
 	}
+	s.settleBars()
 	mode := s.activeRound.GetMode()
 	closed := s.roundOrch.CloseRound(s.activeRound, time.Now())
 	s.activeRound = round.NewRound(mode)
 	s.roundPersisted = false
 	return closed, nil
+}
+
+// settleBars turns each character's round into the balance they carry into the next one, then
+// clears the round's speed history.
+//
+//	acted:  min(carry + mean(acted) − len(acted) × price, price)
+//	silent: min(carry + price, price)   — standing still trades an action for time, and the
+//	                                      trade is worth exactly one round's price
+//
+// The ceiling is the price on both branches, which is why standing still stops paying after a
+// single round instead of compounding: whoever acts also reaches the ceiling in a few rounds.
+//
+// A bar that never priced is left untouched — nobody acted on that clock, so no round happened
+// on it, and inventing a floor there would hand out free time.
+//
+// Nothing is done to the queue. An action that never reached the price was never recorded as
+// having acted, so it simply belongs to the next round, carrying the roll it already made.
+func (s *MatchSession) settleBars() {
+	eco := service.BarEconomy{}
+	for _, bar := range []action.Bar{action.BarAction, action.BarMove} {
+		price, frozen := s.activeRound.Price(bar)
+		if !frozen {
+			continue
+		}
+		for _, status := range s.statuses {
+			b := status.BarFor(bar)
+			b.Balance = eco.CloseBalance(b.Balance, b.Speeds, price)
+			b.ResetRound()
+		}
+	}
 }
 
 // EnqueueAction validates that playerUUID may act and that the character they are acting
@@ -351,8 +498,85 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 		return ErrActionActorMismatch
 	}
 	s.rollActionDice(a)
+	s.deriveSpeeds(a)
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// PendingActions returns the actions still waiting for the master, in insertion order. Read
+// by the delivery layer to publish the general bar, and by tests.
+func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.All() }
+
+// deriveSpeeds turns the dice that just fell into the numbers the round is ordered by:
+// Action.Speed.Result for the action bar, Move.FinalSpeed for the move bar.
+//
+// It runs once, when the action arrives, and it is the only place a speed is produced. The
+// master never re-rolls a player's die, so nothing downstream ever recomputes it.
+func (s *MatchSession) deriveSpeeds(a *action.Action) {
+	if a == nil {
+		return
+	}
+	sheet := s.charSheets[a.GetActorID()]
+	if sheet == nil {
+		return
+	}
+	calc := service.RollCalculator{}
+	var ledger *match.ModifierLedger
+	if status, ok := s.statuses[a.GetActorID()]; ok {
+		ledger = &status.Ledger
+	}
+
+	// actionSpeed: always Legerity. Passive in Free, rolled in Race.
+	//
+	// The ledger applies here and nowhere else in a collision: the accumulated difference a
+	// character carries is always an actionSpeed adjustment, never a hit adjustment. It is
+	// what makes the repel ladder produce a duel — two characters facing each other speed up
+	// against each other — without anyone programming duels.
+	a.Speed.SkillName = enum.Legerity.String()
+	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
+	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
+		SkillName:  a.Speed.SkillName,
+		SkillValue: a.Speed.SkillValue,
+		Passive:    s.activeRound.GetMode() != enum.Race,
+		Condition:  a.Speed.Context.Condition,
+		Ledger:     ledger,
+	}).Total
+
+	if a.Move == nil {
+		return
+	}
+	// moveSpeed: the skill comes from the category, and so does whether it rolls at all.
+	// Dash is an acceleration and is tested; Shift is controlled and takes the passive value.
+	// Anything else never reaches here — the mapper refuses it at the WS boundary.
+	skill, passive := enum.Accelerate, false
+	if a.Move.Category == enum.Shift {
+		skill, passive = enum.Brake, true
+	}
+	if a.Move.Speed == nil {
+		a.Move.Speed = &action.RollCheck{}
+	}
+	a.Move.Speed.SkillName = skill.String()
+	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
+	a.Move.Speed.Result = calc.Derive(s.rules, a.Move.Speed.Attempts, service.RollInput{
+		SkillName:  a.Move.Speed.SkillName,
+		SkillValue: a.Move.Speed.SkillValue,
+		Passive:    passive,
+		Condition:  a.Move.Speed.Context.Condition,
+		// No ledger on the move bar: the accumulated difference is an actionSpeed bonus.
+	}).Total
+	// Charge is deliberately not read. The momentum accumulating into CharacterStatus.Velocity
+	// is the movement slice's, and the bar works without it (spec §5, Fase 3).
+	a.Move.FinalSpeed = a.Move.Speed.Result
+}
+
+// skillValueOn reads a skill off the sheet, contributing 0 for a name the sheet does not
+// know. The WS boundary already rejects unknown names, so reaching here means an internal one.
+func skillValueOn(cs *csSheet.CharacterSheet, name enum.SkillName) int {
+	v, err := cs.GetValueForTestOfSkill(name)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // rollActionDice drops the dice for every test the action carries, once, the moment it
@@ -374,13 +598,28 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 		rc.Attempts = calc.Roll(s.rules, s.rollSource)
 	}
 
-	test(&a.Speed.RollCheck)
+	// A Free round takes the passive value for actionSpeed — there is no dispute over who
+	// acts first, so there is nothing to roll for.
+	if s.activeRound.GetMode() == enum.Race {
+		test(&a.Speed.RollCheck)
+	}
 	test(a.Feint)
 	for i := range a.Skills {
 		test(&a.Skills[i].RollCheck)
 	}
 	if a.Move != nil {
-		test(a.Move.Speed)
+		// A Shift takes the dice set's average and rolls NOTHING. Rolling anyway would be
+		// harmless in production and poisonous in a test: a scripted RollSource would be
+		// drained by the phantom roll and every number after it would shift.
+		if a.Move.Category != enum.Shift {
+			// A combined action (charge/investida) may arrive with Move.Speed still nil —
+			// only Attack was filled in by the caller. Vivify it here so there is somewhere
+			// for the dice to land; deriveSpeeds fills in the skill afterwards.
+			if a.Move.Speed == nil {
+				a.Move.Speed = &action.RollCheck{}
+			}
+			test(a.Move.Speed)
+		}
 		test(a.Move.Charge)
 	}
 	if a.Defense != nil {

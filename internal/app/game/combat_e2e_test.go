@@ -16,7 +16,9 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -73,6 +75,37 @@ type topFaceSource struct{}
 
 func (topFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
 
+// scriptedFaces hands out faces in order and NEVER repeats: once exhausted, it records an
+// overrun instead of silently replaying the last face.
+//
+// A silent repeat is a trap. An earlier version of this file's racing-round test scripted only
+// 8 faces assuming a single 2D10 check per action, but MatchSession.rollActionDice rolls every
+// check the action carries at enqueue time — Speed, Hit, and the weapon's damage dice — so an
+// attack consumes far more than 4 faces. The test still passed: the victim's asserted speed of
+// 16 came entirely from the fallback repeating the script's last face (which happened to equal
+// the intended one), not from the script itself. A repeat can never be told apart from a
+// genuine match by the test that relies on it. Failing loudly instead means every asserted
+// number is provably scripted.
+//
+// Deliberately a different type from matchsession_test's same-named helper (which does repeat
+// the last face, and other tests in that package rely on it) — a different package, so it is
+// not importable from here anyway.
+type scriptedFaces struct {
+	faces   []int
+	i       int
+	overran bool // set once a roll asks for a face beyond what was scripted
+}
+
+func (s *scriptedFaces) RollDie(_ enum.DieSides) int {
+	if s.i >= len(s.faces) {
+		s.overran = true
+		return -1 // an impossible face: anything that accidentally depends on it fails loudly
+	}
+	f := s.faces[s.i]
+	s.i++
+	return f
+}
+
 // ─── fixture ────────────────────────────────────────────────────────────────
 
 type combatFixture struct {
@@ -84,7 +117,12 @@ type combatFixture struct {
 	victimID   uuid.UUID // sheet UUID of the target
 	victim     *csSheet.CharacterSheet
 	writer     *recordingStatusWriter
+	session    *matchsession.MatchSession
 }
+
+// setRollSource replaces the session's dice for one test. The session pointer is the
+// fixture's own, and nothing is in flight when a test calls this.
+func (f *combatFixture) setRollSource(src service.RollSource) { f.session.SetRollSource(src) }
 
 func newCombatFixture(t *testing.T) *combatFixture {
 	t.Helper()
@@ -118,10 +156,12 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		f.matchUUID, sheets, []*match.Participant{attacker, victim},
 	)
 	session.SetRollSource(topFaceSource{})
+	f.session = session
 
 	hub := game.NewHub()
 	go hub.Run()
 
+	roundRepo := &mockRoundRepoHandler{}
 	handler := game.NewHandler(
 		hub,
 		&fogMatchRepo{masterUUID: f.masterUUID, started: true},
@@ -130,14 +170,18 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		&mockKickPlayerUC{},
 		&combatSessionUC{session: session},
 		// The real use cases: this is what makes the test end-to-end rather than a mock
-		// round-trip.
-		appmatch.NewOpenNextActionUC(f.writer),
-		appmatch.NewPullActionUC(f.writer),
+		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
+		// round to actually close when the bar economy runs out, not just report it.
+		appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+		appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
 		appmatch.NewEnqueueActionUC(),
 		appmatch.NewAttachReactionUC(),
 		&mockChangeSceneUCHandler{},
-		&mockRoundRepoHandler{},
+		roundRepo,
 		&mockEnqueueMasterActionUCHandler{},
+		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
+		// exists in Race mode, and the mock never actually flips the session's round mode.
+		appmatch.NewChangeRoundModeUC(),
 	)
 
 	mux := http.NewServeMux()
@@ -280,6 +324,14 @@ func (c *collector) count(want game.MessageType) int {
 		}
 	}
 	return n
+}
+
+// snapshotMessages returns a copy of what the collector has gathered so far, so a caller can
+// pull a specific message's payload out after an await has already confirmed it arrived.
+func (c *collector) snapshotMessages() []game.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]game.Message(nil), c.msgs...)
 }
 
 // awaitResolution reads until a resolution_updated arrives or the deadline passes.
@@ -503,6 +555,305 @@ func TestE2E_ActingThroughAnotherPlayersCharacterIsRefused(t *testing.T) {
 	if code := awaitErrorCode(t, player, 2*time.Second); code != "game_error" {
 		t.Errorf("error code = %q, want game_error", code)
 	}
+}
+
+// TestE2E_AnExhaustedRoundClosesItself proves the second done-criterion: the round ends on
+// its own when nothing pending can still pay, and the whole table is told.
+func TestE2E_AnExhaustedRoundClosesItself(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+
+	masterMsgs := newCollector(master)
+	// Started at connect time, before anything is sent — otherwise the round_closed
+	// broadcast can arrive before this test ever asks for it and be missed entirely.
+	playerMsgs := newCollector(player)
+
+	// Race, so the economy is on at all.
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !masterMsgs.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+
+	// One action, from the attacker. topFaceSource gives 10+10 = 20 on every check, so the
+	// price is 20 and the single action pays for itself exactly.
+	sendWS(t, player, string(game.MsgTypeEnqueueAction), game.ActionPayload{
+		ActorID:  f.attackerID,
+		TargetID: []uuid.UUID{f.victimID},
+		Attack:   &game.AttackPayload{Hit: game.RollCheckPayload{SkillName: enum.Accuracy.String()}},
+	})
+	// Wait for the enqueue to land before opening — enqueue_action (player) and
+	// open_next_action (master) travel on different connections with no ordering guarantee
+	// between them, so opening too early would find an empty queue.
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+
+	// First open consumes it; the second finds nothing that can pay.
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the first action never opened")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+
+	if !masterMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
+		t.Fatal("the round ran out and nobody was told")
+	}
+
+	t.Run("the payload names the regime that just ended", func(t *testing.T) {
+		payload := awaitRoundClosed(t, masterMsgs)
+		if payload.RoundMode != string(enum.Race) {
+			t.Errorf("roundMode = %q, want %q", payload.RoundMode, enum.Race)
+		}
+	})
+
+	t.Run("the players hear it too — the round is table state, not master state", func(t *testing.T) {
+		if !playerMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
+			t.Error("the player should have heard round_closed too — it is table state, not master state")
+		}
+	})
+}
+
+// TestE2E_ARacingRoundRunsOnTheBars drives a whole Race round over real WebSockets: two
+// characters enqueue, the master opens, the order comes out of the bars rather than out of
+// insertion, and the balances that cross into the next round are the ones the rules say.
+//
+// The dice are scripted, so the numbers are exact instead of lucky.
+func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
+	f := newCombatFixture(t)
+	// Legerity is 0 on a factory sheet, so actionSpeed IS the dice total. Both enqueued actions
+	// below carry Attack{Hit: Accuracy} with no Weapon (unarmed → Fist, 3 damage dice), and
+	// rollActionDice rolls EVERY check an action carries, once, at enqueue time — not just
+	// Speed. Each action therefore consumes, in this order: Speed (2D10 primary + 2D10
+	// secondary — only the primary pair sums into the result), Hit (same 4-face shape), then
+	// Damage (Fist's 3 dice). 11 faces per action, 22 total, attacker enqueued before victim:
+	//
+	//	attacker Speed   faces[ 0: 4] = 3,3,3,3 → primary 3+3 = 6   (asserted: the frozen price)
+	//	attacker Hit     faces[ 4: 8] = 5,5,5,5 → unasserted
+	//	attacker Damage  faces[ 8:11] = 2,2,2   → unasserted
+	//	victim   Speed   faces[11:15] = 8,8,8,8 → primary 8+8 = 16  (asserted: leads the bar)
+	//	victim   Hit     faces[15:19] = 5,5,5,5 → unasserted
+	//	victim   Damage  faces[19:22] = 2,2,2   → unasserted
+	//
+	// scriptedFaces fails loudly on any roll past face 22 instead of repeating one, so both
+	// asserted numbers are provably driven by the script, not a coincidence of a fallback.
+	src := &scriptedFaces{faces: []int{
+		3, 3, 3, 3, // attacker speed  (asserted: 6)
+		5, 5, 5, 5, // attacker hit    (unasserted)
+		2, 2, 2, // attacker damage    (unasserted)
+		8, 8, 8, 8, // victim speed    (asserted: 16)
+		5, 5, 5, 5, // victim hit      (unasserted)
+		2, 2, 2, // victim damage      (unasserted)
+	}}
+	f.setRollSource(src)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !masterMsgs.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+
+	// bars_updated is re-broadcast after EVERY mutation (regime switch, each enqueue, each
+	// open) and both connections see every broadcast, so by the time the regime-switch ack
+	// landed there is already one bars_updated in flight. Plain `collector.await` only checks
+	// "has at least one arrived, ever" — it would trivially re-pass on that first, stale one
+	// instead of waiting for the fresh one each step below actually depends on. awaitCount
+	// pins a specific, growing count instead, which is what makes each wait mean "the event
+	// this step caused", not "some event of this type, at some point".
+	if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("bars_updated never followed the regime switch")
+	}
+
+	// enqueue_action (player) and open_next_action (master) travel on independent connections
+	// with no ordering guarantee between them — awaiting the enqueue's own ack count (not a
+	// bare await, for the same staleness reason as above) is the real happens-before edge.
+	enqueue := func(actor uuid.UUID, wantAcks, wantBars int) {
+		t.Helper()
+		sendWS(t, player, string(game.MsgTypeEnqueueAction), game.ActionPayload{
+			ActorID: actor,
+			Attack:  &game.AttackPayload{Hit: game.RollCheckPayload{SkillName: enum.Accuracy.String()}},
+		})
+		if !awaitCount(playerMsgs, game.MsgTypeActionEnqueued, wantAcks, 2*time.Second) {
+			t.Fatalf("actor %v: enqueue ack #%d never arrived", actor, wantAcks)
+		}
+		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, wantBars, 2*time.Second) {
+			t.Fatalf("actor %v: bars_updated #%d never followed the enqueue", actor, wantBars)
+		}
+	}
+	enqueue(f.attackerID, 1, 2) // 6
+	enqueue(f.victimID, 2, 3)   // 16
+
+	// All of this round's dice already fell — rollActionDice runs entirely at enqueue time,
+	// never on open — so this is the earliest point an overrun could have happened, and the
+	// only thing that can rescue an under-scripted face list from becoming a silent 16-by-luck
+	// again.
+	if src.overran {
+		t.Fatal("the scripted dice ran out — a roll consumed more faces than this test accounted for")
+	}
+
+	t.Run("bars_updated announces the order before anything opens", func(t *testing.T) {
+		bars := lastBarsUpdated(t, playerMsgs)
+		if len(bars.Order) != 2 {
+			t.Fatalf("order = %d slots, want 2", len(bars.Order))
+		}
+		if bars.Order[0].ActorID != f.victimID {
+			t.Error("the character who rolled 16 leads the general bar, not the one inserted first")
+		}
+	})
+
+	t.Run("the master opens, and the faster character goes first", func(t *testing.T) {
+		sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+		if !awaitCount(masterMsgs, game.MsgTypeTurnOpened, 1, 2*time.Second) {
+			t.Fatal("nothing opened")
+		}
+		// Pins the bars_updated this open produced before "the price froze" reads it —
+		// that subtest sends nothing itself, so it depends entirely on this wait.
+		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 4, 2*time.Second) {
+			t.Fatal("bars_updated never followed the first open")
+		}
+		opened := lastTurnOpened(t, masterMsgs)
+		if opened.ActorID != f.victimID {
+			t.Errorf("actor = %v, want the faster character %v", opened.ActorID, f.victimID)
+		}
+	})
+
+	t.Run("the price froze at the slowest pending speed", func(t *testing.T) {
+		bars := lastBarsUpdated(t, playerMsgs)
+		if got := bars.Prices[string(action.BarAction)]; got != 6 {
+			t.Errorf("price = %d, want the slowest pending speed, 6", got)
+		}
+	})
+
+	t.Run("the second open takes the slower character", func(t *testing.T) {
+		sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+		// count 2, not a bare await: turn_opened already fired once for the first open, so a
+		// bare await would trivially re-pass on that stale message before the second one lands.
+		if !awaitCount(masterMsgs, game.MsgTypeTurnOpened, 2, 2*time.Second) {
+			t.Fatal("the second action never opened")
+		}
+		opened := lastTurnOpened(t, masterMsgs)
+		if opened.ActorID != f.attackerID {
+			t.Errorf("actor = %v, want %v", opened.ActorID, f.attackerID)
+		}
+	})
+
+	t.Run("the third open finds nothing that can pay, and the round closes itself", func(t *testing.T) {
+		sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+		if !masterMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
+			t.Fatal("the round ran out and nobody was told")
+		}
+	})
+
+	t.Run("the carry crossed over, ceiling applied", func(t *testing.T) {
+		// The closing bars_updated (broadcastBars runs unconditionally on every
+		// open_next_action, before it decides whether a turn or the round closed) and
+		// round_closed are two independent broadcasts; nothing pins their relative arrival
+		// order at this connection. Waiting for the 6th bars_updated directly — count pinning
+		// again — is what guarantees the carry-over numbers below are the post-close ones.
+		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 6, 2*time.Second) {
+			t.Fatal("bars_updated never followed the round closing")
+		}
+		bars := lastBarsUpdated(t, playerMsgs)
+		byChar := map[uuid.UUID]game.CharacterBarsPayload{}
+		for _, c := range bars.Characters {
+			byChar[c.CharacterID] = c
+		}
+		// The fast one kept 16 − 6 = 10, clipped to the ceiling of 6.
+		if got := byChar[f.victimID].ActionBalance; got != 6 {
+			t.Errorf("fast balance = %v, want 6 — a leftover of 10 is clipped to the round price", got)
+		}
+		// The slowest of the round starts the next one from zero.
+		if got := byChar[f.attackerID].ActionBalance; got != 0 {
+			t.Errorf("slow balance = %v, want 0", got)
+		}
+		if len(byChar[f.attackerID].ActionSpeeds) != 0 {
+			t.Error("the round's speed history is cleared; only the balance crosses over")
+		}
+	})
+}
+
+// awaitRoundClosed pulls the round_closed payload out of what the collector already has.
+func awaitRoundClosed(t *testing.T, c *collector) game.RoundClosedPayload {
+	t.Helper()
+	for _, m := range c.snapshotMessages() {
+		if m.Type != game.MsgTypeRoundClosed {
+			continue
+		}
+		var p game.RoundClosedPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal round_closed: %v", err)
+		}
+		return p
+	}
+	t.Fatal("no round_closed in the collected messages")
+	return game.RoundClosedPayload{}
+}
+
+// awaitCount waits until a collector has gathered at least n messages of the given type.
+//
+// Plain `collector.await` only checks "has at least one arrived, ever" — once a message of
+// that type has already been seen earlier in a test (bars_updated fires after every enqueue
+// and every open; turn_opened after every open that doesn't close the round), that check is
+// satisfied by the STALE one and returns immediately, racing whatever produced the fresh one.
+// Waiting for a specific, growing count is what actually pins a fresh occurrence in place.
+func awaitCount(c *collector, want game.MessageType, n int, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if c.count(want) >= n {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+// lastBarsUpdated pulls the most recent bars_updated payload out of what the collector has
+// gathered so far — the bars are re-broadcast after every enqueue and every open, so callers
+// want the latest snapshot, not the first one.
+func lastBarsUpdated(t *testing.T, c *collector) game.BarsUpdatedPayload {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeBarsUpdated {
+			continue
+		}
+		var p game.BarsUpdatedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+			t.Fatalf("unmarshal bars_updated: %v", err)
+		}
+		return p
+	}
+	t.Fatal("no bars_updated in the collected messages")
+	return game.BarsUpdatedPayload{}
+}
+
+// lastTurnOpened pulls the most recent turn_opened payload out of what the collector has
+// gathered so far.
+func lastTurnOpened(t *testing.T, c *collector) game.TurnOpenedPayload {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeTurnOpened {
+			continue
+		}
+		var p game.TurnOpenedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+			t.Fatalf("unmarshal turn_opened: %v", err)
+		}
+		return p
+	}
+	t.Fatal("no turn_opened in the collected messages")
+	return game.TurnOpenedPayload{}
 }
 
 func awaitErrorCode(t *testing.T, conn *websocket.Conn, d time.Duration) string {

@@ -61,8 +61,15 @@ func TestBuildAction_MapsTheWholePayload(t *testing.T) {
 	})
 
 	t.Run("speed, skills, feint and defense survive", func(t *testing.T) {
-		if a.Speed.Bar != 1 || a.Speed.SkillName != enum.Legerity.String() {
-			t.Errorf("Speed = %+v, want bar 1 and Legerity", a.Speed)
+		// actionSpeed.SkillName is ALWAYS Legerity, whatever the payload sent
+		if a.Speed.SkillName != enum.Legerity.String() {
+			t.Errorf("Speed.SkillName = %q, want Legerity", a.Speed.SkillName)
+		}
+		// Bar is deliberately NOT mapped: which bar an action pays from is derived from its
+		// content by Action.Bars(), never trusted from the client. The payload above sends
+		// Bar: 1 precisely so this assertion fails if someone starts honouring it again.
+		if a.Speed.Bar != 0 {
+			t.Errorf("Speed.Bar = %d, want 0 — the client's bar must be ignored", a.Speed.Bar)
 		}
 		if len(a.Skills) != 1 || a.Skills[0].SkillName != enum.Acrobatics.String() {
 			t.Errorf("Skills = %+v, want one Acrobatics", a.Skills)
@@ -155,4 +162,89 @@ func TestBuildAction_EmptyPayloadIsValid(t *testing.T) {
 	if a.Attack != nil || a.Move != nil || a.Defense != nil {
 		t.Errorf("expected an empty action, got %+v", a)
 	}
+}
+
+func TestBuildAction_SpeedSkills(t *testing.T) {
+	actor := uuid.New()
+
+	t.Run("actionSpeed is always Legerity, whatever the client asked for", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{
+			ActorID: actor,
+			Speed:   &ActionSpeedPayload{RollCheck: &RollCheckPayload{SkillName: enum.Accuracy.String()}},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if a.Speed.SkillName != enum.Legerity.String() {
+			t.Errorf("actionSpeed skill = %q, want %q — the player never picks it",
+				a.Speed.SkillName, enum.Legerity)
+		}
+	})
+
+	t.Run("actionSpeed is Legerity even when the payload omits speed entirely", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{ActorID: actor})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if a.Speed.SkillName != enum.Legerity.String() {
+			t.Errorf("actionSpeed skill = %q, want %q", a.Speed.SkillName, enum.Legerity)
+		}
+	})
+
+	t.Run("a Dash rolls Accelerate", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{
+			ActorID: actor,
+			Move:    &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if a.Move.Speed == nil {
+			t.Fatal("a move must always carry a speed check")
+		}
+		if a.Move.Speed.SkillName != enum.Accelerate.String() {
+			t.Errorf("move skill = %q, want %q", a.Move.Speed.SkillName, enum.Accelerate)
+		}
+	})
+
+	t.Run("a Shift uses Brake, and the client's choice is overwritten", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{
+			ActorID: actor,
+			Move: &MovePayload{
+				Category: string(enum.Shift),
+				Position: [3]int{1, 1, 0},
+				Speed:    &RollCheckPayload{SkillName: enum.Accelerate.String()},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if a.Move.Speed.SkillName != enum.Brake.String() {
+			t.Errorf("move skill = %q, want %q — the category picks the skill, not the client",
+				a.Move.Speed.SkillName, enum.Brake)
+		}
+	})
+
+	t.Run("the five unmapped categories are refused, not guessed", func(t *testing.T) {
+		for _, cat := range []enum.MoveCategory{enum.Back, enum.Roll, enum.Slide, enum.Jump, enum.FlatJump} {
+			t.Run(string(cat), func(t *testing.T) {
+				_, err := buildAction(actor, ActionPayload{
+					ActorID: actor,
+					Move:    &MovePayload{Category: string(cat), Position: [3]int{1, 1, 0}},
+				})
+				if err == nil {
+					t.Errorf("category %q must be refused: its skill is defined in the movement slice, and mapping it by analogy would be silently wrong", cat)
+				}
+			})
+		}
+	})
+
+	t.Run("an unknown category string is refused too", func(t *testing.T) {
+		if _, err := buildAction(actor, ActionPayload{
+			ActorID: actor,
+			Move:    &MovePayload{Category: "Teleport", Position: [3]int{1, 1, 0}},
+		}); err == nil {
+			t.Error("an unknown move category must be an error at the boundary")
+		}
+	})
 }

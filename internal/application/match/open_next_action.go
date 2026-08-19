@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -20,6 +21,9 @@ type OpenNextActionResult struct {
 	// closed. Nil on the first open of a round.
 	ClosedResolution *service.TurnResolution
 	Damaged          []matchsession.DamagedCharacter
+	// ClosedRound is set when the round ran out: nothing pending could still pay, so the
+	// round closed instead of opening anything. The caller announces round_closed.
+	ClosedRound *round.Round
 }
 
 type IOpenNextAction interface {
@@ -28,10 +32,11 @@ type IOpenNextAction interface {
 
 type OpenNextActionUC struct {
 	statusWriter ISheetStatusWriter
+	closeRound   ICloseRound
 }
 
-func NewOpenNextActionUC(statusWriter ISheetStatusWriter) *OpenNextActionUC {
-	return &OpenNextActionUC{statusWriter: statusWriter}
+func NewOpenNextActionUC(statusWriter ISheetStatusWriter, closeRound ICloseRound) *OpenNextActionUC {
+	return &OpenNextActionUC{statusWriter: statusWriter, closeRound: closeRound}
 }
 
 func (uc *OpenNextActionUC) Execute(
@@ -47,16 +52,37 @@ func (uc *OpenNextActionUC) Execute(
 	// even when there is no next action to open, so bailing out first would leave the
 	// in-memory sheet and the row disagreeing.
 	persistDamage(ctx, uc.statusWriter, tr.Damaged)
-	if err != nil {
-		return nil, err
-	}
-	return &OpenNextActionResult{
+
+	res := &OpenNextActionResult{
 		ClosedTurn:       tr.Closed,
 		OpenedTurn:       tr.Opened,
 		Resolution:       tr.OpenedResolution,
 		ClosedResolution: tr.ClosedResolution,
 		Damaged:          tr.Damaged,
-	}, nil
+	}
+
+	// The round ran out. Nothing pending passes the gate that applies to it, so the round
+	// ends — and whatever is still queued keeps the roll it already made and belongs to the
+	// next one. This is the moment CloseRoundUC finally has a caller.
+	if tr.RoundExhausted {
+		if uc.closeRound == nil {
+			return res, nil
+		}
+		closed, closeErr := uc.closeRound.Execute(ctx, session, masterUUID, callerUUID)
+		if closeErr != nil {
+			// Same policy as persistDamage: the turn is already closed and applied, so
+			// refusing the whole operation would leave the table without the baton.
+			log.Printf("auto-close round: %v", closeErr)
+			return res, nil
+		}
+		res.ClosedRound = closed
+		return res, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // persistDamage writes the applied HP reductions through.
