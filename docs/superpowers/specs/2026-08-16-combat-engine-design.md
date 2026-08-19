@@ -551,7 +551,9 @@ carry-over enquanto o `Race` não estiver ligado.
 - **Resolução em cadeia com vários alvos**: o estado do ataque sai alterado de cada resolução
   e entra na próxima.
 - Validar que só alvos podem reagir (hoje qualquer um pode).
-- Timer de reação como regra de partida (padrão desligado).
+- Timer de reação como **número na regra de partida**, sem relógio: com o padrão desligado,
+  encerrar o turno já é o estouro. A contagem visível é da Fase 6.
+- `ReactionKind` declarado no envio, e o custo por barra saindo dele — não do formato.
 
 **Fora de escopo:** posturas; encerramento explícito de turno e projeção por destinatário
 (Fase 5).
@@ -559,6 +561,49 @@ carry-over enquanto o `Race` não estiver ligado.
 **A Fase 4 roda com personagens de jogador.** O critério de pronto — três alvos reagindo
 diferente — é alcançável com três PCs. O que o rostering de NPCs trava é **o mestre enviar
 ação de NPC**, que não é objetivo desta fase. Fatia própria, antes da Fase 5.
+
+### O catálogo precisa de um tipo declarado
+
+Detalhe completo em `combat-engine.md` § *O tipo da reação é declarado, não inferido*. O
+resumo executável:
+
+- `action.ReactionKind` com sete valores (`nothing`, `dodge`, `closedDodge`, `escape`,
+  `escapeGuard`, `closedEscape`, `repel`), como **campo de `Action`**, não struct aninhada. O
+  discriminador "isto é uma reação" continua sendo `ReactToID != uuid.Nil`; a validação exige
+  os dois juntos ou nenhum.
+- `action.Repel{Weapon *enum.WeaponName; RollCheck}`, no molde de `Defense`.
+- `ReactionKind.Bars()` devolve o custo por tabela; `Action.Bars()` consulta o tipo primeiro.
+  **`Bars()` passa a poder ser vazio** — só para reações, e nenhum caller quebra.
+- `enum.DodgeCategory` é **removida**, absorvida pelo `ReactionKind`. Raio de alcance: 3
+  arquivos, um deles passthrough (`action_mapper.go:107`).
+- Wire: o tipo é campo do payload de reação, camelCase, e é **obrigatório** — o servidor nunca
+  infere custo do formato do que chegou.
+
+### O custo da reação — as quatro decisões
+
+Detalhe e razão em `combat-engine.md` § *O custo da reação na economia de barra*.
+
+| | Decisão |
+|---|---|
+| Velocidade registrada | reação que cobra barra passa por `deriveSpeeds` e registra a velocidade que ela rolou, em cada barra que cobra; a grátis não registra nada |
+| Porteiro | **não se aplica** — reação nunca é negada por falta de saldo, só fica devendo |
+| Momento da cobrança | no **attach**, não no open (é onde a colisão já é calculada) |
+| Action pendente | sai da `activeQueue` — a de melhor chave naquela barra; reação grátis não consome nada |
+
+Duas regras de jogo derivadas, não ditadas, e sinalizadas como tais no doc: **repelir também
+abre mão das passivas**, e o **timer não precisa de relógio nesta fase** (encerrar o turno *é*
+o estouro enquanto o padrão for desligado).
+
+### Consertos em código já escrito que a Fase 4 carrega
+
+- `match.Scope` ganha o degrau que falta: `end_of_turn` mata no fim do **próprio** turno, e o
+  bônus do repelir vale **no próximo**.
+- `CharacterStatus.ExpireModifiers` **não tem caller** — nada expira hoje. Ligar no fechamento
+  de turno e de round.
+- `Modifier` ganha `Applies Dimension`; `AgainstID *uuid.UUID` vira `Against` com três formas
+  (§4.3 e `combat-engine.md` § *Modificadores*).
+- O comentário de `RollInput.Ledger` ainda carrega a invariante generalizada demais
+  (*"always an actionSpeed adjustment"*). Quem decide a dimensão passa a ser `Modifier.Applies`.
 
 ### Onde mora o viés de uma rolagem só
 

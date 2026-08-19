@@ -58,6 +58,9 @@ isso custa **Desvantagem**: o sistema rola de novo e fica com o pior dos dois re
 
 Se você **não** tinha ação declarada, a reação simplesmente vira a sua ação. Sem penalidade.
 
+**Reagir nunca é negado por falta de barra.** Mesmo sem saldo nenhum, você reage — e começa o
+round seguinte mais atrasado. O sistema cobra depois; ele não te impede de se defender.
+
 O mestre pode perdoar esse custo. Se sua reação foi criativa a ponto de abrir espaço para a
 sua própria ação, ele pode deixar você agir mesmo assim — e até adiantar sua ação na fila.
 
@@ -77,6 +80,10 @@ O resultado depende de **quanto** você passou ou faltou da dificuldade:
 
 Repare que **aparar não é dano reduzido — é dano zero**. O preço é chegar mais lento ao
 próximo turno.
+
+**Repelir abandona a rede de segurança**, igual ao escape. Se você errar por 10 ou mais, a
+esquiva por reflexo e a defesa **não entram**: você comprometeu a arma com o golpe que vinha,
+não estava também se abaixando. É a reação mais difícil do catálogo dos dois lados.
 
 E note a diferença de alcance: o **bônus** de quem repeliu bem vale só contra aquele
 oponente — você aprendeu a leitura *dele*. Já a **penalidade** de quem aparou vale contra
