@@ -1,7 +1,6 @@
 package game
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -182,9 +181,20 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, leak := range []string{"actionId", "attack", "skill", "target"} {
-			if bytes.Contains(bytes.ToLower(raw), []byte(strings.ToLower(leak))) {
-				t.Errorf("the queue is secret — only the bar and the order are public; found %q in %s", leak, raw)
+		// Whitelist, not a blocklist: a blocklist of forbidden substrings ("actionId",
+		// "attack", ...) only catches leaks under the names someone thought to list — a
+		// field named weaponId or abilityId would sail straight through. Asserting the
+		// exact key set means any new field fails closed by default, and adding one to
+		// BarSlotPayload forces a conscious edit to the allowed set below. Do not revert
+		// this to a substring blocklist.
+		allowed := map[string]bool{"actorId": true, "bars": true, "key": true}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			t.Fatal(err)
+		}
+		for key := range fields {
+			if !allowed[key] {
+				t.Errorf("the queue is secret — only the bar and the order are public; found undeclared field %q in %s", key, raw)
 			}
 		}
 	})
