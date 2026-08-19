@@ -178,10 +178,22 @@ type ActionPayload struct {
 	Defense   *DefensePayload      `json:"defense,omitempty"`
 	Dodge     *DodgePayload        `json:"dodge,omitempty"`
 	Interact  *InteractPayload     `json:"interact,omitempty"`
+	// ReactionKind names what the target chose to do, and it is MANDATORY on a reaction. The
+	// server never infers the cost from the shape of what arrived — the three escapes are
+	// shape-identical and priced differently. Empty on a plain action.
+	ReactionKind string        `json:"reactionKind,omitempty"`
+	Repel        *RepelPayload `json:"repel,omitempty"`
 }
 
 type RollCheckPayload struct {
 	SkillName string `json:"skillName"`
+}
+
+// RepelPayload is the hardest reaction in the catalogue, shaped like the defense: a weapon and
+// a test.
+type RepelPayload struct {
+	Weapon    *string          `json:"weapon,omitempty"`
+	RollCheck RollCheckPayload `json:"rollCheck"`
 }
 
 type DodgePayload struct {

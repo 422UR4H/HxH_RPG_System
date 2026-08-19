@@ -115,11 +115,41 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		interact = &action.Interact{Kind: action.InteractKind(p.Interact.Kind)}
 	}
 
-	return action.NewAction(
+	var repel *action.Repel
+	if p.Repel != nil {
+		rc, err := buildRollCheck(&p.Repel.RollCheck)
+		if err != nil {
+			return nil, err
+		}
+		weapon, err := buildWeaponName(p.Repel.Weapon)
+		if err != nil {
+			return nil, err
+		}
+		repel = &action.Repel{Weapon: weapon, RollCheck: *rc}
+	}
+
+	var kind action.ReactionKind
+	if p.ReactionKind != "" {
+		kind, err = action.ReactionKindFrom(p.ReactionKind)
+		if err != nil {
+			return nil, err
+		}
+		// All three escapes displace by definition; SpeedOn(BarMove) reads Move.FinalSpeed, so
+		// one without a Move would charge the move bar zero. A client bug, refused rather than
+		// defaulted — the same rule as an unsupported move category.
+		if kind.Displaces() && p.Move == nil {
+			return nil, fmt.Errorf("reaction %q must carry a move", p.ReactionKind)
+		}
+	}
+
+	a := action.NewAction(
 		actorCharID, p.TargetID, p.ReactToID,
 		skills, speed,
 		feint, move, attack, defense, dodge, nil, interact,
-	), nil
+	)
+	a.Repel = repel
+	a.ReactionKind = kind
+	return a, nil
 }
 
 // buildRollCheck crosses the string→enum boundary for a skill name. An unknown name is a

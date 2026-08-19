@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
 )
 
@@ -245,6 +246,58 @@ func TestBuildAction_SpeedSkills(t *testing.T) {
 			Move:    &MovePayload{Category: "Teleport", Position: [3]int{1, 1, 0}},
 		}); err == nil {
 			t.Error("an unknown move category must be an error at the boundary")
+		}
+	})
+}
+
+func TestBuildAction_Reactions(t *testing.T) {
+	actorID := uuid.New()
+
+	t.Run("maps the declared kind onto the action", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
+			ActorID:      actorID,
+			ReactToID:    uuid.New(),
+			ReactionKind: "repel",
+			Repel:        &RepelPayload{RollCheck: RollCheckPayload{SkillName: "Repel"}},
+		})
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		if a.ReactionKind != action.ReactRepel {
+			t.Errorf("ReactionKind = %q, want repel", a.ReactionKind)
+		}
+		if a.Repel == nil || a.Repel.SkillName != "Repel" {
+			t.Fatal("the repel component did not survive the mapping")
+		}
+	})
+
+	t.Run("an unknown kind is refused at the boundary", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "parry",
+		})
+		if err == nil {
+			t.Fatal("an unknown kind must not reach the domain")
+		}
+	})
+
+	t.Run("an escape without a move is refused — an escape that does not displace is a dodge", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedEscape",
+		})
+		if err == nil {
+			t.Fatal("a displacing reaction with no Move must be refused, never defaulted")
+		}
+	})
+
+	t.Run("an action carries no reaction kind", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, Attack: &AttackPayload{},
+		})
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		if a.ReactionKind != "" {
+			t.Errorf("ReactionKind = %q, want empty on a plain action", a.ReactionKind)
 		}
 	})
 }

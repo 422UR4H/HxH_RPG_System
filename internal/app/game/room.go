@@ -670,8 +670,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
 			return
 		}
-		if payload.Dodge != nil && payload.ReactToID == uuid.Nil {
-			client.SendMessage(NewErrorMessage("invalid_action", "dodge must be a reaction — set react_to_id"))
+		// The two travel together or not at all. reactToId says "this is a reaction"; the kind
+		// says what it costs. One without the other is a client that is going to be surprised.
+		if (payload.ReactToID != uuid.Nil) != (payload.ReactionKind != "") {
+			client.SendMessage(NewErrorMessage("invalid_action",
+				"a reaction needs both reactToId and reactionKind; an action needs neither"))
 			return
 		}
 		if payload.ActorID == uuid.Nil {
@@ -744,6 +747,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		if payload.ReactToID == uuid.Nil {
 			client.SendMessage(NewErrorMessage("invalid_action", "reaction requires react_to_id"))
+			return
+		}
+		// The two travel together or not at all. reactToId says "this is a reaction"; the kind
+		// says what it costs. One without the other is a client that is going to be surprised.
+		if (payload.ReactToID != uuid.Nil) != (payload.ReactionKind != "") {
+			client.SendMessage(NewErrorMessage("invalid_action",
+				"a reaction needs both reactToId and reactionKind; an action needs neither"))
 			return
 		}
 		if payload.ActorID == uuid.Nil {
