@@ -561,14 +561,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		// Write lock across Execute — the regime decides how every later selection is scored.
+		// The regime the table is told is read back from the session under the same lock, not
+		// echoed from the client's request: what is public is the round's actual state.
 		r.mu.Lock()
 		session := r.session
 		var err error
+		var newMode enum.RoundMode
 		if session != nil {
 			err = r.changeRoundModeUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID,
 				enum.RoundMode(payload.Mode),
 			)
+			newMode = session.GetActiveRound().GetMode()
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -579,7 +583,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
-		out := NewServerMessage(MsgTypeRoundModeChanged, RoundModeChangedPayload{Mode: payload.Mode})
+		out := NewServerMessage(MsgTypeRoundModeChanged, RoundModeChangedPayload{Mode: string(newMode)})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 		r.broadcastBars(session)
