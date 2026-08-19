@@ -85,8 +85,8 @@ func (rc RollCalculator) Derive(
 		modifier += in.Condition.Modifier
 	}
 	if in.Ledger != nil {
-		bias += in.Ledger.TotalBias(in.AgainstID)
-		modifier += in.Ledger.TotalAmount(in.AgainstID)
+		bias += in.Ledger.TotalBias(match.DimActionSpeed, in.AgainstID)
+		modifier += in.Ledger.TotalAmount(match.DimActionSpeed, in.AgainstID)
 	}
 
 	out := RollOutcome{

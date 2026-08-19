@@ -171,7 +171,7 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 
 	t.Run("system disadvantage accumulates and the master can cancel it", func(t *testing.T) {
 		ledger := match.NewModifierLedger()
-		ledger.Add(match.Modifier{Bias: -1, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn})
+		ledger.Add(match.Modifier{Bias: -1, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn})
 
 		// Master grants advantage: +1 from the master, −1 from the system → neutral.
 		out := calc.Derive(rules, both, service.RollInput{
@@ -188,8 +188,8 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 
 	t.Run("two system disadvantages outweigh one master advantage", func(t *testing.T) {
 		ledger := match.NewModifierLedger()
-		ledger.Add(match.Modifier{Bias: -1, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn})
-		ledger.Add(match.Modifier{Bias: -1, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn})
+		ledger.Add(match.Modifier{Bias: -1, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn})
+		ledger.Add(match.Modifier{Bias: -1, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn})
 
 		out := calc.Derive(rules, both, service.RollInput{
 			Condition: &action.RollCondition{Bias: 1},
@@ -221,10 +221,11 @@ func TestRollCalculator_Derive_Modifiers(t *testing.T) {
 
 	ledger := match.NewModifierLedger()
 	ledger.Add(match.Modifier{
-		Amount: 5, AgainstID: &enemy, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn,
+		Amount: 5, Applies: match.DimActionSpeed, Against: match.ScopeOnly(enemy),
+		Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn,
 	})
 	ledger.Add(match.Modifier{
-		Amount: -2, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfRound,
+		Amount: -2, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfRound,
 	})
 
 	t.Run("master modifier and ledger stack against the read opponent", func(t *testing.T) {
