@@ -139,6 +139,46 @@ que já havia sido rejeitado antes.
 **Corolário:** se depois de pagar o saldo ficou abaixo do preço, a próxima ação que o
 personagem mandar **já pertence ao round seguinte**.
 
+### A cadeia em área — o que passa de um alvo para o outro
+
+**Não há regra rígida: é contextual, e o mestre pode alterar em qualquer ponto.** O que existe
+é um **padrão por tipo de reação**, e o mestre sobrepõe quando a cena pedir.
+
+O que a cadeia carrega é o **ataque residual** — o que sobrou do golpe depois de cada alvo.
+
+| O alvo… | O que chega no próximo |
+|---|---|
+| **Esquivou** | o ataque **cheio**, sem alteração — desviar não gasta o golpe |
+| **Repeliu com sucesso** | **nada — o ataque para aqui** |
+| **Foi atingido** | reduzido pela **armadura** do alvo atingido |
+| **Defendeu** | reduzido pela **defesa da arma** com que ele defendeu |
+
+**Repelir encerra o ataque, mas não cancela as reações seguintes.** Elas **acontecem** — quem
+tinha mandado scape se desloca —, só que sem chance de ser atingido. A reação é "desperdiçada"
+no sentido mecânico, não no narrativo.
+
+> ⚠️ **O mestre pode permitir que o ataque siga mesmo após um repelir bem-sucedido.** É
+> sobreposição de regra padrão, não exceção codificada.
+
+**A armadura reduz duas vezes:** para o alvo que a veste **e** para quem vem depois. Vale igual
+para o **Nen**, que funciona como armadura — quando existir.
+
+**A defesa da arma só entra aqui.** É neste ponto da cadeia que o campo `Weapon.defense` tem
+função: ele reduz o que passa adiante quando alguém defende.
+
+#### Ataque sequencial × simultâneo
+
+O padrão acima descreve um ataque **sequencial**, que atravessa os alvos. Existe outro tipo:
+o que **atinge todos ao mesmo tempo**.
+
+No simultâneo, **o ataque não diminui** — todos recebem o mesmo. Mas narrativamente o mestre
+**ainda abre um alvo por vez**, para cada um dizer como reagiu. A cadeia continua sendo o
+gesto de mesa; só a aritmética muda.
+
+> **Reservar na modelagem.** Isso será uma **configuração do tipo de habilidade**. As
+> habilidades especiais **ainda não existem** no sistema e só chegam pós-MVP — mas o modelo do
+> ataque precisa nascer com esse eixo previsto, senão a cadeia vira `if` retrofitado depois.
+
 ### Quem pode agir — são DOIS porteiros, não um
 
 ⚠️ **A chave de ordenação e o porteiro de elegibilidade são coisas diferentes.** A chave diz
