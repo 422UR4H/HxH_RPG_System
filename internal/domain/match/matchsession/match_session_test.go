@@ -1652,4 +1652,66 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 			t.Fatal("there was nothing to consume")
 		}
 	})
+
+	// A two-bar reaction must consume its one combined pending action exactly once.
+	//
+	// consumePendingFor loops bar by bar and asks the scheduler for the best pending action on
+	// EACH bar via a fresh s.scheduleInput() per bar. The guarantee this pins is that
+	// scheduleInput() hands out an ALIAS to s.activeQueue, not a copy: the combined action
+	// leaves on the first bar's scan, so the second bar's scan — reading the same live queue —
+	// no longer finds it and extracts nothing. A copy would risk the second scan scoring
+	// against pre-extraction state, misidentifying what is left to take.
+	t.Run("a two-bar reaction consumes its one combined pending action exactly once", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		// Every die lands on the same face, so combined and second — same character, same
+		// skill — derive equal action-bar keys. BestPendingFor requires a STRICT >, so the
+		// tie goes to whichever was inserted first: combined. That makes "combined is the one
+		// consumed" deterministic instead of a coin flip on the production dice source.
+		s.SetRollSource(fixedSource{face: 10})
+
+		// The combined action: Move and Attack both filled, charging both bars as ONE action
+		// (see action.Action.Bars). Built through EnqueueAction, not a fixed-speed helper, so
+		// it carries real derived speeds on both bars.
+		combined := action.NewAction(chars[1], nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, &action.Move{Category: enum.Dash}, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerB, combined); err != nil {
+			t.Fatalf("EnqueueAction (combined): %v", err)
+		}
+
+		// A second, separate pending action for the same character, on the action bar only —
+		// so it is never a candidate on the reaction's move-bar scan (Bars() never returns
+		// BarMove for an action with no Move) — and queued before the reaction. It is the
+		// regression detector: if consumption ever ran twice — the combined action's ID
+		// extracted once for real and once more on stale information — nothing here would
+		// prove it, since a second extract-by-an-already-gone-ID is a no-op. What WOULD prove
+		// a stale scan is this action vanishing too.
+		second := makeActionWithSpeed(chars[1], 5)
+		if err := s.EnqueueAction(playerB, second); err != nil {
+			t.Fatalf("EnqueueAction (second): %v", err)
+		}
+
+		// An escape charges both bars and, in production, always carries a Move — Task 5
+		// refuses a move-less one at the WS boundary. The domain layer itself does not
+		// re-enforce that, but a reaction built the way one actually arrives does carry it.
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactEscape
+		r.Move = &action.Move{Category: enum.Dash}
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+
+		pending := s.PendingActions()
+		if len(pending) != 1 || pending[0].GetID() != second.GetID() {
+			t.Fatalf("pending = %v, want exactly [second] — the combined action leaves once and nothing else is touched", pending)
+		}
+
+		_, actionSpeeds := s.BarState(chars[1], action.BarAction)
+		if len(actionSpeeds) != 1 {
+			t.Fatalf("action-bar speeds = %v, want exactly one — the escape's own speed, recorded once", actionSpeeds)
+		}
+		_, moveSpeeds := s.BarState(chars[1], action.BarMove)
+		if len(moveSpeeds) != 1 {
+			t.Fatalf("move-bar speeds = %v, want exactly one — the escape's own speed, recorded once", moveSpeeds)
+		}
+	})
 }
