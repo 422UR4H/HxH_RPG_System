@@ -70,9 +70,22 @@ type TurnResolution struct {
 	ActionResult     RollResult
 	ReactionResults  []ReactionResult
 	CharacterResults []CharacterResult
-	Blows            []*battle.Blow
-	WallResults      []WallResult
-	IsSettled        bool
+	// Payouts is what every target's reaction earned across the chain, collected here so
+	// MatchSession.applyResolution can write it into each ledger once, at turn close —
+	// beside the damage, and for the same reason: everything before that is a dry run, and a
+	// bonus granted on every recomputation would multiply.
+	Payouts     []CharacterPayout
+	Blows       []*battle.Blow
+	WallResults []WallResult
+	IsSettled   bool
+}
+
+// CharacterPayout is one target's earnings from answering an attack — the reserve a closed
+// dodge banked, the bonus or penalty a repel paid out. It travels on the resolution rather
+// than being written straight into a ledger from inside Resolve, which must stay pure.
+type CharacterPayout struct {
+	TargetID uuid.UUID
+	Payouts  []match.Modifier
 }
 
 // RollResult holds the outcome of a single dice roll check.
@@ -106,6 +119,20 @@ type CharacterResult struct {
 	Dodged   bool
 	Defended bool
 
+	// ReactionKind is what this target answered with — "" when nothing was opened and the
+	// passive defaults applied instead.
+	ReactionKind string
+	// Ladder is the zero value outside a repel.
+	Ladder LadderOutcome
+	// AttackStopped is true when a repel earlier in the chain already stopped this attack
+	// before it reached this target. Their own reaction above still resolved and still
+	// narrates — stopping is not cancelling — it simply could not be hit any more.
+	AttackStopped bool
+	// Payouts is what this target's own reaction earned — a closed dodge's reserve, a
+	// repel's bonus or penalty. Written into their ledger once, at turn close, alongside the
+	// damage (see MatchSession.applyResolution and TurnResolution.Payouts).
+	Payouts []match.Modifier
+
 	DamageDice      []int
 	RawDamage       int
 	DefenseApplied  int
@@ -133,17 +160,36 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	a := in.Turn.GetAction()
 
 	if in.Targets != nil {
-		for _, targetID := range a.TargetID {
-			switch in.Targets.CategorizeTarget(targetID) {
-			case TargetKindCharacter:
-				cr, ok := tr.resolveCharacter(in, a, targetID)
+		// The character targets are NOT an independent loop over a.TargetID: they are a
+		// walk. What leaves one target is what enters the next, in the order the master
+		// opened the reactions — see buildChainOrder and ChainState. Wall and unknown
+		// targets have no chain to walk; they stay in the second loop, in the attack's own
+		// target order, untouched by this.
+		if a.Attack != nil {
+			chain := tr.seedChain(in, a)
+			for _, step := range buildChainOrder(a, in.Turn.GetReactions(), in.Turn.OpenedReactionIDs()) {
+				if in.Targets.CategorizeTarget(step.targetID) != TargetKindCharacter {
+					continue
+				}
+				cr, next, ok := tr.resolveCharacterStep(in, a, step, chain)
 				if !ok {
 					continue
 				}
+				chain = next
 				res.CharacterResults = append(res.CharacterResults, cr)
 				res.Blows = append(res.Blows, cr.Blow)
+				if len(cr.Payouts) > 0 {
+					res.Payouts = append(res.Payouts, CharacterPayout{TargetID: cr.TargetID, Payouts: cr.Payouts})
+				}
 				dodgeTotal := cr.Dodge.Total
 				res.ActionResult = rollResultOf(cr.Hit, &dodgeTotal)
+			}
+		}
+
+		for _, targetID := range a.TargetID {
+			switch in.Targets.CategorizeTarget(targetID) {
+			case TargetKindCharacter:
+				// Walked above, in chain order rather than a.TargetID order.
 
 			case TargetKindWallSegment:
 				wall, found := in.Targets.GetWall(targetID.String())
@@ -188,79 +234,114 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	return res
 }
 
-// resolveCharacter runs one attack against one character: the hit, then the two passive
-// reactions in the order the rules give them, then damage.
+// seedChain computes ataque₀: the whole attack's raw damage, rolled once when the action
+// arrived and never re-rolled. Every target in the walk only ever subtracts from this one
+// number — it is not recomputed per target.
+func (tr TurnResolver) seedChain(in ResolveInput, a action.Action) ChainState {
+	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons)
+	if err != nil {
+		return ChainState{}
+	}
+	return ChainState{Residual: raw}
+}
+
+// resolveCharacterStep runs one attack against one target in the walk: the hit, the
+// target's reaction (or the passive defaults, when none was opened), what THIS target takes,
+// and what the chain leaves for whoever is walked next.
 //
-// The passives are free and automatic. The reflex dodge takes the dice set's average
-// instead of rolling — rolling has exactly zero expected gain, so the player only gambles
-// when they need luck above the average — and the defense is one ladder step easier than
-// the attack, because it should be easier to parry than to land a blow.
-func (tr TurnResolver) resolveCharacter(
-	in ResolveInput, a action.Action, targetID uuid.UUID,
-) (CharacterResult, bool) {
+// chainIn is the residual the walk carries INTO this target — what this target takes is read
+// off chainIn, not off a fresh roll: the attack already happened once, and the chain is what
+// is left of it by the time it reaches them.
+func (tr TurnResolver) resolveCharacterStep(
+	in ResolveInput, a action.Action, step chainStep, chainIn ChainState,
+) (CharacterResult, ChainState, bool) {
 	if a.Attack == nil {
-		return CharacterResult{}, false
+		return CharacterResult{}, chainIn, false
 	}
 	actorSheet, okActor := in.Sheets[a.GetActorID()]
-	targetSheet, okTarget := in.Sheets[targetID]
+	targetSheet, okTarget := in.Sheets[step.targetID]
 	if !okActor || !okTarget || actorSheet == nil || targetSheet == nil {
 		// TODO: surface a missing-sheet error in the resolution, with the rest of the error
 		// reporting the caller needs
-		return CharacterResult{}, false
+		return CharacterResult{}, chainIn, false
 	}
 
 	calc := RollCalculator{}
-	cr := CharacterResult{TargetID: targetID}
+	cr := CharacterResult{TargetID: step.targetID}
 
-	// 1. The hit — the attacker's active test.
-	//    Ledger is deliberately nil: the accumulated difference a character carries is
-	//    always an actionSpeed adjustment, never a hit adjustment.
+	// 1. The hit — the attacker's active test, shared by the whole chain: every target in
+	//    this attack answers against the same CD, because it is the same swing.
+	//    Ledger is deliberately nil here: the duel reserve (repel/parry) modifies
+	//    actionSpeed, not the hit — see match.Modifier.Applies — and the closed dodge's
+	//    reserve modifies the dodge, which ResolveReaction reads on the target's own side,
+	//    not on this roll.
 	cr.Hit = calc.Derive(in.Rules, a.Attack.Hit.Attempts, RollInput{
 		SkillName:  a.Attack.Hit.SkillName,
 		SkillValue: skillValueOf(actorSheet, a.Attack.Hit.SkillName),
 		Condition:  a.Attack.Hit.Context.Condition,
-		AgainstID:  &targetID,
+		AgainstID:  &step.targetID,
 	})
 
-	// 2. Reflex dodge — passive, free, automatic. Ties favour the defender.
-	cr.Dodge = calc.Derive(in.Rules, action.RollAttempts{}, RollInput{
-		SkillName:  enum.Reflex.String(),
-		SkillValue: skillValueOf(targetSheet, enum.Reflex.String()),
-		Passive:    true,
-	})
-	cr.Dodged = cr.Dodge.Total >= cr.Hit.Total
-
-	// 3. Defense — only if the dodge failed, at a CD one ladder step lower.
-	if !cr.Dodged {
-		cr.Defense = calc.Derive(in.Rules, action.RollAttempts{}, RollInput{
-			SkillName:  enum.Defense.String(),
-			SkillValue: skillValueOf(targetSheet, enum.Defense.String()),
-			Passive:    true,
-		})
-		cr.Defended = cr.Defense.Total >= cr.Hit.Total-in.Rules.LadderStep
+	// 2. The target's answer — an opened reaction if one exists, the passive defaults
+	//    (reflex dodge, then defense) otherwise. This is Task 9's ResolveReaction, reused
+	//    rather than re-derived: it is the one place that already knows how every kind of
+	//    reaction reads against a hit.
+	kind := action.ReactionKind("")
+	if step.reaction != nil {
+		kind = step.reaction.ReactionKind
 	}
+	out := ResolveReaction(ReactionInput{
+		Kind:       kind,
+		Reaction:   step.reaction,
+		Target:     targetSheet,
+		AttackerID: a.GetActorID(),
+		HitTotal:   cr.Hit.Total,
+		Rules:      in.Rules,
+	})
+	cr.ReactionKind = string(out.Kind)
+	cr.Dodge = out.Dodge
+	cr.Defense = out.Defense
+	cr.Dodged = out.Avoided
+	cr.Defended = out.Defended
+	cr.Ladder = out.Ladder
+	cr.Payouts = out.Payouts
+	cr.AttackStopped = chainIn.Stopped
 
-	// 4. Damage — the weapon's own dice, already rolled on arrival.
-	if !cr.Dodged {
+	// 3. What THIS target takes: the chain's current residual, reduced exactly the way a
+	//    single-target attack always was (ApplicableDefense/EffectiveDamage, Phase 2) —
+	//    unless the chain never reached them at all, stopped earlier by someone else's
+	//    repel, or they avoided the blow themselves (a dodge, or a repel that stopped it
+	//    here). Either way that is zero, and nothing else here changes.
+	if !chainIn.Stopped && !out.Avoided {
 		cr.DamageDice = append([]int(nil), a.Attack.Damage.Attempts.Primary...)
-		raw, err := RawDamage(cr.DamageDice, a.Attack.Weapon, in.Weapons)
-		if err == nil {
-			cr.RawDamage = raw
-			def := ApplicableDefense(DefenseInput{
-				AttackWeapon: a.Attack.Weapon,
-				// The passive defense is always bare-handed. An armed parry needs the target
-				// to declare one, which is an active reaction.
-				DefenseWeapon: nil,
-				Defended:      cr.Defended,
-				Catalogue:     in.Weapons,
-			})
-			cr.DefenseApplied = def.Amount
-			cr.EffectiveDamage = EffectiveDamage(raw, def)
-		}
+		cr.RawDamage = chainIn.Residual
+		def := ApplicableDefense(DefenseInput{
+			AttackWeapon: a.Attack.Weapon,
+			// The passive defense is always bare-handed. An armed parry needs the target
+			// to declare one, which is the repel reaction, handled by ReduceSpread below —
+			// not by this per-target damage math.
+			DefenseWeapon: nil,
+			Defended:      cr.Defended,
+			Catalogue:     in.Weapons,
+		})
+		cr.DefenseApplied = def.Amount
+		cr.EffectiveDamage = EffectiveDamage(cr.RawDamage, def)
 	}
 
-	cr.Blow = battle.NewBlow(a.GetActorID(), targetID, *a.Attack, nil, nil, nil)
-	return cr, true
+	// 4. What the chain leaves for whoever is walked next.
+	var defenseWeapon *enum.WeaponName
+	if out.Kind == action.ReactRepel && step.reaction != nil && step.reaction.Repel != nil {
+		defenseWeapon = step.reaction.Repel.Weapon
+	}
+	// Armour does not exist in this codebase — there is no armour entity and no sheet field
+	// — so the hit row currently subtracts zero. Encoded anyway, exactly as
+	// ApplicableDefense encodes the damage-type rows it cannot yet read: the shape is what
+	// matters, not the number. Do not invent an armour model to fill it.
+	const armour = 0
+	chainOut := chainIn.ReduceSpread(a.Attack.Spread, out, weaponDefenseBonus(defenseWeapon, in.Weapons), armour)
+
+	cr.Blow = battle.NewBlow(a.GetActorID(), step.targetID, *a.Attack, nil, nil, nil)
+	return cr, chainOut, true
 }
 
 // skillValueOf reads a skill off the sheet, crossing the string→enum boundary. A name the

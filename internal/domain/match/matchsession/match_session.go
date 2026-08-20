@@ -409,11 +409,15 @@ func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 	})
 }
 
-// applyResolution writes a resolution's effective damage to the target sheets, once.
+// applyResolution writes a resolution's effective damage to the target sheets, once, and — in
+// the same place, for the same reason — writes what each target's reaction earned into their
+// own ledger.
 //
 // This is the moment the dry run stops being a dry run. Everything before it recalculated
 // freely — every master edit, every colliding reaction — precisely because nothing had been
-// applied. Called only from the turn-closing path.
+// applied. A payout written on every recomputation would multiply the same reserve or bonus
+// each time the master edited a reaction; writing it here, once, is what the damage already
+// relied on. Called only from the turn-closing path.
 func (s *MatchSession) applyResolution(res *service.TurnResolution) []DamagedCharacter {
 	if res == nil {
 		return nil
@@ -438,6 +442,15 @@ func (s *MatchSession) applyResolution(res *service.TurnResolution) []DamagedCha
 			Damage:      cr.EffectiveDamage,
 			NewHP:       newHP,
 		})
+	}
+	for _, cp := range res.Payouts {
+		status, ok := s.statuses[cp.TargetID]
+		if !ok || status == nil {
+			continue
+		}
+		for _, m := range cp.Payouts {
+			status.Ledger.Add(m)
+		}
 	}
 	return out
 }
