@@ -217,8 +217,28 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 				chain = next
 				res.CharacterResults = append(res.CharacterResults, cr)
 				res.Blows = append(res.Blows, cr.Blow)
-				dodgeTotal := cr.Dodge.Total
-				res.ActionResult = rollResultOf(cr.Hit, &dodgeTotal)
+			}
+			// ActionResult is the attacker's own Hit roll — one swing, shared by the whole
+			// chain: resolveCharacterStep derives cr.Hit with a nil Ledger (see its own
+			// comment), so the total, dice and critical flags are identical no matter which
+			// target it is read from. Reading it off the FIRST character result, once, after
+			// the walk — rather than reassigning it on every iteration — is what makes that
+			// deterministic instead of "whatever the last-walked target happened to produce",
+			// which used to hand back a full-hit margin whenever that last target had
+			// repelled (cr.Dodge zero-valued on a repel).
+			//
+			// The margin, though, needs a single CD, and a chain with more than one character
+			// result has no one target to read it against — so it is only derived for a
+			// single-target attack. A multi-target one reports the roll with no margin rather
+			// than an arbitrary, order-dependent one.
+			if len(res.CharacterResults) > 0 {
+				first := res.CharacterResults[0]
+				var cd *int
+				if len(res.CharacterResults) == 1 {
+					d := first.Dodge.Total
+					cd = &d
+				}
+				res.ActionResult = rollResultOf(first.Hit, cd)
 			}
 		}
 

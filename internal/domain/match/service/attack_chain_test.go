@@ -208,6 +208,36 @@ func TestChain_OpeningOrderChangesTheOutcome(t *testing.T) {
 			t.Fatal("a target whose reaction was wasted mechanically still narrates — it must appear")
 		}
 	})
+
+	// ActionResult used to be reassigned on every iteration of the chain walk, so it ended up
+	// holding whatever the LAST-walked target produced — order-dependent, and outright wrong
+	// whenever that last target had repelled (cr.Dodge zero-valued, so the margin read as the
+	// full hit total). It is the attacker's own Hit roll, the same swing for every target in
+	// the chain, so it must not depend on which order the master opened the reactions in.
+	t.Run("ActionResult is the attacker's own roll, independent of chain order", func(t *testing.T) {
+		resFirst := build(t, []int{0, 1})  // A (repel) opened first
+		resSecond := build(t, []int{1, 0}) // B (nothing) opened first — same swing, different walk
+
+		if resFirst.ActionResult.Total != 10 {
+			t.Fatalf("ActionResult.Total = %d, want 10 (hit dice 6+4, no skill on a plain sheet)",
+				resFirst.ActionResult.Total)
+		}
+		if resFirst.ActionResult.Total != resSecond.ActionResult.Total {
+			t.Fatalf("ActionResult.Total = %d vs %d, want the same regardless of chain order",
+				resFirst.ActionResult.Total, resSecond.ActionResult.Total)
+		}
+	})
+
+	t.Run("ActionResult carries no margin for a multi-target attack — there is no single CD", func(t *testing.T) {
+		res := build(t, []int{0, 1})
+		if len(res.CharacterResults) < 2 {
+			t.Fatalf("test setup: expected more than one character result, got %d", len(res.CharacterResults))
+		}
+		if res.ActionResult.Margin != nil {
+			t.Fatalf("ActionResult.Margin = %d, want nil — a chain with more than one target has no single CD to read it against",
+				*res.ActionResult.Margin)
+		}
+	})
 }
 
 // TestChain_SameActorOpenedTwiceIsVisitedOnce pins the CRITICAL fix from round 1 review:
