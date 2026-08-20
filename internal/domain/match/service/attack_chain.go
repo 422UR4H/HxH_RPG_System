@@ -104,6 +104,15 @@ type chainStep struct {
 // — a target can attach a reaction long before the master gets to it. Walking attach order
 // instead of open order would silently destroy the one thing this phase is about: that the
 // order the master opens the reactions changes the outcome.
+//
+// Turn.OpenReaction is idempotent per reaction ID, not per actor — nothing upstream of here
+// stops the same character from having TWO reactions attached and opened in one turn (Turn
+// and MatchSession.AttachReaction validate the reactor and the ReactToID, never "already
+// answered"). Without the guard below, a second opened reaction from an actor already walked
+// would produce a second chainStep for the same target: a second CharacterResult, a second
+// application of damage and a duplicated payout at turn close. The covered check has to run
+// INSIDE this loop, not just in the second one, because this is the only loop that can
+// produce the duplicate.
 func buildChainOrder(a action.Action, reactions []action.Action, openedIDs []uuid.UUID) []chainStep {
 	byID := make(map[uuid.UUID]action.Action, len(reactions))
 	for _, r := range reactions {
@@ -115,6 +124,9 @@ func buildChainOrder(a action.Action, reactions []action.Action, openedIDs []uui
 	for _, id := range openedIDs {
 		r, ok := byID[id]
 		if !ok {
+			continue
+		}
+		if covered[r.GetActorID()] {
 			continue
 		}
 		rc := r

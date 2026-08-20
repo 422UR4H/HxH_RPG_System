@@ -10,9 +10,14 @@ import (
 
 // ReactionInput is everything ResolveReaction reads to answer one attack for one target.
 //
-// Ledger travels here because a reaction's payout is written into it, not because this task
-// reads it back — Task 10 collects the Payouts on the resolution and applyResolution writes
-// them once, at turn close, the same place damage is applied.
+// Ledger does double duty, and both halves are read-only from Resolve's point of view:
+// deriveReflex and deriveEvasion read it (Dimension: DimDodge, AgainstID: the CURRENT
+// attacker) to see a reserve banked by an earlier closed dodge — that is what makes
+// ScopeAllBut(originalAttacker) actually count for whoever comes at this target next turn.
+// The other half is unread here: a reaction's OWN payout (a fresh reserve, a repel's
+// bonus/penalty) is collected on ReactionOutcome.Payouts and written into this same ledger
+// once, at turn close, by MatchSession.applyResolution — never from inside this pure
+// function.
 type ReactionInput struct {
 	Kind       action.ReactionKind
 	Reaction   *action.Action // nil = nothing was sent; the passives apply
@@ -141,6 +146,12 @@ func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
 		SkillName:  enum.Reflex.String(),
 		SkillValue: skillValueOf(in.Target, enum.Reflex.String()),
 		Passive:    passive,
+		// A closed dodge banked in an earlier turn lives on this same dimension, scoped
+		// AllBut the attacker it was earned against — reading it here, against the CURRENT
+		// attacker, is what lets "whoever comes at this target next turn" actually count.
+		Ledger:    in.Ledger,
+		Dimension: match.DimDodge,
+		AgainstID: &in.AttackerID,
 	})
 }
 
@@ -160,6 +171,12 @@ func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 	return calc.Derive(in.Rules, attempts, RollInput{
 		SkillName:  enum.Evasion.String(),
 		SkillValue: skillValueOf(in.Target, enum.Evasion.String()),
+		// Same reserve, same dimension: the closed variants take the worse of Reflex and
+		// Evasion as "the dodge" (dodgeAndReserve), so a banked reserve has to reach whichever
+		// of the two ends up being read as that.
+		Ledger:    in.Ledger,
+		Dimension: match.DimDodge,
+		AgainstID: &in.AttackerID,
 	})
 }
 

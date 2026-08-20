@@ -401,11 +401,12 @@ func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 		return nil
 	}
 	return s.turnResolver.Resolve(service.ResolveInput{
-		Turn:    t,
-		Sheets:  s.charSheets,
-		Targets: s,
-		Rules:   s.rules,
-		Weapons: s.weapons,
+		Turn:     t,
+		Sheets:   s.charSheets,
+		Statuses: s.statuses,
+		Targets:  s,
+		Rules:    s.rules,
+		Weapons:  s.weapons,
 	})
 }
 
@@ -424,35 +425,47 @@ func (s *MatchSession) applyResolution(res *service.TurnResolution) []DamagedCha
 	}
 	var out []DamagedCharacter
 	for _, cr := range res.CharacterResults {
-		if cr.EffectiveDamage <= 0 {
-			continue
+		if dc, ok := s.applyDamage(cr); ok {
+			out = append(out, dc)
 		}
-		sheet, ok := s.charSheets[cr.TargetID]
-		if !ok || sheet == nil {
-			continue
-		}
-		bar, ok := sheet.GetAllStatusBar()[enum.Health]
-		if !ok {
-			continue
-		}
-		newHP := bar.DecreaseAt(cr.EffectiveDamage)
-		out = append(out, DamagedCharacter{
-			CharacterID: cr.TargetID,
-			Sheet:       sheet,
-			Damage:      cr.EffectiveDamage,
-			NewHP:       newHP,
-		})
-	}
-	for _, cp := range res.Payouts {
-		status, ok := s.statuses[cp.TargetID]
+		// Payouts is read straight off the CharacterResult, by its own TargetID — Task 10's
+		// first cut kept a second, resolution-level list of the same data (TurnResolution.
+		// Payouts / CharacterPayout), which was exactly flatMap(CharacterResults, .Payouts):
+		// two lists that could disagree the moment someone edited one and not the other.
+		// Removed; this is the only place a payout is written, same as the damage above.
+		status, ok := s.statuses[cr.TargetID]
 		if !ok || status == nil {
 			continue
 		}
-		for _, m := range cp.Payouts {
+		for _, m := range cr.Payouts {
 			status.Ledger.Add(m)
 		}
 	}
 	return out
+}
+
+// applyDamage writes one CharacterResult's effective damage to its target sheet. ok is false
+// when there is nothing to apply — no damage, no sheet, or no health bar — so the caller does
+// not have to repeat that guard.
+func (s *MatchSession) applyDamage(cr service.CharacterResult) (DamagedCharacter, bool) {
+	if cr.EffectiveDamage <= 0 {
+		return DamagedCharacter{}, false
+	}
+	sheet, ok := s.charSheets[cr.TargetID]
+	if !ok || sheet == nil {
+		return DamagedCharacter{}, false
+	}
+	bar, ok := sheet.GetAllStatusBar()[enum.Health]
+	if !ok {
+		return DamagedCharacter{}, false
+	}
+	newHP := bar.DecreaseAt(cr.EffectiveDamage)
+	return DamagedCharacter{
+		CharacterID: cr.TargetID,
+		Sheet:       sheet,
+		Damage:      cr.EffectiveDamage,
+		NewHP:       newHP,
+	}, true
 }
 
 // AttachReaction validates that the caller may answer this attack, then attaches the reaction
@@ -664,10 +677,10 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 
 	// actionSpeed: always Legerity. Passive in Free, rolled in Race.
 	//
-	// The ledger applies here and nowhere else in a collision: the accumulated difference a
-	// character carries is always an actionSpeed adjustment, never a hit adjustment. It is
-	// what makes the repel ladder produce a duel — two characters facing each other speed up
-	// against each other — without anyone programming duels.
+	// The duel reserve (repel/parry) lives on this dimension and is read here — it is what
+	// makes the repel ladder produce a duel, two characters facing each other speed up
+	// against each other, without anyone programming duels. The closed dodge's reserve is a
+	// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
 	a.Speed.SkillName = enum.Legerity.String()
 	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
 	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{

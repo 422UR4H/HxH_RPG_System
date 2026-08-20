@@ -366,8 +366,11 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 	}
 	for _, cr := range res.CharacterResults {
 		p.Targets = append(p.Targets, CharacterResultPayload{
-			TargetID:        cr.TargetID,
-			Dodged:          cr.Dodged,
+			TargetID: cr.TargetID,
+			// The wire field is still named "dodged" (see CharacterResultPayload) — that is
+			// a separate, unchanged contract. The domain field behind it is Avoided: the
+			// blow did not land, whether by a dodge or by a repel that stopped it here.
+			Dodged:          cr.Avoided,
 			Defended:        cr.Defended,
 			DodgeTotal:      cr.Dodge.Total,
 			DefenseTotal:    cr.Defense.Total,

@@ -53,10 +53,15 @@ type ResolveInput struct {
 	Turn *turn.Turn
 	// Sheets is keyed by sheet UUID — the same ID the board pieces carry as CharacterID,
 	// and the same ID Action.actorID and Action.TargetID carry.
-	Sheets  map[uuid.UUID]*csSheet.CharacterSheet
-	Targets TargetReader // nil disables target routing
-	Rules   match.MatchRules
-	Weapons *item.WeaponsManager
+	Sheets map[uuid.UUID]*csSheet.CharacterSheet
+	// Statuses is keyed the same way as Sheets. Each character's ModifierLedger is read
+	// (never written) while resolving their reaction — a closed dodge's reserve from an
+	// earlier turn only does anything if a later resolution can see it. nil, or a missing
+	// entry, reads as an empty ledger: Resolve stays pure either way.
+	Statuses map[uuid.UUID]*match.CharacterStatus
+	Targets  TargetReader // nil disables target routing
+	Rules    match.MatchRules
+	Weapons  *item.WeaponsManager
 }
 
 // TurnResolution is the snapshot of a Turn's result — character combat, wall
@@ -70,22 +75,9 @@ type TurnResolution struct {
 	ActionResult     RollResult
 	ReactionResults  []ReactionResult
 	CharacterResults []CharacterResult
-	// Payouts is what every target's reaction earned across the chain, collected here so
-	// MatchSession.applyResolution can write it into each ledger once, at turn close —
-	// beside the damage, and for the same reason: everything before that is a dry run, and a
-	// bonus granted on every recomputation would multiply.
-	Payouts     []CharacterPayout
-	Blows       []*battle.Blow
-	WallResults []WallResult
-	IsSettled   bool
-}
-
-// CharacterPayout is one target's earnings from answering an attack — the reserve a closed
-// dodge banked, the bonus or penalty a repel paid out. It travels on the resolution rather
-// than being written straight into a ledger from inside Resolve, which must stay pure.
-type CharacterPayout struct {
-	TargetID uuid.UUID
-	Payouts  []match.Modifier
+	Blows            []*battle.Blow
+	WallResults      []WallResult
+	IsSettled        bool
 }
 
 // RollResult holds the outcome of a single dice roll check.
@@ -115,8 +107,11 @@ type CharacterResult struct {
 	Hit      RollOutcome
 	Dodge    RollOutcome
 	// Defense is the zero value when the dodge already stopped the attack.
-	Defense  RollOutcome
-	Dodged   bool
+	Defense RollOutcome
+	// Avoided is true when the blow did not land on this target at all — a dodge cleared it,
+	// or a repel stopped it here. It is NOT "dodged": a successful repel and a closed escape
+	// set it too, and neither is a dodge. Ask ReactionKind if the distinction matters.
+	Avoided  bool
 	Defended bool
 
 	// ReactionKind is what this target answered with — "" when nothing was opened and the
@@ -130,7 +125,8 @@ type CharacterResult struct {
 	AttackStopped bool
 	// Payouts is what this target's own reaction earned — a closed dodge's reserve, a
 	// repel's bonus or penalty. Written into their ledger once, at turn close, alongside the
-	// damage (see MatchSession.applyResolution and TurnResolution.Payouts).
+	// damage (see MatchSession.applyResolution, which reads this field by TargetID directly
+	// — there is deliberately no second, resolution-level list to keep in sync with it).
 	Payouts []match.Modifier
 
 	DamageDice      []int
@@ -178,9 +174,6 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 				chain = next
 				res.CharacterResults = append(res.CharacterResults, cr)
 				res.Blows = append(res.Blows, cr.Blow)
-				if len(cr.Payouts) > 0 {
-					res.Payouts = append(res.Payouts, CharacterPayout{TargetID: cr.TargetID, Payouts: cr.Payouts})
-				}
 				dodgeTotal := cr.Dodge.Total
 				res.ActionResult = rollResultOf(cr.Hit, &dodgeTotal)
 			}
@@ -290,10 +283,15 @@ func (tr TurnResolver) resolveCharacterStep(
 	if step.reaction != nil {
 		kind = step.reaction.ReactionKind
 	}
+	var ledger *match.ModifierLedger
+	if st, ok := in.Statuses[step.targetID]; ok && st != nil {
+		ledger = &st.Ledger
+	}
 	out := ResolveReaction(ReactionInput{
 		Kind:       kind,
 		Reaction:   step.reaction,
 		Target:     targetSheet,
+		Ledger:     ledger,
 		AttackerID: a.GetActorID(),
 		HitTotal:   cr.Hit.Total,
 		Rules:      in.Rules,
@@ -301,7 +299,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	cr.ReactionKind = string(out.Kind)
 	cr.Dodge = out.Dodge
 	cr.Defense = out.Defense
-	cr.Dodged = out.Avoided
+	cr.Avoided = out.Avoided
 	cr.Defended = out.Defended
 	cr.Ladder = out.Ladder
 	cr.Payouts = out.Payouts
@@ -312,6 +310,14 @@ func (tr TurnResolver) resolveCharacterStep(
 	//    unless the chain never reached them at all, stopped earlier by someone else's
 	//    repel, or they avoided the blow themselves (a dodge, or a repel that stopped it
 	//    here). Either way that is zero, and nothing else here changes.
+	//
+	//    This is deliberately a SEPARATE computation from step 4's onward reduction, not one
+	//    number feeding the other: ApplicableDefense already knows the armed-vs-armed rules
+	//    (block entirely, or nothing, for lack of damage types) that decide what THIS target
+	//    takes, while the chain's Reduce only ever needs a flat weapon-defense number for
+	//    what carries on. Collapsing them would change what a bare-handed default defense
+	//    does to an armed attack today — see the single-target test that pins EffectiveDamage
+	//    at the full raw value even though Defended is true.
 	if !chainIn.Stopped && !out.Avoided {
 		cr.DamageDice = append([]int(nil), a.Attack.Damage.Attempts.Primary...)
 		cr.RawDamage = chainIn.Residual

@@ -187,3 +187,55 @@ func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
 		}
 	})
 }
+
+// TestResolve_ClosedDodgeReserveIsRead pins the wiring from round 1 review: a closed dodge's
+// banked reserve (match.Modifier, Dimension: DimDodge, Against: ScopeAllBut(originalAttacker))
+// only does anything if a LATER resolution can see it. Before this fix, ResolveInput had no
+// way to reach a character's ModifierLedger and deriveReflex/deriveEvasion never read
+// ReactionInput.Ledger — the reserve was written and never applied, for anyone.
+//
+// This test goes through TurnResolver.Resolve with ResolveInput.Statuses populated, the same
+// way MatchSession.ResolveTurn now populates it from its own statuses map — not a narrower
+// ResolveReaction-level check, which would prove Derive reads a ledger but not that the
+// resolver actually threads one to it.
+func TestResolve_ClosedDodgeReserveIsRead(t *testing.T) {
+	target := uuid.New()
+	bankedAgainst := uuid.New() // the attacker the reserve does NOT apply to
+	otherAttacker := uuid.New() // per ScopeAllBut, anyone else gets it
+
+	ledger := match.NewModifierLedger()
+	ledger.Add(match.Modifier{
+		Amount: 5, Applies: match.DimDodge, Source: match.SourceSystem,
+		Against: match.ScopeAllBut(bankedAgainst), ExpiresAt: match.LifetimeEndOfTurn,
+		Reason: "test: banked closed dodge reserve",
+	})
+	statuses := map[uuid.UUID]*match.CharacterStatus{
+		target: {Ledger: ledger},
+	}
+
+	dodgeTotalAgainst := func(t *testing.T, attackerID uuid.UUID) int {
+		t.Helper()
+		// A weak hit (5) so the passive path resolves without a reaction opened — the
+		// reserve should still count, because deriveReflex reads it regardless of kind.
+		tn := attackTurn(attackerID, target, []int{3, 2}, []int{1}, nil)
+		in := resolveInput(t, attackerID, target, tn)
+		in.Statuses = statuses
+		res := service.TurnResolver{}.Resolve(in)
+		if len(res.CharacterResults) != 1 {
+			t.Fatalf("expected 1 character result, got %d", len(res.CharacterResults))
+		}
+		return res.CharacterResults[0].Dodge.Total
+	}
+
+	t.Run("against the attacker the reserve was earned against, it does not count", func(t *testing.T) {
+		if got := dodgeTotalAgainst(t, bankedAgainst); got != 11 {
+			t.Fatalf("dodge total = %d, want 11 (passive, no bonus)", got)
+		}
+	})
+
+	t.Run("against a different attacker, the reserve counts", func(t *testing.T) {
+		if got := dodgeTotalAgainst(t, otherAttacker); got != 16 {
+			t.Fatalf("dodge total = %d, want 16 (11 passive + 5 reserve) — ScopeAllBut must actually be read", got)
+		}
+	})
+}

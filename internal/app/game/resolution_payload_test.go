@@ -32,7 +32,7 @@ func TestNewResolutionUpdatedPayload(t *testing.T) {
 		},
 		CharacterResults: []service.CharacterResult{{
 			TargetID:        targetID,
-			Dodged:          false,
+			Avoided:         false,
 			Defended:        true,
 			RawDamage:       14,
 			EffectiveDamage: 14,

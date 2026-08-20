@@ -66,6 +66,28 @@ func TestChainState_Reduce(t *testing.T) {
 			t.Fatalf("residual = %d, want 0", got.Residual)
 		}
 	})
+
+	t.Run("a simultaneous attack does not diminish", func(t *testing.T) {
+		// Reserved axis, unit-tested only: nothing sets SpreadSimultaneous today.
+		got := start.ReduceSpread(action.SpreadSimultaneous, service.ReactionOutcome{}, 3, 5)
+		if got.Residual != 12 {
+			t.Fatalf("residual = %d, want 12 — everyone takes the same blow", got.Residual)
+		}
+	})
+
+	t.Run("a simultaneous repel does not stop the chain for the rest", func(t *testing.T) {
+		// A repel still protects the one who made it — their own EffectiveDamage is zeroed
+		// in the per-target step, not here — but under SpreadSimultaneous it must not stop
+		// what everyone else receives. Before this test the only evidence for that branch
+		// was a comment.
+		got := start.ReduceSpread(action.SpreadSimultaneous, service.ReactionOutcome{StopsAttack: true}, 3, 5)
+		if got.Stopped {
+			t.Fatal("a simultaneous repel stopped the chain for everyone else, want it to only protect the repeller")
+		}
+		if got.Residual != 12 {
+			t.Fatalf("residual = %d, want 12 — unchanged for whoever comes next", got.Residual)
+		}
+	})
 }
 
 // areaTurn builds one attack against several targets with the dice already fallen, attaches the
@@ -186,13 +208,66 @@ func TestChain_OpeningOrderChangesTheOutcome(t *testing.T) {
 			t.Fatal("a target whose reaction was wasted mechanically still narrates — it must appear")
 		}
 	})
+}
 
-	t.Run("a simultaneous attack does not diminish", func(t *testing.T) {
-		// Reserved axis, unit-tested only: nothing sets SpreadSimultaneous today.
-		start := service.ChainState{Residual: 12}
-		got := start.ReduceSpread(action.SpreadSimultaneous, service.ReactionOutcome{}, 3, 5)
-		if got.Residual != 12 {
-			t.Fatalf("residual = %d, want 12 — everyone takes the same blow", got.Residual)
-		}
+// TestChain_SameActorOpenedTwiceIsVisitedOnce pins the CRITICAL fix from round 1 review:
+// Turn.OpenReaction is idempotent per reaction ID, not per actor, and nothing upstream of
+// buildChainOrder (Turn.AddReaction, MatchSession.AttachReaction) stops the same character
+// from having two reactions attached and opened in the same turn. Without the covered-check
+// inside the opened-reactions loop, that produces two chainSteps for the same target — two
+// CharacterResults, which would apply the damage twice and duplicate the payout at turn
+// close.
+func TestChain_SameActorOpenedTwiceIsVisitedOnce(t *testing.T) {
+	sword := enum.Sword
+	actorID := uuid.New()
+	a := uuid.New()
+
+	atk := &action.Attack{
+		Weapon: &sword,
+		Hit: action.RollCheck{
+			SkillName: enum.Accuracy.String(),
+			Attempts:  action.RollAttempts{Primary: []int{6, 4}},
+		},
+		Damage: action.RollCheck{Attempts: action.RollAttempts{Primary: []int{7, 3}}},
+	}
+	act := action.NewAction(actorID, []uuid.UUID{a}, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, atk, nil, nil, nil, nil)
+	tn := turn.NewTurn(*act)
+	opened := tn.GetAction()
+
+	first := action.NewAction(a, nil, opened.GetID(), nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil)
+	first.ReactionKind = action.ReactNothing
+	second := action.NewAction(a, nil, opened.GetID(), nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil)
+	second.ReactionKind = action.ReactNothing
+
+	tn.AddReaction(first)
+	tn.AddReaction(second)
+	if !tn.OpenReaction(first.GetID()) {
+		t.Fatal("first reaction was not attached")
+	}
+	if !tn.OpenReaction(second.GetID()) {
+		t.Fatal("second reaction was not attached")
+	}
+
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{actorID: plainSheet(t), a: plainSheet(t)}
+	res := service.TurnResolver{}.Resolve(service.ResolveInput{
+		Turn:    tn,
+		Sheets:  sheets,
+		Targets: charTargets{chars: map[uuid.UUID]bool{a: true}},
+		Rules:   match.NewDefaultMatchRules(),
+		Weapons: item.NewWeaponsManagerFactory().Build(),
 	})
+
+	count := 0
+	for _, cr := range res.CharacterResults {
+		if cr.TargetID == a {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("CharacterResults for the double-opened actor = %d, want exactly 1 — the "+
+			"walk must not visit the same target twice", count)
+	}
 }
