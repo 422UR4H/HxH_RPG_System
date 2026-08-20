@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 )
 
@@ -416,35 +415,23 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 // ReactionKind is empty — nothing was opened, so the passive defaults applied and there is
 // no answer to report.
 //
-// Total is the reaction's own roll total, sourced differently per kind because
-// service.CharacterResult does not keep a uniform place for it: the dodge family (dodge,
-// closedDodge, escape, escapeGuard, closedEscape, and the "" default) reads it straight off
-// cr.Dodge.Total. A repel does not copy its own RollOutcome onto CharacterResult, but the
-// total is still recoverable exactly: ClimbLadder built cr.Ladder.Margin as
-// repelTotal-cr.Hit.Total (see resolveRepel and ClimbLadder), so adding it back to cr.Hit.Total
-// reconstructs the repel's total without a new field.
-//
-// StopsAttack is likewise derived, not copied: cr.AttackStopped means something different (the
-// chain was ALREADY stopped by an earlier target's repel before it reached this one — see its
-// doc comment on service.CharacterResult), while resolveRepel documents that only the two
-// clearing rungs — great success and plain success — ever set a repel's own StopsAttack. Rung
-// alone is enough to reconstruct it.
+// Total and StopsAttack are read straight off CharacterResult, not recomputed here: both are
+// domain facts service.resolveCharacterStep already derived (ReactionTotal, ReactionStopsAttack)
+// and this payload's job is to project them, not to re-derive them from Ladder.Rung or
+// reconstruct them by algebra off Hit.Total. Re-deriving them here previously duplicated rules
+// that live in resolveRepel and ClimbLadder — correct only as long as nobody changed either
+// without remembering this file too. Do NOT reintroduce that coupling.
 func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload {
 	if cr.ReactionKind == "" {
 		return nil
 	}
-	total := cr.Dodge.Total
-	if action.ReactionKind(cr.ReactionKind) == action.ReactRepel {
-		total = cr.Hit.Total + cr.Ladder.Margin
-	}
 	return &ReactionResultPayload{
-		Kind:       cr.ReactionKind,
-		Total:      total,
-		Rung:       string(cr.Ladder.Rung),
-		Margin:     cr.Ladder.Margin,
-		Difference: cr.Ladder.Difference,
-		StopsAttack: cr.Ladder.Rung == service.RungGreatSuccess ||
-			cr.Ladder.Rung == service.RungSuccess,
+		Kind:        cr.ReactionKind,
+		Total:       cr.ReactionTotal,
+		Rung:        string(cr.Ladder.Rung),
+		Margin:      cr.Ladder.Margin,
+		Difference:  cr.Ladder.Difference,
+		StopsAttack: cr.ReactionStopsAttack,
 	}
 }
 

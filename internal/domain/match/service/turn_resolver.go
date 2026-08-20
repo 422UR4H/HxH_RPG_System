@@ -123,6 +123,22 @@ type CharacterResult struct {
 	// before it reached this target. Their own reaction above still resolved and still
 	// narrates — stopping is not cancelling — it simply could not be hit any more.
 	AttackStopped bool
+	// ReactionStopsAttack is true when THIS target's OWN reaction stopped the attack — a
+	// repel that cleared the ladder (great success or plain success). Do not confuse this
+	// with AttackStopped: that one reads the INCOMING chain state, whether someone earlier
+	// in the walk already stopped it before it reached this target. This one is the verdict
+	// on this target's own answer. A target can have AttackStopped false and
+	// ReactionStopsAttack true (their repel is what stopped it going further), or
+	// AttackStopped true and ReactionStopsAttack false (an earlier repel stopped it before
+	// they even got a swing to answer).
+	ReactionStopsAttack bool
+	// ReactionTotal is the reaction's own roll total, whichever kind it was — the dodge
+	// family's Dodge.Total, or a repel's own total (which CharacterResult otherwise has no
+	// place for: ResolveReaction's Repel RollOutcome is not copied onto this struct the way
+	// Dodge and Defense are). Computed once here, at the one place that already knows which
+	// roll a given kind reads, so a consumer (the WS payload) does not have to know the
+	// kind-to-roll mapping — or worse, reconstruct the number by algebra off Ladder.Margin.
+	ReactionTotal int
 	// Payouts is what this target's own reaction earned — a closed dodge's reserve, a
 	// repel's bonus or penalty. Written into their ledger once, at turn close, alongside the
 	// damage (see MatchSession.applyResolution, which reads this field by TargetID directly
@@ -304,6 +320,14 @@ func (tr TurnResolver) resolveCharacterStep(
 	cr.Ladder = out.Ladder
 	cr.Payouts = out.Payouts
 	cr.AttackStopped = chainIn.Stopped
+	cr.ReactionStopsAttack = out.StopsAttack
+	// The repel branch is the one kind whose own RollOutcome CharacterResult does not
+	// otherwise keep (see the field comment on ReactionTotal) — every other kind's total is
+	// already sitting on cr.Dodge.Total above.
+	cr.ReactionTotal = out.Dodge.Total
+	if out.Kind == action.ReactRepel {
+		cr.ReactionTotal = out.Repel.Total
+	}
 
 	// 3. What THIS target takes: the chain's current residual, reduced exactly the way a
 	//    single-target attack always was (ApplicableDefense/EffectiveDamage, Phase 2) —
