@@ -188,7 +188,7 @@ mappings:
     notes: Round lifecycle, action/reaction flow
 
   # ─── Match: Actions ───
-  - code_path: internal/domain/entity/match/action/
+  - code_path: internal/domain/match/entity/action/
     dev_docs:
       - path: docs/dev/match/actions.md
         confidence: directly_affected
