@@ -76,6 +76,47 @@ func TestNewResolutionUpdatedPayload(t *testing.T) {
 	})
 }
 
+func TestResolutionPayload_CarriesTheReaction(t *testing.T) {
+	targetID := uuid.New()
+	res := &service.TurnResolution{
+		CharacterResults: []service.CharacterResult{{
+			TargetID:        targetID,
+			ReactionKind:    string(action.ReactRepel),
+			Ladder:          service.LadderOutcome{Rung: service.RungNearMiss, Margin: -4, Difference: 4},
+			Avoided:         true,
+			RawDamage:       12,
+			EffectiveDamage: 0,
+		}},
+	}
+	p := newResolutionUpdatedPayload(uuid.New(), res)
+	if len(p.Targets) != 1 || p.Targets[0].Reaction == nil {
+		t.Fatal("the master has to see what the target answered with")
+	}
+	got := p.Targets[0].Reaction
+	if got.Kind != "repel" || got.Rung != "near_miss" || got.Difference != 4 {
+		t.Fatalf("reaction payload = %+v, want the kind, the rung and the difference", got)
+	}
+	if p.Targets[0].ProjectedDamage != 0 {
+		t.Error("a parry is zero damage, not reduced damage")
+	}
+}
+
+func TestResolutionPayload_NoReactionOpenedOmitsIt(t *testing.T) {
+	res := &service.TurnResolution{
+		CharacterResults: []service.CharacterResult{{
+			TargetID:     uuid.New(),
+			ReactionKind: "",
+		}},
+	}
+	p := newResolutionUpdatedPayload(uuid.New(), res)
+	if len(p.Targets) != 1 {
+		t.Fatalf("Targets = %+v, want one entry", p.Targets)
+	}
+	if p.Targets[0].Reaction != nil {
+		t.Errorf("Reaction = %+v, want nil — nothing was opened, so there is no answer to report", p.Targets[0].Reaction)
+	}
+}
+
 func TestNewResolutionUpdatedPayload_NilResolution(t *testing.T) {
 	turnID := uuid.New()
 	p := newResolutionUpdatedPayload(turnID, nil)

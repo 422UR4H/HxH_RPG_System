@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 )
 
@@ -337,16 +338,47 @@ type RollResultPayload struct {
 	Margin            *int   `json:"margin,omitempty"`
 }
 
+// ReactionResultPayload is what one target answered with, as the master reads it.
+//
+// The rung and the difference travel because they are the master's whole decision surface on a
+// repel: whether to let the attack continue past it, and how big the reserve it just created
+// was. The individual dice do not — the reaction's own roll is a field-visibility question, and
+// per-recipient projection is Phase 5.
+type ReactionResultPayload struct {
+	Kind  string `json:"kind"`
+	Total int    `json:"total"`
+	// Rung, Margin and Difference are the zero value outside a repel — every other kind
+	// reads against a flat CD, not the ladder, so there is no rung to report.
+	Rung       string `json:"rung,omitempty"`
+	Margin     int    `json:"margin,omitempty"`
+	Difference int    `json:"difference,omitempty"`
+	// StopsAttack is this reaction's OWN contribution — a great success or a plain success
+	// on the ladder — not whether an earlier target's repel already stopped the chain
+	// before it reached this one (that is CharacterResultPayload's concern, not this
+	// reaction's).
+	StopsAttack bool `json:"stopsAttack"`
+}
+
 // CharacterResultPayload is what one attack did to one target.
 type CharacterResultPayload struct {
-	TargetID        uuid.UUID `json:"targetId"`
-	Dodged          bool      `json:"dodged"`
-	Defended        bool      `json:"defended"`
-	DodgeTotal      int       `json:"dodgeTotal"`
-	DefenseTotal    int       `json:"defenseTotal"`
-	RawDamage       int       `json:"rawDamage"`
-	DefenseApplied  int       `json:"defenseApplied"`
-	ProjectedDamage int       `json:"projectedDamage"`
+	TargetID uuid.UUID `json:"targetId"`
+	// Avoided is true when the blow did not land at all, by any means: a dodge, an escape,
+	// a parry, or a repel that stopped it. It replaces the old "dodged" wire name, which
+	// told the same lie at the wire that Task 10 removed from the domain — a client reading
+	// dodged: true for a repel that stopped the attack was misled about what happened. Safe
+	// to rename now: there is no front-end consumer yet (grepped both repos; the only other
+	// reader was this package's own e2e test, updated alongside this field).
+	Avoided         bool `json:"avoided"`
+	Defended        bool `json:"defended"`
+	DodgeTotal      int  `json:"dodgeTotal"`
+	DefenseTotal    int  `json:"defenseTotal"`
+	RawDamage       int  `json:"rawDamage"`
+	DefenseApplied  int  `json:"defenseApplied"`
+	ProjectedDamage int  `json:"projectedDamage"`
+	// Reaction is what this target answered with — nil when nothing was opened and the
+	// passive defaults (reflex dodge, then defense) applied silently instead. A silent
+	// default is not an answer to report.
+	Reaction *ReactionResultPayload `json:"reaction,omitempty"`
 }
 
 func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) ResolutionUpdatedPayload {
@@ -366,20 +398,54 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 	}
 	for _, cr := range res.CharacterResults {
 		p.Targets = append(p.Targets, CharacterResultPayload{
-			TargetID: cr.TargetID,
-			// The wire field is still named "dodged" (see CharacterResultPayload) — that is
-			// a separate, unchanged contract. The domain field behind it is Avoided: the
-			// blow did not land, whether by a dodge or by a repel that stopped it here.
-			Dodged:          cr.Avoided,
+			TargetID:        cr.TargetID,
+			Avoided:         cr.Avoided,
 			Defended:        cr.Defended,
 			DodgeTotal:      cr.Dodge.Total,
 			DefenseTotal:    cr.Defense.Total,
 			RawDamage:       cr.RawDamage,
 			DefenseApplied:  cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
+			Reaction:        reactionResultPayloadOf(cr),
 		})
 	}
 	return p
+}
+
+// reactionResultPayloadOf projects what one target answered with. It returns nil when
+// ReactionKind is empty — nothing was opened, so the passive defaults applied and there is
+// no answer to report.
+//
+// Total is the reaction's own roll total, sourced differently per kind because
+// service.CharacterResult does not keep a uniform place for it: the dodge family (dodge,
+// closedDodge, escape, escapeGuard, closedEscape, and the "" default) reads it straight off
+// cr.Dodge.Total. A repel does not copy its own RollOutcome onto CharacterResult, but the
+// total is still recoverable exactly: ClimbLadder built cr.Ladder.Margin as
+// repelTotal-cr.Hit.Total (see resolveRepel and ClimbLadder), so adding it back to cr.Hit.Total
+// reconstructs the repel's total without a new field.
+//
+// StopsAttack is likewise derived, not copied: cr.AttackStopped means something different (the
+// chain was ALREADY stopped by an earlier target's repel before it reached this one — see its
+// doc comment on service.CharacterResult), while resolveRepel documents that only the two
+// clearing rungs — great success and plain success — ever set a repel's own StopsAttack. Rung
+// alone is enough to reconstruct it.
+func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload {
+	if cr.ReactionKind == "" {
+		return nil
+	}
+	total := cr.Dodge.Total
+	if action.ReactionKind(cr.ReactionKind) == action.ReactRepel {
+		total = cr.Hit.Total + cr.Ladder.Margin
+	}
+	return &ReactionResultPayload{
+		Kind:       cr.ReactionKind,
+		Total:      total,
+		Rung:       string(cr.Ladder.Rung),
+		Margin:     cr.Ladder.Margin,
+		Difference: cr.Ladder.Difference,
+		StopsAttack: cr.Ladder.Rung == service.RungGreatSuccess ||
+			cr.Ladder.Rung == service.RungSuccess,
+	}
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {
