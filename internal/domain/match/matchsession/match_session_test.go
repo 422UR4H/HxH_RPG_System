@@ -1719,16 +1719,18 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 	// against pre-extraction state, misidentifying what is left to take.
 	t.Run("a two-bar reaction consumes its one combined pending action exactly once", func(t *testing.T) {
 		s, chars, _, playerB, act := setup(t)
-		// Every die lands on the same face, so combined and second — same character, same
-		// skill — derive equal action-bar keys. BestPendingFor requires a STRICT >, so the
-		// tie goes to whichever was inserted first: combined. That makes "combined is the one
-		// consumed" deterministic instead of a coin flip on the production dice source.
-		s.SetRollSource(fixedSource{face: 10})
+		// setup's session carries no character sheets, so EnqueueAction's own derivation is a
+		// no-op (deriveSpeeds returns immediately without one) — the action-bar speed below is
+		// pinned explicitly, at the same value as "second", rather than left to derive from
+		// dice. That is deliberate: it forces a genuine tie on the action-bar key, and
+		// BestPendingFor requires a STRICT >, so the tie goes to whichever was inserted first —
+		// combined. That makes "combined is the one consumed" deterministic instead of
+		// depending on whichever of the two happens to score higher.
 
 		// The combined action: Move and Attack both filled, charging both bars as ONE action
-		// (see action.Action.Bars). Built through EnqueueAction, not a fixed-speed helper, so
-		// it carries real derived speeds on both bars.
-		combined := action.NewAction(chars[1], nil, uuid.Nil, nil, action.ActionSpeed{},
+		// (see action.Action.Bars).
+		combined := action.NewAction(chars[1], nil, uuid.Nil, nil,
+			action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}},
 			nil, &action.Move{Category: enum.Dash}, &action.Attack{}, nil, nil, nil, nil)
 		if err := s.EnqueueAction(playerB, combined); err != nil {
 			t.Fatalf("EnqueueAction (combined): %v", err)

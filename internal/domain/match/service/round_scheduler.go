@@ -236,11 +236,17 @@ func (rs RoundScheduler) BestPendingFor(in ScheduleInput, actorID uuid.UUID, bar
 		return nil
 	}
 	var best *action.Action
-	bestKey := 0.0
+	bestKey := math.Inf(-1)
 	for _, a := range in.Queue.All() {
 		if a.GetActorID() != actorID || !slices.Contains(a.Bars(), bar) {
 			continue
 		}
+		// The gate (ok) is deliberately ignored — an action that could not have opened this
+		// round is still the one whose moment the reaction takes, per this function's own doc
+		// comment. keyOnBar now hands back the REAL key even when ineligible (a real key can be
+		// negative — a deep-in-debt carry, see BarEconomy.Key), so there is no more 0 sentinel
+		// to distrust here. bestKey still starts at -Inf rather than 0, on the same principle:
+		// nothing scored here should be able to lose to an arbitrary constant.
 		key, _ := rs.keyOnBar(in, a, bar)
 		if best == nil || key > bestKey {
 			best, bestKey = a, key
@@ -270,8 +276,16 @@ func (rs RoundScheduler) keyOnBar(in ScheduleInput, a *action.Action, bar action
 	}
 
 	eco := BarEconomy{}
+	// The key is computed either way. keyOf (via best/SelectNext/ProjectOrder) discards it the
+	// instant ok is false and never looks at the value, so a 0 sentinel there cost nothing —
+	// but BestPendingFor deliberately keeps scoring an ineligible candidate (see its own
+	// comment: the gate is not consulted for a reaction's consumption), and a literal 0 in
+	// place of the real key let an ineligible action's sentinel outrank an eligible one's
+	// genuinely negative key. Returning the real key regardless of ok closes that without
+	// touching what ok means to either caller.
+	key := eco.Key(carry, acted, speed, price)
 	if !eco.IsEligible(carry, acted, speed, price) {
-		return 0, false
+		return key, false
 	}
-	return eco.Key(carry, acted, speed, price), true
+	return key, true
 }

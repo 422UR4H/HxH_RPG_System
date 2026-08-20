@@ -467,4 +467,31 @@ func TestRoundScheduler_BestPendingFor(t *testing.T) {
 			t.Fatal("nothing pending means the reaction simply becomes the action")
 		}
 	})
+
+	// keyOnBar used to answer (0, false) for an ineligible candidate, discarding its real key.
+	// BestPendingFor deliberately ignores the "false" (the gate is not consulted here — see
+	// its own doc comment), but it must not end up trusting the discarded literal 0 either: a
+	// real key can be negative (a heavily-penalised speed pushes a bar's frozen price
+	// negative too), and 0 used to outrank a genuinely negative ELIGIBLE key, consuming the
+	// wrong action.
+	t.Run("an ineligible candidate's real (negative) key must not be replaced by a 0 that outranks an eligible one", func(t *testing.T) {
+		actor := uuid.New()
+		r := round.NewRound(enum.Race)
+		r.FreezePrice(action.BarAction, -20)
+
+		// First-action rule: eligible iff carry(0) + speed >= price(-20).
+		eligible := attackAt(actor, -15)   // key = -15, -15 >= -20: eligible
+		ineligible := attackAt(actor, -25) // key = -25, -25 <  -20: ineligible, but its real
+		// key (-25) is still LOWER than the eligible action's (-15) — the eligible one must win.
+
+		for _, order := range [][2]*action.Action{{ineligible, eligible}, {eligible, ineligible}} {
+			q := action.NewActionPriorityQueue(&[]*action.Action{order[0], order[1]})
+			in := service.ScheduleInput{Queue: &q, Round: r, Bars: newFakeBars()}
+
+			got := service.RoundScheduler{}.BestPendingFor(in, actor, action.BarAction)
+			if got == nil || got.GetID() != eligible.GetID() {
+				t.Fatalf("BestPendingFor = %v, want the eligible action (key -15), not the ineligible one masquerading as key 0 (real key -25)", got)
+			}
+		}
+	})
 }
