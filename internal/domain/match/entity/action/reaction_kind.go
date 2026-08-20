@@ -118,6 +118,19 @@ func (k ReactionKind) RequiredComponents() []ReactionComponent {
 	return out
 }
 
+// RequiresEvasionSkill reports whether this kind needs a named Evasion entry in Skills to be
+// well-formed — the closed variants' whole point, and the one requirement RequiredComponents
+// cannot express: a Skills entry is not shaped like an Action sub-struct the way Dodge, Move
+// and Repel are, so it is not a ReactionComponent. Bending it into a fake component would hide
+// that it is a different kind of check; a separate method says so honestly. Without this, a
+// closed dodge accepted with no Evasion entry derives against an empty RollCheck (skillValue +
+// 0, Passive: false) — worse than the passive it was meant to replace, and dodgeAndReserve
+// still takes it as "the dodge" and banks a reserve off the bogus gap. Enforced at the WS
+// boundary, refused the same way a missing Dodge/Move/Repel is.
+func (k ReactionKind) RequiresEvasionSkill() bool {
+	return k == ReactClosedDodge || k == ReactClosedEscape
+}
+
 func (k ReactionKind) IsValid() bool {
 	switch k {
 	case ReactNothing, ReactDodge, ReactClosedDodge,

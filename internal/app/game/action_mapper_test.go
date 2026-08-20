@@ -344,6 +344,54 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 	})
 
+	// Without this, a closedDodge accepted with a Dodge but no Evasion entry derives Evasion
+	// against an empty RollCheck (skillValue + 0, Passive: false) — strictly worse than a
+	// plain dodge, and dodgeAndReserve still banks a reserve off the bogus gap. See
+	// ReactionKind.RequiresEvasionSkill.
+	t.Run("closedDodge with a dodge but no evasion skill entry is refused", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedDodge",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+		})
+		if err == nil {
+			t.Fatal("a closedDodge with no Evasion entry must be refused, never derived against an empty roll")
+		}
+	})
+
+	t.Run("closedDodge with a dodge and an evasion skill entry is accepted", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedDodge",
+			Dodge:  &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Skills: []ActionSkillPayload{{SkillName: enum.Evasion.String()}},
+		})
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		if a.Dodge == nil {
+			t.Fatal("the dodge component did not survive the mapping")
+		}
+		found := false
+		for _, s := range a.Skills {
+			if s.SkillName == enum.Evasion.String() {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("the evasion skill entry did not survive the mapping")
+		}
+	})
+
+	t.Run("closedEscape with a dodge and a move but no evasion skill entry is refused", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedEscape",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Move:  &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a closedEscape with no Evasion entry must be refused just like closedDodge")
+		}
+	})
+
 	t.Run("escapeGuard with a dodge but no move is refused — displacing is still required", func(t *testing.T) {
 		_, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "escapeGuard",

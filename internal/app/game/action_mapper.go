@@ -155,6 +155,22 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 				}
 			}
 		}
+		// Evasion is not a ReactionComponent — it names an entry inside Skills, not a piece
+		// shaped like an Action sub-struct — so it is not covered by the loop above. The two
+		// closed variants need it anyway: without it they derive against an empty RollCheck
+		// and end up strictly worse than a plain dodge. See ReactionKind.RequiresEvasionSkill.
+		if kind.RequiresEvasionSkill() {
+			hasEvasion := false
+			for _, s := range skills {
+				if s.SkillName == enum.Evasion.String() {
+					hasEvasion = true
+					break
+				}
+			}
+			if !hasEvasion {
+				return nil, fmt.Errorf("reaction %q must carry an evasion skill entry", p.ReactionKind)
+			}
+		}
 	}
 
 	a := action.NewAction(
