@@ -29,10 +29,11 @@ const (
 	LifetimeEndOfRound Lifetime = "end_of_round"
 )
 
-// Source records who created a Modifier. The system generates disadvantage on its own; the
-// master grants or cancels advantage by hand. Keeping them apart is what lets the master
-// cancel the system's disadvantage without either one overwriting the other, and it is what
-// the audit trail reads to tell the two apart.
+// Source records who created a Modifier. The system generates disadvantage on its own
+// (swapping a declared action, converting an action into a reaction); the master grants
+// or cancels advantage by hand. Keeping them apart is what lets the master cancel the
+// system's disadvantage without either one overwriting the other, and it is what the
+// audit trail reads to tell the two apart.
 type Source string
 
 const (
