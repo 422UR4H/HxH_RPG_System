@@ -1526,7 +1526,7 @@ func TestMatchSession_ModifiersExpireOnClose(t *testing.T) {
 		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
 		mustOpen(t, s)
 		s.EnqueueAction(playerB, makeActionWithSpeed(chars[1], 9)) //nolint:errcheck
-		mustOpen(t, s) // opening the next turn closes the first
+		mustOpen(t, s)                                             // opening the next turn closes the first
 
 		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 5 {
 			t.Fatalf("after one close = %d, want 5 — the bonus is for the next turn", got)
@@ -1594,6 +1594,62 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 		_, moveSpeeds := s.BarState(chars[1], action.BarMove)
 		if len(moveSpeeds) != 0 {
 			t.Fatalf("move-bar speeds = %v, want none — a repel spends the action, not the feet", moveSpeeds)
+		}
+	})
+
+	// Before this fix, rollActionDice had no Repel branch at all: a repel's Attempts stayed
+	// empty forever, Derive totalled skill + 0, and it landed on RungFailure every single
+	// time — the one rung that ALSO gives up the passives. The hardest, most rewarding
+	// reaction in the catalogue was silently the worst possible choice, always, and no test
+	// in the suite caught it because every existing repel test attaches a reaction with no
+	// Repel component at all (bypassing the WS mapper's own validation, which is correct for
+	// those tests — they are about bar accounting, not about the roll).
+	t.Run("a repel rolls its own dice on attach, the same as Defense and Dodge", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		s.SetRollSource(fixedSource{face: 10})
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if r.Repel.Attempts.IsEmpty() {
+			t.Fatal("a repel must roll its own dice on arrival — its Attempts must not stay empty")
+		}
+	})
+
+	t.Run("a repel that actually rolls can clear the ladder", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		// Both dice sets land on 10: a fresh sheet's Repel is 0 + 10 + 10 = 20. Against a
+		// hit total of 10 the margin is 10, a full LadderStep, so this clears
+		// RungGreatSuccess — the very rung that was unreachable before this fix.
+		s.SetRollSource(fixedSource{face: 10})
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+
+		// ResolveReaction is not wired into MatchSession yet (Task 10's job) — this proves
+		// the outcome a player would notice by feeding the reaction's now-real dice into the
+		// same pure function Task 9 built and tested in isolation.
+		out := service.ResolveReaction(service.ReactionInput{
+			Kind:       action.ReactRepel,
+			Reaction:   r,
+			Target:     buildPlainSheet(t),
+			AttackerID: uuid.New(),
+			HitTotal:   10,
+			Rules:      s.GetRules(),
+		})
+		if out.Ladder.Rung != service.RungGreatSuccess {
+			t.Fatalf("rung = %q, want great_success — a repel that never rolls can only ever fail",
+				out.Ladder.Rung)
+		}
+		if !out.Avoided || !out.StopsAttack {
+			t.Fatal("a cleared repel must avoid the blow and stop it dead")
 		}
 	})
 

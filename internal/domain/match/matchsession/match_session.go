@@ -755,6 +755,9 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 	if a.Dodge != nil {
 		test(&a.Dodge.RollCheck)
 	}
+	if a.Repel != nil {
+		test(&a.Repel.RollCheck)
+	}
 	if a.Attack != nil {
 		test(&a.Attack.Hit)
 		test(a.Attack.Charge)
