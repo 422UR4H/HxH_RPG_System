@@ -139,6 +139,14 @@ type CharacterResult struct {
 	// roll a given kind reads, so a consumer (the WS payload) does not have to know the
 	// kind-to-roll mapping — or worse, reconstruct the number by algebra off Ladder.Margin.
 	ReactionTotal int
+	// ReactionID is the attached reaction's own Action ID — the zero value when nothing was
+	// opened (or attached) and the passive defaults applied instead. It is the identifier
+	// MatchSession.OpenReaction expects on a later open_reaction; without projecting it here,
+	// the wire never tells the master what to send back, and open_reaction becomes
+	// unreachable from a real client that only ever sees TargetID and ReactionKind. Read
+	// straight off step.reaction, the one place resolveCharacterStep already holds the actual
+	// attached Action rather than just its derived kind/total.
+	ReactionID uuid.UUID
 	// Payouts is what this target's own reaction earned — a closed dodge's reserve, a
 	// repel's bonus or penalty. Written into their ledger once, at turn close, alongside the
 	// damage (see MatchSession.applyResolution, which reads this field by TargetID directly
@@ -327,6 +335,9 @@ func (tr TurnResolver) resolveCharacterStep(
 	cr.ReactionTotal = out.Dodge.Total
 	if out.Kind == action.ReactRepel {
 		cr.ReactionTotal = out.Repel.Total
+	}
+	if step.reaction != nil {
+		cr.ReactionID = step.reaction.GetID()
 	}
 
 	// 3. What THIS target takes: the chain's current residual, reduced exactly the way a

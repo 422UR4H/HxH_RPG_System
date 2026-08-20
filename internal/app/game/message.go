@@ -346,6 +346,11 @@ type RollResultPayload struct {
 type ReactionResultPayload struct {
 	Kind  string `json:"kind"`
 	Total int    `json:"total"`
+	// ReactionID is the attached reaction's own ID — what a later open_reaction must send
+	// back as OpenReactionPayload.ReactionID. Without this, the master has no legitimate way
+	// to learn the server-generated ID a reaction was assigned: attach_reaction's ack carries
+	// TargetID and ReactionKind but never named the reaction itself before this field existed.
+	ReactionID uuid.UUID `json:"reactionId"`
 	// Rung, Margin and Difference are the zero value outside a repel — every other kind
 	// reads against a flat CD, not the ladder, so there is no rung to report.
 	Rung       string `json:"rung,omitempty"`
@@ -428,6 +433,7 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 	return &ReactionResultPayload{
 		Kind:        cr.ReactionKind,
 		Total:       cr.ReactionTotal,
+		ReactionID:  cr.ReactionID,
 		Rung:        string(cr.Ladder.Rung),
 		Margin:      cr.Ladder.Margin,
 		Difference:  cr.Ladder.Difference,
