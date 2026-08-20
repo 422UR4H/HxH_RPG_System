@@ -1770,4 +1770,135 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 			t.Fatalf("move-bar speeds = %v, want exactly one — the escape's own speed, recorded once", moveSpeeds)
 		}
 	})
+
+	// AttachReaction used to consume the queue and charge the bars BEFORE roundOrch.
+	// AttachReaction checked that the reaction's ReactToID still names the current turn's
+	// action — reachable whenever the master opens the next turn while a target is still
+	// composing. A stale ReactToID must be refused with nothing spent: the check has to run
+	// before anything is consumed, derived or charged, not after.
+	t.Run("a stale ReactToID leaves the queue and both bars untouched", func(t *testing.T) {
+		s, chars, _, playerB, _ := setup(t)
+		pending := makeActionWithSpeed(chars[1], 30)
+		if err := s.EnqueueAction(playerB, pending); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+
+		r := makeReactionTo(chars[1], uuid.New()) // stale: matches no current action
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); !errors.Is(err, service.ErrReactionNotCompatible) {
+			t.Fatalf("expected ErrReactionNotCompatible, got %v", err)
+		}
+
+		found := false
+		for _, p := range s.PendingActions() {
+			if p.GetID() == pending.GetID() {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("a refused reaction must not consume the queued action")
+		}
+		if _, speeds := s.BarState(chars[1], action.BarAction); len(speeds) != 0 {
+			t.Fatalf("action-bar speeds = %v, want none — a refused reaction must not charge", speeds)
+		}
+		if _, speeds := s.BarState(chars[1], action.BarMove); len(speeds) != 0 {
+			t.Fatalf("move-bar speeds = %v, want none — a refused reaction must not charge", speeds)
+		}
+	})
+}
+
+// TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent is the write-path/read-path
+// coupling test the repel bonus never had: resolveRepel banks a great-success bonus
+// ScopeOnly(attacker) into the target's ledger (write path, reaction_collision.go), and
+// deriveSpeeds is the only production reader of a DimActionSpeed ledger (read path,
+// match_session.go). Before AgainstID was threaded through deriveSpeeds, Scope.AppliesTo(nil)
+// answered false for scopeOnly on every single read, so the bonus counted against nobody,
+// ever — the catalogue's highest payout did nothing. This proves the two paths agree: the
+// bonus counts against the exact opponent it was earned against, and nobody else.
+func TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent(t *testing.T) {
+	matchUUID := uuid.New()
+	playerA, playerX, playerC := uuid.New(), uuid.New(), uuid.New()
+	pA := makeParticipant(matchUUID, &playerA)
+	pX := makeParticipant(matchUUID, &playerX)
+	pC := makeParticipant(matchUUID, &playerC)
+	charA, charX, charC := pA.Sheet.UUID, pX.Sheet.UUID, pC.Sheet.UUID
+
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		charA: buildPlainSheet(t),
+		charX: buildPlainSheet(t),
+		charC: buildPlainSheet(t),
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{pA, pX, pC})
+
+	accA := skillValue(t, sheets[charA], enum.Accuracy)
+	repX := skillValue(t, sheets[charX], enum.Repel)
+	legX := skillValue(t, sheets[charX], enum.Legerity)
+
+	// Turn 1: A attacks X. The hit is pinned at dice 3+2=5 (plus accA), well below the
+	// repel's pinned 10+10=20 (plus repX), so the margin clears a full LadderStep for sure
+	// regardless of the sheets' exact skill values.
+	atk := &action.Attack{
+		Hit:    action.RollCheck{SkillName: enum.Accuracy.String(), Attempts: action.RollAttempts{Primary: []int{3, 2}}},
+		Damage: action.RollCheck{Attempts: action.RollAttempts{Primary: []int{1, 1}}},
+	}
+	a := action.NewAction(charA, []uuid.UUID{charX}, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}},
+		nil, nil, atk, nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerA, a); err != nil {
+		t.Fatalf("EnqueueAction (attack): %v", err)
+	}
+	opened := mustOpen(t, s)
+	openedAction := opened.GetAction()
+	actionID := openedAction.GetID()
+
+	hitTotal := 5 + accA
+	repelTotal := 20 + repX
+	margin := repelTotal - hitTotal
+	if margin < s.GetRules().LadderStep {
+		t.Fatalf("test setup: margin = %d, want at least a LadderStep — the repel must clear great_success", margin)
+	}
+
+	r := action.NewAction(charX, nil, actionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	r.ReactionKind = action.ReactRepel
+	r.Repel = &action.Repel{RollCheck: action.RollCheck{
+		SkillName: enum.Repel.String(),
+		Attempts:  action.RollAttempts{Primary: []int{10, 10}},
+	}}
+	if _, err := s.AttachReaction(playerX, r); err != nil {
+		t.Fatalf("AttachReaction: %v", err)
+	}
+	// Attached is not opened: buildChainOrder deliberately skips an unopened reaction (the
+	// master has not given it the floor yet), so it earns no payout until this runs.
+	if _, err := s.OpenReaction(r.GetID()); err != nil {
+		t.Fatalf("OpenReaction: %v", err)
+	}
+
+	// Close turn 1: applyResolution writes the bonus into X's ledger, and AdvanceTurn demotes
+	// it from "next turn" to live for what follows — turn 2.
+	if _, err := s.OpenNextAction(); err != nil && !errors.Is(err, service.ErrQueueEmpty) {
+		t.Fatalf("OpenNextAction (closing turn 1): %v", err)
+	}
+
+	against := func(targetID uuid.UUID) int {
+		t.Helper()
+		act := action.NewAction(charX, []uuid.UUID{targetID}, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerX, act); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+		return act.Speed.Result
+	}
+
+	base := 11 + legX // passive 2D10 average + Legerity, no ledger bonus
+	speedAgainstThirdParty := against(charC)
+	speedAgainstOpponent := against(charA)
+
+	if speedAgainstThirdParty != base {
+		t.Errorf("actionSpeed against a third character = %d, want %d — the bonus is scoped to the opponent it was earned against, not anyone",
+			speedAgainstThirdParty, base)
+	}
+	if want := base + margin; speedAgainstOpponent != want {
+		t.Errorf("actionSpeed against the read opponent = %d, want %d — the banked repel bonus must count",
+			speedAgainstOpponent, want)
+	}
 }

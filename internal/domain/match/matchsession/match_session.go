@@ -487,6 +487,15 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	if !slices.Contains(act.TargetID, r.GetActorID()) {
 		return nil, ErrReactorNotTargeted
 	}
+	// Validate before mutating anything. A stale ReactToID is reachable whenever the master
+	// opens the next turn while a target is still composing, and it must be refused with the
+	// queue and the bars untouched — not after consumePendingFor has already removed the
+	// player's queued action and chargeReactionBars has already debited it. This check
+	// duplicates what roundOrch.AttachReaction checks below (it still owns the actual
+	// attach), but here it runs first, before any of that.
+	if act.GetID() != r.ReactToID {
+		return nil, service.ErrReactionNotCompatible
+	}
 
 	s.rollActionDice(r)
 
@@ -675,6 +684,18 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		ledger = &status.Ledger
 	}
 
+	// AgainstID is who this actionSpeed reading counts against. The repel bonus is banked
+	// ScopeOnly(the attacker read) — see resolveRepel — so it only ever pays out when a
+	// later roll is read against that exact opponent. An action names an unambiguous
+	// opponent only when it has EXACTLY one target: nil (untargeted) has nobody to read
+	// the bonus against, and more than one has no single answer to "against whom" — passing
+	// an arbitrary member of TargetID there would let a bonus earned against one duelist
+	// leak onto, or hide from, whichever target happened to land first in the slice.
+	var againstID *uuid.UUID
+	if len(a.TargetID) == 1 {
+		againstID = &a.TargetID[0]
+	}
+
 	// actionSpeed: always Legerity. Passive in Free, rolled in Race.
 	//
 	// The duel reserve (repel/parry) lives on this dimension and is read here — it is what
@@ -691,6 +712,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		Ledger:     ledger,
 		Dimension:  match.DimActionSpeed,
 		SystemBias: systemBias,
+		AgainstID:  againstID,
 	}).Total
 
 	if a.Move == nil {
