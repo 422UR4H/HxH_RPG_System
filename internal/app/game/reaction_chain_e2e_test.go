@@ -176,23 +176,16 @@ func (f *areaFixture) awaitTurnOpened(t *testing.T) (turnID, actionID uuid.UUID)
 	return opened.TurnID, act.GetID()
 }
 
-// attachReaction sends one reaction, waits for the fresh resolution_updated it produces (proof
-// that the attach landed and re-resolved the turn), and returns the reaction's own ID for the
-// later open_reaction.
-//
-// ⚠️ Deviation from the brief, found empirically: the brief says this ID comes off that same
-// resolution_updated's per-target Reaction field. It does not, as of 9742115. CharacterResult.
-// ReactionID is only populated from chainStep.reaction (turn_resolver.go resolveCharacterStep),
-// and buildChainOrder only ever sets chainStep.reaction for a reaction the master has ALREADY
-// opened (attack_chain.go: the openedIDs loop) — an attached-but-unopened reaction walks its
-// target as a bare TargetID, reaction nil, exactly like silence. Verified by dumping the
-// resolution_updated right after an attach: every target reads avoided/dodgeTotal-11 with no
-// "reaction" key at all, attached one included. That is circular for a real client — open_
-// reaction needs the ID, and this is supposed to be the one place that publishes it before it's
-// opened — so this looks like a genuine gap in 9742115, not a misreading on this test's part.
-// Reading the reaction straight off the fixture's own session is the same quiet-window move
-// awaitTurnOpened already makes for the action ID: safe here (nothing else is in flight between
-// the attach's ack and this read), and it is the only way left, in-process, to learn it.
+// attachReaction sends one reaction, waits for the fresh resolution_updated it produces, and
+// returns the reaction's own ID for the later open_reaction — read off that same message's
+// PendingReactions, which is where an attached-but-not-yet-opened reaction's ID lives on the
+// wire (see ResolutionUpdatedPayload.PendingReactions and its own comment for why: an unopened
+// reaction never becomes a chain step, so CharacterResultPayload.Reaction stays nil for it, and
+// PendingReactions is the one place left that still names it). Earlier revisions of this helper
+// read the ID straight off the fixture's own session — a workaround for a real gap, now closed
+// upstream, that let an operation a real client could not actually reach look reachable in this
+// test. It is gone: the ID now genuinely comes over the wire, the same way a browser client
+// would have to learn it.
 func (f *areaFixture) attachReaction(t *testing.T, c *wsConn, p game.ActionPayload) uuid.UUID {
 	t.Helper()
 	before := f.master.msgs.count(game.MsgTypeResolutionUpdate)
@@ -200,16 +193,23 @@ func (f *areaFixture) attachReaction(t *testing.T, c *wsConn, p game.ActionPaylo
 	if !awaitCount(f.master.msgs, game.MsgTypeResolutionUpdate, before+1, 2*time.Second) {
 		t.Fatalf("attach_reaction for actor %v: master never got a fresh resolution_updated", p.ActorID)
 	}
-	turn := f.session.GetActiveRound().CurrentTurn()
-	if turn == nil {
-		t.Fatalf("attach_reaction for actor %v: no current turn on the session", p.ActorID)
-	}
-	for _, r := range turn.GetReactions() {
-		if r.GetActorID() == p.ActorID {
-			return r.GetID()
+	msgs := f.master.msgs.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeResolutionUpdate {
+			continue
 		}
+		var resolved game.ResolutionUpdatedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &resolved); err != nil {
+			t.Fatalf("unmarshal resolution_updated: %v", err)
+		}
+		for _, pr := range resolved.PendingReactions {
+			if pr.ActorID == p.ActorID {
+				return pr.ReactionID
+			}
+		}
+		break
 	}
-	t.Fatalf("attach_reaction for actor %v: no attached reaction found on the session's turn", p.ActorID)
+	t.Fatalf("attach_reaction for actor %v: no pending reaction in the master's resolution_updated", p.ActorID)
 	return uuid.Nil
 }
 
