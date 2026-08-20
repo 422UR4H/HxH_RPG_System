@@ -323,6 +323,23 @@ type ResolutionUpdatedPayload struct {
 	IsSettled bool                     `json:"isSettled"`
 	Action    RollResultPayload        `json:"action"`
 	Targets   []CharacterResultPayload `json:"targets"`
+	// PendingReactions is every reaction that has been attached but not yet opened — master-
+	// only, like the rest of this payload. It exists because an unopened reaction deliberately
+	// never becomes a chain step (letting it affect the collision before the master gave it the
+	// floor would break the whole point of this phase: that the ORDER matters), so
+	// CharacterResultPayload.Reaction stays nil for it and never carries its ID either. Without
+	// this field, open_reaction is unreachable from a real client: the master would have no
+	// legitimate way to learn the ID it is supposed to send back. An ID a client cannot learn
+	// is an operation a client cannot invoke.
+	PendingReactions []PendingReactionPayload `json:"pendingReactions,omitempty"`
+}
+
+// PendingReactionPayload is one attached-but-not-yet-opened reaction, as the master needs to
+// choose among them: who answered, with what, and the ID open_reaction expects back.
+type PendingReactionPayload struct {
+	ReactionID uuid.UUID `json:"reactionId"`
+	ActorID    uuid.UUID `json:"actorId"`
+	Kind       string    `json:"kind"`
 }
 
 // RollResultPayload is one test as the master reads it. The individual dice travel because
@@ -411,6 +428,13 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			DefenseApplied:  cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        reactionResultPayloadOf(cr),
+		})
+	}
+	for _, pr := range res.PendingReactions {
+		p.PendingReactions = append(p.PendingReactions, PendingReactionPayload{
+			ReactionID: pr.ReactionID,
+			ActorID:    pr.ActorID,
+			Kind:       pr.Kind,
 		})
 	}
 	return p

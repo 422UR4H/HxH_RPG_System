@@ -78,6 +78,25 @@ type TurnResolution struct {
 	Blows            []*battle.Blow
 	WallResults      []WallResult
 	IsSettled        bool
+	// PendingReactions is every reaction that has been ATTACHED but not yet OPENED — the
+	// master's own to-do list. An unopened reaction deliberately does not become a chain step
+	// (see buildChainOrder): dragging it into the walk would let it affect the collision before
+	// the master ever gave it the floor, which would break the whole premise of Phase 4 — that
+	// the ORDER the master opens reactions in is the power, not just their existence. That same
+	// omission, though, means CharacterResult.ReactionID stays the zero value for an unopened
+	// reaction (it is only set from the chain step), so this is the one place left that can name
+	// an attached reaction's own ID before it is opened. Without it, a real client has attached
+	// the reaction but has no legitimate way to learn what to send back as open_reaction's
+	// ReactionID — an ID a client cannot learn is an operation a client cannot invoke.
+	PendingReactions []PendingReaction
+}
+
+// PendingReaction is one attached-but-not-yet-opened reaction, as the master needs to choose
+// among them: who answered, with what, and the ID open_reaction expects back.
+type PendingReaction struct {
+	ReactionID uuid.UUID
+	ActorID    uuid.UUID
+	Kind       string
 }
 
 // RollResult holds the outcome of a single dice roll check.
@@ -247,6 +266,24 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	for i, r := range reactions {
 		// TODO: implement per-reaction resolution
 		res.ReactionResults[i] = ReactionResult{ReactorID: r.ReactToID}
+	}
+
+	// Attached, not opened: buildChainOrder deliberately never turns these into a chain step
+	// (see PendingReactions' own comment), so this loop is the only place their ID is named
+	// before the master opens them.
+	opened := make(map[uuid.UUID]bool, len(in.Turn.OpenedReactionIDs()))
+	for _, id := range in.Turn.OpenedReactionIDs() {
+		opened[id] = true
+	}
+	for _, r := range reactions {
+		if opened[r.GetID()] {
+			continue
+		}
+		res.PendingReactions = append(res.PendingReactions, PendingReaction{
+			ReactionID: r.GetID(),
+			ActorID:    r.GetActorID(),
+			Kind:       string(r.ReactionKind),
+		})
 	}
 	return res
 }
