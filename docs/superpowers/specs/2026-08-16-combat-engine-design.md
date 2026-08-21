@@ -677,14 +677,67 @@ Não existe operação de edição do mestre no sistema: nenhuma mensagem WS set
 e `buildMasterAction` é stub. O critério de pronto pedia auditoria de uma edição que ninguém
 consegue fazer.
 
-**Decisão: a fase constrói só a edição de rolagem** — viés, ajuste plano e motivo, sobre uma
-resolução já aberta, com **recálculo sem re-sorteio**. É o `Derive` da Fase 1 finalmente
-ganhando o chamador para o qual foi desenhado: `RollAttempts` guarda os dois conjuntos
-justamente para que uma Vantagem concedida *depois* de os dados caírem mude **qual conjunto é
-lido**, nunca o que foi rolado.
+**Decisão: a fase constrói a edição da action pelo mestre**, com **recálculo sem re-sorteio**.
+É o `Derive` da Fase 1 finalmente ganhando o chamador para o qual foi desenhado:
+`RollAttempts` guarda os dois conjuntos justamente para que uma Vantagem concedida *depois* de
+os dados caírem mude **qual conjunto é lido**, nunca o que foi rolado.
 
 **Fora:** o override do desfecho da cadeia. É regra de jogo ainda não escrita, e
 `combat-engine.md` marca o lugar sem descrevê-lo.
+
+**São DUAS superfícies de edição, não uma.** Uma versão anterior desta seção só enxergava a
+primeira, e por isso subdimensionou a fase:
+
+| Superfície | Onde mora | O que muda |
+|---|---|---|
+| `RollCondition` | dentro de um `RollCheck` | **como um teste é lido** — viés, ajuste plano, motivo |
+| `MasterAction` | no `Turn` | **quais testes existem** — perícias, alvos, componentes |
+
+`MasterAction` já existe com os campos certos — `Skills`, `TargetID`, `ActionSpeed`, `Move`,
+`Attack`, `Interact` — e o turno já a guarda via `Turn.AddMasterAction`. Ela é a **sobreposição
+do mestre** sobre a action do jogador. `buildMasterAction` (`action_mapper.go`) é stub, e é
+ele que esta fase preenche.
+
+**Adicionar perícia é adicionar teste.** `Skill` carrega `Difficulty *int` — CD própria. O
+mestre mexendo na lista muda de quantos testes o personagem depende para ter sucesso.
+
+Quatro regras caem disso, e um implementador erra as quatro se não estiverem escritas:
+
+⚠️ **Adicionar perícia rola dado novo, e isso NÃO viola "o mestre nunca re-rola o dado de um
+jogador".** Não é re-rolagem: é a primeira rolagem de um teste que não existia.
+
+⚠️ **Remover perícia não descarta os dados dela.** Se descartasse, o mestre re-rolaria de
+graça — tira e põe de volta. Os dados da perícia removida ficam guardados; readicioná-la lê os
+dados que ela já tinha.
+
+⚠️ **A edição muda o desfecho, nunca a economia.** As barras que a action cobrou, a velocidade
+registrada em `Speeds` e a ordem já jogada ficam como estão — inclusive quando a edição mudaria
+o que `Bars()` responde hoje (adicionar perícia a um movimento puro o faria passar a cobrar a
+barra de ação, porque `chargesActionBar()` lê `len(a.Skills) > 0`). Motivo: a economia é
+artefato **público e sequencial** — `bars_updated` já foi ao ar e os turnos já aconteceram.
+Refazer o preço reordenaria o que já foi jogado, e o sistema não volta atrás.
+> O dia em que "Ação Desfeita (ctrl+z)" — que já é categoria de evento em `acoes.md` — virar
+> mecânica, é aqui que ela pluga.
+
+⚠️ **`MasterAction` não é persistida.** `PersistTurnClose` grava a action e as reações;
+`t.GetMasterActions()` fica de fora. Se a auditoria é do turno, ela vai junto — e é isso que
+faz de `SystemData` uma tabela, não um campo.
+
+⛔ **E há um buraco embaixo de tudo isso: ninguém lê o resultado das perícias compostas.**
+
+`match_session.go` rola cada `Skill` da action. **Nada consome esses resultados.**
+`turn_resolver.go` não os agrega, e a única leitura de `Skills` em toda a colisão é a `Evasion`
+da esquiva fechada, buscada por nome. Não existe, em código, regra de como N testes viram
+sucesso ou fracasso da action.
+
+Isso deixaria a Fase 5 numa posição ruim: o mestre adiciona e remove perícias, e **a edição não
+muda nada**. O critério *"uma edição do mestre aparece em `SystemData`"* seria alcançável com a
+edição mecanicamente inerte — exatamente o tipo de critério oco que este spec já corrigiu duas
+vezes.
+
+**Bloqueado em decisão de jogo:** como os N testes de uma action composta se combinam. A regra
+precisa vir antes do plano; sem ela, a superfície de edição existe e não significa nada.
+
 
 **O predicado da auditoria:** entra no `SystemData` toda operação do mestre que **muda um
 número já mostrado**. Abrir turno, puxar action, trocar regime e revelar porta não entram —

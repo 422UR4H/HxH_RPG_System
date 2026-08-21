@@ -755,6 +755,28 @@ se um dia o servidor precisar forçar, ele força chamando o mesmo encerramento.
 | `Modifier` | ganha `Applies Dimension`, e `AgainstID *uuid.UUID` vira `Against Scope` com três formas — todos / apenas X / **todos menos X** (§ *Modificadores*). |
 | `RollInput.Ledger` (comentário) | ainda afirma que o acumulado *"is always an actionSpeed adjustment, never a hit adjustment"*. Era a invariante generalizada demais. Quem decide a dimensão passa a ser `Modifier.Applies`, não o caller. |
 
+### A edição do mestre — duas superfícies
+
+| Superfície | Onde mora | O que muda |
+|---|---|---|
+| `RollCondition` | dentro de um `RollCheck` | **como um teste é lido** — viés, ajuste plano, motivo |
+| `MasterAction` | no `Turn`, via `AddMasterAction` | **quais testes existem** — perícias, alvos, componentes |
+
+A segunda é a que se esquece. O mestre **adiciona e remove perícias atreladas à action**,
+mudando de quantos testes o personagem depende para ter sucesso; `Skill` carrega `Difficulty`
+própria, então cada uma é um teste com CD.
+
+⚠️ **Adicionar perícia rola dado novo** — e isso não fere *"o mestre nunca re-rola o dado de um
+jogador"*. Não é re-rolagem; é a primeira rolagem de um teste que não existia.
+
+⚠️ **Remover perícia não descarta os dados dela.** Se descartasse, tirar e pôr de volta seria
+um re-rolagem grátis. Readicionar a mesma perícia lê os dados que ela já tinha.
+
+⚠️ **A edição muda o desfecho, nunca a economia.** Barras cobradas, `Speeds` registradas e
+ordem já jogada não se refazem — mesmo quando a edição mudaria o que `Bars()` responde
+(`chargesActionBar()` lê `len(a.Skills) > 0`). A economia é artefato público e sequencial:
+`bars_updated` já foi ao ar. Refazer o preço reordenaria o que já foi jogado.
+
 ## Visibilidade
 
 - Mecânica da action (alvos, arma, perícia) é **pública** ao abrir; o **cálculo é só do
