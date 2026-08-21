@@ -508,7 +508,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			matchUUID := session.GetMatchUUID()
 			r.mu.RUnlock()
 			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-				log.Printf("PersistTurnClose error: %v", err2)
+				// Deliberately not fatal: the turn already closed in memory and the match
+				// goes on. But say WHAT was lost — this line ran silently for two phases
+				// while an FK mismatch dropped every single turn on the floor.
+				log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+					closedTurn.GetID(), matchUUID, err2)
 			} else {
 				r.mu.Lock()
 				session.MarkRoundPersisted()
@@ -633,7 +637,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			matchUUID := session.GetMatchUUID()
 			r.mu.RUnlock()
 			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-				log.Printf("PersistTurnClose error: %v", err2)
+				// Deliberately not fatal: the turn already closed in memory and the match
+				// goes on. But say WHAT was lost — this line ran silently for two phases
+				// while an FK mismatch dropped every single turn on the floor.
+				log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+					closedTurn.GetID(), matchUUID, err2)
 			} else {
 				r.mu.Lock()
 				session.MarkRoundPersisted()

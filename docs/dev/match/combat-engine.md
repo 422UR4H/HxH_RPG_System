@@ -1218,6 +1218,32 @@ contra três alvos, A repele. O plano original previa 6 faces (`6,4,7,3,7,4`); o
 **10**: `Attack.Hit` (2D10, 4 faces) + dano da Espada (D10+D4, 2 faces, conjunto único) + o
 `Repel` de A (2D10, 4 faces) = 10. B (`nothing`) e C (silêncio) não consomem nada.
 
+### O caminho de escrita estava quebrado desde a Fase 2
+
+`actions.actor_uuid` referenciava `users(uuid)`. Mas o `actorID` virou o **sheetUUID** na Fase
+2, e a FK nunca acompanhou: **todo** `PersistTurnClose` de uma partida real falhava com
+`23503`, e `room.go` loga e segue. Nada de partida nenhuma foi persistido desde então.
+
+O teste de integração passava porque **ele mesmo** passava um user UUID como ator — testava a
+semântica antiga. É o gotcha durável desta seção: um teste que constrói o dado errado não
+prova nada, e não há como notar isso olhando só se ele está verde.
+
+| O que estava errado | O que passou a valer |
+|---|---|
+| FK de `actor_uuid` → `users` | → `character_sheets` (`NOT VALID`, porque as linhas antigas não são legíveis por ninguém) |
+| Reações nunca escritas | `PersistTurnClose` grava a action **e** `t.GetReactions()`, nessa ordem — `react_to_uuid` aponta para a action, na mesma transação |
+| `ReactionKind` e `Repel` sem coluna | colunas `reaction_kind` e `repel` |
+| `deriveActionType` inferia tipo de reação pela forma | reação nunca é classificada por forma: `type = "reaction"`, e `reaction_kind` diz qual |
+
+A FK apontar para `character_sheets` é também o que permite persistir turno de **NPC** — uma
+ficha sem `player_uuid`. Com a FK em `users`, isso era impossível por construção, e teria
+mordido o rostering de NPC bem depois, longe daqui.
+
+⚠️ **O resultado do turno continua não sendo persistido** — nem dano, nem margem, nem
+desfecho, só a declaração. E recalcular depois é impossível: o ledger daquele instante não
+existe mais. O Action History da Fase 5 precisa disso, e é **decisão de forma dela**, não
+consertável aqui.
+
 ## Pendências estruturais
 
 | Item | Situação |
@@ -1244,4 +1270,5 @@ contra três alvos, A repele. O plano original previa 6 faces (`6,4,7,3,7,4`); o
 | Cadeia com vários alvos | ✅ Fase 4 — `ChainState.Reduce`/`buildChainOrder`, andando por reação aberta na ordem do mestre, depois pelos alvos restantes. Override do mestre é Fase 5 |
 | Custo da reação | ✅ Fase 4 — cobrado no attach, nunca no open, nunca negado por saldo; `match.Modifier` ganhou `Applies`/`Against`/`ExpiresAt: next_turn` (demoção, sem relógio) |
 | `open_reaction` | ✅ Fase 4 — `open_reaction`/`reaction_opened`, e `PendingReactions` em `resolution_updated` (master-only) fecha o ciclo — sem isso o ID de uma reação anexada era inalcançável por um cliente real |
+| Persistência do turno | ✅ Fase 4 (fix) — FK de `actor_uuid` para `character_sheets`, reações gravadas com a action, colunas `reaction_kind`/`repel`. **O resultado do turno segue fora** — Fase 5 |
 | Armadura | reduz zero — não existe entidade nem campo de ficha; a linha está codificada em `ChainState.Reduce`, o valor não. Fase futura |
