@@ -188,7 +188,7 @@ mappings:
     notes: Round lifecycle, action/reaction flow
 
   # ─── Match: Actions ───
-  - code_path: internal/domain/entity/match/action/
+  - code_path: internal/domain/match/entity/action/
     dev_docs:
       - path: docs/dev/match/actions.md
         confidence: directly_affected
@@ -775,6 +775,86 @@ mappings:
       Alcançável via change_round_mode/round_mode_changed. Iniciativa — a regra de
       jogo que normalmente forçaria Race — continua fora; isto só liga o regime.
       Fase 3.
+
+  # ─── Match: Combat Engine — Fase 4 (catálogo de reações) ───
+  - code_path: internal/domain/match/entity/action/reaction_kind.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: directly_affected
+    notes: >-
+      Fase 4. Os sete valores do catálogo, declarados no envio — nunca inferidos da
+      forma do payload. Bars() responde o custo pelo tipo e PODE ser vazio (só para
+      reação; a invariante "nunca vazio" continua valendo para Action.Bars(), que é
+      agendada). RequiredComponents()/Displaces() vivem aqui, e são o que
+      action_mapper.go usa para recusar uma reação malformada na fronteira, antes de
+      ela chegar ao domínio. enum.DodgeCategory foi absorvida e removida.
+
+  - code_path: internal/domain/match/entity/action/repel.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: directly_affected
+    notes: >-
+      Fase 4. Componente da reação repelir — arma + RollCheck, no molde de Defense.
+      Ficou sem ramo em rollActionDice até um fix desta fase; antes disso repelir
+      nunca sorteava dado e caía sempre no degrau de falha da escada de margem, que
+      também abre mão das passivas — a reação mais difícil do catálogo era
+      estritamente a pior escolha.
+
+  - code_path: internal/domain/match/service/reaction_collision.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: directly_affected
+    notes: >-
+      Fase 4. ResolveReaction — as sete linhas do catálogo e a escada do repelir,
+      função pura (deriva, nunca rola). A reserva da esquiva fechada
+      (Dimension: DimDodge, Against: ScopeAllBut(atacante)) era escrita no ledger do
+      alvo e nunca lida de volta até esta fase ligar ResolveInput.Statuses até aqui.
+
+  - code_path: internal/domain/match/service/attack_chain.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: possibly_affected
+    notes: >-
+      Fase 4. ChainState/Reduce/buildChainOrder — a colisão com vários alvos é uma
+      caminhada, não um lote; anda pelas reações ABERTAS, na ordem em que o mestre
+      abriu, depois pelos alvos restantes na ordem do ataque. A tabela de redução por
+      desfecho é o DEFAULT do sistema, não regra rígida — override do mestre é Fase 5
+      (SystemData). Armadura reduz zero: não existe entidade nem campo de ficha; a
+      linha está codificada, o valor não.
+
+  - code_path: internal/application/match/open_reaction.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: >-
+      Fase 4. Master-only, abre uma reação por ID. Ficou inalcançável a partir de um
+      cliente real até TurnResolution.PendingReactions existir: nenhuma mensagem
+      publicava o ID de uma reação anexada e ainda não aberta antes disso — um ID que
+      o cliente não tinha como aprender, para uma operação que não conseguia invocar.
+
+  - code_path: internal/app/game/reaction_chain_e2e_test.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: >-
+      Fase 4. Prova ponta a ponta do critério de pronto da fase — quatro personagens,
+      um atacante e três alvos reagindo diferente (repelir / nothing / silêncio),
+      sobre WebSocket real — o mestre abrindo A→B então B→A produz resultados
+      diferentes para B (0 vs 12), com os dados roteirizados. Fixa empiricamente o
+      consumo real de faces: um teste 2D10 gasta QUATRO faces (RollCalculator.Roll
+      sorteia Primary e Secondary sempre), não duas.
 
   - code_path: internal/app/game/action_mapper.go
     dev_docs:

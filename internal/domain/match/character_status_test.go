@@ -62,12 +62,12 @@ func TestResourceBar_BarsAreIndependent(t *testing.T) {
 
 func TestCharacterStatus_ExpireModifiers(t *testing.T) {
 	s := match.NewCharacterStatus()
-	s.Ledger.Add(match.Modifier{Amount: 3, ExpiresAt: match.ScopeEndOfTurn, Source: match.SourceSystem})
-	s.Ledger.Add(match.Modifier{Amount: 7, ExpiresAt: match.ScopeEndOfRound, Source: match.SourceMaster})
+	s.Ledger.Add(match.Modifier{Amount: 3, Applies: match.DimActionSpeed, ExpiresAt: match.LifetimeEndOfTurn, Source: match.SourceSystem})
+	s.Ledger.Add(match.Modifier{Amount: 7, Applies: match.DimActionSpeed, ExpiresAt: match.LifetimeEndOfRound, Source: match.SourceMaster})
 
-	s.ExpireModifiers(match.ScopeEndOfTurn)
+	s.ExpireModifiers(match.LifetimeEndOfTurn)
 
-	if got := s.Ledger.TotalAmount(nil); got != 7 {
+	if got := s.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 7 {
 		t.Errorf("expected only the round-scoped modifier to survive, got %d", got)
 	}
 }

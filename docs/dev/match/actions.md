@@ -84,8 +84,10 @@ Operações:
 **Defense** — defesa com arma opcional:
 - `Weapon *enum.WeaponName`, `RollCheck` (embeddado)
 
-**Dodge** — esquiva por categoria:
-- `Category enum.DodgeCategory`, `RollCheck` (embeddado)
+**Dodge** — esquiva:
+- `RollCheck` (embeddado). WHICH dodge (ativa, fechada, esquivas de fuga) é responsabilidade
+  de `ReactionKind` na própria `Action`, não de um enum aqui — um `Category` antigo cobria o
+  mesmo eixo de forma menos expressiva e foi removido.
 
 **Move** — movimentação no espaço 3D:
 - `Category enum.MoveCategory`, `Position [3]int` (coordenada 3D)

@@ -171,12 +171,13 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 
 	t.Run("system disadvantage accumulates and the master can cancel it", func(t *testing.T) {
 		ledger := match.NewModifierLedger()
-		ledger.Add(match.Modifier{Bias: -1, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn})
+		ledger.Add(match.Modifier{Bias: -1, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn})
 
 		// Master grants advantage: +1 from the master, −1 from the system → neutral.
 		out := calc.Derive(rules, both, service.RollInput{
 			Condition: &action.RollCondition{Bias: 1},
 			Ledger:    &ledger,
+			Dimension: match.DimActionSpeed,
 		})
 		if out.Bias != 0 {
 			t.Errorf("expected the biases to cancel out, got %d", out.Bias)
@@ -188,12 +189,13 @@ func TestRollCalculator_Derive_Bias(t *testing.T) {
 
 	t.Run("two system disadvantages outweigh one master advantage", func(t *testing.T) {
 		ledger := match.NewModifierLedger()
-		ledger.Add(match.Modifier{Bias: -1, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn})
-		ledger.Add(match.Modifier{Bias: -1, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn})
+		ledger.Add(match.Modifier{Bias: -1, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn})
+		ledger.Add(match.Modifier{Bias: -1, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn})
 
 		out := calc.Derive(rules, both, service.RollInput{
 			Condition: &action.RollCondition{Bias: 1},
 			Ledger:    &ledger,
+			Dimension: match.DimActionSpeed,
 		})
 		if out.Bias != -1 {
 			t.Errorf("expected net bias -1, got %d", out.Bias)
@@ -221,10 +223,11 @@ func TestRollCalculator_Derive_Modifiers(t *testing.T) {
 
 	ledger := match.NewModifierLedger()
 	ledger.Add(match.Modifier{
-		Amount: 5, AgainstID: &enemy, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfTurn,
+		Amount: 5, Applies: match.DimActionSpeed, Against: match.ScopeOnly(enemy),
+		Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfTurn,
 	})
 	ledger.Add(match.Modifier{
-		Amount: -2, Source: match.SourceSystem, ExpiresAt: match.ScopeEndOfRound,
+		Amount: -2, Applies: match.DimActionSpeed, Source: match.SourceSystem, ExpiresAt: match.LifetimeEndOfRound,
 	})
 
 	t.Run("master modifier and ledger stack against the read opponent", func(t *testing.T) {
@@ -232,6 +235,7 @@ func TestRollCalculator_Derive_Modifiers(t *testing.T) {
 			SkillValue: 10,
 			Condition:  &action.RollCondition{Modifier: 3, Description: "creative move"},
 			Ledger:     &ledger,
+			Dimension:  match.DimActionSpeed,
 			AgainstID:  &enemy,
 		})
 		if out.Modifier != 6 { // 3 master + 5 targeted − 2 general
@@ -246,6 +250,7 @@ func TestRollCalculator_Derive_Modifiers(t *testing.T) {
 		out := calc.Derive(rules, attempts([]int{4, 6}, nil), service.RollInput{
 			SkillValue: 10,
 			Ledger:     &ledger,
+			Dimension:  match.DimActionSpeed,
 			AgainstID:  &other,
 		})
 		if out.Modifier != -2 {
@@ -317,4 +322,96 @@ func TestRollCalculator_Derive_DiceDoesNotAliasAttempts(t *testing.T) {
 	if a.Primary[0] != 8 {
 		t.Errorf("expected attempts.Primary to be unaffected by mutating out.Dice, got %d", a.Primary[0])
 	}
+}
+
+func TestDerive_ThreeBiasOrigins(t *testing.T) {
+	rules := match.NewDefaultMatchRules()
+	// Primary sums 6, Secondary sums 14. Advantage reads Secondary, disadvantage Primary.
+	attempts := action.RollAttempts{Primary: []int{4, 2}, Secondary: []int{9, 5}}
+
+	t.Run("the system's situational bias reads the worse set on its own", func(t *testing.T) {
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, SystemBias: -1, Dimension: match.DimActionSpeed,
+		})
+		if out.DiceTotal != 6 {
+			t.Errorf("DiceTotal = %d, want 6 — disadvantage reads Primary", out.DiceTotal)
+		}
+		if out.Bias != -1 {
+			t.Errorf("Bias = %d, want -1", out.Bias)
+		}
+	})
+
+	t.Run("the master can cancel the system's disadvantage without overwriting it", func(t *testing.T) {
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3,
+			SystemBias: -1,
+			Condition:  &action.RollCondition{Bias: 1},
+			Dimension:  match.DimActionSpeed,
+		})
+		if out.Bias != 0 {
+			t.Errorf("Bias = %d, want 0 — the two cancel, neither is lost", out.Bias)
+		}
+		if out.DiceTotal != 6 {
+			t.Errorf("DiceTotal = %d, want 6 — a neutral bias reads Primary", out.DiceTotal)
+		}
+	})
+
+	t.Run("all three origins sum", func(t *testing.T) {
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Bias: 1, Applies: match.DimActionSpeed, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3,
+			SystemBias: -1,
+			Condition:  &action.RollCondition{Bias: 1},
+			Ledger:     &ledger,
+			Dimension:  match.DimActionSpeed,
+		})
+		if out.Bias != 1 {
+			t.Errorf("Bias = %d, want 1 (master +1, system -1, ledger +1)", out.Bias)
+		}
+		if out.DiceTotal != 14 {
+			t.Errorf("DiceTotal = %d, want 14 — a net advantage reads Secondary", out.DiceTotal)
+		}
+	})
+
+	t.Run("the ledger is read on the caller's dimension, not on everything it holds", func(t *testing.T) {
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Amount: 5, Applies: match.DimDodge, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, Ledger: &ledger, Dimension: match.DimActionSpeed,
+		})
+		if out.Modifier != 0 {
+			t.Errorf("Modifier = %d, want 0 — a dodge reserve does not move actionSpeed", out.Modifier)
+		}
+	})
+
+	// The two subtests below pin that in.Dimension is the field actually read by Derive, not
+	// just a value every other subtest happens to set to match.DimActionSpeed. A regression to
+	// a hardcoded match.DimActionSpeed literal (the Task 1 placeholder this task removed) would
+	// pass every subtest above unchanged, because they all target DimActionSpeed already.
+
+	t.Run("pins that a non-actionSpeed dimension is actually plumbed through", func(t *testing.T) {
+		// Would read 0 under a hardcoded match.DimActionSpeed Derive, since the entry is DimDodge.
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Amount: 5, Applies: match.DimDodge, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, Ledger: &ledger, Dimension: match.DimDodge,
+		})
+		if out.Modifier != 5 {
+			t.Errorf("Modifier = %d, want 5 — the caller asked for DimDodge and the ledger holds it", out.Modifier)
+		}
+	})
+
+	t.Run("pins that the zero-value Dimension reads nothing", func(t *testing.T) {
+		// Would read 5 under a hardcoded match.DimActionSpeed Derive, since the entry is
+		// DimActionSpeed and Dimension is left at its zero value here.
+		ledger := match.NewModifierLedger()
+		ledger.Add(match.Modifier{Amount: 5, Applies: match.DimActionSpeed, Against: match.ScopeAnyone()})
+		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
+			SkillName: "Legerity", SkillValue: 3, Ledger: &ledger,
+		})
+		if out.Modifier != 0 {
+			t.Errorf("Modifier = %d, want 0 — no Dimension was named, so no reserve applies", out.Modifier)
+		}
+	})
 }

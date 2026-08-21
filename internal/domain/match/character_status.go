@@ -37,10 +37,15 @@ func NewCharacterStatus() *CharacterStatus {
 	}
 }
 
-// ExpireModifiers drops every ledger entry whose validity ended at scope. Called at the
-// end of a turn and at the end of a round.
-func (s *CharacterStatus) ExpireModifiers(scope Scope) {
-	s.Ledger.Expire(scope)
+// ExpireModifiers drops every ledger entry whose validity ended at lifetime. Called when a
+// round closes.
+func (s *CharacterStatus) ExpireModifiers(lifetime Lifetime) {
+	s.Ledger.Expire(lifetime)
+}
+
+// AdvanceTurn moves this character's ledger one turn forward. Called when a turn closes.
+func (s *CharacterStatus) AdvanceTurn() {
+	s.Ledger.AdvanceTurn()
 }
 
 // BarFor returns the resource bar an action on that clock is paid from. The pointer is the

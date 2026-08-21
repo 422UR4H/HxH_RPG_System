@@ -18,12 +18,21 @@ type RollInput struct {
 	SkillValue int                   // already resolved from the sheet by the caller
 	Passive    bool                  // take the set's average instead of rolling
 	Condition  *action.RollCondition // master-owned; nil = neutral
-	// Ledger is character-owned; nil = empty. The accumulated difference it carries is
-	// always an actionSpeed adjustment, never a hit adjustment — the caller decides whether
-	// the ledger applies at all, by passing nil for a hit roll. Derive does not know which
-	// test is being made and cannot enforce this.
-	Ledger    *match.ModifierLedger
-	AgainstID *uuid.UUID // whom the roll is against; nil = nobody in particular
+	// Ledger is character-owned; nil = empty. WHAT each entry modifies is now the entry's own
+	// business (match.Modifier.Applies), read against Dimension below — the caller no longer
+	// decides by passing nil. An earlier comment here claimed the accumulated difference was
+	// "always an actionSpeed adjustment, never a hit adjustment": that was true of the duel
+	// reserve and false as a general law. The closed dodge's reserve modifies the dodge.
+	Ledger *match.ModifierLedger
+	// Dimension is which reserve this roll reads out of the ledger. The zero value reads
+	// nothing, which is the right default for a test no reserve applies to.
+	Dimension match.Dimension
+	// SystemBias is advantage/disadvantage the ENGINE imposes on this one roll — the
+	// action→reaction conversion is the first one. It is not the ledger (that is the
+	// character's, and lasts until it expires) and not RollCondition (that is the master's).
+	// Three origins, three homes, none overwriting another.
+	SystemBias int
+	AgainstID  *uuid.UUID // whom the roll is against; nil = nobody in particular
 }
 
 // RollOutcome is the derived result of one test. The individual dice survive because a
@@ -79,14 +88,14 @@ func (rc RollCalculator) RollDice(sides []enum.DieSides, src RollSource) []int {
 func (rc RollCalculator) Derive(
 	rules match.MatchRules, attempts action.RollAttempts, in RollInput,
 ) RollOutcome {
-	bias, modifier := 0, 0
+	bias, modifier := in.SystemBias, 0
 	if in.Condition != nil {
 		bias += in.Condition.Bias
 		modifier += in.Condition.Modifier
 	}
 	if in.Ledger != nil {
-		bias += in.Ledger.TotalBias(in.AgainstID)
-		modifier += in.Ledger.TotalAmount(in.AgainstID)
+		bias += in.Ledger.TotalBias(in.Dimension, in.AgainstID)
+		modifier += in.Ledger.TotalAmount(in.Dimension, in.AgainstID)
 	}
 
 	out := RollOutcome{

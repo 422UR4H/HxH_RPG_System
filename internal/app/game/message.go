@@ -34,6 +34,7 @@ const (
 	MsgTypeOpenNextAction MessageType = "open_next_action"
 	MsgTypePullAction     MessageType = "pull_action"
 	MsgTypeAttachReaction MessageType = "attach_reaction"
+	MsgTypeOpenReaction   MessageType = "open_reaction"
 
 	// Server → Client (game events)
 	MsgTypeTurnOpened       MessageType = "turn_opened"
@@ -41,6 +42,7 @@ const (
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
+	MsgTypeReactionOpened   MessageType = "reaction_opened"
 
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
@@ -159,6 +161,12 @@ type PullActionPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 }
 
+// OpenReactionPayload names which attached reaction the master is giving the floor to. The
+// order is theirs, and it changes the result.
+type OpenReactionPayload struct {
+	ReactionID uuid.UUID `json:"reactionId"`
+}
+
 // ActionPayload is the unified shape for both enqueue_action and attach_reaction messages.
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
@@ -178,10 +186,22 @@ type ActionPayload struct {
 	Defense   *DefensePayload      `json:"defense,omitempty"`
 	Dodge     *DodgePayload        `json:"dodge,omitempty"`
 	Interact  *InteractPayload     `json:"interact,omitempty"`
+	// ReactionKind names what the target chose to do, and it is MANDATORY on a reaction. The
+	// server never infers the cost from the shape of what arrived — the three escapes are
+	// shape-identical and priced differently. Empty on a plain action.
+	ReactionKind string        `json:"reactionKind,omitempty"`
+	Repel        *RepelPayload `json:"repel,omitempty"`
 }
 
 type RollCheckPayload struct {
 	SkillName string `json:"skillName"`
+}
+
+// RepelPayload is the hardest reaction in the catalogue, shaped like the defense: a weapon and
+// a test.
+type RepelPayload struct {
+	Weapon    *string          `json:"weapon,omitempty"`
+	RollCheck RollCheckPayload `json:"rollCheck"`
 }
 
 type DodgePayload struct {
@@ -231,6 +251,13 @@ type TurnOpenedPayload struct {
 
 type RoundClosedPayload struct {
 	RoundMode string `json:"roundMode"`
+}
+
+// ReactionOpenedPayload announces who narrates next. It is BROADCAST — whose turn it is to
+// narrate is public — while the resolution it triggers stays master-only until Phase 5.
+type ReactionOpenedPayload struct {
+	TurnID     uuid.UUID `json:"turnId"`
+	ReactionID uuid.UUID `json:"reactionId"`
 }
 
 // BarsUpdatedPayload is the two clocks as the whole table sees them.
@@ -296,6 +323,23 @@ type ResolutionUpdatedPayload struct {
 	IsSettled bool                     `json:"isSettled"`
 	Action    RollResultPayload        `json:"action"`
 	Targets   []CharacterResultPayload `json:"targets"`
+	// PendingReactions is every reaction that has been attached but not yet opened — master-
+	// only, like the rest of this payload. It exists because an unopened reaction deliberately
+	// never becomes a chain step (letting it affect the collision before the master gave it the
+	// floor would break the whole point of this phase: that the ORDER matters), so
+	// CharacterResultPayload.Reaction stays nil for it and never carries its ID either. Without
+	// this field, open_reaction is unreachable from a real client: the master would have no
+	// legitimate way to learn the ID it is supposed to send back. An ID a client cannot learn
+	// is an operation a client cannot invoke.
+	PendingReactions []PendingReactionPayload `json:"pendingReactions,omitempty"`
+}
+
+// PendingReactionPayload is one attached-but-not-yet-opened reaction, as the master needs to
+// choose among them: who answered, with what, and the ID open_reaction expects back.
+type PendingReactionPayload struct {
+	ReactionID uuid.UUID `json:"reactionId"`
+	ActorID    uuid.UUID `json:"actorId"`
+	Kind       string    `json:"kind"`
 }
 
 // RollResultPayload is one test as the master reads it. The individual dice travel because
@@ -310,16 +354,52 @@ type RollResultPayload struct {
 	Margin            *int   `json:"margin,omitempty"`
 }
 
+// ReactionResultPayload is what one target answered with, as the master reads it.
+//
+// The rung and the difference travel because they are the master's whole decision surface on a
+// repel: whether to let the attack continue past it, and how big the reserve it just created
+// was. The individual dice do not — the reaction's own roll is a field-visibility question, and
+// per-recipient projection is Phase 5.
+type ReactionResultPayload struct {
+	Kind  string `json:"kind"`
+	Total int    `json:"total"`
+	// ReactionID is the attached reaction's own ID — what a later open_reaction must send
+	// back as OpenReactionPayload.ReactionID. Without this, the master has no legitimate way
+	// to learn the server-generated ID a reaction was assigned: attach_reaction's ack carries
+	// TargetID and ReactionKind but never named the reaction itself before this field existed.
+	ReactionID uuid.UUID `json:"reactionId"`
+	// Rung, Margin and Difference are the zero value outside a repel — every other kind
+	// reads against a flat CD, not the ladder, so there is no rung to report.
+	Rung       string `json:"rung,omitempty"`
+	Margin     int    `json:"margin,omitempty"`
+	Difference int    `json:"difference,omitempty"`
+	// StopsAttack is this reaction's OWN contribution — a great success or a plain success
+	// on the ladder — not whether an earlier target's repel already stopped the chain
+	// before it reached this one (that is CharacterResultPayload's concern, not this
+	// reaction's).
+	StopsAttack bool `json:"stopsAttack"`
+}
+
 // CharacterResultPayload is what one attack did to one target.
 type CharacterResultPayload struct {
-	TargetID        uuid.UUID `json:"targetId"`
-	Dodged          bool      `json:"dodged"`
-	Defended        bool      `json:"defended"`
-	DodgeTotal      int       `json:"dodgeTotal"`
-	DefenseTotal    int       `json:"defenseTotal"`
-	RawDamage       int       `json:"rawDamage"`
-	DefenseApplied  int       `json:"defenseApplied"`
-	ProjectedDamage int       `json:"projectedDamage"`
+	TargetID uuid.UUID `json:"targetId"`
+	// Avoided is true when the blow did not land at all, by any means: a dodge, an escape,
+	// a parry, or a repel that stopped it. It replaces the old "dodged" wire name, which
+	// told the same lie at the wire that Task 10 removed from the domain — a client reading
+	// dodged: true for a repel that stopped the attack was misled about what happened. Safe
+	// to rename now: there is no front-end consumer yet (grepped both repos; the only other
+	// reader was this package's own e2e test, updated alongside this field).
+	Avoided         bool `json:"avoided"`
+	Defended        bool `json:"defended"`
+	DodgeTotal      int  `json:"dodgeTotal"`
+	DefenseTotal    int  `json:"defenseTotal"`
+	RawDamage       int  `json:"rawDamage"`
+	DefenseApplied  int  `json:"defenseApplied"`
+	ProjectedDamage int  `json:"projectedDamage"`
+	// Reaction is what this target answered with — nil when nothing was opened and the
+	// passive defaults (reflex dodge, then defense) applied silently instead. A silent
+	// default is not an answer to report.
+	Reaction *ReactionResultPayload `json:"reaction,omitempty"`
 }
 
 func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) ResolutionUpdatedPayload {
@@ -340,16 +420,49 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 	for _, cr := range res.CharacterResults {
 		p.Targets = append(p.Targets, CharacterResultPayload{
 			TargetID:        cr.TargetID,
-			Dodged:          cr.Dodged,
+			Avoided:         cr.Avoided,
 			Defended:        cr.Defended,
 			DodgeTotal:      cr.Dodge.Total,
 			DefenseTotal:    cr.Defense.Total,
 			RawDamage:       cr.RawDamage,
 			DefenseApplied:  cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
+			Reaction:        reactionResultPayloadOf(cr),
+		})
+	}
+	for _, pr := range res.PendingReactions {
+		p.PendingReactions = append(p.PendingReactions, PendingReactionPayload{
+			ReactionID: pr.ReactionID,
+			ActorID:    pr.ActorID,
+			Kind:       pr.Kind,
 		})
 	}
 	return p
+}
+
+// reactionResultPayloadOf projects what one target answered with. It returns nil when
+// ReactionKind is empty — nothing was opened, so the passive defaults applied and there is
+// no answer to report.
+//
+// Total and StopsAttack are read straight off CharacterResult, not recomputed here: both are
+// domain facts service.resolveCharacterStep already derived (ReactionTotal, ReactionStopsAttack)
+// and this payload's job is to project them, not to re-derive them from Ladder.Rung or
+// reconstruct them by algebra off Hit.Total. Re-deriving them here previously duplicated rules
+// that live in resolveRepel and ClimbLadder — correct only as long as nobody changed either
+// without remembering this file too. Do NOT reintroduce that coupling.
+func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload {
+	if cr.ReactionKind == "" {
+		return nil
+	}
+	return &ReactionResultPayload{
+		Kind:        cr.ReactionKind,
+		Total:       cr.ReactionTotal,
+		ReactionID:  cr.ReactionID,
+		Rung:        string(cr.Ladder.Rung),
+		Margin:      cr.Ladder.Margin,
+		Difference:  cr.Ladder.Difference,
+		StopsAttack: cr.ReactionStopsAttack,
+	}
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {

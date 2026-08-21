@@ -534,6 +534,10 @@ carry-over enquanto o `Race` não estiver ligado.
 
 ### Fase 4 — Reações
 
+> ✅ **Implementada** (2026-08-20). O comportamento final — incluindo os pontos que
+> divergiram deste plano — está registrado em `docs/dev/match/combat-engine.md` § "O que a
+> Fase 4 fixou no motor", que passa a ser a fonte de verdade a partir de agora.
+
 **Objetivo:** o catálogo completo e a cadeia de resolução.
 
 **Escopo:**
@@ -704,10 +708,12 @@ ponta a ponta por uma pessoa, e é o critério que fecha a iniciativa.
 `start_match.go` popula `match_participants` **apenas a partir de enrollments aceitas**. A
 Fase 1 torna a sessão *capaz* de segurar um NPC — mas **nada no sistema cria um**.
 
-- **Não bloqueia** as Fases 1 a 3: elas operam sobre personagens de jogador.
-- **Bloqueia a Fase 4 em diante**, onde o mestre precisa enviar ações de NPCs.
+- **Não bloqueia** as Fases 1 a 4: elas operam sobre personagens de jogador. A Fase 4
+  entregou o catálogo de reações inteiro sem tocar rostering — ver `combat-engine.md` § "O
+  que a Fase 4 fixou no motor".
+- **Bloqueia a Fase 5 em diante**, onde o mestre precisa enviar ações de NPCs.
 
-Precisa virar fatia própria antes da Fase 4, e tem componente de produto: como o mestre
+Precisa virar fatia própria antes da Fase 5, e tem componente de produto: como o mestre
 adiciona um NPC à partida? O desenho fala em *"o mestre adiciona NPCs na primeira cena"* e
 *"mestre pode gerenciar adicionando e removendo personagens a qualquer momento"* — o que
 sugere um caminho de rostering sem enrollment, provavelmente com fichas de `MasterUUID`

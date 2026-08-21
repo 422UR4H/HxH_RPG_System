@@ -27,7 +27,7 @@ func (uc *AttachReactionUC) Execute(
 	callerUUID uuid.UUID,
 	r *action.Action,
 ) (*AttachReactionResult, error) {
-	resolution, err := session.AttachReaction(r)
+	resolution, err := session.AttachReaction(callerUUID, r)
 	if err != nil {
 		return nil, err
 	}

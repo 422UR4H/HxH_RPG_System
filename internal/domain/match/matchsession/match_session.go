@@ -2,6 +2,7 @@ package matchsession
 
 import (
 	"math"
+	"slices"
 	"time"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -378,7 +379,19 @@ func (s *MatchSession) closeOpenTurn() *TurnTransition {
 	tr.Closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
 	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
 	tr.Damaged = s.applyResolution(tr.ClosedResolution)
+	// The ledger moves one turn forward with the turn: what was scoped to this turn dies, and
+	// what was earned FOR the next one becomes live. It happens AFTER applyResolution, so a
+	// modifier that was meant to count in this turn still counted.
+	s.advanceLedgers()
 	return tr
+}
+
+// advanceLedgers moves every character's ledger one turn forward. Every character, not just
+// the ones who acted: a penalty is carried by whoever earned it, and they may not have moved.
+func (s *MatchSession) advanceLedgers() {
+	for _, status := range s.statuses {
+		status.AdvanceTurn()
+	}
 }
 
 // ResolveTurn computes the resolution snapshot for t. Pure — it never touches a sheet.
@@ -388,53 +401,190 @@ func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 		return nil
 	}
 	return s.turnResolver.Resolve(service.ResolveInput{
-		Turn:    t,
-		Sheets:  s.charSheets,
-		Targets: s,
-		Rules:   s.rules,
-		Weapons: s.weapons,
+		Turn:     t,
+		Sheets:   s.charSheets,
+		Statuses: s.statuses,
+		Targets:  s,
+		Rules:    s.rules,
+		Weapons:  s.weapons,
 	})
 }
 
-// applyResolution writes a resolution's effective damage to the target sheets, once.
+// applyResolution writes a resolution's effective damage to the target sheets, once, and — in
+// the same place, for the same reason — writes what each target's reaction earned into their
+// own ledger.
 //
 // This is the moment the dry run stops being a dry run. Everything before it recalculated
 // freely — every master edit, every colliding reaction — precisely because nothing had been
-// applied. Called only from the turn-closing path.
+// applied. A payout written on every recomputation would multiply the same reserve or bonus
+// each time the master edited a reaction; writing it here, once, is what the damage already
+// relied on. Called only from the turn-closing path.
 func (s *MatchSession) applyResolution(res *service.TurnResolution) []DamagedCharacter {
 	if res == nil {
 		return nil
 	}
 	var out []DamagedCharacter
 	for _, cr := range res.CharacterResults {
-		if cr.EffectiveDamage <= 0 {
+		if dc, ok := s.applyDamage(cr); ok {
+			out = append(out, dc)
+		}
+		// Payouts is read straight off the CharacterResult, by its own TargetID — Task 10's
+		// first cut kept a second, resolution-level list of the same data (TurnResolution.
+		// Payouts / CharacterPayout), which was exactly flatMap(CharacterResults, .Payouts):
+		// two lists that could disagree the moment someone edited one and not the other.
+		// Removed; this is the only place a payout is written, same as the damage above.
+		status, ok := s.statuses[cr.TargetID]
+		if !ok || status == nil {
 			continue
 		}
-		sheet, ok := s.charSheets[cr.TargetID]
-		if !ok || sheet == nil {
-			continue
+		for _, m := range cr.Payouts {
+			status.Ledger.Add(m)
 		}
-		bar, ok := sheet.GetAllStatusBar()[enum.Health]
-		if !ok {
-			continue
-		}
-		newHP := bar.DecreaseAt(cr.EffectiveDamage)
-		out = append(out, DamagedCharacter{
-			CharacterID: cr.TargetID,
-			Sheet:       sheet,
-			Damage:      cr.EffectiveDamage,
-			NewHP:       newHP,
-		})
 	}
 	return out
 }
 
-func (s *MatchSession) AttachReaction(r *action.Action) (*service.TurnResolution, error) {
+// applyDamage writes one CharacterResult's effective damage to its target sheet. ok is false
+// when there is nothing to apply — no damage, no sheet, or no health bar — so the caller does
+// not have to repeat that guard.
+func (s *MatchSession) applyDamage(cr service.CharacterResult) (DamagedCharacter, bool) {
+	if cr.EffectiveDamage <= 0 {
+		return DamagedCharacter{}, false
+	}
+	sheet, ok := s.charSheets[cr.TargetID]
+	if !ok || sheet == nil {
+		return DamagedCharacter{}, false
+	}
+	bar, ok := sheet.GetAllStatusBar()[enum.Health]
+	if !ok {
+		return DamagedCharacter{}, false
+	}
+	newHP := bar.DecreaseAt(cr.EffectiveDamage)
+	return DamagedCharacter{
+		CharacterID: cr.TargetID,
+		Sheet:       sheet,
+		Damage:      cr.EffectiveDamage,
+		NewHP:       newHP,
+	}, true
+}
+
+// AttachReaction validates that the caller may answer this attack, then attaches the reaction
+// to the open turn and re-resolves it.
+//
+// Two axes, exactly as EnqueueAction: authorization is a per-PLAYER question and combat is a
+// per-CHARACTER one, bridged by charToPlayer. On top of that, a reaction has a third
+// constraint an action does not — only someone the attack is AIMED AT may answer it.
+func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*service.TurnResolution, error) {
+	owner, ok := s.charToPlayer[r.GetActorID().String()]
+	if !ok || owner != playerUUID {
+		return nil, ErrReactionActorMismatch
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil {
+		return nil, service.ErrNoCurrentTurn
+	}
+	act := t.GetAction()
+	if !slices.Contains(act.TargetID, r.GetActorID()) {
+		return nil, ErrReactorNotTargeted
+	}
+	// Validate before mutating anything. A stale ReactToID is reachable whenever the master
+	// opens the next turn while a target is still composing, and it must be refused with the
+	// queue and the bars untouched — not after consumePendingFor has already removed the
+	// player's queued action and chargeReactionBars has already debited it. This check
+	// duplicates what roundOrch.AttachReaction checks below (it still owns the actual
+	// attach), but here it runs first, before any of that.
+	if act.GetID() != r.ReactToID {
+		return nil, service.ErrReactionNotCompatible
+	}
+
 	s.rollActionDice(r)
+
+	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
+	// discount: done in the exact instant, without opening the guard, it gives the action back.
+	if !r.ReactionKind.IsFree() {
+		consumed := s.consumePendingFor(r)
+		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
+		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
+		// Amount: RollAttempts already holds both sets and the bias only picks which one.
+		// With nothing queued there was no swap, so there is no penalty.
+		systemBias := 0
+		if consumed {
+			systemBias = -1
+		}
+		s.deriveSpeeds(r, systemBias)
+		s.chargeReactionBars(r)
+	}
+
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
 		return nil, err
 	}
 	return s.ResolveTurn(s.activeRound.CurrentTurn()), nil
+}
+
+// consumePendingFor pulls this character's about-to-open action off the queue, once per bar the
+// reaction charges, and reports whether anything was taken.
+//
+// A combined action sits on both bars and is counted once — it leaves on the first bar that
+// finds it and is simply not there for the second.
+func (s *MatchSession) consumePendingFor(r *action.Action) bool {
+	consumed := false
+	for _, bar := range r.ReactionKind.Bars() {
+		victim := s.scheduler.BestPendingFor(s.scheduleInput(), r.GetActorID(), bar)
+		if victim == nil {
+			continue
+		}
+		s.activeQueue.ExtractByID(victim.GetID())
+		consumed = true
+	}
+	return consumed
+}
+
+// chargeReactionBars debits the reaction's own speed on every bar its kind charges.
+//
+// At ATTACH, not at open, and the difference matters: an action records on open because one
+// that never reaches the price rolls into the next round untouched, so Speeds has to mean "acted
+// for real". A reaction has nowhere to roll to — it lives inside the turn it answered — and
+// opening it is a narration event. Narration must not move a number. The consequence lines up
+// with Phase 5: a reaction attached and never opened has already paid, which is exactly what
+// the close-turn dialogue assumes when it says such a reaction "enters the calculation but
+// loses its moment to narrate".
+//
+// Race-only, for the same reason recordActed is: settleBars skips a bar that never priced, so a
+// speed recorded under Free would be charged by nothing and reset by nothing — and would then
+// make IsEligible read the character as having already acted the moment the master switches to
+// Race, denying them their first action of the disputed round.
+func (s *MatchSession) chargeReactionBars(r *action.Action) {
+	if s.activeRound.GetMode() != enum.Race {
+		return
+	}
+	status, ok := s.statuses[r.GetActorID()]
+	if !ok {
+		return
+	}
+	for _, bar := range r.ReactionKind.Bars() {
+		status.BarFor(bar).RecordSpeed(r.SpeedOn(bar))
+	}
+}
+
+// OpenReaction passes the microphone to one reaction on the open turn and re-resolves it.
+//
+// Opening is table conduct — "now it is this person's turn to narrate". The recomputation is
+// the side effect, and it recomputes rather than re-rolling: every die fell at attach.
+//
+// It does NOT charge anything. The bars were debited when the reaction arrived (see
+// chargeReactionBars) precisely so that narrating cannot move a number.
+func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*service.TurnResolution, error) {
+	t := s.activeRound.CurrentTurn()
+	if t == nil {
+		return nil, service.ErrNoCurrentTurn
+	}
+	if t.GetFinishedAt() != nil {
+		return nil, ErrTurnAlreadyClosed
+	}
+	if !t.OpenReaction(reactionID) {
+		return nil, ErrReactionNotFound
+	}
+	return s.ResolveTurn(t), nil
 }
 
 func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
@@ -446,6 +596,9 @@ func (s *MatchSession) CloseRound() (*round.Round, error) {
 		return nil, ErrRoundHasOpenTurn
 	}
 	s.settleBars()
+	for _, status := range s.statuses {
+		status.ExpireModifiers(match.LifetimeEndOfRound)
+	}
 	mode := s.activeRound.GetMode()
 	closed := s.roundOrch.CloseRound(s.activeRound, time.Now())
 	s.activeRound = round.NewRound(mode)
@@ -498,7 +651,7 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 		return ErrActionActorMismatch
 	}
 	s.rollActionDice(a)
-	s.deriveSpeeds(a)
+	s.deriveSpeeds(a, 0)
 	s.activeQueue.Insert(a)
 	return nil
 }
@@ -512,7 +665,12 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 //
 // It runs once, when the action arrives, and it is the only place a speed is produced. The
 // master never re-rolls a player's die, so nothing downstream ever recomputes it.
-func (s *MatchSession) deriveSpeeds(a *action.Action) {
+//
+// systemBias is the engine-imposed advantage/disadvantage for this one derivation — a reaction
+// that swapped out a queued action passes -1, everyone else passes 0. It is a MODE of reading
+// the dice that already fell, never an Amount: RollAttempts holds both attempts, and the bias
+// only picks which one pickAttempt reads.
+func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
 	}
@@ -526,12 +684,24 @@ func (s *MatchSession) deriveSpeeds(a *action.Action) {
 		ledger = &status.Ledger
 	}
 
+	// AgainstID is who this actionSpeed reading counts against. The repel bonus is banked
+	// ScopeOnly(the attacker read) — see resolveRepel — so it only ever pays out when a
+	// later roll is read against that exact opponent. An action names an unambiguous
+	// opponent only when it has EXACTLY one target: nil (untargeted) has nobody to read
+	// the bonus against, and more than one has no single answer to "against whom" — passing
+	// an arbitrary member of TargetID there would let a bonus earned against one duelist
+	// leak onto, or hide from, whichever target happened to land first in the slice.
+	var againstID *uuid.UUID
+	if len(a.TargetID) == 1 {
+		againstID = &a.TargetID[0]
+	}
+
 	// actionSpeed: always Legerity. Passive in Free, rolled in Race.
 	//
-	// The ledger applies here and nowhere else in a collision: the accumulated difference a
-	// character carries is always an actionSpeed adjustment, never a hit adjustment. It is
-	// what makes the repel ladder produce a duel — two characters facing each other speed up
-	// against each other — without anyone programming duels.
+	// The duel reserve (repel/parry) lives on this dimension and is read here — it is what
+	// makes the repel ladder produce a duel, two characters facing each other speed up
+	// against each other, without anyone programming duels. The closed dodge's reserve is a
+	// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
 	a.Speed.SkillName = enum.Legerity.String()
 	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
 	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
@@ -540,6 +710,9 @@ func (s *MatchSession) deriveSpeeds(a *action.Action) {
 		Passive:    s.activeRound.GetMode() != enum.Race,
 		Condition:  a.Speed.Context.Condition,
 		Ledger:     ledger,
+		Dimension:  match.DimActionSpeed,
+		SystemBias: systemBias,
+		AgainstID:  againstID,
 	}).Total
 
 	if a.Move == nil {
@@ -563,6 +736,8 @@ func (s *MatchSession) deriveSpeeds(a *action.Action) {
 		Passive:    passive,
 		Condition:  a.Move.Speed.Context.Condition,
 		// No ledger on the move bar: the accumulated difference is an actionSpeed bonus.
+		Dimension:  match.DimActionSpeed,
+		SystemBias: systemBias,
 	}).Total
 	// Charge is deliberately not read. The momentum accumulating into CharacterStatus.Velocity
 	// is the movement slice's, and the bar works without it (spec §5, Fase 3).
@@ -627,6 +802,9 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 	}
 	if a.Dodge != nil {
 		test(&a.Dodge.RollCheck)
+	}
+	if a.Repel != nil {
+		test(&a.Repel.RollCheck)
 	}
 	if a.Attack != nil {
 		test(&a.Attack.Hit)

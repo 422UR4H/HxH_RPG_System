@@ -91,7 +91,7 @@ func TestResolve_CharacterBranch(t *testing.T) {
 			t.Fatalf("expected 1 character result, got %d", len(res.CharacterResults))
 		}
 		cr := res.CharacterResults[0]
-		if !cr.Dodged {
+		if !cr.Avoided {
 			t.Errorf("expected the dodge to stop a hit of %d against a passive 11", cr.Hit.Total)
 		}
 		if cr.EffectiveDamage != 0 {
@@ -108,7 +108,7 @@ func TestResolve_CharacterBranch(t *testing.T) {
 		res := service.TurnResolver{}.Resolve(resolveInput(t, actorID, targetID, tn))
 
 		cr := res.CharacterResults[0]
-		if cr.Dodged {
+		if cr.Avoided {
 			t.Fatalf("a hit of %d should have beaten the passive dodge", cr.Hit.Total)
 		}
 		if !cr.Defended {

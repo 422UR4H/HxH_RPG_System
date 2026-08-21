@@ -176,6 +176,7 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
 		appmatch.NewEnqueueActionUC(),
 		appmatch.NewAttachReactionUC(),
+		appmatch.NewOpenReactionUC(),
 		&mockChangeSceneUCHandler{},
 		roundRepo,
 		&mockEnqueueMasterActionUCHandler{},
@@ -425,7 +426,7 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 		if tgt.TargetID != f.victimID {
 			t.Errorf("TargetID = %v, want %v", tgt.TargetID, f.victimID)
 		}
-		if tgt.Dodged {
+		if tgt.Avoided {
 			t.Error("a total of 20 must beat the passive dodge of 11")
 		}
 		if !tgt.Defended {

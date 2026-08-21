@@ -392,13 +392,15 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("attaches reaction to current turn and returns resolution", func(t *testing.T) {
 		playerA, playerB := uuid.New(), uuid.New()
 		s, chars := sessionWithParticipants(playerA, playerB)
-		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]} // playerB's character must be a target to react
+		s.EnqueueAction(playerA, a)        //nolint:errcheck
 		opened := mustOpen(t, s)
 		act := opened.GetAction()
 		actionID := act.GetID()
 
 		reaction := makeReactionTo(chars[1], actionID)
-		res, err := s.AttachReaction(reaction)
+		res, err := s.AttachReaction(playerB, reaction)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -413,13 +415,64 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("returns ErrReactionNotCompatible for wrong target", func(t *testing.T) {
 		playerA := uuid.New()
 		s, chars := sessionWithParticipants(playerA)
-		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
-		s.OpenNextAction()                                         //nolint:errcheck
+		a := makeActionWithSpeed(chars[0], 5)
+		a.TargetID = []uuid.UUID{chars[0]} // must be a target to clear the new reactor check
+		s.EnqueueAction(playerA, a)        //nolint:errcheck
+		s.OpenNextAction()                 //nolint:errcheck
 
-		reaction := makeReactionTo(chars[0], uuid.New()) // wrong target
-		_, err := s.AttachReaction(reaction)
+		reaction := makeReactionTo(chars[0], uuid.New()) // wrong target action ID
+		_, err := s.AttachReaction(playerA, reaction)
 		if !errors.Is(err, service.ErrReactionNotCompatible) {
 			t.Errorf("expected ErrReactionNotCompatible, got %v", err)
+		}
+	})
+
+	t.Run("refuses a reaction sent through someone else's character", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		s.EnqueueAction(playerA, a) //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		// playerA drives chars[0]; chars[1] is not theirs to answer with.
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerA, r); err == nil {
+			t.Fatal("a player must not react through a character that is not theirs")
+		}
+	})
+
+	t.Run("refuses a reaction from someone the action never targeted", func(t *testing.T) {
+		playerA, playerB, playerC := uuid.New(), uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB, playerC)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]} // C is a bystander
+		s.EnqueueAction(playerA, a)        //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		r := makeReactionTo(chars[2], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerC, r); err == nil {
+			t.Fatal("a bystander must not be able to react")
+		}
+	})
+
+	t.Run("accepts a reaction from a target, through their own character", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		s.EnqueueAction(playerA, a) //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("a target reacting through their own character: %v", err)
 		}
 	})
 }
@@ -1452,5 +1505,402 @@ func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
 	}
 	if got := tr.Opened.GetAction(); got.GetID() != second.GetID() {
 		t.Errorf("opened action = %v, want %v", got.GetID(), second.GetID())
+	}
+}
+
+func TestMatchSession_ModifiersExpireOnClose(t *testing.T) {
+	t.Run("a next-turn bonus survives its own turn and dies with the following one", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+
+		status, err := s.GetCharacterStatus(chars[0])
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		status.Ledger.Add(match.Modifier{
+			Amount: 5, Applies: match.DimActionSpeed, Source: match.SourceSystem,
+			Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeNextTurn, Reason: "repel bonus",
+		})
+
+		// Turn 1 closes: the bonus is demoted, not dropped — it is earned for the NEXT turn.
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 10)) //nolint:errcheck
+		mustOpen(t, s)
+		s.EnqueueAction(playerB, makeActionWithSpeed(chars[1], 9)) //nolint:errcheck
+		mustOpen(t, s)                                             // opening the next turn closes the first
+
+		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 5 {
+			t.Fatalf("after one close = %d, want 5 — the bonus is for the next turn", got)
+		}
+
+		// Turn 2 closes: now it is spent.
+		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 8)) //nolint:errcheck
+		mustOpen(t, s)
+		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 0 {
+			t.Fatalf("after two closes = %d, want 0 — the bonus lasted exactly one turn", got)
+		}
+	})
+
+	t.Run("a round-scoped modifier dies when the round closes", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		status, err := s.GetCharacterStatus(chars[0])
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		status.Ledger.Add(match.Modifier{
+			Amount: 3, Applies: match.DimActionSpeed, Against: match.ScopeAnyone(),
+			ExpiresAt: match.LifetimeEndOfRound, Reason: "round penalty",
+		})
+
+		// closeExhaustedRound only terminates in a Race round; sessionWithParticipants starts
+		// in Free with an empty queue, so it can't be used here. There is no open turn and
+		// nothing pending, so CloseRound succeeds directly — and it is the exact call whose
+		// expiry behaviour this subtest exists to prove.
+		if _, err := s.CloseRound(); err != nil {
+			t.Fatalf("CloseRound: %v", err)
+		}
+
+		if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 0 {
+			t.Fatalf("after the round closed = %d, want 0", got)
+		}
+	})
+}
+
+func TestMatchSession_ReactionCost(t *testing.T) {
+	setup := func(t *testing.T) (*matchsession.MatchSession, []uuid.UUID, uuid.UUID, uuid.UUID, *action.Action) {
+		t.Helper()
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		s.SetRoundMode(enum.Race)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		s.EnqueueAction(playerA, a) //nolint:errcheck
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+		return s, chars, playerA, playerB, &act
+	}
+
+	t.Run("a repel debits the action bar at attach, not at open", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		_, speeds := s.BarState(chars[1], action.BarAction)
+		if len(speeds) != 1 {
+			t.Fatalf("action-bar speeds = %v, want exactly one — the repel charged on arrival", speeds)
+		}
+		_, moveSpeeds := s.BarState(chars[1], action.BarMove)
+		if len(moveSpeeds) != 0 {
+			t.Fatalf("move-bar speeds = %v, want none — a repel spends the action, not the feet", moveSpeeds)
+		}
+	})
+
+	// Before this fix, rollActionDice had no Repel branch at all: a repel's Attempts stayed
+	// empty forever, Derive totalled skill + 0, and it landed on RungFailure every single
+	// time — the one rung that ALSO gives up the passives. The hardest, most rewarding
+	// reaction in the catalogue was silently the worst possible choice, always, and no test
+	// in the suite caught it because every existing repel test attaches a reaction with no
+	// Repel component at all (bypassing the WS mapper's own validation, which is correct for
+	// those tests — they are about bar accounting, not about the roll).
+	t.Run("a repel rolls its own dice on attach, the same as Defense and Dodge", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		s.SetRollSource(fixedSource{face: 10})
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if r.Repel.Attempts.IsEmpty() {
+			t.Fatal("a repel must roll its own dice on arrival — its Attempts must not stay empty")
+		}
+	})
+
+	t.Run("a repel that actually rolls can clear the ladder", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		// Both dice sets land on 10: a fresh sheet's Repel is 0 + 10 + 10 = 20. Against a
+		// hit total of 10 the margin is 10, a full LadderStep, so this clears
+		// RungGreatSuccess — the very rung that was unreachable before this fix.
+		s.SetRollSource(fixedSource{face: 10})
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+
+		// ResolveReaction is not wired into MatchSession yet (Task 10's job) — this proves
+		// the outcome a player would notice by feeding the reaction's now-real dice into the
+		// same pure function Task 9 built and tested in isolation.
+		out := service.ResolveReaction(service.ReactionInput{
+			Kind:       action.ReactRepel,
+			Reaction:   r,
+			Target:     buildPlainSheet(t),
+			AttackerID: uuid.New(),
+			HitTotal:   10,
+			Rules:      s.GetRules(),
+		})
+		if out.Ladder.Rung != service.RungGreatSuccess {
+			t.Fatalf("rung = %q, want great_success — a repel that never rolls can only ever fail",
+				out.Ladder.Rung)
+		}
+		if !out.Avoided || !out.StopsAttack {
+			t.Fatal("a cleared repel must avoid the blow and stop it dead")
+		}
+	})
+
+	t.Run("a closed dodge charges nothing", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactClosedDodge
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if _, speeds := s.BarState(chars[1], action.BarAction); len(speeds) != 0 {
+			t.Fatalf("action-bar speeds = %v, want none — the closed dodge pays for itself", speeds)
+		}
+	})
+
+	t.Run("a reaction is never refused for lack of balance", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		status, err := s.GetCharacterStatus(chars[1])
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		status.ActionBar.Balance = -100 // deep in debt
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("a reaction must never be denied for lack of balance: %v", err)
+		}
+	})
+
+	t.Run("an active reaction consumes the pending action and rolls at disadvantage", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		pending := makeActionWithSpeed(chars[1], 30)
+		s.EnqueueAction(playerB, pending) //nolint:errcheck
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		for _, p := range s.PendingActions() {
+			if p.GetID() == pending.GetID() {
+				t.Fatal("reacting actively consumes the action that was in the queue")
+			}
+		}
+	})
+
+	t.Run("with nothing pending the reaction simply becomes the action", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if len(s.PendingActions()) != 0 {
+			t.Fatal("there was nothing to consume")
+		}
+	})
+
+	// A two-bar reaction must consume its one combined pending action exactly once.
+	//
+	// consumePendingFor loops bar by bar and asks the scheduler for the best pending action on
+	// EACH bar via a fresh s.scheduleInput() per bar. The guarantee this pins is that
+	// scheduleInput() hands out an ALIAS to s.activeQueue, not a copy: the combined action
+	// leaves on the first bar's scan, so the second bar's scan — reading the same live queue —
+	// no longer finds it and extracts nothing. A copy would risk the second scan scoring
+	// against pre-extraction state, misidentifying what is left to take.
+	t.Run("a two-bar reaction consumes its one combined pending action exactly once", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		// setup's session carries no character sheets, so EnqueueAction's own derivation is a
+		// no-op (deriveSpeeds returns immediately without one) — the action-bar speed below is
+		// pinned explicitly, at the same value as "second", rather than left to derive from
+		// dice. That is deliberate: it forces a genuine tie on the action-bar key, and
+		// BestPendingFor requires a STRICT >, so the tie goes to whichever was inserted first —
+		// combined. That makes "combined is the one consumed" deterministic instead of
+		// depending on whichever of the two happens to score higher.
+
+		// The combined action: Move and Attack both filled, charging both bars as ONE action
+		// (see action.Action.Bars).
+		combined := action.NewAction(chars[1], nil, uuid.Nil, nil,
+			action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}},
+			nil, &action.Move{Category: enum.Dash}, &action.Attack{}, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerB, combined); err != nil {
+			t.Fatalf("EnqueueAction (combined): %v", err)
+		}
+
+		// A second, separate pending action for the same character, on the action bar only —
+		// so it is never a candidate on the reaction's move-bar scan (Bars() never returns
+		// BarMove for an action with no Move) — and queued before the reaction. It is the
+		// regression detector: if consumption ever ran twice — the combined action's ID
+		// extracted once for real and once more on stale information — nothing here would
+		// prove it, since a second extract-by-an-already-gone-ID is a no-op. What WOULD prove
+		// a stale scan is this action vanishing too.
+		second := makeActionWithSpeed(chars[1], 5)
+		if err := s.EnqueueAction(playerB, second); err != nil {
+			t.Fatalf("EnqueueAction (second): %v", err)
+		}
+
+		// An escape charges both bars and, in production, always carries a Move — Task 5
+		// refuses a move-less one at the WS boundary. The domain layer itself does not
+		// re-enforce that, but a reaction built the way one actually arrives does carry it.
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactEscape
+		r.Move = &action.Move{Category: enum.Dash}
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+
+		pending := s.PendingActions()
+		if len(pending) != 1 || pending[0].GetID() != second.GetID() {
+			t.Fatalf("pending = %v, want exactly [second] — the combined action leaves once and nothing else is touched", pending)
+		}
+
+		_, actionSpeeds := s.BarState(chars[1], action.BarAction)
+		if len(actionSpeeds) != 1 {
+			t.Fatalf("action-bar speeds = %v, want exactly one — the escape's own speed, recorded once", actionSpeeds)
+		}
+		_, moveSpeeds := s.BarState(chars[1], action.BarMove)
+		if len(moveSpeeds) != 1 {
+			t.Fatalf("move-bar speeds = %v, want exactly one — the escape's own speed, recorded once", moveSpeeds)
+		}
+	})
+
+	// AttachReaction used to consume the queue and charge the bars BEFORE roundOrch.
+	// AttachReaction checked that the reaction's ReactToID still names the current turn's
+	// action — reachable whenever the master opens the next turn while a target is still
+	// composing. A stale ReactToID must be refused with nothing spent: the check has to run
+	// before anything is consumed, derived or charged, not after.
+	t.Run("a stale ReactToID leaves the queue and both bars untouched", func(t *testing.T) {
+		s, chars, _, playerB, _ := setup(t)
+		pending := makeActionWithSpeed(chars[1], 30)
+		if err := s.EnqueueAction(playerB, pending); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+
+		r := makeReactionTo(chars[1], uuid.New()) // stale: matches no current action
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); !errors.Is(err, service.ErrReactionNotCompatible) {
+			t.Fatalf("expected ErrReactionNotCompatible, got %v", err)
+		}
+
+		found := false
+		for _, p := range s.PendingActions() {
+			if p.GetID() == pending.GetID() {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("a refused reaction must not consume the queued action")
+		}
+		if _, speeds := s.BarState(chars[1], action.BarAction); len(speeds) != 0 {
+			t.Fatalf("action-bar speeds = %v, want none — a refused reaction must not charge", speeds)
+		}
+		if _, speeds := s.BarState(chars[1], action.BarMove); len(speeds) != 0 {
+			t.Fatalf("move-bar speeds = %v, want none — a refused reaction must not charge", speeds)
+		}
+	})
+}
+
+// TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent is the write-path/read-path
+// coupling test the repel bonus never had: resolveRepel banks a great-success bonus
+// ScopeOnly(attacker) into the target's ledger (write path, reaction_collision.go), and
+// deriveSpeeds is the only production reader of a DimActionSpeed ledger (read path,
+// match_session.go). Before AgainstID was threaded through deriveSpeeds, Scope.AppliesTo(nil)
+// answered false for scopeOnly on every single read, so the bonus counted against nobody,
+// ever — the catalogue's highest payout did nothing. This proves the two paths agree: the
+// bonus counts against the exact opponent it was earned against, and nobody else.
+func TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent(t *testing.T) {
+	matchUUID := uuid.New()
+	playerA, playerX, playerC := uuid.New(), uuid.New(), uuid.New()
+	pA := makeParticipant(matchUUID, &playerA)
+	pX := makeParticipant(matchUUID, &playerX)
+	pC := makeParticipant(matchUUID, &playerC)
+	charA, charX, charC := pA.Sheet.UUID, pX.Sheet.UUID, pC.Sheet.UUID
+
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		charA: buildPlainSheet(t),
+		charX: buildPlainSheet(t),
+		charC: buildPlainSheet(t),
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{pA, pX, pC})
+
+	accA := skillValue(t, sheets[charA], enum.Accuracy)
+	repX := skillValue(t, sheets[charX], enum.Repel)
+	legX := skillValue(t, sheets[charX], enum.Legerity)
+
+	// Turn 1: A attacks X. The hit is pinned at dice 3+2=5 (plus accA), well below the
+	// repel's pinned 10+10=20 (plus repX), so the margin clears a full LadderStep for sure
+	// regardless of the sheets' exact skill values.
+	atk := &action.Attack{
+		Hit:    action.RollCheck{SkillName: enum.Accuracy.String(), Attempts: action.RollAttempts{Primary: []int{3, 2}}},
+		Damage: action.RollCheck{Attempts: action.RollAttempts{Primary: []int{1, 1}}},
+	}
+	a := action.NewAction(charA, []uuid.UUID{charX}, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}},
+		nil, nil, atk, nil, nil, nil, nil)
+	if err := s.EnqueueAction(playerA, a); err != nil {
+		t.Fatalf("EnqueueAction (attack): %v", err)
+	}
+	opened := mustOpen(t, s)
+	openedAction := opened.GetAction()
+	actionID := openedAction.GetID()
+
+	hitTotal := 5 + accA
+	repelTotal := 20 + repX
+	margin := repelTotal - hitTotal
+	if margin < s.GetRules().LadderStep {
+		t.Fatalf("test setup: margin = %d, want at least a LadderStep — the repel must clear great_success", margin)
+	}
+
+	r := action.NewAction(charX, nil, actionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	r.ReactionKind = action.ReactRepel
+	r.Repel = &action.Repel{RollCheck: action.RollCheck{
+		SkillName: enum.Repel.String(),
+		Attempts:  action.RollAttempts{Primary: []int{10, 10}},
+	}}
+	if _, err := s.AttachReaction(playerX, r); err != nil {
+		t.Fatalf("AttachReaction: %v", err)
+	}
+	// Attached is not opened: buildChainOrder deliberately skips an unopened reaction (the
+	// master has not given it the floor yet), so it earns no payout until this runs.
+	if _, err := s.OpenReaction(r.GetID()); err != nil {
+		t.Fatalf("OpenReaction: %v", err)
+	}
+
+	// Close turn 1: applyResolution writes the bonus into X's ledger, and AdvanceTurn demotes
+	// it from "next turn" to live for what follows — turn 2.
+	if _, err := s.OpenNextAction(); err != nil && !errors.Is(err, service.ErrQueueEmpty) {
+		t.Fatalf("OpenNextAction (closing turn 1): %v", err)
+	}
+
+	against := func(targetID uuid.UUID) int {
+		t.Helper()
+		act := action.NewAction(charX, []uuid.UUID{targetID}, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, nil)
+		if err := s.EnqueueAction(playerX, act); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+		return act.Speed.Result
+	}
+
+	base := 11 + legX // passive 2D10 average + Legerity, no ledger bonus
+	speedAgainstThirdParty := against(charC)
+	speedAgainstOpponent := against(charA)
+
+	if speedAgainstThirdParty != base {
+		t.Errorf("actionSpeed against a third character = %d, want %d — the bonus is scoped to the opponent it was earned against, not anyone",
+			speedAgainstThirdParty, base)
+	}
+	if want := base + margin; speedAgainstOpponent != want {
+		t.Errorf("actionSpeed against the read opponent = %d, want %d — the banked repel bonus must count",
+			speedAgainstOpponent, want)
 	}
 }

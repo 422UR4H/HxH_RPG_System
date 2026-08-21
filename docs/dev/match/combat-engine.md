@@ -996,6 +996,228 @@ por isso que tanto `Speed` em `Free` quanto `Move.Speed` em `Shift` pulam o sort
 passivas por definição, e testá-las mesmo assim quebraria qualquer script de dados a partir
 dali.
 
+⚠️ **Esta lista é da Fase 3 e não cobre reações — está incompleta hoje.** Na Fase 3, `Repel`
+não tinha ramo nenhum em `rollActionDice`: repelir nunca sorteava dado. A Fase 4 fechou essa
+lacuna (era um defeito, não uma omissão de design — ver "Repelir nunca rolava" abaixo) e
+`Repel` entra no sorteio como `Defense`/`Dodge`. A lista completa, com a aritmética exata de
+quantas faces cada peça consome, está em "Quantos dados cada reação consome", na seção da
+Fase 4.
+
+## O que a Fase 4 fixou no motor
+
+### O tipo mora em `action.ReactionKind`, e `Bars()` responde pelo tipo
+
+`entity/action/reaction_kind.go` traz os sete valores do catálogo (`nothing`, `dodge`,
+`closedDodge`, `escape`, `escapeGuard`, `closedEscape`, `repel`), exatamente como fechado em
+"O tipo da reação é declarado, não inferido" acima. `ReactionKind.Bars()` responde o custo
+lendo o **tipo declarado**, não a forma do payload — é a decisão registrada ali chegando ao
+código.
+
+`Bars()` **pode devolver vazio**, e só para reações. A invariante antiga ("`Bars()` nunca é
+vazio") continua valendo para `Action.Bars()`, porque o escalonador precisa precificar toda
+action que agenda — e reação **não é agendada**: não entra na `activeQueue`, não é escolhida
+por `RoundScheduler`. Vazio é a resposta correta para `nothing`, `dodge` e `closedDodge`, que
+não cobram bar nenhuma. Nenhum caller quebra: os quatro métodos de `RoundScheduler` só veem a
+fila, e `recordActed`/`chargeReactionBars` iteram o slice que `Bars()` devolve — iterar vazio é
+no-op.
+
+`ReactionKind.RequiredComponents()` e `Displaces()` vivem ao lado de `Bars()` no mesmo tipo,
+não duplicadas em outro lugar: um kind sabe sozinho do que precisa para ser bem-formado e se
+desloca ou não.
+
+### `action.Repel` chega, `enum.DodgeCategory` sai
+
+`Repel` (`entity/action/repel.go`) tem a mesma forma de `Defense` — arma e teste — porque é o
+mesmo gesto lido contra uma escada diferente. A arma importa duas vezes: é com o que se repele,
+e num quase-acerto (aparar) a defesa dela é o que reduz o golpe que segue para o próximo alvo.
+
+`enum.DodgeCategory` foi **removida** — checado: nenhuma referência sobra no código. Era o
+mesmo eixo do `ReactionKind`, só que estritamente menos expressivo (`Scape` sozinho não
+distinguia os três escapes), e mantê-la ao lado seria estado redundante capaz de discordar de
+si mesmo.
+
+### A fronteira recusa reação sem o componente que o tipo exige
+
+`action_mapper.go` lê `ReactionKind.RequiredComponents()` e confere cada componente contra o
+que o payload realmente carregou — `dodge` exige `Dodge`, `repel` exige `Repel`, os escapes
+exigem `Dodge` **e** `Move` (via `Displaces()`). Faltando um, o WS devolve erro
+(`"reaction %q must carry a dodge"` etc.) **antes** de a reação chegar ao domínio.
+
+Isso substitui o que a Fase 4 herdava: uma reação malformada não é mais derivada contra um
+`RollCheck` vazio — o que silenciosamente virava o pior resultado possível para quem a mandou
+(`Total = 0`, pior que a passiva que substituía, ou `RungFailure` garantido num repelir). Era
+um bug de cliente disfarçado de resultado de jogo; agora é um erro de WS, no mesmo padrão que
+uma categoria de movimento não suportada já usava.
+
+### `service.ResolveReaction` — as sete linhas do catálogo, e a escada do repelir
+
+`reaction_collision.go` deriva as sete reações, pura como tudo desde a Fase 2 — todo dado já
+caiu na chegada (attach), `ResolveReaction` só lê `RollCheck.Attempts`. `ReactNothing` recusa
+até as passivas e retorna cedo. `ReactRepel` vai para `resolveRepel`, que lê a escada de margem
+que a Fase 2 escreveu como função pura e nunca ligou — é aqui que ela liga. As outras cinco
+passam por `dodgeAndReserve`: reflexo sempre, Evasão só nas variantes fechadas, com o pior dos
+dois contando como "a esquiva" e a diferença virando reserva.
+
+### A cadeia: `ChainState`, `Reduce`, e a ordem de abertura do mestre
+
+Com vários alvos a colisão não é `f(action, reactions[])` — é uma caminhada:
+`ataque₀ → resolve(alvo A) → ataque₁ → resolve(alvo B) → …`. `service.ChainState` (`Residual`,
+`Stopped`) é o que uma resolução deixa para a próxima, e `Reduce` aplica o desfecho de um alvo
+sobre o golpe que segue: esquivou não gasta nada; repeliu para tudo; defendeu subtrai a defesa
+da arma que defendeu; acertou subtrai a armadura do alvo. Parado não é cancelado — quem vem
+depois de um repel bem-sucedido ainda resolve e ainda narra, só não pode mais ser atingido.
+
+`Reduce` checa **`Defended` antes de `Avoided`**, de propósito: um quase-acerto no repelir
+(`RungNearMiss`) é os dois ao mesmo tempo — dano zero para quem aparou **e** conta como
+defendido para quem vem depois, porque é a arma de quem aparou que reduz o golpe adiante. Checar
+`Avoided` primeiro deixaria o golpe seguir inteiro e a defesa da arma nunca faria o único
+trabalho que lhe cabe nessa linha.
+
+`buildChainOrder` é a ordem da caminhada em si: primeiro toda reação **aberta**, na ordem em
+que **o mestre abriu**, depois quem sobrou, na ordem em que o ataque nomeou os alvos.
+`Turn.reactions` é ordenado por **attach**, que não é a ordem de abertura — um alvo pode
+anexar muito antes de o mestre chegar nele — e andar pela ordem de anexação em vez da ordem de
+abertura destruiria a única coisa que esta fase entrega: que a ordem em que o mestre abre muda
+o resultado. `Turn.OpenReaction` é idempotente por ID de reação, não por ator, então
+`buildChainOrder` guarda um `covered` por ator dentro do próprio loop — sem ele, um segundo
+`open_reaction` idempotente do mesmo ator produziria um segundo `chainStep` para o mesmo alvo:
+um `CharacterResult` a mais, dano aplicado duas vezes, payout duplicado no fechamento.
+
+⚠️ **Não existe regra rígida aqui — só o default por tipo de reação.** `Reduce` é comentado
+explicitamente como a tabela padrão; o mestre pode sobrepor a qualquer momento, e essa
+superfície de override (`SystemData`) é da Fase 5. Não a construa aqui.
+
+### Cobrança no attach, nunca no open, nunca negada por saldo
+
+`AttachReaction` roda `rollActionDice` na chegada. Se a reação **não** é grátis
+(`!r.ReactionKind.IsFree()`), ela consome a action pendente, deriva a velocidade com o viés de
+Desvantagem quando havia algo para trocar, e cobra a barra — tudo ali, não na abertura.
+`chargeReactionBars` só grava em `Race` (pela mesma razão que `recordActed`: uma barra que
+nunca precificou não tem o que cobrar), e nunca checa saldo antes de debitar: **reação nunca é
+recusada por falta de barra**, ela só deixa o personagem mais atrasado no round seguinte. É a
+mesma regra já dada para a segunda ação — o que a rolagem decide não é *se* você age, é *quanto
+isso custa depois*.
+
+⚠️ **Em aberto para o dono do produto — sem teste que cubra hoje.** Quando um personagem tem
+**os dois** pendentes ao mesmo tempo — uma ação combinada (`Move`+`Attack`, uma `Action` só,
+ocupando as duas barras) **e** uma move action separada — e reage com um escape (que cobra as
+duas barras), `consumePendingFor` varre bar por bar, independentemente: para `BarAction` acha
+e extrai a combinada; para `BarMove`, com a combinada já fora da fila, acha e extrai a move
+separada que sobrou. Pelo código, isso consome **as duas**, não só a combinada — o que não é o
+que a frase "ação combinada conta uma vez, e vai" (na seção "Reações" acima) parece prometer.
+Essa frase é um parêntese, não uma regra escrita, e nenhum teste força esse cenário. **Pergunta
+para o dono do produto:** o escape deveria consumir só a combinada, deixando a move separada na
+fila? Até essa resposta existir, o comportamento é o que o código faz, não o que a frase supõe.
+
+### `match.Modifier` diz o quê, contra quem, e por quanto tempo
+
+Três campos novos substituem o que a Fase 1 tinha: `Applies Dimension` diz **o quê** —
+`DimActionSpeed` (a reserva de duelo) ou `DimDodge` (a reserva da esquiva fechada), a mesma
+distinção que fechou o "conflito no Bias" registrado no fim da seção "Reações" acima. `Against
+Scope` diz **contra quem**, com três formas — `ScopeAnyone`, `ScopeOnly(id)`,
+`ScopeAllBut(id)` — porque um ponteiro nulo-ou-um-alvo não consegue expressar "todo mundo menos
+o duelista atual", que é exatamente a reserva da esquiva fechada. `ExpiresAt Lifetime` diz **por
+quanto tempo**, e ganhou o degrau que faltava: `LifetimeNextTurn`, ao lado de `EndOfTurn` e
+`EndOfRound`.
+
+`next_turn` **não usa relógio nenhum** — é demoção. `ModifierLedger.AdvanceTurn` (chamado por
+`MatchSession.advanceLedgers`, depois de `applyResolution`, no fechamento do turno) descarta
+todo `EndOfTurn` e rebaixa todo `NextTurn` para `EndOfTurn`. Um bônus nascido no turno N fica
+vivo até o fechamento de N+1: exatamente o intervalo que o bônus do repelir precisa. `Expire`
+continua existindo para `EndOfRound`, chamado por `CloseRound`.
+
+`ExpireModifiers`/`AdvanceTurn` **têm chamador agora** — a Fase 3 os deixou órfãos; a Fase 4 os
+ligou nos dois fechamentos, turno e round.
+
+### `open_reaction` / `reaction_opened`, e o `PendingReactions` que os liga
+
+`open_reaction` é master-only, abre uma reação por ID e devolve `reaction_opened`
+(`TurnID`, `ReactionID`) em broadcast — público porque de quem é a vez de narrar é público; o
+cálculo continua não sendo, até a Fase 5. A projeção completa (`CharacterResults`, dano
+projetado) só vai para o mestre, em `resolution_updated`.
+
+`TurnResolution.PendingReactions` é o que fecha o ciclo: cada reação **anexada e ainda não
+aberta**, com `ReactionID`, `ActorID` e `Kind`. Sem ela, `open_reaction` era inalcançável a
+partir de um cliente de verdade — nenhuma mensagem publicava o ID de uma reação antes de ela
+ser aberta. `CharacterResult.ReactionID` só é preenchido a partir do `chainStep`, e
+`buildChainOrder` só produz `chainStep` para reação já **aberta** — de propósito, porque
+arrastar uma reação não-aberta para a caminhada deixaria o mestre nunca ter dado a palavra a
+ela antes de ela já ter afetado a colisão. `PendingReactions` é o único lugar que nomeia o ID
+de uma reação anexada antes dela ser aberta — sem ele, era um ID que o cliente não tinha como
+aprender, para uma operação que ele não conseguia invocar.
+
+### Repelir nunca rolava — a reação mais difícil era a pior escolha possível
+
+`rollActionDice` tinha ramo para `Speed`, `Feint`, cada `Skill`, `Move.Speed`, `Move.Charge`,
+`Defense`, `Dodge`, `Attack.Hit`, `Attack.Charge` e o dano da arma — e nenhum para `Repel`.
+`Repel.RollCheck.Attempts` ficava no zero value para sempre, `RollCalculator.Derive` totalizava
+`perícia + 0` toda vez, a margem contra qualquer acerto real saía profundamente negativa, e
+`ClimbLadder` sempre devolvia `RungFailure` — que é justamente o degrau que **também** abre mão
+das passivas. Repelir não era só fraco: era estritamente a pior escolha possível, sempre, e três
+dos quatro degraus da escada (`RungGreatSuccess`, `RungSuccess`, `RungNearMiss`) eram
+inalcançáveis em produção, embora a escada em si estivesse correta desde a Fase 2. Nenhum teste
+pegava isso porque todo teste de repelir existente anexava a reação sem componente `Repel` —
+correto para o que aqueles testes checavam (contabilidade de barra), não a rolagem.
+
+**Corrigido**: `rollActionDice` ganhou `if a.Repel != nil { test(&a.Repel.RollCheck) } }`, ao
+lado do ramo de `Dodge` a que pertence.
+
+### A reserva da esquiva fechada era escrita e nunca lida
+
+`dodgeAndReserve` sempre bancou a reserva (`Dimension: DimDodge`, `Against:
+ScopeAllBut(atacante)`) no ledger do alvo — mas `reaction_collision.go` nunca lia `in.Ledger`
+de volta, e `resolveCharacterStep` nunca preenchia `ReactionInput.Ledger`. A mecânica inteira
+descrita em "A escada de resultados" acima — a reserva de quem esquivou fechado valendo contra
+quem vem de fora do duelo — não fazia nada.
+
+**Corrigido**: `ResolveInput` ganhou `Statuses map[uuid.UUID]*match.CharacterStatus`
+(read-only), `MatchSession.ResolveTurn` passa `s.statuses`, e `resolveCharacterStep` lê
+`in.Statuses[step.targetID]` para popular `ReactionInput.Ledger`. `deriveReflex` **e**
+`deriveEvasion` agora leem essa reserva — as duas, porque as variantes fechadas contam o pior
+dos dois testes como "a esquiva", e a reserva precisa alcançar qualquer um dos dois que acabe
+sendo esse.
+
+### Armadura reduz zero
+
+`ChainState.Reduce` subtrai `armour` da linha "acertou" — mas não existe entidade de armadura
+no código, nem campo de ficha para ela, então `turn_resolver.go` declara `const armour = 0` e é
+isso que entra na conta hoje. A linha está codificada porque a **forma** é o que importa,
+exatamente como `ApplicableDefense` já codifica as linhas de tipo de dano que ainda não sabe
+ler. Não construa um modelo de armadura para preencher isto — é trabalho de uma fase futura.
+
+### Quantos dados cada reação consome
+
+Como a Fase 3 fez para actions, mas para reações — a próxima pessoa escrevendo um teste
+roteirizado precisa exatamente disto, ou vai achar por instrumentação como esta fase achou.
+
+⚠️ **A armadilha real não é "quais campos rolam" — é que um teste 2D10 consome QUATRO faces,
+não duas.** `RollCalculator.Roll` (chamado por `rollActionDice`, para **todo** teste do
+conjunto de dados da partida — `MatchRules.DiceSet`, 2 D10) sempre sorteia **os dois
+conjuntos**, `Primary` e `Secondary`, 2 dados cada, **mesmo quando nada usa Vantagem ou
+Desvantagem** e só `Primary` acaba sendo lido. Um plano que reserva 2 faces por teste 2D10 vai
+sortear a metade do que o código realmente consome. Só o dano da arma (`RollCalculator
+.RollDice`, chamado à parte, fora do laço de `test()`) rola um único conjunto — 2 dados para
+uma Espada (D10+D4), sem Secondary, porque dano não tem Vantagem.
+
+Por reação:
+
+| `ReactionKind` | O que rola | Faces (teste 2D10 = 4, sempre) |
+|---|---|---|
+| `nothing` | nada — recusa até as passivas | 0 |
+| `dodge` | `Dodge` (Reflexo) | 4 |
+| `closedDodge` | `Dodge` (Reflexo) + a perícia `Evasion` em `Skills` | 8 |
+| `escape` / `escapeGuard` | `Dodge` (Reflexo) + `Move.Speed` se a categoria não for `Shift` | 4, ou 8 se `Move.Category == Dash` |
+| `closedEscape` | `Dodge` (Reflexo) + `Evasion` em `Skills` + `Move.Speed` se não for `Shift` | 8, ou 12 se `Dash` |
+| `repel` | `Repel` | 4 |
+
+Um alvo que não anexa nem abre reação nenhuma (silêncio, ou `nothing`) não consome dado algum —
+`resolveCharacterStep` aplica a passiva sem tocar a fonte de dados.
+
+**Exemplo real** (`TestE2E_AreaAttackWithThreeTargetsReactingDifferently`): ataque de Espada
+contra três alvos, A repele. O plano original previa 6 faces (`6,4,7,3,7,4`); o consumo real é
+**10**: `Attack.Hit` (2D10, 4 faces) + dano da Espada (D10+D4, 2 faces, conjunto único) + o
+`Repel` de A (2D10, 4 faces) = 10. B (`nothing`) e C (silêncio) não consomem nada.
+
 ## Pendências estruturais
 
 | Item | Situação |
@@ -1010,10 +1232,16 @@ dali.
 | Onde mora a diferença acumulada | ✅ Fase 1 — `ModifierLedger` no `CharacterStatus`, com `AgainstID`, `ExpiresAt` e `Source` |
 | Conflito no `Bias` | ✅ Fase 1 — `RollCondition.Bias` é do mestre; o viés do sistema é um `Modifier` de `Source: system`, e o `RollCalculator` soma os dois em `Derive` |
 | Tela de enviar action | **não existe no front** — Fase 6 |
-| Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. A Fase 4 liga o repelir |
+| Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. ✅ Fase 4 — `resolveRepel` liga o repelir; os quatro degraus são alcançáveis (antes, `RungFailure` era o único possível) |
 | Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars` |
 | `PriorityQueue` | ✅ Fase 3 — deixou de ser heap; virou lista simples, chave calculada em `RoundScheduler` na hora da seleção |
 | `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
 | Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
 | `RoundMode.Race` | ✅ Fase 3 — alcançável via `ChangeRoundModeUC`/`change_round_mode`, master only. Iniciativa continua fora — `action.Initiative` segue órfão |
 | `bars_updated` | ✅ Fase 3 — broadcast com `seq`, preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |
+| `ReactionKind` | ✅ Fase 4 — sete valores declarados no envio, `Bars()`/`RequiredComponents()`/`Displaces()` no próprio tipo; `enum.DodgeCategory` removida |
+| `service.ResolveReaction` | ✅ Fase 4 — as sete linhas do catálogo, pura, mais a escada do repelir ligada |
+| Cadeia com vários alvos | ✅ Fase 4 — `ChainState.Reduce`/`buildChainOrder`, andando por reação aberta na ordem do mestre, depois pelos alvos restantes. Override do mestre é Fase 5 |
+| Custo da reação | ✅ Fase 4 — cobrado no attach, nunca no open, nunca negado por saldo; `match.Modifier` ganhou `Applies`/`Against`/`ExpiresAt: next_turn` (demoção, sem relógio) |
+| `open_reaction` | ✅ Fase 4 — `open_reaction`/`reaction_opened`, e `PendingReactions` em `resolution_updated` (master-only) fecha o ciclo — sem isso o ID de uma reação anexada era inalcançável por um cliente real |
+| Armadura | reduz zero — não existe entidade nem campo de ficha; a linha está codificada em `ChainState.Reduce`, o valor não. Fase futura |

@@ -19,7 +19,15 @@ const (
 //
 // The action bar is always first, and the result is never empty: an action with nothing in it
 // at all still belongs to the action bar, or the scheduler would have nothing to price it by.
+//
+// The one exception is a reaction — see the gate below.
 func (a *Action) Bars() []Bar {
+	// A reaction answers with its declared kind. This gate comes first because the three
+	// escapes are shape-identical and priced differently — no inspection below could tell
+	// them apart. It is also the only path that may answer empty.
+	if a.ReactionKind != "" {
+		return a.ReactionKind.Bars()
+	}
 	if a.Move == nil {
 		return []Bar{BarAction}
 	}
@@ -32,7 +40,7 @@ func (a *Action) Bars() []Bar {
 // chargesActionBar reports whether the action carries anything paid from the action bar, as
 // opposed to being pure movement.
 func (a *Action) chargesActionBar() bool {
-	return a.Attack != nil || a.Defense != nil || a.Dodge != nil ||
+	return a.Attack != nil || a.Defense != nil || a.Dodge != nil || a.Repel != nil ||
 		a.Interact != nil || a.Feint != nil || len(a.Skills) > 0
 }
 

@@ -104,7 +104,7 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		if err != nil {
 			return nil, err
 		}
-		dodge = &action.Dodge{Category: enum.DodgeCategory(p.Dodge.Category)}
+		dodge = &action.Dodge{}
 		if rc != nil {
 			dodge.RollCheck = *rc
 		}
@@ -115,11 +115,72 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		interact = &action.Interact{Kind: action.InteractKind(p.Interact.Kind)}
 	}
 
-	return action.NewAction(
+	var repel *action.Repel
+	if p.Repel != nil {
+		rc, err := buildRollCheck(&p.Repel.RollCheck)
+		if err != nil {
+			return nil, err
+		}
+		weapon, err := buildWeaponName(p.Repel.Weapon)
+		if err != nil {
+			return nil, err
+		}
+		repel = &action.Repel{Weapon: weapon, RollCheck: *rc}
+	}
+
+	var kind action.ReactionKind
+	if p.ReactionKind != "" {
+		kind, err = action.ReactionKindFrom(p.ReactionKind)
+		if err != nil {
+			return nil, err
+		}
+		// RequiredComponents is where each kind's own requirements live — beside Bars() and
+		// Displaces() — so this is enforcement, not a second copy of the rule. A reaction
+		// missing one of its required components is a client bug: refused here, the same way
+		// an unsupported move category is, rather than let through to derive against an empty
+		// RollCheck deep in the resolver.
+		for _, c := range kind.RequiredComponents() {
+			switch c {
+			case action.ComponentDodge:
+				if dodge == nil {
+					return nil, fmt.Errorf("reaction %q must carry a dodge", p.ReactionKind)
+				}
+			case action.ComponentMove:
+				if p.Move == nil {
+					return nil, fmt.Errorf("reaction %q must carry a move", p.ReactionKind)
+				}
+			case action.ComponentRepel:
+				if repel == nil {
+					return nil, fmt.Errorf("reaction %q must carry a repel", p.ReactionKind)
+				}
+			}
+		}
+		// Evasion is not a ReactionComponent — it names an entry inside Skills, not a piece
+		// shaped like an Action sub-struct — so it is not covered by the loop above. The two
+		// closed variants need it anyway: without it they derive against an empty RollCheck
+		// and end up strictly worse than a plain dodge. See ReactionKind.RequiresEvasionSkill.
+		if kind.RequiresEvasionSkill() {
+			hasEvasion := false
+			for _, s := range skills {
+				if s.SkillName == enum.Evasion.String() {
+					hasEvasion = true
+					break
+				}
+			}
+			if !hasEvasion {
+				return nil, fmt.Errorf("reaction %q must carry an evasion skill entry", p.ReactionKind)
+			}
+		}
+	}
+
+	a := action.NewAction(
 		actorCharID, p.TargetID, p.ReactToID,
 		skills, speed,
 		feint, move, attack, defense, dodge, nil, interact,
-	), nil
+	)
+	a.Repel = repel
+	a.ReactionKind = kind
+	return a, nil
 }
 
 // buildRollCheck crosses the string→enum boundary for a skill name. An unknown name is a
