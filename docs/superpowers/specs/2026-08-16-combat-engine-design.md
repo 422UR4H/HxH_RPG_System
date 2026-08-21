@@ -646,6 +646,12 @@ inversa produz resultado diferente de forma verificável** — com as rolagens i
 - Notificação de action enfileirada **só para o mestre**.
 - **Action History como superfície de jogo** — inclui o **caminho de leitura**, que não
   existe: os turnos são persistidos por `PersistTurnClose`, mas nenhum endpoint os devolve.
+
+  ⚠️ **O que é gravado ainda não basta.** O caminho de escrita foi consertado no fim da Fase 4
+  (FK para `character_sheets`, reações gravadas, `reaction_kind`/`repel`), mas ele grava só a
+  **declaração** — nem dano, nem margem, nem desfecho. Recalcular depois é impossível: o
+  `ModifierLedger` daquele instante não existe mais. **Dar forma ao resultado persistido é
+  trabalho desta fase**, e vem antes da consulta.
   Precisa da consulta e da projeção por campo em cima dela.
 
   **A resposta é aninhada, não uma lista plana.** As cenas são os blocos lógicos que

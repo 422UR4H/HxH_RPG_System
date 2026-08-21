@@ -28,7 +28,10 @@ func TestPersistTurnClose(t *testing.T) {
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
 		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
 		matchUUIDParsed, _ := uuid.Parse(matchUUID)
-		actorUUIDParsed, _ := uuid.Parse(masterUUID)
+		// The actor is the CHARACTER SHEET, not the player — that is what Action.actorID has
+		// carried since phase 2, and what a real match hands this repository.
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &masterUUID, nil, &campaignUUID, "hero1")
+		actorUUIDParsed, _ := uuid.Parse(sheetUUID)
 
 		sc := sceneentity.NewScene(enum.Battle, "Arena")
 		r := roundentity.NewRound(enum.Free)
@@ -75,13 +78,83 @@ func TestPersistTurnClose(t *testing.T) {
 		}
 	})
 
+	t.Run("persists the turn's reactions, with their declared kind", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm3", "gm3@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp3")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match3")
+		matchUUIDParsed, _ := uuid.Parse(matchUUID)
+
+		attackerUUID, _ := uuid.Parse(
+			pgtest.InsertTestCharacterSheet(t, pool, &masterUUID, nil, &campaignUUID, "attacker"))
+		// An NPC: a sheet with no player. The FK has to accept it, or the master could never
+		// persist a turn of theirs.
+		npcUUID, _ := uuid.Parse(
+			pgtest.InsertTestCharacterSheet(t, pool, nil, &masterUUID, &campaignUUID, "npc"))
+
+		sc := sceneentity.NewScene(enum.Battle, "Arena")
+		r := roundentity.NewRound(enum.Race)
+
+		act := action.NewAction(
+			attackerUUID, []uuid.UUID{npcUUID}, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, &action.Attack{}, nil, nil, nil, nil,
+		)
+
+		// The NPC repels. Its kind is declared; nothing about the shape says "repel".
+		repel := action.NewAction(
+			npcUUID, nil, act.GetID(), nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, nil,
+		)
+		repel.ReactionKind = action.ReactRepel
+		repel.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: "Sword", Result: 17}}
+
+		actCopy := *act
+		tRn := turnentity.NewTurn(actCopy)
+		tRn.AddReaction(repel)
+		tRn.Close(time.Now())
+
+		if err := repo.PersistTurnClose(ctx, sc, r, tRn, act, matchUUIDParsed); err != nil {
+			t.Fatalf("PersistTurnClose error: %v", err)
+		}
+
+		var rowCount int
+		pool.QueryRow(ctx, `SELECT COUNT(*) FROM actions WHERE turn_uuid = $1`, tRn.GetID()).Scan(&rowCount) //nolint:errcheck
+		if rowCount != 2 {
+			t.Fatalf("expected the action and its reaction, got %d rows", rowCount)
+		}
+
+		var kind, rowType string
+		var reactTo uuid.UUID
+		var repelJSON []byte
+		err := pool.QueryRow(ctx,
+			`SELECT type, reaction_kind, react_to_uuid, repel FROM actions WHERE uuid = $1`,
+			repel.GetID(),
+		).Scan(&rowType, &kind, &reactTo, &repelJSON)
+		if err != nil {
+			t.Fatalf("reading the reaction row: %v", err)
+		}
+		if rowType != "reaction" {
+			t.Errorf("expected type %q, got %q", "reaction", rowType)
+		}
+		if kind != string(action.ReactRepel) {
+			t.Errorf("expected reaction_kind %q, got %q", action.ReactRepel, kind)
+		}
+		if reactTo != act.GetID() {
+			t.Errorf("expected react_to_uuid %s, got %s", act.GetID(), reactTo)
+		}
+		if len(repelJSON) == 0 {
+			t.Error("expected the repel component to be persisted, got SQL NULL")
+		}
+	})
+
 	t.Run("ON CONFLICT DO NOTHING — second call with same scene/round UUIDs is idempotent", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		masterUUID := pgtest.InsertTestUser(t, pool, "gm2", "gm2@test.com", "pass")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp2")
 		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match2")
 		matchUUIDParsed, _ := uuid.Parse(matchUUID)
-		actorUUIDParsed, _ := uuid.Parse(masterUUID)
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &masterUUID, nil, &campaignUUID, "hero2")
+		actorUUIDParsed, _ := uuid.Parse(sheetUUID)
 
 		sc := sceneentity.NewScene(enum.Roleplay, "Inn")
 		r := roundentity.NewRound(enum.Free)
