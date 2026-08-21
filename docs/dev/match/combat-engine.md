@@ -766,6 +766,32 @@ se um dia o servidor precisar forçar, ele força chamando o mesmo encerramento.
   Furtividade). Quem não viu não recebe os updates daquela action. Bloqueado — os
   subatributos mentais ainda não existem.
 
+### A política: público por omissão, deny-list explícita, mesa inteira
+
+As duas metades vêm de regras que já existiam: **o dano é público, o HP não**, e *"o
+adversário precisa deduzir dos números"*. Deduzir exige ver os números — então a omissão é
+mostrar, e o que se esconde é lista fechada.
+
+**Três classes de destinatário, não quatro:** mestre (vê tudo), **dono** da action ou reaction
+(vê tudo o que é dele), e todo o resto (vê tudo menos a deny-list). **O alvo não é classe
+privilegiada** — uma finta contra você não te conta que era finta.
+
+| Oculto de terceiros | Por quê |
+|---|---|
+| HP | o dano é público, o HP não |
+| `Feint` | uma finta revelada não é finta |
+| `Trigger` | idem, até disparar |
+| a entrada de `Evasion` na esquiva fechada, e a reserva que ela gera | o adversário deduz |
+| **o próprio `ReactionKind`, nas variantes fechadas** | ⬇ |
+
+⚠️ **O rótulo é o vazamento.** Se `closedDodge` chega público, ninguém precisa deduzir nada: o
+rótulo já contou que havia Evasão embutida. Uma esquiva fechada chega aos terceiros
+**indistinguível de uma esquiva**; um escape fechado, de um escape.
+
+A dedução continua possível, que é o ponto: `bars_updated` é público, e o escape fechado cobra
+**uma** barra enquanto o padrão cobra duas. Quem olha a barra percebe. **Deduzir da barra é
+legítimo; ser informado não é** — a política inteira cabe nessa frase.
+
 ## Configuração de partida
 
 Requisito explícito: a estrutura precisa comportar regras configuráveis **desde já**, com

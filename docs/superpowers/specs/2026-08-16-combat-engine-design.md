@@ -665,6 +665,102 @@ inversa produz resultado diferente de forma verificável** — com as rolagens i
 > "quando as barras acabam" (`docs/dev/match/combat-engine.md` é a fonte para o predicado
 > exato). `Abrir reaction` foi para a Fase 4.
 
+#### As cinco decisões que faltavam
+
+**1. NPC não bloqueia esta fase.** Os dois critérios de pronto são verificáveis com dois
+clients WS de jogadores. Rostering vira fatia própria **antes da Fase 6** — quem não consegue
+desenhar uma mesa sem NPC é o front. §7 estava desatualizado e foi corrigido.
+
+**2. `SystemData` audita uma superfície que esta fase tem que construir.**
+
+Não existe operação de edição do mestre no sistema: nenhuma mensagem WS seta `RollCondition`,
+e `buildMasterAction` é stub. O critério de pronto pedia auditoria de uma edição que ninguém
+consegue fazer.
+
+**Decisão: a fase constrói só a edição de rolagem** — viés, ajuste plano e motivo, sobre uma
+resolução já aberta, com **recálculo sem re-sorteio**. É o `Derive` da Fase 1 finalmente
+ganhando o chamador para o qual foi desenhado: `RollAttempts` guarda os dois conjuntos
+justamente para que uma Vantagem concedida *depois* de os dados caírem mude **qual conjunto é
+lido**, nunca o que foi rolado.
+
+**Fora:** o override do desfecho da cadeia. É regra de jogo ainda não escrita, e
+`combat-engine.md` marca o lugar sem descrevê-lo.
+
+**O predicado da auditoria:** entra no `SystemData` toda operação do mestre que **muda um
+número já mostrado**. Abrir turno, puxar action, trocar regime e revelar porta não entram —
+não mexem em número que alguém já viu. O critério é o predicado, não a lista, porque a lista
+cresce.
+
+**3. Persistência: dois terços já foram; o terço que falta tem forma.**
+
+O caminho de escrita foi consertado (PR #69, merged): FK de `actor_uuid` para
+`character_sheets`, reações gravadas junto com a action, colunas `reaction_kind` e `repel`.
+**Puxe a main antes de planejar.**
+
+O que sobra é o que ficou de fora de propósito: **os números derivados**. Os dados em si já
+estão persistidos — `RollCheck` carrega `Attempts` e `Result` e vai inteiro para as colunas
+JSONB. O que não existe é a **colisão**: margem, dano, degrau da escada, estado da cadeia.
+
+**Decisão: `turns.resolution JSONB`**, escrita no fechamento, com a `service.TurnResolution`
+**liquidada** — a que teve o dano aplicado, não um dry-run. Três razões: é o retrato de um
+cálculo, não uma entidade consultável (ninguém vai perguntar *"todos os turnos com dano > 10"*
+no MVP); é uma escrita a mais na transação que já existe; e `room.go` já tem
+`result.ClosedResolution` na mão, no mesmo ponto em que chama `PersistTurnClose`. A assinatura
+ganha o parâmetro.
+
+⚠️ A resolução é recalculada a cada edição do mestre. **A que se persiste é a do fechamento.**
+
+**4. A matriz de visibilidade: público por omissão, deny-list explícita, mesa inteira.**
+
+As duas metades da política vêm de frases que já estavam escritas: *"dano é público, HP não"*
+e *"o adversário precisa deduzir dos números"*. Deduzir exige ver os números.
+
+**Três classes de destinatário, não quatro:**
+
+| Classe | Vê |
+|---|---|
+| **Mestre** | tudo |
+| **Dono** da action/reaction | tudo o que é dele |
+| **Todo o resto** | tudo menos a deny-list |
+
+O alvo **não** é classe privilegiada. Uma finta contra você não te conta que era finta — se o
+alvo enxergasse os campos ocultos do atacante, a finta deixaria de existir.
+
+**A deny-list:**
+
+| Oculto | Por quê |
+|---|---|
+| HP | §4.7 — o dano é público, o HP não |
+| `Feint` | uma finta revelada não é finta |
+| `Trigger` | idem, até disparar |
+| a entrada de `Evasion` na esquiva fechada, e a reserva que ela gera | o exemplo canônico do §4.5 |
+| **o próprio `ReactionKind`, nas variantes fechadas** | ⬇ |
+
+⚠️ **O rótulo é o vazamento.** Se `closedDodge` chega público, ninguém precisa deduzir coisa
+alguma: o rótulo já contou que havia Evasão embutida. Uma esquiva fechada tem que chegar aos
+terceiros **indistinguível de uma esquiva**, e um escape fechado, de um escape.
+
+E a dedução continua possível, que é exatamente o ponto: `bars_updated` é público desde a Fase
+3, e o escape fechado cobra **uma** barra enquanto o padrão cobra duas. Quem estiver olhando a
+barra percebe. **Deduzir da barra é legítimo; ser informado não é** — a política inteira cabe
+nessa frase.
+
+**5. Encerramento explícito — os três detalhes.**
+
+- **A confirmação é do back, não do front.** `close_turn` **recusa** quando há reactions
+  anexadas e não abertas, devolvendo a lista; aceita com `confirm: true` no payload. Assim o
+  critério é verificável sem front nenhum, que é a regra desta fase.
+- **`MatchSession.CloseTurn()` não serve como está.** Chama `roundOrch.CloseTurnErr` direto e
+  pula `closeOpenTurn`: não resolve, não aplica dano, não mexe nos ledgers. A rota explícita
+  **tem** que passar por `closeOpenTurn`, ou o dano do turno evapora.
+- **Encerrar turno não fecha round.** A exaustão continua detectada só onde há escalonamento
+  (`OpenNextAction`). Custa um passo a mais ao mestre e mantém **um** ponto de detecção — dois
+  pontos é como duas versões da mesma regra nascem e divergem.
+
+**E o `pull_action` inalcançável é real, e é desta fase.** O mestre não tem como aprender o ID
+de uma action pendente, exatamente como não tinha o de uma reaction antes de
+`PendingReactions`. Mesmo buraco, mesma solução.
+
 **Pronto quando:**
 - **Dois clients WS** conectados como jogadores diferentes recebem, para o mesmo turno,
   payloads distintos — um com o campo oculto, outro sem. Verificável no backend, **sem
@@ -714,12 +810,18 @@ ponta a ponta por uma pessoa, e é o critério que fecha a iniciativa.
 `start_match.go` popula `match_participants` **apenas a partir de enrollments aceitas**. A
 Fase 1 torna a sessão *capaz* de segurar um NPC — mas **nada no sistema cria um**.
 
-- **Não bloqueia** as Fases 1 a 4: elas operam sobre personagens de jogador. A Fase 4
-  entregou o catálogo de reações inteiro sem tocar rostering — ver `combat-engine.md` § "O
-  que a Fase 4 fixou no motor".
-- **Bloqueia a Fase 5 em diante**, onde o mestre precisa enviar ações de NPCs.
+- **Não bloqueia** as Fases 1 a 5: todas operam sobre personagens de jogador. A Fase 4
+  entregou o catálogo de reações inteiro sem tocar rostering, e os dois critérios de pronto da
+  Fase 5 são verificáveis com dois clients WS de jogadores — ver `combat-engine.md` § "O que a
+  Fase 4 fixou no motor".
+- **Bloqueia a Fase 6**, o front: não dá para desenhar uma mesa sem NPC.
 
-Precisa virar fatia própria antes da Fase 5, e tem componente de produto: como o mestre
+> Uma versão anterior desta seção dizia que o rostering bloqueava "a Fase 5 em diante". Não
+> bloqueia: o que ele trava é o **mestre enviar ação de NPC**, que não é objetivo da Fase 5.
+> A FK de `actions.actor_uuid` já aponta para `character_sheets`, então o turno de um NPC é
+> persistível — o que falta é o caminho que cria um.
+
+Precisa virar fatia própria antes da Fase 6, e tem componente de produto: como o mestre
 adiciona um NPC à partida? O desenho fala em *"o mestre adiciona NPCs na primeira cena"* e
 *"mestre pode gerenciar adicionando e removendo personagens a qualquer momento"* — o que
 sugere um caminho de rostering sem enrollment, provavelmente com fichas de `MasterUUID`
