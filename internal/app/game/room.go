@@ -770,6 +770,16 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
+		// The sender's own ack stays as it is — it says "we got it", to the person who sent it.
+		// This is different news, for a different recipient: the master is the one who has to
+		// decide when it opens, and they need the ID to be able to pull it.
+		bars := make([]string, 0, 2)
+		for _, b := range a.Bars() {
+			bars = append(bars, string(b))
+		}
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, ActionQueuedPayload{
+			ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars,
+		}))
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
@@ -1096,10 +1106,6 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 }
 
 func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
-	r.mu.RLock()
-	masterClient, hasMaster := r.clients[r.masterUUID]
-	r.mu.RUnlock()
-
 	reaction, err := buildAction(payload.ActorID, payload)
 	if err != nil {
 		client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
@@ -1118,12 +1124,11 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
 		return
 	}
-	if hasMaster {
-		masterClient.SendMessage(NewServerMessage(
-			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(turnID, result.Resolution),
-		))
-	}
+	// publishResolution is the single place that decides master-only vs projected, by reading
+	// IsSettled. An attach always lands on an open, unsettled turn, so this takes the
+	// master-only branch today — routed through the same door anyway, so a future change to
+	// attach timing cannot silently reintroduce a master-only leak here.
+	r.publishResolution(turnID, result.Resolution)
 }
 
 // currentTurnID reads the open turn's ID, or uuid.Nil when there is none. The reaction path

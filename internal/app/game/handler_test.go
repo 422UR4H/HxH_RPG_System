@@ -740,3 +740,43 @@ func TestE2E_CloseTurn(t *testing.T) {
 		}
 	})
 }
+
+// TestActionQueuedReachesOnlyTheMaster closes the hole pull_action left open since it was
+// written: the master has to learn an action's ID from somewhere before it can send it back.
+// This proves both halves — the master gets a usable ID, and a player never sees the message
+// at all, because the queue is secret.
+func TestActionQueuedReachesOnlyTheMaster(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	f.enqueueAttack(t, player)
+
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the master was never told an action was queued")
+	}
+	var p game.ActionQueuedPayload
+	for _, m := range masterMsgs.snapshotMessages() {
+		if m.Type == game.MsgTypeActionQueued {
+			if err := json.Unmarshal(m.Payload, &p); err != nil {
+				t.Fatalf("unmarshal action_queued: %v", err)
+			}
+		}
+	}
+	if p.ActionID == uuid.Nil {
+		t.Fatal("action_queued carried no action ID — pull_action stays unreachable")
+	}
+	if p.ActorID != f.attackerID {
+		t.Fatalf("ActorID = %v, want the attacking character %v", p.ActorID, f.attackerID)
+	}
+	if n := playerMsgs.count(game.MsgTypeActionQueued); n != 0 {
+		t.Fatalf("a player received %d action_queued; the queue is secret", n)
+	}
+
+	// And the ID is usable: pull_action with it opens that exact turn.
+	sendWS(t, master, "pull_action", map[string]any{"actionId": p.ActionID})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("pull_action with the advertised ID opened nothing")
+	}
+}

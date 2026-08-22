@@ -211,6 +211,24 @@ func (f *combatFixture) connect(t *testing.T) (master, player *websocket.Conn) {
 	return master, player
 }
 
+// enqueueAttack sends a plain sword attack from the fixture's attacker against its victim,
+// over the given connection. It is the shape most combat e2e tests send inline; extracted
+// here so a test that only cares about what happens after the enqueue does not have to
+// spell it out again.
+func (f *combatFixture) enqueueAttack(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	sendWS(t, conn, "enqueue_action", map[string]any{
+		"actorId":  f.attackerID.String(),
+		"targetId": []string{f.victimID.String()},
+		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
+		"attack": map[string]any{
+			"weapon": "Sword",
+			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
+}
+
 func newCombatSheet(t *testing.T) *csSheet.CharacterSheet {
 	t.Helper()
 	playerUUID := uuid.New()

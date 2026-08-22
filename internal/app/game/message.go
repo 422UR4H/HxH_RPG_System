@@ -42,6 +42,7 @@ const (
 	MsgTypeRoundClosed      MessageType = "round_closed"
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
+	MsgTypeActionQueued     MessageType = "action_queued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
 	MsgTypeTurnClosed       MessageType = "turn_closed"
@@ -162,6 +163,27 @@ type PieceRemovedPayload struct {
 
 type PullActionPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
+}
+
+// ActionQueuedPayload tells the MASTER that something landed in the queue, and names it.
+//
+// Master-only, and that is the whole point: the queue is secret (combat-engine.md § As barras
+// são públicas — "a fila é secreta; a barra e a ordem são públicas"), so a player learning
+// what is pending would read the table's intentions off the wire.
+//
+// ActionID is not decoration. pull_action takes an action ID, and until this payload existed
+// the master had no legitimate way to learn one — the same hole PendingReactions closed for
+// open_reaction, with the same consequence: an ID a client cannot learn is an operation a
+// client cannot invoke.
+//
+// Nothing here describes the action's CONTENT. Weapon, target, skill and dice stay the
+// player's until the master opens the turn.
+type ActionQueuedPayload struct {
+	ActionID uuid.UUID `json:"actionId"`
+	ActorID  uuid.UUID `json:"actorId"`
+	// Bars is which clocks it will charge — the master's scheduling surface, and already
+	// derivable from the public bars_updated order. Nothing new is disclosed by naming it here.
+	Bars []string `json:"bars"`
 }
 
 // OpenReactionPayload names which attached reaction the master is giving the floor to. The
