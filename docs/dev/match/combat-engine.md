@@ -755,27 +755,94 @@ se um dia o servidor precisar forçar, ele força chamando o mesmo encerramento.
 | `Modifier` | ganha `Applies Dimension`, e `AgainstID *uuid.UUID` vira `Against Scope` com três formas — todos / apenas X / **todos menos X** (§ *Modificadores*). |
 | `RollInput.Ledger` (comentário) | ainda afirma que o acumulado *"is always an actionSpeed adjustment, never a hit adjustment"*. Era a invariante generalizada demais. Quem decide a dimensão passa a ser `Modifier.Applies`, não o caller. |
 
-### A edição do mestre — duas superfícies
+### A edição do mestre
 
-| Superfície | Onde mora | O que muda |
-|---|---|---|
-| `RollCondition` | dentro de um `RollCheck` | **como um teste é lido** — viés, ajuste plano, motivo |
-| `MasterAction` | no `Turn`, via `AddMasterAction` | **quais testes existem** — perícias, alvos, componentes |
+**A action editada É a action.** O mestre não constrói uma versão paralela que alguém precise
+mesclar na leitura: o valor dele entra na própria action, e todo consumidor — resolução,
+projeção, histórico — lê um lugar só.
 
-A segunda é a que se esquece. O mestre **adiciona e remove perícias atreladas à action**,
-mudando de quantos testes o personagem depende para ter sucesso; `Skill` carrega `Difficulty`
-própria, então cada uma é um teste com CD.
+Isso não é decisão nova: é a que o código já tinha tomado. `RollCondition` mora em
+`RollContext`, dentro do `RollCheck`, dentro da `Action`. O viés do mestre sempre entrou na
+action.
 
-⚠️ **Adicionar perícia rola dado novo** — e isso não fere *"o mestre nunca re-rola o dado de um
-jogador"*. Não é re-rolagem; é a primeira rolagem de um teste que não existia.
+⚠️ **O preço desse modelo:** o valor original é destruído no objeto vivo. *"O que o jogador
+mandou"* deixa de ser algo que se lê e passa a ser algo que se **reconstrói**, aplicando de
+trás para frente a tabela dos valores deslocados (abaixo).
 
-⚠️ **Remover perícia não descarta os dados dela.** Se descartasse, tirar e pôr de volta seria
-um re-rolagem grátis. Readicionar a mesma perícia lê os dados que ela já tinha.
+#### `MasterAction` não é sobreposição — é a ação do mestre
 
-⚠️ **A edição muda o desfecho, nunca a economia.** Barras cobradas, `Speeds` registradas e
-ordem já jogada não se refazem — mesmo quando a edição mudaria o que `Bars()` responde
-(`chargesActionBar()` lê `len(a.Skills) > 0`). A economia é artefato público e sequencial:
-`bars_updated` já foi ao ar. Refazer o preço reordenaria o que já foi jogado.
+Ela existe porque **o mestre também age**, em dois níveis: dentro de uma action de jogador
+(alvos, perícias, velocidade) e **acima da batalha**, no que só ele conduz. O segundo nível
+ainda não está escrito, e é ele que impede `MasterAction` de ser um caso particular de
+`Action`.
+
+> `buildMasterAction` (`action_mapper.go`) mapeia só parte dela — `Move` e `Attack` caem em
+> `TODO`. É o **mapper** que está incompleto, não a entidade.
+
+#### A corrente de testes
+
+Cada `Skill` de uma action é um teste com CD própria (`Skill.Difficulty`), e eles resolvem
+**em corrente**:
+
+| De onde vem a CD | Quando |
+|---|---|
+| o resultado do adversário, por subtração direta | teste direto contra personagem — acerto × esquiva, dano × defesa |
+| **o mestre, à mão** | todo o resto — se o personagem consegue mesmo o mortal que descreveu |
+
+**A margem atravessa.** O que sobra de um teste entra no próximo — folga ajuda, negativo
+desconta. **Errar por 10 ou mais mata a corrente**: a action falha e os testes seguintes não
+acontecem. O mestre pode mudar essa margem ou deixar a corrente seguir mesmo assim.
+
+> ⭐ É a terceira aparição da mesma forma. O saldo da barra atravessa rounds, o dano atravessa
+> alvos na cadeia em área, e a margem atravessa testes dentro de uma action. **Propagação de
+> margem** parece ser a ideia central deste sistema, não um detalhe de três regras separadas.
+
+⛔ **Nada disso está em código.** `match_session.go` rola cada `Skill` e **ninguém lê o
+resultado**; a única leitura de `Skills` em toda a colisão é a `Evasion` da esquiva fechada,
+por nome. O que acontece com quem falha (guarda aberta, caído, dano igual à diferença) segue
+em aberto por decisão do dono do produto — o sistema propõe um padrão, o mestre substitui.
+
+#### Perícia removida: dados vivem na memória, nunca no banco
+
+Enquanto o turno está aberto, os dados de uma perícia removida ficam guardados — senão tirar e
+recolocar seria re-rolagem grátis. **Eles não são persistidos.** Um teste que não aconteceu
+sujaria o histórico, e o histórico é superfície de jogo, não log.
+
+Acrescentar perícia, ao contrário, **rola dados novos** — e isso não fere *"o mestre nunca
+re-rola o dado de um jogador"*: não é re-rolagem, é a primeira rolagem de um teste que não
+existia.
+
+#### A edição muda o desfecho, nunca a economia
+
+Barras cobradas, `Speeds` registradas e ordem já jogada não se refazem — mesmo quando a edição
+mudaria o que `Bars()` responde (`chargesActionBar()` lê `len(a.Skills) > 0`). A economia é
+artefato **público e sequencial**: `bars_updated` já foi ao ar. Refazer o preço reordenaria o
+que já foi jogado.
+
+#### Os valores deslocados
+
+O que a auditoria guarda **não é a edição** — é o **valor que a edição descartou**. A action
+já carrega o valor novo; guardar os dois seria duplicação que diverge.
+
+Duas origens, um sobrescritor:
+
+| O valor deslocado veio de | Quem sobrescreveu |
+|---|---|
+| cálculo do sistema | o mestre |
+| envio do jogador | o mestre |
+
+Uma linha por valor deslocado, não um retrato da action inteira: **o mestre edita um campo por
+vez, pela tela**, então quem escreve já sabe o que mudou e não há diff a calcular — que era a
+única vantagem do retrato. Editar o mesmo campo duas vezes deixa duas linhas, e ler de trás
+para frente devolve o original.
+
+Identidade em coluna (qual action, qual campo, quando, qual mestre); o valor deslocado em
+`JSONB`, porque o formato varia de verdade — um inteiro, uma lista de perícias, um conjunto de
+alvos — e ninguém vai consultar dentro dele.
+
+⚠️ **O nome `SystemData` está reprovado** e o substituto ainda não foi escolhido. O problema é
+semântico e é real: um nome genérico não consegue **recusar** nada, e vira depósito. O nome
+precisa dizer *valores de action descartados por sobrescrita*.
 
 ## Visibilidade
 
