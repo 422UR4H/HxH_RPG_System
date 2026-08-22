@@ -793,20 +793,37 @@ Cada `Skill` de uma action é um teste com CD própria (`Skill.Difficulty`), e e
 desconta. **Errar por 10 ou mais mata a corrente**: a action falha e os testes seguintes não
 acontecem. O mestre pode mudar essa margem ou deixar a corrente seguir mesmo assim.
 
-> ⭐ É a terceira aparição da mesma forma. O saldo da barra atravessa rounds, o dano atravessa
-> alvos na cadeia em área, e a margem atravessa testes dentro de uma action. **Propagação de
-> margem** parece ser a ideia central deste sistema, não um detalhe de três regras separadas.
+> A mesma **forma** aparece em três lugares — o saldo atravessa rounds, o dano atravessa alvos
+> na cadeia, a margem atravessa testes. É uma semelhança útil de notar e **não é uma regra**:
+> o *como* difere em cada escala, e generalizar faria o documento decidir casos que ele não
+> tem por que decidir.
+>
+> ⚠️ Uma versão anterior desta seção promoveu isso a "a ideia central do sistema". Errado, e
+> pelo mesmo motivo do erro do "bônus acumulado é sempre de actionSpeed": semelhança de forma
+> não é lei. Concretamente: uma corrente de testes bem-sucedida **não** atravessa para o round
+> seguinte, porque ela não tem relação nenhuma com a velocidade com que o personagem age — o
+> ciclo dela fecha dentro do turno.
 
 ⛔ **Nada disso está em código.** `match_session.go` rola cada `Skill` e **ninguém lê o
 resultado**; a única leitura de `Skills` em toda a colisão é a `Evasion` da esquiva fechada,
 por nome. O que acontece com quem falha (guarda aberta, caído, dano igual à diferença) segue
 em aberto por decisão do dono do produto — o sistema propõe um padrão, o mestre substitui.
 
+**O que sobra de uma corrente bem-sucedida também segue em aberto, de propósito.** Por
+enquanto fica a cargo do mestre: ele concede vantagem no próximo teste do jogador, ou numa
+reação que está por vir, e se vê se um padrão automático é sequer necessário. Definir um
+default antes de saber disso seria escrever regra por simetria.
+
 #### Perícia removida: dados vivem na memória, nunca no banco
 
 Enquanto o turno está aberto, os dados de uma perícia removida ficam guardados — senão tirar e
-recolocar seria re-rolagem grátis. **Eles não são persistidos.** Um teste que não aconteceu
-sujaria o histórico, e o histórico é superfície de jogo, não log.
+recolocar seria re-rolagem grátis. Quando o turno fecha, eles vão para a **tabela de valores
+sobrepostos**, junto com todo o resto que o mestre atropelou. Uma perícia removida é um valor
+descartado como qualquer outro.
+
+⚠️ **O que eles não podem fazer é entrar no histórico da action.** Um teste que não aconteceu
+apareceria como se tivesse acontecido, e o histórico é superfície de jogo, não log. Guardado
+sim, exibido não — e são coisas diferentes que moram em tabelas diferentes.
 
 Acrescentar perícia, ao contrário, **rola dados novos** — e isso não fere *"o mestre nunca
 re-rola o dado de um jogador"*: não é re-rolagem, é a primeira rolagem de um teste que não
@@ -840,9 +857,48 @@ Identidade em coluna (qual action, qual campo, quando, qual mestre); o valor des
 `JSONB`, porque o formato varia de verdade — um inteiro, uma lista de perícias, um conjunto de
 alvos — e ninguém vai consultar dentro dele.
 
-⚠️ **O nome `SystemData` está reprovado** e o substituto ainda não foi escolhido. O problema é
-semântico e é real: um nome genérico não consegue **recusar** nada, e vira depósito. O nome
-precisa dizer *valores de action descartados por sobrescrita*.
+**A tabela chama `overridden_action_values`.** `SystemData` foi reprovado por um motivo
+concreto: um nome genérico não consegue **recusar** nada, e vira depósito. Este recusa — não dá
+para pôr estado de parede em `overridden_action_values` sem que o nome fique visivelmente
+falso.
+
+Por que `overridden` e não `edited`: *edit* nomeia o ato do mestre, e não é o ato que está
+guardado ali — é **o que o ato atropelou**. E por que não `discarded`: descartado descreve o
+valor sozinho, enquanto sobreposto carrega a relação que interessa — **existe um valor que
+tomou o lugar dele**, e ele está na linha correspondente de `actions`. É essa relação que
+permite reconstruir o original lendo de trás para frente.
+
+> Efeito colateral bom: o nome mata um campo. O critério de pronto pedia `Source: master`, mas
+> se só o mestre sobrepõe, `Source` não tem o que discriminar. O viés que o *sistema* aplica já
+> é um `Modifier` no ledger e nunca foi sobreposição.
+
+### Os fluxos, e quais confirmações existem de verdade
+
+O fluxo principal não é um: são seis, e eles foram descobertos aos poucos porque *"enviar
+action"* não fecha sozinho — não dá para especificar o envio sem dizer o que acontece quando
+aquilo aterrissa, e o que aterrissa é uma colisão.
+
+| Fluxo | Estado |
+|---|---|
+| Enviar action | ✅ Fases 1–3 |
+| Abrir action | ✅ Fases 2–3 |
+| Enviar reaction | ✅ Fase 4 |
+| Abrir reaction | ✅ Fase 4 |
+| Fechar o turno | implícito hoje; explícito na Fase 5 |
+| Confirmar | ⬇ |
+
+**Confirmar não é um fluxo — é consequência de um ramo.** Se o mestre não editou nada, não há
+o que confirmar, e um verbo de confirmação seria cerimônia vazia em todo turno normal.
+
+**Decisão: não existe verbo de confirmação para edição.** O mestre edita, a resolução recalcula
+na hora (`Derive`, sem re-sortear), ele edita de novo se quiser, e **passar o bastão é a
+confirmação** — abrir a próxima action, abrir a próxima reaction, fechar o turno. Não há como
+seguir em frente e continuar deliberando ao mesmo tempo. Isso só funciona porque a action
+editada **é** a action: não existe versão pendente esperando aprovação.
+
+⚠️ **Não confundir com a outra confirmação.** `close_turn` recusando quando há reactions
+anexadas e não abertas é coisa diferente: ela não tem nada a ver com edição, e sim com alguém
+perder o momento de narrar. Essa existe mesmo quando o mestre não editou nada.
 
 ## Visibilidade
 

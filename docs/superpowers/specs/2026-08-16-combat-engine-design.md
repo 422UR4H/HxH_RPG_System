@@ -720,8 +720,18 @@ Refazer o preço reordenaria o que já foi jogado, e o sistema não volta atrás
 > mecânica, é aqui que ela pluga.
 
 ⚠️ **`MasterAction` não é persistida.** `PersistTurnClose` grava a action e as reações;
-`t.GetMasterActions()` fica de fora. Se a auditoria é do turno, ela vai junto — e é isso que
-faz de `SystemData` uma tabela, não um campo.
+`t.GetMasterActions()` fica de fora.
+
+**A tabela chama `overridden_action_values`** e guarda **o valor que a edição atropelou**, não
+a edição — a action já carrega o valor novo, e guardar os dois é duplicação que diverge. Uma
+linha por valor sobreposto; identidade em coluna, valor em `JSONB`. Entram tanto valores
+enviados por jogador quanto valores calculados pelo sistema, **inclusive os dados de uma
+perícia que o mestre removeu** — guardados ali, nunca exibidos no histórico da action.
+
+**E não existe verbo de confirmação para edição.** O mestre edita, `Derive` recalcula sem
+re-sortear, e **passar o bastão é a confirmação**. A confirmação de `close_turn` com reactions
+não abertas é outra coisa — é sobre perder o momento de narrar, e vale mesmo sem edição
+nenhuma. Ver `combat-engine.md` § *Os fluxos*.
 
 ⛔ **E há um buraco embaixo de tudo isso: ninguém lê o resultado das perícias compostas.**
 
