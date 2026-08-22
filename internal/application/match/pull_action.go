@@ -49,14 +49,24 @@ func (uc *PullActionUC) Execute(
 	tr, err := session.PullAction(actionID)
 	// Persist before the error check — see OpenNextActionUC.Execute for why.
 	persistDamage(ctx, uc.statusWriter, tr.Damaged)
-	if err != nil {
-		return nil, err
-	}
-	return &PullActionResult{
+
+	res := &PullActionResult{
 		ClosedTurn:       tr.Closed,
 		OpenedTurn:       tr.Opened,
 		Resolution:       tr.OpenedResolution,
 		ClosedResolution: tr.ClosedResolution,
 		Damaged:          tr.Damaged,
-	}, nil
+	}
+
+	if err != nil {
+		// A non-nil result alongside a non-nil error is unusual, but tr.Closed != nil means
+		// session.PullAction already closed the previous turn and applied its damage (persisted
+		// above) before it failed to find the requested action — see OpenNextActionUC.Execute
+		// for why discarding res here is worse than returning both.
+		if tr.Closed != nil {
+			return res, err
+		}
+		return nil, err
+	}
+	return res, nil
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,10 +111,27 @@ func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.Ma
 	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil
 }
 
-type mockRoundRepoHandler struct{}
+// mockRoundRepoHandler is a no-op round repository, except it records every closed turn
+// ID PersistTurnClose was called with — tests that need to assert a turn actually reached
+// persistence (rather than just that Execute returned no error) read persistedTurnIDs()
+// instead of adding a second test double.
+type mockRoundRepoHandler struct {
+	mu             sync.Mutex
+	persistedTurns []uuid.UUID
+}
 
-func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, turn *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.persistedTurns = append(m.persistedTurns, turn.GetID())
 	return nil
+}
+
+// persistedTurnIDs returns a snapshot of every turn ID PersistTurnClose was called with.
+func (m *mockRoundRepoHandler) persistedTurnIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.persistedTurns...)
 }
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil

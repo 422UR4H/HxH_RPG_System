@@ -498,36 +498,47 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
+
+		// The closed half of the transition is handled BEFORE the error is reported, even when
+		// Execute also failed: OpenNextActionUC.Execute only returns a non-nil result alongside
+		// a non-nil error when the previous turn already closed and its damage already applied
+		// (tr.Closed != nil) before the next one failed to open. That closed turn still needs
+		// PersistTurnClose and its settled resolution_updated — losing them here would silently
+		// drop a real turn from the table and from the Action History. The master still learns
+		// the open failed, just after the table has the turn that actually ended.
+		if result != nil {
+			r.broadcastBars(session)
+
+			if result.ClosedTurn != nil {
+				closedTurn := result.ClosedTurn
+				closedAct := closedTurn.GetAction()
+				r.mu.RLock()
+				activeScene := session.GetActiveScene()
+				activeRound := session.GetActiveRound()
+				matchUUID := session.GetMatchUUID()
+				r.mu.RUnlock()
+				if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
+					// Deliberately not fatal: the turn already closed in memory and the match
+					// goes on. But say WHAT was lost — this line ran silently for two phases
+					// while an FK mismatch dropped every single turn on the floor.
+					log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+						closedTurn.GetID(), matchUUID, err2)
+				} else {
+					r.mu.Lock()
+					session.MarkRoundPersisted()
+					r.mu.Unlock()
+				}
+				// The settled resolution of the turn that just ended — this is the one whose
+				// damage was actually applied.
+				if result.ClosedResolution != nil {
+					r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
+				}
+			}
+		}
+
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
-		}
-		r.broadcastBars(session)
-
-		if result.ClosedTurn != nil {
-			closedTurn := result.ClosedTurn
-			closedAct := closedTurn.GetAction()
-			r.mu.RLock()
-			activeScene := session.GetActiveScene()
-			activeRound := session.GetActiveRound()
-			matchUUID := session.GetMatchUUID()
-			r.mu.RUnlock()
-			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-				// Deliberately not fatal: the turn already closed in memory and the match
-				// goes on. But say WHAT was lost — this line ran silently for two phases
-				// while an FK mismatch dropped every single turn on the floor.
-				log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-					closedTurn.GetID(), matchUUID, err2)
-			} else {
-				r.mu.Lock()
-				session.MarkRoundPersisted()
-				r.mu.Unlock()
-			}
-			// The settled resolution of the turn that just ended — this is the one whose
-			// damage was actually applied.
-			if result.ClosedResolution != nil {
-				r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
-			}
 		}
 
 		// The round ran out: nothing pending could still pay, so it closed instead of opening
@@ -622,36 +633,48 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
+
+		// The closed half of the transition is handled BEFORE the error is reported, even when
+		// Execute also failed — same reason as open_next_action: PullActionUC.Execute only
+		// returns a non-nil result alongside a non-nil error when the previous turn already
+		// closed and its damage already applied (tr.Closed != nil) before the pull itself
+		// failed. That closed turn still needs PersistTurnClose and its settled
+		// resolution_updated — losing them here would silently drop a real turn from the table
+		// and from the Action History. The master still learns the pull failed, just after the
+		// table has the turn that actually ended.
+		if result != nil {
+			r.broadcastBars(session)
+
+			if result.ClosedTurn != nil {
+				closedTurn := result.ClosedTurn
+				closedAct := closedTurn.GetAction()
+				r.mu.RLock()
+				activeScene := session.GetActiveScene()
+				activeRound := session.GetActiveRound()
+				matchUUID := session.GetMatchUUID()
+				r.mu.RUnlock()
+				if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
+					// Deliberately not fatal: the turn already closed in memory and the match
+					// goes on. But say WHAT was lost — this line ran silently for two phases
+					// while an FK mismatch dropped every single turn on the floor.
+					log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+						closedTurn.GetID(), matchUUID, err2)
+				} else {
+					r.mu.Lock()
+					session.MarkRoundPersisted()
+					r.mu.Unlock()
+				}
+				// The settled resolution of the turn that just ended — this is the one whose
+				// damage was actually applied.
+				if result.ClosedResolution != nil {
+					r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
+				}
+			}
+		}
+
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
-		}
-		r.broadcastBars(session)
-
-		if result.ClosedTurn != nil {
-			closedTurn := result.ClosedTurn
-			closedAct := closedTurn.GetAction()
-			r.mu.RLock()
-			activeScene := session.GetActiveScene()
-			activeRound := session.GetActiveRound()
-			matchUUID := session.GetMatchUUID()
-			r.mu.RUnlock()
-			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-				// Deliberately not fatal: the turn already closed in memory and the match
-				// goes on. But say WHAT was lost — this line ran silently for two phases
-				// while an FK mismatch dropped every single turn on the floor.
-				log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-					closedTurn.GetID(), matchUUID, err2)
-			} else {
-				r.mu.Lock()
-				session.MarkRoundPersisted()
-				r.mu.Unlock()
-			}
-			// The settled resolution of the turn that just ended — this is the one whose
-			// damage was actually applied.
-			if result.ClosedResolution != nil {
-				r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
-			}
 		}
 
 		// Belt and braces: a successful call that opened nothing has nothing to announce.

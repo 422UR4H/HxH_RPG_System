@@ -119,6 +119,7 @@ type combatFixture struct {
 	victim     *csSheet.CharacterSheet
 	writer     *recordingStatusWriter
 	session    *matchsession.MatchSession
+	roundRepo  *mockRoundRepoHandler
 }
 
 // setRollSource replaces the session's dice for one test. The session pointer is the
@@ -163,6 +164,7 @@ func newCombatFixture(t *testing.T) *combatFixture {
 	go hub.Run()
 
 	roundRepo := &mockRoundRepoHandler{}
+	f.roundRepo = roundRepo
 	handler := game.NewHandler(
 		hub,
 		&fogMatchRepo{masterUUID: f.masterUUID, started: true},
@@ -647,6 +649,126 @@ func TestE2E_AnExhaustedRoundClosesItself(t *testing.T) {
 	t.Run("the players hear it too — the round is table state, not master state", func(t *testing.T) {
 		if !playerMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
 			t.Error("the player should have heard round_closed too — it is table state, not master state")
+		}
+	})
+}
+
+// TestE2E_ReopeningAnEmptyQueueStillSettlesTheClosedTurn is Task 4b's delivery-level guarantee:
+// a closed turn must never be dropped because the next one could not open.
+//
+// The fixture is Free mode (the default — no economy, no RoundExhausted branch), with exactly
+// one queued action. The first open_next_action opens it as turn 1. The second finds an empty
+// queue: MatchSession.OpenNextAction closes turn 1 (applying its damage) BEFORE it can fail to
+// find a next action, so by the time Execute returns an error, turn 1 is already closed. This
+// is deterministic, not a race — see the "closing the turn applies and persists the damage"
+// subtest above, whose workaround exists precisely because this path used to swallow the
+// closed turn's resolution.
+func TestE2E_ReopeningAnEmptyQueueStillSettlesTheClosedTurn(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	hpBefore := f.victimHP(t)
+
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId":  f.attackerID.String(),
+		"targetId": []string{f.victimID.String()},
+		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
+		"attack": map[string]any{
+			"weapon": "Sword",
+			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+
+	// Opens the only queued action as turn 1.
+	sendWS(t, master, "open_next_action", map[string]any{})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the first action never opened")
+	}
+	var turn1ID uuid.UUID
+	for _, m := range masterMsgs.snapshotMessages() {
+		if m.Type != game.MsgTypeTurnOpened {
+			continue
+		}
+		var p game.TurnOpenedPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal turn_opened: %v", err)
+		}
+		turn1ID = p.TurnID
+	}
+	if turn1ID == uuid.Nil {
+		t.Fatal("no turn_opened payload carried a turn id")
+	}
+
+	// The queue is now empty. Reopening must still close turn 1 and report the failure to
+	// open a next one — this is Task 4b's bug, reproduced over the real WS handler.
+	sendWS(t, master, "open_next_action", map[string]any{})
+
+	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("the master was never told the reopen failed")
+	}
+
+	t.Run("the closed turn's settled resolution still reaches the table", func(t *testing.T) {
+		findSettled := func(c *collector) *game.ResolutionUpdatedPayload {
+			for _, m := range c.snapshotMessages() {
+				if m.Type != game.MsgTypeResolutionUpdate {
+					continue
+				}
+				var p game.ResolutionUpdatedPayload
+				if err := json.Unmarshal(m.Payload, &p); err != nil {
+					t.Fatalf("unmarshal resolution_updated: %v", err)
+				}
+				if p.TurnID == turn1ID && p.IsSettled {
+					return &p
+				}
+			}
+			return nil
+		}
+		if !masterMsgs.await(game.MsgTypeResolutionUpdate, 2*time.Second) {
+			t.Fatal("the master never received any resolution_updated for the failed reopen")
+		}
+		if findSettled(masterMsgs) == nil {
+			t.Error("the master never received the settled resolution_updated for the closed turn")
+		}
+		// The player owns both the attacker and the victim (see newCombatFixture), so they are
+		// entitled to the unredacted settled resolution too, same as in the sibling subtest
+		// above.
+		if !playerMsgs.await(game.MsgTypeResolutionUpdate, 2*time.Second) {
+			t.Fatal("the player never received any resolution_updated for the closed turn")
+		}
+		if findSettled(playerMsgs) == nil {
+			t.Error("the player never received the settled resolution_updated for the closed turn")
+		}
+	})
+
+	t.Run("the closed turn was still persisted through PersistTurnClose", func(t *testing.T) {
+		found := false
+		for _, id := range f.roundRepo.persistedTurnIDs() {
+			if id == turn1ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("persisted turn ids = %v, want %v among them", f.roundRepo.persistedTurnIDs(), turn1ID)
+		}
+	})
+
+	t.Run("the damage was still applied and persisted to the sheet", func(t *testing.T) {
+		if !f.writer.awaitPersisted(3 * time.Second) {
+			t.Fatal("the closed turn's damage never persisted")
+		}
+		if got := f.victimHP(t); got >= hpBefore {
+			t.Errorf("HP = %d, want less than %d (%d) — the hit that closed turn 1 must still land",
+				got, hpBefore, hpBefore)
 		}
 	})
 }
