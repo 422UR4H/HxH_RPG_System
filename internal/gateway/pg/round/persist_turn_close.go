@@ -6,29 +6,22 @@ import (
 	"fmt"
 	"time"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
-	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // PersistTurnClose atomically writes scene (idempotent), round (idempotent),
-// turn, action, and the action's reactions within a single database transaction.
+// turn, action, the action's reactions, and the turn's settled resolution (nullable) within
+// a single database transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
 // on — so writing only the action would persist half a turn. The reactions go in after the
 // action they answer, because actions.react_to_uuid points back at it inside this same
 // transaction.
-func (r *Repository) PersistTurnClose(
-	ctx context.Context,
-	sc *sceneentity.Scene,
-	rnd *roundentity.Round,
-	t *turnentity.Turn,
-	act *action.Action,
-	matchUUID uuid.UUID,
-) error {
+func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseData) error {
+	sc, rnd, t, act, matchUUID := d.Scene, d.Round, d.Turn, d.Action, d.MatchUUID
 	if t.GetFinishedAt() == nil {
 		return fmt.Errorf("PersistTurnClose: turn must be closed before persisting")
 	}
@@ -70,10 +63,14 @@ func (r *Repository) PersistTurnClose(
 	// Insert turn — turn entity has no createdAt field; use time.Now() for created_at
 	now := time.Now()
 	finishedAt := t.GetFinishedAt()
+	resolutionJSON, err := encodeResolution(d.Resolution)
+	if err != nil {
+		return fmt.Errorf("PersistTurnClose marshal resolution: %w", err)
+	}
 	_, err = tx.Exec(ctx,
-		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at)
-		 VALUES ($1, $2, $3, $4)`,
-		t.GetID(), rnd.GetID(), now, finishedAt,
+		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at, resolution)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		t.GetID(), rnd.GetID(), now, finishedAt, resolutionJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("PersistTurnClose insert turn: %w", err)

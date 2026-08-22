@@ -16,7 +16,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
@@ -120,10 +119,10 @@ type mockRoundRepoHandler struct {
 	persistedTurns []uuid.UUID
 }
 
-func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, turn *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.persistedTurns = append(m.persistedTurns, turn.GetID())
+	m.persistedTurns = append(m.persistedTurns, d.Turn.GetID())
 	return nil
 }
 

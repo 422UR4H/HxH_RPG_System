@@ -46,6 +46,53 @@ func TestScope_AppliesTo(t *testing.T) {
 	})
 }
 
+func TestScope_KindAndIDRoundTripThroughScopeFrom(t *testing.T) {
+	id := uuid.New()
+
+	t.Run("anyone", func(t *testing.T) {
+		s := match.ScopeAnyone()
+		got := match.ScopeFrom(s.Kind(), s.ID())
+		if got.Kind() != s.Kind() {
+			t.Fatalf("expected kind %q, got %q", s.Kind(), got.Kind())
+		}
+		if !got.AppliesTo(nil) {
+			t.Error("round-tripped ScopeAnyone must still apply to everyone")
+		}
+	})
+
+	t.Run("only", func(t *testing.T) {
+		s := match.ScopeOnly(id)
+		got := match.ScopeFrom(s.Kind(), s.ID())
+		if got.Kind() != s.Kind() || got.ID() != s.ID() {
+			t.Fatalf("expected kind %q id %s, got kind %q id %s", s.Kind(), s.ID(), got.Kind(), got.ID())
+		}
+		if !got.AppliesTo(&id) {
+			t.Error("round-tripped ScopeOnly must still apply to its own target")
+		}
+	})
+
+	t.Run("all but", func(t *testing.T) {
+		s := match.ScopeAllBut(id)
+		got := match.ScopeFrom(s.Kind(), s.ID())
+		if got.Kind() != s.Kind() || got.ID() != s.ID() {
+			t.Fatalf("expected kind %q id %s, got kind %q id %s", s.Kind(), s.ID(), got.Kind(), got.ID())
+		}
+		if got.AppliesTo(&id) {
+			t.Error("round-tripped ScopeAllBut must still exclude its own target")
+		}
+	})
+
+	t.Run("an unknown kind reads as anyone, the safe answer for a lost scope", func(t *testing.T) {
+		got := match.ScopeFrom("garbage", id)
+		if got.Kind() != match.ScopeAnyone().Kind() {
+			t.Fatalf("expected unknown kind to read as anyone, got %q", got.Kind())
+		}
+		if !got.AppliesTo(nil) {
+			t.Error("an unknown kind must apply to everyone, like ScopeAnyone")
+		}
+	})
+}
+
 func TestModifierLedger_TotalsAreScopedByDimension(t *testing.T) {
 	attacker := uuid.New()
 	l := match.NewModifierLedger()

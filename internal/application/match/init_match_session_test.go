@@ -11,10 +11,6 @@ import (
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
-	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -25,7 +21,7 @@ type noopRoundRepo struct{}
 func (m *noopRoundRepo) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *noopRoundRepo) PersistTurnClose(_ context.Context, _ *sceneentity.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *noopRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseData) error {
 	return nil
 }
 func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
@@ -46,7 +42,7 @@ func (m *mockRoundRepo) FindActiveSession(ctx context.Context, matchUUID uuid.UU
 	}
 	return nil, nil
 }
-func (m *mockRoundRepo) PersistTurnClose(_ context.Context, _ *sceneentity.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseData) error {
 	return nil
 }
 func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {

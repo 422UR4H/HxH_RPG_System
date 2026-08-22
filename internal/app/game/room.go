@@ -15,6 +15,7 @@ import (
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -511,23 +512,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
-				closedAct := closedTurn.GetAction()
-				r.mu.RLock()
-				activeScene := session.GetActiveScene()
-				activeRound := session.GetActiveRound()
-				matchUUID := session.GetMatchUUID()
-				r.mu.RUnlock()
-				if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-					// Deliberately not fatal: the turn already closed in memory and the match
-					// goes on. But say WHAT was lost — this line ran silently for two phases
-					// while an FK mismatch dropped every single turn on the floor.
-					log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-						closedTurn.GetID(), matchUUID, err2)
-				} else {
-					r.mu.Lock()
-					session.MarkRoundPersisted()
-					r.mu.Unlock()
-				}
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
@@ -647,23 +632,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
-				closedAct := closedTurn.GetAction()
-				r.mu.RLock()
-				activeScene := session.GetActiveScene()
-				activeRound := session.GetActiveRound()
-				matchUUID := session.GetMatchUUID()
-				r.mu.RUnlock()
-				if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-					// Deliberately not fatal: the turn already closed in memory and the match
-					// goes on. But say WHAT was lost — this line ran silently for two phases
-					// while an FK mismatch dropped every single turn on the floor.
-					log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-						closedTurn.GetID(), matchUUID, err2)
-				} else {
-					r.mu.Lock()
-					session.MarkRoundPersisted()
-					r.mu.Unlock()
-				}
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
@@ -891,23 +860,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 
 		closedTurn := result.ClosedTurn
-		closedAct := closedTurn.GetAction()
-		r.mu.RLock()
-		activeScene := session.GetActiveScene()
-		activeRound := session.GetActiveRound()
-		matchUUID := session.GetMatchUUID()
-		r.mu.RUnlock()
-		// TEMPORARY SHAPE (Task 2 of Phase 5): calls PersistTurnClose positionally, matching
-		// the open_next_action/pull_action sites above, because appmatch.TurnCloseData does not
-		// exist yet — Task 6 introduces it and is expected to sweep this call along with theirs.
-		if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-			log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-				closedTurn.GetID(), matchUUID, err2)
-		} else {
-			r.mu.Lock()
-			session.MarkRoundPersisted()
-			r.mu.Unlock()
-		}
+		// result.Resolution here is the SETTLED one — CloseTurnUC resolves the turn it just
+		// closed, not a next one — the same resolution published below via publishResolution.
+		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
 		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
 		data, _ := json.Marshal(out)
@@ -1103,6 +1058,43 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
 	}
+}
+
+// persistClosedTurn writes one turn that just closed to the round repository, together with
+// its settled resolution, and marks the session's round persisted on success. It is the one
+// place that does this — open_next_action, pull_action and close_turn all reach a closed
+// turn by different paths, but from here on they all needed the same read-persist-flip
+// sequence, and it had been copy-pasted into three ~15-line blocks.
+//
+// It takes r.mu itself, exactly as the three call sites used to: an RLock to snapshot the
+// scene/round/matchUUID session needs, then — only on success — a Lock to flip
+// MarkRoundPersisted. Callers must NOT hold r.mu when calling this: sync.RWMutex is not
+// reentrant, and a nested acquire would deadlock the room permanently. Every call site below
+// already releases r.mu before reaching here.
+//
+// A PersistTurnClose failure is logged and swallowed, not returned: the turn already closed
+// in memory and the match goes on regardless. But say WHAT was lost — this ran silently for
+// two phases while an FK mismatch dropped every single turn on the floor.
+func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution) {
+	act := t.GetAction()
+	r.mu.RLock()
+	activeScene := session.GetActiveScene()
+	activeRound := session.GetActiveRound()
+	matchUUID := session.GetMatchUUID()
+	r.mu.RUnlock()
+
+	err := r.roundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
+		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
+		MatchUUID: matchUUID, Resolution: res,
+	})
+	if err != nil {
+		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+			t.GetID(), matchUUID, err)
+		return
+	}
+	r.mu.Lock()
+	session.MarkRoundPersisted()
+	r.mu.Unlock()
 }
 
 func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {

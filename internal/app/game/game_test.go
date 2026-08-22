@@ -12,7 +12,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -83,7 +82,7 @@ func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSess
 
 type mockRoundRepoGame struct{}
 
-func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ appmatch.TurnCloseData) error {
 	return nil
 }
 func (m *mockRoundRepoGame) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {

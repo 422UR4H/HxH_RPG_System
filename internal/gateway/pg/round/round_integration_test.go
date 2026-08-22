@@ -7,14 +7,18 @@ import (
 	"testing"
 	"time"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	roundrepo "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestPersistTurnClose(t *testing.T) {
@@ -48,7 +52,9 @@ func TestPersistTurnClose(t *testing.T) {
 		tRn := turnentity.NewTurn(actCopy)
 		tRn.Close(time.Now())
 
-		err := repo.PersistTurnClose(ctx, sc, r, tRn, act, matchUUIDParsed)
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: r, Turn: tRn, Action: act, MatchUUID: matchUUIDParsed,
+		})
 		if err != nil {
 			t.Fatalf("PersistTurnClose error: %v", err)
 		}
@@ -113,7 +119,9 @@ func TestPersistTurnClose(t *testing.T) {
 		tRn.AddReaction(repel)
 		tRn.Close(time.Now())
 
-		if err := repo.PersistTurnClose(ctx, sc, r, tRn, act, matchUUIDParsed); err != nil {
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: r, Turn: tRn, Action: act, MatchUUID: matchUUIDParsed,
+		}); err != nil {
 			t.Fatalf("PersistTurnClose error: %v", err)
 		}
 
@@ -171,7 +179,9 @@ func TestPersistTurnClose(t *testing.T) {
 		act1Copy := *act1
 		tRn1 := turnentity.NewTurn(act1Copy)
 		tRn1.Close(time.Now())
-		if err := repo.PersistTurnClose(ctx, sc, r, tRn1, act1, matchUUIDParsed); err != nil {
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: r, Turn: tRn1, Action: act1, MatchUUID: matchUUIDParsed,
+		}); err != nil {
 			t.Fatalf("first PersistTurnClose error: %v", err)
 		}
 
@@ -187,7 +197,9 @@ func TestPersistTurnClose(t *testing.T) {
 		act2Copy := *act2
 		tRn2 := turnentity.NewTurn(act2Copy)
 		tRn2.Close(time.Now())
-		if err := repo.PersistTurnClose(ctx, sc, r, tRn2, act2, matchUUIDParsed); err != nil {
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: r, Turn: tRn2, Action: act2, MatchUUID: matchUUIDParsed,
+		}); err != nil {
 			t.Fatalf("second PersistTurnClose error: %v", err)
 		}
 
@@ -358,4 +370,141 @@ func TestCloseRound(t *testing.T) {
 			t.Error("expected scene finished_at to remain NULL")
 		}
 	})
+}
+
+// resolutionFixture is a match, a master, and two character sheets to attack and be
+// attacked — everything TestPersistTurnCloseWritesTheSettledResolution and its neighbour
+// need to build a turn whose action targets a real FK-satisfying victim.
+type resolutionFixture struct {
+	matchUUID                  uuid.UUID
+	scene                      *sceneentity.Scene
+	round                      *roundentity.Round
+	attackerSheet, victimSheet uuid.UUID
+}
+
+func seedMatchAndSheets(t *testing.T, pool *pgxpool.Pool) resolutionFixture {
+	t.Helper()
+	masterUUID := pgtest.InsertTestUser(t, pool, "gm-resolution", "gm-resolution@test.com", "pass")
+	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "CampResolution")
+	matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "MatchResolution")
+	matchUUIDParsed, err := uuid.Parse(matchUUID)
+	if err != nil {
+		t.Fatalf("parse match uuid: %v", err)
+	}
+	attackerUUID, err := uuid.Parse(
+		pgtest.InsertTestCharacterSheet(t, pool, &masterUUID, nil, &campaignUUID, "attacker"))
+	if err != nil {
+		t.Fatalf("parse attacker uuid: %v", err)
+	}
+	// An NPC victim: a sheet with no player, same as the reaction test above.
+	victimUUID, err := uuid.Parse(
+		pgtest.InsertTestCharacterSheet(t, pool, nil, &masterUUID, &campaignUUID, "victim"))
+	if err != nil {
+		t.Fatalf("parse victim uuid: %v", err)
+	}
+	return resolutionFixture{
+		matchUUID:     matchUUIDParsed,
+		scene:         sceneentity.NewScene(enum.Battle, "Arena"),
+		round:         roundentity.NewRound(enum.Free),
+		attackerSheet: attackerUUID,
+		victimSheet:   victimUUID,
+	}
+}
+
+func buildAttackAction(t *testing.T, attackerID, victimID uuid.UUID) *action.Action {
+	t.Helper()
+	return action.NewAction(
+		attackerID, []uuid.UUID{victimID}, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{}, nil, nil, nil, nil,
+	)
+}
+
+func TestPersistTurnCloseWritesTheSettledResolution(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	res := &service.TurnResolution{
+		IsSettled:    true,
+		ActionResult: service.RollResult{SkillName: "Legerity", Total: 19, DiceRolled: []int{10, 9}},
+		CharacterResults: []service.CharacterResult{{
+			TargetID: fx.victimSheet, RawDamage: 11, DefenseApplied: 3, EffectiveDamage: 8,
+			ReactionKind: string(action.ReactRepel),
+			Ladder:       service.LadderOutcome{Rung: service.RungNearMiss, Margin: -4, Difference: 4},
+			Payouts: []match.Modifier{{
+				Amount: -4, Applies: match.DimActionSpeed, Source: match.SourceSystem,
+				Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeEndOfRound,
+				Reason: "parry penalty",
+			}},
+		}},
+	}
+
+	err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Resolution: res,
+	})
+	if err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var raw []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT resolution FROM turns WHERE uuid = $1`, tn.GetID()).Scan(&raw); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("turns.resolution is NULL — the collision was not persisted")
+	}
+
+	got := roundrepo.DecodeResolution(raw)
+	if got == nil || len(got.CharacterResults) != 1 {
+		t.Fatalf("round trip lost the character results: %+v", got)
+	}
+	cr := got.CharacterResults[0]
+	if cr.EffectiveDamage != 8 || cr.RawDamage != 11 {
+		t.Fatalf("damage did not survive: raw=%d effective=%d", cr.RawDamage, cr.EffectiveDamage)
+	}
+	if cr.Ladder.Rung != service.RungNearMiss || cr.Ladder.Difference != 4 {
+		t.Fatalf("the ladder did not survive: %+v", cr.Ladder)
+	}
+	if len(cr.Payouts) != 1 || cr.Payouts[0].Against.Kind() != match.ScopeAnyone().Kind() {
+		t.Fatalf("the payout's scope did not survive: %+v", cr.Payouts)
+	}
+}
+
+func TestPersistTurnCloseAcceptsANilResolution(t *testing.T) {
+	// A turn with nothing resolvable still closes. NULL, not an error, and not a zero-value
+	// record that would read back as "a collision that produced nothing".
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Resolution: nil,
+	})
+	if err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var raw []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT resolution FROM turns WHERE uuid = $1`, tn.GetID()).Scan(&raw); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if raw != nil {
+		t.Fatalf("expected SQL NULL for a nil resolution, got %d bytes", len(raw))
+	}
 }
