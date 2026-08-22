@@ -96,6 +96,14 @@ func (m *mockOpenReactionUCHandler) Execute(_ context.Context, _ *matchsession.M
 	return nil, nil
 }
 
+type mockCloseTurnUCHandler struct{}
+
+func (m *mockCloseTurnUCHandler) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ bool,
+) (*appmatch.CloseTurnResult, error) {
+	return nil, nil
+}
+
 type mockChangeSceneUCHandler struct{}
 
 func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string) (*scene.Scene, *roundentity.Round, error) {
@@ -146,6 +154,7 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockEnqueueActionUCHandler{},
 		&mockAttachReactionUCHandler{},
 		&mockOpenReactionUCHandler{},
+		&mockCloseTurnUCHandler{},
 		&mockChangeSceneUCHandler{},
 		&mockRoundRepoHandler{},
 		&mockEnqueueMasterActionUCHandler{},
@@ -634,4 +643,82 @@ func TestPlayerCannotCancelLobby(t *testing.T) {
 	if received.Type != game.MsgTypeError {
 		t.Errorf("expected error, got %s", received.Type)
 	}
+}
+
+// TestE2E_CloseTurn drives close_turn over a real socket: a non-master is refused, the master
+// gets the server-computed refusal naming the one reaction that was attached and never opened,
+// and the same master resending with confirm:true actually closes the turn.
+//
+// Reuses reaction_chain_e2e_test.go's areaFixture — the same real Room, real use cases and
+// wsConn helpers the reaction-chain tests already exercise close_turn's neighbours with.
+func TestE2E_CloseTurn(t *testing.T) {
+	faces := []int{
+		6, 4, 1, 1, // Attack.Hit: primary 6,4 (→10); secondary 1,1 (unused filler)
+		7, 3, // Sword damage: D10=7, D4=3 → raw 7+3+2=12
+	}
+	f := newAreaFixture(t, faces)
+	defer f.server.Close()
+
+	sword := "Sword"
+	f.attacker.send(t, game.MsgTypeEnqueueAction, game.ActionPayload{
+		ActorID:  f.attackerID,
+		TargetID: []uuid.UUID{f.a},
+		Attack: &game.AttackPayload{
+			Weapon: &sword,
+			Hit:    game.RollCheckPayload{SkillName: "Accuracy"},
+			Damage: game.RollCheckPayload{},
+		},
+	})
+	if !f.attacker.msgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the attack was never acknowledged as enqueued")
+	}
+	f.master.send(t, game.MsgTypeOpenNextAction, struct{}{})
+	_, actionID := f.awaitTurnOpened(t)
+
+	// A attaches a reaction and the master never opens it — exactly the scenario close_turn's
+	// refusal exists for.
+	reactionID := f.attachReaction(t, f.pA, game.ActionPayload{
+		ActorID: f.a, ReactToID: actionID, ReactionKind: "nothing",
+	})
+
+	t.Run("a non-master gets forbidden", func(t *testing.T) {
+		f.pA.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{})
+		if !f.pA.msgs.await(game.MsgTypeError, 2*time.Second) {
+			t.Fatal("the non-master never got an error back")
+		}
+	})
+
+	t.Run("the master gets close_turn_refused naming the pending reaction", func(t *testing.T) {
+		before := f.master.msgs.count(game.MsgTypeCloseTurnRefused)
+		f.master.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{})
+		if !awaitCount(f.master.msgs, game.MsgTypeCloseTurnRefused, before+1, 2*time.Second) {
+			t.Fatal("the master never got close_turn_refused")
+		}
+		msgs := f.master.msgs.snapshotMessages()
+		var refused *game.CloseTurnRefusedPayload
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Type != game.MsgTypeCloseTurnRefused {
+				continue
+			}
+			var p game.CloseTurnRefusedPayload
+			if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+				t.Fatalf("unmarshal close_turn_refused: %v", err)
+			}
+			refused = &p
+			break
+		}
+		if refused == nil {
+			t.Fatal("no close_turn_refused message found")
+		}
+		if len(refused.PendingReactions) != 1 || refused.PendingReactions[0].ReactionID != reactionID {
+			t.Fatalf("PendingReactions = %+v, want exactly [%v]", refused.PendingReactions, reactionID)
+		}
+	})
+
+	t.Run("resending with confirm:true closes it", func(t *testing.T) {
+		f.master.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{Confirm: true})
+		if !f.master.msgs.await(game.MsgTypeTurnClosed, 2*time.Second) {
+			t.Fatal("the master never got turn_closed")
+		}
+	})
 }

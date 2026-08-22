@@ -122,6 +122,7 @@ func newAreaFixture(t *testing.T, faces []int) *areaFixture {
 		appmatch.NewEnqueueActionUC(),
 		appmatch.NewAttachReactionUC(),
 		appmatch.NewOpenReactionUC(),
+		appmatch.NewCloseTurnUC(writer),
 		&mockChangeSceneUCHandler{},
 		roundRepo,
 		&mockEnqueueMasterActionUCHandler{},

@@ -35,6 +35,7 @@ const (
 	MsgTypePullAction     MessageType = "pull_action"
 	MsgTypeAttachReaction MessageType = "attach_reaction"
 	MsgTypeOpenReaction   MessageType = "open_reaction"
+	MsgTypeCloseTurn      MessageType = "close_turn"
 
 	// Server → Client (game events)
 	MsgTypeTurnOpened       MessageType = "turn_opened"
@@ -43,6 +44,8 @@ const (
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
+	MsgTypeTurnClosed       MessageType = "turn_closed"
+	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
 
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
@@ -167,6 +170,15 @@ type OpenReactionPayload struct {
 	ReactionID uuid.UUID `json:"reactionId"`
 }
 
+// CloseTurnPayload ends the open turn. Master only.
+//
+// Confirm is the master answering the refusal below. It is not a general "yes": a clean close
+// never needs it, so a client that always sends true is not cheating anything — there is
+// nothing to confirm when nothing is pending.
+type CloseTurnPayload struct {
+	Confirm bool `json:"confirm,omitempty"`
+}
+
 // ActionPayload is the unified shape for both enqueue_action and attach_reaction messages.
 // The presence of ReactToID determines routing: non-zero means it is a reaction.
 // The presence of sub-fields (Dodge, Attack, etc.) describes the action composition.
@@ -258,6 +270,23 @@ type RoundClosedPayload struct {
 type ReactionOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turnId"`
 	ReactionID uuid.UUID `json:"reactionId"`
+}
+
+// TurnClosedPayload announces that the baton was put down. BROADCAST — that a turn ended is
+// table state. The numbers travel separately, in the projected resolution_updated that
+// follows.
+type TurnClosedPayload struct {
+	TurnID uuid.UUID `json:"turnId"`
+}
+
+// CloseTurnRefusedPayload is the confirmation dialog's content, computed by the server.
+//
+// Master-only, because it names reactions the table has not been shown yet. The front draws
+// the dialog from this; the back is what decides the dialog is needed, which is why the
+// criterion is verifiable with no front at all.
+type CloseTurnRefusedPayload struct {
+	TurnID           uuid.UUID                `json:"turnId"`
+	PendingReactions []PendingReactionPayload `json:"pendingReactions"`
 }
 
 // BarsUpdatedPayload is the two clocks as the whole table sees them.

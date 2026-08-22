@@ -57,6 +57,14 @@ func (m *mockOpenReactionUC) Execute(_ context.Context, _ *matchsession.MatchSes
 	return nil, nil
 }
 
+type mockCloseTurnUC struct{}
+
+func (m *mockCloseTurnUC) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ bool,
+) (*appmatch.CloseTurnResult, error) {
+	return nil, nil
+}
+
 // mockStartMatchUCLocal and mockKickPlayerUCLocal are local duplicates to avoid
 // conflicts with handler_test.go's unexported types in the same test package.
 type mockStartMatchUCLocal struct{}
@@ -111,6 +119,7 @@ func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
@@ -219,6 +228,7 @@ func TestHub(t *testing.T) {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
@@ -241,6 +251,7 @@ func TestHub(t *testing.T) {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
@@ -264,6 +275,7 @@ func TestHub(t *testing.T) {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},

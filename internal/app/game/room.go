@@ -66,6 +66,8 @@ type IOpenReaction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID, reactionID uuid.UUID) (*appmatch.OpenReactionResult, error)
 }
 
+type ICloseTurn = appmatch.ICloseTurn
+
 type IChangeScene interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string) (*sceneentity.Scene, *roundentity.Round, error)
 }
@@ -105,6 +107,7 @@ type Room struct {
 	enqueueActionUC       IEnqueueAction
 	attachReactionUC      IAttachReaction
 	openReactionUC        IOpenReaction
+	closeTurnUC           ICloseTurn
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
@@ -121,6 +124,7 @@ func NewRoom(
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
 	openReactionUC IOpenReaction,
+	closeTurnUC ICloseTurn,
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
@@ -146,6 +150,7 @@ func NewRoom(
 		enqueueActionUC:       enqueueActionUC,
 		attachReactionUC:      attachReactionUC,
 		openReactionUC:        openReactionUC,
+		closeTurnUC:           closeTurnUC,
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
@@ -819,6 +824,83 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			MsgTypeResolutionUpdate,
 			newResolutionUpdatedPayload(turnID, result.Resolution),
 		))
+
+	case MsgTypeCloseTurn:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload CloseTurnPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid close_turn payload"))
+			return
+		}
+		// Write lock across Execute — closing resolves the turn, applies damage to the target
+		// sheets and advances every ledger. Exactly the same surface open_next_action mutates.
+		r.mu.Lock()
+		session := r.session
+		var result *appmatch.CloseTurnResult
+		var err error
+		var turnID uuid.UUID
+		if session != nil {
+			turnID = currentTurnID(session)
+			result, err = r.closeTurnUC.Execute(
+				context.Background(), session, r.masterUUID, client.userUUID, payload.Confirm)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		if len(result.Refused) > 0 {
+			pending := make([]PendingReactionPayload, 0, len(result.Refused))
+			for i := range result.Refused {
+				pending = append(pending, PendingReactionPayload{
+					ReactionID: result.Refused[i].GetID(),
+					ActorID:    result.Refused[i].GetActorID(),
+					Kind:       string(result.Refused[i].ReactionKind),
+				})
+			}
+			client.SendMessage(NewServerMessage(MsgTypeCloseTurnRefused,
+				CloseTurnRefusedPayload{TurnID: turnID, PendingReactions: pending}))
+			return
+		}
+
+		closedTurn := result.ClosedTurn
+		closedAct := closedTurn.GetAction()
+		r.mu.RLock()
+		activeScene := session.GetActiveScene()
+		activeRound := session.GetActiveRound()
+		matchUUID := session.GetMatchUUID()
+		r.mu.RUnlock()
+		// TEMPORARY SHAPE (Task 2 of Phase 5): calls PersistTurnClose positionally, matching
+		// the open_next_action/pull_action sites above, because appmatch.TurnCloseData does not
+		// exist yet — Task 6 introduces it and is expected to sweep this call along with theirs.
+		if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
+			log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+				closedTurn.GetID(), matchUUID, err2)
+		} else {
+			r.mu.Lock()
+			session.MarkRoundPersisted()
+			r.mu.Unlock()
+		}
+
+		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+		// TEMPORARY SHAPE (Task 2 of Phase 5): sends resolution_updated directly to the master,
+		// matching the existing open_next_action/pull_action/open_reaction sites, because
+		// r.publishResolution does not exist yet — Task 4 introduces per-recipient projection
+		// and is expected to sweep this call along with theirs.
+		r.sendToMaster(NewServerMessage(
+			MsgTypeResolutionUpdate,
+			newResolutionUpdatedPayload(closedTurn.GetID(), result.Resolution),
+		))
+		r.broadcastBars(session)
 
 	case MsgTypeChangeScene:
 		if !r.IsMaster(client.userUUID) {

@@ -48,6 +48,7 @@ func (h *Hub) GetOrCreateRoom(
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
 	openReactionUC IOpenReaction,
+	closeTurnUC ICloseTurn,
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
@@ -64,7 +65,7 @@ func (h *Hub) GetOrCreateRoom(
 		matchUUID, masterUUID,
 		startMatchUC, kickPlayerUC,
 		initSessionUC, openNextActionUC, pullActionUC,
-		enqueueActionUC, attachReactionUC, openReactionUC,
+		enqueueActionUC, attachReactionUC, openReactionUC, closeTurnUC,
 		changeSceneUC, roundRepo, enqueueMasterActionUC,
 		changeRoundModeUC,
 	)
