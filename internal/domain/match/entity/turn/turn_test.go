@@ -63,3 +63,41 @@ func TestTurn_OpenReaction(t *testing.T) {
 		}
 	})
 }
+
+func TestUnopenedReactions(t *testing.T) {
+	newReaction := func(actor uuid.UUID) *action.Action {
+		a := action.NewAction(actor, nil, uuid.New(), nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, nil)
+		a.ReactionKind = action.ReactDodge
+		return a
+	}
+
+	t.Run("every attached reaction is unopened before the master opens any", func(t *testing.T) {
+		tn := turn.NewTurn(*action.NewAction(uuid.New(), nil, uuid.Nil, nil,
+			action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil))
+		r1, r2 := newReaction(uuid.New()), newReaction(uuid.New())
+		tn.AddReaction(r1)
+		tn.AddReaction(r2)
+
+		if got := len(tn.UnopenedReactions()); got != 2 {
+			t.Fatalf("UnopenedReactions() = %d, want 2", got)
+		}
+	})
+
+	t.Run("opening one removes it, and only it", func(t *testing.T) {
+		tn := turn.NewTurn(*action.NewAction(uuid.New(), nil, uuid.Nil, nil,
+			action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil))
+		r1, r2 := newReaction(uuid.New()), newReaction(uuid.New())
+		tn.AddReaction(r1)
+		tn.AddReaction(r2)
+		tn.OpenReaction(r1.GetID())
+
+		left := tn.UnopenedReactions()
+		if len(left) != 1 {
+			t.Fatalf("UnopenedReactions() = %d, want 1", len(left))
+		}
+		if left[0].GetID() != r2.GetID() {
+			t.Fatalf("the wrong reaction stayed unopened: %v", left[0].GetID())
+		}
+	})
+}

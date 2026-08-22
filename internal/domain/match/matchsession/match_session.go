@@ -587,8 +587,30 @@ func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*service.TurnResoluti
 	return s.ResolveTurn(t), nil
 }
 
-func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
-	return s.roundOrch.CloseTurnErr(s.activeRound, time.Now())
+// CloseOpenTurn ends the turn under the baton explicitly, and it is the SAME path the two
+// baton operations take: it resolves one last time, applies what that resolution says, and
+// advances the ledgers.
+//
+// It exists because the old CloseTurn() did none of those three. It called
+// roundOrch.CloseTurnErr directly, so the turn ended, the damage evaporated and nothing
+// reported an error — the worst shape a bug can have. There is now one way to close a turn,
+// and this is it.
+func (s *MatchSession) CloseOpenTurn() (*TurnTransition, error) {
+	if !s.activeRound.HasOpenTurn() {
+		return nil, ErrNoOpenTurn
+	}
+	return s.closeOpenTurn(), nil
+}
+
+// UnopenedReactions is the open turn's attached-but-not-opened reactions, for the confirmation
+// gate in CloseTurnUC. Empty when there is no open turn — the caller's error for that case is
+// ErrNoOpenTurn, raised by CloseOpenTurn, not by this reader.
+func (s *MatchSession) UnopenedReactions() []action.Action {
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return nil
+	}
+	return t.UnopenedReactions()
 }
 
 func (s *MatchSession) CloseRound() (*round.Round, error) {

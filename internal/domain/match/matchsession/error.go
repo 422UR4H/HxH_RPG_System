@@ -19,4 +19,8 @@ var (
 	ErrTurnAlreadyClosed = errors.New("cannot open a reaction: turn already closed")
 	// ErrReactionNotFound means the given id is not attached to the open turn.
 	ErrReactionNotFound = errors.New("reaction not found on the current turn")
+	// ErrNoOpenTurn is close_turn with nothing under the baton. It is an error rather than a
+	// no-op because the master pressed a button that describes an action they believe is
+	// happening; answering silently would leave them believing it happened.
+	ErrNoOpenTurn = errors.New("no open turn to close")
 )

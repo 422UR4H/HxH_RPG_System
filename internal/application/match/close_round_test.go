@@ -52,8 +52,8 @@ func TestCloseRoundUC(t *testing.T) {
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		session.OpenNextAction()              //nolint:errcheck
-		session.CloseTurn()                   //nolint:errcheck
+		session.OpenNextAction()             //nolint:errcheck
+		session.CloseOpenTurn()              //nolint:errcheck
 
 		uc := match.NewCloseRoundUC(repo)
 		closedRound, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)
@@ -74,8 +74,8 @@ func TestCloseRoundUC(t *testing.T) {
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		session.OpenNextAction()              //nolint:errcheck
-		// turn is still open — no CloseTurn called
+		session.OpenNextAction()             //nolint:errcheck
+		// turn is still open — no CloseOpenTurn called
 
 		uc := match.NewCloseRoundUC(repo)
 		_, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)

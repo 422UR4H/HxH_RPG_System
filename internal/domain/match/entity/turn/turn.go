@@ -91,3 +91,19 @@ func (t *Turn) OpenedReactionIDs() []uuid.UUID {
 	copy(out, t.openedReactions)
 	return out
 }
+
+// UnopenedReactions is every attached reaction the master has not yet given the floor to.
+//
+// These are exactly the ones close_turn warns about: they ARE in the calculation — the chain
+// walks the opened ones first and then everyone left over — so nobody is punished
+// mechanically. What they lose is the moment to narrate, and that is what the master is being
+// asked to confirm away.
+func (t *Turn) UnopenedReactions() []action.Action {
+	out := make([]action.Action, 0, len(t.reactions))
+	for i := range t.reactions {
+		if !slices.Contains(t.openedReactions, t.reactions[i].GetID()) {
+			out = append(out, t.reactions[i])
+		}
+	}
+	return out
+}
