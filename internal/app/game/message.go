@@ -339,12 +339,14 @@ type BarSlotPayload struct {
 	Key     float64   `json:"key"`
 }
 
-// ResolutionUpdatedPayload is the master's view of a turn's current resolution.
+// ResolutionUpdatedPayload is one recipient's view of a turn's current resolution.
 //
 // It is a SLICE of service.TurnResolution, not the whole thing: it carries the mechanics and
 // the projection, and nothing that would let a client reconstruct state it is not entitled
-// to. Master-only for now — the calculation belongs to the master until the turn closes, and
-// per-recipient projection is a later slice.
+// to. While the turn is open the calculation still belongs to the master alone; once it is
+// settled (IsSettled), room.go's publishResolution projects a copy per recipient via
+// service.ProjectResolution — master, owner, everyone else. PendingReactions is the one field
+// that stays master-only regardless: it is the master's own to-do list, not table state.
 //
 // Damage is projected, not applied. The HP only moves when the turn closes.
 type ResolutionUpdatedPayload struct {

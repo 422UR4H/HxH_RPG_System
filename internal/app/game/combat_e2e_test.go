@@ -36,7 +36,8 @@ import (
 // and asserts the four things the phase owes:
 //
 //  1. the master sees the projected damage BEFORE anything is applied;
-//  2. the player receives no resolution_updated at all — the calculation is the master's;
+//  2. the player receives no resolution_updated while the turn is open — the calculation is
+//     the master's alone until it settles (Phase 5 then projects it to the table);
 //  3. the target's HP does not move while the turn is open;
 //  4. it moves by exactly the projected amount once the turn closes, and the same number
 //     is written through to the sheet gateway.
@@ -465,15 +466,15 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 	})
 
 	t.Run("closing the turn applies and persists the damage", func(t *testing.T) {
-		// A second action gives the master something to open, which closes the first turn.
-		sendWS(t, player, "enqueue_action", map[string]any{
-			"actorId": f.attackerID.String(),
-			"speed":   map[string]any{"bar": 0},
-		})
-		if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
-			t.Fatal("the second action was never acknowledged as enqueued")
-		}
-		sendWS(t, master, "open_next_action", map[string]any{})
+		// close_turn (Phase 5) closes the currently open turn directly, without touching the
+		// scheduler's queue. An earlier version of this subtest enqueued a second action and
+		// relied on open_next_action's implicit close-then-reopen instead; reopening from an
+		// empty queue is a separate, pre-existing race in RoundOrchestrator.NextAction
+		// (unrelated to resolution visibility) that intermittently made Execute return an
+		// error and swallow the already-closed turn's resolution before anyone — master
+		// included — ever saw it. close_turn sidesteps that path entirely and is the more
+		// direct way to assert what this subtest is actually about.
+		sendWS(t, master, "close_turn", map[string]any{"confirm": true})
 
 		if !f.writer.awaitPersisted(3 * time.Second) {
 			t.Fatal("the closing turn never persisted the damage")
@@ -493,8 +494,39 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 		if healths[0] != hpBefore-projected {
 			t.Errorf("persisted HP = %d, want %d", healths[0], hpBefore-projected)
 		}
-		if n := playerMsgs.count(game.MsgTypeResolutionUpdate); n != 0 {
-			t.Errorf("the player received %d resolution_updated messages even after the close, want 0", n)
+		// Phase 5: resolution_updated is projected to the table once a turn SETTLES — this
+		// replaces the old "the player receives nothing, ever" assertion, which encoded the
+		// pre-Phase-5 master-only rule. The player here owns both the attacker and the victim
+		// (see newCombatFixture), so they are entitled to the unredacted settled resolution,
+		// same as the master's.
+		if !playerMsgs.await(game.MsgTypeResolutionUpdate, 2*time.Second) {
+			t.Fatal("the player never received the settled resolution once the turn closed")
+		}
+		if n := playerMsgs.count(game.MsgTypeResolutionUpdate); n != 1 {
+			t.Errorf("the player received %d resolution_updated messages, want exactly 1 (the settled one for the closed turn)", n)
+		}
+		var settled *game.ResolutionUpdatedPayload
+		for _, m := range playerMsgs.snapshotMessages() {
+			if m.Type != game.MsgTypeResolutionUpdate {
+				continue
+			}
+			var p game.ResolutionUpdatedPayload
+			if err := json.Unmarshal(m.Payload, &p); err != nil {
+				t.Fatalf("unmarshal resolution_updated: %v", err)
+			}
+			if p.TurnID == opened.TurnID {
+				settled = &p
+				break
+			}
+		}
+		if settled == nil {
+			t.Fatal("no resolution_updated for the closed turn arrived on the player's connection")
+		}
+		if !settled.IsSettled {
+			t.Error("the resolution the player received after close must be settled")
+		}
+		if len(settled.Targets) != 1 || settled.Targets[0].ProjectedDamage != projected {
+			t.Errorf("player's settled targets = %+v, want one entry with ProjectedDamage %d", settled.Targets, projected)
 		}
 	})
 }

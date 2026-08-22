@@ -526,10 +526,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// The settled resolution of the turn that just ended — this is the one whose
 			// damage was actually applied.
 			if result.ClosedResolution != nil {
-				r.sendToMaster(NewServerMessage(
-					MsgTypeResolutionUpdate,
-					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
-				))
+				r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
 			}
 		}
 
@@ -558,12 +555,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. Master-only: the mechanics are public
-			// when a turn opens, but the calculation stays with the master until it closes.
-			r.sendToMaster(NewServerMessage(
-				MsgTypeResolutionUpdate,
-				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
-			))
+			// The projection for the turn just opened. publishResolution keeps this
+			// master-only on its own: the mechanics are public when a turn opens, but the
+			// calculation stays with the master until it closes (IsSettled is false here).
+			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
 		}
 
 	case MsgTypeChangeRoundMode:
@@ -655,10 +650,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// The settled resolution of the turn that just ended — this is the one whose
 			// damage was actually applied.
 			if result.ClosedResolution != nil {
-				r.sendToMaster(NewServerMessage(
-					MsgTypeResolutionUpdate,
-					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
-				))
+				r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
 			}
 		}
 
@@ -676,12 +668,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. Master-only: the mechanics are public
-			// when a turn opens, but the calculation stays with the master until it closes.
-			r.sendToMaster(NewServerMessage(
-				MsgTypeResolutionUpdate,
-				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
-			))
+			// The projection for the turn just opened. publishResolution keeps this
+			// master-only on its own: the mechanics are public when a turn opens, but the
+			// calculation stays with the master until it closes (IsSettled is false here).
+			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
 		}
 
 	case MsgTypeEnqueueAction:
@@ -820,10 +810,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
-		r.sendToMaster(NewServerMessage(
-			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(turnID, result.Resolution),
-		))
+		r.publishResolution(turnID, result.Resolution)
 
 	case MsgTypeCloseTurn:
 		if !r.IsMaster(client.userUUID) {
@@ -892,14 +879,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
-		// TEMPORARY SHAPE (Task 2 of Phase 5): sends resolution_updated directly to the master,
-		// matching the existing open_next_action/pull_action/open_reaction sites, because
-		// r.publishResolution does not exist yet — Task 4 introduces per-recipient projection
-		// and is expected to sweep this call along with theirs.
-		r.sendToMaster(NewServerMessage(
-			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(closedTurn.GetID(), result.Resolution),
-		))
+		r.publishResolution(closedTurn.GetID(), result.Resolution)
 		r.broadcastBars(session)
 
 	case MsgTypeChangeScene:
@@ -1229,6 +1209,54 @@ func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayloa
 		})
 	}
 	return out
+}
+
+// publishResolution sends one turn's resolution to everyone entitled to a version of it.
+//
+// TWO axes, not one:
+//
+//   - TIME: while the turn is open the calculation belongs to the master alone
+//     (combat-engine.md § Visibilidade). Only a SETTLED resolution reaches the table.
+//   - CLASS: master / owner / everyone else, applied by service.ProjectResolution.
+//
+// It reuses dispatchPerPlayer, which is the mechanism the fog of war already uses for exactly
+// this. Do not grow a second one.
+func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolution) {
+	if res == nil {
+		return
+	}
+	if !res.IsSettled {
+		r.sendToMaster(NewServerMessage(
+			MsgTypeResolutionUpdate, newResolutionUpdatedPayload(turnID, res)))
+		return
+	}
+	r.mu.RLock()
+	charToPlayer := map[string]uuid.UUID{}
+	if r.session != nil {
+		charToPlayer = r.session.GetCharToPlayer()
+	}
+	r.mu.RUnlock()
+
+	owned := make(map[uuid.UUID]map[uuid.UUID]bool, len(charToPlayer))
+	for charStr, playerID := range charToPlayer {
+		charID, err := uuid.Parse(charStr)
+		if err != nil {
+			continue
+		}
+		if owned[playerID] == nil {
+			owned[playerID] = map[uuid.UUID]bool{}
+		}
+		owned[playerID][charID] = true
+	}
+
+	r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
+		v := domainservice.Viewer{IsMaster: isMaster, Owns: owned[playerID]}
+		msg := NewServerMessage(
+			MsgTypeResolutionUpdate,
+			newResolutionUpdatedPayload(turnID, domainservice.ProjectResolution(res, v)),
+		)
+		return &msg
+	})
 }
 
 // broadcastBars publishes the clocks to everyone. Called after anything that moves them:
