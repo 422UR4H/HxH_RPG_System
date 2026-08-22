@@ -848,10 +848,19 @@ Duas origens, um sobrescritor:
 | cálculo do sistema | o mestre |
 | envio do jogador | o mestre |
 
-Uma linha por valor deslocado, não um retrato da action inteira: **o mestre edita um campo por
-vez, pela tela**, então quem escreve já sabe o que mudou e não há diff a calcular — que era a
-única vantagem do retrato. Editar o mesmo campo duas vezes deixa duas linhas, e ler de trás
-para frente devolve o original.
+**Uma linha por campo, guardando o ORIGINAL — não uma linha por edição.** O propósito da
+tabela é não perder *o que o jogador enviou e o que o sistema calculou*; os valores
+intermediários do mestre não são nenhum dos dois, e o atual está na action.
+
+Disso caem duas propriedades boas:
+
+- **Reverter sai de graça.** O mestre edita por engano e edita de volta: o valor atual volta a
+  ser o original, nada foi deslocado, e **nenhuma linha é escrita**. Com uma linha por edição,
+  um erro e o conserto deixariam dois registros de ruído — exatamente o "sujar o histórico"
+  que a perícia removida já ensinou a evitar.
+- **Não precisa de verbo de confirmação.** A captura acontece na primeira sobreposição e é
+  **gravada no fechamento do turno**, na mesma transação do `PersistTurnClose`. Enquanto o
+  turno está aberto o mestre edita e desedita à vontade; o que sobra é o que se grava.
 
 Identidade em coluna (qual action, qual campo, quando, qual mestre); o valor deslocado em
 `JSONB`, porque o formato varia de verdade — um inteiro, uma lista de perícias, um conjunto de
@@ -895,6 +904,10 @@ na hora (`Derive`, sem re-sortear), ele edita de novo se quiser, e **passar o ba
 confirmação** — abrir a próxima action, abrir a próxima reaction, fechar o turno. Não há como
 seguir em frente e continuar deliberando ao mesmo tempo. Isso só funciona porque a action
 editada **é** a action: não existe versão pendente esperando aprovação.
+
+O que um verbo de confirmação daria de real seria **cancelar**. E isso a captura-do-original dá
+sem verbo nenhum: editar de volta ao valor original apaga a captura, e nada é gravado. Cancelar
+vira "editar de volta", que é a mesma operação que o mestre já tem na mão.
 
 ⚠️ **Não confundir com a outra confirmação.** `close_turn` recusando quando há reactions
 anexadas e não abertas é coisa diferente: ela não tem nada a ver com edição, e sim com alguém
