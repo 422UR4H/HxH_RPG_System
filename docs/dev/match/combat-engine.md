@@ -755,6 +755,164 @@ se um dia o servidor precisar forçar, ele força chamando o mesmo encerramento.
 | `Modifier` | ganha `Applies Dimension`, e `AgainstID *uuid.UUID` vira `Against Scope` com três formas — todos / apenas X / **todos menos X** (§ *Modificadores*). |
 | `RollInput.Ledger` (comentário) | ainda afirma que o acumulado *"is always an actionSpeed adjustment, never a hit adjustment"*. Era a invariante generalizada demais. Quem decide a dimensão passa a ser `Modifier.Applies`, não o caller. |
 
+### A edição do mestre
+
+**A action editada É a action.** O mestre não constrói uma versão paralela que alguém precise
+mesclar na leitura: o valor dele entra na própria action, e todo consumidor — resolução,
+projeção, histórico — lê um lugar só.
+
+Isso não é decisão nova: é a que o código já tinha tomado. `RollCondition` mora em
+`RollContext`, dentro do `RollCheck`, dentro da `Action`. O viés do mestre sempre entrou na
+action.
+
+⚠️ **O preço desse modelo:** o valor original é destruído no objeto vivo. *"O que o jogador
+mandou"* deixa de ser algo que se lê e passa a ser algo que se **reconstrói**, aplicando de
+trás para frente a tabela dos valores deslocados (abaixo).
+
+#### `MasterAction` não é sobreposição — é a ação do mestre
+
+Ela existe porque **o mestre também age**, em dois níveis: dentro de uma action de jogador
+(alvos, perícias, velocidade) e **acima da batalha**, no que só ele conduz. O segundo nível
+ainda não está escrito, e é ele que impede `MasterAction` de ser um caso particular de
+`Action`.
+
+> `buildMasterAction` (`action_mapper.go`) mapeia só parte dela — `Move` e `Attack` caem em
+> `TODO`. É o **mapper** que está incompleto, não a entidade.
+
+#### A corrente de testes
+
+Cada `Skill` de uma action é um teste com CD própria (`Skill.Difficulty`), e eles resolvem
+**em corrente**:
+
+| De onde vem a CD | Quando |
+|---|---|
+| o resultado do adversário, por subtração direta | teste direto contra personagem — acerto × esquiva, dano × defesa |
+| **o mestre, à mão** | todo o resto — se o personagem consegue mesmo o mortal que descreveu |
+
+**A margem atravessa.** O que sobra de um teste entra no próximo — folga ajuda, negativo
+desconta. **Errar por 10 ou mais mata a corrente**: a action falha e os testes seguintes não
+acontecem. O mestre pode mudar essa margem ou deixar a corrente seguir mesmo assim.
+
+> A mesma **forma** aparece em três lugares — o saldo atravessa rounds, o dano atravessa alvos
+> na cadeia, a margem atravessa testes. É uma semelhança útil de notar e **não é uma regra**:
+> o *como* difere em cada escala, e generalizar faria o documento decidir casos que ele não
+> tem por que decidir.
+>
+> ⚠️ Uma versão anterior desta seção promoveu isso a "a ideia central do sistema". Errado, e
+> pelo mesmo motivo do erro do "bônus acumulado é sempre de actionSpeed": semelhança de forma
+> não é lei. Concretamente: uma corrente de testes bem-sucedida **não** atravessa para o round
+> seguinte, porque ela não tem relação nenhuma com a velocidade com que o personagem age — o
+> ciclo dela fecha dentro do turno.
+
+⛔ **Nada disso está em código.** `match_session.go` rola cada `Skill` e **ninguém lê o
+resultado**; a única leitura de `Skills` em toda a colisão é a `Evasion` da esquiva fechada,
+por nome. O que acontece com quem falha (guarda aberta, caído, dano igual à diferença) segue
+em aberto por decisão do dono do produto — o sistema propõe um padrão, o mestre substitui.
+
+**O que sobra de uma corrente bem-sucedida também segue em aberto, de propósito.** Por
+enquanto fica a cargo do mestre: ele concede vantagem no próximo teste do jogador, ou numa
+reação que está por vir, e se vê se um padrão automático é sequer necessário. Definir um
+default antes de saber disso seria escrever regra por simetria.
+
+#### Perícia removida: dados vivem na memória, nunca no banco
+
+Enquanto o turno está aberto, os dados de uma perícia removida ficam guardados — senão tirar e
+recolocar seria re-rolagem grátis. Quando o turno fecha, eles vão para a **tabela de valores
+sobrepostos**, junto com todo o resto que o mestre atropelou. Uma perícia removida é um valor
+descartado como qualquer outro.
+
+⚠️ **O que eles não podem fazer é entrar no histórico da action.** Um teste que não aconteceu
+apareceria como se tivesse acontecido, e o histórico é superfície de jogo, não log. Guardado
+sim, exibido não — e são coisas diferentes que moram em tabelas diferentes.
+
+Acrescentar perícia, ao contrário, **rola dados novos** — e isso não fere *"o mestre nunca
+re-rola o dado de um jogador"*: não é re-rolagem, é a primeira rolagem de um teste que não
+existia.
+
+#### A edição muda o desfecho, nunca a economia
+
+Barras cobradas, `Speeds` registradas e ordem já jogada não se refazem — mesmo quando a edição
+mudaria o que `Bars()` responde (`chargesActionBar()` lê `len(a.Skills) > 0`). A economia é
+artefato **público e sequencial**: `bars_updated` já foi ao ar. Refazer o preço reordenaria o
+que já foi jogado.
+
+#### Os valores deslocados
+
+O que a auditoria guarda **não é a edição** — é o **valor que a edição descartou**. A action
+já carrega o valor novo; guardar os dois seria duplicação que diverge.
+
+Duas origens, um sobrescritor:
+
+| O valor deslocado veio de | Quem sobrescreveu |
+|---|---|
+| cálculo do sistema | o mestre |
+| envio do jogador | o mestre |
+
+**Uma linha por campo, guardando o ORIGINAL — não uma linha por edição.** O propósito da
+tabela é não perder *o que o jogador enviou e o que o sistema calculou*; os valores
+intermediários do mestre não são nenhum dos dois, e o atual está na action.
+
+Disso caem duas propriedades boas:
+
+- **Reverter sai de graça.** O mestre edita por engano e edita de volta: o valor atual volta a
+  ser o original, nada foi deslocado, e **nenhuma linha é escrita**. Com uma linha por edição,
+  um erro e o conserto deixariam dois registros de ruído — exatamente o "sujar o histórico"
+  que a perícia removida já ensinou a evitar.
+- **Não precisa de verbo de confirmação.** A captura acontece na primeira sobreposição e é
+  **gravada no fechamento do turno**, na mesma transação do `PersistTurnClose`. Enquanto o
+  turno está aberto o mestre edita e desedita à vontade; o que sobra é o que se grava.
+
+Identidade em coluna (qual action, qual campo, quando, qual mestre); o valor deslocado em
+`JSONB`, porque o formato varia de verdade — um inteiro, uma lista de perícias, um conjunto de
+alvos — e ninguém vai consultar dentro dele.
+
+**A tabela chama `overridden_action_values`.** `SystemData` foi reprovado por um motivo
+concreto: um nome genérico não consegue **recusar** nada, e vira depósito. Este recusa — não dá
+para pôr estado de parede em `overridden_action_values` sem que o nome fique visivelmente
+falso.
+
+Por que `overridden` e não `edited`: *edit* nomeia o ato do mestre, e não é o ato que está
+guardado ali — é **o que o ato atropelou**. E por que não `discarded`: descartado descreve o
+valor sozinho, enquanto sobreposto carrega a relação que interessa — **existe um valor que
+tomou o lugar dele**, e ele está na linha correspondente de `actions`. É essa relação que
+permite reconstruir o original lendo de trás para frente.
+
+> Efeito colateral bom: o nome mata um campo. O critério de pronto pedia `Source: master`, mas
+> se só o mestre sobrepõe, `Source` não tem o que discriminar. O viés que o *sistema* aplica já
+> é um `Modifier` no ledger e nunca foi sobreposição.
+
+### Os fluxos, e quais confirmações existem de verdade
+
+O fluxo principal não é um: são seis, e eles foram descobertos aos poucos porque *"enviar
+action"* não fecha sozinho — não dá para especificar o envio sem dizer o que acontece quando
+aquilo aterrissa, e o que aterrissa é uma colisão.
+
+| Fluxo | Estado |
+|---|---|
+| Enviar action | ✅ Fases 1–3 |
+| Abrir action | ✅ Fases 2–3 |
+| Enviar reaction | ✅ Fase 4 |
+| Abrir reaction | ✅ Fase 4 |
+| Fechar o turno | implícito hoje; explícito na Fase 5 |
+| Confirmar | ⬇ |
+
+**Confirmar não é um fluxo — é consequência de um ramo.** Se o mestre não editou nada, não há
+o que confirmar, e um verbo de confirmação seria cerimônia vazia em todo turno normal.
+
+**Decisão: não existe verbo de confirmação para edição.** O mestre edita, a resolução recalcula
+na hora (`Derive`, sem re-sortear), ele edita de novo se quiser, e **passar o bastão é a
+confirmação** — abrir a próxima action, abrir a próxima reaction, fechar o turno. Não há como
+seguir em frente e continuar deliberando ao mesmo tempo. Isso só funciona porque a action
+editada **é** a action: não existe versão pendente esperando aprovação.
+
+O que um verbo de confirmação daria de real seria **cancelar**. E isso a captura-do-original dá
+sem verbo nenhum: editar de volta ao valor original apaga a captura, e nada é gravado. Cancelar
+vira "editar de volta", que é a mesma operação que o mestre já tem na mão.
+
+⚠️ **Não confundir com a outra confirmação.** `close_turn` recusando quando há reactions
+anexadas e não abertas é coisa diferente: ela não tem nada a ver com edição, e sim com alguém
+perder o momento de narrar. Essa existe mesmo quando o mestre não editou nada.
+
 ## Visibilidade
 
 - Mecânica da action (alvos, arma, perícia) é **pública** ao abrir; o **cálculo é só do
@@ -765,6 +923,32 @@ se um dia o servidor precisar forçar, ele força chamando o mesmo encerramento.
 - Exceção do percept: no **início de batalha**, só vê os alvos quem percebeu (Percepção vs.
   Furtividade). Quem não viu não recebe os updates daquela action. Bloqueado — os
   subatributos mentais ainda não existem.
+
+### A política: público por omissão, deny-list explícita, mesa inteira
+
+As duas metades vêm de regras que já existiam: **o dano é público, o HP não**, e *"o
+adversário precisa deduzir dos números"*. Deduzir exige ver os números — então a omissão é
+mostrar, e o que se esconde é lista fechada.
+
+**Três classes de destinatário, não quatro:** mestre (vê tudo), **dono** da action ou reaction
+(vê tudo o que é dele), e todo o resto (vê tudo menos a deny-list). **O alvo não é classe
+privilegiada** — uma finta contra você não te conta que era finta.
+
+| Oculto de terceiros | Por quê |
+|---|---|
+| HP | o dano é público, o HP não |
+| `Feint` | uma finta revelada não é finta |
+| `Trigger` | idem, até disparar |
+| a entrada de `Evasion` na esquiva fechada, e a reserva que ela gera | o adversário deduz |
+| **o próprio `ReactionKind`, nas variantes fechadas** | ⬇ |
+
+⚠️ **O rótulo é o vazamento.** Se `closedDodge` chega público, ninguém precisa deduzir nada: o
+rótulo já contou que havia Evasão embutida. Uma esquiva fechada chega aos terceiros
+**indistinguível de uma esquiva**; um escape fechado, de um escape.
+
+A dedução continua possível, que é o ponto: `bars_updated` é público, e o escape fechado cobra
+**uma** barra enquanto o padrão cobra duas. Quem olha a barra percebe. **Deduzir da barra é
+legítimo; ser informado não é** — a política inteira cabe nessa frase.
 
 ## Configuração de partida
 

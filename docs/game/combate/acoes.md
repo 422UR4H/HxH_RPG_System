@@ -59,6 +59,45 @@ O sistema usa uma fila de prioridade ordenada por velocidade para resolver as a�
 Detalhes da economia de turno em [Barra de Ação](barra-de-acao.md); catálogo completo de
 respostas em [Reações](reacoes.md).
 
+## A corrente de testes
+
+Uma ação pode juntar várias perícias. *"Dou um mortal por cima dele e corto com a espada
+enquanto caio"* são duas perícias além do ataque: Acrobacia e o golpe. **Cada perícia é um
+teste**, e eles acontecem em corrente, um alimentando o próximo.
+
+### De onde vem a dificuldade
+
+| Tipo de teste | Quem define a CD |
+|---|---|
+| Direto contra outro personagem — acerto × esquiva, dano × defesa | **o adversário**: a CD é o resultado dele, e a conta é subtração direta |
+| Tudo o mais — se você consegue mesmo dar o mortal que descreveu | **o mestre**, na hora, a olho |
+
+Isso é de propósito. O mestre é quem está lendo a cena; ele decide o que aquele mortal exige
+naquele chão, naquele momento, com aquele inimigo em cima.
+
+### O resultado atravessa
+
+**O que sobra de um teste entra no próximo.** Passou com folga, a folga ajuda o golpe
+seguinte. Ficou negativo, o negativo pode ser descontado do próximo. Sua ação não é uma lista
+de testes independentes — é uma sequência em que você vai ganhando ou perdendo terreno.
+
+### Quando a corrente morre
+
+**Errar por 10 ou mais faz você falhar na própria ação**, e os testes seguintes não acontecem.
+Se o mortal deu muito errado, não há golpe de espada para testar — você está no chão.
+
+> É o mesmo degrau de 10 que aparece no repelir e no resto do sistema. Não é coincidência: é
+> a régua com que este sistema mede "errou" contra "errou feio".
+
+**E o mestre pode mexer nisso.** Ele pode mudar a margem que mata a corrente, ou simplesmente
+deixar a corrente seguir mesmo depois do erro grande, se a cena pedir.
+
+### O que acontece com quem falha
+
+Ainda não está fechado. As possibilidades desenhadas são ficar de guarda aberta, cair no chão,
+receber dano igual à diferença — e **quem decide é o mestre**. O que o sistema faz é propor um
+padrão razoável para ele aceitar ou substituir.
+
 ## Ataque
 
 Um ataque contém:

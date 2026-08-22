@@ -665,6 +665,165 @@ inversa produz resultado diferente de forma verificável** — com as rolagens i
 > "quando as barras acabam" (`docs/dev/match/combat-engine.md` é a fonte para o predicado
 > exato). `Abrir reaction` foi para a Fase 4.
 
+#### As cinco decisões que faltavam
+
+**1. NPC não bloqueia esta fase.** Os dois critérios de pronto são verificáveis com dois
+clients WS de jogadores. Rostering vira fatia própria **antes da Fase 6** — quem não consegue
+desenhar uma mesa sem NPC é o front. §7 estava desatualizado e foi corrigido.
+
+**2. `SystemData` audita uma superfície que esta fase tem que construir.**
+
+Não existe operação de edição do mestre no sistema: nenhuma mensagem WS seta `RollCondition`,
+e `buildMasterAction` é stub. O critério de pronto pedia auditoria de uma edição que ninguém
+consegue fazer.
+
+**Decisão: a fase constrói a edição da action pelo mestre**, com **recálculo sem re-sorteio**.
+É o `Derive` da Fase 1 finalmente ganhando o chamador para o qual foi desenhado:
+`RollAttempts` guarda os dois conjuntos justamente para que uma Vantagem concedida *depois* de
+os dados caírem mude **qual conjunto é lido**, nunca o que foi rolado.
+
+**Fora:** o override do desfecho da cadeia. É regra de jogo ainda não escrita, e
+`combat-engine.md` marca o lugar sem descrevê-lo.
+
+**São DUAS superfícies de edição, não uma.** Uma versão anterior desta seção só enxergava a
+primeira, e por isso subdimensionou a fase:
+
+| Superfície | Onde mora | O que muda |
+|---|---|---|
+| `RollCondition` | dentro de um `RollCheck` | **como um teste é lido** — viés, ajuste plano, motivo |
+| `MasterAction` | no `Turn` | **quais testes existem** — perícias, alvos, componentes |
+
+`MasterAction` já existe com os campos certos — `Skills`, `TargetID`, `ActionSpeed`, `Move`,
+`Attack`, `Interact` — e o turno já a guarda via `Turn.AddMasterAction`. Ela é a **sobreposição
+do mestre** sobre a action do jogador. `buildMasterAction` (`action_mapper.go`) é stub, e é
+ele que esta fase preenche.
+
+**Adicionar perícia é adicionar teste.** `Skill` carrega `Difficulty *int` — CD própria. O
+mestre mexendo na lista muda de quantos testes o personagem depende para ter sucesso.
+
+Quatro regras caem disso, e um implementador erra as quatro se não estiverem escritas:
+
+⚠️ **Adicionar perícia rola dado novo, e isso NÃO viola "o mestre nunca re-rola o dado de um
+jogador".** Não é re-rolagem: é a primeira rolagem de um teste que não existia.
+
+⚠️ **Remover perícia não descarta os dados dela.** Se descartasse, o mestre re-rolaria de
+graça — tira e põe de volta. Os dados da perícia removida ficam guardados; readicioná-la lê os
+dados que ela já tinha.
+
+⚠️ **A edição muda o desfecho, nunca a economia.** As barras que a action cobrou, a velocidade
+registrada em `Speeds` e a ordem já jogada ficam como estão — inclusive quando a edição mudaria
+o que `Bars()` responde hoje (adicionar perícia a um movimento puro o faria passar a cobrar a
+barra de ação, porque `chargesActionBar()` lê `len(a.Skills) > 0`). Motivo: a economia é
+artefato **público e sequencial** — `bars_updated` já foi ao ar e os turnos já aconteceram.
+Refazer o preço reordenaria o que já foi jogado, e o sistema não volta atrás.
+> O dia em que "Ação Desfeita (ctrl+z)" — que já é categoria de evento em `acoes.md` — virar
+> mecânica, é aqui que ela pluga.
+
+⚠️ **`MasterAction` não é persistida.** `PersistTurnClose` grava a action e as reações;
+`t.GetMasterActions()` fica de fora.
+
+**A tabela chama `overridden_action_values`** e guarda **o valor que a edição atropelou**, não
+a edição — a action já carrega o valor novo, e guardar os dois é duplicação que diverge. Uma
+linha por valor sobreposto; identidade em coluna, valor em `JSONB`. Entram tanto valores
+enviados por jogador quanto valores calculados pelo sistema, **inclusive os dados de uma
+perícia que o mestre removeu** — guardados ali, nunca exibidos no histórico da action.
+
+**E não existe verbo de confirmação para edição.** O mestre edita, `Derive` recalcula sem
+re-sortear, e **passar o bastão é a confirmação**. A confirmação de `close_turn` com reactions
+não abertas é outra coisa — é sobre perder o momento de narrar, e vale mesmo sem edição
+nenhuma. Ver `combat-engine.md` § *Os fluxos*.
+
+⛔ **E há um buraco embaixo de tudo isso: ninguém lê o resultado das perícias compostas.**
+
+`match_session.go` rola cada `Skill` da action. **Nada consome esses resultados.**
+`turn_resolver.go` não os agrega, e a única leitura de `Skills` em toda a colisão é a `Evasion`
+da esquiva fechada, buscada por nome. Não existe, em código, regra de como N testes viram
+sucesso ou fracasso da action.
+
+Isso deixaria a Fase 5 numa posição ruim: o mestre adiciona e remove perícias, e **a edição não
+muda nada**. O critério *"uma edição do mestre aparece em `SystemData`"* seria alcançável com a
+edição mecanicamente inerte — exatamente o tipo de critério oco que este spec já corrigiu duas
+vezes.
+
+**Bloqueado em decisão de jogo:** como os N testes de uma action composta se combinam. A regra
+precisa vir antes do plano; sem ela, a superfície de edição existe e não significa nada.
+
+
+**O predicado da auditoria:** entra no `SystemData` toda operação do mestre que **muda um
+número já mostrado**. Abrir turno, puxar action, trocar regime e revelar porta não entram —
+não mexem em número que alguém já viu. O critério é o predicado, não a lista, porque a lista
+cresce.
+
+**3. Persistência: dois terços já foram; o terço que falta tem forma.**
+
+O caminho de escrita foi consertado (PR #69, merged): FK de `actor_uuid` para
+`character_sheets`, reações gravadas junto com a action, colunas `reaction_kind` e `repel`.
+**Puxe a main antes de planejar.**
+
+O que sobra é o que ficou de fora de propósito: **os números derivados**. Os dados em si já
+estão persistidos — `RollCheck` carrega `Attempts` e `Result` e vai inteiro para as colunas
+JSONB. O que não existe é a **colisão**: margem, dano, degrau da escada, estado da cadeia.
+
+**Decisão: `turns.resolution JSONB`**, escrita no fechamento, com a `service.TurnResolution`
+**liquidada** — a que teve o dano aplicado, não um dry-run. Três razões: é o retrato de um
+cálculo, não uma entidade consultável (ninguém vai perguntar *"todos os turnos com dano > 10"*
+no MVP); é uma escrita a mais na transação que já existe; e `room.go` já tem
+`result.ClosedResolution` na mão, no mesmo ponto em que chama `PersistTurnClose`. A assinatura
+ganha o parâmetro.
+
+⚠️ A resolução é recalculada a cada edição do mestre. **A que se persiste é a do fechamento.**
+
+**4. A matriz de visibilidade: público por omissão, deny-list explícita, mesa inteira.**
+
+As duas metades da política vêm de frases que já estavam escritas: *"dano é público, HP não"*
+e *"o adversário precisa deduzir dos números"*. Deduzir exige ver os números.
+
+**Três classes de destinatário, não quatro:**
+
+| Classe | Vê |
+|---|---|
+| **Mestre** | tudo |
+| **Dono** da action/reaction | tudo o que é dele |
+| **Todo o resto** | tudo menos a deny-list |
+
+O alvo **não** é classe privilegiada. Uma finta contra você não te conta que era finta — se o
+alvo enxergasse os campos ocultos do atacante, a finta deixaria de existir.
+
+**A deny-list:**
+
+| Oculto | Por quê |
+|---|---|
+| HP | §4.7 — o dano é público, o HP não |
+| `Feint` | uma finta revelada não é finta |
+| `Trigger` | idem, até disparar |
+| a entrada de `Evasion` na esquiva fechada, e a reserva que ela gera | o exemplo canônico do §4.5 |
+| **o próprio `ReactionKind`, nas variantes fechadas** | ⬇ |
+
+⚠️ **O rótulo é o vazamento.** Se `closedDodge` chega público, ninguém precisa deduzir coisa
+alguma: o rótulo já contou que havia Evasão embutida. Uma esquiva fechada tem que chegar aos
+terceiros **indistinguível de uma esquiva**, e um escape fechado, de um escape.
+
+E a dedução continua possível, que é exatamente o ponto: `bars_updated` é público desde a Fase
+3, e o escape fechado cobra **uma** barra enquanto o padrão cobra duas. Quem estiver olhando a
+barra percebe. **Deduzir da barra é legítimo; ser informado não é** — a política inteira cabe
+nessa frase.
+
+**5. Encerramento explícito — os três detalhes.**
+
+- **A confirmação é do back, não do front.** `close_turn` **recusa** quando há reactions
+  anexadas e não abertas, devolvendo a lista; aceita com `confirm: true` no payload. Assim o
+  critério é verificável sem front nenhum, que é a regra desta fase.
+- **`MatchSession.CloseTurn()` não serve como está.** Chama `roundOrch.CloseTurnErr` direto e
+  pula `closeOpenTurn`: não resolve, não aplica dano, não mexe nos ledgers. A rota explícita
+  **tem** que passar por `closeOpenTurn`, ou o dano do turno evapora.
+- **Encerrar turno não fecha round.** A exaustão continua detectada só onde há escalonamento
+  (`OpenNextAction`). Custa um passo a mais ao mestre e mantém **um** ponto de detecção — dois
+  pontos é como duas versões da mesma regra nascem e divergem.
+
+**E o `pull_action` inalcançável é real, e é desta fase.** O mestre não tem como aprender o ID
+de uma action pendente, exatamente como não tinha o de uma reaction antes de
+`PendingReactions`. Mesmo buraco, mesma solução.
+
 **Pronto quando:**
 - **Dois clients WS** conectados como jogadores diferentes recebem, para o mesmo turno,
   payloads distintos — um com o campo oculto, outro sem. Verificável no backend, **sem
@@ -714,12 +873,18 @@ ponta a ponta por uma pessoa, e é o critério que fecha a iniciativa.
 `start_match.go` popula `match_participants` **apenas a partir de enrollments aceitas**. A
 Fase 1 torna a sessão *capaz* de segurar um NPC — mas **nada no sistema cria um**.
 
-- **Não bloqueia** as Fases 1 a 4: elas operam sobre personagens de jogador. A Fase 4
-  entregou o catálogo de reações inteiro sem tocar rostering — ver `combat-engine.md` § "O
-  que a Fase 4 fixou no motor".
-- **Bloqueia a Fase 5 em diante**, onde o mestre precisa enviar ações de NPCs.
+- **Não bloqueia** as Fases 1 a 5: todas operam sobre personagens de jogador. A Fase 4
+  entregou o catálogo de reações inteiro sem tocar rostering, e os dois critérios de pronto da
+  Fase 5 são verificáveis com dois clients WS de jogadores — ver `combat-engine.md` § "O que a
+  Fase 4 fixou no motor".
+- **Bloqueia a Fase 6**, o front: não dá para desenhar uma mesa sem NPC.
 
-Precisa virar fatia própria antes da Fase 5, e tem componente de produto: como o mestre
+> Uma versão anterior desta seção dizia que o rostering bloqueava "a Fase 5 em diante". Não
+> bloqueia: o que ele trava é o **mestre enviar ação de NPC**, que não é objetivo da Fase 5.
+> A FK de `actions.actor_uuid` já aponta para `character_sheets`, então o turno de um NPC é
+> persistível — o que falta é o caminho que cria um.
+
+Precisa virar fatia própria antes da Fase 6, e tem componente de produto: como o mestre
 adiciona um NPC à partida? O desenho fala em *"o mestre adiciona NPCs na primeira cena"* e
 *"mestre pode gerenciar adicionando e removendo personagens a qualquer momento"* — o que
 sugere um caminho de rostering sem enrollment, provavelmente com fichas de `MasterUUID`
