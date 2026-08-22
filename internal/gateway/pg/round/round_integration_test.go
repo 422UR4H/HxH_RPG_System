@@ -4,11 +4,13 @@ package round_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
@@ -430,18 +432,43 @@ func TestPersistTurnCloseWritesTheSettledResolution(t *testing.T) {
 	tn := turnentity.NewTurn(*act)
 	tn.Close(time.Now())
 
+	// hitOutcome/dodgeOutcome/defenseOutcome carry real, distinct non-zero values in every
+	// field — not just the flat damage numbers — because the round trip below has to prove
+	// the derived roll math (Bias/Modifier/Passive/DiceTotal) survives, not merely that the
+	// JSONB column is non-NULL.
+	hitOutcome := service.RollOutcome{
+		SkillName: "Strength", SkillValue: 5, Dice: []int{6, 4}, DiceTotal: 10,
+		Bias: 1, Modifier: 2, Total: 13,
+	}
+	dodgeOutcome := service.RollOutcome{
+		SkillName: "Legerity", SkillValue: 4, Dice: []int{3, 2}, DiceTotal: 5,
+		Bias: -1, Passive: true, Total: 4,
+	}
+	defenseOutcome := service.RollOutcome{
+		SkillName: "Fortitude", SkillValue: 2, DiceTotal: 0, Modifier: 1, Passive: true, Total: 3,
+	}
+	// The payout's scope is ScopeOnly, not ScopeAnyone: the earlier version of this test only
+	// ever drove ScopeAnyone through the real persistence path, leaving ScopeOnly/ScopeAllBut
+	// covered at the unit level only.
+	payoutScope := match.ScopeOnly(fx.attackerSheet)
+
 	res := &service.TurnResolution{
 		IsSettled:    true,
 		ActionResult: service.RollResult{SkillName: "Legerity", Total: 19, DiceRolled: []int{10, 9}},
 		CharacterResults: []service.CharacterResult{{
 			TargetID: fx.victimSheet, RawDamage: 11, DefenseApplied: 3, EffectiveDamage: 8,
 			ReactionKind: string(action.ReactRepel),
-			Ladder:       service.LadderOutcome{Rung: service.RungNearMiss, Margin: -4, Difference: 4},
+			Hit:          hitOutcome, Dodge: dodgeOutcome, Defense: defenseOutcome,
+			Ladder: service.LadderOutcome{Rung: service.RungNearMiss, Margin: -4, Difference: 4},
 			Payouts: []match.Modifier{{
 				Amount: -4, Applies: match.DimActionSpeed, Source: match.SourceSystem,
-				Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeEndOfRound,
+				Against: payoutScope, ExpiresAt: match.LifetimeEndOfRound,
 				Reason: "parry penalty",
 			}},
+		}},
+		WallResults: []service.WallResult{{
+			UpdatedWall:     mapentity.WallSegment{ID: "wall-north-1"},
+			EffectiveDamage: 7, ReboundDamage: 2, Kind: service.WallResultKindAttack,
 		}},
 	}
 
@@ -473,8 +500,32 @@ func TestPersistTurnCloseWritesTheSettledResolution(t *testing.T) {
 	if cr.Ladder.Rung != service.RungNearMiss || cr.Ladder.Difference != 4 {
 		t.Fatalf("the ladder did not survive: %+v", cr.Ladder)
 	}
-	if len(cr.Payouts) != 1 || cr.Payouts[0].Against.Kind() != match.ScopeAnyone().Kind() {
-		t.Fatalf("the payout's scope did not survive: %+v", cr.Payouts)
+	if len(cr.Payouts) != 1 {
+		t.Fatalf("expected 1 payout, got %+v", cr.Payouts)
+	}
+	// A non-anyone scope, through the real persistence path: Kind AND ID both have to
+	// survive, or a ScopeOnly modifier would read back applying to nobody or to everybody.
+	if cr.Payouts[0].Against.Kind() != payoutScope.Kind() || cr.Payouts[0].Against.ID() != fx.attackerSheet {
+		t.Fatalf("the payout's non-anyone scope did not survive: %+v", cr.Payouts[0].Against)
+	}
+	// RollOutcome carries a []int (Dice), so it is not comparable with == — reflect.DeepEqual
+	// is the straightforward way to assert every field round-tripped, dice slice included.
+	if !reflect.DeepEqual(cr.Hit, hitOutcome) {
+		t.Fatalf("the hit roll's derived math did not survive: got %+v, want %+v", cr.Hit, hitOutcome)
+	}
+	if !reflect.DeepEqual(cr.Dodge, dodgeOutcome) {
+		t.Fatalf("the dodge roll's derived math did not survive: got %+v, want %+v", cr.Dodge, dodgeOutcome)
+	}
+	if !reflect.DeepEqual(cr.Defense, defenseOutcome) {
+		t.Fatalf("the defense roll's derived math did not survive: got %+v, want %+v", cr.Defense, defenseOutcome)
+	}
+	if len(got.WallResults) != 1 {
+		t.Fatalf("expected 1 wall result, got %+v", got.WallResults)
+	}
+	wr := got.WallResults[0]
+	if wr.UpdatedWall.ID != "wall-north-1" || wr.EffectiveDamage != 7 || wr.ReboundDamage != 2 ||
+		wr.Kind != service.WallResultKindAttack {
+		t.Fatalf("the wall result did not survive: %+v", wr)
 	}
 }
 
