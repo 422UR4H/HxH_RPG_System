@@ -379,6 +379,7 @@ func TestCloseRound(t *testing.T) {
 // need to build a turn whose action targets a real FK-satisfying victim.
 type resolutionFixture struct {
 	matchUUID                  uuid.UUID
+	masterUUID                 uuid.UUID
 	scene                      *sceneentity.Scene
 	round                      *roundentity.Round
 	attackerSheet, victimSheet uuid.UUID
@@ -387,6 +388,10 @@ type resolutionFixture struct {
 func seedMatchAndSheets(t *testing.T, pool *pgxpool.Pool) resolutionFixture {
 	t.Helper()
 	masterUUID := pgtest.InsertTestUser(t, pool, "gm-resolution", "gm-resolution@test.com", "pass")
+	masterUUIDParsed, err := uuid.Parse(masterUUID)
+	if err != nil {
+		t.Fatalf("parse master uuid: %v", err)
+	}
 	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "CampResolution")
 	matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "MatchResolution")
 	matchUUIDParsed, err := uuid.Parse(matchUUID)
@@ -406,6 +411,7 @@ func seedMatchAndSheets(t *testing.T, pool *pgxpool.Pool) resolutionFixture {
 	}
 	return resolutionFixture{
 		matchUUID:     matchUUIDParsed,
+		masterUUID:    masterUUIDParsed,
 		scene:         sceneentity.NewScene(enum.Battle, "Arena"),
 		round:         roundentity.NewRound(enum.Free),
 		attackerSheet: attackerUUID,
@@ -557,5 +563,161 @@ func TestPersistTurnCloseAcceptsANilResolution(t *testing.T) {
 	}
 	if raw != nil {
 		t.Fatalf("expected SQL NULL for a nil resolution, got %d bytes", len(raw))
+	}
+}
+
+func TestPersistTurnCloseWritesOverriddenValues(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Overrides: []match.OverriddenValue{{
+			ActionID: act.GetID(), Field: "skills", Origin: match.OriginPlayer,
+			MasterUUID: fx.masterUUID, At: time.Now(),
+			Original: []action.Skill{{SkillName: "Acrobatics"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM overridden_action_values WHERE action_uuid = $1`,
+		act.GetID()).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("wrote %d rows, want 1 — one row per field", n)
+	}
+
+	// A nil Original must land as SQL NULL — "there was no value" — not the JSON string
+	// 'null', which would claim there was a value and it was null.
+	var isNull bool
+	if err := pool.QueryRow(ctx,
+		`SELECT original_value IS NULL FROM overridden_action_values
+		 WHERE action_uuid = $1 AND field = 'skills'`,
+		act.GetID()).Scan(&isNull); err != nil {
+		t.Fatalf("read original_value: %v", err)
+	}
+	if isNull {
+		t.Fatal("original_value is NULL, want the marshaled []action.Skill")
+	}
+}
+
+func TestPersistTurnCloseWritesNoRowForAnUneditedTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Overrides: nil,
+	})
+	if err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM overridden_action_values WHERE action_uuid = $1`,
+		act.GetID()).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("wrote %d rows, want 0 — a turn the master never touched leaves no trace", n)
+	}
+}
+
+func TestPersistTurnCloseWritesANullOriginalAsSQLNull(t *testing.T) {
+	// The commonest capture: a RollCondition the player never sent. Original is a bare nil
+	// (no type at all), and the honest row says NULL, not the JSON string 'null'.
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Overrides: []match.OverriddenValue{{
+			ActionID: act.GetID(), Field: "rollCondition", Origin: match.OriginSystem,
+			MasterUUID: fx.masterUUID, At: time.Now(), Original: nil,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var isNull bool
+	if err := pool.QueryRow(ctx,
+		`SELECT original_value IS NULL FROM overridden_action_values
+		 WHERE action_uuid = $1 AND field = 'rollCondition'`,
+		act.GetID()).Scan(&isNull); err != nil {
+		t.Fatalf("read original_value: %v", err)
+	}
+	if !isNull {
+		t.Fatal("original_value is not SQL NULL for a nil Original")
+	}
+}
+
+func TestPersistTurnCloseOverridesUniqueConstraintKeepsOneRowPerField(t *testing.T) {
+	// Two captures naming the same (action_uuid, field) — the unique constraint plus ON
+	// CONFLICT DO NOTHING must keep exactly one row, not error and not duplicate.
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Overrides: []match.OverriddenValue{
+			{
+				ActionID: act.GetID(), Field: "skills", Origin: match.OriginPlayer,
+				MasterUUID: fx.masterUUID, At: time.Now(),
+				Original: []action.Skill{{SkillName: "Acrobatics"}},
+			},
+			{
+				ActionID: act.GetID(), Field: "skills", Origin: match.OriginPlayer,
+				MasterUUID: fx.masterUUID, At: time.Now(),
+				Original: []action.Skill{{SkillName: "Persuasion"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM overridden_action_values WHERE action_uuid = $1 AND field = 'skills'`,
+		act.GetID()).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("wrote %d rows for the same (action_uuid, field), want 1", n)
 	}
 }

@@ -88,6 +88,25 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		}
 	}
 
+	// The overrides go in the SAME transaction as the actions they point at: the FK requires
+	// the action row to exist, and a capture that outlived its action would be unreadable.
+	for _, ov := range d.Overrides {
+		original, err := marshalNullableAny(ov.Original)
+		if err != nil {
+			return fmt.Errorf("PersistTurnClose marshal override %s: %w", ov.Field, err)
+		}
+		_, err = tx.Exec(ctx,
+			`INSERT INTO overridden_action_values
+			 (action_uuid, field, origin, master_uuid, overridden_at, original_value)
+			 VALUES ($1,$2,$3,$4,$5,$6)
+			 ON CONFLICT (action_uuid, field) DO NOTHING`,
+			ov.ActionID, ov.Field, string(ov.Origin), ov.MasterUUID, ov.At, original,
+		)
+		if err != nil {
+			return fmt.Errorf("PersistTurnClose insert override: %w", err)
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("PersistTurnClose commit: %w", err)
 	}
@@ -222,6 +241,16 @@ func marshalNullablePtr[T any](v *T) ([]byte, error) {
 // marshalNullableSlice returns nil (SQL NULL) for a nil or empty slice, else JSON bytes.
 func marshalNullableSlice[T any](v []T) ([]byte, error) {
 	if len(v) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(v)
+}
+
+// marshalNullableAny returns nil (SQL NULL) for a nil value. NULL says "there was no value"
+// — which is the honest answer for a RollCondition the player never sent — where 'null'::jsonb
+// would claim there was one and it was null.
+func marshalNullableAny(v any) ([]byte, error) {
+	if v == nil {
 		return nil, nil
 	}
 	return json.Marshal(v)

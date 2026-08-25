@@ -1107,30 +1107,46 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 // turn by different paths, but from here on they all needed the same read-persist-flip
 // sequence, and it had been copy-pasted into three ~15-line blocks.
 //
-// It takes r.mu itself, exactly as the three call sites used to: an RLock to snapshot the
-// scene/round/matchUUID session needs, then — only on success — a Lock to flip
-// MarkRoundPersisted. Callers must NOT hold r.mu when calling this: sync.RWMutex is not
-// reentrant, and a nested acquire would deadlock the room permanently. Every call site below
-// already releases r.mu before reaching here.
+// It takes r.mu itself, exactly as the three call sites used to: a Lock to snapshot the
+// scene/round/matchUUID session needs and drain the turn's captured overrides — TakeOverridesFor
+// mutates the session, so this is a Lock now, not the RLock it started as — then, only on
+// success, a second Lock to flip MarkRoundPersisted. Callers must NOT hold r.mu when calling
+// this: sync.RWMutex is not reentrant, and a nested acquire would deadlock the room
+// permanently. Every call site below already releases r.mu before reaching here.
 //
 // A PersistTurnClose failure is logged and swallowed, not returned: the turn already closed
 // in memory and the match goes on regardless. But say WHAT was lost — this ran silently for
 // two phases while an FK mismatch dropped every single turn on the floor.
 func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution) {
 	act := t.GetAction()
-	r.mu.RLock()
+	// Write lock, not read: TakeOverridesFor DRAINS two maps on the session, it does not just
+	// read them, so it needs the same lock a mutation would. Reading Scene/Round/MatchUUID
+	// here too costs nothing extra — they were already read under a lock, just a lesser one —
+	// and doing the drain in the same critical section avoids a second acquire.
+	//
+	// The lock is released before PersistTurnClose: that call is a DB round trip, and every
+	// caller of persistClosedTurn has already released r.mu before calling in, so there is no
+	// nested acquire on this path either way — but holding the mutex across network I/O would
+	// still block the whole room's message loop for no reason.
+	r.mu.Lock()
 	activeScene := session.GetActiveScene()
 	activeRound := session.GetActiveRound()
 	matchUUID := session.GetMatchUUID()
-	r.mu.RUnlock()
+	overrides := session.TakeOverridesFor(t)
+	r.mu.Unlock()
 
 	err := r.roundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
-		MatchUUID: matchUUID, Resolution: res,
+		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
 			t.GetID(), matchUUID, err)
+		// The overrides were already drained above and are lost with the turn. That is
+		// correct, not a leak to plug: overridden_action_values.action_uuid references
+		// actions(uuid), and if PersistTurnClose failed the action row was never written —
+		// the override rows could not have been inserted regardless. No retry queue: this
+		// failure mode is already logged-and-swallowed policy for the whole turn.
 		return
 	}
 	r.mu.Lock()

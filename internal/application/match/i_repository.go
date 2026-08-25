@@ -29,8 +29,11 @@ type TurnCloseData struct {
 	// resolved nothing (e.g. no character or wall target) still closes, and NULL says "no
 	// collision" rather than a zero-value record's "a collision that produced zero".
 	Resolution *service.TurnResolution
-	// TODO(Task 9): Overrides []match.OverriddenValue — the master's manual edits to the
-	// resolution, once match.OverriddenValue exists.
+	// Overrides is what the master's edits DISPLACED while the turn was open — never the
+	// edit itself, which the Action/Resolution above already carry. Drained from the session
+	// (TakeOverridesFor), not peeked: a closed turn cannot be edited again, so nothing is
+	// left behind to leak into a later turn's close.
+	Overrides []match.OverriddenValue
 }
 
 type IRepository interface {
