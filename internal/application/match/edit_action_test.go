@@ -263,4 +263,149 @@ func TestEditActionRollCondition(t *testing.T) {
 			t.Fatalf("err = %v, want ErrNotMatchMaster", err)
 		}
 	})
+
+	t.Run("a field the action does not carry is an error, not a silent no-op", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		// The fixture's open action is a plain attack: it has no Dodge.
+		ma.Conditions = []action.ConditionEdit{{
+			Field: action.FieldDodge, Condition: action.RollCondition{Modifier: 1},
+		}}
+		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		if !errors.Is(err, matchsession.ErrConditionTargetMissing) {
+			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
+		}
+	})
+
+	t.Run("field and skillName together is ambiguous, not a preference", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.Conditions = []action.ConditionEdit{{
+			Field: action.FieldHit, SkillName: "whatever",
+			Condition: action.RollCondition{Modifier: 1},
+		}}
+		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		if !errors.Is(err, matchsession.ErrAmbiguousConditionEdit) {
+			t.Fatalf("err = %v, want ErrAmbiguousConditionEdit", err)
+		}
+	})
+}
+
+// TestApplyMasterAction_PreservesReactionSwapDisadvantage guards the OTHER half of
+// ApplyMasterAction's re-derive: deriveSpeeds runs again on every condition edit (so a
+// speed/moveSpeed edit reads through), but a reaction that displaced a queued action derived
+// at systemBias -1 (see MatchSession.AttachReaction), and that -1 is transient — a parameter
+// to Derive, never stored anywhere on its own. A hardcoded 0 on the re-derive would silently
+// flatten the reaction's swap-disadvantage to neutral the instant the master edited ANY OTHER
+// condition on it, and the corrupted Speed.Result is what persist_turn_close.go later writes
+// straight into the speed JSONB column.
+//
+// This edits FieldRepel — unrelated to speed — and asserts the reaction's Speed.Result is
+// unchanged. It fails against a version of ApplyMasterAction that re-derives at a literal 0.
+func TestApplyMasterAction_PreservesReactionSwapDisadvantage(t *testing.T) {
+	matchUUID := uuid.New()
+	masterUUID := uuid.New()
+	attackerPlayer, victimPlayer := uuid.New(), uuid.New()
+	attackerID, victimID := uuid.New(), uuid.New()
+
+	attacker := &matchDomain.Participant{
+		UUID: uuid.New(), MatchUUID: matchUUID,
+		Sheet: csEntity.Summary{UUID: attackerID, PlayerUUID: &attackerPlayer},
+	}
+	victim := &matchDomain.Participant{
+		UUID: uuid.New(), MatchUUID: matchUUID,
+		Sheet: csEntity.Summary{UUID: victimID, PlayerUUID: &victimPlayer},
+	}
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		attackerID: newEditSheet(t),
+		victimID:   newEditSheet(t),
+	}
+	session := matchsession.NewMatchSession(matchUUID, sheets, []*matchDomain.Participant{attacker, victim})
+	// Race mode: only there does actionSpeed roll and read the bias at all — Free takes the
+	// passive value, which never consults bias (see RollCalculator.Derive's Passive branch).
+	session.GetActiveRound().SetMode(enum.Race)
+
+	src := &scriptedFaces{faces: []int{
+		1, 1, 1, 1, // attacker's open action: Speed Primary + Secondary (value irrelevant)
+		1, 1, 1, 1, // victim's own pending action: Speed Primary + Secondary
+		9, 8, 2, 3, // reaction: Speed Primary (sum 17, the BETTER set) + Secondary (sum 5, worse)
+		1, 1, 1, 1, // reaction: Repel Primary + Secondary
+	}}
+	session.SetRollSource(src)
+
+	// The open action: the attacker "acts" against the victim with no Attack at all —
+	// AttachReaction only requires the reactor to be a TARGET of the open action, never that
+	// it carries a Hit.
+	openAction := action.NewAction(
+		attackerID, []uuid.UUID{victimID}, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	if err := session.EnqueueAction(attackerPlayer, openAction); err != nil {
+		t.Fatalf("EnqueueAction(attacker): %v", err)
+	}
+	tr, err := session.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	openActionID := tr.Opened.ActionRef().GetID()
+
+	// The victim's own queued action — the one the reaction below displaces.
+	pending := action.NewAction(
+		victimID, nil, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	if err := session.EnqueueAction(victimPlayer, pending); err != nil {
+		t.Fatalf("EnqueueAction(victim pending): %v", err)
+	}
+
+	reaction := action.NewAction(
+		victimID, []uuid.UUID{attackerID}, openActionID, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	reaction.Repel = &action.Repel{}
+	reaction.ReactionKind = action.ReactRepel
+
+	if _, err := session.AttachReaction(victimPlayer, reaction); err != nil {
+		t.Fatalf("AttachReaction: %v", err)
+	}
+	if reaction.SystemBias != -1 {
+		t.Fatalf("fixture is wrong: the reaction should have displaced the victim's pending "+
+			"action and derived at systemBias -1, got %d", reaction.SystemBias)
+	}
+	speedBefore := reaction.Speed.Result
+
+	// The master edits something else entirely on this SAME reaction — the repel condition,
+	// not speed — and must not move the speed the reaction was actually charged under.
+	uc := match.NewEditActionUC()
+	ma := action.NewMasterAction()
+	ma.ActionID = reaction.GetID()
+	ma.Conditions = []action.ConditionEdit{{
+		Field: action.FieldRepel, Condition: action.RollCondition{Modifier: 7},
+	}}
+	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID, ma); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var after *action.Action
+	for _, r := range session.GetActiveRound().CurrentTurn().GetReactions() {
+		if r.GetID() == reaction.GetID() {
+			rc := r
+			after = &rc
+			break
+		}
+	}
+	if after == nil {
+		t.Fatal("the reaction is no longer on the open turn after the edit")
+	}
+	if after.Speed.Result != speedBefore {
+		t.Fatalf("an unrelated edit moved the reaction's speed: %d → %d — the swap-disadvantage "+
+			"was silently erased", speedBefore, after.Speed.Result)
+	}
 }

@@ -238,10 +238,12 @@ func (s *MatchSession) ApplyMasterAction(
 		cond := edit.Condition
 		rc.Context.Condition = &cond
 	}
-	// Re-derive the speeds so a condition on speed or moveSpeed reads through. systemBias 0:
-	// the disadvantage of an action→reaction conversion was applied once, at attach, and is
-	// not re-imposed by an unrelated edit.
-	s.deriveSpeeds(target, 0)
+	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
+	// never a literal 0: the disadvantage of an action→reaction conversion was decided once, at
+	// attach, and deriveSpeeds stored it on the action for exactly this moment — passing 0 here
+	// would silently erase a reaction's swap-disadvantage the instant the master edited any
+	// OTHER condition on it (see Action.SystemBias).
+	s.deriveSpeeds(target, target.SystemBias)
 	ma.SetHappenedAt(time.Now())
 	t.AddMasterAction(*ma)
 	return s.ResolveTurn(t), nil
@@ -810,13 +812,17 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 // deriveSpeeds turns the dice that just fell into the numbers the round is ordered by:
 // Action.Speed.Result for the action bar, Move.FinalSpeed for the move bar.
 //
-// It runs once, when the action arrives, and it is the only place a speed is produced. The
-// master never re-rolls a player's die, so nothing downstream ever recomputes it.
+// It is the only place a speed is produced — the master never re-rolls a player's die, so
+// nothing downstream ever recomputes the DICE — but it is not only called once: ApplyMasterAction
+// calls it again on every condition edit, so a speed/moveSpeed edit reads through. See
+// Action.SystemBias for how a re-derive stays honest about the bias the action actually
+// arrived under.
 //
-// systemBias is the engine-imposed advantage/disadvantage for this one derivation — a reaction
-// that swapped out a queued action passes -1, everyone else passes 0. It is a MODE of reading
-// the dice that already fell, never an Amount: RollAttempts holds both attempts, and the bias
-// only picks which one pickAttempt reads.
+// systemBias is the engine-imposed advantage/disadvantage for THIS derivation — a reaction
+// that swapped out a queued action passes -1, everyone else passes 0, and ApplyMasterAction
+// passes back whatever this action was last derived under. It is a MODE of reading the dice
+// that already fell, never an Amount: RollAttempts holds both attempts, and the bias only
+// picks which one pickAttempt reads.
 func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
@@ -825,6 +831,10 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if sheet == nil {
 		return
 	}
+	// Stored so a LATER re-derive (a master edit on an unrelated condition) can apply the same
+	// engine bias this action actually arrived under, instead of ApplyMasterAction having to
+	// pass a literal 0 that would silently flatten a reaction's swap-disadvantage to neutral.
+	a.SystemBias = systemBias
 	calc := service.RollCalculator{}
 	var ledger *match.ModifierLedger
 	if status, ok := s.statuses[a.GetActorID()]; ok {

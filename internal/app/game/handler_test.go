@@ -17,6 +17,7 @@ import (
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -159,7 +160,9 @@ type mockEditActionUCHandler struct{}
 func (m *mockEditActionUCHandler) Execute(
 	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
 ) (*appmatch.EditActionResult, error) {
-	return nil, nil
+	// Non-nil: a test that actually exercises edit_action through a room built with this mock
+	// must fail on an assertion, not panic on a nil-pointer dereference of the result.
+	return &appmatch.EditActionResult{Resolution: &service.TurnResolution{}, TurnID: uuid.New()}, nil
 }
 
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {

@@ -435,3 +435,30 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildEditAction_RejectsAnUnknownField(t *testing.T) {
+	p := EditActionPayload{
+		Conditions: []ConditionEditPayload{{Field: "luck", Modifier: 3}},
+	}
+	if _, err := buildEditAction(p); err == nil {
+		t.Error("expected an unrecognized condition field to be rejected at the boundary")
+	}
+}
+
+func TestBuildEditAction_MapsKnownField(t *testing.T) {
+	p := EditActionPayload{
+		Conditions: []ConditionEditPayload{{Field: "hit", Bias: 1, Modifier: 3, Description: "flanked"}},
+	}
+	ma, err := buildEditAction(p)
+	if err != nil {
+		t.Fatalf("buildEditAction: %v", err)
+	}
+	if len(ma.Conditions) != 1 {
+		t.Fatalf("Conditions = %+v, want exactly one entry", ma.Conditions)
+	}
+	got := ma.Conditions[0]
+	if got.Field != action.FieldHit || got.Condition.Bias != 1 || got.Condition.Modifier != 3 ||
+		got.Condition.Description != "flanked" {
+		t.Errorf("Conditions[0] = %+v, want Field=hit Bias=1 Modifier=3 Description=flanked", got)
+	}
+}

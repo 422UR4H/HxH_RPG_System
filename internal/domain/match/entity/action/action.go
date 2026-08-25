@@ -30,6 +30,18 @@ type Action struct {
 	// buys nothing. The discriminator for "this is a reaction" is still ReactToID.
 	ReactionKind ReactionKind
 
+	// SystemBias is the engine-imposed advantage/disadvantage this action was last derived
+	// under — 0 for a plain action, -1 for a reaction that displaced a queued action (see
+	// MatchSession.AttachReaction's "swapping what you were going to do costs Disadvantage").
+	// It is NOT the master's RollCondition and NOT the character's ModifierLedger; it is a
+	// third, engine-owned origin, and unlike those two it is never set by an edit — only ever
+	// by MatchSession.deriveSpeeds, which stores here exactly the value it was just asked to
+	// apply. It has to be stored, not just passed through: deriveSpeeds runs again every time
+	// the master edits an unrelated condition on this same action (ApplyMasterAction
+	// re-derives to let a speed/moveSpeed edit read through), and a literal 0 there would
+	// silently erase whatever disadvantage this action was actually charged under.
+	SystemBias int
+
 	openedAt    *time.Time //nolint:unused // WIP: match system under development
 	confirmedAt *time.Time //nolint:unused // WIP: match system under development
 }
