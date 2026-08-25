@@ -313,6 +313,51 @@ func newOpenMoveFixture(t *testing.T) *editFixture {
 	return f
 }
 
+// editHitModifier lands a flat modifier on FieldHit through the master's edit surface. The
+// override-capture tests only care that a hit.condition row appears (or does not), never what
+// the number is.
+func (f *editFixture) editHitModifier(t *testing.T, modifier int) {
+	t.Helper()
+	uc := match.NewEditActionUC()
+	ma := action.NewMasterAction()
+	ma.ActionID = f.actionID
+	ma.Conditions = []action.ConditionEdit{{
+		Field: action.FieldHit, Condition: action.RollCondition{Modifier: modifier},
+	}}
+	if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+		t.Fatalf("editHitModifier: %v", err)
+	}
+}
+
+// editSkills replaces the open action's skill list with entries named by names, the same shape
+// a master's Skills edit arrives in over the wire — a name, no dice, no RollCheck.
+func (f *editFixture) editSkills(t *testing.T, names []string) {
+	t.Helper()
+	skills := make([]action.Skill, 0, len(names))
+	for _, n := range names {
+		skills = append(skills, action.Skill{SkillName: n})
+	}
+	uc := match.NewEditActionUC()
+	ma := action.NewMasterAction()
+	ma.ActionID = f.actionID
+	ma.Skills = skills
+	if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+		t.Fatalf("editSkills: %v", err)
+	}
+}
+
+// skillNames reads the open action's current skill names, in order — what a revert test needs
+// to put the list back exactly as it was.
+func (f *editFixture) skillNames(t *testing.T) []string {
+	t.Helper()
+	a := f.openTurn().ActionRef()
+	names := make([]string, len(a.Skills))
+	for i, sk := range a.Skills {
+		names[i] = sk.SkillName
+	}
+	return names
+}
+
 // skillOn locates one entry of the open turn's own action's Skills by name, or fails the
 // test — how the skills tests read the exact dice a skill carries after an edit.
 func (f *editFixture) skillOn(t *testing.T, name string) action.Skill {
@@ -660,6 +705,66 @@ func TestEditActionTargets(t *testing.T) {
 		if len(res.Resolution.CharacterResults) != 1 ||
 			res.Resolution.CharacterResults[0].TargetID != other {
 			t.Fatalf("the resolution still names the old target: %+v", res.Resolution.CharacterResults)
+		}
+	})
+}
+
+// TestOverrideCapture proves the audit under the master's two edit surfaces: it stores what
+// the edit DISPLACED, one row per FIELD holding the ORIGINAL, and reverting an edit erases the
+// capture rather than adding a second one. See combat-engine.md and MatchSession.captureOverride.
+func TestOverrideCapture(t *testing.T) {
+	t.Run("the first edit captures the ORIGINAL, not the edit", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 3)
+
+		got := f.session.TakeOverridesFor(f.openTurn())
+		if len(got) != 1 {
+			t.Fatalf("captured %d values, want 1", len(got))
+		}
+		if got[0].Field != "hit.condition" {
+			t.Fatalf("Field = %q", got[0].Field)
+		}
+		if got[0].Original != nil {
+			t.Fatalf("Original = %v, want nil — the player sent no condition", got[0].Original)
+		}
+	})
+
+	t.Run("a second edit of the same field does not add a row", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 3)
+		f.editHitModifier(t, 5)
+
+		if got := len(f.session.TakeOverridesFor(f.openTurn())); got != 1 {
+			t.Fatalf("captured %d values, want 1 — one row per FIELD, not per edit", got)
+		}
+	})
+
+	t.Run("editing back to the original erases the capture", func(t *testing.T) {
+		f := newOpenAttackFixtureWithSkill(t, enum.Acrobatics.String())
+		before := f.skillNames(t)
+
+		f.editSkills(t, []string{}) // strip
+		if len(f.session.PeekOverridesFor(f.openTurn())) != 1 {
+			t.Fatal("the strip did not capture the original skill list")
+		}
+		f.editSkills(t, before) // put it back exactly
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values after a revert, want 0", got)
+		}
+	})
+
+	t.Run("the removed skill's dice ride along in the captured list", func(t *testing.T) {
+		f := newOpenAttackFixtureWithSkill(t, enum.Acrobatics.String())
+		f.editSkills(t, []string{})
+
+		got := f.session.TakeOverridesFor(f.openTurn())
+		skills, ok := got[0].Original.([]action.Skill)
+		if !ok || len(skills) != 1 {
+			t.Fatalf("Original = %#v, want the original []action.Skill", got[0].Original)
+		}
+		if skills[0].Attempts.IsEmpty() {
+			t.Fatal("the removed skill's dice were dropped; a test that happened left no trace")
 		}
 	})
 }

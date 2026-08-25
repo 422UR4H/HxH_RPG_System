@@ -2,7 +2,9 @@ package matchsession
 
 import (
 	"math"
+	"reflect"
 	"slices"
+	"sort"
 	"time"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -63,6 +65,11 @@ type MatchSession struct {
 	// then skill name, so putting one back is not a free re-roll. It lives for as long as the
 	// session does; a turn's entries are drained into the audit when it closes.
 	removedSkillDice map[uuid.UUID]map[string]action.RollAttempts
+	// overrides is what the master's edits displaced, keyed by action then field. In memory
+	// while the turn is open — the master edits and unedits freely — and drained into the
+	// close transaction by TakeOverridesFor. A revert deletes its entry rather than adding
+	// a second one.
+	overrides map[uuid.UUID]map[string]match.OverriddenValue
 }
 
 func NewMatchSession(
@@ -235,17 +242,28 @@ func (s *MatchSession) ApplyMasterAction(
 		return nil, err
 	}
 	if ma.TargetID != nil {
+		s.captureOverride(target.GetID(), "targetIds", match.OriginPlayer, masterUUID,
+			target.TargetID, ma.TargetID)
 		target.TargetID = append([]uuid.UUID(nil), ma.TargetID...)
 	}
 	if ma.Skills != nil {
-		s.applySkillEdit(target, ma.Skills)
+		s.applySkillEdit(target, ma.Skills, masterUUID)
 	}
 	for _, edit := range ma.Conditions {
 		rc, err := resolveRollCheck(target, edit)
 		if err != nil {
 			return nil, err
 		}
+		// current is nil, not a typed nil *RollCondition, whenever the test carries no
+		// condition yet — a typed nil boxed into the any parameter would compare unequal to a
+		// literal nil, which is exactly the shape the first-edit test pins.
+		var current any
+		if rc.Context.Condition != nil {
+			current = *rc.Context.Condition
+		}
 		cond := edit.Condition
+		s.captureOverride(target.GetID(), conditionFieldKey(edit), match.OriginPlayer, masterUUID,
+			current, cond)
 		rc.Context.Condition = &cond
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
@@ -330,6 +348,16 @@ func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollChe
 	}
 }
 
+// conditionFieldKey names the audit field a condition edit displaces on. A skill entry is
+// named by its skill ("skill:<name>.condition"), never by its position — the master edits by
+// meaning, not by index. A fixed check is named by its ConditionField ("hit.condition").
+func conditionFieldKey(e action.ConditionEdit) string {
+	if e.SkillName != "" {
+		return "skill:" + e.SkillName + ".condition"
+	}
+	return string(e.Field) + ".condition"
+}
+
 // applySkillEdit replaces the action's skill list, and it is where the two asymmetric rules of
 // combat-engine.md § A edição do mestre live.
 //
@@ -342,7 +370,7 @@ func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollChe
 //
 // The list changes and the list does not yet DECIDE anything: nobody reads a Skill's result
 // (combat-engine.md § A corrente de testes). That is stated, not hidden.
-func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill) {
+func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, masterUUID uuid.UUID) {
 	if s.removedSkillDice == nil {
 		s.removedSkillDice = map[uuid.UUID]map[string]action.RollAttempts{}
 	}
@@ -384,10 +412,109 @@ func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill) {
 			memory[name] = attempts
 		}
 	}
+	// Captured BEFORE the write, against next — the reconciled list, dice and all — not the
+	// raw want the master sent. That is what lets "strip, then put back exactly" compare equal
+	// to the captured original and erase the row: a re-add reads the SAME dice back from
+	// memory, so incoming here is byte-for-byte what was there before the strip.
+	s.captureOverride(a.GetID(), "skills", match.OriginPlayer, masterUUID, a.Skills, next)
 	a.Skills = next
 	// rollActionDice leaves alone every RollCheck whose dice already fell, so this rolls for
 	// exactly the entries that are genuinely new.
 	s.rollActionDice(a)
+}
+
+// captureOverride records the value about to be displaced, once per field, and erases the
+// record when an edit puts the original back.
+//
+// current is what is there right now; incoming is what the master is about to write. Both
+// are compared with reflect.DeepEqual because the shapes are heterogeneous by design (an int,
+// a slice of skills, a set of UUIDs) — the alternative is a comparison function per field,
+// which is three places to forget to update.
+func (s *MatchSession) captureOverride(
+	actionID uuid.UUID, field string, origin match.OverrideOrigin,
+	masterUUID uuid.UUID, current, incoming any,
+) {
+	if s.overrides == nil {
+		s.overrides = map[uuid.UUID]map[string]match.OverriddenValue{}
+	}
+	byField := s.overrides[actionID]
+	if byField == nil {
+		byField = map[string]match.OverriddenValue{}
+		s.overrides[actionID] = byField
+	}
+	if existing, ok := byField[field]; ok {
+		// Back to where it started: nothing was displaced after all. This is what makes a
+		// cancel verb unnecessary — cancelling IS editing back.
+		if reflect.DeepEqual(existing.Original, incoming) {
+			delete(byField, field)
+		}
+		return // one row per field; the intermediate values are neither the player's nor the system's
+	}
+	if reflect.DeepEqual(current, incoming) {
+		return // an edit that changes nothing displaces nothing
+	}
+	byField[field] = match.OverriddenValue{
+		ActionID: actionID, Field: field, Origin: origin,
+		MasterUUID: masterUUID, At: time.Now(), Original: current,
+	}
+}
+
+// turnActionIDs is every action ID a turn owns: its own, plus each attached reaction. Both
+// can be edited, so both can have captures.
+func turnActionIDs(t *turn.Turn) []uuid.UUID {
+	a := t.GetAction()
+	out := []uuid.UUID{a.GetID()}
+	for _, r := range t.GetReactions() {
+		out = append(out, r.GetID())
+	}
+	return out
+}
+
+// PeekOverridesFor reads the captures belonging to one turn without draining them — for
+// tests, and for a master view of what they have displaced so far.
+func (s *MatchSession) PeekOverridesFor(t *turn.Turn) []match.OverriddenValue {
+	if t == nil {
+		return nil
+	}
+	var out []match.OverriddenValue
+	for _, id := range turnActionIDs(t) {
+		for _, ov := range s.overrides[id] {
+			out = append(out, ov)
+		}
+	}
+	return out
+}
+
+// TakeOverridesFor drains the captures belonging to one turn's action and reactions, for the
+// close transaction.
+//
+// Draining, not copying: they are written exactly once, and a turn that has closed cannot be
+// edited again. Leaving them behind would mean a later turn's close re-inserting them — which
+// the unique constraint would swallow silently, so the bug would only ever show up as rows
+// that never appeared.
+//
+// The removed-skill dice parked for those actions go with them: their only remaining purpose
+// was to survive a re-add, and there is nothing left to re-add to.
+func (s *MatchSession) TakeOverridesFor(t *turn.Turn) []match.OverriddenValue {
+	if t == nil {
+		return nil
+	}
+	var out []match.OverriddenValue
+	for _, id := range turnActionIDs(t) {
+		for _, ov := range s.overrides[id] {
+			out = append(out, ov)
+		}
+		delete(s.overrides, id)
+		delete(s.removedSkillDice, id)
+	}
+	// Stable order, so a failing integration test names the same row twice in a row.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ActionID != out[j].ActionID {
+			return out[i].ActionID.String() < out[j].ActionID.String()
+		}
+		return out[i].Field < out[j].Field
+	})
+	return out
 }
 
 // GetCharSheet returns a character's sheet. charID is the sheet UUID — the same ID the
