@@ -427,9 +427,9 @@ func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, mas
 // record when an edit puts the original back.
 //
 // current is what is there right now; incoming is what the master is about to write. Both
-// are compared with reflect.DeepEqual because the shapes are heterogeneous by design (an int,
-// a slice of skills, a set of UUIDs) — the alternative is a comparison function per field,
-// which is three places to forget to update.
+// are compared with valuesEqual (reflect.DeepEqual, refined) because the shapes are
+// heterogeneous by design (an int, a slice of skills, a set of UUIDs) — the alternative is a
+// comparison function per field, which is three places to forget to update.
 func (s *MatchSession) captureOverride(
 	actionID uuid.UUID, field string, origin match.OverrideOrigin,
 	masterUUID uuid.UUID, current, incoming any,
@@ -445,18 +445,44 @@ func (s *MatchSession) captureOverride(
 	if existing, ok := byField[field]; ok {
 		// Back to where it started: nothing was displaced after all. This is what makes a
 		// cancel verb unnecessary — cancelling IS editing back.
-		if reflect.DeepEqual(existing.Original, incoming) {
+		if valuesEqual(existing.Original, incoming) {
 			delete(byField, field)
 		}
 		return // one row per field; the intermediate values are neither the player's nor the system's
 	}
-	if reflect.DeepEqual(current, incoming) {
+	if valuesEqual(current, incoming) {
 		return // an edit that changes nothing displaces nothing
 	}
 	byField[field] = match.OverriddenValue{
 		ActionID: actionID, Field: field, Origin: origin,
 		MasterUUID: masterUUID, At: time.Now(), Original: current,
 	}
+}
+
+// valuesEqual is reflect.DeepEqual with one refinement: two zero-length slices compare equal
+// regardless of nil-ness. DeepEqual's own documented rule is that a nil slice and a non-nil,
+// empty slice are UNEQUAL — but "no skills" and "no targets" are the same game state whether
+// the field was never touched (nil) or the master explicitly cleared it ({"skills": []} over
+// the wire unmarshals to a non-nil, empty *[]ActionSkillPayload, by design — see
+// buildEditAction). Without this refinement, clearing an already-empty/nil list would read as
+// "changed" and capture a phantom row for an edit that displaced nothing, contradicting the
+// very comment this check exists under.
+func valuesEqual(a, b any) bool {
+	if isEmptySlice(a) && isEmptySlice(b) {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// isEmptySlice reports whether v holds a slice of length 0 — nil or not. A bare literal nil
+// (v == nil, no type at all — e.g. an unset RollCondition) is not a slice and answers false,
+// so this never reaches past non-slice fields like a flat modifier or a condition.
+func isEmptySlice(v any) bool {
+	if v == nil {
+		return false
+	}
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Slice && rv.Len() == 0
 }
 
 // turnActionIDs is every action ID a turn owns: its own, plus each attached reaction. Both

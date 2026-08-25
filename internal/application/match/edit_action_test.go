@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
@@ -765,6 +766,88 @@ func TestOverrideCapture(t *testing.T) {
 		}
 		if skills[0].Attempts.IsEmpty() {
 			t.Fatal("the removed skill's dice were dropped; a test that happened left no trace")
+		}
+	})
+
+	t.Run("clearing an already-nil skill list captures nothing", func(t *testing.T) {
+		// newOpenAttackFixture's action carries no skills at all — a.Skills is nil, never
+		// touched. A present-but-empty Skills edit ({"skills": []} off the wire) must read as
+		// "no change" here, not as "changed from nil to empty" — reflect.DeepEqual disagrees
+		// (a nil slice and a non-nil empty slice are UNEQUAL by its own documented rule), which
+		// is exactly the phantom-row bug valuesEqual exists to close.
+		f := newOpenAttackFixture(t)
+		f.editSkills(t, []string{})
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values clearing a nil list, want 0 — nil and empty are the same no-skills state", got)
+		}
+	})
+
+	t.Run("clearing an already-nil target list captures nothing", func(t *testing.T) {
+		// newOpenMoveFixture's action is untargeted — TargetID is nil, never touched. Same
+		// nil-vs-empty shape as the skills case above, on the other list-typed field.
+		f := newOpenMoveFixture(t)
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.TargetID = []uuid.UUID{}
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values clearing a nil target list, want 0", got)
+		}
+	})
+
+	t.Run("the capture stamps Origin, MasterUUID and At — not just Field and Original", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		before := time.Now()
+		f.editHitModifier(t, 3)
+
+		got := f.session.TakeOverridesFor(f.openTurn())
+		if len(got) != 1 {
+			t.Fatalf("captured %d values, want 1", len(got))
+		}
+		if got[0].Origin != matchDomain.OriginPlayer {
+			t.Fatalf("Origin = %q, want %q", got[0].Origin, matchDomain.OriginPlayer)
+		}
+		if got[0].MasterUUID != f.masterUUID {
+			t.Fatalf("MasterUUID = %v, want %v — the master who edited must be the one stamped", got[0].MasterUUID, f.masterUUID)
+		}
+		if got[0].At.Before(before) {
+			t.Fatalf("At = %v, want at-or-after %v — the capture must be timestamped when it happened", got[0].At, before)
+		}
+	})
+
+	t.Run("the target list capture round-trips: key, then a clean revert", func(t *testing.T) {
+		f := newOpenAttackFixture(t) // opens with TargetID = [victimID]
+		original := append([]uuid.UUID(nil), f.victimID)
+
+		editTo := func(ids []uuid.UUID) {
+			t.Helper()
+			uc := match.NewEditActionUC()
+			ma := action.NewMasterAction()
+			ma.ActionID = f.actionID
+			ma.TargetID = ids
+			if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+		}
+
+		editTo([]uuid.UUID{f.thirdCharacterID})
+		got := f.session.PeekOverridesFor(f.openTurn())
+		if len(got) != 1 || got[0].Field != "targetIds" {
+			t.Fatalf("got %#v, want exactly one targetIds row", got)
+		}
+		ids, ok := got[0].Original.([]uuid.UUID)
+		if !ok || !slices.Equal(ids, original) {
+			t.Fatalf("Original = %#v, want the pre-edit target list %v", got[0].Original, original)
+		}
+
+		editTo(original) // put it back exactly
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values after reverting targetIds, want 0", got)
 		}
 	})
 }
