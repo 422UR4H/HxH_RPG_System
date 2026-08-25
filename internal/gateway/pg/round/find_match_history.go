@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
@@ -39,7 +40,7 @@ func (r *Repository) FindMatchHistory(
 		 JOIN turns  t  ON t.round_uuid = ro.uuid
 		 JOIN actions a ON a.turn_uuid = t.uuid
 		 WHERE s.match_uuid = $1
-		 ORDER BY s.created_at, ro.created_at, t.finished_at,
+		 ORDER BY s.created_at, ro.created_at, t.finished_at, t.uuid,
 		          (a.react_to_uuid IS NOT NULL), a.created_at`,
 		matchUUID,
 	)
@@ -54,6 +55,13 @@ func (r *Repository) FindMatchHistory(
 	var curScene *appmatch.HistoryScene
 	var curRound *appmatch.HistoryRound
 	var curTurn *appmatch.HistoryTurn
+
+	// turnPoisoned/poisonedTurnUUID track a turn whose action or a reaction failed to decode
+	// and was dropped mid-stream (see the decode-failure handling below). Once a turn is
+	// poisoned, every remaining row that still carries its turnUUID must be silently absorbed
+	// — not re-attempted as if it were a fresh turn — until a row for a DIFFERENT turn arrives.
+	var turnPoisoned bool
+	var poisonedTurnUUID uuid.UUID
 
 	for rows.Next() {
 		var (
@@ -73,11 +81,15 @@ func (r *Repository) FindMatchHistory(
 			turnFinishedAt time.Time
 			resolutionRaw  []byte
 
-			actionUUID   uuid.UUID
-			actorUUID    uuid.UUID
-			reactToUUID  *uuid.UUID
-			targetIDs    []uuid.UUID
-			actionType   string // derived at write time; not part of the domain Action, unused here
+			actionUUID  uuid.UUID
+			actorUUID   uuid.UUID
+			reactToUUID *uuid.UUID
+			targetIDs   []uuid.UUID
+			// actionType is scanned only for symmetry with insertAction's INSERT column list
+			// (persist_turn_close.go) and to keep this query's column list self-documenting
+			// against the table — deriveActionType is a write-time classification with no
+			// field on the domain Action to land in, so it is read and discarded here.
+			actionType   string
 			reactionKind *string
 
 			speedRaw, skillsRaw, moveRaw, attackRaw []byte
@@ -105,6 +117,7 @@ func (r *Repository) FindMatchHistory(
 			curScene = &scenes[len(scenes)-1]
 			curRound = nil
 			curTurn = nil
+			turnPoisoned = false
 		}
 
 		if curRound == nil || curRound.UUID != roundUUID {
@@ -115,28 +128,72 @@ func (r *Repository) FindMatchHistory(
 			})
 			curRound = &curScene.Rounds[len(curScene.Rounds)-1]
 			curTurn = nil
+			turnPoisoned = false
 		}
 
-		act, err := decodeActionRow(
-			actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
-			speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
-			feintRaw, triggerRaw,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("FindMatchHistory decode action %s: %w", actionUUID, err)
+		// A turn already dropped for an unreadable row: absorb the rest of its rows without
+		// retrying them — see the doc on turnPoisoned above.
+		if turnPoisoned && turnUUID == poisonedTurnUUID {
+			continue
 		}
 
-		// The ORDER BY puts a turn's own action (react_to_uuid IS NULL) before its reactions,
-		// so the first row of a new turn is always the action — no second sort needed here.
-		if curTurn == nil || curTurn.UUID != turnUUID {
+		switch {
+		case curTurn != nil && curTurn.UUID == turnUUID:
+			// A reaction row for the turn currently being assembled.
+			react, err := decodeActionRow(
+				actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
+				speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
+				feintRaw, triggerRaw,
+			)
+			if err != nil {
+				// Contain the damage to this ONE turn, the same trade-off DecodeResolution
+				// already makes for a stored collision: a history with one logged hole is
+				// worse than a complete one and far better than none at all. A turn already
+				// appended but missing a reaction that answered it would silently under-report
+				// — so the whole turn, not just this row, comes back out.
+				log.Printf(
+					"FindMatchHistory: dropping turn %s (scene %s, round %s) — reaction %s failed to decode: %v",
+					turnUUID, sceneUUID, roundUUID, actionUUID, err,
+				)
+				curRound.Turns = curRound.Turns[:len(curRound.Turns)-1]
+				curTurn = nil
+				turnPoisoned, poisonedTurnUUID = true, turnUUID
+				continue
+			}
+			curTurn.Reactions = append(curTurn.Reactions, *react)
+
+		default:
+			// The ORDER BY's t.uuid tiebreaker (ahead of the react-to-uuid boolean) keeps a
+			// turn's rows contiguous even when two turns in the same round share a
+			// finished_at — which insertAction makes the norm, not a corner case: it writes
+			// the SAME timestamp as both created_at and finished_at for a turn's action AND
+			// every one of its reactions. Without t.uuid, two turns tied on finished_at could
+			// interleave, and this branch (reached whenever the running turn changes) would
+			// wrongly treat a REACTION row from the other turn as if it were this row's own
+			// action — the same discriminator bug this comment is now defending against.
+			act, err := decodeActionRow(
+				actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
+				speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
+				feintRaw, triggerRaw,
+			)
+			if err != nil {
+				// See the reaction-row branch above for why this is contained to the turn
+				// rather than propagated: one bad row must not take the whole match's history
+				// offline, the same trade-off DecodeResolution makes.
+				log.Printf(
+					"FindMatchHistory: dropping turn %s (scene %s, round %s) — action %s failed to decode: %v",
+					turnUUID, sceneUUID, roundUUID, actionUUID, err,
+				)
+				turnPoisoned, poisonedTurnUUID = true, turnUUID
+				curTurn = nil
+				continue
+			}
 			curRound.Turns = append(curRound.Turns, appmatch.HistoryTurn{
 				UUID: turnUUID, CreatedAt: turnCreatedAt, FinishedAt: turnFinishedAt,
 				Action:     *act,
 				Resolution: DecodeResolution(resolutionRaw),
 			})
 			curTurn = &curRound.Turns[len(curRound.Turns)-1]
-		} else {
-			curTurn.Reactions = append(curTurn.Reactions, *act)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -203,14 +260,16 @@ func decodeActionRow(
 		reactTo = *reactToUUID
 	}
 
-	// NewAction mints a fresh id — correct for an action being created, wrong for one being
-	// read back. ReconstructID stamps the persisted actions.uuid over it: this row's own id
-	// is what react_to_uuid on its reactions, and action_uuid in overridden_action_values,
-	// both key on — a fabricated id here would make the tree uncorrelatable with both.
+	// WithReconstructedID overrides the id NewAction would otherwise mint. actions.uuid is
+	// exactly what react_to_uuid on this action's own reactions points at, and what
+	// action_uuid in overridden_action_values keys on — a fabricated id here would make the
+	// tree uncorrelatable with both. See the option's own doc in action.go for why this is a
+	// constructor-time option and not a mutating setter.
 	act := action.NewAction(
 		actorUUID, targetIDs, reactTo, skills, speed,
 		feint, move, attack, defense, dodge, trigger, nil,
-	).ReconstructID(actionUUID)
+		action.WithReconstructedID(actionUUID),
+	)
 	act.Repel = repel
 	if reactionKind != nil {
 		act.ReactionKind = action.ReactionKind(*reactionKind)

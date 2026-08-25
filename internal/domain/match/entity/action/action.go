@@ -46,6 +46,33 @@ type Action struct {
 	confirmedAt *time.Time //nolint:unused // WIP: match system under development
 }
 
+// Option customizes an Action at construction time only — applied once, inside NewAction,
+// before the pointer it built is ever handed to a caller. That is deliberate and load-bearing,
+// not incidental: live pointers to an in-flight action really do escape into structures keyed
+// on GetID() (MatchSession.PendingActions()'s priority queue, Turn.ActionRef()'s open turn),
+// and an exported method that could re-stamp identity on one of those later would corrupt
+// react_to_uuid linkage and scheduler keys out from under them. Routing identity through a
+// constructor-only option closes that window by construction: after NewAction returns, nothing
+// exported in this package can change an Action's id, because there is no such method — only
+// this option, which NewAction stops accepting suggestions from the moment it returns.
+type Option func(*Action)
+
+// WithReconstructedID overrides the id NewAction would otherwise mint, for the one caller that
+// legitimately needs to: a gateway rebuilding an Action from a persisted row. NewAction minting
+// a fresh uuid.New() is correct for an action being newly created, which has no identity yet to
+// preserve, and wrong for one being read back from storage, which already does — actions.uuid
+// is exactly what react_to_uuid on this action's own reactions points at, and what action_uuid
+// in overridden_action_values keys on, so a row read back with a fabricated id becomes
+// uncorrelatable with everything else in the same result set and in that audit table.
+//
+// This is an Option and not a thirteenth positional parameter, and not an exported setter
+// either: NewAction already takes twelve parameters and growing it buys nothing (see
+// ReactionKind's own doc for that same call), and a setter would reopen exactly the live-object
+// mutation window this shape exists to close.
+func WithReconstructedID(id uuid.UUID) Option {
+	return func(a *Action) { a.id = id }
+}
+
 func NewAction(
 	actorID uuid.UUID,
 	targetID []uuid.UUID,
@@ -59,8 +86,9 @@ func NewAction(
 	dodge *Dodge,
 	trigger *Trigger,
 	interact *Interact,
+	opts ...Option,
 ) *Action {
-	return &Action{
+	a := &Action{
 		id:        uuid.New(),
 		actorID:   actorID,
 		TargetID:  targetID,
@@ -75,31 +103,14 @@ func NewAction(
 		Trigger:   trigger,
 		Interact:  interact,
 	}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 func (a *Action) GetID() uuid.UUID {
 	return a.id
-}
-
-// ReconstructID stamps a persisted identity onto an action NewAction already built, and
-// returns the same pointer so it can be chained at the call site.
-//
-// It deliberately does NOT mirror scene.ReconstructScene / round.ReconstructRound's shape — a
-// full reconstructor duplicating NewAction's twelve parameters just to also accept an id would
-// be unreadable, and buys no safety NewAction's own parameters don't already provide. Building
-// via NewAction and then stamping the id here is fine and honest: NewAction minting a fresh
-// uuid.New() is the RIGHT answer for an action being newly created, which has no identity yet
-// to preserve, and the WRONG answer for one being read back from storage, which already does.
-//
-// Skipping this on a read path is not merely cosmetic. actions.uuid is exactly what
-// react_to_uuid on this action's own reactions points at, and what action_uuid in
-// overridden_action_values keys on — so a row read back with a fabricated id becomes
-// uncorrelatable with everything else in the same result set and in that audit table. A turn
-// whose reaction's ReactToID doesn't equal its own action's GetID() is not a cosmetic gap; it
-// is a tree that lies about its own shape.
-func (a *Action) ReconstructID(id uuid.UUID) *Action {
-	a.id = id
-	return a
 }
 
 func (a *Action) GetActorID() uuid.UUID {

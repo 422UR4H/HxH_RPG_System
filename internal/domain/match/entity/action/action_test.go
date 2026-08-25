@@ -43,22 +43,37 @@ func TestNewAction_UniqueIDs(t *testing.T) {
 	}
 }
 
-func TestReconstructID(t *testing.T) {
-	a := makeAction(1)
-	original := a.GetID()
+func TestNewActionWithReconstructedID(t *testing.T) {
 	persisted := uuid.New()
 
-	if persisted == original {
-		t.Fatal("test setup: persisted id must differ from the freshly minted one")
-	}
-
-	got := a.ReconstructID(persisted)
+	a := action.NewAction(
+		uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+		action.WithReconstructedID(persisted),
+	)
 
 	if a.GetID() != persisted {
-		t.Errorf("GetID() = %v, want %v (the stamped id)", a.GetID(), persisted)
+		t.Errorf("GetID() = %v, want %v (the reconstructed id)", a.GetID(), persisted)
 	}
-	if got != a {
-		t.Error("ReconstructID should return the same pointer it was called on")
+}
+
+func TestNewActionWithoutOptionsStillMintsAFreshID(t *testing.T) {
+	// No opts at all — the common, by-far-most-frequent call shape — must keep working
+	// exactly as before: a fresh, non-nil id every time.
+	a1 := action.NewAction(
+		uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	a2 := action.NewAction(
+		uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+
+	if a1.GetID() == uuid.Nil {
+		t.Error("GetID() should not be nil UUID")
+	}
+	if a1.GetID() == a2.GetID() {
+		t.Error("two actions built without WithReconstructedID should have different UUIDs")
 	}
 }
 

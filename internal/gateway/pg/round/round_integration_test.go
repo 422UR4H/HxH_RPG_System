@@ -737,6 +737,12 @@ func TestFindMatchHistoryIsNested(t *testing.T) {
 	if turns[0].FinishedAt.After(turns[1].FinishedAt) {
 		t.Fatal("turns came back out of order")
 	}
+	// The two-sided claim: turn 1 got no reaction attached, and must come back with none —
+	// not just "turn 2 has one", which alone would also pass if the two turns' rows had
+	// interleaved and both ended up pointing at the same reaction.
+	if len(turns[0].Reactions) != 0 {
+		t.Fatalf("turn 1 has no reaction, want 0 Reactions, got %d", len(turns[0].Reactions))
+	}
 	withReaction := turns[1]
 	if len(withReaction.Reactions) != 1 {
 		t.Fatalf("reactions = %d, want 1 — they are persisted since PR #69",
@@ -774,6 +780,195 @@ func TestFindMatchHistoryIsNested(t *testing.T) {
 	// Turn 1 resolved nothing — must come back nil, not a zero-value record.
 	if turns[0].Resolution != nil {
 		t.Fatalf("turn 1 should have no resolution, got %+v", turns[0].Resolution)
+	}
+}
+
+// TestFindMatchHistoryDoesNotInterleaveTurnsThatTieOnFinishedAt proves the ORDER BY's t.uuid
+// tiebreaker earns its place. insertAction writes the SAME timestamp as both created_at and
+// finished_at for a turn's action AND every one of its reactions, so two turns closed in the
+// same instant tying on t.finished_at is the norm, not a corner case an unlucky clock might
+// hit. Without t.uuid keeping each turn's rows contiguous, the assembly loop — which decides
+// "this row starts a new turn" purely from "does turnUUID match the turn I'm building" — could
+// see turn B's action land between turn A's action and turn A's reaction, and misclassify
+// that reaction as turn B's own action.
+func TestFindMatchHistoryDoesNotInterleaveTurnsThatTieOnFinishedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	sharedFinish := time.Now() // deliberately identical for both turns — forces the tie
+
+	act1 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn1 := turnentity.NewTurn(*act1)
+	tn1.Close(sharedFinish)
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn1, Action: act1, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 1: %v", err)
+	}
+
+	act2 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	reaction := action.NewAction(
+		fx.victimSheet, nil, act2.GetID(), nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	reaction.ReactionKind = action.ReactRepel
+	tn2 := turnentity.NewTurn(*act2)
+	tn2.AddReaction(reaction)
+	tn2.Close(sharedFinish) // ties tn1's finished_at exactly
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn2, Action: act2, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 2: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 || len(scenes[0].Rounds[0].Turns) != 2 {
+		t.Fatalf("the tree is wrong under a finished_at tie: %d scenes", len(scenes))
+	}
+	turns := scenes[0].Rounds[0].Turns
+	for _, tn := range turns {
+		// A misclassified reaction masquerading as a turn's own action would carry a non-nil
+		// ReactToID — react_to_uuid IS NULL is exactly what discriminates "this is the turn's
+		// own action" in the first place.
+		if tn.Action.ReactToID != uuid.Nil {
+			t.Fatalf("turn %s's Action is actually a reaction (ReactToID=%s) — "+
+				"turns interleaved on the finished_at tie", tn.UUID, tn.Action.ReactToID)
+		}
+	}
+	// A tie means arrival order between the two turns is not guaranteed (t.uuid is a random
+	// value, not a clock), so find the reaction by summing across both rather than assuming
+	// which index it landed on.
+	var reactionsSeen int
+	for _, tn := range turns {
+		reactionsSeen += len(tn.Reactions)
+	}
+	if reactionsSeen != 1 {
+		t.Fatalf("expected exactly 1 reaction across both tied turns, got %d", reactionsSeen)
+	}
+}
+
+// TestFindMatchHistoryDropsATurnWhoseActionFailsToDecode proves the containment
+// DecodeResolution already established for a bad stored resolution, now for a bad stored
+// action: one unreadable JSONB blob must not take the whole match's history offline. The
+// corruption here is on the turn's OWN action, so that turn can never even start being
+// assembled — it must be entirely absent from the result, while every OTHER turn in the same
+// match comes back untouched.
+func TestFindMatchHistoryDropsATurnWhoseActionFailsToDecode(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	// Turn 1: healthy, closes first.
+	act1 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn1 := turnentity.NewTurn(*act1)
+	tn1.Close(time.Now())
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn1, Action: act1, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 1: %v", err)
+	}
+
+	// Turn 2: needs a non-nil Move so the column exists to corrupt afterwards — the zero-value
+	// Move is enough, its content doesn't matter, only that the column is non-NULL going in.
+	act2 := action.NewAction(
+		fx.attackerSheet, []uuid.UUID{fx.victimSheet}, uuid.Nil, nil, action.ActionSpeed{},
+		nil, &action.Move{}, nil, nil, nil, nil, nil,
+	)
+	tn2 := turnentity.NewTurn(*act2)
+	tn2.Close(time.Now().Add(time.Second))
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn2, Action: act2, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 2: %v", err)
+	}
+
+	// Corrupt turn 2's action: valid JSON — jsonb itself would reject a syntax error outright
+	// — but the wrong SHAPE for action.Move (a bare string, not an object). This is what
+	// schema drift or a future migration bug actually produces, not a syntax error.
+	if _, err := pool.Exec(ctx,
+		`UPDATE actions SET move = '"not-a-move-object"'::jsonb WHERE uuid = $1`, act2.GetID(),
+	); err != nil {
+		t.Fatalf("corrupting turn 2's action: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory must contain the bad row, not fail outright: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 {
+		t.Fatalf("the healthy scene/round should still come back: %d scenes", len(scenes))
+	}
+	turns := scenes[0].Rounds[0].Turns
+	if len(turns) != 1 {
+		t.Fatalf("expected only the healthy turn 1 to survive, got %d turns", len(turns))
+	}
+	if turns[0].UUID != tn1.GetID() {
+		t.Fatalf("the surviving turn is not turn 1: got %s, want %s", turns[0].UUID, tn1.GetID())
+	}
+}
+
+// TestFindMatchHistoryDropsATurnWhoseReactionFailsToDecode proves the same containment when
+// the corruption is on a REACTION instead of the turn's own action: the action row decodes
+// fine and is provisionally appended, but the whole turn — not just the bad reaction — must
+// come back out, or the history would silently under-report a reaction that really happened.
+func TestFindMatchHistoryDropsATurnWhoseReactionFailsToDecode(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	// Turn 1: healthy, closes first.
+	act1 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn1 := turnentity.NewTurn(*act1)
+	tn1.Close(time.Now())
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn1, Action: act1, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 1: %v", err)
+	}
+
+	// Turn 2: a healthy action, a reaction whose Move column will be corrupted after
+	// persisting.
+	act2 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	reaction := action.NewAction(
+		fx.victimSheet, nil, act2.GetID(), nil, action.ActionSpeed{},
+		nil, &action.Move{}, nil, nil, nil, nil, nil,
+	)
+	reaction.ReactionKind = action.ReactEscape
+	tn2 := turnentity.NewTurn(*act2)
+	tn2.AddReaction(reaction)
+	tn2.Close(time.Now().Add(time.Second))
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn2, Action: act2, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 2: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE actions SET move = '"not-a-move-object"'::jsonb WHERE uuid = $1`, reaction.GetID(),
+	); err != nil {
+		t.Fatalf("corrupting turn 2's reaction: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory must contain the bad row, not fail outright: %v", err)
+	}
+	turns := scenes[0].Rounds[0].Turns
+	if len(turns) != 1 {
+		t.Fatalf("expected only the healthy turn 1 to survive, got %d turns", len(turns))
+	}
+	if turns[0].UUID != tn1.GetID() {
+		t.Fatalf("the surviving turn is not turn 1: got %s, want %s", turns[0].UUID, tn1.GetID())
 	}
 }
 
