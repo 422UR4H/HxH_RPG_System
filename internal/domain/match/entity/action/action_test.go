@@ -43,6 +43,25 @@ func TestNewAction_UniqueIDs(t *testing.T) {
 	}
 }
 
+func TestReconstructID(t *testing.T) {
+	a := makeAction(1)
+	original := a.GetID()
+	persisted := uuid.New()
+
+	if persisted == original {
+		t.Fatal("test setup: persisted id must differ from the freshly minted one")
+	}
+
+	got := a.ReconstructID(persisted)
+
+	if a.GetID() != persisted {
+		t.Errorf("GetID() = %v, want %v (the stamped id)", a.GetID(), persisted)
+	}
+	if got != a {
+		t.Error("ReconstructID should return the same pointer it was called on")
+	}
+}
+
 func TestRollContext_GetDiceResult(t *testing.T) {
 	d1 := die.NewDie(enum.D6)
 	d2 := die.NewDie(enum.D8)

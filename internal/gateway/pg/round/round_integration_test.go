@@ -745,6 +745,24 @@ func TestFindMatchHistoryIsNested(t *testing.T) {
 	if withReaction.Reactions[0].ReactionKind == "" {
 		t.Fatal("reaction_kind did not come back")
 	}
+	// Internal consistency, not just a match against the fixture: the reaction's ReactToID is
+	// read straight off the DB row, so if the action's own id is fabricated (a fresh
+	// uuid.New() instead of the persisted actions.uuid) these two would silently disagree —
+	// a tree that lies about its own shape, still passing a check that only looked at the
+	// fixture in isolation.
+	if withReaction.Action.GetID() != act2.GetID() {
+		t.Fatalf("action id did not round-trip: got %s, want %s (the persisted uuid)",
+			withReaction.Action.GetID(), act2.GetID())
+	}
+	if withReaction.Reactions[0].GetID() != reaction.GetID() {
+		t.Fatalf("reaction id did not round-trip: got %s, want %s (the persisted uuid)",
+			withReaction.Reactions[0].GetID(), reaction.GetID())
+	}
+	if withReaction.Reactions[0].ReactToID != withReaction.Action.GetID() {
+		t.Fatalf("reaction's ReactToID (%s) does not match its own turn's action id (%s) — "+
+			"the reaction answers an action that, by id, is not in the tree",
+			withReaction.Reactions[0].ReactToID, withReaction.Action.GetID())
+	}
 	if withReaction.Resolution == nil || len(withReaction.Resolution.CharacterResults) == 0 {
 		t.Fatal("the settled resolution did not come back")
 	}

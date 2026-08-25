@@ -118,7 +118,7 @@ func (r *Repository) FindMatchHistory(
 		}
 
 		act, err := decodeActionRow(
-			actorUUID, reactToUUID, targetIDs, reactionKind,
+			actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
 			speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
 			feintRaw, triggerRaw,
 		)
@@ -150,7 +150,8 @@ func (r *Repository) FindMatchHistory(
 // of insertAction in persist_turn_close.go: one unmarshal per JSONB component, in the same
 // order they were written.
 func decodeActionRow(
-	actorUUID uuid.UUID, reactToUUID *uuid.UUID, targetIDs []uuid.UUID, reactionKind *string,
+	actionUUID, actorUUID uuid.UUID, reactToUUID *uuid.UUID, targetIDs []uuid.UUID,
+	reactionKind *string,
 	speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw []byte,
 	feintRaw, triggerRaw []byte,
 ) (*action.Action, error) {
@@ -202,13 +203,14 @@ func decodeActionRow(
 		reactTo = *reactToUUID
 	}
 
-	// NewAction always mints a fresh id (it has no parameter for it, and the entity exposes
-	// no setter) — the row's own a.uuid is scanned above only to drive the assembly loop, not
-	// to round-trip identity. actorID, by contrast, IS a constructor parameter, so it survives.
+	// NewAction mints a fresh id — correct for an action being created, wrong for one being
+	// read back. ReconstructID stamps the persisted actions.uuid over it: this row's own id
+	// is what react_to_uuid on its reactions, and action_uuid in overridden_action_values,
+	// both key on — a fabricated id here would make the tree uncorrelatable with both.
 	act := action.NewAction(
 		actorUUID, targetIDs, reactTo, skills, speed,
 		feint, move, attack, defense, dodge, trigger, nil,
-	)
+	).ReconstructID(actionUUID)
 	act.Repel = repel
 	if reactionKind != nil {
 		act.ReactionKind = action.ReactionKind(*reactionKind)

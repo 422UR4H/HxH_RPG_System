@@ -81,6 +81,27 @@ func (a *Action) GetID() uuid.UUID {
 	return a.id
 }
 
+// ReconstructID stamps a persisted identity onto an action NewAction already built, and
+// returns the same pointer so it can be chained at the call site.
+//
+// It deliberately does NOT mirror scene.ReconstructScene / round.ReconstructRound's shape — a
+// full reconstructor duplicating NewAction's twelve parameters just to also accept an id would
+// be unreadable, and buys no safety NewAction's own parameters don't already provide. Building
+// via NewAction and then stamping the id here is fine and honest: NewAction minting a fresh
+// uuid.New() is the RIGHT answer for an action being newly created, which has no identity yet
+// to preserve, and the WRONG answer for one being read back from storage, which already does.
+//
+// Skipping this on a read path is not merely cosmetic. actions.uuid is exactly what
+// react_to_uuid on this action's own reactions points at, and what action_uuid in
+// overridden_action_values keys on — so a row read back with a fabricated id becomes
+// uncorrelatable with everything else in the same result set and in that audit table. A turn
+// whose reaction's ReactToID doesn't equal its own action's GetID() is not a cosmetic gap; it
+// is a tree that lies about its own shape.
+func (a *Action) ReconstructID(id uuid.UUID) *Action {
+	a.id = id
+	return a
+}
+
 func (a *Action) GetActorID() uuid.UUID {
 	return a.actorID
 }
