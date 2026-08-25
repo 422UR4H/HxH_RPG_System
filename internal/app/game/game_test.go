@@ -107,6 +107,14 @@ func (m *mockChangeRoundModeUC) Execute(_ context.Context, _ *matchsession.Match
 	return nil
 }
 
+type mockEditActionUC struct{}
+
+func (m *mockEditActionUC) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
+) (*appmatch.EditActionResult, error) {
+	return nil, nil
+}
+
 func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 	return game.NewRoom(
 		matchUUID, masterUUID,
@@ -123,6 +131,7 @@ func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 }
 
@@ -232,6 +241,7 @@ func TestHub(t *testing.T) {
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 	if room == nil {
 		t.Fatal("expected room to be created")
@@ -255,6 +265,7 @@ func TestHub(t *testing.T) {
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
@@ -279,6 +290,7 @@ func TestHub(t *testing.T) {
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")

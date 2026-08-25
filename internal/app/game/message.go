@@ -36,6 +36,7 @@ const (
 	MsgTypeAttachReaction MessageType = "attach_reaction"
 	MsgTypeOpenReaction   MessageType = "open_reaction"
 	MsgTypeCloseTurn      MessageType = "close_turn"
+	MsgTypeEditAction     MessageType = "edit_action"
 
 	// Server → Client (game events)
 	MsgTypeTurnOpened       MessageType = "turn_opened"
@@ -47,6 +48,7 @@ const (
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
 	MsgTypeTurnClosed       MessageType = "turn_closed"
 	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
+	MsgTypeActionEdited     MessageType = "action_edited"
 
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
@@ -277,6 +279,30 @@ type ActionSkillPayload struct {
 	Difficulty *int   `json:"difficulty,omitempty"`
 }
 
+// EditActionPayload is the master editing the open turn's action, or one of its reactions.
+// Master only.
+//
+// Every section is optional and independent: send only what changes. A section that is
+// present REPLACES its list wholesale — partial list merging would need a per-entry identity
+// the wire does not have.
+type EditActionPayload struct {
+	// ActionID names the target. Omitted or zero means the turn's own action.
+	ActionID   uuid.UUID              `json:"actionId,omitempty"`
+	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
+	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
+	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
+}
+
+// ConditionEditPayload changes how one test is read. Field and skillName are alternatives:
+// one names a fixed check on the action, the other names an entry of skills.
+type ConditionEditPayload struct {
+	Field       string `json:"field,omitempty"`
+	SkillName   string `json:"skillName,omitempty"`
+	Bias        int    `json:"bias,omitempty"`
+	Modifier    int    `json:"modifier,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 type TurnOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turnId"`
 	ActorID    uuid.UUID `json:"actorId"`
@@ -299,6 +325,13 @@ type ReactionOpenedPayload struct {
 // follows.
 type TurnClosedPayload struct {
 	TurnID uuid.UUID `json:"turnId"`
+}
+
+// ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed
+// resolution travels in the resolution_updated that follows, projected like every other.
+type ActionEditedPayload struct {
+	TurnID   uuid.UUID `json:"turnId"`
+	ActionID uuid.UUID `json:"actionId"`
 }
 
 // CloseTurnRefusedPayload is the confirmation dialog's content, computed by the server.

@@ -77,6 +77,8 @@ type IEnqueueMasterAction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, ma *action.MasterAction) error
 }
 
+type IEditAction = appmatch.IEditAction
+
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -113,6 +115,7 @@ type Room struct {
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
 	changeRoundModeUC     appmatch.IChangeRoundMode
+	editActionUC          IEditAction
 }
 
 func NewRoom(
@@ -130,6 +133,7 @@ func NewRoom(
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
 	changeRoundModeUC appmatch.IChangeRoundMode,
+	editActionUC IEditAction,
 ) *Room {
 	return &Room{
 		matchUUID:             matchUUID,
@@ -156,6 +160,7 @@ func NewRoom(
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
 		changeRoundModeUC:     changeRoundModeUC,
+		editActionUC:          editActionUC,
 	}
 }
 
@@ -800,7 +805,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Lock()
 		result, err := r.openReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
-		turnID := currentTurnID(session)
+		turnID := session.CurrentTurnID()
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -813,6 +818,42 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 		r.publishResolution(turnID, result.Resolution)
+
+	case MsgTypeEditAction:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload EditActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid edit_action payload"))
+			return
+		}
+		ma, err := buildEditAction(payload)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		// Write lock across Execute: the edit mutates the action itself and re-derives the
+		// open turn's resolution — the same surface open_next_action and close_turn mutate.
+		r.mu.Lock()
+		result, err := r.editActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma)
+		r.mu.Unlock()
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		client.SendMessage(NewServerMessage(MsgTypeActionEdited, ActionEditedPayload{
+			TurnID: result.TurnID, ActionID: ma.ActionID,
+		}))
+		r.publishResolution(result.TurnID, result.Resolution)
 
 	case MsgTypeCloseTurn:
 		if !r.IsMaster(client.userUUID) {
@@ -832,7 +873,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var err error
 		var turnID uuid.UUID
 		if session != nil {
-			turnID = currentTurnID(session)
+			turnID = session.CurrentTurnID()
 			result, err = r.closeTurnUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID, payload.Confirm)
 		}
@@ -1109,7 +1150,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
 	if err == nil {
-		turnID = currentTurnID(session)
+		turnID = session.CurrentTurnID()
 	}
 	r.mu.Unlock()
 	if err != nil {
@@ -1121,20 +1162,6 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	// master-only branch today — routed through the same door anyway, so a future change to
 	// attach timing cannot silently reintroduce a master-only leak here.
 	r.publishResolution(turnID, result.Resolution)
-}
-
-// currentTurnID reads the open turn's ID, or uuid.Nil when there is none. The reaction path
-// resolves the turn it attached to, and the master needs to know which one.
-func currentTurnID(session *matchsession.MatchSession) uuid.UUID {
-	r := session.GetActiveRound()
-	if r == nil {
-		return uuid.Nil
-	}
-	t := r.CurrentTurn()
-	if t == nil {
-		return uuid.Nil
-	}
-	return t.GetID()
 }
 
 // applyWallInteract updates in-memory wall state for open/close/toggle.

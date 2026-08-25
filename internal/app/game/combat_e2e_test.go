@@ -187,6 +187,7 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
 		// exists in Race mode, and the mock never actually flips the session's round mode.
 		appmatch.NewChangeRoundModeUC(),
+		appmatch.NewEditActionUC(),
 	)
 
 	mux := http.NewServeMux()

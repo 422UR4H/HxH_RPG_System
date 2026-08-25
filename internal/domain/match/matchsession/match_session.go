@@ -193,6 +193,131 @@ func (s *MatchSession) EnqueueMasterAction(ma *action.MasterAction) error {
 	return nil
 }
 
+// CurrentTurnID reads the open turn's ID, or uuid.Nil when there is none. Read by the
+// delivery layer (which used to keep its own copy of this exact walk) and by ApplyMasterAction.
+func (s *MatchSession) CurrentTurnID() uuid.UUID {
+	if s.activeRound == nil {
+		return uuid.Nil
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil {
+		return uuid.Nil
+	}
+	return t.GetID()
+}
+
+// ApplyMasterAction lands the master's edit ON the action and recomputes.
+//
+// There is no parallel version to merge on read: the edited action IS the action, which is
+// the shape the code already had — RollCondition lives in RollContext, inside RollCheck,
+// inside Action. The price of that model is that the original is destroyed in the live
+// object, which is exactly why the override capture exists (see CaptureOverride).
+//
+// It NEVER rolls for a condition edit: Derive reads the two sets RollAttempts has held since
+// the action arrived, and a late advantage changes WHICH set is read, never what fell.
+//
+// It never touches the economy either. Charged bars, recorded Speeds and the order already
+// played stay as they are — bars_updated has been on the wire since before the edit, and
+// redoing the price would reorder what has already been played.
+func (s *MatchSession) ApplyMasterAction(
+	ma *action.MasterAction, masterUUID uuid.UUID,
+) (*service.TurnResolution, error) {
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return nil, ErrNoActiveTurn
+	}
+	target, err := s.actionOnTurn(t, ma.ActionID)
+	if err != nil {
+		return nil, err
+	}
+	for _, edit := range ma.Conditions {
+		rc, err := resolveRollCheck(target, edit)
+		if err != nil {
+			return nil, err
+		}
+		cond := edit.Condition
+		rc.Context.Condition = &cond
+	}
+	// Re-derive the speeds so a condition on speed or moveSpeed reads through. systemBias 0:
+	// the disadvantage of an action→reaction conversion was applied once, at attach, and is
+	// not re-imposed by an unrelated edit.
+	s.deriveSpeeds(target, 0)
+	ma.SetHappenedAt(time.Now())
+	t.AddMasterAction(*ma)
+	return s.ResolveTurn(t), nil
+}
+
+// actionOnTurn finds the turn's action or one of its reactions by ID. The zero UUID means the
+// turn's own action, which is what a client editing "the action" sends.
+func (s *MatchSession) actionOnTurn(t *turn.Turn, id uuid.UUID) (*action.Action, error) {
+	a := t.ActionRef()
+	if id == uuid.Nil || id == a.GetID() {
+		return a, nil
+	}
+	if r := t.ReactionRef(id); r != nil {
+		return r, nil
+	}
+	return nil, ErrActionNotOnTurn
+}
+
+// resolveRollCheck maps an edit's path to the RollCheck it names. A path that names nothing
+// present is an error rather than a silent no-op: the master pressed a control describing a
+// test they believe exists, and answering silently leaves them believing they changed it.
+func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollCheck, error) {
+	if e.SkillName != "" {
+		if e.Field != "" {
+			return nil, ErrAmbiguousConditionEdit
+		}
+		for i := range a.Skills {
+			if a.Skills[i].SkillName == e.SkillName {
+				return &a.Skills[i].RollCheck, nil
+			}
+		}
+		return nil, ErrConditionTargetMissing
+	}
+	switch e.Field {
+	case action.FieldSpeed:
+		return &a.Speed.RollCheck, nil
+	case action.FieldFeint:
+		if a.Feint == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return a.Feint, nil
+	case action.FieldHit:
+		if a.Attack == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Attack.Hit, nil
+	case action.FieldDamage:
+		if a.Attack == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Attack.Damage, nil
+	case action.FieldDodge:
+		if a.Dodge == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Dodge.RollCheck, nil
+	case action.FieldDefense:
+		if a.Defense == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Defense.RollCheck, nil
+	case action.FieldRepel:
+		if a.Repel == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Repel.RollCheck, nil
+	case action.FieldMoveSpeed:
+		if a.Move == nil || a.Move.Speed == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return a.Move.Speed, nil
+	default:
+		return nil, ErrConditionTargetMissing
+	}
+}
+
 // GetCharSheet returns a character's sheet. charID is the sheet UUID — the same ID the
 // board pieces carry as CharacterID — not the player UUID.
 func (s *MatchSession) GetCharSheet(charID uuid.UUID) (*csSheet.CharacterSheet, error) {

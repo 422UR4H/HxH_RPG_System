@@ -48,6 +48,22 @@ func (t *Turn) GetAction() action.Action {
 	return t.action
 }
 
+// ActionRef and ReactionRef hand out POINTERS, unlike GetAction/GetReactions which copy.
+//
+// The copies exist so a reader cannot mutate the turn by accident. The master's edit is the
+// one caller that must mutate it — the edited action IS the action — so it gets the real
+// thing, deliberately and narrowly, rather than by turning the safe accessors unsafe.
+func (t *Turn) ActionRef() *action.Action { return &t.action }
+
+func (t *Turn) ReactionRef(id uuid.UUID) *action.Action {
+	for i := range t.reactions {
+		if t.reactions[i].GetID() == id {
+			return &t.reactions[i]
+		}
+	}
+	return nil
+}
+
 func (t *Turn) GetReactions() []action.Action {
 	reactionsCp := make([]action.Action, len(t.reactions))
 	copy(reactionsCp, t.reactions)

@@ -154,6 +154,14 @@ func (m *mockChangeRoundModeUCHandler) Execute(_ context.Context, _ *matchsessio
 	return nil
 }
 
+type mockEditActionUCHandler struct{}
+
+func (m *mockEditActionUCHandler) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
+) (*appmatch.EditActionResult, error) {
+	return nil, nil
+}
+
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {
 	hub := game.NewHub()
 	go hub.Run()
@@ -176,6 +184,7 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockRoundRepoHandler{},
 		&mockEnqueueMasterActionUCHandler{},
 		&mockChangeRoundModeUCHandler{},
+		&mockEditActionUCHandler{},
 	)
 
 	mux := http.NewServeMux()
