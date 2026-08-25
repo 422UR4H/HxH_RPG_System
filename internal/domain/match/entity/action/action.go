@@ -50,12 +50,31 @@ type Action struct {
 // before the pointer it built is ever handed to a caller. That is deliberate and load-bearing,
 // not incidental: live pointers to an in-flight action really do escape into structures keyed
 // on GetID() (MatchSession.PendingActions()'s priority queue, Turn.ActionRef()'s open turn),
-// and an exported method that could re-stamp identity on one of those later would corrupt
-// react_to_uuid linkage and scheduler keys out from under them. Routing identity through a
-// constructor-only option closes that window by construction: after NewAction returns, nothing
-// exported in this package can change an Action's id, because there is no such method — only
-// this option, which NewAction stops accepting suggestions from the moment it returns.
-type Option func(*Action)
+// and a way to re-stamp identity on one of those later would corrupt react_to_uuid linkage and
+// scheduler keys out from under them.
+//
+// Option is SEALED — its only method is apply, and apply is unexported — specifically so that
+// holding an Option value outside this package is not enough to invoke it. Per the language
+// spec, an unexported method name is only "the same" method across two types if both are
+// declared in the same package, so no type defined outside this package can implement Option,
+// and no caller outside this package can write `opt.apply(x)` even on an Option it legitimately
+// holds (returned by WithReconstructedID) — that expression does not compile there. NewAction
+// is the only call site inside this package that invokes apply, and it does so once, before
+// returning. That is what makes the guarantee true rather than aspirational: after NewAction
+// returns, nothing outside this package can change an Action's id, full stop — not through
+// Option, and not through any other exported name, because there is no other exported name
+// that touches the id field.
+type Option interface {
+	apply(*Action)
+}
+
+// reconstructedID is the concrete Option WithReconstructedID returns. It exists only to carry
+// apply's unexported implementation — see Option's own doc for why that seals the type.
+type reconstructedID uuid.UUID
+
+func (id reconstructedID) apply(a *Action) {
+	a.id = uuid.UUID(id)
+}
 
 // WithReconstructedID overrides the id NewAction would otherwise mint, for the one caller that
 // legitimately needs to: a gateway rebuilding an Action from a persisted row. NewAction minting
@@ -65,12 +84,13 @@ type Option func(*Action)
 // in overridden_action_values keys on, so a row read back with a fabricated id becomes
 // uncorrelatable with everything else in the same result set and in that audit table.
 //
-// This is an Option and not a thirteenth positional parameter, and not an exported setter
-// either: NewAction already takes twelve parameters and growing it buys nothing (see
-// ReactionKind's own doc for that same call), and a setter would reopen exactly the live-object
-// mutation window this shape exists to close.
+// This is a sealed Option and not a thirteenth positional parameter, and not an exported
+// setter either: NewAction already takes twelve parameters and growing it buys nothing (see
+// ReactionKind's own doc for that same call), and a setter — or an Option whose apply method
+// were exported — would reopen exactly the live-object mutation window this shape exists to
+// close.
 func WithReconstructedID(id uuid.UUID) Option {
-	return func(a *Action) { a.id = id }
+	return reconstructedID(id)
 }
 
 func NewAction(
@@ -104,7 +124,7 @@ func NewAction(
 		Interact:  interact,
 	}
 	for _, opt := range opts {
-		opt(a)
+		opt.apply(a)
 	}
 	return a
 }
