@@ -462,3 +462,93 @@ func TestBuildEditAction_MapsKnownField(t *testing.T) {
 		t.Errorf("Conditions[0] = %+v, want Field=hit Bias=1 Modifier=3 Description=flanked", got)
 	}
 }
+
+// TestBuildEditAction_SkillsAbsentVsPresentEmpty guards the wire's only way to say "clear the
+// skill list": Skills is *[]ActionSkillPayload exactly so a nil pointer (absent) and a pointer
+// to an empty slice (present, remove them all) can be told apart. buildSkills alone collapses
+// both to a nil []action.Skill — this is the boundary that must not let that collapse through,
+// because MatchSession.ApplyMasterAction reads the difference off ma.Skills != nil.
+func TestBuildEditAction_SkillsAbsentVsPresentEmpty(t *testing.T) {
+	t.Run("absent means the edit does not touch skills", func(t *testing.T) {
+		ma, err := buildEditAction(EditActionPayload{})
+		if err != nil {
+			t.Fatalf("buildEditAction: %v", err)
+		}
+		if ma.Skills != nil {
+			t.Fatalf("Skills = %+v, want nil (absent)", ma.Skills)
+		}
+	})
+
+	t.Run("present and empty means remove them all, not nil", func(t *testing.T) {
+		empty := []ActionSkillPayload{}
+		ma, err := buildEditAction(EditActionPayload{Skills: &empty})
+		if err != nil {
+			t.Fatalf("buildEditAction: %v", err)
+		}
+		if ma.Skills == nil {
+			t.Fatal("a present-but-empty Skills payload collapsed to nil — indistinguishable " +
+				"from absent, so the master could never clear the list")
+		}
+		if len(ma.Skills) != 0 {
+			t.Fatalf("Skills = %+v, want empty", ma.Skills)
+		}
+	})
+
+	t.Run("present and populated still refuses an unknown skill name", func(t *testing.T) {
+		skills := []ActionSkillPayload{{SkillName: "not-a-real-skill"}}
+		if _, err := buildEditAction(EditActionPayload{Skills: &skills}); err == nil {
+			t.Fatal("expected an unrecognized skill name to be rejected at the boundary")
+		}
+	})
+
+	t.Run("present and populated maps through to the domain skill", func(t *testing.T) {
+		skills := []ActionSkillPayload{{SkillName: enum.Acrobatics.String()}}
+		ma, err := buildEditAction(EditActionPayload{Skills: &skills})
+		if err != nil {
+			t.Fatalf("buildEditAction: %v", err)
+		}
+		if len(ma.Skills) != 1 || ma.Skills[0].SkillName != enum.Acrobatics.String() {
+			t.Fatalf("Skills = %+v, want exactly one Acrobatics entry", ma.Skills)
+		}
+	})
+}
+
+// TestBuildEditAction_TargetIDsAbsentVsPresentEmpty is TargetIDs' half of the same rule:
+// *[]uuid.UUID so absent and present-empty stay distinguishable across the wire.
+func TestBuildEditAction_TargetIDsAbsentVsPresentEmpty(t *testing.T) {
+	t.Run("absent means the edit does not touch targets", func(t *testing.T) {
+		ma, err := buildEditAction(EditActionPayload{})
+		if err != nil {
+			t.Fatalf("buildEditAction: %v", err)
+		}
+		if ma.TargetID != nil {
+			t.Fatalf("TargetID = %+v, want nil (absent)", ma.TargetID)
+		}
+	})
+
+	t.Run("present and empty means clear the targets, not nil", func(t *testing.T) {
+		empty := []uuid.UUID{}
+		ma, err := buildEditAction(EditActionPayload{TargetIDs: &empty})
+		if err != nil {
+			t.Fatalf("buildEditAction: %v", err)
+		}
+		if ma.TargetID == nil {
+			t.Fatal("a present-but-empty TargetIDs payload collapsed to nil — indistinguishable from absent")
+		}
+		if len(ma.TargetID) != 0 {
+			t.Fatalf("TargetID = %+v, want empty", ma.TargetID)
+		}
+	})
+
+	t.Run("present and populated maps through", func(t *testing.T) {
+		id := uuid.New()
+		targets := []uuid.UUID{id}
+		ma, err := buildEditAction(EditActionPayload{TargetIDs: &targets})
+		if err != nil {
+			t.Fatalf("buildEditAction: %v", err)
+		}
+		if len(ma.TargetID) != 1 || ma.TargetID[0] != id {
+			t.Fatalf("TargetID = %+v, want [%s]", ma.TargetID, id)
+		}
+	})
+}

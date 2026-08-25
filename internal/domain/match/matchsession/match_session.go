@@ -59,6 +59,10 @@ type MatchSession struct {
 	// rollSource is where the dice come from. nil means production. Tests set it so a
 	// phase whose done-criteria name exact numbers never depends on luck.
 	rollSource service.RollSource
+	// removedSkillDice parks the dice of skills the master took off an action, keyed by action
+	// then skill name, so putting one back is not a free re-roll. It lives for as long as the
+	// session does; a turn's entries are drained into the audit when it closes.
+	removedSkillDice map[uuid.UUID]map[string]action.RollAttempts
 }
 
 func NewMatchSession(
@@ -230,6 +234,12 @@ func (s *MatchSession) ApplyMasterAction(
 	if err != nil {
 		return nil, err
 	}
+	if ma.TargetID != nil {
+		target.TargetID = append([]uuid.UUID(nil), ma.TargetID...)
+	}
+	if ma.Skills != nil {
+		s.applySkillEdit(target, ma.Skills)
+	}
 	for _, edit := range ma.Conditions {
 		rc, err := resolveRollCheck(target, edit)
 		if err != nil {
@@ -318,6 +328,66 @@ func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollChe
 	default:
 		return nil, ErrConditionTargetMissing
 	}
+}
+
+// applySkillEdit replaces the action's skill list, and it is where the two asymmetric rules of
+// combat-engine.md § A edição do mestre live.
+//
+// ADDING rolls new dice. That is not a re-roll and does not break "the master never re-rolls a
+// player's die": it is the FIRST roll of a test that did not exist a moment ago.
+//
+// REMOVING keeps the dice. They go into removedSkillDice, keyed by action and skill name, and
+// a later re-add reads them back. Without that, taking a skill out and putting it back would
+// be a free re-roll — the master would only have to dislike a number to be given another one.
+//
+// The list changes and the list does not yet DECIDE anything: nobody reads a Skill's result
+// (combat-engine.md § A corrente de testes). That is stated, not hidden.
+func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill) {
+	if s.removedSkillDice == nil {
+		s.removedSkillDice = map[uuid.UUID]map[string]action.RollAttempts{}
+	}
+	memory := s.removedSkillDice[a.GetID()]
+	if memory == nil {
+		memory = map[string]action.RollAttempts{}
+		s.removedSkillDice[a.GetID()] = memory
+	}
+
+	held := make(map[string]action.RollAttempts, len(a.Skills))
+	for _, prev := range a.Skills {
+		held[prev.SkillName] = prev.Attempts
+	}
+
+	next := make([]action.Skill, 0, len(want))
+	for _, sk := range want {
+		switch {
+		case !held[sk.SkillName].IsEmpty():
+			sk.Attempts = held[sk.SkillName] // untouched: it was already there
+		case !memory[sk.SkillName].IsEmpty():
+			sk.Attempts = memory[sk.SkillName] // put back: same dice as before
+			delete(memory, sk.SkillName)
+		}
+		if sk.RollCheck.SkillName == "" {
+			sk.RollCheck.SkillName = sk.SkillName
+		}
+		next = append(next, sk)
+	}
+	// Whatever left the list parks its dice, so a re-add is not a re-roll.
+	for name, attempts := range held {
+		stillThere := false
+		for _, sk := range next {
+			if sk.SkillName == name {
+				stillThere = true
+				break
+			}
+		}
+		if !stillThere && !attempts.IsEmpty() {
+			memory[name] = attempts
+		}
+	}
+	a.Skills = next
+	// rollActionDice leaves alone every RollCheck whose dice already fell, so this rolls for
+	// exactly the entries that are genuinely new.
+	s.rollActionDice(a)
 }
 
 // GetCharSheet returns a character's sheet. charID is the sheet UUID — the same ID the

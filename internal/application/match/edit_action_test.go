@@ -56,9 +56,12 @@ type editFixture struct {
 	playerUUID uuid.UUID
 	attackerID uuid.UUID // sheet UUID of the attacking character
 	victimID   uuid.UUID // sheet UUID of the target
-	// thirdID is a bystander: present in the session but never targeted by the fixture's
-	// attack, on the shape of newCombatFixture's roster.
-	thirdID uuid.UUID
+	// thirdCharacterID is a bystander: present in the session but never targeted by the
+	// fixture's attack, on the shape of newCombatFixture's roster.
+	thirdCharacterID uuid.UUID
+	// actorID is set only by newOpenMoveFixture: attackerID/victimID name the two roles of an
+	// attack fixture, but a pure-move fixture has just the one character.
+	actorID uuid.UUID
 
 	session    *matchsession.MatchSession
 	rollSource *scriptedFaces
@@ -91,7 +94,9 @@ func (f *editFixture) openTurn() *turn.Turn {
 // The dice budget: one Sword attack, in the session's default Free round mode, rolls the hit
 // (a 2D10 test — 4 faces, Primary AND Secondary, because Roll always rolls both even with no
 // advantage) and then the weapon's own damage dice (Sword is D10+D4, Primary only — damage has
-// no advantage). Free mode never rolls actionSpeed, so that is the whole budget: 6 faces.
+// no advantage). Free mode never rolls actionSpeed, so that is 6 faces for the open action
+// itself, plus 4 more reserved and unused by every RollCondition test: a Skills-edit test
+// reuses this same fixture and adds one skill afterwards, which is its own 2D10 test.
 //
 // Secondary is scripted strictly higher than Primary on the hit check, so a later advantage
 // edit provably switches which already-rolled set is read.
@@ -99,12 +104,12 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 	t.Helper()
 
 	f := &editFixture{
-		matchUUID:  uuid.New(),
-		masterUUID: uuid.New(),
-		playerUUID: uuid.New(),
-		attackerID: uuid.New(),
-		victimID:   uuid.New(),
-		thirdID:    uuid.New(),
+		matchUUID:        uuid.New(),
+		masterUUID:       uuid.New(),
+		playerUUID:       uuid.New(),
+		attackerID:       uuid.New(),
+		victimID:         uuid.New(),
+		thirdCharacterID: uuid.New(),
 	}
 
 	// All three characters belong to the same player — enough here, exactly as
@@ -119,13 +124,13 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 	}
 	third := &matchDomain.Participant{
 		UUID: uuid.New(), MatchUUID: f.matchUUID,
-		Sheet: csEntity.Summary{UUID: f.thirdID, PlayerUUID: &f.playerUUID},
+		Sheet: csEntity.Summary{UUID: f.thirdCharacterID, PlayerUUID: &f.playerUUID},
 	}
 
 	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
-		f.attackerID: newEditSheet(t),
-		f.victimID:   newEditSheet(t),
-		f.thirdID:    newEditSheet(t),
+		f.attackerID:       newEditSheet(t),
+		f.victimID:         newEditSheet(t),
+		f.thirdCharacterID: newEditSheet(t),
 	}
 	session := matchsession.NewMatchSession(
 		f.matchUUID, sheets, []*matchDomain.Participant{attacker, victim, third},
@@ -135,6 +140,7 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 		3, 4, // Hit Primary: sum 7
 		9, 8, // Hit Secondary: sum 17 — strictly higher, so advantage must switch sets
 		5, 2, // Sword damage: D10, D4
+		6, 7, 1, 9, // reserved for a later skill edit (2D10, unused by RollCondition tests)
 	}}
 	session.SetRollSource(f.rollSource)
 	f.session = session
@@ -164,6 +170,161 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 	f.facesAtOpen = f.rollSource.consumed()
 	f.primaryTotal = f.currentResolution(t).ActionResult.Total
 	return f
+}
+
+// newOpenAttackFixtureWithSkill is newOpenAttackFixture, but the attack carries one skill from
+// the very start, so its dice fall the moment the action is enqueued — this is the "original"
+// roll the removed-and-restored test proves comes back unchanged.
+//
+// Dice budget: rollActionDice walks Skills BEFORE Attack, so the skill's own 2D10 test (4
+// faces) rolls first, then the hit (4 faces), then the weapon's damage (2 faces, Primary
+// only — damage has no advantage). 10 faces total. Free mode never rolls actionSpeed.
+func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture {
+	t.Helper()
+
+	f := &editFixture{
+		matchUUID:        uuid.New(),
+		masterUUID:       uuid.New(),
+		playerUUID:       uuid.New(),
+		attackerID:       uuid.New(),
+		victimID:         uuid.New(),
+		thirdCharacterID: uuid.New(),
+	}
+
+	attacker := &matchDomain.Participant{
+		UUID: uuid.New(), MatchUUID: f.matchUUID,
+		Sheet: csEntity.Summary{UUID: f.attackerID, PlayerUUID: &f.playerUUID},
+	}
+	victim := &matchDomain.Participant{
+		UUID: uuid.New(), MatchUUID: f.matchUUID,
+		Sheet: csEntity.Summary{UUID: f.victimID, PlayerUUID: &f.playerUUID},
+	}
+	third := &matchDomain.Participant{
+		UUID: uuid.New(), MatchUUID: f.matchUUID,
+		Sheet: csEntity.Summary{UUID: f.thirdCharacterID, PlayerUUID: &f.playerUUID},
+	}
+
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		f.attackerID:       newEditSheet(t),
+		f.victimID:         newEditSheet(t),
+		f.thirdCharacterID: newEditSheet(t),
+	}
+	session := matchsession.NewMatchSession(
+		f.matchUUID, sheets, []*matchDomain.Participant{attacker, victim, third},
+	)
+
+	f.rollSource = &scriptedFaces{faces: []int{
+		1, 2, // skill Primary: sum 3
+		3, 4, // skill Secondary: sum 7
+		5, 6, // Hit Primary
+		7, 8, // Hit Secondary
+		9, 1, // Sword damage: D10, D4
+	}}
+	session.SetRollSource(f.rollSource)
+	f.session = session
+
+	weapon := enum.Sword
+	act := action.NewAction(
+		f.attackerID, []uuid.UUID{f.victimID}, uuid.Nil,
+		[]action.Skill{{SkillName: skillName, RollCheck: action.RollCheck{SkillName: skillName}}},
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil, nil,
+		&action.Attack{
+			Weapon: &weapon,
+			Hit:    action.RollCheck{SkillName: enum.Accuracy.String()},
+			Damage: action.RollCheck{SkillName: enum.Push.String()},
+		},
+		nil, nil, nil, nil,
+	)
+	if err := session.EnqueueAction(f.playerUUID, act); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+
+	tr, err := session.OpenNextAction()
+	if err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
+	openedAction := tr.Opened.GetAction()
+	f.actionID = openedAction.GetID()
+	f.facesAtOpen = f.rollSource.consumed()
+	return f
+}
+
+// newOpenMoveFixture builds a session with a single character and opens a pure-move action —
+// Bars() answers just [BarMove], nothing on the action bar. Race mode, deliberately: outside
+// Race, recordActed no-ops unconditionally (see MatchSession.recordActed), which would make
+// the "does not start charging the action bar" test pass vacuously no matter what the edit
+// does. Under Race, opening the action actually records a speed on the move bar, so the test
+// can prove the action bar's Speeds are genuinely untouched by the edit.
+//
+// PullAction, not OpenNextAction: it is explicitly ungated ("the master's explicit pull_action
+// stays ungated on purpose"), so a single queued action opens without wiring up the
+// scheduler's Race eligibility gate.
+//
+// Dice budget: Race rolls actionSpeed (4 faces). The move is a Shift, which takes Brake's
+// passive value and rolls nothing (see rollActionDice's Shift carve-out). 4 faces total.
+func newOpenMoveFixture(t *testing.T) *editFixture {
+	t.Helper()
+
+	f := &editFixture{
+		matchUUID:  uuid.New(),
+		masterUUID: uuid.New(),
+		playerUUID: uuid.New(),
+		actorID:    uuid.New(),
+	}
+
+	actor := &matchDomain.Participant{
+		UUID: uuid.New(), MatchUUID: f.matchUUID,
+		Sheet: csEntity.Summary{UUID: f.actorID, PlayerUUID: &f.playerUUID},
+	}
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		f.actorID: newEditSheet(t),
+	}
+	session := matchsession.NewMatchSession(
+		f.matchUUID, sheets, []*matchDomain.Participant{actor},
+	)
+	session.GetActiveRound().SetMode(enum.Race)
+
+	f.rollSource = &scriptedFaces{faces: []int{
+		1, 2, // actionSpeed Primary
+		3, 4, // actionSpeed Secondary
+	}}
+	session.SetRollSource(f.rollSource)
+	f.session = session
+
+	act := action.NewAction(
+		f.actorID, nil, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil,
+		&action.Move{Category: enum.Shift, Speed: &action.RollCheck{SkillName: enum.Brake.String()}},
+		nil, nil, nil, nil, nil,
+	)
+	if err := session.EnqueueAction(f.playerUUID, act); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+
+	tr, err := session.PullAction(act.GetID())
+	if err != nil {
+		t.Fatalf("PullAction: %v", err)
+	}
+	openedAction := tr.Opened.GetAction()
+	f.actionID = openedAction.GetID()
+	f.facesAtOpen = f.rollSource.consumed()
+	return f
+}
+
+// skillOn locates one entry of the open turn's own action's Skills by name, or fails the
+// test — how the skills tests read the exact dice a skill carries after an edit.
+func (f *editFixture) skillOn(t *testing.T, name string) action.Skill {
+	t.Helper()
+	a := f.openTurn().ActionRef()
+	for _, sk := range a.Skills {
+		if sk.SkillName == name {
+			return sk
+		}
+	}
+	t.Fatalf("no skill named %q on the open action", name)
+	return action.Skill{}
 }
 
 func newEditSheet(t *testing.T) *csSheet.CharacterSheet {
@@ -408,4 +569,97 @@ func TestApplyMasterAction_PreservesReactionSwapDisadvantage(t *testing.T) {
 		t.Fatalf("an unrelated edit moved the reaction's speed: %d → %d — the swap-disadvantage "+
 			"was silently erased", speedBefore, after.Speed.Result)
 	}
+}
+
+func TestEditActionSkills(t *testing.T) {
+	t.Run("adding a skill rolls dice for it — a first roll, not a re-roll", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		facesBefore := f.rollSource.consumed()
+
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
+
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		// One 2D10 test: four faces, because Roll always rolls Primary AND Secondary.
+		if got := f.rollSource.consumed() - facesBefore; got != 4 {
+			t.Fatalf("added skill consumed %d faces, want 4", got)
+		}
+		added := f.skillOn(t, enum.Acrobatics.String())
+		if added.Attempts.IsEmpty() {
+			t.Fatal("the added skill has no dice")
+		}
+	})
+
+	t.Run("removing and re-adding a skill reuses its dice", func(t *testing.T) {
+		f := newOpenAttackFixtureWithSkill(t, enum.Acrobatics.String())
+		original := f.skillOn(t, enum.Acrobatics.String()).Attempts
+
+		uc := match.NewEditActionUC()
+		strip := action.NewMasterAction()
+		strip.ActionID = f.actionID
+		strip.Skills = []action.Skill{} // present and empty: remove them all
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, strip); err != nil {
+			t.Fatalf("strip: %v", err)
+		}
+		facesAfterStrip := f.rollSource.consumed()
+
+		restore := action.NewMasterAction()
+		restore.ActionID = f.actionID
+		restore.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, restore); err != nil {
+			t.Fatalf("restore: %v", err)
+		}
+
+		if f.rollSource.consumed() != facesAfterStrip {
+			t.Fatal("re-adding a removed skill rolled again — that is a free re-roll")
+		}
+		back := f.skillOn(t, enum.Acrobatics.String()).Attempts
+		if !slices.Equal(back.Primary, original.Primary) ||
+			!slices.Equal(back.Secondary, original.Secondary) {
+			t.Fatalf("the dice came back different: %v → %v", original, back)
+		}
+	})
+
+	t.Run("adding a skill to a pure move does not start charging the action bar", func(t *testing.T) {
+		f := newOpenMoveFixture(t) // a move-only action, opened, charging BarMove alone
+		_, speedsBefore := f.session.BarState(f.actorID, action.BarAction)
+
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+
+		_, speedsAfter := f.session.BarState(f.actorID, action.BarAction)
+		if !slices.Equal(speedsAfter, speedsBefore) {
+			t.Fatal("the edit re-priced the action bar; the order already played would move")
+		}
+	})
+}
+
+func TestEditActionTargets(t *testing.T) {
+	t.Run("replacing the target list re-resolves against the new targets", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		other := f.thirdCharacterID
+
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.TargetID = []uuid.UUID{other}
+
+		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if len(res.Resolution.CharacterResults) != 1 ||
+			res.Resolution.CharacterResults[0].TargetID != other {
+			t.Fatalf("the resolution still names the old target: %+v", res.Resolution.CharacterResults)
+		}
+	})
 }

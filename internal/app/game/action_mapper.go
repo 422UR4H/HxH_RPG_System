@@ -313,6 +313,14 @@ func buildEditAction(p EditActionPayload) (*action.MasterAction, error) {
 		if err != nil {
 			return nil, err
 		}
+		// buildSkills collapses a length-0 input to a nil slice — right for buildAction, where
+		// there is no separate "absent" signal to preserve, but wrong here: a present-but-empty
+		// *p.Skills means "remove them all," and ApplyMasterAction reads that meaning off
+		// ma.Skills != nil. Losing the non-nil-ness here would silently turn "clear the list"
+		// into "do not touch it."
+		if skills == nil {
+			skills = []action.Skill{}
+		}
 		ma.Skills = skills
 	}
 	if p.TargetIDs != nil {
