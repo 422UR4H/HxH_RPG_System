@@ -95,6 +95,9 @@ func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID
 func (m *mockRoundRepoGame) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
 }
+func (m *mockRoundRepoGame) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
+	return nil, nil
+}
 
 type mockEnqueueMasterActionUC struct{}
 

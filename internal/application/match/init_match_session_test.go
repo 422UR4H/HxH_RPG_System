@@ -27,6 +27,9 @@ func (m *noopRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseDat
 func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
 	return nil
 }
+func (m *noopRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+	return nil, nil
+}
 func (m *noopRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
 }
@@ -50,6 +53,9 @@ func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ 
 }
 func (m *mockRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
+}
+func (m *mockRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+	return nil, nil
 }
 
 func TestInitMatchSession(t *testing.T) {

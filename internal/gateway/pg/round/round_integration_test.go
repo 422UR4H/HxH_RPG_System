@@ -679,6 +679,114 @@ func TestPersistTurnCloseWritesANullOriginalAsSQLNull(t *testing.T) {
 	}
 }
 
+// TestFindMatchHistoryIsNested proves the read side of Task 11: a match's closed turns come
+// back as Scene -> Round -> Turn -> Action, not a flat list, with reactions attached to the
+// right turn and the settled resolution round-tripped alongside it.
+func TestFindMatchHistoryIsNested(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	// Turn 1: a plain action, no reaction, no resolution — closes first.
+	act1 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn1 := turnentity.NewTurn(*act1)
+	tn1.Close(time.Now())
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn1, Action: act1, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 1: %v", err)
+	}
+
+	// Turn 2: same scene, same round — a reaction and a settled resolution, closes after.
+	act2 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	reaction := action.NewAction(
+		fx.victimSheet, nil, act2.GetID(), nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	reaction.ReactionKind = action.ReactRepel
+	reaction.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: "Sword", Result: 17}}
+
+	tn2 := turnentity.NewTurn(*act2)
+	tn2.AddReaction(reaction)
+	tn2.Close(time.Now().Add(time.Second)) // strictly after tn1, so ordering is provable
+
+	res := &service.TurnResolution{
+		IsSettled:    true,
+		ActionResult: service.RollResult{SkillName: "Legerity", Total: 19, DiceRolled: []int{10, 9}},
+		CharacterResults: []service.CharacterResult{{
+			TargetID: fx.victimSheet, RawDamage: 11, DefenseApplied: 3, EffectiveDamage: 8,
+		}},
+	}
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn2, Action: act2,
+		MatchUUID: fx.matchUUID, Resolution: res,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 2: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 || len(scenes[0].Rounds[0].Turns) != 2 {
+		t.Fatalf("the tree is wrong: %d scenes", len(scenes))
+	}
+	turns := scenes[0].Rounds[0].Turns
+	if turns[0].FinishedAt.After(turns[1].FinishedAt) {
+		t.Fatal("turns came back out of order")
+	}
+	withReaction := turns[1]
+	if len(withReaction.Reactions) != 1 {
+		t.Fatalf("reactions = %d, want 1 — they are persisted since PR #69",
+			len(withReaction.Reactions))
+	}
+	if withReaction.Reactions[0].ReactionKind == "" {
+		t.Fatal("reaction_kind did not come back")
+	}
+	if withReaction.Resolution == nil || len(withReaction.Resolution.CharacterResults) == 0 {
+		t.Fatal("the settled resolution did not come back")
+	}
+	// Not just "non-nil" — a real value inside it, proving the round trip, not just presence.
+	if withReaction.Resolution.CharacterResults[0].EffectiveDamage != 8 {
+		t.Fatalf("resolution's character result did not survive: %+v",
+			withReaction.Resolution.CharacterResults[0])
+	}
+	// Turn 1 resolved nothing — must come back nil, not a zero-value record.
+	if turns[0].Resolution != nil {
+		t.Fatalf("turn 1 should have no resolution, got %+v", turns[0].Resolution)
+	}
+}
+
+// TestFindMatchHistoryOfAMatchWithNoTurns proves the empty case: an empty slice, not an error
+// and not nil-that-marshals-to-null — Task 12 will put this straight on the wire.
+func TestFindMatchHistoryOfAMatchWithNoTurns(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+
+	masterUUID := pgtest.InsertTestUser(t, pool, "gm-empty", "gm-empty@test.com", "pass")
+	campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "CampEmpty")
+	matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "MatchEmpty")
+	matchUUIDParsed, err := uuid.Parse(matchUUID)
+	if err != nil {
+		t.Fatalf("parse match uuid: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, matchUUIDParsed)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if scenes == nil {
+		t.Fatal("expected a non-nil empty slice, got nil")
+	}
+	if len(scenes) != 0 {
+		t.Fatalf("expected 0 scenes for a match with no closed turns, got %d", len(scenes))
+	}
+}
+
 func TestPersistTurnCloseOverridesUniqueConstraintKeepsOneRowPerField(t *testing.T) {
 	// Two captures naming the same (action_uuid, field) — the unique constraint plus ON
 	// CONFLICT DO NOTHING must keep exactly one row, not error and not duplicate.

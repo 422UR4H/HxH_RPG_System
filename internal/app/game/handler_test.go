@@ -142,6 +142,9 @@ func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _, _ uuid.U
 func (m *mockRoundRepoHandler) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
 }
+func (m *mockRoundRepoHandler) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
+	return nil, nil
+}
 
 type mockEnqueueMasterActionUCHandler struct{}
 

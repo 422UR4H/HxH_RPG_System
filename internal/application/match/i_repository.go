@@ -54,4 +54,43 @@ type IRoundRepository interface {
 	FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error)
 	CloseSceneAndRound(ctx context.Context, sceneUUID, roundUUID uuid.UUID, at time.Time) error
 	CloseRound(ctx context.Context, roundUUID uuid.UUID, at time.Time) error
+	// FindMatchHistory returns the match's closed turns as the TREE the domain already is —
+	// Scene -> Round -> Turn -> Action — not a flat list. See HistoryScene's own doc for why
+	// flattening here would be the wrong call.
+	FindMatchHistory(ctx context.Context, matchUUID uuid.UUID) ([]HistoryScene, error)
+}
+
+// HistoryScene is one logical block a match is organised into, with the rounds it contains.
+//
+// The tree shape (Scene -> Round -> Turn -> Action) is not decoration: the front renders
+// action cards INSIDE the scope of each scene, so a flat list of turns would push the
+// regrouping onto every consumer of this read path instead of doing it once, here.
+type HistoryScene struct {
+	UUID       uuid.UUID
+	Category   string
+	BriefDesc  string
+	CreatedAt  time.Time
+	FinishedAt *time.Time
+	Rounds     []HistoryRound
+}
+
+// HistoryRound is one round of a scene's history, with the turns closed inside it.
+type HistoryRound struct {
+	UUID       uuid.UUID
+	Mode       string
+	CreatedAt  time.Time
+	FinishedAt *time.Time
+	Turns      []HistoryTurn
+}
+
+// HistoryTurn is one closed turn: the action that drove it, whatever reactions answered it,
+// and the settled collision that resulted — not the master's live edits, and not the master's
+// own actions, which are never persisted (see FindMatchHistory's doc).
+type HistoryTurn struct {
+	UUID       uuid.UUID
+	CreatedAt  time.Time
+	FinishedAt time.Time
+	Action     action.Action
+	Reactions  []action.Action
+	Resolution *service.TurnResolution // nil for a turn that resolved nothing
 }

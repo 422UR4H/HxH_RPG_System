@@ -29,6 +29,9 @@ func (m *mockCloseRoundRepo) FindActiveSession(_ context.Context, _ uuid.UUID) (
 func (m *mockCloseRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseData) error {
 	return nil
 }
+func (m *mockCloseRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+	return nil, nil
+}
 
 func TestCloseRoundUC(t *testing.T) {
 	masterUUID := uuid.New()
