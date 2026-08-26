@@ -69,24 +69,24 @@ type HistoryTurnResponse struct {
 // Trigger are nil, ReactionKind is demoted, and a stripped Evasion skill entry is simply
 // absent — all of that already happened upstream, in service.ProjectAction.
 type ActionResponse struct {
-	UUID         uuid.UUID           `json:"uuid"`
-	ActorID      uuid.UUID           `json:"actorId"`
-	TargetID     []uuid.UUID         `json:"targetId,omitempty"`
-	ReactToID    *uuid.UUID          `json:"reactToId,omitempty"`
-	ReactionKind string              `json:"reactionKind,omitempty"`
-	Skills       []SkillResponse     `json:"skills,omitempty"`
-	Speed        ActionSpeedResponse `json:"speed"`
-	Feint        *RollCheckResponse  `json:"feint,omitempty"`
-	Trigger      *TriggerResponse    `json:"trigger,omitempty"`
-	Move         *MoveResponse       `json:"move,omitempty"`
-	Attack       *AttackResponse     `json:"attack,omitempty"`
-	Defense      *DefenseResponse    `json:"defense,omitempty"`
-	Dodge        *DodgeResponse      `json:"dodge,omitempty"`
-	Repel        *RepelResponse      `json:"repel,omitempty"`
-	Interact     *InteractResponse   `json:"interact,omitempty"`
+	UUID         uuid.UUID             `json:"uuid"`
+	ActorID      uuid.UUID             `json:"actorId"`
+	TargetID     []uuid.UUID           `json:"targetId,omitempty"`
+	ReactToID    *uuid.UUID            `json:"reactToId,omitempty"`
+	ReactionKind string                `json:"reactionKind,omitempty"`
+	Skills       []ActionSkillResponse `json:"skills,omitempty"`
+	Speed        ActionSpeedResponse   `json:"speed"`
+	Feint        *RollCheckResponse    `json:"feint,omitempty"`
+	Trigger      *TriggerResponse      `json:"trigger,omitempty"`
+	Move         *MoveResponse         `json:"move,omitempty"`
+	Attack       *AttackResponse       `json:"attack,omitempty"`
+	Defense      *DefenseResponse      `json:"defense,omitempty"`
+	Dodge        *DodgeResponse        `json:"dodge,omitempty"`
+	Repel        *RepelResponse        `json:"repel,omitempty"`
+	Interact     *InteractResponse     `json:"interact,omitempty"`
 }
 
-type SkillResponse struct {
+type ActionSkillResponse struct {
 	SkillName  string            `json:"skillName"`
 	Difficulty *int              `json:"difficulty,omitempty"`
 	RollCheck  RollCheckResponse `json:"rollCheck"`
@@ -295,7 +295,7 @@ func toActionResponse(a action.Action) ActionResponse {
 		out.ReactToID = &id
 	}
 	for _, s := range a.Skills {
-		out.Skills = append(out.Skills, SkillResponse{
+		out.Skills = append(out.Skills, ActionSkillResponse{
 			SkillName: s.SkillName, Difficulty: s.Difficulty,
 			RollCheck: toRollCheckResponse(s.RollCheck),
 		})
