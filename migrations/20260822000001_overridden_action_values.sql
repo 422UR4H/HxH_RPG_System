@@ -17,6 +17,15 @@ BEGIN;
 -- No source column. If only the master overrides, there is nothing for it to discriminate; the
 -- bias the SYSTEM applies is a Modifier in the ledger and was never an override. `origin` is a
 -- different question: where the DISPLACED value came from.
+--
+-- Composition rule: original_value is a snapshot taken at the moment of ITS OWN row's edit,
+-- not a pristine copy of what the player originally sent. Edit a skill's condition, then
+-- remove that skill entirely, and the "skills" row's original_value for it already carries
+-- the earlier condition baked in — origin still reads 'player' regardless, since origin names
+-- where the displaced VALUE's shape came from, not the edit history behind it. The player's
+-- true original is recoverable by composing that entry with the "skill:<name>.condition"
+-- row's own original_value, not by reading either row alone. See the full rule on
+-- match.OverriddenValue (internal/domain/match/override.go).
 CREATE TABLE IF NOT EXISTS overridden_action_values (
     id             SERIAL PRIMARY KEY,
     action_uuid    UUID NOT NULL REFERENCES actions(uuid) ON DELETE CASCADE,
@@ -25,10 +34,11 @@ CREATE TABLE IF NOT EXISTS overridden_action_values (
     master_uuid    UUID NOT NULL REFERENCES users(uuid),
     overridden_at  TIMESTAMP NOT NULL,
     original_value JSONB,
+    -- UNIQUE (action_uuid, field) already creates a btree index led by action_uuid, which
+    -- covers WHERE action_uuid = $1 lookups on its own — a separate single-column index on
+    -- action_uuid would be a redundant duplicate, not a distinct access path.
     UNIQUE (action_uuid, field)
 );
-CREATE INDEX IF NOT EXISTS idx_overridden_action_values_action_uuid
-    ON overridden_action_values(action_uuid);
 
 COMMIT;
 -- +goose StatementEnd
