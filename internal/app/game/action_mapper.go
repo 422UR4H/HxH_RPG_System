@@ -273,3 +273,71 @@ func buildMasterAction(masterUUID uuid.UUID, p MasterActionPayload) *action.Mast
 	}
 	return ma
 }
+
+// buildEditAction maps an EditActionPayload received from the WebSocket client to a
+// MasterAction domain entity carrying the master's condition edits, crossing the
+// string → action.ConditionField boundary the same way buildRollCheck crosses
+// string → skill name: an unrecognized field name is refused HERE, as a client bug, rather
+// than being let through as an empty ConditionField and surfacing deep inside the session as
+// ErrConditionTargetMissing — that error means something different (the master named a real
+// field, but this action genuinely does not carry that check), and conflating the two would
+// hand back the wrong message for both.
+//
+// Skills and TargetIDs are mapped too — Task 8's half of this same edit surface — so
+// AddMasterAction records the whole edit even though this phase only APPLIES Conditions.
+func buildEditAction(p EditActionPayload) (*action.MasterAction, error) {
+	ma := action.NewMasterAction()
+	ma.ActionID = p.ActionID
+
+	for _, c := range p.Conditions {
+		edit := action.ConditionEdit{
+			SkillName: c.SkillName,
+			Condition: action.RollCondition{
+				Bias:        c.Bias,
+				Modifier:    c.Modifier,
+				Description: c.Description,
+			},
+		}
+		if c.Field != "" {
+			field, err := conditionFieldFrom(c.Field)
+			if err != nil {
+				return nil, err
+			}
+			edit.Field = field
+		}
+		ma.Conditions = append(ma.Conditions, edit)
+	}
+
+	if p.Skills != nil {
+		skills, err := buildSkills(*p.Skills)
+		if err != nil {
+			return nil, err
+		}
+		// buildSkills collapses a length-0 input to a nil slice — right for buildAction, where
+		// there is no separate "absent" signal to preserve, but wrong here: a present-but-empty
+		// *p.Skills means "remove them all," and ApplyMasterAction reads that meaning off
+		// ma.Skills != nil. Losing the non-nil-ness here would silently turn "clear the list"
+		// into "do not touch it."
+		if skills == nil {
+			skills = []action.Skill{}
+		}
+		ma.Skills = skills
+	}
+	if p.TargetIDs != nil {
+		ma.TargetID = *p.TargetIDs
+	}
+	return ma, nil
+}
+
+// conditionFieldFrom crosses the string → action.ConditionField boundary. An unrecognized name
+// is a client bug — refused here, the same way an unknown skill name is in buildRollCheck —
+// rather than reaching the session as an empty ConditionField.
+func conditionFieldFrom(s string) (action.ConditionField, error) {
+	switch action.ConditionField(s) {
+	case action.FieldSpeed, action.FieldHit, action.FieldDamage, action.FieldDodge,
+		action.FieldDefense, action.FieldRepel, action.FieldFeint, action.FieldMoveSpeed:
+		return action.ConditionField(s), nil
+	default:
+		return "", fmt.Errorf("condition field %q is not recognized", s)
+	}
+}

@@ -320,3 +320,37 @@ func TestOpenNextAction_AutoCloseFailureIsLoggedNotReturned(t *testing.T) {
 		}
 	})
 }
+
+// TestOpenNextActionUC_ClosedTurnSurvivesAnOpenFailure is Task 4b: a closed turn must never
+// be dropped because the next one could not open.
+//
+// newTurnFixture leaves one turn open with nothing behind it in the queue. Calling Execute
+// closes that turn (applying its damage) and then tries to open the next one from the now
+// empty queue — the exact deterministic shape of the bug, not a race: session.OpenNextAction
+// closes first and only then can fail, so by the time the error exists the turn is already
+// closed and its damage already applied. Losing the result here (as `return nil, err` did)
+// would mean the caller's error branch never emits resolution_updated and never persists the
+// turn — a real turn's resolution and history silently dropped.
+func TestOpenNextActionUC_ClosedTurnSurvivesAnOpenFailure(t *testing.T) {
+	f := newTurnFixture(t)
+	writer := &fakeStatusWriter{}
+	uc := match.NewOpenNextActionUC(writer, nil)
+
+	res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID)
+
+	if err == nil {
+		t.Fatal("expected an error: the queue is empty, there is nothing left to open")
+	}
+	if res == nil {
+		t.Fatal("the previous turn already closed and its damage already applied — losing the result here would strand the table")
+	}
+	if res.ClosedTurn == nil {
+		t.Error("expected the turn that was open before this call to be reported closed")
+	}
+	if res.ClosedResolution == nil {
+		t.Error("expected the settled resolution for the closed turn")
+	}
+	if len(writer.calls) != 1 || writer.calls[0] != f.victimChar.String() {
+		t.Errorf("persisted = %v, want exactly the victim %s", writer.calls, f.victimChar)
+	}
+}

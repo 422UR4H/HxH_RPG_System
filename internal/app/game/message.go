@@ -35,14 +35,20 @@ const (
 	MsgTypePullAction     MessageType = "pull_action"
 	MsgTypeAttachReaction MessageType = "attach_reaction"
 	MsgTypeOpenReaction   MessageType = "open_reaction"
+	MsgTypeCloseTurn      MessageType = "close_turn"
+	MsgTypeEditAction     MessageType = "edit_action"
 
 	// Server → Client (game events)
 	MsgTypeTurnOpened       MessageType = "turn_opened"
 	MsgTypeRoundClosed      MessageType = "round_closed"
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
+	MsgTypeActionQueued     MessageType = "action_queued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
+	MsgTypeTurnClosed       MessageType = "turn_closed"
+	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
+	MsgTypeActionEdited     MessageType = "action_edited"
 
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
@@ -161,10 +167,40 @@ type PullActionPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 }
 
+// ActionQueuedPayload tells the MASTER that something landed in the queue, and names it.
+//
+// Master-only, and that is the whole point: the queue is secret (combat-engine.md § As barras
+// são públicas — "a fila é secreta; a barra e a ordem são públicas"), so a player learning
+// what is pending would read the table's intentions off the wire.
+//
+// ActionID is not decoration. pull_action takes an action ID, and until this payload existed
+// the master had no legitimate way to learn one — the same hole PendingReactions closed for
+// open_reaction, with the same consequence: an ID a client cannot learn is an operation a
+// client cannot invoke.
+//
+// Nothing here describes the action's CONTENT. Weapon, target, skill and dice stay the
+// player's until the master opens the turn.
+type ActionQueuedPayload struct {
+	ActionID uuid.UUID `json:"actionId"`
+	ActorID  uuid.UUID `json:"actorId"`
+	// Bars is which clocks it will charge — the master's scheduling surface, and already
+	// derivable from the public bars_updated order. Nothing new is disclosed by naming it here.
+	Bars []string `json:"bars"`
+}
+
 // OpenReactionPayload names which attached reaction the master is giving the floor to. The
 // order is theirs, and it changes the result.
 type OpenReactionPayload struct {
 	ReactionID uuid.UUID `json:"reactionId"`
+}
+
+// CloseTurnPayload ends the open turn. Master only.
+//
+// Confirm is the master answering the refusal below. It is not a general "yes": a clean close
+// never needs it, so a client that always sends true is not cheating anything — there is
+// nothing to confirm when nothing is pending.
+type CloseTurnPayload struct {
+	Confirm bool `json:"confirm,omitempty"`
 }
 
 // ActionPayload is the unified shape for both enqueue_action and attach_reaction messages.
@@ -243,6 +279,30 @@ type ActionSkillPayload struct {
 	Difficulty *int   `json:"difficulty,omitempty"`
 }
 
+// EditActionPayload is the master editing the open turn's action, or one of its reactions.
+// Master only.
+//
+// Every section is optional and independent: send only what changes. A section that is
+// present REPLACES its list wholesale — partial list merging would need a per-entry identity
+// the wire does not have.
+type EditActionPayload struct {
+	// ActionID names the target. Omitted or zero means the turn's own action.
+	ActionID   uuid.UUID              `json:"actionId,omitempty"`
+	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
+	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
+	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
+}
+
+// ConditionEditPayload changes how one test is read. Field and skillName are alternatives:
+// one names a fixed check on the action, the other names an entry of skills.
+type ConditionEditPayload struct {
+	Field       string `json:"field,omitempty"`
+	SkillName   string `json:"skillName,omitempty"`
+	Bias        int    `json:"bias,omitempty"`
+	Modifier    int    `json:"modifier,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 type TurnOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turnId"`
 	ActorID    uuid.UUID `json:"actorId"`
@@ -258,6 +318,30 @@ type RoundClosedPayload struct {
 type ReactionOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turnId"`
 	ReactionID uuid.UUID `json:"reactionId"`
+}
+
+// TurnClosedPayload announces that the baton was put down. BROADCAST — that a turn ended is
+// table state. The numbers travel separately, in the projected resolution_updated that
+// follows.
+type TurnClosedPayload struct {
+	TurnID uuid.UUID `json:"turnId"`
+}
+
+// ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed
+// resolution travels in the resolution_updated that follows, projected like every other.
+type ActionEditedPayload struct {
+	TurnID   uuid.UUID `json:"turnId"`
+	ActionID uuid.UUID `json:"actionId"`
+}
+
+// CloseTurnRefusedPayload is the confirmation dialog's content, computed by the server.
+//
+// Master-only, because it names reactions the table has not been shown yet. The front draws
+// the dialog from this; the back is what decides the dialog is needed, which is why the
+// criterion is verifiable with no front at all.
+type CloseTurnRefusedPayload struct {
+	TurnID           uuid.UUID                `json:"turnId"`
+	PendingReactions []PendingReactionPayload `json:"pendingReactions"`
 }
 
 // BarsUpdatedPayload is the two clocks as the whole table sees them.
@@ -310,12 +394,14 @@ type BarSlotPayload struct {
 	Key     float64   `json:"key"`
 }
 
-// ResolutionUpdatedPayload is the master's view of a turn's current resolution.
+// ResolutionUpdatedPayload is one recipient's view of a turn's current resolution.
 //
 // It is a SLICE of service.TurnResolution, not the whole thing: it carries the mechanics and
 // the projection, and nothing that would let a client reconstruct state it is not entitled
-// to. Master-only for now — the calculation belongs to the master until the turn closes, and
-// per-recipient projection is a later slice.
+// to. While the turn is open the calculation still belongs to the master alone; once it is
+// settled (IsSettled), room.go's publishResolution projects a copy per recipient via
+// service.ProjectResolution — master, owner, everyone else. PendingReactions is the one field
+// that stays master-only regardless: it is the master's own to-do list, not table state.
 //
 // Damage is projected, not applied. The HP only moves when the turn closes.
 type ResolutionUpdatedPayload struct {

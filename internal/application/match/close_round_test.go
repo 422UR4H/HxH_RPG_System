@@ -8,9 +8,6 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
-	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -29,8 +26,11 @@ func (m *mockCloseRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUI
 func (m *mockCloseRoundRepo) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockCloseRoundRepo) PersistTurnClose(_ context.Context, _ *sceneentity.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockCloseRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseData) error {
 	return nil
+}
+func (m *mockCloseRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+	return nil, nil
 }
 
 func TestCloseRoundUC(t *testing.T) {
@@ -52,8 +52,8 @@ func TestCloseRoundUC(t *testing.T) {
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		session.OpenNextAction()              //nolint:errcheck
-		session.CloseTurn()                   //nolint:errcheck
+		session.OpenNextAction()             //nolint:errcheck
+		session.CloseOpenTurn()              //nolint:errcheck
 
 		uc := match.NewCloseRoundUC(repo)
 		closedRound, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)
@@ -74,8 +74,8 @@ func TestCloseRoundUC(t *testing.T) {
 
 		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}}, nil, nil, nil, nil, nil, nil, nil)
 		session.EnqueueAction(playerA, aAct) //nolint:errcheck
-		session.OpenNextAction()              //nolint:errcheck
-		// turn is still open — no CloseTurn called
+		session.OpenNextAction()             //nolint:errcheck
+		// turn is still open — no CloseOpenTurn called
 
 		uc := match.NewCloseRoundUC(repo)
 		_, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)

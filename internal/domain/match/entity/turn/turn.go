@@ -48,6 +48,22 @@ func (t *Turn) GetAction() action.Action {
 	return t.action
 }
 
+// ActionRef and ReactionRef hand out POINTERS, unlike GetAction/GetReactions which copy.
+//
+// The copies exist so a reader cannot mutate the turn by accident. The master's edit is the
+// one caller that must mutate it — the edited action IS the action — so it gets the real
+// thing, deliberately and narrowly, rather than by turning the safe accessors unsafe.
+func (t *Turn) ActionRef() *action.Action { return &t.action }
+
+func (t *Turn) ReactionRef(id uuid.UUID) *action.Action {
+	for i := range t.reactions {
+		if t.reactions[i].GetID() == id {
+			return &t.reactions[i]
+		}
+	}
+	return nil
+}
+
 func (t *Turn) GetReactions() []action.Action {
 	reactionsCp := make([]action.Action, len(t.reactions))
 	copy(reactionsCp, t.reactions)
@@ -89,5 +105,21 @@ func (t *Turn) OpenReaction(id uuid.UUID) bool {
 func (t *Turn) OpenedReactionIDs() []uuid.UUID {
 	out := make([]uuid.UUID, len(t.openedReactions))
 	copy(out, t.openedReactions)
+	return out
+}
+
+// UnopenedReactions is every attached reaction the master has not yet given the floor to.
+//
+// These are exactly the ones close_turn warns about: they ARE in the calculation — the chain
+// walks the opened ones first and then everyone left over — so nobody is punished
+// mechanically. What they lose is the moment to narrate, and that is what the master is being
+// asked to confirm away.
+func (t *Turn) UnopenedReactions() []action.Action {
+	out := make([]action.Action, 0, len(t.reactions))
+	for i := range t.reactions {
+		if !slices.Contains(t.openedReactions, t.reactions[i].GetID()) {
+			out = append(out, t.reactions[i])
+		}
+	}
 	return out
 }

@@ -43,6 +43,40 @@ func TestNewAction_UniqueIDs(t *testing.T) {
 	}
 }
 
+func TestNewActionWithReconstructedID(t *testing.T) {
+	persisted := uuid.New()
+
+	a := action.NewAction(
+		uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+		action.WithReconstructedID(persisted),
+	)
+
+	if a.GetID() != persisted {
+		t.Errorf("GetID() = %v, want %v (the reconstructed id)", a.GetID(), persisted)
+	}
+}
+
+func TestNewActionWithoutOptionsStillMintsAFreshID(t *testing.T) {
+	// No opts at all — the common, by-far-most-frequent call shape — must keep working
+	// exactly as before: a fresh, non-nil id every time.
+	a1 := action.NewAction(
+		uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	a2 := action.NewAction(
+		uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+
+	if a1.GetID() == uuid.Nil {
+		t.Error("GetID() should not be nil UUID")
+	}
+	if a1.GetID() == a2.GetID() {
+		t.Error("two actions built without WithReconstructedID should have different UUIDs")
+	}
+}
+
 func TestRollContext_GetDiceResult(t *testing.T) {
 	d1 := die.NewDie(enum.D6)
 	d2 := die.NewDie(enum.D8)

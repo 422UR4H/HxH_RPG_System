@@ -75,4 +75,30 @@ func TestAttachReactionUC(t *testing.T) {
 			t.Errorf("expected ErrReactionNotCompatible, got %v", err)
 		}
 	})
+
+	// This is what room.go's handleReaction actually consumes: a target whose front is slow to
+	// send can otherwise reach a turn that closed out from under them (Phase 5's close_turn),
+	// pay the reaction's price, and get a settled-collision resolution instead of a refusal.
+	// See matchsession.MatchSession.AttachReaction for where the guard actually lives.
+	t.Run("returns ErrTurnAlreadyClosed for a reaction attached after close_turn", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		session, chars := sessionWithPlayers(playerA, playerB)
+
+		aAct := action.NewAction(chars[0], nil, uuid.Nil, nil, action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}}, nil, nil, nil, nil, nil, nil, nil)
+		aAct.TargetID = []uuid.UUID{chars[1]}
+		session.EnqueueAction(playerA, aAct) //nolint:errcheck
+		tr, _ := session.OpenNextAction()
+		openedAction := tr.Opened.GetAction()
+		actionID := openedAction.GetID()
+		if _, err := session.CloseOpenTurn(); err != nil {
+			t.Fatalf("CloseOpenTurn: %v", err)
+		}
+
+		reaction := action.NewAction(chars[1], nil, actionID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		uc := match.NewAttachReactionUC()
+		_, err := uc.Execute(context.Background(), session, playerB, reaction)
+		if !errors.Is(err, matchsession.ErrTurnAlreadyClosed) {
+			t.Errorf("expected ErrTurnAlreadyClosed, got %v", err)
+		}
+	})
 }

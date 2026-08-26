@@ -125,18 +125,33 @@ deu forma ao struct.
   `RoundScheduler.AnyEligible` nega. Ver `combat-engine.md` § "O round fecha sozinho".
 - ~~**`MsgTypeRoundClosed` está declarado e nunca é emitido.**~~ ✅ Resolvido na Fase 3: sai de
   `room.go` no mesmo caminho de auto-fechamento.
-- **`MatchSession.CloseTurn()`** existe e nenhuma rota a chama (fechar turno acontece
+- ~~**`MatchSession.CloseTurn()`** existe e nenhuma rota a chama (fechar turno acontece
   implicitamente dentro de `OpenNextAction`/`PullAction`). Continua em aberto — o encerramento
-  **explícito** de turno é da Fase 5.
+  **explícito** de turno é da Fase 5.~~ ✅ Resolvido na Fase 5: `CloseTurn()` foi apagado (pulava
+  `closeOpenTurn` e não resolvia, não aplicava dano nem avançava os ledgers) e substituído por
+  `MatchSession.CloseOpenTurn()`, acionado pela mensagem WS `close_turn` — o mestre pode fechar
+  o turno explicitamente, sem abrir o próximo. `close_turn` recusa quando há reação anexada e
+  nunca aberta, e aceita com `{"confirm": true}`. Ver `combat-engine.md` § "O que a Fase 5
+  fixou no motor".
 
 ## 8. Visibilidade da resolução
 
 - `resolution_updated` leva payload de verdade desde a Fase 2 — `TurnID`, os dados
-  individuais, o total, as flags de crítico, a margem e o dano projetado por alvo — mas
-  continua **só para o mestre**, e isso é deliberado: o cálculo é dele até o turno encerrar.
-  Quem reagiu ainda não recebe confirmação nenhuma.
-- Isso está listado em `AGENTS.md` como *deferred to Phase 4*: "players see reactions only when
-  master reveals".
+  individuais, o total, as flags de crítico, a margem e o dano projetado por alvo — e
+  ~~continua **só para o mestre**, e isso é deliberado: o cálculo é dele até o turno
+  encerrar. Quem reagiu ainda não recebe confirmação nenhuma.~~ ✅ Resolvido na Fase 5, com uma
+  ressalva: `resolution_updated` em si **segue master-only** enquanto o turno está aberto — o
+  cálculo continua sendo do mestre até fechar, e essa parte é deliberada e não mudou. O que a
+  Fase 5 resolveu é o que acontece DEPOIS de fechar: o histórico (`GET
+  /matches/{uuid}/history`) projeta a resolução **assentada** por destinatário — mestre vê
+  tudo, dono vê o que é seu, terceiros veem a deny-list aplicada (esquiva fechada vira `dodge`
+  comum, fintas somem) — pelas mesmas funções `service.ProjectAction`/`service.ProjectResolution`
+  que a difusão ao vivo (`Room.publishResolution`) já usa. Ver `combat-engine.md` § "O que a
+  Fase 5 fixou no motor" e
+  `docs/dev/api/match-history.md`.
+- Isso estava listado em `AGENTS.md` como *deferred to Phase 4*: "players see reactions only
+  when master reveals" — a visibilidade de reação ao vivo (durante o turno aberto) continua
+  adiada; o que a Fase 5 entregou foi a leitura pós-fechamento, um caminho diferente.
 
 ## 9. ✅ Um caminho só para `Resolve` (Fase 2)
 

@@ -176,6 +176,29 @@ func TestRoundOrchestrator_AttachReaction(t *testing.T) {
 			t.Errorf("expected ErrNoCurrentTurn, got %v", err)
 		}
 	})
+
+	// The orchestrator holds no state of its own and must not rely on MatchSession to have
+	// checked this already — Round.CurrentTurn() returns the last turn regardless of
+	// finishedAt, and since Phase 5's close_turn that "last turn" can be closed on purpose,
+	// with nothing open after it.
+	t.Run("returns ErrTurnAlreadyClosed when the current turn already finished", func(t *testing.T) {
+		r := round.NewRound(enum.Race)
+		q := newQueue(makeActionWithSpeed(5))
+		tRn, _ := orch.NextAction(r, &q)
+		act := tRn.GetAction()
+		actionID := act.GetID()
+		orch.CloseTurn(r, time.Now())
+
+		reaction := makeReactionTo(actionID)
+		err := orch.AttachReaction(r, reaction)
+
+		if !errors.Is(err, service.ErrTurnAlreadyClosed) {
+			t.Errorf("expected ErrTurnAlreadyClosed, got %v", err)
+		}
+		if len(r.CurrentTurn().GetReactions()) != 0 {
+			t.Error("a reaction was attached to an already-closed turn")
+		}
+	})
 }
 
 func TestRoundOrchestrator_CloseRound(t *testing.T) {
