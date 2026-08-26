@@ -241,6 +241,29 @@ func (s *MatchSession) ApplyMasterAction(
 	if err != nil {
 		return nil, err
 	}
+	// Validate every condition edit BEFORE mutating TargetID, Skills or any condition. A
+	// mid-loop resolveRollCheck failure used to return nil, err after TargetID/Skills had
+	// already mutated (and, for an earlier condition in the same list, already captured an
+	// override) — reporting pure failure to a master who had, in fact, partly edited the
+	// action. See combat-engine.md and resolveRollCheck's own doc: "answering silently leaves
+	// them believing they changed it" — this is that rule with the sign flipped.
+	//
+	// shadow is a shallow copy carrying the post-Skills-edit skill NAME set (ma.Skills, when
+	// present) instead of target's pre-edit Skills, so a SkillName condition combined with a
+	// Skills edit in the same request validates against what Skills will actually be — not
+	// what it used to be. applySkillEdit never adds or drops a name beyond what ma.Skills
+	// lists (it only ever decides Attempts per name), so that name set is exactly ma.Skills's.
+	// Attack/Dodge/Defense/etc. are shared pointers, untouched by the copy, read-only here.
+	shadow := *target
+	if ma.Skills != nil {
+		shadow.Skills = ma.Skills
+	}
+	for _, edit := range ma.Conditions {
+		if _, err := resolveRollCheck(&shadow, edit); err != nil {
+			return nil, err
+		}
+	}
+
 	if ma.TargetID != nil {
 		s.captureOverride(target.GetID(), "targetIds", match.OriginPlayer, masterUUID,
 			target.TargetID, ma.TargetID)
@@ -252,6 +275,9 @@ func (s *MatchSession) ApplyMasterAction(
 	for _, edit := range ma.Conditions {
 		rc, err := resolveRollCheck(target, edit)
 		if err != nil {
+			// Unreachable: the shadow pass above already proved every edit resolves once
+			// Skills lands for real. If this ever fires, resolveRollCheck and the shadow
+			// projection have drifted apart — fail loudly rather than apply half the edit.
 			return nil, err
 		}
 		// current is nil, not a typed nil *RollCondition, whenever the test carries no
@@ -832,6 +858,16 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	t := s.activeRound.CurrentTurn()
 	if t == nil {
 		return nil, service.ErrNoCurrentTurn
+	}
+	// Round.CurrentTurn() returns the LAST turn regardless of finishedAt — before Phase 5's
+	// close_turn, a turn only ever closed INSIDE OpenNextAction/PullAction, which opened the
+	// next turn in the same critical section, so a stale reaction was always caught by the
+	// ReactToID mismatch below instead. close_turn makes "the previous turn is closed and
+	// nothing is open" a state the master sits in on purpose, so that mismatch is no longer
+	// guaranteed — this has to be its own check, and it has to run before anything is charged,
+	// exactly as OpenReaction already refuses it.
+	if t.GetFinishedAt() != nil {
+		return nil, ErrTurnAlreadyClosed
 	}
 	act := t.GetAction()
 	if !slices.Contains(act.TargetID, r.GetActorID()) {

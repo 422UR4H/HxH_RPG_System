@@ -2,6 +2,7 @@ package matchsession_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
@@ -473,6 +474,59 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 		r.ReactionKind = action.ReactDodge
 		if _, err := s.AttachReaction(playerB, r); err != nil {
 			t.Fatalf("a target reacting through their own character: %v", err)
+		}
+	})
+
+	// close_turn (Phase 5) makes "the previous turn is closed and nothing is open" a state the
+	// master can sit in deliberately, unlike before when a turn only ever closed INSIDE
+	// OpenNextAction/PullAction, which opened the next turn in the same critical section. Round
+	// .CurrentTurn() returns the last turn regardless of finishedAt, so a stale reaction can
+	// still reach it — and must be refused before anything is charged, exactly as OpenReaction
+	// already refuses it (see ErrTurnAlreadyClosed there).
+	t.Run("refuses a reaction attached after the turn already closed, charging nothing", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		// Race mode: chargeReactionBars and consumePendingFor only have anything to prove in
+		// Race — Free never charges reaction bars at all, so the assertions below would pass
+		// vacuously regardless of the guard.
+		s.GetActiveRound().SetMode(enum.Race)
+
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("EnqueueAction(attacker): %v", err)
+		}
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		// playerB's own queued action — what a paid reaction would consume from the queue.
+		pending := makeActionWithSpeed(chars[1], 3)
+		if err := s.EnqueueAction(playerB, pending); err != nil {
+			t.Fatalf("EnqueueAction(victim pending): %v", err)
+		}
+
+		if _, err := s.CloseOpenTurn(); err != nil {
+			t.Fatalf("CloseOpenTurn: %v", err)
+		}
+
+		balanceBefore, speedsBefore := s.BarState(chars[1], action.BarAction)
+		pendingBefore := len(s.PendingActions())
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		_, err := s.AttachReaction(playerB, r)
+		if !errors.Is(err, matchsession.ErrTurnAlreadyClosed) {
+			t.Fatalf("err = %v, want ErrTurnAlreadyClosed", err)
+		}
+
+		balanceAfter, speedsAfter := s.BarState(chars[1], action.BarAction)
+		if balanceAfter != balanceBefore || !slices.Equal(speedsAfter, speedsBefore) {
+			t.Fatalf("attaching to a closed turn moved the reactor's bar: %v/%v -> %v/%v",
+				balanceBefore, speedsBefore, balanceAfter, speedsAfter)
+		}
+		if got := len(s.PendingActions()); got != pendingBefore {
+			t.Fatalf("attaching to a closed turn consumed the reactor's queued action: %d -> %d",
+				pendingBefore, got)
 		}
 	})
 }

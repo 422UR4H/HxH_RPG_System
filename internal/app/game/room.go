@@ -1174,9 +1174,15 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		return
 	}
 	// publishResolution is the single place that decides master-only vs projected, by reading
-	// IsSettled. An attach always lands on an open, unsettled turn, so this takes the
-	// master-only branch today — routed through the same door anyway, so a future change to
-	// attach timing cannot silently reintroduce a master-only leak here.
+	// IsSettled. An attach lands on an open, unsettled turn — and ONLY that, because
+	// MatchSession.AttachReaction now refuses (ErrTurnAlreadyClosed) before rolling a single
+	// die or charging a single bar when the turn's finishedAt is already set, so `err` above
+	// is non-nil and we never reach this line for a closed turn. That guard did not exist
+	// before Phase 5's close_turn made "closed and nothing open" a state the master could sit
+	// in on purpose; until then a stale attach was merely caught downstream by a ReactToID
+	// mismatch. This is routed through the same door as every other resolution anyway, so a
+	// future change to attach timing cannot silently reintroduce a master-only leak here — but
+	// the guard, not the routing, is what keeps this comment true.
 	r.publishResolution(turnID, result.Resolution)
 }
 
