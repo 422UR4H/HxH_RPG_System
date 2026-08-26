@@ -119,6 +119,12 @@ Notas sobre os campos de `action`/`reactions`:
   interno do motor e não aparecem em superfície nenhuma — nem aqui, nem no WebSocket. O que o
   cliente vê são os números já resolvidos (`RollCheckResponse.result`, os totais em
   `resolution`); a condição ou o bias que os produziu não têm campo de saída.
+- `RollCheckResponse.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
+  viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
+  público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
+  vaza mais do que o total já vaza. Mas é uma superfície de dados estritamente maior que o
+  WebSocket: `resolution_updated` só emite `diceRolled`, o conjunto efetivamente lido —
+  `attempts` do REST é o único lugar onde o conjunto NÃO lido também aparece.
 
 ### A resposta já vem projetada — não filtre no cliente
 
