@@ -500,6 +500,53 @@ func TestEditActionRollCondition(t *testing.T) {
 			t.Fatalf("err = %v, want ErrAmbiguousConditionEdit", err)
 		}
 	})
+
+	// ApplyMasterAction used to write TargetID, run applySkillEdit, and only THEN loop
+	// Conditions — so a resolvable entry ahead of an unresolvable one in the same edit_action
+	// already mutated Skills (and captured an override for it) before the loop hit the
+	// ErrConditionTargetMissing that failed the whole call. The caller was told nothing
+	// changed while Skills, in fact, had. Everything below this point must stay exactly as it
+	// was before Execute ran.
+	t.Run("a resolvable condition ahead of an unresolvable one in the same edit leaves the action completely untouched", func(t *testing.T) {
+		f := newOpenAttackFixture(t) // Attack present, no Dodge
+		a := f.openTurn().ActionRef()
+		if a.Skills != nil {
+			t.Fatalf("fixture is wrong: expected a nil skill list to start, got %v", a.Skills)
+		}
+		if a.Attack.Hit.Context.Condition != nil {
+			t.Fatal("fixture is wrong: expected no hit condition to start")
+		}
+		targetsBefore := append([]uuid.UUID(nil), a.TargetID...)
+
+		uc := match.NewEditActionUC()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
+		ma.Conditions = []action.ConditionEdit{
+			{Field: action.FieldHit, Condition: action.RollCondition{Modifier: 3}},
+			// The fixture's action is a plain attack: it has no Dodge.
+			{Field: action.FieldDodge, Condition: action.RollCondition{Modifier: 1}},
+		}
+
+		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		if !errors.Is(err, matchsession.ErrConditionTargetMissing) {
+			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
+		}
+
+		after := f.openTurn().ActionRef()
+		if after.Skills != nil {
+			t.Fatalf("Skills changed despite the failed edit: %v", after.Skills)
+		}
+		if after.Attack.Hit.Context.Condition != nil {
+			t.Fatal("the hit condition was applied despite the failed edit")
+		}
+		if !slices.Equal(after.TargetID, targetsBefore) {
+			t.Fatalf("TargetID changed despite the failed edit: %v -> %v", targetsBefore, after.TargetID)
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d override values despite the failed edit, want 0", got)
+		}
+	})
 }
 
 // TestApplyMasterAction_PreservesReactionSwapDisadvantage guards the OTHER half of
