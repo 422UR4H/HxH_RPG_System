@@ -105,9 +105,13 @@ sequenceDiagram
 `pull_action` é idêntico, trocando `ExtractMax()` por `ExtractByID(actionID)`
 (`ErrActionNotFound` se não achar).
 
-**O turno anterior fecha no momento em que o próximo abre.** Não existe "fechar turno" como
-mensagem de WS separada — `MatchSession.CloseTurn()` existe no domínio mas nenhuma rota o
-chama. Isso é intencional: fechar o anterior e abrir o próximo é um gesto só do mestre.
+**O turno anterior também fecha no momento em que o próximo abre** — isso não mudou. O que
+mudou na Fase 5: agora também existe um fechamento **explícito**, sem abrir o próximo. A
+mensagem WS `close_turn` chama `MatchSession.CloseOpenTurn()` (sucessora de
+`MatchSession.CloseTurn()`, que este fluxo descrevia antes de a Fase 5 apagá-la — ela pulava
+`closeOpenTurn` e não resolvia, não aplicava dano nem avançava os ledgers) e recusa fechar
+enquanto houver reação anexada e nunca aberta, a menos que o mestre confirme com
+`{"confirm": true}`. Ver `combat-engine.md` § "O que a Fase 5 fixou no motor".
 
 ## Tempo 3 — reagir (`attach_reaction`)
 

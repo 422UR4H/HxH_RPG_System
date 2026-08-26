@@ -114,6 +114,11 @@ Notas sobre os campos de `action`/`reactions`:
   abaixo); quando presentes, `feint` é o `RollCheck` da finta e `trigger` é um objeto vazio
   (o domínio ainda não tem campos em `action.Trigger`).
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
+- `RollCheck.Context` (que carrega `RollCondition`, a vantagem/desvantagem que o mestre aplicou
+  via `edit_action`) e `Action.SystemBias` (o bias que o próprio motor derivou) são detalhe
+  interno do motor e não aparecem em superfície nenhuma — nem aqui, nem no WebSocket. O que o
+  cliente vê são os números já resolvidos (`RollCheckResponse.result`, os totais em
+  `resolution`); a condição ou o bias que os produziu não têm campo de saída.
 
 ### A resposta já vem projetada — não filtre no cliente
 
