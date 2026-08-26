@@ -13,6 +13,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -114,16 +115,24 @@ func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.Ma
 // mockRoundRepoHandler is a no-op round repository, except it records every closed turn
 // ID PersistTurnClose was called with — tests that need to assert a turn actually reached
 // persistence (rather than just that Execute returned no error) read persistedTurnIDs()
-// instead of adding a second test double.
+// instead of adding a second test double. It also records d.Overrides per turn, keyed by
+// turn ID: the override end-to-end test (TestE2E_OverrideReachesPersistTurnClose) needs to
+// see what room.go's drain-under-lock actually handed to PersistTurnClose, not just that a
+// turn ID arrived.
 type mockRoundRepoHandler struct {
 	mu             sync.Mutex
 	persistedTurns []uuid.UUID
+	overrides      map[uuid.UUID][]matchDomain.OverriddenValue
 }
 
 func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.persistedTurns = append(m.persistedTurns, d.Turn.GetID())
+	if m.overrides == nil {
+		m.overrides = map[uuid.UUID][]matchDomain.OverriddenValue{}
+	}
+	m.overrides[d.Turn.GetID()] = d.Overrides
 	return nil
 }
 
@@ -132,6 +141,13 @@ func (m *mockRoundRepoHandler) persistedTurnIDs() []uuid.UUID {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]uuid.UUID(nil), m.persistedTurns...)
+}
+
+// overridesFor returns the Overrides PersistTurnClose received for one closed turn.
+func (m *mockRoundRepoHandler) overridesFor(turnID uuid.UUID) []matchDomain.OverriddenValue {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.overrides[turnID]
 }
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
