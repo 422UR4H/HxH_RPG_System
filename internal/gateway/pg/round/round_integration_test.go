@@ -643,6 +643,49 @@ func TestPersistTurnCloseWritesNoRowForAnUneditedTurn(t *testing.T) {
 	}
 }
 
+// TestPersistTurnCloseWritesFinishedAtAsCreatedAt guards AGENTS.md's own known-issues entry:
+// Turn has no createdAt field of its own, so persistence is documented as using finishedAt as
+// the approximation. Persistence always happens strictly AFTER the turn resolves — a
+// time.Now() taken here instead would put every turn's created_at strictly AFTER its
+// finished_at, which is invisible until something sorts by created_at (Task 12's
+// HistoryTurnResponse.CreatedAt) and then reads as nonsense.
+func TestPersistTurnCloseWritesFinishedAtAsCreatedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	finishedAt := time.Now().Truncate(time.Microsecond)
+	tn.Close(finishedAt)
+
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	// Both columns are read back from the DB and compared to EACH OTHER, not against the
+	// in-memory finishedAt: turns.created_at/finished_at is a bare TIMESTAMP (no time zone),
+	// so a value round-tripped through the driver and one that never left the process compare
+	// unequal on offset alone even when they name the same wall-clock instant. Reading both
+	// back cancels that out and asks the only question this test actually cares about: does
+	// the row's created_at equal its own finished_at.
+	var createdAt, dbFinishedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT created_at, finished_at FROM turns WHERE uuid = $1`, tn.GetID(),
+	).Scan(&createdAt, &dbFinishedAt); err != nil {
+		t.Fatalf("select created_at, finished_at: %v", err)
+	}
+	if !createdAt.Equal(dbFinishedAt) {
+		t.Fatalf("turns.created_at = %v, want it to equal turns.finished_at %v — "+
+			"a time.Now() taken at persist time is always strictly after the real close",
+			createdAt, dbFinishedAt)
+	}
+}
+
 func TestPersistTurnCloseWritesANullOriginalAsSQLNull(t *testing.T) {
 	// The commonest capture: a RollCondition the player never sent. Original is a bare nil
 	// (no type at all), and the honest row says NULL, not the JSON string 'null'.
@@ -850,6 +893,97 @@ func TestFindMatchHistoryDoesNotInterleaveTurnsThatTieOnFinishedAt(t *testing.T)
 	}
 	if reactionsSeen != 1 {
 		t.Fatalf("expected exactly 1 reaction across both tied turns, got %d", reactionsSeen)
+	}
+}
+
+// TestFindMatchHistoryDoesNotInterleaveScenesOrRoundsThatTieOnCreatedAt is
+// TestFindMatchHistoryDoesNotInterleaveTurnsThatTieOnFinishedAt's exact same defect one level
+// up: the assembly groups a scene by "does the UUID still match the one being built"
+// (curScene.UUID != sceneUUID) and a round the same way (curRound.UUID != roundUUID). Two
+// scenes tied on created_at could interleave without s.uuid tiebreaking the ORDER BY — and
+// scene A carries TWO turns here specifically so an interleave has something to split: if
+// scene B's row lands between scene A's two turn-rows, scene A stops being contiguous and the
+// assembly appends a THIRD HistoryScene entry (A, B, A again) instead of two.
+// ReconstructScene/ReconstructRound let the fixture force the tie explicitly, unlike the
+// turn-level test's naturally-tying insertAction timestamps.
+func TestFindMatchHistoryDoesNotInterleaveScenesOrRoundsThatTieOnCreatedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	sharedCreated := time.Now() // deliberately identical across both scenes AND both rounds
+
+	sceneA := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Scene A", sharedCreated)
+	sceneB := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Scene B", sharedCreated)
+	roundA := roundentity.ReconstructRound(uuid.New(), enum.Free, sharedCreated)
+	roundB := roundentity.ReconstructRound(uuid.New(), enum.Free, sharedCreated)
+
+	// Scene A's first turn.
+	actA1 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	turnA1 := turnentity.NewTurn(*actA1)
+	turnA1.Close(sharedCreated)
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sceneA, Round: roundA, Turn: turnA1, Action: actA1, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose scene A turn 1: %v", err)
+	}
+
+	// Scene B's only turn, sandwiched between scene A's two — a naive scan order would put
+	// this row physically between turnA1's and turnA2's.
+	actB := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	turnB := turnentity.NewTurn(*actB)
+	turnB.Close(sharedCreated)
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sceneB, Round: roundB, Turn: turnB, Action: actB, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose scene B: %v", err)
+	}
+
+	// Scene A's second turn, same scene and round as the first.
+	actA2 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	turnA2 := turnentity.NewTurn(*actA2)
+	turnA2.Close(sharedCreated)
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sceneA, Round: roundA, Turn: turnA2, Action: actA2, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose scene A turn 2: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 2 {
+		t.Fatalf("expected 2 scenes under a created_at tie, got %d — scene A's rows split "+
+			"across two entries instead of staying contiguous", len(scenes))
+	}
+	for _, sc := range scenes {
+		if len(sc.Rounds) != 1 {
+			t.Fatalf("scene %s has %d rounds, want exactly 1 — rounds interleaved on the tie",
+				sc.UUID, len(sc.Rounds))
+		}
+	}
+	var sceneAResult, sceneBResult *appmatch.HistoryScene
+	for i := range scenes {
+		switch scenes[i].UUID {
+		case sceneA.GetID():
+			sceneAResult = &scenes[i]
+		case sceneB.GetID():
+			sceneBResult = &scenes[i]
+		}
+	}
+	if sceneAResult == nil || sceneBResult == nil {
+		t.Fatalf("expected both scene A (%s) and scene B (%s) in the result, got %+v",
+			sceneA.GetID(), sceneB.GetID(), scenes)
+	}
+	if len(sceneAResult.Rounds[0].Turns) != 2 {
+		t.Fatalf("scene A's round has %d turns, want 2 — its rows split across two scene "+
+			"entries", len(sceneAResult.Rounds[0].Turns))
+	}
+	if len(sceneBResult.Rounds[0].Turns) != 1 {
+		t.Fatalf("scene B's round has %d turns, want 1", len(sceneBResult.Rounds[0].Turns))
 	}
 }
 

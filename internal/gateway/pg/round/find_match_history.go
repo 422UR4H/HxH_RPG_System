@@ -22,6 +22,12 @@ import (
 // One query, ordered, assembled in one pass. Reactions come back in the same result set,
 // discriminated by react_to_uuid IS NOT NULL, so there is no N+1 over turns.
 //
+// s.uuid and ro.uuid tiebreak s.created_at and ro.created_at for the same reason t.uuid
+// tiebreaks t.finished_at below: the assembly groups scenes and rounds by "does the UUID
+// still match the one being built" (curScene.UUID != sceneUUID, curRound.UUID != roundUUID),
+// and two scenes or two rounds tied on their timestamp could otherwise interleave and corrupt
+// that grouping — the identical defect the turn level already paid to fix.
+//
 // The master's own actions (Turn.GetMasterActions()) are NOT read here: actions has no column
 // for them — they are deliberately never persisted (spec § A edição do mestre). What the
 // master's edits displaced lives in overridden_action_values, and that table is not part of
@@ -40,7 +46,7 @@ func (r *Repository) FindMatchHistory(
 		 JOIN turns  t  ON t.round_uuid = ro.uuid
 		 JOIN actions a ON a.turn_uuid = t.uuid
 		 WHERE s.match_uuid = $1
-		 ORDER BY s.created_at, ro.created_at, t.finished_at, t.uuid,
+		 ORDER BY s.created_at, s.uuid, ro.created_at, ro.uuid, t.finished_at, t.uuid,
 		          (a.react_to_uuid IS NOT NULL), a.created_at`,
 		matchUUID,
 	)

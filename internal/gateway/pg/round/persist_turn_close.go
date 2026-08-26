@@ -60,8 +60,12 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		return fmt.Errorf("PersistTurnClose insert round: %w", err)
 	}
 
-	// Insert turn — turn entity has no createdAt field; use time.Now() for created_at
-	now := time.Now()
+	// Insert turn — turn entity has no createdAt field. AGENTS.md's own known-issues entry
+	// names the approximation this is supposed to be: finishedAt stands in for created_at,
+	// not time.Now(). Persistence always happens strictly AFTER the turn closes, so a
+	// time.Now() here would make every turn's created_at land strictly AFTER its finished_at —
+	// invisible while nothing read created_at, and nonsense the moment something sorts by it
+	// (HistoryTurnResponse.CreatedAt, since Task 12).
 	finishedAt := t.GetFinishedAt()
 	resolutionJSON, err := encodeResolution(d.Resolution)
 	if err != nil {
@@ -70,7 +74,7 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	_, err = tx.Exec(ctx,
 		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at, resolution)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		t.GetID(), rnd.GetID(), now, finishedAt, resolutionJSON,
+		t.GetID(), rnd.GetID(), *finishedAt, finishedAt, resolutionJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("PersistTurnClose insert turn: %w", err)
