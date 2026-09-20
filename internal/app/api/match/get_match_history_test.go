@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -344,4 +345,104 @@ func TestGetMatchHistoryCarriesPayouts(t *testing.T) {
 		got.Reason != "repel: near miss penalty" {
 		t.Errorf("payout = %+v, want the near-miss penalty verbatim", got)
 	}
+}
+
+// TestGetMatchHistoryCarriesEngineFaults is the DTO half of the pair whose other half is
+// TestGetMatchHistoryProjectsEngineFaults in the use case package.
+//
+// The scenes here are what the MASTER's use case already returned — post-projection, so the
+// faults are still on the resolution. Dropping them in the mapping would be the same silent
+// swallow that two of this PR's five bugs were, one layer up and with the information already
+// paid for and stored: resolution_record.go persists Errors precisely because "a history that
+// kept the silence would read back, a year later, as a turn that simply never targeted them",
+// and that is just as true of a DTO that decodes the row and then discards the field.
+//
+// "The master gets it live over the WebSocket" is not an answer: that assumes a master
+// connected and looking at that instant. The history exists because the live path is
+// ephemeral.
+func TestGetMatchHistoryCarriesEngineFaults(t *testing.T) {
+	userUUID, matchUUID, ghost := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+
+	act := action.NewAction(uuid.New(), []uuid.UUID{ghost}, uuid.Nil, nil,
+		action.ActionSpeed{}, nil, nil, &action.Attack{}, nil, nil, nil, nil)
+
+	scenes := []match.HistoryScene{{
+		UUID: uuid.New(), Category: "combat", CreatedAt: now,
+		Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "combat", CreatedAt: now,
+			Turns: []match.HistoryTurn{{
+				UUID: uuid.New(), CreatedAt: now, FinishedAt: now,
+				Action: *act,
+				Resolution: &service.TurnResolution{
+					IsSettled: true,
+					Errors: []service.ResolutionError{{
+						Subject: ghost,
+						Kind:    service.ResolutionErrUnknownTarget,
+						Detail:  "action target is neither a character nor a wall segment",
+					}},
+				},
+			}},
+		}},
+	}}
+
+	_, api := humatest.New(t)
+	handler := apiMatch.GetMatchHistoryHandler(&mockGetMatchHistory{
+		fn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchHistoryResult, error) {
+			return &match.GetMatchHistoryResult{Scenes: scenes}, nil
+		},
+	})
+	huma.Register(api, huma.Operation{
+		Method: http.MethodGet,
+		Path:   "/matches/{uuid}/history",
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+	resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Scenes []struct {
+			Rounds []struct {
+				Turns []struct {
+					Resolution struct {
+						Errors []struct {
+							Subject uuid.UUID `json:"subject"`
+							Kind    string    `json:"kind"`
+							Detail  string    `json:"detail"`
+						} `json:"errors"`
+					} `json:"resolution"`
+				} `json:"turns"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v — body: %s", err, resp.Body.String())
+	}
+
+	errs := body.Scenes[0].Rounds[0].Turns[0].Resolution.Errors
+	if len(errs) != 1 {
+		t.Fatalf("the engine fault is missing from the history: %s", resp.Body.String())
+	}
+	if errs[0].Subject != ghost {
+		t.Errorf("subject = %s, want the target the engine could not classify (%s)",
+			errs[0].Subject, ghost)
+	}
+	if errs[0].Kind != string(service.ResolutionErrUnknownTarget) {
+		t.Errorf("kind = %q, want %q", errs[0].Kind, service.ResolutionErrUnknownTarget)
+	}
+	if errs[0].Detail == "" {
+		t.Error("detail was dropped — it is the only part a human can read")
+	}
+
+	t.Run("a clean resolution omits the key", func(t *testing.T) {
+		clean := scenes
+		clean[0].Rounds[0].Turns[0].Resolution = &service.TurnResolution{IsSettled: true}
+		resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+		if strings.Contains(resp.Body.String(), `"errors"`) {
+			t.Errorf("a clean resolution advertised an errors key: %s", resp.Body.String())
+		}
+	})
 }

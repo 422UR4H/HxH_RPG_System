@@ -395,7 +395,11 @@ mappings:
       GET /matches/{uuid}/history — Action History, nested Scene -> Round -> Turn ->
       Action, projected per viewer via the SAME service.ProjectAction/ProjectResolution
       the WebSocket path runs (Fase 5, Task 12). The response is already filtered; no
-      client-side filtering is expected on top of it.
+      client-side filtering is expected on top of it, and no DTO here re-applies a
+      deny-list. Two resolution fields are MASTER-ONLY, stripped upstream rather than
+      here: pendingReactions and errors (engine faults). payouts is withheld on one
+      condition only, that the reaction's label was demoted. systemBias IS exposed;
+      RollCheck.Context is not.
 
   # ─── Match: Maps REST + WS API ───
   - code_path: internal/app/api/matchmap/

@@ -108,6 +108,13 @@ renderiza os cards de ação dentro do escopo de cada cena.
                       }
                     ]
                   }
+                ],
+                "errors": [
+                  {
+                    "subject": "char-desconhecido...",
+                    "kind": "unknown_target",
+                    "detail": "action target is neither a character nor a wall segment"
+                  }
                 ]
               }
             }
@@ -170,6 +177,18 @@ Notas sobre `resolution.targets[]`:
 - `applies`, `source`, `againstKind`, `expiresAt` e `reaction.rung` são **snake_case**: são
   valores de enum do domínio serializados como estão, não tags de struct.
 
+- `errors` só aparece quando o motor **não conseguiu** calcular parte da colisão, o que é
+  raro — então a presença dela é o sinal. **Não é mensagem de erro:** o request não falhou e
+  o turno não falhou; os números ao lado são reais e falta um pedaço da colisão neles.
+  `kind` é o discriminador estável (`unknown_target` · `missing_sheet` · `no_attack`),
+  `subject` é o UUID que o motor não resolveu, e `detail` é prosa para humano — não parseie.
+  Um `missing_sheet` quer dizer que um alvo **não produziu entrada em `targets`**: é
+  exatamente o silêncio que este campo existe para quebrar, e é por isso que ele está aqui e
+  não só no WebSocket. O caminho ao vivo é efêmero — "o mestre recebe pelo WS" pressupõe
+  mestre conectado e olhando naquele instante; o histórico existe porque isso não se pode
+  pressupor. Ver `internal/gateway/pg/round/resolution_record.go`, que persiste as faltas
+  pela mesma razão.
+
 ### A resposta já vem projetada — não filtre no cliente
 
 **Este é o ponto central deste endpoint.** O Action History é uma superfície de jogo com
@@ -192,6 +211,13 @@ Isso significa, na prática:
   desaparece junto, pela mesma razão.
 - **Os números continuam públicos.** Dano, dados rolados, totais — nada disso é escondido,
   porque a dedução ("o adversário deduz dos números") depende deles estarem lá.
+- **Dois campos de `resolution` são MASTER-ONLY**, e não por classe de dono: saem para todo
+  mundo que não seja o mestre, inclusive do dono do personagem em questão.
+  - `pendingReactions` — reações anexadas e ainda não abertas. É a lista de tarefas do
+    mestre, não estado de mesa.
+  - `errors` — as faltas do **motor** ao calcular aquele turno (ver abaixo). São diagnóstico
+    sobre a engine, não fato sobre a ficção, e o mestre é o único que pode fazer algo a
+    respeito.
 
 **Não implemente um segundo filtro no front.** O servidor já entrega exatamente o que este
 usuário pode ver; uma filtragem client-side redundante só cria uma segunda cópia da

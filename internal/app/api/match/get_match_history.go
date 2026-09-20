@@ -182,6 +182,36 @@ type TurnResolutionResponse struct {
 	Action           RollResultResponse        `json:"action"`
 	Targets          []CharacterResultResponse `json:"targets"`
 	PendingReactions []PendingReactionResponse `json:"pendingReactions,omitempty"`
+	// Errors is every engine fault hit while computing this resolution — a target the engine
+	// could not classify, a character on the board whose sheet it was not handed. Absent on a
+	// clean resolution, which is the normal case, so its presence is the signal.
+	//
+	// MASTER-ONLY, exactly like PendingReactions above and by the same mechanism:
+	// service.ProjectResolution strips it upstream for every other viewer, and this DTO
+	// re-applies nothing. These are diagnostics about the engine rather than facts about the
+	// fiction, and the master is the only person who can act on one.
+	//
+	// It is on this surface and not only on the WebSocket because the live path is EPHEMERAL:
+	// "the master gets it live" assumes a master connected and looking at that instant. The
+	// fault is persisted with the turn (resolution_record.go) for the reason written there —
+	// a missing_sheet means a target produced no entry in Targets at all, and a history that
+	// kept that silence would read back, a year later, as a turn that simply never aimed at
+	// them. A DTO that decodes the row and then drops the field recreates exactly that
+	// silence, one layer up, with the information already paid for and stored.
+	//
+	// It is NOT an error MESSAGE: a fault here does not mean the request failed, or that the
+	// turn did. The turn resolved, these numbers are real, and one part of the collision is
+	// missing from them.
+	Errors []ResolutionErrorResponse `json:"errors,omitempty"`
+}
+
+// ResolutionErrorResponse is one engine fault, as the master's client reads it — the REST
+// mirror of the WebSocket's ResolutionErrorPayload. Kind is the stable discriminator; Detail
+// is prose for a human and must never be parsed.
+type ResolutionErrorResponse struct {
+	Subject uuid.UUID `json:"subject"`
+	Kind    string    `json:"kind"`
+	Detail  string    `json:"detail,omitempty"`
 }
 
 type RollResultResponse struct {
@@ -446,6 +476,11 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 	for _, pr := range res.PendingReactions {
 		out.PendingReactions = append(out.PendingReactions, PendingReactionResponse{
 			ReactionID: pr.ReactionID, ActorID: pr.ActorID, Kind: pr.Kind,
+		})
+	}
+	for _, e := range res.Errors {
+		out.Errors = append(out.Errors, ResolutionErrorResponse{
+			Subject: e.Subject, Kind: string(e.Kind), Detail: e.Detail,
 		})
 	}
 	return out
