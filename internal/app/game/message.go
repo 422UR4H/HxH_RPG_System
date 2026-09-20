@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 )
 
@@ -505,6 +506,44 @@ type CharacterResultPayload struct {
 	// passive defaults (reflex dodge, then defense) applied silently instead. A silent
 	// default is not an answer to report.
 	Reaction *ReactionResultPayload `json:"reaction,omitempty"`
+	// Payouts is what this target's own reaction EARNED — a repel's bonus or penalty, a
+	// closed dodge's reserve. Absent when the reaction earned nothing, which is most of them.
+	//
+	// It is subject to service.ProjectResolution's deny-list, which withholds it on exactly
+	// one condition: the reaction's LABEL was demoted. The closed dodge's reserve is the
+	// other half of that same secret — the size of the dodge that was not spent says how much
+	// Evasion was folded in — so it leaves with the label. A repel is never demoted, and
+	// reacoes.md is explicit that what it leaves behind is public: "a penalidade de quem
+	// aparou vale contra todo mundo — qualquer um pode aproveitar". Anyone who may exploit it
+	// has to be able to read it, which is what this field is for; deriving it by algebra off
+	// Ladder.Difference is the reconstruction ReactionTotal already exists to spare a client.
+	Payouts []ModifierPayload `json:"payouts,omitempty"`
+}
+
+// ModifierPayload is one accumulated bonus or penalty a reaction wrote into its character's
+// ledger. It mirrors match.Modifier field for field, with the Scope flattened: match.Scope
+// keeps kind and id private, so it travels through Kind()/ID() exactly as the persisted
+// record does (see modifierRecord in resolution_record.go).
+//
+// Amount and Bias are different currencies and never substitute for each other: Amount is a
+// flat adjustment to a total; Bias is advantage/disadvantage on the dice (−1/0/+1), a change
+// in HOW the roll is read, not a number that can be added to it.
+type ModifierPayload struct {
+	Amount int `json:"amount"`
+	Bias   int `json:"bias"`
+	// Applies is which dimension this moves: "action_speed" or "dodge". The system has more
+	// than one kind of reserve and they are not interchangeable.
+	Applies string `json:"applies"`
+	// Source is "system" or "master".
+	Source string `json:"source"`
+	// AgainstKind is "anyone", "only" or "all_but", and it is the whole point of a payout:
+	// it says WHO may count it. AgainstID names the one character "only"/"all_but" turn on,
+	// and is the zero UUID for "anyone" — which is what that case already means, not a hole.
+	AgainstKind string    `json:"againstKind"`
+	AgainstID   uuid.UUID `json:"againstId"`
+	// ExpiresAt is "end_of_turn", "next_turn" or "end_of_round".
+	ExpiresAt string `json:"expiresAt"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) ResolutionUpdatedPayload {
@@ -533,6 +572,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			DefenseApplied:  cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        reactionResultPayloadOf(cr),
+			Payouts:         payoutPayloadsOf(cr.Payouts),
 		})
 	}
 	for _, pr := range res.PendingReactions {
@@ -575,6 +615,30 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 		Difference:  cr.Ladder.Difference,
 		StopsAttack: cr.ReactionStopsAttack,
 	}
+}
+
+// payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a
+// viewer may see — service.ProjectResolution already did, by nilling the slice for a demoted
+// label — so this is a pure mapping. Keeping the deny-list in one place is what stops the two
+// from drifting.
+func payoutPayloadsOf(ms []match.Modifier) []ModifierPayload {
+	if len(ms) == 0 {
+		return nil
+	}
+	out := make([]ModifierPayload, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, ModifierPayload{
+			Amount:      m.Amount,
+			Bias:        m.Bias,
+			Applies:     string(m.Applies),
+			Source:      string(m.Source),
+			AgainstKind: m.Against.Kind(),
+			AgainstID:   m.Against.ID(),
+			ExpiresAt:   string(m.ExpiresAt),
+			Reason:      m.Reason,
+		})
+	}
+	return out
 }
 
 func NewServerMessage(msgType MessageType, payload any) Message {

@@ -7,6 +7,20 @@ essas structs**, não transcritos de memória.
 
 **Servidor:** `cmd/game/` · **URL:** `ws://localhost:8081/ws?match_uuid=<uuid>&token=<jwt>&nickname=<name>`
 
+> ### ⚠️ Nenhum cliente real leu este contrato ainda
+>
+> Os exemplos de payload aqui foram **conferidos contra as structs de
+> `internal/app/game/message.go`** — gerados serializando-as, não escritos de memória — e o
+> despacho foi lido em `room.go`. Mas **nenhum byte deste documento passou por um cliente**:
+> a Fase 6 do front é o primeiro leitor real, e construir um verificador antes dela seria
+> construir o cliente duas vezes.
+>
+> **Se você achar uma divergência, o bug é do CONTRATO.** Corrija este arquivo — não contorne
+> indo ler o Go e seguindo em frente. Um documento que a primeira pessoa aprendeu a não
+> confiar deixa de ser contrato e vira decoração, e a próxima pessoa paga de novo o custo que
+> ele existe para evitar. Se a divergência for do servidor, o conserto é lá, mas o registro
+> vem para cá do mesmo jeito.
+
 Este arquivo cobre as mensagens de **partida e combate**. As de lobby estão em
 [`game-lobby.md`](game-lobby.md); as de mapa, peça, parede e fog em
 [`maps.md`](maps.md) e [`match-maps.md`](match-maps.md). As regras de jogo por trás dos
@@ -653,11 +667,23 @@ Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master
           "kind": "repel",
           "total": 17,
           "reactionId": "44444444-4444-4444-8444-444444444444",
-          "rung": "nearMiss",
+          "rung": "near_miss",
           "margin": -3,
           "difference": 3,
           "stopsAttack": false
-        }
+        },
+        "payouts": [
+          {
+            "amount": -3,
+            "bias": 0,
+            "applies": "action_speed",
+            "source": "system",
+            "againstKind": "anyone",
+            "againstId": "00000000-0000-0000-0000-000000000000",
+            "expiresAt": "next_turn",
+            "reason": "repel: near miss penalty"
+          }
+        ]
       }
     ],
     "pendingReactions": [
@@ -686,10 +712,29 @@ Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
 | `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. |
 | `targets[].reaction` | `null` quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio. Uma passiva silenciosa não é resposta a reportar. |
-| `reaction.rung` / `margin` / `difference` | Valor zero **fora de um aparo** — todos os outros tipos leem contra CD plana, não contra a escada. |
+| `reaction.rung` | `great_success` · `success` · `near_miss` · `failure` — **snake_case**, diferente de todo o resto do wire. Ausente fora de um aparo. |
+| `reaction.margin` / `difference` | Valor zero **fora de um aparo** — todos os outros tipos leem contra CD plana, não contra a escada. |
+| `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas**. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre, não estado de mesa. Uma reação não aberta nunca vira passo da cadeia, então o ID dela não aparece em `targets[].reaction` — esta é a única superfície que o nomeia. |
 | `errors` | **Sempre master-only.** Faltas do **motor**, não do jogo — ver abaixo. Ausente numa resolução limpa. |
+
+**Um `payout` é um modificador acumulado no personagem**, escrito na ficha dele no fechamento
+do turno. Os campos:
+
+| Campo | O que é |
+|---|---|
+| `amount` | Ajuste **plano** no total. |
+| `bias` | Vantagem/desvantagem **nos dados** (−1/0/+1). Moeda diferente de `amount`: muda COMO a rolagem é lida, não é um número que se some a ela. |
+| `applies` | Que dimensão isso move: `action_speed` ou `dodge`. Há mais de um tipo de reserva no sistema e elas não são intercambiáveis. |
+| `source` | `system` ou `master`. |
+| `againstKind` | `anyone` · `only` · `all_but`. **É o ponto do payout**: diz QUEM pode contá-lo. |
+| `againstId` | O personagem em que `only`/`all_but` se apoiam. **Zero UUID** em `anyone` — que é exatamente o que esse caso significa, não um buraco. |
+| `expiresAt` | `end_of_turn` · `next_turn` · `end_of_round`. |
+| `reason` | Texto para humano. Não parseie. |
+
+> ⚠️ `applies`, `source`, `againstKind` e `expiresAt` são **snake_case**, como `rung`: são
+> valores de enum do domínio serializados como estão, não tags de struct.
 
 **`errors` não é mensagem de erro.** A presença de uma entrada não quer dizer que a operação
 falhou: o turno resolveu, os números acima são reais, e **um pedaço da colisão está faltando
@@ -898,11 +943,21 @@ possui:
 `dodgeTotal`, `defenseTotal`, `rung`, `margin`, `difference` viajam para todo mundo — público
 por omissão. "O oponente tem que deduzir pelos números" é impossível sem eles.
 
-> **Nota de implementação (back).** No domínio, `ProjectResolution` também esconde os
-> *payouts* de uma reação — mas **só quando o rótulo foi rebaixado**, porque a reserva da
-> esquiva fechada é a outra metade do mesmo segredo. A penalidade do aparar, que nasce
-> `ScopeAnyone`, vale contra todo mundo e não é escondida. Isso ainda **não tem campo no
-> wire**: nenhum payload carrega `payouts` hoje.
+4. **`payouts` é retido — mas só junto com o rótulo.** Esta é a mesma condição do item 1, não
+   uma segunda regra: a reserva da esquiva fechada é a outra metade daquele segredo, porque o
+   tamanho da esquiva não gasta diz quanta Evasão foi embutida, então ela sai junto com o
+   nome. **A penalidade do aparar não sai.** Ela nasce `againstKind: "anyone"`, um aparo nunca
+   é rebaixado, e `reacoes.md` diz que *"vale contra todo mundo — qualquer um pode
+   aproveitar"*: quem pode aproveitar precisa conseguir ler.
+
+   Na prática, para um terceiro:
+
+   | Reação | `reaction.kind` | `payouts` |
+   |---|---|---|
+   | `repel` (near miss) | `repel` | **chega** — a penalidade |
+   | `repel` (great success) | `repel` | **chega** — o bônus, `againstKind: "only"` |
+   | `closedDodge` | `dodge` | **some** |
+   | `closedEscape` | `escape` | **some** |
 
 ## 7. Catálogo de erros
 
@@ -988,5 +1043,5 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
+| **Nenhuma mensagem servidor→cliente projeta a declaração de uma action** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que foi declarado pelo histórico REST, não pelo WS. É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. |
 | **NPC não age** | Ver §2. |
-| **Payouts não têm campo no wire** | A reserva da esquiva fechada e a penalidade do aparar existem no domínio e são persistidas, mas nenhum payload as carrega. `reaction.difference` é o que o front tem. |

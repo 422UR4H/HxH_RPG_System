@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/danielgtaylor/huma/v2"
@@ -84,6 +85,23 @@ type ActionResponse struct {
 	Dodge        *DodgeResponse        `json:"dodge,omitempty"`
 	Repel        *RepelResponse        `json:"repel,omitempty"`
 	Interact     *InteractResponse     `json:"interact,omitempty"`
+	// SystemBias is the engine-imposed advantage/disadvantage this action was charged under:
+	// 0 for a plain action, -1 for a reaction that displaced a queued one. It is a third,
+	// engine-owned origin — neither the master's RollCondition nor the character's
+	// ModifierLedger (see action.Action.SystemBias) — and it is here because it is the REASON
+	// a roll on this surface came out as it did.
+	//
+	// Public for the same reason RollCheckResponse.attempts is: the bias is public by
+	// omission. Both dice sets and the result already travel to every viewer, so WHICH set
+	// the engine read is already derivable — withholding the field would only force the
+	// client into the algebra this repo avoids on purpose (see CharacterResult.ReactionTotal).
+	//
+	// RollCheck.Context (the master's RollCondition) is NOT the same call and stays off every
+	// surface: the master's intervention already has one of its own, in
+	// overridden_action_values.
+	//
+	// omitempty keeps it off the overwhelming majority of actions, which were charged nothing.
+	SystemBias int `json:"systemBias,omitempty"`
 }
 
 type ActionSkillResponse struct {
@@ -186,6 +204,41 @@ type CharacterResultResponse struct {
 	DefenseApplied  int                     `json:"defenseApplied"`
 	ProjectedDamage int                     `json:"projectedDamage"`
 	Reaction        *ReactionResultResponse `json:"reaction,omitempty"`
+	// Payouts is what this target's own reaction EARNED — a repel's bonus or penalty, a
+	// closed dodge's reserve. Absent when it earned nothing, which is most reactions.
+	//
+	// Same deny-list as everything else on this surface, applied upstream by
+	// service.ProjectResolution and NOT re-applied here: it is withheld on exactly one
+	// condition, that the reaction's LABEL was demoted. The closed dodge's reserve is the
+	// other half of that secret — its size says how much Evasion was folded in — so it
+	// leaves with the label. A repel is never demoted, and reacoes.md is explicit that its
+	// leftover is public: "a penalidade de quem aparou vale contra todo mundo — qualquer um
+	// pode aproveitar". Whoever may exploit it has to be able to read it.
+	Payouts []ModifierResponse `json:"payouts,omitempty"`
+}
+
+// ModifierResponse is one accumulated bonus or penalty a reaction wrote into its character's
+// ledger — the REST mirror of the WebSocket's ModifierPayload, duplicated for the same reason
+// every other shape here is: a REST delivery package does not import the WS one. Both read
+// off the SAME projected service.TurnResolution.
+//
+// match.Scope keeps kind and id private, so the scope travels flattened through Kind()/ID(),
+// exactly as the persisted record does (modifierRecord in resolution_record.go).
+type ModifierResponse struct {
+	Amount int `json:"amount"`
+	Bias   int `json:"bias"`
+	// Applies is which dimension this moves: "action_speed" or "dodge".
+	Applies string `json:"applies"`
+	// Source is "system" or "master".
+	Source string `json:"source"`
+	// AgainstKind ("anyone" | "only" | "all_but") is the whole point of a payout: it says WHO
+	// may count it. AgainstID names the character the last two turn on, and is the zero UUID
+	// for "anyone" — which is what that case already means, not a hole.
+	AgainstKind string    `json:"againstKind"`
+	AgainstID   uuid.UUID `json:"againstId"`
+	// ExpiresAt is "end_of_turn", "next_turn" or "end_of_round".
+	ExpiresAt string `json:"expiresAt"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // ReactionResultResponse is what one target answered with. Kind is the SAME field
@@ -338,10 +391,7 @@ func toActionResponse(a action.Action) ActionResponse {
 	if a.Interact != nil {
 		out.Interact = &InteractResponse{Kind: string(a.Interact.Kind)}
 	}
-	// SystemBias is deliberately NOT mapped: match-history.md records it, alongside
-	// RollCheck.Context, as engine-internal — no output field on any surface. It is persisted
-	// (actions.system_bias) so the audit record is complete, not so this response can carry
-	// it. Exposing it is a contract decision, not a mapping oversight.
+	out.SystemBias = a.SystemBias
 	return out
 }
 
@@ -390,6 +440,7 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 			RawDamage: cr.RawDamage, DefenseApplied: cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        toReactionResultResponse(cr),
+			Payouts:         toModifierResponses(cr.Payouts),
 		})
 	}
 	for _, pr := range res.PendingReactions {
@@ -409,6 +460,29 @@ func toReactionResultResponse(cr service.CharacterResult) *ReactionResultRespons
 		Rung: string(cr.Ladder.Rung), Margin: cr.Ladder.Margin, Difference: cr.Ladder.Difference,
 		StopsAttack: cr.ReactionStopsAttack,
 	}
+}
+
+// toModifierResponses projects a reaction's payouts. It does NOT decide what a viewer may
+// see — service.ProjectResolution already did — so this is a pure mapping. Keeping the
+// deny-list in one place is what stops this surface and the WebSocket one from drifting.
+func toModifierResponses(ms []domainMatch.Modifier) []ModifierResponse {
+	if len(ms) == 0 {
+		return nil
+	}
+	out := make([]ModifierResponse, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, ModifierResponse{
+			Amount:      m.Amount,
+			Bias:        m.Bias,
+			Applies:     string(m.Applies),
+			Source:      string(m.Source),
+			AgainstKind: m.Against.Kind(),
+			AgainstID:   m.Against.ID(),
+			ExpiresAt:   string(m.ExpiresAt),
+			Reason:      m.Reason,
+		})
+	}
+	return out
 }
 
 func formatTimePtr(t *time.Time) *string {

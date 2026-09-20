@@ -66,6 +66,7 @@ renderiza os cards de ação dentro do escopo de cada cena.
                   "actorId": "char-hisoka...",
                   "reactToId": "aa11...",
                   "reactionKind": "dodge",
+                  "systemBias": -1,
                   "skills": [
                     { "skillName": "Legerity", "rollCheck": { "skillName": "Legerity", "skillValue": 12, "attempts": { "primary": [5, 5] }, "result": 12 } }
                   ],
@@ -93,7 +94,19 @@ renderiza os cards de ação dentro do escopo de cada cena.
                       "total": 12,
                       "reactionId": "bb22...",
                       "stopsAttack": false
-                    }
+                    },
+                    "payouts": [
+                      {
+                        "amount": -3,
+                        "bias": 0,
+                        "applies": "action_speed",
+                        "source": "system",
+                        "againstKind": "anyone",
+                        "againstId": "00000000-0000-0000-0000-000000000000",
+                        "expiresAt": "next_turn",
+                        "reason": "repel: near miss penalty"
+                      }
+                    ]
                   }
                 ]
               }
@@ -114,17 +127,48 @@ Notas sobre os campos de `action`/`reactions`:
   abaixo); quando presentes, `feint` é o `RollCheck` da finta e `trigger` é um objeto vazio
   (o domínio ainda não tem campos em `action.Trigger`).
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
-- `RollCheck.Context` (que carrega `RollCondition`, a vantagem/desvantagem que o mestre aplicou
-  via `edit_action`) e `Action.SystemBias` (o bias que o próprio motor derivou) são detalhe
-  interno do motor e não aparecem em superfície nenhuma — nem aqui, nem no WebSocket. O que o
-  cliente vê são os números já resolvidos (`RollCheckResponse.result`, os totais em
-  `resolution`); a condição ou o bias que os produziu não têm campo de saída.
+- `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
+  que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
+  **todo** viewer, pela mesma razão que `attempts` vai (item abaixo): o viés é **público por
+  omissão**. Se os dois conjuntos de dados e o `result` já viajam, QUAL conjunto o motor leu
+  já é dedutível — esconder o campo só obrigaria o cliente à álgebra que este repo evita de
+  propósito (ver `CharacterResult.ReactionTotal`). Omitido quando é `0`, que é a esmagadora
+  maioria das actions.
+- `RollCheck.Context` (que carrega `RollCondition`, a vantagem/desvantagem que o **mestre**
+  aplicou via `edit_action`) **continua interno** e não aparece em superfície nenhuma — nem
+  aqui, nem no WebSocket. Não é o mesmo caso de `systemBias`: a intervenção do mestre já tem
+  superfície própria, em `overridden_action_values`, que registra o valor ANTERIOR junto com
+  quem trocou e quando. O que o cliente vê aqui são os números já resolvidos
+  (`RollCheckResponse.result`, os totais em `resolution`).
+- `systemBias` **não tem equivalente no WebSocket**, e não por política: nenhuma mensagem
+  servidor→cliente projeta a declaração de uma `action.Action` (`ActionPayload` só existe no
+  sentido cliente→servidor). O argumento do "já é dedutível" também não valeria lá —
+  `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. Ver
+  [`match-combat-ws.md`](match-combat-ws.md).
 - `RollCheckResponse.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
   viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
   público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
   vaza mais do que o total já vaza. Mas é uma superfície de dados estritamente maior que o
   WebSocket: `resolution_updated` só emite `diceRolled`, o conjunto efetivamente lido —
   `attempts` do REST é o único lugar onde o conjunto NÃO lido também aparece.
+
+Notas sobre `resolution.targets[]`:
+
+- `payouts` é o que a reação **daquele alvo rendeu**: o bônus ou a penalidade do aparar, a
+  reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria das reações.
+  Um payout é um modificador acumulado no personagem, escrito na ficha no fechamento do
+  turno; `againstKind` (`anyone` · `only` · `all_but`) é o ponto dele — diz **quem** pode
+  contá-lo — e `againstId` é o personagem em que os dois últimos se apoiam (zero UUID em
+  `anyone`, que é o que esse caso significa). `amount` é ajuste plano; `bias` é
+  vantagem/desvantagem nos dados (−1/0/+1), moeda diferente que não se soma ao total.
+- `payouts` **está sujeito à projeção**, e por uma condição só: a mesma que rebaixa o rótulo.
+  A reserva da esquiva fechada é a outra metade daquele segredo — o tamanho da esquiva não
+  gasta diz quanta Evasão foi embutida — então sai junto com o nome. **A penalidade do aparar
+  não sai:** nasce `againstKind: "anyone"`, um aparo nunca é rebaixado, e
+  [`reacoes.md`](../../game/combate/reacoes.md) diz que *"vale contra todo mundo — qualquer um
+  pode aproveitar"*. Quem pode aproveitar precisa conseguir ler.
+- `applies`, `source`, `againstKind`, `expiresAt` e `reaction.rung` são **snake_case**: são
+  valores de enum do domínio serializados como estão, não tags de struct.
 
 ### A resposta já vem projetada — não filtre no cliente
 
