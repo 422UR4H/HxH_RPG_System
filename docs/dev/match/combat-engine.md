@@ -1428,6 +1428,139 @@ desfecho, só a declaração. E recalcular depois é impossível: o ledger daque
 existe mais. O Action History da Fase 5 precisa disso, e é **decisão de forma dela**, não
 consertável aqui.
 
+## O que a Fase 5 fixou no motor
+
+### `CloseOpenTurn` é o único jeito de fechar um turno
+
+`MatchSession.CloseTurn` pulava `closeOpenTurn`: encerrava o turno sem resolvê-lo, sem aplicar
+dano e sem avançar ledger nenhum, e não reportava erro fazendo isso — um comedor silencioso de
+dano. Foi apagado e substituído por `CloseOpenTurn`, que passa pelo mesmo caminho privado que
+`OpenNextAction`/`PullAction` já usavam para fechar o turno anterior. Não sobrou um segundo
+jeito de fechar turno que esqueça de resolver.
+
+### A recusa é do servidor; `confirm: true` é a resposta
+
+`close_turn` não é um comando cego. `CloseTurnUC` olha `Turn.UnopenedReactions()` — reações
+anexadas que o mestre nunca deu a palavra — e recusa fechar enquanto sobrar alguma, devolvendo
+`close_turn_refused` com a lista de quem ficou de fora. O mestre decide se aquilo importa e
+reenvia com `{"confirm": true}`; não existe um segundo cálculo de "tem certeza?" no cliente,
+porque o servidor já fez a única pergunta que precisa ser feita.
+
+### A projeção tem DOIS eixos — tempo e classe — e moram no mesmo lugar
+
+`Room.publishResolution` decide o eixo TEMPO: enquanto `!res.IsSettled`, só o mestre recebe
+`resolution_updated` — o cálculo é dele até o turno fechar, isso não mudou desde a Fase 2.
+Só uma resolução **assentada** (`IsSettled == true`, turno com `finishedAt`) é candidata a
+chegar à mesa inteira. Quando chega, `service.ProjectResolution`/`service.ProjectAction`
+decidem o eixo CLASSE — mestre, dono, ou todo o resto — pela mesma política de três guichês
+(`Viewer.SeesAllOf`). O Action History (`GET /matches/{uuid}/history`) reusa as MESMAS duas
+funções para projetar o histórico já assentado por destinatário; não existe um segundo filtro
+duplicado no caminho REST.
+
+### O rótulo é o vazamento
+
+`publicKind` rebaixa `closedDodge`→`dodge` e `closedEscape`→`escape` para quem não é dono nem
+mestre — o NOME já contava que havia uma Evasion embutida, então o nome é a coisa que se
+esconde, não o número. Um espectador deduzir a partir de `bars_updated` (uma esquiva fechada
+cobra uma barra onde a padrão cobra duas) é legítimo — a dedução exige trabalho e os números já
+são públicos por design. Ser avisado de graça pelo rótulo não é a mesma coisa.
+
+### `turns.resolution` guarda a resolução ASSENTADA
+
+`PersistTurnClose` grava a resolução settled em `turns.resolution` (nullable — um turno nunca
+resolvido fica `NULL`). O formato é um `resolutionRecord` explícito, não `json.Marshal` direto
+em `service.TurnResolution`: `battle.Blow` não exporta campo nenhum (serializaria como `{}`,
+um buraco silencioso, e por doc próprio não carrega números mesmo) e `match.Scope` mantém
+`kind`/`id` privados (um `Payout.Against` se perderia do mesmo jeito calado). Ser explícito
+corta nos dois sentidos: toda omissão — `Blows`, `ReactionResults` (branch ainda não
+implementado no `Resolve`, um stub gravado pareceria assentado sem ser) e `PendingReactions`
+(estado transitório do mestre, não um desfecho) — é escolhida e documentada no próprio record,
+não um acidente de reflection.
+
+### A edição pousa na action; `Derive` é o chamador que `RollAttempts` sempre teve
+
+`ApplyMasterAction` edita a action AO VIVO — não existe uma versão paralela para mesclar na
+leitura, porque a action editada JÁ É a action. O preço é que o original se perde no objeto
+vivo, e é exatamente por isso que a captura de override existe (próxima seção). A edição nunca
+rola dado: `RollCalculator.Derive` lê os dois conjuntos que `RollAttempts` guarda desde que a
+action chegou, e reler várias vezes — uma por edição do mestre — nunca é um re-sorteio. A
+economia também não se mexe: barras cobradas, `Speed`s registrados e a ordem já jogada ficam
+como estavam — `bars_updated` já estava no ar desde antes da edição existir, e refazer o preço
+reordenaria o que já foi jogado.
+
+### Skills removidas estacionam seus dados; `overridden_action_values` guarda o ORIGINAL
+
+Duas peças, uma tabela. `applySkillEdit` já resolvia o problema mais estreito antes desta fase
+— uma skill removida e depois readicionada lê os MESMOS dados de volta, em vez de rolar de
+novo — guardando-os num mapa em memória enquanto a skill está fora. A Fase 5 generaliza a ideia
+para o mestre: `captureOverride` grava, na tabela `overridden_action_values`, o valor que um
+edit está prestes a DESLOCAR — nunca a edição em si — **uma linha por campo**, não uma por
+edição. Duas propriedades caem disso de graça: reverter é de graça (editar de volta ao original
+apaga a linha, `TestOverrideCapture/editing_back_to_the_original_erases_the_capture`,
+`internal/application/match`) e um erro seguido do conserto não deixa ruído nenhum para trás.
+`TakeOverridesFor` drena as duas listas — overrides e dados-estacionados — no fechamento do
+turno, sob o mesmo `r.mu.Lock()` que já protegia o resto do `persistClosedTurn`.
+
+### `action_queued` fecha o buraco do `pull_action`
+
+`pull_action` sempre existiu, mas era inalcançável por um cliente real: nada nunca disse ao
+mestre o ID de uma action que acabou de entrar na fila. `action_queued` (master-only, como o
+resto da fila — `TestActionQueuedReachesOnlyTheMaster`) fecha esse buraco: o mestre aprende o
+ID pelo `enqueue_action` de qualquer jogador e pode usá-lo de volta em `pull_action` para abrir
+aquela ação específica fora de ordem.
+
+### Um turno fechado não pode mais ser descartado quando o próximo falha em abrir
+
+`OpenNextActionUC`/`PullActionUC` fechavam o turno anterior (aplicando o dano, já persistido em
+memória) e SÓ DEPOIS tentavam abrir o próximo — mas devolviam `return nil, err` em qualquer
+erro de abertura, descartando o resultado inteiro, turno fechado incluído. Não era uma corrida:
+era determinístico contra uma fila vazia no reopen. Os dois use cases agora devolvem a metade
+fechada junto do erro sempre que `tr.Closed != nil`, e `room.go` processa esse fechamento
+(persiste, publica a resolução, transmite as barras) antes de reportar o erro ao mestre, em vez
+de depois.
+
+### A edição do mestre parou de apagar a desvantagem de troca de uma reação
+
+`ApplyMasterAction` re-derivava velocidades com um `systemBias` fixo em 0 — então editar
+qualquer condição não relacionada numa reação que já havia deslocado uma action na fila
+(`systemBias -1`, imposto por `AttachReaction`) achatava essa desvantagem de volta a neutro em
+silêncio, sem que nada a jusante pudesse notar a deriva antes de `persist_turn_close.go` gravar
+a velocidade corrompida no banco. `Action.SystemBias` agora guarda o bias: `deriveSpeeds` grava
+o valor que acabou de aplicar, e `ApplyMasterAction` re-deriva com esse valor guardado em vez
+de um literal 0. Nenhum ponto de chamada consegue mais aplicar um bias sem registrá-lo, porque
+`deriveSpeeds` é o único lugar que escreve `SystemBias`.
+
+### `ORDER BY` do histórico precisou de `t.uuid` como desempate
+
+`insertAction` grava o mesmo timestamp como `created_at` e `finished_at` da action de um turno
+e de cada uma de suas reactions, então dois turnos do mesmo round empatando em `finished_at` é
+a norma, não uma borda — e sem `t.uuid` como desempate, as linhas podiam intercalar e uma
+reaction de um turno ser lida como a action própria de outro. `FindMatchHistory` agora ordena
+por `t.finished_at, t.uuid`. **Dito com honestidade**: o teste de cobertura
+(`TestFindMatchHistoryDoesNotInterleaveTurnsThatTieOnFinishedAt`) não reproduz de forma
+confiável a falha pré-fix neste ambiente Postgres — a correção é correta pela semântica do SQL
+(um `ORDER BY` sem desempate não garante ordem estável entre linhas empatadas), não por um RED
+observado.
+
+### `action.Option` é uma interface selada
+
+A primeira tentativa de fechar a janela de mutação de ID (`Action.ReconstructID`, um método
+exportado que qualquer chamador podia invocar num ponteiro vivo — `MatchSession.PendingActions()`
+e `Turn.ActionRef()` distribuem esses ponteiros) trocou um método exportado por uma closure
+exportada (`WithReconstructedID` devolvendo `func(*Action)`): **relocou** a janela em vez de
+fechá-la — qualquer pacote importando `action` podia obter a closure e invocá-la direto num
+`*Action` vivo, sem passar por `NewAction`. `Option` virou uma interface cujo único método,
+`apply`, não é exportado. Pela especificação da linguagem, um nome de método não exportado só é
+o MESMO método entre dois tipos quando ambos são declarados no mesmo pacote — então nenhum tipo
+fora de `action` implementa `Option`, e nenhum chamador fora de `action` escreve `opt.apply(x)`
+mesmo tendo um valor `Option` legítimo em mãos. O acesso a campo do Go é léxico: ele restringe
+ONDE o código que toca um campo privado pode ser ESCRITO, não onde o valor resultante pode ser
+CHAMADO — é essa distinção que a primeira tentativa errou.
+
+⛔ **Ainda em aberto, e esta fase deliberadamente não fechou isso:** ninguém lê o resultado de
+uma `Skill`. A corrente de testes está escrita em `docs/game/combate/acoes.md` e não existe em
+código, então adicionar e remover skills muda uma lista que não decide nada.
+
 ## Pendências estruturais
 
 | Item | Situação |
@@ -1438,7 +1571,7 @@ consertável aqui.
 | `battle.Blow` | ✅ Fase 2 — construtor e acessores; `defense` virou ponteiro (nil = defesa passiva) |
 | `action.Initiative` | órfão; `ChangeMode` ignora o parâmetro |
 | `buildAction` | ✅ Fase 2 — mapeia o payload inteiro, com a fronteira `string → enum.SkillName` e `→ enum.WeaponName` |
-| Tabela `SystemData` | auditoria de interferência do mestre — só no desenho |
+| Tabela `SystemData` | ✅ Fase 5 — nome real `overridden_action_values`: uma linha por campo deslocado, guardando o ORIGINAL; reverter ao valor original apaga a linha |
 | Onde mora a diferença acumulada | ✅ Fase 1 — `ModifierLedger` no `CharacterStatus`, com `AgainstID`, `ExpiresAt` e `Source` |
 | Conflito no `Bias` | ✅ Fase 1 — `RollCondition.Bias` é do mestre; o viés do sistema é um `Modifier` de `Source: system`, e o `RollCalculator` soma os dois em `Derive` |
 | Tela de enviar action | **não existe no front** — Fase 6 |
@@ -1454,5 +1587,6 @@ consertável aqui.
 | Cadeia com vários alvos | ✅ Fase 4 — `ChainState.Reduce`/`buildChainOrder`, andando por reação aberta na ordem do mestre, depois pelos alvos restantes. Override do mestre é Fase 5 |
 | Custo da reação | ✅ Fase 4 — cobrado no attach, nunca no open, nunca negado por saldo; `match.Modifier` ganhou `Applies`/`Against`/`ExpiresAt: next_turn` (demoção, sem relógio) |
 | `open_reaction` | ✅ Fase 4 — `open_reaction`/`reaction_opened`, e `PendingReactions` em `resolution_updated` (master-only) fecha o ciclo — sem isso o ID de uma reação anexada era inalcançável por um cliente real |
-| Persistência do turno | ✅ Fase 4 (fix) — FK de `actor_uuid` para `character_sheets`, reações gravadas com a action, colunas `reaction_kind`/`repel`. **O resultado do turno segue fora** — Fase 5 |
+| Persistência do turno | ✅ Fase 4 (fix) — FK de `actor_uuid` para `character_sheets`, reações gravadas com a action, colunas `reaction_kind`/`repel`. ✅ Fase 5 — o resultado assentado também é persistido, em `turns.resolution` |
+| Action History (leitura) | ✅ Fase 5 — `GET /matches/{uuid}/history` lê a árvore Scene→Round→Turn→Action, projetada por destinatário com `service.ProjectAction`/`ProjectResolution`, as mesmas funções da difusão ao vivo |
 | Armadura | reduz zero — não existe entidade nem campo de ficha; a linha está codificada em `ChainState.Reduce`, o valor não. Fase futura |

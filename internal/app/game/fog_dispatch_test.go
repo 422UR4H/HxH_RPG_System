@@ -85,7 +85,7 @@ func squareSlot(col, row int) SlotPayload {
 func newFogRoom(matchUUID, masterUUID uuid.UUID) *Room {
 	return NewRoom(
 		matchUUID, masterUUID,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 }
 

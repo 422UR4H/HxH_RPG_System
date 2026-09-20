@@ -65,6 +65,26 @@ func ScopeAnyone() Scope             { return Scope{kind: scopeAnyone} }
 func ScopeOnly(id uuid.UUID) Scope   { return Scope{kind: scopeOnly, id: id} }
 func ScopeAllBut(id uuid.UUID) Scope { return Scope{kind: scopeAllBut, id: id} }
 
+// Kind and ID expose a Scope for serialization only. They are read-only on purpose: the
+// three constructors stay the only way to BUILD one, so an unset ID can still never be
+// mistaken for "anyone".
+func (s Scope) Kind() string  { return string(s.kind) }
+func (s Scope) ID() uuid.UUID { return s.id }
+
+// ScopeFrom rebuilds a Scope read back from storage. It is the inverse of Kind/ID and
+// nothing else should call it: an unknown kind reads as "anyone", which is the safe answer
+// for a modifier whose scope was lost.
+func ScopeFrom(kind string, id uuid.UUID) Scope {
+	switch ScopeKind(kind) {
+	case scopeOnly:
+		return ScopeOnly(id)
+	case scopeAllBut:
+		return ScopeAllBut(id)
+	default:
+		return ScopeAnyone()
+	}
+}
+
 // AppliesTo reports whether this scope counts for a roll made against targetID.
 //
 // A roll with no named target is "nobody in particular": a targeted bonus does not reach it,

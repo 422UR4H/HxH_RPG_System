@@ -80,6 +80,16 @@ func (uc *OpenNextActionUC) Execute(
 	}
 
 	if err != nil {
+		// A non-nil result alongside a non-nil error is unusual, but tr.Closed != nil means
+		// session.OpenNextAction already closed the previous turn and applied its damage
+		// (persisted above) before it failed to open the next one — the same half-success this
+		// file already accepts for persistDamage and the round auto-close above. Discarding res
+		// here would silently drop that closed turn's resolution and its persistence: the
+		// caller's error branch never announces resolution_updated and never calls
+		// PersistTurnClose.
+		if tr.Closed != nil {
+			return res, err
+		}
 		return nil, err
 	}
 	return res, nil

@@ -12,8 +12,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
 
@@ -57,6 +57,14 @@ func (m *mockOpenReactionUC) Execute(_ context.Context, _ *matchsession.MatchSes
 	return nil, nil
 }
 
+type mockCloseTurnUC struct{}
+
+func (m *mockCloseTurnUC) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ bool,
+) (*appmatch.CloseTurnResult, error) {
+	return nil, nil
+}
+
 // mockStartMatchUCLocal and mockKickPlayerUCLocal are local duplicates to avoid
 // conflicts with handler_test.go's unexported types in the same test package.
 type mockStartMatchUCLocal struct{}
@@ -75,7 +83,7 @@ func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSess
 
 type mockRoundRepoGame struct{}
 
-func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ appmatch.TurnCloseData) error {
 	return nil
 }
 func (m *mockRoundRepoGame) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
@@ -86,6 +94,9 @@ func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID
 }
 func (m *mockRoundRepoGame) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
+}
+func (m *mockRoundRepoGame) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
+	return nil, nil
 }
 
 type mockEnqueueMasterActionUC struct{}
@@ -100,6 +111,16 @@ func (m *mockChangeRoundModeUC) Execute(_ context.Context, _ *matchsession.Match
 	return nil
 }
 
+type mockEditActionUC struct{}
+
+func (m *mockEditActionUC) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
+) (*appmatch.EditActionResult, error) {
+	// Non-nil: a test that actually exercises edit_action through a room built with this mock
+	// must fail on an assertion, not panic on a nil-pointer dereference of the result.
+	return &appmatch.EditActionResult{Resolution: &service.TurnResolution{}, TurnID: uuid.New()}, nil
+}
+
 func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 	return game.NewRoom(
 		matchUUID, masterUUID,
@@ -111,10 +132,12 @@ func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 }
 
@@ -219,10 +242,12 @@ func TestHub(t *testing.T) {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 	if room == nil {
 		t.Fatal("expected room to be created")
@@ -241,10 +266,12 @@ func TestHub(t *testing.T) {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
@@ -264,10 +291,12 @@ func TestHub(t *testing.T) {
 		&mockEnqueueActionUC{},
 		&mockAttachReactionUC{},
 		&mockOpenReactionUC{},
+		&mockCloseTurnUC{},
 		&mockChangeSceneUC{},
 		&mockRoundRepoGame{},
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
+		&mockEditActionUC{},
 	)
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")

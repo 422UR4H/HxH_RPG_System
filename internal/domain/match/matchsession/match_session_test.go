@@ -2,6 +2,7 @@ package matchsession_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
@@ -475,35 +476,88 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 			t.Fatalf("a target reacting through their own character: %v", err)
 		}
 	})
+
+	// close_turn (Phase 5) makes "the previous turn is closed and nothing is open" a state the
+	// master can sit in deliberately, unlike before when a turn only ever closed INSIDE
+	// OpenNextAction/PullAction, which opened the next turn in the same critical section. Round
+	// .CurrentTurn() returns the last turn regardless of finishedAt, so a stale reaction can
+	// still reach it — and must be refused before anything is charged, exactly as OpenReaction
+	// already refuses it (see ErrTurnAlreadyClosed there).
+	t.Run("refuses a reaction attached after the turn already closed, charging nothing", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		// Race mode: chargeReactionBars and consumePendingFor only have anything to prove in
+		// Race — Free never charges reaction bars at all, so the assertions below would pass
+		// vacuously regardless of the guard.
+		s.GetActiveRound().SetMode(enum.Race)
+
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("EnqueueAction(attacker): %v", err)
+		}
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		// playerB's own queued action — what a paid reaction would consume from the queue.
+		pending := makeActionWithSpeed(chars[1], 3)
+		if err := s.EnqueueAction(playerB, pending); err != nil {
+			t.Fatalf("EnqueueAction(victim pending): %v", err)
+		}
+
+		if _, err := s.CloseOpenTurn(); err != nil {
+			t.Fatalf("CloseOpenTurn: %v", err)
+		}
+
+		balanceBefore, speedsBefore := s.BarState(chars[1], action.BarAction)
+		pendingBefore := len(s.PendingActions())
+
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		_, err := s.AttachReaction(playerB, r)
+		if !errors.Is(err, matchsession.ErrTurnAlreadyClosed) {
+			t.Fatalf("err = %v, want ErrTurnAlreadyClosed", err)
+		}
+
+		balanceAfter, speedsAfter := s.BarState(chars[1], action.BarAction)
+		if balanceAfter != balanceBefore || !slices.Equal(speedsAfter, speedsBefore) {
+			t.Fatalf("attaching to a closed turn moved the reactor's bar: %v/%v -> %v/%v",
+				balanceBefore, speedsBefore, balanceAfter, speedsAfter)
+		}
+		if got := len(s.PendingActions()); got != pendingBefore {
+			t.Fatalf("attaching to a closed turn consumed the reactor's queued action: %d -> %d",
+				pendingBefore, got)
+		}
+	})
 }
 
-func TestMatchSession_CloseTurn(t *testing.T) {
+func TestMatchSession_CloseOpenTurn(t *testing.T) {
 	t.Run("closes current open turn", func(t *testing.T) {
 		playerA := uuid.New()
 		s, chars := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		opened := mustOpen(t, s)
 
-		closed, err := s.CloseTurn()
+		tr, err := s.CloseOpenTurn()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if closed == nil {
+		if tr.Closed == nil {
 			t.Fatal("expected non-nil closed turn")
 		}
-		if closed != opened {
+		if tr.Closed != opened {
 			t.Error("expected closed turn to be the opened turn")
 		}
-		if closed.GetFinishedAt() == nil {
+		if tr.Closed.GetFinishedAt() == nil {
 			t.Error("expected finishedAt to be set")
 		}
 	})
 
-	t.Run("returns ErrNoCurrentTurn when no turns exist", func(t *testing.T) {
+	t.Run("returns ErrNoOpenTurn when no turn is open", func(t *testing.T) {
 		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		_, err := s.CloseTurn()
-		if !errors.Is(err, service.ErrNoCurrentTurn) {
-			t.Errorf("expected ErrNoCurrentTurn, got %v", err)
+		_, err := s.CloseOpenTurn()
+		if !errors.Is(err, matchsession.ErrNoOpenTurn) {
+			t.Errorf("expected ErrNoOpenTurn, got %v", err)
 		}
 	})
 }
@@ -514,7 +568,7 @@ func TestMatchSession_CloseRound(t *testing.T) {
 		s, chars := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		s.OpenNextAction()                                         //nolint:errcheck
-		s.CloseTurn()                                              //nolint:errcheck
+		s.CloseOpenTurn()                                          //nolint:errcheck
 
 		closedRound, err := s.CloseRound()
 		if err != nil {
@@ -539,7 +593,7 @@ func TestMatchSession_CloseRound(t *testing.T) {
 		s, chars := sessionWithParticipants(playerA)
 		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		s.OpenNextAction()                                         //nolint:errcheck
-		// turn is still open — no CloseTurn called
+		// turn is still open — no CloseOpenTurn called
 
 		_, err := s.CloseRound()
 		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
@@ -1903,4 +1957,87 @@ func TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent(t *testing.T) {
 		t.Errorf("actionSpeed against the read opponent = %d, want %d — the banked repel bonus must count",
 			speedAgainstOpponent, want)
 	}
+}
+
+// attackFixture is a session holding one attacker, one victim and one enqueued attack against
+// the victim. Every die lands on its top face (fixedTopFaceSource), so the hit always clears
+// the passive dodge and the damage numbers are exact instead of lucky.
+type attackFixture struct {
+	session *matchsession.MatchSession
+	victim  *csSheet.CharacterSheet
+}
+
+// victimHealth reads the victim's current HP straight off the sheet the session holds.
+func (f *attackFixture) victimHealth() int {
+	bar, ok := f.victim.GetAllStatusBar()[enum.Health]
+	if !ok {
+		panic("victim sheet has no health bar")
+	}
+	return bar.GetCurrent()
+}
+
+func newAttackFixture(t *testing.T) *attackFixture {
+	t.Helper()
+	matchUUID := uuid.New()
+	playerA, playerB := uuid.New(), uuid.New()
+	pA := makeParticipant(matchUUID, &playerA)
+	pB := makeParticipant(matchUUID, &playerB)
+	attacker, victim := pA.Sheet.UUID, pB.Sheet.UUID
+
+	victimSheet := buildPlainSheet(t)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		attacker: buildPlainSheet(t),
+		victim:   victimSheet,
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{pA, pB})
+	s.SetRollSource(fixedTopFaceSource{})
+
+	sword := enum.Sword
+	atk := &action.Attack{Weapon: &sword, Hit: action.RollCheck{SkillName: enum.Accuracy.String()}}
+	a := action.NewAction(attacker, []uuid.UUID{victim}, uuid.Nil, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{Result: 10}},
+		nil, nil, atk, nil, nil, nil, nil)
+
+	if err := s.EnqueueAction(playerA, a); err != nil {
+		t.Fatalf("EnqueueAction: %v", err)
+	}
+	return &attackFixture{session: s, victim: victimSheet}
+}
+
+func TestCloseOpenTurnAppliesDamage(t *testing.T) {
+	t.Run("an explicit close applies the damage the implicit one would have", func(t *testing.T) {
+		f := newAttackFixture(t) // existing helper: attacker, victim, one enqueued attack
+		before := f.victimHealth()
+
+		if _, err := f.session.OpenNextAction(); err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if f.victimHealth() != before {
+			t.Fatalf("HP moved while the turn was open: %d → %d", before, f.victimHealth())
+		}
+
+		tr, err := f.session.CloseOpenTurn()
+		if err != nil {
+			t.Fatalf("CloseOpenTurn: %v", err)
+		}
+		if tr.Closed == nil {
+			t.Fatal("CloseOpenTurn returned no closed turn")
+		}
+		if tr.ClosedResolution == nil {
+			t.Fatal("CloseOpenTurn returned no settled resolution — it skipped closeOpenTurn")
+		}
+		if len(tr.Damaged) == 0 {
+			t.Fatal("CloseOpenTurn applied no damage — it skipped closeOpenTurn")
+		}
+		if f.victimHealth() >= before {
+			t.Fatalf("HP did not move on close: %d → %d", before, f.victimHealth())
+		}
+	})
+
+	t.Run("closing with no open turn is an error, not a silent no-op", func(t *testing.T) {
+		f := newAttackFixture(t)
+		if _, err := f.session.CloseOpenTurn(); !errors.Is(err, matchsession.ErrNoOpenTurn) {
+			t.Fatalf("CloseOpenTurn with nothing open = %v, want ErrNoOpenTurn", err)
+		}
+	})
 }

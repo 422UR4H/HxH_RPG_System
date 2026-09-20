@@ -6,17 +6,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
-	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -96,16 +98,56 @@ func (m *mockOpenReactionUCHandler) Execute(_ context.Context, _ *matchsession.M
 	return nil, nil
 }
 
+type mockCloseTurnUCHandler struct{}
+
+func (m *mockCloseTurnUCHandler) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ bool,
+) (*appmatch.CloseTurnResult, error) {
+	return nil, nil
+}
+
 type mockChangeSceneUCHandler struct{}
 
 func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string) (*scene.Scene, *roundentity.Round, error) {
 	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil
 }
 
-type mockRoundRepoHandler struct{}
+// mockRoundRepoHandler is a no-op round repository, except it records every closed turn
+// ID PersistTurnClose was called with — tests that need to assert a turn actually reached
+// persistence (rather than just that Execute returned no error) read persistedTurnIDs()
+// instead of adding a second test double. It also records d.Overrides per turn, keyed by
+// turn ID: the override end-to-end test (TestE2E_OverrideReachesPersistTurnClose) needs to
+// see what room.go's drain-under-lock actually handed to PersistTurnClose, not just that a
+// turn ID arrived.
+type mockRoundRepoHandler struct {
+	mu             sync.Mutex
+	persistedTurns []uuid.UUID
+	overrides      map[uuid.UUID][]matchDomain.OverriddenValue
+}
 
-func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, _ *scene.Scene, _ *roundentity.Round, _ *turnentity.Turn, _ *action.Action, _ uuid.UUID) error {
+func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.persistedTurns = append(m.persistedTurns, d.Turn.GetID())
+	if m.overrides == nil {
+		m.overrides = map[uuid.UUID][]matchDomain.OverriddenValue{}
+	}
+	m.overrides[d.Turn.GetID()] = d.Overrides
 	return nil
+}
+
+// persistedTurnIDs returns a snapshot of every turn ID PersistTurnClose was called with.
+func (m *mockRoundRepoHandler) persistedTurnIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.persistedTurns...)
+}
+
+// overridesFor returns the Overrides PersistTurnClose received for one closed turn.
+func (m *mockRoundRepoHandler) overridesFor(turnID uuid.UUID) []matchDomain.OverriddenValue {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.overrides[turnID]
 }
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
@@ -115,6 +157,9 @@ func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _, _ uuid.U
 }
 func (m *mockRoundRepoHandler) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
+}
+func (m *mockRoundRepoHandler) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
+	return nil, nil
 }
 
 type mockEnqueueMasterActionUCHandler struct{}
@@ -127,6 +172,16 @@ type mockChangeRoundModeUCHandler struct{}
 
 func (m *mockChangeRoundModeUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) error {
 	return nil
+}
+
+type mockEditActionUCHandler struct{}
+
+func (m *mockEditActionUCHandler) Execute(
+	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
+) (*appmatch.EditActionResult, error) {
+	// Non-nil: a test that actually exercises edit_action through a room built with this mock
+	// must fail on an assertion, not panic on a nil-pointer dereference of the result.
+	return &appmatch.EditActionResult{Resolution: &service.TurnResolution{}, TurnID: uuid.New()}, nil
 }
 
 func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *game.Hub) {
@@ -146,10 +201,12 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockEnqueueActionUCHandler{},
 		&mockAttachReactionUCHandler{},
 		&mockOpenReactionUCHandler{},
+		&mockCloseTurnUCHandler{},
 		&mockChangeSceneUCHandler{},
 		&mockRoundRepoHandler{},
 		&mockEnqueueMasterActionUCHandler{},
 		&mockChangeRoundModeUCHandler{},
+		&mockEditActionUCHandler{},
 	)
 
 	mux := http.NewServeMux()
@@ -633,5 +690,123 @@ func TestPlayerCannotCancelLobby(t *testing.T) {
 	received := readMessage(t, playerConn)
 	if received.Type != game.MsgTypeError {
 		t.Errorf("expected error, got %s", received.Type)
+	}
+}
+
+// TestE2E_CloseTurn drives close_turn over a real socket: a non-master is refused, the master
+// gets the server-computed refusal naming the one reaction that was attached and never opened,
+// and the same master resending with confirm:true actually closes the turn.
+//
+// Reuses reaction_chain_e2e_test.go's areaFixture — the same real Room, real use cases and
+// wsConn helpers the reaction-chain tests already exercise close_turn's neighbours with.
+func TestE2E_CloseTurn(t *testing.T) {
+	faces := []int{
+		6, 4, 1, 1, // Attack.Hit: primary 6,4 (→10); secondary 1,1 (unused filler)
+		7, 3, // Sword damage: D10=7, D4=3 → raw 7+3+2=12
+	}
+	f := newAreaFixture(t, faces)
+	defer f.server.Close()
+
+	sword := "Sword"
+	f.attacker.send(t, game.MsgTypeEnqueueAction, game.ActionPayload{
+		ActorID:  f.attackerID,
+		TargetID: []uuid.UUID{f.a},
+		Attack: &game.AttackPayload{
+			Weapon: &sword,
+			Hit:    game.RollCheckPayload{SkillName: "Accuracy"},
+			Damage: game.RollCheckPayload{},
+		},
+	})
+	if !f.attacker.msgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the attack was never acknowledged as enqueued")
+	}
+	f.master.send(t, game.MsgTypeOpenNextAction, struct{}{})
+	_, actionID := f.awaitTurnOpened(t)
+
+	// A attaches a reaction and the master never opens it — exactly the scenario close_turn's
+	// refusal exists for.
+	reactionID := f.attachReaction(t, f.pA, game.ActionPayload{
+		ActorID: f.a, ReactToID: actionID, ReactionKind: "nothing",
+	})
+
+	t.Run("a non-master gets forbidden", func(t *testing.T) {
+		f.pA.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{})
+		if !f.pA.msgs.await(game.MsgTypeError, 2*time.Second) {
+			t.Fatal("the non-master never got an error back")
+		}
+	})
+
+	t.Run("the master gets close_turn_refused naming the pending reaction", func(t *testing.T) {
+		before := f.master.msgs.count(game.MsgTypeCloseTurnRefused)
+		f.master.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{})
+		if !awaitCount(f.master.msgs, game.MsgTypeCloseTurnRefused, before+1, 2*time.Second) {
+			t.Fatal("the master never got close_turn_refused")
+		}
+		msgs := f.master.msgs.snapshotMessages()
+		var refused *game.CloseTurnRefusedPayload
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Type != game.MsgTypeCloseTurnRefused {
+				continue
+			}
+			var p game.CloseTurnRefusedPayload
+			if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+				t.Fatalf("unmarshal close_turn_refused: %v", err)
+			}
+			refused = &p
+			break
+		}
+		if refused == nil {
+			t.Fatal("no close_turn_refused message found")
+		}
+		if len(refused.PendingReactions) != 1 || refused.PendingReactions[0].ReactionID != reactionID {
+			t.Fatalf("PendingReactions = %+v, want exactly [%v]", refused.PendingReactions, reactionID)
+		}
+	})
+
+	t.Run("resending with confirm:true closes it", func(t *testing.T) {
+		f.master.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{Confirm: true})
+		if !f.master.msgs.await(game.MsgTypeTurnClosed, 2*time.Second) {
+			t.Fatal("the master never got turn_closed")
+		}
+	})
+}
+
+// TestActionQueuedReachesOnlyTheMaster closes the hole pull_action left open since it was
+// written: the master has to learn an action's ID from somewhere before it can send it back.
+// This proves both halves — the master gets a usable ID, and a player never sees the message
+// at all, because the queue is secret.
+func TestActionQueuedReachesOnlyTheMaster(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	f.enqueueAttack(t, player)
+
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the master was never told an action was queued")
+	}
+	var p game.ActionQueuedPayload
+	for _, m := range masterMsgs.snapshotMessages() {
+		if m.Type == game.MsgTypeActionQueued {
+			if err := json.Unmarshal(m.Payload, &p); err != nil {
+				t.Fatalf("unmarshal action_queued: %v", err)
+			}
+		}
+	}
+	if p.ActionID == uuid.Nil {
+		t.Fatal("action_queued carried no action ID — pull_action stays unreachable")
+	}
+	if p.ActorID != f.attackerID {
+		t.Fatalf("ActorID = %v, want the attacking character %v", p.ActorID, f.attackerID)
+	}
+	if n := playerMsgs.count(game.MsgTypeActionQueued); n != 0 {
+		t.Fatalf("a player received %d action_queued; the queue is secret", n)
+	}
+
+	// And the ID is usable: pull_action with it opens that exact turn.
+	sendWS(t, master, "pull_action", map[string]any{"actionId": p.ActionID})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("pull_action with the advertised ID opened nothing")
 	}
 }

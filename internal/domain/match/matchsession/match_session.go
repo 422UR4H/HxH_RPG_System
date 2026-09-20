@@ -2,7 +2,9 @@ package matchsession
 
 import (
 	"math"
+	"reflect"
 	"slices"
+	"sort"
 	"time"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -59,6 +61,15 @@ type MatchSession struct {
 	// rollSource is where the dice come from. nil means production. Tests set it so a
 	// phase whose done-criteria name exact numbers never depends on luck.
 	rollSource service.RollSource
+	// removedSkillDice parks the dice of skills the master took off an action, keyed by action
+	// then skill name, so putting one back is not a free re-roll. It lives for as long as the
+	// session does; a turn's entries are drained into the audit when it closes.
+	removedSkillDice map[uuid.UUID]map[string]action.RollAttempts
+	// overrides is what the master's edits displaced, keyed by action then field. In memory
+	// while the turn is open — the master edits and unedits freely — and drained into the
+	// close transaction by TakeOverridesFor. A revert deletes its entry rather than adding
+	// a second one.
+	overrides map[uuid.UUID]map[string]match.OverriddenValue
 }
 
 func NewMatchSession(
@@ -191,6 +202,371 @@ func (s *MatchSession) EnqueueMasterAction(ma *action.MasterAction) error {
 	ma.SetHappenedAt(time.Now())
 	t.AddMasterAction(*ma)
 	return nil
+}
+
+// CurrentTurnID reads the open turn's ID, or uuid.Nil when there is none. Read by the
+// delivery layer (which used to keep its own copy of this exact walk) and by ApplyMasterAction.
+func (s *MatchSession) CurrentTurnID() uuid.UUID {
+	if s.activeRound == nil {
+		return uuid.Nil
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil {
+		return uuid.Nil
+	}
+	return t.GetID()
+}
+
+// ApplyMasterAction lands the master's edit ON the action and recomputes.
+//
+// There is no parallel version to merge on read: the edited action IS the action, which is
+// the shape the code already had — RollCondition lives in RollContext, inside RollCheck,
+// inside Action. The price of that model is that the original is destroyed in the live
+// object, which is exactly why the override capture exists (see CaptureOverride).
+//
+// It NEVER rolls for a condition edit: Derive reads the two sets RollAttempts has held since
+// the action arrived, and a late advantage changes WHICH set is read, never what fell.
+//
+// It never touches the economy either. Charged bars, recorded Speeds and the order already
+// played stay as they are — bars_updated has been on the wire since before the edit, and
+// redoing the price would reorder what has already been played.
+func (s *MatchSession) ApplyMasterAction(
+	ma *action.MasterAction, masterUUID uuid.UUID,
+) (*service.TurnResolution, error) {
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return nil, ErrNoActiveTurn
+	}
+	target, err := s.actionOnTurn(t, ma.ActionID)
+	if err != nil {
+		return nil, err
+	}
+	// Validate every condition edit BEFORE mutating TargetID, Skills or any condition. A
+	// mid-loop resolveRollCheck failure used to return nil, err after TargetID/Skills had
+	// already mutated (and, for an earlier condition in the same list, already captured an
+	// override) — reporting pure failure to a master who had, in fact, partly edited the
+	// action. See combat-engine.md and resolveRollCheck's own doc: "answering silently leaves
+	// them believing they changed it" — this is that rule with the sign flipped.
+	//
+	// shadow is a shallow copy carrying the post-Skills-edit skill NAME set (ma.Skills, when
+	// present) instead of target's pre-edit Skills, so a SkillName condition combined with a
+	// Skills edit in the same request validates against what Skills will actually be — not
+	// what it used to be. applySkillEdit never adds or drops a name beyond what ma.Skills
+	// lists (it only ever decides Attempts per name), so that name set is exactly ma.Skills's.
+	// Attack/Dodge/Defense/etc. are shared pointers, untouched by the copy, read-only here.
+	shadow := *target
+	if ma.Skills != nil {
+		shadow.Skills = ma.Skills
+	}
+	for _, edit := range ma.Conditions {
+		if _, err := resolveRollCheck(&shadow, edit); err != nil {
+			return nil, err
+		}
+	}
+
+	if ma.TargetID != nil {
+		s.captureOverride(target.GetID(), "targetIds", match.OriginPlayer, masterUUID,
+			target.TargetID, ma.TargetID)
+		target.TargetID = append([]uuid.UUID(nil), ma.TargetID...)
+	}
+	if ma.Skills != nil {
+		s.applySkillEdit(target, ma.Skills, masterUUID)
+	}
+	for _, edit := range ma.Conditions {
+		rc, err := resolveRollCheck(target, edit)
+		if err != nil {
+			// Unreachable: the shadow pass above already proved every edit resolves once
+			// Skills lands for real. If this ever fires, resolveRollCheck and the shadow
+			// projection have drifted apart — fail loudly rather than apply half the edit.
+			return nil, err
+		}
+		// current is nil, not a typed nil *RollCondition, whenever the test carries no
+		// condition yet — a typed nil boxed into the any parameter would compare unequal to a
+		// literal nil, which is exactly the shape the first-edit test pins.
+		var current any
+		if rc.Context.Condition != nil {
+			current = *rc.Context.Condition
+		}
+		cond := edit.Condition
+		s.captureOverride(target.GetID(), conditionFieldKey(edit), match.OriginPlayer, masterUUID,
+			current, cond)
+		rc.Context.Condition = &cond
+	}
+	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
+	// never a literal 0: the disadvantage of an action→reaction conversion was decided once, at
+	// attach, and deriveSpeeds stored it on the action for exactly this moment — passing 0 here
+	// would silently erase a reaction's swap-disadvantage the instant the master edited any
+	// OTHER condition on it (see Action.SystemBias).
+	s.deriveSpeeds(target, target.SystemBias)
+	ma.SetHappenedAt(time.Now())
+	t.AddMasterAction(*ma)
+	return s.ResolveTurn(t), nil
+}
+
+// actionOnTurn finds the turn's action or one of its reactions by ID. The zero UUID means the
+// turn's own action, which is what a client editing "the action" sends.
+func (s *MatchSession) actionOnTurn(t *turn.Turn, id uuid.UUID) (*action.Action, error) {
+	a := t.ActionRef()
+	if id == uuid.Nil || id == a.GetID() {
+		return a, nil
+	}
+	if r := t.ReactionRef(id); r != nil {
+		return r, nil
+	}
+	return nil, ErrActionNotOnTurn
+}
+
+// resolveRollCheck maps an edit's path to the RollCheck it names. A path that names nothing
+// present is an error rather than a silent no-op: the master pressed a control describing a
+// test they believe exists, and answering silently leaves them believing they changed it.
+func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollCheck, error) {
+	if e.SkillName != "" {
+		if e.Field != "" {
+			return nil, ErrAmbiguousConditionEdit
+		}
+		for i := range a.Skills {
+			if a.Skills[i].SkillName == e.SkillName {
+				return &a.Skills[i].RollCheck, nil
+			}
+		}
+		return nil, ErrConditionTargetMissing
+	}
+	switch e.Field {
+	case action.FieldSpeed:
+		return &a.Speed.RollCheck, nil
+	case action.FieldFeint:
+		if a.Feint == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return a.Feint, nil
+	case action.FieldHit:
+		if a.Attack == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Attack.Hit, nil
+	case action.FieldDamage:
+		if a.Attack == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Attack.Damage, nil
+	case action.FieldDodge:
+		if a.Dodge == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Dodge.RollCheck, nil
+	case action.FieldDefense:
+		if a.Defense == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Defense.RollCheck, nil
+	case action.FieldRepel:
+		if a.Repel == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return &a.Repel.RollCheck, nil
+	case action.FieldMoveSpeed:
+		if a.Move == nil || a.Move.Speed == nil {
+			return nil, ErrConditionTargetMissing
+		}
+		return a.Move.Speed, nil
+	default:
+		return nil, ErrConditionTargetMissing
+	}
+}
+
+// conditionFieldKey names the audit field a condition edit displaces on. A skill entry is
+// named by its skill ("skill:<name>.condition"), never by its position — the master edits by
+// meaning, not by index. A fixed check is named by its ConditionField ("hit.condition").
+func conditionFieldKey(e action.ConditionEdit) string {
+	if e.SkillName != "" {
+		return "skill:" + e.SkillName + ".condition"
+	}
+	return string(e.Field) + ".condition"
+}
+
+// applySkillEdit replaces the action's skill list, and it is where the two asymmetric rules of
+// combat-engine.md § A edição do mestre live.
+//
+// ADDING rolls new dice. That is not a re-roll and does not break "the master never re-rolls a
+// player's die": it is the FIRST roll of a test that did not exist a moment ago.
+//
+// REMOVING keeps the dice. They go into removedSkillDice, keyed by action and skill name, and
+// a later re-add reads them back. Without that, taking a skill out and putting it back would
+// be a free re-roll — the master would only have to dislike a number to be given another one.
+//
+// The list changes and the list does not yet DECIDE anything: nobody reads a Skill's result
+// (combat-engine.md § A corrente de testes). That is stated, not hidden.
+func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, masterUUID uuid.UUID) {
+	if s.removedSkillDice == nil {
+		s.removedSkillDice = map[uuid.UUID]map[string]action.RollAttempts{}
+	}
+	memory := s.removedSkillDice[a.GetID()]
+	if memory == nil {
+		memory = map[string]action.RollAttempts{}
+		s.removedSkillDice[a.GetID()] = memory
+	}
+
+	held := make(map[string]action.RollAttempts, len(a.Skills))
+	for _, prev := range a.Skills {
+		held[prev.SkillName] = prev.Attempts
+	}
+
+	next := make([]action.Skill, 0, len(want))
+	for _, sk := range want {
+		switch {
+		case !held[sk.SkillName].IsEmpty():
+			sk.Attempts = held[sk.SkillName] // untouched: it was already there
+		case !memory[sk.SkillName].IsEmpty():
+			sk.Attempts = memory[sk.SkillName] // put back: same dice as before
+			delete(memory, sk.SkillName)
+		}
+		if sk.RollCheck.SkillName == "" {
+			sk.RollCheck.SkillName = sk.SkillName
+		}
+		next = append(next, sk)
+	}
+	// Whatever left the list parks its dice, so a re-add is not a re-roll.
+	for name, attempts := range held {
+		stillThere := false
+		for _, sk := range next {
+			if sk.SkillName == name {
+				stillThere = true
+				break
+			}
+		}
+		if !stillThere && !attempts.IsEmpty() {
+			memory[name] = attempts
+		}
+	}
+	// Captured BEFORE the write, against next — the reconciled list, dice and all — not the
+	// raw want the master sent. That is what lets "strip, then put back exactly" compare equal
+	// to the captured original and erase the row: a re-add reads the SAME dice back from
+	// memory, so incoming here is byte-for-byte what was there before the strip.
+	s.captureOverride(a.GetID(), "skills", match.OriginPlayer, masterUUID, a.Skills, next)
+	a.Skills = next
+	// rollActionDice leaves alone every RollCheck whose dice already fell, so this rolls for
+	// exactly the entries that are genuinely new.
+	s.rollActionDice(a)
+}
+
+// captureOverride records the value about to be displaced, once per field, and erases the
+// record when an edit puts the original back.
+//
+// current is what is there right now; incoming is what the master is about to write. Both
+// are compared with valuesEqual (reflect.DeepEqual, refined) because the shapes are
+// heterogeneous by design (an int, a slice of skills, a set of UUIDs) — the alternative is a
+// comparison function per field, which is three places to forget to update.
+func (s *MatchSession) captureOverride(
+	actionID uuid.UUID, field string, origin match.OverrideOrigin,
+	masterUUID uuid.UUID, current, incoming any,
+) {
+	if s.overrides == nil {
+		s.overrides = map[uuid.UUID]map[string]match.OverriddenValue{}
+	}
+	byField := s.overrides[actionID]
+	if byField == nil {
+		byField = map[string]match.OverriddenValue{}
+		s.overrides[actionID] = byField
+	}
+	if existing, ok := byField[field]; ok {
+		// Back to where it started: nothing was displaced after all. This is what makes a
+		// cancel verb unnecessary — cancelling IS editing back.
+		if valuesEqual(existing.Original, incoming) {
+			delete(byField, field)
+		}
+		return // one row per field; the intermediate values are neither the player's nor the system's
+	}
+	if valuesEqual(current, incoming) {
+		return // an edit that changes nothing displaces nothing
+	}
+	byField[field] = match.OverriddenValue{
+		ActionID: actionID, Field: field, Origin: origin,
+		MasterUUID: masterUUID, At: time.Now(), Original: current,
+	}
+}
+
+// valuesEqual is reflect.DeepEqual with one refinement: two zero-length slices compare equal
+// regardless of nil-ness. DeepEqual's own documented rule is that a nil slice and a non-nil,
+// empty slice are UNEQUAL — but "no skills" and "no targets" are the same game state whether
+// the field was never touched (nil) or the master explicitly cleared it ({"skills": []} over
+// the wire unmarshals to a non-nil, empty *[]ActionSkillPayload, by design — see
+// buildEditAction). Without this refinement, clearing an already-empty/nil list would read as
+// "changed" and capture a phantom row for an edit that displaced nothing, contradicting the
+// very comment this check exists under.
+func valuesEqual(a, b any) bool {
+	if isEmptySlice(a) && isEmptySlice(b) {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// isEmptySlice reports whether v holds a slice of length 0 — nil or not. A bare literal nil
+// (v == nil, no type at all — e.g. an unset RollCondition) is not a slice and answers false,
+// so this never reaches past non-slice fields like a flat modifier or a condition.
+func isEmptySlice(v any) bool {
+	if v == nil {
+		return false
+	}
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Slice && rv.Len() == 0
+}
+
+// turnActionIDs is every action ID a turn owns: its own, plus each attached reaction. Both
+// can be edited, so both can have captures.
+func turnActionIDs(t *turn.Turn) []uuid.UUID {
+	a := t.GetAction()
+	out := []uuid.UUID{a.GetID()}
+	for _, r := range t.GetReactions() {
+		out = append(out, r.GetID())
+	}
+	return out
+}
+
+// PeekOverridesFor reads the captures belonging to one turn without draining them — for
+// tests, and for a master view of what they have displaced so far.
+func (s *MatchSession) PeekOverridesFor(t *turn.Turn) []match.OverriddenValue {
+	if t == nil {
+		return nil
+	}
+	var out []match.OverriddenValue
+	for _, id := range turnActionIDs(t) {
+		for _, ov := range s.overrides[id] {
+			out = append(out, ov)
+		}
+	}
+	return out
+}
+
+// TakeOverridesFor drains the captures belonging to one turn's action and reactions, for the
+// close transaction.
+//
+// Draining, not copying: they are written exactly once, and a turn that has closed cannot be
+// edited again. Leaving them behind would mean a later turn's close re-inserting them — which
+// the unique constraint would swallow silently, so the bug would only ever show up as rows
+// that never appeared.
+//
+// The removed-skill dice parked for those actions go with them: their only remaining purpose
+// was to survive a re-add, and there is nothing left to re-add to.
+func (s *MatchSession) TakeOverridesFor(t *turn.Turn) []match.OverriddenValue {
+	if t == nil {
+		return nil
+	}
+	var out []match.OverriddenValue
+	for _, id := range turnActionIDs(t) {
+		for _, ov := range s.overrides[id] {
+			out = append(out, ov)
+		}
+		delete(s.overrides, id)
+		delete(s.removedSkillDice, id)
+	}
+	// Stable order, so a failing integration test names the same row twice in a row.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ActionID != out[j].ActionID {
+			return out[i].ActionID.String() < out[j].ActionID.String()
+		}
+		return out[i].Field < out[j].Field
+	})
+	return out
 }
 
 // GetCharSheet returns a character's sheet. charID is the sheet UUID — the same ID the
@@ -483,6 +859,16 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	if t == nil {
 		return nil, service.ErrNoCurrentTurn
 	}
+	// Round.CurrentTurn() returns the LAST turn regardless of finishedAt — before Phase 5's
+	// close_turn, a turn only ever closed INSIDE OpenNextAction/PullAction, which opened the
+	// next turn in the same critical section, so a stale reaction was always caught by the
+	// ReactToID mismatch below instead. close_turn makes "the previous turn is closed and
+	// nothing is open" a state the master sits in on purpose, so that mismatch is no longer
+	// guaranteed — this has to be its own check, and it has to run before anything is charged,
+	// exactly as OpenReaction already refuses it.
+	if t.GetFinishedAt() != nil {
+		return nil, ErrTurnAlreadyClosed
+	}
 	act := t.GetAction()
 	if !slices.Contains(act.TargetID, r.GetActorID()) {
 		return nil, ErrReactorNotTargeted
@@ -587,8 +973,30 @@ func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*service.TurnResoluti
 	return s.ResolveTurn(t), nil
 }
 
-func (s *MatchSession) CloseTurn() (*turn.Turn, error) {
-	return s.roundOrch.CloseTurnErr(s.activeRound, time.Now())
+// CloseOpenTurn ends the turn under the baton explicitly, and it is the SAME path the two
+// baton operations take: it resolves one last time, applies what that resolution says, and
+// advances the ledgers.
+//
+// It exists because the old CloseTurn() did none of those three. It called
+// roundOrch.CloseTurnErr directly, so the turn ended, the damage evaporated and nothing
+// reported an error — the worst shape a bug can have. There is now one way to close a turn,
+// and this is it.
+func (s *MatchSession) CloseOpenTurn() (*TurnTransition, error) {
+	if !s.activeRound.HasOpenTurn() {
+		return nil, ErrNoOpenTurn
+	}
+	return s.closeOpenTurn(), nil
+}
+
+// UnopenedReactions is the open turn's attached-but-not-opened reactions, for the confirmation
+// gate in CloseTurnUC. Empty when there is no open turn — the caller's error for that case is
+// ErrNoOpenTurn, raised by CloseOpenTurn, not by this reader.
+func (s *MatchSession) UnopenedReactions() []action.Action {
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return nil
+	}
+	return t.UnopenedReactions()
 }
 
 func (s *MatchSession) CloseRound() (*round.Round, error) {
@@ -663,13 +1071,17 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 // deriveSpeeds turns the dice that just fell into the numbers the round is ordered by:
 // Action.Speed.Result for the action bar, Move.FinalSpeed for the move bar.
 //
-// It runs once, when the action arrives, and it is the only place a speed is produced. The
-// master never re-rolls a player's die, so nothing downstream ever recomputes it.
+// It is the only place a speed is produced — the master never re-rolls a player's die, so
+// nothing downstream ever recomputes the DICE — but it is not only called once: ApplyMasterAction
+// calls it again on every condition edit, so a speed/moveSpeed edit reads through. See
+// Action.SystemBias for how a re-derive stays honest about the bias the action actually
+// arrived under.
 //
-// systemBias is the engine-imposed advantage/disadvantage for this one derivation — a reaction
-// that swapped out a queued action passes -1, everyone else passes 0. It is a MODE of reading
-// the dice that already fell, never an Amount: RollAttempts holds both attempts, and the bias
-// only picks which one pickAttempt reads.
+// systemBias is the engine-imposed advantage/disadvantage for THIS derivation — a reaction
+// that swapped out a queued action passes -1, everyone else passes 0, and ApplyMasterAction
+// passes back whatever this action was last derived under. It is a MODE of reading the dice
+// that already fell, never an Amount: RollAttempts holds both attempts, and the bias only
+// picks which one pickAttempt reads.
 func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
@@ -678,6 +1090,10 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if sheet == nil {
 		return
 	}
+	// Stored so a LATER re-derive (a master edit on an unrelated condition) can apply the same
+	// engine bias this action actually arrived under, instead of ApplyMasterAction having to
+	// pass a literal 0 that would silently flatten a reaction's swap-disadvantage to neutral.
+	a.SystemBias = systemBias
 	calc := service.RollCalculator{}
 	var ledger *match.ModifierLedger
 	if status, ok := s.statuses[a.GetActorID()]; ok {

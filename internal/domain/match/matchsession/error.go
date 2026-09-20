@@ -19,4 +19,19 @@ var (
 	ErrTurnAlreadyClosed = errors.New("cannot open a reaction: turn already closed")
 	// ErrReactionNotFound means the given id is not attached to the open turn.
 	ErrReactionNotFound = errors.New("reaction not found on the current turn")
+	// ErrNoOpenTurn is close_turn with nothing under the baton. It is an error rather than a
+	// no-op because the master pressed a button that describes an action they believe is
+	// happening; answering silently would leave them believing it happened.
+	ErrNoOpenTurn = errors.New("no open turn to close")
+	// ErrActionNotOnTurn means a condition edit named an ActionID that is neither the open
+	// turn's own action nor one of its attached reactions.
+	ErrActionNotOnTurn = errors.New("action is not on the open turn")
+	// ErrConditionTargetMissing means a condition edit named a Field or SkillName that names
+	// nothing present on the action — a client bug and never a no-op: the master pressed a
+	// control describing a test they believe exists, and answering silently would leave them
+	// believing they changed it.
+	ErrConditionTargetMissing = errors.New("condition edit targets a check that is not on this action")
+	// ErrAmbiguousConditionEdit means a condition edit set both Field and SkillName. They are
+	// alternatives, never both at once.
+	ErrAmbiguousConditionEdit = errors.New("condition edit must set either field or skillName, not both")
 )

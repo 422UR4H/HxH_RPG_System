@@ -81,6 +81,12 @@ func (ro RoundOrchestrator) AttachReaction(r *round.Round, reaction *action.Acti
 	if t == nil {
 		return ErrNoCurrentTurn
 	}
+	// MatchSession.AttachReaction checks this first and never reaches here once it does, but
+	// this orchestrator holds no state of its own and must not rely on the caller to keep it
+	// honest — see service.ErrTurnAlreadyClosed.
+	if t.GetFinishedAt() != nil {
+		return ErrTurnAlreadyClosed
+	}
 	act := t.GetAction()
 	if act.GetID() != reaction.ReactToID {
 		return ErrReactionNotCompatible

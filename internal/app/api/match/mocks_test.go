@@ -3,8 +3,8 @@ package match_test
 import (
 	"context"
 
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/google/uuid"
 )
 
@@ -57,6 +57,16 @@ type mockGetMatchParticipants struct {
 func (m *mockGetMatchParticipants) Get(
 	ctx context.Context, matchUUID, userUUID uuid.UUID,
 ) (*match.GetMatchParticipantsResult, error) {
+	return m.fn(ctx, matchUUID, userUUID)
+}
+
+type mockGetMatchHistory struct {
+	fn func(ctx context.Context, matchUUID, userUUID uuid.UUID) (*match.GetMatchHistoryResult, error)
+}
+
+func (m *mockGetMatchHistory) Get(
+	ctx context.Context, matchUUID, userUUID uuid.UUID,
+) (*match.GetMatchHistoryResult, error) {
 	return m.fn(ctx, matchUUID, userUUID)
 }
 

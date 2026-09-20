@@ -15,6 +15,7 @@ import (
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -66,6 +67,8 @@ type IOpenReaction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, callerUUID, reactionID uuid.UUID) (*appmatch.OpenReactionResult, error)
 }
 
+type ICloseTurn = appmatch.ICloseTurn
+
 type IChangeScene interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string) (*sceneentity.Scene, *roundentity.Round, error)
 }
@@ -73,6 +76,8 @@ type IChangeScene interface {
 type IEnqueueMasterAction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, ma *action.MasterAction) error
 }
+
+type IEditAction = appmatch.IEditAction
 
 type Room struct {
 	matchUUID  uuid.UUID
@@ -105,10 +110,12 @@ type Room struct {
 	enqueueActionUC       IEnqueueAction
 	attachReactionUC      IAttachReaction
 	openReactionUC        IOpenReaction
+	closeTurnUC           ICloseTurn
 	changeSceneUC         IChangeScene
 	roundRepo             appmatch.IRoundRepository
 	enqueueMasterActionUC IEnqueueMasterAction
 	changeRoundModeUC     appmatch.IChangeRoundMode
+	editActionUC          IEditAction
 }
 
 func NewRoom(
@@ -121,10 +128,12 @@ func NewRoom(
 	enqueueActionUC IEnqueueAction,
 	attachReactionUC IAttachReaction,
 	openReactionUC IOpenReaction,
+	closeTurnUC ICloseTurn,
 	changeSceneUC IChangeScene,
 	roundRepo appmatch.IRoundRepository,
 	enqueueMasterActionUC IEnqueueMasterAction,
 	changeRoundModeUC appmatch.IChangeRoundMode,
+	editActionUC IEditAction,
 ) *Room {
 	return &Room{
 		matchUUID:             matchUUID,
@@ -146,10 +155,12 @@ func NewRoom(
 		enqueueActionUC:       enqueueActionUC,
 		attachReactionUC:      attachReactionUC,
 		openReactionUC:        openReactionUC,
+		closeTurnUC:           closeTurnUC,
 		changeSceneUC:         changeSceneUC,
 		roundRepo:             roundRepo,
 		enqueueMasterActionUC: enqueueMasterActionUC,
 		changeRoundModeUC:     changeRoundModeUC,
+		editActionUC:          editActionUC,
 	}
 }
 
@@ -493,39 +504,31 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
+
+		// The closed half of the transition is handled BEFORE the error is reported, even when
+		// Execute also failed: OpenNextActionUC.Execute only returns a non-nil result alongside
+		// a non-nil error when the previous turn already closed and its damage already applied
+		// (tr.Closed != nil) before the next one failed to open. That closed turn still needs
+		// PersistTurnClose and its settled resolution_updated — losing them here would silently
+		// drop a real turn from the table and from the Action History. The master still learns
+		// the open failed, just after the table has the turn that actually ended.
+		if result != nil {
+			r.broadcastBars(session)
+
+			if result.ClosedTurn != nil {
+				closedTurn := result.ClosedTurn
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The settled resolution of the turn that just ended — this is the one whose
+				// damage was actually applied.
+				if result.ClosedResolution != nil {
+					r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
+				}
+			}
+		}
+
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
-		}
-		r.broadcastBars(session)
-
-		if result.ClosedTurn != nil {
-			closedTurn := result.ClosedTurn
-			closedAct := closedTurn.GetAction()
-			r.mu.RLock()
-			activeScene := session.GetActiveScene()
-			activeRound := session.GetActiveRound()
-			matchUUID := session.GetMatchUUID()
-			r.mu.RUnlock()
-			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-				// Deliberately not fatal: the turn already closed in memory and the match
-				// goes on. But say WHAT was lost — this line ran silently for two phases
-				// while an FK mismatch dropped every single turn on the floor.
-				log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-					closedTurn.GetID(), matchUUID, err2)
-			} else {
-				r.mu.Lock()
-				session.MarkRoundPersisted()
-				r.mu.Unlock()
-			}
-			// The settled resolution of the turn that just ended — this is the one whose
-			// damage was actually applied.
-			if result.ClosedResolution != nil {
-				r.sendToMaster(NewServerMessage(
-					MsgTypeResolutionUpdate,
-					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
-				))
-			}
 		}
 
 		// The round ran out: nothing pending could still pay, so it closed instead of opening
@@ -553,12 +556,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. Master-only: the mechanics are public
-			// when a turn opens, but the calculation stays with the master until it closes.
-			r.sendToMaster(NewServerMessage(
-				MsgTypeResolutionUpdate,
-				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
-			))
+			// The projection for the turn just opened. publishResolution keeps this
+			// master-only on its own: the mechanics are public when a turn opens, but the
+			// calculation stays with the master until it closes (IsSettled is false here).
+			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
 		}
 
 	case MsgTypeChangeRoundMode:
@@ -622,39 +623,32 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
+
+		// The closed half of the transition is handled BEFORE the error is reported, even when
+		// Execute also failed — same reason as open_next_action: PullActionUC.Execute only
+		// returns a non-nil result alongside a non-nil error when the previous turn already
+		// closed and its damage already applied (tr.Closed != nil) before the pull itself
+		// failed. That closed turn still needs PersistTurnClose and its settled
+		// resolution_updated — losing them here would silently drop a real turn from the table
+		// and from the Action History. The master still learns the pull failed, just after the
+		// table has the turn that actually ended.
+		if result != nil {
+			r.broadcastBars(session)
+
+			if result.ClosedTurn != nil {
+				closedTurn := result.ClosedTurn
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The settled resolution of the turn that just ended — this is the one whose
+				// damage was actually applied.
+				if result.ClosedResolution != nil {
+					r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
+				}
+			}
+		}
+
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
-		}
-		r.broadcastBars(session)
-
-		if result.ClosedTurn != nil {
-			closedTurn := result.ClosedTurn
-			closedAct := closedTurn.GetAction()
-			r.mu.RLock()
-			activeScene := session.GetActiveScene()
-			activeRound := session.GetActiveRound()
-			matchUUID := session.GetMatchUUID()
-			r.mu.RUnlock()
-			if err2 := r.roundRepo.PersistTurnClose(context.Background(), activeScene, activeRound, closedTurn, &closedAct, matchUUID); err2 != nil {
-				// Deliberately not fatal: the turn already closed in memory and the match
-				// goes on. But say WHAT was lost — this line ran silently for two phases
-				// while an FK mismatch dropped every single turn on the floor.
-				log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-					closedTurn.GetID(), matchUUID, err2)
-			} else {
-				r.mu.Lock()
-				session.MarkRoundPersisted()
-				r.mu.Unlock()
-			}
-			// The settled resolution of the turn that just ended — this is the one whose
-			// damage was actually applied.
-			if result.ClosedResolution != nil {
-				r.sendToMaster(NewServerMessage(
-					MsgTypeResolutionUpdate,
-					newResolutionUpdatedPayload(closedTurn.GetID(), result.ClosedResolution),
-				))
-			}
 		}
 
 		// Belt and braces: a successful call that opened nothing has nothing to announce.
@@ -671,12 +665,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		go func() { r.broadcast <- data }()
 		if result.Resolution != nil {
 			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. Master-only: the mechanics are public
-			// when a turn opens, but the calculation stays with the master until it closes.
-			r.sendToMaster(NewServerMessage(
-				MsgTypeResolutionUpdate,
-				newResolutionUpdatedPayload(result.OpenedTurn.GetID(), result.Resolution),
-			))
+			// The projection for the turn just opened. publishResolution keeps this
+			// master-only on its own: the mechanics are public when a turn opens, but the
+			// calculation stays with the master until it closes (IsSettled is false here).
+			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
 		}
 
 	case MsgTypeEnqueueAction:
@@ -752,6 +744,16 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
+		// The sender's own ack stays as it is — it says "we got it", to the person who sent it.
+		// This is different news, for a different recipient: the master is the one who has to
+		// decide when it opens, and they need the ID to be able to pull it.
+		bars := make([]string, 0, 2)
+		for _, b := range a.Bars() {
+			bars = append(bars, string(b))
+		}
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, ActionQueuedPayload{
+			ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars,
+		}))
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
@@ -803,7 +805,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Lock()
 		result, err := r.openReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
-		turnID := currentTurnID(session)
+		turnID := session.CurrentTurnID()
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -815,10 +817,99 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
-		r.sendToMaster(NewServerMessage(
-			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(turnID, result.Resolution),
-		))
+		r.publishResolution(turnID, result.Resolution)
+
+	case MsgTypeEditAction:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload EditActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid edit_action payload"))
+			return
+		}
+		ma, err := buildEditAction(payload)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			return
+		}
+		r.mu.RLock()
+		session := r.session
+		r.mu.RUnlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		// Write lock across Execute: the edit mutates the action itself and re-derives the
+		// open turn's resolution — the same surface open_next_action and close_turn mutate.
+		r.mu.Lock()
+		result, err := r.editActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma)
+		r.mu.Unlock()
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		client.SendMessage(NewServerMessage(MsgTypeActionEdited, ActionEditedPayload{
+			TurnID: result.TurnID, ActionID: ma.ActionID,
+		}))
+		r.publishResolution(result.TurnID, result.Resolution)
+
+	case MsgTypeCloseTurn:
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload CloseTurnPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid close_turn payload"))
+			return
+		}
+		// Write lock across Execute — closing resolves the turn, applies damage to the target
+		// sheets and advances every ledger. Exactly the same surface open_next_action mutates.
+		r.mu.Lock()
+		session := r.session
+		var result *appmatch.CloseTurnResult
+		var err error
+		var turnID uuid.UUID
+		if session != nil {
+			turnID = session.CurrentTurnID()
+			result, err = r.closeTurnUC.Execute(
+				context.Background(), session, r.masterUUID, client.userUUID, payload.Confirm)
+		}
+		r.mu.Unlock()
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		if len(result.Refused) > 0 {
+			pending := make([]PendingReactionPayload, 0, len(result.Refused))
+			for i := range result.Refused {
+				pending = append(pending, PendingReactionPayload{
+					ReactionID: result.Refused[i].GetID(),
+					ActorID:    result.Refused[i].GetActorID(),
+					Kind:       string(result.Refused[i].ReactionKind),
+				})
+			}
+			client.SendMessage(NewServerMessage(MsgTypeCloseTurnRefused,
+				CloseTurnRefusedPayload{TurnID: turnID, PendingReactions: pending}))
+			return
+		}
+
+		closedTurn := result.ClosedTurn
+		// result.Resolution here is the SETTLED one — CloseTurnUC resolves the turn it just
+		// closed, not a next one — the same resolution published below via publishResolution.
+		r.persistClosedTurn(session, closedTurn, result.Resolution)
+
+		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+		r.publishResolution(closedTurn.GetID(), result.Resolution)
+		r.broadcastBars(session)
 
 	case MsgTypeChangeScene:
 		if !r.IsMaster(client.userUUID) {
@@ -1010,11 +1101,60 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	}
 }
 
-func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
-	r.mu.RLock()
-	masterClient, hasMaster := r.clients[r.masterUUID]
-	r.mu.RUnlock()
+// persistClosedTurn writes one turn that just closed to the round repository, together with
+// its settled resolution, and marks the session's round persisted on success. It is the one
+// place that does this — open_next_action, pull_action and close_turn all reach a closed
+// turn by different paths, but from here on they all needed the same read-persist-flip
+// sequence, and it had been copy-pasted into three ~15-line blocks.
+//
+// It takes r.mu itself, exactly as the three call sites used to: a Lock to snapshot the
+// scene/round/matchUUID session needs and drain the turn's captured overrides — TakeOverridesFor
+// mutates the session, so this is a Lock now, not the RLock it started as — then, only on
+// success, a second Lock to flip MarkRoundPersisted. Callers must NOT hold r.mu when calling
+// this: sync.RWMutex is not reentrant, and a nested acquire would deadlock the room
+// permanently. Every call site below already releases r.mu before reaching here.
+//
+// A PersistTurnClose failure is logged and swallowed, not returned: the turn already closed
+// in memory and the match goes on regardless. But say WHAT was lost — this ran silently for
+// two phases while an FK mismatch dropped every single turn on the floor.
+func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution) {
+	act := t.GetAction()
+	// Write lock, not read: TakeOverridesFor DRAINS two maps on the session, it does not just
+	// read them, so it needs the same lock a mutation would. Reading Scene/Round/MatchUUID
+	// here too costs nothing extra — they were already read under a lock, just a lesser one —
+	// and doing the drain in the same critical section avoids a second acquire.
+	//
+	// The lock is released before PersistTurnClose: that call is a DB round trip, and every
+	// caller of persistClosedTurn has already released r.mu before calling in, so there is no
+	// nested acquire on this path either way — but holding the mutex across network I/O would
+	// still block the whole room's message loop for no reason.
+	r.mu.Lock()
+	activeScene := session.GetActiveScene()
+	activeRound := session.GetActiveRound()
+	matchUUID := session.GetMatchUUID()
+	overrides := session.TakeOverridesFor(t)
+	r.mu.Unlock()
 
+	err := r.roundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
+		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
+		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
+	})
+	if err != nil {
+		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
+			t.GetID(), matchUUID, err)
+		// The overrides were already drained above and are lost with the turn. That is
+		// correct, not a leak to plug: overridden_action_values.action_uuid references
+		// actions(uuid), and if PersistTurnClose failed the action row was never written —
+		// the override rows could not have been inserted regardless. No retry queue: this
+		// failure mode is already logged-and-swallowed policy for the whole turn.
+		return
+	}
+	r.mu.Lock()
+	session.MarkRoundPersisted()
+	r.mu.Unlock()
+}
+
+func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
 	reaction, err := buildAction(payload.ActorID, payload)
 	if err != nil {
 		client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
@@ -1026,33 +1166,24 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
 	if err == nil {
-		turnID = currentTurnID(session)
+		turnID = session.CurrentTurnID()
 	}
 	r.mu.Unlock()
 	if err != nil {
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
 		return
 	}
-	if hasMaster {
-		masterClient.SendMessage(NewServerMessage(
-			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(turnID, result.Resolution),
-		))
-	}
-}
-
-// currentTurnID reads the open turn's ID, or uuid.Nil when there is none. The reaction path
-// resolves the turn it attached to, and the master needs to know which one.
-func currentTurnID(session *matchsession.MatchSession) uuid.UUID {
-	r := session.GetActiveRound()
-	if r == nil {
-		return uuid.Nil
-	}
-	t := r.CurrentTurn()
-	if t == nil {
-		return uuid.Nil
-	}
-	return t.GetID()
+	// publishResolution is the single place that decides master-only vs projected, by reading
+	// IsSettled. An attach lands on an open, unsettled turn — and ONLY that, because
+	// MatchSession.AttachReaction now refuses (ErrTurnAlreadyClosed) before rolling a single
+	// die or charging a single bar when the turn's finishedAt is already set, so `err` above
+	// is non-nil and we never reach this line for a closed turn. That guard did not exist
+	// before Phase 5's close_turn made "closed and nothing open" a state the master could sit
+	// in on purpose; until then a stale attach was merely caught downstream by a ReactToID
+	// mismatch. This is routed through the same door as every other resolution anyway, so a
+	// future change to attach timing cannot silently reintroduce a master-only leak here — but
+	// the guard, not the routing, is what keeps this comment true.
+	r.publishResolution(turnID, result.Resolution)
 }
 
 // applyWallInteract updates in-memory wall state for open/close/toggle.
@@ -1147,6 +1278,54 @@ func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayloa
 		})
 	}
 	return out
+}
+
+// publishResolution sends one turn's resolution to everyone entitled to a version of it.
+//
+// TWO axes, not one:
+//
+//   - TIME: while the turn is open the calculation belongs to the master alone
+//     (combat-engine.md § Visibilidade). Only a SETTLED resolution reaches the table.
+//   - CLASS: master / owner / everyone else, applied by service.ProjectResolution.
+//
+// It reuses dispatchPerPlayer, which is the mechanism the fog of war already uses for exactly
+// this. Do not grow a second one.
+func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolution) {
+	if res == nil {
+		return
+	}
+	if !res.IsSettled {
+		r.sendToMaster(NewServerMessage(
+			MsgTypeResolutionUpdate, newResolutionUpdatedPayload(turnID, res)))
+		return
+	}
+	r.mu.RLock()
+	charToPlayer := map[string]uuid.UUID{}
+	if r.session != nil {
+		charToPlayer = r.session.GetCharToPlayer()
+	}
+	r.mu.RUnlock()
+
+	owned := make(map[uuid.UUID]map[uuid.UUID]bool, len(charToPlayer))
+	for charStr, playerID := range charToPlayer {
+		charID, err := uuid.Parse(charStr)
+		if err != nil {
+			continue
+		}
+		if owned[playerID] == nil {
+			owned[playerID] = map[uuid.UUID]bool{}
+		}
+		owned[playerID][charID] = true
+	}
+
+	r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
+		v := domainservice.Viewer{IsMaster: isMaster, Owns: owned[playerID]}
+		msg := NewServerMessage(
+			MsgTypeResolutionUpdate,
+			newResolutionUpdatedPayload(turnID, domainservice.ProjectResolution(res, v)),
+		)
+		return &msg
+	})
 }
 
 // broadcastBars publishes the clocks to everyone. Called after anything that moves them:

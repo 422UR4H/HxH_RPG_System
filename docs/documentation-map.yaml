@@ -387,6 +387,16 @@ mappings:
         confidence: directly_affected
     notes: Match REST surface — create/get/update/list/enrollments/participants
 
+  - code_path: internal/app/api/match/get_match_history.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      GET /matches/{uuid}/history — Action History, nested Scene -> Round -> Turn ->
+      Action, projected per viewer via the SAME service.ProjectAction/ProjectResolution
+      the WebSocket path runs (Fase 5, Task 12). The response is already filtered; no
+      client-side filtering is expected on top of it.
+
   # ─── Match: Maps REST + WS API ───
   - code_path: internal/app/api/matchmap/
     dev_docs:
@@ -652,6 +662,20 @@ mappings:
       Seam determinístico das rolagens. nil = DiceRoller{} (crypto/rand, produção);
       os testes passam uma fonte roteirizada via MatchSession.SetRollSource. Existe
       porque os critérios de pronto das Fases 3 e 4 citam números exatos.
+
+  - code_path: internal/domain/match/service/projection.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      Viewer, ProjectAction, ProjectResolution (Fase 5) — the ONE deny-list for both the
+      WebSocket path (room.go's publishResolution) and the REST Action History (Task 12).
+      Three recipient classes, not four: master, owner, everyone else. The target of an
+      attack is deliberately NOT privileged. Demotes closedDodge/closedEscape to
+      dodge/escape and strips Feint, Trigger and the Evasion skill entry for anyone but
+      the master or the owner.
 
   - code_path: internal/domain/match/entity/battle/blow.go
     dev_docs:

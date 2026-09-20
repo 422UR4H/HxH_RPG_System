@@ -38,6 +38,7 @@ import (
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
 	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sessionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/session"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
@@ -98,6 +99,7 @@ func main() {
 	scenarioRepo := scenarioPg.NewRepository(pgPool)
 	campaignRepo := campaignPg.NewRepository(pgPool)
 	matchRepo := matchPg.NewRepository(pgPool)
+	roundRepo := roundPg.NewRepository(pgPool)
 	submitRepo := submissionPg.NewRepository(pgPool)
 	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
 	mapRepo := mapPg.NewRepository(pgPool)
@@ -196,6 +198,7 @@ func main() {
 	listPublicUpcomingMatchesUC := match.NewListPublicUpcomingMatchesUC(matchRepo)
 	listMatchEnrollmentsUC := match.NewListMatchEnrollmentsUC(matchRepo, enrollmentRepo, characterSheetRepo)
 	getMatchParticipantsUC := match.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
+	getMatchHistoryUC := match.NewGetMatchHistoryUC(matchRepo, roundRepo, characterSheetRepo)
 
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),
@@ -206,6 +209,7 @@ func main() {
 		ListPublicUpcomingMatchesHandler: matchHandler.ListPublicUpcomingMatchesHandler(listPublicUpcomingMatchesUC),
 		ListMatchEnrollmentsHandler:      matchHandler.ListMatchEnrollmentsHandler(listMatchEnrollmentsUC),
 		GetMatchParticipantsHandler:      matchHandler.GetMatchParticipantsHandler(getMatchParticipantsUC),
+		GetMatchHistoryHandler:           matchHandler.GetMatchHistoryHandler(getMatchHistoryUC),
 	}
 
 	submitCharacterSheetUC := submission.NewSubmitCharacterSheetUC(
