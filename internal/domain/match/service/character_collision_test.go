@@ -218,3 +218,128 @@ func TestResolve_CharacterBranch(t *testing.T) {
 		}
 	})
 }
+
+// TestResolve_SurfacesEngineFaults pins the two failures the resolver used to swallow whole.
+//
+// Both are engine faults, not game outcomes: an action whose target the engine cannot
+// classify, and a collision it cannot compute because a sheet it was handed is missing. The
+// old code dropped each on the floor — an empty `case TargetKindUnknown` and a bare
+// `return false` — so a target that evaporated and a target that was never resolved looked
+// identical to every caller, and identical to a turn where nothing was targeted at all.
+func TestResolve_SurfacesEngineFaults(t *testing.T) {
+	resolver := service.TurnResolver{}
+
+	t.Run("an unclassifiable target is reported, not dropped", func(t *testing.T) {
+		actorID, ghostID := uuid.New(), uuid.New()
+		tn := attackTurn(actorID, ghostID, []int{9, 9}, []int{5, 5}, nil)
+
+		res := resolver.Resolve(service.ResolveInput{
+			Turn:    tn,
+			Sheets:  map[uuid.UUID]*csSheet.CharacterSheet{actorID: plainSheet(t)},
+			Targets: charTargets{chars: map[uuid.UUID]bool{}}, // knows nobody → Unknown
+			Rules:   match.NewDefaultMatchRules(),
+			Weapons: item.NewWeaponsManagerFactory().Build(),
+		})
+
+		if len(res.Errors) != 1 {
+			t.Fatalf("Errors = %+v, want exactly 1 unknown-target fault", res.Errors)
+		}
+		if res.Errors[0].Kind != service.ResolutionErrUnknownTarget {
+			t.Errorf("Kind = %q, want %q", res.Errors[0].Kind, service.ResolutionErrUnknownTarget)
+		}
+		if res.Errors[0].Subject != ghostID {
+			t.Errorf("Subject = %s, want the target the engine could not classify (%s)",
+				res.Errors[0].Subject, ghostID)
+		}
+	})
+
+	t.Run("a missing target sheet is reported, not dropped", func(t *testing.T) {
+		actorID, targetID := uuid.New(), uuid.New()
+		tn := attackTurn(actorID, targetID, []int{9, 9}, []int{5, 5}, nil)
+
+		res := resolver.Resolve(service.ResolveInput{
+			Turn:   tn,
+			Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: plainSheet(t)}, // target absent
+			// The target IS classified as a character — it is on the board. Only its sheet
+			// is missing, which is why this is a different fault from the one above.
+			Targets: charTargets{chars: map[uuid.UUID]bool{targetID: true}},
+			Rules:   match.NewDefaultMatchRules(),
+			Weapons: item.NewWeaponsManagerFactory().Build(),
+		})
+
+		if len(res.CharacterResults) != 0 {
+			t.Fatalf("a target with no sheet produced a result: %+v", res.CharacterResults)
+		}
+		if len(res.Errors) != 1 {
+			t.Fatalf("Errors = %+v, want exactly 1 missing-sheet fault", res.Errors)
+		}
+		if res.Errors[0].Kind != service.ResolutionErrMissingSheet {
+			t.Errorf("Kind = %q, want %q", res.Errors[0].Kind, service.ResolutionErrMissingSheet)
+		}
+		if res.Errors[0].Subject != targetID {
+			t.Errorf("Subject = %s, want the sheet that was missing (%s)",
+				res.Errors[0].Subject, targetID)
+		}
+	})
+
+	t.Run("a missing ACTOR sheet names the actor", func(t *testing.T) {
+		actorID, targetID := uuid.New(), uuid.New()
+		tn := attackTurn(actorID, targetID, []int{9, 9}, []int{5, 5}, nil)
+
+		res := resolver.Resolve(service.ResolveInput{
+			Turn:    tn,
+			Sheets:  map[uuid.UUID]*csSheet.CharacterSheet{targetID: plainSheet(t)}, // actor absent
+			Targets: charTargets{chars: map[uuid.UUID]bool{targetID: true}},
+			Rules:   match.NewDefaultMatchRules(),
+			Weapons: item.NewWeaponsManagerFactory().Build(),
+		})
+
+		if len(res.Errors) != 1 {
+			t.Fatalf("Errors = %+v, want exactly 1 missing-sheet fault", res.Errors)
+		}
+		if res.Errors[0].Subject != actorID {
+			t.Errorf("Subject = %s, want the ACTOR whose sheet was missing (%s)",
+				res.Errors[0].Subject, actorID)
+		}
+	})
+
+	// The actor is ONE character, shared by every target in the chain walk. Reporting their
+	// missing sheet once per target would hand the master N copies of one fact.
+	t.Run("a missing ACTOR sheet is reported once, not once per target", func(t *testing.T) {
+		actorID := uuid.New()
+		t1, t2, t3 := uuid.New(), uuid.New(), uuid.New()
+		tn := attackTurn(actorID, t1, []int{9, 9}, []int{5, 5}, nil)
+		act := tn.GetAction()
+		act.TargetID = []uuid.UUID{t1, t2, t3}
+		tn = turn.NewTurn(act)
+
+		res := resolver.Resolve(service.ResolveInput{
+			Turn: tn,
+			Sheets: map[uuid.UUID]*csSheet.CharacterSheet{
+				t1: plainSheet(t), t2: plainSheet(t), t3: plainSheet(t),
+			}, // only the actor is absent
+			Targets: charTargets{chars: map[uuid.UUID]bool{t1: true, t2: true, t3: true}},
+			Rules:   match.NewDefaultMatchRules(),
+			Weapons: item.NewWeaponsManagerFactory().Build(),
+		})
+
+		if len(res.Errors) != 1 {
+			t.Fatalf("Errors = %+v, want exactly 1 — one actor, one fault", res.Errors)
+		}
+		if res.Errors[0].Subject != actorID || res.Errors[0].Kind != service.ResolutionErrMissingSheet {
+			t.Errorf("Errors[0] = %+v, want a missing_sheet naming the actor %s",
+				res.Errors[0], actorID)
+		}
+	})
+
+	t.Run("a clean resolution reports no faults", func(t *testing.T) {
+		actorID, targetID := uuid.New(), uuid.New()
+		tn := attackTurn(actorID, targetID, []int{9, 9}, []int{5, 5}, nil)
+
+		res := resolver.Resolve(resolveInput(t, actorID, targetID, tn))
+
+		if len(res.Errors) != 0 {
+			t.Fatalf("a clean resolution reported faults: %+v", res.Errors)
+		}
+	})
+}

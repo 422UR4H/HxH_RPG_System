@@ -13,6 +13,7 @@ import (
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
 
@@ -247,6 +248,78 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			if s.SkillName == enum.Evasion.String() {
 				t.Fatal("the Evasion entry leaked to a third party")
 			}
+		}
+	})
+}
+
+// TestGetMatchHistoryProjectsEngineFaults is the surface-level half of the claim that
+// TurnResolution.Errors is master-only. The deny-list itself lives in
+// service.ProjectResolution and is pinned there; what this proves is that the REST read path
+// actually RUNS it over the stored resolution — the errors were persisted with the turn, so
+// without the projection they would reach every participant.
+func TestGetMatchHistoryProjectsEngineFaults(t *testing.T) {
+	masterUUID, playerUUID, matchUUID := uuid.New(), uuid.New(), uuid.New()
+	ghost := uuid.New()
+
+	publicMatch := &matchEntity.Match{
+		UUID: matchUUID, MasterUUID: masterUUID, CampaignUUID: uuid.New(), IsPublic: true,
+	}
+	stored := func() []match.HistoryScene {
+		return historyWithTurns(match.HistoryTurn{
+			UUID: uuid.New(), FinishedAt: time.Now(),
+			Action:    actionWithFeint(uuid.New()),
+			Reactions: []action.Action{},
+			Resolution: &service.TurnResolution{
+				IsSettled: true,
+				Errors: []service.ResolutionError{{
+					Subject: ghost,
+					Kind:    service.ResolutionErrUnknownTarget,
+					Detail:  "action target is neither a character nor a wall segment",
+				}},
+			},
+		})
+	}
+	newUC := func() *match.GetMatchHistoryUC {
+		return match.NewGetMatchHistoryUC(
+			&testutil.MockMatchRepo{
+				GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+					return publicMatch, nil
+				},
+				ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+					return nil, nil
+				},
+			},
+			&mockHistoryRoundRepo{
+				fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+					return stored(), nil
+				},
+			},
+			&mockParticipationChecker{},
+		)
+	}
+	resolutionOf := func(t *testing.T, res *match.GetMatchHistoryResult) *service.TurnResolution {
+		t.Helper()
+		return res.Scenes[0].Rounds[0].Turns[0].Resolution
+	}
+
+	t.Run("the master reads the engine's faults", func(t *testing.T) {
+		got, err := newUC().Get(context.Background(), matchUUID, masterUUID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		errs := resolutionOf(t, got).Errors
+		if len(errs) != 1 || errs[0].Subject != ghost {
+			t.Fatalf("Errors = %+v, want the stored unknown-target fault", errs)
+		}
+	})
+
+	t.Run("a player does not", func(t *testing.T) {
+		got, err := newUC().Get(context.Background(), matchUUID, playerUUID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if errs := resolutionOf(t, got).Errors; len(errs) != 0 {
+			t.Fatalf("a player read the engine's diagnostics: %+v", errs)
 		}
 	})
 }

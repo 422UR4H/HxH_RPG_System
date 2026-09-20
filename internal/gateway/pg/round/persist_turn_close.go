@@ -172,6 +172,11 @@ func insertAction(
 		return fmt.Errorf("marshal trigger: %w", err)
 	}
 
+	interactJSON, err := marshalNullablePtr(act.Interact)
+	if err != nil {
+		return fmt.Errorf("marshal interact: %w", err)
+	}
+
 	// react_to_uuid: nil SQL when ReactToID is zero UUID
 	var reactToUUID *uuid.UUID
 	if act.ReactToID != uuid.Nil {
@@ -196,12 +201,13 @@ func insertAction(
 		`INSERT INTO actions
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, repel, feint, trigger,
-		  reaction_kind, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		  interact, system_bias, reaction_kind, created_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, deriveActionType(act),
 		speedJSON, skillsJSON, moveJSON, attackJSON,
 		defenseJSON, dodgeJSON, repelJSON, feintJSON, triggerJSON,
+		interactJSON, act.SystemBias,
 		reactionKind, createdAt,
 	)
 	return err
@@ -227,6 +233,10 @@ func deriveActionType(act *action.Action) string {
 		return "dodge"
 	case act.Feint != nil:
 		return "feint"
+	case act.Interact != nil:
+		// Ahead of the skills row on purpose: a lockpick carries BOTH an Interact and a
+		// Skills entry, and what it is is an interaction — the skill is how it is attempted.
+		return "interact"
 	case len(act.Skills) > 0:
 		return "skill"
 	default:

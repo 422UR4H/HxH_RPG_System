@@ -284,3 +284,163 @@ func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
 		t.Errorf("seqs = %v, want [1 2] — the counter is stamped at snapshot time and rises by one", seqs)
 	}
 }
+
+// TestResolutionUpdatedPayloadCarriesEngineFaults pins the wire half of the two faults the
+// resolver used to swallow. The TODOs that marked them asked for them to be surfaced in the
+// resolution "for caller to surface" — this is that caller.
+func TestResolutionUpdatedPayloadCarriesEngineFaults(t *testing.T) {
+	turnID, ghostID := uuid.New(), uuid.New()
+	res := &service.TurnResolution{
+		IsSettled: true,
+		Errors: []service.ResolutionError{{
+			Subject: ghostID,
+			Kind:    service.ResolutionErrUnknownTarget,
+			Detail:  "action target is neither a character nor a wall segment",
+		}},
+	}
+
+	p := newResolutionUpdatedPayload(turnID, res)
+
+	if len(p.Errors) != 1 {
+		t.Fatalf("Errors = %+v, want the one fault the resolution reported", p.Errors)
+	}
+	if p.Errors[0].Kind != string(service.ResolutionErrUnknownTarget) {
+		t.Errorf("Kind = %q, want %q", p.Errors[0].Kind, service.ResolutionErrUnknownTarget)
+	}
+	if p.Errors[0].Subject != ghostID {
+		t.Errorf("Subject = %s, want %s", p.Errors[0].Subject, ghostID)
+	}
+
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"errors"`) {
+		t.Errorf("the wire shape has no errors key: %s", raw)
+	}
+
+	t.Run("a clean resolution omits the key entirely", func(t *testing.T) {
+		clean, err := json.Marshal(newResolutionUpdatedPayload(turnID, &service.TurnResolution{}))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(clean), `"errors"`) {
+			t.Errorf("a clean resolution advertised an errors key: %s", clean)
+		}
+	})
+}
+
+// TestResolutionUpdatedPayloadCarriesPayouts is what makes the projection fix REACHABLE.
+//
+// ProjectResolution stopped zeroing Payouts for a reaction whose label was not demoted — but
+// no wire field carried them, so a repel's penalty still reached nobody and the fix was
+// theoretical. reacoes.md: "a penalidade de quem aparou vale contra todo mundo — qualquer um
+// pode aproveitar". Someone has to be able to read it.
+func TestResolutionUpdatedPayloadCarriesPayouts(t *testing.T) {
+	turnID, targetID, attacker := uuid.New(), uuid.New(), uuid.New()
+
+	res := &service.TurnResolution{
+		IsSettled: true,
+		CharacterResults: []service.CharacterResult{{
+			TargetID:     targetID,
+			ReactionKind: string(action.ReactRepel),
+			Ladder:       service.LadderOutcome{Rung: service.RungNearMiss, Difference: 3},
+			Payouts: []match.Modifier{{
+				Amount: -3, Applies: match.DimActionSpeed, Source: match.SourceSystem,
+				Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeNextTurn,
+				Reason: "repel: near miss penalty",
+			}},
+		}},
+	}
+
+	p := newResolutionUpdatedPayload(turnID, res)
+	if len(p.Targets) != 1 || len(p.Targets[0].Payouts) != 1 {
+		t.Fatalf("Targets = %+v, want one target carrying one payout", p.Targets)
+	}
+	got := p.Targets[0].Payouts[0]
+	if got.Amount != -3 || got.Applies != string(match.DimActionSpeed) ||
+		got.Source != string(match.SourceSystem) || got.ExpiresAt != string(match.LifetimeNextTurn) ||
+		got.Reason != "repel: near miss penalty" {
+		t.Errorf("payout = %+v, want the near-miss penalty verbatim", got)
+	}
+	if got.AgainstKind != match.ScopeAnyone().Kind() {
+		t.Errorf("againstKind = %q, want %q — the scope is what says who may exploit it",
+			got.AgainstKind, match.ScopeAnyone().Kind())
+	}
+
+	t.Run("the scope's target survives when there is one", func(t *testing.T) {
+		res.CharacterResults[0].Payouts[0].Against = match.ScopeOnly(attacker)
+		p := newResolutionUpdatedPayload(turnID, res)
+		got := p.Targets[0].Payouts[0]
+		if got.AgainstKind != match.ScopeOnly(attacker).Kind() || got.AgainstID != attacker {
+			t.Errorf("against = %q/%s, want only/%s", got.AgainstKind, got.AgainstID, attacker)
+		}
+	})
+
+	t.Run("a target with no payout omits the key", func(t *testing.T) {
+		clean := &service.TurnResolution{
+			IsSettled:        true,
+			CharacterResults: []service.CharacterResult{{TargetID: targetID}},
+		}
+		raw, err := json.Marshal(newResolutionUpdatedPayload(turnID, clean))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(raw), `"payouts"`) {
+			t.Errorf("a target with no payout advertised a payouts key: %s", raw)
+		}
+	})
+}
+
+// TestProjectedPayoutsReachTheRightRecipients drives the DOMAIN projection and the WIRE
+// mapper together, because the two halves only mean something as a pair: the deny-list lives
+// in service.ProjectResolution and the field that makes it observable lives here.
+func TestProjectedPayoutsReachTheRightRecipients(t *testing.T) {
+	repelTarget, dodgeTarget, third := uuid.New(), uuid.New(), uuid.New()
+	turnID := uuid.New()
+
+	res := &service.TurnResolution{
+		IsSettled: true,
+		CharacterResults: []service.CharacterResult{
+			{
+				TargetID: repelTarget, ReactionKind: string(action.ReactRepel),
+				Payouts: []match.Modifier{{
+					Amount: -3, Applies: match.DimActionSpeed, Against: match.ScopeAnyone(),
+					Reason: "repel: near miss penalty",
+				}},
+			},
+			{
+				TargetID: dodgeTarget, ReactionKind: string(action.ReactClosedDodge),
+				Payouts: []match.Modifier{{
+					Amount: 4, Applies: match.DimDodge, Against: match.ScopeAllBut(uuid.New()),
+					Reason: "closed dodge reserve",
+				}},
+			},
+		},
+	}
+
+	v := service.Viewer{Owns: map[uuid.UUID]bool{third: true}}
+	p := newResolutionUpdatedPayload(turnID, service.ProjectResolution(res, v))
+
+	byTarget := map[uuid.UUID]CharacterResultPayload{}
+	for _, cr := range p.Targets {
+		byTarget[cr.TargetID] = cr
+	}
+
+	repel := byTarget[repelTarget]
+	if repel.Reaction == nil || repel.Reaction.Kind != string(action.ReactRepel) {
+		t.Fatalf("the repel was demoted: %+v", repel.Reaction)
+	}
+	if len(repel.Payouts) != 1 || repel.Payouts[0].Reason != "repel: near miss penalty" {
+		t.Errorf("a third party cannot see the repel penalty: %+v — the rule says anyone "+
+			"may exploit it", repel.Payouts)
+	}
+
+	dodge := byTarget[dodgeTarget]
+	if dodge.Reaction == nil || dodge.Reaction.Kind != string(action.ReactDodge) {
+		t.Fatalf("the closed dodge was not demoted: %+v", dodge.Reaction)
+	}
+	if len(dodge.Payouts) != 0 {
+		t.Errorf("the closed dodge's reserve leaked to a third party: %+v", dodge.Payouts)
+	}
+}

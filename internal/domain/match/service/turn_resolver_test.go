@@ -61,7 +61,11 @@ func TestTurnResolver_Resolve(t *testing.T) {
 		}
 	})
 
-	t.Run("ReactionResults has one entry per reaction", func(t *testing.T) {
+	// This replaces a subtest that pinned ReactionResults — a stub list with one zero-Roll
+	// entry per reaction, whose only populated field held the wrong UUID. The fact it was
+	// gesturing at is reported here instead, and an OPENED reaction's outcome lands on the
+	// CharacterResult of the target that sent it. See TurnResolution for why the list is gone.
+	t.Run("an attached reaction is named in PendingReactions until it is opened", func(t *testing.T) {
 		tRn := makeTurn()
 		act := tRn.GetAction()
 		reaction := makeReactionTo((&act).GetID())
@@ -69,8 +73,15 @@ func TestTurnResolver_Resolve(t *testing.T) {
 
 		res := resolver.Resolve(resolveWith(tRn, noopTargetReader{}))
 
-		if len(res.ReactionResults) != 1 {
-			t.Errorf("expected 1 ReactionResult, got %d", len(res.ReactionResults))
+		if len(res.PendingReactions) != 1 {
+			t.Fatalf("expected 1 PendingReaction, got %d", len(res.PendingReactions))
+		}
+		if got := res.PendingReactions[0].ActorID; got != reaction.GetActorID() {
+			t.Errorf("PendingReactions[0].ActorID = %s, want the REACTOR %s",
+				got, reaction.GetActorID())
+		}
+		if got := res.PendingReactions[0].ReactionID; got != reaction.GetID() {
+			t.Errorf("PendingReactions[0].ReactionID = %s, want %s", got, reaction.GetID())
 		}
 	})
 }

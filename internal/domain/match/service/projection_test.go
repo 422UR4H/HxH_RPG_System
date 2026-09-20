@@ -140,3 +140,99 @@ func TestProjectAction(t *testing.T) {
 		}
 	})
 }
+
+// TestProjectResolutionKeepsTheRepelPenaltyPublic pins the discriminator that decides whether
+// a payout is a secret: the LABEL, not the field.
+//
+// The closed dodge's reserve is hidden because the closed dodge itself is hidden — the size of
+// the dodge that was not spent is the other half of the same secret (see publicKind). A repel
+// is not hidden from anybody, and reacoes.md is explicit that the penalty it leaves behind is
+// not either: "a penalidade de quem aparou vale contra todo mundo — qualquer um pode
+// aproveitar". Zeroing the whole Payouts list for every third party took the second with the
+// first, and left the one payout the rules say anyone may use deducible only by algebra off
+// Ladder.Difference — exactly the reconstruction ReactionTotal exists to spare a client.
+func TestProjectResolutionKeepsTheRepelPenaltyPublic(t *testing.T) {
+	target, third := uuid.New(), uuid.New()
+
+	penalty := match.Modifier{
+		Amount: -3, Applies: match.DimActionSpeed, Source: match.SourceSystem,
+		Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeNextTurn,
+		Reason: "repel: near miss penalty",
+	}
+	res := &service.TurnResolution{
+		IsSettled: true,
+		CharacterResults: []service.CharacterResult{{
+			TargetID:     target,
+			ReactionKind: string(action.ReactRepel),
+			Ladder:       service.LadderOutcome{Rung: service.RungNearMiss, Difference: 3},
+			Payouts:      []match.Modifier{penalty},
+		}},
+	}
+
+	v := service.Viewer{Owns: map[uuid.UUID]bool{third: true}}
+	got := service.ProjectResolution(res, v)
+
+	if got.CharacterResults[0].ReactionKind != string(action.ReactRepel) {
+		t.Fatalf("ReactionKind = %q, want repel — a repel is never demoted",
+			got.CharacterResults[0].ReactionKind)
+	}
+	if len(got.CharacterResults[0].Payouts) != 1 {
+		t.Fatalf("a third party lost the repel penalty: Payouts = %+v — the rule says "+
+			"anyone may exploit it", got.CharacterResults[0].Payouts)
+	}
+	if got.CharacterResults[0].Payouts[0] != penalty {
+		t.Fatalf("Payouts[0] = %+v, want %+v", got.CharacterResults[0].Payouts[0], penalty)
+	}
+}
+
+// TestProjectResolutionHidesAClosedDodgeReserveFromAThirdParty is the other side of the same
+// discriminator: the reserve stays secret precisely because the closed dodge's label was
+// demoted on the way out.
+func TestProjectResolutionHidesAClosedDodgeReserveFromAThirdParty(t *testing.T) {
+	target, third := uuid.New(), uuid.New()
+
+	res := &service.TurnResolution{
+		IsSettled: true,
+		CharacterResults: []service.CharacterResult{{
+			TargetID:     target,
+			ReactionKind: string(action.ReactClosedDodge),
+			Payouts: []match.Modifier{{
+				Amount: 4, Applies: match.DimDodge, Source: match.SourceSystem,
+				Against: match.ScopeAllBut(uuid.New()), ExpiresAt: match.LifetimeNextTurn,
+				Reason: "closed dodge reserve",
+			}},
+		}},
+	}
+
+	got := service.ProjectResolution(res, service.Viewer{Owns: map[uuid.UUID]bool{third: true}})
+	if len(got.CharacterResults[0].Payouts) != 0 {
+		t.Fatalf("the closed dodge's reserve reached a third party: %+v",
+			got.CharacterResults[0].Payouts)
+	}
+}
+
+// TestProjectResolutionKeepsEngineFaultsMasterOnly pins Errors on the same side of the fence
+// as PendingReactions: it is diagnostics about the ENGINE, not a fact about the fiction, and
+// a player has nothing to do with it. A target the engine could not classify is also, in
+// practice, a name the table was never told about.
+func TestProjectResolutionKeepsEngineFaultsMasterOnly(t *testing.T) {
+	owner := uuid.New()
+	base := func() *service.TurnResolution {
+		return &service.TurnResolution{
+			IsSettled:        true,
+			CharacterResults: []service.CharacterResult{{TargetID: owner}},
+			Errors: []service.ResolutionError{{
+				Subject: uuid.New(), Kind: service.ResolutionErrUnknownTarget,
+				Detail: "action target is neither a character nor a wall segment",
+			}},
+		}
+	}
+
+	if got := service.ProjectResolution(base(), service.Viewer{IsMaster: true}); len(got.Errors) != 1 {
+		t.Fatalf("the master lost the engine fault: %+v", got.Errors)
+	}
+	v := service.Viewer{Owns: map[uuid.UUID]bool{owner: true}}
+	if got := service.ProjectResolution(base(), v); len(got.Errors) != 0 {
+		t.Fatalf("an owner read the engine's diagnostics: %+v", got.Errors)
+	}
+}
