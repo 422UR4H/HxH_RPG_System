@@ -1,50 +1,76 @@
 # 05 — O que ainda está oco
 
 > Auditoria do código na Fase 5. Cada item foi verificado no arquivo, não lembrado.
+>
+> **Atualizado em 2026-09-20:** os cinco bugs abertos foram fechados, e o desempate
+> `t.uuid` deixou de ser "correto por semântica, não verificado por teste". O que segue
+> em aberto são as regras escritas que o código ainda não executa, e o que está fora do
+> motor por fase. O contrato WebSocket do combate agora vive em
+> [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md).
 
-## Bugs abertos
+## Bugs que estavam abertos — fechados em 2026-09-20
 
-### A penalidade do aparar está escondida de quem pode aproveitar
+> **Os cinco desta seção foram fechados.** Ficam registrados porque o *porquê* de cada
+> conserto é a parte que não está no diff — e porque cada um deles nomeia uma classe de
+> defeito que este motor produz com facilidade.
 
-`ProjectResolution` zera `Payouts` inteiro para terceiros, pela razão certa: a **reserva da
+### ~~A penalidade do aparar está escondida de quem pode aproveitar~~ — fechado
+
+`ProjectResolution` zerava `Payouts` inteiro para terceiros, pela razão certa: a **reserva da
 esquiva fechada** revela quanta Evasão foi embutida. Mas o mesmo campo carrega a **penalidade
 do aparar**, que nasce `Against: ScopeAnyone()` — e `reacoes.md` é explícito: *"a penalidade de
 quem aparou vale contra todo mundo — qualquer um pode aproveitar"*.
 
-O número é dedutível (`cr.Ladder.Difference` viaja), mas aí o cliente faz álgebra — e o próprio
-código evitou isso de propósito no `ReactionTotal`, com um comentário contra *"reconstruir o
-número por álgebra a partir de `Ladder.Margin`"*.
+O discriminador certo já existia: esconder `Payouts` **só quando o rótulo foi rebaixado** —
+a mesma condição que já demota o kind. A reserva é segredo porque a fechada é segredo;
+repelir é público e declarado. É isso que o código faz agora.
 
-> O discriminador já existe: esconder `Payouts` **só quando o rótulo foi rebaixado**. A reserva
-> é segredo porque a fechada é segredo; repelir é público e declarado.
+> Ainda **não há campo de `payouts` no wire**, nos dois caminhos. O conserto é de domínio e de
+> persistência; expor o número é decisão de contrato, não descuido de mapeamento.
 
-### `Interact` e `SystemBias` não são persistidos
+### ~~`Interact` e `SystemBias` não são persistidos~~ — fechado
 
-A tabela `actions` não tem coluna para nenhum dos dois, e `deriveActionType` nem conhece
-`Interact`: **abrir uma porta persiste como `"unspecified"`, sem payload**. `SystemBias` é
-campo novo da Fase 5 — a Desvantagem de conversão some do histórico. O resultado final continua
-certo; o que se perde é *por que* aquele número foi aquele, numa superfície cujo propósito é
-deduzir dos números.
+`migrations/20260920000000_actions_interact_and_system_bias.sql` acrescenta as duas colunas;
+`insertAction` grava, `decodeActionRow` lê de volta, e `deriveActionType` passou a conhecer
+`Interact` — **antes de** a linha de `skills`, porque um arrombamento carrega os dois e o que
+ele *é* é uma interação.
 
-### `ReactionResults` é stub com o campo trocado
+`Interact` já tinha campo de saída no histórico REST (`ActionResponse.Interact`), que vivia
+sempre nulo por falta da coluna; agora funciona. **`SystemBias` continua sem superfície**, e
+de propósito: `match-history.md` registra que ele e `RollCheck.Context` são internos do
+motor. Persistir sem expor é o estado consistente — o dado deixou de ser *perdido*, e
+mostrá-lo é uma decisão de contrato a tomar à parte.
 
-```go
-res.ReactionResults[i] = ReactionResult{ReactorID: r.ReactToID}
-```
+### ~~`ReactionResults` é stub com o campo trocado~~ — **apagado**
 
-`ReactToID` é o UUID da **action**; `ReactorID` devia ser o do **personagem**. Compila porque
-os dois são `uuid.UUID`. Ninguém lê hoje — não vai ao wire, não é persistido, e a Fase 5
-documentou a exclusão — então não é bug vivo. É mina: quem ler primeiro lê lixo com cara de
-dado bom. Ou implementa, ou apaga o campo.
+Das duas saídas — implementar ou apagar — foi apagar.
 
-### Dois erros engolidos em silêncio
+Tudo que uma `ReactionResult` poderia carregar já é reportado pelo único caminho que sabe
+qual rolagem cada tipo de reação lê: o tipo, o total, o ID próprio, a escada e o veredito de
+parada de uma reação **aberta** caem no `CharacterResult` do alvo que a enviou
+(`ReactionKind`, `ReactionTotal`, `ReactionID`, `Ladder`, `ReactionStopsAttack`); uma
+**anexada e não aberta** é nomeada em `PendingReactions`. Uma segunda lista, chaveada de
+outro jeito, seria uma verdade paralela para manter em sincronia com aquelas — e sem leitor.
 
-| Onde | O quê |
-|---|---|
-| `turn_resolver.go` — `case TargetKindUnknown` | `case` vazio: um alvo que o motor não classifica evapora sem ninguém saber |
-| `resolveCharacterStep` | ficha faltando devolve `false` sem erro |
+### ~~Dois erros engolidos em silêncio~~ — fechados
 
-Ambos têm `TODO` pedindo para serem superficiados na resolução.
+`TurnResolution.Errors` é a superfície que os dois `TODO`s pediam. As faltas são do **motor**,
+nunca desfechos de jogo — uma esquiva que falhou não é erro; um alvo que o motor não
+classifica é.
+
+| `Kind` | Antes | Agora |
+|---|---|---|
+| `unknown_target` | `case TargetKindUnknown` vazio | entrada em `Errors` nomeando o alvo |
+| `missing_sheet` | `return false` pelado | entrada em `Errors` nomeando a ficha — do **alvo** ou do **ator**, que são casos distintos e agora se distinguem |
+
+`Resolve` continua **total**: sempre devolve uma resolução, e as faltas viajam dentro dela.
+Uma colisão com um buraco ainda vale todos os outros números que calculou — a mesma contenção
+que `FindMatchHistory` já faz por uma linha ilegível.
+
+`Errors` é **master-only** no wire (`ProjectResolution` o tira de todo mundo mais, como faz
+com `PendingReactions`) e **é persistido** em `turns.resolution`: um `missing_sheet` quer
+dizer que um alvo não produziu `CharacterResult` nenhum, e um histórico que guardasse o
+silêncio leria, um ano depois, como um turno que simplesmente não mirou naquela pessoa.
 
 ## Regras escritas que o código não executa
 
@@ -84,7 +110,7 @@ regra de jogo que normalmente forçará `Race`; quem troca o regime hoje é o me
 
 | Item | Situação |
 |---|---|
-| Desempate `t.uuid` na ordenação do histórico | correto pela semântica do SQL, mas o teste não reproduz a falha anterior neste Postgres — registrado como *"correto por semântica, não verificado por teste"* |
+| ~~Desempate `t.uuid` na ordenação do histórico~~ | **verificado.** `TestFindMatchHistoryKeepsEachTiedTurnsReactionWithItsOwnTurn` força o empate de `finished_at` com **os dois** turnos carregando reação — e é isso que faltava: com uma reação só, a ordem restante ainda funciona por acaso, que é por que o teste anterior passava dos dois jeitos. Tire `t.uuid` do `ORDER BY` e ele acusa quatro turnos onde há dois |
 | Smoke REST ponta a ponta | não existe fixture de seed campanha → cenário → partida → inscrição → início; substituído por três camadas reais mais checagem ao vivo |
 
 ## Fora do motor, por fase
