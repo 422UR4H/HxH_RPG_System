@@ -284,3 +284,48 @@ func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
 		t.Errorf("seqs = %v, want [1 2] — the counter is stamped at snapshot time and rises by one", seqs)
 	}
 }
+
+// TestResolutionUpdatedPayloadCarriesEngineFaults pins the wire half of the two faults the
+// resolver used to swallow. The TODOs that marked them asked for them to be surfaced in the
+// resolution "for caller to surface" — this is that caller.
+func TestResolutionUpdatedPayloadCarriesEngineFaults(t *testing.T) {
+	turnID, ghostID := uuid.New(), uuid.New()
+	res := &service.TurnResolution{
+		IsSettled: true,
+		Errors: []service.ResolutionError{{
+			Subject: ghostID,
+			Kind:    service.ResolutionErrUnknownTarget,
+			Detail:  "action target is neither a character nor a wall segment",
+		}},
+	}
+
+	p := newResolutionUpdatedPayload(turnID, res)
+
+	if len(p.Errors) != 1 {
+		t.Fatalf("Errors = %+v, want the one fault the resolution reported", p.Errors)
+	}
+	if p.Errors[0].Kind != string(service.ResolutionErrUnknownTarget) {
+		t.Errorf("Kind = %q, want %q", p.Errors[0].Kind, service.ResolutionErrUnknownTarget)
+	}
+	if p.Errors[0].Subject != ghostID {
+		t.Errorf("Subject = %s, want %s", p.Errors[0].Subject, ghostID)
+	}
+
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"errors"`) {
+		t.Errorf("the wire shape has no errors key: %s", raw)
+	}
+
+	t.Run("a clean resolution omits the key entirely", func(t *testing.T) {
+		clean, err := json.Marshal(newResolutionUpdatedPayload(turnID, &service.TurnResolution{}))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(clean), `"errors"`) {
+			t.Errorf("a clean resolution advertised an errors key: %s", clean)
+		}
+	})
+}

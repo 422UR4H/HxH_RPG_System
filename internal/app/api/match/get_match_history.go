@@ -338,6 +338,10 @@ func toActionResponse(a action.Action) ActionResponse {
 	if a.Interact != nil {
 		out.Interact = &InteractResponse{Kind: string(a.Interact.Kind)}
 	}
+	// SystemBias is deliberately NOT mapped: match-history.md records it, alongside
+	// RollCheck.Context, as engine-internal — no output field on any surface. It is persisted
+	// (actions.system_bias) so the audit record is complete, not so this response can carry
+	// it. Exposing it is a contract decision, not a mapping oversight.
 	return out
 }
 

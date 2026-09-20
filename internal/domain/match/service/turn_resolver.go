@@ -22,6 +22,48 @@ const (
 	// TODO: TargetKindFloorTile, TargetKindItem — future phases
 )
 
+// ResolutionErrorKind names one way a resolution can fail to compute part of itself. These
+// are ENGINE faults, never game outcomes: a dodge that missed is not an error, a target the
+// engine cannot classify is.
+type ResolutionErrorKind string
+
+const (
+	// ResolutionErrUnknownTarget is an action target that CategorizeTarget could not place —
+	// neither a character nor a wall. It used to hit an empty `case TargetKindUnknown` and
+	// evaporate, leaving a turn that targeted a ghost indistinguishable from one that
+	// targeted nothing.
+	ResolutionErrUnknownTarget ResolutionErrorKind = "unknown_target"
+	// ResolutionErrMissingSheet is a character on the board whose CharacterSheet was not in
+	// ResolveInput.Sheets. It used to be a bare `return false` out of resolveCharacterStep,
+	// which skipped the target silently and let the chain walk on as if they had never been
+	// aimed at.
+	ResolutionErrMissingSheet ResolutionErrorKind = "missing_sheet"
+	// ResolutionErrNoAttack is a defensive guard: resolveCharacterStep is only ever reached
+	// from inside `if a.Attack != nil`, so this cannot fire today. It exists so that the
+	// guard cannot become the next silent drop if that call site ever changes.
+	ResolutionErrNoAttack ResolutionErrorKind = "no_attack"
+)
+
+// ResolutionError is one engine fault, as the resolution reports it.
+//
+// It is DATA on the resolution rather than an error returned from Resolve, because a
+// resolution with one hole in it is still worth every other number it computed — the same
+// containment trade-off FindMatchHistory makes for one unreadable row. Resolve stays total:
+// it always returns a resolution, and the faults ride along in it.
+type ResolutionError struct {
+	// Subject is the UUID the engine could not resolve — the unclassifiable target, or the
+	// character whose sheet was missing.
+	Subject uuid.UUID
+	Kind    ResolutionErrorKind
+	// Detail is free text for a human reading the log or the master's client. It is never
+	// parsed.
+	Detail string
+}
+
+func (e ResolutionError) Error() string {
+	return string(e.Kind) + ": " + e.Subject.String() + " (" + e.Detail + ")"
+}
+
 // TargetReader allows TurnResolver to categorize and read action targets
 // without importing matchsession (prevents circular imports).
 // *matchsession.MatchSession implements this interface implicitly.
@@ -71,9 +113,18 @@ type ResolveInput struct {
 // HP reduction from the first resolution onward, and the real application happens once, at
 // turn close. That is what lets the collision be recomputed on every reaction without
 // applying damage several times.
+//
+// There is deliberately NO per-reaction result list. Phase 5 carried one — ReactionResults,
+// one zero-Roll entry per attached reaction — and it was never populated, never persisted
+// (see resolution_record.go) and never put on the wire. Every fact such a list could hold is
+// already reported by the one code path that knows which roll a given kind reads: an OPENED
+// reaction's kind, total, own ID, ladder and stopping verdict all land on the CharacterResult
+// of the target that sent it (ReactionKind, ReactionTotal, ReactionID, Ladder,
+// ReactionStopsAttack), and one that is merely ATTACHED is named in PendingReactions below. A
+// second list keyed differently would be a parallel truth to keep in sync with those, for no
+// reader — so the stub was removed rather than implemented.
 type TurnResolution struct {
 	ActionResult     RollResult
-	ReactionResults  []ReactionResult
 	CharacterResults []CharacterResult
 	Blows            []*battle.Blow
 	WallResults      []WallResult
@@ -89,6 +140,12 @@ type TurnResolution struct {
 	// the reaction but has no legitimate way to learn what to send back as open_reaction's
 	// ReactionID — an ID a client cannot learn is an operation a client cannot invoke.
 	PendingReactions []PendingReaction
+	// Errors is every engine fault this resolution hit — see ResolutionError. Empty on a
+	// clean resolution, which is the overwhelmingly common case; a non-empty list means part
+	// of the collision could NOT be computed, and the numbers above are therefore incomplete
+	// rather than merely uneventful. It is master-only on the wire (see the WS contract):
+	// these are diagnostics about the engine, not facts about the fiction.
+	Errors []ResolutionError
 }
 
 // PendingReaction is one attached-but-not-yet-opened reaction, as the master needs to choose
@@ -112,12 +169,6 @@ type RollResult struct {
 	IsCriticalFailure bool
 	// Margin is nil until an opposed roll gives this test a CD.
 	Margin *int
-}
-
-// ReactionResult holds the outcome of one reaction within the Turn.
-type ReactionResult struct {
-	ReactorID uuid.UUID
-	Roll      RollResult
 }
 
 // CharacterResult is the computed outcome of one attack against one character.
@@ -204,14 +255,20 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 		// opened the reactions — see buildChainOrder and ChainState. Wall and unknown
 		// targets have no chain to walk; they stay in the second loop, in the attack's own
 		// target order, untouched by this.
-		if a.Attack != nil {
+		//
+		// actorSheetMissing reports that fault ONCE, before the walk, rather than letting
+		// the per-step guard fire for every target: the actor is one character shared by
+		// every step, so N identical entries would be N copies of a single fact — and
+		// without their sheet the walk has nothing to derive anyway.
+		if a.Attack != nil && !tr.actorSheetMissing(in, a, res) {
 			chain := tr.seedChain(in, a)
 			for _, step := range buildChainOrder(a, in.Turn.GetReactions(), in.Turn.OpenedReactionIDs()) {
 				if in.Targets.CategorizeTarget(step.targetID) != TargetKindCharacter {
 					continue
 				}
-				cr, next, ok := tr.resolveCharacterStep(in, a, step, chain)
-				if !ok {
+				cr, next, resErr := tr.resolveCharacterStep(in, a, step, chain)
+				if resErr != nil {
+					res.Errors = append(res.Errors, *resErr)
 					continue
 				}
 				chain = next
@@ -276,17 +333,16 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 				}
 
 			case TargetKindUnknown:
-				// TODO: record unknown-target error in resolution for caller to surface
+				res.Errors = append(res.Errors, ResolutionError{
+					Subject: targetID,
+					Kind:    ResolutionErrUnknownTarget,
+					Detail:  "action target is neither a character nor a wall segment",
+				})
 			}
 		}
 	}
 
 	reactions := in.Turn.GetReactions()
-	res.ReactionResults = make([]ReactionResult, len(reactions))
-	for i, r := range reactions {
-		// TODO: implement per-reaction resolution
-		res.ReactionResults[i] = ReactionResult{ReactorID: r.ReactToID}
-	}
 
 	// Attached, not opened: buildChainOrder deliberately never turns these into a chain step
 	// (see PendingReactions' own comment), so this loop is the only place their ID is named
@@ -308,6 +364,21 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	return res
 }
 
+// actorSheetMissing reports whether the attacker's own sheet is absent, recording the fault
+// on res when it is. Nothing in the chain can be derived without it: every step reads the
+// actor's skill for the shared hit roll.
+func (tr TurnResolver) actorSheetMissing(in ResolveInput, a action.Action, res *TurnResolution) bool {
+	if cs, ok := in.Sheets[a.GetActorID()]; ok && cs != nil {
+		return false
+	}
+	res.Errors = append(res.Errors, ResolutionError{
+		Subject: a.GetActorID(),
+		Kind:    ResolutionErrMissingSheet,
+		Detail:  "the acting character's sheet was not handed to the resolver",
+	})
+	return true
+}
+
 // seedChain computes ataque₀: the whole attack's raw damage, rolled once when the action
 // arrived and never re-rolled. Every target in the walk only ever subtracts from this one
 // number — it is not recomputed per target.
@@ -326,18 +397,36 @@ func (tr TurnResolver) seedChain(in ResolveInput, a action.Action) ChainState {
 // chainIn is the residual the walk carries INTO this target — what this target takes is read
 // off chainIn, not off a fresh roll: the attack already happened once, and the chain is what
 // is left of it by the time it reaches them.
+//
+// A non-nil ResolutionError means this target produced NO result and the chain was not
+// advanced past them — the caller records the fault and walks on. It is deliberately not a
+// plain `error`: the caller has to put the fault on the resolution, and that needs the
+// subject's UUID, not a sentence.
 func (tr TurnResolver) resolveCharacterStep(
 	in ResolveInput, a action.Action, step chainStep, chainIn ChainState,
-) (CharacterResult, ChainState, bool) {
+) (CharacterResult, ChainState, *ResolutionError) {
 	if a.Attack == nil {
-		return CharacterResult{}, chainIn, false
+		return CharacterResult{}, chainIn, &ResolutionError{
+			Subject: step.targetID,
+			Kind:    ResolutionErrNoAttack,
+			Detail:  "character step reached with no attack on the action",
+		}
 	}
 	actorSheet, okActor := in.Sheets[a.GetActorID()]
+	if !okActor || actorSheet == nil {
+		return CharacterResult{}, chainIn, &ResolutionError{
+			Subject: a.GetActorID(),
+			Kind:    ResolutionErrMissingSheet,
+			Detail:  "the acting character's sheet was not handed to the resolver",
+		}
+	}
 	targetSheet, okTarget := in.Sheets[step.targetID]
-	if !okActor || !okTarget || actorSheet == nil || targetSheet == nil {
-		// TODO: surface a missing-sheet error in the resolution, with the rest of the error
-		// reporting the caller needs
-		return CharacterResult{}, chainIn, false
+	if !okTarget || targetSheet == nil {
+		return CharacterResult{}, chainIn, &ResolutionError{
+			Subject: step.targetID,
+			Kind:    ResolutionErrMissingSheet,
+			Detail:  "the target character's sheet was not handed to the resolver",
+		}
 	}
 
 	calc := RollCalculator{}
@@ -439,7 +528,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	chainOut := chainIn.ReduceSpread(a.Attack.Spread, out, weaponDefenseBonus(defenseWeapon, in.Weapons), armour)
 
 	cr.Blow = battle.NewBlow(a.GetActorID(), step.targetID, *a.Attack, nil, nil, nil)
-	return cr, chainOut, true
+	return cr, chainOut, nil
 }
 
 // skillValueOf reads a skill off the sheet, crossing the string→enum boundary. A name the

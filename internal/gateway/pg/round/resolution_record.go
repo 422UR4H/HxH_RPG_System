@@ -22,20 +22,20 @@ import (
 //     silent way. It travels through Scope.Kind()/ID() and comes back through ScopeFrom.
 //
 // Being explicit cuts both ways: every omission below is CHOSEN, not accidental, and has to
-// be justified in this comment or in the record's own fields. Three fields of
+// be justified in this comment or in the record's own fields. Two fields of
 // service.TurnResolution are dropped on purpose:
 //
 //   - Blows ([]*battle.Blow) — the same reason as above: Blow carries no numbers by its own
 //     doc, only the shape of the exchange. The arithmetic it points at is already on
 //     CharacterResult, which this record does keep.
-//   - ReactionResults ([]service.ReactionResult) — Resolve's own TODO says this branch is
-//     unimplemented: every entry is built as ReactionResult{ReactorID: r.ReactToID} with a
-//     zero Roll. Persisting a stub that carries no real roll would be worse than omitting
-//     it — it would look settled.
 //   - PendingReactions ([]service.PendingReaction) — transient master-side to-do state (see
 //     its own doc comment on TurnResolution): the reactions attached but not yet given the
 //     floor. It describes what has NOT happened yet, not an outcome of the collision, so it
 //     has nothing to persist once the turn is closed and settled.
+//
+// (A third, ReactionResults, used to be listed here as an unimplemented stub. It no longer
+// exists on TurnResolution at all — every reaction outcome is on the CharacterResult of the
+// target that sent it, and this record already keeps those.)
 //
 // Tags are camelCase, like every other wire shape in this repo.
 type resolutionRecord struct {
@@ -47,6 +47,19 @@ type resolutionRecord struct {
 	// snapshot would create a second source of truth that drifts the moment the wall
 	// changes again. Only the outcome of THIS turn's hit on it is this record's business.
 	WallResults []wallResultRecord `json:"wallResults,omitempty"`
+	// Errors is what the engine could NOT compute for this turn. It is persisted rather than
+	// dropped because a missing-sheet fault means a target the action aimed at produced no
+	// characterResultRecord at all — and a history that kept the silence would read back, a
+	// year later, as a turn that simply never targeted them.
+	Errors []resolutionErrorRecord `json:"errors,omitempty"`
+}
+
+type resolutionErrorRecord struct {
+	// Subject: omitempty is a no-op on a uuid.UUID ([16]byte), same as ReactionID and
+	// modifierRecord.AgainstID below.
+	Subject uuid.UUID `json:"subject"`
+	Kind    string    `json:"kind"`
+	Detail  string    `json:"detail,omitempty"`
 }
 
 type rollResultRecord struct {
@@ -172,6 +185,11 @@ func encodeResolution(res *service.TurnResolution) ([]byte, error) {
 		}
 		rec.Characters = append(rec.Characters, out)
 	}
+	for _, e := range res.Errors {
+		rec.Errors = append(rec.Errors, resolutionErrorRecord{
+			Subject: e.Subject, Kind: string(e.Kind), Detail: e.Detail,
+		})
+	}
 	for _, wr := range res.WallResults {
 		rec.WallResults = append(rec.WallResults, wallResultRecord{
 			WallID: wr.UpdatedWall.ID, EffectiveDamage: wr.EffectiveDamage,
@@ -224,6 +242,11 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 			})
 		}
 		out.CharacterResults = append(out.CharacterResults, cr)
+	}
+	for _, e := range rec.Errors {
+		out.Errors = append(out.Errors, service.ResolutionError{
+			Subject: e.Subject, Kind: service.ResolutionErrorKind(e.Kind), Detail: e.Detail,
+		})
 	}
 	for _, wr := range rec.WallResults {
 		out.WallResults = append(out.WallResults, service.WallResult{

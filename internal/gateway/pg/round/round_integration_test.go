@@ -1176,3 +1176,234 @@ func TestPersistTurnCloseOverridesUniqueConstraintKeepsOneRowPerField(t *testing
 		t.Fatalf("wrote %d rows for the same (action_uuid, field), want 1", n)
 	}
 }
+
+// TestPersistTurnCloseWritesTheResolutionsEngineFaults keeps the settled record honest about
+// what it could NOT compute.
+//
+// A missing-sheet fault means a target the action aimed at produced no CharacterResult at
+// all. Dropping the fault on the way to storage would make that turn read back, years later,
+// as a turn that simply never targeted them — which is precisely the silence the fault was
+// introduced to break. The record's own doc requires every omission from
+// service.TurnResolution to be justified; this field is not omitted.
+func TestPersistTurnCloseWritesTheResolutionsEngineFaults(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	ghost := uuid.New()
+	res := &service.TurnResolution{
+		IsSettled: true,
+		Errors: []service.ResolutionError{
+			{
+				Subject: ghost,
+				Kind:    service.ResolutionErrUnknownTarget,
+				Detail:  "action target is neither a character nor a wall segment",
+			},
+			{
+				Subject: fx.victimSheet,
+				Kind:    service.ResolutionErrMissingSheet,
+				Detail:  "the target character's sheet was not handed to the resolver",
+			},
+		},
+	}
+
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Resolution: res,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var raw []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT resolution FROM turns WHERE uuid = $1`, tn.GetID()).Scan(&raw); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	got := roundrepo.DecodeResolution(raw)
+	if got == nil {
+		t.Fatal("the stored resolution did not decode")
+	}
+	if len(got.Errors) != 2 {
+		t.Fatalf("Errors = %+v, want both faults", got.Errors)
+	}
+	if !reflect.DeepEqual(got.Errors, res.Errors) {
+		t.Fatalf("the faults did not survive the round trip: got %+v, want %+v",
+			got.Errors, res.Errors)
+	}
+}
+
+// TestPersistTurnCloseRoundTripsInteractAndSystemBias covers the two pieces of an Action the
+// actions table had no column for.
+//
+// Interact is the worse of the two: opening a door carries NO other payload, so a turn whose
+// whole content was an interaction persisted as type "unspecified" with every JSONB column
+// NULL — a row that says an action happened and refuses to say which.
+//
+// SystemBias is the engine-imposed advantage/disadvantage the action was charged under (see
+// its doc on action.Action). Losing it costs the history the reason a number was that number,
+// on a surface whose entire purpose is to let the table reconstruct the reasoning.
+func TestPersistTurnCloseRoundTripsInteractAndSystemBias(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	doorID := uuid.New()
+	act := action.NewAction(
+		fx.attackerSheet, []uuid.UUID{doorID}, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil,
+		&action.Interact{Kind: action.InteractOpen},
+	)
+	tn := turnentity.NewTurn(*act)
+
+	// A reaction that displaced a queued action: the one thing that sets a non-zero
+	// SystemBias today (MatchSession.AttachReaction's "swapping what you were going to do
+	// costs Disadvantage").
+	reaction := action.NewAction(
+		fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	reaction.ReactionKind = action.ReactRepel
+	reaction.SystemBias = -1
+	tn.AddReaction(reaction)
+	tn.Close(time.Now())
+
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var storedType string
+	if err := pool.QueryRow(ctx,
+		`SELECT type FROM actions WHERE uuid = $1`, act.GetID()).Scan(&storedType); err != nil {
+		t.Fatalf("read back type: %v", err)
+	}
+	if storedType != "interact" {
+		t.Errorf("actions.type = %q, want \"interact\" — an opened door is not unspecified",
+			storedType)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 || len(scenes[0].Rounds[0].Turns) != 1 {
+		t.Fatalf("the tree is wrong: %+v", scenes)
+	}
+	got := scenes[0].Rounds[0].Turns[0]
+
+	if got.Action.Interact == nil {
+		t.Fatal("the interaction did not come back — the history cannot say what was done")
+	}
+	if got.Action.Interact.Kind != action.InteractOpen {
+		t.Errorf("Interact.Kind = %q, want %q", got.Action.Interact.Kind, action.InteractOpen)
+	}
+	if len(got.Reactions) != 1 {
+		t.Fatalf("reactions = %d, want 1", len(got.Reactions))
+	}
+	if got.Reactions[0].SystemBias != -1 {
+		t.Errorf("SystemBias = %d, want -1 — the Disadvantage the reaction was charged under",
+			got.Reactions[0].SystemBias)
+	}
+	// The action itself was charged nothing, and must read back as nothing rather than
+	// inheriting its reaction's bias.
+	if got.Action.SystemBias != 0 {
+		t.Errorf("the action's SystemBias = %d, want 0", got.Action.SystemBias)
+	}
+}
+
+// TestFindMatchHistoryKeepsEachTiedTurnsReactionWithItsOwnTurn is the test PR #71 owed.
+//
+// The t.uuid tiebreaker was landed as "correct by the semantics of the SQL, not verified by a
+// test": the existing tie test could not reproduce the defect, because only ONE of its two
+// tied turns carried a reaction. With one reaction, dropping t.uuid still produces a workable
+// order — action(t1), action(t2), reaction(t2) — and the assembly copes.
+//
+// Both turns carry one here, and that is the whole point. insertAction writes the SAME
+// timestamp as created_at for a turn's action AND its reactions, and both turns close on the
+// same finished_at, so once t.uuid is gone the only live sort key left is the
+// `(a.react_to_uuid IS NOT NULL)` boolean — which groups every ACTION before every REACTION,
+// across both turns:
+//
+//	action(t1), action(t2), reaction(t1), reaction(t2)
+//
+// reaction(t1) then arrives while curTurn is t2. The UUID does not match, so the assembly
+// falls into the branch that opens a NEW turn and reads that row as the turn's own action —
+// producing three turns, one of them a reaction wearing an action's clothes. That is exactly
+// the discriminator bug the tiebreaker exists to prevent, and this test fails without it.
+func TestFindMatchHistoryKeepsEachTiedTurnsReactionWithItsOwnTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	sharedFinish := time.Now() // deliberately identical for both turns — forces the tie
+
+	closeWithReaction := func(label string) (turnID, reactionID uuid.UUID) {
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		reaction := action.NewAction(
+			fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, nil,
+		)
+		reaction.ReactionKind = action.ReactRepel
+		tn := turnentity.NewTurn(*act)
+		tn.AddReaction(reaction)
+		tn.Close(sharedFinish)
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose %s: %v", label, err)
+		}
+		return tn.GetID(), reaction.GetID()
+	}
+
+	turn1, reaction1 := closeWithReaction("turn 1")
+	turn2, reaction2 := closeWithReaction("turn 2")
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 {
+		t.Fatalf("the tree is wrong under a finished_at tie: %+v", scenes)
+	}
+	turns := scenes[0].Rounds[0].Turns
+	if len(turns) != 2 {
+		t.Fatalf("turns = %d, want 2 — a reaction row was read as a turn's own action, "+
+			"which is what happens when two turns tied on finished_at interleave", len(turns))
+	}
+
+	// Each turn must carry ITS OWN reaction, not the other's and not none. Counting across
+	// both would pass even on a swap; naming them is what makes the claim two-sided.
+	wantReactionOf := map[uuid.UUID]uuid.UUID{turn1: reaction1, turn2: reaction2}
+	for _, tn := range turns {
+		if tn.Action.ReactToID != uuid.Nil {
+			t.Fatalf("turn %s's Action is actually a reaction (ReactToID=%s) — "+
+				"turns interleaved on the finished_at tie", tn.UUID, tn.Action.ReactToID)
+		}
+		want, known := wantReactionOf[tn.UUID]
+		if !known {
+			t.Fatalf("unexpected turn %s in the result", tn.UUID)
+		}
+		if len(tn.Reactions) != 1 {
+			t.Fatalf("turn %s has %d reactions, want exactly its own", tn.UUID, len(tn.Reactions))
+		}
+		if got := tn.Reactions[0].GetID(); got != want {
+			t.Fatalf("turn %s came back carrying reaction %s, want its own %s — the "+
+				"reactions swapped turns across the tie", tn.UUID, got, want)
+		}
+		delete(wantReactionOf, tn.UUID)
+	}
+	if len(wantReactionOf) != 0 {
+		t.Fatalf("turns missing from the result: %+v", wantReactionOf)
+	}
+}

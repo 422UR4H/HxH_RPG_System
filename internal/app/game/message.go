@@ -418,6 +418,25 @@ type ResolutionUpdatedPayload struct {
 	// legitimate way to learn the ID it is supposed to send back. An ID a client cannot learn
 	// is an operation a client cannot invoke.
 	PendingReactions []PendingReactionPayload `json:"pendingReactions,omitempty"`
+	// Errors is every engine fault hit while computing this resolution — a target the engine
+	// could not classify, a character on the board whose sheet it was not handed. Absent on a
+	// clean resolution, which is the normal case, so its presence is the signal.
+	//
+	// MASTER-ONLY, like PendingReactions and for a related reason: service.ProjectResolution
+	// strips it for every other recipient. It is diagnostics about the engine rather than a
+	// fact about the fiction, and the master is the only person who can do anything about one.
+	//
+	// It is NOT an error MESSAGE: a fault here does not mean the operation failed. The turn
+	// resolved, these numbers are real, and one part of the collision is missing from them.
+	Errors []ResolutionErrorPayload `json:"errors,omitempty"`
+}
+
+// ResolutionErrorPayload is one engine fault, as the master's client reads it. Kind is the
+// stable discriminator; Detail is prose for a human and must never be parsed.
+type ResolutionErrorPayload struct {
+	Subject uuid.UUID `json:"subject"`
+	Kind    string    `json:"kind"`
+	Detail  string    `json:"detail,omitempty"`
 }
 
 // PendingReactionPayload is one attached-but-not-yet-opened reaction, as the master needs to
@@ -521,6 +540,13 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			ReactionID: pr.ReactionID,
 			ActorID:    pr.ActorID,
 			Kind:       pr.Kind,
+		})
+	}
+	for _, e := range res.Errors {
+		p.Errors = append(p.Errors, ResolutionErrorPayload{
+			Subject: e.Subject,
+			Kind:    string(e.Kind),
+			Detail:  e.Detail,
 		})
 	}
 	return p

@@ -56,10 +56,22 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 	out.CharacterResults = make([]CharacterResult, 0, len(res.CharacterResults))
 	for _, cr := range res.CharacterResults {
 		if !v.SeesAllOf(cr.TargetID) {
-			cr.ReactionKind = publicKind(cr.ReactionKind)
-			// The closed dodge's reserve is the other half of the same secret: the size of
-			// the dodge that was not spent says how much Evasion was folded in.
-			cr.Payouts = nil
+			public := publicKind(cr.ReactionKind)
+			// The DEMOTION is the discriminator, not the field. A payout is secret only when
+			// the reaction that earned it is: the closed dodge's reserve is the other half of
+			// the same secret, because the size of the dodge that was not spent says how much
+			// Evasion was folded in — so it goes out with the label.
+			//
+			// Everything else stays. reacoes.md is explicit about the one that matters:
+			// "a penalidade de quem aparou vale contra todo mundo — qualquer um pode
+			// aproveitar", and a repel is never demoted, so its penalty travels. Zeroing
+			// Payouts for every third party took that one with it and left the table to
+			// reconstruct it by algebra off Ladder.Difference — the exact reconstruction
+			// ReactionTotal exists to spare a client.
+			if public != cr.ReactionKind {
+				cr.Payouts = nil
+			}
+			cr.ReactionKind = public
 		}
 		out.CharacterResults = append(out.CharacterResults, cr)
 	}
@@ -67,9 +79,15 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 	// Nobody else is owed the knowledge that an answer is waiting.
 	if !v.IsMaster {
 		out.PendingReactions = nil
+		// Errors is on the same side of the fence, for a different reason: these are
+		// diagnostics about the ENGINE, not facts about the fiction, and the master is the
+		// only recipient who can act on one. A target the engine could not classify is also,
+		// in practice, a name the table was never told about.
+		out.Errors = nil
 	}
-	// Blows carry no numbers (see battle.Blow) and are not projected; ReactionResults are
-	// rolls already reflected in CharacterResults and travel as-is.
+	// Blows carry no numbers (see battle.Blow) and are not projected. There is no separate
+	// per-reaction list to project either — every reaction outcome is already on the
+	// CharacterResult of the target that sent it, projected above.
 	return &out
 }
 

@@ -40,7 +40,8 @@ func (r *Repository) FindMatchHistory(
 		        ro.uuid, ro.mode, ro.created_at, ro.finished_at,
 		        t.uuid, t.created_at, t.finished_at, t.resolution,
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
-		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint, a.trigger
+		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
+		        a.trigger, a.interact, a.system_bias
 		 FROM scenes s
 		 JOIN rounds ro ON ro.scene_uuid = s.uuid
 		 JOIN turns  t  ON t.round_uuid = ro.uuid
@@ -100,7 +101,8 @@ func (r *Repository) FindMatchHistory(
 
 			speedRaw, skillsRaw, moveRaw, attackRaw []byte
 			defenseRaw, dodgeRaw, repelRaw          []byte
-			feintRaw, triggerRaw                    []byte
+			feintRaw, triggerRaw, interactRaw       []byte
+			systemBias                              int
 		)
 
 		if err := rows.Scan(
@@ -109,7 +111,7 @@ func (r *Repository) FindMatchHistory(
 			&turnUUID, &turnCreatedAt, &turnFinishedAt, &resolutionRaw,
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
-			&feintRaw, &triggerRaw,
+			&feintRaw, &triggerRaw, &interactRaw, &systemBias,
 		); err != nil {
 			return nil, fmt.Errorf("FindMatchHistory scan: %w", err)
 		}
@@ -149,7 +151,7 @@ func (r *Repository) FindMatchHistory(
 			react, err := decodeActionRow(
 				actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
 				speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
-				feintRaw, triggerRaw,
+				feintRaw, triggerRaw, interactRaw, systemBias,
 			)
 			if err != nil {
 				// Contain the damage to this ONE turn, the same trade-off DecodeResolution
@@ -173,14 +175,19 @@ func (r *Repository) FindMatchHistory(
 			// turn's rows contiguous even when two turns in the same round share a
 			// finished_at — which insertAction makes the norm, not a corner case: it writes
 			// the SAME timestamp as both created_at and finished_at for a turn's action AND
-			// every one of its reactions. Without t.uuid, two turns tied on finished_at could
-			// interleave, and this branch (reached whenever the running turn changes) would
-			// wrongly treat a REACTION row from the other turn as if it were this row's own
-			// action — the same discriminator bug this comment is now defending against.
+			// every one of its reactions. Without t.uuid, two turns tied on finished_at
+			// interleave, and this branch (reached whenever the running turn changes) treats a
+			// REACTION row from the other turn as if it were this row's own action.
+			//
+			// That is no longer a semantic argument: strike t.uuid from the ORDER BY above and
+			// TestFindMatchHistoryKeepsEachTiedTurnsReactionWithItsOwnTurn reports four turns
+			// where there are two. It takes BOTH tied turns carrying a reaction to reproduce —
+			// with only one, the remaining sort keys still happen to produce a workable order,
+			// which is why the earlier tie test passed either way.
 			act, err := decodeActionRow(
 				actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
 				speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
-				feintRaw, triggerRaw,
+				feintRaw, triggerRaw, interactRaw, systemBias,
 			)
 			if err != nil {
 				// See the reaction-row branch above for why this is contained to the turn
@@ -216,7 +223,8 @@ func decodeActionRow(
 	actionUUID, actorUUID uuid.UUID, reactToUUID *uuid.UUID, targetIDs []uuid.UUID,
 	reactionKind *string,
 	speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw []byte,
-	feintRaw, triggerRaw []byte,
+	feintRaw, triggerRaw, interactRaw []byte,
+	systemBias int,
 ) (*action.Action, error) {
 	var speed action.ActionSpeed
 	if len(speedRaw) > 0 {
@@ -260,6 +268,10 @@ func decodeActionRow(
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal trigger: %w", err)
 	}
+	interact, err := unmarshalNullablePtr[action.Interact](interactRaw)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal interact: %w", err)
+	}
 
 	reactTo := uuid.Nil
 	if reactToUUID != nil {
@@ -273,10 +285,15 @@ func decodeActionRow(
 	// constructor-time option and not a mutating setter.
 	act := action.NewAction(
 		actorUUID, targetIDs, reactTo, skills, speed,
-		feint, move, attack, defense, dodge, trigger, nil,
+		feint, move, attack, defense, dodge, trigger, interact,
 		action.WithReconstructedID(actionUUID),
 	)
 	act.Repel = repel
+	// SystemBias is set after construction for the same reason Repel is: NewAction already
+	// takes twelve positional parameters, and the field's own doc says growing it buys
+	// nothing. See action.Action.SystemBias for why a stored 0 and a re-derived 0 are not the
+	// same claim — reading it back is what keeps the history's version honest.
+	act.SystemBias = systemBias
 	if reactionKind != nil {
 		act.ReactionKind = action.ReactionKind(*reactionKind)
 	}
