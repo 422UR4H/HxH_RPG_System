@@ -352,13 +352,13 @@ e o fantasma some.
 É solução de protótipo. Se for ruim na prática, troca-se **só o desenho** — o contrato não muda,
 porque o front não calcula posição.
 
-### 10.3 Empilhamento — não desenhado
+### 10.3 Empilhamento
 
-Se o slot final já estiver ocupado por outro personagem, **a peça deve ficar empilhada**, uma
-em cima da outra. **Não existe desenho para isso ainda.**
+Se o slot final já estiver ocupado por outro personagem, **a peça fica empilhada** — uma em
+cima da outra.
 
-> Deixe comentado no código, explicitamente, no ponto onde o empilhamento aconteceria. Não
-> invente um visual: é decisão de produto que ainda não foi tomada.
+Não existe desenho definido, e **o visual fica a seu critério**. Escolha o que ficar legível no
+protótipo e diga no PR o que escolheu; a gente evolui em cima disso.
 
 ### 10.4 "No ar" é z + status
 
@@ -417,11 +417,6 @@ usam Dash.
 
 ⚠️ **Nada disso está em código.** `Displaces()` só exige que exista um `Move`, sem olhar a
 categoria. Validação no servidor, §4.8.
-
-⚠️ **O modelo não sabe expressar "escape fechado defensivo".** `ReactionKind` trata fechado e
-defensivo como valores irmãos de um enum, não como eixos ortogonais. Fica registrado; **não
-remodele agora** — há uma ideia maior, de compor actions por domínios, guardada para quando as
-actions forem revisitadas.
 
 ### 11.5 Outras
 
