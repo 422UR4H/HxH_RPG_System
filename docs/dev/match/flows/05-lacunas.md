@@ -1,212 +1,98 @@
-# 05 — Lacunas: o que falta para a partida ganhar vida
+# 05 — O que ainda está oco
 
-Levantamento do que está **oco** hoje. Não é backlog priorizado — é o mapa do terreno antes
-de decidir por onde cavar.
+> Auditoria do código na Fase 5. Cada item foi verificado no arquivo, não lembrado.
 
-## O desenho geral: o esqueleto está pronto, o músculo não
+## Bugs abertos
 
-```mermaid
-flowchart LR
-    subgraph ok["✅ Funciona ponta a ponta"]
-        A["Fila de prioridade<br/>(estrutura)"]
-        B["Ciclo Scene/Round/Turn"]
-        C["Reação anexada e validada"]
-        D["Persistência de turno fechado"]
-        E["Paredes: dano estrutural<br/>+ interact + LOS/fog"]
-        F["RollCalculator + colisão<br/>personagem (Fase 2)"]
-        G["Dano na ficha, no<br/>fechamento do turno"]
-    end
-    subgraph gap["⚠️ Existe como tipo, não como comportamento"]
-        I["Initiative"]
-        J["CharacterStatus / barras"]
-        K["ActionSpeed alimentando a fila"]
-    end
-    ok -.->|"o motor de rolagem e a colisão<br/>atravessaram na Fase 2"| gap
+### A penalidade do aparar está escondida de quem pode aproveitar
+
+`ProjectResolution` zera `Payouts` inteiro para terceiros, pela razão certa: a **reserva da
+esquiva fechada** revela quanta Evasão foi embutida. Mas o mesmo campo carrega a **penalidade
+do aparar**, que nasce `Against: ScopeAnyone()` — e `reacoes.md` é explícito: *"a penalidade de
+quem aparou vale contra todo mundo — qualquer um pode aproveitar"*.
+
+O número é dedutível (`cr.Ladder.Difference` viaja), mas aí o cliente faz álgebra — e o próprio
+código evitou isso de propósito no `ReactionTotal`, com um comentário contra *"reconstruir o
+número por álgebra a partir de `Ladder.Margin`"*.
+
+> O discriminador já existe: esconder `Payouts` **só quando o rótulo foi rebaixado**. A reserva
+> é segredo porque a fechada é segredo; repelir é público e declarado.
+
+### `Interact` e `SystemBias` não são persistidos
+
+A tabela `actions` não tem coluna para nenhum dos dois, e `deriveActionType` nem conhece
+`Interact`: **abrir uma porta persiste como `"unspecified"`, sem payload**. `SystemBias` é
+campo novo da Fase 5 — a Desvantagem de conversão some do histórico. O resultado final continua
+certo; o que se perde é *por que* aquele número foi aquele, numa superfície cujo propósito é
+deduzir dos números.
+
+### `ReactionResults` é stub com o campo trocado
+
+```go
+res.ReactionResults[i] = ReactionResult{ReactorID: r.ReactToID}
 ```
 
-## 1. ✅ O motor de rolagem está ligado ao turno (Fase 2)
+`ReactToID` é o UUID da **action**; `ReactorID` devia ser o do **personagem**. Compila porque
+os dois são `uuid.UUID`. Ninguém lê hoje — não vai ao wire, não é persistido, e a Fase 5
+documentou a exclusão — então não é bug vivo. É mina: quem ler primeiro lê lixo com cara de
+dado bom. Ou implementa, ou apaga o campo.
 
-`RollCalculator` sorteia e deriva desde a Fase 1. A Fase 2 fez a fiação:
+### Dois erros engolidos em silêncio
 
-- **`MatchSession.rollActionDice`** derruba os dados no instante em que a action ou reaction
-  chega (`EnqueueAction`, `AttachReaction`) e os guarda em `action.RollCheck.Attempts`.
-- **`TurnResolver.Resolve` virou função pura do turno** — deriva, nunca rola. É o que permite
-  recalcular a colisão a cada reaction e a cada edição do mestre sem re-sortear.
-- **`RollSource`** é o ponto de injeção: `nil` = produção (crypto/rand), teste passa uma fonte
-  roteirizada. `MatchSession.SetRollSource` existe só para os testes.
+| Onde | O quê |
+|---|---|
+| `turn_resolver.go` — `case TargetKindUnknown` | `case` vazio: um alvo que o motor não classifica evapora sem ninguém saber |
+| `resolveCharacterStep` | ficha faltando devolve `false` sem erro |
 
-As duas fricções que a Fase 1 contornou foram enfrentadas:
+Ambos têm `TODO` pedindo para serem superficiados na resolução.
 
-- **`RollCheck.SkillName` é `string`, a ficha indexa por `enum.SkillName`.** A conversão mora
-  agora na fronteira do WS (`buildAction` rejeita nome inválido com erro de WS) e, defensiva-
-  mente, em `service.skillValueOf`, que devolve 0 para um nome que a ficha não conhece em vez
-  de derrubar a resolução inteira.
-- **`RollContext.GetDiceResult(d die.Die)` ignora o parâmetro `d`.** Continua como está e
-  **segue sem chamador**: o motor lê `RollCheck.Attempts`, não `RollContext`.
+## Regras escritas que o código não executa
 
-## 2. ✅ A fila de prioridade tem prioridade (Fase 3)
+### A corrente de testes — a maior
 
-`buildAction` já preenchia `ActionSpeedPayload` desde a Fase 2, mas o motor não tinha onde
-pendurar a ordenação real: a Fase 3 trocou o heap por uma `PriorityQueue` em lista simples e
-moveu a chave para `service.RoundScheduler`, que a calcula na hora da seleção a partir da
-economia de barras (`service.BarEconomy`) — a chave é estado do personagem, não da action, e
-um heap não re-chaveia item já inserido. Ver `combat-engine.md` § "A chave não mora na
-action".
+`match_session.go` rola cada `Skill` da action e **ninguém lê o resultado**. A única leitura de
+`Skills` em toda a colisão é a `Evasion` da esquiva fechada, por nome.
 
-## 3. ✅ `TurnResolver`: o ramo `character` (Fase 2)
+A regra está em [`docs/game/combate/acoes.md`](../../../game/combate/acoes.md): cada perícia é
+um teste com CD própria, a margem atravessa de um teste para o próximo, errar por 10 ou mais
+mata a corrente. **Nada disso existe em código** — então a edição de perícias que a Fase 5
+entregou muda uma lista que não decide nada.
 
-O ramo resolve acerto → esquiva por reflexo passiva → defesa passiva → dano, e produz um
-`CharacterResult` por alvo, com os dados individuais, os totais, as flags de crítico, a margem
-derivada e o dano **projetado**. `res.Blows` é populado; `battle.Blow` ganhou construtor e
-acessores.
+> O que fica em aberto de propósito: a consequência para quem falha (guarda aberta, caído, dano
+> igual à diferença). É sistema de status, não existe, e a decisão de produto é explícita —
+> o sistema propõe um padrão, o mestre substitui.
 
-**Os dois eixos foram reconciliados.** `Action.actorID` passou a ser o `sheetUUID` — o mesmo
-ID que a peça carrega como `CharacterID` e o mesmo que um `TargetID` carrega —, então o
-resolver indexa ator e alvo no mesmo mapa. `ActionPayload.actorId` é obrigatório no wire, e a
-autorização continua por jogador: `EnqueueAction` verifica
-`charToPlayer[actorCharID] == playerUUID`.
+### `ReboundDamage`
 
-Ataque a parede também deixou de usar `rawDamage := 0`: rola os dados da arma como qualquer
-outro dano.
+Calculado em `structural_damage.go`, persistido no record, **nunca aplicado ao ator**. Quatro
+`TODO`s no mesmo arquivo: aplicar só se for corpo a corpo, subtrair a Defesa do ator, zerar se
+for ataque à distância, incluir no broadcast.
 
-Segue pendente no mesmo arquivo:
+### Armadura reduz zero
 
-- `TargetKindUnknown` não registra erro nenhum para o chamador.
-- Ficha ausente para ator ou alvo é ignorada em silêncio, sem reportar.
-- `ReactionResult` só carrega `ReactorID`; `Roll` fica vazio — Fase 4.
+`ChainState.Reduce` subtrai `armour` — e `turn_resolver.go` declara `const armour = 0`, porque
+não existe entidade de armadura nem campo de ficha. **A linha está codificada porque a forma é
+o que importa.** Não construa um modelo de armadura para preencher isto.
 
-## 4. ✅ `buildAction` mapeia o payload inteiro (Fase 2)
+### `action.Initiative` é órfão
 
-`Skills`, `Speed`, `Feint`, `Attack` (com `Weapon`, `Hit`, `Damage`, `Charge`), `Defense`,
-`Move.Speed/Charge` — tudo mapeado. Nome de perícia e nome de arma passam por
-`enum.SkillNameFrom` / `enum.WeaponNameFrom` e um valor desconhecido volta como erro de WS,
-em vez de virar zero silencioso lá no fundo do resolver.
+`RoundOrchestrator.ChangeMode` recebe o parâmetro e **ignora**. O assento está reservado para a
+regra de jogo que normalmente forçará `Race`; quem troca o regime hoje é o mestre, à mão, por
+`change_round_mode`.
 
-O mapper **não rola**: os dados caem na sessão, depois que a action é aceita.
+## Verificação que ficou devendo
 
-`buildMasterAction` continua ignorando `Move` e `Attack` — segue **deferred to Phase 4**.
+| Item | Situação |
+|---|---|
+| Desempate `t.uuid` na ordenação do histórico | correto pela semântica do SQL, mas o teste não reproduz a falha anterior neste Postgres — registrado como *"correto por semântica, não verificado por teste"* |
+| Smoke REST ponta a ponta | não existe fixture de seed campanha → cenário → partida → inscrição → início; substituído por três camadas reais mais checagem ao vivo |
 
-## 5. ✅ `Race` alcançável; iniciativa continua fora (Fase 3, parcial)
+## Fora do motor, por fase
 
-`RoundOrchestrator.ChangeMode(r, initiative)` continua ignorando o parâmetro `initiative` —
-isso não mudou. O que mudou é que agora existe um caminho **sem** iniciativa:
-`ChangeRoundModeUC` (`application/match/change_round_mode.go`), acionado pela mensagem WS
-`change_round_mode`, troca o regime do round ativo, restrito ao mestre. A entidade
-`action.Initiative` segue órfã, sem construtor, e nenhum UC ou mensagem WS a usa — a regra de
-jogo que normalmente forçaria `Race` (iniciativa) continua sendo fatia futura.
-
-## 6. `CharacterStatus` virou código, mas ainda não é consumido
-
-`internal/domain/match/character_status.go` deixou de ser só o comentário de design — a
-Fase 1 transformou o racional em struct: `ActionBar`/`MoveBar` (`ResourceBar`, saldo +
-velocidades roladas no round), `Ledger` (`ModifierLedger`, os bônus/penalidades
-acumulados) e `Stance` (reservado — as regras de postura ainda não existem, todo
-personagem é `StanceNone`). `Velocity` também está lá, herdado do desenho de movimento.
-
-`Position` ficou de fora **de propósito**: posições moram no `Room` (chegam nos payloads
-WS) e a sessão já as alcança via `matchsession.PiecePositionSource` — duplicar aqui criaria
-uma segunda fonte de verdade enquanto o mapa continuasse desenhando a cópia do `Room`.
-
-O bloco de ~150 linhas de comentário com o racional de movimento, barras, clash, footwork,
-investida e aproximação quickness↔aceleração continua no arquivo, verbatim — segue sendo a
-fonte mais rica de intenção de produto que existe no repositório, mesmo com o struct já
-existindo ao lado dele.
-
-O próprio comentário registra a decisão: *"O CharacterStatus não será persistido — precisa ser
-construído dinamicamente a partir das actions"*. Isso continua sendo uma escolha arquitetural
-pendente (projeção derivada de eventos), não um TODO simples — a Fase 1 não decidiu isso, só
-deu forma ao struct.
-
-## 7. Buracos no ciclo do round
-
-- ~~**`CloseRoundUC` não está plugado em nada.** Não há `MsgTypeCloseRound`, nem campo no
-  `Room`, nem construtor chamado. O round só termina indiretamente, via `change_scene`.~~ ✅
-  Resolvido na Fase 3: o fechamento automático em `open_next_action.go` o chama quando
-  `RoundScheduler.AnyEligible` nega. Ver `combat-engine.md` § "O round fecha sozinho".
-- ~~**`MsgTypeRoundClosed` está declarado e nunca é emitido.**~~ ✅ Resolvido na Fase 3: sai de
-  `room.go` no mesmo caminho de auto-fechamento.
-- ~~**`MatchSession.CloseTurn()`** existe e nenhuma rota a chama (fechar turno acontece
-  implicitamente dentro de `OpenNextAction`/`PullAction`). Continua em aberto — o encerramento
-  **explícito** de turno é da Fase 5.~~ ✅ Resolvido na Fase 5: `CloseTurn()` foi apagado (pulava
-  `closeOpenTurn` e não resolvia, não aplicava dano nem avançava os ledgers) e substituído por
-  `MatchSession.CloseOpenTurn()`, acionado pela mensagem WS `close_turn` — o mestre pode fechar
-  o turno explicitamente, sem abrir o próximo. `close_turn` recusa quando há reação anexada e
-  nunca aberta, e aceita com `{"confirm": true}`. Ver `combat-engine.md` § "O que a Fase 5
-  fixou no motor".
-
-## 8. Visibilidade da resolução
-
-- `resolution_updated` leva payload de verdade desde a Fase 2 — `TurnID`, os dados
-  individuais, o total, as flags de crítico, a margem e o dano projetado por alvo — e
-  ~~continua **só para o mestre**, e isso é deliberado: o cálculo é dele até o turno
-  encerrar. Quem reagiu ainda não recebe confirmação nenhuma.~~ ✅ Resolvido na Fase 5, com uma
-  ressalva: `resolution_updated` em si **segue master-only** enquanto o turno está aberto — o
-  cálculo continua sendo do mestre até fechar, e essa parte é deliberada e não mudou. O que a
-  Fase 5 resolveu é o que acontece DEPOIS de fechar: o histórico (`GET
-  /matches/{uuid}/history`) projeta a resolução **assentada** por destinatário — mestre vê
-  tudo, dono vê o que é seu, terceiros veem a deny-list aplicada (esquiva fechada vira `dodge`
-  comum, fintas somem) — pelas mesmas funções `service.ProjectAction`/`service.ProjectResolution`
-  que a difusão ao vivo (`Room.publishResolution`) já usa. Ver `combat-engine.md` § "O que a
-  Fase 5 fixou no motor" e
-  `docs/dev/api/match-history.md`.
-- Isso estava listado em `AGENTS.md` como *deferred to Phase 4*: "players see reactions only
-  when master reveals" — a visibilidade de reação ao vivo (durante o turno aberto) continua
-  adiada; o que a Fase 5 entregou foi a leitura pós-fechamento, um caminho diferente.
-
-## 9. ✅ Um caminho só para `Resolve` (Fase 2)
-
-`OpenNextAction`, `PullAction` e `AttachReaction` passam todos por
-`MatchSession.ResolveTurn`, que monta o `service.ResolveInput` com as fichas, as regras da
-partida e o catálogo de armas. Os UCs não instanciam mais um resolver próprio nem passam
-`nil` no lugar das fichas.
-
-As duas operações do bastão do mestre devolvem um `matchsession.TurnTransition` — turno
-fechado, turno aberto, a resolução de cada um e o que o fechamento aplicou de fato.
-
-## 9b. ✅ Serialização das rotas de sessão (Fase 2)
-
-As quatro rotas que mexem na sessão (`enqueue_action`, `attach_reaction`,
-`open_next_action`, `pull_action`) soltavam o `RLock` antes de chamar o use case — protegiam
-o ponteiro, não o estado. Agora seguram o **write lock durante o `Execute`**, como
-`game-server.instructions.md` sempre mandou. `TestE2E_AttackAgainstACharacterProducesDamage`
-roda sob `-race` e é a rede de segurança.
-
-## 9c. ✅ Fichas sumindo da sessão (achado na Fase 2)
-
-`InitMatchSessionUC` lia o segundo retorno de `GetCharacterSheetByUUID` como *found* e só
-guardava a ficha quando ele era `true`. Esse bool é **`wasCorrected`** — se a hidratação
-precisou consertar a ficha. Ou seja: **toda ficha íntegra era descartada em silêncio**, e a
-sessão rodava com `charSheets` vazio. Ficha inexistente volta como **erro**, não como
-`false`; agora esse caso pula o participante em vez de derrubar a partida inteira.
-
-O bug é anterior a esta fase e passou despercebido porque **nada lia `charSheets`** — o
-resolver ignorava as fichas. Apareceu no primeiro ataque real disparado do browser: o
-`resolution_updated` do mestre voltou sem alvo nenhum. Guardado por
-`TestInitMatchSession/an intact sheet is not dropped as if it were missing`.
-
-## 10. Fila e reação: pontos de decisão em aberto
-
-Não são bugs — são decisões de design ainda não tomadas, que o desenho do fluxo precisa
-resolver:
-
-- Como um jogador sabe que **precisa reagir**? Hoje `turn_opened` vai em broadcast com
-  `{turnId, actorId}` e nada mais — não diz quem são os alvos.
-- **Janela de reação**: o turno pode fechar enquanto uma reação está sendo composta.
-  Não há timeout, trava nem confirmação.
-- **Reações múltiplas** ao mesmo turno são aceitas sem limite e sem ordenação.
-- Uma ação enfileirada **não pode ser cancelada nem editada** — não há `ExtractByID` exposto
-  ao jogador dono da ação.
-- `Action.openedAt` / `confirmedAt` existem no struct, são privados e **nunca são setados**.
-  Havia intenção de um handshake de confirmação.
-
----
-
-## Resumo em uma frase
-
-O ciclo **Scene → Round → Turn → Action/Reaction** está completo e testado, e desde a Fase 2
-o **motor que transforma isso em números** atravessa inteiro: `RollCalculator` →
-`TurnResolver` → `Blow` → dano na ficha. Desde a Fase 3, a **economia das barras** também
-atravessa inteira: preço por barra, porteiro duplo, chave calculada na hora, fechamento
-automático do round. O que falta agora não é o vão, são as camadas em cima dele — as reações
-ativas e a cadeia com vários alvos (Fase 4), a regência e a visibilidade por destinatário
-(Fase 5), e o front (Fase 6).
+| Item | Quando |
+|---|---|
+| Qualquer tela do fluxo | Fase 6 |
+| Rostering de NPC — nada cria um NPC hoje | fatia própria, antes da Fase 6 |
+| Exceção do percept no início de batalha | bloqueada: os subatributos mentais não existem |
+| Posturas (condicionam o desconto do escape fechado) | pós-MVP |
+| Override do desfecho da cadeia em área | regra de jogo ainda não escrita |

@@ -19,7 +19,7 @@ flowchart TB
     subgraph domain["internal/domain/match — Domínio puro"]
         Session["MatchSession<br/><b>único tipo com estado vivo</b>"]
         Svc["service/ — domain services<br/><i>stateless</i><br/>RoundOrchestrator · TurnResolver<br/>RollCalculator · ApplyStructuralDamage<br/>ApplyWallInteract · visibility"]
-        Ent["entity/ — Scene · Round · Turn<br/>Action · MasterAction · PriorityQueue<br/>Blow · PlayerMemory"]
+        Ent["entity/ — Scene · Round · Turn<br/>Action · ReactionKind · Repel · MasterAction<br/>PriorityQueue · Blow · PlayerMemory"]
         Agg["Match · Participant · Summary<br/>GameEvent · CharacterStatus"]
     end
 
@@ -67,7 +67,7 @@ Ela é **duas coisas ao mesmo tempo**, e vale enxergar isso separado:
 flowchart LR
     subgraph MS["MatchSession"]
         direction TB
-        state["<b>1) Estado da partida</b><br/>activeScene · activeRound<br/>activeQueue (PriorityQueue)<br/>charSheets[sheetUUID] · statuses[sheetUUID]<br/>participants[playerUUID]<br/>charToPlayer[sheetUUID]<br/>walls · grid<br/>fogMode · memories · visCache<br/>scenePersisted · roundPersisted"]
+        state["<b>1) Estado da partida</b><br/>activeScene · activeRound<br/>activeQueue · overrides<br/>charSheets[sheetUUID] · statuses[sheetUUID]<br/>participants[playerUUID]<br/>charToPlayer[sheetUUID]<br/>walls · grid<br/>fogMode · memories · visCache<br/>scenePersisted · roundPersisted"]
         facade["<b>2) Fachada sobre os services</b><br/>roundOrch  service.RoundOrchestrator<br/>turnResolver  service.TurnResolver"]
     end
     state --- facade
@@ -137,7 +137,7 @@ Exceções ao sabor A: `CloseRoundUC` (tem `IRoundRepository` — persiste o fec
 ```
 internal/domain/match/
 ├── match.go, participant.go, summary.go, game_event.go   ← agregado + read models
-├── character_status.go                                   ← ⚠️ só design em comentário; nada usa
+├── character_status.go                  ResourceBar · ModifierLedger · Stance
 ├── matchsession/
 │   ├── match_session.go     ← O estado vivo + fachada
 │   └── session_data.go      ← ActiveSessionData (DTO de hidratação do DB)
@@ -145,15 +145,15 @@ internal/domain/match/
 │   ├── action/    Action, MasterAction, ActionSpeed, RollCheck, RollContext,
 │   │              RollCondition, Skill, Attack, Defense, Dodge, Move, Interact,
 │   │              Trigger, Velocity, Initiative, PriorityQueue
-│   ├── battle/    Blow                    ← ⚠️ campos todos privados e não preenchidos
+│   ├── battle/    Blow                    ← forma da troca; não carrega números
 │   ├── round/     Round, GameEvent
 │   ├── scene/     Scene
 │   ├── turn/      Turn
 │   └── fog/       FogMode, PlayerMemory
 └── service/
     ├── round_orchestrator.go   ciclo Round/Turn
-    ├── turn_resolver.go        resolução do Turn        ← ⚠️ maior parte é TODO
-    ├── roll_calculator.go      cálculo de rolagem       ← ⚠️ retorna 0; ninguém chama
+    ├── turn_resolver.go        resolução do Turn        ← cadeia, colisão, dano
+    ├── roll_calculator.go      Roll sorteia 1×, Derive recalcula n×
     ├── structural_damage.go    dano em parede
     ├── wall_interact.go        abrir/fechar/trancar
     ├── visibility.go           LOS por varredura angular

@@ -1,232 +1,276 @@
 # 03 — Fluxo de ação
 
-O coração do produto: jogadores **declaram intenção em paralelo**, o mestre **abre** as
-ações na ordem certa, o sistema **resolve** os números. Este documento mapeia o caminho
-que existe hoje, ponta a ponta.
+> Estado do código na Fase 5. Não é design aspiracional: cada seta abaixo existe.
 
-## Visão geral — os quatro tempos
+O coração do produto: jogadores **declaram intenção em paralelo**, o mestre **abre** as ações
+na ordem certa, o sistema **resolve** os números. Ninguém espera a vez para *pensar* — é isso
+que mata a latência de mesa.
+
+## Os verbos de hoje
+
+| Mensagem | Quem pode | O que faz |
+|---|---|---|
+| `enqueue_action` | jogador (do próprio personagem) | declara; rola os dados na chegada; entra na fila |
+| `attach_reaction` | jogador alvo | responde ao ataque aberto; cobra barra; recalcula |
+| `open_next_action` | mestre | fecha o turno anterior e abre o próximo da ordem |
+| `pull_action` | mestre | abre **esta** action, fora de ordem, sem porteiro |
+| `open_reaction` | mestre | dá a palavra a uma reaction anexada — **a ordem muda o resultado** |
+| `edit_action` | mestre | edita a action aberta; recalcula sem re-sortear |
+| `close_turn` | mestre | encerra de propósito; recusa se há reaction não aberta |
+| `change_round_mode` | mestre | `Free` ⇄ `Race` |
+
+> `enqueue_action` com `reactToId` preenchido **é** o `attach_reaction`: `room.go` desvia para
+> `handleReaction`. Os dois campos viajam juntos ou nenhum — `reactToId` diz *"isto é reação"*
+> e `reactionKind` diz *o que custa*.
+
+## Visão geral
 
 ```mermaid
-flowchart LR
-    T1["<b>1. Declarar</b><br/>jogadores, em paralelo<br/>enqueue_action"] --> T2["<b>2. Abrir</b><br/>mestre<br/>open_next_action / pull_action"]
-    T2 --> T3["<b>3. Reagir</b><br/>alvos<br/>attach_reaction"]
-    T3 --> T4["<b>4. Resolver + fechar</b><br/>TurnResolver → persistência"]
-    T4 --> T2
+flowchart TB
+    subgraph par["em paralelo, sem esperar a vez"]
+        D1["jogador A<br/>enqueue_action"]
+        D2["jogador B<br/>enqueue_action"]
+        D3["jogador C<br/>enqueue_action"]
+    end
+    par --> Q["activeQueue<br/><i>lista simples — sem prioridade guardada</i>"]
+    Q --> SEL{{"RoundScheduler<br/>chave calculada na hora"}}
+    SEL -->|"nenhuma passa<br/>no porteiro"| RC["round_closed<br/>saldos liquidados"]
+    SEL -->|"escolheu"| OPEN["mestre: open_next_action"]
+    OPEN --> CLOSE0["fecha o turno anterior<br/>resolve · aplica dano · avança ledgers"]
+    CLOSE0 --> T["turn_opened<br/>mecânica pública"]
+    T --> REACT["alvos: attach_reaction"]
+    REACT --> FLOOR["mestre: open_reaction<br/><i>a ordem de abertura muda o desfecho</i>"]
+    FLOOR --> EDIT["mestre: edit_action<br/><i>opcional</i>"]
+    EDIT --> CT["mestre: close_turn"]
+    CT --> PERSIST[("actions · turns.resolution<br/>overridden_action_values")]
+    CT --> OPEN
+
+    style RC fill:#fff3cd,stroke:#856404
+    style PERSIST fill:#e8e8e8,stroke:#555
 ```
 
-O paralelismo do tempo 1 é o que mata a latência de mesa: ninguém espera a vez para
-*pensar*. A fila de prioridade é o que devolve a ordem correta no tempo 2.
+**Não existe verbo de confirmação.** O mestre edita, a resolução recalcula na hora, e **passar
+o bastão é a confirmação** — abrir a próxima, abrir uma reaction, fechar o turno. Não dá para
+seguir em frente e continuar deliberando ao mesmo tempo.
 
-## Tempo 1 — declarar (`enqueue_action`)
+## Tempo 1 — declarar
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant P as Cliente (jogador)
     participant R as Room
-    participant MAP as buildAction (action_mapper.go)
     participant UC as EnqueueActionUC
     participant S as MatchSession
-    participant Q as PriorityQueue
+    participant M as Mestre
 
-    P->>R: enqueue_action {targetId, move?, attack?, dodge?, interact?, ...}
-    R->>R: Dodge sem reactToId? → erro "dodge must be a reaction"
-    R->>R: session == nil? → erro "match_not_started"
-    alt reactToId != uuid.Nil
-        R->>R: desvia para handleReaction (ver Tempo 3)
+    P->>R: enqueue_action {actorId, move?, attack?, skills?, ...}
+    R->>R: reactToId ⊕ reactionKind? → erro
+    R->>R: actorId vazio? → erro
+    R->>R: session nil? → match_not_started
+    alt reactToId preenchido
+        R->>R: desvia para handleReaction (Tempo 3)
     end
-    R->>MAP: buildAction(client.userUUID, payload)
-    Note over MAP: actorID vem SEMPRE do cliente autenticado,<br/>nunca do payload
-    MAP-->>R: *action.Action (id novo)
-    opt a.Move != nil e From != [0,0,0]
-        R->>R: mapservice.IsPathBlocked(fromWorld, toWorld, walls)
-        R-->>P: erro "move_blocked" se atravessa parede com move=true e !open
+    R->>R: buildAction(payload.ActorID, payload)
+    opt tem Move com From
+        R->>R: IsPathBlocked → move_blocked
     end
-    R->>UC: Execute(ctx, session, client.userUUID, a)
+    Note over R: r.mu.Lock() ATRAVESSA o Execute
+    R->>UC: Execute(session, userUUID, a)
     UC->>S: EnqueueAction(playerUUID, a)
-    S->>S: participante existe? senão ErrParticipantNotFound
-    S->>S: a.GetActorID() == playerUUID? senão ErrActionActorMismatch
-    S->>Q: Insert(a)  → heap.Push
-    R-->>P: action_enqueued (só para quem enviou)
+    S->>S: charToPlayer[actorID] == playerUUID? senão ErrActionActorMismatch
+    S->>S: rollActionDice(a) — os DOIS conjuntos, uma vez só
+    S->>S: deriveSpeeds(a, systemBias)
+    S->>S: activeQueue.Insert(a)
+    R-->>P: action_enqueued  (só para quem enviou)
+    R-->>M: action_queued {actionId, actorId, bars}  (só o mestre)
+    R-->>P: bars_updated  (mesa inteira)
 ```
 
-**A fila.** `action.PriorityQueue` é um max-heap sobre `container/heap`, ordenado por
-`Action.Speed.Result` (`priority_queue.go:14`). Operações: `Insert`, `ExtractMax`,
-`ExtractByID`, `Peek`, `IsEmpty`. A fila vive dentro da `MatchSession` (`activeQueue`) e
-**não é persistida** — é intenção declarada, morre com o processo.
+**`actorID` é o `sheetUUID`**, não o do jogador. A autorização é `charToPlayer[actorID] ==
+playerUUID` — é assim que um mestre pode agir por um NPC sem que um jogador possa agir pelo
+personagem de outro.
 
-> ⚠️ Hoje `buildAction` passa `action.ActionSpeed{}` fixo, então **todo item entra na fila com
-> `Speed.Result == 0`** e a ordem é a ordem interna do heap, não a velocidade do personagem.
-> A fila de prioridade está montada e correta; só não tem prioridade para ordenar. Ver `05`.
+**`action_queued` é master-only e existe por um motivo estrutural:** sem ele o mestre não tem
+como aprender o ID de uma action pendente, e `pull_action` fica inalcançável de um cliente
+real. *Um ID que o cliente não consegue aprender é uma operação que o cliente não consegue
+invocar.*
 
-## Tempo 2 — abrir (`open_next_action` / `pull_action`)
+**A fila não guarda prioridade.** `activeQueue` é lista simples. A chave de ordenação muda
+quando o personagem manda outra action (a média se move), e um heap não suporta re-chavear um
+item já inserido — quebraria em silêncio. A chave é calculada na hora da seleção.
 
-Só o mestre. `open_next_action` pega o topo da fila; `pull_action` pega uma ação específica
-por UUID (é o "eu quero resolver essa primeiro" do mestre).
+## Tempo 2 — abrir
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant M as Cliente (mestre)
+    participant M as Mestre
     participant R as Room
     participant UC as OpenNextActionUC
     participant S as MatchSession
-    participant RO as RoundOrchestrator
-    participant TR as TurnResolver
+    participant SCH as RoundScheduler
     participant DB as Postgres
 
     M->>R: open_next_action
-    R->>R: IsMaster(client.userUUID)? senão "forbidden"
-    R->>UC: Execute(ctx, session, masterUUID, callerUUID)
-    UC->>UC: callerUUID == masterUUID? senão ErrNotMatchMaster
+    R->>R: IsMaster? senão forbidden
+    Note over R: r.mu.Lock() ATRAVESSA o Execute
+    R->>UC: Execute(session, masterUUID, userUUID)
     UC->>S: OpenNextAction()
-    opt activeRound.HasOpenTurn()
-        S->>RO: CloseTurn(activeRound, now) → closed
+    S->>SCH: FreezePrices — o preço congela na 1ª seleção
+    alt modo Free
+        S->>S: closeOpenTurn() → NextAction(fila)
+    else modo Race
+        S->>SCH: SelectNext — porteiro + chave
+        alt nenhuma passa
+            S->>S: closeOpenTurn() · RoundExhausted = true
+            UC->>UC: CloseRoundUC — liquida saldos
+            R-->>M: round_closed (mesa inteira)
+        else escolheu
+            S->>S: closeOpenTurn()
+            S->>S: PullAction(id escolhido) · recordActed
+        end
     end
-    S->>RO: NextAction(activeRound, &activeQueue)
-    RO->>RO: q.ExtractMax()  (nil → ErrQueueEmpty)
-    RO->>RO: turn.NewTurn(*next); round.AppendTurn(t)
-    RO-->>S: opened *Turn
-    S-->>UC: (closed, opened)
-    UC->>TR: Resolve(opened, nil, session)
-    Note over UC,TR: ⚠️ passa `nil` no lugar de session.charSheets
-    UC-->>R: {ClosedTurn, OpenedTurn, Resolution}
-
-    opt ClosedTurn != nil
-        R->>DB: PersistTurnClose(scene, round, closedTurn, closedAction, matchUUID)
-        R->>S: MarkRoundPersisted()
-    end
-    R-->>M: turn_opened {turnId, actorId} (broadcast a todos)
-    opt Resolution.WallResults não vazio
-        R->>R: broadcastWallResults → wall_hp_changed / wall_state_changed
-    end
+    S-->>UC: TurnTransition {Closed, Opened, resoluções, Damaged}
+    R->>R: persistClosedTurn(turno fechado)
+    R->>DB: PersistTurnClose — action · reactions · resolution · overrides
+    R-->>R: publishResolution(fechado) — SETTLED, projetado por destinatário
+    R-->>R: turn_opened (mesa inteira)
+    R-->>M: resolution_updated do aberto — master-only (não liquidado)
 ```
 
-`pull_action` é idêntico, trocando `ExtractMax()` por `ExtractByID(actionID)`
-(`ErrActionNotFound` se não achar).
+**São dois porteiros, não um:**
 
-**O turno anterior também fecha no momento em que o próximo abre** — isso não mudou. O que
-mudou na Fase 5: agora também existe um fechamento **explícito**, sem abrir o próximo. A
-mensagem WS `close_turn` chama `MatchSession.CloseOpenTurn()` (sucessora de
-`MatchSession.CloseTurn()`, que este fluxo descrevia antes de a Fase 5 apagá-la — ela pulava
-`closeOpenTurn` e não resolvia, não aplicava dano nem avançava os ledgers) e recusa fechar
-enquanto houver reação anexada e nunca aberta, a menos que o mestre confirme com
-`{"confirm": true}`. Ver `combat-engine.md` § "O que a Fase 5 fixou no motor".
+| | Porteiro |
+|---|---|
+| 1ª action do personagem no round | a **barra** alcança o preço: `carry + rolagem ≥ preço` |
+| 2ª em diante | o **troco** das que já agiram alcança o preço |
 
-## Tempo 3 — reagir (`attach_reaction`)
+**`closeOpenTurn` é o coração.** Ele resolve, **aplica o dano nas fichas** e avança os ledgers
+— nessa ordem, para que um modificador que valia neste turno ainda conte. Toda rota que fecha
+turno passa por ele.
+
+**`pull_action` reusa a mesma operação, sem porteiro.** Antecipar uma action é prerrogativa do
+mestre.
+
+## Tempo 3 — reagir
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant P as Cliente (alvo)
+    participant A as Alvo
     participant R as Room
     participant UC as AttachReactionUC
     participant S as MatchSession
-    participant RO as RoundOrchestrator
-    participant TR as TurnResolver
+    participant M as Mestre
 
-    P->>R: attach_reaction {reactToId, dodge?/defense?...}
-    R->>R: reactToId == Nil? → "invalid_action"
-    R->>R: handleReaction → buildAction(client.userUUID, payload)
-    R->>UC: Execute(ctx, session, callerUUID, reaction)
-    Note over UC: sem checagem de mestre — reação é do jogador
+    A->>R: enqueue_action {reactToId, reactionKind, dodge?/repel?/move?}
+    R->>R: handleReaction
+    R->>UC: Execute(session, userUUID, reaction)
     UC->>S: AttachReaction(reaction)
-    S->>RO: AttachReaction(activeRound, reaction)
-    RO->>RO: CurrentTurn() != nil? senão ErrNoCurrentTurn
-    RO->>RO: currentTurn.action.GetID() == reaction.ReactToID?<br/>senão ErrReactionNotCompatible
-    RO->>RO: turn.AddReaction(reaction)
-    S->>TR: Resolve(currentTurn, s.charSheets, s)
-    TR-->>S: *TurnResolution
-    S-->>UC: resolution
-    R-->>P: resolution_updated {turnId, isSettled} — ⚠️ só para o mestre hoje
+    S->>S: turno fechado? → ErrTurnAlreadyClosed (ANTES de rolar ou cobrar)
+    S->>S: o kind traz os componentes que exige? senão recusa
+    S->>S: rollActionDice · deriveSpeeds
+    S->>S: cobra as barras do KIND — no attach, nunca no open, nunca negada por saldo
+    S->>S: desloca a action pendente daquela barra
+    S->>S: ResolveTurn — recalcula a colisão inteira
+    R-->>M: resolution_updated com pendingReactions (master-only)
+    M->>R: open_reaction {reactionId}
+    R->>S: OpenReaction — entra na cadeia, NA ORDEM DO MESTRE
+    R-->>M: reaction_opened · resolution_updated
 ```
 
-Uma reação é **a mesma `Action`** com `ReactToID` preenchido. Não há tipo separado —
-o roteamento é por presença de campo. A validação de compatibilidade é uma só:
-a reação tem que apontar para a ação do turno **atualmente aberto**.
+**O custo sai do tipo declarado, não da forma.** Os três escapes carregam exatamente os mesmos
+campos e custam três coisas diferentes:
 
-## Tempo 4 — resolver (`TurnResolver`)
+| `ReactionKind` | Barra de ação | Barra de movimento |
+|---|---|---|
+| `nothing`, `dodge`, `closedDodge` | — | — |
+| `repel` | ✔ | — |
+| `closedEscape` | — | ✔ |
+| `escape`, `escapeGuard` | ✔ | ✔ |
 
-É aqui que o motor deveria calcular. Hoje ele só roteia por tipo de alvo:
+**Uma reaction anexada e não aberta NÃO vira passo da cadeia.** É deliberado: se ela afetasse a
+colisão antes de o mestre dar a palavra, a ordem de abertura deixaria de importar — e a ordem
+importar *é* o poder de jogo desta fase.
 
-```mermaid
-flowchart TB
-    Start["TurnResolver.Resolve(turn, sheets, targets)"] --> Settled["IsSettled = turn.finishedAt != nil"]
-    Settled --> Loop{"para cada targetID<br/>em turn.action.TargetID"}
-    Loop --> Cat["targets.CategorizeTarget(id)<br/><i>= MatchSession</i>"]
-    Cat -->|character| Char["⚠️ TODO — combate entre personagens<br/>não faz nada"]
-    Cat -->|wall_segment| Wall{"componente presente?"}
-    Cat -->|unknown| Unk["⚠️ TODO — nem registra o erro"]
-    Wall -->|Attack| SD["ApplyStructuralDamage(wall, rawDamage)<br/>⚠️ rawDamage é literal 0"]
-    Wall -->|Interact| WI["ApplyWallInteract(wall, interact)"]
-    SD --> WR["append WallResults{Kind: attack}"]
-    WI --> WR2["append WallResults{Kind: interact}"]
-    Loop --> Act["⚠️ TODO — ActionResult via RollCalculator + sheets"]
-    Act --> React["para cada reação:<br/>ReactionResult{ReactorID} — roll vazio ⚠️"]
-    React --> Blows["⚠️ TODO — Blows a partir de attack × defense"]
-    Blows --> Out["*TurnResolution"]
-```
-
-`TurnResolution` é o formato de saída já acordado — vale conhecê-lo, porque é o contrato
-que o motor vai preencher:
-
-```go
-type TurnResolution struct {
-    ActionResult    RollResult        // { SkillName, SkillValue, DiceRolled []int, Total }
-    ReactionResults []ReactionResult  // { ReactorID, Roll RollResult }
-    Blows           []*battle.Blow    // colisão ataque × defesa
-    WallResults     []WallResult      // { UpdatedWall, EffectiveDamage, ReboundDamage, Kind }
-    IsSettled       bool              // o turno já fechou?
-}
-```
-
-**Só o ramo de parede funciona ponta a ponta hoje** (e mesmo ele com dano fixo em 0).
-O ramo de personagem — que é o combate de verdade — está vazio.
-
-## O canal paralelo: `enqueue_master_action`
-
-O mestre não entra na fila de prioridade. `MasterAction` é anexada **direto ao turno aberto**:
+## Tempo 4 — editar
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant M as Mestre
     participant R as Room
-    participant UC as EnqueueMasterActionUC
     participant S as MatchSession
-    participant T as Turn (aberto)
+    participant L as overrides (em memória)
 
-    M->>R: enqueue_master_action {targetIds, skills?, move?, attack?, interact?}
-    opt Interact.Kind == "reveal"
-        R->>R: revealSecretDoors(targetIDs) — in-memory + broadcast, fora da fila
-    end
-    opt Interact open/close/toggle sobre parede
-        R->>R: applyWallInteract + broadcastWallStateChangedGated
-    end
-    R->>UC: Execute(ctx, session, masterUUID, callerUUID, ma)
-    UC->>S: EnqueueMasterAction(ma)
-    S->>S: CurrentTurn() aberto? senão ErrNoActiveTurn
-    S->>T: SetHappenedAt(now); AddMasterAction(ma)
-    R-->>M: master_action_enqueued (broadcast)
+    M->>R: edit_action {actionId, conditions?, skills?, targetIds?}
+    R->>S: ApplyMasterAction(ma, masterUUID)
+    S->>S: turno aberto? senão ErrNoActiveTurn
+    S->>S: VALIDA TUDO numa cópia-sombra antes de mutar qualquer coisa
+    S->>L: captura o valor ORIGINAL — uma linha por campo
+    S->>S: muta a action AO VIVO · re-deriva sem re-sortear
+    S-->>R: resolução recalculada
+    R-->>M: action_edited
+    R-->>R: publishResolution
 ```
 
-Duas rotas para interação com parede convivem: **mestre** resolve *in-memory no `Room`* e
-transmite na hora; **jogador** passa pela fila e só resolve quando o mestre abre o turno.
-É deliberado — o mestre não espera a fila.
+**A action editada É a action.** Não existe versão paralela para mesclar na leitura — todo
+consumidor lê um lugar só. O preço disso: *"o que o jogador mandou"* deixa de ser algo que se
+lê e passa a ser algo que se **reconstrói**, pela tabela de sobrepostos.
 
-## Mensagens WS envolvidas (resumo)
+**Valida antes de mutar.** Uma falha no meio do laço deixava meia edição aplicada e reportava
+fracasso puro — o mestre acreditava não ter mudado nada.
 
-| Direção | Tipo | Quem pode |
-|---|---|---|
-| C→S | `enqueue_action` | jogador (e mestre) |
-| C→S | `attach_reaction` | qualquer participante |
-| C→S | `open_next_action` | mestre |
-| C→S | `pull_action` | mestre |
-| C→S | `enqueue_master_action` | mestre |
-| C→S | `change_scene` | mestre |
-| S→C | `action_enqueued` | só o remetente |
-| S→C | `turn_opened` | broadcast |
-| S→C | `resolution_updated` | ⚠️ só mestre |
-| S→C | `master_action_enqueued` | broadcast |
-| S→C | `scene_changed` | broadcast |
-| S→C | `wall_hp_changed`, `wall_state_changed` | filtrado por LOS |
-| S→C | `round_closed` | declarado, **sem emissor** ⚠️ |
+**Reverter sai de graça.** Uma linha por **campo**, guardando o original. Editar de volta ao
+valor original apaga a captura e não grava linha nenhuma. É isso que dispensa um verbo de
+confirmação: o que um "confirmar" daria de real seria *cancelar*.
+
+**A edição muda o desfecho, nunca a economia.** Barras cobradas, `Speeds` registrados e ordem
+já jogada ficam como estão.
+
+## Tempo 5 — fechar
+
+```mermaid
+flowchart TB
+    CT["close_turn {confirm?}"] --> CHK{"há reaction<br/>anexada e não aberta?"}
+    CHK -->|sim, sem confirm| REF["close_turn_refused<br/>+ a lista de quem ficou sem narrar"]
+    CHK -->|não, ou confirm=true| CLOSE["closeOpenTurn()"]
+    CLOSE --> RES["resolve · aplica dano · avança ledgers"]
+    RES --> PUB["turn_closed (mesa)<br/>resolution_updated SETTLED, projetado"]
+    RES --> DB[("PersistTurnClose")]
+    DB --> D1["actions — action + reactions"]
+    DB --> D2["turns.resolution — a colisão"]
+    DB --> D3["overridden_action_values — o que o mestre atropelou"]
+
+    style REF fill:#fff3cd,stroke:#856404
+```
+
+Essas reactions **entram no cálculo**; o que elas perdem é o momento de narrar. É por isso que
+a confirmação existe — e ela é **computada pelo servidor**, não uma cortesia do cliente.
+
+## Quem vê o quê
+
+```mermaid
+flowchart LR
+    RES["TurnResolution"] --> SET{"IsSettled?"}
+    SET -->|"não — turno aberto"| MO["só o mestre<br/><i>o cálculo é dele até fechar</i>"]
+    SET -->|"sim — turno fechado"| PROJ["ProjectResolution<br/>por destinatário"]
+    PROJ --> V1["mestre<br/>tudo"]
+    PROJ --> V2["dono<br/>tudo o que é dele"]
+    PROJ --> V3["todo o resto<br/>tudo menos a deny-list"]
+
+    style MO fill:#e3e3ff,stroke:#4444aa
+```
+
+**Dois eixos, não um:** *tempo* (`IsSettled`) e *classe* (mestre / dono / resto). **O alvo não
+é classe** — uma finta contra você não te conta que era finta.
+
+**O rótulo é o vazamento:** `closedDodge` chega a terceiros como `dodge`, `closedEscape` como
+`escape`. Deduzir da barra pública é legítimo — o escape fechado cobra uma barra onde o padrão
+cobra duas. Ser avisado de graça pelo rótulo não é.
+
+## Referências
+
+Regras e o porquê de cada decisão: [`../combat-engine.md`](../combat-engine.md).
+O que ainda está oco: [`05-lacunas.md`](05-lacunas.md).
