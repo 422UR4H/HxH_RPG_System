@@ -248,8 +248,16 @@ func (f *combatFixture) connect(t *testing.T) (master, player *websocket.Conn) {
 // spell it out again.
 func (f *combatFixture) enqueueAttack(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
+	f.enqueueAttackFrom(t, conn, f.attackerID)
+}
+
+// enqueueAttackFrom is enqueueAttack with the ACTOR spelled out, for the tests that need two
+// different characters — driven by two different players — to have something in the queue at
+// the same time.
+func (f *combatFixture) enqueueAttackFrom(t *testing.T, conn *websocket.Conn, actorID uuid.UUID) {
+	t.Helper()
 	sendWS(t, conn, "enqueue_action", map[string]any{
-		"actorId":  f.attackerID.String(),
+		"actorId":  actorID.String(),
 		"targetId": []string{f.victimID.String()},
 		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
 		"attack": map[string]any{
@@ -1267,6 +1275,115 @@ func TestMatchFullStateOnConnectCarriesTheCombatState(t *testing.T) {
 	}
 	if m.Bars.Seq != wantSeq {
 		t.Fatalf("match_full_state stamped seq %d for the master, want the current %d", m.Bars.Seq, wantSeq)
+	}
+}
+
+// O Room só fecha quando o ÚLTIMO cliente sai. Se o mestre cai e os jogadores ficam, a fila
+// segue inteira na memória — e action_queued, que dispara no instante do enfileiramento, nunca
+// se repete. Reconectado, o mestre recebia barras, cena, regime, turno e resolução, e nenhum
+// actionId: pull_action ficava morto para tudo que já estava na fila.
+//
+// Não é perda de dado; é cegueira de UM cliente sobre dado que está lá.
+func TestMatchFullStateCarriesTheQueueToTheMasterOnly(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	readMessage(t, master) // room_state
+	masterMsgs := collectFrom(master)
+
+	// Two players, one action each. They stay connected for the whole test: the room only
+	// closes when the LAST client leaves, and their staying is exactly the situation that
+	// keeps the queue alive across the master's absence.
+	player := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	readMessage(t, player) // room_state
+	f.enqueueAttack(t, player)
+
+	other := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+	defer other.Close()   //nolint:errcheck
+	readMessage(t, other) // room_state
+	f.enqueueAttackFrom(t, other, f.bystanderID)
+
+	if !awaitCount(masterMsgs, game.MsgTypeActionQueued, 2, 2*time.Second) {
+		t.Fatalf("the master did not see both actions enter the queue; it received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+	// The IDs as the master learned them LIVE — the ground truth the snapshot must reproduce
+	// exactly. A snapshot that invented fresh IDs would still look plausible in isolation.
+	live := map[uuid.UUID]uuid.UUID{} // actionId → actorId
+	for _, m := range masterMsgs.snapshotMessages() {
+		if m.Type != game.MsgTypeActionQueued {
+			continue
+		}
+		var q game.ActionQueuedPayload
+		if err := json.Unmarshal(m.Payload, &q); err != nil {
+			t.Fatalf("unmarshal action_queued: %v", err)
+		}
+		live[q.ActionID] = q.ActorID
+	}
+	if len(live) != 2 {
+		t.Fatalf("expected two distinct queued action IDs, got %d: %v", len(live), live)
+	}
+
+	// The master drops and comes back — nothing is opened, so this is the plain "nothing
+	// opened yet, two things waiting" state, the one round.HasOpenTurn() is false in.
+	master.Close() //nolint:errcheck
+	lateMaster := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer lateMaster.Close() //nolint:errcheck
+	lateMasterMsgs := collectFrom(lateMaster)
+	if !lateMasterMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the reconnecting master never received match_full_state")
+	}
+
+	var m game.MatchFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, lateMasterMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &m,
+	); err != nil {
+		t.Fatalf("unmarshal the reconnecting master's match_full_state: %v", err)
+	}
+	if len(m.Queue) != 2 {
+		t.Fatalf("the reconnecting master got %d queued actions, want the 2 still pending: %+v",
+			len(m.Queue), m.Queue)
+	}
+	for _, q := range m.Queue {
+		actorID, ok := live[q.ActionID]
+		if !ok {
+			t.Fatalf("match_full_state named actionId %s, which the master never saw in an "+
+				"action_queued — pull_action would be sent an ID the queue does not hold", q.ActionID)
+		}
+		if q.ActorID != actorID {
+			t.Fatalf("actionId %s came back with actorId %s, want %s", q.ActionID, q.ActorID, actorID)
+		}
+		if len(q.Bars) == 0 {
+			t.Fatalf("actionId %s came back charging no bar; action_queued always names at least one",
+				q.ActionID)
+		}
+	}
+
+	// And the other half: a PLAYER reconnecting into the same queue learns nothing about it.
+	// The queue is secret — the public half of the same fact is Bars.Order, which carries the
+	// projected order with no action identity in it.
+	player.Close() //nolint:errcheck
+	latePlayer := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	defer latePlayer.Close() //nolint:errcheck
+	latePlayerMsgs := collectFrom(latePlayer)
+	if !latePlayerMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the late player never received match_full_state")
+	}
+	var p game.MatchFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, latePlayerMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &p,
+	); err != nil {
+		t.Fatalf("unmarshal the late player's match_full_state: %v", err)
+	}
+	if len(p.Queue) != 0 {
+		t.Fatalf("a player was handed %d pending actions: %+v — the queue is secret, and this "+
+			"one reads the table's intentions straight off the wire", len(p.Queue), p.Queue)
+	}
+	// The public order still reached them, so the assertion above is about secrecy and not
+	// about an empty payload.
+	if len(p.Bars.Order) == 0 {
+		t.Fatal("the late player got no projected order either: the snapshot is empty, so the " +
+			"secrecy assertion above proves nothing")
 	}
 }
 

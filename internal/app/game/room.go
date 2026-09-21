@@ -769,13 +769,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// you can refer to it by". This is different news, for a different recipient: the
 		// master is the one who has to decide when it opens, and they need the ID to be able
 		// to pull it.
-		bars := make([]string, 0, 2)
-		for _, b := range a.Bars() {
-			bars = append(bars, string(b))
-		}
-		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, ActionQueuedPayload{
-			ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars,
-		}))
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, newActionQueuedPayload(a)))
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
@@ -1718,8 +1712,35 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		}
 	}
 
+	if isMaster {
+		// MASTER-ONLY, the same axis Resolution above is gated on, and for the reason
+		// MatchFullStatePayload.Queue documents: the queue is secret. Deliberately OUTSIDE the
+		// round/HasOpenTurn block — the queue exists whether or not a turn is open, and the
+		// state a reconnecting master is most likely to land in ("nothing opened yet, three
+		// things waiting") is exactly the one where round.HasOpenTurn() is false.
+		//
+		// PendingActions reads s.activeQueue with no lock of its own; r.mu (held for this whole
+		// function) is what serializes it against a concurrent enqueue_action.
+		for _, a := range session.PendingActions() {
+			payload.Queue = append(payload.Queue, newActionQueuedPayload(a))
+		}
+	}
+
 	msg := NewServerMessage(MsgTypeMatchFullState, payload)
 	return &msg
+}
+
+// newActionQueuedPayload is one pending action as the MASTER reads it: the ID pull_action
+// needs, who queued it, and which clocks it will charge. Nothing about its content.
+//
+// Shared by the action_queued emitted at enqueue time and by match_full_state's Queue, so the
+// live event and the snapshot can never describe the same action differently.
+func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
+	bars := make([]string, 0, 2)
+	for _, b := range a.Bars() {
+		bars = append(bars, string(b))
+	}
+	return ActionQueuedPayload{ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars}
 }
 
 func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload {

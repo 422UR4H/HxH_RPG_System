@@ -663,6 +663,26 @@ type MatchFullStatePayload struct {
 	// Resolution is the open turn's, MASTER-ONLY. nil for everyone else, and nil for the
 	// master too when no turn is open.
 	Resolution *ResolutionUpdatedPayload `json:"resolution,omitempty"`
+	// Queue is everything still waiting for the master, in the queue's own insertion order —
+	// one entry per pending action, in the SAME shape action_queued sends.
+	//
+	// MASTER-ONLY, exactly like Resolution above and for the same reason ActionQueuedPayload
+	// is: the queue is secret (combat-engine.md § As barras são públicas), so a player who
+	// learned what is pending would read the table's intentions off the wire. The public
+	// half of the same fact is already here — Bars.Order carries the projected order with no
+	// action identity in it.
+	//
+	// It exists because action_queued fires ONCE, at the instant of the enqueue, and a master
+	// who was disconnected then never hears it again: the Room only closes when the last
+	// client leaves, so the queue outlives a master who dropped while the players stayed. On
+	// reconnect they were handed bars, scene, regime, open turn and resolution and not one
+	// action ID — and pull_action takes an action ID, so every action already in the queue was
+	// unreachable to them. An ID a client cannot learn is an operation a client cannot invoke.
+	//
+	// It reuses ActionQueuedPayload whole rather than re-shaping it, for the same reason Scene
+	// and Bars reuse theirs: a second format for the same fact would be a second thing to keep
+	// in sync with the first.
+	Queue []ActionQueuedPayload `json:"queue,omitempty"`
 }
 
 type OpenTurnPayload struct {
