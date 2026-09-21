@@ -19,4 +19,10 @@ var (
 	ErrMatchAlreadyFinished = domain.NewValidationError(errors.New("match has already finished"))
 	ErrNotMatchMaster       = domain.NewValidationError(errors.New("user is not the match master"))
 	ErrInvalidRoundMode     = domain.NewValidationError(errors.New("round mode must be Free or Race"))
+
+	ErrSheetNotNPC            = domain.NewValidationError(errors.New("character sheet is not an npc"))
+	ErrSheetNotOwnedByMaster  = domain.NewValidationError(errors.New("character sheet does not belong to the master or the campaign"))
+	ErrNPCAlreadyInMatch      = domain.NewValidationError(errors.New("npc is already in this match"))
+	ErrNPCNotInMatch          = domain.NewValidationError(errors.New("npc is not in this match"))
+	ErrCharacterSheetNotFound = domain.NewValidationError(errors.New("character sheet not found"))
 )
