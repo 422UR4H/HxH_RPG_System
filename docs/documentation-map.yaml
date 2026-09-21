@@ -387,6 +387,17 @@ mappings:
         confidence: directly_affected
     notes: Match REST surface — create/get/update/list/enrollments/participants
 
+  - code_path: internal/app/api/match/add_match_npc.go
+    dev_docs:
+      - path: docs/dev/api/match-npcs.md
+        confidence: directly_affected
+    notes: >-
+      POST/DELETE /matches/{uuid}/npcs — NPC rostering by the match master (put/take a
+      master-controlled character sheet on match_participants). InitMatchSessionUC picks
+      the NPC back up the next time a room is built; a match already in progress does not
+      see it live, since the MatchSession lives in cmd/game (:8081), separate from this
+      endpoint's process, cmd/api (:5000).
+
   - code_path: internal/app/api/match/get_match_history.go
     dev_docs:
       - path: docs/dev/api/match-history.md
