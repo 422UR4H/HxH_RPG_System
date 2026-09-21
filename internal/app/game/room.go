@@ -822,11 +822,28 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		result, err := r.openReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
 		turnID := session.CurrentTurnID()
+		// The reaction the result hands back ALIASES the turn's own, and edit_action can rewrite
+		// a reaction under a different lock holder — so what is needed is copied HERE, inside the
+		// critical section that opened it, and the pointer itself is never read afterwards.
+		var reactor uuid.UUID
+		var reactionMove *action.Move
+		if err == nil && result.Opened != nil && result.Opened.Move != nil {
+			m := *result.Opened.Move
+			reactionMove = &m
+			reactor = result.Opened.GetActorID()
+		}
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		// An escape DISPLACES, and the trigger is the OPENING of the reaction — the analogue of
+		// opening the turn's action, and the same code path. BEFORE reaction_opened and with no
+		// r.mu held, for the reason the action side documents: piece_moved goes straight into
+		// each client's queue while reaction_opened only reaches them through r.broadcast, so a
+		// move applied afterwards would let the table watch the reaction open with the piece
+		// still in the old slot.
+		r.applyMove(reactor, reactionMove)
 		// Whose turn it is to narrate is public; the calculation is not, until Phase 5.
 		out := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
 			TurnID: turnID, ReactionID: payload.ReactionID,
@@ -1929,28 +1946,44 @@ func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 // The position cannot wait for the close the way damage does: damage may still be edited
 // while the turn is open, but the reactions that follow depend on where the piece IS.
 //
+// The caller must NOT hold r.mu — applyMove takes it.
+func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
+	a := opened.GetAction()
+	r.applyMove(a.GetActorID(), a.Move)
+}
+
+// applyMove walks ONE Move onto the board, on behalf of the character that owns it.
+//
+// It is shared by the two openings that displace: the action of a turn (applyOpenedMove) and
+// an escape REACTION (the open_reaction arm). The rule is the same on both sides and so is the
+// trigger — the piece leaves its slot when the thing OPENS, which is the point at which the
+// table starts reasoning about where it stands.
+//
+// The reaction's OUTCOME is deliberately not part of this. Failing an escape means taking the
+// full damage having moved anyway — displacing and getting hit is a legitimate result, so the
+// displacement is never conditioned on the reaction succeeding.
+//
 // Only movement that does not test displaces here. Today that is the only reachable branch:
 // moveSpeedSkill accepts Dash and Shift and refuses Back, Roll, Slide, Jump and FlatJump, and
-// neither accepted category rolls against a DC. The branch for a move that DOES test (a leap,
-// a squeeze past, a landing on an occupied slot) has no case that can reach this code, so it
-// is not written here — inventing one to fill the table would be guessing at a rule nobody
-// has decided.
+// neither accepted category rolls against a DC — Accelerate and Brake are the SPEED of the
+// displacement (Move.Speed feeds Move.FinalSpeed), not a difficulty to clear. The branch for a
+// move that DOES test (a leap, a squeeze past, a landing on an occupied slot) has no case that
+// can reach this code, so it is not written here — inventing one to fill the table would be
+// guessing at a rule nobody has decided.
 //
-// A REACTION's Move is deliberately NOT applied: an escape carries one too, but a reaction
-// attaches to a turn that is already open and the rule for when the piece leaves its slot in
-// that case is not written down anywhere. Completing it by symmetry would be inventing it.
+// A nil Move is a no-op: most actions and most reactions do not displace at all.
 //
 // A character with no piece on the board is NOT an error: there is simply nothing to move, so
 // no error message goes out for it.
 //
-// The caller must NOT hold r.mu — applyAndRelayPieceMove takes it.
-func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
-	a := opened.GetAction()
-	if a.Move == nil {
+// The caller must NOT hold r.mu — this takes it, and applyAndRelayPieceMove's relay takes it
+// again afterwards.
+func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
+	if move == nil {
 		return
 	}
-	actorID := a.GetActorID().String()
-	pos := a.Move.Position
+	actorID := actor.String()
+	pos := move.Position
 
 	// Finding the piece and writing it back happen in ONE write-locked section. Reading it
 	// under RLock, releasing, and then storing the edited copy would leave a window in which

@@ -124,6 +124,8 @@ type combatFixture struct {
 	// bystanderUUID/bystanderID are uuid.Nil unless withBystander was passed. See it there.
 	bystanderUUID uuid.UUID
 	bystanderID   uuid.UUID
+	// victimOnBoard is set by withVictimPiece. See it there.
+	victimOnBoard bool
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -140,6 +142,16 @@ func withBystander(f *combatFixture) {
 	f.bystanderUUID = uuid.New()
 	f.bystanderID = uuid.New()
 }
+
+// withVictimPiece puts the TARGET on the board too.
+//
+// Only the escape tests need it: an escape displaces the character who is being attacked, so
+// without a piece for the victim there is nothing on the board for the reaction to move and
+// the test would pass through applyMove's "no piece, no error" branch without proving
+// anything. It is an opt rather than the default so the tests already written against a board
+// holding exactly the mover (and, with withBystander, the blind one) keep the board they
+// were written for.
+func withVictimPiece(f *combatFixture) { f.victimOnBoard = true }
 
 // setRollSource replaces the session's dice for one test. The session pointer is the
 // fixture's own, and nothing is in flight when a test calls this.
@@ -1481,6 +1493,10 @@ var moveBoardWall = mapentity.WallSegment{
 const (
 	attackerPieceID  = "piece-attacker"
 	bystanderPieceID = "piece-bystander"
+	victimPieceID    = "piece-victim"
+	// victimElevation is the target's virtual height, non-zero for the same reason
+	// attackerElevation is: an escape must not flatten the token it displaces either.
+	victimElevation = 1.5
 	// attackerElevation is the mover's virtual height in metres, non-zero so that a
 	// horizontal move that flattened it would be caught instead of looking like a no-op.
 	attackerElevation = 2.5
@@ -1503,6 +1519,15 @@ func (f *combatFixture) syncBoard(t *testing.T, master *websocket.Conn) {
 		// Move.Position[2] is a grid index; a horizontal step must not flatten the piece.
 		Z: attackerElevation,
 	}}
+	if f.victimOnBoard {
+		vcol, vrow := 6, 6
+		pieces = append(pieces, game.PieceMovedPayload{
+			PieceID:     victimPieceID,
+			CharacterID: f.victimID.String(),
+			Slot:        game.SlotPayload{Kind: "square", Col: &vcol, Row: &vrow},
+			Z:           victimElevation,
+		})
+	}
 	if f.bystanderUUID != uuid.Nil {
 		bcol, brow := 20, 4
 		pieces = append(pieces, game.PieceMovedPayload{
@@ -2015,5 +2040,268 @@ func TestMatchFullStateCarriesTheSceneInTheSameShapeAsSceneChanged(t *testing.T)
 	// the scene opens a fresh round, which is Free.
 	if got.RoundMode != string(enum.Free) {
 		t.Fatalf("roundMode = %q, want the new round's regime %q", got.RoundMode, string(enum.Free))
+	}
+}
+
+// ─── o movimento de uma reação de escape ────────────────────────────────────
+//
+// Uma reação de escape desloca a peça, e o gatilho é a ABERTURA da reação — o análogo de
+// abrir a ação do turno, pelo mesmo caminho. Antes disso o escape saía caro e não saía do
+// lugar: a esquiva era forçada pelo deslocamento e o deslocamento nunca acontecia.
+//
+// O desfecho da esquiva não entra na conta: falhar num escape é tomar o dano cheio TENDO se
+// deslocado. Deslocar e apanhar é resultado legítimo.
+
+// openAttackOn has the attacker hit the victim and the master open that turn, and returns the
+// open action's ID — what a reaction's reactToId must point at.
+//
+// The wire has no field carrying the action's own ID (it is a different UUID from the turn's
+// on purpose), so it is read straight off the fixture's own session — the same move
+// combatFixture.victimHP and areaFixture.awaitTurnOpened make, safe in this quiet window with
+// nothing else in flight.
+func (f *combatFixture) openAttackOn(t *testing.T, player *websocket.Conn, master *websocket.Conn, masterMsgs *collector) uuid.UUID {
+	t.Helper()
+	f.enqueueAttack(t, player)
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the attack never reached the queue")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 3*time.Second) {
+		t.Fatal("the attack never opened: there is no turn for a reaction to attach to")
+	}
+	turn := f.session.GetActiveRound().CurrentTurn()
+	if turn == nil {
+		t.Fatal("no current turn on the session right after turn_opened")
+	}
+	act := turn.GetAction()
+	return act.GetID()
+}
+
+// attachEscape answers the open attack with an escape: the Dash its kind demands, plus the
+// Dodge — an escape forces the dodge BY displacing, so both are required at the boundary.
+//
+// It returns the reaction's own ID, read off the master's resolution_updated, which is where
+// an attached-but-not-yet-opened reaction's ID lives on the wire. That is the only way a real
+// client learns it, and open_reaction needs it back.
+func (f *combatFixture) attachEscape(
+	t *testing.T, conn *websocket.Conn, masterMsgs *collector, reactToID uuid.UUID, from, to [3]int,
+) uuid.UUID {
+	t.Helper()
+	before := masterMsgs.count(game.MsgTypeResolutionUpdate)
+	sendWS(t, conn, string(game.MsgTypeAttachReaction), game.ActionPayload{
+		ActorID:      f.victimID,
+		ReactToID:    reactToID,
+		ReactionKind: "escape",
+		Dodge:        &game.DodgePayload{},
+		Move: &game.MovePayload{
+			Category: string(enum.Dash),
+			From:     from,
+			Position: to,
+		},
+	})
+	if !awaitCount(masterMsgs, game.MsgTypeResolutionUpdate, before+1, 2*time.Second) {
+		t.Fatalf("attach_reaction: the master never got a fresh resolution_updated; it received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+	msgs := masterMsgs.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeResolutionUpdate {
+			continue
+		}
+		var resolved game.ResolutionUpdatedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &resolved); err != nil {
+			t.Fatalf("unmarshal resolution_updated: %v", err)
+		}
+		for _, pr := range resolved.PendingReactions {
+			if pr.ActorID == f.victimID {
+				return pr.ReactionID
+			}
+		}
+		break
+	}
+	t.Fatal("no pending reaction for the victim in the master's resolution_updated")
+	return uuid.Nil
+}
+
+func TestE2E_OpeningAnEscapeReactionMovesThePieceBeforeReactionOpened(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board back after map_state_sync — the fixture never started")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+	reactionID := f.attachEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+
+	// Nothing has moved yet: attaching is not opening. Without this the assertion below could
+	// be satisfied by a piece_moved the attach itself emitted.
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the piece moved %d time(s) on ATTACH; the trigger is the OPENING of the reaction", n)
+	}
+
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+
+	if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatalf("no piece_moved: the escape's displacement was never applied to the board; "+
+			"the master received: %v", messageTypes(masterMsgs.snapshotMessages()))
+	}
+	if !masterMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatal("no reaction_opened: the reaction never opened, so this test measured nothing")
+	}
+
+	msgs := masterMsgs.snapshotMessages()
+	moved := findMessage(t, msgs, game.MsgTypePieceMoved)
+	var mp game.PieceMovedPayload
+	if err := json.Unmarshal(moved.Payload, &mp); err != nil {
+		t.Fatalf("unmarshal piece_moved: %v", err)
+	}
+	if mp.PieceID != victimPieceID {
+		t.Fatalf("piece_moved carried pieceId %q, want the escaping target's %q",
+			mp.PieceID, victimPieceID)
+	}
+	if mp.Slot.Col == nil || mp.Slot.Row == nil {
+		t.Fatalf("piece_moved carried no square slot: %+v", mp.Slot)
+	}
+	if *mp.Slot.Col != 8 || *mp.Slot.Row != 6 {
+		t.Fatalf("the escaping piece landed on (%d,%d), want (8,6)", *mp.Slot.Col, *mp.Slot.Row)
+	}
+	// The same two invariants the action path has: the slot keeps its shape and the piece
+	// keeps its height. Z is metres, Move.Position[2] is a grid index — writing one into the
+	// other would visibly drop the token to the ground.
+	if mp.Slot.Kind != "square" {
+		t.Fatalf("slot kind = %q, want the piece's own kind %q", mp.Slot.Kind, "square")
+	}
+	if mp.Z != victimElevation {
+		t.Fatalf("piece_moved carried z=%v, want the elevation it already had (%v)", mp.Z, victimElevation)
+	}
+	if moved.SenderID != uuid.Nil {
+		t.Fatalf("piece_moved senderId = %s, want the zero UUID of a server message", moved.SenderID)
+	}
+
+	// The table must never watch the reaction open with the piece still in the old slot. Both
+	// envelopes are stamped when they are BUILT, by the same goroutine (the master
+	// connection's ReadPump running the open_reaction arm end to end), so the stamps compare
+	// the order the server decided. Arrival order alone cannot: reaction_opened travels
+	// through r.broadcast while piece_moved goes straight into each client's queue.
+	opened := findMessage(t, msgs, game.MsgTypeReactionOpened)
+	if opened.Timestamp.Before(moved.Timestamp) {
+		t.Fatalf("reaction_opened was built at %s, BEFORE piece_moved at %s: the escape's move "+
+			"was applied after the reaction opened", opened.Timestamp, moved.Timestamp)
+	}
+	movedAt := indexOfMessage(msgs, game.MsgTypePieceMoved)
+	openedAt := indexOfMessage(msgs, game.MsgTypeReactionOpened)
+	if movedAt > openedAt {
+		t.Fatalf("reaction_opened (index %d) arrived before piece_moved (index %d)", openedAt, movedAt)
+	}
+}
+
+// O mesmo gate de campo de visão do caminho da ação: quem não enxerga nem a origem nem o
+// destino do escape não é avisado dele.
+func TestE2E_OpeningAnEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece, withBystander)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	blind := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+	defer blind.Close()   //nolint:errcheck
+	readMessage(t, blind) // room_state
+
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+	blindMsgs := collectFrom(blind)
+
+	f.syncBoard(t, master)
+	if !blindMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the bystander never got a board — they are not really at the table")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	// The premise: the divider wall hides the escaping target from the bystander. Without
+	// this the negative assertion below would be a tautology.
+	var board game.MapFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, blindMsgs.snapshotMessages(), game.MsgTypeMapFullState).Payload, &board,
+	); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	sees := map[string]bool{}
+	for _, p := range board.Pieces {
+		sees[p.PieceID] = true
+	}
+	if !sees[bystanderPieceID] {
+		t.Fatal("the bystander cannot even see their own piece — their line of sight is empty, " +
+			"so this test would prove nothing about the fog gate")
+	}
+	if sees[victimPieceID] {
+		t.Fatal("the bystander can see the escaping piece: the wall is not splitting the board " +
+			"and there is nothing blind about this player")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+	reactionID := f.attachEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+
+	// The displacement really happened — otherwise "the bystander heard nothing" is trivial.
+	if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("no piece_moved reached the master: nothing moved, so the gate was never exercised")
+	}
+	// reaction_opened is the barrier, not a sleep: the room dispatches piece_moved before it,
+	// on the same goroutine, so anything the bystander was entitled to is already queued for
+	// them by the time reaction_opened lands.
+	if !blindMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatal("the bystander received nothing at all — this connection is dead, not gated")
+	}
+	if n := blindMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("a player who sees neither end of the escape was told about it %d time(s); "+
+			"they received: %v", n, messageTypes(blindMsgs.snapshotMessages()))
+	}
+	if n := blindMsgs.count(game.MsgTypePieceRemoved); n != 0 {
+		t.Fatalf("the bystander was told the piece left a slot they never saw it in (%d time(s))", n)
+	}
+}
+
+// Um ator sem peça no tabuleiro NÃO é erro — o escape acontece na ficha, e não há nada para
+// mover. É o mesmo no-op silencioso do caminho da ação, e é o que mantém os testes de reação
+// que rodam sem tabuleiro nenhum (reaction_chain_e2e_test.go) honestos.
+func TestE2E_OpeningAnEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
+	f := newCombatFixture(t) // no withVictimPiece: the target has no piece on the board
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+	reactionID := f.attachEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+
+	if !masterMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatal("the reaction never opened: a missing piece must not block the opening")
+	}
+	if n := masterMsgs.count(game.MsgTypeError); n != 0 {
+		t.Fatalf("an actor with no piece produced %d error message(s); it is a no-op, not a fault: %v",
+			n, messageTypes(masterMsgs.snapshotMessages()))
+	}
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("something moved (%d piece_moved) although the escaping actor has no piece", n)
 	}
 }
