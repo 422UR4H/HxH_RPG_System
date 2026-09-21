@@ -1106,8 +1106,9 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
 ### Nota: a finta segue o mesmo eixo do TEMPO, mas em outro documento
 
 `Feint` não aparece em payload nenhum deste protocolo — nenhuma mensagem servidor→cliente
-projeta a **declaração** de uma `action.Action` (a lacuna correspondente está em §9), e é por
-isso que a finta não tem onde aparecer aqui. Ela vive em `service.ProjectAction`, a mesma
+projeta a **declaração** de uma `action.Action` **de jogador** (`master_action_enqueued` é a
+exceção do lado do mestre, mas projeta `action.MasterAction`, um tipo sem `Feint`; a lacuna
+correspondente está em §9), e é por isso que a finta não tem onde aparecer aqui. Ela vive em `service.ProjectAction`, a mesma
 função que a Action History REST chama, e segue exatamente este eixo do TEMPO: escondida
 enquanto `isSettled` é `false`, revelada quando o turno fecha — quem caiu na finta descobre
 dentro da resolução do MESMO turno (o sucesso foi contra um ataque falso, e o de verdade vem

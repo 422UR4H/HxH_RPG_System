@@ -163,10 +163,12 @@ Notas sobre os campos de `action`/`reactions`:
   quem trocou e quando. O que o cliente vê aqui são os números já resolvidos
   (`RollCheckResponse.result`, os totais em `resolution`).
 - `systemBias` **não tem equivalente no WebSocket**, e não por política: nenhuma mensagem
-  servidor→cliente projeta a declaração de uma `action.Action` (`ActionPayload` só existe no
-  sentido cliente→servidor). O argumento do "já é dedutível" também não valeria lá —
-  `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. Ver
-  [`match-combat-ws.md`](match-combat-ws.md).
+  servidor→cliente projeta a declaração de uma `action.Action` **de jogador**
+  (`ActionPayload` só existe no sentido cliente→servidor). `master_action_enqueued` é a
+  exceção do lado do mestre, mas não carrega `ActionPayload` nem `systemBias` — `systemBias`
+  só existe em ações e reações de jogador (`buildAction`), nunca em `buildMasterAction`. O
+  argumento do "já é dedutível" também não valeria lá — `resolution_updated` emite só
+  `diceRolled`, o conjunto efetivamente lido. Ver [`match-combat-ws.md`](match-combat-ws.md).
 - `RollCheckResponse.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
   viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
   público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
