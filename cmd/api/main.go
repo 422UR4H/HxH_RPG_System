@@ -157,6 +157,7 @@ func main() {
 		PatchCharacterSheetProfileHandler: sheetHandler.PatchCharacterSheetProfileHandler(characterSheetRepo),
 		DeleteCharacterSheetHandler:       sheetHandler.DeleteCharacterSheetHandler(deleteCharacterSheetUC),
 		UpdateCharacterSheetHandler:       sheetHandler.UpdateCharacterSheetHandler(updateCharacterSheetUC, getCharacterSheetUC),
+		GetCombatCatalogueHandler:         sheetHandler.GetCombatCatalogueHandler(getCharacterSheetUC),
 	}
 
 	uploadApi := &uploadHandler.Api{

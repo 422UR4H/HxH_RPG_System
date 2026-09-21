@@ -21,6 +21,7 @@ type Api struct {
 	PatchCharacterSheetProfileHandler     Handler[PatchCharacterSheetProfileRequest, PatchCharacterSheetProfileResponse]
 	DeleteCharacterSheetHandler           Handler[DeleteCharacterSheetRequest, DeleteCharacterSheetResponse]
 	UpdateCharacterSheetHandler           Handler[UpdateCharacterSheetRequest, UpdateCharacterSheetResponse]
+	GetCombatCatalogueHandler             Handler[GetCombatCatalogueRequest, GetCombatCatalogueResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -53,6 +54,20 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.GetCharacterSheetHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodGet,
+		Path:        "/charactersheets/{uuid}/combat-catalogue",
+		Description: "List the weapons this character can attack with, and the skill vocabulary the wire accepts",
+		Tags:        []string{"character_sheets"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+			http.StatusNotFound,
+			http.StatusInternalServerError,
+		},
+	}, a.GetCombatCatalogueHandler)
 
 	huma.Register(api, huma.Operation{
 		Method:      http.MethodGet,
