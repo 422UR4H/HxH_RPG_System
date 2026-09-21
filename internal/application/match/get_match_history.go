@@ -104,10 +104,15 @@ func (uc *GetMatchHistoryUC) Get(
 			projected[i].Rounds[j].Turns = make([]HistoryTurn, len(ro.Turns))
 			for k, tu := range ro.Turns {
 				pt := tu
-				pt.Action = service.ProjectAction(tu.Action, viewer)
+				// Read the fact instead of assuming it: HistoryTurn.FinishedAt is a plain
+				// time.Time (not a pointer), and PersistTurnClose is the only write path today
+				// so it is never the zero value in practice — but reading it costs the same as
+				// hardcoding true, and it does not break the day an open turn crosses this path.
+				settled := !tu.FinishedAt.IsZero()
+				pt.Action = service.ProjectAction(tu.Action, viewer, settled)
 				pt.Reactions = make([]action.Action, len(tu.Reactions))
 				for l, react := range tu.Reactions {
-					pt.Reactions[l] = service.ProjectAction(react, viewer)
+					pt.Reactions[l] = service.ProjectAction(react, viewer, settled)
 				}
 				pt.Resolution = service.ProjectResolution(tu.Resolution, viewer)
 				projected[i].Rounds[j].Turns[k] = pt

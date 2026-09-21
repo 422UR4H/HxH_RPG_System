@@ -118,8 +118,8 @@ func TestProjectAction(t *testing.T) {
 		return *a
 	}
 
-	t.Run("a third party sees neither the feint nor the evasion entry", func(t *testing.T) {
-		got := service.ProjectAction(mk(), service.Viewer{Owns: map[uuid.UUID]bool{third: true}})
+	t.Run("a third party sees neither the feint nor the evasion entry, on an open turn", func(t *testing.T) {
+		got := service.ProjectAction(mk(), service.Viewer{Owns: map[uuid.UUID]bool{third: true}}, false)
 		if got.Feint != nil {
 			t.Fatal("a revealed feint is not a feint")
 		}
@@ -134,11 +134,31 @@ func TestProjectAction(t *testing.T) {
 	})
 
 	t.Run("the owner keeps everything", func(t *testing.T) {
-		got := service.ProjectAction(mk(), service.Viewer{Owns: map[uuid.UUID]bool{owner: true}})
+		got := service.ProjectAction(mk(), service.Viewer{Owns: map[uuid.UUID]bool{owner: true}}, false)
 		if got.Feint == nil || len(got.Skills) != 2 || got.ReactionKind != action.ReactClosedDodge {
 			t.Fatal("the owner was projected away from their own action")
 		}
 	})
+}
+
+// TestProjectActionRevealsFeintOnceTheTurnIsSettled pins the TIME axis: a feint is secret
+// while the turn is open and public once it closes. The target who fell for it discovers
+// inside that same turn's resolution — their success was against a false attack and the real
+// one comes next. Hiding it after the turn closed hides it forever, which is not the rule.
+func TestProjectActionRevealsFeintOnceTheTurnIsSettled(t *testing.T) {
+	feint := action.RollCheck{SkillName: enum.Feint.String()}
+	a := action.Action{Feint: &feint}
+	stranger := service.Viewer{} // neither master nor owner
+
+	open := service.ProjectAction(a, stranger, false)
+	if open.Feint != nil {
+		t.Fatal("an open turn leaked the feint; the target would be warned before falling for it")
+	}
+
+	settled := service.ProjectAction(a, stranger, true)
+	if settled.Feint == nil {
+		t.Fatal("a settled turn still hid the feint; it would stay hidden forever")
+	}
 }
 
 // TestProjectResolutionKeepsTheRepelPenaltyPublic pins the discriminator that decides whether

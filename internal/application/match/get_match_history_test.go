@@ -164,6 +164,12 @@ func TestGetMatchHistoryUC(t *testing.T) {
 		ownCharUUID := uuid.New()
 		otherCharUUID := uuid.New()
 
+		// The other character's action also carries a closed dodge label — a per-sheet secret
+		// that stays gated by Owns regardless of settlement, unlike the feint, which task 3
+		// made time-gated instead of class-gated.
+		otherAction := actionWithFeint(otherCharUUID)
+		otherAction.ReactionKind = action.ReactClosedDodge
+
 		ownTurn := match.HistoryTurn{
 			UUID: uuid.New(), FinishedAt: time.Now(),
 			Action:    actionWithFeint(ownCharUUID),
@@ -171,7 +177,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 		}
 		otherTurn := match.HistoryTurn{
 			UUID: uuid.New(), FinishedAt: time.Now(),
-			Action:    actionWithFeint(otherCharUUID),
+			Action:    otherAction,
 			Reactions: []action.Action{},
 		}
 
@@ -204,8 +210,13 @@ func TestGetMatchHistoryUC(t *testing.T) {
 		if turns[0].Action.Feint == nil {
 			t.Fatal("the player was projected away from their OWN action's feint")
 		}
-		if turns[1].Action.Feint != nil {
-			t.Fatal("the player saw another character's feint — Owns leaked beyond their own sheets")
+		// The feint itself is NOT a distinguisher here: turns[1] is a closed turn (see
+		// FinishedAt above), and task 3 made the feint public once the turn is settled,
+		// regardless of who owns the actor. What Owns still gates on a closed turn is the
+		// closed-dodge label, so that is what proves Owns is scoped per-sheet.
+		if turns[1].Action.ReactionKind != action.ReactDodge {
+			t.Fatalf("the player saw another character's closed dodge label — Owns leaked "+
+				"beyond their own sheets: %q", turns[1].Action.ReactionKind)
 		}
 	})
 
@@ -322,4 +333,47 @@ func TestGetMatchHistoryProjectsEngineFaults(t *testing.T) {
 			t.Fatalf("a player read the engine's diagnostics: %+v", errs)
 		}
 	})
+}
+
+// TestGetMatchHistoryRevealsFeintOfAClosedTurnToAThirdParty is the wiring half of task 3's
+// claim, the counterpart to TestProjectActionRevealsFeintOnceTheTurnIsSettled in the service
+// package: it is not enough that ProjectAction reads isSettled correctly, the history path
+// actually has to PASS it the real fact. Before this task, GetMatchHistoryUC called
+// ProjectAction without a time axis at all, so a feint stayed hidden from its target forever —
+// this proves the fix reaches the caller, not just the function it calls.
+func TestGetMatchHistoryRevealsFeintOfAClosedTurnToAThirdParty(t *testing.T) {
+	masterUUID, thirdPartyUUID, actorID, matchUUID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+
+	publicMatch := &matchEntity.Match{
+		UUID: matchUUID, MasterUUID: masterUUID, CampaignUUID: uuid.New(), IsPublic: true,
+	}
+	closedTurn := match.HistoryTurn{
+		UUID: uuid.New(), FinishedAt: time.Now(), // closed: FinishedAt is set
+		Action:    actionWithFeint(actorID),
+		Reactions: []action.Action{},
+	}
+	matchMock := &testutil.MockMatchRepo{
+		GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+			return publicMatch, nil
+		},
+		ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+			return nil, nil
+		},
+	}
+	roundMock := &mockHistoryRoundRepo{
+		fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+			return historyWithTurns(closedTurn), nil
+		},
+	}
+	uc := match.NewGetMatchHistoryUC(matchMock, roundMock, &mockParticipationChecker{})
+
+	// thirdPartyUUID is neither the master nor an owner of actorID — exactly the target who
+	// fell for the feint and, before this task, would never have found out.
+	result, err := uc.Get(context.Background(), matchUUID, thirdPartyUUID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got := result.Scenes[0].Rounds[0].Turns[0].Action.Feint; got == nil {
+		t.Fatal("a closed turn's feint stayed hidden from a non-owner reader — it would be hidden forever")
+	}
 }
