@@ -15,6 +15,7 @@ import (
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -120,13 +121,31 @@ type combatFixture struct {
 	writer     *recordingStatusWriter
 	session    *matchsession.MatchSession
 	roundRepo  *mockRoundRepoHandler
+	// bystanderUUID/bystanderID are uuid.Nil unless withBystander was passed. See it there.
+	bystanderUUID uuid.UUID
+	bystanderID   uuid.UUID
+}
+
+// combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
+// builds exactly the two-character table every other test in this file already relies on.
+type combatOpt func(*combatFixture)
+
+// withBystander seats a THIRD player at the table, with a character of their own.
+//
+// A fog gate cannot be proved with two people: the master sees everything and the mover owns
+// the piece, so both are entitled to the news no matter what the gate does. The bystander is
+// the only recipient whose line of sight actually decides, which is why the leak test needs
+// one.
+func withBystander(f *combatFixture) {
+	f.bystanderUUID = uuid.New()
+	f.bystanderID = uuid.New()
 }
 
 // setRollSource replaces the session's dice for one test. The session pointer is the
 // fixture's own, and nothing is in flight when a test calls this.
 func (f *combatFixture) setRollSource(src service.RollSource) { f.session.SetRollSource(src) }
 
-func newCombatFixture(t *testing.T) *combatFixture {
+func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 	t.Helper()
 
 	f := &combatFixture{
@@ -136,6 +155,9 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		attackerID: uuid.New(),
 		victimID:   uuid.New(),
 		writer:     &recordingStatusWriter{},
+	}
+	for _, opt := range opts {
+		opt(f)
 	}
 	// Both characters belong to the same player, which is enough here: authorization is
 	// per player and the test only needs one client to send the attack.
@@ -154,9 +176,15 @@ func newCombatFixture(t *testing.T) *combatFixture {
 		f.attackerID: newCombatSheet(t),
 		f.victimID:   f.victim,
 	}
-	session := matchsession.NewMatchSession(
-		f.matchUUID, sheets, []*match.Participant{attacker, victim},
-	)
+	participants := []*match.Participant{attacker, victim}
+	if f.bystanderUUID != uuid.Nil {
+		sheets[f.bystanderID] = newCombatSheet(t)
+		participants = append(participants, &match.Participant{
+			UUID: uuid.New(), MatchUUID: f.matchUUID,
+			Sheet: csEntity.Summary{UUID: f.bystanderID, PlayerUUID: &f.bystanderUUID},
+		})
+	}
+	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
 	session.SetRollSource(topFaceSource{})
 	f.session = session
 
@@ -1157,7 +1185,7 @@ func TestMatchFullStateOnConnectCarriesTheCombatState(t *testing.T) {
 	// which would also reset r.barsSeq on the next connect — a false positive for the seq
 	// assertion below).
 	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 	masterMsgs := newCollector(master)
 
@@ -1259,7 +1287,7 @@ func TestMatchFullStateOmitsOpenTurnBetweenCloseAndNextOpen(t *testing.T) {
 	// The master stays connected for the whole test, same reasoning as the sibling test: an
 	// empty room closes itself in Run(), which would reset r.barsSeq on the next connect.
 	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 	masterMsgs := newCollector(master)
 
@@ -1307,5 +1335,263 @@ func TestMatchFullStateOmitsOpenTurnBetweenCloseAndNextOpen(t *testing.T) {
 	if got.Resolution != nil {
 		t.Fatal("Resolution present for a round with no open turn — the closed turn's " +
 			"resolution was already broadcast to the table when it settled")
+	}
+}
+
+// ─── o movimento aplicado ao tabuleiro ──────────────────────────────────────
+//
+// Até aqui uma ação de mover acontecia e a peça não saía do lugar: o motor resolvia a
+// velocidade e checava a parede, mas nada aplicava o resultado ao tabuleiro — e o fog nunca
+// recalculava, porque do ponto de vista do servidor nada tinha se movido.
+
+// moveBoardGrid is the board the two move tests share: 30x30 square cells of 64px, so cell
+// (c,r) centres on ((c+0.5)*64, (r+0.5)*64).
+var moveBoardGrid = mapentity.GridShape{
+	Kind: mapentity.GridKindSquare, Cols: 30, Rows: 30, CellSize: 64, SkewRatio: 1,
+}
+
+// moveBoardWall runs the full height of the board at x=640, splitting it in two halves that
+// cannot see each other. It is what makes the bystander genuinely blind to the move instead
+// of merely forgotten by the room.
+var moveBoardWall = mapentity.WallSegment{
+	ID: "divider", P1: [2]float64{640, 0}, P2: [2]float64{640, 1920},
+	WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
+	Sense: mapentity.SenseSight, HP: 100, MaxHP: 100,
+}
+
+const (
+	attackerPieceID  = "piece-attacker"
+	bystanderPieceID = "piece-bystander"
+)
+
+// syncBoard seeds the in-memory board from the master, exactly as the real client does once
+// its REST map has loaded. The room answers it by re-pushing map_full_state to everyone.
+//
+// The attacker starts at (4,4) → (288,288), west of the wall. The bystander, when the fixture
+// has one, sits at (20,4) → (1312,288), east of it: nothing west of x=640 is in their line of
+// sight, which is the whole point of them.
+func (f *combatFixture) syncBoard(t *testing.T, master *websocket.Conn) {
+	t.Helper()
+	col, row := 4, 4
+	pieces := []game.PieceMovedPayload{{
+		PieceID:     attackerPieceID,
+		CharacterID: f.attackerID.String(),
+		Slot:        game.SlotPayload{Kind: "square", Col: &col, Row: &row},
+	}}
+	if f.bystanderUUID != uuid.Nil {
+		bcol, brow := 20, 4
+		pieces = append(pieces, game.PieceMovedPayload{
+			PieceID:     bystanderPieceID,
+			CharacterID: f.bystanderID.String(),
+			Slot:        game.SlotPayload{Kind: "square", Col: &bcol, Row: &brow},
+		})
+	}
+	grid := toGridShapePayload(moveBoardGrid)
+	sendWS(t, master, "map_state_sync", game.MapStateSyncPayload{
+		Pieces: &pieces,
+		Walls:  []game.WallSegmentPayload{toWallSegmentPayload(moveBoardWall)},
+		Grid:   &grid,
+	})
+}
+
+// enqueueDash sends a Dash from the fixture's attacker over the given connection.
+//
+// Dash is one of the only two categories the mapper accepts (the other is Shift), and neither
+// rolls against a DC — which is precisely the branch that displaces the piece on opening.
+func (f *combatFixture) enqueueDash(t *testing.T, conn *websocket.Conn, from, to [3]int) {
+	t.Helper()
+	sendWS(t, conn, "enqueue_action", map[string]any{
+		"actorId": f.attackerID.String(),
+		"move": map[string]any{
+			"category": string(enum.Dash),
+			"from":     from,
+			"position": to,
+		},
+	})
+}
+
+// collectFrom starts a collector after clearing the read deadline readMessage left behind.
+//
+// A collector whose connection still carries that 2s deadline stops reading two seconds after
+// the handshake. In a test that proves a NEGATIVE — "this player was never told" — that would
+// turn "nobody was told" into "we stopped listening", and the test would pass for the wrong
+// reason.
+func collectFrom(conn *websocket.Conn) *collector {
+	_ = conn.SetReadDeadline(time.Time{})
+	return newCollector(conn)
+}
+
+// messageTypes lists what a collector gathered, for a failure message. The raw payloads are
+// json.RawMessage, which %v prints as thousands of byte values — unreadable in a test log.
+func messageTypes(msgs []game.Message) []game.MessageType {
+	out := make([]game.MessageType, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.Type)
+	}
+	return out
+}
+
+// indexOfMessage returns the arrival position of the first message of that type, or -1.
+// The collector appends in arrival order, so comparing indices compares arrival order.
+func indexOfMessage(msgs []game.Message, want game.MessageType) int {
+	for i, m := range msgs {
+		if m.Type == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// Na ABERTURA, não no fechamento: o dano espera o fechamento porque pode ser editado; a
+// posição não pode, porque as reactions seguintes dependem de onde a peça está — e a mesa não
+// pode ver o turno abrir com a peça ainda no slot velho.
+func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
+	f := newCombatFixture(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board back after map_state_sync — the fixture never started")
+	}
+
+	f.enqueueDash(t, player, [3]int{4, 4, 0}, [3]int{6, 4, 0})
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the dash was never enqueued")
+	}
+
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+
+	if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("no piece_moved: the resolved move was never applied to the board")
+	}
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("no turn_opened: the action never opened, so this test measured nothing")
+	}
+
+	msgs := masterMsgs.snapshotMessages()
+	moved := findMessage(t, msgs, game.MsgTypePieceMoved)
+
+	var mp game.PieceMovedPayload
+	if err := json.Unmarshal(moved.Payload, &mp); err != nil {
+		t.Fatalf("unmarshal piece_moved: %v", err)
+	}
+	if mp.PieceID != attackerPieceID {
+		t.Fatalf("piece_moved carried pieceId %q, want %q — the engine moved the wrong piece",
+			mp.PieceID, attackerPieceID)
+	}
+	if mp.Slot.Col == nil || mp.Slot.Row == nil {
+		t.Fatalf("piece_moved carried no square slot: %+v", mp.Slot)
+	}
+	if *mp.Slot.Col != 6 || *mp.Slot.Row != 4 {
+		t.Fatalf("piece landed on (%d,%d), want (6,4)", *mp.Slot.Col, *mp.Slot.Row)
+	}
+	if mp.Slot.Kind != "square" {
+		t.Fatalf("slot kind = %q, want the piece's own kind %q", mp.Slot.Kind, "square")
+	}
+	// The server is the author of this one: no browser predicted it.
+	if moved.SenderID != uuid.Nil {
+		t.Fatalf("piece_moved senderId = %s, want the zero UUID of a server message", moved.SenderID)
+	}
+
+	opened := findMessage(t, msgs, game.MsgTypeTurnOpened)
+
+	// The assertion that actually bites. Both envelopes are stamped by the same room
+	// goroutine at the moment they are BUILT, so comparing them compares the order the server
+	// decided, with no scheduling in between. Arrival order alone cannot do that job here:
+	// turn_opened travels through r.broadcast (a 256-slot buffered channel drained by
+	// Room.Run) while piece_moved goes straight into each client's queue, so a server that
+	// applied the move late would still, most of the time, have its piece_moved overtake the
+	// broadcast on the way out. Verified by injecting exactly that regression.
+	if opened.Timestamp.Before(moved.Timestamp) {
+		t.Fatalf("turn_opened was built at %s, BEFORE piece_moved at %s: the move was applied "+
+			"after the turn opened, so the table saw the turn open with the piece still in "+
+			"the old slot", opened.Timestamp, moved.Timestamp)
+	}
+
+	// And the table's own experience: same client, same queue, piece_moved first.
+	movedAt := indexOfMessage(msgs, game.MsgTypePieceMoved)
+	openedAt := indexOfMessage(msgs, game.MsgTypeTurnOpened)
+	if movedAt > openedAt {
+		t.Fatalf("turn_opened (index %d) arrived before piece_moved (index %d); the table saw "+
+			"the turn open with the piece still in the old slot", openedAt, movedAt)
+	}
+}
+
+// O que de fato prova a projeção: quem não enxerga nem a origem nem o destino não é avisado.
+//
+// Sem esse teste, o anterior prova só que UMA mensagem foi emitida — não que o gate de fog
+// decide quem a recebe.
+func TestE2E_OpeningAMoveActionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	blind := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+	defer blind.Close()   //nolint:errcheck
+	readMessage(t, blind) // room_state
+
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+	blindMsgs := collectFrom(blind)
+
+	f.syncBoard(t, master)
+	if !blindMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the bystander never got a board — they are not really at the table")
+	}
+
+	// The premise of the whole test: the bystander sees their own piece and NOT the mover's.
+	// If the wall ever stops splitting the board, this fails here instead of quietly turning
+	// the assertion below into a tautology.
+	var board game.MapFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, blindMsgs.snapshotMessages(), game.MsgTypeMapFullState).Payload, &board,
+	); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	sees := map[string]bool{}
+	for _, p := range board.Pieces {
+		sees[p.PieceID] = true
+	}
+	if !sees[bystanderPieceID] {
+		t.Fatal("the bystander cannot even see their own piece — their line of sight is empty, " +
+			"so this test would prove nothing about the fog gate")
+	}
+	if sees[attackerPieceID] {
+		t.Fatal("the bystander can see the mover's piece: the wall is not splitting the board " +
+			"and there is nothing blind about this player")
+	}
+
+	f.enqueueDash(t, player, [3]int{4, 4, 0}, [3]int{6, 4, 0})
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the dash was never enqueued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+
+	// The move really happened — otherwise "the bystander heard nothing" is trivially true.
+	if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("no piece_moved reached the master: nothing moved, so the gate was never exercised")
+	}
+	// turn_opened is the barrier, not a sleep: the room dispatches piece_moved before it, on
+	// the same goroutine, so anything the bystander was entitled to is already in their queue
+	// by the time turn_opened lands.
+	if !blindMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the bystander received nothing at all — this connection is dead, not gated")
+	}
+
+	if n := blindMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("a player who sees neither end of the move was told about it %d time(s); "+
+			"they received: %v", n, messageTypes(blindMsgs.snapshotMessages()))
+	}
+	// piece_removed is the other half of the pair: it is for whoever could see the ORIGIN and
+	// no longer can. The bystander could see neither end, so they get that one no more than
+	// the other.
+	if n := blindMsgs.count(game.MsgTypePieceRemoved); n != 0 {
+		t.Fatalf("the bystander was told the piece left a slot they never saw it in (%d time(s))", n)
 	}
 }

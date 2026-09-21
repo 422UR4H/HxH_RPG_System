@@ -554,6 +554,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
+		// BEFORE turn_opened, and no r.mu held: Execute released it above, and
+		// applyAndRelayPieceMove takes it itself. The table must never see the turn open with
+		// the piece still in the old slot, and piece_moved goes straight into each client's
+		// queue while turn_opened only reaches it through r.broadcast — so applying the move
+		// first is what fixes the order.
+		r.applyOpenedMove(result.OpenedTurn)
+
 		act := result.OpenedTurn.GetAction()
 		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  result.OpenedTurn.GetID(),
@@ -662,6 +669,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if result.OpenedTurn == nil {
 			return
 		}
+
+		// BEFORE turn_opened, and no r.mu held: Execute released it above, and
+		// applyAndRelayPieceMove takes it itself. The table must never see the turn open with
+		// the piece still in the old slot, and piece_moved goes straight into each client's
+		// queue while turn_opened only reaches it through r.broadcast — so applying the move
+		// first is what fixes the order.
+		r.applyOpenedMove(result.OpenedTurn)
 
 		act := result.OpenedTurn.GetAction()
 		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
@@ -1837,6 +1851,74 @@ func (r *Room) applyAndRelayPieceMove(payload PieceMovedPayload, origin uuid.UUI
 // handlePieceMoved relays a move a client made in its own browser.
 func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 	r.applyAndRelayPieceMove(payload, client.userUUID)
+}
+
+// applyOpenedMove walks the opened action's Move onto the board.
+//
+// The position cannot wait for the close the way damage does: damage may still be edited
+// while the turn is open, but the reactions that follow depend on where the piece IS.
+//
+// Only movement that does not test displaces here. Today that is the only reachable branch:
+// moveSpeedSkill accepts Dash and Shift and refuses Back, Roll, Slide, Jump and FlatJump, and
+// neither accepted category rolls against a DC. The branch for a move that DOES test (a leap,
+// a squeeze past, a landing on an occupied slot) has no case that can reach this code, so it
+// is not written here — inventing one to fill the table would be guessing at a rule nobody
+// has decided.
+//
+// A REACTION's Move is deliberately NOT applied: an escape carries one too, but a reaction
+// attaches to a turn that is already open and the rule for when the piece leaves its slot in
+// that case is not written down anywhere. Completing it by symmetry would be inventing it.
+//
+// A character with no piece on the board is NOT an error: there is simply nothing to move, so
+// no error message goes out for it.
+//
+// The caller must NOT hold r.mu — applyAndRelayPieceMove takes it.
+func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
+	a := opened.GetAction()
+	if a.Move == nil {
+		return
+	}
+	actorID := a.GetActorID().String()
+
+	r.mu.RLock()
+	var piece PieceMovedPayload
+	found := false
+	for _, p := range r.pieces {
+		if p.CharacterID == actorID {
+			piece = p
+			found = true
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if !found {
+		return
+	}
+
+	// TODO: a character with more than one piece on the board picks an arbitrary one here,
+	// because map iteration order is random. Nothing puts a character on the board twice
+	// today; whoever makes that possible has to decide first which piece an action moves.
+
+	// The piece keeps the slot shape it already had. The board can be hexagonal, and forcing
+	// "square" here would put a hex piece at the world position of a square cell. An empty
+	// Kind is left empty on purpose: slotPayloadToWorld already reads anything that is not
+	// "hex" as square, and rewriting it would change what the client seeded.
+	pos := a.Move.Position
+	switch piece.Slot.Kind {
+	case "hex":
+		qAxis, rAxis := pos[0], pos[1]
+		piece.Slot = SlotPayload{Kind: "hex", Q: &qAxis, R: &rAxis}
+	default:
+		col, row := pos[0], pos[1]
+		piece.Slot = SlotPayload{Kind: piece.Slot.Kind, Col: &col, Row: &row}
+	}
+	// Elevation rides through as opaque passthrough, exactly as it does on the client→server
+	// piece_moved: the game server never reads Z, line of sight is computed in 2D.
+	piece.Z = float64(pos[2])
+
+	// origin is uuid.Nil: the server moved this one and nobody's browser predicted it, so
+	// nobody is skipped and the message goes out as a server message.
+	r.applyAndRelayPieceMove(piece, uuid.Nil)
 }
 
 // handlePieceRemoved removes a piece and relays the removal per-player.
