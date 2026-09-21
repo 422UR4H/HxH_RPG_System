@@ -386,10 +386,17 @@ func TestBuildAction_Reactions(t *testing.T) {
 		_, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedEscape",
 			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
-			Move:  &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+			// Category must be the CORRECT one (Shift) for closedEscape here — otherwise the
+			// move-category check in RequiredComponents' loop fires first (it runs before the
+			// RequiresEvasionSkill check below it) and this test would pass for the wrong
+			// reason, proving nothing about Evasion at all.
+			Move: &MovePayload{Category: string(enum.Shift), Position: [3]int{1, 1, 0}},
 		})
 		if err == nil {
 			t.Fatal("a closedEscape with no Evasion entry must be refused just like closedDodge")
+		}
+		if !strings.Contains(err.Error(), "must carry an evasion skill entry") {
+			t.Fatalf("refused for the wrong reason: %v", err)
 		}
 	})
 
