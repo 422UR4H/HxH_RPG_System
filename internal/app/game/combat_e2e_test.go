@@ -1742,3 +1742,88 @@ func TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight(t *testing.
 			n, messageTypes(masterMsgs.snapshotMessages()))
 	}
 }
+
+// polygonsFromPayload rebuilds the domain polygons from the wire shape, so a test can ask the
+// fog gate's own question — "is this world point inside what the player can see?" — instead of
+// asserting a geometry it merely assumes. Origin is left zero: IsVisible never reads it.
+func polygonsFromPayload(polys [][]game.Point2DPayload) []service.VisibilityPolygon {
+	out := make([]service.VisibilityPolygon, 0, len(polys))
+	for _, poly := range polys {
+		vs := make([]service.Point2D, 0, len(poly))
+		for _, p := range poly {
+			vs = append(vs, service.Point2D{X: p.X, Y: p.Y})
+		}
+		out = append(out, service.VisibilityPolygon{Vertices: vs})
+	}
+	return out
+}
+
+// O dono de uma peça que se move para FORA do próprio campo de visão anterior não pode
+// receber piece_removed dela.
+//
+// relayPieceMove julga cada destinatário por r.visibilityFor, que é leitura pura do cache.
+// Enquanto o cache do dono só era refeito DEPOIS do dispatch, o dono era julgado pelo polígono
+// do slot que acabara de deixar: o destino dava invisível, a origem visível, e o dono recebia
+// piece_removed da própria peça — o map_full_state corretivo só chegando depois. Um front que
+// trate piece_removed como autoritativo e map_full_state como merge perde o token de vez.
+//
+// Quem arrasta é o MESTRE de propósito. Com origin == uuid.Nil (movimento aplicado pelo motor)
+// o dono chega ao gate, mas o destino teria de ficar atrás de uma parede que o enfileiramento
+// já recusaria; com o próprio dono como remetente ele é pulado pelo ramo "o browser dele já
+// desenhou" e nunca chega ao gate. O arrasto do mestre é o caminho que exercita exatamente
+// estas linhas.
+func TestE2E_TheOwnerIsNotToldTheirOwnPieceVanishedWhenItLeavesItsOldSight(t *testing.T) {
+	f := newCombatFixture(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board — the fixture never started")
+	}
+
+	// The premise, asserted rather than assumed: with the piece still at (4,4) the player sees
+	// its current slot and does NOT see (20,4), which sits behind the wall at x=640. Without
+	// this the assertions below would pass for a board on which nothing is ever hidden.
+	var board game.MapFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, playerMsgs.snapshotMessages(), game.MsgTypeMapFullState).Payload, &board,
+	); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	polys := polygonsFromPayload(board.VisiblePolygons)
+	origin := service.Point2D{X: 4.5 * 64, Y: 4.5 * 64}
+	destination := service.Point2D{X: 20.5 * 64, Y: 4.5 * 64}
+	if !service.IsVisible(origin, polys) {
+		t.Fatal("the player cannot see the slot their own piece is standing on — their line " +
+			"of sight is empty and this test would prove nothing")
+	}
+	if service.IsVisible(destination, polys) {
+		t.Fatal("the destination is already visible from the old slot: the wall is not " +
+			"splitting the board, so the move never leaves the old field of view")
+	}
+
+	// The master drags the PLAYER's piece across the wall.
+	sendPieceMoved(t, master, attackerPieceID, f.attackerID.String(), 20, 4)
+
+	// The ordering barrier: relayPieceMove dispatches the relay before it sends the owner this
+	// second map_full_state, on the same goroutine, so anything the owner was going to be sent
+	// about this move is already in their queue by the time it lands.
+	if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
+		t.Fatal("the owner's line of sight was never recomputed: no second map_full_state")
+	}
+
+	if n := playerMsgs.count(game.MsgTypePieceRemoved); n != 0 {
+		t.Fatalf("the owner was told their own piece vanished %d time(s) while it was simply "+
+			"moving with them; they received: %v",
+			n, messageTypes(playerMsgs.snapshotMessages()))
+	}
+	// And the positive half: the owner is not the sender, so the move itself must reach them.
+	if n := playerMsgs.count(game.MsgTypePieceMoved); n == 0 {
+		t.Fatalf("the owner was never relayed the move of their own piece; they received: %v",
+			messageTypes(playerMsgs.snapshotMessages()))
+	}
+}

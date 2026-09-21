@@ -1800,9 +1800,42 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 		removed = NewClientMessage(MsgTypePieceRemoved, origin, PieceRemovedPayload{PieceID: payload.PieceID})
 	}
 
+	// The owner of the moved character is resolved from the CHARACTER, not from the sender: a
+	// move the owner did not send (master drag, engine-applied move) changes their sight just
+	// the same, and resolving it here is what lets the server-authored path reuse this helper.
 	r.mu.RLock()
-	live := r.session != nil
+	sess := r.session
+	live := sess != nil
+	var owner uuid.UUID
+	if sess != nil {
+		owner = sess.GetCharToPlayer()[payload.CharacterID]
+	}
 	r.mu.RUnlock()
+
+	// The owner's line of sight is recomputed BEFORE the dispatch below, not after it.
+	//
+	// The fog gate in the dispatch reads the CACHE (r.visibilityFor), which is pure. Refreshing
+	// the cache afterwards gated the owner on the polygon of the slot they had just LEFT: a
+	// piece stepping out of its own former field of view scored seesOld=true, seesNew=false,
+	// and its own owner was sent piece_removed for it — the corrective map_full_state only
+	// arriving later. A client that treats piece_removed as authoritative and map_full_state as
+	// a merge loses the token for good.
+	//
+	// Skipping the owner in the dispatch would hide the symptom too, but it would make the
+	// map_full_state below their ONLY notice of the move — and that one is not sent when the
+	// recompute fails. Fixing the staleness keeps the gate honest for every recipient instead
+	// of carving out an exception, and still leaves the owner a piece_moved on the error path.
+	var recomputeErr error
+	if live && owner != uuid.Nil {
+		r.mu.Lock()
+		_, recomputeErr = r.session.RecomputeVisibility(owner)
+		r.mu.Unlock()
+		if recomputeErr != nil {
+			// Logged, not swallowed: every other RecomputeVisibility call site in this file
+			// logs, and a failure here means somebody is being gated on a stale polygon.
+			log.Printf("piece move recompute visibility for %s: %v", owner, recomputeErr)
+		}
+	}
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 		if origin != uuid.Nil && pid == origin {
@@ -1835,27 +1868,18 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 		}
 	})
 
-	// The owner of the moved character has a new line of sight, so recompute it and resend
-	// the full state. The owner is resolved from the character, not from the sender: a move
-	// the owner did not send (master drag, engine-applied move) changes their sight just the
-	// same, and resolving it here is what lets the server-authored path reuse this helper.
-	r.mu.RLock()
-	sess := r.session
-	var owner uuid.UUID
-	if sess != nil {
-		owner = sess.GetCharToPlayer()[payload.CharacterID]
-	}
-	ownerClient, online := r.clients[owner]
-	r.mu.RUnlock()
-	if sess == nil || owner == uuid.Nil {
+	// The owner's line of sight already changed, so resend them the full state. This stays
+	// AFTER the dispatch on purpose: the negative assertions in the move tests use the owner's
+	// second map_full_state as the ordering barrier that proves the relay was already queued.
+	if !live || owner == uuid.Nil || recomputeErr != nil {
 		return
 	}
-	r.mu.Lock()
-	_, err := r.session.RecomputeVisibility(owner)
-	r.mu.Unlock()
-	// The cache is refreshed even for an owner who is not connected — they would otherwise
+	// The cache was refreshed even for an owner who is not connected — they would otherwise
 	// reconnect onto a stale polygon. Only the push needs somebody on the other end.
-	if err == nil && online {
+	r.mu.RLock()
+	ownerClient, online := r.clients[owner]
+	r.mu.RUnlock()
+	if online {
 		msg := r.buildMapFullState(owner, r.IsMaster(owner))
 		ownerClient.SendMessage(*msg)
 	}
