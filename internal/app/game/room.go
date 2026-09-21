@@ -1762,14 +1762,27 @@ func computeLobbyMapState(allWalls []mapentity.WallSegment, pieceProj []domainse
 // player's piece, or the engine applying a resolved move).
 //
 // The caller must NOT hold r.mu — this takes it, and so do gridShape, visibilityFor,
-// dispatchPerPlayer and buildMapFullState. The short lock/unlock blocks below are deliberate:
-// nothing that sends to a client runs inside a critical section.
+// dispatchPerPlayer and buildMapFullState. The short lock/unlock blocks here and in
+// relayPieceMove are deliberate: nothing that sends to a client runs inside a critical section.
 func (r *Room) applyAndRelayPieceMove(payload PieceMovedPayload, origin uuid.UUID) {
 	r.mu.Lock()
 	old, hadOld := r.pieces[payload.PieceID]
 	r.pieces[payload.PieceID] = payload
 	r.mu.Unlock()
 
+	r.relayPieceMove(payload, old, hadOld, origin)
+}
+
+// relayPieceMove is everything applyAndRelayPieceMove does once the board is already written:
+// the fog-gated per-player dispatch and the owner's refreshed map_full_state. It is split out
+// so a caller that has to CHOOSE the piece before writing it — applyOpenedMove does — can do
+// the read and the write in one critical section and still reuse the relay.
+//
+// old/hadOld are the piece as it stood BEFORE the write; they are what the piece_removed half
+// of the pair is decided on.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origin uuid.UUID) {
 	grid := r.gridShape()
 	newX, newY := slotPayloadToWorld(payload.Slot, grid)
 	var oldX, oldY float64
@@ -1879,46 +1892,56 @@ func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
 		return
 	}
 	actorID := a.GetActorID().String()
+	pos := a.Move.Position
 
-	r.mu.RLock()
-	var piece PieceMovedPayload
-	found := false
-	for _, p := range r.pieces {
-		if p.CharacterID == actorID {
-			piece = p
-			found = true
-			break
+	// Finding the piece and writing it back happen in ONE write-locked section. Reading it
+	// under RLock, releasing, and then storing the edited copy would leave a window in which
+	// a concurrent piece_removed or map_state_sync lands: the stale copy would resurrect a
+	// piece that was just taken off the board, or overwrite Visible/CharacterID with values
+	// that are no longer true. The race detector can never see this — every single access is
+	// correctly locked; it is the gap between two of them that is wrong.
+	r.mu.Lock()
+	// TODO: a character with more than one piece on the board is not a decided situation.
+	// Nothing creates it today; whoever makes it possible has to say which piece an action
+	// moves. Until then the lowest piece ID wins — an arbitrary choice, but a STABLE one, so
+	// the day it happens it reproduces instead of flickering with map iteration order.
+	pieceID := ""
+	for id, p := range r.pieces {
+		if p.CharacterID == actorID && (pieceID == "" || id < pieceID) {
+			pieceID = id
 		}
 	}
-	r.mu.RUnlock()
-	if !found {
+	if pieceID == "" {
+		r.mu.Unlock()
 		return
 	}
-
-	// TODO: a character with more than one piece on the board picks an arbitrary one here,
-	// because map iteration order is random. Nothing puts a character on the board twice
-	// today; whoever makes that possible has to decide first which piece an action moves.
+	old := r.pieces[pieceID]
+	moved := old
 
 	// The piece keeps the slot shape it already had. The board can be hexagonal, and forcing
 	// "square" here would put a hex piece at the world position of a square cell. An empty
 	// Kind is left empty on purpose: slotPayloadToWorld already reads anything that is not
 	// "hex" as square, and rewriting it would change what the client seeded.
-	pos := a.Move.Position
-	switch piece.Slot.Kind {
+	switch old.Slot.Kind {
 	case "hex":
 		qAxis, rAxis := pos[0], pos[1]
-		piece.Slot = SlotPayload{Kind: "hex", Q: &qAxis, R: &rAxis}
+		moved.Slot = SlotPayload{Kind: "hex", Q: &qAxis, R: &rAxis}
 	default:
 		col, row := pos[0], pos[1]
-		piece.Slot = SlotPayload{Kind: piece.Slot.Kind, Col: &col, Row: &row}
+		moved.Slot = SlotPayload{Kind: old.Slot.Kind, Col: &col, Row: &row}
 	}
-	// Elevation rides through as opaque passthrough, exactly as it does on the client→server
-	// piece_moved: the game server never reads Z, line of sight is computed in 2D.
-	piece.Z = float64(pos[2])
+	// Z is deliberately NOT touched. It is the piece's virtual height in METRES, while
+	// Move.Position[2] is a grid index — nobody has checked that the two are the same number,
+	// and the front draws whatever position arrives without recomputing it. Writing pos[2]
+	// here would drop an elevated piece to the ground on any horizontal step whose z is 0.
+	// Preserving it is always right for a horizontal move; the vertical case belongs to
+	// whoever writes the contract.
+	r.pieces[pieceID] = moved
+	r.mu.Unlock()
 
 	// origin is uuid.Nil: the server moved this one and nobody's browser predicted it, so
 	// nobody is skipped and the message goes out as a server message.
-	r.applyAndRelayPieceMove(piece, uuid.Nil)
+	r.relayPieceMove(moved, old, true, uuid.Nil)
 }
 
 // handlePieceRemoved removes a piece and relays the removal per-player.

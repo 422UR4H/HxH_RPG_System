@@ -1362,6 +1362,9 @@ var moveBoardWall = mapentity.WallSegment{
 const (
 	attackerPieceID  = "piece-attacker"
 	bystanderPieceID = "piece-bystander"
+	// attackerElevation is the mover's virtual height in metres, non-zero so that a
+	// horizontal move that flattened it would be caught instead of looking like a no-op.
+	attackerElevation = 2.5
 )
 
 // syncBoard seeds the in-memory board from the master, exactly as the real client does once
@@ -1377,6 +1380,9 @@ func (f *combatFixture) syncBoard(t *testing.T, master *websocket.Conn) {
 		PieceID:     attackerPieceID,
 		CharacterID: f.attackerID.String(),
 		Slot:        game.SlotPayload{Kind: "square", Col: &col, Row: &row},
+		// The mover starts ELEVATED on purpose. Z is a virtual height in metres and
+		// Move.Position[2] is a grid index; a horizontal step must not flatten the piece.
+		Z: attackerElevation,
 	}}
 	if f.bystanderUUID != uuid.Nil {
 		bcol, brow := 20, 4
@@ -1493,6 +1499,13 @@ func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 	if mp.Slot.Kind != "square" {
 		t.Fatalf("slot kind = %q, want the piece's own kind %q", mp.Slot.Kind, "square")
 	}
+	// A horizontal step must not drop an elevated piece to the ground. The front draws the
+	// position that arrives without recomputing it, so writing Move.Position[2] into Z here
+	// would visibly flatten the token on screen.
+	if mp.Z != attackerElevation {
+		t.Fatalf("piece_moved carried z=%v, want the elevation it already had (%v): a "+
+			"sideways move must not change the piece's height", mp.Z, attackerElevation)
+	}
 	// The server is the author of this one: no browser predicted it.
 	if moved.SenderID != uuid.Nil {
 		t.Fatalf("piece_moved senderId = %s, want the zero UUID of a server message", moved.SenderID)
@@ -1500,9 +1513,11 @@ func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 
 	opened := findMessage(t, msgs, game.MsgTypeTurnOpened)
 
-	// The assertion that actually bites. Both envelopes are stamped by the same room
-	// goroutine at the moment they are BUILT, so comparing them compares the order the server
-	// decided, with no scheduling in between. Arrival order alone cannot do that job here:
+	// The assertion that actually bites. Both envelopes are stamped when they are BUILT, and
+	// both are built by the SAME goroutine — the master connection's ReadPump, which runs
+	// handleClientMessage's open_next_action arm from end to end. Comparing the stamps
+	// therefore compares the order the server decided, with no scheduling in between.
+	// Arrival order alone cannot do that job here:
 	// turn_opened travels through r.broadcast (a 256-slot buffered channel drained by
 	// Room.Run) while piece_moved goes straight into each client's queue, so a server that
 	// applied the move late would still, most of the time, have its piece_moved overtake the
@@ -1593,5 +1608,137 @@ func TestE2E_OpeningAMoveActionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 	// the other.
 	if n := blindMsgs.count(game.MsgTypePieceRemoved); n != 0 {
 		t.Fatalf("the bystander was told the piece left a slot they never saw it in (%d time(s))", n)
+	}
+}
+
+// ─── o caminho cliente→servidor do mesmo helper ─────────────────────────────
+//
+// Os dois testes acima rodam com origin == uuid.Nil e portanto NUNCA entram nas linhas que a
+// extração mudou: o "pule o remetente" e o envelope NewClientMessage. Quem entra nelas é o
+// piece_moved que um cliente manda — e `case MsgTypePieceMoved` não tem gate de mestre nem de
+// fase, então esse caminho está vivo no meio do combate, não só no lobby.
+
+// awaitAtLeast waits until at least n messages of that type have arrived.
+//
+// The move tests need counts, not presence: every client already holds one map_full_state from
+// the board sync, so "the owner was refreshed" is the SECOND one, not the first.
+func awaitAtLeast(c *collector, want game.MessageType, n int, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if c.count(want) >= n {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+// sendPieceMoved drags a piece from a client, the way a browser does when someone moves a
+// token with the mouse.
+func sendPieceMoved(t *testing.T, conn *websocket.Conn, pieceID, characterID string, col, row int) {
+	t.Helper()
+	sendWS(t, conn, string(game.MsgTypePieceMoved), map[string]any{
+		"pieceId":     pieceID,
+		"characterId": characterID,
+		"slot":        map[string]any{"kind": "square", "col": col, "row": row},
+	})
+}
+
+// O jogador arrasta a própria peça: o mestre é avisado, o remetente não recebe eco (o browser
+// dele já desenhou), o envelope leva o UUID dele, e a visão dele é recalculada.
+func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.T) {
+	f := newCombatFixture(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board — the fixture never started")
+	}
+
+	sendPieceMoved(t, player, attackerPieceID, f.attackerID.String(), 6, 4)
+
+	if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("the master was never told the player moved a piece")
+	}
+	moved := findMessage(t, masterMsgs.snapshotMessages(), game.MsgTypePieceMoved)
+	if moved.SenderID != f.playerUUID {
+		t.Fatalf("piece_moved senderId = %s, want the mover's own UUID %s — a relayed client "+
+			"move is not a server message", moved.SenderID, f.playerUUID)
+	}
+
+	// The owner's line of sight moved with the piece, so a second map_full_state must reach
+	// them. It is also the ordering barrier for the assertion below: the room dispatches the
+	// relay BEFORE it sends this, on the same goroutine, so any echo would already be queued.
+	if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
+		t.Fatal("the mover's line of sight was never recomputed: no second map_full_state")
+	}
+	if n := playerMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the mover was echoed their own move back %d time(s); they received: %v",
+			n, messageTypes(playerMsgs.snapshotMessages()))
+	}
+}
+
+// O mestre arrasta a peça de um JOGADOR. Esta é a única prova possível do delta declarado na
+// extração: o map_full_state é decidido pelo dono do personagem, não pelo remetente. Antes de
+// d0b4191 o jogador não recebia nada e ficava com o fog velho.
+func TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight(t *testing.T) {
+	f := newCombatFixture(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board — the fixture never started")
+	}
+
+	// The master drags a piece that belongs to the PLAYER.
+	sendPieceMoved(t, master, attackerPieceID, f.attackerID.String(), 6, 4)
+
+	if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
+		t.Fatal("the master moved the player's piece and the player's line of sight was never " +
+			"recomputed — the owner is being resolved from the sender again")
+	}
+
+	var board game.MapFullStatePayload
+	msgs := playerMsgs.snapshotMessages()
+	var last *game.Message
+	for i := range msgs {
+		if msgs[i].Type == game.MsgTypeMapFullState {
+			last = &msgs[i]
+		}
+	}
+	if err := json.Unmarshal(last.Payload, &board); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	var seen *game.PieceMovedPayload
+	for i := range board.Pieces {
+		if board.Pieces[i].PieceID == attackerPieceID {
+			seen = &board.Pieces[i]
+		}
+	}
+	if seen == nil {
+		t.Fatal("the refreshed board does not carry the player's own piece")
+	}
+	if seen.Slot.Col == nil || *seen.Slot.Col != 6 || seen.Slot.Row == nil || *seen.Slot.Row != 4 {
+		t.Fatalf("the refreshed board still shows the piece at %+v, want (6,4)", seen.Slot)
+	}
+
+	// The player is not the sender, so they are relayed the move as well.
+	if !playerMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("the player was never relayed the move the master made")
+	}
+	// The master IS the sender, so they are not echoed their own drag.
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the master was echoed their own drag back %d time(s); they received: %v",
+			n, messageTypes(masterMsgs.snapshotMessages()))
 	}
 }
