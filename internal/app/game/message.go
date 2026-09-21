@@ -643,10 +643,12 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 // Projected per recipient, by the same two axes as everything else: Resolution is the open
 // turn's, therefore master-only by the TIME axis, and PendingReactions travel inside it.
 type MatchFullStatePayload struct {
-	SceneID               uuid.UUID `json:"sceneId"`
-	SceneCategory         string    `json:"sceneCategory"`
-	SceneBriefDescription string    `json:"sceneBriefDescription"`
-	RoundMode             string    `json:"roundMode"`
+	// Scene is the WHOLE scene_changed payload, for the same reason Bars is the whole
+	// bars_updated one: three values under two different sets of names, in one protocol, would
+	// be a second shape to keep in sync with the first. Being a pointer also makes "no active
+	// scene" expressible, which three flat zero-valued fields could not say.
+	Scene     *SceneChangedPayload `json:"scene,omitempty"`
+	RoundMode string               `json:"roundMode"`
 	// Bars is the WHOLE bars_updated payload, reused rather than re-shaped: a second bar
 	// format would be a second thing to keep in sync with the first.
 	//

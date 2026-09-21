@@ -469,9 +469,15 @@ ambos para a mesa.
 ```json
 {
   "type": "change_scene",
-  "payload": { "category": "Battle", "briefInitialDescription": "Arena" }
+  "payload": { "category": "battle", "briefInitialDescription": "Arena" }
 }
 ```
+
+⚠️ **`category` é minúscula.** `enum.SceneCategory` vale `"battle"` ou `"roleplay"` — e o
+servidor **não valida**: ele faz `enum.SceneCategory(payload.Category)` e guarda a string como
+veio. Mandar `"Battle"` não dá erro; cria uma cena cuja categoria não é igual a nenhum dos dois
+valores, e ela sai assim em `scene_changed` e em `match_full_state`. (`roundMode`, ao
+contrário, é capitalizado: `"Free"`/`"Race"`.)
 
 Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
 
@@ -864,7 +870,7 @@ mundo precisa saber se as barras estão correndo.
   "type": "scene_changed",
   "payload": {
     "sceneId": "55555555-5555-4555-8555-555555555555",
-    "category": "Battle",
+    "category": "battle",
     "briefInitialDescription": "Arena"
   }
 }
@@ -904,9 +910,11 @@ mensagem fecha.
 {
   "type": "match_full_state",
   "payload": {
-    "sceneId": "66666666-6666-4666-8666-666666666666",
-    "sceneCategory": "Battle",
-    "sceneBriefDescription": "Arena",
+    "scene": {
+      "sceneId": "66666666-6666-4666-8666-666666666666",
+      "category": "battle",
+      "briefInitialDescription": "Arena"
+    },
     "roundMode": "Race",
     "bars": {
       "seq": 7,
@@ -940,6 +948,8 @@ mensagem fecha.
 
 | Campo | Notas |
 |---|---|
+| `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. Ausente (`omitempty`) quando a partida não tem cena ativa; leia `scene == null` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e não é validada — ver `change_scene`. |
+| `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |

@@ -1667,12 +1667,16 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 	payload.Bars.Seq = r.barsSeq
 
 	if scene := session.GetActiveScene(); scene != nil {
-		payload.SceneID = scene.GetID()
-		payload.SceneCategory = string(scene.GetCategory())
-		// BriefInitialDescription is a public field on scene.Scene, not a getter — there is no
-		// GetBriefInitialDescription method (the brief for this task assumed one; checked
-		// against the real type before writing this).
-		payload.SceneBriefDescription = scene.BriefInitialDescription
+		// The same struct scene_changed sends, not a second flattened copy of it — see
+		// MatchFullStatePayload.Scene's own doc comment.
+		payload.Scene = &SceneChangedPayload{
+			SceneID:  scene.GetID(),
+			Category: string(scene.GetCategory()),
+			// BriefInitialDescription is a public field on scene.Scene, not a getter — there is
+			// no GetBriefInitialDescription method (the brief for this task assumed one;
+			// checked against the real type before writing this).
+			BriefInitialDescription: scene.BriefInitialDescription,
+		}
 	}
 	if round := session.GetActiveRound(); round != nil {
 		payload.RoundMode = string(round.GetMode())

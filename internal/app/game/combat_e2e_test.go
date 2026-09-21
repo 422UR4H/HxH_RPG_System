@@ -209,7 +209,9 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		appmatch.NewAttachReactionUC(),
 		appmatch.NewOpenReactionUC(),
 		appmatch.NewCloseTurnUC(f.writer),
-		&mockChangeSceneUCHandler{},
+		// The real UC: the scene assertions in match_full_state need the session's ACTIVE scene
+		// to actually change, and the mock returns a fresh scene without touching the session.
+		appmatch.NewChangeSceneUC(),
 		roundRepo,
 		&mockEnqueueMasterActionUCHandler{},
 		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
@@ -1825,5 +1827,76 @@ func TestE2E_TheOwnerIsNotToldTheirOwnPieceVanishedWhenItLeavesItsOldSight(t *te
 	if n := playerMsgs.count(game.MsgTypePieceMoved); n == 0 {
 		t.Fatalf("the owner was never relayed the move of their own piece; they received: %v",
 			messageTypes(playerMsgs.snapshotMessages()))
+	}
+}
+
+// Os campos de cena do match_full_state eram a única parte do payload sem teste — e vinham com
+// um SEGUNDO conjunto de nomes (sceneId/sceneCategory/sceneBriefDescription) para os mesmos
+// três valores que scene_changed já publicava como sceneId/category/briefInitialDescription.
+// Agora é a mesma struct, e este teste é o que prova que as duas mensagens contam a mesma
+// história — campo a campo, não só "tem alguma cena".
+func TestMatchFullStateCarriesTheSceneInTheSameShapeAsSceneChanged(t *testing.T) {
+	f := newCombatFixture(t)
+
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master.Close()   //nolint:errcheck
+	readMessage(t, master) // room_state
+	masterMsgs := collectFrom(master)
+
+	// A scene that is NOT the session's default (Roleplay with an empty brief): asserting
+	// against the default would pass just as well on a payload that carried nothing at all.
+	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
+		"category":                string(enum.Battle),
+		"briefInitialDescription": "Arena",
+	})
+	if !masterMsgs.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("the scene never changed — there is no non-default scene to assert on")
+	}
+	var changed game.SceneChangedPayload
+	if err := json.Unmarshal(
+		findMessage(t, masterMsgs.snapshotMessages(), game.MsgTypeSceneChanged).Payload, &changed,
+	); err != nil {
+		t.Fatalf("unmarshal scene_changed: %v", err)
+	}
+
+	// A player connecting now is exactly the case the message exists for: they were not at the
+	// table when the scene changed and no scene_changed will ever be replayed for them.
+	late := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	defer late.Close()   //nolint:errcheck
+	readMessage(t, late) // room_state
+	lateMsgs := collectFrom(late)
+	if !lateMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the late player never received match_full_state")
+	}
+
+	var got game.MatchFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, lateMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &got,
+	); err != nil {
+		t.Fatalf("unmarshal match_full_state: %v", err)
+	}
+	if got.Scene == nil {
+		t.Fatal("the late player learned nothing about the scene they just walked into")
+	}
+	if got.Scene.SceneID != changed.SceneID {
+		t.Fatalf("match_full_state names scene %s, scene_changed announced %s",
+			got.Scene.SceneID, changed.SceneID)
+	}
+	if got.Scene.Category != changed.Category {
+		t.Fatalf("category = %q, scene_changed said %q", got.Scene.Category, changed.Category)
+	}
+	if got.Scene.BriefInitialDescription != changed.BriefInitialDescription {
+		t.Fatalf("briefInitialDescription = %q, scene_changed said %q",
+			got.Scene.BriefInitialDescription, changed.BriefInitialDescription)
+	}
+	// The literal values too: matching scene_changed would be satisfied by two payloads that
+	// are both wrong in the same way.
+	if got.Scene.Category != string(enum.Battle) || got.Scene.BriefInitialDescription != "Arena" {
+		t.Fatalf("the scene that reached the late player is %+v, want Battle/\"Arena\"", *got.Scene)
+	}
+	// roundMode travels in the same snapshot and had no assertion of its own here: changing
+	// the scene opens a fresh round, which is Free.
+	if got.RoundMode != string(enum.Free) {
+		t.Fatalf("roundMode = %q, want the new round's regime %q", got.RoundMode, string(enum.Free))
 	}
 }
