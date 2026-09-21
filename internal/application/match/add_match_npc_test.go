@@ -3,6 +3,7 @@ package match_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -307,7 +308,12 @@ func TestAddMatchNPC(t *testing.T) {
 			AddNPCParticipantFn: func(
 				ctx context.Context, mUUID, sUUID uuid.UUID, joinedAt time.Time,
 			) (*matchEntity.Participant, error) {
-				return nil, matchPg.ErrSheetNotEligibleNPC
+				// Double-wrapped, mirroring the real gateway
+				// (internal/gateway/pg/match/add_npc_participant.go:66:
+				// fmt.Errorf("%w: %w", ErrSheetNotEligibleNPC, pgx.ErrNoRows)).
+				// A bare sentinel here would let a regression from errors.Is
+				// to == in production pass this test unnoticed.
+				return nil, fmt.Errorf("%w: %w", matchPg.ErrSheetNotEligibleNPC, errors.New("no rows"))
 			},
 		}
 
