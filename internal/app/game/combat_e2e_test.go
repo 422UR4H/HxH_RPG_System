@@ -2057,9 +2057,17 @@ func TestMatchFullStateCarriesTheSceneInTheSameShapeAsSceneChanged(t *testing.T)
 // A recognized category (lowercase, matching the enum) still changes the scene.
 func TestE2E_ChangeSceneAcceptsAKnownCategory(t *testing.T) {
 	f := newCombatFixture(t)
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
+	// Master only — these three tests never touch a player connection. f.connect(t) also
+	// registers a player, and that registration (Room.Run() building the player's own
+	// match_full_state) can still be in flight on the room's single goroutine when this
+	// master message lands: change_scene's handler releases r.mu before calling the use
+	// case that mutates the session, so a concurrent register-time read of session state
+	// races the write under -race. Connecting only the master sidesteps the window instead
+	// of relying on timing — the same shape TestMatchFullStateCarriesTheSceneInTheSameShapeAsSceneChanged
+	// already uses.
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master.Close()   //nolint:errcheck
+	readMessage(t, master) // room_state
 	masterMsgs := collectFrom(master)
 
 	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
@@ -2085,9 +2093,18 @@ func TestE2E_ChangeSceneAcceptsAKnownCategory(t *testing.T) {
 // a category matching neither valid value.
 func TestE2E_ChangeSceneRejectsAnUnknownCategory(t *testing.T) {
 	f := newCombatFixture(t)
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
+	// Master only — see TestE2E_ChangeSceneAcceptsAKnownCategory's comment: a player
+	// connection here is unused and its in-flight registration can race change_scene's
+	// session mutation under -race.
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master.Close()   //nolint:errcheck
+	readMessage(t, master) // room_state
+	// ONE reader on this connection: awaitErrorCode does its own conn.ReadMessage() loop, and
+	// gorilla/websocket allows only one concurrent reader per connection. Pairing it with a
+	// collector here (as the sibling "known category" test does) raced two goroutines reading
+	// the same conn — go test -race catches it. Everything below reads through the collector
+	// instead, the same pattern the neighboring tests that only use awaitErrorCode follow (no
+	// collector attached to the connection they read raw).
 	masterMsgs := collectFrom(master)
 
 	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
@@ -2095,8 +2112,17 @@ func TestE2E_ChangeSceneRejectsAnUnknownCategory(t *testing.T) {
 		"briefInitialDescription": "Arena",
 	})
 
-	if code := awaitErrorCode(t, master, 2*time.Second); code != "invalid_action" {
-		t.Fatalf("error code = %q, want invalid_action", code)
+	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("no error arrived for the unknown category")
+	}
+	var errPayload game.ErrorPayload
+	if err := json.Unmarshal(
+		findMessage(t, masterMsgs.snapshotMessages(), game.MsgTypeError).Payload, &errPayload,
+	); err != nil {
+		t.Fatalf("unmarshal error payload: %v", err)
+	}
+	if errPayload.Code != "invalid_action" {
+		t.Fatalf("error code = %q, want invalid_action", errPayload.Code)
 	}
 	// The refusal must be for the category, not a side effect: no scene_changed went out for
 	// the bad payload, and the session's active scene must still be whatever it was seeded
@@ -2115,9 +2141,12 @@ func TestE2E_ChangeSceneRejectsAnUnknownCategory(t *testing.T) {
 // the code, to SceneCategoryFrom's own wording.
 func TestE2E_ChangeSceneRejectsAnUnknownCategoryForTheRightReason(t *testing.T) {
 	f := newCombatFixture(t)
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
+	// Master only — see TestE2E_ChangeSceneAcceptsAKnownCategory's comment: a player
+	// connection here is unused and its in-flight registration can race change_scene's
+	// session mutation under -race.
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master.Close()   //nolint:errcheck
+	readMessage(t, master) // room_state
 
 	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
 		"category":                "Battle",
