@@ -180,7 +180,7 @@ porque uma ação plausível carregue todas.
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
-| `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **aceito e validado** (precisa nomear uma perícia real de `enum.SkillName`) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
+| `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
@@ -904,7 +904,7 @@ mensagem fecha.
 {
   "type": "match_full_state",
   "payload": {
-    "sceneId": "55555555-5555-4555-8555-555555555555",
+    "sceneId": "66666666-6666-4666-8666-666666666666",
     "sceneCategory": "Battle",
     "sceneBriefDescription": "Arena",
     "roundMode": "Race",
@@ -942,7 +942,7 @@ mensagem fecha.
 |---|---|
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
-| `openTurn` | Ausente (`omitempty`) quando o mestre está em "fechado e nada aberto" — estado em que ele pode legitimamente estar. Vai para **todo mundo** que conecta, jogador ou mestre — quem é o ator da vez não é segredo. |
+| `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
@@ -969,14 +969,15 @@ mestre depois de aberto, mas as reações que seguem dependem de onde a peça ES
 esperar. O caminho reaproveita o mesmo par `piece_moved`/`piece_removed` que o lobby já usa
 — não um tipo novo.
 
-**O gate de fog é o mesmo par de sempre:**
+**O gate de fog é o mesmo par de sempre — e tem um corte ANTES dele:**
 
 | Quem | Recebe |
 |---|---|
-| Enxerga o **destino** | `piece_moved`, com a posição nova |
-| Só enxergava a **origem** (a peça "saiu de vista") | `piece_removed` |
-| Não enxergava nem origem nem destino | nada |
-| Mestre | sempre `piece_moved` — sem gate |
+| Mestre | sempre `piece_moved` — sem gate, mesmo com `visible: false` |
+| Jogador, peça marcada `visible: false` (oculta) | **nada.** `relayPieceMove` corta antes de sequer olhar linha de visão — nenhum jogador recebe `piece_moved`/`piece_removed` para uma peça oculta, mesmo quem enxergaria o destino a olho nu. |
+| Jogador, peça visível, enxerga o **destino** | `piece_moved`, com a posição nova |
+| Jogador, peça visível, só enxergava a **origem** (a peça "saiu de vista") | `piece_removed` |
+| Jogador, peça visível, não enxergava nem origem nem destino | nada |
 
 `senderId` vem **zero** (`00000000-…`) quando o autor é o servidor — nenhum navegador previu
 esse movimento, então ninguém é pulado no dispatch. É assim que o cliente distingue "o
@@ -1197,7 +1198,7 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
-| **Nenhuma mensagem servidor→cliente projeta a declaração de uma action** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que foi declarado pelo histórico REST, não pelo WS. É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo. |
+| **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **NPC não age** | Ver §2. |
 | **Uma reação de escape não move a peça** | Só o `Move` da própria ação do turno é aplicado ao tabuleiro (`applyOpenedMove`, ver `piece_moved` acima). `escape`/`escapeGuard`/`closedEscape` também carregam `Move`, mas anexam a um turno já aberto, e a regra de quando a peça sai do lugar nesse caso não está escrita em lugar nenhum. Decisão consciente deste PR, não esquecimento. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. |

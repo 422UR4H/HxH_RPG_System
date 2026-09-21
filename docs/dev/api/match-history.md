@@ -54,9 +54,9 @@ renderiza os cards de ação dentro do escopo de cada cena.
                 ],
                 "speed": { "bar": 1, "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } },
                 "attack": {
-                  "weapon": "fist",
+                  "weapon": "Fist",
                   "hit": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 20 },
-                  "damage": { "skillName": "Strength", "skillValue": 10, "attempts": { "primary": [4] }, "result": 10 },
+                  "damage": { "skillName": "Push", "skillValue": 10, "attempts": { "primary": [4] }, "result": 10 },
                   "relativeVelocity": 0
                 }
               },
@@ -134,16 +134,20 @@ Notas sobre os campos de `action`/`reactions`:
   um objeto vazio (o domínio ainda não tem campos em `action.Trigger`).
 - `feint` segue uma regra **temporal**, não de classe: `ProjectAction`
   (`internal/domain/match/service/projection.go`) só o esconde de quem não é dono/mestre
-  enquanto o turno ainda está **aberto** (`isSettled: false`) — quem caiu na finta descobre
-  dentro da resolução do MESMO turno, porque o sucesso dele foi contra um ataque falso e o de
+  enquanto **aquele turno** ainda está **aberto** (`isSettled: false`, calculado por turno a
+  partir de `FinishedAt` — não é uma constante global) — quem caiu na finta descobre dentro
+  da resolução do MESMO turno, porque o sucesso dele foi contra um ataque falso e o de
   verdade vem em seguida; esconder depois do fechamento esconderia para sempre, que não é a
-  regra. Como este endpoint só devolve turnos **fechados** (`FindMatchHistory` lê da tabela
-  que `PersistTurnClose` grava, o único caminho de escrita), essa condição nunca se aplica
-  aqui: **`feint`, quando presente na action, chega a todo viewer deste endpoint**, não só a
-  dono/mestre. Quando presente, `feint` é o `RollCheck` da finta. Ver
+  regra. **Na prática de hoje**, todo turno que chega a este endpoint já está fechado
+  (`FindMatchHistory` lê da tabela que `PersistTurnClose` grava, o único caminho de escrita
+  atual) — então `feint`, quando presente na action, chega a todo viewer, não só a
+  dono/mestre. Mas isso é uma consequência de `isSettled` ser sempre `true` aqui hoje, não
+  uma regra separada codificada no endpoint: o dia em que um turno aberto atravessar este
+  caminho (não acontece agora), a finta dele voltaria a ficar restrita a dono/mestre, turno a
+  turno. Quando presente, `feint` é o `RollCheck` da finta. Ver
   [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra é descrita pelo lado do
   WebSocket (que nunca expõe `feint` — não há mensagem servidor→cliente que projete a
-  declaração de uma action).
+  declaração de uma action de jogador).
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
 - `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
   que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
@@ -214,10 +218,10 @@ Isso significa, na prática:
   **menos** a deny-list. Não existe uma "verdade única" que o front possa cachear e
   reutilizar entre usuários.
 - **O alvo de um ataque não é uma classe privilegiada.** Uma finta contra você não avisa
-  que era finta **enquanto o turno ainda está aberto**. A regra que esconde `feint` de quem
-  não é dono/mestre é **temporal** (`isSettled`), não de classe — e como este endpoint só
-  devolve turnos já fechados, `feint`, quando presente, chega **a todo viewer** deste
-  endpoint. Ver a nota sobre `feint` mais acima.
+  que era finta **enquanto aquele turno ainda está aberto**. A regra que esconde `feint` de
+  quem não é dono/mestre é **temporal** (`isSettled`, por turno), não de classe — e como hoje
+  todo turno que chega a este endpoint já está fechado, `feint`, quando presente, chega **a
+  todo viewer** na prática atual. Ver a nota sobre `feint` mais acima.
 - **A esquiva fechada chega a terceiros indistinguível de uma esquiva comum.**
   `reactionKind: "closedDodge"` vira `"dodge"` (e `"closedEscape"` vira `"escape"`) para
   quem não é dono nem mestre — o rótulo é o vazamento; ver a nota em
