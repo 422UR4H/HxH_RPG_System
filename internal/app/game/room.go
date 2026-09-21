@@ -1729,8 +1729,28 @@ func computeLobbyMapState(allWalls []mapentity.WallSegment, pieceProj []domainse
 	return walls, visIDs
 }
 
-// handlePieceMoved updates the board and relays the move per-player with fog filtering.
-func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+// applyAndRelayPieceMove puts a piece on the board and tells everyone entitled to know.
+//
+// The fog gate is the point, and it is a PAIR: whoever can see the destination gets
+// piece_moved, whoever could only see the origin gets piece_removed (the piece walked out of
+// sight), whoever sees neither gets nothing. That is why the server-applied move reuses this
+// instead of growing a second path — and why it stays on piece_moved rather than a new type,
+// which would have to duplicate the pair to keep the "walked out of sight" case.
+//
+// origin is the player whose own browser already applied this move locally and must therefore
+// not be echoed back to. It is uuid.Nil when the SERVER is the mover — nobody predicted that
+// one, so nobody is skipped and the envelope goes out as a server message (senderId zero),
+// which is how a client tells the two apart if it ever needs to.
+//
+// The owner is not a parameter: it comes from payload.CharacterID through GetCharToPlayer().
+// Whoever owns the moved character gets a fresh map_full_state, because their line of sight
+// just changed — and that holds even when the mover is someone else (the master dragging a
+// player's piece, or the engine applying a resolved move).
+//
+// The caller must NOT hold r.mu — this takes it, and so do gridShape, visibilityFor,
+// dispatchPerPlayer and buildMapFullState. The short lock/unlock blocks below are deliberate:
+// nothing that sends to a client runs inside a critical section.
+func (r *Room) applyAndRelayPieceMove(payload PieceMovedPayload, origin uuid.UUID) {
 	r.mu.Lock()
 	old, hadOld := r.pieces[payload.PieceID]
 	r.pieces[payload.PieceID] = payload
@@ -1744,15 +1764,21 @@ func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 	}
 	hidden := payload.Visible != nil && !*payload.Visible
 
-	moved := NewClientMessage(MsgTypePieceMoved, client.userUUID, payload)
-	removed := NewClientMessage(MsgTypePieceRemoved, client.userUUID, PieceRemovedPayload{PieceID: payload.PieceID})
+	// A server-authored move carries no sender. NewClientMessage with uuid.Nil would encode
+	// the same bytes, but saying NewServerMessage keeps the intent readable at the call site.
+	moved := NewServerMessage(MsgTypePieceMoved, payload)
+	removed := NewServerMessage(MsgTypePieceRemoved, PieceRemovedPayload{PieceID: payload.PieceID})
+	if origin != uuid.Nil {
+		moved = NewClientMessage(MsgTypePieceMoved, origin, payload)
+		removed = NewClientMessage(MsgTypePieceRemoved, origin, PieceRemovedPayload{PieceID: payload.PieceID})
+	}
 
 	r.mu.RLock()
 	live := r.session != nil
 	r.mu.RUnlock()
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-		if pid == client.userUUID {
+		if origin != uuid.Nil && pid == origin {
 			return nil // mover already applied the move locally
 		}
 		if isMaster {
@@ -1782,23 +1808,35 @@ func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 		}
 	})
 
-	// When the mover moves their OWN piece, recompute their LOS and resend the full state.
+	// The owner of the moved character has a new line of sight, so recompute it and resend
+	// the full state. The owner is resolved from the character, not from the sender: a move
+	// the owner did not send (master drag, engine-applied move) changes their sight just the
+	// same, and resolving it here is what lets the server-authored path reuse this helper.
 	r.mu.RLock()
 	sess := r.session
-	var ownsPiece bool
+	var owner uuid.UUID
 	if sess != nil {
-		ownsPiece = sess.GetCharToPlayer()[payload.CharacterID] == client.userUUID
+		owner = sess.GetCharToPlayer()[payload.CharacterID]
 	}
+	ownerClient, online := r.clients[owner]
 	r.mu.RUnlock()
-	if sess != nil && ownsPiece {
-		r.mu.Lock()
-		_, err := r.session.RecomputeVisibility(client.userUUID)
-		r.mu.Unlock()
-		if err == nil {
-			msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
-			client.SendMessage(*msg)
-		}
+	if sess == nil || owner == uuid.Nil {
+		return
 	}
+	r.mu.Lock()
+	_, err := r.session.RecomputeVisibility(owner)
+	r.mu.Unlock()
+	// The cache is refreshed even for an owner who is not connected — they would otherwise
+	// reconnect onto a stale polygon. Only the push needs somebody on the other end.
+	if err == nil && online {
+		msg := r.buildMapFullState(owner, r.IsMaster(owner))
+		ownerClient.SendMessage(*msg)
+	}
+}
+
+// handlePieceMoved relays a move a client made in its own browser.
+func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+	r.applyAndRelayPieceMove(payload, client.userUUID)
 }
 
 // handlePieceRemoved removes a piece and relays the removal per-player.
