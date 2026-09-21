@@ -2135,3 +2135,49 @@ func TestMatchSession_EnqueueAction_MasterPlaysNPC(t *testing.T) {
 		}
 	})
 }
+
+// TestMatchSession_AttachReaction_MasterReactsThroughNPC puts an NPC in the reactor's seat.
+// AttachReaction reads the same charToPlayer bridge EnqueueAction does, so the master
+// answering an attack aimed at its own NPC has to be accepted — and the NPC must stay
+// unanswerable by anyone else, even a player who is otherwise in the match.
+func TestMatchSession_AttachReaction_MasterReactsThroughNPC(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	masterUUID := uuid.New()
+
+	player := makeParticipant(matchUUID, &playerUUID)
+	npc := makeNPCParticipant(matchUUID, &masterUUID)
+	playerCharID := player.Sheet.UUID
+	npcCharID := npc.Sheet.UUID
+
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{player, npc})
+
+	a := makeActionWithSpeed(playerCharID, 10)
+	a.TargetID = []uuid.UUID{npcCharID} // the NPC must be targeted to be allowed to answer
+	s.EnqueueAction(playerUUID, a)      //nolint:errcheck
+	opened := mustOpen(t, s)
+	act := opened.GetAction()
+
+	t.Run("a player cannot react through the NPC", func(t *testing.T) {
+		r := makeReactionTo(npcCharID, act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerUUID, r); !errors.Is(err, matchsession.ErrReactionActorMismatch) {
+			t.Errorf("expected ErrReactionActorMismatch, got %v", err)
+		}
+	})
+
+	t.Run("the master reacts through its NPC", func(t *testing.T) {
+		r := makeReactionTo(npcCharID, act.GetID())
+		r.ReactionKind = action.ReactDodge
+		res, err := s.AttachReaction(masterUUID, r)
+		if err != nil {
+			t.Fatalf("the master answering for its own NPC: %v", err)
+		}
+		if res == nil {
+			t.Fatal("expected non-nil TurnResolution")
+		}
+		if len(opened.GetReactions()) != 1 {
+			t.Errorf("expected 1 reaction, got %d", len(opened.GetReactions()))
+		}
+	})
+}

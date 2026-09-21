@@ -2,9 +2,9 @@ package match_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -134,12 +134,25 @@ func TestAddMatchNPCHandler(t *testing.T) {
 			}
 
 			if tt.wantStatus == http.StatusCreated {
-				body := resp.Body.String()
-				if !strings.Contains(body, sheetUUID.String()) {
-					t.Errorf("response body missing characterSheetUuid %s: %s", sheetUUID.String(), body)
+				var result map[string]any
+				if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
 				}
-				if !strings.Contains(body, participantUUID.String()) {
-					t.Errorf("response body missing participant uuid %s: %s", participantUUID.String(), body)
+				participant, ok := result["participant"].(map[string]any)
+				if !ok {
+					t.Fatal("response missing 'participant' field")
+				}
+				if participant["uuid"] != participantUUID.String() {
+					t.Errorf("got uuid %v, want %v", participant["uuid"], participantUUID.String())
+				}
+				if participant["matchUuid"] != matchUUID.String() {
+					t.Errorf("got matchUuid %v, want %v", participant["matchUuid"], matchUUID.String())
+				}
+				if participant["characterSheetUuid"] != sheetUUID.String() {
+					t.Errorf("got characterSheetUuid %v, want %v", participant["characterSheetUuid"], sheetUUID.String())
+				}
+				if participant["joinedAt"] != joinedAt.Format(time.RFC3339) {
+					t.Errorf("got joinedAt %v, want %v", participant["joinedAt"], joinedAt.Format(time.RFC3339))
 				}
 			}
 		})

@@ -146,6 +146,10 @@ func indexParticipants(participants []*match.Participant) (
 			// NPC: no player to authorize and no per-player fog memory, but the master
 			// plays it — charToPlayer is what EnqueueAction and AttachReaction check.
 			if p.Sheet.MasterUUID != nil && p.Sheet.UUID != uuid.Nil {
+				// Trusting MasterUUID as the actor is safe because the only writer of the NPC
+				// roster, AddMatchNPCUC, admits a sheet only when its master_uuid resolves to the
+				// match's own master (see the note on its campaign arm). Nobody outside the match
+				// can land here, so this never hands the table to someone nobody enrolled.
 				charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.MasterUUID
 			}
 			continue

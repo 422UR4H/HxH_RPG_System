@@ -93,6 +93,12 @@ func (uc *AddMatchNPCUC) Add(
 	}
 
 	isOwnedByMaster := rel.MasterUUID != nil && *rel.MasterUUID == input.RequesterUUID
+	// The campaign arm reads looser than the master arm, but it cannot admit a stranger:
+	// an NPC only gets a campaign_uuid through create_character_sheet, which forces its
+	// master_uuid to be that campaign's master, and create_match forces the match's master
+	// to be the same person (accept_submission, the only other writer, needs a submission,
+	// which only a player-owned sheet can have). So both arms land on the requester — which
+	// is the identity matchsession later trusts in charToPlayer.
 	isInMatchCampaign := rel.CampaignUUID != nil && *rel.CampaignUUID == mt.CampaignUUID
 	if !isOwnedByMaster && !isInMatchCampaign {
 		return nil, ErrSheetNotOwnedByMaster
