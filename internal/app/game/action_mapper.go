@@ -161,6 +161,19 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 				}
 			}
 		}
+		// The loop above enforces PRESENCE for kinds that require a component; it never
+		// forbids one that arrived uninvited. A dodge/closedDodge/nothing reaction is free
+		// precisely because it does not displace — so a Move riding along on one of those must
+		// be refused HERE, at the door, rather than silently ignored downstream. Silence is what
+		// let a free dodge carrying a Dash displace the piece on open_reaction before this check
+		// existed: nothing rejected the extra field, so it sat on the Action inert until the
+		// delivery layer read it. This is a PRESENCE check ("should this kind carry Move at
+		// all"), distinct from the move-category check above ("which category must the Move
+		// use") — a displacing kind with the wrong category is refused by that one; a
+		// non-displacing kind with ANY Move, right category or not, is refused by this one.
+		if !kind.Displaces() && p.Move != nil {
+			return nil, fmt.Errorf("reaction %q must not carry a move", p.ReactionKind)
+		}
 		// Evasion is not a ReactionComponent — it names an entry inside Skills, not a piece
 		// shaped like an Action sub-struct — so it is not covered by the loop above. The two
 		// closed variants need it anyway: without it they derive against an empty RollCheck

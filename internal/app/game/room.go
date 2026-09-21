@@ -787,7 +787,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// critical section that opened it, and the pointer itself is never read afterwards.
 		var reactor uuid.UUID
 		var reactionMove *action.Move
-		if err == nil && result.Opened != nil && result.Opened.Move != nil {
+		// ReactionKind.Displaces() is consulted here too, not just Move != nil: the mapper is
+		// the client's front door, but it only refuses what IT builds. A Move surviving onto the
+		// reaction by any other path (bug, future refactor, a kind the mapper forgets to police)
+		// must not walk the piece just because the field happens to be non-nil — the kind, not
+		// the shape, is what says whether this reaction moves anyone.
+		if err == nil && result.Opened != nil && result.Opened.Move != nil &&
+			result.Opened.ReactionKind.Displaces() {
 			m := *result.Opened.Move
 			reactionMove = &m
 			reactor = result.Opened.GetActorID()

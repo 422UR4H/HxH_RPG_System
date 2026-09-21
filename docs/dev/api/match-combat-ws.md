@@ -256,6 +256,16 @@ recusa o resto — um `move.category` diferente do exigido devolve `invalid_acti
 não consegue esquivar — exatamente o que a fechada existe para não fazer, e por isso ela
 pisa com `Shift`, que `Brake` mede.
 
+**Um `move` fora das três fugas também é recusado — checagem de presença, não de categoria.**
+`ReactionKind.Displaces()` (`reaction_kind.go`) é o único lugar que sabe quais `reactionKind`
+deslocam; `action_mapper.go` a consulta para recusar um `move` anexado a `dodge`, `closedDodge`
+ou `nothing` com `reaction "X" must not carry a move`, **antes** de a reação ser anexada ao
+turno. Sem essa checagem um cliente podia mandar uma esquiva **livre** carregando um `move` e
+o servidor não recusava nada — o `move` ficava inerte no `Action` até [`open_reaction`](#open_reaction)
+lê-lo, que então deslocava a peça de uma reação que não custa nada. `open_reaction` também
+consulta `Displaces()` no momento de aplicar o `move`, como segunda linha de defesa — não
+depende só da recusa do mapper.
+
 Uma reação **livre** (as que não cobram barra) não consome a ação que o personagem tinha na
 fila e não rola em Desvantagem. Uma reação **cobrada** consome a ação enfileirada daquele
 personagem em cada barra que cobra — e, se consumiu algo, a troca custa **Desvantagem**
@@ -273,7 +283,7 @@ Não há ack próprio e **não há broadcast**: a mesa não é avisada de que al
 | `invalid_action` | `"reaction requires react_to_id"` |
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` |
 | `invalid_action` | `"actorId is required: …"` |
-| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel` / `an evasion skill entry`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima). |
+| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel` / `an evasion skill entry`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
 | `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action`. |
 
@@ -362,10 +372,14 @@ ainda no slot velho. Em seguida, [`reaction_opened`](#reaction_opened) para a **
 é a vez de narrar é público) e [`resolution_updated`](#resolution_updated) **master-only** (o
 cálculo continua sendo do mestre — o turno ainda está aberto).
 
-**Uma reação de fuga (`escape`, `escapeGuard`, `closedEscape` — as únicas com `Move`) desloca a
-peça, e o gatilho é a ABERTURA da reação**, nunca o `attach_reaction` que a anexou, nem o
-fechamento do turno. É o mesmo mecanismo (`applyMove`) e o mesmo ponto conceitual da ação do
-próprio turno: o momento em que a mesa passa a raciocinar sobre onde a peça está.
+**Uma reação de fuga (`escape`, `escapeGuard`, `closedEscape` — as únicas com `Move`, e
+[`attach_reaction`](#attach_reaction) recusa qualquer outro `reactionKind` que tente carregar
+um) desloca a peça, e o gatilho é a ABERTURA da reação**, nunca o `attach_reaction` que a
+anexou, nem o fechamento do turno. É o mesmo mecanismo (`applyMove`) e o mesmo ponto conceitual
+da ação do próprio turno: o momento em que a mesa passa a raciocinar sobre onde a peça está.
+`open_reaction` consulta `ReactionKind.Displaces()` (não só `Move != nil`) antes de aplicar —
+uma segunda checagem, redundante com a recusa do `attach_reaction`, para o caso de um `Move`
+chegar até aqui por qualquer outro caminho.
 
 - **O deslocamento não depende do desfecho da esquiva.** Falhar um escape é tomar o dano cheio
   **tendo se deslocado** — deslocar e apanhar é resultado legítimo, não um bug.

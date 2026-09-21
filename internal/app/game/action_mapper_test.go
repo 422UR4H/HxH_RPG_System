@@ -323,6 +323,56 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 	})
 
+	// Before this check existed, a free dodge carrying a Move survived the mapper untouched —
+	// the reaction was free (ReactDodge.Bars() == nil) and the Move sat on the Action inert,
+	// until open_reaction read Move != nil with no regard for the kind and walked the piece.
+	// PROBE POSITIVE, empirically confirmed against the pre-fix code: a FREE dodge carrying a
+	// Move displaced the piece on open_reaction. This test — and TestOpenReaction_DoesNotDisplaceOnANonDisplacingReaction
+	// at the room level — are what that probe left behind.
+	t.Run("dodge with a move is refused — dodge does not displace", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "dodge",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Move:  &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a dodge reaction carrying a Move must be refused")
+		}
+		if !strings.Contains(err.Error(), "must not carry a move") {
+			t.Fatalf("refused for the wrong reason (want the presence check, not the category one): %v", err)
+		}
+	})
+
+	t.Run("closedDodge with a move is refused — closedDodge does not displace either", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedDodge",
+			Dodge:  &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Skills: []ActionSkillPayload{{SkillName: enum.Evasion.String()}},
+			Move:   &MovePayload{Category: string(enum.Shift), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a closedDodge reaction carrying a Move must be refused")
+		}
+		// Dodge and Evasion are both satisfied above, so a failure here can only be the
+		// presence-of-Move check — proving it fires even when every OTHER requirement is met.
+		if !strings.Contains(err.Error(), "must not carry a move") {
+			t.Fatalf("refused for the wrong reason: %v", err)
+		}
+	})
+
+	t.Run("nothing with a move is refused — nothing does not displace", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "nothing",
+			Move: &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a nothing reaction carrying a Move must be refused")
+		}
+		if !strings.Contains(err.Error(), "must not carry a move") {
+			t.Fatalf("refused for the wrong reason: %v", err)
+		}
+	})
+
 	t.Run("dodge with a dodge component is accepted", func(t *testing.T) {
 		a, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "dodge",

@@ -1667,10 +1667,14 @@ func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 	// Room.Run) while piece_moved goes straight into each client's queue, so a server that
 	// applied the move late would still, most of the time, have its piece_moved overtake the
 	// broadcast on the way out. Verified by injecting exactly that regression.
-	if opened.Timestamp.Before(moved.Timestamp) {
-		t.Fatalf("turn_opened was built at %s, BEFORE piece_moved at %s: the move was applied "+
-			"after the turn opened, so the table saw the turn open with the piece still in "+
-			"the old slot", opened.Timestamp, moved.Timestamp)
+	// Strict: !moved.Before(opened) also passes on a TIE, which is exactly what a same-instant
+	// clock read (or a bug that stamps both at construction time) would produce — a tie proves
+	// nothing about which one was actually built first. moved.Timestamp.Before(opened.Timestamp)
+	// demands moved strictly precede opened.
+	if !moved.Timestamp.Before(opened.Timestamp) {
+		t.Fatalf("piece_moved was built at %s, NOT strictly before turn_opened at %s: the move "+
+			"was applied after (or at the same instant as) the turn opened, so the table saw "+
+			"the turn open with the piece still in the old slot", moved.Timestamp, opened.Timestamp)
 	}
 
 	// And the table's own experience: same client, same queue, piece_moved first.
@@ -2306,9 +2310,13 @@ func TestE2E_OpeningAnEscapeReactionMovesThePieceBeforeReactionOpened(t *testing
 	// the order the server decided. Arrival order alone cannot: reaction_opened travels
 	// through r.broadcast while piece_moved goes straight into each client's queue.
 	opened := findMessage(t, msgs, game.MsgTypeReactionOpened)
-	if opened.Timestamp.Before(moved.Timestamp) {
-		t.Fatalf("reaction_opened was built at %s, BEFORE piece_moved at %s: the escape's move "+
-			"was applied after the reaction opened", opened.Timestamp, moved.Timestamp)
+	// Strict, same reasoning as TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened: a tied
+	// timestamp is not evidence of the right order, so the check demands moved strictly precede
+	// opened rather than merely "opened not strictly before moved".
+	if !moved.Timestamp.Before(opened.Timestamp) {
+		t.Fatalf("piece_moved was built at %s, NOT strictly before reaction_opened at %s: the "+
+			"escape's move was applied after (or at the same instant as) the reaction opened",
+			moved.Timestamp, opened.Timestamp)
 	}
 	movedAt := indexOfMessage(msgs, game.MsgTypePieceMoved)
 	openedAt := indexOfMessage(msgs, game.MsgTypeReactionOpened)
@@ -2415,5 +2423,139 @@ func TestE2E_OpeningAnEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
 	}
 	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
 		t.Fatalf("something moved (%d piece_moved) although the escaping actor has no piece", n)
+	}
+}
+
+// ─── a esquiva livre não desloca, mesmo carregando um Move ─────────────────
+//
+// PROBE POSITIVE (found by review, before this file's fix): a reaction sent as
+// `reactionKind: "dodge"` with a Dash `Move` attached was accepted by buildAction — nothing
+// there checked WHICH kinds are allowed to displace, only whether a kind that requires a
+// component has it — and on open_reaction the piece walked 3 squares although the dodge
+// (ReactDodge.Bars() == nil) is free. Same for closedDodge and nothing. This is the exact
+// scenario the probe used, kept here as a permanent regression test.
+func TestE2E_AttachingAFreeDodgeWithAMoveIsRefusedAndNeverDisplaces(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+
+	// The exact shape the probe sent: a free dodge carrying a Move, over the real WS boundary
+	// attach_reaction goes through (the mapper), not a hand-built domain Action.
+	sendWS(t, player, string(game.MsgTypeAttachReaction), game.ActionPayload{
+		ActorID:      f.victimID,
+		ReactToID:    actionID,
+		ReactionKind: "dodge",
+		Dodge:        &game.DodgePayload{RollCheck: &game.RollCheckPayload{SkillName: enum.Reflex.String()}},
+		Move: &game.MovePayload{
+			Category: string(enum.Dash),
+			From:     [3]int{6, 6, 0},
+			Position: [3]int{8, 6, 0},
+		},
+	})
+
+	if !playerMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatalf("attach_reaction with a dodge carrying a Move was never refused; the player "+
+			"received: %v", messageTypes(playerMsgs.snapshotMessages()))
+	}
+	errMsg := findMessage(t, playerMsgs.snapshotMessages(), game.MsgTypeError)
+	var errPayload game.ErrorPayload
+	if err := json.Unmarshal(errMsg.Payload, &errPayload); err != nil {
+		t.Fatalf("unmarshal error payload: %v", err)
+	}
+	if errPayload.Code != "invalid_action" {
+		t.Fatalf("error code = %q, want invalid_action (forbidden/invalid_payload/game_error "+
+			"would mean the wrong check fired first)", errPayload.Code)
+	}
+	if !strings.Contains(errPayload.Message, "must not carry a move") {
+		t.Fatalf("refused for the wrong reason: %q", errPayload.Message)
+	}
+
+	// The reaction was never attached — there is nothing to open_reaction and nothing that
+	// should ever have moved the piece.
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the piece moved %d time(s) although the dodge carrying a Move was refused", n)
+	}
+	if n := masterMsgs.count(game.MsgTypeResolutionUpdate); n != 1 {
+		// Exactly one: the attack's own open. A resolution_updated for the refused attach would
+		// mean it was attached after all.
+		t.Fatalf("resolution_updated fired %d time(s); a refused attach must not re-resolve the turn", n)
+	}
+}
+
+// ─── o gate de open_reaction como segunda linha de defesa ──────────────────
+//
+// O mapper agora recusa um Move numa reação que não desloca — mas o gate em open_reaction
+// (checar ReactionKind.Displaces() além de Move != nil) é a rede de segurança para QUALQUER
+// outro jeito de uma reação carregando Move chegar ao turno aberto: um bug futuro no mapper,
+// uma outra fronteira que constrói o domínio direto. Para provar que esse gate é real e não
+// decorativo, este teste ataca a sessão diretamente — passando por trás do mapper de propósito
+// — com uma reação `dodge` carregando um Move, exatamente como um mapper com a regressão do
+// achado 1 reintroduzida deixaria passar. Reverter o gate em open_reaction para `Move != nil`
+// (achado 1, primeira metade) faz este teste falhar.
+func TestE2E_OpenReactionGateStopsAMoveOnANonDisplacingReactionEvenIfAttachedDirectly(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+
+	// Built straight against the domain, bypassing buildAction entirely — the only way to put
+	// a Move on a non-displacing reaction now that the mapper refuses it at the door.
+	reaction := action.NewAction(
+		f.victimID, nil, actionID,
+		nil, action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil,
+		&action.Move{
+			Category: enum.Dash,
+			From:     [3]int{6, 6, 0},
+			Position: [3]int{8, 6, 0},
+			Speed:    &action.RollCheck{SkillName: enum.Accelerate.String()},
+		},
+		nil, nil, &action.Dodge{}, nil, nil,
+	)
+	reaction.ReactionKind = action.ReactDodge
+	reactionID := reaction.GetID()
+
+	// Nothing else touches the session between openAttackOn's last round-trip and here, the
+	// same quiet-window guarantee openAttackOn's own doc comment relies on.
+	if _, err := f.session.AttachReaction(f.playerUUID, reaction); err != nil {
+		t.Fatalf("AttachReaction: %v (a free dodge must attach cleanly at the domain layer — "+
+			"the mapper is the ONLY thing that is supposed to refuse this shape)", err)
+	}
+
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+
+	if !masterMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatal("the reaction never opened")
+	}
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("a free dodge displaced the piece %d time(s) on open_reaction — ReactionKind."+
+			"Displaces() was not consulted", n)
 	}
 }
