@@ -28,18 +28,22 @@ func WeaponDice(name *enum.WeaponName, cat *item.WeaponsManager) ([]enum.DieSide
 	return sides, nil
 }
 
-// RawDamage is the weapon's rolled dice plus its flat damage bonus.
+// RawDamage is the weapon's rolled dice plus its flat damage bonus plus the attacker's Push.
+//
+// Push is the skill that measures damage, and it is NOT selectable: the weapon is what deals
+// the damage, and the player does not choose which skill measures it. Swapping Push for Grab
+// is the master's prerogative and belongs to their editing surface, in Phase 8.
 //
 // The hit margin deliberately does NOT enter here. Product owner: "it will not add into the
 // damage, at least not for now, because this system is already very punishing." It is the
 // one place in the system where a margin does not circulate, and that is on purpose —
 // revisiting it is a post-MVP playtest question, not a TODO.
-func RawDamage(dice []int, name *enum.WeaponName, cat *item.WeaponsManager) (int, error) {
+func RawDamage(dice []int, name *enum.WeaponName, cat *item.WeaponsManager, push int) (int, error) {
 	w, err := lookupWeapon(name, cat)
 	if err != nil {
 		return 0, err
 	}
-	total := w.GetDamage()
+	total := w.GetDamage() + push
 	for _, d := range dice {
 		total += d
 	}

@@ -310,7 +310,9 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 					continue
 				}
 				if a.Attack != nil {
-					raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons)
+					raw, err := RawDamage(
+						a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorPush(in, a),
+					)
 					if err != nil {
 						raw = 0
 					}
@@ -379,11 +381,25 @@ func (tr TurnResolver) actorSheetMissing(in ResolveInput, a action.Action, res *
 	return true
 }
 
+// actorPush reads the attacker's Push — the skill that measures damage.
+//
+// It nil-guards on purpose: the wall branch is NOT behind actorSheetMissing, so an action
+// whose actor sheet never reached the resolver arrives here with nothing. Zero is the honest
+// answer there, and the missing sheet is already reported as a ResolutionError by the
+// character branch when it applies.
+func (tr TurnResolver) actorPush(in ResolveInput, a action.Action) int {
+	cs, ok := in.Sheets[a.GetActorID()]
+	if !ok || cs == nil {
+		return 0
+	}
+	return skillValueOf(cs, enum.Push.String())
+}
+
 // seedChain computes ataque₀: the whole attack's raw damage, rolled once when the action
 // arrived and never re-rolled. Every target in the walk only ever subtracts from this one
 // number — it is not recomputed per target.
 func (tr TurnResolver) seedChain(in ResolveInput, a action.Action) ChainState {
-	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons)
+	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorPush(in, a))
 	if err != nil {
 		return ChainState{}
 	}
