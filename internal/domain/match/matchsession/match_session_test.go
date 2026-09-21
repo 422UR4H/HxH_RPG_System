@@ -126,13 +126,20 @@ func TestNewMatchSession_HoldsNPCs(t *testing.T) {
 		}
 	})
 
-	t.Run("the NPC has no authorization entry", func(t *testing.T) {
-		// Authorization stays per player; an NPC has no player to authorize.
+	t.Run("the NPC is authorized to its master, not to a player", func(t *testing.T) {
+		// Authorization is per player, and an NPC has no player — its master answers for
+		// it instead, so charToPlayer maps the NPC's sheet to the master. Fog memory stays
+		// strictly per player, though: PlayerIDs staying empty is what proves the master
+		// never landed in pMap and never picked up LOS or PlayerMemory for it.
 		if got := len(s.PlayerIDs()); got != 0 {
 			t.Errorf("expected no player IDs, got %d", got)
 		}
-		if got := len(s.GetCharToPlayer()); got != 0 {
-			t.Errorf("expected no charToPlayer entries, got %d", got)
+		c2p := s.GetCharToPlayer()
+		if len(c2p) != 1 {
+			t.Fatalf("expected exactly one charToPlayer entry, got %d", len(c2p))
+		}
+		if got := c2p[npcSheetUUID.String()]; got != masterUUID {
+			t.Errorf("expected the NPC to map to its master %v, got %v", masterUUID, got)
 		}
 	})
 }
@@ -205,6 +212,19 @@ func makeParticipant(matchUUID uuid.UUID, playerUUID *uuid.UUID) *match.Particip
 		Sheet: csEntity.Summary{
 			UUID:       uuid.New(),
 			PlayerUUID: playerUUID,
+		},
+	}
+}
+
+// makeNPCParticipant builds a master-owned character: PlayerUUID nil, MasterUUID set. It
+// never enters participants/pMap — only charToPlayer, pointing at the master.
+func makeNPCParticipant(matchUUID uuid.UUID, masterUUID *uuid.UUID) *match.Participant {
+	return &match.Participant{
+		UUID:      uuid.New(),
+		MatchUUID: matchUUID,
+		Sheet: csEntity.Summary{
+			UUID:       uuid.New(),
+			MasterUUID: masterUUID,
 		},
 	}
 }
@@ -2038,6 +2058,80 @@ func TestCloseOpenTurnAppliesDamage(t *testing.T) {
 		f := newAttackFixture(t)
 		if _, err := f.session.CloseOpenTurn(); !errors.Is(err, matchsession.ErrNoOpenTurn) {
 			t.Fatalf("CloseOpenTurn with nothing open = %v, want ErrNoOpenTurn", err)
+		}
+	})
+}
+
+// TestMatchSession_EnqueueAction_MasterPlaysNPC covers the master-through-NPC path added to
+// indexParticipants/EnqueueAction. The NPC only ever enters charToPlayer, pointing at its
+// master, and never participants/pMap — so ownership via charToPlayer has to be checked
+// BEFORE the participants gate, or the master is rejected before that check is ever reached.
+func TestMatchSession_EnqueueAction_MasterPlaysNPC(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	masterUUID := uuid.New()
+
+	player := makeParticipant(matchUUID, &playerUUID)
+	npc := makeNPCParticipant(matchUUID, &masterUUID)
+	playerCharID := player.Sheet.UUID
+	npcCharID := npc.Sheet.UUID
+
+	s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{player, npc})
+
+	t.Run("master acts through the NPC", func(t *testing.T) {
+		a := makeAction(npcCharID)
+		if err := s.EnqueueAction(masterUUID, a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		found := false
+		for _, pending := range s.PendingActions() {
+			if pending == a {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected the master's action to be in PendingActions")
+		}
+	})
+
+	t.Run("a player cannot act through the NPC", func(t *testing.T) {
+		a := makeAction(npcCharID)
+		err := s.EnqueueAction(playerUUID, a)
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Errorf("expected ErrActionActorMismatch, got %v", err)
+		}
+	})
+
+	t.Run("the master cannot act through a player's character", func(t *testing.T) {
+		a := makeAction(playerCharID)
+		err := s.EnqueueAction(masterUUID, a)
+		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
+			t.Errorf("expected ErrParticipantNotFound, got %v", err)
+		}
+	})
+
+	t.Run("an outsider still gets ErrParticipantNotFound", func(t *testing.T) {
+		a := makeAction(playerCharID)
+		err := s.EnqueueAction(uuid.New(), a)
+		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
+			t.Errorf("expected ErrParticipantNotFound, got %v", err)
+		}
+	})
+
+	t.Run("an insider asking for someone else's character still gets ErrActionActorMismatch", func(t *testing.T) {
+		a := makeAction(uuid.New()) // some other character
+		err := s.EnqueueAction(playerUUID, a)
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Errorf("expected ErrActionActorMismatch, got %v", err)
+		}
+	})
+
+	t.Run("the NPC stays out of pMap: PlayerIDs does not include the master", func(t *testing.T) {
+		for _, id := range s.PlayerIDs() {
+			if id == masterUUID {
+				t.Error("expected PlayerIDs to not contain the master's UUID — the NPC must stay out of pMap")
+			}
 		}
 	})
 }
