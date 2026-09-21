@@ -590,11 +590,16 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/match/flows/02-ciclo-de-vida-da-partida.md
         confidence: possibly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
     notes: >-
       MatchSession é o único estado vivo da partida e a fachada sobre os domain
       services. Mudar seus métodos, campos ou as interfaces invertidas
       (TargetReader, PiecePositionSource) invalida os diagramas de módulos e de
-      propriedade de estado.
+      propriedade de estado. match_session.go.OpenReaction mudou de assinatura
+      (passou a devolver a reação aberta, para a delivery layer aplicar o Move
+      dela ao tabuleiro) — o contrato WS é quem documenta o piece_moved que
+      isso disparou.
 
   - code_path: internal/application/match/
     dev_docs:
@@ -931,11 +936,17 @@ mappings:
     dev_docs:
       - path: docs/dev/match/combat-engine.md
         confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
     notes: >-
       Fase 4. Master-only, abre uma reação por ID. Ficou inalcançável a partir de um
       cliente real até TurnResolution.PendingReactions existir: nenhuma mensagem
       publicava o ID de uma reação anexada e ainda não aberta antes disso — um ID que
       o cliente não tinha como aprender, para uma operação que não conseguia invocar.
+      OpenReactionResult ganhou o campo Opened (a reação em si, não só a resolução):
+      é o que deixa room.go aplicar o Move de uma fuga (escape/escapeGuard/
+      closedEscape) ao tabuleiro na abertura da reação, emitindo piece_moved antes de
+      reaction_opened. O contrato WS documenta esse disparo na seção open_reaction.
 
   - code_path: internal/app/game/reaction_chain_e2e_test.go
     dev_docs:

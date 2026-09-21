@@ -354,9 +354,26 @@ poder de mestre e muda o resultado**: uma reação anexada mas não aberta delib
 Abrir **não cobra nada**: as barras foram debitadas no *attach*, justamente para que narrar
 não mova número.
 
-**Dispara:** [`reaction_opened`](#reaction_opened) para a **mesa** (de quem é a vez de
-narrar é público) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo
-continua sendo do mestre — o turno ainda está aberto).
+**Dispara:** [`piece_moved`](#piece_moved-servidor) (servidor), **com o mesmo gate de campo de
+visão** do resto do tabuleiro, quando a reação que abre carrega um `Move` — e **antes** de
+[`reaction_opened`](#reaction_opened), pela mesma razão de ordem que vale para a ação do turno
+(ver [`piece_moved`](#piece_moved-servidor)): a mesa não pode ver a narração abrir com a peça
+ainda no slot velho. Em seguida, [`reaction_opened`](#reaction_opened) para a **mesa** (de quem
+é a vez de narrar é público) e [`resolution_updated`](#resolution_updated) **master-only** (o
+cálculo continua sendo do mestre — o turno ainda está aberto).
+
+**Uma reação de fuga (`escape`, `escapeGuard`, `closedEscape` — as únicas com `Move`) desloca a
+peça, e o gatilho é a ABERTURA da reação**, nunca o `attach_reaction` que a anexou, nem o
+fechamento do turno. É o mesmo mecanismo (`applyMove`) e o mesmo ponto conceitual da ação do
+próprio turno: o momento em que a mesa passa a raciocinar sobre onde a peça está.
+
+- **O deslocamento não depende do desfecho da esquiva.** Falhar um escape é tomar o dano cheio
+  **tendo se deslocado** — deslocar e apanhar é resultado legítimo, não um bug.
+- **Um ator sem peça no tabuleiro é no-op silencioso**, como no lado da ação: nada é emitido,
+  nenhum erro sai.
+- **`Z` e o `Kind` do slot** (quadrado/hex) são **preservados**, pela mesma razão documentada em
+  [`piece_moved`](#piece_moved-servidor) para o movimento de ação.
+- O deslocamento de uma reação **nunca revalida parede** — ver a última linha de §9.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid open_reaction payload"`) ·
 `match_not_started` · `game_error` (`no current turn in round`,
@@ -570,15 +587,20 @@ conectado, a mensagem simplesmente não é entregue a ninguém.
 fila é secreta; a barra e a ordem são públicas"). Um jogador que aprendesse o que está
 pendente leria as intenções da mesa no wire.
 
-**E é o único jeito de aprender o `actionId` que [`pull_action`](#pull_action) exige.**
-Nenhuma outra superfície nomeia uma ação enfileirada. Sem esta mensagem, `pull_action` é
-inalcançável a partir de um cliente real.
+**E é o jeito de aprender o `actionId` que [`pull_action`](#pull_action) exige, no instante do
+enfileiramento.** Sem esta mensagem, `pull_action` é inalcançável a partir de um cliente real
+para o que acabou de entrar na fila.
 
 Nada aqui descreve o **conteúdo** da ação: arma, alvo, perícia e dados continuam do jogador
 até o mestre abrir o turno. `bars` (`action` e/ou `move`) já é dedutível da ordem pública em
 `bars_updated` — nomear aqui não revela nada novo.
 
 **Disparado por:** `enqueue_action` aceito, logo após o ack de quem enviou.
+
+> **Esta mensagem dispara UMA VEZ, no instante do enfileiramento** — um mestre que estava
+> desconectado nesse momento não a recebe depois. [`match_full_state`.`queue`](#match_full_state)
+> é a versão do MESMO fato que **sobrevive à reconexão**: um payload `action_queued` inteiro
+> por ação ainda pendente, na ordem de inserção da fila. Ver a seção de `match_full_state`.
 
 ### `bars_updated`
 
@@ -906,8 +928,8 @@ lobby — não há combate para sincronizar, e `buildMatchFullState` devolve `ni
 
 `map_full_state` cobre o tabuleiro e só. Quem chegava no meio — ou reconectava, e o hook do
 front reconecta até cinco vezes sozinho — ficava sem barras, sem regime, sem cena, sem turno
-aberto e sem reações pendentes, até alguma coisa mudar por acaso. É essa lacuna que esta
-mensagem fecha.
+aberto, sem reações pendentes e, se fosse o mestre, sem a fila de ações, até alguma coisa
+mudar por acaso. É essa lacuna que esta mensagem fecha.
 
 ```json
 {
@@ -944,7 +966,10 @@ mensagem fecha.
       "isSettled": false,
       "action": { "skillName": "Accuracy", "skillValue": 14, "diceRolled": [6, 8], "total": 20, "isCritical": false, "isCriticalFailure": false },
       "targets": []
-    }
+    },
+    "queue": [
+      { "actionId": "33333333-3333-4333-8333-333333333333", "actorId": "11111111-1111-4111-8111-111111111111", "bars": ["action"] }
+    ]
   }
 }
 ```
@@ -957,6 +982,7 @@ mensagem fecha.
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
+| `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
 logo depois de `room_state` e do `map_full_state` (se houver peças no tabuleiro), e antes do
@@ -1019,18 +1045,19 @@ velho); e se o recálculo falhar, o `map_full_state` não sai — o `piece_moved
 sai do mesmo jeito.
 
 **Disparado por:** `open_next_action` e `pull_action`, quando o turno que abre carrega um
-`Move`. Só o ramo que **não testa** desloca — hoje `move.category` só aceita `Dash` e
-`Shift` (as outras cinco são recusadas no mapeamento), e nenhum dos dois rola contra CD; um
-ramo com teste (um salto, um aperto, um pouso em slot ocupado) não tem caso alcançável hoje,
-então não existe código para ele.
+`Move` — e por [`open_reaction`](#open_reaction), quando a reação que ganha a palavra carrega
+um `Move` (as três fugas). Só o ramo que **não testa** desloca — hoje `move.category` só
+aceita `Dash` e `Shift` (as outras cinco são recusadas no mapeamento), e nenhum dos dois rola
+contra CD; um ramo com teste (um salto, um aperto, um pouso em slot ocupado) não tem caso
+alcançável hoje, então não existe código para ele.
 
-Um ator **sem peça no tabuleiro** não é erro: não há o que mover, nada é emitido e nenhuma
-mensagem de erro sai. O turno abre normalmente.
+Um ator **sem peça no tabuleiro** não é erro, nos dois caminhos: não há o que mover, nada é
+emitido e nenhuma mensagem de erro sai. O turno (ou a reação) abre normalmente.
 
-⚠️ **Uma reação de escape NÃO move a peça.** Só o `Move` da própria ação do turno é aplicado
-aqui. Uma reação — inclusive `escape`/`escapeGuard`/`closedEscape`, que carregam `Move`
-também — se anexa a um turno já aberto, e a regra de quando a peça dela sai do lugar não
-está escrita em lugar nenhum. Decisão consciente, não esquecimento — ver §9.
+**Uma reação de fuga (`escape`/`escapeGuard`/`closedEscape`) MOVE a peça, na abertura da
+reação — não no `attach_reaction` que a anexou.** As regras completas (gatilho, independência
+do desfecho da esquiva, no-op sem peça, preservação de `Z`/`Kind`) estão em
+[`open_reaction`](#open_reaction), que é quem dispara este `piece_moved` nesse caminho.
 
 ⚠️ **A semântica de `Z` está em aberto.** `PieceMovedPayload.Z` é documentado como altura
 virtual em metros; `Move.Position[2]` é o índice `z` da grade. São grandezas possivelmente
@@ -1040,9 +1067,14 @@ uma peça elevada ao chão a cada passo horizontal cujo `z` de grade for `0`. A 
 "`Move.Position[2]` é metro ou índice de grade?" precisa de resposta antes de qualquer
 cliente escrever `Z`. Ver §9.
 
-⚠️ **O movimento aplicado não revalida parede.** A checagem contra paredes com `move=true` e
-`open=false` acontece no **enfileiramento** (`enqueue_action`, quando `move.from` é
-não-zero — ver a tabela em `enqueue_action`), não de novo aqui na abertura. Ver §9.
+⚠️ **O movimento aplicado não revalida parede — nos DOIS caminhos.** A checagem contra
+paredes com `move=true` e `open=false` acontece no **enfileiramento** (`enqueue_action`,
+quando `move.from` é não-zero — ver a tabela em `enqueue_action`), não de novo aqui na
+abertura. O caminho de reação **nunca passa por essa checagem, nem uma vez**: quando
+`reactToId` é não-zero, `enqueue_action` roteia para o mesmo tratamento de
+`attach_reaction` e retorna **antes** de alcançar o código que valida a parede — esse código
+só existe no ramo de ação comum. `attach_reaction`, enviado direto, também não tem checagem
+nenhuma no caminho. Ver §9.
 
 ### `error`
 
@@ -1235,7 +1267,5 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
 | **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **NPC não age** | Ver §2. |
-| **Uma reação de escape não move a peça** | Só o `Move` da própria ação do turno é aplicado ao tabuleiro (`applyOpenedMove`, ver `piece_moved` acima). `escape`/`escapeGuard`/`closedEscape` também carregam `Move`, mas anexam a um turno já aberto, e a regra de quando a peça sai do lugar nesse caso não está escrita em lugar nenhum. Decisão consciente deste PR, não esquecimento. |
-| **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. |
-| **O mestre perde o `actionId` da fila ao reconectar** | [`action_queued`](#action_queued), **no instante do enfileiramento**, é o único emissor de um `actionId` para o mestre. [`match_full_state`](#match_full_state) não carrega fila nenhuma, e `bars_updated.order` diz na própria linha da tabela que não leva nada que identifique a ação. Depois de reconectar, o mestre recebe barras, cena, regime, turno aberto e resolução — e **zero IDs** das ações que já estavam enfileiradas. [`open_next_action`](#open_next_action) continua funcionando (não precisa de ID); [`pull_action`](#pull_action) fica **inalcançável** para tudo que entrou na fila antes da reconexão, e volta a ser alcançável só para o que for enfileirado depois. É o mesmo buraco que `action_queued` fechou, reaberto pelo caminho da reconexão — e o contraste é direto: as **reações pendentes** sobrevivem à reconexão (viajam dentro de `resolution`), as ações enfileiradas não. **Para quem desenha a tela:** uma superfície de antecipar ação não pode depender de uma lista que o cliente acumulou de `action_queued`; depois de qualquer reconexão ela estará incompleta, sem nenhum sinal de que está. A saída completa é um campo de fila **master-only** no `match_full_state` — não implementado aqui de propósito: se a interface vai ou não ter superfície de antecipar ação é decisão de produto, tomada à parte. |
-| **O movimento aplicado não revalida parede** | A checagem de parede (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado na abertura do turno. |
+| **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para os dois caminhos que aplicam movimento (ação de turno e reação). |
+| **O movimento aplicado não revalida parede** | A checagem de parede (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado na abertura do turno ou da reação. **Vale para os DOIS caminhos que deslocam peça na abertura** — o da ação do turno e o da reação (`open_reaction`): o deslocamento de uma reação nunca passa pela checagem de parede, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. |
