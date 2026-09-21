@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -434,6 +435,54 @@ func TestBuildAction_Reactions(t *testing.T) {
 			t.Fatal("a repel reaction with no Repel payload must be refused, never derived against an empty roll into RungFailure")
 		}
 	})
+}
+
+// Six cases: the three displacing kinds, each with the right move category and the wrong one.
+// Every case carries every OTHER required component (Dodge, and Skills' Evasion entry for the
+// closed variant) already satisfied, so a refusal can only come from the move-category check —
+// never from RequiredComponents or RequiresEvasionSkill, which TestBuildAction_Reactions above
+// already covers on its own.
+func TestBuildActionEnforcesEscapeMoveCategory(t *testing.T) {
+	actorID := uuid.New()
+	cases := []struct {
+		kind     string
+		category string
+		wantErr  bool
+	}{
+		{"escape", string(enum.Dash), false},
+		{"escape", string(enum.Shift), true},
+		{"escapeGuard", string(enum.Dash), false},
+		{"escapeGuard", string(enum.Shift), true},
+		{"closedEscape", string(enum.Shift), false},
+		{"closedEscape", string(enum.Dash), true},
+	}
+	for _, c := range cases {
+		t.Run(c.kind+"/"+c.category, func(t *testing.T) {
+			p := ActionPayload{
+				ActorID:      actorID,
+				ReactToID:    uuid.New(),
+				ReactionKind: c.kind,
+				Dodge:        &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+				Move:         &MovePayload{Category: c.category, Position: [3]int{1, 0, 0}},
+			}
+			if c.kind == "closedEscape" {
+				p.Skills = []ActionSkillPayload{{SkillName: enum.Evasion.String()}}
+			}
+			_, err := buildAction(actorID, p)
+			if c.wantErr && err == nil {
+				t.Fatalf("%s with %s was accepted; the client would own the rule", c.kind, c.category)
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("%s with %s was refused: %v", c.kind, c.category, err)
+			}
+			// The refused cases must fail on the move category specifically, not on a
+			// coincidental other validation (missing component, unknown skill) — a case that
+			// failed for the wrong reason would pass wantErr without proving anything.
+			if c.wantErr && err != nil && !strings.Contains(err.Error(), "must move with") {
+				t.Fatalf("%s with %s was refused for the wrong reason: %v", c.kind, c.category, err)
+			}
+		})
+	}
 }
 
 func TestBuildEditAction_RejectsAnUnknownField(t *testing.T) {

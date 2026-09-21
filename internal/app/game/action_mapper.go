@@ -149,6 +149,12 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 				if p.Move == nil {
 					return nil, fmt.Errorf("reaction %q must carry a move", p.ReactionKind)
 				}
+				// Displaces() says THAT it moves; RequiredMoveCategory says WITH WHAT. Both
+				// live on the kind — this is enforcement, not a second copy of the rule.
+				if want, required := kind.RequiredMoveCategory(); required && p.Move.Category != string(want) {
+					return nil, fmt.Errorf(
+						"reaction %q must move with %s, not %s", p.ReactionKind, want, p.Move.Category)
+				}
 			case action.ComponentRepel:
 				if repel == nil {
 					return nil, fmt.Errorf("reaction %q must carry a repel", p.ReactionKind)

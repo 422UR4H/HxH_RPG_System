@@ -3,6 +3,7 @@ package action_test
 import (
 	"testing"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
 )
@@ -69,6 +70,35 @@ func TestAction_BarsAsksTheReactionKindFirst(t *testing.T) {
 			t.Fatalf("Bars() = %v, want [action] — scheduled actions are unchanged", got)
 		}
 	})
+}
+
+// The matrix lives beside Bars() and Displaces() because it is the same class of rule: what
+// this kind demands of whoever sends it. The WS boundary only applies it.
+func TestReactionKind_RequiredMoveCategory(t *testing.T) {
+	cases := []struct {
+		kind     action.ReactionKind
+		want     enum.MoveCategory
+		required bool
+	}{
+		{action.ReactEscape, enum.Dash, true},
+		{action.ReactEscapeGuard, enum.Dash, true},
+		{action.ReactClosedEscape, enum.Shift, true},
+		{action.ReactDodge, "", false},
+		{action.ReactClosedDodge, "", false},
+		{action.ReactRepel, "", false},
+		{action.ReactNothing, "", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.kind), func(t *testing.T) {
+			got, required := c.kind.RequiredMoveCategory()
+			if required != c.required {
+				t.Fatalf("required = %v, want %v", required, c.required)
+			}
+			if required && got != c.want {
+				t.Fatalf("category = %s, want %s", got, c.want)
+			}
+		})
+	}
 }
 
 func TestReactionKindFrom(t *testing.T) {

@@ -1,6 +1,10 @@
 package action
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+)
 
 // ReactionKind is what the target chose to do about an attack.
 //
@@ -75,6 +79,33 @@ func (k ReactionKind) KeepsDefault() bool {
 		return false
 	default:
 		return true
+	}
+}
+
+// RequiredMoveCategory is which displacement each escape has to use. The second return is
+// whether this kind demands one at all — false for everything that does not displace.
+//
+//	escape       → Dash
+//	escapeGuard  → Dash
+//	closedEscape → Shift
+//
+// The discriminator is CLOSED vs OPEN, not defensive vs standard. During a Dash the character
+// is "in the air" and cannot dodge — exactly what the closed variants exist not to do — so the
+// closed escape steps with a Shift, which Brake governs because Brake is what measures your
+// ability to STOP. Someone who accelerates beyond what they can brake is fast but not agile.
+//
+// It lives here, beside Bars() and Displaces(), because it is the same class of rule: what
+// this kind demands of whoever sends it. The WS boundary enforces; it does not decide. Leaving
+// the rule in the client would make the client its owner — and a client sending closedEscape
+// with a Dash would buy the closed variant's bar discount with the open one's mobility.
+func (k ReactionKind) RequiredMoveCategory() (enum.MoveCategory, bool) {
+	switch k {
+	case ReactEscape, ReactEscapeGuard:
+		return enum.Dash, true
+	case ReactClosedEscape:
+		return enum.Shift, true
+	default:
+		return "", false
 	}
 }
 
