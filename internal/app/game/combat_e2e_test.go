@@ -1055,3 +1055,52 @@ func awaitErrorCode(t *testing.T, conn *websocket.Conn, d time.Duration) string 
 	}
 	return ""
 }
+
+// O ack do jogador tem que nomear a MESMA ação que o mestre viu entrar na fila. Um actionId
+// qualquer, não-zero, passaria num teste que só checasse "não é zero" — e um ID que não casa
+// com o do mestre é pior que nenhum, porque pull_action falharia sem explicação.
+func TestEnqueueActionAckNamesTheSameActionTheMasterSaw(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	f.enqueueAttack(t, player)
+
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the player was never acknowledged for their own enqueue")
+	}
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the master never saw the action land in the queue")
+	}
+
+	var ack game.ActionEnqueuedPayload
+	for _, m := range playerMsgs.snapshotMessages() {
+		if m.Type == game.MsgTypeActionEnqueued {
+			if err := json.Unmarshal(m.Payload, &ack); err != nil {
+				t.Fatalf("unmarshal action_enqueued: %v", err)
+			}
+			break
+		}
+	}
+
+	var queued game.ActionQueuedPayload
+	for _, m := range masterMsgs.snapshotMessages() {
+		if m.Type == game.MsgTypeActionQueued {
+			if err := json.Unmarshal(m.Payload, &queued); err != nil {
+				t.Fatalf("unmarshal action_queued: %v", err)
+			}
+			break
+		}
+	}
+
+	if ack.ActionID == uuid.Nil {
+		t.Fatal("action_enqueued came back with a zero actionId; the player cannot address their own action")
+	}
+	if ack.ActionID != queued.ActionID {
+		t.Fatalf("ack names %s but the master saw %s enter the queue", ack.ActionID, queued.ActionID)
+	}
+}

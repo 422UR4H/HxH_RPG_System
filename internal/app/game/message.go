@@ -168,6 +168,21 @@ type PullActionPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 }
 
+// ActionEnqueuedPayload acks the sender's own enqueue AND names the action.
+//
+// The name is not decoration and it is not a leak: this goes only to the player who sent the
+// action, about their own action. The queue stays secret — what the table cannot learn is what
+// OTHER people queued, and action_queued (master-only) is still the only surface that names
+// someone else's.
+//
+// Without it the player's browser cannot refer to what it just sent: it cannot cancel it,
+// cannot highlight it on the general bar, cannot tell that the next one up is theirs. It is
+// the same hole PendingReactions closed for the master, with the same consequence — an ID a
+// client cannot learn is an operation a client cannot invoke.
+type ActionEnqueuedPayload struct {
+	ActionID uuid.UUID `json:"actionId"`
+}
+
 // ActionQueuedPayload tells the MASTER that something landed in the queue, and names it.
 //
 // Master-only, and that is the whole point: the queue is secret (combat-engine.md § As barras

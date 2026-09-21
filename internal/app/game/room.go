@@ -743,10 +743,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
 		}
-		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
-		// The sender's own ack stays as it is — it says "we got it", to the person who sent it.
-		// This is different news, for a different recipient: the master is the one who has to
-		// decide when it opens, and they need the ID to be able to pull it.
+		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: a.GetID()}))
+		// The sender's own ack now names the action too — it says "we got it, and here is what
+		// you can refer to it by". This is different news, for a different recipient: the
+		// master is the one who has to decide when it opens, and they need the ID to be able
+		// to pull it.
 		bars := make([]string, 0, 2)
 		for _, b := range a.Bars() {
 			bars = append(bars, string(b))
