@@ -554,27 +554,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		// BEFORE turn_opened, and no r.mu held: Execute released it above, and
-		// applyAndRelayPieceMove takes it itself. The table must never see the turn open with
-		// the piece still in the old slot, and piece_moved goes straight into each client's
-		// queue while turn_opened only reaches it through r.broadcast — so applying the move
-		// first is what fixes the order.
-		r.applyOpenedMove(result.OpenedTurn)
-
-		act := result.OpenedTurn.GetAction()
-		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
-			TurnID:  result.OpenedTurn.GetID(),
-			ActorID: act.GetActorID(),
-		})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
-		if result.Resolution != nil {
-			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. publishResolution keeps this
-			// master-only on its own: the mechanics are public when a turn opens, but the
-			// calculation stays with the master until it closes (IsSettled is false here).
-			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
-		}
+		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
 
 	case MsgTypeChangeRoundMode:
 		if !r.IsMaster(client.userUUID) {
@@ -670,27 +650,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		// BEFORE turn_opened, and no r.mu held: Execute released it above, and
-		// applyAndRelayPieceMove takes it itself. The table must never see the turn open with
-		// the piece still in the old slot, and piece_moved goes straight into each client's
-		// queue while turn_opened only reaches it through r.broadcast — so applying the move
-		// first is what fixes the order.
-		r.applyOpenedMove(result.OpenedTurn)
-
-		act := result.OpenedTurn.GetAction()
-		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
-			TurnID:  result.OpenedTurn.GetID(),
-			ActorID: act.GetActorID(),
-		})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
-		if result.Resolution != nil {
-			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. publishResolution keeps this
-			// master-only on its own: the mechanics are public when a turn opens, but the
-			// calculation stays with the master until it closes (IsSettled is false here).
-			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
-		}
+		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
 
 	case MsgTypeEnqueueAction:
 		var payload ActionPayload
@@ -1131,6 +1091,37 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
+	}
+}
+
+// announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for
+// byte: once the baton has moved, "the next one opened" and "this one was pulled out of
+// order" are the same news, and the two arms had drifted apart only by accident so far.
+//
+// The move goes out BEFORE turn_opened, with no r.mu held: Execute released it in the caller,
+// and applyMove takes it itself. The table must never see the turn open with the piece still
+// in the old slot, and piece_moved goes straight into each client's queue while turn_opened
+// only reaches it through r.broadcast — so applying the move first is what fixes the order.
+//
+// res is nil-safe: a turn can open with nothing to resolve.
+func (r *Room) announceOpenedTurn(
+	session *matchsession.MatchSession, opened *turnentity.Turn, res *domainservice.TurnResolution,
+) {
+	r.applyOpenedMove(opened)
+
+	act := opened.GetAction()
+	out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
+		TurnID:  opened.GetID(),
+		ActorID: act.GetActorID(),
+	})
+	data, _ := json.Marshal(out)
+	go func() { r.broadcast <- data }()
+	if res != nil {
+		r.broadcastWallResults(session, res.WallResults)
+		// The projection for the turn just opened. publishResolution keeps this master-only on
+		// its own: the mechanics are public when a turn opens, but the calculation stays with
+		// the master until it closes (IsSettled is false here).
+		r.publishResolution(opened.GetID(), res)
 	}
 }
 
