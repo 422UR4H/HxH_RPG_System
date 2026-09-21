@@ -223,7 +223,7 @@ proficiências dele —, mais o **golpe corporal**, sempre.
 > Quando existir inventário, isto vira "as armas que o personagem carrega". Hoje não existe
 > inventário, e proficiência é a melhor aproximação disponível: é o que ele sabe empunhar.
 
-**A rota.** `GET /charactersheets/{character_sheet_uuid}/combat-catalogue`
+**A rota.** `GET /charactersheets/{uuid}/combat-catalogue` — `{uuid}`, não `{character_sheet_uuid}`: é o que o `GET /charactersheets/{uuid}` vizinho usa, e o handler dele já liga `path:"uuid"`
 
 ```json
 {
