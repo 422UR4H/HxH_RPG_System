@@ -473,18 +473,21 @@ ambos para a mesa.
 }
 ```
 
-⚠️ **`category` é minúscula.** `enum.SceneCategory` vale `"battle"` ou `"roleplay"` — e o
-servidor **não valida**: ele faz `enum.SceneCategory(payload.Category)` e guarda a string como
-veio. Mandar `"Battle"` não dá erro; cria uma cena cuja categoria não é igual a nenhum dos dois
-valores, e ela sai assim em `scene_changed` e em `match_full_state`. (`roundMode`, ao
-contrário, é capitalizado: `"Free"`/`"Race"`.)
+⚠️ **`category` é minúscula.** `enum.SceneCategory` vale `"battle"` ou `"roleplay"`.
+**O servidor valida**: `enum.SceneCategoryFrom` compara a string contra a lista exata do enum
+(`internal/domain/entity/enum/scene_category.go`), no mesmo padrão de `SkillNameFrom`/
+`WeaponNameFrom` — comparação exata, sem normalização de caixa. Mandar `"Battle"` devolve
+`invalid_action` em vez de criar uma cena cuja categoria não bate com nenhum dos dois valores.
+(`roundMode`, ao contrário, é capitalizado: `"Free"`/`"Race"`.)
 
 Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
 
 **Dispara:** [`scene_changed`](#scene_changed) — mesa.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid change_scene payload"`) ·
-`match_not_started` · `game_error` (`cannot close round: current turn is still open`).
+`invalid_action` (`"invalid name of scene category: X"` — `category` fora de
+`"battle"`/`"roleplay"`) · `match_not_started` ·
+`game_error` (`cannot close round: current turn is still open`).
 
 ### `enqueue_master_action`
 
@@ -1155,7 +1158,7 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
 | `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida. |
-| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados. | `enqueue_action`, `attach_reaction`, `edit_action`. |
+| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
 

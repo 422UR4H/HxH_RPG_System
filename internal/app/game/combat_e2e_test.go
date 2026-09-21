@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2040,6 +2041,117 @@ func TestMatchFullStateCarriesTheSceneInTheSameShapeAsSceneChanged(t *testing.T)
 	// the scene opens a fresh round, which is Free.
 	if got.RoundMode != string(enum.Free) {
 		t.Fatalf("roundMode = %q, want the new round's regime %q", got.RoundMode, string(enum.Free))
+	}
+}
+
+// change_scene used to cast the wire string straight into enum.SceneCategory and store it as
+// it came — "Battle" would silently produce a scene whose category matched neither "battle"
+// nor "roleplay". These three tests are the validation's proof: a valid category still works,
+// an unknown one is refused, and it is refused for the RIGHT reason — invalid_action from
+// SceneCategoryFrom, not some other check that happened to fire first.
+
+// A recognized category (lowercase, matching the enum) still changes the scene.
+func TestE2E_ChangeSceneAcceptsAKnownCategory(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
+		"category":                string(enum.Roleplay),
+		"briefInitialDescription": "Taverna",
+	})
+	if !masterMsgs.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("a valid category did not produce scene_changed")
+	}
+	var changed game.SceneChangedPayload
+	if err := json.Unmarshal(
+		findMessage(t, masterMsgs.snapshotMessages(), game.MsgTypeSceneChanged).Payload, &changed,
+	); err != nil {
+		t.Fatalf("unmarshal scene_changed: %v", err)
+	}
+	if changed.Category != string(enum.Roleplay) {
+		t.Fatalf("category = %q, want %q", changed.Category, string(enum.Roleplay))
+	}
+}
+
+// An unrecognized category ("Battle", capitalized, is the exact mistake that shipped in this
+// contract's own earlier examples) is refused instead of silently becoming a scene stuck with
+// a category matching neither valid value.
+func TestE2E_ChangeSceneRejectsAnUnknownCategory(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
+		"category":                "Battle",
+		"briefInitialDescription": "Arena",
+	})
+
+	if code := awaitErrorCode(t, master, 2*time.Second); code != "invalid_action" {
+		t.Fatalf("error code = %q, want invalid_action", code)
+	}
+	// The refusal must be for the category, not a side effect: no scene_changed went out for
+	// the bad payload, and the session's active scene must still be whatever it was seeded
+	// with — never one carrying "Battle" as its category.
+	if masterMsgs.count(game.MsgTypeSceneChanged) != 0 {
+		t.Fatal("scene_changed fired despite the unknown category — the scene changed anyway")
+	}
+	if scene := f.session.GetActiveScene(); scene != nil && string(scene.GetCategory()) == "Battle" {
+		t.Fatalf("the session's active scene carries the rejected category %q", scene.GetCategory())
+	}
+}
+
+// The refusal above has to be for the RIGHT reason. A category-only mistake on an otherwise
+// well-formed payload, sent by the master on a live session, must not be masked by forbidden,
+// invalid_payload or match_not_started firing first — this pins the error MESSAGE, not just
+// the code, to SceneCategoryFrom's own wording.
+func TestE2E_ChangeSceneRejectsAnUnknownCategoryForTheRightReason(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+
+	sendWS(t, master, string(game.MsgTypeChangeScene), map[string]any{
+		"category":                "Battle",
+		"briefInitialDescription": "Arena",
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	var got game.ErrorPayload
+	found := false
+	for time.Now().Before(deadline) {
+		_ = master.SetReadDeadline(deadline)
+		_, data, err := master.ReadMessage()
+		if err != nil {
+			break
+		}
+		var msg game.Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Type != game.MsgTypeError {
+			continue
+		}
+		if err := json.Unmarshal(msg.Payload, &got); err != nil {
+			t.Fatalf("unmarshal error payload: %v", err)
+		}
+		found = true
+		break
+	}
+	if !found {
+		t.Fatal("no error arrived for the unknown category")
+	}
+	if got.Code != "invalid_action" {
+		t.Fatalf("error code = %q, want invalid_action (got forbidden/invalid_payload/"+
+			"match_not_started would mean the wrong check fired first)", got.Code)
+	}
+	if !strings.Contains(got.Message, "scene category") || !strings.Contains(got.Message, "Battle") {
+		t.Fatalf("error message = %q, want SceneCategoryFrom's own wording naming the "+
+			"rejected value", got.Message)
 	}
 }
 

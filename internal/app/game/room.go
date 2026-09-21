@@ -925,10 +925,20 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		sceneWasPersisted := session.IsScenePersisted()
 		r.mu.RUnlock()
 
+		// Validated against the enum's exact values (same pattern as skill/weapon names),
+		// not just cast and stored: an unrecognized category used to sail through as a
+		// string matching neither "battle" nor "roleplay", and would come back out that
+		// way in scene_changed and match_full_state for every client to trip on.
+		category, err := enum.SceneCategoryFrom(payload.Category)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			return
+		}
+
 		oldScene, oldRound, err := r.changeSceneUC.Execute(
 			context.Background(), session,
 			r.masterUUID, client.userUUID,
-			enum.SceneCategory(payload.Category), payload.BriefInitialDescription,
+			category, payload.BriefInitialDescription,
 		)
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
