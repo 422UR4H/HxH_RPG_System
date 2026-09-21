@@ -34,16 +34,10 @@ func RemoveMatchNPCHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, matchUC.ErrMatchNotFound),
-				errors.Is(err, matchUC.ErrCharacterSheetNotFound),
 				errors.Is(err, matchUC.ErrNPCNotInMatch):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden(err.Error())
-			case errors.Is(err, matchUC.ErrSheetNotNPC),
-				errors.Is(err, matchUC.ErrSheetNotOwnedByMaster),
-				errors.Is(err, matchUC.ErrMatchAlreadyFinished),
-				errors.Is(err, matchUC.ErrNPCAlreadyInMatch):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())
 			}

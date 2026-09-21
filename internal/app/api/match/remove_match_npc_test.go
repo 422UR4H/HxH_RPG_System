@@ -62,13 +62,6 @@ func TestRemoveMatchNPCHandler(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name: "npc_already_in_match",
-			mockFn: func(_ context.Context, _ *matchUC.RemoveMatchNPCInput) error {
-				return matchUC.ErrNPCAlreadyInMatch
-			},
-			wantStatus: http.StatusUnprocessableEntity,
-		},
-		{
 			name: "internal_server_error",
 			mockFn: func(_ context.Context, _ *matchUC.RemoveMatchNPCInput) error {
 				return errors.New("db error")
