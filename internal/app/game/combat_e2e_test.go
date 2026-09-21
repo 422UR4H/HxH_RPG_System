@@ -1239,3 +1239,73 @@ func TestMatchFullStateOnConnectCarriesTheCombatState(t *testing.T) {
 		t.Fatalf("match_full_state stamped seq %d for the master, want the current %d", m.Bars.Seq, wantSeq)
 	}
 }
+
+// This is the regression buildMatchFullState's round.HasOpenTurn() guard exists to prevent.
+//
+// round.CurrentTurn() returns the round's LAST turn regardless of whether it already closed —
+// a round sits with its last turn closed for the whole window between close_turn and the next
+// open_next_action. A late connection during that window must NOT be told a turn is open, and
+// the master must not be handed a Resolution for it either: that closed turn's settled
+// resolution was already broadcast to the table via resolution_updated when it closed, and
+// match_full_state does not owe it again.
+//
+// A naive `if t := round.CurrentTurn(); t != nil` (rather than HasOpenTurn()) would pass every
+// other assertion in this file — the sibling test above always reconnects while a turn is
+// still open — so this scenario needs its own connection, made specifically in the closed
+// window, to be caught at all.
+func TestMatchFullStateOmitsOpenTurnBetweenCloseAndNextOpen(t *testing.T) {
+	f := newCombatFixture(t)
+
+	// The master stays connected for the whole test, same reasoning as the sibling test: an
+	// empty room closes itself in Run(), which would reset r.barsSeq on the next connect.
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master.Close() //nolint:errcheck
+	readMessage(t, master) // room_state
+	masterMsgs := newCollector(master)
+
+	setupPlayer := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	readMessage(t, setupPlayer) // room_state
+	setupPlayerMsgs := newCollector(setupPlayer)
+
+	f.enqueueAttack(t, setupPlayer)
+	if !setupPlayerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+	setupPlayer.Close() //nolint:errcheck
+
+	sendWS(t, master, "open_next_action", map[string]any{})
+	if !masterMsgs.await(game.MsgTypeResolutionUpdate, 3*time.Second) {
+		t.Fatal("the master never received the projection for the opened turn")
+	}
+
+	// Close it — and deliberately do NOT open a next one. Nothing else is queued, so the round
+	// itself stays open; only its last turn is closed. This is the exact window the fix
+	// protects.
+	sendWS(t, master, "close_turn", map[string]any{"confirm": true})
+	if !f.writer.awaitPersisted(3 * time.Second) {
+		t.Fatal("the turn never closed and persisted")
+	}
+
+	// A late connection now, with the round sitting on "last turn closed, nothing open yet".
+	late := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	defer late.Close() //nolint:errcheck
+	lateMsgs := newCollector(late)
+	if !lateMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the late connection never received match_full_state")
+	}
+
+	var got game.MatchFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, lateMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &got,
+	); err != nil {
+		t.Fatalf("unmarshal match_full_state: %v", err)
+	}
+
+	if got.OpenTurn != nil {
+		t.Fatalf("OpenTurn = %+v, want nil — the round's last turn already closed", got.OpenTurn)
+	}
+	if got.Resolution != nil {
+		t.Fatal("Resolution present for a round with no open turn — the closed turn's " +
+			"resolution was already broadcast to the table when it settled")
+	}
+}
