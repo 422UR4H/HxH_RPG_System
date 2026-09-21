@@ -1263,6 +1263,10 @@ EOF
   `r.buildMapFullState`, `TurnTransition.Opened *turn.Turn`.
 - Produces: `(r *Room) applyAndRelayPieceMove(payload PieceMovedPayload, origin uuid.UUID)`.
 
+> **Descoberto na implementação (Task 8):** `TurnTransition.Opened` não existe — o campo
+> real, em ambos os call sites (`open_next_action` e `pull_action`), é `result.OpenedTurn`
+> (`*turnentity.Turn`). Os passos abaixo ainda dizem `transition.Opened`; leia `result.OpenedTurn`.
+
 **A regra:**
 
 | O movimento… | A peça |
@@ -1420,8 +1424,11 @@ Nos braços de `MsgTypeOpenNextAction` e `MsgTypePullAction` em `room.go`, **dep
 // depend on where the piece IS. Only movement that does not test displaces here — and today
 // the mapper accepts only Dash and Shift, neither of which rolls against a DC, so the other
 // branch has no reachable case. Do not invent one.
-if transition.Opened != nil {
-	r.applyOpenedMove(transition.Opened)
+//
+// ⚠️ Descoberto na implementação (Task 8): o campo real é result.OpenedTurn, não
+// transition.Opened — confira o nome da variável de retorno no braço que você está editando.
+if result.OpenedTurn != nil {
+	r.applyOpenedMove(result.OpenedTurn)
 }
 ```
 
@@ -1456,9 +1463,9 @@ func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
 		return
 	}
 
-	piece.Slot = SlotPayload{Kind: "square", Col: a.Move.Position[0], Row: a.Move.Position[1]}
-	z := a.Move.Position[2]
-	piece.Z = &z
+	col, row := a.Move.Position[0], a.Move.Position[1]
+	piece.Slot = SlotPayload{Kind: "square", Col: &col, Row: &row}
+	// Z is deliberately NOT touched — see the note below.
 
 	// origin is uuid.Nil: the server moved this one and nobody's browser predicted it, so
 	// nobody is skipped.
@@ -1469,6 +1476,15 @@ func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
 > Confira a forma real de `SlotPayload` (hex vs square) e de `PieceMovedPayload.Z` em
 > `message.go`. Se o tabuleiro puder ser hexagonal, respeite `piece.Slot.Kind` em vez de
 > assumir `"square"` — **não force o quadrado num mapa hex**.
+>
+> ⚠️ **Descoberto na implementação (Task 8), dois erros de tipo neste trecho:**
+> `SlotPayload.Col`/`Row`/`Q`/`R` são `*int`, não `int` — o literal acima não compila como
+> escrito, precisa dos ponteiros (`&col`, `&row`). E `PieceMovedPayload.Z` é `float64`, não
+> `*float64` — o código real **não** escreve `z := a.Move.Position[2]; piece.Z = &z`: a
+> implementação final preserva o `Z` que a peça já tinha, sem tocar nele, porque
+> `Move.Position[2]` é o índice `z` da GRADE e `PieceMovedPayload.Z` é altura virtual em
+> METROS — grandezas possivelmente diferentes, nunca reconciliadas. Ver a lacuna correspondente
+> em `docs/dev/api/match-combat-ws.md` §9.
 
 ⚠️ **Confira quem segura `r.mu` no braço do `open_next_action` antes de chamar.** O `Execute`
 roda com write lock; o helper também pega o lock. Chamar com o lock na mão é deadlock.

@@ -109,6 +109,21 @@ mappings:
         confidence: directly_affected
     notes: Character sheet creation and consolidation endpoints (birthday day/month + birth year calculation)
 
+  # ─── API: Combat Catalogue (backend-prep-front-combat) ───
+  - code_path: internal/app/api/sheet/get_combat_catalogue.go
+    dev_docs:
+      - path: docs/dev/api/character-sheet.md
+        confidence: directly_affected
+    notes: >-
+      GET /charactersheets/{uuid}/combat-catalogue — armas que ESTA ficha sabe usar
+      (proficiências + Fist sempre, nunca duplicado) com os números que decidem o que a arma
+      faz (dice/flatDamage/defenseBonus, lidos de item.WeaponsManager), mais o vocabulário de
+      enum.SkillName que o wire de combate aceita (não é seletor: a corrente de testes ainda
+      não roda, ver flows/05-lacunas.md). Autorização reusa IGetCharacterSheet — quem lê a
+      ficha lê o catálogo. Documentado junto das outras rotas de ficha, não em doc própria.
+      Nasceu da ausência que o front supriu inventando "combat_strength" — ver
+      docs/superpowers/specs/2026-09-20-backend-prep-front-combat-design.md §11.
+
   # ─── Character Classes ───
   - code_path: internal/domain/entity/character_class/
     dev_docs:
@@ -483,7 +498,9 @@ mappings:
       WS message type definitions — piece_moved, piece_removed, map_state_sync,
       map_full_state (visible_polygons/fog_mode; explored_cells/explored_delta
       removed in Phase 10-E), wall_hp_changed, wall_state_changed,
-      visibility_updated, wall_revealed.
+      visibility_updated, wall_revealed, match_full_state (backend-prep-front-combat:
+      combat snapshot on register/reconnect — MatchFullStatePayload, OpenTurnPayload)
+      and the now-populated ActionEnqueuedPayload.
       http-boundary-inventory.md (frontend repo) maps every message type this
       file defines that useLobbyWs.ts/useMatchWs.ts actually consume, to the
       exact field names each hook reads and whether it runs objToCamelCase or
@@ -514,6 +531,13 @@ mappings:
       message, the exact error code each refusal uses, which events each one emits
       and in what order, and publishResolution's two visibility axes (master-only
       while the turn is open; projected per recipient once settled).
+      backend-prep-front-combat added buildMatchFullState (sent on every register,
+      fog-agnostic, current barsSeq preserved across reconnect) and made piece_moved
+      a SERVER message too: applyOpenedMove/applyAndRelayPieceMove apply a turn's
+      Move to the board on open_next_action/pull_action, before turn_opened, reusing
+      the lobby's fog-gated piece_moved/piece_removed pair (senderId zero for the
+      server-authored case). A reaction's Move is deliberately not applied; Z is
+      preserved, never overwritten from Move.Position[2] (units unresolved).
 
   - code_path: internal/app/game/client.go
     dev_docs:
@@ -650,6 +674,8 @@ mappings:
     dev_docs:
       - path: docs/dev/match/combat-engine.md
         confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
     game_docs:
       - path: docs/game/armas.md
         confidence: directly_affected
@@ -662,6 +688,11 @@ mappings:
       forma INICIAL do aparar, não uma provisória — o que falta é o entorno: tipos de
       dano, armadura e Nen. A margem do acerto NÃO entra no dano, por decisão de
       produto. Hoje toda arma do catálogo tem defense 0, então a subtração é inerte.
+      backend-prep-front-combat: RawDamage ganhou o parâmetro push — soma o Push do
+      atacante (actorPush em turn_resolver.go), lido da ficha, nos dois call sites
+      (parede e personagem). Consequência de contrato: attack.damage.skillName no WS
+      passou a ser aceito/validado mas descartado — documentado em match-combat-ws.md
+      junto de speed.
 
   - code_path: internal/domain/match/service/margin_ladder.go
     dev_docs:
@@ -699,11 +730,16 @@ mappings:
       WebSocket path (room.go's publishResolution) and the REST Action History (Task 12).
       Three recipient classes, not four: master, owner, everyone else. The target of an
       attack is deliberately NOT privileged. Demotes closedDodge/closedEscape to
-      dodge/escape and strips Feint, Trigger and the Evasion skill entry for anyone but
+      dodge/escape and strips Trigger and the Evasion skill entry for anyone but
       the master or the owner. A reaction's Payouts are withheld ONLY when the label was
       demoted (the closed dodge's reserve is the other half of that same secret); the
       repel's ScopeAnyone penalty is public by rule — reacoes.md, "vale contra todo
       mundo". Errors (engine faults) are master-only like PendingReactions.
+      backend-prep-front-combat: ProjectAction(a, v, isSettled) — Feint's gate is now
+      TEMPORAL (isSettled), not class-based: hidden only while the turn is open, public
+      once it closes. get_match_history.go only ever calls it with settled turns, so in
+      practice Feint reaches every viewer of match-history.md, not just owner/master —
+      match-history.md's own note here was stale and got corrected in this PR.
 
   - code_path: internal/domain/match/entity/battle/blow.go
     dev_docs:
@@ -833,6 +869,8 @@ mappings:
     dev_docs:
       - path: docs/dev/match/combat-engine.md
         confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
     game_docs:
       - path: docs/game/combate/reacoes.md
         confidence: directly_affected
@@ -843,6 +881,9 @@ mappings:
       agendada). RequiredComponents()/Displaces() vivem aqui, e são o que
       action_mapper.go usa para recusar uma reação malformada na fronteira, antes de
       ela chegar ao domínio. enum.DodgeCategory foi absorvida e removida.
+      backend-prep-front-combat: RequiredMoveCategory() fixa a matriz escape/
+      escapeGuard→Dash, closedEscape→Shift; action_mapper.go a aplica. A matriz e a
+      mensagem de erro estão documentadas em match-combat-ws.md.
 
   - code_path: internal/domain/match/entity/action/repel.go
     dev_docs:

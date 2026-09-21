@@ -130,9 +130,20 @@ Notas sobre os campos de `action`/`reactions`:
 
 - `skills`, `move`, `attack`, `defense`, `dodge`, `repel`, `interact` só aparecem quando a
   action de fato os carrega — ausentes (não `null`), do contrário.
-- `feint` e `trigger` são omitidos por completo quando o viewer não é dono nem mestre (ver
-  abaixo); quando presentes, `feint` é o `RollCheck` da finta e `trigger` é um objeto vazio
-  (o domínio ainda não tem campos em `action.Trigger`).
+- `trigger` é omitido por completo quando o viewer não é dono nem mestre; quando presente, é
+  um objeto vazio (o domínio ainda não tem campos em `action.Trigger`).
+- `feint` segue uma regra **temporal**, não de classe: `ProjectAction`
+  (`internal/domain/match/service/projection.go`) só o esconde de quem não é dono/mestre
+  enquanto o turno ainda está **aberto** (`isSettled: false`) — quem caiu na finta descobre
+  dentro da resolução do MESMO turno, porque o sucesso dele foi contra um ataque falso e o de
+  verdade vem em seguida; esconder depois do fechamento esconderia para sempre, que não é a
+  regra. Como este endpoint só devolve turnos **fechados** (`FindMatchHistory` lê da tabela
+  que `PersistTurnClose` grava, o único caminho de escrita), essa condição nunca se aplica
+  aqui: **`feint`, quando presente na action, chega a todo viewer deste endpoint**, não só a
+  dono/mestre. Quando presente, `feint` é o `RollCheck` da finta. Ver
+  [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra é descrita pelo lado do
+  WebSocket (que nunca expõe `feint` — não há mensagem servidor→cliente que projete a
+  declaração de uma action).
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
 - `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
   que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
@@ -203,7 +214,10 @@ Isso significa, na prática:
   **menos** a deny-list. Não existe uma "verdade única" que o front possa cachear e
   reutilizar entre usuários.
 - **O alvo de um ataque não é uma classe privilegiada.** Uma finta contra você não avisa
-  que era finta — só o dono da finta e o mestre veem `feint` não-nulo.
+  que era finta **enquanto o turno ainda está aberto**. A regra que esconde `feint` de quem
+  não é dono/mestre é **temporal** (`isSettled`), não de classe — e como este endpoint só
+  devolve turnos já fechados, `feint`, quando presente, chega **a todo viewer** deste
+  endpoint. Ver a nota sobre `feint` mais acima.
 - **A esquiva fechada chega a terceiros indistinguível de uma esquiva comum.**
   `reactionKind: "closedDodge"` vira `"dodge"` (e `"closedEscape"` vira `"escape"`) para
   quem não é dono nem mestre — o rótulo é o vazamento; ver a nota em
