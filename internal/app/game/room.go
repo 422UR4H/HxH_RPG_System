@@ -1702,7 +1702,16 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
 				// action arrived. attach_reaction and edit_action already call it the same way.
 				if res := session.ResolveTurn(t); res != nil {
-					p := newResolutionUpdatedPayload(t.GetID(), res)
+					// ProjectResolution is called even though this branch is master-only and the
+					// projection is the IDENTITY for a master (Viewer.SeesAllOf is true for every
+					// character, and PendingReactions/Errors are exactly what a master keeps).
+					// The call is here so the PORT is already the right shape: without it this is
+					// the only emitter of a resolution that never goes through the projection,
+					// and the day reaction visibility stops being master-only it would start
+					// leaking with no test able to catch it. Viewer is built from isMaster rather
+					// than hardcoded true so it stays honest if this branch ever widens.
+					v := domainservice.Viewer{IsMaster: isMaster}
+					p := newResolutionUpdatedPayload(t.GetID(), domainservice.ProjectResolution(res, v))
 					payload.Resolution = &p
 				}
 			}
