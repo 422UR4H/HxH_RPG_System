@@ -979,15 +979,23 @@ mestre depois de aberto, mas as reações que seguem dependem de onde a peça ES
 esperar. O caminho reaproveita o mesmo par `piece_moved`/`piece_removed` que o lobby já usa
 — não um tipo novo.
 
-**O gate de fog é o mesmo par de sempre — e tem um corte ANTES dele:**
+**O gate de fog é o mesmo par de sempre — e tem um corte ANTES dele.** A tabela vale para o
+que esta seção descreve: uma partida **com sessão viva** (combate em andamento). O mesmo
+helper serve o lobby, e lá ele devolve a mensagem a todo mundo antes de chegar em qualquer um
+destes testes — ver a linha da peça oculta.
 
 | Quem | Recebe |
 |---|---|
-| Mestre | sempre `piece_moved` — sem gate, mesmo com `visible: false` |
-| Jogador, peça marcada `visible: false` (oculta) | **nada.** `relayPieceMove` corta antes de sequer olhar linha de visão — nenhum jogador recebe `piece_moved`/`piece_removed` para uma peça oculta, mesmo quem enxergaria o destino a olho nu. |
+| Quem **enviou** o `piece_moved` (o `senderId` do envelope) | **nada** — mestre ou jogador. O browser dele já desenhou o arrasto; ninguém é ecoado para si mesmo. Este corte vem **antes** de todos os outros, inclusive do corte de mestre. Só não se aplica ao movimento de autor SERVIDOR, que não tem remetente. |
+| Mestre (quando não é o remetente) | `piece_moved` — sem gate de fog, mesmo com `visible: false` |
+| Jogador, peça marcada `visible: false` (oculta) | **nada**, **em combate.** Com sessão viva `relayPieceMove` corta a peça oculta antes de olhar linha de visão — nem `piece_moved` nem `piece_removed`, mesmo para quem enxergaria o destino a olho nu. **No lobby (sem sessão) é o contrário:** o ramo de lobby devolve a mensagem a todo mundo **antes** do teste de oculta, porque no lobby não há fog nenhum. A regra é do combate, não do protocolo. |
 | Jogador, peça visível, enxerga o **destino** | `piece_moved`, com a posição nova |
-| Jogador, peça visível, só enxergava a **origem** (a peça "saiu de vista") | `piece_removed` |
+| Jogador, peça visível, só enxergava a **origem** (a peça "saiu de vista") | `piece_removed`. Uma peça que não estava no tabuleiro antes não tem origem: aí não há metade `piece_removed`, só a metade `piece_moved` para quem enxerga o destino. |
 | Jogador, peça visível, não enxergava nem origem nem destino | nada |
+
+O **dono** da peça movida é julgado pela linha de visão **nova**, não pela antiga: o servidor
+recomputa a visão dele antes do despacho. Sem isso, uma peça que anda para fora do próprio
+campo de visão anterior faria o dono receber `piece_removed` da própria peça.
 
 `senderId` vem **zero** (`00000000-…`) quando o autor é o servidor — nenhum navegador previu
 esse movimento, então ninguém é pulado no dispatch. É assim que o cliente distingue "o
@@ -996,12 +1004,21 @@ quem enviou).
 
 O dono do personagem movido recebe, além disso, um `map_full_state` atualizado — a linha de
 visão dele mudou, mesmo quando quem moveu a peça não foi ele (o mestre arrastando a peça de
-um jogador, ou o motor aplicando um movimento resolvido).
+um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas do código:
+o dono é resolvido a partir do **personagem** (`characterId` → jogador), então uma peça de NPC
+ou uma peça cujo `characterId` não está na partida não tem dono e ninguém recebe esse extra;
+o dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num polígono
+velho); e se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima
+sai do mesmo jeito.
 
 **Disparado por:** `open_next_action` e `pull_action`, quando o turno que abre carrega um
 `Move`. Só o ramo que **não testa** desloca — hoje `move.category` só aceita `Dash` e
-`Shift`, e nenhum dos dois rola contra CD; um ramo com teste (um salto, um aperto, um pouso
-em slot ocupado) não tem caso alcançável hoje, então não existe código para ele.
+`Shift` (as outras cinco são recusadas no mapeamento), e nenhum dos dois rola contra CD; um
+ramo com teste (um salto, um aperto, um pouso em slot ocupado) não tem caso alcançável hoje,
+então não existe código para ele.
+
+Um ator **sem peça no tabuleiro** não é erro: não há o que mover, nada é emitido e nenhuma
+mensagem de erro sai. O turno abre normalmente.
 
 ⚠️ **Uma reação de escape NÃO move a peça.** Só o `Move` da própria ação do turno é aplicado
 aqui. Uma reação — inclusive `escape`/`escapeGuard`/`closedEscape`, que carregam `Move`
