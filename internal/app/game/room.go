@@ -1710,9 +1710,26 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 					// The call is here so the PORT is already the right shape: without it this is
 					// the only emitter of a resolution that never goes through the projection,
 					// and the day reaction visibility stops being master-only it would start
-					// leaking with no test able to catch it. Viewer is built from isMaster rather
-					// than hardcoded true so it stays honest if this branch ever widens.
-					v := domainservice.Viewer{IsMaster: isMaster}
+					// leaking with no test able to catch it.
+					//
+					// Owns is built for real here, the same way publishResolution builds it for the
+					// live per-recipient emitter — not left nil. A nil map reads as "owns nothing"
+					// (service.Viewer.SeesAllOf), which is safe TODAY only because isMaster is always
+					// true on this branch (IsMaster short-circuits SeesAllOf regardless of Owns). The
+					// day this branch widens to a non-master recipient, a nil Owns would downgrade
+					// that player's OWN reaction — erring toward hiding too much, not leaking, but
+					// still not what "stays honest if this branch ever widens" promised. Carrying the
+					// real set makes that promise true instead of merely asserted.
+					owns := make(map[uuid.UUID]bool)
+					for charStr, pid := range session.GetCharToPlayer() {
+						if pid != playerID {
+							continue
+						}
+						if charID, err := uuid.Parse(charStr); err == nil {
+							owns[charID] = true
+						}
+					}
+					v := domainservice.Viewer{IsMaster: isMaster, Owns: owns}
 					p := newResolutionUpdatedPayload(t.GetID(), domainservice.ProjectResolution(res, v))
 					payload.Resolution = &p
 				}

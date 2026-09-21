@@ -740,7 +740,7 @@ Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master
 | `action.diceRolled` | Os dados **efetivamente lidos**. Um teste enviesado rolou dois conjuntos; só o lido viaja. |
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
 | `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. |
-| `targets[].reaction` | `null` quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio. Uma passiva silenciosa não é resposta a reportar. |
+| `targets[].reaction` | **Ausente** quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio — `Reaction *ReactionResultPayload` com `omitempty` **omite a chave**, não emite `null`; em TypeScript o campo é `reaction?: ReactionResultPayload`, não `reaction: ReactionResultPayload \| null`. Uma passiva silenciosa não é resposta a reportar. |
 | `reaction.rung` | `great_success` · `success` · `near_miss` · `failure` — **snake_case**, diferente de todo o resto do wire. Ausente fora de um aparo. |
 | `reaction.margin` / `difference` | Valor zero **fora de um aparo** — todos os outros tipos leem contra CD plana, não contra a escada. |
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
@@ -948,7 +948,7 @@ mensagem fecha.
 
 | Campo | Notas |
 |---|---|
-| `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. Ausente (`omitempty`) quando a partida não tem cena ativa; leia `scene == null` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e não é validada — ver `change_scene`. |
+| `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. **Ausente** (`omitempty`) quando a partida não tem cena ativa — `Scene *SceneChangedPayload` com `omitempty` **omite a chave inteira**, não emite `null`; em TypeScript o campo é `scene?: SceneChangedPayload`, não `scene: SceneChangedPayload \| null`. Leia `scene === undefined` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e é validada contra o enum — ver `change_scene`. |
 | `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
@@ -979,10 +979,14 @@ mestre depois de aberto, mas as reações que seguem dependem de onde a peça ES
 esperar. O caminho reaproveita o mesmo par `piece_moved`/`piece_removed` que o lobby já usa
 — não um tipo novo.
 
-**O gate de fog é o mesmo par de sempre — e tem um corte ANTES dele.** A tabela vale para o
-que esta seção descreve: uma partida **com sessão viva** (combate em andamento). O mesmo
-helper serve o lobby, e lá ele devolve a mensagem a todo mundo antes de chegar em qualquer um
-destes testes — ver a linha da peça oculta.
+**O gate de fog é o mesmo par de sempre — e tem DOIS cortes ANTES dele, nos dois regimes.**
+A tabela vale para o que esta seção descreve: uma partida **com sessão viva** (combate em
+andamento). O mesmo helper (`relayPieceMove`, `room.go`) serve o lobby, e nele o corte de
+remetente e o corte de mestre rodam **primeiro**, antes de qualquer ramo de lobby ou de
+combate — é por isso que as duas primeiras linhas da tabela abaixo valem sem exceção. O que
+muda no lobby é só o que vem **depois** desses dois cortes: sem sessão viva, o ramo de lobby
+devolve a mensagem a todo mundo antes do teste de peça oculta e do teste de campo de visão —
+ver a linha da peça oculta.
 
 | Quem | Recebe |
 |---|---|
