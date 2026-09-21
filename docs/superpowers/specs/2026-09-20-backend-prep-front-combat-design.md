@@ -280,7 +280,7 @@ turno aberto e sem reações pendentes, até alguma coisa mudar por acaso.
 {
   "type": "match_full_state",
   "payload": {
-    "sceneId": "…", "sceneCategory": "Battle", "sceneBriefDescription": "Arena",
+    "scene": { "sceneId": "…", "category": "battle", "briefInitialDescription": "Arena" },
     "roundMode": "Race",
     "bars": { "seq": 7, "prices": {…}, "characters": [...], "order": [...] },
     "openTurn": { "turnId": "…", "actorId": "…" },
@@ -293,10 +293,10 @@ turno aberto e sem reações pendentes, até alguma coisa mudar por acaso.
 
 | Campo | Fonte |
 |---|---|
-| cena | `session.GetActiveScene()` |
+| `scene` | `session.GetActiveScene()`, reempacotado no `SceneChangedPayload` inteiro — mesma struct que `scene_changed`, não um segundo conjunto de nomes. O brief é o campo público `BriefInitialDescription`; não existe `GetBriefInitialDescription`. |
 | `roundMode` | `session.GetActiveRound().GetMode()` |
 | `bars` | **`newBarsUpdatedPayload(session)`, reusado inteiro** |
-| `openTurn` | `session.CurrentTurnID()`; o ator, do turno corrente do round ativo |
+| `openTurn` | **`round.HasOpenTurn()` como guarda**, e o turno de `round.CurrentTurn()`; o ator, da action dele. Não teste `CurrentTurn() != nil`: ela devolve o último turno do round mesmo depois de fechado, e o round fica assim a janela inteira entre `close_turn` e o próximo `open_next_action` — um late joiner receberia `openTurn` de um turno já liquidado, e o mestre uma `resolution` junto. |
 | `resolution` | `session.ResolveTurn(t)` do turno aberto — **master-only** |
 
 **Três invariantes, e cada uma tem um motivo que não é óbvio:**

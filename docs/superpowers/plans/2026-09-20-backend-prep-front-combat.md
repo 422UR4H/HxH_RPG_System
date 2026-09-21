@@ -1039,7 +1039,9 @@ EOF
 
 **Interfaces:**
 - Consumes: `newBarsUpdatedPayload(session) BarsUpdatedPayload`, `r.barsSeq`,
-  `session.GetActiveScene()`, `session.GetActiveRound().GetMode()`, `session.CurrentTurnID()`,
+  `session.GetActiveScene()`, `session.GetActiveRound().GetMode()`,
+  `round.HasOpenTurn()` + `round.CurrentTurn()` (**não** `session.CurrentTurnID()`: ela também
+  devolve o último turno do round mesmo já fechado),
   `session.ResolveTurn(t) *service.TurnResolution`,
   `newResolutionUpdatedPayload(turnID, res)`, `r.buildMapFullState(playerID, isMaster)` como
   molde de forma.
@@ -1115,10 +1117,12 @@ E o payload:
 // Projected per recipient, by the same two axes as everything else: Resolution is the open
 // turn's, therefore master-only by the TIME axis, and PendingReactions travel inside it.
 type MatchFullStatePayload struct {
-	SceneID               uuid.UUID `json:"sceneId"`
-	SceneCategory         string    `json:"sceneCategory"`
-	SceneBriefDescription string    `json:"sceneBriefDescription"`
-	RoundMode             string    `json:"roundMode"`
+	// Scene is the WHOLE scene_changed payload, for the same reason Bars is the whole
+	// bars_updated one: three values under two different sets of names, in one protocol, would
+	// be a second shape to keep in sync with the first. Being a pointer also makes "no active
+	// scene" expressible, which three flat zero-valued fields could not say.
+	Scene     *SceneChangedPayload `json:"scene,omitempty"`
+	RoundMode string               `json:"roundMode"`
 	// Bars is the WHOLE bars_updated payload, reused rather than re-shaped: a second bar
 	// format would be a second thing to keep in sync with the first.
 	//
@@ -1168,16 +1172,31 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 	payload.Bars.Seq = seq
 
 	if scene := session.GetActiveScene(); scene != nil {
-		payload.SceneID = scene.GetID()
-		payload.SceneCategory = string(scene.GetCategory())
-		payload.SceneBriefDescription = scene.GetBriefInitialDescription()
+		payload.Scene = &SceneChangedPayload{
+			SceneID:  scene.GetID(),
+			Category: string(scene.GetCategory()),
+			// BriefInitialDescription is a public FIELD on scene.Scene. There is no
+			// GetBriefInitialDescription method — do not write one into this call.
+			BriefInitialDescription: scene.BriefInitialDescription,
+		}
 	}
 	if round := session.GetActiveRound(); round != nil {
 		payload.RoundMode = string(round.GetMode())
-		if t := round.CurrentTurn(); t != nil {
+		// HasOpenTurn(), NOT `if t := round.CurrentTurn(); t != nil`. CurrentTurn returns the
+		// round's LAST turn whether or not it already closed, and a round sits with its last
+		// turn closed for the whole window between close_turn and the next open_next_action.
+		// The bare nil check hands a late joiner a stale OpenTurn — and the master a
+		// Resolution for a turn that already settled. That is the exact regression commit
+		// 7fa0182 exists to lock down.
+		if round.HasOpenTurn() {
+			t := round.CurrentTurn()
+			// GetAction returns a COPY. Assign it to a variable and call GetActorID on the
+			// variable: Go cannot take the address of a bare method-call result to satisfy a
+			// pointer receiver, so `t.GetAction().GetActorID()` does not compile.
+			act := t.GetAction()
 			payload.OpenTurn = &OpenTurnPayload{
 				TurnID:  t.GetID(),
-				ActorID: t.GetAction().GetActorID(),
+				ActorID: act.GetActorID(),
 			}
 			if isMaster {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
@@ -1197,7 +1216,9 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 ```
 
 > Confira os getters reais de `scene.Scene` e `round.Round` antes de escrever
-> (`GetCategory`, `GetBriefInitialDescription`, `CurrentTurn`, `GetAction`). Use os que existem.
+> (`GetCategory`, `HasOpenTurn`, `CurrentTurn`, `GetAction`). Use os que existem —
+> `GetBriefInitialDescription` **não** existe: o brief é o campo público
+> `scene.BriefInitialDescription`.
 
 - [ ] **Step 5: Envie no `register`**
 
