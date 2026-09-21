@@ -453,6 +453,19 @@ com a fase que tocar no assunto (Fase 7).**
 - **`piece_moved` do lobby é cliente→servidor.** Não é o mesmo que a Fase 6 precisa.
 - **O tablet gira.** Testar em pé e deitado, não só em duas larguras.
 - **A zona Pixi é pixel-tuned** e não deve ser normalizada com os tokens.
-- **Sem NPC não há inimigo.** O rostering é fatia própria, em paralelo. Sem ele o teste é
-  personagem de jogador contra personagem de jogador — legítimo para o motor, mas não é uma
-  mesa.
+- **Sem NPC não há inimigo.** O rostering é **fatia própria, rodando em paralelo** — não entra
+  no pacote de §4 e não bloqueia o começo da Fase 6, cujo teste é personagem de jogador contra
+  personagem de jogador. Mas ele **precisa entrar antes de a Fase 6 fechar**: sem inimigo não é
+  uma mesa, é uma prova de motor.
+
+  > O spec do motor (`2026-08-16-combat-engine-design.md`, §7) diz que o rostering "bloqueia a
+  > Fase 6". Vale a leitura daqui: bloqueia a Fase 6 **inteira**, não o início dela, e corre em
+  > paralelo com o pacote de §4.
+
+  **Como não brigar com o §4.** Os dois tocam `internal/app/game/message.go`,
+  `room.go` e `match_session.go`. O atrito cai quase a zero se o rostering escrever por
+  **REST** em vez de WS — pôr NPC na partida é ato de preparação, não verbo de combate — e a
+  propagação ao vivo pegar carona no `match_full_state` de §4.2. Nesse desenho, o único arquivo
+  compartilhado vira `match_session.go`, numa função só: `indexParticipants`, que passa a mapear
+  NPC → mestre no `charToPlayer` (hoje ela já cria o `CharacterStatus` do NPC e só pula o
+  `charToPlayer`). Essa função é do rostering; §4 não encosta nela.
