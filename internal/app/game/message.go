@@ -92,6 +92,12 @@ const (
 	// Server → Client (fog of war events)
 	MsgTypeVisibilityUpdated MessageType = "visibility_updated"
 	MsgTypeWallRevealed      MessageType = "wall_revealed"
+
+	// Server → Client (combat snapshot)
+	// Sent to every client that registers while a match session is live, so a late joiner — or a
+	// reconnect, and the front's hook reconnects up to five times on its own — does not sit
+	// without bars, regime, scene, open turn or pending reactions until something changes by luck.
+	MsgTypeMatchFullState MessageType = "match_full_state"
 )
 
 type Message struct {
@@ -630,6 +636,36 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 		Difference:  cr.Ladder.Difference,
 		StopsAttack: cr.ReactionStopsAttack,
 	}
+}
+
+// MatchFullStatePayload is everything about the COMBAT that map_full_state does not carry.
+//
+// Projected per recipient, by the same two axes as everything else: Resolution is the open
+// turn's, therefore master-only by the TIME axis, and PendingReactions travel inside it.
+type MatchFullStatePayload struct {
+	SceneID               uuid.UUID `json:"sceneId"`
+	SceneCategory         string    `json:"sceneCategory"`
+	SceneBriefDescription string    `json:"sceneBriefDescription"`
+	RoundMode             string    `json:"roundMode"`
+	// Bars is the WHOLE bars_updated payload, reused rather than re-shaped: a second bar
+	// format would be a second thing to keep in sync with the first.
+	//
+	// ⚠️ Its Seq is the CURRENT counter, NOT a new one. The client keeps the highest seq it
+	// applied and discards anything lower; stamping a fresh number here would reset that guard
+	// across a reconnect, and the first late bars_updated to arrive afterwards would be applied
+	// on top of newer state.
+	Bars BarsUpdatedPayload `json:"bars"`
+	// OpenTurn is nil when the master is sitting on "closed and nothing opened", which is a
+	// state they are allowed to be in.
+	OpenTurn *OpenTurnPayload `json:"openTurn,omitempty"`
+	// Resolution is the open turn's, MASTER-ONLY. nil for everyone else, and nil for the
+	// master too when no turn is open.
+	Resolution *ResolutionUpdatedPayload `json:"resolution,omitempty"`
+}
+
+type OpenTurnPayload struct {
+	TurnID  uuid.UUID `json:"turnId"`
+	ActorID uuid.UUID `json:"actorId"`
 }
 
 // payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a

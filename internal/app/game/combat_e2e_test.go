@@ -1104,3 +1104,138 @@ func TestEnqueueActionAckNamesTheSameActionTheMasterSaw(t *testing.T) {
 		t.Fatalf("ack names %s but the master saw %s enter the queue", ack.ActionID, queued.ActionID)
 	}
 }
+
+// latestBarsSeq returns the highest Seq among the bars_updated messages a collector has
+// gathered so far. This is the test's proxy for "what seq had the table already seen before
+// the late connection" — the number match_full_state's Bars.Seq must reproduce EXACTLY, not
+// a fresh one, or a reconnecting client's guard against out-of-order snapshots would reset.
+func latestBarsSeq(t *testing.T, msgs []game.Message) uint64 {
+	t.Helper()
+	var seq uint64
+	found := false
+	for _, m := range msgs {
+		if m.Type != game.MsgTypeBarsUpdated {
+			continue
+		}
+		var p game.BarsUpdatedPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal bars_updated: %v", err)
+		}
+		if !found || p.Seq > seq {
+			seq = p.Seq
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no bars_updated observed before the late connections — the test setup is wrong")
+	}
+	return seq
+}
+
+// findMessage returns the first message of the given type, or fails the test — every caller
+// here already confirmed one arrived via collector.await, so a miss means the payload could
+// not be found where await said it would be, not that it never came.
+func findMessage(t *testing.T, msgs []game.Message, want game.MessageType) game.Message {
+	t.Helper()
+	for _, m := range msgs {
+		if m.Type == want {
+			return m
+		}
+	}
+	t.Fatalf("no %s message found in %d collected messages", want, len(msgs))
+	return game.Message{}
+}
+
+// Quem entra no meio — ou reconecta, e o hook do front reconecta até cinco vezes sozinho —
+// fica sem barras, sem regime, sem cena, sem turno aberto e sem reações pendentes, até alguma
+// coisa mudar por acaso. match_full_state fecha esse buraco no register arm de Run().
+func TestMatchFullStateOnConnectCarriesTheCombatState(t *testing.T) {
+	f := newCombatFixture(t)
+
+	// The master stays connected for the whole test — it is the one who opens the turn, and
+	// keeping it up means the room never goes empty (an empty room closes itself in Run(),
+	// which would also reset r.barsSeq on the next connect — a false positive for the seq
+	// assertion below).
+	master := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master.Close() //nolint:errcheck
+	readMessage(t, master) // room_state
+	masterMsgs := newCollector(master)
+
+	// A first player connection sends the attack, then drops — the room stays alive because
+	// the master is still there.
+	setupPlayer := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	readMessage(t, setupPlayer) // room_state
+	setupPlayerMsgs := newCollector(setupPlayer)
+
+	f.enqueueAttack(t, setupPlayer)
+	if !setupPlayerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+	setupPlayer.Close() //nolint:errcheck
+
+	// The master opens it — this is what leaves a turn open for the late connections below.
+	sendWS(t, master, "open_next_action", map[string]any{})
+	if !masterMsgs.await(game.MsgTypeResolutionUpdate, 3*time.Second) {
+		t.Fatal("the master never received the projection for the opened turn")
+	}
+	if !masterMsgs.await(game.MsgTypeBarsUpdated, 2*time.Second) {
+		t.Fatal("no bars_updated observed before the late connections — nothing to compare seq against")
+	}
+	// The CURRENT seq, as the table already knew it, captured BEFORE either late connection —
+	// this is the ground truth the Bars.Seq assertions below are checked against.
+	wantSeq := latestBarsSeq(t, masterMsgs.snapshotMessages())
+
+	// The player reconnects mid-turn — a genuine late joiner on this connection, exactly the
+	// "reconnects up to five times on its own" case the front's hook produces.
+	latePlayer := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+	defer latePlayer.Close() //nolint:errcheck
+	latePlayerMsgs := newCollector(latePlayer)
+	if !latePlayerMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the late player never received match_full_state")
+	}
+
+	// The master reconnects too — closing and redialing the same connection while the turn is
+	// still open. latePlayer is already registered at this point, so the room does not empty
+	// out when the original master connection drops.
+	master.Close() //nolint:errcheck
+	lateMaster := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer lateMaster.Close() //nolint:errcheck
+	lateMasterMsgs := newCollector(lateMaster)
+	if !lateMasterMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the reconnecting master never received match_full_state")
+	}
+
+	var p, m game.MatchFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, latePlayerMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &p,
+	); err != nil {
+		t.Fatalf("unmarshal the late player's match_full_state: %v", err)
+	}
+	if err := json.Unmarshal(
+		findMessage(t, lateMasterMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &m,
+	); err != nil {
+		t.Fatalf("unmarshal the reconnecting master's match_full_state: %v", err)
+	}
+
+	if p.OpenTurn == nil || p.OpenTurn.TurnID == uuid.Nil {
+		t.Fatal("the late player did not learn that a turn is open")
+	}
+	if p.RoundMode == "" {
+		t.Fatal("the late player did not learn the round regime")
+	}
+	// Eixo do TEMPO: o turno está aberto, logo o cálculo é do mestre.
+	if p.Resolution != nil {
+		t.Fatal("an open turn's resolution reached a player; that calculation is the master's")
+	}
+	if m.Resolution == nil {
+		t.Fatal("the master reconnected into an open turn and lost the calculation")
+	}
+	// O seq atravessa a reconexão: se viesse um seq novo, a guarda do cliente zeraria e o
+	// próximo bars_updated atrasado seria aplicado por cima de um estado mais novo.
+	if p.Bars.Seq != wantSeq {
+		t.Fatalf("match_full_state stamped seq %d for the player, want the current %d", p.Bars.Seq, wantSeq)
+	}
+	if m.Bars.Seq != wantSeq {
+		t.Fatalf("match_full_state stamped seq %d for the master, want the current %d", m.Bars.Seq, wantSeq)
+	}
+}

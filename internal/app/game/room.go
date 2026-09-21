@@ -255,6 +255,13 @@ func (r *Room) Run() {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
 				client.SendMessage(*msg)
 			}
+			// map_full_state above covers the board and nothing else. A client that connects
+			// or reconnects mid-combat still needs the bars, the round regime, the open turn
+			// and — if they are the master — its resolution, or they sit blind until something
+			// changes by luck. No r.mu is held here: buildMatchFullState takes it itself.
+			if msg := r.buildMatchFullState(client.userUUID, r.IsMaster(client.userUUID)); msg != nil {
+				client.SendMessage(*msg)
+			}
 			r.broadcastPlayerJoined(client)
 
 		case client := <-r.unregister:
@@ -1617,6 +1624,74 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 		payload.VisiblePolygons = polysToPayload(polys)
 	}
 	msg := NewServerMessage(MsgTypeMapFullState, payload)
+	return &msg
+}
+
+// buildMatchFullState snapshots the combat for one recipient. Returns nil when there is no
+// session: in the lobby there is no combat to sync.
+//
+// The assembly is its OWN function, on purpose — the same shape buildMapFullState already
+// has, and it is what makes match_full_state testable without standing up a connection.
+//
+// The caller must NOT hold r.mu — this takes it, held for the whole read (session, barsSeq,
+// scene, round, turn and the ResolveTurn recompute), exactly as buildMapFullState does with
+// its own single RLock/RUnlock pair. There is no reason to split it into two critical
+// sections here: nothing in between needs the lock released, and ResolveTurn is a pure
+// recompute (no I/O, no sheet writes), so it is safe to run under RLock.
+func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	session := r.session
+	if session == nil {
+		return nil
+	}
+
+	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session)}
+	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
+	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
+	payload.Bars.Seq = r.barsSeq
+
+	if scene := session.GetActiveScene(); scene != nil {
+		payload.SceneID = scene.GetID()
+		payload.SceneCategory = string(scene.GetCategory())
+		// BriefInitialDescription is a public field on scene.Scene, not a getter — there is no
+		// GetBriefInitialDescription method (the brief for this task assumed one; checked
+		// against the real type before writing this).
+		payload.SceneBriefDescription = scene.BriefInitialDescription
+	}
+	if round := session.GetActiveRound(); round != nil {
+		payload.RoundMode = string(round.GetMode())
+		// HasOpenTurn, not a bare "CurrentTurn() != nil" check: CurrentTurn returns the round's
+		// LAST turn regardless of whether it already closed, and a round sits with its last
+		// turn closed for the whole window between close_turn and the next open_next_action.
+		// A bare nil check would hand a late joiner a stale OpenTurn for a turn that already
+		// settled — and would hand the master a Resolution for it too, which is table state
+		// they were already sent when it closed, not something this snapshot owes them again.
+		if round.HasOpenTurn() {
+			t := round.CurrentTurn()
+			// GetAction returns a COPY (turn.go is explicit about this — ActionRef is the one
+			// that hands out a pointer, deliberately narrower, for the one caller that mutates
+			// it). Assigning it to a variable first, then calling GetActorID on the variable,
+			// is required: Go cannot take the address of a bare method-call result to satisfy
+			// GetActorID's pointer receiver.
+			act := t.GetAction()
+			payload.OpenTurn = &OpenTurnPayload{
+				TurnID:  t.GetID(),
+				ActorID: act.GetActorID(),
+			}
+			if isMaster {
+				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
+				// action arrived. attach_reaction and edit_action already call it the same way.
+				if res := session.ResolveTurn(t); res != nil {
+					p := newResolutionUpdatedPayload(t.GetID(), res)
+					payload.Resolution = &p
+				}
+			}
+		}
+	}
+
+	msg := NewServerMessage(MsgTypeMatchFullState, payload)
 	return &msg
 }
 
