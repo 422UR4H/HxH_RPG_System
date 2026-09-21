@@ -199,6 +199,8 @@ func main() {
 	listMatchEnrollmentsUC := match.NewListMatchEnrollmentsUC(matchRepo, enrollmentRepo, characterSheetRepo)
 	getMatchParticipantsUC := match.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
 	getMatchHistoryUC := match.NewGetMatchHistoryUC(matchRepo, roundRepo, characterSheetRepo)
+	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepo, characterSheetRepo, matchRepo)
+	removeMatchNPCUC := match.NewRemoveMatchNPCUC(matchRepo, matchRepo)
 
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),
@@ -210,6 +212,8 @@ func main() {
 		ListMatchEnrollmentsHandler:      matchHandler.ListMatchEnrollmentsHandler(listMatchEnrollmentsUC),
 		GetMatchParticipantsHandler:      matchHandler.GetMatchParticipantsHandler(getMatchParticipantsUC),
 		GetMatchHistoryHandler:           matchHandler.GetMatchHistoryHandler(getMatchHistoryUC),
+		AddMatchNPCHandler:               matchHandler.AddMatchNPCHandler(addMatchNPCUC),
+		RemoveMatchNPCHandler:            matchHandler.RemoveMatchNPCHandler(removeMatchNPCUC),
 	}
 
 	submitCharacterSheetUC := submission.NewSubmitCharacterSheetUC(

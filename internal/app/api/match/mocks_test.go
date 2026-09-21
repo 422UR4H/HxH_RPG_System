@@ -87,3 +87,21 @@ type mockDeleteMatch struct {
 func (m *mockDeleteMatch) Delete(ctx context.Context, input *match.DeleteMatchInput) error {
 	return m.fn(ctx, input)
 }
+
+type mockAddMatchNPC struct {
+	fn func(ctx context.Context, input *match.AddMatchNPCInput) (*matchEntity.Participant, error)
+}
+
+func (m *mockAddMatchNPC) Add(
+	ctx context.Context, input *match.AddMatchNPCInput,
+) (*matchEntity.Participant, error) {
+	return m.fn(ctx, input)
+}
+
+type mockRemoveMatchNPC struct {
+	fn func(ctx context.Context, input *match.RemoveMatchNPCInput) error
+}
+
+func (m *mockRemoveMatchNPC) Remove(ctx context.Context, input *match.RemoveMatchNPCInput) error {
+	return m.fn(ctx, input)
+}
