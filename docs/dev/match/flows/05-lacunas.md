@@ -14,7 +14,8 @@
 > fechados. Nenhum dos três estava nomeado nesta lista (nasceram de uma auditoria do front,
 > não deste inventário); a lista deles, e as três lacunas NOVAS que este trabalho descobriu
 > (uma reação de escape não move a peça, a semântica de `Z` em `piece_moved` está em aberto,
-> o movimento aplicado na abertura do turno não revalida parede), estão em
+> a colisão contra parede — compartilhar slot, bloquear, quebrar — ainda não foi desenhada),
+> estão em
 > [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md) §9. O catálogo de combate
 > por personagem (`GET /charactersheets/{uuid}/combat-catalogue`) também nasceu desta rodada
 > — ver [`../../api/character-sheet.md`](../../api/character-sheet.md).

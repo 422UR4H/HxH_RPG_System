@@ -423,7 +423,8 @@ chegar até aqui por qualquer outro caminho.
 - **`Z` e o `Kind` do slot** (quadrado/hex) são **preservados**, pela mesma razão documentada em
   [`piece_moved`](#piece_moved-servidor) para o movimento de ação. É o mesmo `applyMove` nos
   dois momentos, não dois caminhos.
-- O deslocamento de uma reação **nunca revalida parede** — ver a última linha de §9.
+- O deslocamento de uma reação **nunca passa pela checagem de parede** — a colisão contra
+  parede ainda não foi desenhada como regra; ver a última linha de §9.
 
 ⚠️ **O movimento de uma AÇÃO não mudou.** Uma ação não tem CD vindo contra ela; a peça dela
 desloca **na abertura do turno**, qualquer que seja a categoria — a posição não pode esperar,
@@ -1147,14 +1148,17 @@ uma peça elevada ao chão a cada passo horizontal cujo `z` de grade for `0`. A 
 "`Move.Position[2]` é metro ou índice de grade?" precisa de resposta antes de qualquer
 cliente escrever `Z`. Ver §9.
 
-⚠️ **O movimento aplicado não revalida parede — nos DOIS caminhos.** A checagem contra
-paredes com `move=true` e `open=false` acontece no **enfileiramento** (`enqueue_action`,
-quando `move.from` é não-zero — ver a tabela em `enqueue_action`), não de novo aqui na
-abertura. O caminho de reação **nunca passa por essa checagem, nem uma vez**: quando
-`reactToId` é não-zero, `enqueue_action` roteia para o mesmo tratamento de
-`attach_reaction` e retorna **antes** de alcançar o código que valida a parede — esse código
-só existe no ramo de ação comum. `attach_reaction`, enviado direto, também não tem checagem
-nenhuma no caminho. Ver §9.
+⚠️ **Colisão contra parede é uma fatia de regra ainda não desenhada — o efeito hoje é que a
+peça atravessa.** A única checagem existente contra paredes com `move=true` e `open=false`
+acontece no **enfileiramento** (`enqueue_action`, quando `move.from` é não-zero — ver a
+tabela em `enqueue_action`), não de novo aqui na abertura. O caminho de reação **nunca passa
+por essa checagem, nem uma vez**: quando `reactToId` é não-zero, `enqueue_action` roteia para
+o mesmo tratamento de `attach_reaction` e retorna **antes** de alcançar o código que valida a
+parede — esse código só existe no ramo de ação comum. `attach_reaction`, enviado direto,
+também não tem checagem nenhuma no caminho. Não é validação esquecida: **ainda não existe a
+regra que decide o que acontece quando um personagem colide com uma parede** — compartilhar
+o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi
+escolhido ainda. Ver §9.
 
 ### `error`
 
@@ -1350,4 +1354,4 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **NPC não age** | Ver §2. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
-| **O movimento aplicado não revalida parede** | A checagem de parede (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado na abertura do turno ou da reação. **Vale para os TRÊS momentos que deslocam peça** — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa pela checagem de parede, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. |
+| **Colisão contra parede ainda não foi desenhada** | Não é omissão de validação: ainda não existe a regra que decide o que acontece quando um personagem colide com uma parede — compartilhar o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Até essa regra existir, o comportamento observável é a peça atravessando: a única checagem existente (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado, na abertura do turno ou da reação. Vale para os TRÊS momentos que deslocam peça — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa por essa checagem, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. O front não deve tratar isso como bug a reportar — é regra de jogo que falta ser escrita. |
