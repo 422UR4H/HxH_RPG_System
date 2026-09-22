@@ -67,8 +67,9 @@ Toda mensagem, nos dois sentidos, é um `Message`:
     "não informado" (e desliga a checagem de parede).
 - **O servidor nunca confia no cliente para** qual barra a ação paga (`speed.bar` é
   descartado), qual perícia mede a velocidade (é sempre Legerity), a perícia de velocidade
-  de um movimento (vem da categoria) ou os dados. **Os dados caem no servidor**, no instante
-  em que a ação é aceita, e nunca são rolados de novo.
+  de um movimento (vem da categoria), **qual perícia mede o acerto de um ataque (é sempre
+  `Accuracy`)** ou os dados. **Os dados caem no servidor**, no instante em que a ação é
+  aceita, e nunca são rolados de novo.
 
 ## 2. Quem é quem
 
@@ -188,6 +189,7 @@ porque uma ação plausível carregue todas.
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
+| `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê a joelhada. É `Accuracy` e não a proficiência da arma porque **nada mapeia arma → perícia** ainda: o catálogo de combate publica `proficiencyLevel` por arma, e nenhum rolamento o lê. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. |
 | `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
@@ -1366,10 +1368,18 @@ um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas
 
 As regras completas do lado da reação — de onde vem a CD, qual categoria decide quando, e o
 que significa falhar — estão em [`open_reaction`](#open_reaction) e em
-[`close_turn`](#close_turn). Um movimento de **ação** que dependesse de teste (um salto, um
-aperto, um pouso em slot ocupado) continua **sem caso alcançável**: `move.category` só aceita
-`Dash` e `Shift`, e as outras cinco são recusadas no mapeamento — então não existe código para
+[`close_turn`](#close_turn). Um movimento de **ação** que dependesse de teste **pela
+categoria** — um salto, um aperto — continua **sem caso alcançável**: `move.category` só aceita
+`Dash` e `Shift`, e as outras cinco são recusadas no mapeamento, então não existe código para
 esse ramo.
+
+**O pouso em slot ocupado não entra nessa lista**, e antes entrava: um `Dash` para um slot onde
+já há peça é **aceito** hoje, e o que acontece é a peça ir para lá e **empilhar**. Nada valida
+ocupação em nenhum dos três momentos. Isso é a mesma classe da colisão com parede, logo abaixo:
+não é validação esquecida, é a regra que ainda não foi escrita — compartilhar o slot, ser
+bloqueado antes de entrar, ou empurrar quem está lá são desfechos possíveis, e nenhum foi
+escolhido. O front **não deve** tratar o empilhamento como bug a reportar, e também não deve
+inventar a regra do seu lado: quem desenhar a colisão decide os dois casos juntos.
 
 Um ator **sem peça no tabuleiro** não é erro, em nenhum dos três momentos: não há o que mover,
 nada é emitido e nenhuma mensagem de erro sai. O turno (ou a reação) abre normalmente.

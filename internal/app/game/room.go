@@ -1315,8 +1315,11 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 				MaxHP:       bar.GetMax(),
 				Damage:      d.Damage,
 			},
-			// Absent from charToPlayer means an NPC: uuid.Nil is nobody's player ID, so the
-			// owner arm below simply never matches and only the master is served.
+			// An NPC IS in charToPlayer — it maps to the MASTER (indexParticipants, and
+			// AddNPC for one that joined live), so owner is the master and the two arms
+			// below name the same person. dispatchPerPlayer visits each client once, so the
+			// master still gets exactly one copy. A character in no map at all reads as
+			// uuid.Nil, which is nobody's player ID: the owner arm never matches it.
 			owner: charToPlayer[d.CharacterID.String()],
 		})
 	}

@@ -658,3 +658,28 @@ func TestBuildEditAction_TargetIDsAbsentVsPresentEmpty(t *testing.T) {
 		}
 	})
 }
+
+// The hit's skill is the SERVER's to decide, exactly as the action's speed already is. The
+// payload still has to name a skill the system knows — the boundary keeps rejecting garbage,
+// and TestBuildAction_RejectsAnUnknownSkillName still proves it through this very field — but
+// WHICH skill the swing is tested on no longer comes from the client.
+func TestBuildAction_DerivesTheHitSkill(t *testing.T) {
+	actorCharID := uuid.New()
+	p := ActionPayload{
+		ActorID: actorCharID,
+		Attack: &AttackPayload{
+			// A real skill, and the wrong one: a front hand-writing Push onto the hit is
+			// exactly what the combat catalogue exists to prevent.
+			Hit:    RollCheckPayload{SkillName: enum.Push.String()},
+			Damage: RollCheckPayload{SkillName: enum.Push.String()},
+		},
+	}
+
+	a, err := buildAction(actorCharID, p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Attack.Hit.SkillName != enum.Accuracy.String() {
+		t.Errorf("Hit.SkillName = %q, want %q", a.Attack.Hit.SkillName, enum.Accuracy)
+	}
+}
