@@ -45,7 +45,6 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 
 - **Always PRs** — never merge directly to `main`
 - Branch: `feat/`, `fix/`, `docs/`, `refactor/`
-- Commits: include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 - Specs EN + PT-BR versions in same commit
 
 ## Agent Model Strategy
