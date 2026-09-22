@@ -288,6 +288,62 @@ ou `"submission": null` se nenhuma submissão está pendente.
 
 ---
 
+## GET /charactersheets/{uuid}/combat-catalogue — Catálogo de combate da ficha
+
+**Auth:** Bearer JWT obrigatório
+
+Devolve o que **este personagem** sabe atacar com — não o catálogo do sistema. É a lista de
+proficiências dele (`GetCommonProficiencies()`) mais o golpe corporal (`Fist`), sempre
+presente mesmo sem proficiência treinada (nível `0`). Quando existir inventário isto vira "o
+que ele carrega"; proficiência é hoje a melhor aproximação.
+
+**Autorização reusa `IGetCharacterSheet`** — quem pode ler a ficha lê o catálogo dela; não há
+uma terceira política de visibilidade para este endpoint.
+
+Existe para a Fase 6 do front nunca mais precisar inventar um nome de perícia ou arma na mão
+— foi assim que nasceu `combat_strength`, um identificador que não corresponde a nada no
+domínio (nem `enum.SkillName`, nem `enum.WeaponName`); ver `docs/superpowers/specs/2026-09-20-backend-prep-front-combat-design.md`
+§11. Este endpoint não conserta `combat_strength` no front — só dá ao front, dali em diante,
+onde buscar os nomes reais.
+
+### Response 200
+
+```json
+{
+  "weapons": [
+    { "name": "Fist", "dice": [6, 6, 4], "flatDamage": 0, "defenseBonus": 0, "proficiencyLevel": 0 },
+    { "name": "Sword", "dice": [10, 4], "flatDamage": 2, "defenseBonus": 0, "proficiencyLevel": 4 }
+  ],
+  "skills": ["Vitality", "Energy", "Defense", "Push", "Grab", "Carry", "..."]
+}
+```
+
+(`dice`/`flatDamage`/`defenseBonus` de `Fist` e `Sword` acima são os valores reais do
+catálogo padrão em `weapons_factory.go`, não placeholders.)
+
+| Campo | Notas |
+|---|---|
+| `weapons[]` | Uma entrada por arma que o personagem sabe empunhar, **mais `Fist`, sempre**. `Fist` nunca duplica: se a ficha já tem proficiência nele, o nível real substitui o `0` semeado por padrão — uma regra só, não duas. |
+| `weapons[].dice`, `.flatDamage`, `.defenseBonus` | Lidos do catálogo de armas (`item.WeaponsManager`), não recalculados no front — a bottom sheet precisa mostrar o que a arma faz **antes** do jogador escolher, e duplicar esta tabela no front é como as duas pontas começam a divergir. |
+| `weapons[].proficiencyLevel` | Nível de proficiência **desta ficha** na arma. |
+| `weapons` | Ordem **estável**: itera `enum.GetAllWeaponNames()`, não o mapa de proficiências — um mapa Go embaralha a ordem a cada request, e a lista trocando de ordem faz a bottom sheet "dançar". |
+| `skills` | O **vocabulário** que o wire do combate aceita (`enum.AllSkillNames()`), não um menu — a Fase 6 não desenha seletor de perícia porque a corrente de testes ainda não é executada pelo motor (ver `docs/dev/match/flows/05-lacunas.md`). Existe só para o front nunca mais inventar uma string. |
+
+Uma proficiência numa arma que o catálogo não reconhece é pulada da lista (com log de aviso
+no servidor) em vez de derrubar a resposta inteira — falta de dado, não falta de request.
+
+### Erros
+
+| Status | Situação |
+|--------|----------|
+| 200 | Catálogo retornado |
+| 400 | UUID inválido |
+| 403 | Acesso negado (mesma regra de `GET /charactersheets/{uuid}`) |
+| 404 | Ficha não encontrada |
+| 500 | Internal Server Error |
+
+---
+
 ## GET /charactersheets — Listar fichas do usuário
 
 **Auth:** Bearer JWT obrigatório

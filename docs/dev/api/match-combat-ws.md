@@ -7,6 +7,11 @@ essas structs**, não transcritos de memória.
 
 **Servidor:** `cmd/game/` · **URL:** `ws://localhost:8081/ws?match_uuid=<uuid>&token=<jwt>&nickname=<name>`
 
+`nickname` é **opcional**, ao contrário do que a URL acima sugere. Vazio ou ausente, o
+servidor usa os 8 primeiros caracteres do UUID do usuário autenticado
+(`HandleWebSocket` em `handler.go`) — não é um erro tratado, é o fallback real. Isto era
+erro do contrato, não do servidor: corrigido aqui.
+
 > ### ⚠️ Nenhum cliente real leu este contrato ainda
 >
 > Os exemplos de payload aqui foram **conferidos contra as structs de
@@ -112,6 +117,8 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`round_mode_changed`](#round_mode_changed) | mesa inteira |
 | [`scene_changed`](#scene_changed) | mesa inteira |
 | [`master_action_enqueued`](#master_action_enqueued) | mesa inteira |
+| [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
+| [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
 
 ---
@@ -138,7 +145,7 @@ Se `reactToId` for não-zero, a mensagem é roteada internamente como
     "targetId": ["22222222-2222-4222-8222-222222222222"],
     "skills": [ { "skillName": "Accuracy", "difficulty": 15 } ],
     "speed": { "bar": 1, "rollCheck": { "skillName": "Legerity" } },
-    "feint": { "skillName": "Deception" },
+    "feint": { "skillName": "Feint" },
     "move": {
       "category": "Dash",
       "from": [4, 4, 0],
@@ -147,12 +154,12 @@ Se `reactToId` for não-zero, a mensagem é roteada internamente como
       "charge": { "skillName": "Energy" }
     },
     "attack": {
-      "weapon": "sword",
+      "weapon": "Sword",
       "hit": { "skillName": "Accuracy" },
-      "damage": { "skillName": "Strength" },
+      "damage": { "skillName": "Push" },
       "charge": { "skillName": "Energy" }
     },
-    "defense": { "weapon": "sword", "rollCheck": { "skillName": "Defense" } },
+    "defense": { "weapon": "Sword", "rollCheck": { "skillName": "Defense" } },
     "dodge": { "category": "Dash", "rollCheck": { "skillName": "Reflex" } },
     "interact": { "kind": "open" }
   }
@@ -173,6 +180,7 @@ porque uma ação plausível carregue todas.
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
+| `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
@@ -221,7 +229,7 @@ O payload é o mesmo `ActionPayload`, com `reactToId` e `reactionKind` obrigató
     "actorId": "22222222-2222-4222-8222-222222222222",
     "reactToId": "33333333-3333-4333-8333-333333333333",
     "reactionKind": "repel",
-    "repel": { "weapon": "sword", "rollCheck": { "skillName": "Repel" } }
+    "repel": { "weapon": "Sword", "rollCheck": { "skillName": "Repel" } }
   }
 }
 ```
@@ -230,15 +238,33 @@ O payload é o mesmo `ActionPayload`, com `reactToId` e `reactionKind` obrigató
 — uma esquiva e um movimento — e custam três coisas diferentes; nenhuma inspeção do payload
 as separa, porque o que as separa é a intenção do jogador.
 
-| `reactionKind` | Componentes obrigatórios | Barras que cobra |
-|---|---|---|
-| `nothing` | — | nenhuma |
-| `dodge` | `dodge` | nenhuma |
-| `closedDodge` | `dodge` + entrada `Evasion` em `skills` | nenhuma |
-| `escape` | `dodge` + `move` | `action` + `move` |
-| `escapeGuard` | `dodge` + `move` | `action` + `move` |
-| `closedEscape` | `dodge` + `move` + entrada `Evasion` em `skills` | `move` |
-| `repel` | `repel` | `action` |
+| `reactionKind` | Componentes obrigatórios | Barras que cobra | Categoria de `move` exigida |
+|---|---|---|---|
+| `nothing` | — | nenhuma | — |
+| `dodge` | `dodge` | nenhuma | — |
+| `closedDodge` | `dodge` + entrada `Evasion` em `skills` | nenhuma | — |
+| `escape` | `dodge` + `move` | `action` + `move` | **Dash** |
+| `escapeGuard` | `dodge` + `move` | `action` + `move` | **Dash** |
+| `closedEscape` | `dodge` + `move` + entrada `Evasion` em `skills` | `move` | **Shift** |
+| `repel` | `repel` | `action` | — |
+
+**A categoria de `move` das três fugas é validada no SERVIDOR, não sugerida.**
+`ReactionKind.RequiredMoveCategory()` (`reaction_kind.go`) fixa o par; `action_mapper.go`
+recusa o resto — um `move.category` diferente do exigido devolve `invalid_action` com
+`reaction "X" must move with Dash, not Shift` (ou o par correspondente). O discriminador é
+**fechado × aberto**, não defensivo × padrão: durante o `Dash` o personagem está "no ar" e
+não consegue esquivar — exatamente o que a fechada existe para não fazer, e por isso ela
+pisa com `Shift`, que `Brake` mede.
+
+**Um `move` fora das três fugas também é recusado — checagem de presença, não de categoria.**
+`ReactionKind.Displaces()` (`reaction_kind.go`) é o único lugar que sabe quais `reactionKind`
+deslocam; `action_mapper.go` a consulta para recusar um `move` anexado a `dodge`, `closedDodge`
+ou `nothing` com `reaction "X" must not carry a move`, **antes** de a reação ser anexada ao
+turno. Sem essa checagem um cliente podia mandar uma esquiva **livre** carregando um `move` e
+o servidor não recusava nada — o `move` ficava inerte no `Action` até [`open_reaction`](#open_reaction)
+lê-lo, que então deslocava a peça de uma reação que não custa nada. `open_reaction` também
+consulta `Displaces()` no momento de aplicar o `move`, como segunda linha de defesa — não
+depende só da recusa do mapper.
 
 Uma reação **livre** (as que não cobram barra) não consome a ação que o personagem tinha na
 fila e não rola em Desvantagem. Uma reação **cobrada** consome a ação enfileirada daquele
@@ -257,7 +283,7 @@ Não há ack próprio e **não há broadcast**: a mesa não é avisada de que al
 | `invalid_action` | `"reaction requires react_to_id"` |
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` |
 | `invalid_action` | `"actorId is required: …"` |
-| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel` / `an evasion skill entry`; `reaction kind "X" is not in the catalogue`. |
+| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel` / `an evasion skill entry`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
 | `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action`. |
 
@@ -338,9 +364,71 @@ poder de mestre e muda o resultado**: uma reação anexada mas não aberta delib
 Abrir **não cobra nada**: as barras foram debitadas no *attach*, justamente para que narrar
 não mova número.
 
-**Dispara:** [`reaction_opened`](#reaction_opened) para a **mesa** (de quem é a vez de
-narrar é público) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo
-continua sendo do mestre — o turno ainda está aberto).
+**Dispara:** [`reaction_opened`](#reaction_opened) para a **mesa** (de quem é a vez de narrar
+é público) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
+sendo do mestre — o turno ainda está aberto). E, **só para a fuga que não testa** (ver a
+tabela abaixo), [`piece_moved`](#piece_moved-servidor) (servidor), **com o mesmo gate de campo
+de visão** do resto do tabuleiro e **antes** de [`reaction_opened`](#reaction_opened), pela
+mesma razão de ordem que vale para a ação do turno (ver
+[`piece_moved`](#piece_moved-servidor)): a mesa não pode ver a narração abrir com a peça ainda
+no slot velho.
+
+#### O deslocamento de uma fuga tem CD, e a CD é o acerto do atacante
+
+As três fugas (`escape`, `escapeGuard`, `closedEscape`) são as únicas reações com `Move` —
+[`attach_reaction`](#attach_reaction) recusa qualquer outro `reactionKind` que tente carregar
+um. **Toda reação tem uma CD, e ela é a ação que está sendo movida contra quem reage: o teste
+de acerto do atacante** — o mesmo número contra o qual todo teste defensivo do turno já é
+lido, e que chega ao mestre como `action.total` em
+[`resolution_updated`](#resolution_updated). **Nada é rolado a mais para isso:** o acerto já
+existe, e o lado de quem foge é a velocidade que já foi derivada quando a reação chegou (a
+partir de `move.speed`). **Esse total não é projetado como tal em nenhum
+[`resolution_updated`](#resolution_updated)** — o `reaction.total` de lá é a leitura da
+ESQUIVA, não a do deslocamento —, então o cliente **não tem como prever o desfecho do passo**:
+quem decide é o servidor, no fechamento, e o `piece_moved` (ou a ausência dele) é a resposta.
+O número em si até chega ao fio depois, diluído em `moveSpeeds` de
+[`bars_updated`](#bars_updated), junto com todas as outras velocidades que já gastaram a barra
+de movimento na rodada — não dá para separar de lá qual era o desta fuga.
+
+O que decide **quando** a peça anda é se o movimento da reação **rola** ou não:
+
+| Reação | Movimento | Rola? | Quando a peça anda |
+|---|---|---|---|
+| `closedEscape` | **Shift** | não — `Brake` é lido passivo, não cai dado nenhum | **na abertura** da reação |
+| `escape` | **Dash** | sim — `Accelerate` | **no fechamento do turno**, se passar |
+| `escapeGuard` | **Dash** | sim — `Accelerate` | **no fechamento do turno**, se passar |
+
+- **`Shift` não tem o que ser lido contra o acerto**, então o `closedEscape` pisa no instante
+  em que ganha a palavra — é o comportamento que sempre existiu, e ele não mudou.
+- **`Dash` rola**, e essa rolagem É o teste. Na abertura, `open_reaction` **mostra só a
+  intenção**: nenhum `piece_moved` sai. O desfecho é decidido no fechamento do turno — ver
+  [`close_turn`](#close_turn), que documenta os três verbos que fecham.
+- **Passa** quando *a velocidade derivada do movimento* `>=` *o acerto do atacante* — o mesmo
+  `>=` que decide `avoided`, só que com outro número do lado de quem foge (ver o alerta
+  abaixo). Aí sai um `piece_moved`, com o mesmo gate de fog, direto para o slot pedido — nunca
+  um slot intermediário.
+- **Falhar é a peça NÃO sair do lugar.** Não existe posição intermediária: enquanto o motor
+  não souber devolvê-la, uma falha de teste é imobilidade, não meio caminho.
+- ⚠️ **Dano e deslocamento são desfechos INDEPENDENTES**, lidos contra a MESMA CD por números
+  DIFERENTES: a esquiva pelo `reaction.total`, o passo pela velocidade do movimento. As quatro
+  combinações existem — dá para escapar do golpe e não sair do lugar, e dá para tomar o dano
+  cheio e ainda assim andar. `avoided` não prevê o `piece_moved`, nem o contrário.
+
+`open_reaction` consulta `ReactionKind.Displaces()` (não só `Move != nil`) antes de aplicar —
+uma segunda checagem, redundante com a recusa do `attach_reaction`, para o caso de um `Move`
+chegar até aqui por qualquer outro caminho.
+
+- **Um ator sem peça no tabuleiro é no-op silencioso**, como no lado da ação: nada é emitido,
+  nenhum erro sai. Vale nos dois momentos (abertura e fechamento).
+- **`Z` e o `Kind` do slot** (quadrado/hex) são **preservados**, pela mesma razão documentada em
+  [`piece_moved`](#piece_moved-servidor) para o movimento de ação. É o mesmo `applyMove` nos
+  dois momentos, não dois caminhos.
+- O deslocamento de uma reação **nunca passa pela checagem de parede** — a colisão contra
+  parede ainda não foi desenhada como regra; ver a última linha de §9.
+
+⚠️ **O movimento de uma AÇÃO não mudou.** Uma ação não tem CD vindo contra ela; a peça dela
+desloca **na abertura do turno**, qualquer que seja a categoria — a posição não pode esperar,
+porque as reações seguintes dependem de onde a peça está.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid open_reaction payload"`) ·
 `match_not_started` · `game_error` (`no current turn in round`,
@@ -419,10 +507,33 @@ Fechar um turno **não fecha a rodada**. Só `open_next_action` detecta exaustã
 
 **Dispara** (no caminho que de fato fecha):
 
-1. Persistência do turno (ação, reações, overrides, resolução liquidada).
-2. [`turn_closed`](#turn_closed) — mesa.
-3. [`resolution_updated`](#resolution_updated) **settled e projetado por destinatário**.
-4. [`bars_updated`](#bars_updated) — mesa.
+1. [`piece_moved`](#piece_moved-servidor), **um por fuga de `Dash` que passou** — ver abaixo.
+2. Persistência do turno (ação, reações, overrides, resolução liquidada).
+3. [`turn_closed`](#turn_closed) — mesa.
+4. [`resolution_updated`](#resolution_updated) **settled e projetado por destinatário**.
+5. [`bars_updated`](#bars_updated) — mesa.
+
+#### O fechamento é onde as fugas de `Dash` são decididas
+
+Uma fuga com `Dash` (`escape`, `escapeGuard`) **não** deslocou na abertura: ela tem uma CD a
+vencer, e a CD é **o teste de acerto do atacante** (ver [`open_reaction`](#open_reaction)).
+É aqui que o servidor diz o desfecho:
+
+- **passou** (velocidade derivada do movimento `>=` acerto) → sai um
+  [`piece_moved`](#piece_moved-servidor) para o
+  slot pedido, com o mesmo gate de campo de visão, **antes** do
+  [`turn_closed`](#turn_closed) — a mesa não pode ver o turno acabar com a peça no slot velho;
+- **falhou** → **nada sai**. A peça não sai do lugar, e não existe posição intermediária.
+
+Uma fuga com `Shift` (`closedEscape`) já andou lá atrás, na abertura da reação, e **não** é
+deslocada de novo aqui.
+
+⚠️ **Os três verbos que fecham um turno decidem isso igual.** `close_turn` é o explícito;
+[`open_next_action`](#open_next_action) e [`pull_action`](#pull_action) também fecham o turno
+aberto a caminho de abrir o próximo, e **os três** aplicam o desfecho das fugas. Um escape
+cujo resultado dependesse de qual verbo o mestre usou seria bug, não regra. (Nesses dois o
+`piece_moved` sai antes da persistência e antes do [`turn_opened`](#turn_opened) do próximo
+turno; não há `turn_closed` nesse caminho — ver [`turn_closed`](#turn_closed).)
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid close_turn payload"`) ·
 `match_not_started` · `game_error` (`no open turn to close`).
@@ -453,16 +564,25 @@ ambos para a mesa.
 ```json
 {
   "type": "change_scene",
-  "payload": { "category": "Battle", "briefInitialDescription": "Arena" }
+  "payload": { "category": "battle", "briefInitialDescription": "Arena" }
 }
 ```
+
+⚠️ **`category` é minúscula.** `enum.SceneCategory` vale `"battle"` ou `"roleplay"`.
+**O servidor valida**: `enum.SceneCategoryFrom` compara a string contra a lista exata do enum
+(`internal/domain/entity/enum/scene_category.go`), no mesmo padrão de `SkillNameFrom`/
+`WeaponNameFrom` — comparação exata, sem normalização de caixa. Mandar `"Battle"` devolve
+`invalid_action` em vez de criar uma cena cuja categoria não bate com nenhum dos dois valores.
+(`roundMode`, ao contrário, é capitalizado: `"Free"`/`"Race"`.)
 
 Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
 
 **Dispara:** [`scene_changed`](#scene_changed) — mesa.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid change_scene payload"`) ·
-`match_not_started` · `game_error` (`cannot close round: current turn is still open`).
+`invalid_action` (`"invalid name of scene category: X"` — `category` fora de
+`"battle"`/`"roleplay"`) · `match_not_started` ·
+`game_error` (`cannot close round: current turn is still open`).
 
 ### `enqueue_master_action`
 
@@ -475,7 +595,7 @@ Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
     "targetIds": ["22222222-2222-4222-8222-222222222222"],
     "skills": [ { "skillName": "Accuracy" } ],
     "move": { "category": "Dash", "from": [0, 0, 0], "position": [6, 4, 0] },
-    "attack": { "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Strength" } },
+    "attack": { "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Push" } },
     "actionSpeed": { "skillName": "Legerity" },
     "interact": { "kind": "reveal" }
   }
@@ -511,10 +631,17 @@ checagem) · `game_error`.
 **Direção:** servidor → cliente. **Destino:** **só quem enviou** o `enqueue_action`.
 
 ```json
-{ "type": "action_enqueued", "payload": {} }
+{ "type": "action_enqueued", "payload": { "actionId": "33333333-3333-4333-8333-333333333333" } }
 ```
 
-Ack vazio: "recebemos". Nada sobre a ação, e nenhuma notícia para a mesa.
+**Deixou de ser `{}`.** Nomeia a MESMA ação que `action_queued` acabou de nomear para o
+mestre. Sem o ID, o navegador de quem enviou não tinha como se referir ao que acabou de
+mandar: não cancelava, não destacava na barra geral, não sabia que a próxima a abrir era
+dela. É o mesmo buraco que `PendingReactions` fechou para o mestre — um ID que o cliente
+não aprende é uma operação que ele não consegue invocar.
+
+Continua sem dizer nada sobre o **conteúdo** da ação (arma, alvo, perícia) e continua sem
+ser notícia para a mesa — isso é `action_queued`, master-only, logo abaixo.
 
 **Disparado por:** `enqueue_action` aceito.
 
@@ -538,15 +665,20 @@ conectado, a mensagem simplesmente não é entregue a ninguém.
 fila é secreta; a barra e a ordem são públicas"). Um jogador que aprendesse o que está
 pendente leria as intenções da mesa no wire.
 
-**E é o único jeito de aprender o `actionId` que [`pull_action`](#pull_action) exige.**
-Nenhuma outra superfície nomeia uma ação enfileirada. Sem esta mensagem, `pull_action` é
-inalcançável a partir de um cliente real.
+**E é o jeito de aprender o `actionId` que [`pull_action`](#pull_action) exige, no instante do
+enfileiramento.** Sem esta mensagem, `pull_action` é inalcançável a partir de um cliente real
+para o que acabou de entrar na fila.
 
 Nada aqui descreve o **conteúdo** da ação: arma, alvo, perícia e dados continuam do jogador
 até o mestre abrir o turno. `bars` (`action` e/ou `move`) já é dedutível da ordem pública em
 `bars_updated` — nomear aqui não revela nada novo.
 
 **Disparado por:** `enqueue_action` aceito, logo após o ack de quem enviou.
+
+> **Esta mensagem dispara UMA VEZ, no instante do enfileiramento** — um mestre que estava
+> desconectado nesse momento não a recebe depois. [`match_full_state`.`queue`](#match_full_state)
+> é a versão do MESMO fato que **sobrevive à reconexão**: um payload `action_queued` inteiro
+> por ação ainda pendente, na ordem de inserção da fila. Ver a seção de `match_full_state`.
 
 ### `bars_updated`
 
@@ -711,7 +843,7 @@ Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master
 | `action.diceRolled` | Os dados **efetivamente lidos**. Um teste enviesado rolou dois conjuntos; só o lido viaja. |
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
 | `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. |
-| `targets[].reaction` | `null` quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio. Uma passiva silenciosa não é resposta a reportar. |
+| `targets[].reaction` | **Ausente** quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio — `Reaction *ReactionResultPayload` com `omitempty` **omite a chave**, não emite `null`; em TypeScript o campo é `reaction?: ReactionResultPayload`, não `reaction: ReactionResultPayload \| null`. Uma passiva silenciosa não é resposta a reportar. |
 | `reaction.rung` | `great_success` · `success` · `near_miss` · `failure` — **snake_case**, diferente de todo o resto do wire. Ausente fora de um aparo. |
 | `reaction.margin` / `difference` | Valor zero **fora de um aparo** — todos os outros tipos leem contra CD plana, não contra a escada. |
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
@@ -841,7 +973,7 @@ mundo precisa saber se as barras estão correndo.
   "type": "scene_changed",
   "payload": {
     "sceneId": "55555555-5555-4555-8555-555555555555",
-    "category": "Battle",
+    "category": "battle",
     "briefInitialDescription": "Arena"
   }
 }
@@ -865,6 +997,168 @@ mundo precisa saber se as barras estão correndo.
 ```
 
 **Disparado por:** `enqueue_master_action` no caminho 3 (sem `interact`).
+
+### `match_full_state`
+
+**Direção:** servidor → cliente. **Destino:** quem **conecta ou reconecta**, sempre que a
+partida já tem sessão viva (combate em andamento). **Não sai** enquanto a partida está só no
+lobby — não há combate para sincronizar, e `buildMatchFullState` devolve `nil`.
+
+`map_full_state` cobre o tabuleiro e só. Quem chegava no meio — ou reconectava, e o hook do
+front reconecta até cinco vezes sozinho — ficava sem barras, sem regime, sem cena, sem turno
+aberto, sem reações pendentes e, se fosse o mestre, sem a fila de ações, até alguma coisa
+mudar por acaso. É essa lacuna que esta mensagem fecha.
+
+```json
+{
+  "type": "match_full_state",
+  "payload": {
+    "scene": {
+      "sceneId": "66666666-6666-4666-8666-666666666666",
+      "category": "battle",
+      "briefInitialDescription": "Arena"
+    },
+    "roundMode": "Race",
+    "bars": {
+      "seq": 7,
+      "prices": { "action": 14, "move": 12 },
+      "characters": [
+        {
+          "characterId": "11111111-1111-4111-8111-111111111111",
+          "actionBalance": -2.5,
+          "moveBalance": 0,
+          "actionSpeeds": [16, 14],
+          "moveSpeeds": [12]
+        }
+      ],
+      "order": [
+        { "actorId": "22222222-2222-4222-8222-222222222222", "bars": ["action"], "key": 18 }
+      ]
+    },
+    "openTurn": {
+      "turnId": "55555555-5555-4555-8555-555555555555",
+      "actorId": "11111111-1111-4111-8111-111111111111"
+    },
+    "resolution": {
+      "turnId": "55555555-5555-4555-8555-555555555555",
+      "isSettled": false,
+      "action": { "skillName": "Accuracy", "skillValue": 14, "diceRolled": [6, 8], "total": 20, "isCritical": false, "isCriticalFailure": false },
+      "targets": []
+    },
+    "queue": [
+      { "actionId": "33333333-3333-4333-8333-333333333333", "actorId": "11111111-1111-4111-8111-111111111111", "bars": ["action"] }
+    ]
+  }
+}
+```
+
+| Campo | Notas |
+|---|---|
+| `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. **Ausente** (`omitempty`) quando a partida não tem cena ativa — `Scene *SceneChangedPayload` com `omitempty` **omite a chave inteira**, não emite `null`; em TypeScript o campo é `scene?: SceneChangedPayload`, não `scene: SceneChangedPayload \| null`. Leia `scene === undefined` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e é validada contra o enum — ver `change_scene`. |
+| `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
+| `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
+| `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
+| `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
+| `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
+| `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
+
+**Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
+logo depois de `room_state` e do `map_full_state` (se houver peças no tabuleiro), e antes do
+`player_joined` que avisa os demais da chegada.
+
+### `piece_moved` (também servidor → cliente, na ABERTURA do turno)
+
+<a id="piece_moved-servidor"></a>
+
+**Direção:** servidor → cliente. **Destino:** fog-gated, por destinatário.
+
+O contrato completo de `piece_moved`/`piece_removed` — shape de `SlotPayload`, o campo `z`,
+o par origem/destino do sync de tabuleiro — é do lobby/mapa e vive em
+[`game-lobby.md`](game-lobby.md) e [`maps.md`](maps.md). Até aqui `piece_moved` era só
+**cliente → servidor**: o navegador do jogador aplicando localmente um arraste e
+sincronizando o resto da mesa. O que o motor de combate acrescenta:
+
+**Quando o `Move` de uma ação de turno ABRE, o servidor aplica a posição sozinho e emite
+`piece_moved` como AUTOR.** Antes, uma ação de mover acontecia no cálculo e a peça nunca
+saía do lugar no tabuleiro — o fog nunca recalculava. Agora `applyOpenedMove` escreve a nova
+posição na **abertura** do turno, não no fechamento: o dano ainda pode ser editado pelo
+mestre depois de aberto, mas as reações que seguem dependem de onde a peça ESTÁ, e não podem
+esperar. O caminho reaproveita o mesmo par `piece_moved`/`piece_removed` que o lobby já usa
+— não um tipo novo.
+
+**O gate de fog é o mesmo par de sempre — e tem DOIS cortes ANTES dele, nos dois regimes.**
+A tabela vale para o que esta seção descreve: uma partida **com sessão viva** (combate em
+andamento). O mesmo helper (`relayPieceMove`, `room.go`) serve o lobby, e nele o corte de
+remetente e o corte de mestre rodam **primeiro**, antes de qualquer ramo de lobby ou de
+combate — é por isso que as duas primeiras linhas da tabela abaixo valem sem exceção. O que
+muda no lobby é só o que vem **depois** desses dois cortes: sem sessão viva, o ramo de lobby
+devolve a mensagem a todo mundo antes do teste de peça oculta e do teste de campo de visão —
+ver a linha da peça oculta.
+
+| Quem | Recebe |
+|---|---|
+| Quem **enviou** o `piece_moved` (o `senderId` do envelope) | **nada** — mestre ou jogador. O browser dele já desenhou o arrasto; ninguém é ecoado para si mesmo. Este corte vem **antes** de todos os outros, inclusive do corte de mestre. Só não se aplica ao movimento de autor SERVIDOR, que não tem remetente. |
+| Mestre (quando não é o remetente) | `piece_moved` — sem gate de fog, mesmo com `visible: false` |
+| Jogador, peça marcada `visible: false` (oculta) | **nada**, **em combate.** Com sessão viva `relayPieceMove` corta a peça oculta antes de olhar linha de visão — nem `piece_moved` nem `piece_removed`, mesmo para quem enxergaria o destino a olho nu. **No lobby (sem sessão) é o contrário:** o ramo de lobby devolve a mensagem a todo mundo **antes** do teste de oculta, porque no lobby não há fog nenhum. A regra é do combate, não do protocolo. |
+| Jogador, peça visível, enxerga o **destino** | `piece_moved`, com a posição nova |
+| Jogador, peça visível, só enxergava a **origem** (a peça "saiu de vista") | `piece_removed`. Uma peça que não estava no tabuleiro antes não tem origem: aí não há metade `piece_removed`, só a metade `piece_moved` para quem enxerga o destino. |
+| Jogador, peça visível, não enxergava nem origem nem destino | nada |
+
+O **dono** da peça movida é julgado pela linha de visão **nova**, não pela antiga: o servidor
+recomputa a visão dele antes do despacho. Sem isso, uma peça que anda para fora do próprio
+campo de visão anterior faria o dono receber `piece_removed` da própria peça.
+
+`senderId` vem **zero** (`00000000-…`) quando o autor é o servidor — nenhum navegador previu
+esse movimento, então ninguém é pulado no dispatch. É assim que o cliente distingue "o
+servidor moveu isto" (`senderId` zero) de "outro jogador moveu isto" (`senderId` = o UUID de
+quem enviou).
+
+O dono do personagem movido recebe, além disso, um `map_full_state` atualizado — a linha de
+visão dele mudou, mesmo quando quem moveu a peça não foi ele (o mestre arrastando a peça de
+um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas do código:
+o dono é resolvido a partir do **personagem** (`characterId` → jogador), então uma peça de NPC
+ou uma peça cujo `characterId` não está na partida não tem dono e ninguém recebe esse extra;
+o dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num polígono
+velho); e se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima
+sai do mesmo jeito.
+
+**Disparado por** três momentos, e é o **mesmo** `applyMove` nos três:
+
+| Momento | Quando |
+|---|---|
+| Abertura do turno (`open_next_action`, `pull_action`) | a ação que abre carrega um `Move`. **Qualquer categoria** — uma ação não tem CD vindo contra ela, e a posição não pode esperar, porque as reações seguintes dependem de onde a peça está. |
+| Abertura da reação ([`open_reaction`](#open_reaction)) | a fuga que ganha a palavra anda de **`Shift`** (`closedEscape`). O `Shift` não rola nada, então não há teste a ser lido contra o acerto do atacante. |
+| Fechamento do turno (`close_turn`, e também `open_next_action`/`pull_action`) | a fuga anda de **`Dash`** (`escape`, `escapeGuard`) **e passou** contra o acerto do atacante. Falhou → nada sai, a peça não sai do lugar. |
+
+As regras completas do lado da reação — de onde vem a CD, qual categoria decide quando, e o
+que significa falhar — estão em [`open_reaction`](#open_reaction) e em
+[`close_turn`](#close_turn). Um movimento de **ação** que dependesse de teste (um salto, um
+aperto, um pouso em slot ocupado) continua **sem caso alcançável**: `move.category` só aceita
+`Dash` e `Shift`, e as outras cinco são recusadas no mapeamento — então não existe código para
+esse ramo.
+
+Um ator **sem peça no tabuleiro** não é erro, em nenhum dos três momentos: não há o que mover,
+nada é emitido e nenhuma mensagem de erro sai. O turno (ou a reação) abre normalmente.
+
+⚠️ **A semântica de `Z` está em aberto.** `PieceMovedPayload.Z` é documentado como altura
+virtual em metros; `Move.Position[2]` é o índice `z` da grade. São grandezas possivelmente
+diferentes, e por isso o servidor **preserva o `Z` que a peça já tinha** em vez de
+sobrescrevê-lo com `Move.Position[2]`. Escrever um horizontal sobre um vertical derrubaria
+uma peça elevada ao chão a cada passo horizontal cujo `z` de grade for `0`. A pergunta
+"`Move.Position[2]` é metro ou índice de grade?" precisa de resposta antes de qualquer
+cliente escrever `Z`. Ver §9.
+
+⚠️ **Colisão contra parede é uma fatia de regra ainda não desenhada — o efeito hoje é que a
+peça atravessa.** A única checagem existente contra paredes com `move=true` e `open=false`
+acontece no **enfileiramento** (`enqueue_action`, quando `move.from` é não-zero — ver a
+tabela em `enqueue_action`), não de novo aqui na abertura. O caminho de reação **nunca passa
+por essa checagem, nem uma vez**: quando `reactToId` é não-zero, `enqueue_action` roteia para
+o mesmo tratamento de `attach_reaction` e retorna **antes** de alcançar o código que valida a
+parede — esse código só existe no ramo de ação comum. `attach_reaction`, enviado direto,
+também não tem checagem nenhuma no caminho. Não é validação esquecida: **ainda não existe a
+regra que decide o que acontece quando um personagem colide com uma parede** — compartilhar
+o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi
+escolhido ainda. Ver §9.
 
 ### `error`
 
@@ -959,6 +1253,18 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
    | `closedDodge` | `dodge` | **some** |
    | `closedEscape` | `escape` | **some** |
 
+### Nota: a finta segue o mesmo eixo do TEMPO, mas em outro documento
+
+`Feint` não aparece em payload nenhum deste protocolo — nenhuma mensagem servidor→cliente
+projeta a **declaração** de uma `action.Action` **de jogador** (`master_action_enqueued` é a
+exceção do lado do mestre, mas projeta `action.MasterAction`, um tipo sem `Feint`; a lacuna
+correspondente está em §9), e é por isso que a finta não tem onde aparecer aqui. Ela vive em `service.ProjectAction`, a mesma
+função que a Action History REST chama, e segue exatamente este eixo do TEMPO: escondida
+enquanto `isSettled` é `false`, revelada quando o turno fecha — quem caiu na finta descobre
+dentro da resolução do MESMO turno (o sucesso foi contra um ataque falso, e o de verdade vem
+em seguida), nunca meses depois olhando o histórico. Ver
+[`match-history.md`](match-history.md).
+
 ## 7. Catálogo de erros
 
 | `code` | Significado | Onde aparece |
@@ -968,7 +1274,7 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
 | `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida. |
-| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados. | `enqueue_action`, `attach_reaction`, `edit_action`. |
+| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
 
@@ -1014,6 +1320,7 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │      NADA FOI FECHADO         │   e não aberta)    │
     │                            │                               │                    │
     │                            │◄──── close_turn {confirm:true}┤                    │
+    │◄─ piece_moved (fog-gated) ─┤  (SÓ p/ fuga de Dash que PASSOU contra o acerto)   │
     │                            │   ┌─ persiste turno + resolução liquidada          │
     │◄──────────── turn_closed {turnId} (mesa) ─────────────────►│◄──────────────────►│
     │◄── resolution_updated ─────┤                               │                    │
@@ -1025,8 +1332,9 @@ JOGADOR A                    SERVIDOR                         MESTRE            
 ```
 
 **O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** o turno fecha
-igual (com persistência e `resolution_updated` liquidado), mas **não sai `turn_closed`** — o
-próximo `turn_opened` é o que anuncia a virada. E se nada pendente ainda puder pagar, sai
+igual (com persistência, `resolution_updated` liquidado e o `piece_moved` das fugas de `Dash`
+que passaram), mas **não sai `turn_closed`** — o próximo `turn_opened` é o que anuncia a
+virada. E se nada pendente ainda puder pagar, sai
 [`round_closed`](#round_closed) e nenhum turno novo abre.
 
 ## 9. O que este contrato ainda não entrega
@@ -1043,5 +1351,7 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
-| **Nenhuma mensagem servidor→cliente projeta a declaração de uma action** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que foi declarado pelo histórico REST, não pelo WS. É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. |
+| **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **NPC não age** | Ver §2. |
+| **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
+| **Colisão contra parede ainda não foi desenhada** | Não é omissão de validação: ainda não existe a regra que decide o que acontece quando um personagem colide com uma parede — compartilhar o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Até essa regra existir, o comportamento observável é a peça atravessando: a única checagem existente (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado, na abertura do turno ou da reação. Vale para os TRÊS momentos que deslocam peça — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa por essa checagem, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. O front não deve tratar isso como bug a reportar — é regra de jogo que falta ser escrita. |

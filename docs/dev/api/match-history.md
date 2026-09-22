@@ -54,9 +54,9 @@ renderiza os cards de ação dentro do escopo de cada cena.
                 ],
                 "speed": { "bar": 1, "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } },
                 "attack": {
-                  "weapon": "fist",
+                  "weapon": "Fist",
                   "hit": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 20 },
-                  "damage": { "skillName": "Strength", "skillValue": 10, "attempts": { "primary": [4] }, "result": 10 },
+                  "damage": { "skillName": "Push", "skillValue": 10, "attempts": { "primary": [4] }, "result": 10 },
                   "relativeVelocity": 0
                 }
               },
@@ -130,9 +130,24 @@ Notas sobre os campos de `action`/`reactions`:
 
 - `skills`, `move`, `attack`, `defense`, `dodge`, `repel`, `interact` só aparecem quando a
   action de fato os carrega — ausentes (não `null`), do contrário.
-- `feint` e `trigger` são omitidos por completo quando o viewer não é dono nem mestre (ver
-  abaixo); quando presentes, `feint` é o `RollCheck` da finta e `trigger` é um objeto vazio
-  (o domínio ainda não tem campos em `action.Trigger`).
+- `trigger` é omitido por completo quando o viewer não é dono nem mestre; quando presente, é
+  um objeto vazio (o domínio ainda não tem campos em `action.Trigger`).
+- `feint` segue uma regra **temporal**, não de classe: `ProjectAction`
+  (`internal/domain/match/service/projection.go`) só o esconde de quem não é dono/mestre
+  enquanto **aquele turno** ainda está **aberto** (`isSettled: false`, calculado por turno a
+  partir de `FinishedAt` — não é uma constante global) — quem caiu na finta descobre dentro
+  da resolução do MESMO turno, porque o sucesso dele foi contra um ataque falso e o de
+  verdade vem em seguida; esconder depois do fechamento esconderia para sempre, que não é a
+  regra. **Na prática de hoje**, todo turno que chega a este endpoint já está fechado
+  (`FindMatchHistory` lê da tabela que `PersistTurnClose` grava, o único caminho de escrita
+  atual) — então `feint`, quando presente na action, chega a todo viewer, não só a
+  dono/mestre. Mas isso é uma consequência de `isSettled` ser sempre `true` aqui hoje, não
+  uma regra separada codificada no endpoint: o dia em que um turno aberto atravessar este
+  caminho (não acontece agora), a finta dele voltaria a ficar restrita a dono/mestre, turno a
+  turno. Quando presente, `feint` é o `RollCheck` da finta. Ver
+  [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra é descrita pelo lado do
+  WebSocket (que nunca expõe `feint` — não há mensagem servidor→cliente que projete a
+  declaração de uma action de jogador).
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
 - `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
   que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
@@ -148,10 +163,12 @@ Notas sobre os campos de `action`/`reactions`:
   quem trocou e quando. O que o cliente vê aqui são os números já resolvidos
   (`RollCheckResponse.result`, os totais em `resolution`).
 - `systemBias` **não tem equivalente no WebSocket**, e não por política: nenhuma mensagem
-  servidor→cliente projeta a declaração de uma `action.Action` (`ActionPayload` só existe no
-  sentido cliente→servidor). O argumento do "já é dedutível" também não valeria lá —
-  `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. Ver
-  [`match-combat-ws.md`](match-combat-ws.md).
+  servidor→cliente projeta a declaração de uma `action.Action` **de jogador**
+  (`ActionPayload` só existe no sentido cliente→servidor). `master_action_enqueued` é a
+  exceção do lado do mestre, mas não carrega `ActionPayload` nem `systemBias` — `systemBias`
+  só existe em ações e reações de jogador (`buildAction`), nunca em `buildMasterAction`. O
+  argumento do "já é dedutível" também não valeria lá — `resolution_updated` emite só
+  `diceRolled`, o conjunto efetivamente lido. Ver [`match-combat-ws.md`](match-combat-ws.md).
 - `RollCheckResponse.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
   viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
   público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
@@ -203,7 +220,10 @@ Isso significa, na prática:
   **menos** a deny-list. Não existe uma "verdade única" que o front possa cachear e
   reutilizar entre usuários.
 - **O alvo de um ataque não é uma classe privilegiada.** Uma finta contra você não avisa
-  que era finta — só o dono da finta e o mestre veem `feint` não-nulo.
+  que era finta **enquanto aquele turno ainda está aberto**. A regra que esconde `feint` de
+  quem não é dono/mestre é **temporal** (`isSettled`, por turno), não de classe — e como hoje
+  todo turno que chega a este endpoint já está fechado, `feint`, quando presente, chega **a
+  todo viewer** na prática atual. Ver a nota sobre `feint` mais acima.
 - **A esquiva fechada chega a terceiros indistinguível de uma esquiva comum.**
   `reactionKind: "closedDodge"` vira `"dodge"` (e `"closedEscape"` vira `"escape"`) para
   quem não é dono nem mestre — o rótulo é o vazamento; ver a nota em

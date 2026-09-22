@@ -47,7 +47,7 @@ func TestRawDamage(t *testing.T) {
 
 	t.Run("raw damage is the dice plus the weapon's flat bonus", func(t *testing.T) {
 		sword := enum.Sword // D10 + D4, flat damage 2
-		got, err := service.RawDamage([]int{7, 3}, &sword, cat)
+		got, err := service.RawDamage([]int{7, 3}, &sword, cat, 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -57,7 +57,7 @@ func TestRawDamage(t *testing.T) {
 	})
 
 	t.Run("bare hands add nothing flat", func(t *testing.T) {
-		got, err := service.RawDamage([]int{4, 5, 1}, nil, cat) // Fist, flat damage 0
+		got, err := service.RawDamage([]int{4, 5, 1}, nil, cat, 0) // Fist, flat damage 0
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -65,6 +65,28 @@ func TestRawDamage(t *testing.T) {
 			t.Errorf("RawDamage() = %d, want 10", got)
 		}
 	})
+}
+
+// The same blow, with the same weapon and the same dice, hurts more in the hand of whoever
+// has more Push. Without this assertion an ignored parameter would pass: both totals would
+// be equal and the test would stay green.
+func TestRawDamageAddsThePush(t *testing.T) {
+	cat := item.NewWeaponsManagerFactory().Build()
+	sword := enum.Sword
+	dice := []int{7, 3}
+
+	weak, err := service.RawDamage(dice, &sword, cat, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	strong, err := service.RawDamage(dice, &sword, cat, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strong-weak != 5 {
+		t.Fatalf("Push moved the damage by %d, want 5 (weak=%d strong=%d)", strong-weak, weak, strong)
+	}
 }
 
 func TestApplicableDefense(t *testing.T) {

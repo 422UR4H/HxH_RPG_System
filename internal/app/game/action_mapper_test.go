@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -322,6 +323,56 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 	})
 
+	// Before this check existed, a free dodge carrying a Move survived the mapper untouched —
+	// the reaction was free (ReactDodge.Bars() == nil) and the Move sat on the Action inert,
+	// until open_reaction read Move != nil with no regard for the kind and walked the piece.
+	// PROBE POSITIVE, empirically confirmed against the pre-fix code: a FREE dodge carrying a
+	// Move displaced the piece on open_reaction. This test — and TestOpenReaction_DoesNotDisplaceOnANonDisplacingReaction
+	// at the room level — are what that probe left behind.
+	t.Run("dodge with a move is refused — dodge does not displace", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "dodge",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Move:  &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a dodge reaction carrying a Move must be refused")
+		}
+		if !strings.Contains(err.Error(), "must not carry a move") {
+			t.Fatalf("refused for the wrong reason (want the presence check, not the category one): %v", err)
+		}
+	})
+
+	t.Run("closedDodge with a move is refused — closedDodge does not displace either", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedDodge",
+			Dodge:  &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+			Skills: []ActionSkillPayload{{SkillName: enum.Evasion.String()}},
+			Move:   &MovePayload{Category: string(enum.Shift), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a closedDodge reaction carrying a Move must be refused")
+		}
+		// Dodge and Evasion are both satisfied above, so a failure here can only be the
+		// presence-of-Move check — proving it fires even when every OTHER requirement is met.
+		if !strings.Contains(err.Error(), "must not carry a move") {
+			t.Fatalf("refused for the wrong reason: %v", err)
+		}
+	})
+
+	t.Run("nothing with a move is refused — nothing does not displace", func(t *testing.T) {
+		_, err := buildAction(actorID, ActionPayload{
+			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "nothing",
+			Move: &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err == nil {
+			t.Fatal("a nothing reaction carrying a Move must be refused")
+		}
+		if !strings.Contains(err.Error(), "must not carry a move") {
+			t.Fatalf("refused for the wrong reason: %v", err)
+		}
+	})
+
 	t.Run("dodge with a dodge component is accepted", func(t *testing.T) {
 		a, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "dodge",
@@ -385,10 +436,17 @@ func TestBuildAction_Reactions(t *testing.T) {
 		_, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedEscape",
 			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
-			Move:  &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+			// Category must be the CORRECT one (Shift) for closedEscape here — otherwise the
+			// move-category check in RequiredComponents' loop fires first (it runs before the
+			// RequiresEvasionSkill check below it) and this test would pass for the wrong
+			// reason, proving nothing about Evasion at all.
+			Move: &MovePayload{Category: string(enum.Shift), Position: [3]int{1, 1, 0}},
 		})
 		if err == nil {
 			t.Fatal("a closedEscape with no Evasion entry must be refused just like closedDodge")
+		}
+		if !strings.Contains(err.Error(), "must carry an evasion skill entry") {
+			t.Fatalf("refused for the wrong reason: %v", err)
 		}
 	})
 
@@ -434,6 +492,54 @@ func TestBuildAction_Reactions(t *testing.T) {
 			t.Fatal("a repel reaction with no Repel payload must be refused, never derived against an empty roll into RungFailure")
 		}
 	})
+}
+
+// Six cases: the three displacing kinds, each with the right move category and the wrong one.
+// Every case carries every OTHER required component (Dodge, and Skills' Evasion entry for the
+// closed variant) already satisfied, so a refusal can only come from the move-category check —
+// never from RequiredComponents or RequiresEvasionSkill, which TestBuildAction_Reactions above
+// already covers on its own.
+func TestBuildActionEnforcesEscapeMoveCategory(t *testing.T) {
+	actorID := uuid.New()
+	cases := []struct {
+		kind     string
+		category string
+		wantErr  bool
+	}{
+		{"escape", string(enum.Dash), false},
+		{"escape", string(enum.Shift), true},
+		{"escapeGuard", string(enum.Dash), false},
+		{"escapeGuard", string(enum.Shift), true},
+		{"closedEscape", string(enum.Shift), false},
+		{"closedEscape", string(enum.Dash), true},
+	}
+	for _, c := range cases {
+		t.Run(c.kind+"/"+c.category, func(t *testing.T) {
+			p := ActionPayload{
+				ActorID:      actorID,
+				ReactToID:    uuid.New(),
+				ReactionKind: c.kind,
+				Dodge:        &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
+				Move:         &MovePayload{Category: c.category, Position: [3]int{1, 0, 0}},
+			}
+			if c.kind == "closedEscape" {
+				p.Skills = []ActionSkillPayload{{SkillName: enum.Evasion.String()}}
+			}
+			_, err := buildAction(actorID, p)
+			if c.wantErr && err == nil {
+				t.Fatalf("%s with %s was accepted; the client would own the rule", c.kind, c.category)
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("%s with %s was refused: %v", c.kind, c.category, err)
+			}
+			// The refused cases must fail on the move category specifically, not on a
+			// coincidental other validation (missing component, unknown skill) — a case that
+			// failed for the wrong reason would pass wantErr without proving anything.
+			if c.wantErr && err != nil && !strings.Contains(err.Error(), "must move with") {
+				t.Fatalf("%s with %s was refused for the wrong reason: %v", c.kind, c.category, err)
+			}
+		})
+	}
 }
 
 func TestBuildEditAction_RejectsAnUnknownField(t *testing.T) {

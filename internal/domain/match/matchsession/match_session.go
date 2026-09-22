@@ -959,18 +959,24 @@ func (s *MatchSession) chargeReactionBars(r *action.Action) {
 //
 // It does NOT charge anything. The bars were debited when the reaction arrived (see
 // chargeReactionBars) precisely so that narrating cannot move a number.
-func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*service.TurnResolution, error) {
+// It also hands back the reaction it just opened. An escape DISPLACES — the delivery layer has
+// to walk the reaction's Move onto the board the same way it walks the opened action's — and
+// nothing else on the wire or in the session names the reaction that was opened: the caller
+// only knows the ID it asked for, and looking it up a second time would be a second lookup
+// free to drift from the one that actually opened it. The pointer aliases the turn's own
+// reaction, so a caller that outlives the lock must copy what it needs, not keep it.
+func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*action.Action, *service.TurnResolution, error) {
 	t := s.activeRound.CurrentTurn()
 	if t == nil {
-		return nil, service.ErrNoCurrentTurn
+		return nil, nil, service.ErrNoCurrentTurn
 	}
 	if t.GetFinishedAt() != nil {
-		return nil, ErrTurnAlreadyClosed
+		return nil, nil, ErrTurnAlreadyClosed
 	}
 	if !t.OpenReaction(reactionID) {
-		return nil, ErrReactionNotFound
+		return nil, nil, ErrReactionNotFound
 	}
-	return s.ResolveTurn(t), nil
+	return t.ReactionRef(reactionID), s.ResolveTurn(t), nil
 }
 
 // CloseOpenTurn ends the turn under the baton explicitly, and it is the SAME path the two

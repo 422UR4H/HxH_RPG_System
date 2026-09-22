@@ -73,10 +73,10 @@ After every task that touches `internal/`, run vet before committing — no DB r
 go vet -tags=integration ./internal/gateway/pg/...
 ```
 
-After modifying gateway code directly, also run the full suite:
+After modifying gateway code directly, also run the full suite — **with `-p 1`, see below**:
 
 ```bash
-go test -tags=integration ./internal/gateway/pg/...
+go test -tags=integration -p 1 ./internal/gateway/pg/...
 ```
 
 Do **not** poll CI proactively — only check if a failure is reported.
@@ -84,15 +84,44 @@ Do **not** poll CI proactively — only check if a failure is reported.
 ## Running
 
 ```bash
-# All integration tests
-go test -tags=integration ./internal/gateway/pg/...
+# All integration tests — MUST run with -p 1 (see "Why -p 1" below)
+go test -tags=integration -p 1 ./internal/gateway/pg/...
 
-# Specific package
+# Specific package — -p 1 not needed, only one package binary runs
 go test -tags=integration ./internal/gateway/pg/match/...
 
-# Vet (includes integration files)
+# Vet (includes integration files) — no DB access, -p 1 not needed
 go vet -tags=integration ./internal/gateway/pg/...
 ```
+
+## Por que `-p 1`
+
+**Sintoma:** rodar `go test -tags=integration ./internal/gateway/pg/...` sem `-p 1`
+falha de forma intermitente — deadlock de conexões e violação de foreign key,
+espalhados entre pacotes diferentes (campanha, usuário, sessão, mapa, submissão,
+cenário). Os mesmos 241 testes, na mesma branch, passam em série.
+
+**Causa:** todos os pacotes de `internal/gateway/pg/` apontam para o **mesmo banco**
+(`pgtest.SetupTestDB`/`GetDatabaseURL` — ver acima), e cada um trunca e insere nas
+**mesmas tabelas** via `pgtest.TruncateAll`. `go test` roda pacotes diferentes em
+paralelo por padrão (o número de binários simultâneos é controlado por `-p`, que por
+padrão é `GOMAXPROCS`) — então um `TRUNCATE ... CASCADE` de um pacote colide com um
+`INSERT`/`SELECT` em andamento de outro, contra as mesmas tabelas, no mesmo banco.
+Isso não é sobre paralelismo dentro de um pacote (sub-testes já se isolam com
+`TruncateAll` entre si); é paralelismo **entre pacotes**, que a suíte não foi desenhada
+para suportar porque o isolamento é por truncagem, não por schema/banco por pacote.
+
+**`go test -tags=integration ./...` (ou `./internal/gateway/pg/...`) sem `-p 1` vai
+falhar, de forma intermitente, e isso não é bug no código que você acabou de mexer** —
+é a causa acima. Antes de sair depurando a mudança, rode de novo com `-p 1` primeiro:
+
+```bash
+go test -tags=integration -p 1 ./internal/gateway/pg/...
+```
+
+Se ainda falhar com `-p 1`, aí sim é um bug de verdade. A flag já está setada em
+`.github/workflows/ci.yml` (passo "Integration tests") e no alvo `test-integration` do
+`Makefile` — não remova, mesmo que pareça sobra numa limpeza de CI.
 
 ## Database
 

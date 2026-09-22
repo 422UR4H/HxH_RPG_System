@@ -255,6 +255,13 @@ func (r *Room) Run() {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
 				client.SendMessage(*msg)
 			}
+			// map_full_state above covers the board and nothing else. A client that connects
+			// or reconnects mid-combat still needs the bars, the round regime, the open turn
+			// and — if they are the master — its resolution, or they sit blind until something
+			// changes by luck. No r.mu is held here: buildMatchFullState takes it itself.
+			if msg := r.buildMatchFullState(client.userUUID, r.IsMaster(client.userUUID)); msg != nil {
+				client.SendMessage(*msg)
+			}
 			r.broadcastPlayerJoined(client)
 
 		case client := <-r.unregister:
@@ -517,6 +524,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
+				// Opening the next action is ALSO a close, so the escapes whose step waited for
+				// this moment are walked here too — an escape whose outcome depended on which
+				// verb the master happened to use would be a bug, not a rule. Before
+				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
+				// table sees the turn that ended finish moving before the next one starts.
+				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
@@ -547,20 +560,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		act := result.OpenedTurn.GetAction()
-		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
-			TurnID:  result.OpenedTurn.GetID(),
-			ActorID: act.GetActorID(),
-		})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
-		if result.Resolution != nil {
-			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. publishResolution keeps this
-			// master-only on its own: the mechanics are public when a turn opens, but the
-			// calculation stays with the master until it closes (IsSettled is false here).
-			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
-		}
+		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
 
 	case MsgTypeChangeRoundMode:
 		if !r.IsMaster(client.userUUID) {
@@ -637,6 +637,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
+				// Opening the next action is ALSO a close, so the escapes whose step waited for
+				// this moment are walked here too — an escape whose outcome depended on which
+				// verb the master happened to use would be a bug, not a rule. Before
+				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
+				// table sees the turn that ended finish moving before the next one starts.
+				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
@@ -656,20 +662,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		act := result.OpenedTurn.GetAction()
-		out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
-			TurnID:  result.OpenedTurn.GetID(),
-			ActorID: act.GetActorID(),
-		})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
-		if result.Resolution != nil {
-			r.broadcastWallResults(session, result.Resolution.WallResults)
-			// The projection for the turn just opened. publishResolution keeps this
-			// master-only on its own: the mechanics are public when a turn opens, but the
-			// calculation stays with the master until it closes (IsSettled is false here).
-			r.publishResolution(result.OpenedTurn.GetID(), result.Resolution)
-		}
+		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
 
 	case MsgTypeEnqueueAction:
 		var payload ActionPayload
@@ -743,17 +736,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
 		}
-		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, struct{}{}))
-		// The sender's own ack stays as it is — it says "we got it", to the person who sent it.
-		// This is different news, for a different recipient: the master is the one who has to
-		// decide when it opens, and they need the ID to be able to pull it.
-		bars := make([]string, 0, 2)
-		for _, b := range a.Bars() {
-			bars = append(bars, string(b))
-		}
-		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, ActionQueuedPayload{
-			ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars,
-		}))
+		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: a.GetID()}))
+		// The sender's own ack now names the action too — it says "we got it, and here is what
+		// you can refer to it by". This is different news, for a different recipient: the
+		// master is the one who has to decide when it opens, and they need the ID to be able
+		// to pull it.
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, newActionQueuedPayload(a)))
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
@@ -806,11 +794,43 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		result, err := r.openReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
 		turnID := session.CurrentTurnID()
+		// The reaction the result hands back ALIASES the turn's own, and edit_action can rewrite
+		// a reaction under a different lock holder — so what is needed is copied HERE, inside the
+		// critical section that opened it, and the pointer itself is never read afterwards.
+		var reactor uuid.UUID
+		var reactionMove *action.Move
+		// ReactionKind.Displaces() is consulted here too, not just Move != nil: the mapper is
+		// the client's front door, but it only refuses what IT builds. A Move surviving onto the
+		// reaction by any other path (bug, future refactor, a kind the mapper forgets to police)
+		// must not walk the piece just because the field happens to be non-nil — the kind, not
+		// the shape, is what says whether this reaction moves anyone.
+		//
+		// RollsSpeed() is the third condition, and it is what holds a Dash escape back. Every
+		// REACTION has a difficulty to clear, and it is the action being moved against whoever
+		// reacts — the attacker's own hit. A Shift rolls nothing (it takes the dice set's
+		// average), so there is no reading to put against that hit and the closed escape steps
+		// the moment it gets the floor, exactly as it does today. A Dash rolls its Accelerate,
+		// and that roll IS the test: whether the character got out of the way is only known
+		// once the turn settles, so the piece stays put here and applyClosedEscapes walks it —
+		// or leaves it where it stands — at the close.
+		if err == nil && result.Opened != nil && result.Opened.Move != nil &&
+			result.Opened.ReactionKind.Displaces() && !result.Opened.Move.Category.RollsSpeed() {
+			m := *result.Opened.Move
+			reactionMove = &m
+			reactor = result.Opened.GetActorID()
+		}
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		// An escape DISPLACES, and the trigger is the OPENING of the reaction — the analogue of
+		// opening the turn's action, and the same code path. BEFORE reaction_opened and with no
+		// r.mu held, for the reason the action side documents: piece_moved goes straight into
+		// each client's queue while reaction_opened only reaches them through r.broadcast, so a
+		// move applied afterwards would let the table watch the reaction open with the piece
+		// still in the old slot.
+		r.applyMove(reactor, reactionMove)
 		// Whose turn it is to narrate is public; the calculation is not, until Phase 5.
 		out := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
 			TurnID: turnID, ReactionID: payload.ReactionID,
@@ -903,6 +923,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		closedTurn := result.ClosedTurn
 		// result.Resolution here is the SETTLED one — CloseTurnUC resolves the turn it just
 		// closed, not a next one — the same resolution published below via publishResolution.
+		//
+		// The escapes that were waiting on their own test settle with it: this is the third
+		// way a turn closes (open_next_action and pull_action are the other two) and all three
+		// have to walk the piece, or an escape's outcome would depend on which verb the master
+		// used. Before turn_closed goes out, for the reason the open_reaction arm documents —
+		// piece_moved goes straight into each client's queue while turn_closed travels through
+		// r.broadcast.
+		r.applyClosedEscapes(closedTurn, result.Resolution)
 		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
 		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
@@ -932,10 +960,20 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		sceneWasPersisted := session.IsScenePersisted()
 		r.mu.RUnlock()
 
+		// Validated against the enum's exact values (same pattern as skill/weapon names),
+		// not just cast and stored: an unrecognized category used to sail through as a
+		// string matching neither "battle" nor "roleplay", and would come back out that
+		// way in scene_changed and match_full_state for every client to trip on.
+		category, err := enum.SceneCategoryFrom(payload.Category)
+		if err != nil {
+			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			return
+		}
+
 		oldScene, oldRound, err := r.changeSceneUC.Execute(
 			context.Background(), session,
 			r.masterUUID, client.userUUID,
-			enum.SceneCategory(payload.Category), payload.BriefInitialDescription,
+			category, payload.BriefInitialDescription,
 		)
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -1098,6 +1136,37 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
+	}
+}
+
+// announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for
+// byte: once the baton has moved, "the next one opened" and "this one was pulled out of
+// order" are the same news, and the two arms had drifted apart only by accident so far.
+//
+// The move goes out BEFORE turn_opened, with no r.mu held: Execute released it in the caller,
+// and applyMove takes it itself. The table must never see the turn open with the piece still
+// in the old slot, and piece_moved goes straight into each client's queue while turn_opened
+// only reaches it through r.broadcast — so applying the move first is what fixes the order.
+//
+// res is nil-safe: a turn can open with nothing to resolve.
+func (r *Room) announceOpenedTurn(
+	session *matchsession.MatchSession, opened *turnentity.Turn, res *domainservice.TurnResolution,
+) {
+	r.applyOpenedMove(opened)
+
+	act := opened.GetAction()
+	out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
+		TurnID:  opened.GetID(),
+		ActorID: act.GetActorID(),
+	})
+	data, _ := json.Marshal(out)
+	go func() { r.broadcast <- data }()
+	if res != nil {
+		r.broadcastWallResults(session, res.WallResults)
+		// The projection for the turn just opened. publishResolution keeps this master-only on
+		// its own: the mechanics are public when a turn opens, but the calculation stays with
+		// the master until it closes (IsSettled is false here).
+		r.publishResolution(opened.GetID(), res)
 	}
 }
 
@@ -1619,6 +1688,131 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	return &msg
 }
 
+// buildMatchFullState snapshots the combat for one recipient. Returns nil when there is no
+// session: in the lobby there is no combat to sync.
+//
+// The assembly is its OWN function, on purpose — the same shape buildMapFullState already
+// has, and it is what makes match_full_state testable without standing up a connection.
+//
+// The caller must NOT hold r.mu — this takes it, held for the whole read (session, barsSeq,
+// scene, round, turn and the ResolveTurn recompute), exactly as buildMapFullState does with
+// its own single RLock/RUnlock pair. There is no reason to split it into two critical
+// sections here: nothing in between needs the lock released, and ResolveTurn is a pure
+// recompute (no I/O, no sheet writes), so it is safe to run under RLock.
+func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	session := r.session
+	if session == nil {
+		return nil
+	}
+
+	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session)}
+	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
+	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
+	payload.Bars.Seq = r.barsSeq
+
+	if scene := session.GetActiveScene(); scene != nil {
+		// The same struct scene_changed sends, not a second flattened copy of it — see
+		// MatchFullStatePayload.Scene's own doc comment.
+		payload.Scene = &SceneChangedPayload{
+			SceneID:  scene.GetID(),
+			Category: string(scene.GetCategory()),
+			// BriefInitialDescription is a public field on scene.Scene, not a getter — there is
+			// no GetBriefInitialDescription method (the brief for this task assumed one;
+			// checked against the real type before writing this).
+			BriefInitialDescription: scene.BriefInitialDescription,
+		}
+	}
+	if round := session.GetActiveRound(); round != nil {
+		payload.RoundMode = string(round.GetMode())
+		// HasOpenTurn, not a bare "CurrentTurn() != nil" check: CurrentTurn returns the round's
+		// LAST turn regardless of whether it already closed, and a round sits with its last
+		// turn closed for the whole window between close_turn and the next open_next_action.
+		// A bare nil check would hand a late joiner a stale OpenTurn for a turn that already
+		// settled — and would hand the master a Resolution for it too, which is table state
+		// they were already sent when it closed, not something this snapshot owes them again.
+		if round.HasOpenTurn() {
+			t := round.CurrentTurn()
+			// GetAction returns a COPY (turn.go is explicit about this — ActionRef is the one
+			// that hands out a pointer, deliberately narrower, for the one caller that mutates
+			// it). Assigning it to a variable first, then calling GetActorID on the variable,
+			// is required: Go cannot take the address of a bare method-call result to satisfy
+			// GetActorID's pointer receiver.
+			act := t.GetAction()
+			payload.OpenTurn = &OpenTurnPayload{
+				TurnID:  t.GetID(),
+				ActorID: act.GetActorID(),
+			}
+			if isMaster {
+				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
+				// action arrived. attach_reaction and edit_action already call it the same way.
+				if res := session.ResolveTurn(t); res != nil {
+					// ProjectResolution is called even though this branch is master-only and the
+					// projection is the IDENTITY for a master (Viewer.SeesAllOf is true for every
+					// character, and PendingReactions/Errors are exactly what a master keeps).
+					// The call is here so the PORT is already the right shape: without it this is
+					// the only emitter of a resolution that never goes through the projection,
+					// and the day reaction visibility stops being master-only it would start
+					// leaking with no test able to catch it.
+					//
+					// Owns is built for real here, the same way publishResolution builds it for the
+					// live per-recipient emitter — not left nil. A nil map reads as "owns nothing"
+					// (service.Viewer.SeesAllOf), which is safe TODAY only because isMaster is always
+					// true on this branch (IsMaster short-circuits SeesAllOf regardless of Owns). The
+					// day this branch widens to a non-master recipient, a nil Owns would downgrade
+					// that player's OWN reaction — erring toward hiding too much, not leaking, but
+					// still not what "stays honest if this branch ever widens" promised. Carrying the
+					// real set makes that promise true instead of merely asserted.
+					owns := make(map[uuid.UUID]bool)
+					for charStr, pid := range session.GetCharToPlayer() {
+						if pid != playerID {
+							continue
+						}
+						if charID, err := uuid.Parse(charStr); err == nil {
+							owns[charID] = true
+						}
+					}
+					v := domainservice.Viewer{IsMaster: isMaster, Owns: owns}
+					p := newResolutionUpdatedPayload(t.GetID(), domainservice.ProjectResolution(res, v))
+					payload.Resolution = &p
+				}
+			}
+		}
+	}
+
+	if isMaster {
+		// MASTER-ONLY, the same axis Resolution above is gated on, and for the reason
+		// MatchFullStatePayload.Queue documents: the queue is secret. Deliberately OUTSIDE the
+		// round/HasOpenTurn block — the queue exists whether or not a turn is open, and the
+		// state a reconnecting master is most likely to land in ("nothing opened yet, three
+		// things waiting") is exactly the one where round.HasOpenTurn() is false.
+		//
+		// PendingActions reads s.activeQueue with no lock of its own; r.mu (held for this whole
+		// function) is what serializes it against a concurrent enqueue_action.
+		for _, a := range session.PendingActions() {
+			payload.Queue = append(payload.Queue, newActionQueuedPayload(a))
+		}
+	}
+
+	msg := NewServerMessage(MsgTypeMatchFullState, payload)
+	return &msg
+}
+
+// newActionQueuedPayload is one pending action as the MASTER reads it: the ID pull_action
+// needs, who queued it, and which clocks it will charge. Nothing about its content.
+//
+// Shared by the action_queued emitted at enqueue time and by match_full_state's Queue, so the
+// live event and the snapshot can never describe the same action differently.
+func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
+	bars := make([]string, 0, 2)
+	for _, b := range a.Bars() {
+		bars = append(bars, string(b))
+	}
+	return ActionQueuedPayload{ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars}
+}
+
 func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload {
 	out := make([][]Point2DPayload, 0, len(polys))
 	for _, poly := range polys {
@@ -1653,13 +1847,46 @@ func computeLobbyMapState(allWalls []mapentity.WallSegment, pieceProj []domainse
 	return walls, visIDs
 }
 
-// handlePieceMoved updates the board and relays the move per-player with fog filtering.
-func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+// applyAndRelayPieceMove puts a piece on the board and tells everyone entitled to know.
+//
+// The fog gate is the point, and it is a PAIR: whoever can see the destination gets
+// piece_moved, whoever could only see the origin gets piece_removed (the piece walked out of
+// sight), whoever sees neither gets nothing. That is why the server-applied move reuses this
+// instead of growing a second path — and why it stays on piece_moved rather than a new type,
+// which would have to duplicate the pair to keep the "walked out of sight" case.
+//
+// origin is the player whose own browser already applied this move locally and must therefore
+// not be echoed back to. It is uuid.Nil when the SERVER is the mover — nobody predicted that
+// one, so nobody is skipped and the envelope goes out as a server message (senderId zero),
+// which is how a client tells the two apart if it ever needs to.
+//
+// The owner is not a parameter: it comes from payload.CharacterID through GetCharToPlayer().
+// Whoever owns the moved character gets a fresh map_full_state, because their line of sight
+// just changed — and that holds even when the mover is someone else (the master dragging a
+// player's piece, or the engine applying a resolved move).
+//
+// The caller must NOT hold r.mu — this takes it, and so do gridShape, visibilityFor,
+// dispatchPerPlayer and buildMapFullState. The short lock/unlock blocks here and in
+// relayPieceMove are deliberate: nothing that sends to a client runs inside a critical section.
+func (r *Room) applyAndRelayPieceMove(payload PieceMovedPayload, origin uuid.UUID) {
 	r.mu.Lock()
 	old, hadOld := r.pieces[payload.PieceID]
 	r.pieces[payload.PieceID] = payload
 	r.mu.Unlock()
 
+	r.relayPieceMove(payload, old, hadOld, origin)
+}
+
+// relayPieceMove is everything applyAndRelayPieceMove does once the board is already written:
+// the fog-gated per-player dispatch and the owner's refreshed map_full_state. It is split out
+// so a caller that has to CHOOSE the piece before writing it — applyOpenedMove does — can do
+// the read and the write in one critical section and still reuse the relay.
+//
+// old/hadOld are the piece as it stood BEFORE the write; they are what the piece_removed half
+// of the pair is decided on.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origin uuid.UUID) {
 	grid := r.gridShape()
 	newX, newY := slotPayloadToWorld(payload.Slot, grid)
 	var oldX, oldY float64
@@ -1668,15 +1895,54 @@ func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 	}
 	hidden := payload.Visible != nil && !*payload.Visible
 
-	moved := NewClientMessage(MsgTypePieceMoved, client.userUUID, payload)
-	removed := NewClientMessage(MsgTypePieceRemoved, client.userUUID, PieceRemovedPayload{PieceID: payload.PieceID})
+	// A server-authored move carries no sender. NewClientMessage with uuid.Nil would encode
+	// the same bytes, but saying NewServerMessage keeps the intent readable at the call site.
+	moved := NewServerMessage(MsgTypePieceMoved, payload)
+	removed := NewServerMessage(MsgTypePieceRemoved, PieceRemovedPayload{PieceID: payload.PieceID})
+	if origin != uuid.Nil {
+		moved = NewClientMessage(MsgTypePieceMoved, origin, payload)
+		removed = NewClientMessage(MsgTypePieceRemoved, origin, PieceRemovedPayload{PieceID: payload.PieceID})
+	}
 
+	// The owner of the moved character is resolved from the CHARACTER, not from the sender: a
+	// move the owner did not send (master drag, engine-applied move) changes their sight just
+	// the same, and resolving it here is what lets the server-authored path reuse this helper.
 	r.mu.RLock()
-	live := r.session != nil
+	sess := r.session
+	live := sess != nil
+	var owner uuid.UUID
+	if sess != nil {
+		owner = sess.GetCharToPlayer()[payload.CharacterID]
+	}
 	r.mu.RUnlock()
 
+	// The owner's line of sight is recomputed BEFORE the dispatch below, not after it.
+	//
+	// The fog gate in the dispatch reads the CACHE (r.visibilityFor), which is pure. Refreshing
+	// the cache afterwards gated the owner on the polygon of the slot they had just LEFT: a
+	// piece stepping out of its own former field of view scored seesOld=true, seesNew=false,
+	// and its own owner was sent piece_removed for it — the corrective map_full_state only
+	// arriving later. A client that treats piece_removed as authoritative and map_full_state as
+	// a merge loses the token for good.
+	//
+	// Skipping the owner in the dispatch would hide the symptom too, but it would make the
+	// map_full_state below their ONLY notice of the move — and that one is not sent when the
+	// recompute fails. Fixing the staleness keeps the gate honest for every recipient instead
+	// of carving out an exception, and still leaves the owner a piece_moved on the error path.
+	var recomputeErr error
+	if live && owner != uuid.Nil {
+		r.mu.Lock()
+		_, recomputeErr = r.session.RecomputeVisibility(owner)
+		r.mu.Unlock()
+		if recomputeErr != nil {
+			// Logged, not swallowed: every other RecomputeVisibility call site in this file
+			// logs, and a failure here means somebody is being gated on a stale polygon.
+			log.Printf("piece move recompute visibility for %s: %v", owner, recomputeErr)
+		}
+	}
+
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-		if pid == client.userUUID {
+		if origin != uuid.Nil && pid == origin {
 			return nil // mover already applied the move locally
 		}
 		if isMaster {
@@ -1706,23 +1972,188 @@ func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 		}
 	})
 
-	// When the mover moves their OWN piece, recompute their LOS and resend the full state.
-	r.mu.RLock()
-	sess := r.session
-	var ownsPiece bool
-	if sess != nil {
-		ownsPiece = sess.GetCharToPlayer()[payload.CharacterID] == client.userUUID
+	// The owner's line of sight already changed, so resend them the full state. This stays
+	// AFTER the dispatch on purpose: the negative assertions in the move tests use the owner's
+	// second map_full_state as the ordering barrier that proves the relay was already queued.
+	if !live || owner == uuid.Nil || recomputeErr != nil {
+		return
 	}
+	// The cache was refreshed even for an owner who is not connected — they would otherwise
+	// reconnect onto a stale polygon. Only the push needs somebody on the other end.
+	r.mu.RLock()
+	ownerClient, online := r.clients[owner]
 	r.mu.RUnlock()
-	if sess != nil && ownsPiece {
-		r.mu.Lock()
-		_, err := r.session.RecomputeVisibility(client.userUUID)
-		r.mu.Unlock()
-		if err == nil {
-			msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
-			client.SendMessage(*msg)
+	if online {
+		msg := r.buildMapFullState(owner, r.IsMaster(owner))
+		ownerClient.SendMessage(*msg)
+	}
+}
+
+// handlePieceMoved relays a move a client made in its own browser.
+func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+	r.applyAndRelayPieceMove(payload, client.userUUID)
+}
+
+// applyOpenedMove walks the opened action's Move onto the board.
+//
+// The position cannot wait for the close the way damage does: damage may still be edited
+// while the turn is open, but the reactions that follow depend on where the piece IS.
+//
+// The caller must NOT hold r.mu — applyMove takes it.
+func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
+	a := opened.GetAction()
+	r.applyMove(a.GetActorID(), a.Move)
+}
+
+// applyClosedEscapes walks onto the board the escapes whose displacement was HELD BACK when
+// the master gave them the floor, now that the turn has closed and the test they had to clear
+// has settled.
+//
+// The difficulty is the attacker's own hit — the action that was being moved against whoever
+// reacted — and it is the SAME number every other defensive test on this turn was already
+// read against (see service.ReactionInput.HitTotal). Nothing new is rolled here: the escape's
+// own reading is Move.FinalSpeed, which MatchSession.deriveSpeeds computed from the Accelerate
+// dice that fell when the reaction arrived.
+//
+// The CD is read off the CharacterResult THIS reaction produced, not off
+// TurnResolution.ActionResult, so the pairing stays exact: cr.ReactionID is written from the
+// chain step that carried this very reaction, and cr.Hit is the swing derived against that
+// same target. The two totals are equal today — one swing shared by the whole chain — and
+// nothing here has to depend on that staying true.
+//
+// The reading is total >= CD, the same one ResolveReaction uses for Avoided. FAILING means the
+// piece does not leave its slot: there is no halfway position, the engine cannot compute one,
+// and inventing one would be a rule nobody has decided.
+//
+// A reaction whose actor produced no CharacterResult at all — the engine could not classify
+// the target, or their sheet never reached the resolver — displaces nothing. That is the safe
+// side of the two: a piece that stays put is a visible non-event the master can narrate
+// around, while moving it on a test that was never computed would be a rule applied out of
+// nothing.
+//
+// It reads the closed turn without r.mu. That turn is finished — ApplyMasterAction and
+// OpenReaction both refuse a turn with a finishedAt — so its reactions are frozen; it is the
+// same window persistClosedTurn already reads GetAction() in. The caller must NOT hold r.mu:
+// applyMove takes it.
+func (r *Room) applyClosedEscapes(closed *turnentity.Turn, res *domainservice.TurnResolution) {
+	if closed == nil || res == nil {
+		return
+	}
+	reactions := closed.GetReactions()
+	byID := make(map[uuid.UUID]*action.Action, len(reactions))
+	for i := range reactions {
+		byID[reactions[i].GetID()] = &reactions[i]
+	}
+	for _, cr := range res.CharacterResults {
+		reaction, ok := byID[cr.ReactionID]
+		if !ok {
+			// The zero ReactionID of a target that answered with the passive defaults lands
+			// here too: no reaction, nothing to displace.
+			continue
+		}
+		// Displaces() rather than Move != nil, for the reason the open_reaction arm documents:
+		// the kind, not the shape, says whether this reaction moves anyone.
+		if !reaction.ReactionKind.Displaces() || reaction.Move == nil {
+			continue
+		}
+		if !reaction.Move.Category.RollsSpeed() {
+			// Already walked at open_reaction. Walking it again would put a second piece_moved
+			// on the wire for a step the table has been watching since the reaction opened.
+			continue
+		}
+		// total >= CD clears it, the same reading ResolveReaction gives Avoided. Below it the
+		// piece does not leave its slot at all: there is no halfway position to put it in.
+		if reaction.Move.FinalSpeed < cr.Hit.Total {
+			continue
+		}
+		r.applyMove(reaction.GetActorID(), reaction.Move)
+	}
+}
+
+// applyMove walks ONE Move onto the board, on behalf of the character that owns it.
+//
+// It is the ONE displacement path, shared by all three callers: the action of a turn
+// (applyOpenedMove), an escape REACTION that steps on the spot (the open_reaction arm) and an
+// escape whose step had a test to clear (applyClosedEscapes). It does not decide WHETHER the
+// piece moves — each caller has already decided that — it only puts it where the Move says.
+//
+// WHEN each caller fires is the rule, and the two halves of it are different questions:
+//
+//   - An ACTION displaces at the OPENING, whatever the category. Nothing is coming at it, so
+//     there is nothing to clear, and the position cannot wait the way damage can: the
+//     reactions that follow depend on where the piece stands.
+//   - A REACTION always has a difficulty — the action being moved against whoever reacts, the
+//     attacker's own hit. A Shift rolls nothing, so nothing can be read against that hit and
+//     it displaces at the opening too; a Dash rolls, so it waits for the close. See
+//     MoveCategory.RollsSpeed and applyClosedEscapes.
+//
+// A move that DOES test for any OTHER reason (a leap, a squeeze past, a landing on an occupied
+// slot) still has no case that can reach this code — moveSpeedSkill refuses Back, Roll, Slide,
+// Jump and FlatJump at the WS boundary — so that branch is still not written here. Inventing
+// one to fill the table would be guessing at a rule nobody has decided.
+//
+// A nil Move is a no-op: most actions and most reactions do not displace at all.
+//
+// A character with no piece on the board is NOT an error: there is simply nothing to move, so
+// no error message goes out for it.
+//
+// The caller must NOT hold r.mu — this takes it, and applyAndRelayPieceMove's relay takes it
+// again afterwards.
+func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
+	if move == nil {
+		return
+	}
+	actorID := actor.String()
+	pos := move.Position
+
+	// Finding the piece and writing it back happen in ONE write-locked section. Reading it
+	// under RLock, releasing, and then storing the edited copy would leave a window in which
+	// a concurrent piece_removed or map_state_sync lands: the stale copy would resurrect a
+	// piece that was just taken off the board, or overwrite Visible/CharacterID with values
+	// that are no longer true. The race detector can never see this — every single access is
+	// correctly locked; it is the gap between two of them that is wrong.
+	r.mu.Lock()
+	// TODO: a character with more than one piece on the board is not a decided situation.
+	// Nothing creates it today; whoever makes it possible has to say which piece an action
+	// moves. Until then the lowest piece ID wins — an arbitrary choice, but a STABLE one, so
+	// the day it happens it reproduces instead of flickering with map iteration order.
+	pieceID := ""
+	for id, p := range r.pieces {
+		if p.CharacterID == actorID && (pieceID == "" || id < pieceID) {
+			pieceID = id
 		}
 	}
+	if pieceID == "" {
+		r.mu.Unlock()
+		return
+	}
+	old := r.pieces[pieceID]
+	moved := old
+
+	// The piece keeps the slot shape it already had. The board can be hexagonal, and forcing
+	// "square" here would put a hex piece at the world position of a square cell. An empty
+	// Kind is left empty on purpose: slotPayloadToWorld already reads anything that is not
+	// "hex" as square, and rewriting it would change what the client seeded.
+	switch old.Slot.Kind {
+	case "hex":
+		qAxis, rAxis := pos[0], pos[1]
+		moved.Slot = SlotPayload{Kind: "hex", Q: &qAxis, R: &rAxis}
+	default:
+		col, row := pos[0], pos[1]
+		moved.Slot = SlotPayload{Kind: old.Slot.Kind, Col: &col, Row: &row}
+	}
+	// Z is deliberately NOT touched. It is the piece's virtual height in METRES, while
+	// Move.Position[2] is a grid index — nobody has checked that the two are the same number,
+	// and the front draws whatever position arrives without recomputing it. Writing pos[2]
+	// here would drop an elevated piece to the ground on any horizontal step whose z is 0.
+	// Preserving it is always right for a horizontal move; the vertical case belongs to
+	// whoever writes the contract.
+	r.pieces[pieceID] = moved
+	r.mu.Unlock()
+
+	// origin is uuid.Nil: the server moved this one and nobody's browser predicted it, so
+	// nobody is skipped and the message goes out as a server message.
+	r.relayPieceMove(moved, old, true, uuid.Nil)
 }
 
 // handlePieceRemoved removes a piece and relays the removal per-player.

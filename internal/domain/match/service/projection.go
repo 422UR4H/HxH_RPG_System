@@ -93,16 +93,29 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 
 // ProjectAction returns the copy of an action this viewer is entitled to. Used by the Action
 // History, where the same policy applies to the DECLARATION rather than to the arithmetic.
-func ProjectAction(a action.Action, v Viewer) action.Action {
+//
+// isSettled is the TIME axis, the same one ProjectResolution reads. A feint is secret while
+// the turn is open and public once it closes: the target who fell for it finds out inside that
+// same turn's resolution, because their success was against a false attack and the real one
+// follows. Hiding it after the turn closed hides it forever, which is not the rule.
+func ProjectAction(a action.Action, v Viewer, isSettled bool) action.Action {
 	if v.SeesAllOf(a.GetActorID()) {
 		return a
 	}
 	out := a
-	// A revealed feint is not a feint; a revealed trigger is a trigger nobody can be caught by.
-	out.Feint = nil
+	if !isSettled {
+		// A revealed feint is not a feint — while the swing is still in the air.
+		out.Feint = nil
+	}
+	// Trigger stays hidden on both axes. The feint's rule was decided; the trigger's has not
+	// been written, and action.Trigger is an empty object today. Do not widen the decision by
+	// symmetry.
 	out.Trigger = nil
 	out.ReactionKind = action.ReactionKind(publicKind(string(a.ReactionKind)))
 	if len(a.Skills) > 0 {
+		// The Evasion entry is NOT the same rule as the feint: it is the other half of the
+		// closed dodge's secret, tied to the label demotion above, and that demotion is
+		// permanent by design.
 		kept := make([]action.Skill, 0, len(a.Skills))
 		for _, s := range a.Skills {
 			if s.SkillName == enum.Evasion.String() {

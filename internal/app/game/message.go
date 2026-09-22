@@ -92,6 +92,12 @@ const (
 	// Server → Client (fog of war events)
 	MsgTypeVisibilityUpdated MessageType = "visibility_updated"
 	MsgTypeWallRevealed      MessageType = "wall_revealed"
+
+	// Server → Client (combat snapshot)
+	// Sent to every client that registers while a match session is live, so a late joiner — or a
+	// reconnect, and the front's hook reconnects up to five times on its own — does not sit
+	// without bars, regime, scene, open turn or pending reactions until something changes by luck.
+	MsgTypeMatchFullState MessageType = "match_full_state"
 )
 
 type Message struct {
@@ -165,6 +171,21 @@ type PieceRemovedPayload struct {
 }
 
 type PullActionPayload struct {
+	ActionID uuid.UUID `json:"actionId"`
+}
+
+// ActionEnqueuedPayload acks the sender's own enqueue AND names the action.
+//
+// The name is not decoration and it is not a leak: this goes only to the player who sent the
+// action, about their own action. The queue stays secret — what the table cannot learn is what
+// OTHER people queued, and action_queued (master-only) is still the only surface that names
+// someone else's.
+//
+// Without it the player's browser cannot refer to what it just sent: it cannot cancel it,
+// cannot highlight it on the general bar, cannot tell that the next one up is theirs. It is
+// the same hole PendingReactions closed for the master, with the same consequence — an ID a
+// client cannot learn is an operation a client cannot invoke.
+type ActionEnqueuedPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 }
 
@@ -615,6 +636,58 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 		Difference:  cr.Ladder.Difference,
 		StopsAttack: cr.ReactionStopsAttack,
 	}
+}
+
+// MatchFullStatePayload is everything about the COMBAT that map_full_state does not carry.
+//
+// Projected per recipient, by the same two axes as everything else: Resolution is the open
+// turn's, therefore master-only by the TIME axis, and PendingReactions travel inside it.
+type MatchFullStatePayload struct {
+	// Scene is the WHOLE scene_changed payload, for the same reason Bars is the whole
+	// bars_updated one: three values under two different sets of names, in one protocol, would
+	// be a second shape to keep in sync with the first. Being a pointer also makes "no active
+	// scene" expressible, which three flat zero-valued fields could not say.
+	Scene     *SceneChangedPayload `json:"scene,omitempty"`
+	RoundMode string               `json:"roundMode"`
+	// Bars is the WHOLE bars_updated payload, reused rather than re-shaped: a second bar
+	// format would be a second thing to keep in sync with the first.
+	//
+	// ⚠️ Its Seq is the CURRENT counter, NOT a new one. The client keeps the highest seq it
+	// applied and discards anything lower; stamping a fresh number here would reset that guard
+	// across a reconnect, and the first late bars_updated to arrive afterwards would be applied
+	// on top of newer state.
+	Bars BarsUpdatedPayload `json:"bars"`
+	// OpenTurn is nil when the master is sitting on "closed and nothing opened", which is a
+	// state they are allowed to be in.
+	OpenTurn *OpenTurnPayload `json:"openTurn,omitempty"`
+	// Resolution is the open turn's, MASTER-ONLY. nil for everyone else, and nil for the
+	// master too when no turn is open.
+	Resolution *ResolutionUpdatedPayload `json:"resolution,omitempty"`
+	// Queue is everything still waiting for the master, in the queue's own insertion order —
+	// one entry per pending action, in the SAME shape action_queued sends.
+	//
+	// MASTER-ONLY, exactly like Resolution above and for the same reason ActionQueuedPayload
+	// is: the queue is secret (combat-engine.md § As barras são públicas), so a player who
+	// learned what is pending would read the table's intentions off the wire. The public
+	// half of the same fact is already here — Bars.Order carries the projected order with no
+	// action identity in it.
+	//
+	// It exists because action_queued fires ONCE, at the instant of the enqueue, and a master
+	// who was disconnected then never hears it again: the Room only closes when the last
+	// client leaves, so the queue outlives a master who dropped while the players stayed. On
+	// reconnect they were handed bars, scene, regime, open turn and resolution and not one
+	// action ID — and pull_action takes an action ID, so every action already in the queue was
+	// unreachable to them. An ID a client cannot learn is an operation a client cannot invoke.
+	//
+	// It reuses ActionQueuedPayload whole rather than re-shaping it, for the same reason Scene
+	// and Bars reuse theirs: a second format for the same fact would be a second thing to keep
+	// in sync with the first.
+	Queue []ActionQueuedPayload `json:"queue,omitempty"`
+}
+
+type OpenTurnPayload struct {
+	TurnID  uuid.UUID `json:"turnId"`
+	ActorID uuid.UUID `json:"actorId"`
 }
 
 // payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a

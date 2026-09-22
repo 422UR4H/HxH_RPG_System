@@ -72,6 +72,7 @@ test:
 	$(GO_CMD) test ./...
 
 .PHONY: test-integration
+# -p 1: banco compartilhado entre pacotes de pg/ — sem serializar, deadlock e violação de FK intermitentes
 test-integration:
 	$(GO_CMD) test -tags=integration -p 1 ./internal/gateway/pg/...
 

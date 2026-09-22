@@ -54,4 +54,6 @@ jobs:
         run: go test $(go list ./... | grep -v 'match/turn$')
 
       - name: Integration tests
+        # -p 1: pacotes de pg/ compartilham um banco e truncam as mesmas tabelas — em paralelo
+        # (padrão do go test) isso deadlocka e viola FK entre pacotes; detalhes em .github/instructions/integration-tests.instructions.md
         run: go test -tags=integration -p 1 ./internal/gateway/pg/...

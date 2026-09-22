@@ -1925,7 +1925,7 @@ func TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent(t *testing.T) {
 	}
 	// Attached is not opened: buildChainOrder deliberately skips an unopened reaction (the
 	// master has not given it the floor yet), so it earns no payout until this runs.
-	if _, err := s.OpenReaction(r.GetID()); err != nil {
+	if _, _, err := s.OpenReaction(r.GetID()); err != nil {
 		t.Fatalf("OpenReaction: %v", err)
 	}
 
