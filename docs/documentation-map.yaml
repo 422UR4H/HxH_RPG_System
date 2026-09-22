@@ -103,7 +103,7 @@ mappings:
     notes: Sheet factory, class-based initialization
 
   # ─── API Contracts ───
-  - code_path: internal/app/api/handler/character_sheet/
+  - code_path: internal/app/api/sheet/
     dev_docs:
       - path: docs/dev/api/character-sheet.md
         confidence: directly_affected
@@ -155,7 +155,7 @@ mappings:
     notes: Weapon stats, damage calculations, weight
 
   # ─── Match: Core ───
-  - code_path: internal/domain/entity/match/
+  - code_path: internal/domain/match/entity/
     dev_docs:
       - path: docs/dev/match/scenes.md
         confidence: directly_affected
@@ -173,7 +173,7 @@ mappings:
     notes: Scenes, turns, rounds, actions, reactions, battle flow
 
   # ─── Match: Scenes ───
-  - code_path: internal/domain/entity/match/scene/
+  - code_path: internal/domain/match/entity/scene/
     dev_docs:
       - path: docs/dev/match/scenes.md
         confidence: directly_affected
@@ -183,7 +183,7 @@ mappings:
     notes: Scene types (roleplay, battle), transitions
 
   # ─── Match: Turns ───
-  - code_path: internal/domain/entity/match/turn/
+  - code_path: internal/domain/match/entity/turn/
     dev_docs:
       - path: docs/dev/match/turns-rounds.md
         confidence: directly_affected
@@ -193,7 +193,7 @@ mappings:
     notes: Free turns, race turns, turn ordering
 
   # ─── Match: Rounds ───
-  - code_path: internal/domain/entity/match/round/
+  - code_path: internal/domain/match/entity/round/
     dev_docs:
       - path: docs/dev/match/turns-rounds.md
         confidence: directly_affected
@@ -213,7 +213,7 @@ mappings:
     notes: Action types, reaction triggers, resolution
 
   # ─── Match: Battle ───
-  - code_path: internal/domain/entity/match/battle/
+  - code_path: internal/domain/match/entity/battle/
     dev_docs:
       - path: docs/dev/match/scenes.md
         confidence: directly_affected
@@ -234,7 +234,7 @@ mappings:
         confidence: directly_affected
     notes: Campaign lifecycle, player enrollment
 
-  - code_path: internal/domain/campaign/
+  - code_path: internal/application/campaign/
     dev_docs:
       - path: docs/dev/campaigns-scenarios.md
         confidence: directly_affected
@@ -275,7 +275,7 @@ mappings:
         confidence: directly_affected
     notes: Scenario configuration, win/loss conditions
 
-  - code_path: internal/domain/scenario/
+  - code_path: internal/application/scenario/
     dev_docs:
       - path: docs/dev/campaigns-scenarios.md
         confidence: directly_affected
@@ -285,7 +285,7 @@ mappings:
     notes: Scenario use cases
 
   # ─── Enrollment ───
-  - code_path: internal/domain/enrollment/
+  - code_path: internal/application/enrollment/
     dev_docs:
       - path: docs/dev/enrollment.md
         confidence: directly_affected
@@ -295,14 +295,14 @@ mappings:
     notes: Player/Master enrollment in matches
 
   # ─── Authentication ───
-  - code_path: internal/domain/auth/
+  - code_path: internal/application/auth/
     dev_docs:
       - path: docs/dev/auth.md
         confidence: directly_affected
     game_docs: []
     notes: Auth has no game doc — pure technical concern
 
-  - code_path: internal/domain/session/
+  - code_path: internal/application/session/
     dev_docs:
       - path: docs/dev/auth.md
         confidence: directly_affected
@@ -577,7 +577,7 @@ mappings:
       doc tracks; written for Fase 8 (React) of the case-conversion unification.
 
   # ─── Domain Services (Engines/Use Cases) ───
-  - code_path: internal/domain/character_sheet/
+  - code_path: internal/application/character_sheet/
     dev_docs:
       - path: docs/dev/character-sheet/experience.md
         confidence: possibly_affected
@@ -622,6 +622,8 @@ mappings:
       - path: docs/dev/match/flows/01-mapa-de-modulos.md
         confidence: directly_affected
       - path: docs/dev/match/flows/03-fluxo-de-acao.md
+        confidence: directly_affected
+      - path: docs/dev/match/roster.md
         confidence: directly_affected
     notes: >-
       Use cases de sessão (stateless, recebem *MatchSession) e de CRUD. Novo UC,
@@ -1012,13 +1014,6 @@ mappings:
       suportada, campo de condição irreconhecível, e o componente obrigatório que
       falta em cada reactionKind. Descarta speed (bar e perícia) e a categoria da
       esquiva; buildMasterAction ainda não mapeia move nem attack.
-
-  # ─── Match: Roster (Enrollments Listing) ───
-  - code_path: internal/domain/match/list_match_enrollments.go
-    dev_docs:
-      - path: docs/dev/match/roster.md
-        confidence: directly_affected
-    notes: Use case for the match roster read path; privacy and visibility tiers
 
   - code_path: internal/domain/entity/enrollment/
     dev_docs:
