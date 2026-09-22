@@ -78,10 +78,15 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | **Personagem** | `character_sheets.uuid`. É a **entidade de combate**, e é o que vai em `actorId` e em `targetId`. |
 | Ponte | Uma pessoa dirige vários personagens. O servidor checa que o personagem de `actorId` pertence a quem enviou. |
 
-> **NPC hoje não age.** `indexParticipants` só mapeia personagem→jogador para fichas com
-> `player_uuid`; uma ficha de NPC (dono = mestre) não entra nesse mapa, então
-> `enqueue_action` por ela devolve `game_error: action actor does not match player`. Isso é
-> a lacuna "Rostering de NPC" de `AGENTS.md`, não um erro deste contrato.
+> **NPC é do mestre.** `indexParticipants` mapeia toda ficha de NPC (`player_uuid == null`,
+> `master_uuid` preenchido) para o `master_uuid` dela em `charToPlayer` — o mesmo mapa que
+> autoriza jogadores comuns, só que a chave que bate é a do mestre. `enqueue_action` com
+> `actorId` = a ficha do NPC passa pela mesma checagem `charToPlayer[actorId] == playerUUID`
+> de sempre, e quem casa é o mestre. Vale tanto para o NPC que já estava no roster quando a
+> sessão nasceu (`InitMatchSessionUC`) quanto para o que entrou depois, ao vivo, por
+> [`add_npc`](#add_npc) — os dois caem no mesmo `charToPlayer`, pelo mesmo mecanismo (Decisão
+> 6 do plano). **Ficha de jogador continua negada ao mestre:** o dono ali é o jogador, e isso
+> não muda por quem enviou a mensagem.
 
 ## 3. Índice
 
@@ -99,6 +104,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`change_round_mode`](#change_round_mode) | mestre |
 | [`change_scene`](#change_scene) | mestre |
 | [`enqueue_master_action`](#enqueue_master_action) | mestre |
+| [`add_npc`](#add_npc) | mestre |
 
 **Servidor → cliente**
 
@@ -117,6 +123,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`round_mode_changed`](#round_mode_changed) | mesa inteira |
 | [`scene_changed`](#scene_changed) | mesa inteira |
 | [`master_action_enqueued`](#master_action_enqueued) | mesa inteira |
+| [`npc_added`](#npc_added) | mesa inteira |
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
@@ -622,6 +629,63 @@ Esta mensagem tem **três destinos possíveis**, decididos nesta ordem:
 `match_not_started` (**só no caminho 3** — os caminhos de parede retornam antes dessa
 checagem) · `game_error`.
 
+### `add_npc`
+
+**Direção:** cliente → servidor. **Quem:** **só o mestre** (`forbidden` para os demais).
+
+```json
+{
+  "type": "add_npc",
+  "payload": { "characterSheetUuid": "44444444-4444-4444-8444-444444444444" }
+}
+```
+
+`characterSheetUuid` é o MESMO nome de campo do REST
+(`POST /matches/{uuid}/npcs`, ver [`match-npcs.md`](match-npcs.md)) — o front manda a mesma
+chave nos dois caminhos.
+
+**Convive com o REST, não o substitui.** REST monta o roster ANTES de existir sala —
+preparação de campanha, sem jogo em andamento. Este verbo é para o MEIO da partida: o game
+server já tem o pool do Postgres, então roda o **mesmo** `AddMatchNPCUC` que o REST usa
+(mesmas guardas, mesma escrita em `match_participants`) e, se houver sessão viva, injeta a
+ficha nela em seguida — um ato só do ponto de vista do mestre, não uma chamada HTTP ao
+endpoint REST seguida de uma injeção manual que o front poderia esquecer.
+
+**Com sessão viva:** a ficha entra em `charSheets`, `statuses` e `charToPlayer` (dono =
+mestre) da `MatchSession` corrente — o mestre pode enfileirar uma ação pelo NPC no mesmo
+segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e, na sequência, um
+`bars_updated` NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
+[`npc_added`](#npc_added) em §5).
+
+**Sem sessão viva (partida ainda no lobby):** só a escrita no banco acontece. `npc_added`
+ainda sai para a mesa, mas não há barras para publicar — nenhum `bars_updated` é emitido. O
+NPC entra em jogo quando a sala nascer: `InitMatchSessionUC` o carrega do banco junto com o
+resto do roster.
+
+**A duplicata que este verbo recusa é da SESSÃO, não do banco.** Todas as guardas de
+`AddMatchNPCUC` (mestre da partida, partida não encerrada, ficha existe, é NPC,
+elegibilidade) rodam ANTES do INSERT que devolveria `ErrNPCAlreadyInMatch`. Por isso o verbo
+WS **não trata esse erro do banco como falha**: "já está no banco" quer dizer "passou em
+tudo, só a sessão está atrasada" — exatamente o caso de quem pôs o NPC pelo REST no meio da
+partida e precisa que a sala viva alcance o banco. O verbo segue e injeta do mesmo jeito.
+Quem recusa é a SESSÃO, quando o NPC já está nela (`statuses[sheetUUID]` já existe) — aí o
+mestre recebe `npc_already_in_match` e nenhum `npc_added` sai.
+
+> ⚠️ **`npc_already_in_match` não é garantia de que nada mudou — pode ser o ack enganoso de
+> um estado que já está certo.** Existe uma corrida estreita na virada lobby→partida: se a
+> partida começar (`InitMatchSessionUC` carregando a sessão) exatamente entre a escrita do
+> use case no banco e a sessão pegar o lock para injetar, e o `Init` já tiver lido a linha
+> nova, o mestre recebe `npc_already_in_match` sem nunca ter recebido `npc_added` para aquele
+> NPC — mas o NPC ESTÁ na sessão, carregado pelo próprio `Init`. O estado está correto; só o
+> ack é que engana. **O front deve tratar `npc_already_in_match` como "o NPC está na
+> partida"**, que é verdade nos dois casos: tanto quando é o mestre reenviando `add_npc` de
+> propósito, para sincronizar uma sessão atrasada, quanto nesta corrida.
+
+**Erros:** `forbidden` (`"only the master can perform this action"`) · `invalid_payload`
+(`"invalid add_npc payload"` — `characterSheetUuid` ausente/zero, ou payload que não é um
+objeto) · `not_found` · `invalid_npc` · `npc_already_in_match` · `game_error` (catálogo
+completo em §7).
+
 ---
 
 ## 5. Servidor → cliente
@@ -998,6 +1062,38 @@ mundo precisa saber se as barras estão correndo.
 
 **Disparado por:** `enqueue_master_action` no caminho 3 (sem `interact`).
 
+### `npc_added`
+
+**Direção:** servidor → cliente. **Destino:** mesa inteira, em broadcast.
+
+```json
+{
+  "type": "npc_added",
+  "payload": { "characterId": "44444444-4444-4444-8444-444444444444" }
+}
+```
+
+Só o `characterId`. É o ack do mestre e o sinal para o resto da mesa (re)buscar a ficha por
+REST — a mesma forma de [`scene_changed`](#scene_changed) e
+[`master_action_enqueued`](#master_action_enqueued): o evento anuncia que algo mudou, não
+carrega a coisa que mudou. Não vaza nada novo além disso: `bars_updated.characters` já lista
+todo personagem em combate, NPC incluído — é de lá, não daqui, que o front aprende o saldo e
+as velocidades do NPC recém-chegado.
+
+**Com sessão viva, `npc_added` vem seguido de um `bars_updated` com `seq` maior.** Não sai um
+`match_full_state`: o único estado de combate que muda ao pôr um NPC é o conjunto de
+personagens nas barras, e `match_full_state.bars.seq` repete o `seq` CORRENTE por contrato
+(ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), abaixo) — reenviá-lo
+aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado por cima e
+apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa que mexe
+nas barras", e é o único que incrementa `seq`.
+
+**Sem sessão viva (lobby), não há `bars_updated` nenhum atrás** — não existem barras para
+publicar. `npc_added` ainda sai, como confirmação de que o roster no banco mudou; o NPC só
+entra em combate quando a sala nascer (ver [`add_npc`](#add_npc)).
+
+**Disparado por:** [`add_npc`](#add_npc) aceito — com sessão viva ou não.
+
 ### `match_full_state`
 
 **Direção:** servidor → cliente. **Destino:** quem **conecta ou reconecta**, sempre que a
@@ -1116,11 +1212,23 @@ quem enviou).
 O dono do personagem movido recebe, além disso, um `map_full_state` atualizado — a linha de
 visão dele mudou, mesmo quando quem moveu a peça não foi ele (o mestre arrastando a peça de
 um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas do código:
-o dono é resolvido a partir do **personagem** (`characterId` → jogador), então uma peça de NPC
-ou uma peça cujo `characterId` não está na partida não tem dono e ninguém recebe esse extra;
-o dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num polígono
-velho); e se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima
-sai do mesmo jeito.
+
+- **A peça de um NPC é tratada como sem dono, de propósito (Decisão 7).** O dono é resolvido
+  a partir do **personagem** (`characterId` → jogador, via `charToPlayer`), e uma ficha de NPC
+  TEM dono nesse mapa — o mestre (§2). Mas a visão do mestre não tem fog: ele enxerga o
+  tabuleiro inteiro, e `buildMapFullState` já descarta os polígonos quando quem pede é o
+  mestre. Recomputar linha de visão, criar uma `PlayerMemory` que ninguém lê e reenviar o
+  tabuleiro inteiro a cada arrasto de NPC não mudaria nada que o mestre veja — então
+  `relayPieceMove` zera o dono quando ele é o mestre e pula os três: recompute, `PlayerMemory`
+  e o `map_full_state` extra. O mestre continua recebendo o `piece_moved` normal pelo ramo
+  `isMaster` do despacho (ou nenhum eco, se foi ele quem arrastou — o navegador dele já
+  aplicou). Vale para os três caminhos que passam por `relayPieceMove`: arrasto do cliente,
+  o movimento de uma ação de turno e a fuga de reação. Uma peça cujo `characterId` não está
+  na partida também não tem dono, e ninguém recebe o extra.
+- O dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num
+  polígono velho).
+- Se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima sai do
+  mesmo jeito.
 
 **Disparado por** três momentos, e é o **mesmo** `applyMove` nos três:
 
@@ -1272,10 +1380,13 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `invalid_message` | `"malformed JSON"` — o envelope não parseou. | Qualquer mensagem. |
 | `unknown_type` | `"unrecognized message type"` | `type` fora do catálogo. |
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
-| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`. |
+| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
+| `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`. |
+| `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`. |
+| `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
 
 **`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou.
@@ -1352,6 +1463,6 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
 | **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
-| **NPC não age** | Ver §2. |
+| **Remoção de NPC ao vivo não existe** | Tirar um NPC de uma sessão VIVA esbarra em ação dele na fila, turno aberto com ele como ator/alvo, reação pendente — regras que ninguém decidiu ainda. O REST `DELETE /matches/{uuid}/npcs/{sheet_uuid}` (ver [`match-npcs.md`](match-npcs.md)) continua funcionando, mas só vale para a próxima vez que a sala nascer: uma partida em andamento não some com o NPC removido, e não existe verbo de WS equivalente a `add_npc` no sentido contrário. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
 | **Colisão contra parede ainda não foi desenhada** | Não é omissão de validação: ainda não existe a regra que decide o que acontece quando um personagem colide com uma parede — compartilhar o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Até essa regra existir, o comportamento observável é a peça atravessando: a única checagem existente (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado, na abertura do turno ou da reação. Vale para os TRÊS momentos que deslocam peça — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa por essa checagem, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. O front não deve tratar isso como bug a reportar — é regra de jogo que falta ser escrita. |

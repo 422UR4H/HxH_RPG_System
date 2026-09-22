@@ -130,7 +130,7 @@ regra de jogo que normalmente forçará `Race`; quem troca o regime hoje é o me
 | Item | Quando |
 |---|---|
 | Qualquer tela do fluxo | Fase 6 |
-| Rostering de NPC — nada cria um NPC hoje | fatia própria, antes da Fase 6 |
+| ~~Rostering de NPC — nada cria um NPC hoje~~ | **resolvido.** PR #73 trouxe o REST (`POST`/`DELETE /matches/{uuid}/npcs`, ver [`../../api/match-npcs.md`](../../api/match-npcs.md)) e o NPC passou a entrar em `charToPlayer` como personagem do mestre. Esta rodada (live-npc-ws) fechou o que sobrava — pôr um NPC no MEIO de uma partida já em andamento — com o verbo de WS `add_npc` (ver [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md) §4). Remoção ao vivo continua fora — nova lacuna em `match-combat-ws.md` §9. |
 | Exceção do percept no início de batalha | bloqueada: os subatributos mentais não existem |
 | Posturas (condicionam o desconto do escape fechado) | pós-MVP |
 | Override do desfecho da cadeia em área | regra de jogo ainda não escrita |

@@ -409,9 +409,29 @@ mappings:
     notes: >-
       POST/DELETE /matches/{uuid}/npcs — NPC rostering by the match master (put/take a
       master-controlled character sheet on match_participants). InitMatchSessionUC picks
-      the NPC back up the next time a room is built; a match already in progress does not
-      see it live, since the MatchSession lives in cmd/game (:8081), separate from this
-      endpoint's process, cmd/api (:5000).
+      the NPC back up the next time a room is built. This endpoint alone still does not
+      reach a match already in progress — the MatchSession lives in cmd/game (:8081),
+      separate from this endpoint's process, cmd/api (:5000) — but the add_npc WS verb
+      (internal/application/match/add_live_npc.go, see below) now reuses this same
+      AddMatchNPCUC from inside cmd/game to close that gap live.
+
+  - code_path: internal/application/match/add_live_npc.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-npcs.md
+        confidence: directly_affected
+    notes: >-
+      AddLiveNPCUC backs the add_npc WS verb (game server, room.go's MsgTypeAddNPC arm).
+      It calls the SAME AddMatchNPCUC add_match_npc.go uses (same guards, same
+      match_participants write), then loads the sheet for the game server to inject into
+      the live MatchSession (MatchSession.AddNPC) under room.mu — the use case itself
+      never touches the session, that I/O runs outside the room's lock by design.
+      ErrNPCAlreadyInMatch from the roster write is swallowed here: every guard in
+      AddMatchNPCUC already ran before that INSERT, so a duplicate means "already on the
+      roster, the session is just catching up" (the REST-mid-match case) — the caller
+      still loads and returns the sheet instead of failing. See match-combat-ws.md §4
+      (add_npc) and match-npcs.md.
 
   - code_path: internal/app/api/match/get_match_history.go
     dev_docs:
