@@ -65,6 +65,14 @@ const (
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
 	MsgTypeRoundModeChanged     MessageType = "round_mode_changed"
 
+	// Client → Server (roster, master only): put an NPC into the match — live if a session
+	// is running, onto the roster only if the room is still a lobby.
+	MsgTypeAddNPC MessageType = "add_npc"
+
+	// Server → Client (roster): the whole table learns an NPC joined; the front re-fetches
+	// the sheet by REST, the same way it reacts to scene_changed.
+	MsgTypeNPCAdded MessageType = "npc_added"
+
 	// Server → Client (lobby lifecycle)
 	MsgTypeLobbyClosed MessageType = "lobby_closed" // master cancelled the lobby
 	// MsgTypeLobbyNotOpen is sent by handler.go when a participant tries to connect before the master opens the lobby
@@ -750,6 +758,18 @@ type SceneChangedPayload struct {
 	SceneID                 uuid.UUID `json:"sceneId"`
 	Category                string    `json:"category"`
 	BriefInitialDescription string    `json:"briefInitialDescription"`
+}
+
+// AddNPCPayload asks to put an NPC into the match. The field name is the REST one
+// (POST /matches/{uuid}/npcs), so the front sends the same key on both paths.
+type AddNPCPayload struct {
+	CharacterSheetUUID uuid.UUID `json:"characterSheetUuid"`
+}
+
+// NPCAddedPayload names the character that joined. Nothing else: the sheet is fetched by
+// REST, and the bars that now include it arrive in the bars_updated that follows.
+type NPCAddedPayload struct {
+	CharacterID uuid.UUID `json:"characterId"`
 }
 
 type MasterActionPayload struct {

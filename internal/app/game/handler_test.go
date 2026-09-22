@@ -207,6 +207,7 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 		&mockEnqueueMasterActionUCHandler{},
 		&mockChangeRoundModeUCHandler{},
 		&mockEditActionUCHandler{},
+		nil,
 	)
 
 	mux := http.NewServeMux()

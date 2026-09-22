@@ -59,6 +59,10 @@ func main() {
 	enqueueMasterActionUC := match.NewEnqueueMasterActionUC()
 	changeRoundModeUC := match.NewChangeRoundModeUC()
 	editActionUC := match.NewEditActionUC()
+	// Same assembly as cmd/api/main.go: the WS add_npc verb runs the very same AddMatchNPCUC
+	// (same guards, same match_participants write) before injecting the sheet into the live session.
+	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepository, sheetRepository, matchRepository)
+	addLiveNPCUC := match.NewAddLiveNPCUC(addMatchNPCUC, sheetRepository)
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -71,6 +75,7 @@ func main() {
 		enqueueMasterActionUC,
 		changeRoundModeUC,
 		editActionUC,
+		addLiveNPCUC,
 	)
 	server := game.NewServer(addr, hub, handler)
 

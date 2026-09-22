@@ -79,6 +79,8 @@ type IEnqueueMasterAction interface {
 
 type IEditAction = appmatch.IEditAction
 
+type IAddLiveNPC = appmatch.IAddLiveNPC
+
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -116,6 +118,7 @@ type Room struct {
 	enqueueMasterActionUC IEnqueueMasterAction
 	changeRoundModeUC     appmatch.IChangeRoundMode
 	editActionUC          IEditAction
+	addLiveNPCUC          IAddLiveNPC
 }
 
 func NewRoom(
@@ -134,6 +137,7 @@ func NewRoom(
 	enqueueMasterActionUC IEnqueueMasterAction,
 	changeRoundModeUC appmatch.IChangeRoundMode,
 	editActionUC IEditAction,
+	addLiveNPCUC IAddLiveNPC,
 ) *Room {
 	return &Room{
 		matchUUID:             matchUUID,
@@ -161,6 +165,7 @@ func NewRoom(
 		enqueueMasterActionUC: enqueueMasterActionUC,
 		changeRoundModeUC:     changeRoundModeUC,
 		editActionUC:          editActionUC,
+		addLiveNPCUC:          addLiveNPCUC,
 	}
 }
 
@@ -1133,6 +1138,81 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		out := NewServerMessage(MsgTypeMasterActionEnqueued, MasterActionEnqueuedPayload(payload))
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+
+	case MsgTypeAddNPC:
+		// Puts an NPC into the match mid-game. It lives ALONGSIDE the REST POST /npcs, it does
+		// not replace it: REST builds the roster before there is a room, this verb is for the
+		// middle of one. It does not call the REST either — it runs the very same AddMatchNPCUC
+		// (same guards, same match_participants write) and then injects the sheet into the live
+		// session, so the database and the memory cannot drift apart over a second step the
+		// front might forget.
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload AddNPCPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil || payload.CharacterSheetUUID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid add_npc payload"))
+			return
+		}
+		// DB I/O, so no r.mu here. The use case already swallows ErrNPCAlreadyInMatch: every
+		// guard runs BEFORE the INSERT that reports the duplicate, so "already in the database"
+		// means "passed everything, only the session is behind" — exactly the NPC the master
+		// added over REST mid-match. Re-sending add_npc is how the session catches up; the
+		// duplicate this verb does refuse is the SESSION's, below.
+		sheetUUID := payload.CharacterSheetUUID
+		sheet, err := r.addLiveNPCUC.Execute(context.Background(), &appmatch.AddMatchNPCInput{
+			RequesterUUID: client.userUUID,
+			MatchUUID:     r.matchUUID,
+			SheetUUID:     sheetUUID,
+		})
+		if err != nil {
+			code := "game_error"
+			switch {
+			case errors.Is(err, appmatch.ErrNotMatchMaster):
+				code = "forbidden"
+			case errors.Is(err, appmatch.ErrMatchNotFound),
+				errors.Is(err, appmatch.ErrCharacterSheetNotFound):
+				code = "not_found"
+			case errors.Is(err, appmatch.ErrSheetNotNPC),
+				errors.Is(err, appmatch.ErrSheetNotOwnedByMaster),
+				errors.Is(err, appmatch.ErrMatchAlreadyFinished):
+				code = "invalid_npc"
+			}
+			client.SendMessage(NewErrorMessage(code, err.Error()))
+			return
+		}
+		// Write lock: AddNPC writes the session's sheets, statuses and charToPlayer. With no
+		// session (the lobby) there is nothing live to inject into — the row just written is
+		// what InitMatchSessionUC will load when the match starts.
+		r.mu.Lock()
+		session := r.session
+		var addErr error
+		if session != nil {
+			addErr = session.AddNPC(sheetUUID, sheet, r.masterUUID)
+		}
+		r.mu.Unlock()
+		if errors.Is(addErr, matchsession.ErrCharacterAlreadyInSession) {
+			client.SendMessage(NewErrorMessage("npc_already_in_match", addErr.Error()))
+			return
+		}
+		if addErr != nil {
+			client.SendMessage(NewErrorMessage("game_error", addErr.Error()))
+			return
+		}
+		// npc_added is the master's ack and the table's cue to fetch the sheet over REST — the
+		// same shape as scene_changed. The combat state that changed is only the set of
+		// characters on the bars, so bars_updated carries it, NOT match_full_state: broadcastBars
+		// bumps seq, while match_full_state repeats the CURRENT seq by contract, and a delayed
+		// bars_updated of that same seq, without the NPC, would be applied over it and wipe the
+		// NPC off the screen. match_full_state stays what its name says: the snapshot of whoever
+		// connects.
+		out := NewServerMessage(MsgTypeNPCAdded, NPCAddedPayload{CharacterID: sheetUUID})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+		if session != nil {
+			r.broadcastBars(session)
+		}
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))

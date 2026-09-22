@@ -138,6 +138,7 @@ func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
 		&mockEditActionUC{},
+		nil,
 	)
 }
 
@@ -248,6 +249,7 @@ func TestHub(t *testing.T) {
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
 		&mockEditActionUC{},
+		nil,
 	)
 	if room == nil {
 		t.Fatal("expected room to be created")
@@ -272,6 +274,7 @@ func TestHub(t *testing.T) {
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
 		&mockEditActionUC{},
+		nil,
 	)
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
@@ -297,6 +300,7 @@ func TestHub(t *testing.T) {
 		&mockEnqueueMasterActionUC{},
 		&mockChangeRoundModeUC{},
 		&mockEditActionUC{},
+		nil,
 	)
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")
