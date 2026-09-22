@@ -189,8 +189,20 @@ porque uma ação plausível carregue todas.
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
-| `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê a joelhada. É `Accuracy` e não a proficiência da arma porque **nada mapeia arma → perícia** ainda: o catálogo de combate publica `proficiencyLevel` por arma, e nenhum rolamento o lê. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. |
+| `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
 | `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
+
+**Como o acerto é montado.** A perícia é `Accuracy`, sempre, e a arma entra pela
+**proficiência**: o acerto soma o `proficiencyLevel` que o personagem tem **com a arma que
+está empunhando** — o mesmo número que o
+[catálogo de combate](character-sheet.md) publica por arma. Sem arma (`attack.weapon` ausente),
+a proficiência lida é a de **`Fist`**, porque o golpe corporal é uma arma do catálogo como
+qualquer outra. Quem não tem proficiência nenhuma com aquela arma soma **zero** — não existe
+penalidade de arma destreinada; se um dia existir, é regra nova, não este caminho.
+
+É o espelho do dano, que já funcionava assim: o dano rola os dados **da arma** e soma o `Push`
+do atacante; o acerto rola o conjunto da partida sobre `Accuracy` e soma a **proficiência**
+daquela arma.
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
