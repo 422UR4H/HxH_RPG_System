@@ -71,6 +71,9 @@ o escape fechado cobrou uma barra onde o padrão cobra duas.
 
 ## 4. Preparação — o pacote de backend
 
+> ✅ **Mergeado (PR #74).** Esta seção fica como registro do que foi decidido e por quê — a
+> Fase 6 depende dessas razões. O que **ainda falta** no back para a Fase 6 está em §4.10.
+
 **PR próprio no repo Go, antes da Fase 6.** Não é uma fase: é preparação, mesmo status do
 rostering de NPC. Nada da Fase 6 é testável sem isto.
 
@@ -84,8 +87,14 @@ uma ação de mover acontece e a peça não sai do lugar.**
 
 | O movimento… | A peça |
 |---|---|
-| **não depende de teste** (shift/dash para slot livre) | desloca **na abertura** da action |
-| **depende de uma CD** (salto, entrar em slot ocupado, passar colado) | **não desloca**. Mostra-se a intenção; o servidor decide onde ela para, no fechamento |
+| **não depende de teste** | desloca **na abertura** da action |
+| **depende de uma CD** (salto, passar colado, e — quando as regras de colisão existirem — entrar em slot ocupado) | **não desloca**. Mostra-se a intenção; o servidor decide onde ela para, no fechamento |
+
+⚠️ **Hoje, na prática, nenhum movimento cai na segunda linha.** A action só aceita Dash e Shift,
+e desloca na abertura qualquer que seja a categoria. **Entrar em slot ocupado desloca e
+empilha** (§10.3): o teste que isso deveria exigir é regra de colisão, e as regras de colisão
+ainda não foram desenhadas (§11.3). A segunda linha da tabela descreve a regra; ela passa a ter
+casos alcançáveis quando os movimentos com teste chegarem.
 
 Por que na abertura, e não no fechamento: o dano espera o fechamento porque pode ser editado; a
 posição não pode esperar, porque as reactions seguintes dependem de onde a peça está.
@@ -114,7 +123,8 @@ fila é a dele. `acoes.md` diz que uma ação pode ser cancelada — e hoje ela 
 É o mesmo buraco que `PendingReactions` fechou para o mestre na Fase 4: **uma operação cujo ID
 o cliente não recebe é uma operação que o cliente não consegue invocar.**
 
-> O verbo de cancelar em si é da Fase 6. O ID é daqui.
+> O ID é daqui. **O verbo de cancelar não é da Fase 6**: ele não existe no contrato, e o front
+> não tem contra o que implementar. É fatia futura de back + contrato.
 
 ### 4.4 Um bug vivo que o front esconde
 
@@ -172,12 +182,44 @@ da resolução já usa.
 
 **O HP já tem fonte única.** `applyDamage` muta `s.charSheets[targetID]` — a ficha viva — e
 `UpdateStatusBars` persiste essa mesma ficha, que é o que o REST lê. A ficha do personagem já é
-a verdade para os dois canais. A única janela de divergência fecha no `turn_closed`.
+a verdade para os dois canais.
 
 **A visibilidade do HP no REST já está certa.** `GET /matches/{uuid}/participants` devolve
 `CharacterSheetWithVisibilityResponse`, que põe o HP dentro de um `private` **nulo** para quem
 não tem direito; e `GET /campaigns/{uuid}` serve a resposta pública (sem HP) ao jogador e a
 privada só ao mestre. Não mexa.
+
+### 4.10 O que o back ainda deve à Fase 6
+
+Achado pela sessão que foi planejar a Fase 6, ao ler este documento contra o contrato. **Sem
+estes itens, tarefas específicas da Fase 6 não têm contra o que ser implementadas** — a Fase 6
+pode escrever spec e plano agora, mas implementa essas tarefas só depois do merge.
+
+| # | O quê | Destrava na Fase 6 |
+|---|---|---|
+| **B1** | `turn_opened` passa a carregar **`actionId`**, não só `actorId`. Com duas ações do mesmo personagem na fila, hoje o jogador não sabe qual abriu | apagar o fantasma certo; destacar "a minha" na barra geral |
+| **B2** | **HP ao vivo por WS**, projetado: vai **só para o mestre e para o dono** da ficha. Emitido de onde o dano é aplicado, não de `turn_closed` — o motor já produz `DamagedCharacter{CharacterID, NewHP}` | a barra de HP do mestre e a do próprio jogador |
+| **B3** | **`turn_closed` nos dois caminhos que fecham turno.** Hoje só `close_turn` o emite (`room.go`); o fechamento implícito do `open_next_action` fecha calado | a lista de eventos da mesa (§5.3) |
+| **B4** | **`attack.hit` derivado pelo servidor**, como `speed` e o movimento já são — **e** o valor padrão documentado no contrato. Hoje ele vem do cliente, e o front teria que escrever um nome de perícia à mão, que é exatamente o que o catálogo existe para evitar | a bottom sheet sem campo de perícia |
+
+**Consertos de contrato**, sem código:
+
+- O §2 de `match-combat-ws.md` ainda diz **"NPC hoje não age"**. Desde o PR #73 o mestre age
+  por NPC: `enqueue_action` do mestre com `actorId` de NPC é aceito. Corrigir, e documentar essa
+  aceitação explicitamente.
+- O contrato chama o pouso em slot ocupado de **"sem caso alcançável"**. Um Dash para slot
+  ocupado é aceito, então o caso existe: a peça desloca e empilha.
+
+**Por que HP por WS e não por REST.** A linha que vale para a partida inteira: **mudança de
+estado compartilhado vai por WS; leitura de dado de referência pode ir por REST.** O histórico e
+o catálogo de perícias são referência — grandes, estáveis, lidos sob demanda. O HP depois do dano
+é **estado**: muda a cada turno, e a mesa precisa saber na hora. Buscá-lo por REST a cada turno é
+N idas ao servidor para reenviar ficha inteira por causa de um número — e o gatilho óbvio para
+isso, o `turn_closed`, nem é emitido em metade dos fechamentos (B3). O REST do HP fica para o
+carregamento inicial.
+
+**O que continua fora:** o verbo de cancelar ação (§4.3) e adicionar NPC com a sala já viva, que
+é do PR paralelo do verbo WS do rostering. A Fase 6 **não** depende de nenhum dos dois.
 
 ---
 
@@ -211,23 +253,42 @@ dentro. É a mesma divisão que `DetailPageTemplate` já usa hoje.
 
 | Zona | Jogador | Mestre |
 |---|---|---|
-| `rail` | ficha · ação · inventário · nen | fila · fichas · mapa |
-| `panel` | o que o rail ativou | idem |
+| `rail` | ficha · ação · inventário · nen | fila · fichas |
+| `panel` | o que o rail ativou | idem — a **fila** são as actions pendentes, só o mestre vê |
 | `stage` | o mapa Pixi — **nunca colapsa** | idem |
-| `aside` | abas **Ações** (padrão) e Personagens | idem, com HP |
+| `aside` | abas **Histórico** (padrão) e Personagens | idem, com HP |
 | `topbar` | cena · regime · round | idem + regência |
+
+**O rail mostra só o que a fase entrega.** Na Fase 6, o do jogador tem **Ação**; ficha,
+inventário e Nen entram quando suas fases chegarem. A zona é a mesma do começo ao fim — o que
+cresce é o conteúdo.
+
+> Uma versão anterior pôs um item **"mapa"** no rail do mestre, sem defini-lo. Saiu: as
+> ferramentas de parede e fog continuam sendo o overlay no próprio canvas, como já são hoje.
 
 ⚠️ **NÃO promova o `GamePageTemplate` atual.** Ele é uma casca de duas zonas (canvas + gaveta)
 que existe para provar que o mapa funciona. Ele vira **uma** das zonas do novo — o `stage`.
 
-### 5.3 A aba padrão é Ações, e o HP é do mestre
+### 5.3 A aba padrão é Histórico, e o HP é do mestre
 
-O `aside` abre em **Ações**, não na lista de personagens: em partida, o que importa é o que está
-acontecendo, não quem está na sala.
+**Esquerda × direita, de uma vez:** a **fila** (esquerda, só mestre) é o que foi enviado e ainda
+não aconteceu. O **histórico** (direita, todos) é o que já aconteceu.
+
+O `aside` abre em **Histórico**, não na lista de personagens: em partida, o que importa é o que
+está acontecendo, não quem está na sala.
+
+> Uma versão anterior chamava essa aba de **"Ações"** — o nome servia tanto para pendentes
+> quanto para resolvidas, e confundiu quem foi planejar. É **Histórico**.
+
+**O que ela mostra muda de fase.** Na **Fase 6**, é a lista dos eventos da mesa que o servidor
+já emite: turno aberto (quem age), turno fechado com o resultado, round fechado, troca de
+regime. Na **Fase 8**, vira o histórico de verdade — `GET /matches/{uuid}/history`, aninhado por
+cena. O componente é o mesmo; a fonte cresce. (O "turno fechado" depende de B3, §4.10.)
 
 **A lista de personagens do jogador não mostra HP.** A vida é dado privado de cada ficha — só o
-mestre e o dono veem. E o front não precisa de nenhum `isMaster` para isso: o REST já devolve
-`private: null` para quem não tem direito, então o mesmo componente renderiza o que chegou.
+mestre e o dono veem. E o front não precisa de nenhum `isMaster` para isso: o REST do
+carregamento inicial já devolve `private: null` para quem não tem direito, e o HP ao vivo (B2,
+§4.10) só chega a quem tem direito. O mesmo componente renderiza o que chegou.
 
 ### 5.4 O rail e o rodapé são o mesmo componente
 
@@ -275,20 +336,80 @@ ela seja praticamente idêntica à de fora da partida.
 - Peça clicável no jogo: `TacticalMapViewer` não passa `piecesInteractive` nem `onPieceSelect`
   ao `TacticalMapStage`. A infra existe em `PiecesLayer`, usada pelo editor, e está **desligada
   no jogo**.
-- Bottom sheet de ação: alvo (clicando na peça), arma, movimento. **Sem perícias** — ver §11.1.
+- **Seleção de ator e de alvo** — ver o bloco logo abaixo.
+- **O mestre compõe ação por um NPC**, com a **mesma** bottom sheet do jogador e o NPC como
+  ator. O back já aceita (PR #73): `enqueue_action` do mestre com `actorId` de NPC.
+- Bottom sheet de ação: alvo, arma, movimento. **Sem campo de perícia** — ver §11.1. O `hit` é
+  derivado pelo servidor (B4, §4.10), então o front não escreve nome de perícia nenhum.
+- **Movimento**: as duas categorias oferecidas — **Dash** e **Shift** —, com **Dash
+  pré-marcado**. Faça o default ser uma **função, não uma constante**: o doc de jogo
+  (`barra-de-acao.md`) diz que no turno livre o deslocamento normalmente é Shift, e o default
+  pode passar a seguir o regime. Desenhe para ser enriquecido; não decida isso agora.
 - **Rascunho persistente**: fechar preserva; trocar de alvo **migra** em vez de resetar. Vive em
   `localStorage`, por personagem + partida, para sobreviver ao refresh.
 - As duas barras: a própria (no painel) e a geral (flutuando sobre o mapa, com `seq`).
+- **HP ao vivo**: a barra do mestre (todos) e a do próprio jogador (só a dele). Chega por WS
+  (B2, §4.10); o REST fica para o carregamento inicial.
 - Mestre: fila, `open_next_action`, `pull_action`, `close_turn` com o diálogo de
   `close_turn_refused`, `change_round_mode`.
-- Movimento com fantasma (§10).
+- **Fantasma da intenção declarada** (§10.2): a peça mostra para onde o dono mandou ir, do
+  envio até a abertura. Só o dono vê — o mestre não conhece o destino, porque `action_queued` e
+  `resolution_updated` não trazem posição. Apagar o fantasma certo depende de B1.
+- **Histórico**, na versão da Fase 6: a lista de eventos da mesa (§5.3).
 - Consumir `match_full_state` na conexão e em toda reconexão.
 
-**Fora de escopo:** reações, edição, histórico, ficha, inventário, Nen.
+#### Seleção de ator e de alvo
 
-**Pronto quando:** duas pessoas em máquinas diferentes — uma mestre, uma jogador — completam um
-round inteiro: declarar, o mestre abrir, a peça se mover, o turno fechar, as barras andarem. Em
-desktop **e** em celular.
+A UX, como o dono do produto desenhou:
+
+| Quem | Ator | Alvo |
+|---|---|---|
+| **Jogador** | implícito — é o personagem dele | clicar numa peça marca o alvo |
+| **Mestre** | clicar numa peça que ele controla (um NPC) a seleciona como ator, e a UI mostra que está selecionada | em seguida, clicar em **outra coisa** — campo, parede, personagem — marca o alvo |
+
+- **Segurar** marca mais de um alvo.
+- **Alvejar a si mesmo é legítimo**, para jogador e para mestre. Por isso clicar de novo na
+  própria peça marca ela como alvo — **não** desfaz a seleção.
+- **Remover o ator exige um botão explícito** (um X, ou equivalente). Não pode ser clicar de novo
+  (isso é alvejar a si mesmo) nem segurar (isso marca alvos, podendo incluir a própria peça).
+- Decida e registre: o que acontece quando o mestre clica numa peça que ele **não** controla sem
+  ter ator selecionado.
+
+⚠️ **O gesto de segurar é decidido AQUI, não na Fase 7.** Uma versão anterior deixava "clicar e
+segurar no desktop" em aberto para a Fase 7, por causa dos botões de reação. A seleção de
+múltiplos alvos o puxa para cá. São dois usos do mesmo gesto — segurar **sobre a peça** marca
+alvos; segurar **sobre o botão de reação** (Fase 7) abre a configuração —, e eles se distinguem
+porque os botões ficam ao lado da peça, não em cima dela. **O mecanismo no desktop se decide uma
+vez só**, aqui: long-press com timer sobre o Pixi, botão direito, ou outro. A zona do mapa é
+pixel-tuned e isso não é barato. Registre no spec.
+
+#### Dependências
+
+Tudo acima é implementável com o que está em `main` **exceto** o que depende de §4.10:
+
+| Tarefa | Espera |
+|---|---|
+| apagar o fantasma certo; destacar "a minha" na barra geral | B1 |
+| HP ao vivo | B2 |
+| "turno fechado" na lista do histórico | B3 |
+| bottom sheet sem campo de perícia | B4 |
+
+**Escreva o spec e o plano agora; ordene o plano para que essas tarefas venham depois do merge
+de §4.10.** O resto não espera.
+
+**Fora de escopo:** reações; edição do mestre; o histórico completo por REST (Fase 8); ficha;
+inventário; Nen; **cancelar ação** (não existe no contrato — §4.3); **adicionar NPC com a sala
+já viva** (depende do PR paralelo do verbo WS do rostering); **o fantasma de teste** — o de um
+movimento que depende de CD — que só tem caso alcançável quando os movimentos com teste chegarem
+(§4.1).
+
+**Pronto quando:**
+- Duas pessoas em máquinas diferentes — uma mestre, uma jogador — completam um round inteiro:
+  declarar, o mestre abrir, a peça se mover, o turno fechar, as barras e o HP andarem. Em
+  desktop **e** em celular.
+- **O mestre age por um NPC** e ele age de verdade. O NPC precisa estar na partida **antes de a
+  sala nascer** (posto pelo REST do PR #73) — adicionar com a sala viva não é critério desta fase,
+  porque depende de outro PR.
 
 ## 7. Fase 7 — Reações
 
@@ -299,14 +420,20 @@ desktop **e** em celular.
   ⚠️ Não é um gesto só: `nothing`, `dodge`, `closedDodge`, `escape`, `escapeGuard`,
   `closedEscape`, `repel`.
 - Botões de reação ao lado do alvo. **Clicar** envia direto; **clicar e segurar** abre a
-  configuração.
+  configuração. O gesto de segurar **já foi decidido na Fase 6** — reuse o mesmo mecanismo, não
+  invente um segundo.
 - Mestre: `open_reaction`, com a ordem de abertura visível — ela muda o desfecho.
 - Balões: mecânica ao abrir, resultado ao encerrar.
 - O default do escape é **Dash**; o fechado é **Shift** (§11.4).
+- **O fantasma de espera** (§10.2): hoje o **escape com Dash** é o único movimento em que a
+  peça **espera o fechamento** para se deslocar (o escape com Shift e toda ação deslocam na
+  abertura). É o primeiro caso alcançável de fantasma que não é a intenção declarada da Fase 6.
 
-**Em aberto para quem planejar:** "clicar e segurar" é gesto de toque. No desktop vira o quê —
-long-press com timer sobre o Pixi, botão direito, hover? A zona do mapa é pixel-tuned e isso não
-é barato. Decida e registre.
+  ⚠️ **A regra por trás disso está sob revisão.** O código trata "o Dash rola dado" como se fosse
+  "o Dash tem CD" — e rolar a velocidade de movimento não é um teste contra dificuldade. A
+  consequência é que o mesmo Dash desloca na abertura numa ação e no fechamento num escape.
+  **Não construa lógica no front que dependa desse momento**: pela invariante de §4.1, desenhe
+  o que o servidor mandar, quando mandar.
 
 **Pronto quando:** três alvos reagem diferente ao mesmo ataque em área, e abrir as reactions em
 ordem inversa produz resultado diferente na tela.
@@ -345,9 +472,18 @@ implementar a Fase 6 precisa saber disso **antes** de desenhar a peça.
 
 ### 10.2 Como desenhar a intenção
 
-Enquanto o teste não resolve: a peça real fica onde está, uma cópia **translúcida** aparece no
-slot pretendido, e uma seta liga as duas. No fechamento, a peça vai para onde o servidor mandar
-e o fantasma some.
+A peça real fica onde está, uma cópia **translúcida** aparece no slot pretendido, e uma seta
+liga as duas. Quando o servidor manda a posição, a peça vai para lá e o fantasma some.
+
+**São dois fantasmas, com vidas diferentes** — e é o mesmo desenho para os dois:
+
+| Fantasma | Existe entre… | Quem vê | Fase |
+|---|---|---|---|
+| **Intenção declarada** | o envio da action e a abertura dela | **só o dono** — o mestre não conhece o destino, porque `action_queued` e `resolution_updated` não trazem posição | **6** |
+| **Espera** | a abertura e o fechamento, quando a peça não pode deslocar na abertura | a mesa | **7** em diante |
+
+O primeiro tem caso alcançável hoje: toda action enviada antes de abrir. O segundo só passa a
+ter com o escape com Dash (Fase 7) e com os movimentos que dependem de CD, quando chegarem.
 
 É solução de protótipo. Se for ruim na prática, troca-se **só o desenho** — o contrato não muda,
 porque o front não calcula posição.
@@ -398,9 +534,21 @@ Qual teste o alvo rola contra uma finta ainda **não foi desenhado**. A UI não 
 de finta até a regra existir. (A *visibilidade* da finta é outra coisa e se conserta agora —
 §4.7.)
 
-### 11.3 Posição intermediária, empilhamento, status de peça
+### 11.3 Posição intermediária, empilhamento, status de peça — e colisão
 
 §10.3 e §10.4.
+
+**As regras de colisão ainda não foram desenhadas, e vão existir.** Elas decidem o que acontece
+quando alguém colide: compartilhar o slot, ser bloqueado, segurar, subir no outro, passar
+colado — ou **quebrar a parede no impacto**, que conecta com o dano estrutural que o motor já
+tem. **Valem contra personagens e contra todo tipo de parede, incluindo terreno.**
+
+Hoje, sem elas, **um escape atravessa parede** e entrar em slot ocupado empilha.
+
+⭐ **Isso não trava nenhuma fase do front.** As regras de colisão mudam **qual posição o servidor
+manda**; o front só desenha a posição que chegou (§4.1). Quando elas existirem no back, o front
+não muda uma linha. O que o front precisa é **não** assumir, em lugar nenhum, que a peça chega
+sempre ao slot pedido.
 
 ### 11.4 A categoria de movimento dos escapes
 
@@ -453,19 +601,9 @@ com a fase que tocar no assunto (Fase 7).**
 - **`piece_moved` do lobby é cliente→servidor.** Não é o mesmo que a Fase 6 precisa.
 - **O tablet gira.** Testar em pé e deitado, não só em duas larguras.
 - **A zona Pixi é pixel-tuned** e não deve ser normalizada com os tokens.
-- **Sem NPC não há inimigo.** O rostering é **fatia própria, rodando em paralelo** — não entra
-  no pacote de §4 e não bloqueia o começo da Fase 6, cujo teste é personagem de jogador contra
-  personagem de jogador. Mas ele **precisa entrar antes de a Fase 6 fechar**: sem inimigo não é
-  uma mesa, é uma prova de motor.
-
-  > O spec do motor (`2026-08-16-combat-engine-design.md`, §7) diz que o rostering "bloqueia a
-  > Fase 6". Vale a leitura daqui: bloqueia a Fase 6 **inteira**, não o início dela, e corre em
-  > paralelo com o pacote de §4.
-
-  **Como não brigar com o §4.** Os dois tocam `internal/app/game/message.go`,
-  `room.go` e `match_session.go`. O atrito cai quase a zero se o rostering escrever por
-  **REST** em vez de WS — pôr NPC na partida é ato de preparação, não verbo de combate — e a
-  propagação ao vivo pegar carona no `match_full_state` de §4.2. Nesse desenho, o único arquivo
-  compartilhado vira `match_session.go`, numa função só: `indexParticipants`, que passa a mapear
-  NPC → mestre no `charToPlayer` (hoje ela já cria o `CharacterStatus` do NPC e só pula o
-  `charToPlayer`). Essa função é do rostering; §4 não encosta nela.
+- **NPC existe, mas só entra na sala quando ela nasce.** O rostering (PR #73) está mergeado: o
+  mestre põe NPC pelo REST, e o `InitMatchSession` o traz na próxima vez que a sala for criada.
+  O mestre age por ele. **O que não existe ainda é pôr NPC com a sala já viva** — `cmd/api` e
+  `cmd/game` são processos separados, e o REST não alcança a sessão em memória. Isso é o verbo
+  de WS de um PR paralelo, e **a Fase 6 não depende dele**: para testar, ponha o NPC antes de a
+  sala nascer.
