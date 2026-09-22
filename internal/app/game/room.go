@@ -536,6 +536,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The implicit close is announced exactly like the explicit one, in the same
+				// place in the sequence close_turn puts it: after the escapes and the write,
+				// before the settled resolution, and above all before the announceOpenedTurn
+				// below — the table has to see this turn end before the next one begins.
+				r.broadcastTurnClosed(closedTurn.GetID())
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
@@ -649,6 +654,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The implicit close is announced exactly like the explicit one, in the same
+				// place in the sequence close_turn puts it: after the escapes and the write,
+				// before the settled resolution, and above all before the announceOpenedTurn
+				// below — the table has to see this turn end before the next one begins.
+				r.broadcastTurnClosed(closedTurn.GetID())
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
@@ -938,9 +948,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.applyClosedEscapes(closedTurn, result.Resolution)
 		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
-		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
+		r.broadcastTurnClosed(closedTurn.GetID())
 		r.publishResolution(closedTurn.GetID(), result.Resolution)
 		r.broadcastBars(session)
 
@@ -1217,6 +1225,30 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
 	}
+}
+
+// broadcastTurnClosed tells the table a turn ended. Three verbs close one: close_turn says so
+// outright, and open_next_action and pull_action close the open turn on their way through.
+// All three reach here, because which verb the master happened to use must not change what
+// the table is told — the implicit close used to be silent, and an event list that shows
+// turns beginning and never ending is the front's problem to reconcile, not the back's to
+// create.
+//
+// The send is SYNCHRONOUS, unlike the `go func` its neighbours use, and that is the point:
+// the turn_opened of the next turn travels the same channel, and two detached goroutines
+// racing to it would put the next turn's opening ahead of this turn's ending about half the
+// time. Queueing here first orders the two for good. It cannot deadlock the room: this runs
+// on the client's read pump, never on Run's goroutine (the chat arm sends the same way), and
+// r.mu is already released by every caller.
+//
+// Ordering against resolution_updated is the one close_turn has always practised: turn_closed
+// is queued first, then the settled resolution goes out. The two travel different lanes —
+// this one through r.broadcast, the resolution straight into each client's queue — so the
+// order they ARRIVE in is not a promise; the contract says as much.
+func (r *Room) broadcastTurnClosed(turnID uuid.UUID) {
+	out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: turnID})
+	data, _ := json.Marshal(out)
+	r.broadcast <- data
 }
 
 // announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for

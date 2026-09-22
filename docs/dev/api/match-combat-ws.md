@@ -313,8 +313,9 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
 **Dispara, nesta ordem:**
 
 1. [`bars_updated`](#bars_updated) — mesa.
-2. Se um turno fechou: persistência + [`resolution_updated`](#resolution_updated) **settled
-   e projetado** do turno que acabou (é essa a resolução cujo dano foi aplicado de verdade).
+2. Se um turno fechou: persistência + [`turn_closed`](#turn_closed) — mesa — +
+   [`resolution_updated`](#resolution_updated) **settled e projetado** do turno que acabou
+   (é essa a resolução cujo dano foi aplicado de verdade).
 3. Se a rodada esgotou: [`round_closed`](#round_closed) — mesa — e **para por aí**.
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
    [`resolution_updated`](#resolution_updated) **master-only** do turno recém-aberto
@@ -540,7 +541,7 @@ deslocada de novo aqui.
 aberto a caminho de abrir o próximo, e **os três** aplicam o desfecho das fugas. Um escape
 cujo resultado dependesse de qual verbo o mestre usou seria bug, não regra. (Nesses dois o
 `piece_moved` sai antes da persistência e antes do [`turn_opened`](#turn_opened) do próximo
-turno; não há `turn_closed` nesse caminho — ver [`turn_closed`](#turn_closed).)
+turno, e o [`turn_closed`](#turn_closed) sai igual ao do `close_turn` — pela mesma razão.)
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid close_turn payload"`) ·
 `match_not_started` · `game_error` (`no open turn to close`).
@@ -1039,9 +1040,21 @@ estado de mesa.
 
 **Os números viajam separado**, no `resolution_updated` projetado que vem em seguida.
 
-**Disparado por:** `close_turn`. (Um turno fechado por `open_next_action`/`pull_action`
-**não** emite `turn_closed` — ele se anuncia pelo `resolution_updated` liquidado e pelo
-`turn_opened` do próximo.)
+**Disparado por:** [`close_turn`](#close_turn), [`open_next_action`](#open_next_action) e
+[`pull_action`](#pull_action) — os **três** verbos que fecham um turno.
+
+> **O fechamento implícito emite igual ao explícito.** `open_next_action` e `pull_action`
+> fecham o turno aberto a caminho de abrir o próximo, e esse fechamento sai com o mesmo
+> `turn_closed`, no mesmo ponto da sequência: depois das fugas e da persistência, **antes**
+> do [`turn_opened`](#turn_opened) do turno seguinte. A mesa tem que ver o turno acabar
+> antes de ver o próximo começar — qual verbo o mestre usou não muda o que a mesa ouve.
+
+> ⚠️ **A ordem contra `resolution_updated` não é promessa.** `turn_closed` é enfileirado
+> antes da resolução liquidada — é a ordem que `close_turn` sempre praticou e que os outros
+> dois agora seguem — mas os dois viajam por caminhos diferentes (`turn_closed` pelo
+> broadcast da sala, `resolution_updated` direto na fila de cada cliente), então a ordem de
+> **chegada** entre esses dois pode inverter. Só a ordem `turn_closed` → `turn_opened`, que
+> compartilham o mesmo caminho, é garantida.
 
 ### `round_closed`
 
@@ -1497,10 +1510,11 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │◄─────────────── bars_updated (mesa) ──────────────────────►│◄──────────────────►│
 ```
 
-**O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** o turno fecha
-igual (com persistência, `resolution_updated` liquidado e o `piece_moved` das fugas de `Dash`
-que passaram), mas **não sai `turn_closed`** — o próximo `turn_opened` é o que anuncia a
-virada. E se nada pendente ainda puder pagar, sai
+**O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** nada no
+fechamento — persistência, `turn_closed`, `resolution_updated` liquidado e o `piece_moved`
+das fugas de `Dash` que passaram saem igual, e o `turn_closed` do turno que acabou vem
+**antes** do `turn_opened` do próximo. O que muda é o que vem depois: se nada pendente ainda
+puder pagar, sai
 [`round_closed`](#round_closed) e nenhum turno novo abre.
 
 ## 9. O que este contrato ainda não entrega

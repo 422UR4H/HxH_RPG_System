@@ -10,11 +10,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// This file covers the part of a turn's public life the table could not follow: WHICH action
-// a turn_opened opened.
+// This file covers the two halves of a turn's public life that the table could not follow:
+// WHICH action a turn_opened opened, and THAT a turn ended when the master never said so
+// out loud.
 //
-// It is a debt the front's Phase 6 collected against the back, and it is one debt seen from
-// the two arms that pay it — open_next_action and pull_action both end in announceOpenedTurn.
+// Both are debts the front's Phase 6 collected against the back. They live together here
+// because they are the same two arms of room.go — open_next_action and pull_action — seen
+// from the two ends of the same transition.
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -40,6 +42,29 @@ func collectedActionIDs(t *testing.T, c *collector, want game.MessageType) []uui
 		ids = append(ids, p.ActionID)
 	}
 	return ids
+}
+
+// indexOfTurnMessage returns the arrival position of the first message of that type naming
+// that turn, or -1. The collector appends in arrival order, so comparing indices compares
+// arrival order — the same trick indexOfMessage plays, narrowed to one turn because a
+// transition puts two turn_openeds on the wire and only one of them is the new one.
+func indexOfTurnMessage(t *testing.T, msgs []game.Message, want game.MessageType, turnID uuid.UUID) int {
+	t.Helper()
+	for i, m := range msgs {
+		if m.Type != want {
+			continue
+		}
+		var p struct {
+			TurnID uuid.UUID `json:"turnId"`
+		}
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal %s: %v", want, err)
+		}
+		if p.TurnID == turnID {
+			return i
+		}
+	}
+	return -1
 }
 
 // enqueueTwoFromTheSameActor puts two identical attacks from the fixture's attacker in the
@@ -149,5 +174,93 @@ func TestE2E_PulledTurnOpenedNamesThePulledAction(t *testing.T) {
 	if got != wanted {
 		t.Errorf("turn_opened named actionId %s, want the pulled %s (the other queued one is %s)",
 			got, wanted, queued[0])
+	}
+}
+
+// ─── B3: turn_closed on the implicit close ──────────────────────────────────
+
+// TestE2E_OpenNextActionAnnouncesTheTurnItClosed is B3 over the open_next_action arm.
+//
+// Opening the next action closes the open turn on the way through. Until this test, that
+// close was silent: only the close_turn verb ever emitted turn_closed, so a table watching
+// the event list saw turns begin and never end.
+func TestE2E_OpenNextActionAnnouncesTheTurnItClosed(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	enqueueTwoFromTheSameActor(t, f, player, masterMsgs)
+
+	sendWS(t, master, "open_next_action", map[string]any{})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the first action never opened")
+	}
+	firstTurn := lastTurnOpened(t, masterMsgs).TurnID
+
+	sendWS(t, master, "open_next_action", map[string]any{})
+	if !awaitCount(masterMsgs, game.MsgTypeTurnOpened, 2, 2*time.Second) {
+		t.Fatal("the second action never opened")
+	}
+	secondTurn := lastTurnOpened(t, masterMsgs).TurnID
+
+	assertClosedBeforeOpened(t, playerMsgs, firstTurn, secondTurn, "the player")
+	assertClosedBeforeOpened(t, masterMsgs, firstTurn, secondTurn, "the master")
+}
+
+// TestE2E_PullActionAnnouncesTheTurnItClosed is B3 over the pull_action arm. Same close, same
+// announcement: which verb the master reached for must not change what the table is told.
+func TestE2E_PullActionAnnouncesTheTurnItClosed(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	queued := enqueueTwoFromTheSameActor(t, f, player, masterMsgs)
+
+	sendWS(t, master, "pull_action", map[string]any{"actionId": queued[0].String()})
+	if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the first pull opened nothing")
+	}
+	firstTurn := lastTurnOpened(t, masterMsgs).TurnID
+
+	sendWS(t, master, "pull_action", map[string]any{"actionId": queued[1].String()})
+	if !awaitCount(masterMsgs, game.MsgTypeTurnOpened, 2, 2*time.Second) {
+		t.Fatal("the second pull opened nothing")
+	}
+	secondTurn := lastTurnOpened(t, masterMsgs).TurnID
+
+	assertClosedBeforeOpened(t, playerMsgs, firstTurn, secondTurn, "the player")
+	assertClosedBeforeOpened(t, masterMsgs, firstTurn, secondTurn, "the master")
+}
+
+// assertClosedBeforeOpened is the shared assertion of both B3 tests: the old turn's
+// turn_closed reached this client, and it reached it BEFORE the new turn's turn_opened.
+//
+// The order is the point, not a detail — a table that is told the next turn started before it
+// is told the last one ended has to reorder the two itself to draw a correct event list.
+func assertClosedBeforeOpened(t *testing.T, c *collector, closed, opened uuid.UUID, who string) {
+	t.Helper()
+	if !c.await(game.MsgTypeTurnClosed, 2*time.Second) {
+		t.Fatalf("%s was never told turn %s ended; it received: %v",
+			who, closed, messageTypes(c.snapshotMessages()))
+	}
+	msgs := c.snapshotMessages()
+	closedAt := indexOfTurnMessage(t, msgs, game.MsgTypeTurnClosed, closed)
+	if closedAt < 0 {
+		t.Fatalf("%s got a turn_closed, but never for turn %s — the implicit close named "+
+			"the wrong turn", who, closed)
+	}
+	openedAt := indexOfTurnMessage(t, msgs, game.MsgTypeTurnOpened, opened)
+	if openedAt < 0 {
+		t.Fatalf("%s never saw turn %s open", who, opened)
+	}
+	if closedAt > openedAt {
+		t.Errorf("%s saw the next turn open (position %d) before the last one closed "+
+			"(position %d)", who, openedAt, closedAt)
 	}
 }
