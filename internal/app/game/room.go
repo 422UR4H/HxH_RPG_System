@@ -1941,9 +1941,10 @@ func computeLobbyMapState(allWalls []mapentity.WallSegment, pieceProj []domainse
 // which is how a client tells the two apart if it ever needs to.
 //
 // The owner is not a parameter: it comes from payload.CharacterID through GetCharToPlayer().
-// Whoever owns the moved character gets a fresh map_full_state, because their line of sight
-// just changed — and that holds even when the mover is someone else (the master dragging a
-// player's piece, or the engine applying a resolved move).
+// The PLAYER who owns the moved character gets a fresh map_full_state, because their line of
+// sight just changed — and that holds even when the mover is someone else (the master dragging
+// a player's piece, or the engine applying a resolved move). An NPC's owner is the master,
+// whose view has no fog, so an NPC's move refreshes nobody (see relayPieceMove).
 //
 // The caller must NOT hold r.mu — this takes it, and so do gridShape, visibilityFor,
 // dispatchPerPlayer and buildMapFullState. The short lock/unlock blocks here and in
@@ -1995,6 +1996,17 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 		owner = sess.GetCharToPlayer()[payload.CharacterID]
 	}
 	r.mu.RUnlock()
+	// An NPC is "owned" by the master in charToPlayer, but the master's view has no fog: they
+	// see the board unfiltered, and buildMapFullState drops the polygons for isMaster anyway.
+	// Treating the master as an owner cost a recompute of (NPCs × walls) under the WRITE lock,
+	// a PlayerMemory nobody ever reads, and the whole board resent to the master on every drag.
+	// So the master owns nothing here: the recompute, the memory and the extra map_full_state
+	// are all skipped. The master still hears about the move through the isMaster branch of
+	// the dispatch below — or gets no echo, when the master is the one who dragged it. This
+	// holds for all three paths through here: a client drag, a turn's move, a reaction escape.
+	if owner == r.masterUUID {
+		owner = uuid.Nil
+	}
 
 	// The owner's line of sight is recomputed BEFORE the dispatch below, not after it.
 	//
