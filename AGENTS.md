@@ -95,13 +95,15 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 
 **Motor de batalha — Fases 1 e 2 implementadas.** Ver
 `docs/superpowers/specs/2026-08-16-combat-engine-design.md` e `docs/dev/match/combat-engine.md`.
-Duas coisas parecem lacunas e são **deliberadas**:
+Uma coisa parece lacuna e é **deliberada**:
 
 - `resolution_updated` é **master-only**. O cálculo é do mestre até o turno encerrar;
   difusão para a mesa e projeção por destinatário são da Fase 5.
-- **Não existe evento WS de HP de personagem.** O dano é persistido em `character_sheets`
-  no fechamento do turno e a sidebar da partida o lê por REST — o caminho ao vivo é
-  trabalho de front, Fase 6.
+
+**HP ao vivo existe** desde a dívida B2: o fechamento de turno — pelos três verbos — emite
+`character_hp_changed` projetado para o mestre e para o dono da ficha, com o HP aplicado, o
+máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensagem
+(`broadcastHpChanges` em `room.go`). Ver `docs/dev/api/match-combat-ws.md` §5.
 
 **Deferred to Phase 4 (reações):**
 - Reaction visibility: players see reactions only when master reveals (currently master-only)

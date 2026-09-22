@@ -131,6 +131,7 @@ func newVisibilityFixture(t *testing.T) *visibilityFixture {
 		&mockEnqueueMasterActionUCHandler{},
 		appmatch.NewChangeRoundModeUC(),
 		appmatch.NewEditActionUC(),
+		nil,
 	)
 
 	mux := http.NewServeMux()

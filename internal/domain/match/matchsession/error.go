@@ -34,4 +34,14 @@ var (
 	// ErrAmbiguousConditionEdit means a condition edit set both Field and SkillName. They are
 	// alternatives, never both at once.
 	ErrAmbiguousConditionEdit = errors.New("condition edit must set either field or skillName, not both")
+	// ErrCharacterAlreadyInSession means AddNPC was asked to add a character that already has
+	// combat state in this session — a second AddNPC for the same sheetUUID, or one that
+	// collides with an existing player character. It is an error rather than a silent
+	// no-op/overwrite: overwriting would reset an NPC that has already taken damage or acted.
+	ErrCharacterAlreadyInSession = errors.New("character is already in this match session")
+	// ErrInvalidNPC means AddNPC was called with a Nil sheetUUID, a nil sheet or a Nil
+	// masterUUID. None of the three has a sane fallback, and writing partial state from one
+	// of them would corrupt charSheets/statuses/charToPlayer for a character nobody can
+	// address afterwards.
+	ErrInvalidNPC = errors.New("cannot add NPC: sheetUUID, sheet and masterUUID are all required")
 )

@@ -114,6 +114,7 @@ func newFogFixture(t *testing.T) *fogFixture {
 		&mockEnqueueMasterActionUCHandler{},
 		&mockChangeRoundModeUCHandler{},
 		&mockEditActionUCHandler{},
+		nil,
 	)
 
 	mux := http.NewServeMux()

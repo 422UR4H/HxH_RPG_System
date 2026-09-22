@@ -127,6 +127,10 @@ type combatFixture struct {
 	bystanderID   uuid.UUID
 	// victimOnBoard is set by withVictimPiece. See it there.
 	victimOnBoard bool
+	// addLiveNPC is nil unless withAddLiveNPC was passed. See it there.
+	addLiveNPC game.IAddLiveNPC
+	// lobby is set by inLobby. See it there.
+	lobby bool
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -153,6 +157,16 @@ func withBystander(f *combatFixture) {
 // holding exactly the mover (and, with withBystander, the blind one) keep the board they
 // were written for.
 func withVictimPiece(f *combatFixture) { f.victimOnBoard = true }
+
+// withAddLiveNPC hands the room the add_npc use case. Only the add_npc tests need one; every
+// other test runs with nil, which is fine because none of them sends add_npc.
+func withAddLiveNPC(uc game.IAddLiveNPC) combatOpt {
+	return func(f *combatFixture) { f.addLiveNPC = uc }
+}
+
+// inLobby reports the match as NOT started, so the master's connection opens a room with no
+// session — the lobby. The prepared session is still built but never handed to the room.
+func inLobby(f *combatFixture) { f.lobby = true }
 
 // setRollSource replaces the session's dice for one test. The session pointer is the
 // fixture's own, and nothing is in flight when a test calls this.
@@ -208,7 +222,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 	f.roundRepo = roundRepo
 	handler := game.NewHandler(
 		hub,
-		&fogMatchRepo{masterUUID: f.masterUUID, started: true},
+		&fogMatchRepo{masterUUID: f.masterUUID, started: !f.lobby},
 		&mockEnrollmentChecker{enrolled: true},
 		&mockStartMatchUC{},
 		&mockKickPlayerUC{},
@@ -231,6 +245,8 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		// exists in Race mode, and the mock never actually flips the session's round mode.
 		appmatch.NewChangeRoundModeUC(),
 		appmatch.NewEditActionUC(),
+		// nil unless withAddLiveNPC was passed: no test before add_npc sends it.
+		f.addLiveNPC,
 	)
 
 	mux := http.NewServeMux()

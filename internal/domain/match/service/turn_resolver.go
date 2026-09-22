@@ -395,6 +395,30 @@ func (tr TurnResolver) actorPush(in ResolveInput, a action.Action) int {
 	return skillValueOf(cs, enum.Push.String())
 }
 
+// actorWeaponProficiency reads the attacker's proficiency LEVEL with the weapon this attack
+// swings — the number the combat catalogue publishes as proficiencyLevel — which is added to
+// the hit, the same way actorPush is added to the damage.
+//
+// The weapon decides which proficiency, and Accuracy stays the skill: proficiency is a bonus
+// on top of it, not a skill of its own. A nil weapon is the bare-handed blow, so it reads the
+// Fist proficiency; a character without that proficiency (or without a sheet here, for the
+// same reason actorPush nil-guards) adds zero, which is the honest answer, not a penalty.
+func (tr TurnResolver) actorWeaponProficiency(in ResolveInput, a action.Action) int {
+	cs, ok := in.Sheets[a.GetActorID()]
+	if !ok || cs == nil || a.Attack == nil {
+		return 0
+	}
+	name := enum.Fist
+	if a.Attack.Weapon != nil {
+		name = *a.Attack.Weapon
+	}
+	p, ok := cs.GetCommonProficiencies()[name]
+	if !ok || p == nil {
+		return 0
+	}
+	return p.GetLevel()
+}
+
 // seedChain computes ataque₀: the whole attack's raw damage, rolled once when the action
 // arrived and never re-rolled. Every target in the walk only ever subtracts from this one
 // number — it is not recomputed per target.
@@ -455,8 +479,11 @@ func (tr TurnResolver) resolveCharacterStep(
 	//    reserve modifies the dodge, which ResolveReaction reads on the target's own side,
 	//    not on this roll.
 	cr.Hit = calc.Derive(in.Rules, a.Attack.Hit.Attempts, RollInput{
-		SkillName:  a.Attack.Hit.SkillName,
-		SkillValue: skillValueOf(actorSheet, a.Attack.Hit.SkillName),
+		SkillName: a.Attack.Hit.SkillName,
+		// Accuracy plus the proficiency with the weapon in hand: the swing is read on the
+		// skill, and knowing the weapon adds to it. Same shape as the damage, which reads
+		// the weapon's dice and adds the attacker's Push.
+		SkillValue: skillValueOf(actorSheet, a.Attack.Hit.SkillName) + tr.actorWeaponProficiency(in, a),
 		Condition:  a.Attack.Hit.Context.Condition,
 		AgainstID:  &step.targetID,
 	})

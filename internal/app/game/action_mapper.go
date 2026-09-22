@@ -77,6 +77,16 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		if err != nil {
 			return nil, err
 		}
+		// The hit's skill is ALWAYS Accuracy, whatever the payload named — the same rule
+		// actionSpeed follows above, and for the same reason: the player picks a weapon and a
+		// target, never the skill the swing is read on. The payload is still VALIDATED by
+		// buildRollCheck (an unknown name is refused at the boundary, as it always was); it
+		// simply stops deciding.
+		//
+		// Accuracy is the single default because nothing maps a weapon to a skill yet: the
+		// combat catalogue publishes a proficiencyLevel per weapon, but no roll reads it. THIS
+		// is the line that changes the day weapon proficiency enters the hit.
+		hit.SkillName = enum.Accuracy.String()
 		attack = &action.Attack{
 			Weapon: weapon,
 			Hit:    *hit,

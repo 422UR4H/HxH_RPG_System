@@ -51,6 +51,10 @@ const (
 	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
 	MsgTypeActionEdited     MessageType = "action_edited"
 
+	// Server → Client (game events, projected): one character's HP moved on the sheet.
+	// Its own message rather than a field of resolution_updated — see CharacterHpChangedPayload.
+	MsgTypeCharacterHpChanged MessageType = "character_hp_changed"
+
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
 
@@ -64,6 +68,14 @@ const (
 	// Server → Client
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
 	MsgTypeRoundModeChanged     MessageType = "round_mode_changed"
+
+	// Client → Server (roster, master only): put an NPC into the match — live if a session
+	// is running, onto the roster only if the room is still a lobby.
+	MsgTypeAddNPC MessageType = "add_npc"
+
+	// Server → Client (roster): the whole table learns an NPC joined; the front re-fetches
+	// the sheet by REST, the same way it reacts to scene_changed.
+	MsgTypeNPCAdded MessageType = "npc_added"
 
 	// Server → Client (lobby lifecycle)
 	MsgTypeLobbyClosed MessageType = "lobby_closed" // master cancelled the lobby
@@ -325,9 +337,16 @@ type ConditionEditPayload struct {
 	Description string `json:"description,omitempty"`
 }
 
+// TurnOpenedPayload announces whose turn it is. BROADCAST — the table has to know.
+//
+// ActionID is the SAME id action_enqueued gave back to whoever enqueued and action_queued
+// gave the master. It is what ties the three messages together, and it is not decoration:
+// actorId alone is ambiguous the moment one character has two actions waiting, and then
+// nothing on the wire says which of them just opened.
 type TurnOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turnId"`
 	ActorID    uuid.UUID `json:"actorId"`
+	ActionID   uuid.UUID `json:"actionId"`
 	ActionType string    `json:"actionType"`
 }
 
@@ -347,6 +366,29 @@ type ReactionOpenedPayload struct {
 // follows.
 type TurnClosedPayload struct {
 	TurnID uuid.UUID `json:"turnId"`
+}
+
+// CharacterHpChangedPayload is one character's health bar after something moved it.
+//
+// PROJECTED, not broadcast: it reaches the master and the owner of the sheet, and nobody
+// else. Somebody else's exact HP is not table state — the table learns a character is hurt
+// from the narration and from the projected resolution_updated, not from a number.
+// An NPC has no owner, so the master gets a single copy.
+//
+// It is a message of its OWN rather than a field of resolution_updated because HP will also
+// move by healing and by poison, and neither of those paths resolves a turn: a field on the
+// resolution would have to be duplicated the moment the first one lands. What this message
+// says is "the bar moved", not "a turn computed something".
+//
+// This is the applied number, not a projection: resolution_updated carries the dry run, and
+// only the close writes it to the sheet. HP is what the sheet holds now; MaxHP is the bar's
+// own maximum, so a client can draw the bar without a REST round trip; Damage is what took
+// it there, which is what an event list needs to say "-16" without diffing two snapshots.
+type CharacterHpChangedPayload struct {
+	CharacterID uuid.UUID `json:"characterId"`
+	HP          int       `json:"hp"`
+	MaxHP       int       `json:"maxHp"`
+	Damage      int       `json:"damage"`
 }
 
 // ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed
@@ -750,6 +792,18 @@ type SceneChangedPayload struct {
 	SceneID                 uuid.UUID `json:"sceneId"`
 	Category                string    `json:"category"`
 	BriefInitialDescription string    `json:"briefInitialDescription"`
+}
+
+// AddNPCPayload asks to put an NPC into the match. The field name is the REST one
+// (POST /matches/{uuid}/npcs), so the front sends the same key on both paths.
+type AddNPCPayload struct {
+	CharacterSheetUUID uuid.UUID `json:"characterSheetUuid"`
+}
+
+// NPCAddedPayload names the character that joined. Nothing else: the sheet is fetched by
+// REST, and the bars that now include it arrive in the bars_updated that follows.
+type NPCAddedPayload struct {
+	CharacterID uuid.UUID `json:"characterId"`
 }
 
 type MasterActionPayload struct {

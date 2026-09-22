@@ -67,8 +67,9 @@ Toda mensagem, nos dois sentidos, é um `Message`:
     "não informado" (e desliga a checagem de parede).
 - **O servidor nunca confia no cliente para** qual barra a ação paga (`speed.bar` é
   descartado), qual perícia mede a velocidade (é sempre Legerity), a perícia de velocidade
-  de um movimento (vem da categoria) ou os dados. **Os dados caem no servidor**, no instante
-  em que a ação é aceita, e nunca são rolados de novo.
+  de um movimento (vem da categoria), **qual perícia mede o acerto de um ataque (é sempre
+  `Accuracy`)** ou os dados. **Os dados caem no servidor**, no instante em que a ação é
+  aceita, e nunca são rolados de novo.
 
 ## 2. Quem é quem
 
@@ -78,10 +79,15 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | **Personagem** | `character_sheets.uuid`. É a **entidade de combate**, e é o que vai em `actorId` e em `targetId`. |
 | Ponte | Uma pessoa dirige vários personagens. O servidor checa que o personagem de `actorId` pertence a quem enviou. |
 
-> **NPC hoje não age.** `indexParticipants` só mapeia personagem→jogador para fichas com
-> `player_uuid`; uma ficha de NPC (dono = mestre) não entra nesse mapa, então
-> `enqueue_action` por ela devolve `game_error: action actor does not match player`. Isso é
-> a lacuna "Rostering de NPC" de `AGENTS.md`, não um erro deste contrato.
+> **NPC é do mestre.** `indexParticipants` mapeia toda ficha de NPC (`player_uuid == null`,
+> `master_uuid` preenchido) para o `master_uuid` dela em `charToPlayer` — o mesmo mapa que
+> autoriza jogadores comuns, só que a chave que bate é a do mestre. `enqueue_action` com
+> `actorId` = a ficha do NPC passa pela mesma checagem `charToPlayer[actorId] == playerUUID`
+> de sempre, e quem casa é o mestre. Vale tanto para o NPC que já estava no roster quando a
+> sessão nasceu (`InitMatchSessionUC`) quanto para o que entrou depois, ao vivo, por
+> [`add_npc`](#add_npc) — os dois caem no mesmo `charToPlayer`, pelo mesmo mecanismo (Decisão
+> 6 do plano). **Ficha de jogador continua negada ao mestre:** o dono ali é o jogador, e isso
+> não muda por quem enviou a mensagem.
 
 ## 3. Índice
 
@@ -99,6 +105,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`change_round_mode`](#change_round_mode) | mestre |
 | [`change_scene`](#change_scene) | mestre |
 | [`enqueue_master_action`](#enqueue_master_action) | mestre |
+| [`add_npc`](#add_npc) | mestre |
 
 **Servidor → cliente**
 
@@ -113,10 +120,12 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`action_edited`](#action_edited) | só o mestre |
 | [`close_turn_refused`](#close_turn_refused) | só o mestre |
 | [`turn_closed`](#turn_closed) | mesa inteira |
+| [`character_hp_changed`](#character_hp_changed) | **mestre + dono da ficha** |
 | [`round_closed`](#round_closed) | mesa inteira |
 | [`round_mode_changed`](#round_mode_changed) | mesa inteira |
 | [`scene_changed`](#scene_changed) | mesa inteira |
 | [`master_action_enqueued`](#master_action_enqueued) | mesa inteira |
+| [`npc_added`](#npc_added) | mesa inteira |
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
@@ -180,7 +189,20 @@ porque uma ação plausível carregue todas.
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
+| `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
 | `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
+
+**Como o acerto é montado.** A perícia é `Accuracy`, sempre, e a arma entra pela
+**proficiência**: o acerto soma o `proficiencyLevel` que o personagem tem **com a arma que
+está empunhando** — o mesmo número que o
+[catálogo de combate](character-sheet.md) publica por arma. Sem arma (`attack.weapon` ausente),
+a proficiência lida é a de **`Fist`**, porque o golpe corporal é uma arma do catálogo como
+qualquer outra. Quem não tem proficiência nenhuma com aquela arma soma **zero** — não existe
+penalidade de arma destreinada; se um dia existir, é regra nova, não este caminho.
+
+É o espelho do dano, que já funcionava assim: o dano rola os dados **da arma** e soma o `Push`
+do atacante; o acerto rola o conjunto da partida sobre `Accuracy` e soma a **proficiência**
+daquela arma.
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
@@ -306,8 +328,9 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
 **Dispara, nesta ordem:**
 
 1. [`bars_updated`](#bars_updated) — mesa.
-2. Se um turno fechou: persistência + [`resolution_updated`](#resolution_updated) **settled
-   e projetado** do turno que acabou (é essa a resolução cujo dano foi aplicado de verdade).
+2. Se um turno fechou: persistência + [`turn_closed`](#turn_closed) — mesa — +
+   [`resolution_updated`](#resolution_updated) **settled e projetado** do turno que acabou
+   (é essa a resolução cujo dano foi aplicado de verdade).
 3. Se a rodada esgotou: [`round_closed`](#round_closed) — mesa — e **para por aí**.
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
    [`resolution_updated`](#resolution_updated) **master-only** do turno recém-aberto
@@ -533,7 +556,7 @@ deslocada de novo aqui.
 aberto a caminho de abrir o próximo, e **os três** aplicam o desfecho das fugas. Um escape
 cujo resultado dependesse de qual verbo o mestre usou seria bug, não regra. (Nesses dois o
 `piece_moved` sai antes da persistência e antes do [`turn_opened`](#turn_opened) do próximo
-turno; não há `turn_closed` nesse caminho — ver [`turn_closed`](#turn_closed).)
+turno, e o [`turn_closed`](#turn_closed) sai igual ao do `close_turn` — pela mesma razão.)
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid close_turn payload"`) ·
 `match_not_started` · `game_error` (`no open turn to close`).
@@ -621,6 +644,81 @@ Esta mensagem tem **três destinos possíveis**, decididos nesta ordem:
 **Erros:** `forbidden` · `invalid_payload` (`"invalid enqueue_master_action payload"`) ·
 `match_not_started` (**só no caminho 3** — os caminhos de parede retornam antes dessa
 checagem) · `game_error`.
+
+### `add_npc`
+
+**Direção:** cliente → servidor. **Quem:** **só o mestre** (`forbidden` para os demais).
+
+```json
+{
+  "type": "add_npc",
+  "payload": { "characterSheetUuid": "44444444-4444-4444-8444-444444444444" }
+}
+```
+
+`characterSheetUuid` é o MESMO nome de campo do REST
+(`POST /matches/{uuid}/npcs`, ver [`match-npcs.md`](match-npcs.md)) — o front manda a mesma
+chave nos dois caminhos.
+
+**Convive com o REST, não o substitui.** REST monta o roster ANTES de existir sala —
+preparação de campanha, sem jogo em andamento. Este verbo é para o MEIO da partida: o game
+server já tem o pool do Postgres, então roda o **mesmo** `AddMatchNPCUC` que o REST usa
+(mesmas guardas, mesma escrita em `match_participants`) e, se houver sessão viva, injeta a
+ficha nela em seguida — um ato só do ponto de vista do mestre, não uma chamada HTTP ao
+endpoint REST seguida de uma injeção manual que o front poderia esquecer.
+
+**Com sessão viva:** a ficha entra em `charSheets`, `statuses` e `charToPlayer` (dono =
+mestre) da `MatchSession` corrente — o mestre pode enfileirar uma ação pelo NPC no mesmo
+segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e emite um `bars_updated`
+NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
+[`npc_added`](#npc_added) em §5). **As duas mensagens saem cada uma da sua própria goroutine**
+(`go func() { r.broadcast <- data }()`, em `room.go`, tanto para `npc_added` quanto dentro de
+`broadcastBars`), então a ORDEM DE CHEGADA **não é garantida** — `bars_updated` pode chegar
+antes de `npc_added`. O front não deve exigir `npc_added` primeiro para aceitar o
+`bars_updated` que já lista o NPC.
+
+**Sem sessão viva (partida ainda no lobby):** só a escrita no banco acontece. `npc_added`
+ainda sai para a mesa, mas não há barras para publicar — nenhum `bars_updated` é emitido. O
+NPC entra em jogo quando a sala nascer: `InitMatchSessionUC` o carrega do banco junto com o
+resto do roster.
+
+**A duplicata que este verbo recusa é da SESSÃO, não do banco.** Todas as guardas de
+`AddMatchNPCUC` (mestre da partida, partida não encerrada, ficha existe, é NPC,
+elegibilidade) rodam ANTES do INSERT que devolveria `ErrNPCAlreadyInMatch`. Por isso o verbo
+WS **não trata esse erro do banco como falha**: "já está no banco" quer dizer "passou em
+tudo, só a sessão está atrasada" — exatamente o caso de quem pôs o NPC pelo REST no meio da
+partida e precisa que a sala viva alcance o banco. O verbo segue e injeta do mesmo jeito.
+Quem recusa é a SESSÃO, quando o NPC já está nela (`statuses[sheetUUID]` já existe) — aí o
+mestre recebe `npc_already_in_match` e nenhum `npc_added` sai.
+
+> ⚠️ **Na virada lobby→partida, QUALQUER ack de `add_npc` pode enganar — em dois sentidos
+> opostos.** `StartMatch` chama `InitMatchSessionUC.Init` (lê `match_participants` do banco,
+> SEM segurar `r.mu`) e só depois toma `r.mu.Lock()` para publicar `r.session`. Isso abre uma
+> janela onde a leitura do roster e a escrita do `add_npc` podem se intercalar dos dois jeitos:
+>
+> - **Falso `npc_already_in_match`.** A partida começa e o `Init` já leu a linha nova ANTES de
+>   a sessão publicada pegar o lock que a injeção de `add_npc` também disputa. O mestre recebe
+>   `npc_already_in_match` sem nunca ter recebido `npc_added` para aquele NPC — mas o NPC ESTÁ
+>   na sessão, carregado pelo próprio `Init`. O estado está correto; só o ack é que engana.
+> - **Falso `npc_added` (o espelho).** O `Init` lê o roster ANTES do INSERT do `add_npc`
+>   confirmar, e o braço `add_npc` pega `r.mu.Lock()` ANTES de `StartMatch` publicar `r.session`
+>   — nesse instante `r.session` ainda é `nil`, então o braço aplica a semântica de lobby: grava
+>   no banco, responde `npc_added`, sem `bars_updated` nenhum (parece o caminho feliz do §3 da
+>   Decisão 3). Mas a sessão que nasce um instante depois foi montada a partir de uma leitura
+>   ANTERIOR ao INSERT — ela nasce SEM o NPC, apesar do ack de sucesso.
+>
+> As duas corridas exigem DOIS sockets de mestre concorrentes (uma segunda aba, ou uma
+> reconexão que se sobrepõe à sessão anterior) — um único socket processa suas próprias
+> mensagens em ordem, então não colide consigo mesmo. **O front deve tratar QUALQUER ack de
+> `add_npc` na virada lobby→partida como não-definitivo, e reenviar `add_npc` é sempre
+> seguro:** a duplicata do banco é tolerada (Decisão 2) e a duplicata da sessão responde
+> `npc_already_in_match` — que, pelo caso acima, significa "o NPC está na partida" nos dois
+> sentidos em que pode aparecer.
+
+**Erros:** `forbidden` (`"only the master can perform this action"`) · `invalid_payload`
+(`"invalid add_npc payload"` — `characterSheetUuid` ausente/zero, ou payload que não é um
+objeto) · `not_found` · `invalid_npc` · `npc_already_in_match` · `game_error` (catálogo
+completo em §7).
 
 ---
 
@@ -729,14 +827,32 @@ era a vez dele depois que passou.
   "payload": {
     "turnId": "55555555-5555-4555-8555-555555555555",
     "actorId": "11111111-1111-4111-8111-111111111111",
+    "actionId": "33333333-3333-4333-8333-333333333333",
     "actionType": ""
   }
 }
 ```
 
+| Campo | O que é |
+|---|---|
+| `turnId` | O turno que abriu. É ele que aparece em [`turn_closed`](#turn_closed) e em [`resolution_updated`](#resolution_updated). |
+| `actorId` | UUID da ficha de quem age — o mesmo ID que a peça do tabuleiro carrega. |
+| `actionId` | **A ação que este turno abriu.** É o **mesmo** ID que [`action_enqueued`](#action_enqueued) devolveu a quem enfileirou e que [`action_queued`](#action_queued) deu ao mestre: é o que liga as três mensagens. |
+
+> **Para que serve `actionId`:** `actorId` sozinho é ambíguo assim que um personagem tem
+> **duas** ações na fila — os dois `turn_opened` saem idênticos e nada no wire diz qual
+> delas abriu. Com o `actionId`, o cliente casa o turno com a ação que ele próprio
+> enfileirou (ou, no mestre, com a linha da fila que ele antecipou por
+> [`pull_action`](#pull_action)).
+>
+> **A fila continua secreta.** O `actionId` só vira público aqui, quando a ação **saiu** da
+> fila e virou turno aberto — cuja existência já era pública pelo próprio `turn_opened`.
+> Nada é dito sobre o que continua pendente, e as operações que tomam um `actionId`
+> ([`pull_action`](#pull_action)) seguem sendo só do mestre.
+
 > ⚠️ **`actionType` é sempre `""` hoje.** O campo existe na struct e `room.go` nunca o
-> preenche, nos dois call sites que emitem `turn_opened`. O front **não deve** ramificar por
-> ele.
+> preenche, no único call site que emite `turn_opened` (`announceOpenedTurn`, onde
+> `open_next_action` e `pull_action` desembocam). O front **não deve** ramificar por ele.
 
 É este evento que abre a janela de reação: quem está em `targetId` da ação pode mandar
 [`attach_reaction`](#attach_reaction) a partir daqui. Mas o `targetId` **não viaja nesta
@@ -939,9 +1055,78 @@ estado de mesa.
 
 **Os números viajam separado**, no `resolution_updated` projetado que vem em seguida.
 
-**Disparado por:** `close_turn`. (Um turno fechado por `open_next_action`/`pull_action`
-**não** emite `turn_closed` — ele se anuncia pelo `resolution_updated` liquidado e pelo
-`turn_opened` do próximo.)
+**Disparado por:** [`close_turn`](#close_turn), [`open_next_action`](#open_next_action) e
+[`pull_action`](#pull_action) — os **três** verbos que fecham um turno.
+
+> **O fechamento implícito emite igual ao explícito.** `open_next_action` e `pull_action`
+> fecham o turno aberto a caminho de abrir o próximo, e esse fechamento sai com o mesmo
+> `turn_closed`, no mesmo ponto da sequência: depois das fugas e da persistência, **antes**
+> do [`turn_opened`](#turn_opened) do turno seguinte. A mesa tem que ver o turno acabar
+> antes de ver o próximo começar — qual verbo o mestre usou não muda o que a mesa ouve.
+
+> ⚠️ **A ordem contra `resolution_updated` não é promessa.** `turn_closed` é enfileirado
+> antes da resolução liquidada — é a ordem que `close_turn` sempre praticou e que os outros
+> dois agora seguem — mas os dois viajam por caminhos diferentes (`turn_closed` pelo
+> broadcast da sala, `resolution_updated` direto na fila de cada cliente), então a ordem de
+> **chegada** entre esses dois pode inverter. Só a ordem `turn_closed` → `turn_opened`, que
+> compartilham o mesmo caminho, é garantida.
+
+### `character_hp_changed`
+
+**Direção:** servidor → cliente. **Destino:** **projetado** — o **mestre** e o **dono da
+ficha** que mudou, e mais ninguém.
+
+```json
+{
+  "type": "character_hp_changed",
+  "payload": {
+    "characterId": "22222222-2222-4222-8222-222222222222",
+    "hp": 84,
+    "maxHp": 100,
+    "damage": 16
+  }
+}
+```
+
+| Campo | O que é |
+|---|---|
+| `characterId` | UUID da ficha — o mesmo ID que a peça do tabuleiro e `bars_updated.characters[].characterId` carregam. |
+| `hp` | O valor que a ficha tem **agora**, já aplicado e já persistido. |
+| `maxHp` | O máximo da mesma barra de vida, para o cliente desenhar a barra sem um round trip REST. |
+| `damage` | O quanto acabou de sair. É o que deixa uma linha de histórico dizer "−16" sem diffar dois snapshots. |
+
+**É o número APLICADO, não a projeção.** `resolution_updated` carrega o ensaio
+(`projectedDamage`) enquanto o turno está aberto; só o fechamento escreve na ficha. Quem
+desenha a barra de vida escuta esta mensagem, não aquela.
+
+**Por que mensagem própria, e não um campo de `resolution_updated`:** HP também vai se mexer
+por **cura** e por **veneno**, e nenhum desses caminhos resolve turno nenhum. Um campo na
+resolução teria que ser duplicado no instante em que o primeiro deles chegasse. O que esta
+mensagem diz é "a barra mexeu", não "um turno calculou alguma coisa" — quando a cura e o
+veneno existirem, eles emitem **esta** mensagem, com o mesmo formato.
+
+**Por que projetado:** o HP exato de terceiro não é estado de mesa. A mesa fica sabendo que
+alguém se machucou pela narração e pelo `resolution_updated` liquidado (que já é projetado,
+§6), não por um número. É o mesmo eixo mestre/dono que `resolution_updated` aplica — não há
+um segundo mecanismo.
+
+**NPC não tem dono**, então o mestre recebe uma cópia só. Um jogador comum não é avisado do
+HP de NPC nenhum por aqui — nem precisaria: ele não consegue nem buscar a ficha por REST
+(ver a nota de permissão em [`npc_added`](#npc_added)).
+
+**Uma mensagem por personagem que levou dano.** Um golpe em área fecha o turno com vários
+alvos e sai um `character_hp_changed` para cada um — para o mestre todos, para cada jogador
+só o(s) dele(s).
+
+**Disparado por:** [`close_turn`](#close_turn), [`open_next_action`](#open_next_action) e
+[`pull_action`](#pull_action) — os **três** verbos que fecham um turno, exatamente como
+[`turn_closed`](#turn_closed). Sai **depois** da persistência (ninguém recebe um número que o
+banco ainda não tem) e **antes** do `turn_closed` do mesmo fechamento.
+
+> ⚠️ **Não sai quando o dano é zero.** Só o que foi de fato escrito na ficha vira mensagem:
+> um ataque esquivado, ou aparado até sobrar nada, fecha o turno sem nenhum
+> `character_hp_changed`. Quem quiser saber que houve um ataque que não machucou lê o
+> `resolution_updated` liquidado.
 
 ### `round_closed`
 
@@ -997,6 +1182,57 @@ mundo precisa saber se as barras estão correndo.
 ```
 
 **Disparado por:** `enqueue_master_action` no caminho 3 (sem `interact`).
+
+### `npc_added`
+
+**Direção:** servidor → cliente. **Destino:** mesa inteira, em broadcast.
+
+```json
+{
+  "type": "npc_added",
+  "payload": { "characterId": "44444444-4444-4444-8444-444444444444" }
+}
+```
+
+Só o `characterId`. É o ack do MESTRE e o sinal para ELE (re)buscar a ficha por REST — a
+mesma forma de [`scene_changed`](#scene_changed) e
+[`master_action_enqueued`](#master_action_enqueued): o evento anuncia que algo mudou, não
+carrega a coisa que mudou.
+
+⚠️ **Só o mestre consegue buscar essa ficha.** `GetCharacterSheetUC.GetCharacterSheet`
+(`internal/application/character_sheet/get_character_sheet.go:64-119`) só devolve uma ficha
+para o `master_uuid` dela, para o `player_uuid` dela, ou para o mestre da campanha — nessa
+ordem de checagem. Uma ficha de NPC tem `player_uuid == null`, então um jogador comum que
+tentar buscá-la (`GET /charactersheets/{uuid}`) cai em `auth.ErrInsufficientPermissions`
+(403), a menos que por acaso seja o mestre da campanha. `npc_added` é broadcast para a mesa
+inteira, mas o (re)fetch por REST que ele sugere só faz sentido para quem tem permissão de
+lê-la: o mestre. **Os demais jogadores aprendem que o NPC existe pelo `bars_updated.characters`
+que segue** (que já traz `characterId`, saldo e velocidades) **e pela peça que aparece no
+tabuleiro** — não pela ficha completa, que não é deles para ver. Não é uma lacuna deste
+contrato: é a mesma regra de visibilidade de ficha que já vale fora do combate.
+
+Não vaza nada novo além disso: `bars_updated.characters` já lista todo personagem em combate,
+NPC incluído.
+
+**Com sessão viva, um `bars_updated` com `seq` maior sai junto — em QUALQUER ordem em relação
+a este.** Não sai um `match_full_state`: o único estado de combate que muda ao pôr um NPC é o
+conjunto de personagens nas barras, e `match_full_state.bars.seq` repete o `seq` CORRENTE por
+contrato (ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), abaixo) —
+reenviá-lo aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado
+por cima e apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa
+que mexe nas barras", e é o único que incrementa `seq`. ⚠️ **A ordem de chegada entre
+`npc_added` e esse `bars_updated` não é garantida:** cada um sai de uma goroutine própria
+(`go func() { r.broadcast <- data }()`, tanto no braço `add_npc` de `room.go` quanto dentro de
+`broadcastBars`), disparadas em sequência no código mas entregues ao canal de broadcast sem
+ordem relativa assegurada. O front não pode assumir que `npc_added` sempre chega primeiro —
+`bars_updated.characters` já é suficiente para desenhar o NPC nas barras, com ou sem o
+`npc_added` correspondente já visto.
+
+**Sem sessão viva (lobby), não há `bars_updated` nenhum atrás** — não existem barras para
+publicar. `npc_added` ainda sai, como confirmação de que o roster no banco mudou; o NPC só
+entra em combate quando a sala nascer (ver [`add_npc`](#add_npc)).
+
+**Disparado por:** [`add_npc`](#add_npc) aceito — com sessão viva ou não.
 
 ### `match_full_state`
 
@@ -1116,11 +1352,23 @@ quem enviou).
 O dono do personagem movido recebe, além disso, um `map_full_state` atualizado — a linha de
 visão dele mudou, mesmo quando quem moveu a peça não foi ele (o mestre arrastando a peça de
 um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas do código:
-o dono é resolvido a partir do **personagem** (`characterId` → jogador), então uma peça de NPC
-ou uma peça cujo `characterId` não está na partida não tem dono e ninguém recebe esse extra;
-o dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num polígono
-velho); e se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima
-sai do mesmo jeito.
+
+- **A peça de um NPC é tratada como sem dono, de propósito (Decisão 7).** O dono é resolvido
+  a partir do **personagem** (`characterId` → jogador, via `charToPlayer`), e uma ficha de NPC
+  TEM dono nesse mapa — o mestre (§2). Mas a visão do mestre não tem fog: ele enxerga o
+  tabuleiro inteiro, e `buildMapFullState` já descarta os polígonos quando quem pede é o
+  mestre. Recomputar linha de visão, criar uma `PlayerMemory` que ninguém lê e reenviar o
+  tabuleiro inteiro a cada arrasto de NPC não mudaria nada que o mestre veja — então
+  `relayPieceMove` zera o dono quando ele é o mestre e pula os três: recompute, `PlayerMemory`
+  e o `map_full_state` extra. O mestre continua recebendo o `piece_moved` normal pelo ramo
+  `isMaster` do despacho (ou nenhum eco, se foi ele quem arrastou — o navegador dele já
+  aplicou). Vale para os três caminhos que passam por `relayPieceMove`: arrasto do cliente,
+  o movimento de uma ação de turno e a fuga de reação. Uma peça cujo `characterId` não está
+  na partida também não tem dono, e ninguém recebe o extra.
+- O dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num
+  polígono velho).
+- Se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima sai do
+  mesmo jeito.
 
 **Disparado por** três momentos, e é o **mesmo** `applyMove` nos três:
 
@@ -1132,10 +1380,18 @@ sai do mesmo jeito.
 
 As regras completas do lado da reação — de onde vem a CD, qual categoria decide quando, e o
 que significa falhar — estão em [`open_reaction`](#open_reaction) e em
-[`close_turn`](#close_turn). Um movimento de **ação** que dependesse de teste (um salto, um
-aperto, um pouso em slot ocupado) continua **sem caso alcançável**: `move.category` só aceita
-`Dash` e `Shift`, e as outras cinco são recusadas no mapeamento — então não existe código para
+[`close_turn`](#close_turn). Um movimento de **ação** que dependesse de teste **pela
+categoria** — um salto, um aperto — continua **sem caso alcançável**: `move.category` só aceita
+`Dash` e `Shift`, e as outras cinco são recusadas no mapeamento, então não existe código para
 esse ramo.
+
+**O pouso em slot ocupado não entra nessa lista**, e antes entrava: um `Dash` para um slot onde
+já há peça é **aceito** hoje, e o que acontece é a peça ir para lá e **empilhar**. Nada valida
+ocupação em nenhum dos três momentos. Isso é a mesma classe da colisão com parede, logo abaixo:
+não é validação esquecida, é a regra que ainda não foi escrita — compartilhar o slot, ser
+bloqueado antes de entrar, ou empurrar quem está lá são desfechos possíveis, e nenhum foi
+escolhido. O front **não deve** tratar o empilhamento como bug a reportar, e também não deve
+inventar a regra do seu lado: quem desenhar a colisão decide os dois casos juntos.
 
 Um ator **sem peça no tabuleiro** não é erro, em nenhum dos três momentos: não há o que mover,
 nada é emitido e nenhuma mensagem de erro sai. O turno (ou a reação) abre normalmente.
@@ -1272,10 +1528,13 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `invalid_message` | `"malformed JSON"` — o envelope não parseou. | Qualquer mensagem. |
 | `unknown_type` | `"unrecognized message type"` | `type` fora do catálogo. |
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
-| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`. |
-| `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida. |
+| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
+| `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
+| `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`. |
+| `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`. |
+| `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
 
 **`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou.
@@ -1296,7 +1555,7 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │                               │                    │
     │                            │◄──── open_next_action ────────┤                    │
     │                            │         (ou pull_action {actionId})                │
-    │◄────────────── turn_opened {turnId, actorId} (mesa) ──────►│◄──────────────────►│
+    │◄──── turn_opened {turnId, actorId, actionId} (mesa) ──────►│◄──────────────────►│
     │                            ├──── resolution_updated ──────►│                    │
     │                            │     isSettled:false (MASTER-ONLY)                  │
     │                            │                               │                    │
@@ -1331,10 +1590,11 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │◄─────────────── bars_updated (mesa) ──────────────────────►│◄──────────────────►│
 ```
 
-**O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** o turno fecha
-igual (com persistência, `resolution_updated` liquidado e o `piece_moved` das fugas de `Dash`
-que passaram), mas **não sai `turn_closed`** — o próximo `turn_opened` é o que anuncia a
-virada. E se nada pendente ainda puder pagar, sai
+**O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** nada no
+fechamento — persistência, `turn_closed`, `resolution_updated` liquidado e o `piece_moved`
+das fugas de `Dash` que passaram saem igual, e o `turn_closed` do turno que acabou vem
+**antes** do `turn_opened` do próximo. O que muda é o que vem depois: se nada pendente ainda
+puder pagar, sai
 [`round_closed`](#round_closed) e nenhum turno novo abre.
 
 ## 9. O que este contrato ainda não entrega
@@ -1346,12 +1606,11 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 |---|---|
 | **`turn_opened` não carrega `targetId`** | Um jogador não tem como saber, pelo wire, que foi alvo — só pelo `resolution_updated` liquidado (tarde demais para reagir) ou pela narração. A janela de `attach_reaction` depende de canal humano hoje. |
 | **`turn_opened.actionType` é sempre `""`** | Não ramifique por ele. |
-| **Não existe evento de HP de personagem** | O dano é persistido em `character_sheets` no fechamento do turno; a sidebar lê por REST. O caminho ao vivo é trabalho da Fase 6. |
 | **A corrente de testes de `skills` não é executada** | `skills[].difficulty` é aceito e persistido, mas nenhuma margem atravessa de um teste para o próximo. A edição de perícias muda uma lista que ainda não decide nada. |
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
 | **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
-| **NPC não age** | Ver §2. |
+| **Remoção de NPC ao vivo não existe** | Tirar um NPC de uma sessão VIVA esbarra em ação dele na fila, turno aberto com ele como ator/alvo, reação pendente — regras que ninguém decidiu ainda. O REST `DELETE /matches/{uuid}/npcs/{sheet_uuid}` (ver [`match-npcs.md`](match-npcs.md)) continua funcionando, mas só vale para a próxima vez que a sala nascer: uma partida em andamento não some com o NPC removido, e não existe verbo de WS equivalente a `add_npc` no sentido contrário. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
 | **Colisão contra parede ainda não foi desenhada** | Não é omissão de validação: ainda não existe a regra que decide o que acontece quando um personagem colide com uma parede — compartilhar o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Até essa regra existir, o comportamento observável é a peça atravessando: a única checagem existente (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado, na abertura do turno ou da reação. Vale para os TRÊS momentos que deslocam peça — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa por essa checagem, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. O front não deve tratar isso como bug a reportar — é regra de jogo que falta ser escrita. |

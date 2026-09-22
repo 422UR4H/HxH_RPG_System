@@ -128,6 +128,7 @@ func newAreaFixture(t *testing.T, faces []int) *areaFixture {
 		&mockEnqueueMasterActionUCHandler{},
 		appmatch.NewChangeRoundModeUC(),
 		appmatch.NewEditActionUC(),
+		nil,
 	)
 
 	mux := http.NewServeMux()

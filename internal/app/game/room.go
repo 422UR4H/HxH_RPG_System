@@ -79,6 +79,8 @@ type IEnqueueMasterAction interface {
 
 type IEditAction = appmatch.IEditAction
 
+type IAddLiveNPC = appmatch.IAddLiveNPC
+
 type Room struct {
 	matchUUID  uuid.UUID
 	masterUUID uuid.UUID
@@ -116,6 +118,7 @@ type Room struct {
 	enqueueMasterActionUC IEnqueueMasterAction
 	changeRoundModeUC     appmatch.IChangeRoundMode
 	editActionUC          IEditAction
+	addLiveNPCUC          IAddLiveNPC
 }
 
 func NewRoom(
@@ -134,6 +137,7 @@ func NewRoom(
 	enqueueMasterActionUC IEnqueueMasterAction,
 	changeRoundModeUC appmatch.IChangeRoundMode,
 	editActionUC IEditAction,
+	addLiveNPCUC IAddLiveNPC,
 ) *Room {
 	return &Room{
 		matchUUID:             matchUUID,
@@ -161,6 +165,7 @@ func NewRoom(
 		enqueueMasterActionUC: enqueueMasterActionUC,
 		changeRoundModeUC:     changeRoundModeUC,
 		editActionUC:          editActionUC,
+		addLiveNPCUC:          addLiveNPCUC,
 	}
 }
 
@@ -531,6 +536,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The HP the close applied, to the master and to each damaged sheet's owner.
+				// After the write, so nobody is told a number the database does not hold yet,
+				// and before turn_closed: this goes straight into each client's queue while
+				// turn_closed travels through r.broadcast, so sending it first is what keeps
+				// "the bar moved" from landing after "the turn ended".
+				r.broadcastHpChanges(result.Damaged)
+				// The implicit close is announced exactly like the explicit one, in the same
+				// place in the sequence close_turn puts it: after the escapes and the write,
+				// before the settled resolution, and above all before the announceOpenedTurn
+				// below — the table has to see this turn end before the next one begins.
+				r.broadcastTurnClosed(closedTurn.GetID())
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
@@ -644,6 +660,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The HP the close applied, to the master and to each damaged sheet's owner.
+				// After the write, so nobody is told a number the database does not hold yet,
+				// and before turn_closed: this goes straight into each client's queue while
+				// turn_closed travels through r.broadcast, so sending it first is what keeps
+				// "the bar moved" from landing after "the turn ended".
+				r.broadcastHpChanges(result.Damaged)
+				// The implicit close is announced exactly like the explicit one, in the same
+				// place in the sequence close_turn puts it: after the escapes and the write,
+				// before the settled resolution, and above all before the announceOpenedTurn
+				// below — the table has to see this turn end before the next one begins.
+				r.broadcastTurnClosed(closedTurn.GetID())
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
@@ -933,9 +960,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.applyClosedEscapes(closedTurn, result.Resolution)
 		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
-		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
+		// Same place in the sequence the two implicit closes put it: after the write, before
+		// turn_closed. See the comment there for why the order matters.
+		r.broadcastHpChanges(result.Damaged)
+		r.broadcastTurnClosed(closedTurn.GetID())
 		r.publishResolution(closedTurn.GetID(), result.Resolution)
 		r.broadcastBars(session)
 
@@ -949,32 +977,57 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_scene payload"))
 			return
 		}
-		r.mu.RLock()
-		session := r.session
-		if session == nil {
-			r.mu.RUnlock()
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
-			return
-		}
-		// Capture persisted flag BEFORE ChangeScene resets it
-		sceneWasPersisted := session.IsScenePersisted()
-		r.mu.RUnlock()
-
 		// Validated against the enum's exact values (same pattern as skill/weapon names),
 		// not just cast and stored: an unrecognized category used to sail through as a
 		// string matching neither "battle" nor "roleplay", and would come back out that
 		// way in scene_changed and match_full_state for every client to trip on.
+		//
+		// Before the lock on purpose: it reads nothing of the session, and validating under
+		// the write lock would hold the whole room for a pure string check.
 		category, err := enum.SceneCategoryFrom(payload.Category)
 		if err != nil {
 			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
 			return
 		}
 
-		oldScene, oldRound, err := r.changeSceneUC.Execute(
-			context.Background(), session,
-			r.masterUUID, client.userUUID,
-			category, payload.BriefInitialDescription,
-		)
+		// The write lock is held ACROSS Execute, the same way open_next_action holds it and
+		// for the same reason: ChangeScene closes the active scene and round and installs new
+		// ones, and MatchSession has no lock of its own. This arm used to release the lock
+		// before Execute and mutate the session unguarded — a real race against every reader
+		// (buildMatchFullState serving a client that connects at that instant is the one the
+		// race detector catches). The scene_changed payload is built in the SAME critical
+		// section, because reading the new scene's fields after the unlock is the same race
+		// one step later.
+		r.mu.Lock()
+		session := r.session
+		var sceneWasPersisted bool
+		var oldScene *sceneentity.Scene
+		var oldRound *roundentity.Round
+		var scenePayload SceneChangedPayload
+		if session != nil {
+			// Captured BEFORE ChangeScene resets it.
+			sceneWasPersisted = session.IsScenePersisted()
+			oldScene, oldRound, err = r.changeSceneUC.Execute(
+				context.Background(), session,
+				r.masterUUID, client.userUUID,
+				category, payload.BriefInitialDescription,
+			)
+			if err == nil {
+				if activeScene := session.GetActiveScene(); activeScene != nil {
+					scenePayload = SceneChangedPayload{
+						SceneID:                 activeScene.GetID(),
+						Category:                string(activeScene.GetCategory()),
+						BriefInitialDescription: activeScene.BriefInitialDescription,
+					}
+				}
+			}
+		}
+		r.mu.Unlock()
+
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -989,15 +1042,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 		}
 
-		r.mu.RLock()
-		activeScene := session.GetActiveScene()
-		r.mu.RUnlock()
-
-		out := NewServerMessage(MsgTypeSceneChanged, SceneChangedPayload{
-			SceneID:                 activeScene.GetID(),
-			Category:                string(activeScene.GetCategory()),
-			BriefInitialDescription: activeScene.BriefInitialDescription,
-		})
+		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 
@@ -1134,8 +1179,177 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 
+	case MsgTypeAddNPC:
+		// Puts an NPC into the match mid-game. It lives ALONGSIDE the REST POST /npcs, it does
+		// not replace it: REST builds the roster before there is a room, this verb is for the
+		// middle of one. It does not call the REST either — it runs the very same AddMatchNPCUC
+		// (same guards, same match_participants write) and then injects the sheet into the live
+		// session, so the database and the memory cannot drift apart over a second step the
+		// front might forget.
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload AddNPCPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil || payload.CharacterSheetUUID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid add_npc payload"))
+			return
+		}
+		// DB I/O, so no r.mu here. The use case already swallows ErrNPCAlreadyInMatch: every
+		// guard runs BEFORE the INSERT that reports the duplicate, so "already in the database"
+		// means "passed everything, only the session is behind" — exactly the NPC the master
+		// added over REST mid-match. Re-sending add_npc is how the session catches up; the
+		// duplicate this verb does refuse is the SESSION's, below.
+		sheetUUID := payload.CharacterSheetUUID
+		sheet, err := r.addLiveNPCUC.Execute(context.Background(), &appmatch.AddMatchNPCInput{
+			RequesterUUID: client.userUUID,
+			MatchUUID:     r.matchUUID,
+			SheetUUID:     sheetUUID,
+		})
+		if err != nil {
+			code := "game_error"
+			switch {
+			case errors.Is(err, appmatch.ErrNotMatchMaster):
+				code = "forbidden"
+			case errors.Is(err, appmatch.ErrMatchNotFound),
+				errors.Is(err, appmatch.ErrCharacterSheetNotFound):
+				code = "not_found"
+			case errors.Is(err, appmatch.ErrSheetNotNPC),
+				errors.Is(err, appmatch.ErrSheetNotOwnedByMaster),
+				errors.Is(err, appmatch.ErrMatchAlreadyFinished):
+				code = "invalid_npc"
+			}
+			client.SendMessage(NewErrorMessage(code, err.Error()))
+			return
+		}
+		// Write lock: AddNPC writes the session's sheets, statuses and charToPlayer. With no
+		// session (the lobby) there is nothing live to inject into — the row just written is
+		// what InitMatchSessionUC will load when the match starts.
+		r.mu.Lock()
+		session := r.session
+		var addErr error
+		if session != nil {
+			addErr = session.AddNPC(sheetUUID, sheet, r.masterUUID)
+		}
+		r.mu.Unlock()
+		if errors.Is(addErr, matchsession.ErrCharacterAlreadyInSession) {
+			client.SendMessage(NewErrorMessage("npc_already_in_match", addErr.Error()))
+			return
+		}
+		if addErr != nil {
+			client.SendMessage(NewErrorMessage("game_error", addErr.Error()))
+			return
+		}
+		// npc_added is the master's ack and the table's cue to fetch the sheet over REST — the
+		// same shape as scene_changed. The combat state that changed is only the set of
+		// characters on the bars, so bars_updated carries it, NOT match_full_state: broadcastBars
+		// bumps seq, while match_full_state repeats the CURRENT seq by contract, and a delayed
+		// bars_updated of that same seq, without the NPC, would be applied over it and wipe the
+		// NPC off the screen. match_full_state stays what its name says: the snapshot of whoever
+		// connects.
+		out := NewServerMessage(MsgTypeNPCAdded, NPCAddedPayload{CharacterID: sheetUUID})
+		data, _ := json.Marshal(out)
+		go func() { r.broadcast <- data }()
+		if session != nil {
+			r.broadcastBars(session)
+		}
+
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
+	}
+}
+
+// broadcastTurnClosed tells the table a turn ended. Three verbs close one: close_turn says so
+// outright, and open_next_action and pull_action close the open turn on their way through.
+// All three reach here, because which verb the master happened to use must not change what
+// the table is told — the implicit close used to be silent, and an event list that shows
+// turns beginning and never ending is the front's problem to reconcile, not the back's to
+// create.
+//
+// The send is SYNCHRONOUS, unlike the `go func` its neighbours use, and that is the point:
+// the turn_opened of the next turn travels the same channel, and two detached goroutines
+// racing to it would put the next turn's opening ahead of this turn's ending about half the
+// time. Queueing here first orders the two for good. It cannot deadlock the room: this runs
+// on the client's read pump, never on Run's goroutine (the chat arm sends the same way), and
+// r.mu is already released by every caller.
+//
+// Ordering against resolution_updated is the one close_turn has always practised: turn_closed
+// is queued first, then the settled resolution goes out. The two travel different lanes —
+// this one through r.broadcast, the resolution straight into each client's queue — so the
+// order they ARRIVE in is not a promise; the contract says as much.
+func (r *Room) broadcastTurnClosed(turnID uuid.UUID) {
+	out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: turnID})
+	data, _ := json.Marshal(out)
+	r.broadcast <- data
+}
+
+// broadcastHpChanges tells the master and each damaged character's owner what the close just
+// wrote to their sheet. The same three verbs that close a turn reach here, for the reason
+// broadcastTurnClosed gives: which verb the master used must not change what anyone is told.
+//
+// It is called from the CLOSING path and not from turn_closed itself because damage is what
+// the close APPLIED, and the applied numbers live in the *Result the arm already holds —
+// turn_closed carries an id and nothing else. Healing and poison will move HP without any
+// turn closing at all; when they do, they call this same helper with their own list.
+//
+// PROJECTED, not broadcast, via dispatchPerPlayer — the mechanism the fog and the settled
+// resolution_updated already use. Do not grow a second one. The owner comes out of
+// charToPlayer; an NPC has no entry there, so the master is the only recipient.
+//
+// Reading the maximum off the live sheet is session state, so it happens under r.mu — and
+// ONLY the reading does. The payloads are finished before the lock is released and every
+// send happens after it, because dispatchPerPlayer takes r.mu itself.
+func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
+	if len(damaged) == 0 {
+		return
+	}
+
+	type projected struct {
+		payload CharacterHpChangedPayload
+		owner   uuid.UUID
+	}
+
+	r.mu.RLock()
+	charToPlayer := map[string]uuid.UUID{}
+	if r.session != nil {
+		charToPlayer = r.session.GetCharToPlayer()
+	}
+	changes := make([]projected, 0, len(damaged))
+	for _, d := range damaged {
+		if d.Sheet == nil {
+			continue
+		}
+		// The maximum comes off the SAME bar NewHP came off — a maximum read anywhere else
+		// could disagree with the current value in the very payload that carries both.
+		bar, ok := d.Sheet.GetAllStatusBar()[enum.Health]
+		if !ok {
+			continue
+		}
+		changes = append(changes, projected{
+			payload: CharacterHpChangedPayload{
+				CharacterID: d.CharacterID,
+				HP:          d.NewHP,
+				MaxHP:       bar.GetMax(),
+				Damage:      d.Damage,
+			},
+			// An NPC IS in charToPlayer — it maps to the MASTER (indexParticipants, and
+			// AddNPC for one that joined live), so owner is the master and the two arms
+			// below name the same person. dispatchPerPlayer visits each client once, so the
+			// master still gets exactly one copy. A character in no map at all reads as
+			// uuid.Nil, which is nobody's player ID: the owner arm never matches it.
+			owner: charToPlayer[d.CharacterID.String()],
+		})
+	}
+	r.mu.RUnlock()
+
+	for _, c := range changes {
+		r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
+			if !isMaster && playerID != c.owner {
+				return nil
+			}
+			msg := NewServerMessage(MsgTypeCharacterHpChanged, c.payload)
+			return &msg
+		})
 	}
 }
 
@@ -1154,10 +1368,16 @@ func (r *Room) announceOpenedTurn(
 ) {
 	r.applyOpenedMove(opened)
 
+	// GetAction returns a COPY, so it goes into a variable before any getter with a pointer
+	// receiver is called on it — the same shape persistClosedTurn already uses.
 	act := opened.GetAction()
 	out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 		TurnID:  opened.GetID(),
 		ActorID: act.GetActorID(),
+		// The id the enqueuer got back in action_enqueued and the master got in action_queued.
+		// Without it, two queued actions of the same character produce two turn_openeds a
+		// client cannot tell apart — actorId is the same in both.
+		ActionID: act.GetID(),
 	})
 	data, _ := json.Marshal(out)
 	go func() { r.broadcast <- data }()
@@ -1861,9 +2081,10 @@ func computeLobbyMapState(allWalls []mapentity.WallSegment, pieceProj []domainse
 // which is how a client tells the two apart if it ever needs to.
 //
 // The owner is not a parameter: it comes from payload.CharacterID through GetCharToPlayer().
-// Whoever owns the moved character gets a fresh map_full_state, because their line of sight
-// just changed — and that holds even when the mover is someone else (the master dragging a
-// player's piece, or the engine applying a resolved move).
+// The PLAYER who owns the moved character gets a fresh map_full_state, because their line of
+// sight just changed — and that holds even when the mover is someone else (the master dragging
+// a player's piece, or the engine applying a resolved move). An NPC's owner is the master,
+// whose view has no fog, so an NPC's move refreshes nobody (see relayPieceMove).
 //
 // The caller must NOT hold r.mu — this takes it, and so do gridShape, visibilityFor,
 // dispatchPerPlayer and buildMapFullState. The short lock/unlock blocks here and in
@@ -1915,6 +2136,17 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 		owner = sess.GetCharToPlayer()[payload.CharacterID]
 	}
 	r.mu.RUnlock()
+	// An NPC is "owned" by the master in charToPlayer, but the master's view has no fog: they
+	// see the board unfiltered, and buildMapFullState drops the polygons for isMaster anyway.
+	// Treating the master as an owner cost a recompute of (NPCs × walls) under the WRITE lock,
+	// a PlayerMemory nobody ever reads, and the whole board resent to the master on every drag.
+	// So the master owns nothing here: the recompute, the memory and the extra map_full_state
+	// are all skipped. The master still hears about the move through the isMaster branch of
+	// the dispatch below — or gets no echo, when the master is the one who dragged it. This
+	// holds for all three paths through here: a client drag, a turn's move, a reaction escape.
+	if owner == r.masterUUID {
+		owner = uuid.Nil
+	}
 
 	// The owner's line of sight is recomputed BEFORE the dispatch below, not after it.
 	//

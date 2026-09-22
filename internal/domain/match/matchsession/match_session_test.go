@@ -2181,3 +2181,145 @@ func TestMatchSession_AttachReaction_MasterReactsThroughNPC(t *testing.T) {
 		}
 	})
 }
+
+// TestMatchSession_AddNPC covers the in-memory half of putting a master-controlled character
+// into a LIVE session — the live equivalent of what indexParticipants does for an NPC row at
+// construction (see TestNewMatchSession_HoldsNPCs). Task 1 of the live-NPC slice; the use case
+// and the WS verb that call this under the room's write lock are separate tasks.
+func TestMatchSession_AddNPC(t *testing.T) {
+	t.Run("puts the NPC in the session, mapped to its master, outside PlayerIDs", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		npcSheetUUID := uuid.New()
+		masterUUID := uuid.New()
+		npcSheet := buildPlainSheet(t)
+
+		if err := s.AddNPC(npcSheetUUID, npcSheet, masterUUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, err := s.GetCharSheet(npcSheetUUID)
+		if err != nil {
+			t.Fatalf("GetCharSheet: %v", err)
+		}
+		if got != npcSheet {
+			t.Error("expected the same sheet pointer")
+		}
+		if _, err := s.GetCharacterStatus(npcSheetUUID); err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+		if !slices.Contains(s.CharacterIDs(), npcSheetUUID) {
+			t.Error("expected CharacterIDs to contain the NPC")
+		}
+		if got := s.GetCharToPlayer()[npcSheetUUID.String()]; got != masterUUID {
+			t.Errorf("expected charToPlayer[%s] = %s, got %s", npcSheetUUID, masterUUID, got)
+		}
+		if slices.Contains(s.PlayerIDs(), masterUUID) {
+			t.Error("expected PlayerIDs to not contain the master — the NPC has no player")
+		}
+	})
+
+	t.Run("a character already in the session cannot be added again", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		npcSheetUUID := uuid.New()
+		masterUUID := uuid.New()
+		if err := s.AddNPC(npcSheetUUID, buildPlainSheet(t), masterUUID); err != nil {
+			t.Fatalf("unexpected error on first AddNPC: %v", err)
+		}
+		originalStatus, err := s.GetCharacterStatus(npcSheetUUID)
+		if err != nil {
+			t.Fatalf("GetCharacterStatus: %v", err)
+		}
+
+		err = s.AddNPC(npcSheetUUID, buildPlainSheet(t), uuid.New())
+		if !errors.Is(err, matchsession.ErrCharacterAlreadyInSession) {
+			t.Errorf("expected ErrCharacterAlreadyInSession, got %v", err)
+		}
+
+		// Nothing was reset: the original status is the SAME pointer, not a fresh one.
+		again, err := s.GetCharacterStatus(npcSheetUUID)
+		if err != nil {
+			t.Fatalf("GetCharacterStatus after rejected re-add: %v", err)
+		}
+		if again != originalStatus {
+			t.Error("expected the original CharacterStatus pointer to survive a rejected re-add")
+		}
+	})
+
+	t.Run("charToPlayer is copy-on-write: an earlier snapshot never sees the new entry", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		before := s.GetCharToPlayer()
+		beforeLen := len(before)
+
+		npcSheetUUID := uuid.New()
+		if err := s.AddNPC(npcSheetUUID, buildPlainSheet(t), uuid.New()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(before) != beforeLen {
+			t.Errorf("expected the earlier snapshot's len to stay %d, got %d — charToPlayer was mutated in place",
+				beforeLen, len(before))
+		}
+		if _, ok := before[npcSheetUUID.String()]; ok {
+			t.Error("expected the earlier snapshot to not contain the new entry — charToPlayer was mutated in place")
+		}
+	})
+
+	t.Run("invalid input is rejected and writes nothing", func(t *testing.T) {
+		validSheetUUID := uuid.New()
+		validMaster := uuid.New()
+		validSheet := buildPlainSheet(t)
+
+		cases := []struct {
+			name       string
+			sheetUUID  uuid.UUID
+			sheet      *csSheet.CharacterSheet
+			masterUUID uuid.UUID
+		}{
+			{"Nil sheetUUID", uuid.Nil, validSheet, validMaster},
+			{"nil sheet", validSheetUUID, nil, validMaster},
+			{"Nil masterUUID", validSheetUUID, validSheet, uuid.Nil},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+				before := s.GetCharToPlayer()
+				beforeLen := len(before)
+
+				err := s.AddNPC(c.sheetUUID, c.sheet, c.masterUUID)
+				if err == nil {
+					t.Fatal("expected an error, got nil")
+				}
+				if len(s.CharacterIDs()) != 0 {
+					t.Error("expected nothing written to statuses")
+				}
+				if len(s.GetCharToPlayer()) != beforeLen {
+					t.Error("expected nothing written to charToPlayer")
+				}
+			})
+		}
+	})
+
+	t.Run("a live NPC can enqueue an action through its master", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		npcSheetUUID := uuid.New()
+		masterUUID := uuid.New()
+		if err := s.AddNPC(npcSheetUUID, buildPlainSheet(t), masterUUID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		a := makeAction(npcSheetUUID)
+		if err := s.EnqueueAction(masterUUID, a); err != nil {
+			t.Fatalf("EnqueueAction through a live NPC: %v", err)
+		}
+		found := false
+		for _, pending := range s.PendingActions() {
+			if pending == a {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected the master's action to be in PendingActions")
+		}
+	})
+}

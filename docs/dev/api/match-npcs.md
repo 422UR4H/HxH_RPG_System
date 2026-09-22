@@ -90,11 +90,23 @@ tirar um NPC de uma partida encerrada é inofensivo e recusar isso só atrapalha
 
 ## O que este endpoint não faz
 
-Uma partida **já em andamento** não vê o NPC na hora. A `MatchSession` — o estado vivo de
-combate, com `CharacterStatus`, barras e fog — mora na memória do processo do game server
-(`cmd/game`, :8081); estes dois endpoints REST rodam no `cmd/api` (:5000), um processo
-separado, sem pool nem memória compartilhada com o game server. O NPC só aparece quando a
-sala renasce — `Room.StartMatch` ou o caminho de rehidratação — e `InitMatchSessionUC`
-recarrega o roster de `match_participants` do zero, trazendo o NPC junto com seu
-`CharacterStatus` e as duas barras. Propagar o NPC para uma sala já viva, ao vivo, é fatia
-futura: um verbo de WS no game server.
+Este POST sozinho não coloca o NPC numa partida **já em andamento**. A `MatchSession` — o
+estado vivo de combate, com `CharacterStatus`, barras e fog — mora na memória do processo do
+game server (`cmd/game`, :8081); este endpoint REST roda no `cmd/api` (:5000), um processo
+separado, sem pool nem memória compartilhada com o game server. Sozinho, o POST só grava
+`match_participants`; o NPC entra na sessão viva quando a sala renasce — `Room.StartMatch` ou
+o caminho de rehidratação — e `InitMatchSessionUC` recarrega o roster do zero, trazendo o NPC
+junto com seu `CharacterStatus` e as duas barras.
+
+**O caminho para o meio da partida é o verbo de WS `add_npc`** (ver
+[`match-combat-ws.md`](match-combat-ws.md) §4), enviado pelo mestre direto ao game server.
+Ele roda o MESMO `AddMatchNPCUC` deste endpoint e, havendo sessão viva, injeta a ficha nela em
+seguida. Um NPC posto por este POST enquanto a partida já está em andamento fica só no banco
+até o mestre reenviar `add_npc` pelo WS: o verbo tolera a "duplicata" que o banco reportaria
+(o NPC já está em `match_participants`, `ErrNPCAlreadyInMatch`) e sincroniza a sessão mesmo
+assim — é assim que o REST-no-meio-da-partida se resolve.
+
+**Remoção continua só-na-próxima-sala.** O `DELETE` abaixo não tem par ao vivo: tirar um NPC
+de uma sessão em andamento esbarra em regras de combate ainda não decididas (ação dele na
+fila, turno aberto com ele como ator/alvo, reação pendente) e fica registrado como lacuna em
+[`match-combat-ws.md`](match-combat-ws.md) §9.
