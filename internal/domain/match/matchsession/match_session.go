@@ -127,8 +127,8 @@ func NewMatchSessionWithState(
 }
 
 // indexParticipants splits the roster along its two axes: every character gets a
-// combat status (NPCs included), and only player-owned characters get an
-// authorization entry and a fog bridge.
+// combat status (NPCs included), and only player-owned characters get a fog bridge.
+// NPCs get an authorization entry pointing at their master instead of a player.
 func indexParticipants(participants []*match.Participant) (
 	map[uuid.UUID]*match.Participant,
 	map[string]uuid.UUID,
@@ -143,7 +143,16 @@ func indexParticipants(participants []*match.Participant) (
 			statuses[p.Sheet.UUID] = match.NewCharacterStatus()
 		}
 		if p.Sheet.PlayerUUID == nil {
-			continue // NPC: no player to authorize, no per-player fog memory
+			// NPC: no player to authorize and no per-player fog memory, but the master
+			// plays it — charToPlayer is what EnqueueAction and AttachReaction check.
+			if p.Sheet.MasterUUID != nil && p.Sheet.UUID != uuid.Nil {
+				// Trusting MasterUUID as the actor is safe because the only writer of the NPC
+				// roster, AddMatchNPCUC, admits a sheet only when its master_uuid resolves to the
+				// match's own master (see the note on its campaign arm). Nobody outside the match
+				// can land here, so this never hands the table to someone nobody enrolled.
+				charToPlayer[p.Sheet.UUID.String()] = *p.Sheet.MasterUUID
+			}
+			continue
 		}
 		pMap[*p.Sheet.PlayerUUID] = p
 		if p.Sheet.UUID != uuid.Nil {
@@ -1057,11 +1066,17 @@ func (s *MatchSession) settleBars() {
 // per-CHARACTER one. charToPlayer is the bridge. a.actorID is the sheet UUID, so the
 // resolver can index the actor's sheet in the same map it indexes the target's.
 func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) error {
-	if _, ok := s.participants[playerUUID]; !ok {
-		return ErrParticipantNotFound
-	}
+	// Ownership via charToPlayer is checked FIRST and stands as proof of participation —
+	// exactly as AttachReaction already works. This is what lets the master act through an
+	// NPC: the master is never in participants (an NPC stays out of pMap on purpose, see
+	// indexParticipants), so a participants-first check would reject the master before this
+	// line ever ran. participants only comes in to tell an outsider (ErrParticipantNotFound)
+	// apart from an insider reaching for someone else's character (ErrActionActorMismatch).
 	owner, ok := s.charToPlayer[a.GetActorID().String()]
 	if !ok || owner != playerUUID {
+		if _, isParticipant := s.participants[playerUUID]; !isParticipant {
+			return ErrParticipantNotFound
+		}
 		return ErrActionActorMismatch
 	}
 	s.rollActionDice(a)

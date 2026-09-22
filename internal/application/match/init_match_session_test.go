@@ -2,6 +2,7 @@ package match_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -252,4 +253,82 @@ type mockSheetLoader struct {
 
 func (m *mockSheetLoader) GetCharacterSheetByUUID(_ context.Context, _ string) (*csSheet.CharacterSheet, bool, error) {
 	return m.sheet, m.wasCorrected, m.err
+}
+
+// TestInitMatchSessionUC_NPCRosterSurvivesRestart is the proof of done for this slice (D6):
+// cmd/api and cmd/game are separate processes with no shared memory, so a match already in
+// progress never sees an NPC the master just added — the room's live MatchSession is not
+// touched. What actually has to be true is narrower and does not depend on either process
+// being up: the NPC lands in match_participants, and the NEXT time a room is built —
+// Room.StartMatch or the rehydrate path — InitMatchSessionUC reads that row back and turns
+// it into a full participant: a CharacterStatus with both bars, and an entry in
+// charToPlayer authorizing the master to act through it. This test exercises exactly that
+// path, unmodified (G3), with a roster that mixes a player character and an NPC.
+func TestInitMatchSessionUC_NPCRosterSurvivesRestart(t *testing.T) {
+	matchUUID := uuid.New()
+	playerUUID := uuid.New()
+	masterUUID := uuid.New()
+	playerSheetUUID := uuid.New()
+	npcSheetUUID := uuid.New()
+	noop := &noopRoundRepo{}
+
+	repo := &mockMatchRepo{
+		participants: []*matchDomain.Participant{
+			{
+				UUID:      uuid.New(),
+				MatchUUID: matchUUID,
+				Sheet:     csEntity.Summary{UUID: playerSheetUUID, PlayerUUID: &playerUUID},
+			},
+			{
+				UUID:      uuid.New(),
+				MatchUUID: matchUUID,
+				// NPC: PlayerUUID nil, MasterUUID set — the master plays it.
+				Sheet: csEntity.Summary{UUID: npcSheetUUID, MasterUUID: &masterUUID},
+			},
+		},
+	}
+	loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, wasCorrected: false}
+
+	uc := match.NewInitMatchSessionUC(repo, loader, noop)
+	session, err := uc.Init(context.Background(), matchUUID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if session == nil {
+		t.Fatal("expected a non-nil session")
+	}
+
+	status, err := session.GetCharacterStatus(npcSheetUUID)
+	if err != nil {
+		t.Fatalf("expected a CharacterStatus for the NPC, got error: %v", err)
+	}
+	if status == nil {
+		t.Fatal("expected a non-nil CharacterStatus for the NPC")
+	}
+	// Both bars must be the fresh zero value NewCharacterStatus() builds — proving they
+	// exist as part of the status the NPC got, not just that the struct field is typed.
+	freshBar := matchDomain.ResourceBar{}
+	if !reflect.DeepEqual(status.ActionBar, freshBar) {
+		t.Errorf("expected a fresh ActionBar for the NPC, got %+v", status.ActionBar)
+	}
+	if !reflect.DeepEqual(status.MoveBar, freshBar) {
+		t.Errorf("expected a fresh MoveBar for the NPC, got %+v", status.MoveBar)
+	}
+
+	charToPlayer := session.GetCharToPlayer()
+	gotMaster, ok := charToPlayer[npcSheetUUID.String()]
+	if !ok {
+		t.Fatal("expected the NPC sheet UUID to be present in charToPlayer")
+	}
+	if gotMaster != masterUUID {
+		t.Errorf("expected the NPC to map to the master %v, got %v", masterUUID, gotMaster)
+	}
+
+	gotPlayer, ok := charToPlayer[playerSheetUUID.String()]
+	if !ok {
+		t.Fatal("expected the player character sheet UUID to be present in charToPlayer")
+	}
+	if gotPlayer != playerUUID {
+		t.Errorf("expected the player character to map to %v, got %v", playerUUID, gotPlayer)
+	}
 }

@@ -21,6 +21,8 @@ type Api struct {
 	ListMatchEnrollmentsHandler      Handler[ListMatchEnrollmentsRequest, ListMatchEnrollmentsResponse]
 	GetMatchParticipantsHandler      Handler[GetMatchParticipantsRequest, GetMatchParticipantsResponse]
 	GetMatchHistoryHandler           Handler[GetMatchHistoryRequest, GetMatchHistoryResponse]
+	AddMatchNPCHandler               Handler[AddMatchNPCRequest, AddMatchNPCResponse]
+	RemoveMatchNPCHandler            Handler[RemoveMatchNPCRequest, RemoveMatchNPCResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -146,4 +148,36 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 			http.StatusInternalServerError,
 		},
 	}, a.GetMatchHistoryHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/matches/{uuid}/npcs",
+		Description: "Put an NPC character sheet into a match (master only)",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+			http.StatusNotFound,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusCreated,
+	}, a.AddMatchNPCHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodDelete,
+		Path:        "/matches/{uuid}/npcs/{sheet_uuid}",
+		Description: "Take an NPC character sheet out of a match (master only)",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+			http.StatusNotFound,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusNoContent,
+	}, a.RemoveMatchNPCHandler)
 }
