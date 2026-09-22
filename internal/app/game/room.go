@@ -977,32 +977,57 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_scene payload"))
 			return
 		}
-		r.mu.RLock()
-		session := r.session
-		if session == nil {
-			r.mu.RUnlock()
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
-			return
-		}
-		// Capture persisted flag BEFORE ChangeScene resets it
-		sceneWasPersisted := session.IsScenePersisted()
-		r.mu.RUnlock()
-
 		// Validated against the enum's exact values (same pattern as skill/weapon names),
 		// not just cast and stored: an unrecognized category used to sail through as a
 		// string matching neither "battle" nor "roleplay", and would come back out that
 		// way in scene_changed and match_full_state for every client to trip on.
+		//
+		// Before the lock on purpose: it reads nothing of the session, and validating under
+		// the write lock would hold the whole room for a pure string check.
 		category, err := enum.SceneCategoryFrom(payload.Category)
 		if err != nil {
 			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
 			return
 		}
 
-		oldScene, oldRound, err := r.changeSceneUC.Execute(
-			context.Background(), session,
-			r.masterUUID, client.userUUID,
-			category, payload.BriefInitialDescription,
-		)
+		// The write lock is held ACROSS Execute, the same way open_next_action holds it and
+		// for the same reason: ChangeScene closes the active scene and round and installs new
+		// ones, and MatchSession has no lock of its own. This arm used to release the lock
+		// before Execute and mutate the session unguarded — a real race against every reader
+		// (buildMatchFullState serving a client that connects at that instant is the one the
+		// race detector catches). The scene_changed payload is built in the SAME critical
+		// section, because reading the new scene's fields after the unlock is the same race
+		// one step later.
+		r.mu.Lock()
+		session := r.session
+		var sceneWasPersisted bool
+		var oldScene *sceneentity.Scene
+		var oldRound *roundentity.Round
+		var scenePayload SceneChangedPayload
+		if session != nil {
+			// Captured BEFORE ChangeScene resets it.
+			sceneWasPersisted = session.IsScenePersisted()
+			oldScene, oldRound, err = r.changeSceneUC.Execute(
+				context.Background(), session,
+				r.masterUUID, client.userUUID,
+				category, payload.BriefInitialDescription,
+			)
+			if err == nil {
+				if activeScene := session.GetActiveScene(); activeScene != nil {
+					scenePayload = SceneChangedPayload{
+						SceneID:                 activeScene.GetID(),
+						Category:                string(activeScene.GetCategory()),
+						BriefInitialDescription: activeScene.BriefInitialDescription,
+					}
+				}
+			}
+		}
+		r.mu.Unlock()
+
+		if session == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -1017,15 +1042,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 		}
 
-		r.mu.RLock()
-		activeScene := session.GetActiveScene()
-		r.mu.RUnlock()
-
-		out := NewServerMessage(MsgTypeSceneChanged, SceneChangedPayload{
-			SceneID:                 activeScene.GetID(),
-			Category:                string(activeScene.GetCategory()),
-			BriefInitialDescription: activeScene.BriefInitialDescription,
-		})
+		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 
