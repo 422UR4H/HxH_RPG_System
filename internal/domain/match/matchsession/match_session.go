@@ -588,6 +588,58 @@ func (s *MatchSession) GetCharSheet(charID uuid.UUID) (*csSheet.CharacterSheet, 
 	return sheet, nil
 }
 
+// AddNPC puts a master-controlled character into a LIVE session — the in-memory half of what
+// indexParticipants already does for one NPC row at construction (see its NPC branch). It is
+// meant to be called from the WS "add NPC" verb (a later task), which is expected to hold
+// r.mu for writing before calling this — the same discipline every other session mutator
+// already assumes; AddNPC takes no lock of its own.
+//
+// The NPC never enters s.participants. That map is keyed by playerUUID and exists to answer
+// "is this a genuine participant" for a per-PLAYER authorization check; an NPC has no player,
+// so it was never eligible for it at construction either (indexParticipants skips pMap for
+// exactly this reason). Leaving it out here keeps PlayerIDs() — and therefore per-player fog
+// memory — strictly about players, live NPCs included.
+//
+// charToPlayer is replaced wholesale (a fresh map holding every existing entry plus the new
+// one), never mutated in place. Two room.go readers — publishResolution and
+// buildMapFullState/PlayerPiecePositions — call GetCharToPlayer() while holding r.mu.RLock(),
+// then keep reading the returned map AFTER releasing that lock. The caller of AddNPC holds
+// r.mu for WRITING while this runs, so a reader that already grabbed the map before the write
+// started may still be walking it concurrently. Mutating that live map would be a data race —
+// Go maps are not safe for concurrent read/write, and the failure mode is a runtime panic, not
+// a stale read. Swapping s.charToPlayer to a brand-new map sidesteps that: whoever already
+// holds the old reference keeps reading a map nobody writes to again, and only a caller that
+// invokes GetCharToPlayer() again after this returns sees the new entry.
+func (s *MatchSession) AddNPC(sheetUUID uuid.UUID, sheet *csSheet.CharacterSheet, masterUUID uuid.UUID) error {
+	if sheetUUID == uuid.Nil || sheet == nil || masterUUID == uuid.Nil {
+		return ErrInvalidNPC
+	}
+	// statuses, not charSheets: statuses is what every other "does this character already
+	// exist" check in this file reads (CharacterIDs, BarState, recordActed, ...), and it is
+	// keyed exactly like charSheets — one entry per combat participant, NPCs included.
+	if _, exists := s.statuses[sheetUUID]; exists {
+		return ErrCharacterAlreadyInSession
+	}
+
+	if s.charSheets == nil {
+		s.charSheets = make(map[uuid.UUID]*csSheet.CharacterSheet)
+	}
+	if s.statuses == nil {
+		s.statuses = make(map[uuid.UUID]*match.CharacterStatus)
+	}
+	s.charSheets[sheetUUID] = sheet
+	s.statuses[sheetUUID] = match.NewCharacterStatus()
+
+	next := make(map[string]uuid.UUID, len(s.charToPlayer)+1)
+	for k, v := range s.charToPlayer {
+		next[k] = v
+	}
+	next[sheetUUID.String()] = masterUUID
+	s.charToPlayer = next
+
+	return nil
+}
+
 // GetCharacterStatus returns a character's live combat state. The pointer is the
 // session's own, so mutating it is a write to session state: callers must hold room.mu
 // for writing, not just RLock, even though this method only reads the map.
