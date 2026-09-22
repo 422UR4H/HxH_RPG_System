@@ -653,9 +653,13 @@ endpoint REST seguida de uma injeção manual que o front poderia esquecer.
 
 **Com sessão viva:** a ficha entra em `charSheets`, `statuses` e `charToPlayer` (dono =
 mestre) da `MatchSession` corrente — o mestre pode enfileirar uma ação pelo NPC no mesmo
-segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e, na sequência, um
-`bars_updated` NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
-[`npc_added`](#npc_added) em §5).
+segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e emite um `bars_updated`
+NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
+[`npc_added`](#npc_added) em §5). **As duas mensagens saem cada uma da sua própria goroutine**
+(`go func() { r.broadcast <- data }()`, em `room.go`, tanto para `npc_added` quanto dentro de
+`broadcastBars`), então a ORDEM DE CHEGADA **não é garantida** — `bars_updated` pode chegar
+antes de `npc_added`. O front não deve exigir `npc_added` primeiro para aceitar o
+`bars_updated` que já lista o NPC.
 
 **Sem sessão viva (partida ainda no lobby):** só a escrita no banco acontece. `npc_added`
 ainda sai para a mesa, mas não há barras para publicar — nenhum `bars_updated` é emitido. O
@@ -671,15 +675,29 @@ partida e precisa que a sala viva alcance o banco. O verbo segue e injeta do mes
 Quem recusa é a SESSÃO, quando o NPC já está nela (`statuses[sheetUUID]` já existe) — aí o
 mestre recebe `npc_already_in_match` e nenhum `npc_added` sai.
 
-> ⚠️ **`npc_already_in_match` não é garantia de que nada mudou — pode ser o ack enganoso de
-> um estado que já está certo.** Existe uma corrida estreita na virada lobby→partida: se a
-> partida começar (`InitMatchSessionUC` carregando a sessão) exatamente entre a escrita do
-> use case no banco e a sessão pegar o lock para injetar, e o `Init` já tiver lido a linha
-> nova, o mestre recebe `npc_already_in_match` sem nunca ter recebido `npc_added` para aquele
-> NPC — mas o NPC ESTÁ na sessão, carregado pelo próprio `Init`. O estado está correto; só o
-> ack é que engana. **O front deve tratar `npc_already_in_match` como "o NPC está na
-> partida"**, que é verdade nos dois casos: tanto quando é o mestre reenviando `add_npc` de
-> propósito, para sincronizar uma sessão atrasada, quanto nesta corrida.
+> ⚠️ **Na virada lobby→partida, QUALQUER ack de `add_npc` pode enganar — em dois sentidos
+> opostos.** `StartMatch` chama `InitMatchSessionUC.Init` (lê `match_participants` do banco,
+> SEM segurar `r.mu`) e só depois toma `r.mu.Lock()` para publicar `r.session`. Isso abre uma
+> janela onde a leitura do roster e a escrita do `add_npc` podem se intercalar dos dois jeitos:
+>
+> - **Falso `npc_already_in_match`.** A partida começa e o `Init` já leu a linha nova ANTES de
+>   a sessão publicada pegar o lock que a injeção de `add_npc` também disputa. O mestre recebe
+>   `npc_already_in_match` sem nunca ter recebido `npc_added` para aquele NPC — mas o NPC ESTÁ
+>   na sessão, carregado pelo próprio `Init`. O estado está correto; só o ack é que engana.
+> - **Falso `npc_added` (o espelho).** O `Init` lê o roster ANTES do INSERT do `add_npc`
+>   confirmar, e o braço `add_npc` pega `r.mu.Lock()` ANTES de `StartMatch` publicar `r.session`
+>   — nesse instante `r.session` ainda é `nil`, então o braço aplica a semântica de lobby: grava
+>   no banco, responde `npc_added`, sem `bars_updated` nenhum (parece o caminho feliz do §3 da
+>   Decisão 3). Mas a sessão que nasce um instante depois foi montada a partir de uma leitura
+>   ANTERIOR ao INSERT — ela nasce SEM o NPC, apesar do ack de sucesso.
+>
+> As duas corridas exigem DOIS sockets de mestre concorrentes (uma segunda aba, ou uma
+> reconexão que se sobrepõe à sessão anterior) — um único socket processa suas próprias
+> mensagens em ordem, então não colide consigo mesmo. **O front deve tratar QUALQUER ack de
+> `add_npc` na virada lobby→partida como não-definitivo, e reenviar `add_npc` é sempre
+> seguro:** a duplicata do banco é tolerada (Decisão 2) e a duplicata da sessão responde
+> `npc_already_in_match` — que, pelo caso acima, significa "o NPC está na partida" nos dois
+> sentidos em que pode aparecer.
 
 **Erros:** `forbidden` (`"only the master can perform this action"`) · `invalid_payload`
 (`"invalid add_npc payload"` — `characterSheetUuid` ausente/zero, ou payload que não é um
@@ -1073,20 +1091,39 @@ mundo precisa saber se as barras estão correndo.
 }
 ```
 
-Só o `characterId`. É o ack do mestre e o sinal para o resto da mesa (re)buscar a ficha por
-REST — a mesma forma de [`scene_changed`](#scene_changed) e
+Só o `characterId`. É o ack do MESTRE e o sinal para ELE (re)buscar a ficha por REST — a
+mesma forma de [`scene_changed`](#scene_changed) e
 [`master_action_enqueued`](#master_action_enqueued): o evento anuncia que algo mudou, não
-carrega a coisa que mudou. Não vaza nada novo além disso: `bars_updated.characters` já lista
-todo personagem em combate, NPC incluído — é de lá, não daqui, que o front aprende o saldo e
-as velocidades do NPC recém-chegado.
+carrega a coisa que mudou.
 
-**Com sessão viva, `npc_added` vem seguido de um `bars_updated` com `seq` maior.** Não sai um
-`match_full_state`: o único estado de combate que muda ao pôr um NPC é o conjunto de
-personagens nas barras, e `match_full_state.bars.seq` repete o `seq` CORRENTE por contrato
-(ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), abaixo) — reenviá-lo
-aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado por cima e
-apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa que mexe
-nas barras", e é o único que incrementa `seq`.
+⚠️ **Só o mestre consegue buscar essa ficha.** `GetCharacterSheetUC.GetCharacterSheet`
+(`internal/application/character_sheet/get_character_sheet.go:64-119`) só devolve uma ficha
+para o `master_uuid` dela, para o `player_uuid` dela, ou para o mestre da campanha — nessa
+ordem de checagem. Uma ficha de NPC tem `player_uuid == null`, então um jogador comum que
+tentar buscá-la (`GET /charactersheets/{uuid}`) cai em `auth.ErrInsufficientPermissions`
+(403), a menos que por acaso seja o mestre da campanha. `npc_added` é broadcast para a mesa
+inteira, mas o (re)fetch por REST que ele sugere só faz sentido para quem tem permissão de
+lê-la: o mestre. **Os demais jogadores aprendem que o NPC existe pelo `bars_updated.characters`
+que segue** (que já traz `characterId`, saldo e velocidades) **e pela peça que aparece no
+tabuleiro** — não pela ficha completa, que não é deles para ver. Não é uma lacuna deste
+contrato: é a mesma regra de visibilidade de ficha que já vale fora do combate.
+
+Não vaza nada novo além disso: `bars_updated.characters` já lista todo personagem em combate,
+NPC incluído.
+
+**Com sessão viva, um `bars_updated` com `seq` maior sai junto — em QUALQUER ordem em relação
+a este.** Não sai um `match_full_state`: o único estado de combate que muda ao pôr um NPC é o
+conjunto de personagens nas barras, e `match_full_state.bars.seq` repete o `seq` CORRENTE por
+contrato (ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), abaixo) —
+reenviá-lo aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado
+por cima e apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa
+que mexe nas barras", e é o único que incrementa `seq`. ⚠️ **A ordem de chegada entre
+`npc_added` e esse `bars_updated` não é garantida:** cada um sai de uma goroutine própria
+(`go func() { r.broadcast <- data }()`, tanto no braço `add_npc` de `room.go` quanto dentro de
+`broadcastBars`), disparadas em sequência no código mas entregues ao canal de broadcast sem
+ordem relativa assegurada. O front não pode assumir que `npc_added` sempre chega primeiro —
+`bars_updated.characters` já é suficiente para desenhar o NPC nas barras, com ou sem o
+`npc_added` correspondente já visto.
 
 **Sem sessão viva (lobby), não há `bars_updated` nenhum atrás** — não existem barras para
 publicar. `npc_added` ainda sai, como confirmação de que o roster no banco mudou; o NPC só
@@ -1381,7 +1418,7 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `unknown_type` | `"unrecognized message type"` | `type` fora do catálogo. |
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
 | `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
-| `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida. |
+| `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
 | `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`. |
