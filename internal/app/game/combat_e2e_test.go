@@ -2222,24 +2222,27 @@ func (f *combatFixture) openAttackOn(t *testing.T, player *websocket.Conn, maste
 	return act.GetID()
 }
 
-// attachEscape answers the open attack with an escape: the Dash its kind demands, plus the
-// Dodge — an escape forces the dodge BY displacing, so both are required at the boundary.
+// attachEscape answers the open attack with an escape of the given KIND: the movement that
+// kind demands, plus the Dodge — an escape forces the dodge BY displacing, so both are
+// required at the boundary — plus whatever extra skill entries the kind needs.
 //
 // It returns the reaction's own ID, read off the master's resolution_updated, which is where
 // an attached-but-not-yet-opened reaction's ID lives on the wire. That is the only way a real
 // client learns it, and open_reaction needs it back.
 func (f *combatFixture) attachEscape(
-	t *testing.T, conn *websocket.Conn, masterMsgs *collector, reactToID uuid.UUID, from, to [3]int,
+	t *testing.T, conn *websocket.Conn, masterMsgs *collector, reactToID uuid.UUID,
+	kind string, category enum.MoveCategory, skills []game.ActionSkillPayload, from, to [3]int,
 ) uuid.UUID {
 	t.Helper()
 	before := masterMsgs.count(game.MsgTypeResolutionUpdate)
 	sendWS(t, conn, string(game.MsgTypeAttachReaction), game.ActionPayload{
 		ActorID:      f.victimID,
 		ReactToID:    reactToID,
-		ReactionKind: "escape",
+		ReactionKind: kind,
+		Skills:       skills,
 		Dodge:        &game.DodgePayload{},
 		Move: &game.MovePayload{
-			Category: string(enum.Dash),
+			Category: string(category),
 			From:     from,
 			Position: to,
 		},
@@ -2268,7 +2271,61 @@ func (f *combatFixture) attachEscape(
 	return uuid.Nil
 }
 
-func TestE2E_OpeningAnEscapeReactionMovesThePieceBeforeReactionOpened(t *testing.T) {
+// attachClosedEscape is the escape that STILL displaces the moment the master opens it.
+//
+// Its Shift rolls nothing — Brake is read passively — so there is no reading for the
+// attacker's hit to be the difficulty of, and the piece steps at open_reaction. The Evasion
+// entry is what the closed variants require on top of the Dodge.
+func (f *combatFixture) attachClosedEscape(
+	t *testing.T, conn *websocket.Conn, masterMsgs *collector, reactToID uuid.UUID, from, to [3]int,
+) uuid.UUID {
+	t.Helper()
+	return f.attachEscape(t, conn, masterMsgs, reactToID, "closedEscape", enum.Shift,
+		[]game.ActionSkillPayload{{SkillName: enum.Evasion.String()}}, from, to)
+}
+
+// attachDashEscape is the standard escape: a Dash, which rolls Accelerate and is therefore
+// read against the attacker's hit. Nothing moves when it opens — the close decides.
+func (f *combatFixture) attachDashEscape(
+	t *testing.T, conn *websocket.Conn, masterMsgs *collector, reactToID uuid.UUID, from, to [3]int,
+) uuid.UUID {
+	t.Helper()
+	return f.attachEscape(t, conn, masterMsgs, reactToID, "escape", enum.Dash, nil, from, to)
+}
+
+// biasReactionMoveSpeed puts the master's own condition on the reaction's moveSpeed, by exactly
+// the amount asked, over the real edit_action surface.
+//
+// It is the deterministic lever the Dash tests need. The escape's reading is Move.FinalSpeed,
+// ApplyMasterAction re-derives it through deriveSpeeds so a moveSpeed condition reads through,
+// and ±1000 is far outside anything two D10 plus a skill value can reach — so whether the
+// escape clears the attacker's hit is the TEST's choice, not the dice's. Scripting faces
+// instead would tie every assertion to the exact number of rolls an attack and a reaction
+// happen to make today.
+func (f *combatFixture) biasReactionMoveSpeed(
+	t *testing.T, master *websocket.Conn, masterMsgs *collector, reactionID uuid.UUID, modifier int,
+) {
+	t.Helper()
+	before := masterMsgs.count(game.MsgTypeActionEdited)
+	sendWS(t, master, string(game.MsgTypeEditAction), game.EditActionPayload{
+		ActionID: reactionID,
+		Conditions: []game.ConditionEditPayload{{
+			Field:       "moveSpeed",
+			Modifier:    modifier,
+			Description: "test lever on the escape's own speed",
+		}},
+	})
+	if !awaitCount(masterMsgs, game.MsgTypeActionEdited, before+1, 2*time.Second) {
+		t.Fatalf("edit_action on the reaction's moveSpeed was never acknowledged; the master "+
+			"received: %v", messageTypes(masterMsgs.snapshotMessages()))
+	}
+}
+
+// A reaction that displaces WITHOUT a test still steps the instant the master gives it the
+// floor. closedEscape is the one kind that is that: its Shift takes the dice set's average
+// instead of rolling, so the attacker's hit has nothing to be the difficulty of. The standard
+// escape's Dash does roll, and its own tests are below.
+func TestE2E_OpeningAClosedEscapeReactionMovesThePieceBeforeReactionOpened(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
 
 	master, player := f.connect(t)
@@ -2286,7 +2343,7 @@ func TestE2E_OpeningAnEscapeReactionMovesThePieceBeforeReactionOpened(t *testing
 	}
 
 	actionID := f.openAttackOn(t, player, master, masterMsgs)
-	reactionID := f.attachEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	reactionID := f.attachClosedEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
 
 	// Nothing has moved yet: attaching is not opening. Without this the assertion below could
 	// be satisfied by a piece_moved the attach itself emitted.
@@ -2356,7 +2413,7 @@ func TestE2E_OpeningAnEscapeReactionMovesThePieceBeforeReactionOpened(t *testing
 
 // O mesmo gate de campo de visão do caminho da ação: quem não enxerga nem a origem nem o
 // destino do escape não é avisado dele.
-func TestE2E_OpeningAnEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
+func TestE2E_OpeningAClosedEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece, withBystander)
 
 	master, player := f.connect(t)
@@ -2400,7 +2457,7 @@ func TestE2E_OpeningAnEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 	}
 
 	actionID := f.openAttackOn(t, player, master, masterMsgs)
-	reactionID := f.attachEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	reactionID := f.attachClosedEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
 	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
 
 	// The displacement really happened — otherwise "the bystander heard nothing" is trivial.
@@ -2425,7 +2482,7 @@ func TestE2E_OpeningAnEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 // Um ator sem peça no tabuleiro NÃO é erro — o escape acontece na ficha, e não há nada para
 // mover. É o mesmo no-op silencioso do caminho da ação, e é o que mantém os testes de reação
 // que rodam sem tabuleiro nenhum (reaction_chain_e2e_test.go) honestos.
-func TestE2E_OpeningAnEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
+func TestE2E_OpeningAClosedEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
 	f := newCombatFixture(t) // no withVictimPiece: the target has no piece on the board
 
 	master, player := f.connect(t)
@@ -2440,7 +2497,7 @@ func TestE2E_OpeningAnEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
 	}
 
 	actionID := f.openAttackOn(t, player, master, masterMsgs)
-	reactionID := f.attachEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	reactionID := f.attachClosedEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
 	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
 
 	if !masterMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
@@ -2587,4 +2644,337 @@ func TestE2E_OpenReactionGateStopsAMoveOnANonDisplacingReactionEvenIfAttachedDir
 		t.Fatalf("a free dodge displaced the piece %d time(s) on open_reaction — ReactionKind."+
 			"Displaces() was not consulted", n)
 	}
+}
+
+// ─── o escape de Dash tem CD, e a CD é o acerto do atacante ────────────────
+//
+// Toda REAÇÃO tem uma CD, e ela é a ação que está sendo movida contra quem reage — o acerto
+// do atacante. O `closedEscape` desloca na abertura porque o Shift não rola nada: não há
+// leitura para pôr contra esse acerto. O `escape` (e o `escapeGuard`) andam de Dash, que rola
+// Accelerate, e é essa rolagem que passa ou falha contra o acerto — então a peça não sai do
+// lugar quando a reação abre, e o desfecho sai no fechamento do turno.
+//
+// Falhar é a peça NÃO sair do lugar. Enquanto o motor não souber devolver posição
+// intermediária, não existe meio caminho.
+
+// dashEscapeStage drives the shared opening of the three tests below: board synced, attack
+// opened, a Dash escape attached with the master's condition already on its moveSpeed, and the
+// reaction opened. It returns the reaction's ID so a caller can keep talking about it.
+//
+// The negative assertion lives here on purpose: every one of these tests depends on the piece
+// NOT having moved at open_reaction, and a helper that quietly let one through would make the
+// close-side assertions meaningless.
+func (f *combatFixture) dashEscapeStage(
+	t *testing.T, master, player *websocket.Conn, masterMsgs, playerMsgs *collector, moveSpeedBias int,
+) uuid.UUID {
+	t.Helper()
+
+	f.syncBoard(t, master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board back after map_state_sync")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+	reactionID := f.attachDashEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	f.biasReactionMoveSpeed(t, master, masterMsgs, reactionID, moveSpeedBias)
+
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+	if !masterMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatalf("the reaction never opened; the master received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+	// reaction_opened is the barrier, not a sleep: the open_reaction arm dispatches any
+	// displacement BEFORE it, on the same goroutine, so a piece_moved that was going to
+	// happen is already in the master's queue by the time this lands.
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the Dash escape displaced the piece %d time(s) when the reaction OPENED; it "+
+			"has a CD to clear (the attacker's hit) and the outcome belongs to the close", n)
+	}
+	return reactionID
+}
+
+// The first half of the rule: opening a Dash escape shows the intention and moves nothing.
+func TestE2E_ADashEscapeDoesNotMoveThePieceWhenTheReactionOpens(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	// +1000: the escape would clear the hit by a mile. It still must not move here — the
+	// gate at open_reaction is the category, not the outcome, and a test set up to PASS is
+	// the only one that can prove that.
+	f.dashEscapeStage(t, master, player, masterMsgs, playerMsgs, 1000)
+
+	// And the player who owns the piece heard nothing either: piece_moved is dispatched per
+	// recipient, so checking only the master would leave the other half unproven.
+	if n := playerMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the escaping player's own client was told the piece moved %d time(s) on "+
+			"open_reaction", n)
+	}
+}
+
+// The second half: a Dash escape that clears the attacker's hit displaces when the turn
+// closes — by EVERY route a turn closes. An escape whose outcome depended on which verb the
+// master happened to use would be a bug, not a rule.
+func TestE2E_ADashEscapeThatClearsTheAttackersHitMovesThePieceAtTurnClose(t *testing.T) {
+	// The three close paths room.go really has. close_turn is the explicit one; the other two
+	// close the open turn on their way to opening the next, and both reach the same
+	// persistClosedTurn block — with the queue empty (open_next_action) or the action unknown
+	// (pull_action) they still close first and only then report the failure, which is what
+	// makes the master's error message a safe barrier to wait on.
+	cases := []struct {
+		name    string
+		close   func(t *testing.T, master *websocket.Conn)
+		barrier game.MessageType
+	}{
+		{
+			name: "close_turn",
+			close: func(t *testing.T, master *websocket.Conn) {
+				sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+			},
+			barrier: game.MsgTypeTurnClosed,
+		},
+		{
+			name: "open_next_action on an empty queue",
+			close: func(t *testing.T, master *websocket.Conn) {
+				sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+			},
+			barrier: game.MsgTypeError,
+		},
+		{
+			name: "pull_action for an action that is not queued",
+			close: func(t *testing.T, master *websocket.Conn) {
+				sendWS(t, master, string(game.MsgTypePullAction),
+					game.PullActionPayload{ActionID: uuid.New()})
+			},
+			barrier: game.MsgTypeError,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newCombatFixture(t, withVictimPiece)
+
+			master, player := f.connect(t)
+			defer master.Close() //nolint:errcheck
+			defer player.Close() //nolint:errcheck
+			masterMsgs := collectFrom(master)
+			playerMsgs := collectFrom(player)
+
+			f.dashEscapeStage(t, master, player, masterMsgs, playerMsgs, 1000)
+
+			c.close(t, master)
+			if !masterMsgs.await(c.barrier, 3*time.Second) {
+				t.Fatalf("the turn never closed; the master received: %v",
+					messageTypes(masterMsgs.snapshotMessages()))
+			}
+			if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+				t.Fatalf("no piece_moved at the close: an escape that cleared the attacker's "+
+					"hit never left its slot; the master received: %v",
+					messageTypes(masterMsgs.snapshotMessages()))
+			}
+
+			msgs := masterMsgs.snapshotMessages()
+			moved := findMessage(t, msgs, game.MsgTypePieceMoved)
+			var mp game.PieceMovedPayload
+			if err := json.Unmarshal(moved.Payload, &mp); err != nil {
+				t.Fatalf("unmarshal piece_moved: %v", err)
+			}
+			if mp.PieceID != victimPieceID {
+				t.Fatalf("piece_moved carried pieceId %q, want the escaping target's %q",
+					mp.PieceID, victimPieceID)
+			}
+			if mp.Slot.Col == nil || mp.Slot.Row == nil {
+				t.Fatalf("piece_moved carried no square slot: %+v", mp.Slot)
+			}
+			if *mp.Slot.Col != 8 || *mp.Slot.Row != 6 {
+				t.Fatalf("the escaping piece landed on (%d,%d), want the slot the escape asked "+
+					"for (8,6)", *mp.Slot.Col, *mp.Slot.Row)
+			}
+			// The shared displacement path, not a second one: the slot keeps its shape, the
+			// piece keeps its height, and the message is the server's own.
+			if mp.Slot.Kind != "square" {
+				t.Fatalf("slot kind = %q, want the piece's own kind %q", mp.Slot.Kind, "square")
+			}
+			if mp.Z != victimElevation {
+				t.Fatalf("piece_moved carried z=%v, want the elevation it already had (%v)",
+					mp.Z, victimElevation)
+			}
+			if moved.SenderID != uuid.Nil {
+				t.Fatalf("piece_moved senderId = %s, want the zero UUID of a server message",
+					moved.SenderID)
+			}
+			if n := masterMsgs.count(game.MsgTypePieceMoved); n != 1 {
+				t.Fatalf("the escape displaced the piece %d time(s); the close settles it exactly "+
+					"once", n)
+			}
+		})
+	}
+}
+
+// The close_turn route also has to put the piece on the board BEFORE it announces the turn
+// ended: piece_moved goes straight into each client's queue while turn_closed travels through
+// r.broadcast, so a displacement applied afterwards would let the table watch the turn end
+// with the piece still in the old slot. Same invariant the opening path already pins.
+func TestE2E_ADashEscapeMovesThePieceBeforeTurnClosedIsAnnounced(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.dashEscapeStage(t, master, player, masterMsgs, playerMsgs, 1000)
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !masterMsgs.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	if !masterMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("nothing moved at the close, so this test measured no ordering at all")
+	}
+
+	msgs := masterMsgs.snapshotMessages()
+	moved := findMessage(t, msgs, game.MsgTypePieceMoved)
+	closed := findMessage(t, msgs, game.MsgTypeTurnClosed)
+	// Both envelopes are stamped when they are BUILT, by the same goroutine running the
+	// close_turn arm end to end, so the stamps compare the order the SERVER decided. Strict,
+	// for the same reason the opening test is: a tie is not evidence of the right order.
+	if !moved.Timestamp.Before(closed.Timestamp) {
+		t.Fatalf("piece_moved was built at %s, NOT strictly before turn_closed at %s",
+			moved.Timestamp, closed.Timestamp)
+	}
+	if movedAt, closedAt := indexOfMessage(msgs, game.MsgTypePieceMoved),
+		indexOfMessage(msgs, game.MsgTypeTurnClosed); movedAt > closedAt {
+		t.Fatalf("turn_closed (index %d) arrived before piece_moved (index %d)", closedAt, movedAt)
+	}
+}
+
+// The other side of the same rule: a Dash escape that FAILS against the attacker's hit never
+// moves the piece — not at the opening, and not at the close. There is no halfway slot.
+func TestE2E_ADashEscapeThatFailsTheAttackersHitNeverMovesThePiece(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	// −1000: no skill value and no pair of D10 can climb back over the attacker's hit.
+	f.dashEscapeStage(t, master, player, masterMsgs, playerMsgs, -1000)
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !masterMsgs.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatalf("the turn never closed; the master received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+
+	// The escape really resolved — otherwise "nothing moved" would be about a reaction that
+	// was never in the collision, and the assertion below would prove nothing.
+	settled := findSettledResolution(t, masterMsgs)
+	var answered *game.ReactionResultPayload
+	for i := range settled.Targets {
+		if settled.Targets[i].TargetID == f.victimID {
+			answered = settled.Targets[i].Reaction
+		}
+	}
+	if answered == nil || answered.Kind != string(action.ReactEscape) {
+		t.Fatalf("the settled resolution does not show the victim answering with an escape: %+v",
+			settled.Targets)
+	}
+
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("a failed escape moved the piece %d time(s); a failed test means the piece does "+
+			"NOT leave its slot — there is no intermediate position to invent", n)
+	}
+	if n := playerMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the escaping player's own client was told the piece moved %d time(s) after a "+
+			"failed escape", n)
+	}
+}
+
+// The Shift side of the same split, on the close: a closedEscape stepped when the reaction
+// opened, and the close must NOT walk it a second time.
+//
+// The moveSpeed is biased so the Shift's passive Brake clears the attacker's hit by a mile.
+// That is what makes this a real assertion: the close-side CD check would swallow a failing
+// Shift by itself, so only an escape that WOULD pass can prove the category guard — and not
+// the outcome — is what keeps it from moving twice. A second piece_moved would put the same
+// step on the wire again for a displacement the table has been watching since the reaction
+// opened.
+func TestE2E_AClosedEscapeIsNotWalkedASecondTimeAtTheClose(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	f.syncBoard(t, master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board back after map_state_sync")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board")
+	}
+
+	actionID := f.openAttackOn(t, player, master, masterMsgs)
+	reactionID := f.attachClosedEscape(t, player, masterMsgs, actionID, [3]int{6, 6, 0}, [3]int{8, 6, 0})
+	f.biasReactionMoveSpeed(t, master, masterMsgs, reactionID, 1000)
+
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+	if !masterMsgs.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatalf("the reaction never opened; the master received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 1 {
+		t.Fatalf("the Shift escape displaced the piece %d time(s) at open_reaction, want exactly "+
+			"1 — without that this test would measure nothing at the close", n)
+	}
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !masterMsgs.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatalf("the turn never closed; the master received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 1 {
+		t.Fatalf("the close walked the Shift escape again: %d piece_moved in total, want the 1 "+
+			"the opening already emitted", n)
+	}
+	// The owner's side counts too: piece_moved is dispatched per recipient, so a second walk
+	// could reach the player even if the master's count stayed at one.
+	if n := playerMsgs.count(game.MsgTypePieceMoved); n != 1 {
+		t.Fatalf("the escaping player's client saw the piece move %d time(s), want the 1 the "+
+			"opening emitted", n)
+	}
+}
+
+// findSettledResolution reads the last settled resolution_updated the master received. The
+// settled one is the turn's real outcome — the projections that preceded it were dry runs.
+func findSettledResolution(t *testing.T, c *collector) game.ResolutionUpdatedPayload {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeResolutionUpdate {
+			continue
+		}
+		var p game.ResolutionUpdatedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+			t.Fatalf("unmarshal resolution_updated: %v", err)
+		}
+		if p.IsSettled {
+			return p
+		}
+	}
+	t.Fatalf("no settled resolution_updated reached the master; it received: %v", messageTypes(msgs))
+	return game.ResolutionUpdatedPayload{}
 }

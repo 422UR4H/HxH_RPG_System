@@ -536,8 +536,13 @@ mappings:
       a SERVER message too: applyOpenedMove/applyAndRelayPieceMove apply a turn's
       Move to the board on open_next_action/pull_action, before turn_opened, reusing
       the lobby's fog-gated piece_moved/piece_removed pair (senderId zero for the
-      server-authored case). A reaction's Move is deliberately not applied; Z is
-      preserved, never overwritten from Move.Position[2] (units unresolved).
+      server-authored case). O Move de uma REAÇÃO de fuga também é aplicado, pelo
+      mesmo applyMove, mas em dois momentos distintos: Shift (closedEscape) na
+      abertura, no braço open_reaction; Dash (escape/escapeGuard) só no fechamento,
+      via applyClosedEscapes, e só se passar contra o acerto do atacante — falhar é
+      a peça não sair do lugar. Os três verbos que fecham um turno (close_turn,
+      open_next_action, pull_action) aplicam esse desfecho. Z is preserved, never
+      overwritten from Move.Position[2] (units unresolved).
 
   - code_path: internal/app/game/client.go
     dev_docs:
@@ -889,6 +894,27 @@ mappings:
       backend-prep-front-combat: RequiredMoveCategory() fixa a matriz escape/
       escapeGuard→Dash, closedEscape→Shift; action_mapper.go a aplica. A matriz e a
       mensagem de erro estão documentadas em match-combat-ws.md.
+
+  - code_path: internal/domain/entity/enum/move_category.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/match/combat-engine.md
+        confidence: possibly_affected
+    game_docs:
+      - path: docs/game/combate/reacoes.md
+        confidence: possibly_affected
+    notes: >-
+      backend-prep-front-combat: RollsSpeed() diz se a velocidade do movimento é
+      ROLADA (Dash, Accelerate) ou lida passiva (Shift, Brake) — espelha exatamente
+      o ramo que MatchSession.rollActionDice/deriveSpeeds já tomam. É o
+      discriminador de QUANDO o deslocamento de uma REAÇÃO acontece: toda reação
+      tem CD (o acerto do atacante), e um movimento que não rola não tem leitura
+      para pôr contra ela — closedEscape (Shift) desloca na abertura, escape/
+      escapeGuard (Dash) só no fechamento do turno, e falhar é a peça não sair do
+      lugar. Não diz nada sobre o movimento de uma AÇÃO, que desloca na abertura
+      qualquer que seja a categoria. Consumido por room.go (open_reaction e
+      applyClosedEscapes) e documentado em match-combat-ws.md.
 
   - code_path: internal/domain/match/entity/action/repel.go
     dev_docs:

@@ -524,6 +524,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
+				// Opening the next action is ALSO a close, so the escapes whose step waited for
+				// this moment are walked here too — an escape whose outcome depended on which
+				// verb the master happened to use would be a bug, not a rule. Before
+				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
+				// table sees the turn that ended finish moving before the next one starts.
+				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
@@ -631,6 +637,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
+				// Opening the next action is ALSO a close, so the escapes whose step waited for
+				// this moment are walked here too — an escape whose outcome depended on which
+				// verb the master happened to use would be a bug, not a rule. Before
+				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
+				// table sees the turn that ended finish moving before the next one starts.
+				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
@@ -792,8 +804,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// reaction by any other path (bug, future refactor, a kind the mapper forgets to police)
 		// must not walk the piece just because the field happens to be non-nil — the kind, not
 		// the shape, is what says whether this reaction moves anyone.
+		//
+		// RollsSpeed() is the third condition, and it is what holds a Dash escape back. Every
+		// REACTION has a difficulty to clear, and it is the action being moved against whoever
+		// reacts — the attacker's own hit. A Shift rolls nothing (it takes the dice set's
+		// average), so there is no reading to put against that hit and the closed escape steps
+		// the moment it gets the floor, exactly as it does today. A Dash rolls its Accelerate,
+		// and that roll IS the test: whether the character got out of the way is only known
+		// once the turn settles, so the piece stays put here and applyClosedEscapes walks it —
+		// or leaves it where it stands — at the close.
 		if err == nil && result.Opened != nil && result.Opened.Move != nil &&
-			result.Opened.ReactionKind.Displaces() {
+			result.Opened.ReactionKind.Displaces() && !result.Opened.Move.Category.RollsSpeed() {
 			m := *result.Opened.Move
 			reactionMove = &m
 			reactor = result.Opened.GetActorID()
@@ -902,6 +923,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		closedTurn := result.ClosedTurn
 		// result.Resolution here is the SETTLED one — CloseTurnUC resolves the turn it just
 		// closed, not a next one — the same resolution published below via publishResolution.
+		//
+		// The escapes that were waiting on their own test settle with it: this is the third
+		// way a turn closes (open_next_action and pull_action are the other two) and all three
+		// have to walk the piece, or an escape's outcome would depend on which verb the master
+		// used. Before turn_closed goes out, for the reason the open_reaction arm documents —
+		// piece_moved goes straight into each client's queue while turn_closed travels through
+		// r.broadcast.
+		r.applyClosedEscapes(closedTurn, result.Resolution)
 		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
 		out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: closedTurn.GetID()})
@@ -1976,24 +2005,92 @@ func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
 	r.applyMove(a.GetActorID(), a.Move)
 }
 
+// applyClosedEscapes walks onto the board the escapes whose displacement was HELD BACK when
+// the master gave them the floor, now that the turn has closed and the test they had to clear
+// has settled.
+//
+// The difficulty is the attacker's own hit — the action that was being moved against whoever
+// reacted — and it is the SAME number every other defensive test on this turn was already
+// read against (see service.ReactionInput.HitTotal). Nothing new is rolled here: the escape's
+// own reading is Move.FinalSpeed, which MatchSession.deriveSpeeds computed from the Accelerate
+// dice that fell when the reaction arrived.
+//
+// The CD is read off the CharacterResult THIS reaction produced, not off
+// TurnResolution.ActionResult, so the pairing stays exact: cr.ReactionID is written from the
+// chain step that carried this very reaction, and cr.Hit is the swing derived against that
+// same target. The two totals are equal today — one swing shared by the whole chain — and
+// nothing here has to depend on that staying true.
+//
+// The reading is total >= CD, the same one ResolveReaction uses for Avoided. FAILING means the
+// piece does not leave its slot: there is no halfway position, the engine cannot compute one,
+// and inventing one would be a rule nobody has decided.
+//
+// A reaction whose actor produced no CharacterResult at all — the engine could not classify
+// the target, or their sheet never reached the resolver — displaces nothing. That is the safe
+// side of the two: a piece that stays put is a visible non-event the master can narrate
+// around, while moving it on a test that was never computed would be a rule applied out of
+// nothing.
+//
+// It reads the closed turn without r.mu. That turn is finished — ApplyMasterAction and
+// OpenReaction both refuse a turn with a finishedAt — so its reactions are frozen; it is the
+// same window persistClosedTurn already reads GetAction() in. The caller must NOT hold r.mu:
+// applyMove takes it.
+func (r *Room) applyClosedEscapes(closed *turnentity.Turn, res *domainservice.TurnResolution) {
+	if closed == nil || res == nil {
+		return
+	}
+	reactions := closed.GetReactions()
+	byID := make(map[uuid.UUID]*action.Action, len(reactions))
+	for i := range reactions {
+		byID[reactions[i].GetID()] = &reactions[i]
+	}
+	for _, cr := range res.CharacterResults {
+		reaction, ok := byID[cr.ReactionID]
+		if !ok {
+			// The zero ReactionID of a target that answered with the passive defaults lands
+			// here too: no reaction, nothing to displace.
+			continue
+		}
+		// Displaces() rather than Move != nil, for the reason the open_reaction arm documents:
+		// the kind, not the shape, says whether this reaction moves anyone.
+		if !reaction.ReactionKind.Displaces() || reaction.Move == nil {
+			continue
+		}
+		if !reaction.Move.Category.RollsSpeed() {
+			// Already walked at open_reaction. Walking it again would put a second piece_moved
+			// on the wire for a step the table has been watching since the reaction opened.
+			continue
+		}
+		// total >= CD clears it, the same reading ResolveReaction gives Avoided. Below it the
+		// piece does not leave its slot at all: there is no halfway position to put it in.
+		if reaction.Move.FinalSpeed < cr.Hit.Total {
+			continue
+		}
+		r.applyMove(reaction.GetActorID(), reaction.Move)
+	}
+}
+
 // applyMove walks ONE Move onto the board, on behalf of the character that owns it.
 //
-// It is shared by the two openings that displace: the action of a turn (applyOpenedMove) and
-// an escape REACTION (the open_reaction arm). The rule is the same on both sides and so is the
-// trigger — the piece leaves its slot when the thing OPENS, which is the point at which the
-// table starts reasoning about where it stands.
+// It is the ONE displacement path, shared by all three callers: the action of a turn
+// (applyOpenedMove), an escape REACTION that steps on the spot (the open_reaction arm) and an
+// escape whose step had a test to clear (applyClosedEscapes). It does not decide WHETHER the
+// piece moves — each caller has already decided that — it only puts it where the Move says.
 //
-// The reaction's OUTCOME is deliberately not part of this. Failing an escape means taking the
-// full damage having moved anyway — displacing and getting hit is a legitimate result, so the
-// displacement is never conditioned on the reaction succeeding.
+// WHEN each caller fires is the rule, and the two halves of it are different questions:
 //
-// Only movement that does not test displaces here. Today that is the only reachable branch:
-// moveSpeedSkill accepts Dash and Shift and refuses Back, Roll, Slide, Jump and FlatJump, and
-// neither accepted category rolls against a DC — Accelerate and Brake are the SPEED of the
-// displacement (Move.Speed feeds Move.FinalSpeed), not a difficulty to clear. The branch for a
-// move that DOES test (a leap, a squeeze past, a landing on an occupied slot) has no case that
-// can reach this code, so it is not written here — inventing one to fill the table would be
-// guessing at a rule nobody has decided.
+//   - An ACTION displaces at the OPENING, whatever the category. Nothing is coming at it, so
+//     there is nothing to clear, and the position cannot wait the way damage can: the
+//     reactions that follow depend on where the piece stands.
+//   - A REACTION always has a difficulty — the action being moved against whoever reacts, the
+//     attacker's own hit. A Shift rolls nothing, so nothing can be read against that hit and
+//     it displaces at the opening too; a Dash rolls, so it waits for the close. See
+//     MoveCategory.RollsSpeed and applyClosedEscapes.
+//
+// A move that DOES test for any OTHER reason (a leap, a squeeze past, a landing on an occupied
+// slot) still has no case that can reach this code — moveSpeedSkill refuses Back, Roll, Slide,
+// Jump and FlatJump at the WS boundary — so that branch is still not written here. Inventing
+// one to fill the table would be guessing at a rule nobody has decided.
 //
 // A nil Move is a no-op: most actions and most reactions do not displace at all.
 //

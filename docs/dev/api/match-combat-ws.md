@@ -364,30 +364,70 @@ poder de mestre e muda o resultado**: uma reação anexada mas não aberta delib
 Abrir **não cobra nada**: as barras foram debitadas no *attach*, justamente para que narrar
 não mova número.
 
-**Dispara:** [`piece_moved`](#piece_moved-servidor) (servidor), **com o mesmo gate de campo de
-visão** do resto do tabuleiro, quando a reação que abre carrega um `Move` — e **antes** de
-[`reaction_opened`](#reaction_opened), pela mesma razão de ordem que vale para a ação do turno
-(ver [`piece_moved`](#piece_moved-servidor)): a mesa não pode ver a narração abrir com a peça
-ainda no slot velho. Em seguida, [`reaction_opened`](#reaction_opened) para a **mesa** (de quem
-é a vez de narrar é público) e [`resolution_updated`](#resolution_updated) **master-only** (o
-cálculo continua sendo do mestre — o turno ainda está aberto).
+**Dispara:** [`reaction_opened`](#reaction_opened) para a **mesa** (de quem é a vez de narrar
+é público) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
+sendo do mestre — o turno ainda está aberto). E, **só para a fuga que não testa** (ver a
+tabela abaixo), [`piece_moved`](#piece_moved-servidor) (servidor), **com o mesmo gate de campo
+de visão** do resto do tabuleiro e **antes** de [`reaction_opened`](#reaction_opened), pela
+mesma razão de ordem que vale para a ação do turno (ver
+[`piece_moved`](#piece_moved-servidor)): a mesa não pode ver a narração abrir com a peça ainda
+no slot velho.
 
-**Uma reação de fuga (`escape`, `escapeGuard`, `closedEscape` — as únicas com `Move`, e
+#### O deslocamento de uma fuga tem CD, e a CD é o acerto do atacante
+
+As três fugas (`escape`, `escapeGuard`, `closedEscape`) são as únicas reações com `Move` —
 [`attach_reaction`](#attach_reaction) recusa qualquer outro `reactionKind` que tente carregar
-um) desloca a peça, e o gatilho é a ABERTURA da reação**, nunca o `attach_reaction` que a
-anexou, nem o fechamento do turno. É o mesmo mecanismo (`applyMove`) e o mesmo ponto conceitual
-da ação do próprio turno: o momento em que a mesa passa a raciocinar sobre onde a peça está.
+um. **Toda reação tem uma CD, e ela é a ação que está sendo movida contra quem reage: o teste
+de acerto do atacante** — o mesmo número contra o qual todo teste defensivo do turno já é
+lido, e que chega ao mestre como `action.total` em
+[`resolution_updated`](#resolution_updated). **Nada é rolado a mais para isso:** o acerto já
+existe, e o lado de quem foge é a velocidade que já foi derivada quando a reação chegou (a
+partir de `move.speed`). **Esse total não é projetado como tal em nenhum
+[`resolution_updated`](#resolution_updated)** — o `reaction.total` de lá é a leitura da
+ESQUIVA, não a do deslocamento —, então o cliente **não tem como prever o desfecho do passo**:
+quem decide é o servidor, no fechamento, e o `piece_moved` (ou a ausência dele) é a resposta.
+O número em si até chega ao fio depois, diluído em `moveSpeeds` de
+[`bars_updated`](#bars_updated), junto com todas as outras velocidades que já gastaram a barra
+de movimento na rodada — não dá para separar de lá qual era o desta fuga.
+
+O que decide **quando** a peça anda é se o movimento da reação **rola** ou não:
+
+| Reação | Movimento | Rola? | Quando a peça anda |
+|---|---|---|---|
+| `closedEscape` | **Shift** | não — `Brake` é lido passivo, não cai dado nenhum | **na abertura** da reação |
+| `escape` | **Dash** | sim — `Accelerate` | **no fechamento do turno**, se passar |
+| `escapeGuard` | **Dash** | sim — `Accelerate` | **no fechamento do turno**, se passar |
+
+- **`Shift` não tem o que ser lido contra o acerto**, então o `closedEscape` pisa no instante
+  em que ganha a palavra — é o comportamento que sempre existiu, e ele não mudou.
+- **`Dash` rola**, e essa rolagem É o teste. Na abertura, `open_reaction` **mostra só a
+  intenção**: nenhum `piece_moved` sai. O desfecho é decidido no fechamento do turno — ver
+  [`close_turn`](#close_turn), que documenta os três verbos que fecham.
+- **Passa** quando *a velocidade derivada do movimento* `>=` *o acerto do atacante* — o mesmo
+  `>=` que decide `avoided`, só que com outro número do lado de quem foge (ver o alerta
+  abaixo). Aí sai um `piece_moved`, com o mesmo gate de fog, direto para o slot pedido — nunca
+  um slot intermediário.
+- **Falhar é a peça NÃO sair do lugar.** Não existe posição intermediária: enquanto o motor
+  não souber devolvê-la, uma falha de teste é imobilidade, não meio caminho.
+- ⚠️ **Dano e deslocamento são desfechos INDEPENDENTES**, lidos contra a MESMA CD por números
+  DIFERENTES: a esquiva pelo `reaction.total`, o passo pela velocidade do movimento. As quatro
+  combinações existem — dá para escapar do golpe e não sair do lugar, e dá para tomar o dano
+  cheio e ainda assim andar. `avoided` não prevê o `piece_moved`, nem o contrário.
+
 `open_reaction` consulta `ReactionKind.Displaces()` (não só `Move != nil`) antes de aplicar —
 uma segunda checagem, redundante com a recusa do `attach_reaction`, para o caso de um `Move`
 chegar até aqui por qualquer outro caminho.
 
-- **O deslocamento não depende do desfecho da esquiva.** Falhar um escape é tomar o dano cheio
-  **tendo se deslocado** — deslocar e apanhar é resultado legítimo, não um bug.
 - **Um ator sem peça no tabuleiro é no-op silencioso**, como no lado da ação: nada é emitido,
-  nenhum erro sai.
+  nenhum erro sai. Vale nos dois momentos (abertura e fechamento).
 - **`Z` e o `Kind` do slot** (quadrado/hex) são **preservados**, pela mesma razão documentada em
-  [`piece_moved`](#piece_moved-servidor) para o movimento de ação.
+  [`piece_moved`](#piece_moved-servidor) para o movimento de ação. É o mesmo `applyMove` nos
+  dois momentos, não dois caminhos.
 - O deslocamento de uma reação **nunca revalida parede** — ver a última linha de §9.
+
+⚠️ **O movimento de uma AÇÃO não mudou.** Uma ação não tem CD vindo contra ela; a peça dela
+desloca **na abertura do turno**, qualquer que seja a categoria — a posição não pode esperar,
+porque as reações seguintes dependem de onde a peça está.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid open_reaction payload"`) ·
 `match_not_started` · `game_error` (`no current turn in round`,
@@ -466,10 +506,33 @@ Fechar um turno **não fecha a rodada**. Só `open_next_action` detecta exaustã
 
 **Dispara** (no caminho que de fato fecha):
 
-1. Persistência do turno (ação, reações, overrides, resolução liquidada).
-2. [`turn_closed`](#turn_closed) — mesa.
-3. [`resolution_updated`](#resolution_updated) **settled e projetado por destinatário**.
-4. [`bars_updated`](#bars_updated) — mesa.
+1. [`piece_moved`](#piece_moved-servidor), **um por fuga de `Dash` que passou** — ver abaixo.
+2. Persistência do turno (ação, reações, overrides, resolução liquidada).
+3. [`turn_closed`](#turn_closed) — mesa.
+4. [`resolution_updated`](#resolution_updated) **settled e projetado por destinatário**.
+5. [`bars_updated`](#bars_updated) — mesa.
+
+#### O fechamento é onde as fugas de `Dash` são decididas
+
+Uma fuga com `Dash` (`escape`, `escapeGuard`) **não** deslocou na abertura: ela tem uma CD a
+vencer, e a CD é **o teste de acerto do atacante** (ver [`open_reaction`](#open_reaction)).
+É aqui que o servidor diz o desfecho:
+
+- **passou** (velocidade derivada do movimento `>=` acerto) → sai um
+  [`piece_moved`](#piece_moved-servidor) para o
+  slot pedido, com o mesmo gate de campo de visão, **antes** do
+  [`turn_closed`](#turn_closed) — a mesa não pode ver o turno acabar com a peça no slot velho;
+- **falhou** → **nada sai**. A peça não sai do lugar, e não existe posição intermediária.
+
+Uma fuga com `Shift` (`closedEscape`) já andou lá atrás, na abertura da reação, e **não** é
+deslocada de novo aqui.
+
+⚠️ **Os três verbos que fecham um turno decidem isso igual.** `close_turn` é o explícito;
+[`open_next_action`](#open_next_action) e [`pull_action`](#pull_action) também fecham o turno
+aberto a caminho de abrir o próximo, e **os três** aplicam o desfecho das fugas. Um escape
+cujo resultado dependesse de qual verbo o mestre usou seria bug, não regra. (Nesses dois o
+`piece_moved` sai antes da persistência e antes do [`turn_opened`](#turn_opened) do próximo
+turno; não há `turn_closed` nesse caminho — ver [`turn_closed`](#turn_closed).)
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid close_turn payload"`) ·
 `match_not_started` · `game_error` (`no open turn to close`).
@@ -1058,20 +1121,23 @@ o dono **offline** tem o cache recalculado mas não recebe nada (ele reconectari
 velho); e se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima
 sai do mesmo jeito.
 
-**Disparado por:** `open_next_action` e `pull_action`, quando o turno que abre carrega um
-`Move` — e por [`open_reaction`](#open_reaction), quando a reação que ganha a palavra carrega
-um `Move` (as três fugas). Só o ramo que **não testa** desloca — hoje `move.category` só
-aceita `Dash` e `Shift` (as outras cinco são recusadas no mapeamento), e nenhum dos dois rola
-contra CD; um ramo com teste (um salto, um aperto, um pouso em slot ocupado) não tem caso
-alcançável hoje, então não existe código para ele.
+**Disparado por** três momentos, e é o **mesmo** `applyMove` nos três:
 
-Um ator **sem peça no tabuleiro** não é erro, nos dois caminhos: não há o que mover, nada é
-emitido e nenhuma mensagem de erro sai. O turno (ou a reação) abre normalmente.
+| Momento | Quando |
+|---|---|
+| Abertura do turno (`open_next_action`, `pull_action`) | a ação que abre carrega um `Move`. **Qualquer categoria** — uma ação não tem CD vindo contra ela, e a posição não pode esperar, porque as reações seguintes dependem de onde a peça está. |
+| Abertura da reação ([`open_reaction`](#open_reaction)) | a fuga que ganha a palavra anda de **`Shift`** (`closedEscape`). O `Shift` não rola nada, então não há teste a ser lido contra o acerto do atacante. |
+| Fechamento do turno (`close_turn`, e também `open_next_action`/`pull_action`) | a fuga anda de **`Dash`** (`escape`, `escapeGuard`) **e passou** contra o acerto do atacante. Falhou → nada sai, a peça não sai do lugar. |
 
-**Uma reação de fuga (`escape`/`escapeGuard`/`closedEscape`) MOVE a peça, na abertura da
-reação — não no `attach_reaction` que a anexou.** As regras completas (gatilho, independência
-do desfecho da esquiva, no-op sem peça, preservação de `Z`/`Kind`) estão em
-[`open_reaction`](#open_reaction), que é quem dispara este `piece_moved` nesse caminho.
+As regras completas do lado da reação — de onde vem a CD, qual categoria decide quando, e o
+que significa falhar — estão em [`open_reaction`](#open_reaction) e em
+[`close_turn`](#close_turn). Um movimento de **ação** que dependesse de teste (um salto, um
+aperto, um pouso em slot ocupado) continua **sem caso alcançável**: `move.category` só aceita
+`Dash` e `Shift`, e as outras cinco são recusadas no mapeamento — então não existe código para
+esse ramo.
+
+Um ator **sem peça no tabuleiro** não é erro, em nenhum dos três momentos: não há o que mover,
+nada é emitido e nenhuma mensagem de erro sai. O turno (ou a reação) abre normalmente.
 
 ⚠️ **A semântica de `Z` está em aberto.** `PieceMovedPayload.Z` é documentado como altura
 virtual em metros; `Move.Position[2]` é o índice `z` da grade. São grandezas possivelmente
@@ -1250,6 +1316,7 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │      NADA FOI FECHADO         │   e não aberta)    │
     │                            │                               │                    │
     │                            │◄──── close_turn {confirm:true}┤                    │
+    │◄─ piece_moved (fog-gated) ─┤  (SÓ p/ fuga de Dash que PASSOU contra o acerto)   │
     │                            │   ┌─ persiste turno + resolução liquidada          │
     │◄──────────── turn_closed {turnId} (mesa) ─────────────────►│◄──────────────────►│
     │◄── resolution_updated ─────┤                               │                    │
@@ -1261,8 +1328,9 @@ JOGADOR A                    SERVIDOR                         MESTRE            
 ```
 
 **O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** o turno fecha
-igual (com persistência e `resolution_updated` liquidado), mas **não sai `turn_closed`** — o
-próximo `turn_opened` é o que anuncia a virada. E se nada pendente ainda puder pagar, sai
+igual (com persistência, `resolution_updated` liquidado e o `piece_moved` das fugas de `Dash`
+que passaram), mas **não sai `turn_closed`** — o próximo `turn_opened` é o que anuncia a
+virada. E se nada pendente ainda puder pagar, sai
 [`round_closed`](#round_closed) e nenhum turno novo abre.
 
 ## 9. O que este contrato ainda não entrega
@@ -1281,5 +1349,5 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
 | **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **NPC não age** | Ver §2. |
-| **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para os dois caminhos que aplicam movimento (ação de turno e reação). |
-| **O movimento aplicado não revalida parede** | A checagem de parede (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado na abertura do turno ou da reação. **Vale para os DOIS caminhos que deslocam peça na abertura** — o da ação do turno e o da reação (`open_reaction`): o deslocamento de uma reação nunca passa pela checagem de parede, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. |
+| **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
+| **O movimento aplicado não revalida parede** | A checagem de parede (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado na abertura do turno ou da reação. **Vale para os TRÊS momentos que deslocam peça** — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa pela checagem de parede, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. |
