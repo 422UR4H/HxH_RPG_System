@@ -811,10 +811,28 @@ era a vez dele depois que passou.
   "payload": {
     "turnId": "55555555-5555-4555-8555-555555555555",
     "actorId": "11111111-1111-4111-8111-111111111111",
+    "actionId": "33333333-3333-4333-8333-333333333333",
     "actionType": ""
   }
 }
 ```
+
+| Campo | O que é |
+|---|---|
+| `turnId` | O turno que abriu. É ele que aparece em [`turn_closed`](#turn_closed) e em [`resolution_updated`](#resolution_updated). |
+| `actorId` | UUID da ficha de quem age — o mesmo ID que a peça do tabuleiro carrega. |
+| `actionId` | **A ação que este turno abriu.** É o **mesmo** ID que [`action_enqueued`](#action_enqueued) devolveu a quem enfileirou e que [`action_queued`](#action_queued) deu ao mestre: é o que liga as três mensagens. |
+
+> **Para que serve `actionId`:** `actorId` sozinho é ambíguo assim que um personagem tem
+> **duas** ações na fila — os dois `turn_opened` saem idênticos e nada no wire diz qual
+> delas abriu. Com o `actionId`, o cliente casa o turno com a ação que ele próprio
+> enfileirou (ou, no mestre, com a linha da fila que ele antecipou por
+> [`pull_action`](#pull_action)).
+>
+> **A fila continua secreta.** O `actionId` só vira público aqui, quando a ação **saiu** da
+> fila e virou turno aberto — cuja existência já era pública pelo próprio `turn_opened`.
+> Nada é dito sobre o que continua pendente, e as operações que tomam um `actionId`
+> ([`pull_action`](#pull_action)) seguem sendo só do mestre.
 
 > ⚠️ **`actionType` é sempre `""` hoje.** O campo existe na struct e `room.go` nunca o
 > preenche, nos dois call sites que emitem `turn_opened`. O front **não deve** ramificar por
@@ -1444,7 +1462,7 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │                               │                    │
     │                            │◄──── open_next_action ────────┤                    │
     │                            │         (ou pull_action {actionId})                │
-    │◄────────────── turn_opened {turnId, actorId} (mesa) ──────►│◄──────────────────►│
+    │◄──── turn_opened {turnId, actorId, actionId} (mesa) ──────►│◄──────────────────►│
     │                            ├──── resolution_updated ──────►│                    │
     │                            │     isSettled:false (MASTER-ONLY)                  │
     │                            │                               │                    │

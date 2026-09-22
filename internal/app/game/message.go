@@ -333,9 +333,16 @@ type ConditionEditPayload struct {
 	Description string `json:"description,omitempty"`
 }
 
+// TurnOpenedPayload announces whose turn it is. BROADCAST — the table has to know.
+//
+// ActionID is the SAME id action_enqueued gave back to whoever enqueued and action_queued
+// gave the master. It is what ties the three messages together, and it is not decoration:
+// actorId alone is ambiguous the moment one character has two actions waiting, and then
+// nothing on the wire says which of them just opened.
 type TurnOpenedPayload struct {
 	TurnID     uuid.UUID `json:"turnId"`
 	ActorID    uuid.UUID `json:"actorId"`
+	ActionID   uuid.UUID `json:"actionId"`
 	ActionType string    `json:"actionType"`
 }
 

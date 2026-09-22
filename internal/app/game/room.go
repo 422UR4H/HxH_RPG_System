@@ -1234,10 +1234,16 @@ func (r *Room) announceOpenedTurn(
 ) {
 	r.applyOpenedMove(opened)
 
+	// GetAction returns a COPY, so it goes into a variable before any getter with a pointer
+	// receiver is called on it — the same shape persistClosedTurn already uses.
 	act := opened.GetAction()
 	out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 		TurnID:  opened.GetID(),
 		ActorID: act.GetActorID(),
+		// The id the enqueuer got back in action_enqueued and the master got in action_queued.
+		// Without it, two queued actions of the same character produce two turn_openeds a
+		// client cannot tell apart — actorId is the same in both.
+		ActionID: act.GetID(),
 	})
 	data, _ := json.Marshal(out)
 	go func() { r.broadcast <- data }()
