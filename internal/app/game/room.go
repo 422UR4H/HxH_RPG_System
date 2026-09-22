@@ -536,6 +536,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The HP the close applied, to the master and to each damaged sheet's owner.
+				// After the write, so nobody is told a number the database does not hold yet,
+				// and before turn_closed: this goes straight into each client's queue while
+				// turn_closed travels through r.broadcast, so sending it first is what keeps
+				// "the bar moved" from landing after "the turn ended".
+				r.broadcastHpChanges(result.Damaged)
 				// The implicit close is announced exactly like the explicit one, in the same
 				// place in the sequence close_turn puts it: after the escapes and the write,
 				// before the settled resolution, and above all before the announceOpenedTurn
@@ -654,6 +660,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// The HP the close applied, to the master and to each damaged sheet's owner.
+				// After the write, so nobody is told a number the database does not hold yet,
+				// and before turn_closed: this goes straight into each client's queue while
+				// turn_closed travels through r.broadcast, so sending it first is what keeps
+				// "the bar moved" from landing after "the turn ended".
+				r.broadcastHpChanges(result.Damaged)
 				// The implicit close is announced exactly like the explicit one, in the same
 				// place in the sequence close_turn puts it: after the escapes and the write,
 				// before the settled resolution, and above all before the announceOpenedTurn
@@ -948,6 +960,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.applyClosedEscapes(closedTurn, result.Resolution)
 		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
+		// Same place in the sequence the two implicit closes put it: after the write, before
+		// turn_closed. See the comment there for why the order matters.
+		r.broadcastHpChanges(result.Damaged)
 		r.broadcastTurnClosed(closedTurn.GetID())
 		r.publishResolution(closedTurn.GetID(), result.Resolution)
 		r.broadcastBars(session)
@@ -1249,6 +1264,73 @@ func (r *Room) broadcastTurnClosed(turnID uuid.UUID) {
 	out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: turnID})
 	data, _ := json.Marshal(out)
 	r.broadcast <- data
+}
+
+// broadcastHpChanges tells the master and each damaged character's owner what the close just
+// wrote to their sheet. The same three verbs that close a turn reach here, for the reason
+// broadcastTurnClosed gives: which verb the master used must not change what anyone is told.
+//
+// It is called from the CLOSING path and not from turn_closed itself because damage is what
+// the close APPLIED, and the applied numbers live in the *Result the arm already holds —
+// turn_closed carries an id and nothing else. Healing and poison will move HP without any
+// turn closing at all; when they do, they call this same helper with their own list.
+//
+// PROJECTED, not broadcast, via dispatchPerPlayer — the mechanism the fog and the settled
+// resolution_updated already use. Do not grow a second one. The owner comes out of
+// charToPlayer; an NPC has no entry there, so the master is the only recipient.
+//
+// Reading the maximum off the live sheet is session state, so it happens under r.mu — and
+// ONLY the reading does. The payloads are finished before the lock is released and every
+// send happens after it, because dispatchPerPlayer takes r.mu itself.
+func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
+	if len(damaged) == 0 {
+		return
+	}
+
+	type projected struct {
+		payload CharacterHpChangedPayload
+		owner   uuid.UUID
+	}
+
+	r.mu.RLock()
+	charToPlayer := map[string]uuid.UUID{}
+	if r.session != nil {
+		charToPlayer = r.session.GetCharToPlayer()
+	}
+	changes := make([]projected, 0, len(damaged))
+	for _, d := range damaged {
+		if d.Sheet == nil {
+			continue
+		}
+		// The maximum comes off the SAME bar NewHP came off — a maximum read anywhere else
+		// could disagree with the current value in the very payload that carries both.
+		bar, ok := d.Sheet.GetAllStatusBar()[enum.Health]
+		if !ok {
+			continue
+		}
+		changes = append(changes, projected{
+			payload: CharacterHpChangedPayload{
+				CharacterID: d.CharacterID,
+				HP:          d.NewHP,
+				MaxHP:       bar.GetMax(),
+				Damage:      d.Damage,
+			},
+			// Absent from charToPlayer means an NPC: uuid.Nil is nobody's player ID, so the
+			// owner arm below simply never matches and only the master is served.
+			owner: charToPlayer[d.CharacterID.String()],
+		})
+	}
+	r.mu.RUnlock()
+
+	for _, c := range changes {
+		r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
+			if !isMaster && playerID != c.owner {
+				return nil
+			}
+			msg := NewServerMessage(MsgTypeCharacterHpChanged, c.payload)
+			return &msg
+		})
+	}
 }
 
 // announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for

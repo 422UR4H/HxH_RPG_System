@@ -119,6 +119,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`action_edited`](#action_edited) | só o mestre |
 | [`close_turn_refused`](#close_turn_refused) | só o mestre |
 | [`turn_closed`](#turn_closed) | mesa inteira |
+| [`character_hp_changed`](#character_hp_changed) | **mestre + dono da ficha** |
 | [`round_closed`](#round_closed) | mesa inteira |
 | [`round_mode_changed`](#round_mode_changed) | mesa inteira |
 | [`scene_changed`](#scene_changed) | mesa inteira |
@@ -836,8 +837,8 @@ era a vez dele depois que passou.
 > ([`pull_action`](#pull_action)) seguem sendo só do mestre.
 
 > ⚠️ **`actionType` é sempre `""` hoje.** O campo existe na struct e `room.go` nunca o
-> preenche, nos dois call sites que emitem `turn_opened`. O front **não deve** ramificar por
-> ele.
+> preenche, no único call site que emite `turn_opened` (`announceOpenedTurn`, onde
+> `open_next_action` e `pull_action` desembocam). O front **não deve** ramificar por ele.
 
 É este evento que abre a janela de reação: quem está em `targetId` da ação pode mandar
 [`attach_reaction`](#attach_reaction) a partir daqui. Mas o `targetId` **não viaja nesta
@@ -1055,6 +1056,63 @@ estado de mesa.
 > broadcast da sala, `resolution_updated` direto na fila de cada cliente), então a ordem de
 > **chegada** entre esses dois pode inverter. Só a ordem `turn_closed` → `turn_opened`, que
 > compartilham o mesmo caminho, é garantida.
+
+### `character_hp_changed`
+
+**Direção:** servidor → cliente. **Destino:** **projetado** — o **mestre** e o **dono da
+ficha** que mudou, e mais ninguém.
+
+```json
+{
+  "type": "character_hp_changed",
+  "payload": {
+    "characterId": "22222222-2222-4222-8222-222222222222",
+    "hp": 84,
+    "maxHp": 100,
+    "damage": 16
+  }
+}
+```
+
+| Campo | O que é |
+|---|---|
+| `characterId` | UUID da ficha — o mesmo ID que a peça do tabuleiro e `bars_updated.characters[].characterId` carregam. |
+| `hp` | O valor que a ficha tem **agora**, já aplicado e já persistido. |
+| `maxHp` | O máximo da mesma barra de vida, para o cliente desenhar a barra sem um round trip REST. |
+| `damage` | O quanto acabou de sair. É o que deixa uma linha de histórico dizer "−16" sem diffar dois snapshots. |
+
+**É o número APLICADO, não a projeção.** `resolution_updated` carrega o ensaio
+(`projectedDamage`) enquanto o turno está aberto; só o fechamento escreve na ficha. Quem
+desenha a barra de vida escuta esta mensagem, não aquela.
+
+**Por que mensagem própria, e não um campo de `resolution_updated`:** HP também vai se mexer
+por **cura** e por **veneno**, e nenhum desses caminhos resolve turno nenhum. Um campo na
+resolução teria que ser duplicado no instante em que o primeiro deles chegasse. O que esta
+mensagem diz é "a barra mexeu", não "um turno calculou alguma coisa" — quando a cura e o
+veneno existirem, eles emitem **esta** mensagem, com o mesmo formato.
+
+**Por que projetado:** o HP exato de terceiro não é estado de mesa. A mesa fica sabendo que
+alguém se machucou pela narração e pelo `resolution_updated` liquidado (que já é projetado,
+§6), não por um número. É o mesmo eixo mestre/dono que `resolution_updated` aplica — não há
+um segundo mecanismo.
+
+**NPC não tem dono**, então o mestre recebe uma cópia só. Um jogador comum não é avisado do
+HP de NPC nenhum por aqui — nem precisaria: ele não consegue nem buscar a ficha por REST
+(ver a nota de permissão em [`npc_added`](#npc_added)).
+
+**Uma mensagem por personagem que levou dano.** Um golpe em área fecha o turno com vários
+alvos e sai um `character_hp_changed` para cada um — para o mestre todos, para cada jogador
+só o(s) dele(s).
+
+**Disparado por:** [`close_turn`](#close_turn), [`open_next_action`](#open_next_action) e
+[`pull_action`](#pull_action) — os **três** verbos que fecham um turno, exatamente como
+[`turn_closed`](#turn_closed). Sai **depois** da persistência (ninguém recebe um número que o
+banco ainda não tem) e **antes** do `turn_closed` do mesmo fechamento.
+
+> ⚠️ **Não sai quando o dano é zero.** Só o que foi de fato escrito na ficha vira mensagem:
+> um ataque esquivado, ou aparado até sobrar nada, fecha o turno sem nenhum
+> `character_hp_changed`. Quem quiser saber que houve um ataque que não machucou lê o
+> `resolution_updated` liquidado.
 
 ### `round_closed`
 
@@ -1526,7 +1584,6 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 |---|---|
 | **`turn_opened` não carrega `targetId`** | Um jogador não tem como saber, pelo wire, que foi alvo — só pelo `resolution_updated` liquidado (tarde demais para reagir) ou pela narração. A janela de `attach_reaction` depende de canal humano hoje. |
 | **`turn_opened.actionType` é sempre `""`** | Não ramifique por ele. |
-| **Não existe evento de HP de personagem** | O dano é persistido em `character_sheets` no fechamento do turno; a sidebar lê por REST. O caminho ao vivo é trabalho da Fase 6. |
 | **A corrente de testes de `skills` não é executada** | `skills[].difficulty` é aceito e persistido, mas nenhuma margem atravessa de um teste para o próximo. A edição de perícias muda uma lista que ainda não decide nada. |
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |

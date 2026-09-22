@@ -51,6 +51,10 @@ const (
 	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
 	MsgTypeActionEdited     MessageType = "action_edited"
 
+	// Server → Client (game events, projected): one character's HP moved on the sheet.
+	// Its own message rather than a field of resolution_updated — see CharacterHpChangedPayload.
+	MsgTypeCharacterHpChanged MessageType = "character_hp_changed"
+
 	// Client → Server (scene management)
 	MsgTypeChangeScene MessageType = "change_scene"
 
@@ -362,6 +366,29 @@ type ReactionOpenedPayload struct {
 // follows.
 type TurnClosedPayload struct {
 	TurnID uuid.UUID `json:"turnId"`
+}
+
+// CharacterHpChangedPayload is one character's health bar after something moved it.
+//
+// PROJECTED, not broadcast: it reaches the master and the owner of the sheet, and nobody
+// else. Somebody else's exact HP is not table state — the table learns a character is hurt
+// from the narration and from the projected resolution_updated, not from a number.
+// An NPC has no owner, so the master gets a single copy.
+//
+// It is a message of its OWN rather than a field of resolution_updated because HP will also
+// move by healing and by poison, and neither of those paths resolves a turn: a field on the
+// resolution would have to be duplicated the moment the first one lands. What this message
+// says is "the bar moved", not "a turn computed something".
+//
+// This is the applied number, not a projection: resolution_updated carries the dry run, and
+// only the close writes it to the sheet. HP is what the sheet holds now; MaxHP is the bar's
+// own maximum, so a client can draw the bar without a REST round trip; Damage is what took
+// it there, which is what an event list needs to say "-16" without diffing two snapshots.
+type CharacterHpChangedPayload struct {
+	CharacterID uuid.UUID `json:"characterId"`
+	HP          int       `json:"hp"`
+	MaxHP       int       `json:"maxHp"`
+	Damage      int       `json:"damage"`
 }
 
 // ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed
