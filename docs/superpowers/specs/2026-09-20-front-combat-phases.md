@@ -1,4 +1,4 @@
-# O combate no front — Fases 6 a 9
+# O combate no front — Fases 6 a 8
 
 > **Documento mestre.** Cada fase vira uma sessão que escreve o seu design spec e o seu
 > plano em cima deste texto, implementa, e abre **um PR**. Como foi nas Fases 1 a 5.
@@ -19,9 +19,11 @@ fontes de verdade.
 | **Fechamento da 6** | Visibilidade do mestre, consistência da partida, NPC, histórico, ficha, cards, barras (§6A) | **próxima** — um PR de back e um de front, em paralelo |
 | **7** | Reações (§7) | depois do fechamento |
 | **8** | Regência — a edição do mestre (§8) | depois da 7 |
-| **9** | Inventário e Nen (§9) | reservada — não existem no back |
 
-Fora das fases, e **sem desenho ainda**: as regras de colisão (§11.3). Não travam nenhuma fase.
+**Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
+(§11.3), iniciativa, e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
+nada disso trava as fases acima. **Não há uma "Fase 9" planejada**: inventário e Nen não existem
+no back e não são o próximo passo.
 
 **O "fechamento" não vira fase numerada** pelo mesmo motivo de sempre: "Fase 7 = reações" e
 "Fase 8 = regência" já são citadas em documentos dos dois repos. Renumerar tornaria todas essas
@@ -52,9 +54,33 @@ dependem dessas razões.
    nunca foi exercitado.
 7. PR aberto dizendo o que foi verificado e **o que não foi**.
 
-**Effort.** A sessão que planeja roda em **high**: o effort alto paga em descoberta, e a
-descoberta de cada fase já está feita neste documento, com arquivo e linha. `xhigh`/`max`
-gastariam reexplorando o que está escrito.
+### 0.2 Regra transversal: nenhum reinício deixa cliente e servidor divergindo
+
+**Todo desenho, de toda fase, tem que responder: o que acontece se o servidor reiniciar, se o
+cliente recarregar, ou se a conexão cair e voltar — no meio de qualquer coisa?** A resposta
+aceitável é sempre a mesma: **cliente e servidor voltam a concordar**, sem ação manual de
+ninguém.
+
+- **O servidor é a fonte.** Estado que o cliente guarda por conveniência (rascunho, aba aberta)
+  pode existir; estado que **descreve a partida** (fila, histórico, posições, turno aberto) vem
+  do servidor, e o cliente se reconcilia com ele a cada conexão.
+- **Perder estado no servidor pode ser aceitável; divergir, não.** Se algo se perde num
+  reinício, todos os clientes ficam sabendo — nenhum continua mostrando o que não existe mais.
+- **Reconciliar nunca re-sorteia.** Um cliente não reenvia sozinho o que o servidor perdeu:
+  reenviar é rolar os dados de novo.
+- **O spec de cada fase tem uma seção sobre isso**, e a verificação inclui recarregar o cliente
+  e reiniciar o servidor no meio do fluxo que a fase entrega.
+
+O caso que originou esta regra é o R8 (§6A.2): depois de um reinício, o mestre perdeu a fila e
+os jogadores continuaram vendo as ações que tinham declarado.
+
+**Effort.** A recomendação é **high** para a sessão que planeja: o effort alto paga em
+descoberta, e a descoberta de cada fase já está feita neste documento, com arquivo e linha.
+`xhigh`/`max` gastariam reexplorando o que está escrito.
+
+**A decisão final é da sessão.** Ela vai explorar coisas que este documento não previu, e pode
+concluir que uma tarefa pede mais — ou menos. Se mudar o effort, de uma tarefa ou de um trecho,
+registre no spec por quê.
 
 Os subagentes que implementam cada tarefa bem especificada podem rodar mais baratos. O `model`
 se escolhe a cada despacho (`sonnet`). O **effort** de um subagente vem da definição do tipo de
@@ -67,7 +93,7 @@ nome exato da chave de frontmatter ao criar — não a invente.
 As Fases 1 a 5 construíram o **motor de batalha** no backend: a economia de turno, a colisão,
 o catálogo de reações, a regência e a visibilidade. Está tudo em `main` e tudo documentado.
 
-As Fases 6 a 9 constroem **a interface** — no repo `System_X_System_React`, mais um pacote de
+As Fases 6 a 8 constroem **a interface** — no repo `System_X_System_React`, mais um pacote de
 preparação no repo Go.
 
 **A numeração continua** de propósito. "Fase 6 — Front" já é citada em `combat-engine.md`, no
@@ -813,10 +839,12 @@ ordem inversa produz resultado diferente na tela.
 > fechamento da Fase 6** (F4, F3, F8): o dono do produto os quer antes, e nenhum depende da
 > edição.
 
-## 9. Fase 9 — Inventário e Nen
+## 9. Inventário e Nen — não planejados
 
-Não existem no backend. `aura?: StatusBar` está tipado como opcional exatamente porque o
-servidor não serializa. Fase reservada, sem escopo escrito.
+Não existem no backend (`aura?: StatusBar` está tipado como opcional exatamente porque o servidor
+não serializa) e **não são o próximo passo** depois da Fase 8 — o próximo é enriquecer a
+mecânica de combate (§0). Os itens **Inventário** e **Nen** do rail continuam fora dele até
+existirem.
 
 ---
 
