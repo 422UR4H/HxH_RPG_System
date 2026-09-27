@@ -40,19 +40,16 @@
 - A causa de cada item está no documento mestre, com arquivo e linha. Este spec não a repete —
   diz **o desenho**.
 
-## 2. O que ainda está aberto no documento mestre
+## 2. O que foi fechado com o dono do produto depois da primeira versão
 
-Dois pontos para o autor do documento. Nenhum trava o começo: o plano põe o que depende deles
-no fim, e o desenho abaixo diz o que faço se a resposta for a recomendada.
+Nada está aberto. Os três pontos devolvidos ao autor do documento mestre foram fechados, e o
+documento os registra (PR #81):
 
-| # | Onde | O quê | Recomendação |
-|---|---|---|---|
-| **L1** | B9 | *"`enqueue_master_action` não mapeia `attack`"* — mas **nada consome master action** hoje (`Turn.GetMasterActions()` não tem leitor; `find_match_history.go:31` diz que elas nunca são persistidas, de propósito). Mapear o `attack` para dentro de um `MasterAction` que ninguém lê não muda nada na mesa. O que um "ataque do mestre" **faz** — quem ataca, quando resolve, contra qual CD — não está escrito, e é regra de jogo. | **Tirar o `attack` do `MasterActionPayload`** e dizer no contrato: o mestre ataca pelo NPC, com `enqueue_action` (é o que o PR #73 fez funcionar). Um ataque "do ambiente" (armadilha) é desenho futuro. A tarefa do plano (T17) implementa isso; se a resposta for outra, só essa tarefa muda. |
-| **L2** | "Onde o tabuleiro da partida é salvo" | *"(Hoje o `AttachMap` permite, sobrescrevendo o anexo.)"* — **errado, e o erro é meu** (da rodada anterior): o *gateway* faz upsert, mas o *use case* `AttachMatchMapUC` já recusa depois do início (`ErrMatchAlreadyStarted`, `attach_match_map.go:39`). Não há o que implementar. | Só corrigir o parêntese. |
-
-A contradição que eu tinha levantado no B14 (*"mesma persistência"* de uma master action que
-nunca foi persistida) foi **fechada pelo dono do produto**: master actions ganham tabela
-própria e entram no histórico, projetadas pelo que cada leitor viu ao vivo — §4.8.
+| Ponto | Decisão |
+|---|---|
+| **B9 — o `attack` da master action.** Nada lê o conteúdo de uma master action; o que um "ataque do mestre" faria é regra de jogo | **O `attack` sai do payload.** O mestre ataca pelo NPC, com `enqueue_action`. Um ataque do mestre só faria sentido como efeito de ambiente (armadilha), que é **futuro**, não pendência. O servidor recusa uma master action com `attack`, dizendo o caminho certo (T17) |
+| **B14 — "mesma persistência"** de uma master action que nunca foi persistida | Master actions ganham **tabela própria**, entram no histórico e são projetadas pelo que cada leitor viu ao vivo — §4.8 |
+| **"Hoje o `AttachMap` permite"** trocar o mapa depois do início — erro da sessão, na rodada anterior | O use case já recusa (`ErrMatchAlreadyStarted`). O documento foi corrigido; não há o que implementar |
 
 ## 3. A forma geral
 
@@ -433,7 +430,7 @@ A verificação inclui recarregar no meio de um turno e reiniciar o `cmd/game` n
 
 | Arquivo | O quê |
 |---|---|
-| `docs/dev/api/match-combat-ws.md` | B1 (`action_queued.action`, `queue`), B2 (`turn_opened.action`, `openTurn.actionId/action`, a ordem nova), B12 (`ownQueue` + regra), B13 (escape, `edit_action.escapeLanding`, `escape` na resolução), B14 (master action `move`/`remove`, `piece_moved` só no lobby, `map_state_sync` obsoleto, `unknown_wall`, `not_participant`), B6/B10 (convenção de coordenada, `from` derivado), B4 (`connection_replaced`), B9/L1 |
+| `docs/dev/api/match-combat-ws.md` | B1 (`action_queued.action`, `queue`), B2 (`turn_opened.action`, `openTurn.actionId/action`, a ordem nova), B12 (`ownQueue` + regra), B13 (escape, `edit_action.escapeLanding`, `escape` na resolução), B14 (master action `move`/`remove`, `piece_moved` só no lobby, `map_state_sync` obsoleto, `unknown_wall`, `not_participant`), B6/B10 (convenção de coordenada, `from` derivado), B4 (`connection_replaced`), B9 (`attack` recusado) |
 | `docs/dev/api/game-lobby.md` | `piece_moved`/`piece_removed` validados no lobby; o servidor carrega o tabuleiro |
 | `docs/dev/api/match-history.md` | B15 (`events`, cena/round sem turno), master actions (`turns[].masterActions`, `events` com `kind: "masterAction"`, projeção por `views`), `escape` na resolução, `from` opcional, exemplos corrigidos; sai a frase *"as master actions nunca são persistidas"* |
 | `docs/dev/api/match-maps.md` | B16 (`inheritBoardFromMatchUuid`), anexar outro mapa apaga o tabuleiro velho |
@@ -485,7 +482,7 @@ Cada tarefa do plano atualiza o contrato **no mesmo commit** que muda o wire.
 | Escolha do escape pelo `edit_action`, guardada no `Turn` | é a superfície de edição da resolução; caminho completo, sem fallback |
 | Master actions em tabela própria, gravadas no instante, projetadas pelo que cada jogador viu ao vivo (`views`) | **dono do produto** (tabelas separadas, as duas no histórico, projeção "como viu ao vivo"); o formato é desta sessão |
 | Duas conexões: a última vence | recarregar a aba é o caso comum |
-| `attack` sai do `MasterActionPayload` | L1 — recomendação, pendente do autor |
+| `attack` sai do `MasterActionPayload` | dono do produto — o mestre ataca pelo NPC; efeito de ambiente é futuro |
 
 ## 10. Fora de escopo
 

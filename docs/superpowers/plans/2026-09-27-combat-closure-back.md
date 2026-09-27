@@ -919,18 +919,17 @@ Spec §4.7. Independente.
 
 ---
 
-### Task 17: B9 — o `attack` da master action (L1)
+### Task 17: B9 — o `attack` sai da master action
 
-Spec §2 L1. **Pendente da resposta do autor do documento mestre.** Com a recomendação:
+Spec §2 (decisão do dono do produto: o mestre ataca pelo NPC, com `enqueue_action`; um ataque do mestre como efeito de ambiente é futuro).
 
 **Files:** Modify `message.go` (`MasterActionPayload`, `MasterActionEnqueuedPayload` sem `Attack`), `action_mapper.go` (sai o ramo `Attack` e seu `TODO` — o TODO sai porque a decisão foi tomada: diga isso no commit), `action/master_action.go` (o campo `Attack` do domínio **fica**: ele é usado pelo `edit_action`? confira; se não for usado por nada, fica também — é domínio, não wire); Test: `action_mapper_test.go`, e2e; Modify `match-combat-ws.md`.
 
 - [ ] **Step 1: Teste (falha):** `enqueue_master_action` com `attack` → `error` `invalid_action` `"the master attacks through an NPC with enqueue_action"` (o JSON desconhecido não pode passar calado: decodifique para detectar a chave `attack` e recuse).
 - [ ] **Step 2: Implementar.**
-- [ ] **Step 3: Contrato:** o mestre ataca pelo NPC com `enqueue_action`; ataque "do ambiente" não existe ainda.
+- [ ] **Step 3: Contrato:** o mestre ataca pelo NPC com `enqueue_action`; um ataque do mestre só faria sentido como efeito de ambiente (armadilha), que é futuro.
 - [ ] **Step 4: Rodar** verificação → PASS. **Commit** `fix(game): o mestre ataca pelo NPC, não por master action (B9)`
 
-Se a resposta do autor for outra, **pare** e peça o desenho antes desta tarefa.
 
 ---
 
@@ -958,5 +957,5 @@ Spec §4.3 "Estrutura" (B16). Depende de T1/T3.
 - [ ] **Step 1: Docs.** `AGENTS.md`: tirar/atualizar o que deixou de ser verdade (o `fog_mode` continua pendente — **não** remover aquele bloco); acrescentar o tabuleiro por partida, o escape e as master actions persistidas em tabela própria (e por que não em `actions`). `game-server.instructions.md`: `RoomDeps`, o tabuleiro vem do banco, `persistBoard` é o único ponto de gravação, as duas pistas de envio e a ordem nova. Rode o mapa de documentação contra `git diff --name-only origin/main` e classifique (covered/missing/unmapped).
 - [ ] **Step 2: Verificação completa**: `go build ./... && go vet ./... && go vet -tags integration ./... && go vet -tags smoke ./... && go test ./... && go test -race ./internal/app/game/ && go test -tags=integration -p 1 ./internal/gateway/pg/...` → tudo PASS. Cole a saída resumida no PR.
 - [ ] **Step 3: Ponta a ponta** (`CLAUDE.md` da raiz, "Entrega"): `make migrate-up`, `make run-dev`; `curl` em `GET /matches/{uuid}/history` (cena sem turno, `events`), `GET /matches/{uuid}/participants` como dono, `PUT` do anexo com `inheritBoardFromMatchUuid`. WS com um cliente de linha de comando (`websocat` se instalado; senão um `go run` descartável no scratchpad — **não** commitar): mestre + dois jogadores, uma ação com Dash, abrir, fechar; **reiniciar o `cmd/game` no meio de uma fila e no meio de um turno** e conferir `map_full_state`, `ownQueue: []` e as posições. Registre o que foi feito e o que não foi.
-- [ ] **Step 4: PR** (depois de `git rebase origin/main`): título `feat: fechamento da Fase 6 — pacote de back (B1–B16)`; descrição com o que cada B entrega, os contratos mudados (lista do spec §6), o que foi verificado, **o que não foi** (browser com três contas é do PR de front), o link para o PR de front, e L1–L2 se ainda abertos. Termina com `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- [ ] **Step 4: PR** (depois de `git rebase origin/main`): título `feat: fechamento da Fase 6 — pacote de back (B1–B16)`; descrição com o que cada B entrega, os contratos mudados (lista do spec §6), o que foi verificado, **o que não foi** (browser com três contas é do PR de front), o link para o PR de front, e as decisões do spec §2. Termina com `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - [ ] **Step 5: Ambiente para validação manual:** `./dev-checkout.sh feat/combat-closure-back` a partir de `System_X_System_Project/` (só no fim; dizer no PR o que olhar).
