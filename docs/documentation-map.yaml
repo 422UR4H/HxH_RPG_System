@@ -504,14 +504,77 @@ mappings:
   - code_path: internal/gateway/pg/fog/
     dev_docs:
       - path: docs/dev/api/maps.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-maps.md
         confidence: possibly_affected
-    notes: PlayerMemoryRepository PG implementation (stub); impacts maps.md when memory persistence is fully wired
+    notes: PlayerMemoryRepository is now IMPLEMENTED (spec 2026-09-27-combat-closure-back §4.3, Task 1) — Upsert/FindByMatchMap/DeleteByMatch against player_memories, Seen serialized as [{"kind":"wall","id":"<id>"}]; nobody calls it yet.
 
   - code_path: migrations/20260805000000_player_memories.sql
     dev_docs:
       - path: docs/dev/api/maps.md
         confidence: possibly_affected
     notes: Renames player_fog_states to player_memories (explored JSONB → seen_features JSONB, drops grid_kind); no data migration, the old table was never written to
+
+  # ─── Match Board: per-match snapshot (Phase 6 closure, B3/B14) ───
+  - code_path: internal/domain/matchboard/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: >-
+      matchboard.Board — the match's own board, a SNAPSHOT that starts as a copy of the
+      campaign map it was attached to (spec 2026-09-27-combat-closure-back §4.3). Grid/Bg/
+      Pieces/Walls reuse the mapentity JSON shapes maps.pieces/maps.walls already store.
+      Task 1 only: infra, nobody calls it yet.
+
+  - code_path: internal/gateway/pg/matchboard/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: >-
+      pgmatchboard.Repository — Get/Save/Delete against match_boards (upsert on
+      match_uuid). Copy (herdar tabuleiro entre partidas, B16) is Task 18's, not
+      implemented here.
+
+  - code_path: migrations/20260927000000_match_boards_and_events.sql
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: possibly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: Creates match_boards, match_events and master_actions (spec 2026-09-27-combat-closure-back, Task 1)
+
+  # ─── Match History: round-scoped events and master actions (Phase 6 closure, B15/B14) ───
+  - code_path: internal/domain/matchevent/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      matchevent.Event/Kind — what happens inside a round that is not a turn and is
+      nobody's action (spec §4.5, B15); today only KindRoundModeChanged. Master actions
+      have their own table/package (masteraction) and are never recorded here.
+
+  - code_path: internal/gateway/pg/matchevent/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: pgmatchevent.Repository — Insert/ListByMatch against match_events, ordered by (created_at, uuid).
+
+  - code_path: internal/domain/masteraction/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      masteraction.Record/Kind/View — the master's own actions, persisted separately from
+      actions because the actor is the master (a USER) and the action happens outside any
+      turn (spec §4.8, B14). ProjectFor is the pure per-viewer projection (master sees all;
+      full drops Views; left also erases a piece kind's destination; absent → not in the
+      reader's history at all). PieceContent is the Content shape of the three piece kinds.
+
+  - code_path: internal/gateway/pg/masteraction/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: pgmasteraction.Repository — Insert/ListByMatch against master_actions, ordered by (happened_at, uuid).
 
   - code_path: internal/app/game/message.go
     dev_docs:
