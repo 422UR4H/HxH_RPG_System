@@ -800,15 +800,15 @@ por `enqueue_master_action` com `move` (por isso depende do `move` de B9): só o
 persistido (B3) e transmitido com projeção de fog. **Jogador nunca arrasta** na partida: ele move
 por ação.
 
-- **É uma master action de verdade, e segue as regras que master action já tem** — mesma
-  mensagem, mesma persistência, mesmo registro. **Toda** master action de mover vira linha no
-  histórico, não só a que acontece com turno aberto.
+- **É uma master action de verdade** — mesma mensagem (`enqueue_master_action`) e, com turno
+  aberto, o mesmo registro no turno. **Toda** master action vira linha no histórico, não só a
+  que acontece com turno aberto — ver "Master actions persistidas", logo abaixo.
 - **Vale com ou sem turno aberto.** Hoje `EnqueueMasterAction` recusa sem turno aberto
   (`match_session.go`, `ErrNoActiveTurn`) e só pendura a master action no turno corrente — e
   arrastar sem turno é o caso comum: o mestre arrumando a cena entre turnos, ou antes do
   primeiro. A master action de mover **se aplica na hora**. Com turno aberto, fica registrada no
-  turno; sem turno, fica registrada como evento da partida fora de turno — o mesmo mecanismo de
-  B15, que já passa a guardar troca de cena, de regime e round fechado.
+  turno; sem turno, entra no histórico como evento fora de turno — o mesmo mecanismo de B15, que
+  já passa a guardar troca de cena, de regime e round fechado.
 - A mesa recebe `piece_moved` com projeção de fog; o mestre recebe `master_action_enqueued` como
   confirmação.
 - **O `piece_moved` do cliente fica só no lobby, e validado no servidor:** o mestre move qualquer
@@ -816,6 +816,31 @@ por ação.
 
 > Não confunda com a posição final de um escape que falhou (B13) — aquilo é resolução de turno,
 > não master action.
+
+**Master actions persistidas — decisão do dono do produto.** Hoje as master actions vivem só em
+memória, penduradas no `Turn`: o `PersistTurnClose` nunca gravou `t.GetMasterActions()`. Elas
+passam a ser persistidas, e **em tabela própria — não em `actions`**. As duas aparecem no
+histórico.
+
+Por que não na mesma tabela — é o modelo, não preferência:
+
+- `actions.actor_uuid` referencia `character_sheets` (PR #69). O ator de uma master action é o
+  **mestre**, que é usuário, não ficha.
+- `actions.turn_uuid` é `NOT NULL`. A master action pode acontecer **fora de turno** — o
+  arrastar entre turnos é o caso comum.
+- Misturar obriga a afrouxar as duas colunas e a filtrar um tipo do outro em toda leitura do
+  histórico.
+
+O que a tabela precisa (o formato é da sessão de back): a partida, o turno **opcional** (nulo =
+fora de turno), o mestre (`users`), o tipo, o conteúdo (move, interact, …) e o instante.
+Persista nos mesmos momentos de B3/B15.
+
+- **No histórico:** a master action com turno entra **dentro daquele turno**; a sem turno entra
+  como **evento fora de turno**, pelo mesmo mecanismo de B15, na ordem do tempo.
+- **Projeção:** cada leitor vê a master action **como a viu ao vivo** — o que o fog escondeu dele
+  na hora não aparece para ele depois.
+- **`overridden_action_values` continua separado de tudo isso:** a edição do mestre
+  (`edit_action`) não é master action.
 
 Mantenha, como **última defesa**, a resposta com `error` para uma ação sobre parede que o
 servidor não conhece. Com o servidor carregando o tabuleiro, esse caminho deveria ficar
@@ -1018,6 +1043,7 @@ depois de B3.
 | O tabuleiro do lobby é o da partida; iniciar a partida não grava no mapa da campanha; o mapa anexado não troca depois do início (B3, F16) | decorre da decisão acima |
 | Falhar no movimento do escape faz tomar o golpe; o escape defensivo cai para a defesa (B13) | dono do produto — "não consegue esquivar se falhar no movimento" |
 | Arrastar, pôr e tirar peça são master actions: valem com ou sem turno aberto, sempre entram no histórico, e o mestre confirma antes de enviar (B11, B14, F12) | dono do produto |
+| Master actions são persistidas em tabela própria, separada de `actions`; as duas aparecem no histórico, e cada leitor vê a master action como a viu ao vivo; `edit_action` não é master action (B14) | dono do produto — o modelo: `actions.actor_uuid` é ficha e `actions.turn_uuid` é obrigatório |
 | Tirar peça vale para qualquer peça, e não desinscreve, não mata, não apaga histórico (B11) | dono do produto |
 | O mapa anexado não troca depois do início; mudar o mapa no meio da partida é do futuro editor de mapa da partida, e B3 não pode fechar essa porta | dono do produto |
 | Troca de regime, troca de cena e round fechado passam a ser persistidos (B15) | "nada deve ser perdido durante a partida" |
