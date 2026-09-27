@@ -224,29 +224,31 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		hub,
 		&fogMatchRepo{masterUUID: f.masterUUID, started: !f.lobby},
 		&mockEnrollmentChecker{enrolled: true},
-		&mockStartMatchUC{},
-		&mockKickPlayerUC{},
-		&combatSessionUC{session: session},
-		// The real use cases: this is what makes the test end-to-end rather than a mock
-		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
-		// round to actually close when the bar economy runs out, not just report it.
-		appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
-		appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
-		appmatch.NewEnqueueActionUC(),
-		appmatch.NewAttachReactionUC(),
-		appmatch.NewOpenReactionUC(),
-		appmatch.NewCloseTurnUC(f.writer),
-		// The real UC: the scene assertions in match_full_state need the session's ACTIVE scene
-		// to actually change, and the mock returns a fresh scene without touching the session.
-		appmatch.NewChangeSceneUC(),
-		roundRepo,
-		&mockEnqueueMasterActionUCHandler{},
-		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
-		// exists in Race mode, and the mock never actually flips the session's round mode.
-		appmatch.NewChangeRoundModeUC(),
-		appmatch.NewEditActionUC(),
-		// nil unless withAddLiveNPC was passed: no test before add_npc sends it.
-		f.addLiveNPC,
+		game.RoomDeps{
+			StartMatchUC:  &mockStartMatchUC{},
+			KickPlayerUC:  &mockKickPlayerUC{},
+			InitSessionUC: &combatSessionUC{session: session},
+			// The real use cases: this is what makes the test end-to-end rather than a mock
+			// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
+			// round to actually close when the bar economy runs out, not just report it.
+			OpenNextActionUC: appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+			PullActionUC:     appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+			EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
+			AttachReactionUC: appmatch.NewAttachReactionUC(),
+			OpenReactionUC:   appmatch.NewOpenReactionUC(),
+			CloseTurnUC:      appmatch.NewCloseTurnUC(f.writer),
+			// The real UC: the scene assertions in match_full_state need the session's ACTIVE scene
+			// to actually change, and the mock returns a fresh scene without touching the session.
+			ChangeSceneUC:         appmatch.NewChangeSceneUC(),
+			RoundRepo:             roundRepo,
+			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
+			// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
+			// exists in Race mode, and the mock never actually flips the session's round mode.
+			ChangeRoundModeUC: appmatch.NewChangeRoundModeUC(),
+			EditActionUC:      appmatch.NewEditActionUC(),
+			// nil unless withAddLiveNPC was passed: no test before add_npc sends it.
+			AddLiveNPCUC: f.addLiveNPC,
+		},
 	)
 
 	mux := http.NewServeMux()

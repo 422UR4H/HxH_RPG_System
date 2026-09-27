@@ -68,14 +68,23 @@ func main() {
 	// TODO: evaluate to a handler for package
 	handler := game.NewHandler(
 		hub, matchRepository, enrollmentRepository,
-		startMatchUC, kickPlayerUC,
-		initSessionUC, openNextActionUC, pullActionUC,
-		enqueueActionUC, attachReactionUC, openReactionUC, closeTurnUC,
-		changeSceneUC, roundRepository,
-		enqueueMasterActionUC,
-		changeRoundModeUC,
-		editActionUC,
-		addLiveNPCUC,
+		game.RoomDeps{
+			StartMatchUC:          startMatchUC,
+			KickPlayerUC:          kickPlayerUC,
+			InitSessionUC:         initSessionUC,
+			OpenNextActionUC:      openNextActionUC,
+			PullActionUC:          pullActionUC,
+			EnqueueActionUC:       enqueueActionUC,
+			AttachReactionUC:      attachReactionUC,
+			OpenReactionUC:        openReactionUC,
+			CloseTurnUC:           closeTurnUC,
+			ChangeSceneUC:         changeSceneUC,
+			RoundRepo:             roundRepository,
+			EnqueueMasterActionUC: enqueueMasterActionUC,
+			ChangeRoundModeUC:     changeRoundModeUC,
+			EditActionUC:          editActionUC,
+			AddLiveNPCUC:          addLiveNPCUC,
+		},
 	)
 	server := game.NewServer(addr, hub, handler)
 

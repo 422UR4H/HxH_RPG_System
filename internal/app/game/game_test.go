@@ -122,24 +122,26 @@ func (m *mockEditActionUC) Execute(
 }
 
 func newTestRoom(matchUUID, masterUUID uuid.UUID) *game.Room {
-	return game.NewRoom(
-		matchUUID, masterUUID,
-		&mockStartMatchUCLocal{},
-		&mockKickPlayerUCLocal{},
-		&mockInitSessionUC{},
-		&mockOpenNextActionUC{},
-		&mockPullActionUC{},
-		&mockEnqueueActionUC{},
-		&mockAttachReactionUC{},
-		&mockOpenReactionUC{},
-		&mockCloseTurnUC{},
-		&mockChangeSceneUC{},
-		&mockRoundRepoGame{},
-		&mockEnqueueMasterActionUC{},
-		&mockChangeRoundModeUC{},
-		&mockEditActionUC{},
-		nil,
-	)
+	return game.NewRoom(matchUUID, masterUUID, testRoomDeps())
+}
+
+func testRoomDeps() game.RoomDeps {
+	return game.RoomDeps{
+		StartMatchUC:          &mockStartMatchUCLocal{},
+		KickPlayerUC:          &mockKickPlayerUCLocal{},
+		InitSessionUC:         &mockInitSessionUC{},
+		OpenNextActionUC:      &mockOpenNextActionUC{},
+		PullActionUC:          &mockPullActionUC{},
+		EnqueueActionUC:       &mockEnqueueActionUC{},
+		AttachReactionUC:      &mockAttachReactionUC{},
+		OpenReactionUC:        &mockOpenReactionUC{},
+		CloseTurnUC:           &mockCloseTurnUC{},
+		ChangeSceneUC:         &mockChangeSceneUC{},
+		RoundRepo:             &mockRoundRepoGame{},
+		EnqueueMasterActionUC: &mockEnqueueMasterActionUC{},
+		ChangeRoundModeUC:     &mockChangeRoundModeUC{},
+		EditActionUC:          &mockEditActionUC{},
+	}
 }
 
 func TestNewServerMessage(t *testing.T) {
@@ -233,24 +235,7 @@ func TestHub(t *testing.T) {
 		t.Errorf("expected 0 rooms, got %d", hub.RoomCount())
 	}
 
-	room := hub.GetOrCreateRoom(
-		matchUUID, masterUUID,
-		&mockStartMatchUCLocal{},
-		&mockKickPlayerUCLocal{},
-		&mockInitSessionUC{},
-		&mockOpenNextActionUC{},
-		&mockPullActionUC{},
-		&mockEnqueueActionUC{},
-		&mockAttachReactionUC{},
-		&mockOpenReactionUC{},
-		&mockCloseTurnUC{},
-		&mockChangeSceneUC{},
-		&mockRoundRepoGame{},
-		&mockEnqueueMasterActionUC{},
-		&mockChangeRoundModeUC{},
-		&mockEditActionUC{},
-		nil,
-	)
+	room := hub.GetOrCreateRoom(matchUUID, masterUUID, testRoomDeps())
 	if room == nil {
 		t.Fatal("expected room to be created")
 	}
@@ -258,24 +243,7 @@ func TestHub(t *testing.T) {
 		t.Errorf("expected 1 room, got %d", hub.RoomCount())
 	}
 
-	room2 := hub.GetOrCreateRoom(
-		matchUUID, masterUUID,
-		&mockStartMatchUCLocal{},
-		&mockKickPlayerUCLocal{},
-		&mockInitSessionUC{},
-		&mockOpenNextActionUC{},
-		&mockPullActionUC{},
-		&mockEnqueueActionUC{},
-		&mockAttachReactionUC{},
-		&mockOpenReactionUC{},
-		&mockCloseTurnUC{},
-		&mockChangeSceneUC{},
-		&mockRoundRepoGame{},
-		&mockEnqueueMasterActionUC{},
-		&mockChangeRoundModeUC{},
-		&mockEditActionUC{},
-		nil,
-	)
+	room2 := hub.GetOrCreateRoom(matchUUID, masterUUID, testRoomDeps())
 	if room2 != room {
 		t.Error("expected same room for same matchUUID")
 	}
@@ -284,24 +252,7 @@ func TestHub(t *testing.T) {
 	}
 
 	otherMatchUUID := uuid.New()
-	otherRoom := hub.GetOrCreateRoom(
-		otherMatchUUID, masterUUID,
-		&mockStartMatchUCLocal{},
-		&mockKickPlayerUCLocal{},
-		&mockInitSessionUC{},
-		&mockOpenNextActionUC{},
-		&mockPullActionUC{},
-		&mockEnqueueActionUC{},
-		&mockAttachReactionUC{},
-		&mockOpenReactionUC{},
-		&mockCloseTurnUC{},
-		&mockChangeSceneUC{},
-		&mockRoundRepoGame{},
-		&mockEnqueueMasterActionUC{},
-		&mockChangeRoundModeUC{},
-		&mockEditActionUC{},
-		nil,
-	)
+	otherRoom := hub.GetOrCreateRoom(otherMatchUUID, masterUUID, testRoomDeps())
 	if otherRoom == room {
 		t.Error("expected different room for different matchUUID")
 	}

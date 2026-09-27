@@ -104,68 +104,26 @@ type Room struct {
 
 	session *matchsession.MatchSession
 
-	startMatchUC          IStartMatch
-	kickPlayerUC          IKickPlayer
-	initSessionUC         IInitMatchSession
-	openNextActionUC      IOpenNextAction
-	pullActionUC          IPullAction
-	enqueueActionUC       IEnqueueAction
-	attachReactionUC      IAttachReaction
-	openReactionUC        IOpenReaction
-	closeTurnUC           ICloseTurn
-	changeSceneUC         IChangeScene
-	roundRepo             appmatch.IRoundRepository
-	enqueueMasterActionUC IEnqueueMasterAction
-	changeRoundModeUC     appmatch.IChangeRoundMode
-	editActionUC          IEditAction
-	addLiveNPCUC          IAddLiveNPC
+	deps RoomDeps
 }
 
 func NewRoom(
 	matchUUID, masterUUID uuid.UUID,
-	startMatchUC IStartMatch,
-	kickPlayerUC IKickPlayer,
-	initSessionUC IInitMatchSession,
-	openNextActionUC IOpenNextAction,
-	pullActionUC IPullAction,
-	enqueueActionUC IEnqueueAction,
-	attachReactionUC IAttachReaction,
-	openReactionUC IOpenReaction,
-	closeTurnUC ICloseTurn,
-	changeSceneUC IChangeScene,
-	roundRepo appmatch.IRoundRepository,
-	enqueueMasterActionUC IEnqueueMasterAction,
-	changeRoundModeUC appmatch.IChangeRoundMode,
-	editActionUC IEditAction,
-	addLiveNPCUC IAddLiveNPC,
+	deps RoomDeps,
 ) *Room {
 	return &Room{
-		matchUUID:             matchUUID,
-		masterUUID:            masterUUID,
-		state:                 RoomStateLobby,
-		clients:               make(map[uuid.UUID]*Client),
-		pieces:                make(map[string]PieceMovedPayload),
-		walls:                 make(map[string]mapentity.WallSegment),
-		grid:                  mapentity.DefaultGrid(), // default; overridden by map_state_sync
-		broadcast:             make(chan []byte, 256),
-		register:              make(chan *Client),
-		unregister:            make(chan *Client),
-		stop:                  make(chan struct{}),
-		startMatchUC:          startMatchUC,
-		kickPlayerUC:          kickPlayerUC,
-		initSessionUC:         initSessionUC,
-		openNextActionUC:      openNextActionUC,
-		pullActionUC:          pullActionUC,
-		enqueueActionUC:       enqueueActionUC,
-		attachReactionUC:      attachReactionUC,
-		openReactionUC:        openReactionUC,
-		closeTurnUC:           closeTurnUC,
-		changeSceneUC:         changeSceneUC,
-		roundRepo:             roundRepo,
-		enqueueMasterActionUC: enqueueMasterActionUC,
-		changeRoundModeUC:     changeRoundModeUC,
-		editActionUC:          editActionUC,
-		addLiveNPCUC:          addLiveNPCUC,
+		matchUUID:  matchUUID,
+		masterUUID: masterUUID,
+		state:      RoomStateLobby,
+		clients:    make(map[uuid.UUID]*Client),
+		pieces:     make(map[string]PieceMovedPayload),
+		walls:      make(map[string]mapentity.WallSegment),
+		grid:       mapentity.DefaultGrid(), // default; overridden by map_state_sync
+		broadcast:  make(chan []byte, 256),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		stop:       make(chan struct{}),
+		deps:       deps,
 	}
 }
 
@@ -338,11 +296,11 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	r.mu.RUnlock()
 
 	ctx := context.Background()
-	if err := r.startMatchUC.Start(ctx, r.matchUUID, userUUID); err != nil {
+	if err := r.deps.StartMatchUC.Start(ctx, r.matchUUID, userUUID); err != nil {
 		return err
 	}
 
-	session, err := r.initSessionUC.Init(ctx, r.matchUUID)
+	session, err := r.deps.InitSessionUC.Init(ctx, r.matchUUID)
 	if err != nil {
 		return err
 	}
@@ -399,7 +357,7 @@ func (r *Room) KickPlayer(masterUUID uuid.UUID, playerUUID uuid.UUID) error {
 		return ErrNotMaster
 	}
 
-	if err := r.kickPlayerUC.Kick(context.Background(), r.matchUUID, playerUUID, masterUUID); err != nil {
+	if err := r.deps.KickPlayerUC.Kick(context.Background(), r.matchUUID, playerUUID, masterUUID); err != nil {
 		return err
 	}
 
@@ -509,7 +467,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var result *appmatch.OpenNextActionResult
 		var err error
 		if session != nil {
-			result, err = r.openNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+			result, err = r.deps.OpenNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -596,7 +554,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var err error
 		var newMode enum.RoundMode
 		if session != nil {
-			err = r.changeRoundModeUC.Execute(
+			err = r.deps.ChangeRoundModeUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID,
 				enum.RoundMode(payload.Mode),
 			)
@@ -632,7 +590,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var result *appmatch.PullActionResult
 		var err error
 		if session != nil {
-			result, err = r.pullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+			result, err = r.deps.PullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -757,7 +715,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
 		// action's dice into it, both of which the master's open_next_action reads.
 		r.mu.Lock()
-		errEnqueue := r.enqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+		errEnqueue := r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
 		r.mu.Unlock()
 		if errEnqueue != nil {
 			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
@@ -819,7 +777,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		r.mu.Lock()
-		result, err := r.openReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
+		result, err := r.deps.OpenReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
 		turnID := session.CurrentTurnID()
 		// The reaction the result hands back ALIASES the turn's own, and edit_action can rewrite
 		// a reaction under a different lock holder — so what is needed is copied HERE, inside the
@@ -891,7 +849,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Write lock across Execute: the edit mutates the action itself and re-derives the
 		// open turn's resolution — the same surface open_next_action and close_turn mutate.
 		r.mu.Lock()
-		result, err := r.editActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma)
+		result, err := r.deps.EditActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma)
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -921,7 +879,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var turnID uuid.UUID
 		if session != nil {
 			turnID = session.CurrentTurnID()
-			result, err = r.closeTurnUC.Execute(
+			result, err = r.deps.CloseTurnUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID, payload.Confirm)
 		}
 		r.mu.Unlock()
@@ -1007,7 +965,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if session != nil {
 			// Captured BEFORE ChangeScene resets it.
 			sceneWasPersisted = session.IsScenePersisted()
-			oldScene, oldRound, err = r.changeSceneUC.Execute(
+			oldScene, oldRound, err = r.deps.ChangeSceneUC.Execute(
 				context.Background(), session,
 				r.masterUUID, client.userUUID,
 				category, payload.BriefInitialDescription,
@@ -1034,7 +992,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 
 		if sceneWasPersisted && oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
-			if dbErr := r.roundRepo.CloseSceneAndRound(
+			if dbErr := r.deps.RoundRepo.CloseSceneAndRound(
 				context.Background(),
 				oldScene.GetID(), oldRound.GetID(), *oldRound.GetFinishedAt(),
 			); dbErr != nil {
@@ -1171,7 +1129,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
-		if err := r.enqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
+		if err := r.deps.EnqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
@@ -1201,7 +1159,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// added over REST mid-match. Re-sending add_npc is how the session catches up; the
 		// duplicate this verb does refuse is the SESSION's, below.
 		sheetUUID := payload.CharacterSheetUUID
-		sheet, err := r.addLiveNPCUC.Execute(context.Background(), &appmatch.AddMatchNPCInput{
+		sheet, err := r.deps.AddLiveNPCUC.Execute(context.Background(), &appmatch.AddMatchNPCInput{
 			RequesterUUID: client.userUUID,
 			MatchUUID:     r.matchUUID,
 			SheetUUID:     sheetUUID,
@@ -1424,7 +1382,7 @@ func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnenti
 	overrides := session.TakeOverridesFor(t)
 	r.mu.Unlock()
 
-	err := r.roundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
+	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 	})
@@ -1452,7 +1410,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	// Write lock across Execute: attaching a reaction rolls its dice and re-resolves the
 	// open turn, and the master may be closing that same turn from another goroutine.
 	r.mu.Lock()
-	result, err := r.attachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
+	result, err := r.deps.AttachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
 	if err == nil {
 		turnID = session.CurrentTurnID()

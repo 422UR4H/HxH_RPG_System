@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -33,65 +32,23 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	hub                   *Hub
-	matchRepo             MatchRepository
-	enrollmentRepo        EnrollmentChecker
-	startMatchUC          IStartMatch
-	kickPlayerUC          IKickPlayer
-	initSessionUC         IInitMatchSession
-	openNextActionUC      IOpenNextAction
-	pullActionUC          IPullAction
-	enqueueActionUC       IEnqueueAction
-	attachReactionUC      IAttachReaction
-	openReactionUC        IOpenReaction
-	closeTurnUC           ICloseTurn
-	changeSceneUC         IChangeScene
-	roundRepo             appmatch.IRoundRepository
-	enqueueMasterActionUC IEnqueueMasterAction
-	changeRoundModeUC     appmatch.IChangeRoundMode
-	editActionUC          IEditAction
-	addLiveNPCUC          IAddLiveNPC
+	hub            *Hub
+	matchRepo      MatchRepository
+	enrollmentRepo EnrollmentChecker
+	deps           RoomDeps
 }
 
 func NewHandler(
 	hub *Hub,
 	matchRepo MatchRepository,
 	enrollmentRepo EnrollmentChecker,
-	startMatchUC IStartMatch,
-	kickPlayerUC IKickPlayer,
-	initSessionUC IInitMatchSession,
-	openNextActionUC IOpenNextAction,
-	pullActionUC IPullAction,
-	enqueueActionUC IEnqueueAction,
-	attachReactionUC IAttachReaction,
-	openReactionUC IOpenReaction,
-	closeTurnUC ICloseTurn,
-	changeSceneUC IChangeScene,
-	roundRepo appmatch.IRoundRepository,
-	enqueueMasterActionUC IEnqueueMasterAction,
-	changeRoundModeUC appmatch.IChangeRoundMode,
-	editActionUC IEditAction,
-	addLiveNPCUC IAddLiveNPC,
+	deps RoomDeps,
 ) *Handler {
 	return &Handler{
-		hub:                   hub,
-		matchRepo:             matchRepo,
-		enrollmentRepo:        enrollmentRepo,
-		startMatchUC:          startMatchUC,
-		kickPlayerUC:          kickPlayerUC,
-		initSessionUC:         initSessionUC,
-		openNextActionUC:      openNextActionUC,
-		pullActionUC:          pullActionUC,
-		enqueueActionUC:       enqueueActionUC,
-		attachReactionUC:      attachReactionUC,
-		openReactionUC:        openReactionUC,
-		closeTurnUC:           closeTurnUC,
-		changeSceneUC:         changeSceneUC,
-		roundRepo:             roundRepo,
-		enqueueMasterActionUC: enqueueMasterActionUC,
-		changeRoundModeUC:     changeRoundModeUC,
-		editActionUC:          editActionUC,
-		addLiveNPCUC:          addLiveNPCUC,
+		hub:            hub,
+		matchRepo:      matchRepo,
+		enrollmentRepo: enrollmentRepo,
+		deps:           deps,
 	}
 }
 
@@ -172,22 +129,14 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room := h.hub.GetOrCreateRoom(
-		matchUUID, masterUUID,
-		h.startMatchUC, h.kickPlayerUC,
-		h.initSessionUC, h.openNextActionUC, h.pullActionUC,
-		h.enqueueActionUC, h.attachReactionUC, h.openReactionUC, h.closeTurnUC,
-		h.changeSceneUC, h.roundRepo, h.enqueueMasterActionUC,
-		h.changeRoundModeUC, h.editActionUC,
-		h.addLiveNPCUC,
-	)
+	room := h.hub.GetOrCreateRoom(matchUUID, masterUUID, h.deps)
 
 	// After a backend restart the Room is freshly created with nil session.
 	// If the match was already started in DB, rehydrate the session so
 	// players can take actions without a full match restart.
 	if room.GetSession() == nil {
 		if started, err := h.matchRepo.IsStarted(r.Context(), matchUUID); err == nil && started {
-			if session, err := h.initSessionUC.Init(r.Context(), matchUUID); err == nil {
+			if session, err := h.deps.InitSessionUC.Init(r.Context(), matchUUID); err == nil {
 				room.RehydrateSession(session)
 			} else {
 				log.Printf("failed to rehydrate session for match %s: %v", matchUUID, err)

@@ -194,20 +194,22 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 	kickUC := &mockKickPlayerUC{}
 	handler := game.NewHandler(
 		hub, matchRepo, enrollmentRepo,
-		startUC, kickUC,
-		&mockInitSessionUCHandler{},
-		&mockOpenNextActionUCHandler{},
-		&mockPullActionUCHandler{},
-		&mockEnqueueActionUCHandler{},
-		&mockAttachReactionUCHandler{},
-		&mockOpenReactionUCHandler{},
-		&mockCloseTurnUCHandler{},
-		&mockChangeSceneUCHandler{},
-		&mockRoundRepoHandler{},
-		&mockEnqueueMasterActionUCHandler{},
-		&mockChangeRoundModeUCHandler{},
-		&mockEditActionUCHandler{},
-		nil,
+		game.RoomDeps{
+			StartMatchUC:          startUC,
+			KickPlayerUC:          kickUC,
+			InitSessionUC:         &mockInitSessionUCHandler{},
+			OpenNextActionUC:      &mockOpenNextActionUCHandler{},
+			PullActionUC:          &mockPullActionUCHandler{},
+			EnqueueActionUC:       &mockEnqueueActionUCHandler{},
+			AttachReactionUC:      &mockAttachReactionUCHandler{},
+			OpenReactionUC:        &mockOpenReactionUCHandler{},
+			CloseTurnUC:           &mockCloseTurnUCHandler{},
+			ChangeSceneUC:         &mockChangeSceneUCHandler{},
+			RoundRepo:             &mockRoundRepoHandler{},
+			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
+			ChangeRoundModeUC:     &mockChangeRoundModeUCHandler{},
+			EditActionUC:          &mockEditActionUCHandler{},
+		},
 	)
 
 	mux := http.NewServeMux()
