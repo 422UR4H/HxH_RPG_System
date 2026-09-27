@@ -21,7 +21,8 @@ fontes de verdade.
 | **8** | Regência — a edição do mestre (§8) | depois da 7 |
 
 **Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
-(§11.3), iniciativa, e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
+(§11.3), iniciativa, efeitos de ambiente (armadilha — o único caso em que um "ataque do mestre"
+faria sentido, §6A.5 B9), e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
 nada disso trava as fases acima. **Não há uma "Fase 9" planejada**: inventário e Nen não existem
 no back e não são o próximo passo.
 
@@ -648,8 +649,15 @@ não quer bug conhecido aberto.
 | **B6** | **`move.from = [0,0,0]` é sentinela** de "sem origem" e colide com o slot (0,0) de verdade | movimento que sai do canto é tratado como sem origem |
 | **B7** | **`Register` numa sala fechada** bloqueia para sempre | o front contorna com watchdog; o back deveria recusar |
 | **B8** | **O dono não recebe o próprio `private`** em `GET .../participants` — só o mestre | o dono tem direito à própria vida |
-| **B9** | **`enqueue_master_action` não mapeia `attack` nem `move`** (`buildMasterAction` deixa os dois em `TODO`) | o mestre contorna o ataque por `enqueue_action`; e o **arrastar do mestre** (B14) precisa do `move` |
+| **B9** | **`enqueue_master_action` não mapeia `attack` nem `move`** (`buildMasterAction` deixa os dois em `TODO`). O `move` é mapeado. O **`attack` sai do payload** — ver abaixo | o **arrastar do mestre** (B14) precisa do `move` |
 | **B10** | **Grade hexagonal:** confirmar a convenção `[col,row,z]` | verificar, documentar, consertar se preciso |
+
+**O `attack` da master action sai — decisão do dono do produto.** O mestre ataca **pelo NPC**, com
+`enqueue_action`, como qualquer personagem (PR #73). Mapear um `attack` para dentro de uma master
+action não mudaria nada na mesa: nada lê o conteúdo dela. Um "ataque do mestre" só faria sentido
+como **efeito de ambiente** — uma armadilha, por exemplo —, e isso ainda não existe: é **futuro**,
+parte do enriquecimento da mecânica (§0), não pendência deste pacote. O servidor recusa uma master
+action com `attack`, dizendo o caminho certo.
 
 **Onde o tabuleiro da partida é salvo — decisão do dono do produto.** O mapa é da **campanha**:
 desenhado no editor de mapas (fora da partida), e o mesmo mapa pode estar anexado a várias
@@ -666,8 +674,9 @@ salvo nela, por cima do mapa:
   no tabuleiro da partida;
 - **trocar o mapa anexado depois do `start_match` é recusado.** O anexo diz de qual mapa da
   campanha o tabuleiro da partida **partiu**; trocá-lo por baixo de um tabuleiro vivo deixaria
-  posições e estados de parede apontando para paredes que não existem mais. (Hoje o `AttachMap`
-  permite, sobrescrevendo o anexo.)
+  posições e estados de parede apontando para paredes que não existem mais. **Isso já é assim:**
+  o `AttachMatchMapUC` recusa com `ErrMatchAlreadyStarted` (o *gateway* faz upsert, mas o use case
+  não chega nele depois do início). Não há o que implementar.
 - ⚠️ **Isso não impede o mestre de mudar o mapa no meio da partida** — só muda **onde** ele muda.
   Vai existir um **editor de mapa da partida** (ainda não existe), e nele o mestre poderá trocar o
   fundo, entre outras coisas. Essas edições são do **tabuleiro da partida**, não do mapa da
@@ -1043,6 +1052,7 @@ depois de B3.
 | O tabuleiro do lobby é o da partida; iniciar a partida não grava no mapa da campanha; o mapa anexado não troca depois do início (B3, F16) | decorre da decisão acima |
 | Falhar no movimento do escape faz tomar o golpe; o escape defensivo cai para a defesa (B13) | dono do produto — "não consegue esquivar se falhar no movimento" |
 | Arrastar, pôr e tirar peça são master actions: valem com ou sem turno aberto, sempre entram no histórico, e o mestre confirma antes de enviar (B11, B14, F12) | dono do produto |
+| O `attack` sai da master action; o mestre ataca pelo NPC, com `enqueue_action`; efeito de ambiente é futuro (B9) | dono do produto |
 | Master actions são persistidas em tabela própria, separada de `actions`; as duas aparecem no histórico, e cada leitor vê a master action como a viu ao vivo; `edit_action` não é master action (B14) | dono do produto — o modelo: `actions.actor_uuid` é ficha e `actions.turn_uuid` é obrigatório |
 | Tirar peça vale para qualquer peça, e não desinscreve, não mata, não apaga histórico (B11) | dono do produto |
 | O mapa anexado não troca depois do início; mudar o mapa no meio da partida é do futuro editor de mapa da partida, e B3 não pode fechar essa porta | dono do produto |
