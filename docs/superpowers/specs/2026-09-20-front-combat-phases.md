@@ -7,6 +7,61 @@
 > nenhum outro lugar — foram fechadas em conversa e vêm parar aqui justamente para não se
 > perderem.
 
+## 0. Estado em 2026-09-27 — leia primeiro
+
+**Este é o único documento de fases do combate no front.** Uma auditoria de 2026-09-27 chegou a
+virar um documento separado; o conteúdo dela foi consolidado aqui, em §6A, para não haver duas
+fontes de verdade.
+
+| Fase | O quê | Estado |
+|---|---|---|
+| **6** | A casca e o loop mínimo (§6) | ✅ feita — e revisada no front (`System_X_System_React/docs/dev/match/combate-fase-6.md`) |
+| **Fechamento da 6** | Visibilidade do mestre, consistência da partida, NPC, histórico, ficha, cards, barras (§6A) | **próxima** — um PR de back e um de front, em paralelo |
+| **7** | Reações (§7) | depois do fechamento |
+| **8** | Regência — a edição do mestre (§8) | depois da 7 |
+| **9** | Inventário e Nen (§9) | reservada — não existem no back |
+
+Fora das fases, e **sem desenho ainda**: as regras de colisão (§11.3). Não travam nenhuma fase.
+
+**O "fechamento" não vira fase numerada** pelo mesmo motivo de sempre: "Fase 7 = reações" e
+"Fase 8 = regência" já são citadas em documentos dos dois repos. Renumerar tornaria todas essas
+menções erradas. É o mesmo precedente do fechamento da Fase 5 (PR #72).
+
+As seções §4 e §6 ficam como **registro** do que foi decidido e por quê: as fases seguintes
+dependem dessas razões.
+
+### 0.1 O workflow de cada fase
+
+> **Sessões que planejam uma fase: copiem esta seção para o design spec de vocês.** Ela é como
+> este projeto trabalha, e quem implementa a partir do plano precisa dela tanto quanto quem
+> planejou.
+
+1. **Uma sessão por fase por repo.** Back e front rodam em paralelo quando não tocam arquivo em
+   comum — são repos diferentes, então normalmente não tocam.
+2. A sessão **lê este documento e o contrato** (`docs/dev/api/match-combat-ws.md`), escreve o
+   **design spec** e o **plano**, e **para** para o dono do produto revisar.
+3. **Lacuna ou contradição neste documento: liste e pare.** Ela volta para o autor deste
+   documento, que corrige o texto. Não se contorna, e não se decide regra de jogo por conta.
+4. Aprovado o spec, a sessão **compacta** e implementa **lendo o próprio plano do disco**. Se
+   ela não conseguir implementar a partir do plano, o plano estava incompleto — é melhor
+   descobrir nessa hora.
+5. Implementação por **subagent-driven-development**, uma tarefa por subagente.
+6. **Verificação no browser, com três contas** (`test@`, `test2@`, `test3@mail.com`, senha
+   `12345678`): um mestre e dois jogadores, jogando o caminho que o usuário faz. A Fase 6 passou
+   nos testes e falhou na mesa — o NPC do teste tinha sido inscrito por fora, e o caminho real
+   nunca foi exercitado.
+7. PR aberto dizendo o que foi verificado e **o que não foi**.
+
+**Effort.** A sessão que planeja roda em **high**: o effort alto paga em descoberta, e a
+descoberta de cada fase já está feita neste documento, com arquivo e linha. `xhigh`/`max`
+gastariam reexplorando o que está escrito.
+
+Os subagentes que implementam cada tarefa bem especificada podem rodar mais baratos. O `model`
+se escolhe a cada despacho (`sonnet`). O **effort** de um subagente vem da definição do tipo de
+agente (frontmatter de `.claude/agents/*.md`), não do despacho: para rodar implementadores em
+**medium**, crie um tipo de agente implementador com esse effort e despache por ele. Confira o
+nome exato da chave de frontmatter ao criar — não a invente.
+
 ## 1. O que este documento é, e o que ele não é
 
 As Fases 1 a 5 construíram o **motor de batalha** no backend: a economia de turno, a colisão,
@@ -282,7 +337,7 @@ está acontecendo, não quem está na sala.
 
 **O que ela mostra muda de fase.** Na **Fase 6**, é a lista dos eventos da mesa que o servidor
 já emite: turno aberto (quem age), turno fechado com o resultado, round fechado, troca de
-regime. Na **Fase 8**, vira o histórico de verdade — `GET /matches/{uuid}/history`, aninhado por
+regime. No **fechamento da Fase 6** (F4, §6A.6), vira o histórico de verdade — `GET /matches/{uuid}/history`, aninhado por
 cena. O componente é o mesmo; a fonte cresce. (O "turno fechado" depende de B3, §4.10.)
 
 **A lista de personagens do jogador não mostra HP.** A vida é dado privado de cada ficha — só o
@@ -411,6 +466,306 @@ movimento que depende de CD — que só tem caso alcançável quando os moviment
   sala nascer** (posto pelo REST do PR #73) — adicionar com a sala viva não é critério desta fase,
   porque depende de outro PR.
 
+## 6A. Fechamento da Fase 6
+
+> Auditoria dos dois repos em 2026-09-27, depois de o dono do produto jogar a Fase 6. Cada
+> relato abaixo já tem a causa, com arquivo e linha — **não refaça a descoberta**.
+
+### 6A.1 O diagnóstico
+
+A Fase 6 entregou o loop mínimo. Mas o front consome uma fração do que o back produz: **dez
+tipos de mensagem nunca são tratados nem enviados** (§6A.4). E há um buraco de back que nenhum
+front contorna: **nenhuma mensagem servidor→cliente carrega o conteúdo de uma ação de
+jogador** — o próprio contrato admite, na tabela de lacunas de `match-combat-ws.md`.
+
+> Precisão, porque a frase confunde: o mestre **recebe a existência** da ação —
+> `action_queued`, com o ID, é o que desenha o card e permite abri-la. O que não chega a
+> ninguém, pelo WS, é o **conteúdo**: arma, alvos, movimento, velocidades. Antes de abrir, nem o
+> mestre vê; depois de abrir, o jogador alvo continua sem ver.
+
+### 6A.2 Os relatos, com a causa
+
+**R1 — O mestre não vê o que foi declarado.** *"Só o nome do actor, um ícone de batalha e um de
+movimento. Não vejo a arma, o alvo, o attack speed, a speed, o teste de aceleração."*
+Causa, **back**: `ActionQueuedPayload` (`internal/app/game/message.go`) carrega só `actionId`,
+`actorId` e `bars`. O servidor tem a action inteira, com as velocidades já derivadas, e não
+manda. A fila do mestre no `match_full_state` tem o mesmo formato. → B1, F1.
+
+**R2 — O NPC do mapa não age.** *"Este personagem não está inscrito na partida — é um NPC do
+mapa, e não age."*
+Causa, **back — e não é base velha.** Só dois lugares inserem em `match_participants`:
+`start_match` (a partir de inscrições **aceitas**, ou seja, só jogadores) e o `add_npc`
+explícito. **Pôr uma peça de NPC no mapa da partida nunca a inscreve.** Uma partida criada hoje
+tem o mesmo problema. E o front piora: o `NpcPicker` lista só NPC que já está em `participants`
+(`GameMasterPage.tsx`, o `useMemo` de `npcs`), e clicar num NPC do mapa cai numa mensagem sem
+saída. → B11, F2.
+
+> A regra do dono do produto: **NPC no mapa da partida é NPC da partida.** Não faz sentido um
+> estar no tabuleiro e fora da partida.
+>
+> A verificação no browser da Fase 6 registrou "ação pelo NPC do mestre" como feita. Passou
+> porque o NPC do teste foi inscrito por fora — o caminho real nunca foi exercitado.
+
+**R3 — A ficha abre em outra tela.** Causa, front: as duas páginas fazem
+`navigate('/charactersheet/${uuid}')` (prop `onSelectCharacterSheet`). → F3.
+
+**R4 — O histórico some ao navegar e ao recarregar.** *"Nada deve ser perdido durante a
+partida."*
+Causa, front: o histórico da tela é `state.events` do `combatReducer` — só memória. O back **já
+persiste** o turno a cada fechamento (`PersistTurnClose`, com a resolução em
+`turns.resolution`) e **já expõe** `GET /matches/{uuid}/history`, aninhado por cena e projetado
+por leitor. **O front nunca chama esse endpoint.** → F4.
+
+**R5 — Os cards não seguem a campanha** (cor de NPC, de morto, de jogador; avatar e capa).
+Causa, front — **e não é o componente.** O game reusa o `CharacterSidebarItem` da campanha, e
+ele já sabe se renderizar: cor de NPC vem de `!playerUuid`, de morto de `deadAt`, e avatar e
+capa de `avatarUrl`/`coverUrl`. O problema é o wrapper
+`src/features/match/MatchCharactersSidebar.tsx`: **quando falta `private`, ele não chama o
+card** — cai num `BasicParticipantItem` com o nome e borda laranja fixa. E `playerUuid`,
+`deadAt`, `avatarUrl`, `coverUrl` e `nickName` **são públicos** (parte base da resposta,
+`CharacterBaseSummaryResponse`). O wrapper joga fora dado público que o card precisa. → F5.
+
+**R6 — O mestre não vê a barra de cada personagem.** *"Os valores numéricos e a progress-bar da
+action speed e da move speed de cada um, no topo do canvas."*
+Causa, front: **o dado já chega.** `bars_updated` traz por personagem `actionBalance`,
+`moveBalance`, `actionSpeeds` e `moveSpeeds`, mais os preços e a ordem com a chave de cada slot.
+O `GeneralBar` desenha só a ordem. → F6.
+
+> **A ordem está certa?** É calculada no servidor (`RoundScheduler`, Fase 3, com testes do
+> exemplo canônico) e o front só desenha. Nunca foi conferida **na tela** — e sem os números à
+> vista, nem dá. Com F6, o mestre confere olhando. Verificação em §6A.8.
+
+**R7 — As reações não aparecem no cliente do alvo.** Causa, **as duas pontas**: a Fase 7 nunca
+foi implementada no front; e mesmo com os botões, **o cliente do alvo não tem como saber que é
+alvo** — `TurnOpenedPayload` carrega `turnId`, `actorId`, `actionId` e `actionType`, nenhum alvo.
+A regra diz o contrário: *"Todos veem a mecânica da ação (alvos, arma, perícia); só o mestre vê o
+resultado"* (`docs/game/combate/acoes.md`, passo 4). → B2 e Fase 7.
+
+**R8 — Servidor reiniciado: o mestre perde a fila, os jogadores não.** Depois de reiniciar o
+servidor, a fila do mestre voltou vazia — o servidor a guarda só em memória —, mas os clientes
+dos jogadores continuaram mostrando as ações que tinham declarado: o front guarda a lista em
+`localStorage` (`declaredStorage.ts`). **Essa inconsistência não pode existir.** → B12, F10.
+
+**R9 — Selecionar uma peça troca a aba da direita para Personagens.** Comportamento ruim;
+sai. → F11.
+
+### 6A.3 O que ninguém relatou, mas a auditoria achou
+
+| # | O quê | Vai para |
+|---|---|---|
+| A1 | **A resolução do turno aberto não é desenhada para o mestre.** Ele recebe `resolution_updated` com acerto, esquiva, defesa, reação, escada, dano e reações pendentes — e a tela mostra só uma linha no histórico **depois** que o turno fecha. Enquanto o turno está aberto, que é quando ele decide, não vê nada | F7 |
+| A2 | **Trocar de cena não tem UI** — o back aceita `change_scene` | F8 |
+| A3 | **`master_action_enqueued` é ignorado** — a recusa a um "revelar porta" some | F9 |
+| A4 | **Edição do mestre** (`edit_action`/`action_edited`) sem UI | Fase 8 |
+| A5 | **Chat** sem UI em lugar nenhum do front | fora — não pedido |
+| A6 | As **oito pendências de back** que a revisão da Fase 6 anotou (`System_X_System_React/docs/dev/match/combate-fase-6.md`, "Pendências para o back") | B3–B10 |
+
+### 6A.4 Mensagens do servidor que o front nunca usa
+
+| Mensagem | Sentido | Vai para |
+|---|---|---|
+| `add_npc`, `npc_added` | c→s, s→c | F2 |
+| `attach_reaction`, `open_reaction`, `reaction_opened` | c→s, c→s, s→c | Fase 7 |
+| `change_scene` | c→s | F8 |
+| `master_action_enqueued` | s→c | F9 |
+| `edit_action`, `action_edited` | c→s, s→c | Fase 8 |
+| `chat` | c→s | fora |
+
+E o `GET /matches/{uuid}/history`, que o front não consome (F4).
+
+### 6A.5 Pacote de back — um PR, repo `System_X_System`
+
+**B1 — A fila do mestre carrega a declaração inteira.** `action_queued` e a fila do mestre no
+`match_full_state` passam a carregar a action **inteira**, sem projeção (as duas já são
+master-only): alvos, arma, movimento (categoria, origem, destino), perícias, o `hit` derivado,
+e as velocidades já derivadas — `actionSpeed` e `moveSpeed`, cada uma com perícia, dados e
+total —, mais o `systemBias`. ⭐ **Reuse o formato de action do histórico REST**
+(`match-history.md`): o front já vai parseá-lo por F4, e um terceiro formato de action no
+protocolo é um a mais para divergir.
+
+⚠️ **B1 é só do mestre. O dono da ação não pode receber as velocidades dela antes de abrir** —
+regra do dono do produto: *o jogador não sabe o valor que a ação dele gerou até o mestre
+abri-la*. Isso também vale para o que B12 mandar ao dono.
+
+**B2 — `turn_opened` carrega a mecânica pública da ação.** A declaração da action aberta,
+**projetada por destinatário** com o `ProjectAction` que o histórico já usa: dono e mestre veem
+tudo; o resto vê alvos, arma, movimento e perícias, sem a deny-list (finta e gatilho escondidos
+**enquanto o turno está aberto** — a regra temporal da finta já existe). Vale também para o
+`openTurn` do `match_full_state`. Destrava: o alvo saber que é alvo, o balão de mecânica, o
+jogador ver o que acontece na mesa. A **resolução** continua master-only enquanto o turno está
+aberto — a mecânica é pública ao abrir, o cálculo não.
+
+**B3 a B10 — as pendências que a revisão da Fase 6 anotou.** Todas entram: o dono do produto
+não quer bug conhecido aberto.
+
+| # | Pendência | Por que importa |
+|---|---|---|
+| **B3** | **Posições das peças só em memória.** Sala vazia ou servidor reiniciado → tudo volta ao REST, que não é atualizado pelos movimentos do jogo | perda de estado de partida |
+| **B4** | **Mesmo usuário conectado duas vezes** deixa um socket mudo, e fechar esse socket **fecha a sala para todos** | um jogador com duas abas derruba a mesa |
+| **B5** | **Checagem de parede usa os cantos dos slots**, não os centros | movimento rente à parede bloqueado ou liberado errado |
+| **B6** | **`move.from = [0,0,0]` é sentinela** de "sem origem" e colide com o slot (0,0) de verdade | movimento que sai do canto é tratado como sem origem |
+| **B7** | **`Register` numa sala fechada** bloqueia para sempre | o front contorna com watchdog; o back deveria recusar |
+| **B8** | **O dono não recebe o próprio `private`** em `GET .../participants` — só o mestre | o dono tem direito à própria vida |
+| **B9** | **`enqueue_master_action` com `attack` não é mapeado** (`buildMasterAction` em `TODO`) | o mestre contorna por `enqueue_action` |
+| **B10** | **Grade hexagonal:** confirmar a convenção `[col,row,z]` | verificar, documentar, consertar se preciso |
+
+**B11 — NPC no mapa da partida é NPC da partida.** A invariante tem **uma direção só**: toda
+peça de NPC no mapa da partida corresponde a um participante. (O contrário não vale: um NPC pode
+estar na partida sem peça — um reforço que ainda não entrou em cena.) Onde ela se garante:
+
+- **ao iniciar a partida**, inscrevendo cada NPC que já tem peça no mapa;
+- **ao pôr uma peça de NPC no mapa**, no lobby ou com a sala viva;
+- **ao nascer a sessão** (`InitMatchSession`), de forma **idempotente** — isso conserta as
+  partidas que já existem, inclusive as da base local, **sem mexer à mão no banco**.
+
+Tirar a peça do mapa **não** desinscreve o NPC.
+
+**B12 — A fila não pode divergir entre servidor e cliente.** Requisito: **nenhum cliente mostra
+uma ação que o servidor não tem.** O servidor é a fonte.
+
+O desenho é decisão desta sessão — use o effort para isso e explique a escolha no spec. Dois
+caminhos, e eles não se excluem:
+
+- **Reconciliar:** o `match_full_state` passa a mandar ao dono a lista das ações **dele** que
+  ainda estão na fila — só IDs e o que ele mesmo declarou, **sem velocidade** (ver B1) —, e o
+  front descarta o que o servidor não tem.
+- **Persistir a fila:** a action já nasce com os dados sorteados; persistida, ela sobrevive ao
+  reinício e não há o que reconciliar.
+
+⚠️ **O cliente não reenvia sozinho.** Reenviar sorteia de novo: seria uma re-rolagem que o
+jogador não escolheu, e *o mestre nunca re-rola o dado de um jogador*. Se a ação se perdeu, o
+jogador fica sabendo e declara de novo — com o rascunho de volta, para não refazer tudo.
+
+**B13 — Todo escape espera o fechamento.** Regra do dono do produto: **o escape não desloca a
+peça na abertura, porque ele pode falhar.** Na abertura, mostra-se para onde o personagem quer
+ir; no fechamento, o servidor decide.
+
+- Hoje o escape com **Shift** desloca na abertura e o com **Dash** espera. **Os dois passam a
+  esperar.** (O erro de origem foi tratar "o Dash rola dado" como "o Dash tem CD" — o Accelerate
+  do Dash é velocidade de movimento, não teste contra dificuldade. O critério correto não é a
+  categoria: é **o escape poder falhar**.)
+- **Escape bem-sucedido:** a peça vai para o destino. **Escape que falhou:** a peça **não chega**
+  ao destino — por ora, fica onde estava. Onde exatamente ela pararia é assunto das regras de
+  colisão e de "ficar no ar", que ainda não existem (§11.3, §10.4).
+
+> A leitura "falhou = não chega" vem de *"não deve ser movido na abertura porque o escape pode
+> falhar"*. Vetável.
+
+### 6A.6 Pacote de front — um PR, repo `System_X_System_React`
+
+F2 a F11 não dependem do back e começam já. **F1 espera B1; F10 espera B12.** F2 funciona
+inteiro só depois de B11, mas pode ser construído antes.
+
+**F1 — A fila do mestre mostra a ação inteira** *(espera B1)*. O card abre em detalhe: atacante,
+alvos por nome, arma, movimento (categoria e destino), perícias, `actionSpeed` (perícia, dados,
+total), `moveSpeed` (Accelerate ou Brake, dados, total), a chave na ordem geral, as barras que
+cobra. Recolhido, fica como hoje; o detalhe é um toque.
+
+**F2 — O mestre age por qualquer NPC da partida.** Com B11, todo NPC do mapa é participante, e o
+`NpcPicker` os lista. A mensagem "não está inscrito" deixa de ter caso. Continua valendo pôr na
+partida um NPC da campanha que **não** está no mapa, pelo `add_npc` (ao chegar `npc_added`, ele
+vira participante e fica selecionável).
+
+**F3 — A ficha abre dentro da partida.** Um quarto `SheetMode` do `CharacterSheetTemplate`
+(§5.6), **somente leitura**, na zona `panel` — coluna no desktop, bottom sheet no celular. O
+jogador abre a própria pelo item **Ficha** do rail; o mestre abre qualquer uma pelo card.
+**Nenhum `navigate`.** O HP mostrado é o ao vivo (`character_hp_changed`), não o do REST.
+
+**F4 — O histórico vem do servidor.** Buscado de `GET /matches/{uuid}/history` ao montar e
+**rebuscado a cada `turn_closed`** — o WS avisa, o REST busca. O que só existe ao vivo (turno
+aberto, HP mudou) entra por cima, pelo WS, e sai quando o REST equivalente chega. O servidor é a
+fonte; guardar o histórico no navegador seria uma segunda verdade — exatamente o tipo de
+divergência de R8. "Round fechado" e "troca de regime" não são turnos: deduza-os da árvore do
+REST (cena → round, com o regime de cada round). Não peça endpoint novo por isso.
+
+**F5 — Os cards usam o dado público.** `MatchCharactersSidebar` **sempre** renderiza o
+`CharacterSidebarItem`, montando o `character` pela parte base e mesclando `private` quando
+existe. O `BasicParticipantItem` sai — o card já trata ausência de vida e de experiência. Os dois
+formatos que chegam (`{...base, private}` dos participantes e o plano `CharacterPrivateSummary`)
+passam por um adaptador só, antes do card.
+
+**F6 — As barras de cada personagem, no topo do canvas.** Uma faixa com cada personagem: duas
+barras (ação e movimento), o saldo em número, as velocidades que agiram e a média. A escala é o
+**preço do round** — o saldo nunca passa do preço, pelo teto do carry-over. A ordem projetada
+continua, com a chave de cada slot.
+
+**Quem vê o quê é revelado em sequência**, conforme o mestre abre as ações — regra do dono do
+produto:
+
+| | Mestre | Jogador |
+|---|---|---|
+| velocidades de ações **já abertas** — de todos | ✔ | ✔, à medida que o mestre abre |
+| velocidades de ações **ainda na fila** — de todos | ✔ (B1) | ✗ — **nem as da própria ação** |
+| saldo e carry-over de todos | ✔ | ✔ |
+
+O jogador **não sabe o valor que a ação dele gerou até o mestre abri-la**. O `bars_updated` já
+se comporta assim — ele só carrega velocidades que agiram —, então o jogador recebe exatamente o
+que pode ver. **Não mostre ao jogador nenhuma velocidade vinda de outra fonte.** Em telas
+estreitas a faixa recolhe para a ordem geral e expande num toque.
+
+**F7 — O painel de resolução do mestre.** Enquanto o turno está aberto, o mestre vê o que já
+recebe: o acerto (dados e total) e, por alvo, esquiva, defesa, tipo de reação, escada do
+repelir, dano projetado e payouts, mais as reações anexadas e não abertas.
+
+> **Por que ele nasce só de leitura:** os botões que agem sobre ele pertencem a fases que ainda
+> não chegaram — **dar a palavra** a uma reação é da Fase 7, **editar** é da Fase 8. Pôr o botão
+> antes da fase seria um controle que não faz nada. O painel **fica completo ao fim da Fase 8**,
+> e cada fase acrescenta o seu.
+
+**F8 — Trocar de cena.** Na topbar do mestre, categoria e descrição inicial → `change_scene`. A
+categoria é validada no servidor desde o PR #74: mande o valor do enum, minúsculo.
+
+**F9 — O mestre recebe a confirmação das próprias ações.** Tratar `master_action_enqueued` como
+`action_enqueued` já é tratado: sucesso confirma, `error` aparece.
+
+**F10 — A lista de declaradas segue o servidor** *(espera B12)*. Na conexão e em toda reconexão,
+a lista do jogador é reconciliada com o que o servidor diz que existe. Ação que o servidor não
+tem **sai da lista, com aviso**, e o rascunho dela volta para o composer. **Nunca reenvie
+sozinho** (B12).
+
+**F11 — Selecionar uma peça não troca a aba da direita.** O `aside` fica onde o usuário o deixou.
+
+### 6A.7 Ordem e PRs
+
+```
+Back   ──  B1 · B2 · B3–B13   ────────────────────┐
+                                                  ├──►  F1 · F10  ──►  Fase 7
+Front  ──  F2–F9 · F11   ─────────────────────────┘
+```
+
+- Back e front **em paralelo**: repos diferentes, nenhum arquivo em comum.
+- No plano do back, **B1, B2, B11 e B12 vêm primeiro** — são os que destravam o front.
+- No plano do front, **F1 e F10 vêm por último**, depois do merge do back.
+- A Fase 7 espera **B2, B13 e** o PR de front deste fechamento (os dois tocam o painel do
+  mestre).
+
+### 6A.8 Verificação
+
+**No browser, com três contas**, um mestre e dois jogadores (§0.1). **O NPC entra pelo caminho
+real**: posto no mapa pelo mestre, numa partida criada do zero — nada de inscrever por fora.
+
+**A ordem, conferida na tela.** Três personagens rolando 20, 23 e 11 (o exemplo canônico de
+`barra-de-acao.md`): a ordem tem que sair **p2, p1, p3, p2**, e com F6 no ar o mestre confere
+pelos números.
+
+**Recarregar a página** no meio de um turno, nas três telas: histórico, barras, fila, turno
+aberto e reações pendentes voltam. **Reiniciar o servidor** no meio de uma fila: nenhum cliente
+fica mostrando ação que o servidor não tem. As posições das peças voltam de onde estavam — só
+depois de B3.
+
+### 6A.9 Decisões desta auditoria
+
+| Decisão | Origem |
+|---|---|
+| NPC no mapa da partida é NPC da partida (B11) | dono do produto |
+| Jogador não vê a velocidade da própria ação até ela abrir; a barra se revela em sequência (F6) | dono do produto |
+| Todo escape espera o fechamento; falhou, não chega (B13) | dono do produto — "falhou, não chega" é leitura, vetável |
+| A ficha na partida é só leitura (F3) | dono do produto |
+| Edição do mestre continua na Fase 8 | dono do produto |
+| Histórico vem do servidor, não do navegador (F4) | auditoria — o dono delegou o desenho |
+| O cliente nunca reenvia ação perdida sozinho (B12) | auditoria — protege "o mestre nunca re-rola" |
+| O painel de resolução nasce só leitura (F7) | auditoria — sem controle que ainda não funciona |
+
 ## 7. Fase 7 — Reações
 
 **Objetivo:** o combate de verdade.
@@ -425,30 +780,38 @@ movimento que depende de CD — que só tem caso alcançável quando os moviment
 - Mestre: `open_reaction`, com a ordem de abertura visível — ela muda o desfecho.
 - Balões: mecânica ao abrir, resultado ao encerrar.
 - O default do escape é **Dash**; o fechado é **Shift** (§11.4).
-- **O fantasma de espera** (§10.2): hoje o **escape com Dash** é o único movimento em que a
-  peça **espera o fechamento** para se deslocar (o escape com Shift e toda ação deslocam na
-  abertura). É o primeiro caso alcançável de fantasma que não é a intenção declarada da Fase 6.
+- **Os botões aparecem para o alvo porque `turn_opened` passa a dizer quem é alvo** (B2, §6A.5).
+  Sem isso não há como desenhá-los. Depois de enviar, o alvo vê "reação enviada, aguardando o
+  mestre".
+- **Dar a palavra** às reações pendentes entra no painel de resolução do mestre (F7, §6A.6), que
+  já as lista.
+- **O fantasma de espera** (§10.2): **todo escape** espera o fechamento para mover a peça — ele
+  pode falhar (B13, §6A.5). Na abertura, a peça mostra para onde quer ir; no fechamento, vai
+  para onde o servidor mandar.
 
-  ⚠️ **A regra por trás disso está sob revisão.** O código trata "o Dash rola dado" como se fosse
-  "o Dash tem CD" — e rolar a velocidade de movimento não é um teste contra dificuldade. A
-  consequência é que o mesmo Dash desloca na abertura numa ação e no fechamento num escape.
-  **Não construa lógica no front que dependa desse momento**: pela invariante de §4.1, desenhe
-  o que o servidor mandar, quando mandar.
+  ⭐ **Reuse o que o movimento puro já tem.** A revisão da Fase 6 construiu o `IntentLayer` (seta
+  e marcador de destino), a lista de declaradas e o destaque de slot. O fantasma do escape é o
+  mesmo desenho com outra vida — não um segundo mecanismo. Desenhe esta parte com cuidado: é a
+  que mais facilmente vira duas implementações paralelas do mesmo gesto.
+
+**Depende de:** B2 e B13 (§6A.5), e do PR de front do fechamento da Fase 6.
 
 **Pronto quando:** três alvos reagem diferente ao mesmo ataque em área, e abrir as reactions em
 ordem inversa produz resultado diferente na tela.
 
-## 8. Fase 8 — Leitura e regência
+## 8. Fase 8 — Regência
 
-**Objetivo:** a mesa inteira.
+**Objetivo:** o mestre com todas as ferramentas.
 
 **Escopo:**
-- Action History: `GET /matches/{uuid}/history`, **aninhado por cena** — a hierarquia do domínio
-  é a da resposta; não achatar. Não existe método em `matchService.ts`, nem hook, nem tipo.
-- A ficha dentro da partida (§5.6).
-- Edição do mestre: `edit_action` — rolagem e perícias. É aqui que entra o seletor de perícia de
-  dano, `Push` → `Grab` (§4.6).
-- `change_scene`.
+- Edição do mestre: `edit_action` / `action_edited` — rolagem e perícias. É aqui que entra o
+  seletor de perícia de dano, `Push` → `Grab` (§4.6).
+- Os botões de **editar** no painel de resolução do mestre (F7, §6A.6). Com eles, o painel fica
+  completo.
+
+> O histórico, a ficha dentro da partida e `change_scene` eram desta fase e **subiram para o
+> fechamento da Fase 6** (F4, F3, F8): o dono do produto os quer antes, e nenhum depende da
+> edição.
 
 ## 9. Fase 9 — Inventário e Nen
 
@@ -565,6 +928,11 @@ usam Dash.
 
 ⚠️ **Nada disso está em código.** `Displaces()` só exige que exista um `Move`, sem olhar a
 categoria. Validação no servidor, §4.8.
+
+**E quando a peça do escape se move** não depende da categoria: **todo escape espera o
+fechamento**, porque pode falhar (B13, §6A.5). Uma versão anterior deste documento tratava "o
+Dash rola dado" como "o Dash tem CD" e fazia o escape com Dash esperar e o com Shift não. Errado:
+o critério é o escape poder falhar.
 
 ### 11.5 Outras
 
