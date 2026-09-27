@@ -596,7 +596,7 @@ sai. → F11.
 | `add_npc`, `npc_added` | c→s, s→c | F2 |
 | `attach_reaction`, `open_reaction`, `reaction_opened` | c→s, c→s, s→c | Fase 7 |
 | `change_scene` | c→s | F8 |
-| `master_action_enqueued` | s→c | não se aplica — só sai sem `interact`, e o front nunca manda assim |
+| `master_action_enqueued` | s→c | F12 — o arrastar do mestre é master action **sem** `interact`, e é a primeira vez que o front manda assim |
 | `edit_action`, `action_edited` | c→s, s→c | Fase 8 |
 | `chat` | c→s | fora |
 
@@ -617,8 +617,9 @@ regra do dono do produto: *o jogador não sabe o valor que a ação dele gerou a
 abri-la*. Isso também vale para o que B12 mandar ao dono.
 
 **B2 — `turn_opened` carrega a mecânica pública da ação.** A declaração da action aberta,
-**projetada por destinatário** com o `ProjectAction` que o histórico já usa: dono e mestre veem
-tudo; o resto vê alvos, arma, movimento e perícias, sem a deny-list (finta e gatilho escondidos
+**projetada por destinatário** com o `ProjectAction` que o histórico já usa: o **mestre** vê
+tudo; **todos os outros — inclusive o dono** — veem a mecânica (a tabela abaixo diz exatamente
+quais campos), sem a deny-list (finta e gatilho escondidos
 **enquanto o turno está aberto** — a regra temporal da finta já existe). Vale também para o
 `openTurn` do `match_full_state`. Destrava: o alvo saber que é alvo, o balão de mecânica, o
 jogador ver o que acontece na mesa. A **resolução** continua master-only enquanto o turno está
@@ -641,7 +642,7 @@ não quer bug conhecido aberto.
 
 | # | Pendência | Por que importa |
 |---|---|---|
-| **B3** | **O tabuleiro da partida só existe em memória.** Sala vazia ou servidor reiniciado → tudo se perde. São **três** coisas, não uma: **as posições das peças**; **o estado das paredes** — porta aberta, trancada, parede danificada (há um `TODO` para isso em `structural_damage.go:35`); e **o fog que cada jogador já explorou** (o repositório existe em `gateway/pg/fog/`, mas o servidor de jogo começa sempre com `nil`, `room.go:211` e `:366`). **Persista as três por partida**, no momento em que a partida já persiste (o fechamento de turno), numa estrutura própria que se sobrepõe ao mapa quando a sala nasce — **não** em `maps.pieces` (ver abaixo) | perda de estado de partida |
+| **B3** | **O tabuleiro da partida só existe em memória.** Sala vazia ou servidor reiniciado → tudo se perde. São **três** coisas, não uma: **as posições das peças**; **o estado das paredes** — porta aberta, trancada, parede danificada (há um `TODO` para isso em `structural_damage.go:35`); e **o fog que cada jogador já explorou** (o repositório existe em `gateway/pg/fog/`, mas o servidor de jogo começa sempre com `nil`, `room.go:211` e `:366`). **Persista as três por partida**, em todo momento em que o tabuleiro muda de forma definitiva — no fechamento de turno, no arrastar do mestre, nos movimentos do lobby e no `start_match` —, numa estrutura própria que se sobrepõe ao mapa quando a sala nasce — **não** em `maps.pieces` (ver abaixo) | perda de estado de partida |
 | **B4** | **Mesmo usuário conectado duas vezes** deixa um socket mudo, e fechar esse socket **fecha a sala para todos** | um jogador com duas abas derruba a mesa |
 | **B5** | **Checagem de parede usa os cantos dos slots**, não os centros | movimento rente à parede bloqueado ou liberado errado |
 | **B6** | **`move.from = [0,0,0]` é sentinela** de "sem origem" e colide com o slot (0,0) de verdade | movimento que sai do canto é tratado como sem origem |
@@ -658,7 +659,21 @@ salvo nela, por cima do mapa:
 - o **editor de mapas** mostra sempre o desenho original, e editá-lo com uma partida rolando
   **não** muda o tabuleiro dela;
 - duas partidas no mesmo mapa não mexem nas peças uma da outra;
-- uma partida pode **começar de onde outra terminou** (B16).
+- uma partida pode **começar de onde outra terminou** (B16);
+- **o tabuleiro do lobby já é o tabuleiro da partida.** Hoje, ao iniciar a partida, o front grava
+  as posições do lobby **no mapa da campanha** (`mapsService.updateMap(... { pieces })`,
+  `LobbyPage.tsx:167`) — exatamente o que esta decisão proíbe. Isso sai (F16); o lobby persiste
+  no tabuleiro da partida;
+- **trocar o mapa anexado depois do `start_match` é recusado.** O anexo diz de qual mapa da
+  campanha o tabuleiro da partida **partiu**; trocá-lo por baixo de um tabuleiro vivo deixaria
+  posições e estados de parede apontando para paredes que não existem mais. (Hoje o `AttachMap`
+  permite, sobrescrevendo o anexo.)
+- ⚠️ **Isso não impede o mestre de mudar o mapa no meio da partida** — só muda **onde** ele muda.
+  Vai existir um **editor de mapa da partida** (ainda não existe), e nele o mestre poderá trocar o
+  fundo, entre outras coisas. Essas edições são do **tabuleiro da partida**, não do mapa da
+  campanha. **Desenhe a estrutura de B3 para comportar isso**: o tabuleiro da partida tem que
+  poder sobrepor o fundo do mapa, e não só as posições. Não implemente o editor agora — só não
+  feche a porta para ele.
 
 **B11 — NPC no mapa da partida é NPC da partida.** A invariante tem **uma direção só**: toda
 peça de NPC no mapa da partida corresponde a um participante. (O contrário não vale: um NPC pode
@@ -670,6 +685,14 @@ estar na partida sem peça — um reforço que ainda não entrou em cena.) Onde 
   partidas que já existem, inclusive as da base local, **sem mexer à mão no banco**.
 
 Tirar a peça do mapa **não** desinscreve o NPC.
+
+**Como se põe uma peça com a partida rolando:** pela master action de mover (B14) aplicada a um
+personagem que ainda não tem peça — ela **cria** a peça. Se for NPC, dispara a inscrição deste
+item e o `npc_added`. É o caminho do reforço que entra no meio da cena (F2).
+
+**Tirar uma peça** também é master action, só do mestre, e vale para **qualquer** peça — NPC ou
+personagem de jogador: alguém que cai num alçapão, foge da cena, sai pela porta. Tirar a peça
+**não desinscreve** o personagem, **não o mata** e **não apaga** o histórico dele.
 
 **Inscrever pela peça avisa a mesa do mesmo jeito que o `add_npc`: com `npc_added`.** O front
 não pode ter de adivinhar qual dos dois caminhos inscreveu.
@@ -709,6 +732,13 @@ antecipar esse desenho.
   separado, move a peça do Dash por `Move.FinalSpeed` contra o acerto (`applyClosedEscapes`,
   `room.go`) — duas respostas que podem discordar. **Junte as duas numa só**: escapou = passou
   nos dois.
+- ⚠️ **Isso muda o dano, não só a peça.** Nas palavras do dono do produto: *"o usuário não
+  consegue esquivar se falhar no movimento"*. Então:
+  - o `Avoided` de um escape passa a exigir **esquiva e movimento**;
+  - passou na esquiva e falhou no movimento → **toma o golpe**;
+  - no `escapeGuard`, nesse caso, **cai para a defesa** — é a rede de segurança que ele mantém.
+- O contrato hoje diz o contrário — *"Dano e deslocamento são desfechos INDEPENDENTES"*
+  (`match-combat-ws.md`, seção do `open_reaction`). **Corrija o contrato.**
 
 > **Regra conhecida, não implementar agora:** na prática o movimento **se soma à esquiva**, e por
 > isso escapar com movimento tende a ser mais fácil que esquivar parado. O motor hoje **não**
@@ -767,8 +797,22 @@ O `map_state_sync` deixa de escrever qualquer coisa no servidor.
 **Arrastar peça durante a partida é uma master action.** Normalmente o mestre move um NPC por uma
 ação comum, como qualquer jogador; o arrastar é o poder dele de mover **fora** desse fluxo. Passa
 por `enqueue_master_action` com `move` (por isso depende do `move` de B9): só o mestre, validado,
-persistido (B3) e transmitido com projeção de fog. O `piece_moved` deixa de mover peça durante a
-partida. **Jogador nunca arrasta**: ele move por ação.
+persistido (B3) e transmitido com projeção de fog. **Jogador nunca arrasta** na partida: ele move
+por ação.
+
+- **É uma master action de verdade, e segue as regras que master action já tem** — mesma
+  mensagem, mesma persistência, mesmo registro. **Toda** master action de mover vira linha no
+  histórico, não só a que acontece com turno aberto.
+- **Vale com ou sem turno aberto.** Hoje `EnqueueMasterAction` recusa sem turno aberto
+  (`match_session.go`, `ErrNoActiveTurn`) e só pendura a master action no turno corrente — e
+  arrastar sem turno é o caso comum: o mestre arrumando a cena entre turnos, ou antes do
+  primeiro. A master action de mover **se aplica na hora**. Com turno aberto, fica registrada no
+  turno; sem turno, fica registrada como evento da partida fora de turno — o mesmo mecanismo de
+  B15, que já passa a guardar troca de cena, de regime e round fechado.
+- A mesa recebe `piece_moved` com projeção de fog; o mestre recebe `master_action_enqueued` como
+  confirmação.
+- **O `piece_moved` do cliente fica só no lobby, e validado no servidor:** o mestre move qualquer
+  peça; o jogador, só as dele. Com a partida rolando, ele deixa de mover peça.
 
 > Não confunda com a posição final de um escape que falhou (B13) — aquilo é resolução de turno,
 > não master action.
@@ -805,7 +849,7 @@ E, no mesmo PR, **conserte o `match-history.md`**: os exemplos usam `"category":
 ### 6A.6 Pacote de front — um PR, repo `System_X_System_React`
 
 Começam já: F2, F3, F5, F7, F8, F11, e **a parte de F4 e de F6 que não depende do back**
-(marcada em cada um). **Esperam o back:** F1 (B1), F10 (B12), F12 e F13 (B14), F14 (B13),
+(marcada em cada um). **Esperam o back:** F1 (B1), F10 (B12), F12, F13 e F16 (B14), F14 (B13),
 F15 (B16), o resto de F4 (B15) e o resto de F6 (B1). F2 funciona inteiro só depois de B11, mas pode ser construído antes.
 
 > **F9 saiu.** Ele pedia tratar `master_action_enqueued`, mas essa mensagem só existe quando o
@@ -813,7 +857,9 @@ F15 (B16), o resto de F4 (B15) e o resto de F6 (B1). F2 funciona inteiro só dep
 > envio é o menu de parede, sempre com `interact`, que pelo contrato volta sem ack. O `error`
 > desse envio já aparece na tela. A recusa que sumia (A3) é do **servidor**, e virou B14.
 
-**F1 — A fila do mestre mostra a ação inteira** *(espera B1)*. O card abre em detalhe: atacante,
+**F1 — A fila do mestre mostra a ação inteira** *(espera B1)*. **E o mapa mostra o fantasma** de
+cada ação da fila com movimento, lendo o destino que B1 passa a trazer, com o **mesmo desenho** que
+o dono já vê para a própria declaração (§10.2) — não um segundo mecanismo. O card abre em detalhe: atacante,
 alvos por nome, arma, movimento (categoria e destino), perícias, `actionSpeed` (perícia, dados,
 total), `moveSpeed` (Accelerate ou Brake, dados, total), a chave na ordem geral, as barras que
 cobra. Recolhido, fica como hoje; o detalhe é um toque.
@@ -883,8 +929,15 @@ repelir, dano projetado e payouts, mais as reações anexadas e não abertas.
 categoria é validada no servidor desde o PR #74: mande o valor do enum, minúsculo.
 
 
-**F12 — O mestre arrasta uma peça: master action.** Arrastar a peça na tela do mestre manda a
-master action de B14. O jogador **nunca** arrasta peça na partida: ele move por ação. *(Espera
+**F12 — O mestre arrasta, põe e tira peças: master action.** Arrastar a peça na tela do mestre
+manda a master action de B14. **Pôr uma peça** de um personagem que ainda não está no tabuleiro
+usa a mesma master action — é como um NPC que entrou pelo `add_npc` chega ao mapa (F2).
+**Tirar uma peça** também, para qualquer peça (B11).
+
+**O mestre confirma antes de mandar.** Soltar a peça no destino não envia nada: aparece a
+confirmação, e só ela manda a master action; cancelar devolve a peça. O mesmo para pôr e tirar.
+É resiliência a clique errado — uma master action muda a partida para todo mundo e fica no
+histórico. O jogador **nunca** arrasta peça na partida: ele move por ação. *(Espera
 B14 e o `move` de B9.)*
 
 **F14 — O mestre escolhe onde cai o escape que falhou.** Quando a resolução marca um escape que
@@ -901,6 +954,10 @@ tabuleiro ao servidor a cada conexão (`map_state_sync`). Com B14, o servidor ca
 sozinho, e esse envio sai. O front passa a só desenhar o que vem em `map_full_state`.
 *(Espera B14.)*
 
+**F16 — Iniciar a partida não grava mais no mapa da campanha.** Sai o
+`mapsService.updateMap(... { pieces: lobbyPieces })` de `LobbyPage.tsx`. O tabuleiro do lobby é o
+tabuleiro da partida, e quem o guarda é o servidor (B3, B14). *(Espera B14.)*
+
 **F10 — A lista de declaradas segue o servidor** *(espera B12)*. Na conexão e em toda reconexão,
 a lista do jogador é reconciliada com o que o servidor diz que existe. Ação que o servidor não
 tem **sai da lista, com aviso**, e o rascunho dela volta para o composer. **Nunca reenvie
@@ -912,7 +969,7 @@ sozinho** (B12).
 
 ```
 Back   ──  B1 · B2 · B3–B16   ─────────────────────┐
-                                                   ├──►  F1 · F10 · F12–F15 · resto de F4 e F6  ──►  Fase 7
+                                                   ├──►  F1 · F10 · F12–F16 · resto de F4 e F6  ──►  Fase 7
 Front  ──  F2 · F3 · F5 · F7 · F8 · F11 · parte de F4 e F6 ┘
 ```
 
@@ -920,7 +977,7 @@ Front  ──  F2 · F3 · F5 · F7 · F8 · F11 · parte de F4 e F6 ┘
 - No plano do back, **B14, B1, B2, B11 e B12 vêm primeiro** — são os que destravam o front. B14
   vem antes de todos: B3 e B11 dependem de o servidor ser dono do tabuleiro. **B16 vem por
   último**, e o desenho de B3 tem que ser escolhido pensando nele.
-- No plano do front, **F1, F10, F12 a F15 e as partes de F4 e F6 que dependem do back vêm por
+- No plano do front, **F1, F10, F12 a F16 e as partes de F4 e F6 que dependem do back vêm por
   último**,
   depois do merge do back.
 - A Fase 7 espera **B2, B13 e** o PR de front deste fechamento (os dois tocam o painel do
@@ -958,6 +1015,11 @@ depois de B3.
 | A fila é reconciliada, não persistida (B12) | sessão de back — persistir divergiria das barras |
 | O tabuleiro — posições, paredes e fog explorado — é salvo por partida, no fechamento de turno, e não no mapa da campanha (B3) | dono do produto |
 | Uma partida pode começar de onde outra terminou (B16) | dono do produto |
+| O tabuleiro do lobby é o da partida; iniciar a partida não grava no mapa da campanha; o mapa anexado não troca depois do início (B3, F16) | decorre da decisão acima |
+| Falhar no movimento do escape faz tomar o golpe; o escape defensivo cai para a defesa (B13) | dono do produto — "não consegue esquivar se falhar no movimento" |
+| Arrastar, pôr e tirar peça são master actions: valem com ou sem turno aberto, sempre entram no histórico, e o mestre confirma antes de enviar (B11, B14, F12) | dono do produto |
+| Tirar peça vale para qualquer peça, e não desinscreve, não mata, não apaga histórico (B11) | dono do produto |
+| O mapa anexado não troca depois do início; mudar o mapa no meio da partida é do futuro editor de mapa da partida, e B3 não pode fechar essa porta | dono do produto |
 | Troca de regime, troca de cena e round fechado passam a ser persistidos (B15) | "nada deve ser perdido durante a partida" |
 
 ## 7. Fase 7 — Reações
