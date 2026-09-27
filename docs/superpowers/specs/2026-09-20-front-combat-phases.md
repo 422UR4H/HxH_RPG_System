@@ -905,9 +905,16 @@ partida um NPC da campanha que **não** está no mapa, pelo `add_npc` (ao chegar
 vira participante e fica selecionável).
 
 **F3 — A ficha abre dentro da partida.** Um quarto `SheetMode` do `CharacterSheetTemplate`
-(§5.6), **somente leitura**, na zona `panel` — coluna no desktop, bottom sheet no celular. O
-jogador abre a própria pelo item **Ficha** do rail; o mestre abre qualquer uma pelo card.
+(§5.6), **somente leitura**, na zona `panel` — coluna no desktop, bottom sheet no celular (a
+mesma em que a ação abre). **Ficha** é um item do rail, junto de Ação (e de Inventário e Nen,
+quando existirem): o jogador abre a própria por ele; o mestre abre qualquer uma pelo card, e o
+card também ativa o item Ficha — a ficha abre **ali, no lugar de Ação/Fila**. A aba da direita
+(`aside`) não muda.
 **Nenhum `navigate`.** O HP mostrado é o ao vivo (`character_hp_changed`), não o do REST.
+
+**O painel alarga para a ficha.** Hoje ele tem largura fixa no desktop e a ficha não cabe. Com
+a ficha aberta, a coluna do painel fica mais larga; com Ação/Fila, volta ao normal. Na bottom
+sheet a largura já é a da tela.
 
 **F4 — O histórico vem do servidor.** Buscado de `GET /matches/{uuid}/history` ao montar e
 **rebuscado a cada `turn_closed`** — o WS avisa, o REST busca. O que só existe ao vivo (turno
@@ -917,6 +924,9 @@ divergência de R8. **Divide-se em dois.** Os **turnos fechados** saem do REST q
 de **troca de cena, troca de regime e round fechado** não dão para deduzir do REST de hoje (a
 troca de regime acontece dentro do round e o REST guarda só o regime final; cena e round sem
 turno não aparecem) — elas esperam **B15**, que as persiste. Até lá, elas existem só ao vivo.
+As **master actions** (B14) entram na mesma leva: dentro do turno quando têm turno, como evento
+fora de turno quando não têm — e, como `master_action_enqueued` vai à mesa inteira, ele também
+rebusca o histórico.
 
 **F5 — Os cards usam o dado público.** `MatchCharactersSidebar` **sempre** renderiza o
 `CharacterSidebarItem`, montando o `character` pela parte base e mesclando `private` quando
@@ -950,9 +960,13 @@ card da fila, no fim do plano.
 **No regime Livre não há barra.** Sem preço, média nem carry-over (contrato,
 `change_round_mode`), não existe escala. Mostre só as velocidades que agiram e a ordem.
 
-**F7 — O painel de resolução do mestre.** Enquanto o turno está aberto, o mestre vê o que já
-recebe: o acerto (dados e total) e, por alvo, esquiva, defesa, tipo de reação, escada do
+**F7 — O cálculo do turno aberto, no card da ação.** Enquanto o turno está aberto, o mestre vê o
+que já recebe: o acerto (dados e total) e, por alvo, esquiva, defesa, tipo de reação, escada do
 repelir, dano projetado e payouts, mais as reações anexadas e não abertas.
+
+**Onde — desenho do dono do produto:** **anexado ao card da própria ação, na fila** — não é um
+item novo do rail. A ação aberta **continua na fila**, no topo, marcada como em andamento, com o
+cálculo embaixo. (Hoje, ao abrir, ela some da fila.) O desenho ainda vai ser refinado.
 
 > **Por que ele nasce só de leitura:** os botões que agem sobre ele pertencem a fases que ainda
 > não chegaram — **dar a palavra** a uma reação é da Fase 7, **editar** é da Fase 8. Pôr o botão
@@ -975,8 +989,8 @@ histórico. O jogador **nunca** arrasta peça na partida: ele move por ação. *
 B14 e o `move` de B9.)*
 
 **F14 — O mestre escolhe onde cai o escape que falhou.** Quando a resolução marca um escape que
-falhou (B13), o painel de resolução (F7) destaca o caso, e o mestre escolhe o slot final — no
-painel ou tocando no mapa. É parte da resolução do turno, **não** o arrastar de F12: são dois
+falhou (B13), o cálculo no card da ação (F7) destaca o caso, e o mestre escolhe o slot final — no
+card ou tocando no mapa. É parte da resolução do turno, **não** o arrastar de F12: são dois
 gestos diferentes para duas coisas diferentes. *(Espera B13.)*
 
 **F15 — Começar uma partida de onde outra terminou.** Na tela em que o mestre anexa o mapa a uma
@@ -1044,7 +1058,9 @@ depois de B3.
 | Edição do mestre continua na Fase 8 | dono do produto |
 | Histórico vem do servidor, não do navegador (F4) | auditoria — o dono delegou o desenho |
 | O cliente nunca reenvia ação perdida sozinho (B12) | auditoria — protege "o mestre nunca re-rola" |
-| O painel de resolução nasce só leitura (F7) | auditoria — sem controle que ainda não funciona |
+| O cálculo do turno aberto nasce só leitura (F7) | auditoria — sem controle que ainda não funciona |
+| O cálculo do turno aberto fica no card da ação, na fila; a ação aberta continua na fila, em andamento (F7) | dono do produto |
+| A ficha abre no painel, como item do rail (o card também a abre ali); o painel alarga para ela (F3) | dono do produto |
 | Ao abrir, a mesa — e o dono — vê a mecânica e as velocidades; acerto, dano e perícias só no fechamento (B2) | regra existente de `acoes.md`, aplicada ao dono |
 | A fila é reconciliada, não persistida (B12) | sessão de back — persistir divergiria das barras |
 | O tabuleiro — posições, paredes e fog explorado — é salvo por partida, no fechamento de turno, e não no mapa da campanha (B3) | dono do produto |
@@ -1075,7 +1091,7 @@ depois de B3.
 - **Os botões aparecem para o alvo porque `turn_opened` passa a dizer quem é alvo** (B2, §6A.5).
   Sem isso não há como desenhá-los. Depois de enviar, o alvo vê "reação enviada, aguardando o
   mestre".
-- **Dar a palavra** às reações pendentes entra no painel de resolução do mestre (F7, §6A.6), que
+- **Dar a palavra** às reações pendentes entra no cálculo do turno aberto, no card da ação na fila do mestre (F7, §6A.6), que
   já as lista.
 - **O fantasma de espera** (§10.2): **todo escape** espera o fechamento para mover a peça — ele
   pode falhar (B13, §6A.5). Na abertura, a peça mostra para onde quer ir; no fechamento, vai
@@ -1098,7 +1114,7 @@ ordem inversa produz resultado diferente na tela.
 **Escopo:**
 - Edição do mestre: `edit_action` / `action_edited` — rolagem e perícias. É aqui que entra o
   seletor de perícia de dano, `Push` → `Grab` (§4.6).
-- Os botões de **editar** no painel de resolução do mestre (F7, §6A.6). Com eles, o painel fica
+- Os botões de **editar** no cálculo do turno aberto, no card da ação (F7, §6A.6). Com eles, o cálculo fica
   completo.
 
 > O histórico, a ficha dentro da partida e `change_scene` eram desta fase e **subiram para o
