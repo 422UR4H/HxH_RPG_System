@@ -2,7 +2,7 @@
 
 > **Escopo:** o §6A.5 inteiro de
 > [`2026-09-20-front-combat-phases.md`](2026-09-20-front-combat-phases.md) — B1 a B16 —, na
-> versão do **PR #80** (`docs/front-combat-closure-gaps-2`, commit `e5fc3dd`). **Um PR, repo
+> versão de `main` depois do **PR #80** (commit `e5fc3dd`), mais a decisão das master actions do **PR #81**. **Um PR, repo
 > `System_X_System`.** O front (F1–F16) roda em paralelo, em outra sessão, e consome os contratos
 > que este PR escreve.
 >
@@ -40,7 +40,7 @@
 - A causa de cada item está no documento mestre, com arquivo e linha. Este spec não a repete —
   diz **o desenho**.
 
-## 2. O que ainda está aberto no documento mestre (antes do merge do PR #80)
+## 2. O que ainda está aberto no documento mestre
 
 Dois pontos para o autor do documento. Nenhum trava o começo: o plano põe o que depende deles
 no fim, e o desenho abaixo diz o que faço se a resposta for a recomendada.

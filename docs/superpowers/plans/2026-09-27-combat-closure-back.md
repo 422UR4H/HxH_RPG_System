@@ -18,10 +18,9 @@ própria (`master_actions`, decisão do dono do produto), projetadas pelo que ca
 
 **Spec:** [`docs/superpowers/specs/2026-09-27-combat-closure-back-design.md`](../specs/2026-09-27-combat-closure-back-design.md)
 — leia o spec inteiro antes da primeira tarefa. Cada tarefa cita a seção do spec que implementa.
-Documento mestre: `docs/superpowers/specs/2026-09-20-front-combat-phases.md` §6A.5 (versão do PR #80).
+Documento mestre: `docs/superpowers/specs/2026-09-20-front-combat-phases.md` §6A.5 (em `main` desde o PR #80; a decisão das master actions no PR #81).
 
-**Branch:** `feat/combat-closure-back` (a partir de `main`). Quando o PR #80 for mergeado,
-`git rebase origin/main` antes de abrir o PR.
+**Branch:** `feat/combat-closure-back` (a partir de `main`). Antes de abrir o PR, `git rebase origin/main` (o PR #81 muda o documento mestre).
 
 ## Global Constraints
 
@@ -959,5 +958,5 @@ Spec §4.3 "Estrutura" (B16). Depende de T1/T3.
 - [ ] **Step 1: Docs.** `AGENTS.md`: tirar/atualizar o que deixou de ser verdade (o `fog_mode` continua pendente — **não** remover aquele bloco); acrescentar o tabuleiro por partida, o escape e as master actions persistidas em tabela própria (e por que não em `actions`). `game-server.instructions.md`: `RoomDeps`, o tabuleiro vem do banco, `persistBoard` é o único ponto de gravação, as duas pistas de envio e a ordem nova. Rode o mapa de documentação contra `git diff --name-only origin/main` e classifique (covered/missing/unmapped).
 - [ ] **Step 2: Verificação completa**: `go build ./... && go vet ./... && go vet -tags integration ./... && go vet -tags smoke ./... && go test ./... && go test -race ./internal/app/game/ && go test -tags=integration -p 1 ./internal/gateway/pg/...` → tudo PASS. Cole a saída resumida no PR.
 - [ ] **Step 3: Ponta a ponta** (`CLAUDE.md` da raiz, "Entrega"): `make migrate-up`, `make run-dev`; `curl` em `GET /matches/{uuid}/history` (cena sem turno, `events`), `GET /matches/{uuid}/participants` como dono, `PUT` do anexo com `inheritBoardFromMatchUuid`. WS com um cliente de linha de comando (`websocat` se instalado; senão um `go run` descartável no scratchpad — **não** commitar): mestre + dois jogadores, uma ação com Dash, abrir, fechar; **reiniciar o `cmd/game` no meio de uma fila e no meio de um turno** e conferir `map_full_state`, `ownQueue: []` e as posições. Registre o que foi feito e o que não foi.
-- [ ] **Step 4: PR** (depois de `git rebase origin/main`, se o PR #80 já entrou): título `feat: fechamento da Fase 6 — pacote de back (B1–B16)`; descrição com o que cada B entrega, os contratos mudados (lista do spec §6), o que foi verificado, **o que não foi** (browser com três contas é do PR de front), o link para o PR de front, e L1–L2 se ainda abertos. Termina com `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- [ ] **Step 4: PR** (depois de `git rebase origin/main`): título `feat: fechamento da Fase 6 — pacote de back (B1–B16)`; descrição com o que cada B entrega, os contratos mudados (lista do spec §6), o que foi verificado, **o que não foi** (browser com três contas é do PR de front), o link para o PR de front, e L1–L2 se ainda abertos. Termina com `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - [ ] **Step 5: Ambiente para validação manual:** `./dev-checkout.sh feat/combat-closure-back` a partir de `System_X_System_Project/` (só no fim; dizer no PR o que olhar).
