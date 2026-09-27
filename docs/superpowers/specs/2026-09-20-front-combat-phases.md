@@ -272,16 +272,19 @@ privada só ao mestre. Não mexa.
 
 ### 4.10 O que o back ainda deve à Fase 6
 
+> ✅ **Mergeado.** Os itens aqui eram chamados B1–B4 e foram renomeados para **P1–P4**, porque
+> colidiam com os B1–B13 do fechamento (§6A.5). O `AGENTS.md` do back chamava o P2 de "dívida B2".
+
 Achado pela sessão que foi planejar a Fase 6, ao ler este documento contra o contrato. **Sem
 estes itens, tarefas específicas da Fase 6 não têm contra o que ser implementadas** — a Fase 6
 pode escrever spec e plano agora, mas implementa essas tarefas só depois do merge.
 
 | # | O quê | Destrava na Fase 6 |
 |---|---|---|
-| **B1** | `turn_opened` passa a carregar **`actionId`**, não só `actorId`. Com duas ações do mesmo personagem na fila, hoje o jogador não sabe qual abriu | apagar o fantasma certo; destacar "a minha" na barra geral |
-| **B2** | **HP ao vivo por WS**, projetado: vai **só para o mestre e para o dono** da ficha. Emitido de onde o dano é aplicado, não de `turn_closed` — o motor já produz `DamagedCharacter{CharacterID, NewHP}` | a barra de HP do mestre e a do próprio jogador |
-| **B3** | **`turn_closed` nos dois caminhos que fecham turno.** Hoje só `close_turn` o emite (`room.go`); o fechamento implícito do `open_next_action` fecha calado | a lista de eventos da mesa (§5.3) |
-| **B4** | **`attack.hit` derivado pelo servidor**, como `speed` e o movimento já são — **e** o valor padrão documentado no contrato. Hoje ele vem do cliente, e o front teria que escrever um nome de perícia à mão, que é exatamente o que o catálogo existe para evitar | a bottom sheet sem campo de perícia |
+| **P1** | `turn_opened` passa a carregar **`actionId`**, não só `actorId`. Com duas ações do mesmo personagem na fila, hoje o jogador não sabe qual abriu | apagar o fantasma certo; destacar "a minha" na barra geral |
+| **P2** | **HP ao vivo por WS**, projetado: vai **só para o mestre e para o dono** da ficha. Emitido de onde o dano é aplicado, não de `turn_closed` — o motor já produz `DamagedCharacter{CharacterID, NewHP}` | a barra de HP do mestre e a do próprio jogador |
+| **P3** | **`turn_closed` nos dois caminhos que fecham turno.** Hoje só `close_turn` o emite (`room.go`); o fechamento implícito do `open_next_action` fecha calado | a lista de eventos da mesa (§5.3) |
+| **P4** | **`attack.hit` derivado pelo servidor**, como `speed` e o movimento já são — **e** o valor padrão documentado no contrato. Hoje ele vem do cliente, e o front teria que escrever um nome de perícia à mão, que é exatamente o que o catálogo existe para evitar | a bottom sheet sem campo de perícia |
 
 **Consertos de contrato**, sem código:
 
@@ -296,7 +299,7 @@ estado compartilhado vai por WS; leitura de dado de referência pode ir por REST
 o catálogo de perícias são referência — grandes, estáveis, lidos sob demanda. O HP depois do dano
 é **estado**: muda a cada turno, e a mesa precisa saber na hora. Buscá-lo por REST a cada turno é
 N idas ao servidor para reenviar ficha inteira por causa de um número — e o gatilho óbvio para
-isso, o `turn_closed`, nem é emitido em metade dos fechamentos (B3). O REST do HP fica para o
+isso, o `turn_closed`, nem é emitido em metade dos fechamentos (P3). O REST do HP fica para o
 carregamento inicial.
 
 **O que continua fora:** o verbo de cancelar ação (§4.3) e adicionar NPC com a sala já viva, que
@@ -364,11 +367,11 @@ está acontecendo, não quem está na sala.
 **O que ela mostra muda de fase.** Na **Fase 6**, é a lista dos eventos da mesa que o servidor
 já emite: turno aberto (quem age), turno fechado com o resultado, round fechado, troca de
 regime. No **fechamento da Fase 6** (F4, §6A.6), vira o histórico de verdade — `GET /matches/{uuid}/history`, aninhado por
-cena. O componente é o mesmo; a fonte cresce. (O "turno fechado" depende de B3, §4.10.)
+cena. O componente é o mesmo; a fonte cresce. (O "turno fechado" depende de P3, §4.10.)
 
 **A lista de personagens do jogador não mostra HP.** A vida é dado privado de cada ficha — só o
 mestre e o dono veem. E o front não precisa de nenhum `isMaster` para isso: o REST do
-carregamento inicial já devolve `private: null` para quem não tem direito, e o HP ao vivo (B2,
+carregamento inicial já devolve `private: null` para quem não tem direito, e o HP ao vivo (P2,
 §4.10) só chega a quem tem direito. O mesmo componente renderiza o que chegou.
 
 ### 5.4 O rail e o rodapé são o mesmo componente
@@ -421,7 +424,7 @@ ela seja praticamente idêntica à de fora da partida.
 - **O mestre compõe ação por um NPC**, com a **mesma** bottom sheet do jogador e o NPC como
   ator. O back já aceita (PR #73): `enqueue_action` do mestre com `actorId` de NPC.
 - Bottom sheet de ação: alvo, arma, movimento. **Sem campo de perícia** — ver §11.1. O `hit` é
-  derivado pelo servidor (B4, §4.10), então o front não escreve nome de perícia nenhum.
+  derivado pelo servidor (P4, §4.10), então o front não escreve nome de perícia nenhum.
 - **Movimento**: as duas categorias oferecidas — **Dash** e **Shift** —, com **Dash
   pré-marcado**. Faça o default ser uma **função, não uma constante**: o doc de jogo
   (`barra-de-acao.md`) diz que no turno livre o deslocamento normalmente é Shift, e o default
@@ -430,12 +433,12 @@ ela seja praticamente idêntica à de fora da partida.
   `localStorage`, por personagem + partida, para sobreviver ao refresh.
 - As duas barras: a própria (no painel) e a geral (flutuando sobre o mapa, com `seq`).
 - **HP ao vivo**: a barra do mestre (todos) e a do próprio jogador (só a dele). Chega por WS
-  (B2, §4.10); o REST fica para o carregamento inicial.
+  (P2, §4.10); o REST fica para o carregamento inicial.
 - Mestre: fila, `open_next_action`, `pull_action`, `close_turn` com o diálogo de
   `close_turn_refused`, `change_round_mode`.
 - **Fantasma da intenção declarada** (§10.2): a peça mostra para onde o dono mandou ir, do
   envio até a abertura. Só o dono vê — o mestre não conhece o destino, porque `action_queued` e
-  `resolution_updated` não trazem posição. Apagar o fantasma certo depende de B1.
+  `resolution_updated` não trazem posição. Apagar o fantasma certo depende de P1.
 - **Histórico**, na versão da Fase 6: a lista de eventos da mesa (§5.3).
 - Consumir `match_full_state` na conexão e em toda reconexão.
 
@@ -470,10 +473,10 @@ Tudo acima é implementável com o que está em `main` **exceto** o que depende 
 
 | Tarefa | Espera |
 |---|---|
-| apagar o fantasma certo; destacar "a minha" na barra geral | B1 |
-| HP ao vivo | B2 |
-| "turno fechado" na lista do histórico | B3 |
-| bottom sheet sem campo de perícia | B4 |
+| apagar o fantasma certo; destacar "a minha" na barra geral | P1 |
+| HP ao vivo | P2 |
+| "turno fechado" na lista do histórico | P3 |
+| bottom sheet sem campo de perícia | P4 |
 
 **Escreva o spec e o plano agora; ordene o plano para que essas tarefas venham depois do merge
 de §4.10.** O resto não espera.
@@ -581,7 +584,7 @@ sai. → F11.
 |---|---|---|
 | A1 | **A resolução do turno aberto não é desenhada para o mestre.** Ele recebe `resolution_updated` com acerto, esquiva, defesa, reação, escada, dano e reações pendentes — e a tela mostra só uma linha no histórico **depois** que o turno fecha. Enquanto o turno está aberto, que é quando ele decide, não vê nada | F7 |
 | A2 | **Trocar de cena não tem UI** — o back aceita `change_scene` | F8 |
-| A3 | **`master_action_enqueued` é ignorado** — a recusa a um "revelar porta" some | F9 |
+| A3 | **Revelar/interagir com parede desconhecida é ignorado em silêncio** pelo servidor | B14 |
 | A4 | **Edição do mestre** (`edit_action`/`action_edited`) sem UI | Fase 8 |
 | A5 | **Chat** sem UI em lugar nenhum do front | fora — não pedido |
 | A6 | As **oito pendências de back** que a revisão da Fase 6 anotou (`System_X_System_React/docs/dev/match/combate-fase-6.md`, "Pendências para o back") | B3–B10 |
@@ -593,7 +596,7 @@ sai. → F11.
 | `add_npc`, `npc_added` | c→s, s→c | F2 |
 | `attach_reaction`, `open_reaction`, `reaction_opened` | c→s, c→s, s→c | Fase 7 |
 | `change_scene` | c→s | F8 |
-| `master_action_enqueued` | s→c | F9 |
+| `master_action_enqueued` | s→c | não se aplica — só sai sem `interact`, e o front nunca manda assim |
 | `edit_action`, `action_edited` | c→s, s→c | Fase 8 |
 | `chat` | c→s | fora |
 
@@ -621,19 +624,41 @@ tudo; o resto vê alvos, arma, movimento e perícias, sem a deny-list (finta e g
 jogador ver o que acontece na mesa. A **resolução** continua master-only enquanto o turno está
 aberto — a mecânica é pública ao abrir, o cálculo não.
 
+**Quais números vão, ao abrir**, para todo mundo que não é o mestre — **inclusive o dono**:
+
+| Vai ao abrir | Só no fechamento (resolução projetada e histórico) |
+|---|---|
+| alvos, arma, movimento, os **nomes** das perícias | os dados e o `result` do acerto |
+| `actionSpeed` e `moveSpeed`, com dados e total | os dados e o `result` do dano |
+| | os dados e o `result` das perícias e da finta |
+
+O formato continua o do histórico REST; só esses campos ficam de fora. Não é regra nova: é a de
+sempre — *"todos veem a mecânica da ação; só o mestre vê o resultado"* (`acoes.md`, passo 4) —,
+e "todos" inclui o dono. As velocidades vão porque o `bars_updated` já as revela ao abrir (F6).
+
 **B3 a B10 — as pendências que a revisão da Fase 6 anotou.** Todas entram: o dono do produto
 não quer bug conhecido aberto.
 
 | # | Pendência | Por que importa |
 |---|---|---|
-| **B3** | **Posições das peças só em memória.** Sala vazia ou servidor reiniciado → tudo volta ao REST, que não é atualizado pelos movimentos do jogo | perda de estado de partida |
+| **B3** | **O tabuleiro da partida só existe em memória.** Sala vazia ou servidor reiniciado → tudo se perde. São **três** coisas, não uma: **as posições das peças**; **o estado das paredes** — porta aberta, trancada, parede danificada (há um `TODO` para isso em `structural_damage.go:35`); e **o fog que cada jogador já explorou** (o repositório existe em `gateway/pg/fog/`, mas o servidor de jogo começa sempre com `nil`, `room.go:211` e `:366`). **Persista as três por partida**, no momento em que a partida já persiste (o fechamento de turno), numa estrutura própria que se sobrepõe ao mapa quando a sala nasce — **não** em `maps.pieces` (ver abaixo) | perda de estado de partida |
 | **B4** | **Mesmo usuário conectado duas vezes** deixa um socket mudo, e fechar esse socket **fecha a sala para todos** | um jogador com duas abas derruba a mesa |
 | **B5** | **Checagem de parede usa os cantos dos slots**, não os centros | movimento rente à parede bloqueado ou liberado errado |
 | **B6** | **`move.from = [0,0,0]` é sentinela** de "sem origem" e colide com o slot (0,0) de verdade | movimento que sai do canto é tratado como sem origem |
 | **B7** | **`Register` numa sala fechada** bloqueia para sempre | o front contorna com watchdog; o back deveria recusar |
 | **B8** | **O dono não recebe o próprio `private`** em `GET .../participants` — só o mestre | o dono tem direito à própria vida |
-| **B9** | **`enqueue_master_action` com `attack` não é mapeado** (`buildMasterAction` em `TODO`) | o mestre contorna por `enqueue_action` |
+| **B9** | **`enqueue_master_action` não mapeia `attack` nem `move`** (`buildMasterAction` deixa os dois em `TODO`) | o mestre contorna o ataque por `enqueue_action`; e o **arrastar do mestre** (B14) precisa do `move` |
 | **B10** | **Grade hexagonal:** confirmar a convenção `[col,row,z]` | verificar, documentar, consertar se preciso |
+
+**Onde o tabuleiro da partida é salvo — decisão do dono do produto.** O mapa é da **campanha**:
+desenhado no editor de mapas (fora da partida), e o mesmo mapa pode estar anexado a várias
+partidas (`match_maps.map_uuid` não é único). Por isso **cada partida tem o seu tabuleiro**,
+salvo nela, por cima do mapa:
+
+- o **editor de mapas** mostra sempre o desenho original, e editá-lo com uma partida rolando
+  **não** muda o tabuleiro dela;
+- duas partidas no mesmo mapa não mexem nas peças uma da outra;
+- uma partida pode **começar de onde outra terminou** (B16).
 
 **B11 — NPC no mapa da partida é NPC da partida.** A invariante tem **uma direção só**: toda
 peça de NPC no mapa da partida corresponde a um participante. (O contrário não vale: um NPC pode
@@ -646,41 +671,147 @@ estar na partida sem peça — um reforço que ainda não entrou em cena.) Onde 
 
 Tirar a peça do mapa **não** desinscreve o NPC.
 
+**Inscrever pela peça avisa a mesa do mesmo jeito que o `add_npc`: com `npc_added`.** O front
+não pode ter de adivinhar qual dos dois caminhos inscreveu.
+
 **B12 — A fila não pode divergir entre servidor e cliente.** Requisito: **nenhum cliente mostra
 uma ação que o servidor não tem.** O servidor é a fonte.
 
-O desenho é decisão desta sessão — use o effort para isso e explique a escolha no spec. Dois
-caminhos, e eles não se excluem:
+**Reconciliar:** o `match_full_state` passa a mandar ao dono a lista das ações **dele** que
+ainda estão na fila — só IDs e o que ele mesmo declarou, **sem velocidade** (ver B1) —, e o front
+descarta o que o servidor não tem, avisando o jogador.
 
-- **Reconciliar:** o `match_full_state` passa a mandar ao dono a lista das ações **dele** que
-  ainda estão na fila — só IDs e o que ele mesmo declarou, **sem velocidade** (ver B1) —, e o
-  front descarta o que o servidor não tem.
-- **Persistir a fila:** a action já nasce com os dados sorteados; persistida, ela sobrevive ao
-  reinício e não há o que reconciliar.
+**Persistir a fila não entra.** Ela parece resolver, mas diverge por dentro: as barras são
+cobradas no enqueue e vivem só em memória — saldo, carry-over, velocidades de quem já agiu — e
+voltam zeradas num reinício (`NewMatchSessionWithState`). Uma fila persistida sobre barras
+zeradas é um estado que nunca existiu. Persistir com coerência exigiria persistir a economia do
+round inteira, que é muito maior que este item. Reconciliar cabe no §0.2: **perder pode,
+divergir não.**
 
 ⚠️ **O cliente não reenvia sozinho.** Reenviar sorteia de novo: seria uma re-rolagem que o
 jogador não escolheu, e *o mestre nunca re-rola o dado de um jogador*. Se a ação se perdeu, o
 jogador fica sabendo e declara de novo — com o rascunho de volta, para não refazer tudo.
 
-**B13 — Todo escape espera o fechamento.** Regra do dono do produto: **o escape não desloca a
-peça na abertura, porque ele pode falhar.** Na abertura, mostra-se para onde o personagem quer
-ir; no fechamento, o servidor decide.
+**B13 — Todo escape espera o fechamento, e a falha é do mestre.** Regra do dono do produto:
+**o escape não desloca a peça na abertura, porque ele pode falhar.** Na abertura, mostra-se para
+onde o personagem quer ir; no fechamento, decide-se.
 
-- Hoje o escape com **Shift** desloca na abertura e o com **Dash** espera. **Os dois passam a
-  esperar.** (O erro de origem foi tratar "o Dash rola dado" como "o Dash tem CD" — o Accelerate
-  do Dash é velocidade de movimento, não teste contra dificuldade. O critério correto não é a
-  categoria: é **o escape poder falhar**.)
-- **Escape bem-sucedido:** a peça vai para o destino. **Escape que falhou:** a peça **não chega**
-  ao destino — por ora, fica onde estava. Onde exatamente ela pararia é assunto das regras de
-  colisão e de "ficar no ar", que ainda não existem (§11.3, §10.4).
+⚠️ **Esta é uma versão de rascunho.** As colisões e as interações entre ações ainda vão ser
+desenhadas "pra valer" pelo dono do produto. O que está abaixo fecha o fluxo das ações sem
+antecipar esse desenho.
 
-> A leitura "falhou = não chega" vem de *"não deve ser movido na abertura porque o escape pode
-> falhar"*. Vetável.
+**O escape é uma esquiva que se desloca**, e o teste de movimento está **aninhado** nela:
+
+- O teste de movimento é o **Accelerate** rolado, se for Dash, ou o **valor base** do Brake, se
+  for Shift.
+- **Para escapar, o personagem precisa passar nos dois**: no movimento e na esquiva.
+- Hoje o motor decide a esquiva (`Avoided = Dodge.Total >= HitTotal`, `reaction_collision.go`) e,
+  separado, move a peça do Dash por `Move.FinalSpeed` contra o acerto (`applyClosedEscapes`,
+  `room.go`) — duas respostas que podem discordar. **Junte as duas numa só**: escapou = passou
+  nos dois.
+
+> **Regra conhecida, não implementar agora:** na prática o movimento **se soma à esquiva**, e por
+> isso escapar com movimento tende a ser mais fácil que esquivar parado. O motor hoje **não**
+> soma (`Dodge.Total` não leva o movimento). Isso é parte do desenho de colisão que ainda vai
+> existir — registre como pendência, com comentário no código onde a soma entraria.
+
+**O que acontece com a peça:**
+
+| | A peça |
+|---|---|
+| **Passou nos dois** | vai para o destino, no fechamento |
+| **Falhou em algum** — inclusive o escape defensivo que falhou na esquiva e segurou na defesa | **o mestre decide a posição final** |
+
+Na falha, o personagem pode ter se deslocado ou não, pode ter caído em outro slot — e **como essa
+interação vai funcionar ainda não está decidido.** Por isso, no rascunho:
+
+- a resolução **marca** o escape que falhou como "posição final a critério do mestre";
+- **o mestre escolhe o slot final como parte da resolução daquele turno** — é uma decisão sobre
+  a colisão que está sendo resolvida, e fica registrada com o turno (resolução e histórico);
+- no fechamento, a peça vai para onde o mestre escolheu. Se ele não escolheu, fica onde estava.
+
+⚠️ **Isto não é uma master action**, e não é o arrastar de B14. O arrastar é o mestre agindo
+fora do fluxo; aqui ele está **resolvendo o turno** — o mesmo lugar onde, na Fase 8, ele vai
+editar rolagens. Não implemente como um arrastar: implemente como parte da resolução.
+
+Deixe **comentário no código**, no ramo da falha, apontando para esta seção: é ali que o desenho
+definitivo vai entrar.
+
+> **Se a intervenção do mestre crescer demais** para este pacote, o fallback do dono do produto
+> vale: a peça fica onde estava, a intervenção vira pendência registrada, e o comentário no
+> código fica. Diga no spec qual caminho tomou e por quê.
+
+**B14 — O servidor é o dono do tabuleiro.** Hoje ele não é, de duas formas:
+
+- **As paredes e as peças chegam ao servidor pelo navegador do mestre.** O `cmd/game` não tem
+  repositório de mapa e não lê o mapa do banco: quem escreve o tabuleiro na sala é o
+  `map_state_sync`, que só o mestre manda (`room.go`, `case MsgTypeMapStateSync`). Se o
+  navegador do mestre tem uma cópia velha, ou ainda não mandou, **o servidor não conhece a
+  parede** — e revelar ou interagir com ela é ignorado em silêncio (contrato,
+  `enqueue_master_action`). É também por isso que o tabuleiro "ressincroniza com o REST velho"
+  (B3).
+- **Qualquer cliente move qualquer peça.** O `piece_moved` não tem validação no servidor — o
+  código diz que *"o cliente restringe o arraste"* e tem um `TODO` para validar
+  (`room.go`, `case MsgTypePieceMoved`).
+
+**O conserto é inverter o fluxo.** O servidor carrega o tabuleiro **sozinho**, do banco, quando a
+sala nasce: as paredes e as peças do mapa da partida, com as posições da partida por cima (B3).
+O tabuleiro passa a correr **só do servidor para o cliente** (`map_full_state`, que já existe).
+O `map_state_sync` deixa de escrever qualquer coisa no servidor.
+
+> É a regra do §0.2 aplicada ao tabuleiro. O dono do produto: *"o servidor precisa conhecer
+> tudo. Ele é a fonte da verdade. O client deve renderizar o que vem da fonte da verdade."* Um
+> erro de "parede desconhecida" no meio da partida tira do mestre o poder de conduzir a cena —
+> **o desenho não deve permitir que ele aconteça.**
+
+**Arrastar peça durante a partida é uma master action.** Normalmente o mestre move um NPC por uma
+ação comum, como qualquer jogador; o arrastar é o poder dele de mover **fora** desse fluxo. Passa
+por `enqueue_master_action` com `move` (por isso depende do `move` de B9): só o mestre, validado,
+persistido (B3) e transmitido com projeção de fog. O `piece_moved` deixa de mover peça durante a
+partida. **Jogador nunca arrasta**: ele move por ação.
+
+> Não confunda com a posição final de um escape que falhou (B13) — aquilo é resolução de turno,
+> não master action.
+
+Mantenha, como **última defesa**, a resposta com `error` para uma ação sobre parede que o
+servidor não conhece. Com o servidor carregando o tabuleiro, esse caminho deveria ficar
+inalcançável; se for alcançado, é bug, e o mestre fica sabendo em vez de ser enganado.
+
+**B16 — Uma partida começa de onde outra terminou.** Ao anexar um mapa a uma partida nova, o mestre
+pode escolher **herdar o tabuleiro de outra partida** da mesma campanha e no mesmo mapa: as
+posições, o estado das paredes e o fog explorado com que ela terminou viram o começo da nova.
+Com B3 salvando o tabuleiro por partida, isso é **copiar o tabuleiro de uma partida para outra**.
+É o que dá continuidade entre sessões: *uma sessão começa onde a anterior parou.*
+
+⭐ **O desenho de B3 tem que tornar essa cópia trivial** — é o critério para escolher a estrutura
+em que o tabuleiro fica salvo.
+
+**B15 — O histórico guarda o que não é turno.** O front precisa reconstruir, depois de
+recarregar, três linhas que hoje só existem ao vivo — e o REST não guarda:
+
+- **a troca de regime**: ela acontece **dentro** do round em andamento (`Round.SetMode`), sem
+  abrir outro, e o REST guarda só o regime final de cada round;
+- **a cena e o round sem nenhum turno**: a resposta pode vir `{ "scenes": [] }` numa partida
+  sem turno fechado, então uma troca de cena ou um round fechado por exaustão se perdem;
+- **o round fechado** em si.
+
+Persista esses três eventos e devolva-os no `GET /matches/{uuid}/history`, na posição certa da
+árvore. *"Nada deve ser perdido durante a partida"* vale para eles também.
+
+E, no mesmo PR, **conserte o `match-history.md`**: os exemplos usam `"category": "combat"` e
+`"mode": "combat"`, que não existem (o enum de cena é `battle`/`roleplay`; o de regime,
+`Free`/`Race`), e o formato de `move` é só citado, nunca mostrado.
 
 ### 6A.6 Pacote de front — um PR, repo `System_X_System_React`
 
-F2 a F11 não dependem do back e começam já. **F1 espera B1; F10 espera B12.** F2 funciona
-inteiro só depois de B11, mas pode ser construído antes.
+Começam já: F2, F3, F5, F7, F8, F11, e **a parte de F4 e de F6 que não depende do back**
+(marcada em cada um). **Esperam o back:** F1 (B1), F10 (B12), F12 e F13 (B14), F14 (B13),
+F15 (B16), o resto de F4 (B15) e o resto de F6 (B1). F2 funciona inteiro só depois de B11, mas pode ser construído antes.
+
+> **F9 saiu.** Ele pedia tratar `master_action_enqueued`, mas essa mensagem só existe quando o
+> mestre manda `enqueue_master_action` **sem** `interact` — e o front nunca manda assim; o único
+> envio é o menu de parede, sempre com `interact`, que pelo contrato volta sem ack. O `error`
+> desse envio já aparece na tela. A recusa que sumia (A3) é do **servidor**, e virou B14.
 
 **F1 — A fila do mestre mostra a ação inteira** *(espera B1)*. O card abre em detalhe: atacante,
 alvos por nome, arma, movimento (categoria e destino), perícias, `actionSpeed` (perícia, dados,
@@ -688,7 +819,8 @@ total), `moveSpeed` (Accelerate ou Brake, dados, total), a chave na ordem geral,
 cobra. Recolhido, fica como hoje; o detalhe é um toque.
 
 **F2 — O mestre age por qualquer NPC da partida.** Com B11, todo NPC do mapa é participante, e o
-`NpcPicker` os lista. A mensagem "não está inscrito" deixa de ter caso. Continua valendo pôr na
+`NpcPicker` os lista. Busque os participantes de novo quando chegar `npc_added` — e também quando
+aparecer no tabuleiro uma peça de personagem que não é participante, como rede de segurança. A mensagem "não está inscrito" deixa de ter caso. Continua valendo pôr na
 partida um NPC da campanha que **não** está no mapa, pelo `add_npc` (ao chegar `npc_added`, ele
 vira participante e fica selecionável).
 
@@ -701,8 +833,10 @@ jogador abre a própria pelo item **Ficha** do rail; o mestre abre qualquer uma 
 **rebuscado a cada `turn_closed`** — o WS avisa, o REST busca. O que só existe ao vivo (turno
 aberto, HP mudou) entra por cima, pelo WS, e sai quando o REST equivalente chega. O servidor é a
 fonte; guardar o histórico no navegador seria uma segunda verdade — exatamente o tipo de
-divergência de R8. "Round fechado" e "troca de regime" não são turnos: deduza-os da árvore do
-REST (cena → round, com o regime de cada round). Não peça endpoint novo por isso.
+divergência de R8. **Divide-se em dois.** Os **turnos fechados** saem do REST que já existe — começa já. As linhas
+de **troca de cena, troca de regime e round fechado** não dão para deduzir do REST de hoje (a
+troca de regime acontece dentro do round e o REST guarda só o regime final; cena e round sem
+turno não aparecem) — elas esperam **B15**, que as persiste. Até lá, elas existem só ao vivo.
 
 **F5 — Os cards usam o dado público.** `MatchCharactersSidebar` **sempre** renderiza o
 `CharacterSidebarItem`, montando o `character` pela parte base e mesclando `private` quando
@@ -729,6 +863,13 @@ se comporta assim — ele só carrega velocidades que agiram —, então o jogad
 que pode ver. **Não mostre ao jogador nenhuma velocidade vinda de outra fonte.** Em telas
 estreitas a faixa recolhe para a ordem geral e expande num toque.
 
+**Divide-se em dois.** A faixa pública — saldo, velocidades que já agiram, média, ordem —
+**começa já**. As velocidades **da fila** são do mestre e chegam por B1: entram junto com F1, no
+card da fila, no fim do plano.
+
+**No regime Livre não há barra.** Sem preço, média nem carry-over (contrato,
+`change_round_mode`), não existe escala. Mostre só as velocidades que agiram e a ordem.
+
 **F7 — O painel de resolução do mestre.** Enquanto o turno está aberto, o mestre vê o que já
 recebe: o acerto (dados e total) e, por alvo, esquiva, defesa, tipo de reação, escada do
 repelir, dano projetado e payouts, mais as reações anexadas e não abertas.
@@ -741,8 +882,24 @@ repelir, dano projetado e payouts, mais as reações anexadas e não abertas.
 **F8 — Trocar de cena.** Na topbar do mestre, categoria e descrição inicial → `change_scene`. A
 categoria é validada no servidor desde o PR #74: mande o valor do enum, minúsculo.
 
-**F9 — O mestre recebe a confirmação das próprias ações.** Tratar `master_action_enqueued` como
-`action_enqueued` já é tratado: sucesso confirma, `error` aparece.
+
+**F12 — O mestre arrasta uma peça: master action.** Arrastar a peça na tela do mestre manda a
+master action de B14. O jogador **nunca** arrasta peça na partida: ele move por ação. *(Espera
+B14 e o `move` de B9.)*
+
+**F14 — O mestre escolhe onde cai o escape que falhou.** Quando a resolução marca um escape que
+falhou (B13), o painel de resolução (F7) destaca o caso, e o mestre escolhe o slot final — no
+painel ou tocando no mapa. É parte da resolução do turno, **não** o arrastar de F12: são dois
+gestos diferentes para duas coisas diferentes. *(Espera B13.)*
+
+**F15 — Começar uma partida de onde outra terminou.** Na tela em que o mestre anexa o mapa a uma
+partida, a opção de herdar o tabuleiro de outra partida da mesma campanha e no mesmo mapa (B16).
+*(Espera B16.)*
+
+**F13 — O front para de escrever o tabuleiro no servidor.** Hoje a página do mestre manda o
+tabuleiro ao servidor a cada conexão (`map_state_sync`). Com B14, o servidor carrega o tabuleiro
+sozinho, e esse envio sai. O front passa a só desenhar o que vem em `map_full_state`.
+*(Espera B14.)*
 
 **F10 — A lista de declaradas segue o servidor** *(espera B12)*. Na conexão e em toda reconexão,
 a lista do jogador é reconciliada com o que o servidor diz que existe. Ação que o servidor não
@@ -754,14 +911,18 @@ sozinho** (B12).
 ### 6A.7 Ordem e PRs
 
 ```
-Back   ──  B1 · B2 · B3–B13   ────────────────────┐
-                                                  ├──►  F1 · F10  ──►  Fase 7
-Front  ──  F2–F9 · F11   ─────────────────────────┘
+Back   ──  B1 · B2 · B3–B16   ─────────────────────┐
+                                                   ├──►  F1 · F10 · F12–F15 · resto de F4 e F6  ──►  Fase 7
+Front  ──  F2 · F3 · F5 · F7 · F8 · F11 · parte de F4 e F6 ┘
 ```
 
 - Back e front **em paralelo**: repos diferentes, nenhum arquivo em comum.
-- No plano do back, **B1, B2, B11 e B12 vêm primeiro** — são os que destravam o front.
-- No plano do front, **F1 e F10 vêm por último**, depois do merge do back.
+- No plano do back, **B14, B1, B2, B11 e B12 vêm primeiro** — são os que destravam o front. B14
+  vem antes de todos: B3 e B11 dependem de o servidor ser dono do tabuleiro. **B16 vem por
+  último**, e o desenho de B3 tem que ser escolhido pensando nele.
+- No plano do front, **F1, F10, F12 a F15 e as partes de F4 e F6 que dependem do back vêm por
+  último**,
+  depois do merge do back.
 - A Fase 7 espera **B2, B13 e** o PR de front deste fechamento (os dois tocam o painel do
   mestre).
 
@@ -785,12 +946,19 @@ depois de B3.
 |---|---|
 | NPC no mapa da partida é NPC da partida (B11) | dono do produto |
 | Jogador não vê a velocidade da própria ação até ela abrir; a barra se revela em sequência (F6) | dono do produto |
-| Todo escape espera o fechamento; falhou, não chega (B13) | dono do produto — "falhou, não chega" é leitura, vetável |
+| Todo escape espera o fechamento; escapar = passar no movimento **e** na esquiva; na falha, o mestre decide a posição final (B13) | dono do produto — rascunho, até o desenho de colisão |
+| O servidor carrega o tabuleiro do banco; o navegador do mestre deixa de escrevê-lo (B14) | dono do produto — "o servidor precisa conhecer tudo" |
+| Arrastar peça é master action; a posição final de um escape que falhou é resolução de turno, não master action (B13, B14) | dono do produto |
 | A ficha na partida é só leitura (F3) | dono do produto |
 | Edição do mestre continua na Fase 8 | dono do produto |
 | Histórico vem do servidor, não do navegador (F4) | auditoria — o dono delegou o desenho |
 | O cliente nunca reenvia ação perdida sozinho (B12) | auditoria — protege "o mestre nunca re-rola" |
 | O painel de resolução nasce só leitura (F7) | auditoria — sem controle que ainda não funciona |
+| Ao abrir, a mesa — e o dono — vê a mecânica e as velocidades; acerto, dano e perícias só no fechamento (B2) | regra existente de `acoes.md`, aplicada ao dono |
+| A fila é reconciliada, não persistida (B12) | sessão de back — persistir divergiria das barras |
+| O tabuleiro — posições, paredes e fog explorado — é salvo por partida, no fechamento de turno, e não no mapa da campanha (B3) | dono do produto |
+| Uma partida pode começar de onde outra terminou (B16) | dono do produto |
+| Troca de regime, troca de cena e round fechado passam a ser persistidos (B15) | "nada deve ser perdido durante a partida" |
 
 ## 7. Fase 7 — Reações
 
@@ -870,7 +1038,7 @@ liga as duas. Quando o servidor manda a posição, a peça vai para lá e o fant
 
 | Fantasma | Existe entre… | Quem vê | Fase |
 |---|---|---|---|
-| **Intenção declarada** | o envio da action e a abertura dela | **só o dono** — o mestre não conhece o destino, porque `action_queued` e `resolution_updated` não trazem posição | **6** |
+| **Intenção declarada** | o envio da action e a abertura dela | o dono — e **o mestre, depois de B1** (§6A.5), que faz a fila dele trazer o destino. Antes de B1, só o dono | **6** |
 | **Espera** | a abertura e o fechamento, quando a peça não pode deslocar na abertura | a mesa | **7** em diante |
 
 O primeiro tem caso alcançável hoje: toda action enviada antes de abrir. O segundo só passa a
@@ -997,9 +1165,7 @@ com a fase que tocar no assunto (Fase 7).**
 - **`piece_moved` do lobby é cliente→servidor.** Não é o mesmo que a Fase 6 precisa.
 - **O tablet gira.** Testar em pé e deitado, não só em duas larguras.
 - **A zona Pixi é pixel-tuned** e não deve ser normalizada com os tokens.
-- **NPC existe, mas só entra na sala quando ela nasce.** O rostering (PR #73) está mergeado: o
-  mestre põe NPC pelo REST, e o `InitMatchSession` o traz na próxima vez que a sala for criada.
-  O mestre age por ele. **O que não existe ainda é pôr NPC com a sala já viva** — `cmd/api` e
-  `cmd/game` são processos separados, e o REST não alcança a sessão em memória. Isso é o verbo
-  de WS de um PR paralelo, e **a Fase 6 não depende dele**: para testar, ponha o NPC antes de a
-  sala nascer.
+- **NPC na partida: dois caminhos, e um bug.** Pôr NPC com a sala viva **existe** — `add_npc`
+  por WS, que responde `npc_added` à mesa; o REST (`POST /matches/{uuid}/npcs`) monta o roster
+  antes de a sala nascer. O bug é que **pôr uma peça de NPC no mapa não inscreve o NPC** — B11,
+  §6A.5.

@@ -100,7 +100,7 @@ Uma coisa parece lacuna e é **deliberada**:
 - `resolution_updated` é **master-only**. O cálculo é do mestre até o turno encerrar;
   difusão para a mesa e projeção por destinatário são da Fase 5.
 
-**HP ao vivo existe** desde a dívida B2: o fechamento de turno — pelos três verbos — emite
+**HP ao vivo existe** desde a dívida P2 (documento mestre do front, §4.10): o fechamento de turno — pelos três verbos — emite
 `character_hp_changed` projetado para o mestre e para o dono da ficha, com o HP aplicado, o
 máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensagem
 (`broadcastHpChanges` em `room.go`). Ver `docs/dev/api/match-combat-ws.md` §5.
