@@ -21,7 +21,8 @@ fontes de verdade.
 | **8** | Regência — a edição do mestre (§8) | depois da 7 |
 
 **Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
-(§11.3), iniciativa, e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
+(§11.3), iniciativa, efeitos de ambiente (armadilha — o único caso em que um "ataque do mestre"
+faria sentido, §6A.5 B9), e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
 nada disso trava as fases acima. **Não há uma "Fase 9" planejada**: inventário e Nen não existem
 no back e não são o próximo passo.
 
@@ -648,8 +649,15 @@ não quer bug conhecido aberto.
 | **B6** | **`move.from = [0,0,0]` é sentinela** de "sem origem" e colide com o slot (0,0) de verdade | movimento que sai do canto é tratado como sem origem |
 | **B7** | **`Register` numa sala fechada** bloqueia para sempre | o front contorna com watchdog; o back deveria recusar |
 | **B8** | **O dono não recebe o próprio `private`** em `GET .../participants` — só o mestre | o dono tem direito à própria vida |
-| **B9** | **`enqueue_master_action` não mapeia `attack` nem `move`** (`buildMasterAction` deixa os dois em `TODO`) | o mestre contorna o ataque por `enqueue_action`; e o **arrastar do mestre** (B14) precisa do `move` |
+| **B9** | **`enqueue_master_action` não mapeia `attack` nem `move`** (`buildMasterAction` deixa os dois em `TODO`). O `move` é mapeado. O **`attack` sai do payload** — ver abaixo | o **arrastar do mestre** (B14) precisa do `move` |
 | **B10** | **Grade hexagonal:** confirmar a convenção `[col,row,z]` | verificar, documentar, consertar se preciso |
+
+**O `attack` da master action sai — decisão do dono do produto.** O mestre ataca **pelo NPC**, com
+`enqueue_action`, como qualquer personagem (PR #73). Mapear um `attack` para dentro de uma master
+action não mudaria nada na mesa: nada lê o conteúdo dela. Um "ataque do mestre" só faria sentido
+como **efeito de ambiente** — uma armadilha, por exemplo —, e isso ainda não existe: é **futuro**,
+parte do enriquecimento da mecânica (§0), não pendência deste pacote. O servidor recusa uma master
+action com `attack`, dizendo o caminho certo.
 
 **Onde o tabuleiro da partida é salvo — decisão do dono do produto.** O mapa é da **campanha**:
 desenhado no editor de mapas (fora da partida), e o mesmo mapa pode estar anexado a várias
@@ -666,8 +674,9 @@ salvo nela, por cima do mapa:
   no tabuleiro da partida;
 - **trocar o mapa anexado depois do `start_match` é recusado.** O anexo diz de qual mapa da
   campanha o tabuleiro da partida **partiu**; trocá-lo por baixo de um tabuleiro vivo deixaria
-  posições e estados de parede apontando para paredes que não existem mais. (Hoje o `AttachMap`
-  permite, sobrescrevendo o anexo.)
+  posições e estados de parede apontando para paredes que não existem mais. **Isso já é assim:**
+  o `AttachMatchMapUC` recusa com `ErrMatchAlreadyStarted` (o *gateway* faz upsert, mas o use case
+  não chega nele depois do início). Não há o que implementar.
 - ⚠️ **Isso não impede o mestre de mudar o mapa no meio da partida** — só muda **onde** ele muda.
   Vai existir um **editor de mapa da partida** (ainda não existe), e nele o mestre poderá trocar o
   fundo, entre outras coisas. Essas edições são do **tabuleiro da partida**, não do mapa da
@@ -800,15 +809,15 @@ por `enqueue_master_action` com `move` (por isso depende do `move` de B9): só o
 persistido (B3) e transmitido com projeção de fog. **Jogador nunca arrasta** na partida: ele move
 por ação.
 
-- **É uma master action de verdade, e segue as regras que master action já tem** — mesma
-  mensagem, mesma persistência, mesmo registro. **Toda** master action de mover vira linha no
-  histórico, não só a que acontece com turno aberto.
+- **É uma master action de verdade** — mesma mensagem (`enqueue_master_action`) e, com turno
+  aberto, o mesmo registro no turno. **Toda** master action vira linha no histórico, não só a
+  que acontece com turno aberto — ver "Master actions persistidas", logo abaixo.
 - **Vale com ou sem turno aberto.** Hoje `EnqueueMasterAction` recusa sem turno aberto
   (`match_session.go`, `ErrNoActiveTurn`) e só pendura a master action no turno corrente — e
   arrastar sem turno é o caso comum: o mestre arrumando a cena entre turnos, ou antes do
   primeiro. A master action de mover **se aplica na hora**. Com turno aberto, fica registrada no
-  turno; sem turno, fica registrada como evento da partida fora de turno — o mesmo mecanismo de
-  B15, que já passa a guardar troca de cena, de regime e round fechado.
+  turno; sem turno, entra no histórico como evento fora de turno — o mesmo mecanismo de B15, que
+  já passa a guardar troca de cena, de regime e round fechado.
 - A mesa recebe `piece_moved` com projeção de fog; o mestre recebe `master_action_enqueued` como
   confirmação.
 - **O `piece_moved` do cliente fica só no lobby, e validado no servidor:** o mestre move qualquer
@@ -816,6 +825,31 @@ por ação.
 
 > Não confunda com a posição final de um escape que falhou (B13) — aquilo é resolução de turno,
 > não master action.
+
+**Master actions persistidas — decisão do dono do produto.** Hoje as master actions vivem só em
+memória, penduradas no `Turn`: o `PersistTurnClose` nunca gravou `t.GetMasterActions()`. Elas
+passam a ser persistidas, e **em tabela própria — não em `actions`**. As duas aparecem no
+histórico.
+
+Por que não na mesma tabela — é o modelo, não preferência:
+
+- `actions.actor_uuid` referencia `character_sheets` (PR #69). O ator de uma master action é o
+  **mestre**, que é usuário, não ficha.
+- `actions.turn_uuid` é `NOT NULL`. A master action pode acontecer **fora de turno** — o
+  arrastar entre turnos é o caso comum.
+- Misturar obriga a afrouxar as duas colunas e a filtrar um tipo do outro em toda leitura do
+  histórico.
+
+O que a tabela precisa (o formato é da sessão de back): a partida, o turno **opcional** (nulo =
+fora de turno), o mestre (`users`), o tipo, o conteúdo (move, interact, …) e o instante.
+Persista nos mesmos momentos de B3/B15.
+
+- **No histórico:** a master action com turno entra **dentro daquele turno**; a sem turno entra
+  como **evento fora de turno**, pelo mesmo mecanismo de B15, na ordem do tempo.
+- **Projeção:** cada leitor vê a master action **como a viu ao vivo** — o que o fog escondeu dele
+  na hora não aparece para ele depois.
+- **`overridden_action_values` continua separado de tudo isso:** a edição do mestre
+  (`edit_action`) não é master action.
 
 Mantenha, como **última defesa**, a resposta com `error` para uma ação sobre parede que o
 servidor não conhece. Com o servidor carregando o tabuleiro, esse caminho deveria ficar
@@ -871,9 +905,16 @@ partida um NPC da campanha que **não** está no mapa, pelo `add_npc` (ao chegar
 vira participante e fica selecionável).
 
 **F3 — A ficha abre dentro da partida.** Um quarto `SheetMode` do `CharacterSheetTemplate`
-(§5.6), **somente leitura**, na zona `panel` — coluna no desktop, bottom sheet no celular. O
-jogador abre a própria pelo item **Ficha** do rail; o mestre abre qualquer uma pelo card.
+(§5.6), **somente leitura**, na zona `panel` — coluna no desktop, bottom sheet no celular (a
+mesma em que a ação abre). **Ficha** é um item do rail, junto de Ação (e de Inventário e Nen,
+quando existirem): o jogador abre a própria por ele; o mestre abre qualquer uma pelo card, e o
+card também ativa o item Ficha — a ficha abre **ali, no lugar de Ação/Fila**. A aba da direita
+(`aside`) não muda.
 **Nenhum `navigate`.** O HP mostrado é o ao vivo (`character_hp_changed`), não o do REST.
+
+**O painel alarga para a ficha.** Hoje ele tem largura fixa no desktop e a ficha não cabe. Com
+a ficha aberta, a coluna do painel fica mais larga; com Ação/Fila, volta ao normal. Na bottom
+sheet a largura já é a da tela.
 
 **F4 — O histórico vem do servidor.** Buscado de `GET /matches/{uuid}/history` ao montar e
 **rebuscado a cada `turn_closed`** — o WS avisa, o REST busca. O que só existe ao vivo (turno
@@ -883,6 +924,9 @@ divergência de R8. **Divide-se em dois.** Os **turnos fechados** saem do REST q
 de **troca de cena, troca de regime e round fechado** não dão para deduzir do REST de hoje (a
 troca de regime acontece dentro do round e o REST guarda só o regime final; cena e round sem
 turno não aparecem) — elas esperam **B15**, que as persiste. Até lá, elas existem só ao vivo.
+As **master actions** (B14) entram na mesma leva: dentro do turno quando têm turno, como evento
+fora de turno quando não têm — e, como `master_action_enqueued` vai à mesa inteira, ele também
+rebusca o histórico.
 
 **F5 — Os cards usam o dado público.** `MatchCharactersSidebar` **sempre** renderiza o
 `CharacterSidebarItem`, montando o `character` pela parte base e mesclando `private` quando
@@ -916,9 +960,13 @@ card da fila, no fim do plano.
 **No regime Livre não há barra.** Sem preço, média nem carry-over (contrato,
 `change_round_mode`), não existe escala. Mostre só as velocidades que agiram e a ordem.
 
-**F7 — O painel de resolução do mestre.** Enquanto o turno está aberto, o mestre vê o que já
-recebe: o acerto (dados e total) e, por alvo, esquiva, defesa, tipo de reação, escada do
+**F7 — O cálculo do turno aberto, no card da ação.** Enquanto o turno está aberto, o mestre vê o
+que já recebe: o acerto (dados e total) e, por alvo, esquiva, defesa, tipo de reação, escada do
 repelir, dano projetado e payouts, mais as reações anexadas e não abertas.
+
+**Onde — desenho do dono do produto:** **anexado ao card da própria ação, na fila** — não é um
+item novo do rail. A ação aberta **continua na fila**, no topo, marcada como em andamento, com o
+cálculo embaixo. (Hoje, ao abrir, ela some da fila.) O desenho ainda vai ser refinado.
 
 > **Por que ele nasce só de leitura:** os botões que agem sobre ele pertencem a fases que ainda
 > não chegaram — **dar a palavra** a uma reação é da Fase 7, **editar** é da Fase 8. Pôr o botão
@@ -941,8 +989,8 @@ histórico. O jogador **nunca** arrasta peça na partida: ele move por ação. *
 B14 e o `move` de B9.)*
 
 **F14 — O mestre escolhe onde cai o escape que falhou.** Quando a resolução marca um escape que
-falhou (B13), o painel de resolução (F7) destaca o caso, e o mestre escolhe o slot final — no
-painel ou tocando no mapa. É parte da resolução do turno, **não** o arrastar de F12: são dois
+falhou (B13), o cálculo no card da ação (F7) destaca o caso, e o mestre escolhe o slot final — no
+card ou tocando no mapa. É parte da resolução do turno, **não** o arrastar de F12: são dois
 gestos diferentes para duas coisas diferentes. *(Espera B13.)*
 
 **F15 — Começar uma partida de onde outra terminou.** Na tela em que o mestre anexa o mapa a uma
@@ -1010,7 +1058,9 @@ depois de B3.
 | Edição do mestre continua na Fase 8 | dono do produto |
 | Histórico vem do servidor, não do navegador (F4) | auditoria — o dono delegou o desenho |
 | O cliente nunca reenvia ação perdida sozinho (B12) | auditoria — protege "o mestre nunca re-rola" |
-| O painel de resolução nasce só leitura (F7) | auditoria — sem controle que ainda não funciona |
+| O cálculo do turno aberto nasce só leitura (F7) | auditoria — sem controle que ainda não funciona |
+| O cálculo do turno aberto fica no card da ação, na fila; a ação aberta continua na fila, em andamento (F7) | dono do produto |
+| A ficha abre no painel, como item do rail (o card também a abre ali); o painel alarga para ela (F3) | dono do produto |
 | Ao abrir, a mesa — e o dono — vê a mecânica e as velocidades; acerto, dano e perícias só no fechamento (B2) | regra existente de `acoes.md`, aplicada ao dono |
 | A fila é reconciliada, não persistida (B12) | sessão de back — persistir divergiria das barras |
 | O tabuleiro — posições, paredes e fog explorado — é salvo por partida, no fechamento de turno, e não no mapa da campanha (B3) | dono do produto |
@@ -1018,6 +1068,8 @@ depois de B3.
 | O tabuleiro do lobby é o da partida; iniciar a partida não grava no mapa da campanha; o mapa anexado não troca depois do início (B3, F16) | decorre da decisão acima |
 | Falhar no movimento do escape faz tomar o golpe; o escape defensivo cai para a defesa (B13) | dono do produto — "não consegue esquivar se falhar no movimento" |
 | Arrastar, pôr e tirar peça são master actions: valem com ou sem turno aberto, sempre entram no histórico, e o mestre confirma antes de enviar (B11, B14, F12) | dono do produto |
+| O `attack` sai da master action; o mestre ataca pelo NPC, com `enqueue_action`; efeito de ambiente é futuro (B9) | dono do produto |
+| Master actions são persistidas em tabela própria, separada de `actions`; as duas aparecem no histórico, e cada leitor vê a master action como a viu ao vivo; `edit_action` não é master action (B14) | dono do produto — o modelo: `actions.actor_uuid` é ficha e `actions.turn_uuid` é obrigatório |
 | Tirar peça vale para qualquer peça, e não desinscreve, não mata, não apaga histórico (B11) | dono do produto |
 | O mapa anexado não troca depois do início; mudar o mapa no meio da partida é do futuro editor de mapa da partida, e B3 não pode fechar essa porta | dono do produto |
 | Troca de regime, troca de cena e round fechado passam a ser persistidos (B15) | "nada deve ser perdido durante a partida" |
@@ -1039,7 +1091,7 @@ depois de B3.
 - **Os botões aparecem para o alvo porque `turn_opened` passa a dizer quem é alvo** (B2, §6A.5).
   Sem isso não há como desenhá-los. Depois de enviar, o alvo vê "reação enviada, aguardando o
   mestre".
-- **Dar a palavra** às reações pendentes entra no painel de resolução do mestre (F7, §6A.6), que
+- **Dar a palavra** às reações pendentes entra no cálculo do turno aberto, no card da ação na fila do mestre (F7, §6A.6), que
   já as lista.
 - **O fantasma de espera** (§10.2): **todo escape** espera o fechamento para mover a peça — ele
   pode falhar (B13, §6A.5). Na abertura, a peça mostra para onde quer ir; no fechamento, vai
@@ -1062,7 +1114,7 @@ ordem inversa produz resultado diferente na tela.
 **Escopo:**
 - Edição do mestre: `edit_action` / `action_edited` — rolagem e perícias. É aqui que entra o
   seletor de perícia de dano, `Push` → `Grab` (§4.6).
-- Os botões de **editar** no painel de resolução do mestre (F7, §6A.6). Com eles, o painel fica
+- Os botões de **editar** no cálculo do turno aberto, no card da ação (F7, §6A.6). Com eles, o cálculo fica
   completo.
 
 > O histórico, a ficha dentro da partida e `change_scene` eram desta fase e **subiram para o
