@@ -1317,9 +1317,20 @@ tabuleiro — desde B14 um tabuleiro pode ter paredes sem nenhuma peça), e ante
 **Direção:** servidor → cliente. **Destino:** fog-gated, por destinatário.
 
 O contrato completo de `piece_moved`/`piece_removed` — shape de `SlotPayload`, o campo `z`
-— é do lobby/mapa e vive em [`game-lobby.md`](game-lobby.md) e [`maps.md`](maps.md). Até
-aqui `piece_moved` era só **cliente → servidor**: o navegador do jogador aplicando
-localmente um arraste e sincronizando o resto da mesa. O que o motor de combate acrescenta:
+— é do lobby/mapa e vive em [`game-lobby.md`](game-lobby.md) e
+[`match-maps.md`](match-maps.md). Até aqui `piece_moved` era só **cliente → servidor**: o
+navegador do jogador aplicando localmente um arraste e sincronizando o resto da mesa. O que o
+motor de combate acrescenta:
+
+> **`piece_moved`/`piece_removed` enviados pelo CLIENTE são lobby-only desde B14** (spec
+> §4.3, "Quem move o quê", Task 4) — com sessão viva, ambos são recusados com `error`
+> `forbidden` para mestre **e** jogador, sem excecão: o mestre passa a mover/pôr/tirar peça
+> por `enqueue_master_action` (`move`/`remove`), e o jogador só move agindo. Ver o contrato
+> completo (quem pode enviar o quê, na lobby, e a validação de posse) em
+> [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). O
+> restante desta seção — a tabela de fog, o `senderId`, o `map_full_state` extra do dono — é
+> sobre o `piece_moved` **servidor → cliente** que os três momentos abaixo emitem, o que
+> continua acontecendo em pleno combate.
 
 > **O tabuleiro é do servidor desde B14** (spec §4.3, "Quem carrega") — carregado do banco
 > quando a sala nasce e, enquanto a partida é lobby, a cada conexão do mestre; depois que
@@ -1543,6 +1554,7 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `unknown_type` | `"unrecognized message type"` | `type` fora do catálogo. |
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
 | `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
+| `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |

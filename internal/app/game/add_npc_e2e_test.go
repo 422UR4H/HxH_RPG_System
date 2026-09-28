@@ -349,81 +349,25 @@ func TestE2E_AddNPCInTheLobbyRostersItWithoutBars(t *testing.T) {
 }
 
 // ─── débito de LOS (Decisão 7) ──────────────────────────────────────────────
-
-const npcPieceID = "piece-npc"
-
-// O mestre arrasta a peça de um NPC. O NPC é "dele" no charToPlayer, mas o mestre vê o
-// tabuleiro sem filtro: nada de recompute de LOS, nada de PlayerMemory para o mestre, nada de
-// map_full_state a cada arrasto. A mesa continua recebendo o piece_moved de sempre. E o
-// controle, na mesma mesa: arrastar a peça de um JOGADOR continua refrescando o dono.
-func TestE2E_TheMasterDraggingAnNPCSkipsTheLineOfSightRecompute(t *testing.T) {
-	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
-	f := newCombatFixture(t, withAddLiveNPC(uc))
-	// Seeds the attacker at (4,4), west of the wall — the board is the server's own since
-	// B14, so this replaces the old syncBoardWithNPC's map_state_sync send.
-	f.seedBoard(t)
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
-	masterMsgs := collectFrom(master)
-	playerMsgs := collectFrom(player)
-
-	npcID := uuid.New()
-	sendAddNPC(t, master, npcID)
-	if !masterMsgs.await(game.MsgTypeNPCAdded, 2*time.Second) {
-		t.Fatal("the NPC never joined the session — this test would drag a piece nobody owns")
-	}
-
-	// Puts the NPC's own piece on the board at (6,6), on the attacker's side of the wall, so
-	// the player sees it move. map_state_sync no longer writes anything, so this goes through
-	// the same piece_moved a browser drag sends — exactly what the rest of this test exercises.
-	sendPieceMoved(t, master, npcPieceID, npcID.String(), 6, 6)
-	if !playerMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
-		t.Fatal("the player never saw the NPC's piece appear on the board")
-	}
-	// The ordering barrier: an unknown message type is answered with a direct error from the
-	// master's own read loop, which handles one message at a time — so the piece_moved arm
-	// above finished before this reply was even built.
-	sendWS(t, master, "barrier", map[string]any{})
-	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
-		t.Fatal("the barrier never came back")
-	}
-
-	t.Run("the master's NPC drag reaches the table without refreshing the master", func(t *testing.T) {
-		masterBoards := masterMsgs.count(game.MsgTypeMapFullState)
-
-		sendPieceMoved(t, master, npcPieceID, npcID.String(), 6, 4)
-
-		if !playerMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
-			t.Fatalf("the player, who sees (6,4), was never relayed the NPC's move; they "+
-				"received: %v", messageTypes(playerMsgs.snapshotMessages()))
-		}
-
-		// The ordering barrier: an unknown message type is answered with a direct error from
-		// the master's own read loop, which handles one message at a time — so the piece_moved
-		// arm, map_full_state included, finished before this reply was even built.
-		sendWS(t, master, "barrier", map[string]any{})
-		if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
-			t.Fatal("the barrier never came back")
-		}
-
-		if n := masterMsgs.count(game.MsgTypeMapFullState); n != masterBoards {
-			t.Fatalf("the master got %d new map_full_state for dragging an NPC — the whole "+
-				"board resent for a view that has no fog", n-masterBoards)
-		}
-		if _, ok := f.session.GetPlayerMemory(f.masterUUID); ok {
-			t.Fatal("the drag created a PlayerMemory for the master, which nobody ever reads")
-		}
-	})
-
-	t.Run("the master's drag of a player's piece still refreshes its owner", func(t *testing.T) {
-		playerBoards := playerMsgs.count(game.MsgTypeMapFullState)
-
-		sendPieceMoved(t, master, attackerPieceID, f.attackerID.String(), 5, 4)
-
-		if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, playerBoards+1, 2*time.Second) {
-			t.Fatal("the owner's line of sight was not recomputed after the master moved " +
-				"their piece — the NPC shortcut swallowed the player's case too")
-		}
-	})
-}
+//
+// TestE2E_TheMasterDraggingAnNPCSkipsTheLineOfSightRecompute lived here — the master, mid-
+// match, dragging an NPC's (then a player's) piece over `piece_moved` to prove the
+// owner-resolved-from-CHARACTER recompute (relayPieceMove, Decisão 7): no recompute/
+// PlayerMemory/extra map_full_state for the master (NPCs are "owned" by the master in
+// charToPlayer, but his view has no fog), and the player's owner-refresh control case still
+// firing on the same table.
+//
+// B14 (spec §4.3, "Quem move o quê", T4) makes `piece_moved`/`piece_removed` lobby-only:
+// handlePieceMoved/handlePieceRemoved now refuse BOTH master and player outright the moment
+// `r.session != nil` — the master's move/place mid-match becomes `enqueue_master_action`'s
+// `move` (Task 5). The lobby has no `charToPlayer` (spec: "no lobby não existe charToPlayer"),
+// so this test's whole premise — someone other than the owner moving a piece while a session
+// is live — has no surviving trigger within this task's scope. It is deleted rather than
+// converted to `inLobby()`, which would silently turn every assertion here into a no-op (no
+// session means no owner resolution, no recompute, no PlayerMemory to begin with).
+//
+// Task 5 (`enqueue_master_action`'s `move`, which per spec "Sai piece_moved/piece_removed com
+// projeção de fog para todos, inclusive o mestre") is expected to route through the SAME
+// relayPieceMove this test exercised. Re-establish equivalent coverage there — the NPC-as-
+// master-has-no-owner shortcut and the player-piece owner-refresh control case are real
+// regression risk otherwise.

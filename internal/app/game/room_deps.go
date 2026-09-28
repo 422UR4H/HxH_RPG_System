@@ -41,4 +41,13 @@ type RoomDeps struct {
 	// RehydrateSession call it before the session goes live). nil means no persisted memory
 	// is loaded — the session simply starts with none, same as before T3.
 	MemoryLoader matchboarduc.IMemoryLoader
+	// SheetOwnership answers who owns a sheet, for the lobby's server-side piece ownership
+	// check (spec §4.3, "Quem move o quê", B14): the lobby has no charToPlayer, so
+	// handlePieceMoved reads the sheet's own PlayerUUID instead. Unlike every other field in
+	// this struct, nil here does NOT mean "no capability, skip the check" — a player's
+	// handlePieceMoved treats it as "cannot verify ownership" and refuses, the same
+	// fail-closed default GetCharacterSheetRelationshipUUIDs' own AddMatchNPCUC already applies
+	// to sheet reads. The one real implementation is the same sheetRepository cmd/game/main.go
+	// already wires into AddMatchNPCUC.
+	SheetOwnership appmatch.ISheetOwnershipReader
 }

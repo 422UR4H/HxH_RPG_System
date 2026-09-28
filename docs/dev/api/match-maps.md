@@ -108,17 +108,34 @@ reinício do servidor devolva tabuleiro e memória juntos e nunca um sem o outro
 
 **Reinício:** ver a tabela em [`match-combat-ws.md`](match-combat-ws.md#reinício-recarga-queda).
 
-## WebSocket: lobby_piece_moved
+## WebSocket: `piece_moved` / `piece_removed` (client → server)
 
-**Direction:** Client → Server (broadcast to all other participants)  
-**When:** During lobby phase, when a participant moves a piece on the tactical map.
+**Direction:** Client → Server, relayed per-recipient (fog-gated once a match has a session —
+see [`match-combat-ws.md`](match-combat-ws.md#piece_moved-servidor); no fog in the lobby).
+**When:** During the LOBBY phase only, as of B14 (spec §4.3, "Quem move o quê"). This pair used
+to be named `lobby_piece_moved` here — the actual wire type has been `piece_moved` for a while;
+this section was stale.
+
+**Quem pode enviar o quê, e a validação do servidor:**
+
+| Fase | Quem | `piece_moved` | `piece_removed` |
+|---|---|---|---|
+| lobby | mestre | qualquer peça | qualquer peça |
+| lobby | jogador | só peça **já existente** do **próprio** personagem — não cria uma peça nova mandando um `pieceId` desconhecido, e não pode trocar o `characterId` de uma peça sua para outro | recusado sempre — remover é só do mestre |
+| partida (sessão viva) | mestre | recusado — mover/pôr/tirar peça passa a ser `enqueue_master_action` (`move`/`remove`) | recusado, mesmo motivo |
+| partida (sessão viva) | jogador | recusado — jogador só move peça agindo (`enqueue_action`) | recusado, mesmo motivo |
+
+A posse do jogador no lobby é lida da ficha (`GetCharacterSheetRelationshipUUIDs`, via
+`RoomDeps.SheetOwnership`), não de `charToPlayer` — esse mapa só existe com sessão viva. A
+leitura é I/O e roda fora do lock da sala.
 
 **Send payload:**
 ```json
 {
-  "type": "lobby_piece_moved",
+  "type": "piece_moved",
   "payload": {
     "pieceId": "uuid-string",
+    "characterId": "uuid-string",
     "slot": {
       "kind": "square",
       "col": 3,
@@ -136,13 +153,20 @@ Hex slot:
 }
 ```
 
-**Broadcast to other clients:**
+```json
+{ "type": "piece_removed", "payload": { "pieceId": "uuid-string" } }
+```
+
+**Relayed to other clients** (same shape, `senderId` is the mover's own UUID — see
+[`match-combat-ws.md`](match-combat-ws.md#piece_moved-servidor) for the full per-recipient
+table, which is shared with the combat engine's own server-authored moves):
 ```json
 {
-  "type": "lobby_piece_moved",
+  "type": "piece_moved",
   "senderId": "user-uuid",
   "payload": {
     "pieceId": "...",
+    "characterId": "...",
     "slot": { "kind": "square", "col": 3, "row": 5 },
     "z": 1.5
   }
@@ -150,9 +174,15 @@ Hex slot:
 ```
 
 **Notes:**
-- Server broadcasts to all lobby participants EXCEPT the sender.
 - `z` (elevation in metres, 0 = ground) is opaque passthrough, same as `slot`: the server
   never computes or defaults it, so the client must send it here if it wants the piece's
   elevation preserved.
-- No server-side piece ownership validation in Phase 6. Client restricts drag to allowed pieces.
-- TODO: validate piece ownership per user (Phase 7+).
+- Refused with `error` `forbidden`. During a match, the message is one of
+  `"during a match the master moves pieces with enqueue_master_action"` (master) or
+  `"players move by action"` (player) — see the catalogue in
+  [`match-combat-ws.md`](match-combat-ws.md#7-catálogo-de-erros). In the lobby, a player's
+  disallowed move/removal is also `forbidden`, with a message describing the specific reason
+  (piece not owned, piece does not exist yet, or trying to remove at all).
+- Server-side piece ownership validation shipped in B14 (Task 4). The client SHOULD still
+  restrict drag to allowed pieces for a responsive UI, but the server is now the actual
+  authority — this replaces the earlier "no server-side validation, Phase 7+" note.

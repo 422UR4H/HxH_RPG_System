@@ -34,6 +34,26 @@ var (
 	ErrNotMaster      = errors.New("only the master can perform this action")
 	ErrAlreadyPlaying = errors.New("match already started")
 	ErrRoomClosed     = errors.New("room is closed")
+	// ErrMasterMovesByMasterAction and ErrPlayersMoveByAction are the two refusals a live
+	// session gives handlePieceMoved/handlePieceRemoved (spec §4.3, "Quem move o quê", B14):
+	// piece_moved/piece_removed are a LOBBY-ONLY pair of verbs. Once a match has a session,
+	// the master places/moves/removes pieces through enqueue_master_action's move/remove
+	// (Task 5), and a player only ever moves a piece by acting.
+	ErrMasterMovesByMasterAction = errors.New(
+		"during a match the master moves pieces with enqueue_master_action",
+	)
+	ErrPlayersMoveByAction = errors.New("players move by action")
+	// ErrPieceNotOwnedByPlayer is the lobby-phase refusal for a player's piece_moved: the
+	// piece has to already exist, and its CURRENT CharacterID has to belong to the sender
+	// (spec §4.3, "Quem move o quê" — "só peça existente de personagem dele"). It also covers
+	// the payload trying to relabel the piece under a different CharacterID: a player moves
+	// their own piece, they do not reassign whose piece it is.
+	ErrPieceNotOwnedByPlayer = errors.New("you can only move your own existing pieces")
+	// ErrPlayersCannotRemovePieces is the lobby-phase refusal for a player's piece_removed:
+	// the spec's table gives removal to the master only, in the lobby ("lobby | jogador |
+	// piece_moved | ... não remove") — there is no ownership carve-out the way piece_moved has
+	// one, a player never removes any piece, theirs or not.
+	ErrPlayersCannotRemovePieces = errors.New("only the master can remove pieces")
 )
 
 type IStartMatch interface {
@@ -1200,9 +1220,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 
 	case MsgTypePieceMoved:
-		// Relay piece moves per-player with fog-of-war filtering.
-		// No server-side piece ownership validation in Phase 6 — client restricts
-		// drag to allowed pieces. TODO: validate piece ownership per user (Phase 7+)
+		// Relay piece moves per-player with fog-of-war filtering. Lobby-only, and
+		// server-side piece ownership IS validated as of B14 (spec §4.3, "Quem move o
+		// quê") — handlePieceMoved refuses a session outright and, in the lobby, a
+		// player who does not own the piece's current CharacterID. See its own comment.
 		var payload PieceMovedPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_moved payload"))
@@ -2344,14 +2365,79 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 	}
 }
 
-// handlePieceMoved relays a move a client made in its own browser.
+// handlePieceMoved relays a move a client made in its own browser — but only in the LOBBY,
+// and only a piece the sender is actually allowed to touch (spec §4.3, "Quem move o quê",
+// B14). piece_moved/piece_removed are a lobby-only pair: once a match has a session, the
+// master moves/places/removes pieces through enqueue_master_action's move/remove (Task 5),
+// and a player only ever moves by acting — so BOTH get refused here, unconditionally, the
+// moment a session exists. It does not matter that the master's own placement mechanism
+// (Task 5) is not built yet: this verb specifically is never the master's, in a match.
+//
+// In the lobby the master can drag anything — the lobby has no notion of ownership beyond
+// "the master runs the table". A player can only move a piece that ALREADY exists in
+// r.pieces, whose CURRENT CharacterID's sheet is theirs (per SheetOwnership — the lobby has
+// no charToPlayer to ask instead), and whose payload does not try to relabel that piece under
+// a different CharacterID: moving is not how a player reassigns whose piece something is.
+//
+// The ownership read is I/O and runs outside r.mu.
 func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+	r.mu.RLock()
+	inMatch := r.session != nil
+	isMaster := r.masterUUID == client.userUUID
+	existing, hadExisting := r.pieces[payload.PieceID]
+	r.mu.RUnlock()
+
+	if inMatch {
+		if isMaster {
+			client.SendMessage(NewErrorMessage("forbidden", ErrMasterMovesByMasterAction.Error()))
+		} else {
+			client.SendMessage(NewErrorMessage("forbidden", ErrPlayersMoveByAction.Error()))
+		}
+		return
+	}
+
+	if !isMaster && !r.playerOwnsExistingPiece(client.userUUID, payload, existing, hadExisting) {
+		client.SendMessage(NewErrorMessage("forbidden", ErrPieceNotOwnedByPlayer.Error()))
+		return
+	}
+
 	r.applyAndRelayPieceMove(payload, client.userUUID)
 	// "lobby": persistBoard itself only writes once a map is attached (r.mapUUID != uuid.Nil);
 	// restricting this call to the LOBBY phase specifically is T4's job (spec §4.3, "Quando
 	// persiste" lists "movimento e remoção no lobby" as its own line, distinct from the
 	// master's in-match piece actions).
 	r.persistBoard("lobby")
+}
+
+// playerOwnsExistingPiece answers handlePieceMoved's lobby-phase question for a NON-master
+// sender: does this piece already exist, does the sheet behind its CURRENT CharacterID belong
+// to this player, and does the payload agree on which character it is (a player cannot use a
+// move to relabel a piece under a different CharacterID — that would be reassigning ownership,
+// not moving).
+//
+// r.deps.SheetOwnership == nil is NOT "no capability, skip the check" the way most of
+// RoomDeps' fields read: nobody has wired a way to verify ownership, so the only safe answer
+// is "no" — this is the one field in RoomDeps whose absence fails closed, not open.
+//
+// Must NOT be called with r.mu held: the ownership read is I/O.
+func (r *Room) playerOwnsExistingPiece(
+	playerUUID uuid.UUID, payload PieceMovedPayload, existing PieceMovedPayload, hadExisting bool,
+) bool {
+	if !hadExisting || r.deps.SheetOwnership == nil {
+		return false
+	}
+	if payload.CharacterID != existing.CharacterID {
+		return false
+	}
+	charUUID, err := uuid.Parse(existing.CharacterID)
+	if err != nil {
+		return false
+	}
+	rel, err := r.deps.SheetOwnership.GetCharacterSheetRelationshipUUIDs(context.Background(), charUUID)
+	if err != nil {
+		return false
+	}
+	return rel.PlayerUUID != nil && *rel.PlayerUUID == playerUUID
 }
 
 // applyOpenedMove walks the opened action's Move onto the board.
@@ -2516,9 +2602,31 @@ func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
 	r.relayPieceMove(moved, old, true, uuid.Nil)
 }
 
-// handlePieceRemoved removes a piece and relays the removal per-player.
+// handlePieceRemoved removes a piece and relays the removal per-player — lobby-only, and
+// master-only, the same rule handlePieceMoved's own doc comment explains (spec §4.3, "Quem
+// move o quê", B14): a session forbids it outright for master AND player alike (the master
+// removes through enqueue_master_action's remove, Task 5), and even in the lobby a player
+// never removes any piece — only the master does.
 // A hidden piece (visible=false) is treated as master-only.
 func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
+	r.mu.RLock()
+	inMatch := r.session != nil
+	isMaster := r.masterUUID == client.userUUID
+	r.mu.RUnlock()
+
+	if inMatch {
+		if isMaster {
+			client.SendMessage(NewErrorMessage("forbidden", ErrMasterMovesByMasterAction.Error()))
+		} else {
+			client.SendMessage(NewErrorMessage("forbidden", ErrPlayersMoveByAction.Error()))
+		}
+		return
+	}
+	if !isMaster {
+		client.SendMessage(NewErrorMessage("forbidden", ErrPlayersCannotRemovePieces.Error()))
+		return
+	}
+
 	r.mu.Lock()
 	old, hadOld := r.pieces[payload.PieceID]
 	delete(r.pieces, payload.PieceID)

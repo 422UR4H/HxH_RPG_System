@@ -105,6 +105,10 @@ func main() {
 			LoadBoardUC:           loadBoardUC,
 			SaveBoardUC:           saveBoardUC,
 			MemoryLoader:          playerMemoryRepository,
+			// Same sheetRepository already wired into addMatchNPCUC above — it satisfies
+			// appmatch.ISheetOwnershipReader, which is all handlePieceMoved needs to check a
+			// lobby player's ownership of an existing piece (spec §4.3, "Quem move o quê", B14).
+			SheetOwnership: sheetRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

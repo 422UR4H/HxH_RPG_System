@@ -135,6 +135,12 @@ type combatFixture struct {
 	addLiveNPC game.IAddLiveNPC
 	// lobby is set by inLobby. See it there.
 	lobby bool
+	// sheets backs RoomDeps.SheetOwnership (spec §4.3, "Quem move o quê", B14): the lobby's
+	// server-side check for a player's piece_moved reads a sheet's PlayerUUID from here,
+	// since the lobby has no charToPlayer. Populated below with the attacker/victim/bystander
+	// mapping newCombatFixture already knows, so every existing test gets a working default
+	// instead of the fail-closed "no capability" nil every other RoomDeps field tolerates.
+	sheets *fakeSheetOwnership
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -217,6 +223,16 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 			Sheet: csEntity.Summary{UUID: f.bystanderID, PlayerUUID: &f.bystanderUUID},
 		})
 	}
+
+	// The lobby's server-side piece ownership check (spec §4.3, B14) reads this instead of
+	// charToPlayer — same mapping the participants above already carry.
+	f.sheets = newFakeSheetOwnership()
+	f.sheets.setPlayer(f.attackerID, f.playerUUID)
+	f.sheets.setPlayer(f.victimID, victimPlayer)
+	if f.bystanderUUID != uuid.Nil {
+		f.sheets.setPlayer(f.bystanderID, f.bystanderUUID)
+	}
+
 	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
 	session.SetRollSource(topFaceSource{})
 	f.session = session
@@ -278,6 +294,8 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		// that is what makes a restart lose only in-memory state, never what was saved.
 		SaveBoardUC:  matchboarduc.NewSaveMatchBoardUC(f.boards, f.memories),
 		MemoryLoader: f.memories,
+		// T4: the lobby's server-side piece ownership check (spec §4.3, B14).
+		SheetOwnership: f.sheets,
 	}
 }
 
@@ -1865,10 +1883,18 @@ func sendPieceMoved(t *testing.T, conn *websocket.Conn, pieceID, characterID str
 	})
 }
 
-// O jogador arrasta a própria peça: o mestre é avisado, o remetente não recebe eco (o browser
-// dele já desenhou), o envelope leva o UUID dele, e a visão dele é recalculada.
+// O jogador arrasta a própria peça, no LOBBY: o mestre é avisado, o remetente não recebe eco
+// (o browser dele já desenhou), e o envelope leva o UUID dele.
+//
+// B14 (spec §4.3, "Quem move o quê", T4) tornou `piece_moved` lobby-only, então este teste
+// agora conecta com `inLobby`. A metade que este teste tinha sobre o SEGUNDO map_full_state
+// (recompute de linha de visão do dono) foi removida, não adaptada: sem sessão viva não há
+// `charToPlayer`, fog, nem recompute — relayPieceMove nem entra no ramo que os produzia, então
+// a asserção não tinha mais o que provar. A cobertura "aplica e não ecoa" que sobra aqui é a
+// mesma que TestLobbyPieceMoved_PlayerMovesOwnExistingPiece (lobby_board_e2e_test.go) já cobre
+// pelo caminho novo — este teste ficou como o regressivo mais antigo do mesmo comportamento.
 func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.T) {
-	f := newCombatFixture(t)
+	f := newCombatFixture(t, inLobby)
 	f.seedBoard(t)
 
 	master, player := f.connect(t)
@@ -1892,162 +1918,38 @@ func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.
 			"move is not a server message", moved.SenderID, f.playerUUID)
 	}
 
-	// The owner's line of sight moved with the piece, so a second map_full_state must reach
-	// them. It is also the ordering barrier for the assertion below: the room dispatches the
-	// relay BEFORE it sends this, on the same goroutine, so any echo would already be queued.
-	if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
-		t.Fatal("the mover's line of sight was never recomputed: no second map_full_state")
-	}
+	// The lobby has no fog and no session, so there is nothing to recompute — the ordering
+	// barrier the old (mid-match) version of this test used instead is the master's own
+	// piece_moved above, already awaited.
 	if n := playerMsgs.count(game.MsgTypePieceMoved); n != 0 {
 		t.Fatalf("the mover was echoed their own move back %d time(s); they received: %v",
 			n, messageTypes(playerMsgs.snapshotMessages()))
 	}
 }
 
-// O mestre arrasta a peça de um JOGADOR. Esta é a única prova possível do delta declarado na
-// extração: o map_full_state é decidido pelo dono do personagem, não pelo remetente. Antes de
-// d0b4191 o jogador não recebia nada e ficava com o fog velho.
-func TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight(t *testing.T) {
-	f := newCombatFixture(t)
-	f.seedBoard(t)
-
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
-	masterMsgs := collectFrom(master)
-	playerMsgs := collectFrom(player)
-
-	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the player never got the board — the fixture never started")
-	}
-
-	// The master drags a piece that belongs to the PLAYER.
-	sendPieceMoved(t, master, attackerPieceID, f.attackerID.String(), 6, 4)
-
-	if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
-		t.Fatal("the master moved the player's piece and the player's line of sight was never " +
-			"recomputed — the owner is being resolved from the sender again")
-	}
-
-	var board game.MapFullStatePayload
-	msgs := playerMsgs.snapshotMessages()
-	var last *game.Message
-	for i := range msgs {
-		if msgs[i].Type == game.MsgTypeMapFullState {
-			last = &msgs[i]
-		}
-	}
-	if err := json.Unmarshal(last.Payload, &board); err != nil {
-		t.Fatalf("unmarshal map_full_state: %v", err)
-	}
-	var seen *game.PieceMovedPayload
-	for i := range board.Pieces {
-		if board.Pieces[i].PieceID == attackerPieceID {
-			seen = &board.Pieces[i]
-		}
-	}
-	if seen == nil {
-		t.Fatal("the refreshed board does not carry the player's own piece")
-	}
-	if seen.Slot.Col == nil || *seen.Slot.Col != 6 || seen.Slot.Row == nil || *seen.Slot.Row != 4 {
-		t.Fatalf("the refreshed board still shows the piece at %+v, want (6,4)", seen.Slot)
-	}
-
-	// The player is not the sender, so they are relayed the move as well.
-	if !playerMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
-		t.Fatal("the player was never relayed the move the master made")
-	}
-	// The master IS the sender, so they are not echoed their own drag.
-	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
-		t.Fatalf("the master was echoed their own drag back %d time(s); they received: %v",
-			n, messageTypes(masterMsgs.snapshotMessages()))
-	}
-}
-
-// polygonsFromPayload rebuilds the domain polygons from the wire shape, so a test can ask the
-// fog gate's own question — "is this world point inside what the player can see?" — instead of
-// asserting a geometry it merely assumes. Origin is left zero: IsVisible never reads it.
-func polygonsFromPayload(polys [][]game.Point2DPayload) []service.VisibilityPolygon {
-	out := make([]service.VisibilityPolygon, 0, len(polys))
-	for _, poly := range polys {
-		vs := make([]service.Point2D, 0, len(poly))
-		for _, p := range poly {
-			vs = append(vs, service.Point2D{X: p.X, Y: p.Y})
-		}
-		out = append(out, service.VisibilityPolygon{Vertices: vs})
-	}
-	return out
-}
-
-// O dono de uma peça que se move para FORA do próprio campo de visão anterior não pode
-// receber piece_removed dela.
+// TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight and
+// TestE2E_TheOwnerIsNotToldTheirOwnPieceVanishedWhenItLeavesItsOldSight lived here —
+// polygonsFromPayload with them, only used by the second. Both drove the MASTER dragging a
+// PLAYER's piece over `piece_moved` while the match's session was live, to prove
+// relayPieceMove's owner-resolved-from-CHARACTER recompute (d0b4191): the player's line of
+// sight refreshes even though they were not the sender, and the recompute runs BEFORE the
+// dispatch so the owner is never told their own piece "vanished" from a polygon they already
+// left.
 //
-// relayPieceMove julga cada destinatário por r.visibilityFor, que é leitura pura do cache.
-// Enquanto o cache do dono só era refeito DEPOIS do dispatch, o dono era julgado pelo polígono
-// do slot que acabara de deixar: o destino dava invisível, a origem visível, e o dono recebia
-// piece_removed da própria peça — o map_full_state corretivo só chegando depois. Um front que
-// trate piece_removed como autoritativo e map_full_state como merge perde o token de vez.
+// B14 (spec §4.3, "Quem move o quê", T4) makes `piece_moved` lobby-only: handlePieceMoved now
+// refuses BOTH master and player outright the instant `r.session != nil` — the master's
+// mid-match drag becomes `enqueue_master_action`'s `move` (Task 5). The lobby has no
+// `charToPlayer` (spec: "no lobby não existe charToPlayer") and no fog, so neither test's
+// premise — someone other than the piece's owner moving it while a session, and its
+// visibility polygons, are live — has a surviving trigger within this task's scope. Converting
+// either to `inLobby()` would not adapt the test, it would silently turn every assertion into
+// a tautology (no session means no owner resolution and no recompute to begin with), so both
+// are deleted rather than converted.
 //
-// Quem arrasta é o MESTRE de propósito. Com origin == uuid.Nil (movimento aplicado pelo motor)
-// o dono chega ao gate, mas o destino teria de ficar atrás de uma parede que o enfileiramento
-// já recusaria; com o próprio dono como remetente ele é pulado pelo ramo "o browser dele já
-// desenhou" e nunca chega ao gate. O arrasto do mestre é o caminho que exercita exatamente
-// estas linhas.
-func TestE2E_TheOwnerIsNotToldTheirOwnPieceVanishedWhenItLeavesItsOldSight(t *testing.T) {
-	f := newCombatFixture(t)
-	f.seedBoard(t)
-
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
-	playerMsgs := collectFrom(player)
-
-	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the player never got the board — the fixture never started")
-	}
-
-	// The premise, asserted rather than assumed: with the piece still at (4,4) the player sees
-	// its current slot and does NOT see (20,4), which sits behind the wall at x=640. Without
-	// this the assertions below would pass for a board on which nothing is ever hidden.
-	var board game.MapFullStatePayload
-	if err := json.Unmarshal(
-		findMessage(t, playerMsgs.snapshotMessages(), game.MsgTypeMapFullState).Payload, &board,
-	); err != nil {
-		t.Fatalf("unmarshal map_full_state: %v", err)
-	}
-	polys := polygonsFromPayload(board.VisiblePolygons)
-	origin := service.Point2D{X: 4.5 * 64, Y: 4.5 * 64}
-	destination := service.Point2D{X: 20.5 * 64, Y: 4.5 * 64}
-	if !service.IsVisible(origin, polys) {
-		t.Fatal("the player cannot see the slot their own piece is standing on — their line " +
-			"of sight is empty and this test would prove nothing")
-	}
-	if service.IsVisible(destination, polys) {
-		t.Fatal("the destination is already visible from the old slot: the wall is not " +
-			"splitting the board, so the move never leaves the old field of view")
-	}
-
-	// The master drags the PLAYER's piece across the wall.
-	sendPieceMoved(t, master, attackerPieceID, f.attackerID.String(), 20, 4)
-
-	// The ordering barrier: relayPieceMove dispatches the relay before it sends the owner this
-	// second map_full_state, on the same goroutine, so anything the owner was going to be sent
-	// about this move is already in their queue by the time it lands.
-	if !awaitAtLeast(playerMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
-		t.Fatal("the owner's line of sight was never recomputed: no second map_full_state")
-	}
-
-	if n := playerMsgs.count(game.MsgTypePieceRemoved); n != 0 {
-		t.Fatalf("the owner was told their own piece vanished %d time(s) while it was simply "+
-			"moving with them; they received: %v",
-			n, messageTypes(playerMsgs.snapshotMessages()))
-	}
-	// And the positive half: the owner is not the sender, so the move itself must reach them.
-	if n := playerMsgs.count(game.MsgTypePieceMoved); n == 0 {
-		t.Fatalf("the owner was never relayed the move of their own piece; they received: %v",
-			messageTypes(playerMsgs.snapshotMessages()))
-	}
-}
+// Task 5's `enqueue_master_action` `move` is expected to route through this SAME
+// relayPieceMove — per spec it "Sai piece_moved/piece_removed com projeção de fog para todos,
+// inclusive o mestre". Re-establish equivalent coverage there: the owner-resolved-from-
+// CHARACTER recompute and the stale-polygon ordering fix are real regression risk without it.
 
 // Os campos de cena do match_full_state eram a única parte do payload sem teste — e vinham com
 // um SEGUNDO conjunto de nomes (sceneId/sceneCategory/sceneBriefDescription) para os mesmos

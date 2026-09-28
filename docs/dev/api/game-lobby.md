@@ -60,6 +60,13 @@ O `map_full_state` que cada cliente recebe ao se conectar (ver `piece_moved`/`pi
 em [`match-combat-ws.md`](match-combat-ws.md)) já reflete esse tabuleiro, filtrado por LOS do
 mesmo jeito de sempre — completo para o mestre, recortado por linha de visão para o jogador.
 
+#### `piece_moved` / `piece_removed` são só do lobby (B14)
+
+Quem move ou remove uma peça pelo socket, e o que o servidor valida, mudou de "o cliente
+decide" para o servidor ser a autoridade — inclusive recusando os dois verbos por completo
+fora do lobby. Contrato completo (tabela mestre/jogador × lobby/partida, payloads, mensagens
+de erro) em [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor).
+
 #### `map_state_sync` (obsoleto desde B14)
 
 **Não escreve mais nada no tabuleiro.** O servidor aceita a mensagem e **ignora o

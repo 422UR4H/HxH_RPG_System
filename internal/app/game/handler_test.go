@@ -13,6 +13,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -147,6 +148,38 @@ func (s *fakeMemoryStore) DeleteByMatch(_ context.Context, matchID uuid.UUID) er
 
 func newFakeMemoryStore() *fakeMemoryStore {
 	return &fakeMemoryStore{byKey: map[string]fogentity.PlayerMemory{}}
+}
+
+// fakeSheetOwnership answers GetCharacterSheetRelationshipUUIDs for RoomDeps.SheetOwnership —
+// the lobby's server-side piece ownership check (spec §4.3, "Quem move o quê", B14): the
+// lobby has no charToPlayer, so handlePieceMoved reads a sheet's own PlayerUUID instead. An
+// unmapped sheet UUID answers with the zero RelationshipUUIDs (no player, no master) rather
+// than an error — no test needs a distinguishable not-found case today, and a zero PlayerUUID
+// already fails the ownership check the same way a real not-found would.
+type fakeSheetOwnership struct {
+	mu     sync.Mutex
+	byUUID map[uuid.UUID]csEntity.RelationshipUUIDs
+}
+
+func newFakeSheetOwnership() *fakeSheetOwnership {
+	return &fakeSheetOwnership{byUUID: map[uuid.UUID]csEntity.RelationshipUUIDs{}}
+}
+
+// setPlayer records that sheetUUID belongs to playerUUID — the only relationship the lobby
+// check reads (MasterUUID/CampaignUUID are AddMatchNPCUC's concern, not this one's).
+func (s *fakeSheetOwnership) setPlayer(sheetUUID, playerUUID uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pid := playerUUID
+	s.byUUID[sheetUUID] = csEntity.RelationshipUUIDs{PlayerUUID: &pid}
+}
+
+func (s *fakeSheetOwnership) GetCharacterSheetRelationshipUUIDs(
+	_ context.Context, id uuid.UUID,
+) (csEntity.RelationshipUUIDs, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.byUUID[id], nil
 }
 
 type mockMatchRepo struct {

@@ -701,6 +701,19 @@ mappings:
       rehydrated session's persisted memory now actually arrives).
       MatchSession.SetMapUUID resolves the mapUUID-stuck-at-uuid.Nil TODO that used
       to sit in memoryFor.
+      Task 4 (B14, spec §4.3 "Quem move o quê"): piece_moved/piece_removed are
+      LOBBY-ONLY now — handlePieceMoved/handlePieceRemoved refuse both master and
+      player outright the instant r.session != nil (the master's mid-match
+      move/place/remove becomes enqueue_master_action's move/remove, Task 5). In
+      the lobby the master still moves/removes any piece; a player's piece_moved
+      is checked against RoomDeps.SheetOwnership (GetCharacterSheetRelationshipUUIDs
+      — the lobby has no charToPlayer) for the piece's CURRENT CharacterID, the
+      piece must already exist, and the payload's characterId must match the
+      existing one (a player cannot relabel whose piece it is). A player's
+      piece_removed is refused unconditionally in the lobby too — only the master
+      removes. This resolved the "No server-side piece ownership validation in
+      Phase 6 / TODO: validate piece ownership per user (Phase 7+)" comment that
+      used to sit on the piece_moved case in handleClientMessage.
 
   - code_path: internal/app/game/client.go
     dev_docs:
