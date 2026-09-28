@@ -3130,13 +3130,24 @@ func TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect(t *testing.T) {
 	master, player := f.connect(t)
 	defer player.Close() //nolint:errcheck
 	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the master never received the initial board")
 	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never received the initial board")
+	}
+	playerBoardsBefore := playerMsgs.count(game.MsgTypeMapFullState)
 
 	// The store's content changes between the master's two connections — standing in for an
-	// edit that landed while the master was away (another session, or REST).
+	// edit that landed while the master was away (another session, or REST). The wall gets a
+	// NEW id rather than reusing moveBoardWall's "divider" from the initial seedBoard, so
+	// finding it below actually proves the walls were reloaded — not just that a wall with
+	// the same id happened to still be there.
 	const reloadedPieceID = "piece-reloaded"
+	const reloadedWallID = "wall-reloaded"
+	reloadedWall := moveBoardWall
+	reloadedWall.ID = reloadedWallID
 	f.boards.seed(f.matchUUID, &matchboard.Board{
 		MatchUUID: f.matchUUID,
 		MapUUID:   uuid.New(),
@@ -3146,7 +3157,7 @@ func TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect(t *testing.T) {
 			Coord:   mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 10, Row: 10}},
 			Visible: true,
 		}},
-		Walls: []mapentity.WallSegment{moveBoardWall},
+		Walls: []mapentity.WallSegment{reloadedWall},
 	})
 
 	if err := master.Close(); err != nil {
@@ -3159,13 +3170,13 @@ func TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect(t *testing.T) {
 	if full == nil {
 		t.Fatal("the reconnected master never received a map_full_state")
 	}
-	hasReloaded := false
+	hasReloadedPiece := false
 	for _, p := range full.Pieces {
 		if p.PieceID == reloadedPieceID {
-			hasReloaded = true
+			hasReloadedPiece = true
 		}
 	}
-	if !hasReloaded {
+	if !hasReloadedPiece {
 		t.Fatalf("the reconnected master's board does not carry the reloaded piece %q: %+v",
 			reloadedPieceID, full.Pieces)
 	}
@@ -3173,6 +3184,52 @@ func TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect(t *testing.T) {
 		t.Fatalf("the reconnected master's board has %d piece(s), want exactly the reloaded one: %+v",
 			n, full.Pieces)
 	}
+	hasReloadedWall := false
+	for _, w := range full.Walls {
+		if w.ID == reloadedWallID {
+			hasReloadedWall = true
+		}
+	}
+	if !hasReloadedWall {
+		t.Fatalf("the reconnected master's board does not carry the reloaded wall %q: %+v",
+			reloadedWallID, full.Walls)
+	}
+
+	// The player never disconnected — they were already at the table when the master's
+	// reconnect reloaded the board. The old map_state_sync arm re-pushed to everyone after a
+	// seed; this reload must do the same, or an already-connected player is stuck on the
+	// board from before the reload until they themselves reconnect.
+	if !awaitCount(playerMsgs, game.MsgTypeMapFullState, playerBoardsBefore+1, 2*time.Second) {
+		t.Fatalf("the already-connected player never received a refreshed map_full_state "+
+			"after the master's reconnect reloaded the board; they received: %v",
+			messageTypes(playerMsgs.snapshotMessages()))
+	}
+	msgs := playerMsgs.snapshotMessages()
+	var lastPlayerFull *game.Message
+	for i := range msgs {
+		if msgs[i].Type == game.MsgTypeMapFullState {
+			lastPlayerFull = &msgs[i]
+		}
+	}
+	var playerFull game.MapFullStatePayload
+	if err := json.Unmarshal(lastPlayerFull.Payload, &playerFull); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	playerHasReloadedPiece := false
+	for _, p := range playerFull.Pieces {
+		if p.PieceID == reloadedPieceID {
+			playerHasReloadedPiece = true
+		}
+	}
+	if !playerHasReloadedPiece {
+		t.Fatalf("the already-connected player's refreshed board does not carry the reloaded "+
+			"piece %q: %+v", reloadedPieceID, playerFull.Pieces)
+	}
+	// Walls are NOT asserted on the player's own payload here: room.go's buildMapFullState
+	// forces payload.Walls to [] for every non-master client while the room is still a
+	// lobby (disabled until the frontend consumes it in lobby mode), a pre-existing,
+	// deliberate suppression unrelated to this reload. The master's check above is what
+	// actually proves the walls were reloaded.
 }
 
 // The last defense (spec §4.3, "Última defesa"): interacting with, or revealing, a wall the

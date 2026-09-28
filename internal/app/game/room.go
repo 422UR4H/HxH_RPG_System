@@ -227,6 +227,18 @@ func (r *Room) Run() {
 
 			if shouldLoadBoard {
 				r.loadBoard(context.Background())
+				// r.pieces/r.walls just changed under whoever else was already at the table —
+				// unlike the registering client, handled below, nobody re-reads the board for
+				// them on its own. Re-push a fresh, fog-filtered map_full_state to every OTHER
+				// connected client, the same repush map_state_sync's old arm used to do after
+				// a seed (spec §4.3). dispatchPerPlayer releases r.mu before calling back into
+				// buildMapFullState, so this is safe to call with no lock held here.
+				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+					if pid == client.userUUID {
+						return nil // this client's own map_full_state is the hasPieces branch below
+					}
+					return r.buildMapFullState(pid, isMaster)
+				})
 			}
 
 			r.sendRoomState(client)
