@@ -14,6 +14,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+	fogPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	matchboardPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
@@ -75,6 +76,11 @@ func main() {
 	matchMapRepository := matchmapPg.NewRepository(pgPool)
 	matchBoardRepository := matchboardPg.NewRepository(pgPool)
 	loadBoardUC := matchboarduc.NewLoadMatchBoardUC(matchBoardRepository, matchMapRepository, mapRepository)
+	// The write side (spec §4.3, "Quando persiste", B3): the board row and every player's fog
+	// memory, saved together by Room.persistBoard. playerMemoryRepository doubles as
+	// RoomDeps.MemoryLoader — its FindByMatchMap is what seeds a rehydrated/started session.
+	playerMemoryRepository := fogPg.NewPlayerMemoryRepository(pgPool)
+	saveBoardUC := matchboarduc.NewSaveMatchBoardUC(matchBoardRepository, playerMemoryRepository)
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -97,6 +103,8 @@ func main() {
 			EditActionUC:          editActionUC,
 			AddLiveNPCUC:          addLiveNPCUC,
 			LoadBoardUC:           loadBoardUC,
+			SaveBoardUC:           saveBoardUC,
+			MemoryLoader:          playerMemoryRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

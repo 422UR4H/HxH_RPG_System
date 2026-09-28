@@ -477,6 +477,13 @@ mappings:
       B14) — the match's own match_boards line if one exists, else a snapshot of
       the attached campaign map (Bg nil); nil, nil when no map is attached. The
       game Room calls it through RoomDeps.LoadBoardUC.
+      SaveMatchBoardUC (Task 3, §4.3 "Quando persiste") — writes the board row
+      first; a failure there aborts before any memory is attempted. Every
+      memory upsert then runs regardless of an earlier one failing, and every
+      failure comes back joined via errors.Join. Room.persistBoard is the one
+      caller, through RoomDeps.SaveBoardUC. IMemoryLoader (FindByMatchMap) is
+      what RoomDeps.MemoryLoader satisfies — StartMatch/RehydrateSession use it
+      to seed a session's fog memory instead of starting empty.
 
   # ─── Fog of War / Visibility (Phase 10-D, revised Phase 10-E) ───
   - code_path: internal/domain/match/entity/fog/
@@ -511,7 +518,7 @@ mappings:
     dev_docs:
       - path: docs/dev/api/maps.md
         confidence: possibly_affected
-    notes: IPlayerMemoryRepository interface (memory persistence scaffold); currently a stub — impacts maps.md if persistence behavior changes
+    notes: IPlayerMemoryRepository interface (memory persistence scaffold); satisfied by fog.PlayerMemoryRepository, which Task 3 wires as RoomDeps.MemoryLoader — impacts maps.md if persistence behavior changes
 
   - code_path: internal/gateway/pg/fog/
     dev_docs:
@@ -519,7 +526,15 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/match-maps.md
         confidence: possibly_affected
-    notes: PlayerMemoryRepository is now IMPLEMENTED (spec 2026-09-27-combat-closure-back §4.3, Task 1) — Upsert/FindByMatchMap/DeleteByMatch against player_memories, Seen serialized as [{"kind":"wall","id":"<id>"}]; nobody calls it yet.
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
+    notes: >-
+      PlayerMemoryRepository (spec 2026-09-27-combat-closure-back §4.3) —
+      Upsert/FindByMatchMap/DeleteByMatch against player_memories, Seen
+      serialized as [{"kind":"wall","id":"<id>"}]. Task 3 wires it as BOTH
+      SaveMatchBoardUC's memory writer and RoomDeps.MemoryLoader — Upsert is
+      called from Room.persistBoard, FindByMatchMap from StartMatch and from
+      loadBoard's session-branch (a rehydrated session's memory seed point).
 
   - code_path: migrations/20260805000000_player_memories.sql
     dev_docs:
@@ -536,7 +551,9 @@ mappings:
       matchboard.Board — the match's own board, a SNAPSHOT that starts as a copy of the
       campaign map it was attached to (spec 2026-09-27-combat-closure-back §4.3). Grid/Bg/
       Pieces/Walls reuse the mapentity JSON shapes maps.pieces/maps.walls already store.
-      Task 1 only: infra, nobody calls it yet.
+      Task 3 makes Bg a real, if still one-way, field: Room.bg is loaded from it
+      and preserved on every persistBoard save — nobody WRITES a non-nil Bg yet
+      (the in-match map editor is future work).
 
   - code_path: internal/gateway/pg/matchboard/
     dev_docs:
@@ -544,8 +561,9 @@ mappings:
         confidence: directly_affected
     notes: >-
       pgmatchboard.Repository — Get/Save/Delete against match_boards (upsert on
-      match_uuid). Copy (herdar tabuleiro entre partidas, B16) is Task 18's, not
-      implemented here.
+      match_uuid). Save is called from Task 3's SaveMatchBoardUC, in turn from
+      Room.persistBoard, at every point spec §4.3 lists. Copy (herdar tabuleiro
+      entre partidas, B16) is Task 18's, not implemented here.
 
   - code_path: migrations/20260927000000_match_boards_and_events.sql
     dev_docs:
@@ -670,6 +688,19 @@ mappings:
       a peça não sair do lugar. Os três verbos que fecham um turno (close_turn,
       open_next_action, pull_action) aplicam esse desfecho. Z is preserved, never
       overwritten from Move.Position[2] (units unresolved).
+      Task 3 (B3, spec §4.3 "Quando persiste"): Room.persistBoard(reason), in
+      board.go, is now the ONE write path — the lobby's move/remove, start_match
+      (before Init), the three verbs that close a turn (right after
+      applyClosedEscapes, before persistClosedTurn) and the master's wall
+      interact/reveal all call it. RoomDeps.SaveBoardUC/MemoryLoader (nil = no
+      persistence capability, same rule as LoadBoardUC). StartMatch and
+      RehydrateSession seed a session's fog memory from MemoryLoader instead of
+      SyncPlayerMemories(nil, ...) — RehydrateSession itself still seeds none (its
+      own doc comment explains why: the real mapUUID is not known until
+      loadBoard runs moments later, on the same register path, which is where a
+      rehydrated session's persisted memory now actually arrives).
+      MatchSession.SetMapUUID resolves the mapUUID-stuck-at-uuid.Nil TODO that used
+      to sit in memoryFor.
 
   - code_path: internal/app/game/client.go
     dev_docs:
@@ -731,7 +762,10 @@ mappings:
       propriedade de estado. match_session.go.OpenReaction mudou de assinatura
       (passou a devolver a reação aberta, para a delivery layer aplicar o Move
       dela ao tabuleiro) — o contrato WS é quem documenta o piece_moved que
-      isso disparou.
+      isso disparou. Task 3 (spec 2026-09-27-combat-closure-back §4.3) adds
+      SetMapUUID: Room threads the board's real mapUUID into the session, so a
+      PlayerMemory created for the first time (memoryFor) stamps it instead of
+      uuid.Nil — resolving the persistence-blocking TODO that used to sit there.
 
   - code_path: internal/application/match/
     dev_docs:

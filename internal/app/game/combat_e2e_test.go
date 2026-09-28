@@ -12,6 +12,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
@@ -19,9 +20,9 @@ import (
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -124,6 +125,7 @@ type combatFixture struct {
 	session    *matchsession.MatchSession
 	roundRepo  *mockRoundRepoHandler
 	boards     *fakeBoardStore
+	memories   *fakeMemoryStore
 	// bystanderUUID/bystanderID are uuid.Nil unless withBystander was passed. See it there.
 	bystanderUUID uuid.UUID
 	bystanderID   uuid.UUID
@@ -185,6 +187,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		victimID:   uuid.New(),
 		writer:     &recordingStatusWriter{},
 		boards:     newFakeBoardStore(),
+		memories:   newFakeMemoryStore(),
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -227,32 +230,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		hub,
 		&fogMatchRepo{masterUUID: f.masterUUID, started: !f.lobby},
 		&mockEnrollmentChecker{enrolled: true},
-		game.RoomDeps{
-			StartMatchUC:  &mockStartMatchUC{},
-			KickPlayerUC:  &mockKickPlayerUC{},
-			InitSessionUC: &combatSessionUC{session: session},
-			// The real use cases: this is what makes the test end-to-end rather than a mock
-			// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
-			// round to actually close when the bar economy runs out, not just report it.
-			OpenNextActionUC: appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
-			PullActionUC:     appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
-			EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
-			AttachReactionUC: appmatch.NewAttachReactionUC(),
-			OpenReactionUC:   appmatch.NewOpenReactionUC(),
-			CloseTurnUC:      appmatch.NewCloseTurnUC(f.writer),
-			// The real UC: the scene assertions in match_full_state need the session's ACTIVE scene
-			// to actually change, and the mock returns a fresh scene without touching the session.
-			ChangeSceneUC:         appmatch.NewChangeSceneUC(),
-			RoundRepo:             roundRepo,
-			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
-			// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
-			// exists in Race mode, and the mock never actually flips the session's round mode.
-			ChangeRoundModeUC: appmatch.NewChangeRoundModeUC(),
-			EditActionUC:      appmatch.NewEditActionUC(),
-			// nil unless withAddLiveNPC was passed: no test before add_npc sends it.
-			AddLiveNPCUC: f.addLiveNPC,
-			LoadBoardUC:  f.boards,
-		},
+		f.roomDeps(session, roundRepo),
 	)
 
 	mux := http.NewServeMux()
@@ -263,6 +241,77 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		hub.Stop()
 	})
 	return f
+}
+
+// roomDeps builds the RoomDeps a room over this fixture's table needs. It is a method,
+// shared by newCombatFixture and restart, so the two can never drift apart on which use
+// cases are real and which are mocks — restart's whole POINT is standing up a room that is
+// otherwise identical, just over a fresh Hub/Handler.
+func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *mockRoundRepoHandler) game.RoomDeps {
+	return game.RoomDeps{
+		StartMatchUC:  &mockStartMatchUC{},
+		KickPlayerUC:  &mockKickPlayerUC{},
+		InitSessionUC: &combatSessionUC{session: session},
+		// The real use cases: this is what makes the test end-to-end rather than a mock
+		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
+		// round to actually close when the bar economy runs out, not just report it.
+		OpenNextActionUC: appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+		PullActionUC:     appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+		EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
+		AttachReactionUC: appmatch.NewAttachReactionUC(),
+		OpenReactionUC:   appmatch.NewOpenReactionUC(),
+		CloseTurnUC:      appmatch.NewCloseTurnUC(f.writer),
+		// The real UC: the scene assertions in match_full_state need the session's ACTIVE scene
+		// to actually change, and the mock returns a fresh scene without touching the session.
+		ChangeSceneUC:         appmatch.NewChangeSceneUC(),
+		RoundRepo:             roundRepo,
+		EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
+		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
+		// exists in Race mode, and the mock never actually flips the session's round mode.
+		ChangeRoundModeUC: appmatch.NewChangeRoundModeUC(),
+		EditActionUC:      appmatch.NewEditActionUC(),
+		// nil unless withAddLiveNPC was passed: no test before add_npc sends it.
+		AddLiveNPCUC: f.addLiveNPC,
+		LoadBoardUC:  f.boards,
+		// T3: the board and every player's fog memory persist per match (spec §4.3, B3). Both
+		// point at the fixture's own fakes, which restart hands to the SECOND room unchanged —
+		// that is what makes a restart lose only in-memory state, never what was saved.
+		SaveBoardUC:  matchboarduc.NewSaveMatchBoardUC(f.boards, f.memories),
+		MemoryLoader: f.memories,
+	}
+}
+
+// restart simulates the game server restarting (spec §5): it closes the fixture's current
+// server and stands up a brand-new Hub/Handler/Room pair over the SAME fakeBoardStore,
+// fakeMemoryStore, and combatSessionUC (wrapping the fixture's own *matchsession.MatchSession
+// pointer) — so the ONLY thing actually forgotten is the ROOM's own in-memory state (its
+// pieces/walls maps, boardLoaded flag, connected clients): the board and the fog memory come
+// back from the stores, exactly as match_boards/player_memories rows would after a real
+// restart. f.server is replaced; callers reconnect with f.connect (or connectWS directly)
+// exactly as they would against the original server.
+func (f *combatFixture) restart(t *testing.T) {
+	t.Helper()
+	f.server.Close()
+
+	hub := game.NewHub()
+	go hub.Run()
+
+	roundRepo := &mockRoundRepoHandler{}
+	f.roundRepo = roundRepo
+	handler := game.NewHandler(
+		hub,
+		&fogMatchRepo{masterUUID: f.masterUUID, started: !f.lobby},
+		&mockEnrollmentChecker{enrolled: true},
+		f.roomDeps(f.session, roundRepo),
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", handler.HandleWebSocket)
+	f.server = httptest.NewServer(mux)
+	t.Cleanup(func() {
+		f.server.Close()
+		hub.Stop()
+	})
 }
 
 // connect dials the master first and then the player. The order matters: the room refuses

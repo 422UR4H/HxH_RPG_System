@@ -33,4 +33,12 @@ type RoomDeps struct {
 	// capability the room does not have" rule this struct's own doc comment states, and what
 	// every test built before B14 still gets by leaving it unset.
 	LoadBoardUC matchboarduc.ILoadMatchBoard
+	// SaveBoardUC persists the board and every player's fog memory (spec §4.3, "Quando
+	// persiste", B3). persistBoard is the one caller. nil means the room has no persistence
+	// capability — every test built before T3 leaves it unset.
+	SaveBoardUC matchboarduc.ISaveMatchBoard
+	// MemoryLoader seeds per-player fog memory when a session is born (StartMatch and
+	// RehydrateSession call it before the session goes live). nil means no persisted memory
+	// is loaded — the session simply starts with none, same as before T3.
+	MemoryLoader matchboarduc.IMemoryLoader
 }

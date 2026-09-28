@@ -29,7 +29,13 @@ type PiecePositionSource interface {
 }
 
 type MatchSession struct {
-	matchUUID   uuid.UUID
+	matchUUID uuid.UUID
+	// mapUUID is the map the session's board belongs to — set by Room via SetMapUUID once it
+	// knows it (StartMatch/RehydrateSession/loadBoard, from Board.MapUUID). It exists so a
+	// PlayerMemory created for the first time (memoryFor) is stamped with the REAL map instead
+	// of uuid.Nil — see memoryFor's own doc comment for the persistence bug that left as a TODO
+	// until this field was threaded through (spec §4.3, B3).
+	mapUUID     uuid.UUID
 	activeScene *scene.Scene
 	activeRound *round.Round
 	activeQueue action.PriorityQueue
@@ -161,6 +167,12 @@ func indexParticipants(participants []*match.Participant) (
 	}
 	return pMap, charToPlayer, statuses
 }
+
+// SetMapUUID tells the session which map its board belongs to. Room calls it in StartMatch,
+// RehydrateSession and loadBoard, right after SyncMapState — BEFORE any RecomputeVisibility
+// that could lazily create a PlayerMemory (memoryFor), so that memory is stamped with the
+// real map from the moment it exists rather than uuid.Nil and drifting later.
+func (s *MatchSession) SetMapUUID(mapUUID uuid.UUID) { s.mapUUID = mapUUID }
 
 func (s *MatchSession) GetMatchUUID() uuid.UUID      { return s.matchUUID }
 func (s *MatchSession) GetActiveRound() *round.Round { return s.activeRound }
@@ -1382,11 +1394,12 @@ func (s *MatchSession) memoryFor(playerID uuid.UUID) *fog.PlayerMemory {
 	}
 	m, ok := s.memories[playerID]
 	if !ok {
-		// TODO(persistence): MapID is uuid.Nil because MatchSession doesn't carry the
-		// active map's UUID yet. Thread the real mapUUID in (constructor or
-		// SyncPlayerMemories) before wiring the repository, so persisted rows don't all
-		// collide on the (match_id, map_id, player_id) unique key with map_id = Nil.
-		m = fog.NewPlayerMemory(playerID, s.matchUUID, uuid.Nil)
+		// mapUUID comes from SetMapUUID (Room, on StartMatch/RehydrateSession/loadBoard) —
+		// the persistence-blocking TODO that used to sit here (MapID stuck at uuid.Nil,
+		// colliding every player onto one row of the (match_id, map_id, player_id) unique
+		// key) is resolved by T3 threading it through instead. uuid.Nil here now only means
+		// "no board loaded yet", the same as before any SetMapUUID call.
+		m = fog.NewPlayerMemory(playerID, s.matchUUID, s.mapUUID)
 		s.memories[playerID] = m
 	}
 	return m

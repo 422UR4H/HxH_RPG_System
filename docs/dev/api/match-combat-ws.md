@@ -447,7 +447,7 @@ chegar até aqui por qualquer outro caminho.
   [`piece_moved`](#piece_moved-servidor) para o movimento de ação. É o mesmo `applyMove` nos
   dois momentos, não dois caminhos.
 - O deslocamento de uma reação **nunca passa pela checagem de parede** — a colisão contra
-  parede ainda não foi desenhada como regra; ver a última linha de §9.
+  parede ainda não foi desenhada como regra; ver a última linha de §10.
 
 ⚠️ **O movimento de uma AÇÃO não mudou.** Uma ação não tem CD vindo contra ela; a peça dela
 desloca **na abertura do turno**, qualquer que seja a categoria — a posição não pode esperar,
@@ -1416,7 +1416,7 @@ diferentes, e por isso o servidor **preserva o `Z` que a peça já tinha** em ve
 sobrescrevê-lo com `Move.Position[2]`. Escrever um horizontal sobre um vertical derrubaria
 uma peça elevada ao chão a cada passo horizontal cujo `z` de grade for `0`. A pergunta
 "`Move.Position[2]` é metro ou índice de grade?" precisa de resposta antes de qualquer
-cliente escrever `Z`. Ver §9.
+cliente escrever `Z`. Ver §10.
 
 ⚠️ **Colisão contra parede é uma fatia de regra ainda não desenhada — o efeito hoje é que a
 peça atravessa.** A única checagem existente contra paredes com `move=true` e `open=false`
@@ -1428,7 +1428,7 @@ parede — esse código só existe no ramo de ação comum. `attach_reaction`, e
 também não tem checagem nenhuma no caminho. Não é validação esquecida: **ainda não existe a
 regra que decide o que acontece quando um personagem colide com uma parede** — compartilhar
 o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi
-escolhido ainda. Ver §9.
+escolhido ainda. Ver §10.
 
 ### `error`
 
@@ -1528,7 +1528,7 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
 `Feint` não aparece em payload nenhum deste protocolo — nenhuma mensagem servidor→cliente
 projeta a **declaração** de uma `action.Action` **de jogador** (`master_action_enqueued` é a
 exceção do lado do mestre, mas projeta `action.MasterAction`, um tipo sem `Feint`; a lacuna
-correspondente está em §9), e é por isso que a finta não tem onde aparecer aqui. Ela vive em `service.ProjectAction`, a mesma
+correspondente está em §10), e é por isso que a finta não tem onde aparecer aqui. Ela vive em `service.ProjectAction`, a mesma
 função que a Action History REST chama, e segue exatamente este eixo do TEMPO: escondida
 enquanto `isSettled` é `false`, revelada quando o turno fecha — quem caiu na finta descobre
 dentro da resolução do MESMO turno (o sucesso foi contra um ataque falso, e o de verdade vem
@@ -1612,7 +1612,33 @@ das fugas de `Dash` que passaram saem igual, e o `turn_closed` do turno que acab
 puder pagar, sai
 [`round_closed`](#round_closed) e nenhum turno novo abre.
 
-## 9. O que este contrato ainda não entrega
+## 9. Reinício, recarga, queda
+
+<a id="reinício-recarga-queda"></a>
+
+Tabela completa (fila, barras, histórico, NPC, duas abas) em
+`docs/superpowers/specs/2026-09-27-combat-closure-back-design.md` §5. Aqui, só as duas
+linhas que este contrato — o tabuleiro e o turno aberto — precisa dizer sozinho:
+
+| Estado | Recarregar o cliente / reconectar | Reiniciar o servidor |
+|---|---|---|
+| Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
+| Turno aberto, reações anexadas | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido** — o turno só persiste ao FECHAR; a peça da action volta para onde o último fechamento a deixou |
+
+**Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). `Room.persistBoard`
+grava a cada `start_match`, a cada fechamento de turno e a cada interação/revelação de
+parede — nunca na ABERTURA de uma action. A peça anda no `piece_moved` que a abertura emite,
+mas se o servidor cair antes do próximo fechamento, essa gravação nunca aconteceu: o
+tabuleiro que volta é o de ANTES da action que estava em curso, e o turno em si — fila,
+reações anexadas, a escolha do mestre para um escape — some inteiro. Tabuleiro e histórico
+continuam concordando: o que está gravado é exatamente o que já tinha fechado.
+
+**O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado no mesmo
+`persistBoard`, então um jogador que reconecta longe de uma parede que já viu antes ainda a
+recebe em `map_full_state` — a memória, não a visão atual, é o que decide (ver a seção de
+fog em [`maps.md`](maps.md)).
+
+## 10. O que este contrato ainda não entrega
 
 Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 [`../match/flows/05-lacunas.md`](../match/flows/05-lacunas.md) e `AGENTS.md` § Known Issues.

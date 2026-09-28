@@ -109,4 +109,4 @@ assim — é assim que o REST-no-meio-da-partida se resolve.
 **Remoção continua só-na-próxima-sala.** O `DELETE` abaixo não tem par ao vivo: tirar um NPC
 de uma sessão em andamento esbarra em regras de combate ainda não decididas (ação dele na
 fila, turno aberto com ele como ator/alvo, reação pendente) e fica registrado como lacuna em
-[`match-combat-ws.md`](match-combat-ws.md) §9.
+[`match-combat-ws.md`](match-combat-ws.md) §10.

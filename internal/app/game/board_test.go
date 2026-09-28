@@ -1,12 +1,19 @@
 package game
 
 import (
+	"context"
+	"sync"
 	"testing"
+	"time"
 
+	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	"github.com/google/uuid"
 )
 
-func intp(i int) *int { return &i }
+func intp(i int) *int    { return &i }
 func boolp(b bool) *bool { return &b }
 
 // TestPieceToPayload_HexAndSquare covers the two shapes the board can carry, and both the
@@ -117,6 +124,112 @@ func TestPayloadToPiece_HexAndSquare(t *testing.T) {
 			t.Fatalf("Coord.Slot = %+v, want %+v", slot, want)
 		}
 	})
+}
+
+// recordingSaveUC is a fake matchboarduc.ISaveMatchBoard that records every board handed to
+// Save, in the order Save actually RAN. Sleeping on the FIRST call is what makes the order
+// deterministic instead of a coin flip: persistBoard's persistMu wraps the snapshot AND the
+// write (its own doc comment), so a second, faster caller can only reach Save once the first
+// one — slow as it is — is fully done. Without that guarantee, this test would be flaky at
+// best and silently wrong at worst: a slow first write finishing AFTER a fast second one would
+// let the stale snapshot overwrite the fresher one in the store.
+type recordingSaveUC struct {
+	mu    sync.Mutex
+	saved []*matchboard.Board
+	calls int
+}
+
+var _ matchboarduc.ISaveMatchBoard = (*recordingSaveUC)(nil)
+
+func (u *recordingSaveUC) Save(_ context.Context, b *matchboard.Board, _ []fogentity.PlayerMemory) error {
+	u.mu.Lock()
+	u.calls++
+	first := u.calls == 1
+	u.mu.Unlock()
+
+	if first {
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	cp := *b
+	u.saved = append(u.saved, &cp)
+	return nil
+}
+
+func (u *recordingSaveUC) last() *matchboard.Board {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.saved[len(u.saved)-1]
+}
+
+// TestPersistBoardWritesSnapshotsInOrder guards persistBoard's own review focus 2: two
+// goroutines racing persistBoard, one right after the piece moves to A and the other right
+// after it moves to B, must land in the DB in the order their SNAPSHOTS were taken (A then
+// B) — not whichever Save call happens to finish first.
+func TestPersistBoardWritesSnapshotsInOrder(t *testing.T) {
+	matchUUID := uuid.New()
+	mapUUID := uuid.New()
+	const pieceID = "p1"
+	saveUC := &recordingSaveUC{}
+
+	r := NewRoom(matchUUID, uuid.New(), RoomDeps{SaveBoardUC: saveUC})
+	r.mu.Lock()
+	r.mapUUID = mapUUID
+	r.pieces[pieceID] = PieceMovedPayload{
+		PieceID: pieceID,
+		Slot:    SlotPayload{Kind: "square", Col: intp(0), Row: intp(0)},
+	}
+	r.mu.Unlock()
+
+	movePiece := func(col int) {
+		r.mu.Lock()
+		p := r.pieces[pieceID]
+		p.Slot = SlotPayload{Kind: "square", Col: intp(col), Row: intp(0)}
+		r.pieces[pieceID] = p
+		r.mu.Unlock()
+	}
+
+	var wg sync.WaitGroup
+
+	movePiece(1) // A
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.persistBoard("A") // the FIRST call to reach Save — the slow one.
+	}()
+
+	// Not a correctness requirement — persistMu serializes the two calls regardless of who
+	// reaches it first — just what keeps THIS test's intended order (A's snapshot strictly
+	// before B's) true, instead of leaving it to luck which goroutine's persistBoard call
+	// happens to run first.
+	time.Sleep(20 * time.Millisecond)
+
+	movePiece(2) // B
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.persistBoard("B")
+	}()
+
+	wg.Wait()
+
+	if got := saveUC.calls; got != 2 {
+		t.Fatalf("Save was called %d time(s), want 2", got)
+	}
+	last := saveUC.last()
+	if len(last.Pieces) != 1 {
+		t.Fatalf("last saved board has %d piece(s), want 1: %+v", len(last.Pieces), last.Pieces)
+	}
+	slot, ok := last.Pieces[0].Coord.Slot.(mapentity.SquareCoord)
+	if !ok {
+		t.Fatalf("Coord.Slot = %#v, want mapentity.SquareCoord", last.Pieces[0].Coord.Slot)
+	}
+	if slot.Col != 2 {
+		t.Fatalf("last saved piece is at col %d, want 2 (position B): persistMu did not keep "+
+			"the write order matching the snapshot order", slot.Col)
+	}
 }
 
 func assertPayloadEqual(t *testing.T, got, want PieceMovedPayload) {

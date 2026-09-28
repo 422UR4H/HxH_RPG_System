@@ -108,6 +108,20 @@ type Room struct {
 	// reloads regardless of this flag, but once playing, boardLoaded stops a reconnecting
 	// master from silently resetting a live board out from under the session.
 	boardLoaded bool
+	// mapUUID is the map the room's board belongs to — set from Board.MapUUID in loadBoard.
+	// uuid.Nil means "no board loaded yet" (or no map attached at all), and persistBoard is a
+	// no-op in that state: there is nothing to write a match_boards row FOR (spec §4.3).
+	mapUUID uuid.UUID
+	// bg is the board's own background override, loaded from Board.Bg in loadBoard and
+	// preserved on every persistBoard save. nil means "inherit the map's background"
+	// (matchboard.Board.Bg's own doc comment) — nobody writes a non-nil value yet; the
+	// in-match map editor that will is future work.
+	bg *mapentity.BgImage
+	// persistMu serializes persistBoard's snapshot-and-write pair across goroutines, so two
+	// saves racing from two read pumps land in the order their SNAPSHOTS were taken, not the
+	// order their DB round trips happened to finish. r.mu is only ever held for the snapshot
+	// half, never across the write.
+	persistMu sync.Mutex
 
 	session *matchsession.MatchSession
 
@@ -152,6 +166,15 @@ func (r *Room) GetSession() *matchsession.MatchSession {
 
 // RehydrateSession restores session after a backend restart. Only called when
 // the match was already started in DB but the in-memory Room has no session.
+//
+// It seeds NO persisted fog memory itself: this runs BEFORE Register, on purpose (see the
+// comment at its one call site in handler.go), which is BEFORE loadBoard has ever run for
+// this fresh Room — so the real mapUUID a memory needs (spec §4.3) is not known here yet.
+// loadBoard's own session-branch, moments later on the SAME goroutine's path through Run's
+// register case, is what loads the persisted rows and calls SyncPlayerMemories again with
+// them, once the map is known. SyncPlayerMemories(nil, ...) below is a safe placeholder in
+// the meantime — nothing observable can happen between the two calls, since no message is
+// processed until Register completes.
 func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -341,6 +364,29 @@ func (r *Room) loadBoard(ctx context.Context) {
 		return
 	}
 
+	// Whether there is already a live session to seed memories for is read under its OWN
+	// lock, before the (possible) memory read below — a DB round trip must never run inside
+	// the critical section that applies the board, the same reason LoadBoardUC.Load itself
+	// ran above, outside any lock. This is the ONLY place loadBoard's session-branch ever
+	// really fires for a session that did not just come from THIS call (see boardLoaded's own
+	// doc comment): a session set by RehydrateSession, moments earlier and with no mapUUID to
+	// seed memories from yet (spec §4.3; RehydrateSession itself seeds none — this is where a
+	// rehydrated session's persisted fog memory actually arrives).
+	r.mu.RLock()
+	hasSession := r.session != nil
+	r.mu.RUnlock()
+
+	var mems []fogentity.PlayerMemory
+	if board != nil && hasSession && r.deps.MemoryLoader != nil {
+		m, merr := r.deps.MemoryLoader.FindByMatchMap(ctx, r.matchUUID, board.MapUUID)
+		if merr != nil {
+			log.Printf("load match board: load player memories for match %s map %s: %v",
+				r.matchUUID, board.MapUUID, merr)
+		} else {
+			mems = m
+		}
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.boardLoaded = true
@@ -369,10 +415,17 @@ func (r *Room) loadBoard(ctx context.Context) {
 	r.pieces = pieces
 	r.walls = walls
 	r.grid = board.Grid
+	r.mapUUID = board.MapUUID
+	r.bg = board.Bg
 
 	if r.session != nil {
 		wallSlice := append([]mapentity.WallSegment(nil), board.Walls...)
 		r.session.SyncMapState(wallSlice, board.Grid)
+		r.session.SetMapUUID(r.mapUUID)
+		// Replaces whatever RehydrateSession seeded (none, today — see its own doc comment)
+		// with the persisted rows, now that the real mapUUID is known. A restart's fog memory
+		// comes back HERE, not in RehydrateSession itself (spec §4.3, §5).
+		r.session.SyncPlayerMemories(mems, fogentity.FogModeExplored)
 		// The board just changed, so every player's cached LOS is stale — the same
 		// recompute map_state_sync's arm used to do after seeding.
 		for _, pid := range r.session.PlayerIDs() {
@@ -399,9 +452,30 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 		return err
 	}
 
+	// The lobby's board — whatever pieces and walls sit on it right now — is written BEFORE
+	// Init, so B11's NPC-enrollment (T9) reads what is actually on screen instead of whatever
+	// the last save happened to catch (spec §4.3, "B11", "Quando persiste").
+	r.persistBoard("start_match")
+
 	session, err := r.deps.InitSessionUC.Init(ctx, r.matchUUID)
 	if err != nil {
 		return err
+	}
+
+	// r.mapUUID is already known by now: the master connected before being able to send
+	// start_match at all, and that connect already ran loadBoard once (Room's birth). Read
+	// outside the lock, same shape every DB-round-trip-before-lock in this file uses.
+	r.mu.RLock()
+	mapUUID := r.mapUUID
+	r.mu.RUnlock()
+	var mems []fogentity.PlayerMemory
+	if mapUUID != uuid.Nil && r.deps.MemoryLoader != nil {
+		m, merr := r.deps.MemoryLoader.FindByMatchMap(ctx, r.matchUUID, mapUUID)
+		if merr != nil {
+			log.Printf("start_match: load player memories for match %s map %s: %v", r.matchUUID, mapUUID, merr)
+		} else {
+			mems = m
+		}
 	}
 
 	r.mu.Lock()
@@ -412,6 +486,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	}
 	r.session.SyncMapState(wallSlice, r.grid)
 	r.session.SetPieceSource(r)
+	r.session.SetMapUUID(mapUUID)
 	// fogMode fixo em explored: PENDENTE de configurações de partida.
 	// FogMode é real e usado (filter_map_state.go decide memória de parede por ele), mas
 	// o valor persistido em maps.fog_mode nunca chega aqui porque não existe ainda o
@@ -420,7 +495,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	// modo da configuração da partida e passar aqui. NÃO remover FogMode achando que é
 	// código morto: isso eliminaria o modo `live` do produto.
 	// Ver: System_X_System_React/docs/superpowers/specs/2026-08-06-tactical-map-refactor-design.md §3
-	r.session.SyncPlayerMemories(nil, fogentity.FogModeExplored)
+	r.session.SyncPlayerMemories(mems, fogentity.FogModeExplored)
 	playerIDs := r.session.PlayerIDs()
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
@@ -432,7 +507,10 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 		if err != nil {
 			log.Printf("recompute visibility for %s: %v", pid, err)
 		}
-		// TODO(persistence): playerMemoryRepo.Upsert(session.GetPlayerMemory(pid))
+		// Persistence of whatever memory this recompute just grew happens through
+		// persistBoard() at the next definitive board change (a turn closing, a wall
+		// interaction, a master action) — not here. The playerMemoryRepo.Upsert TODO that
+		// used to sit on this line is resolved by that path, not by adding a call here.
 	}
 
 	// Send match_started directly per-client (in order) so it always precedes the
@@ -592,6 +670,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
+				// The board — the escape's piece included — is written to match_boards BEFORE
+				// persistClosedTurn's own DB round trip (spec §4.3, "Quando persiste"): if the
+				// server dies between the two, the board on disk already agrees with the turn
+				// that is about to be lost, not with one that half-committed.
+				r.persistBoard("turn_closed")
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
@@ -716,6 +799,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
+				// The board — the escape's piece included — is written to match_boards BEFORE
+				// persistClosedTurn's own DB round trip (spec §4.3, "Quando persiste"): if the
+				// server dies between the two, the board on disk already agrees with the turn
+				// that is about to be lost, not with one that half-committed.
+				r.persistBoard("turn_closed")
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
@@ -1015,6 +1103,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// piece_moved goes straight into each client's queue while turn_closed travels through
 		// r.broadcast.
 		r.applyClosedEscapes(closedTurn, result.Resolution)
+		// Same order as the two implicit closes: the board — the escape's piece included —
+		// reaches match_boards before persistClosedTurn's own DB round trip (spec §4.3).
+		r.persistBoard("turn_closed")
 		r.persistClosedTurn(session, closedTurn, result.Resolution)
 
 		// Same place in the sequence the two implicit closes put it: after the write, before
@@ -1162,6 +1253,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// and broadcasts the full real WallSegment to ALL clients.
 		if ma.Interact != nil && ma.Interact.Kind == action.InteractReveal && len(ma.TargetID) > 0 {
 			r.revealSecretDoors(client, ma.TargetID)
+			r.persistBoard("wall_interact")
 			return
 		}
 		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
@@ -1189,6 +1281,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
+			r.persistBoard("wall_interact")
 			return
 		}
 		if session == nil {
@@ -2254,6 +2347,11 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 // handlePieceMoved relays a move a client made in its own browser.
 func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
 	r.applyAndRelayPieceMove(payload, client.userUUID)
+	// "lobby": persistBoard itself only writes once a map is attached (r.mapUUID != uuid.Nil);
+	// restricting this call to the LOBBY phase specifically is T4's job (spec §4.3, "Quando
+	// persiste" lists "movimento e remoção no lobby" as its own line, distinct from the
+	// master's in-match piece actions).
+	r.persistBoard("lobby")
 }
 
 // applyOpenedMove walks the opened action's Move onto the board.
@@ -2462,6 +2560,8 @@ func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
 		m := removed
 		return &m
 	})
+	// "lobby" — see handlePieceMoved's own comment; the same rule applies here.
+	r.persistBoard("lobby")
 }
 
 func (r *Room) sendRoomState(client *Client) {

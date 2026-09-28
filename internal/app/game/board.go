@@ -2,10 +2,17 @@
 package game
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"maps"
+	"sort"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	"github.com/google/uuid"
 )
 
 // slotShape is what a piece's Coord.Slot decodes to, whichever of its two real shapes it
@@ -96,5 +103,69 @@ func payloadToPiece(p PieceMovedPayload) mapentity.Piece {
 		CharacterID: p.CharacterID,
 		Coord:       mapentity.PieceCoord{Slot: slot, Z: p.Z},
 		Visible:     visible,
+	}
+}
+
+// persistBoard writes the match's board — pieces, walls, and every player's fog memory — as it
+// stands NOW. It is the ONE place that does, and every definitive change to the board calls it:
+// the lobby's moves, start_match, the three verbs that close a turn, and the master's wall
+// interactions and reveals (spec §4.3, "Quando persiste", B3). Master piece actions (the "move"
+// of B9/B14) are not yet a call site: that verb is not implemented on this branch (see
+// AGENTS.md's Known Issues, "buildMasterAction").
+//
+// persistMu wraps the snapshot AND the write, so two saves racing from two read pumps land in
+// the order their snapshots were taken; r.mu is only held for the snapshot, never across the
+// round trip. A failure is logged and swallowed — the table goes on, same policy as
+// persistClosedTurn.
+//
+// r.deps.SaveBoardUC == nil means the room has no persistence capability, the same "field left
+// nil is a capability the room does not have" rule RoomDeps documents — every test built
+// before T3 leaves it unset, and this is a no-op for them.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) persistBoard(reason string) {
+	if r.deps.SaveBoardUC == nil {
+		return
+	}
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
+
+	r.mu.RLock()
+	if r.mapUUID == uuid.Nil {
+		// No map attached at all — nothing to persist yet (matches loadBoard's own (nil, nil)
+		// no-op for an unattached match).
+		r.mu.RUnlock()
+		return
+	}
+	b := &matchboard.Board{MatchUUID: r.matchUUID, MapUUID: r.mapUUID, Grid: r.grid, Bg: r.bg}
+	if r.session != nil {
+		b.Grid = r.session.GetGrid()
+	}
+	for _, p := range r.pieces {
+		b.Pieces = append(b.Pieces, payloadToPiece(p))
+	}
+	for _, w := range r.walls {
+		b.Walls = append(b.Walls, w)
+	}
+	var mems []fogentity.PlayerMemory
+	if r.session != nil {
+		for _, pid := range r.session.PlayerIDs() {
+			if m, ok := r.session.GetPlayerMemory(pid); ok && m != nil {
+				// A copy, with its own Seen map: the snapshot must not alias state the session
+				// keeps mutating after r.mu is released below.
+				cp := *m
+				cp.Seen = maps.Clone(m.Seen)
+				mems = append(mems, cp)
+			}
+		}
+	}
+	r.mu.RUnlock()
+
+	// Deterministic order: two saves racing on the same match must not flip which piece/wall
+	// lands where in the JSONB array for reasons that have nothing to do with the data itself.
+	sort.Slice(b.Pieces, func(i, j int) bool { return b.Pieces[i].ID < b.Pieces[j].ID })
+	sort.Slice(b.Walls, func(i, j int) bool { return b.Walls[i].ID < b.Walls[j].ID })
+	if err := r.deps.SaveBoardUC.Save(context.Background(), b, mems); err != nil {
+		log.Printf("persistBoard(%s) FAILED — board of match %s was NOT saved: %v", reason, r.matchUUID, err)
 	}
 }

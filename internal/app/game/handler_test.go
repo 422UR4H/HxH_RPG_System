@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,13 +14,14 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
-	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
@@ -62,8 +64,89 @@ func (s *fakeBoardStore) seed(matchUUID uuid.UUID, b *matchboard.Board) {
 	s.boards[matchUUID] = b
 }
 
+// Save stores a COPY of the board (so a caller's later mutation of its own Pieces/Walls
+// slices cannot reach back into the store) and counts the call — matchboarduc.SaveMatchBoardUC
+// writes the row first, so this is also what a real Repository.Save satisfies for
+// matchboarduc.ISaveBoardRepository.
+func (s *fakeBoardStore) Save(_ context.Context, b *matchboard.Board) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = map[uuid.UUID]*matchboard.Board{}
+	}
+	cp := *b
+	cp.Pieces = append([]mapentity.Piece(nil), b.Pieces...)
+	cp.Walls = append([]mapentity.WallSegment(nil), b.Walls...)
+	s.boards[b.MatchUUID] = &cp
+	s.saves++
+	return nil
+}
+
+// saveCount returns how many times Save was called, for a test to assert the board WAS (or
+// WAS NOT) persisted.
+func (s *fakeBoardStore) saveCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saves
+}
+
 func newFakeBoardStore() *fakeBoardStore {
 	return &fakeBoardStore{boards: map[uuid.UUID]*matchboard.Board{}}
+}
+
+// fakeMemoryStore is the player-memory repository the e2e tests share between rooms — the
+// same sharing shape as fakeBoardStore, and for the same reason: a second Room built over the
+// SAME store is how a test simulates a server restart (spec §4.3, B3; see combatFixture.restart).
+type fakeMemoryStore struct {
+	mu    sync.Mutex
+	byKey map[string]fogentity.PlayerMemory // keyed by matchID|mapID|playerID
+}
+
+func memoryKey(matchID, mapID, playerID uuid.UUID) string {
+	return matchID.String() + "|" + mapID.String() + "|" + playerID.String()
+}
+
+func (s *fakeMemoryStore) Upsert(_ context.Context, m fogentity.PlayerMemory) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.byKey == nil {
+		s.byKey = map[string]fogentity.PlayerMemory{}
+	}
+	cp := m
+	cp.Seen = maps.Clone(m.Seen)
+	s.byKey[memoryKey(m.MatchID, m.MapID, m.PlayerID)] = cp
+	return nil
+}
+
+func (s *fakeMemoryStore) FindByMatchMap(_ context.Context, matchID, mapID uuid.UUID) ([]fogentity.PlayerMemory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []fogentity.PlayerMemory{}
+	prefix := matchID.String() + "|" + mapID.String() + "|"
+	for k, m := range s.byKey {
+		if strings.HasPrefix(k, prefix) {
+			cp := m
+			cp.Seen = maps.Clone(m.Seen)
+			out = append(out, cp)
+		}
+	}
+	return out, nil
+}
+
+func (s *fakeMemoryStore) DeleteByMatch(_ context.Context, matchID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prefix := matchID.String() + "|"
+	for k := range s.byKey {
+		if strings.HasPrefix(k, prefix) {
+			delete(s.byKey, k)
+		}
+	}
+	return nil
+}
+
+func newFakeMemoryStore() *fakeMemoryStore {
+	return &fakeMemoryStore{byKey: map[string]fogentity.PlayerMemory{}}
 }
 
 type mockMatchRepo struct {
