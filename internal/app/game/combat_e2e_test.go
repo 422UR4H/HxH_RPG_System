@@ -19,6 +19,7 @@ import (
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -122,6 +123,7 @@ type combatFixture struct {
 	writer     *recordingStatusWriter
 	session    *matchsession.MatchSession
 	roundRepo  *mockRoundRepoHandler
+	boards     *fakeBoardStore
 	// bystanderUUID/bystanderID are uuid.Nil unless withBystander was passed. See it there.
 	bystanderUUID uuid.UUID
 	bystanderID   uuid.UUID
@@ -182,6 +184,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		attackerID: uuid.New(),
 		victimID:   uuid.New(),
 		writer:     &recordingStatusWriter{},
+		boards:     newFakeBoardStore(),
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -248,6 +251,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 			EditActionUC:      appmatch.NewEditActionUC(),
 			// nil unless withAddLiveNPC was passed: no test before add_npc sends it.
 			AddLiveNPCUC: f.addLiveNPC,
+			LoadBoardUC:  f.boards,
 		},
 	)
 
@@ -1521,45 +1525,46 @@ const (
 	attackerElevation = 2.5
 )
 
-// syncBoard seeds the in-memory board from the master, exactly as the real client does once
-// its REST map has loaded. The room answers it by re-pushing map_full_state to everyone.
+// seedBoard puts the board directly into the fixture's fakeBoardStore, exactly as a match's
+// saved match_boards row would already exist before the room comes up (spec §4.3, B14). It
+// replaces the old syncBoard, which sent map_state_sync from the master — the server now
+// loads the board itself, on the master's register, so seeding has to happen BEFORE connect.
 //
 // The attacker starts at (4,4) → (288,288), west of the wall. The bystander, when the fixture
 // has one, sits at (20,4) → (1312,288), east of it: nothing west of x=640 is in their line of
 // sight, which is the whole point of them.
-func (f *combatFixture) syncBoard(t *testing.T, master *websocket.Conn) {
+func (f *combatFixture) seedBoard(t *testing.T) {
 	t.Helper()
-	col, row := 4, 4
-	pieces := []game.PieceMovedPayload{{
-		PieceID:     attackerPieceID,
+	pieces := []mapentity.Piece{{
+		ID:          attackerPieceID,
 		CharacterID: f.attackerID.String(),
-		Slot:        game.SlotPayload{Kind: "square", Col: &col, Row: &row},
 		// The mover starts ELEVATED on purpose. Z is a virtual height in metres and
 		// Move.Position[2] is a grid index; a horizontal step must not flatten the piece.
-		Z: attackerElevation,
+		Coord:   mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 4, Row: 4}, Z: attackerElevation},
+		Visible: true,
 	}}
 	if f.victimOnBoard {
-		vcol, vrow := 6, 6
-		pieces = append(pieces, game.PieceMovedPayload{
-			PieceID:     victimPieceID,
+		pieces = append(pieces, mapentity.Piece{
+			ID:          victimPieceID,
 			CharacterID: f.victimID.String(),
-			Slot:        game.SlotPayload{Kind: "square", Col: &vcol, Row: &vrow},
-			Z:           victimElevation,
+			Coord:       mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 6, Row: 6}, Z: victimElevation},
+			Visible:     true,
 		})
 	}
 	if f.bystanderUUID != uuid.Nil {
-		bcol, brow := 20, 4
-		pieces = append(pieces, game.PieceMovedPayload{
-			PieceID:     bystanderPieceID,
+		pieces = append(pieces, mapentity.Piece{
+			ID:          bystanderPieceID,
 			CharacterID: f.bystanderID.String(),
-			Slot:        game.SlotPayload{Kind: "square", Col: &bcol, Row: &brow},
+			Coord:       mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 20, Row: 4}},
+			Visible:     true,
 		})
 	}
-	grid := toGridShapePayload(moveBoardGrid)
-	sendWS(t, master, "map_state_sync", game.MapStateSyncPayload{
-		Pieces: &pieces,
-		Walls:  []game.WallSegmentPayload{toWallSegmentPayload(moveBoardWall)},
-		Grid:   &grid,
+	f.boards.seed(f.matchUUID, &matchboard.Board{
+		MatchUUID: f.matchUUID,
+		MapUUID:   uuid.New(),
+		Grid:      moveBoardGrid,
+		Pieces:    pieces,
+		Walls:     []mapentity.WallSegment{moveBoardWall},
 	})
 }
 
@@ -1616,6 +1621,7 @@ func indexOfMessage(msgs []game.Message, want game.MessageType) int {
 // pode ver o turno abrir com a peça ainda no slot velho.
 func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 	f := newCombatFixture(t)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -1623,9 +1629,8 @@ func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the master never got the board back after map_state_sync — the fixture never started")
+		t.Fatal("the master never got the board — the fixture never started")
 	}
 
 	f.enqueueDash(t, player, [3]int{4, 4, 0}, [3]int{6, 4, 0})
@@ -1710,6 +1715,7 @@ func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 // decide quem a recebe.
 func TestE2E_OpeningAMoveActionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 	f := newCombatFixture(t, withBystander)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -1722,7 +1728,6 @@ func TestE2E_OpeningAMoveActionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 	playerMsgs := collectFrom(player)
 	blindMsgs := collectFrom(blind)
 
-	f.syncBoard(t, master)
 	if !blindMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the bystander never got a board — they are not really at the table")
 	}
@@ -1815,6 +1820,7 @@ func sendPieceMoved(t *testing.T, conn *websocket.Conn, pieceID, characterID str
 // dele já desenhou), o envelope leva o UUID dele, e a visão dele é recalculada.
 func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.T) {
 	f := newCombatFixture(t)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -1822,7 +1828,6 @@ func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board — the fixture never started")
 	}
@@ -1855,6 +1860,7 @@ func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.
 // d0b4191 o jogador não recebia nada e ficava com o fog velho.
 func TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight(t *testing.T) {
 	f := newCombatFixture(t)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -1862,7 +1868,6 @@ func TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight(t *testing.
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board — the fixture never started")
 	}
@@ -1941,13 +1946,13 @@ func polygonsFromPayload(polys [][]game.Point2DPayload) []service.VisibilityPoly
 // estas linhas.
 func TestE2E_TheOwnerIsNotToldTheirOwnPieceVanishedWhenItLeavesItsOldSight(t *testing.T) {
 	f := newCombatFixture(t)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
 	defer player.Close() //nolint:errcheck
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board — the fixture never started")
 	}
@@ -2345,6 +2350,7 @@ func (f *combatFixture) biasReactionMoveSpeed(
 // escape's Dash does roll, and its own tests are below.
 func TestE2E_OpeningAClosedEscapeReactionMovesThePieceBeforeReactionOpened(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2352,9 +2358,8 @@ func TestE2E_OpeningAClosedEscapeReactionMovesThePieceBeforeReactionOpened(t *te
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the master never got the board back after map_state_sync — the fixture never started")
+		t.Fatal("the master never got the board — the fixture never started")
 	}
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board")
@@ -2433,6 +2438,7 @@ func TestE2E_OpeningAClosedEscapeReactionMovesThePieceBeforeReactionOpened(t *te
 // destino do escape não é avisado dele.
 func TestE2E_OpeningAClosedEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece, withBystander)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2445,7 +2451,6 @@ func TestE2E_OpeningAClosedEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.
 	playerMsgs := collectFrom(player)
 	blindMsgs := collectFrom(blind)
 
-	f.syncBoard(t, master)
 	if !blindMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the bystander never got a board — they are not really at the table")
 	}
@@ -2502,6 +2507,7 @@ func TestE2E_OpeningAClosedEscapeReactionDoesNotLeakToWhoCannotSeeIt(t *testing.
 // que rodam sem tabuleiro nenhum (reaction_chain_e2e_test.go) honestos.
 func TestE2E_OpeningAClosedEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
 	f := newCombatFixture(t) // no withVictimPiece: the target has no piece on the board
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2509,7 +2515,6 @@ func TestE2E_OpeningAClosedEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board")
 	}
@@ -2540,6 +2545,7 @@ func TestE2E_OpeningAClosedEscapeForAnActorWithNoPieceIsSilent(t *testing.T) {
 // scenario the probe used, kept here as a permanent regression test.
 func TestE2E_AttachingAFreeDodgeWithAMoveIsRefusedAndNeverDisplaces(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2547,7 +2553,6 @@ func TestE2E_AttachingAFreeDodgeWithAMoveIsRefusedAndNeverDisplaces(t *testing.T
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the master never got the board")
 	}
@@ -2612,6 +2617,7 @@ func TestE2E_AttachingAFreeDodgeWithAMoveIsRefusedAndNeverDisplaces(t *testing.T
 // (achado 1, primeira metade) faz este teste falhar.
 func TestE2E_OpenReactionGateStopsAMoveOnANonDisplacingReactionEvenIfAttachedDirectly(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2619,7 +2625,6 @@ func TestE2E_OpenReactionGateStopsAMoveOnANonDisplacingReactionEvenIfAttachedDir
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the master never got the board")
 	}
@@ -2675,9 +2680,10 @@ func TestE2E_OpenReactionGateStopsAMoveOnANonDisplacingReactionEvenIfAttachedDir
 // Falhar é a peça NÃO sair do lugar. Enquanto o motor não souber devolver posição
 // intermediária, não existe meio caminho.
 
-// dashEscapeStage drives the shared opening of the three tests below: board synced, attack
-// opened, a Dash escape attached with the master's condition already on its moveSpeed, and the
-// reaction opened. It returns the reaction's ID so a caller can keep talking about it.
+// dashEscapeStage drives the shared opening of the three tests below: board seeded (by the
+// caller, via seedBoard, before connect — see each caller), attack opened, a Dash escape
+// attached with the master's condition already on its moveSpeed, and the reaction opened. It
+// returns the reaction's ID so a caller can keep talking about it.
 //
 // The negative assertion lives here on purpose: every one of these tests depends on the piece
 // NOT having moved at open_reaction, and a helper that quietly let one through would make the
@@ -2687,9 +2693,8 @@ func (f *combatFixture) dashEscapeStage(
 ) uuid.UUID {
 	t.Helper()
 
-	f.syncBoard(t, master)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the master never got the board back after map_state_sync")
+		t.Fatal("the master never got the board")
 	}
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board")
@@ -2717,6 +2722,7 @@ func (f *combatFixture) dashEscapeStage(
 // The first half of the rule: opening a Dash escape shows the intention and moves nothing.
 func TestE2E_ADashEscapeDoesNotMoveThePieceWhenTheReactionOpens(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2778,6 +2784,7 @@ func TestE2E_ADashEscapeThatClearsTheAttackersHitMovesThePieceAtTurnClose(t *tes
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f := newCombatFixture(t, withVictimPiece)
+			f.seedBoard(t)
 
 			master, player := f.connect(t)
 			defer master.Close() //nolint:errcheck
@@ -2842,6 +2849,7 @@ func TestE2E_ADashEscapeThatClearsTheAttackersHitMovesThePieceAtTurnClose(t *tes
 // with the piece still in the old slot. Same invariant the opening path already pins.
 func TestE2E_ADashEscapeMovesThePieceBeforeTurnClosedIsAnnounced(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2879,6 +2887,7 @@ func TestE2E_ADashEscapeMovesThePieceBeforeTurnClosedIsAnnounced(t *testing.T) {
 // moves the piece — not at the opening, and not at the close. There is no halfway slot.
 func TestE2E_ADashEscapeThatFailsTheAttackersHitNeverMovesThePiece(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2930,6 +2939,7 @@ func TestE2E_ADashEscapeThatFailsTheAttackersHitNeverMovesThePiece(t *testing.T)
 // opened.
 func TestE2E_AClosedEscapeIsNotWalkedASecondTimeAtTheClose(t *testing.T) {
 	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
 
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -2937,9 +2947,8 @@ func TestE2E_AClosedEscapeIsNotWalkedASecondTimeAtTheClose(t *testing.T) {
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	f.syncBoard(t, master)
 	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the master never got the board back after map_state_sync")
+		t.Fatal("the master never got the board")
 	}
 	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the player never got the board")
@@ -2995,4 +3004,209 @@ func findSettledResolution(t *testing.T, c *collector) game.ResolutionUpdatedPay
 	}
 	t.Fatalf("no settled resolution_updated reached the master; it received: %v", messageTypes(msgs))
 	return game.ResolutionUpdatedPayload{}
+}
+
+// ─── B14: o servidor carrega o tabuleiro (spec §4.3, "Quem carrega") ───────
+
+// The core guarantee this task exists for: with no map_state_sync sent at all, both the
+// master and the player receive the board the room loaded on its own — from the fixture's
+// fakeBoardStore, standing in for match_boards — the moment the master registers.
+func TestE2E_TheRoomLoadsTheBoardWhenTheMasterConnects(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never received a board — the room should have loaded it on its own")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never received a board")
+	}
+
+	var masterFull game.MapFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, masterMsgs.snapshotMessages(), game.MsgTypeMapFullState).Payload, &masterFull,
+	); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	masterSeesAttacker := false
+	for _, p := range masterFull.Pieces {
+		if p.CharacterID == f.attackerID.String() {
+			masterSeesAttacker = true
+		}
+	}
+	if !masterSeesAttacker {
+		t.Fatalf("the master's board does not carry the seeded attacker piece: %+v", masterFull.Pieces)
+	}
+
+	// The player is fogged — the piece is theirs, so their line of sight should already be
+	// centred on it, proving the loaded board reached the session's fog machinery too, not
+	// just r.pieces.
+	var playerFull game.MapFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, playerMsgs.snapshotMessages(), game.MsgTypeMapFullState).Payload, &playerFull,
+	); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	if len(playerFull.VisiblePolygons) == 0 {
+		t.Fatal("the player's board carries no visible_polygons — the loaded board never reached the fog")
+	}
+}
+
+// map_state_sync is obsolete since B14: it writes nothing at all. The master's own answer
+// still reflects the SEEDED board (never the payload's own empty pieces:[]), and the player —
+// who never sent it and is not the recipient — gets nothing new.
+func TestE2E_MapStateSyncNoLongerWritesTheBoard(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never received the initial board")
+	}
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never received the initial board")
+	}
+	playerBoardsBefore := playerMsgs.count(game.MsgTypeMapFullState)
+
+	empty := []game.PieceMovedPayload{}
+	sendWS(t, master, "map_state_sync", game.MapStateSyncPayload{Pieces: &empty})
+
+	if !awaitCount(masterMsgs, game.MsgTypeMapFullState, 2, 2*time.Second) {
+		t.Fatal("the master never got an answer to map_state_sync")
+	}
+	msgs := masterMsgs.snapshotMessages()
+	var last *game.Message
+	for i := range msgs {
+		if msgs[i].Type == game.MsgTypeMapFullState {
+			last = &msgs[i]
+		}
+	}
+	var full game.MapFullStatePayload
+	if err := json.Unmarshal(last.Payload, &full); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	stillHasAttacker := false
+	for _, p := range full.Pieces {
+		if p.CharacterID == f.attackerID.String() {
+			stillHasAttacker = true
+		}
+	}
+	if !stillHasAttacker {
+		t.Fatalf("map_state_sync's pieces:[] emptied the master's own answer — it must write "+
+			"nothing at all (spec §4.3, B14): %+v", full.Pieces)
+	}
+
+	// The ordering barrier: an unknown message type is answered synchronously from the same
+	// read loop map_state_sync just ran on, so by the time it comes back map_state_sync's own
+	// arm — which never broadcasts to anyone else in the first place — has long finished.
+	sendWS(t, master, "barrier", map[string]any{})
+	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("the barrier never came back")
+	}
+	if n := playerMsgs.count(game.MsgTypeMapFullState); n != playerBoardsBefore {
+		t.Fatalf("the player received %d new map_full_state after the master's map_state_sync; "+
+			"the answer must go only to the sender", n-playerBoardsBefore)
+	}
+}
+
+// While still a lobby, the room reloads the board on EVERY master connect (spec §4.3, "Quem
+// carrega") — not just at birth. The player stays online throughout so the Room itself never
+// closes; only the master's own connection cycles, which is the register this reloads on.
+func TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect(t *testing.T) {
+	f := newCombatFixture(t, inLobby)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never received the initial board")
+	}
+
+	// The store's content changes between the master's two connections — standing in for an
+	// edit that landed while the master was away (another session, or REST).
+	const reloadedPieceID = "piece-reloaded"
+	f.boards.seed(f.matchUUID, &matchboard.Board{
+		MatchUUID: f.matchUUID,
+		MapUUID:   uuid.New(),
+		Grid:      moveBoardGrid,
+		Pieces: []mapentity.Piece{{
+			ID: reloadedPieceID, CharacterID: f.attackerID.String(),
+			Coord:   mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 10, Row: 10}},
+			Visible: true,
+		}},
+		Walls: []mapentity.WallSegment{moveBoardWall},
+	})
+
+	if err := master.Close(); err != nil {
+		t.Fatalf("close master: %v", err)
+	}
+	master2 := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master2.Close() //nolint:errcheck
+
+	full := awaitMapFullState(t, master2, 3*time.Second)
+	if full == nil {
+		t.Fatal("the reconnected master never received a map_full_state")
+	}
+	hasReloaded := false
+	for _, p := range full.Pieces {
+		if p.PieceID == reloadedPieceID {
+			hasReloaded = true
+		}
+	}
+	if !hasReloaded {
+		t.Fatalf("the reconnected master's board does not carry the reloaded piece %q: %+v",
+			reloadedPieceID, full.Pieces)
+	}
+	if n := len(full.Pieces); n != 1 {
+		t.Fatalf("the reconnected master's board has %d piece(s), want exactly the reloaded one: %+v",
+			n, full.Pieces)
+	}
+}
+
+// The last defense (spec §4.3, "Última defesa"): interacting with, or revealing, a wall the
+// server does not know answers unknown_wall to the master instead of the silence a missing
+// wall used to get.
+func TestE2E_RevealingAnUnknownWallAnswersAnError(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+
+	unknownWall := uuid.New()
+
+	sendWS(t, master, "enqueue_master_action", map[string]any{
+		"targetIds": []string{unknownWall.String()},
+		"interact":  map[string]any{"kind": "reveal"},
+	})
+	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("revealing an unknown wall was not refused")
+	}
+
+	sendWS(t, master, "enqueue_master_action", map[string]any{
+		"targetIds": []string{unknownWall.String()},
+		"interact":  map[string]any{"kind": "open"},
+	})
+	if !awaitCount(masterMsgs, game.MsgTypeError, 2, 2*time.Second) {
+		t.Fatal("interacting with an unknown wall was not refused")
+	}
+
+	codes := errorCodes(t, masterMsgs)
+	if len(codes) != 2 || codes[0] != "unknown_wall" || codes[1] != "unknown_wall" {
+		t.Fatalf("error codes = %v, want [unknown_wall unknown_wall]", codes)
+	}
 }

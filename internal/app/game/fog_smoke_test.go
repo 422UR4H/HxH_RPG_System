@@ -2,11 +2,18 @@
 
 // Live smoke test for fog of war. Unlike the unit and E2E tests, this one talks to the
 // REAL game server on :8081 with a REAL match, driving exactly the sequence the browser
-// drives: the master seeds the board it loaded from the map, then a player connects and
-// must receive line of sight.
+// drives: the master connects and must receive its own unfogged board, then a player
+// connects and must receive line of sight.
 //
-// The board comes from a JSON file ({"pieces":…,"walls":…,"grid":…}) so the test needs
-// no database driver and no login session. Dump it from the dev DB with:
+// Since B14 (spec §4.3, "Quem carrega") the board is the server's own — loaded from the
+// database (match_boards, or a fallback snapshot of the attached map) the moment the master
+// registers, never seeded by this test over the socket the way map_state_sync used to. The
+// match named by SMOKE_MATCH must already have a map attached (REST) before this runs.
+//
+// SMOKE_BOARD points at a JSON dump of that SAME map ({"pieces":…,"walls":…,"grid":…}), used
+// here only to know what to expect — the counts this test cross-checks the server's own
+// loaded board against, and the informational logging. It needs no database driver and no
+// login session on its own. Dump it from the dev DB with:
 //
 //	psql "$DB_URL" -Atc "select json_build_object('pieces',pieces,'walls',walls,'grid',grid)
 //	  from maps where uuid='<map-uuid>';" > /tmp/board.json
@@ -142,44 +149,13 @@ func TestSmokeFogAgainstLiveServers(t *testing.T) {
 	master := smokeDial(t, masterUUID, matchUUID)
 	defer master.Close() //nolint:errcheck
 	t.Log("master connected (session rehydrated without deadlock)")
-
-	// Exactly what the fixed useMatchWs sends once the REST map has loaded.
-	pieces := make([]game.PieceMovedPayload, 0, len(board.Pieces))
-	for _, p := range board.Pieces {
-		visible := p.Visible
-		pieces = append(pieces, game.PieceMovedPayload{
-			PieceID:     p.ID,
-			Slot:        p.Coord.Slot,
-			CharacterID: p.CharacterID,
-			Visible:     &visible,
-		})
-	}
-	wallPayloads := make([]game.WallSegmentPayload, len(board.Walls))
-	for i, w := range board.Walls {
-		wallPayloads[i] = toWallSegmentPayload(w)
-	}
-	grid := toGridShapePayload(board.Grid)
-	payload, err := json.Marshal(game.MapStateSyncPayload{
-		Pieces: &pieces, Walls: wallPayloads, Grid: &grid,
-	})
-	if err != nil {
-		t.Fatalf("marshal sync: %v", err)
-	}
-	raw, err := json.Marshal(map[string]any{
-		"type": "map_state_sync", "payload": json.RawMessage(payload),
-	})
-	if err != nil {
-		t.Fatalf("marshal message: %v", err)
-	}
+	// The board loads on THIS register (spec §4.3, B14) — nothing left to send over the
+	// socket. drain the master's own map_full_state further below, after the player connects,
+	// so this call site does not race the room's register handling against the read below.
 
 	player := smokeDial(t, playerUUID, matchUUID)
 	defer player.Close() //nolint:errcheck
 	t.Log("player connected")
-
-	if err := master.WriteMessage(websocket.TextMessage, raw); err != nil {
-		t.Fatalf("master send map_state_sync: %v", err)
-	}
-	t.Logf("master synced %d pieces and %d walls", len(pieces), len(board.Walls))
 
 	playerView := smokeAwaitMapFullState(t, player, 10*time.Second)
 	if playerView == nil {

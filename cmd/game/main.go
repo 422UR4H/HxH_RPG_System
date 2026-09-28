@@ -12,8 +12,12 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	matchboardPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
+	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
@@ -64,6 +68,14 @@ func main() {
 	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepository, sheetRepository, matchRepository)
 	addLiveNPCUC := match.NewAddLiveNPCUC(addMatchNPCUC, sheetRepository)
 
+	// The board's own three repositories (spec §4.3, "Quem carrega", B14): what map is
+	// attached, the match's own saved board line (if any), and the campaign map it started
+	// as a fallback for one that never saved.
+	mapRepository := mapPg.NewRepository(pgPool)
+	matchMapRepository := matchmapPg.NewRepository(pgPool)
+	matchBoardRepository := matchboardPg.NewRepository(pgPool)
+	loadBoardUC := matchboarduc.NewLoadMatchBoardUC(matchBoardRepository, matchMapRepository, mapRepository)
+
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
 	handler := game.NewHandler(
@@ -84,6 +96,7 @@ func main() {
 			ChangeRoundModeUC:     changeRoundModeUC,
 			EditActionUC:          editActionUC,
 			AddLiveNPCUC:          addLiveNPCUC,
+			LoadBoardUC:           loadBoardUC,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

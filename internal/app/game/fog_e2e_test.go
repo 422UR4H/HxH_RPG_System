@@ -13,6 +13,7 @@ import (
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -24,6 +25,12 @@ import (
 //
 // It is the end-to-end guarantee for fog of war: the player must receive a lit area
 // around their own piece, and must see that piece.
+//
+// The board itself is seeded via the fixture's fakeBoardStore, not by the master sending
+// map_state_sync over the socket — that write path is gone since B14 (spec §4.3, "Quem
+// carrega"): the server loads the board itself, on the master's register, which for this
+// fixture's already-started match happens the moment the master connects (see
+// combinatFixture.seedBoard in combat_e2e_test.go for the sibling of this file's seedBoard).
 
 // ─── configurable mocks ─────────────────────────────────────────────────────
 
@@ -59,7 +66,8 @@ type fogFixture struct {
 	sheetUUID  uuid.UUID
 	grid       mapentity.GridShape
 	wall       mapentity.WallSegment
-	piece      game.PieceMovedPayload
+	piece      mapentity.Piece
+	boards     *fakeBoardStore
 }
 
 func newFogFixture(t *testing.T) *fogFixture {
@@ -70,6 +78,7 @@ func newFogFixture(t *testing.T) *fogFixture {
 		masterUUID: uuid.New(),
 		playerUUID: uuid.New(),
 		sheetUUID:  uuid.New(),
+		boards:     newFakeBoardStore(),
 	}
 	f.grid = mapentity.GridShape{
 		Kind: mapentity.GridKindSquare, Cols: 30, Rows: 30, CellSize: 64, SkewRatio: 1,
@@ -80,11 +89,11 @@ func newFogFixture(t *testing.T) *fogFixture {
 		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
 		Sense: mapentity.SenseSight, HP: 100, MaxHP: 100,
 	}
-	col, row := 2, 2
-	f.piece = game.PieceMovedPayload{
-		PieceID:     "piece-1",
+	f.piece = mapentity.Piece{
+		ID:          "piece-1",
 		CharacterID: f.sheetUUID.String(),
-		Slot:        game.SlotPayload{Kind: "square", Col: &col, Row: &row},
+		Coord:       mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 2, Row: 2}},
+		Visible:     true,
 	}
 
 	hub := game.NewHub()
@@ -115,6 +124,7 @@ func newFogFixture(t *testing.T) *fogFixture {
 			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
 			ChangeRoundModeUC:     &mockChangeRoundModeUCHandler{},
 			EditActionUC:          &mockEditActionUCHandler{},
+			LoadBoardUC:           f.boards,
 		},
 	)
 
@@ -130,8 +140,29 @@ func newFogFixture(t *testing.T) *fogFixture {
 	return f
 }
 
+// seedBoard puts the fixture's piece and wall directly into the fakeBoardStore — the server
+// loads this itself on the master's register (spec §4.3, B14), so seeding must happen BEFORE
+// connectMaster, not sent over the socket the way map_state_sync used to.
+func (f *fogFixture) seedBoard(t *testing.T) {
+	t.Helper()
+	f.seedBoardWithWalls(t, []mapentity.WallSegment{f.wall})
+}
+
+func (f *fogFixture) seedBoardWithWalls(t *testing.T, walls []mapentity.WallSegment) {
+	t.Helper()
+	f.boards.seed(f.matchUUID, &matchboard.Board{
+		MatchUUID: f.matchUUID,
+		MapUUID:   uuid.New(),
+		Grid:      f.grid,
+		Pieces:    []mapentity.Piece{f.piece},
+		Walls:     walls,
+	})
+}
+
 // connectMaster dials as the master. This is the path that rehydrates the session for an
-// already-started match — the path that used to deadlock and freeze the whole room.
+// already-started match — the path that used to deadlock and freeze the whole room — and,
+// since B14, the path whose register also loads the board (loadBoard runs before
+// sendRoomState in Run's register branch).
 func (f *fogFixture) connectMaster(t *testing.T) *websocket.Conn {
 	t.Helper()
 	done := make(chan *websocket.Conn, 1)
@@ -148,39 +179,6 @@ func (f *fogFixture) connectMaster(t *testing.T) *websocket.Conn {
 func (f *fogFixture) connectPlayer(t *testing.T) *websocket.Conn {
 	t.Helper()
 	return connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
-}
-
-// sendBoardSync mirrors what the master's client sends once its REST map has loaded.
-func (f *fogFixture) sendBoardSync(t *testing.T, conn *websocket.Conn) {
-	t.Helper()
-	f.sendBoardSyncWithWalls(t, conn, []mapentity.WallSegment{f.wall})
-}
-
-func (f *fogFixture) sendBoardSyncWithWalls(t *testing.T, conn *websocket.Conn, walls []mapentity.WallSegment) {
-	t.Helper()
-	pieces := []game.PieceMovedPayload{f.piece}
-	wallPayloads := make([]game.WallSegmentPayload, len(walls))
-	for i, w := range walls {
-		wallPayloads[i] = toWallSegmentPayload(w)
-	}
-	grid := toGridShapePayload(f.grid)
-	payload, err := json.Marshal(game.MapStateSyncPayload{
-		Pieces: &pieces,
-		Walls:  wallPayloads,
-		Grid:   &grid,
-	})
-	if err != nil {
-		t.Fatalf("marshal sync payload: %v", err)
-	}
-	raw, err := json.Marshal(map[string]any{
-		"type": "map_state_sync", "payload": json.RawMessage(payload),
-	})
-	if err != nil {
-		t.Fatalf("marshal sync message: %v", err)
-	}
-	if err := conn.WriteMessage(websocket.TextMessage, raw); err != nil {
-		t.Fatalf("send map_state_sync: %v", err)
-	}
 }
 
 // awaitMapFullState reads until a map_full_state arrives or the deadline passes.
@@ -233,59 +231,13 @@ func assertPlayerCanSee(t *testing.T, f *fogFixture, view *game.MapFullStatePayl
 
 // ─── tests ──────────────────────────────────────────────────────────────────
 
-// Master connects and seeds the board, then the player joins. The player's first
-// map_full_state must already carry their line of sight.
+// The board is seeded before the master ever connects — production has it in match_boards
+// (or the attached map) long before anyone opens the game page. The master's register loads
+// it; the player's own register then serves it straight from the room's now-populated board,
+// with their line of sight already lit.
 func TestE2E_MasterSyncsThenPlayerJoins_PlayerSeesFogLiftedAroundOwnPiece(t *testing.T) {
 	f := newFogFixture(t)
-
-	master := f.connectMaster(t)
-	defer master.Close()   //nolint:errcheck
-	readMessage(t, master) // room_state
-
-	f.sendBoardSync(t, master)
-	time.Sleep(200 * time.Millisecond) // let the server apply the sync
-
-	player := f.connectPlayer(t)
-	defer player.Close() //nolint:errcheck
-
-	assertPlayerCanSee(t, f, awaitMapFullState(t, player, 3*time.Second))
-}
-
-// The reverse order, which is what happens in practice: the player's page is already
-// open when the master's REST map finishes loading and the sync goes out. The server
-// must re-push the refreshed state instead of leaving the player on the empty board.
-func TestE2E_PlayerJoinsBeforeSync_ServerRepushesLineOfSight(t *testing.T) {
-	f := newFogFixture(t)
-
-	master := f.connectMaster(t)
-	defer master.Close()   //nolint:errcheck
-	readMessage(t, master) // room_state
-
-	player := f.connectPlayer(t)
-	defer player.Close()               //nolint:errcheck
-	time.Sleep(200 * time.Millisecond) // player is registered on the empty board
-
-	f.sendBoardSync(t, master)
-
-	assertPlayerCanSee(t, f, awaitMapFullState(t, player, 3*time.Second))
-}
-
-// A real map's board sync does not fit in a small frame. When the server's read limit
-// is too low, gorilla closes the master's connection mid-sync: the board is never
-// seeded, players never get a polygon, and the master reconnects and retries forever.
-// This drives a board comfortably larger than one 4 KB frame.
-func TestE2E_LargeBoardSyncIsNotRejected(t *testing.T) {
-	f := newFogFixture(t)
-
-	walls := make([]mapentity.WallSegment, 0, 60)
-	for i := range 60 {
-		x := float64(512 + i*8)
-		walls = append(walls, mapentity.WallSegment{
-			ID: uuid.New().String(), P1: [2]float64{x, 0}, P2: [2]float64{x, 640},
-			WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
-			Sense: mapentity.SenseSight, HP: 100, MaxHP: 100,
-		})
-	}
+	f.seedBoard(t)
 
 	master := f.connectMaster(t)
 	defer master.Close()   //nolint:errcheck
@@ -293,28 +245,19 @@ func TestE2E_LargeBoardSyncIsNotRejected(t *testing.T) {
 
 	player := f.connectPlayer(t)
 	defer player.Close() //nolint:errcheck
-	time.Sleep(200 * time.Millisecond)
 
-	f.sendBoardSyncWithWalls(t, master, walls)
-
-	view := awaitMapFullState(t, player, 3*time.Second)
-	if view == nil {
-		t.Fatal("player got nothing — the server dropped the master's board sync")
-	}
-	if len(view.VisiblePolygons) == 0 {
-		t.Fatal("player received zero visibility polygons after a large board sync")
-	}
+	assertPlayerCanSee(t, f, awaitMapFullState(t, player, 3*time.Second))
 }
 
-// The master must never be fogged: no polygons, and every piece on the board.
+// The master must never be fogged: no polygons, and every piece on the board. Board seeded
+// up front, same as above — the server loads it on the master's own register, so there is no
+// sync round-trip left to await.
 func TestE2E_MasterSeesWholeBoardWithoutFog(t *testing.T) {
 	f := newFogFixture(t)
+	f.seedBoard(t)
 
 	master := f.connectMaster(t)
-	defer master.Close()   //nolint:errcheck
-	readMessage(t, master) // room_state
-
-	f.sendBoardSync(t, master)
+	defer master.Close() //nolint:errcheck
 
 	view := awaitMapFullState(t, master, 3*time.Second)
 	if view == nil {
@@ -330,11 +273,11 @@ func TestE2E_MasterSeesWholeBoardWithoutFog(t *testing.T) {
 
 // ─── wire-format conversion helpers ────────────────────────────────────────
 //
-// This file lives in package game_test (a real end-to-end test driving the actual
-// WS handler), so it has no access to game's unexported entity<->payload converters.
-// map_state_sync is master->server only, so production code never needed the reverse
-// (entity -> payload) direction either — these mirror message.go's toWallSegmentPayload
-// and its grid counterpart purely to build the wire message this test sends.
+// This file lives in package game_test (a real end-to-end test driving the actual WS
+// handler), so it has no access to game's unexported entity<->payload converters.
+// toWallSegmentPayload mirrors message.go's own — used by other files in this package
+// (fog_regression_test.go, combat_e2e_test.go) to build wire messages and decode entities
+// for assertions.
 
 func toWallSegmentPayload(w mapentity.WallSegment) game.WallSegmentPayload {
 	p := game.WallSegmentPayload{

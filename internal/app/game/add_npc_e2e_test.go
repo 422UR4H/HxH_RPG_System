@@ -352,32 +352,6 @@ func TestE2E_AddNPCInTheLobbyRostersItWithoutBars(t *testing.T) {
 
 const npcPieceID = "piece-npc"
 
-// syncBoardWithNPC seeds the same board syncBoard does — the attacker at (4,4), west of the
-// wall — plus an NPC piece at (6,6), on the same side, so the player sees it move.
-func (f *combatFixture) syncBoardWithNPC(t *testing.T, master *websocket.Conn, npcID uuid.UUID) {
-	t.Helper()
-	col, row := 4, 4
-	ncol, nrow := 6, 6
-	pieces := []game.PieceMovedPayload{
-		{
-			PieceID:     attackerPieceID,
-			CharacterID: f.attackerID.String(),
-			Slot:        game.SlotPayload{Kind: "square", Col: &col, Row: &row},
-		},
-		{
-			PieceID:     npcPieceID,
-			CharacterID: npcID.String(),
-			Slot:        game.SlotPayload{Kind: "square", Col: &ncol, Row: &nrow},
-		},
-	}
-	grid := toGridShapePayload(moveBoardGrid)
-	sendWS(t, master, "map_state_sync", game.MapStateSyncPayload{
-		Pieces: &pieces,
-		Walls:  []game.WallSegmentPayload{toWallSegmentPayload(moveBoardWall)},
-		Grid:   &grid,
-	})
-}
-
 // O mestre arrasta a peça de um NPC. O NPC é "dele" no charToPlayer, mas o mestre vê o
 // tabuleiro sem filtro: nada de recompute de LOS, nada de PlayerMemory para o mestre, nada de
 // map_full_state a cada arrasto. A mesa continua recebendo o piece_moved de sempre. E o
@@ -385,6 +359,9 @@ func (f *combatFixture) syncBoardWithNPC(t *testing.T, master *websocket.Conn, n
 func TestE2E_TheMasterDraggingAnNPCSkipsTheLineOfSightRecompute(t *testing.T) {
 	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
 	f := newCombatFixture(t, withAddLiveNPC(uc))
+	// Seeds the attacker at (4,4), west of the wall — the board is the server's own since
+	// B14, so this replaces the old syncBoardWithNPC's map_state_sync send.
+	f.seedBoard(t)
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
 	defer player.Close() //nolint:errcheck
@@ -397,12 +374,19 @@ func TestE2E_TheMasterDraggingAnNPCSkipsTheLineOfSightRecompute(t *testing.T) {
 		t.Fatal("the NPC never joined the session — this test would drag a piece nobody owns")
 	}
 
-	f.syncBoardWithNPC(t, master, npcID)
-	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the master never got the board back after map_state_sync")
+	// Puts the NPC's own piece on the board at (6,6), on the attacker's side of the wall, so
+	// the player sees it move. map_state_sync no longer writes anything, so this goes through
+	// the same piece_moved a browser drag sends — exactly what the rest of this test exercises.
+	sendPieceMoved(t, master, npcPieceID, npcID.String(), 6, 6)
+	if !playerMsgs.await(game.MsgTypePieceMoved, 2*time.Second) {
+		t.Fatal("the player never saw the NPC's piece appear on the board")
 	}
-	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
-		t.Fatal("the player never got the board — the fixture never started")
+	// The ordering barrier: an unknown message type is answered with a direct error from the
+	// master's own read loop, which handles one message at a time — so the piece_moved arm
+	// above finished before this reply was even built.
+	sendWS(t, master, "barrier", map[string]any{})
+	if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("the barrier never came back")
 	}
 
 	t.Run("the master's NPC drag reaches the table without refreshing the master", func(t *testing.T) {

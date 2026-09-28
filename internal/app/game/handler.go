@@ -134,6 +134,12 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// After a backend restart the Room is freshly created with nil session.
 	// If the match was already started in DB, rehydrate the session so
 	// players can take actions without a full match restart.
+	//
+	// This runs BEFORE Register below, on purpose: the board itself loads inside Room.Run's
+	// register branch (spec §4.3, "Quem carrega", B14), and that branch tells "still a lobby"
+	// from "already playing" by reading r.session — so the session has to already be set by
+	// the time this master's register reaches Run, or a live match would be mistaken for a
+	// lobby and reload its board on every reconnect instead of just at birth.
 	if room.GetSession() == nil {
 		if started, err := h.matchRepo.IsStarted(r.Context(), matchUUID); err == nil && started {
 			if session, err := h.deps.InitSessionUC.Init(r.Context(), matchUUID); err == nil {

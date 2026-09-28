@@ -19,10 +19,52 @@ import (
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+// fakeBoardStore is the board repository the e2e tests share between rooms. Handing the SAME
+// store to a second room is how a test simulates a server restart: memory goes, the store
+// stays (spec §4.3, B14; see combatFixture.seedBoard and TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect).
+type fakeBoardStore struct {
+	mu     sync.Mutex
+	boards map[uuid.UUID]*matchboard.Board
+	// saves counts every call to Save (added by T3), so a test can assert the board WAS or
+	// WAS NOT persisted without a second test double.
+	saves int
+}
+
+func (s *fakeBoardStore) Load(_ context.Context, matchUUID uuid.UUID) (*matchboard.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.boards[matchUUID]
+	if !ok {
+		return nil, nil
+	}
+	cp := *b
+	cp.Pieces = append([]mapentity.Piece(nil), b.Pieces...)
+	cp.Walls = append([]mapentity.WallSegment(nil), b.Walls...)
+	return &cp, nil
+}
+
+// seed puts a board directly into the store, bypassing Save — for a test to set up state the
+// server will read back on register, the same way a real match_boards row would already exist
+// before the room comes up.
+func (s *fakeBoardStore) seed(matchUUID uuid.UUID, b *matchboard.Board) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = map[uuid.UUID]*matchboard.Board{}
+	}
+	s.boards[matchUUID] = b
+}
+
+func newFakeBoardStore() *fakeBoardStore {
+	return &fakeBoardStore{boards: map[uuid.UUID]*matchboard.Board{}}
+}
 
 type mockMatchRepo struct {
 	masterUUID uuid.UUID

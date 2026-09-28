@@ -1,6 +1,9 @@
 package game
 
-import appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+import (
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
+)
 
 // RoomDeps is everything a Room needs from the outside, in one place.
 //
@@ -24,4 +27,10 @@ type RoomDeps struct {
 	ChangeRoundModeUC     appmatch.IChangeRoundMode
 	EditActionUC          IEditAction
 	AddLiveNPCUC          IAddLiveNPC
+	// LoadBoardUC loads the match's board from the database (spec §4.3, "Quem carrega",
+	// B14): the Room calls it when it is born and, while still a lobby, on every master
+	// reconnect. nil means the room has no board capability — the same "field left nil is a
+	// capability the room does not have" rule this struct's own doc comment states, and what
+	// every test built before B14 still gets by leaving it unset.
+	LoadBoardUC matchboarduc.ILoadMatchBoard
 }

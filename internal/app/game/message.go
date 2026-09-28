@@ -951,45 +951,8 @@ func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {
 	return p
 }
 
-func toEntityWallSegment(w WallSegmentPayload) mapentity.WallSegment {
-	seg := mapentity.WallSegment{
-		ID:         w.ID,
-		P1:         w.P1,
-		P2:         w.P2,
-		WallType:   mapentity.WallType(w.WallType),
-		Material:   mapentity.WallMaterial(w.Material),
-		Move:       w.Move,
-		Sense:      mapentity.SenseKind(w.Sense),
-		Direction:  mapentity.WallDirection(w.Direction),
-		Open:       w.Open,
-		Locked:     w.Locked,
-		HP:         w.HP,
-		MaxHP:      w.MaxHP,
-		Resistance: w.Resistance,
-		Destroyed:  w.Destroyed,
-		Revealed:   w.Revealed,
-	}
-	if w.DoorSubtype != nil {
-		d := mapentity.DoorSubtype(*w.DoorSubtype)
-		seg.DoorSubtype = &d
-	}
-	if w.WindowSubtype != nil {
-		wi := mapentity.WindowSubtype(*w.WindowSubtype)
-		seg.WindowSubtype = &wi
-	}
-	return seg
-}
-
-func toEntityGridShape(g GridShapePayload) mapentity.GridShape {
-	return mapentity.GridShape{
-		Kind:      mapentity.GridKind(g.Kind),
-		Cols:      g.Cols,
-		Rows:      g.Rows,
-		CellSize:  g.CellSize,
-		SkewRatio: g.SkewRatio,
-		Rotation:  g.Rotation,
-		Color:     g.Color,
-		Opacity:   g.Opacity,
-		LineStyle: mapentity.LineStyle(g.LineStyle),
-	}
-}
+// toEntityWallSegment and toEntityGridShape (payload → entity, the inbound half of
+// map_state_sync) were removed with B14: the arm no longer writes anything it receives, so
+// nothing decodes a WallSegmentPayload/GridShapePayload back into the domain shape any more.
+// toWallSegmentPayload above (entity → payload) is still very much alive — it is how the
+// server's OWN board goes out over the wire.

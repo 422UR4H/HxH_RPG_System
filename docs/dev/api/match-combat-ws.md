@@ -629,11 +629,16 @@ Esta mensagem tem **três destinos possíveis**, decididos nesta ordem:
 
 1. **`interact.kind == "reveal"` com `targetIds`** → revela portas secretas. As paredes
    viram `revealed` na sessão e o `WallSegment` real é transmitido à mesa
-   (`wall_revealed`, ver [`maps.md`](maps.md)). **Retorna sem ack nenhum.**
+   (`wall_revealed`, ver [`maps.md`](maps.md)). **Retorna sem ack nenhum**, exceto pelo
+   `unknown_wall` abaixo.
 2. **Qualquer outro `interact` com `targetIds`** → interação com parede, resolvida em
    memória: `wall_state_changed` (por jogador, com gate de linha de visão; uma porta secreta
    não revelada vai **só para o mestre**) + recálculo de `visibility_updated`. Também
-   **retorna sem ack**. Paredes fora do estado em memória são ignoradas **em silêncio**.
+   **retorna sem ack**. Um `targetId` que EXISTE no tabuleiro mas cujo `interact.kind` não se
+   aplica a ele (`lockpick`/`examine` — exigem rolagem, ainda não implementado) é ignorado em
+   silêncio; um `targetId` que o servidor não conhece de jeito nenhum responde `unknown_wall`
+   (última defesa, spec §4.3) — em ambos os casos o resto do lote em `targetIds` continua
+   sendo processado.
 3. **Sem `interact`** → enfileira a ação do mestre e responde
    [`master_action_enqueued`](#master_action_enqueued) para a mesa.
 
@@ -642,8 +647,10 @@ Esta mensagem tem **três destinos possíveis**, decididos nesta ordem:
 > `skills`, `actionSpeed` e `interact` funcionam.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid enqueue_master_action payload"`) ·
-`match_not_started` (**só no caminho 3** — os caminhos de parede retornam antes dessa
-checagem) · `game_error`.
+`unknown_wall` (**caminhos 1 e 2** — um `targetId` de parede que o servidor não conhece;
+desde B14, quem carrega o tabuleiro é o próprio servidor, então "não conhece" agora também
+cobre uma partida sem tabuleiro nenhum) · `match_not_started` (**só no caminho 3** — os
+caminhos de parede retornam antes dessa checagem) · `game_error`.
 
 ### `add_npc`
 
@@ -1299,7 +1306,8 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
-logo depois de `room_state` e do `map_full_state` (se houver peças no tabuleiro), e antes do
+logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
+tabuleiro — desde B14 um tabuleiro pode ter paredes sem nenhuma peça), e antes do
 `player_joined` que avisa os demais da chegada.
 
 ### `piece_moved` (também servidor → cliente, na ABERTURA do turno)
@@ -1308,11 +1316,17 @@ logo depois de `room_state` e do `map_full_state` (se houver peças no tabuleiro
 
 **Direção:** servidor → cliente. **Destino:** fog-gated, por destinatário.
 
-O contrato completo de `piece_moved`/`piece_removed` — shape de `SlotPayload`, o campo `z`,
-o par origem/destino do sync de tabuleiro — é do lobby/mapa e vive em
-[`game-lobby.md`](game-lobby.md) e [`maps.md`](maps.md). Até aqui `piece_moved` era só
-**cliente → servidor**: o navegador do jogador aplicando localmente um arraste e
-sincronizando o resto da mesa. O que o motor de combate acrescenta:
+O contrato completo de `piece_moved`/`piece_removed` — shape de `SlotPayload`, o campo `z`
+— é do lobby/mapa e vive em [`game-lobby.md`](game-lobby.md) e [`maps.md`](maps.md). Até
+aqui `piece_moved` era só **cliente → servidor**: o navegador do jogador aplicando
+localmente um arraste e sincronizando o resto da mesa. O que o motor de combate acrescenta:
+
+> **O tabuleiro é do servidor desde B14** (spec §4.3, "Quem carrega") — carregado do banco
+> quando a sala nasce e, enquanto a partida é lobby, a cada conexão do mestre; depois que
+> começa, só no nascimento. `map_state_sync` **não escreve mais nada**: é aceito, ignorado,
+> e responde só ao remetente com o `map_full_state` atual — será removido do contrato
+> quando a Fase 13 tirar o envio do front. Ver a seção "O tabuleiro é do servidor" em
+> [`game-lobby.md`](game-lobby.md) para o detalhe completo.
 
 **Quando o `Move` de uma ação de turno ABRE, o servidor aplica a posição sozinho e emite
 `piece_moved` como AUTOR.** Antes, uma ação de mover acontecia no cálculo e a peça nunca
@@ -1535,6 +1549,7 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`. |
 | `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`. |
 | `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |
+| `unknown_wall` | `"wall <id> is not on this match's board"` — um `targetId` de parede que o servidor não conhece (B14, spec §4.3, "Última defesa"). O resto do lote em `targetIds` ainda é processado. | `enqueue_master_action` (`interact.kind == "reveal"` e qualquer outro `interact`). |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
 
 **`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou.

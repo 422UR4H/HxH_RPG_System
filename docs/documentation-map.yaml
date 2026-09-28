@@ -466,6 +466,18 @@ mappings:
         confidence: directly_affected
     notes: Match-Maps use cases (AttachMap, GetMap, DetachMap)
 
+  - code_path: internal/application/matchboard/
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: directly_affected
+    notes: >-
+      LoadMatchBoardUC (spec 2026-09-27-combat-closure-back §4.3, "Quem carrega",
+      B14) — the match's own match_boards line if one exists, else a snapshot of
+      the attached campaign map (Bg nil); nil, nil when no map is attached. The
+      game Room calls it through RoomDeps.LoadBoardUC.
+
   # ─── Fog of War / Visibility (Phase 10-D, revised Phase 10-E) ───
   - code_path: internal/domain/match/entity/fog/
     dev_docs:
@@ -576,6 +588,19 @@ mappings:
         confidence: directly_affected
     notes: pgmasteraction.Repository — Insert/ListByMatch against master_actions, ordered by (happened_at, uuid).
 
+  - code_path: internal/app/game/board.go
+    dev_docs:
+      - path: docs/dev/api/game-lobby.md
+        confidence: possibly_affected
+    notes: >-
+      pieceToPayload/payloadToPiece — the board's own entity<->wire conversion
+      (spec 2026-09-27-combat-closure-back §4.3, B14). pieceToPayload reads
+      Piece.Coord.Slot (any: SquareCoord/HexCoord or a map[string]any from a JSON
+      round-trip) via marshal/unmarshal into a shared shape, robust to both; errors
+      on an unrecognized kind, which Room.loadBoard logs and skips rather than
+      failing the whole board. payloadToPiece is the reverse, for persistBoard
+      (Task 3) — never errors, defaults an unrecognized kind to square.
+
   - code_path: internal/app/game/message.go
     dev_docs:
       - path: docs/dev/api/match-combat-ws.md
@@ -589,9 +614,11 @@ mappings:
       - path: System_X_System_React/docs/dev/http-boundary-inventory.md
         confidence: possibly_affected
     notes: >
-      WS message type definitions — piece_moved, piece_removed, map_state_sync,
-      map_full_state (visible_polygons/fog_mode; explored_cells/explored_delta
-      removed in Phase 10-E), wall_hp_changed, wall_state_changed,
+      WS message type definitions — piece_moved, piece_removed, map_state_sync
+      (OBSOLETE since B14 — accepted, ignored, answers only the sender with the
+      current map_full_state; removed from the contract once F13 drops the send
+      from the front), map_full_state (visible_polygons/fog_mode;
+      explored_cells/explored_delta removed in Phase 10-E), wall_hp_changed, wall_state_changed,
       visibility_updated, wall_revealed, match_full_state (backend-prep-front-combat:
       combat snapshot on register/reconnect — MatchFullStatePayload, OpenTurnPayload)
       and the now-populated ActionEnqueuedPayload.
@@ -618,9 +645,15 @@ mappings:
         confidence: directly_affected
     notes: >-
       Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) +
-      piece_moved/piece_removed/map_state_sync/map_full_state broadcast;
-      wall_hp_changed + wall_state_changed from WallResults; map_state_sync seeds
-      the board, recomputes LOS and re-pushes map_full_state per player.
+      piece_moved/piece_removed/map_full_state broadcast; wall_hp_changed +
+      wall_state_changed from WallResults. B14 (spec 2026-09-27-combat-closure-back
+      §4.3): the Room loads its own board via RoomDeps.LoadBoardUC (nil = no board
+      capability) in Run's register branch — at birth, and on every master
+      register while still a lobby (boardLoaded gates that to once after the
+      match starts). map_state_sync no longer writes anything (see message.go's
+      own note); applyWallInteract/revealSecretDoors answer unknown_wall to the
+      master for a targetId the server does not know, instead of the old silent
+      skip.
       match-combat-ws.md documents this file's DISPATCH: who may send each combat
       message, the exact error code each refusal uses, which events each one emits
       and in what order, and publishResolution's two visibility axes (master-only

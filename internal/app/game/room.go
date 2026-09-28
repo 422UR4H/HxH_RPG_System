@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 
@@ -101,6 +102,12 @@ type Room struct {
 	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
 	// channel off to a goroutine, and two rapid opens can reach it out of order.
 	barsSeq uint64
+	// boardLoaded is true once loadBoard has run at least once for this Room. It is what
+	// narrows the master-reconnect half of "quando carrega" (spec §4.3) to a SINGLE load once
+	// the match has started: while session == nil (still a lobby) every master register
+	// reloads regardless of this flag, but once playing, boardLoaded stops a reconnecting
+	// master from silently resetting a live board out from under the session.
+	boardLoaded bool
 
 	session *matchsession.MatchSession
 
@@ -208,11 +215,26 @@ func (r *Room) Run() {
 			r.mu.Lock()
 			r.clients[client.userUUID] = client
 			client.SetRoom(r)
+			isMaster := r.IsMaster(client.userUUID)
+			// The board loads at the room's birth and, while still a lobby, on every master
+			// reconnect — exactly the moment map_state_sync used to arrive in production
+			// (spec §4.3, "Quem carrega", B14). r.session == nil is "still a lobby" (or a
+			// master rehydrating one that has not reached this branch yet); !r.boardLoaded
+			// narrows the OTHER case — session already live, because handler.go rehydrated
+			// it before Register — to a single load, at birth.
+			shouldLoadBoard := isMaster && (r.session == nil || !r.boardLoaded)
 			r.mu.Unlock()
+
+			if shouldLoadBoard {
+				r.loadBoard(context.Background())
+			}
 
 			r.sendRoomState(client)
 			r.mu.RLock()
-			hasPieces := len(r.pieces) > 0
+			// A board can now carry walls with no piece on it at all (spec §4.3), so a
+			// wall-only board must still reach a connecting client instead of waiting for the
+			// old pieces-only condition to go true by luck.
+			hasPieces := len(r.pieces) > 0 || len(r.walls) > 0
 			r.mu.RUnlock()
 			if hasPieces {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
@@ -280,6 +302,71 @@ func (r *Room) Run() {
 			r.clients = make(map[uuid.UUID]*Client)
 			r.mu.Unlock()
 			return
+		}
+	}
+}
+
+// loadBoard reads the match's board from the database and replaces the room's in-memory
+// board with it — this is what the master's map_state_sync used to seed by hand (spec §4.3,
+// "Quem carrega", B14). Called from Run's register branch: once when the Room is born, and
+// again on every master reconnect while the room is still a lobby (see boardLoaded's own doc
+// comment on the Room struct).
+//
+// r.deps.LoadBoardUC == nil means the room has no board capability — every test built before
+// B14 leaves it unset, and this is a no-op for them, same as every other optional dependency.
+//
+// Runs on Run's own goroutine, OUTSIDE r.mu for the DB read (a network round trip must never
+// hold the room's lock), then takes it once to replace the board — the same
+// read-outside/write-inside shape StartMatch and RehydrateSession already use for the
+// session's own board sync.
+func (r *Room) loadBoard(ctx context.Context) {
+	if r.deps.LoadBoardUC == nil {
+		return
+	}
+	board, err := r.deps.LoadBoardUC.Load(ctx, r.matchUUID)
+	if err != nil {
+		log.Printf("load match board for match %s: %v", r.matchUUID, err)
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.boardLoaded = true
+	if board == nil {
+		// No map attached at all — nothing to load yet. Leaving the current board (empty, on
+		// a fresh Room) alone is correct: a lobby that attaches a map later is picked up by
+		// the NEXT master connect, since boardLoaded only gates the post-start case.
+		return
+	}
+
+	pieces := make(map[string]PieceMovedPayload, len(board.Pieces))
+	for _, p := range board.Pieces {
+		payload, perr := pieceToPayload(p)
+		if perr != nil {
+			// A piece that will not convert is logged and skipped, not a reason to fail
+			// loading the rest of the board.
+			log.Printf("load match board for match %s: skipping piece %s: %v", r.matchUUID, p.ID, perr)
+			continue
+		}
+		pieces[payload.PieceID] = payload
+	}
+	walls := make(map[string]mapentity.WallSegment, len(board.Walls))
+	for _, w := range board.Walls {
+		walls[w.ID] = w
+	}
+	r.pieces = pieces
+	r.walls = walls
+	r.grid = board.Grid
+
+	if r.session != nil {
+		wallSlice := append([]mapentity.WallSegment(nil), board.Walls...)
+		r.session.SyncMapState(wallSlice, board.Grid)
+		// The board just changed, so every player's cached LOS is stale — the same
+		// recompute map_state_sync's arm used to do after seeding.
+		for _, pid := range r.session.PlayerIDs() {
+			if _, verr := r.session.RecomputeVisibility(pid); verr != nil {
+				log.Printf("load match board recompute visibility for %s: %v", pid, verr)
+			}
 		}
 	}
 }
@@ -1029,7 +1116,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.handlePieceRemoved(client, payload)
 
 	case MsgTypeMapStateSync:
-		// Only the master may seed the in-memory board (initial DB state on connect).
+		// OBSOLETE since B14 (spec §4.3, "Quem carrega"): the server now owns the board —
+		// it loads it itself, in Run's register branch, at the moment this used to arrive.
+		// Still accepted from the master and answered with the current map_full_state, so the
+		// front that has not yet dropped this send (F13) gets a reply instead of silence, but
+		// it WRITES NOTHING. Remove this arm once F13 ships.
 		if !r.IsMaster(client.userUUID) {
 			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
 			return
@@ -1039,57 +1130,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid map_state_sync payload"))
 			return
 		}
-		walls := make([]mapentity.WallSegment, len(payload.Walls))
-		for i, w := range payload.Walls {
-			walls[i] = toEntityWallSegment(w)
-		}
-		var grid *mapentity.GridShape
-		if payload.Grid != nil {
-			g := toEntityGridShape(*payload.Grid)
-			grid = &g
-		}
-		r.mu.Lock()
-		// A nil Pieces field means "no piece information in this sync" — keep the board.
-		// Only an explicitly present array replaces it (empty array = board is empty).
-		if payload.Pieces != nil {
-			r.pieces = make(map[string]PieceMovedPayload, len(*payload.Pieces))
-			for _, p := range *payload.Pieces {
-				r.pieces[p.PieceID] = p
-			}
-		}
-		r.walls = make(map[string]mapentity.WallSegment, len(walls))
-		for _, w := range walls {
-			r.walls[w.ID] = w
-		}
-		if grid != nil && grid.CellSize > 0 {
-			r.grid = *grid
-		}
-		roomGrid := r.grid
-		sess := r.session
-		if sess != nil {
-			wallSlice := append([]mapentity.WallSegment(nil), walls...)
-			sess.SyncMapState(wallSlice, roomGrid)
-			// The board just changed, so every player's cached LOS is stale — and
-			// buildMapFullState serves the cache. Recompute here (still under the write
-			// lock, as PlayerPiecePositions requires) so the refreshed state pushed below
-			// reflects the board that was just seeded.
-			for _, pid := range sess.PlayerIDs() {
-				if _, err := sess.RecomputeVisibility(pid); err != nil {
-					log.Printf("map_state_sync recompute visibility for %s: %v", pid, err)
-				}
-			}
-		}
-		r.mu.Unlock()
-
-		// Re-push the full board to everyone. This is what makes the feature converge
-		// regardless of connect order: whether the master syncs before or after a player
-		// joins, and whether the server was restarted mid-match, each client ends up with
-		// state built from the seeded board.
-		if sess != nil {
-			r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-				return r.buildMapFullState(pid, isMaster)
-			})
-		}
+		client.SendMessage(*r.buildMapFullState(client.userUUID, true))
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
@@ -1108,18 +1149,31 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Reveal: master-only secret-door reveal. Marks the wall revealed in the session
 		// and broadcasts the full real WallSegment to ALL clients.
 		if ma.Interact != nil && ma.Interact.Kind == action.InteractReveal && len(ma.TargetID) > 0 {
-			r.revealSecretDoors(ma.TargetID)
+			r.revealSecretDoors(client, ma.TargetID)
 			return
 		}
 		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
 		if ma.Interact != nil && len(ma.TargetID) > 0 {
 			for _, targetID := range ma.TargetID {
-				newOpen, newLocked, ok := r.applyWallInteract(targetID.String(), ma.Interact)
-				if !ok {
-					// Wall not in in-memory state — skip silently.
+				wallID := targetID.String()
+				r.mu.RLock()
+				_, exists := r.walls[wallID]
+				r.mu.RUnlock()
+				if !exists {
+					// Last defense (spec §4.3): a wall the server does not know about answers
+					// unknown_wall to the master instead of the silent skip this used to be.
+					client.SendMessage(NewErrorMessage("unknown_wall",
+						fmt.Sprintf("wall %s is not on this match's board", wallID)))
 					continue
 				}
-				r.broadcastWallStateChangedGated(targetID.String(), newOpen, newLocked)
+				newOpen, newLocked, ok := r.applyWallInteract(wallID, ma.Interact)
+				if !ok {
+					// The wall exists but the interact kind does not apply to it (lockpick,
+					// examine — require a roll check, not yet handled). Not "unknown": the
+					// server DOES know this wall, it just cannot act on this kind yet.
+					continue
+				}
+				r.broadcastWallStateChangedGated(wallID, newOpen, newLocked)
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
@@ -1645,7 +1699,11 @@ func (r *Room) broadcastWallHpChanged(w mapentity.WallSegment) {
 
 // revealSecretDoors marks each target wall revealed in the session and broadcasts the full
 // real WallSegment to ALL clients. Master-only; the caller gates on master.
-func (r *Room) revealSecretDoors(targetIDs []uuid.UUID) {
+//
+// A target wall the server does not know answers unknown_wall to client — the master, always,
+// since the caller already gated on master — instead of the silent skip this used to be (spec
+// §4.3, "Última defesa"). The rest of the batch still runs.
+func (r *Room) revealSecretDoors(client *Client, targetIDs []uuid.UUID) {
 	r.mu.Lock()
 	sess := r.session
 	for _, targetID := range targetIDs {
@@ -1674,6 +1732,8 @@ func (r *Room) revealSecretDoors(targetIDs []uuid.UUID) {
 		}
 		r.mu.RUnlock()
 		if !ok {
+			client.SendMessage(NewErrorMessage("unknown_wall",
+				fmt.Sprintf("wall %s is not on this match's board", wallID)))
 			continue
 		}
 		msg := NewServerMessage(MsgTypeWallRevealed, WallRevealedPayload{Wall: toWallSegmentPayload(w)})
