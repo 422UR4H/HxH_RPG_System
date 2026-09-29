@@ -1407,3 +1407,63 @@ func TestFindMatchHistoryKeepsEachTiedTurnsReactionWithItsOwnTurn(t *testing.T) 
 		t.Fatalf("turns missing from the result: %+v", wantReactionOf)
 	}
 }
+
+// EnsureSceneAndRound is the idempotent half PersistTurnClose used to keep to itself (spec
+// §4.5, §4.8): a master action is recorded the instant it happens, and master_actions has an
+// FK to the ACTIVE scene and round — which, before the first closed turn, exist only in memory.
+// Calling it any number of times writes each row once, and the turn that closes later in that
+// same round still goes through.
+func TestEnsureSceneAndRound(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("twice is once, and the round's turn still closes afterwards", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm1", "gm1@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
+		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
+		matchUUIDParsed, _ := uuid.Parse(matchUUID)
+		sheetUUID := pgtest.InsertTestCharacterSheet(t, pool, &masterUUID, nil, &campaignUUID, "hero1")
+		actorUUIDParsed, _ := uuid.Parse(sheetUUID)
+
+		sc := sceneentity.NewScene(enum.Battle, "Arena")
+		r := roundentity.NewRound(enum.Free)
+
+		for i := 0; i < 2; i++ {
+			if err := repo.EnsureSceneAndRound(ctx, matchUUIDParsed, sc, r); err != nil {
+				t.Fatalf("EnsureSceneAndRound call %d: %v", i+1, err)
+			}
+		}
+
+		var sceneCount, roundCount int
+		pool.QueryRow(ctx, `SELECT COUNT(*) FROM scenes WHERE uuid = $1 AND match_uuid = $2`, sc.GetID(), matchUUIDParsed).Scan(&sceneCount) //nolint:errcheck
+		pool.QueryRow(ctx, `SELECT COUNT(*) FROM rounds WHERE uuid = $1 AND scene_uuid = $2`, r.GetID(), sc.GetID()).Scan(&roundCount)       //nolint:errcheck
+		if sceneCount != 1 || roundCount != 1 {
+			t.Fatalf("scene rows = %d, round rows = %d, want exactly 1 of each", sceneCount, roundCount)
+		}
+
+		// The active scene/round are now open rows: a restart rehydrates onto them.
+		data, err := repo.FindActiveSession(ctx, matchUUIDParsed)
+		if err != nil {
+			t.Fatalf("FindActiveSession: %v", err)
+		}
+		if data == nil || data.SceneID != sc.GetID() || data.RoundID != r.GetID() {
+			t.Fatalf("FindActiveSession = %+v, want the ensured scene %s / round %s", data, sc.GetID(), r.GetID())
+		}
+
+		act := action.NewAction(actorUUIDParsed, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		tRn := turnentity.NewTurn(*act)
+		tRn.Close(time.Now())
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: r, Turn: tRn, Action: act, MatchUUID: matchUUIDParsed,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose after EnsureSceneAndRound: %v", err)
+		}
+		var turnCount int
+		pool.QueryRow(ctx, `SELECT COUNT(*) FROM turns WHERE round_uuid = $1`, r.GetID()).Scan(&turnCount) //nolint:errcheck
+		if turnCount != 1 {
+			t.Fatalf("turn rows = %d, want 1", turnCount)
+		}
+	})
+}

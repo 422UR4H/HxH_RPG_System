@@ -51,6 +51,11 @@ type IRepository interface {
 // IRoundRepository handles persistence of scene/round/turn/action lifecycle.
 type IRoundRepository interface {
 	PersistTurnClose(ctx context.Context, d TurnCloseData) error
+	// EnsureSceneAndRound writes the scene and round as rows if they are not rows yet —
+	// idempotent, the same two inserts PersistTurnClose runs in its own transaction. Whatever
+	// references the ACTIVE scene/round before the first turn of that round closes (a master
+	// action recorded the instant it happens, spec §4.8) calls this first.
+	EnsureSceneAndRound(ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, rd *roundentity.Round) error
 	FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error)
 	CloseSceneAndRound(ctx context.Context, sceneUUID, roundUUID uuid.UUID, at time.Time) error
 	CloseRound(ctx context.Context, roundUUID uuid.UUID, at time.Time) error

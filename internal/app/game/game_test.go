@@ -92,6 +92,9 @@ func (m *mockRoundRepoGame) FindActiveSession(_ context.Context, _ uuid.UUID) (*
 func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
 	return nil
 }
+func (m *mockRoundRepoGame) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *scene.Scene, _ *roundentity.Round) error {
+	return nil
+}
 func (m *mockRoundRepoGame) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
@@ -1270,15 +1271,31 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		r.mu.RUnlock()
 		ma := buildMasterAction(client.userUUID, payload)
+		// Every branch below that ACCEPTS the master action records it, the instant it is
+		// applied, with what each player saw of it (spec §4.8, recordMasterAction). A refused one
+		// is never recorded. edit_action has its own arm and never reaches here.
+		//
+		// Piece: the master's drag, place or take-off (spec §4.3, "Master action de peça"). Before
+		// the Interact branch: a piece action names a character, not a wall.
+		if ma.Move != nil || payload.Remove != nil {
+			r.applyMasterPieceAction(client, ma, payload.Remove != nil)
+			return
+		}
 		// Reveal: master-only secret-door reveal. Marks the wall revealed in the session
 		// and broadcasts the full real WallSegment to ALL clients.
 		if ma.Interact != nil && ma.Interact.Kind == action.InteractReveal && len(ma.TargetID) > 0 {
-			r.revealSecretDoors(client, ma.TargetID)
+			revealed, views := r.revealSecretDoors(client, ma.TargetID)
 			r.persistBoard("wall_interact")
+			if len(revealed) > 0 {
+				r.recordMasterAction(masteraction.KindRevealWall,
+					wallActionContent{WallIDs: revealed, Interact: string(ma.Interact.Kind)}, views)
+			}
 			return
 		}
 		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
 		if ma.Interact != nil && len(ma.TargetID) > 0 {
+			var changed []string
+			views := map[uuid.UUID]masteraction.View{}
 			for _, targetID := range ma.TargetID {
 				wallID := targetID.String()
 				r.mu.RLock()
@@ -1298,11 +1315,19 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					// server DOES know this wall, it just cannot act on this kind yet.
 					continue
 				}
-				r.broadcastWallStateChangedGated(wallID, newOpen, newLocked)
+				changed = append(changed, wallID)
+				// A player who saw any of the walls change saw the action.
+				for pid, v := range r.broadcastWallStateChangedGated(wallID, newOpen, newLocked) {
+					views[pid] = v
+				}
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
 			r.persistBoard("wall_interact")
+			if len(changed) > 0 {
+				r.recordMasterAction(masteraction.KindWallInteract,
+					wallActionContent{WallIDs: changed, Interact: string(ma.Interact.Kind)}, views)
+			}
 			return
 		}
 		if session == nil {
@@ -1313,6 +1338,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		// A turn note: it hangs on the open turn and emits nothing to the table as an action, so
+		// nobody but the master saw it — no views (spec §4.8).
+		r.recordMasterAction(masteraction.KindTurnNote, payload, map[uuid.UUID]masteraction.View{})
 		out := NewServerMessage(MsgTypeMasterActionEnqueued, MasterActionEnqueuedPayload(payload))
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
@@ -1333,64 +1361,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid add_npc payload"))
 			return
 		}
-		// DB I/O, so no r.mu here. The use case already swallows ErrNPCAlreadyInMatch: every
-		// guard runs BEFORE the INSERT that reports the duplicate, so "already in the database"
-		// means "passed everything, only the session is behind" — exactly the NPC the master
-		// added over REST mid-match. Re-sending add_npc is how the session catches up; the
-		// duplicate this verb does refuse is the SESSION's, below.
-		sheetUUID := payload.CharacterSheetUUID
-		sheet, err := r.deps.AddLiveNPCUC.Execute(context.Background(), &appmatch.AddMatchNPCInput{
-			RequesterUUID: client.userUUID,
-			MatchUUID:     r.matchUUID,
-			SheetUUID:     sheetUUID,
-		})
-		if err != nil {
-			code := "game_error"
-			switch {
-			case errors.Is(err, appmatch.ErrNotMatchMaster):
-				code = "forbidden"
-			case errors.Is(err, appmatch.ErrMatchNotFound),
-				errors.Is(err, appmatch.ErrCharacterSheetNotFound):
-				code = "not_found"
-			case errors.Is(err, appmatch.ErrSheetNotNPC),
-				errors.Is(err, appmatch.ErrSheetNotOwnedByMaster),
-				errors.Is(err, appmatch.ErrMatchAlreadyFinished):
-				code = "invalid_npc"
-			}
-			client.SendMessage(NewErrorMessage(code, err.Error()))
-			return
-		}
-		// Write lock: AddNPC writes the session's sheets, statuses and charToPlayer. With no
-		// session (the lobby) there is nothing live to inject into — the row just written is
-		// what InitMatchSessionUC will load when the match starts.
-		r.mu.Lock()
-		session := r.session
-		var addErr error
-		if session != nil {
-			addErr = session.AddNPC(sheetUUID, sheet, r.masterUUID)
-		}
-		r.mu.Unlock()
-		if errors.Is(addErr, matchsession.ErrCharacterAlreadyInSession) {
-			client.SendMessage(NewErrorMessage("npc_already_in_match", addErr.Error()))
-			return
-		}
-		if addErr != nil {
-			client.SendMessage(NewErrorMessage("game_error", addErr.Error()))
-			return
-		}
-		// npc_added is the master's ack and the table's cue to fetch the sheet over REST — the
-		// same shape as scene_changed. The combat state that changed is only the set of
-		// characters on the bars, so bars_updated carries it, NOT match_full_state: broadcastBars
-		// bumps seq, while match_full_state repeats the CURRENT seq by contract, and a delayed
-		// bars_updated of that same seq, without the NPC, would be applied over it and wipe the
-		// NPC off the screen. match_full_state stays what its name says: the snapshot of whoever
-		// connects.
-		out := NewServerMessage(MsgTypeNPCAdded, NPCAddedPayload{CharacterID: sheetUUID})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
-		if session != nil {
-			r.broadcastBars(session)
-		}
+		r.enrollLiveNPC(client, payload.CharacterSheetUUID)
 
 	default:
 		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
@@ -1786,7 +1757,11 @@ func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
 // unrevealed secret door's open/locked change goes to the master only. Players see such a
 // door as a plain wall, and a plain wall has no open/locked state — broadcasting it would
 // leak the door's identity. Mirrors the WallResultKindInteract gate in broadcastWallResults.
-func (r *Room) broadcastWallStateChangedGated(wallID string, open, locked bool) {
+//
+// It returns what each player of the session saw of it (spec §4.8), by that same criterion:
+// everyone for a wall that went to everyone, nobody for one that went to the master alone.
+// nil in the lobby.
+func (r *Room) broadcastWallStateChangedGated(wallID string, open, locked bool) map[uuid.UUID]masteraction.View {
 	r.mu.RLock()
 	w, ok := r.walls[wallID]
 	r.mu.RUnlock()
@@ -1796,9 +1771,10 @@ func (r *Room) broadcastWallStateChangedGated(wallID string, open, locked bool) 
 			Open:   open,
 			Locked: locked,
 		}))
-		return
+		return r.sessionViews(seenByNone)
 	}
 	r.broadcastWallStateChanged(wallID, open, locked)
+	return r.sessionViews(seenByAll)
 }
 
 // broadcastWallHpChanged dispatches wall_hp_changed only to clients who can see the wall.
@@ -1829,7 +1805,11 @@ func (r *Room) broadcastWallHpChanged(w mapentity.WallSegment) {
 // A target wall the server does not know answers unknown_wall to client — the master, always,
 // since the caller already gated on master — instead of the silent skip this used to be (spec
 // §4.3, "Última defesa"). The rest of the batch still runs.
-func (r *Room) revealSecretDoors(client *Client, targetIDs []uuid.UUID) {
+//
+// It returns the walls it actually revealed and what each player of the session saw: a reveal
+// goes to everyone, so everyone saw it in full (spec §4.8). Both are empty when nothing was
+// revealed — then there is no master action to record.
+func (r *Room) revealSecretDoors(client *Client, targetIDs []uuid.UUID) ([]string, map[uuid.UUID]masteraction.View) {
 	r.mu.Lock()
 	sess := r.session
 	for _, targetID := range targetIDs {
@@ -1846,6 +1826,7 @@ func (r *Room) revealSecretDoors(client *Client, targetIDs []uuid.UUID) {
 	}
 	r.mu.Unlock()
 
+	var revealed []string
 	for _, targetID := range targetIDs {
 		wallID := targetID.String()
 		r.mu.RLock()
@@ -1865,9 +1846,14 @@ func (r *Room) revealSecretDoors(client *Client, targetIDs []uuid.UUID) {
 		msg := NewServerMessage(MsgTypeWallRevealed, WallRevealedPayload{Wall: toWallSegmentPayload(w)})
 		data, _ := json.Marshal(msg)
 		go func(d []byte) { r.broadcast <- d }(data)
+		revealed = append(revealed, wallID)
 	}
 	// Revealing changes nothing about geometry but the cache must reflect Revealed; push LOS.
 	r.pushVisibilityUpdates()
+	if len(revealed) == 0 {
+		return nil, nil
+	}
+	return revealed, r.sessionViews(seenByAll)
 }
 
 // pushVisibilityUpdates recomputes each player's LOS and sends them a visibility_updated.
@@ -2282,8 +2268,12 @@ func (r *Room) applyAndRelayPieceMoveIfOwned(
 // old/hadOld are the piece as it stood BEFORE the write; they are what the piece_removed half
 // of the pair is decided on.
 //
+// It returns what each player of the session saw of the move (spec §4.8) — the SAME fog gate
+// the dispatch uses (pieceMoveView), run over every player of the session, connected or not.
+// Only a master action records it; every other caller ignores it. nil in the lobby.
+//
 // The caller must NOT hold r.mu.
-func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origin uuid.UUID) {
+func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origin uuid.UUID) map[uuid.UUID]masteraction.View {
 	grid := r.gridShape()
 	newX, newY := slotPayloadToWorld(payload.Slot, grid)
 	var oldX, oldY float64
@@ -2349,6 +2339,17 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 		}
 	}
 
+	// The fog gate, one player at a time: seeing the destination is the move (full); seeing only
+	// the origin is the piece leaving (left, the piece_removed half); neither is nothing. Hidden
+	// pieces never reach players. It is used TWICE — for the connected clients below, and for
+	// every player of the session in views — so what is recorded is what was sent.
+	newPt := domainservice.Point2D{X: newX, Y: newY}
+	oldPt := domainservice.Point2D{X: oldX, Y: oldY}
+	gate := func(polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
+		return pieceMoveView(polys, newPt, oldPt, hadOld, hidden)
+	}
+	views := r.sessionViews(gate)
+
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 		if origin != uuid.Nil && pid == origin {
 			return nil // mover already applied the move locally
@@ -2362,21 +2363,15 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 			m := moved
 			return &m
 		}
-		if hidden {
-			return nil // hidden pieces never reach players
-		}
-		polys := r.visibilityFor(pid)
-		seesNew := domainservice.IsVisible(domainservice.Point2D{X: newX, Y: newY}, polys)
-		seesOld := hadOld && domainservice.IsVisible(domainservice.Point2D{X: oldX, Y: oldY}, polys)
-		switch {
-		case seesNew:
+		switch v, ok := gate(r.visibilityFor(pid)); {
+		case !ok:
+			return nil
+		case v == masteraction.ViewFull:
 			m := moved
 			return &m
-		case seesOld:
+		default:
 			m := removed
 			return &m
-		default:
-			return nil
 		}
 	})
 
@@ -2384,7 +2379,7 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 	// AFTER the dispatch on purpose: the negative assertions in the move tests use the owner's
 	// second map_full_state as the ordering barrier that proves the relay was already queued.
 	if !live || owner == uuid.Nil || recomputeErr != nil {
-		return
+		return views
 	}
 	// The cache was refreshed even for an owner who is not connected — they would otherwise
 	// reconnect onto a stale polygon. Only the push needs somebody on the other end.
@@ -2395,14 +2390,14 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 		msg := r.buildMapFullState(owner, r.IsMaster(owner))
 		ownerClient.SendMessage(*msg)
 	}
+	return views
 }
 
 // refuseIfInMatch is handlePieceMoved's and handlePieceRemoved's shared mid-match refusal
 // (spec §4.3, "Quem move o quê", B14): once r.session != nil, BOTH verbs are refused
 // unconditionally for master AND player alike — the master moves/places/removes pieces
-// through enqueue_master_action's move/remove (Task 5), and a player only ever moves by
-// acting. It does not matter that the master's own placement mechanism (Task 5) is not built
-// yet: this verb specifically is never the master's, in a match.
+// through enqueue_master_action's move/remove (applyMasterPieceAction), and a player only ever
+// moves by acting. This verb specifically is never the master's, in a match.
 //
 // Returns true when it sent a refusal — the caller must return immediately, without touching
 // r.pieces or calling persistBoard.
@@ -2625,31 +2620,14 @@ func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
 	// Nothing creates it today; whoever makes it possible has to say which piece an action
 	// moves. Until then the lowest piece ID wins — an arbitrary choice, but a STABLE one, so
 	// the day it happens it reproduces instead of flickering with map iteration order.
-	pieceID := ""
-	for id, p := range r.pieces {
-		if p.CharacterID == actorID && (pieceID == "" || id < pieceID) {
-			pieceID = id
-		}
-	}
+	pieceID := r.pieceOfLocked(actorID)
 	if pieceID == "" {
 		r.mu.Unlock()
 		return
 	}
 	old := r.pieces[pieceID]
 	moved := old
-
-	// The piece keeps the slot shape it already had. The board can be hexagonal, and forcing
-	// "square" here would put a hex piece at the world position of a square cell. An empty
-	// Kind is left empty on purpose: slotPayloadToWorld already reads anything that is not
-	// "hex" as square, and rewriting it would change what the client seeded.
-	switch old.Slot.Kind {
-	case "hex":
-		qAxis, rAxis := pos[0], pos[1]
-		moved.Slot = SlotPayload{Kind: "hex", Q: &qAxis, R: &rAxis}
-	default:
-		col, row := pos[0], pos[1]
-		moved.Slot = SlotPayload{Kind: old.Slot.Kind, Col: &col, Row: &row}
-	}
+	moved.Slot = slotKeepingKind(old.Slot, pos)
 	// Z is deliberately NOT touched. It is the piece's virtual height in METRES, while
 	// Move.Position[2] is a grid index — nobody has checked that the two are the same number,
 	// and the front draws whatever position arrives without recomputing it. Writing pos[2]
@@ -2662,6 +2640,34 @@ func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
 	// origin is uuid.Nil: the server moved this one and nobody's browser predicted it, so
 	// nobody is skipped and the message goes out as a server message.
 	r.relayPieceMove(moved, old, true, uuid.Nil)
+}
+
+// pieceOfLocked is the piece a character moves by: its lowest piece ID — see the TODO in
+// applyMove for why that choice. "" when the character has no piece on the board.
+//
+// The caller MUST hold r.mu (for writing, when it goes on to write the piece back: the read and
+// the write have to be one critical section — see applyMove).
+func (r *Room) pieceOfLocked(characterID string) string {
+	pieceID := ""
+	for id, p := range r.pieces {
+		if p.CharacterID == characterID && (pieceID == "" || id < pieceID) {
+			pieceID = id
+		}
+	}
+	return pieceID
+}
+
+// slotKeepingKind puts a piece at grid position pos in the slot SHAPE it already had. The
+// board can be hexagonal, and forcing "square" here would put a hex piece at the world position
+// of a square cell. An empty Kind is left empty on purpose: slotPayloadToWorld already reads
+// anything that is not "hex" as square, and rewriting it would change what the client seeded.
+func slotKeepingKind(old SlotPayload, pos [3]int) SlotPayload {
+	if old.Kind == "hex" {
+		qAxis, rAxis := pos[0], pos[1]
+		return SlotPayload{Kind: "hex", Q: &qAxis, R: &rAxis}
+	}
+	col, row := pos[0], pos[1]
+	return SlotPayload{Kind: old.Kind, Col: &col, Row: &row}
 }
 
 // handlePieceRemoved removes a piece and relays the removal per-player — lobby-only, and
@@ -2688,22 +2694,69 @@ func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
 	old, hadOld := r.pieces[payload.PieceID]
 	delete(r.pieces, payload.PieceID)
 	r.mu.Unlock()
-
-	hidden := hadOld && old.Visible != nil && !*old.Visible
-	grid := r.gridShape()
-	var oldX, oldY float64
-	if hadOld {
-		oldX, oldY = slotPayloadToWorld(old.Slot, grid)
+	if !hadOld {
+		// Nothing was there: the relay still goes out under the id the client named, as it
+		// always has — there is just no last position to gate it on.
+		old = PieceMovedPayload{PieceID: payload.PieceID}
 	}
 
-	removed := NewClientMessage(MsgTypePieceRemoved, client.userUUID, payload)
+	r.relayPieceRemoved(old, hadOld, client.userUUID)
+	// "lobby" — see handlePieceMoved's own comment; the same rule applies here.
+	r.persistBoard("lobby")
+}
+
+// relayPieceRemoved is everything handlePieceRemoved does once the piece is already gone from
+// r.pieces: the fog-gated per-player dispatch — only whoever could see the piece at its last
+// position is told; a hidden piece reaches the master alone — split out so the master's
+// mid-match "remove" (applyMasterPieceAction) can share it.
+//
+// old is the piece as it stood before the delete (hadOld false: only its PieceID is known).
+// origin is the sender, skipped by the dispatch because their screen already removed it;
+// uuid.Nil for a server-applied removal, which then goes out as a server message to everyone
+// entitled, the master included.
+//
+// With a live session, the removed piece's OWNER then has their line of sight recomputed and
+// resent: the piece was one of the points they see from, and a stale cache would keep showing
+// them the board through a piece that is gone. AFTER the dispatch, unlike relayPieceMove: here
+// the owner is supposed to be told the piece left, and the old polygon is the one that saw it.
+// The master owns nothing, for the reason relayPieceMove gives.
+//
+// It returns what each player of the session saw (spec §4.8), from the same gate as the
+// dispatch (pieceRemovedView). nil in the lobby.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid.UUID) map[uuid.UUID]masteraction.View {
+	hidden := hadOld && old.Visible != nil && !*old.Visible
+	grid := r.gridShape()
+	var oldPt domainservice.Point2D
+	if hadOld {
+		oldPt.X, oldPt.Y = slotPayloadToWorld(old.Slot, grid)
+	}
+
+	payload := PieceRemovedPayload{PieceID: old.PieceID}
+	removed := NewServerMessage(MsgTypePieceRemoved, payload)
+	if origin != uuid.Nil {
+		removed = NewClientMessage(MsgTypePieceRemoved, origin, payload)
+	}
 
 	r.mu.RLock()
 	live := r.session != nil
+	var owner uuid.UUID
+	if live && hadOld {
+		owner = r.session.GetCharToPlayer()[old.CharacterID]
+	}
 	r.mu.RUnlock()
+	if owner == r.masterUUID {
+		owner = uuid.Nil
+	}
+
+	gate := func(polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
+		return pieceRemovedView(polys, oldPt, hadOld, hidden)
+	}
+	views := r.sessionViews(gate)
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-		if pid == client.userUUID {
+		if origin != uuid.Nil && pid == origin {
 			return nil
 		}
 		if isMaster {
@@ -2715,18 +2768,30 @@ func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
 			m := removed
 			return &m
 		}
-		if hidden {
-			return nil
-		}
-		// Only notify players who could see the piece at its last known position.
-		if hadOld && !domainservice.IsVisible(domainservice.Point2D{X: oldX, Y: oldY}, r.visibilityFor(pid)) {
+		if _, ok := gate(r.visibilityFor(pid)); !ok {
 			return nil
 		}
 		m := removed
 		return &m
 	})
-	// "lobby" — see handlePieceMoved's own comment; the same rule applies here.
-	r.persistBoard("lobby")
+
+	if !live || owner == uuid.Nil {
+		return views
+	}
+	r.mu.Lock()
+	_, err := r.session.RecomputeVisibility(owner)
+	r.mu.Unlock()
+	if err != nil {
+		log.Printf("piece removal recompute visibility for %s: %v", owner, err)
+		return views
+	}
+	r.mu.RLock()
+	ownerClient, online := r.clients[owner]
+	r.mu.RUnlock()
+	if online {
+		ownerClient.SendMessage(*r.buildMapFullState(owner, false))
+	}
+	return views
 }
 
 func (r *Room) sendRoomState(client *Client) {

@@ -141,6 +141,10 @@ type combatFixture struct {
 	// mapping newCombatFixture already knows, so every existing test gets a working default
 	// instead of the fail-closed "no capability" nil every other RoomDeps field tolerates.
 	sheets *fakeSheetOwnership
+	// masterActions backs RoomDeps.MasterActionRepo (spec §4.8, T5): every accepted
+	// enqueue_master_action lands here as a masteraction.Record. restart hands the SAME store to
+	// the second room, the way master_actions rows would survive a real restart.
+	masterActions *fakeMasterActionStore
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -194,6 +198,8 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		writer:     &recordingStatusWriter{},
 		boards:     newFakeBoardStore(),
 		memories:   newFakeMemoryStore(),
+
+		masterActions: &fakeMasterActionStore{},
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -296,6 +302,8 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		MemoryLoader: f.memories,
 		// T4: the lobby's server-side piece ownership check (spec §4.3, B14).
 		SheetOwnership: f.sheets,
+		// T5: every accepted master action is recorded (spec §4.8).
+		MasterActionRepo: f.masterActions,
 	}
 }
 
@@ -1926,30 +1934,6 @@ func TestE2E_APlayerDraggingTheirOwnPieceIsNotEchoedBackToThemselves(t *testing.
 			n, messageTypes(playerMsgs.snapshotMessages()))
 	}
 }
-
-// TestE2E_TheMasterDraggingAPlayersPieceRefreshesThatPlayersSight and
-// TestE2E_TheOwnerIsNotToldTheirOwnPieceVanishedWhenItLeavesItsOldSight lived here —
-// polygonsFromPayload with them, only used by the second. Both drove the MASTER dragging a
-// PLAYER's piece over `piece_moved` while the match's session was live, to prove
-// relayPieceMove's owner-resolved-from-CHARACTER recompute (d0b4191): the player's line of
-// sight refreshes even though they were not the sender, and the recompute runs BEFORE the
-// dispatch so the owner is never told their own piece "vanished" from a polygon they already
-// left.
-//
-// B14 (spec §4.3, "Quem move o quê", T4) makes `piece_moved` lobby-only: handlePieceMoved now
-// refuses BOTH master and player outright the instant `r.session != nil` — the master's
-// mid-match drag becomes `enqueue_master_action`'s `move` (Task 5). The lobby has no
-// `charToPlayer` (spec: "no lobby não existe charToPlayer") and no fog, so neither test's
-// premise — someone other than the piece's owner moving it while a session, and its
-// visibility polygons, are live — has a surviving trigger within this task's scope. Converting
-// either to `inLobby()` would not adapt the test, it would silently turn every assertion into
-// a tautology (no session means no owner resolution and no recompute to begin with), so both
-// are deleted rather than converted.
-//
-// Task 5's `enqueue_master_action` `move` is expected to route through this SAME
-// relayPieceMove — per spec it "Sai piece_moved/piece_removed com projeção de fog para todos,
-// inclusive o mestre". Re-establish equivalent coverage there: the owner-resolved-from-
-// CHARACTER recompute and the stale-polygon ordering fix are real regression risk without it.
 
 // Os campos de cena do match_full_state eram a única parte do payload sem teste — e vinham com
 // um SEGUNDO conjunto de nomes (sceneId/sceneCategory/sceneBriefDescription) para os mesmos

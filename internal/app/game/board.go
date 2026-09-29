@@ -108,10 +108,9 @@ func payloadToPiece(p PieceMovedPayload) mapentity.Piece {
 
 // persistBoard writes the match's board — pieces, walls, and every player's fog memory — as it
 // stands NOW. It is the ONE place that does, and every definitive change to the board calls it:
-// the lobby's moves, start_match, the three verbs that close a turn, and the master's wall
-// interactions and reveals (spec §4.3, "Quando persiste", B3). Master piece actions (the "move"
-// of B9/B14) are not yet a call site: that verb is not implemented on this branch (see
-// AGENTS.md's Known Issues, "buildMasterAction").
+// the lobby's moves, start_match, the three verbs that close a turn, the master's piece actions
+// (applyMasterPieceAction — the "move"/"remove" of B9/B14), and the master's wall interactions
+// and reveals (spec §4.3, "Quando persiste", B3).
 //
 // persistMu wraps the snapshot AND the write, so two saves racing from two read pumps land in
 // the order their snapshots were taken; r.mu is only held for the snapshot, never across the

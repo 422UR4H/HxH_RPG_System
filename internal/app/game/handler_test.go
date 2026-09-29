@@ -310,6 +310,7 @@ type mockRoundRepoHandler struct {
 	mu             sync.Mutex
 	persistedTurns []uuid.UUID
 	overrides      map[uuid.UUID][]matchDomain.OverriddenValue
+	ensuredRounds  []uuid.UUID
 }
 
 func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
@@ -341,6 +342,22 @@ func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID)
 }
 func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
 	return nil
+}
+
+// EnsureSceneAndRound is a no-op that records the round it was asked to ensure — what
+// recordMasterAction calls before writing a master action (spec §4.8).
+func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *scene.Scene, rd *roundentity.Round) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ensuredRounds = append(m.ensuredRounds, rd.GetID())
+	return nil
+}
+
+// ensuredRoundIDs returns a snapshot of every round ID EnsureSceneAndRound was called with.
+func (m *mockRoundRepoHandler) ensuredRoundIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.ensuredRounds...)
 }
 func (m *mockRoundRepoHandler) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
 	return nil

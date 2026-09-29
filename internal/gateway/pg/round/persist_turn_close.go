@@ -38,26 +38,11 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		_ = tx.Rollback(ctx) // no-op after Commit
 	}()
 
-	// Insert scene — idempotent via ON CONFLICT DO NOTHING
-	_, err = tx.Exec(ctx,
-		`INSERT INTO scenes (uuid, match_uuid, category, brief_initial_description, created_at)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (uuid) DO NOTHING`,
-		sc.GetID(), matchUUID, string(sc.GetCategory()), sc.BriefInitialDescription, sc.GetCreatedAt(),
-	)
-	if err != nil {
-		return fmt.Errorf("PersistTurnClose insert scene: %w", err)
-	}
-
-	// Insert round — idempotent via ON CONFLICT DO NOTHING
-	_, err = tx.Exec(ctx,
-		`INSERT INTO rounds (uuid, scene_uuid, mode, created_at)
-		 VALUES ($1, $2, $3, $4)
-		 ON CONFLICT (uuid) DO NOTHING`,
-		rnd.GetID(), sc.GetID(), string(rnd.GetMode()), rnd.GetCreatedAt(),
-	)
-	if err != nil {
-		return fmt.Errorf("PersistTurnClose insert round: %w", err)
+	// Scene and round — idempotent (ON CONFLICT DO NOTHING), and the SAME two inserts
+	// EnsureSceneAndRound runs on its own: a master action may already have written them before
+	// this round's first turn closed (spec §4.8). Inside this transaction, like everything else.
+	if err := ensureSceneAndRound(ctx, tx, matchUUID, sc, rnd); err != nil {
+		return fmt.Errorf("PersistTurnClose %w", err)
 	}
 
 	// Insert turn — turn entity has no createdAt field. AGENTS.md's own known-issues entry

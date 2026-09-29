@@ -124,7 +124,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`round_closed`](#round_closed) | mesa inteira |
 | [`round_mode_changed`](#round_mode_changed) | mesa inteira |
 | [`scene_changed`](#scene_changed) | mesa inteira |
-| [`master_action_enqueued`](#master_action_enqueued) | mesa inteira |
+| [`master_action_enqueued`](#master_action_enqueued) | mesa inteira; **só o mestre** nas ações de peça |
 | [`npc_added`](#npc_added) | mesa inteira |
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
@@ -617,16 +617,46 @@ Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
   "payload": {
     "targetIds": ["22222222-2222-4222-8222-222222222222"],
     "skills": [ { "skillName": "Accuracy" } ],
-    "move": { "category": "Dash", "from": [0, 0, 0], "position": [6, 4, 0] },
-    "attack": { "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Push" } },
-    "actionSpeed": { "skillName": "Legerity" },
-    "interact": { "kind": "reveal" }
+    "actionSpeed": { "skillName": "Legerity" }
   }
 }
 ```
 
-Esta mensagem tem **três destinos possíveis**, decididos nesta ordem:
+Os campos são `targetIds`, `skills`, `actionSpeed`, `move`, `remove`, `interact` (e `attack`,
+não mapeado). **Quais deles vêm decide o caminho** (lista abaixo) — em especial, `move` ou
+`remove` fazem dela uma ação de peça, antes de qualquer `interact`.
 
+As duas formas **de peça** (spec §4.3, "Master action de peça" — B14 e o `move` de B9):
+
+```json
+{ "type": "enqueue_master_action", "payload": { "targetIds": ["<sheetUuid>"], "move": { "position": [3, 4, 0] } } }
+{ "type": "enqueue_master_action", "payload": { "targetIds": ["<sheetUuid>"], "remove": {} } }
+```
+
+Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
+
+0. **`move` ou `remove`** → ação de **peça**, só com partida em andamento (no lobby o mestre
+   usa `piece_moved`/`piece_removed`, ver [`match-maps.md`](match-maps.md)). `targetIds` tem
+   **exatamente um** id: o **personagem** (UUID da ficha). **Aplica na hora, com ou sem turno
+   aberto**; com turno aberto, a ação também é pendurada nele. Três casos:
+   - **Arrastar** — o personagem tem peça: ela vai para `move.position` (`[col, row, z]`, ou
+     `[q, r, z]` em grade hex), mantendo a forma do slot e o `z` que já tinha (ver a nota de
+     `Z` em [`piece_moved`](#piece_moved-servidor)). `move.category`, `speed`, `charge` e
+     `from` são **ignorados**: o arrastar não é movimento de jogo, não rola nem cobra barra.
+   - **Pôr** — o personagem não tem peça: ganha uma nova (`pieceId` novo, forma do slot pela
+     grade, `visible: true`, `z` 0). Se é **NPC do mestre** que ainda não participa, é
+     inscrito na partida antes — o mesmo caminho de [`add_npc`](#add_npc): a mesa recebe
+     [`npc_added`](#npc_added) e um `bars_updated` novo. Se é personagem de **jogador** que
+     não participa → `error` `not_participant`, nada é criado.
+   - **Tirar** (`remove`) — a peça sai do tabuleiro. Só isso: não desinscreve, não mata, não
+     apaga histórico; o personagem continua nas barras. O dono da peça (jogador) recebe um
+     `map_full_state` com a linha de visão refeita — a peça era um dos pontos de onde ele via.
+
+   Sai `piece_moved` (arrastar, pôr) ou `piece_removed` (tirar) com a projeção de fog de
+   [`piece_moved`](#piece_moved-servidor) **para todos, inclusive o mestre** — a tela dele
+   espera essa confirmação; o `senderId` vem zero (autor servidor). Depois, o mestre recebe
+   [`master_action_enqueued`](#master_action_enqueued) — **só ele**: o eco carrega a posição,
+   e para peça oculta isso vazaria para a mesa. O tabuleiro é salvo.
 1. **`interact.kind == "reveal"` com `targetIds`** → revela portas secretas. As paredes
    viram `revealed` na sessão e o `WallSegment` real é transmitido à mesa
    (`wall_revealed`, ver [`maps.md`](maps.md)). **Retorna sem ack nenhum**, exceto pelo
@@ -639,18 +669,33 @@ Esta mensagem tem **três destinos possíveis**, decididos nesta ordem:
    silêncio; um `targetId` que o servidor não conhece de jeito nenhum responde `unknown_wall`
    (última defesa, spec §4.3) — em ambos os casos o resto do lote em `targetIds` continua
    sendo processado.
-3. **Sem `interact`** → enfileira a ação do mestre e responde
+3. **Nenhum dos anteriores** → enfileira a ação do mestre no turno aberto e responde
    [`master_action_enqueued`](#master_action_enqueued) para a mesa.
 
-> **`move` e `attack` ainda não são mapeados** (`buildMasterAction` tem TODOs explícitos
-> aguardando o contrato do front). Mandar essas seções hoje é no-op silencioso. `targetIds`,
-> `skills`, `actionSpeed` e `interact` funcionam.
+> **`attack` ainda não é mapeado** (`buildMasterAction` tem um TODO explícito aguardando o
+> contrato do front). Mandar essa seção hoje é no-op silencioso. `targetIds`, `skills`,
+> `actionSpeed`, `interact`, `remove` e a `position` de `move` funcionam.
+
+**Toda master action aceita é gravada no instante em que é aplicada** — com ou sem turno
+aberto — **e aparece no histórico como cada jogador a viu** (spec §4.8; ver
+[`match-history.md`](match-history.md)). O servidor grava, jogador a jogador da sessão
+(conectado ou não), a mesma decisão de fog que tomou ao vivo: quem recebeu `piece_moved` (ou
+a parede mudando, a remoção, a revelação) vê a ação inteira; quem só recebeu o
+`piece_removed` de um arrasto a vê **sem o destino**; quem não recebeu nada não a vê. As
+ações do caminho 3 não chegam à mesa como ação, então ficam só para o mestre. Uma master
+action **recusada** não é gravada, e [`edit_action`](#edit_action) **não** é master action
+(fica em `overridden_action_values`, como sempre).
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid enqueue_master_action payload"`) ·
-`unknown_wall` (**caminhos 1 e 2** — um `targetId` de parede que o servidor não conhece;
-desde B14, quem carrega o tabuleiro é o próprio servidor, então "não conhece" agora também
-cobre uma partida sem tabuleiro nenhum) · `match_not_started` (**só no caminho 3** — os
-caminhos de parede retornam antes dessa checagem) · `game_error`.
+`match_not_started` (**caminhos 0 e 3** — os caminhos de parede retornam antes dessa
+checagem) · `invalid_action` (**caminho 0**: `targetIds` sem exatamente um id; `move` e
+`remove` juntos; `remove` de personagem sem peça — `"character has no piece"`) ·
+`not_participant` (**caminho 0**, pôr personagem de jogador que não participa) · os erros de
+[`add_npc`](#add_npc) (**caminho 0**, pôr NPC que ainda não participa: `forbidden`,
+`not_found`, `invalid_npc`, `npc_already_in_match`) · `unknown_wall` (**caminhos 1 e 2** —
+um `targetId` de parede que o servidor não conhece; desde B14, quem carrega o tabuleiro é o
+próprio servidor, então "não conhece" agora também cobre uma partida sem tabuleiro nenhum) ·
+`game_error`.
 
 ### `add_npc`
 
@@ -721,6 +766,10 @@ mestre recebe `npc_already_in_match` e nenhum `npc_added` sai.
 > seguro:** a duplicata do banco é tolerada (Decisão 2) e a duplicata da sessão responde
 > `npc_already_in_match` — que, pelo caso acima, significa "o NPC está na partida" nos dois
 > sentidos em que pode aparecer.
+
+**O mesmo caminho serve o "pôr" da master action de peça** ([`enqueue_master_action`](#enqueue_master_action)
+com `move` para um NPC que ainda não participa, spec §4.3 B11): mesma inscrição, mesmo
+`npc_added`, mesmo `bars_updated`, mesmos erros — e só depois a peça é criada.
 
 **Erros:** `forbidden` (`"only the master can perform this action"`) · `invalid_payload`
 (`"invalid add_npc payload"` — `characterSheetUuid` ausente/zero, ou payload que não é um
@@ -1173,9 +1222,11 @@ mundo precisa saber se as barras estão correndo.
 
 ### `master_action_enqueued`
 
-**Direção:** servidor → cliente. **Destino:** **mesa inteira** (broadcast, não master-only).
+**Direção:** servidor → cliente. **Destino:** **mesa inteira** (broadcast) no caminho 3;
+**só o mestre** nas ações de peça (caminho 0) — o eco carrega a posição, e para peça oculta
+isso vazaria para a mesa.
 
-É o **eco literal** do `MasterActionPayload` recebido:
+No caminho 3 é o **eco literal** do `MasterActionPayload` recebido:
 
 ```json
 {
@@ -1188,7 +1239,10 @@ mundo precisa saber se as barras estão correndo.
 }
 ```
 
-**Disparado por:** `enqueue_master_action` no caminho 3 (sem `interact`).
+Nas ações de peça é o que foi **aplicado**: `targetIds` e `move: { "position": [...] }`
+(sem `category`/`speed`/`charge`, que são ignorados), ou `remove: {}`.
+
+**Disparado por:** `enqueue_master_action` nos caminhos 0 (peça) e 3 (sem `interact`).
 
 ### `npc_added`
 
@@ -1395,6 +1449,10 @@ um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas
 - Se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima sai do
   mesmo jeito.
 
+**Também sai pela master action de peça** ([`enqueue_master_action`](#enqueue_master_action)
+com `move`/`remove`, caminho 0): o mesmo `relayPieceMove` (e, para tirar, o mesmo gate na
+última posição), autor servidor, o mestre incluído no despacho.
+
 **Disparado por** três momentos, e é o **mesmo** `applyMove` nos três:
 
 | Momento | Quando |
@@ -1556,10 +1614,11 @@ em seguida), nunca meses depois olhando o histórico. Ver
 | `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
 | `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
-| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`. | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`. |
+| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, ou `remove` de personagem sem peça (`"character has no piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
+| `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
-| `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`. |
-| `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`. |
+| `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
+| `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
 | `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |
 | `unknown_wall` | `"wall <id> is not on this match's board"` — um `targetId` de parede que o servidor não conhece (B14, spec §4.3, "Última defesa"). O resto do lote em `targetIds` ainda é processado. | `enqueue_master_action` (`interact.kind == "reveal"` e qualquer outro `interact`). |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
@@ -1662,7 +1721,7 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **A corrente de testes de `skills` não é executada** | `skills[].difficulty` é aceito e persistido, mas nenhuma margem atravessa de um teste para o próximo. A edição de perícias muda uma lista que ainda não decide nada. |
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
-| **`move`/`attack` de `enqueue_master_action` não são mapeados** | No-op silencioso até o contrato do front fechar. |
+| **`attack` de `enqueue_master_action` não é mapeado** | No-op silencioso até o contrato do front fechar. (`move` é o arrastar do mestre desde B14 — só a `position` conta.) |
 | **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **Remoção de NPC ao vivo não existe** | Tirar um NPC de uma sessão VIVA esbarra em ação dele na fila, turno aberto com ele como ator/alvo, reação pendente — regras que ninguém decidiu ainda. O REST `DELETE /matches/{uuid}/npcs/{sheet_uuid}` (ver [`match-npcs.md`](match-npcs.md)) continua funcionando, mas só vale para a próxima vez que a sala nascer: uma partida em andamento não some com o NPC removido, e não existe verbo de WS equivalente a `add_npc` no sentido contrário. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |

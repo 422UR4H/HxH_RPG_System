@@ -291,7 +291,13 @@ func buildMasterAction(masterUUID uuid.UUID, p MasterActionPayload) *action.Mast
 	}
 	if p.Move != nil {
 		// TODO: map Move fully once frontend contract is finalized
-		_ = p.Move
+		//
+		// Only Position is mapped, and on purpose: a master action's move is the master's
+		// DRAG (spec §4.3, "Master action de peça"), not a game movement. Category, speed and
+		// charge are what make a movement cost bars and roll dice — the drag does neither, so
+		// they are ignored even when a client sends them. From is not read either: the server
+		// knows where the piece is.
+		ma.Move = &action.Move{Position: p.Move.Position}
 	}
 	if p.Attack != nil {
 		// TODO: map Attack once frontend contract is finalized

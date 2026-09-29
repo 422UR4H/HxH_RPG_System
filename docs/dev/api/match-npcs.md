@@ -106,6 +106,13 @@ até o mestre reenviar `add_npc` pelo WS: o verbo tolera a "duplicata" que o ban
 (o NPC já está em `match_participants`, `ErrNPCAlreadyInMatch`) e sincroniza a sessão mesmo
 assim — é assim que o REST-no-meio-da-partida se resolve.
 
+**Pôr a peça de um NPC no tabuleiro também o inscreve.** Com a partida em andamento, o mestre
+põe uma peça pelo WS (`enqueue_master_action` com `move`, ver
+[`match-combat-ws.md`](match-combat-ws.md) §4); se o personagem é NPC dele e ainda não está na
+partida, o game server roda o MESMO caminho do `add_npc` — `AddMatchNPCUC`, injeção na sessão,
+`npc_added` para a mesa e `bars_updated` — e só então cria a peça. Um NPC que já participa só
+ganha a peça. Tirar a peça (`remove`) **não** o desinscreve.
+
 **Remoção continua só-na-próxima-sala.** O `DELETE` abaixo não tem par ao vivo: tirar um NPC
 de uma sessão em andamento esbarra em regras de combate ainda não decididas (ação dele na
 fila, turno aberto com ele como ator/alvo, reação pendente) e fica registrado como lacuna em

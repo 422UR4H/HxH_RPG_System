@@ -806,10 +806,19 @@ type NPCAddedPayload struct {
 	CharacterID uuid.UUID `json:"characterId"`
 }
 
+// RemovePiecePayload is the master taking a character's piece off the board mid-match (spec
+// §4.3, "Master action de peça"). Empty on purpose: its presence is the whole verb — the
+// character is targetIds[0], and the server knows where the piece is.
+type RemovePiecePayload struct{}
+
+// MasterActionPayload is enqueue_master_action. With Move or Remove it is a PIECE master
+// action (the master's drag, place or take-off — spec §4.3); with Interact, a wall one;
+// otherwise it hangs on the open turn.
 type MasterActionPayload struct {
 	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
+	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
 	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
@@ -819,6 +828,7 @@ type MasterActionEnqueuedPayload struct {
 	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
+	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
 	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`

@@ -683,3 +683,43 @@ func TestBuildAction_DerivesTheHitSkill(t *testing.T) {
 		t.Errorf("Hit.SkillName = %q, want %q", a.Attack.Hit.SkillName, enum.Accuracy)
 	}
 }
+
+// The master's drag (spec §4.3, "Master action de peça"): only the destination crosses the
+// boundary. Category, speed and charge are the game's movement, which the drag is not — it
+// rolls nothing and costs no bar — so they are ignored even when a client sends them.
+func TestBuildMasterAction_MapsMovePositionOnly(t *testing.T) {
+	c := uuid.New()
+
+	t.Run("a move carries its position and nothing else", func(t *testing.T) {
+		ma := buildMasterAction(uuid.New(), MasterActionPayload{
+			TargetIDs: []uuid.UUID{c},
+			Move: &MovePayload{
+				Category: string(enum.Dash),
+				Position: [3]int{3, 4, 0},
+				Speed:    &RollCheckPayload{SkillName: enum.Legerity.String()},
+			},
+		})
+		if ma.Move == nil {
+			t.Fatal("ma.Move = nil: the drag's destination was dropped at the boundary")
+		}
+		if ma.Move.Position != [3]int{3, 4, 0} {
+			t.Fatalf("ma.Move.Position = %v, want [3 4 0]", ma.Move.Position)
+		}
+		if ma.Move.Category != "" {
+			t.Fatalf("ma.Move.Category = %q, want empty: a drag is not a game movement", ma.Move.Category)
+		}
+		if ma.Move.Speed != nil {
+			t.Fatalf("ma.Move.Speed = %+v, want nil: a drag rolls nothing", ma.Move.Speed)
+		}
+		if len(ma.TargetID) != 1 || ma.TargetID[0] != c {
+			t.Fatalf("ma.TargetID = %v, want [%s]", ma.TargetID, c)
+		}
+	})
+
+	t.Run("no move, no Move", func(t *testing.T) {
+		ma := buildMasterAction(uuid.New(), MasterActionPayload{TargetIDs: []uuid.UUID{c}})
+		if ma.Move != nil {
+			t.Fatalf("ma.Move = %+v, want nil", ma.Move)
+		}
+	})
+}

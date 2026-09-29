@@ -16,6 +16,7 @@ import (
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	fogPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
+	masteractionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	matchboardPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
@@ -81,6 +82,9 @@ func main() {
 	// RoomDeps.MemoryLoader — its FindByMatchMap is what seeds a rehydrated/started session.
 	playerMemoryRepository := fogPg.NewPlayerMemoryRepository(pgPool)
 	saveBoardUC := matchboarduc.NewSaveMatchBoardUC(matchBoardRepository, playerMemoryRepository)
+	// Every accepted enqueue_master_action is recorded the instant it is applied, with what
+	// each player saw of it live (spec §4.8) — Room.recordMasterAction is the one writer.
+	masterActionRepository := masteractionPg.NewRepository(pgPool)
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -108,7 +112,8 @@ func main() {
 			// Same sheetRepository already wired into addMatchNPCUC above — it satisfies
 			// appmatch.ISheetOwnershipReader, which is all handlePieceMoved needs to check a
 			// lobby player's ownership of an existing piece (spec §4.3, "Quem move o quê", B14).
-			SheetOwnership: sheetRepository,
+			SheetOwnership:   sheetRepository,
+			MasterActionRepo: masterActionRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

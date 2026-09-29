@@ -12,6 +12,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -32,6 +34,9 @@ func (m *mockHistoryRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time
 	return nil
 }
 func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+func (m *mockHistoryRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
 func (m *mockHistoryRoundRepo) FindActiveSession(

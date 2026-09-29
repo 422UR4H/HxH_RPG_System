@@ -1,9 +1,18 @@
 package game
 
 import (
+	"context"
+
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 )
+
+// IMasterActionRepo writes one master action row (spec §4.8). recordMasterAction is the one
+// caller; the one real implementation is pgmasteraction.Repository.
+type IMasterActionRepo interface {
+	Insert(ctx context.Context, r masteraction.Record) error
+}
 
 // RoomDeps is everything a Room needs from the outside, in one place.
 //
@@ -50,4 +59,9 @@ type RoomDeps struct {
 	// to sheet reads. The one real implementation is the same sheetRepository cmd/game/main.go
 	// already wires into AddMatchNPCUC.
 	SheetOwnership appmatch.ISheetOwnershipReader
+	// MasterActionRepo records every accepted enqueue_master_action the instant it is applied,
+	// with what each player saw of it live (spec §4.8). recordMasterAction is the one caller.
+	// nil means the room records nothing — the usual "no capability" rule, and what every test
+	// built before T5 still gets by leaving it unset.
+	MasterActionRepo IMasterActionRepo
 }

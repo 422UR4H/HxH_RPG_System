@@ -776,8 +776,9 @@ Ela existe porque **o mestre também age**, em dois níveis: dentro de uma actio
 ainda não está escrito, e é ele que impede `MasterAction` de ser um caso particular de
 `Action`.
 
-> `buildMasterAction` (`action_mapper.go`) mapeia só parte dela — `Move` e `Attack` caem em
-> `TODO`. É o **mapper** que está incompleto, não a entidade.
+> `buildMasterAction` (`action_mapper.go`) mapeia só parte dela — `Attack` cai em `TODO`, e de
+> `Move` só a posição (é o arrastar do mestre, não movimento de jogo). É o **mapper** que está
+> incompleto, não a entidade.
 
 #### A corrente de testes
 

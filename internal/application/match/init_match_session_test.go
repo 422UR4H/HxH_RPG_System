@@ -12,6 +12,8 @@ import (
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
@@ -26,6 +28,9 @@ func (m *noopRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseDat
 	return nil
 }
 func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+func (m *noopRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
 func (m *noopRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
@@ -50,6 +55,9 @@ func (m *mockRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseDat
 	return nil
 }
 func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+	return nil
+}
+func (m *mockRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
 func (m *mockRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {

@@ -347,27 +347,3 @@ func TestE2E_AddNPCInTheLobbyRostersItWithoutBars(t *testing.T) {
 		}
 	}
 }
-
-// ─── débito de LOS (Decisão 7) ──────────────────────────────────────────────
-//
-// TestE2E_TheMasterDraggingAnNPCSkipsTheLineOfSightRecompute lived here — the master, mid-
-// match, dragging an NPC's (then a player's) piece over `piece_moved` to prove the
-// owner-resolved-from-CHARACTER recompute (relayPieceMove, Decisão 7): no recompute/
-// PlayerMemory/extra map_full_state for the master (NPCs are "owned" by the master in
-// charToPlayer, but his view has no fog), and the player's owner-refresh control case still
-// firing on the same table.
-//
-// B14 (spec §4.3, "Quem move o quê", T4) makes `piece_moved`/`piece_removed` lobby-only:
-// handlePieceMoved/handlePieceRemoved now refuse BOTH master and player outright the moment
-// `r.session != nil` — the master's move/place mid-match becomes `enqueue_master_action`'s
-// `move` (Task 5). The lobby has no `charToPlayer` (spec: "no lobby não existe charToPlayer"),
-// so this test's whole premise — someone other than the owner moving a piece while a session
-// is live — has no surviving trigger within this task's scope. It is deleted rather than
-// converted to `inLobby()`, which would silently turn every assertion here into a no-op (no
-// session means no owner resolution, no recompute, no PlayerMemory to begin with).
-//
-// Task 5 (`enqueue_master_action`'s `move`, which per spec "Sai piece_moved/piece_removed com
-// projeção de fog para todos, inclusive o mestre") is expected to route through the SAME
-// relayPieceMove this test exercised. Re-establish equivalent coverage there — the NPC-as-
-// master-has-no-owner shortcut and the player-piece owner-refresh control case are real
-// regression risk otherwise.
