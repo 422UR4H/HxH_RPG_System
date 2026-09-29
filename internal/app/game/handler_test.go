@@ -159,6 +159,10 @@ func newFakeMemoryStore() *fakeMemoryStore {
 type fakeSheetOwnership struct {
 	mu     sync.Mutex
 	byUUID map[uuid.UUID]csEntity.RelationshipUUIDs
+	// blockFor/entered/release back armBlock — uuid.Nil means no block is armed. See armBlock.
+	blockFor uuid.UUID
+	entered  chan struct{}
+	release  chan struct{}
 }
 
 func newFakeSheetOwnership() *fakeSheetOwnership {
@@ -174,9 +178,34 @@ func (s *fakeSheetOwnership) setPlayer(sheetUUID, playerUUID uuid.UUID) {
 	s.byUUID[sheetUUID] = csEntity.RelationshipUUIDs{PlayerUUID: &pid}
 }
 
+// armBlock makes the NEXT GetCharacterSheetRelationshipUUIDs call for sheetUUID block until
+// the returned release func is called — simulating that ownership read still being "in
+// flight", unlocked, while something else concurrently mutates the board (regression test for
+// review round 1, Important 1: the TOCTOU between handlePieceMoved's unlocked ownership check
+// and its write). The returned channel closes once the blocked call has actually started
+// waiting, so a caller can synchronize on the block being live instead of racing a sleep
+// against it.
+func (s *fakeSheetOwnership) armBlock(sheetUUID uuid.UUID) (entered <-chan struct{}, release func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.blockFor = sheetUUID
+	s.entered = make(chan struct{})
+	s.release = make(chan struct{})
+	enteredCh, releaseCh := s.entered, s.release
+	return enteredCh, func() { close(releaseCh) }
+}
+
 func (s *fakeSheetOwnership) GetCharacterSheetRelationshipUUIDs(
 	_ context.Context, id uuid.UUID,
 ) (csEntity.RelationshipUUIDs, error) {
+	s.mu.Lock()
+	blockFor, entered, release := s.blockFor, s.entered, s.release
+	s.mu.Unlock()
+	if blockFor != uuid.Nil && id == blockFor {
+		close(entered)
+		<-release
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.byUUID[id], nil

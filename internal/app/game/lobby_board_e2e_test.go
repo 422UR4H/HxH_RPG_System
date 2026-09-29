@@ -305,3 +305,64 @@ func TestPieceMovedAndRemoved_ForbiddenDuringAMatch(t *testing.T) {
 		})
 	}
 }
+
+// O jogador manda um piece_moved válido para a peça própria — a checagem de posse passa —,
+// mas ENQUANTO essa leitura (I/O, sem r.mu) ainda está em voo, o MESTRE remove essa mesma
+// peça. A aprovação ficou stale: sem o recheck atômico de applyAndRelayPieceMoveIfOwned, o
+// movimento do jogador ressuscitaria a peça que o mestre acabou de tirar, retransmitindo e
+// persistindo como se a remoção nunca tivesse acontecido (review round 1, Important 1).
+func TestLobbyPieceMoved_ARemovalDuringTheOwnershipCheckIsNotResurrected(t *testing.T) {
+	f := newCombatFixture(t, inLobby)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+
+	if !playerMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the board — the fixture never started")
+	}
+	baseline := f.boards.saveCount()
+
+	entered, release := f.sheets.armBlock(f.attackerID)
+
+	// Starts the player's move — its ownership check for the attacker's sheet blocks.
+	sendPieceMoved(t, player, attackerPieceID, f.attackerID.String(), 6, 4)
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the player's ownership check never started blocking — " +
+			"this test would prove nothing about the race")
+	}
+
+	// While that check is stuck in flight, the MASTER removes the exact same piece.
+	sendWS(t, master, string(game.MsgTypePieceRemoved),
+		game.PieceRemovedPayload{PieceID: attackerPieceID})
+	if !playerMsgs.await(game.MsgTypePieceRemoved, 2*time.Second) {
+		t.Fatal("the master's removal was never relayed to the player")
+	}
+	afterRemoval := f.boards.saveCount()
+	if afterRemoval != baseline+1 {
+		t.Fatalf("saveCount after the master's removal = %d, want %d", afterRemoval, baseline+1)
+	}
+
+	// Now the player's stale-approved move is allowed to proceed.
+	release()
+
+	p := awaitError(t, playerMsgs)
+	if p.Code != "forbidden" {
+		t.Fatalf("error code = %q, want %q — a move approved before the removal must not "+
+			"resurrect the piece", p.Code, "forbidden")
+	}
+	if n := masterMsgs.count(game.MsgTypePieceMoved); n != 0 {
+		t.Fatalf("the stale-approved move was relayed to the master anyway (%d time(s)) — "+
+			"the removed piece came back", n)
+	}
+	if got := f.boards.saveCount(); got != afterRemoval {
+		t.Fatalf("saveCount = %d, want %d — the refused, stale-approved move must not persist "+
+			"a resurrection on top of the removal", got, afterRemoval)
+	}
+}

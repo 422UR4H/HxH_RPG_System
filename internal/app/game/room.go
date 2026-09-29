@@ -2242,6 +2242,38 @@ func (r *Room) applyAndRelayPieceMove(payload PieceMovedPayload, origin uuid.UUI
 	r.relayPieceMove(payload, old, hadOld, origin)
 }
 
+// applyAndRelayPieceMoveIfOwned is applyAndRelayPieceMove, guarded: it only writes when the
+// piece STILL exists with the exact CharacterID requireCharacterID — checked in the SAME
+// critical section as the write, not before it.
+//
+// This is the fix for a TOCTOU handlePieceMoved's player path would otherwise hit:
+// playerOwnsExistingPiece's ownership read is I/O and runs UNLOCKED, so a concurrent
+// handlePieceRemoved (master-only) can delete the exact piece being approved while that read
+// is in flight. Re-checking existence and CharacterID here, atomically with the write, is what
+// stops a stale approval from resurrecting a piece the master just removed — relayed to the
+// table and persisted, as if the removal had never happened (review round 1, Important 1).
+//
+// Returns false — writing, relaying and persisting NOTHING — when the piece is gone or its
+// CharacterID no longer matches; the caller must refuse the same way it would have refused
+// had playerOwnsExistingPiece failed outright.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) applyAndRelayPieceMoveIfOwned(
+	payload PieceMovedPayload, origin uuid.UUID, requireCharacterID string,
+) bool {
+	r.mu.Lock()
+	old, hadOld := r.pieces[payload.PieceID]
+	if !hadOld || old.CharacterID != requireCharacterID {
+		r.mu.Unlock()
+		return false
+	}
+	r.pieces[payload.PieceID] = payload
+	r.mu.Unlock()
+
+	r.relayPieceMove(payload, old, hadOld, origin)
+	return true
+}
+
 // relayPieceMove is everything applyAndRelayPieceMove does once the board is already written:
 // the fog-gated per-player dispatch and the owner's refreshed map_full_state. It is split out
 // so a caller that has to CHOOSE the piece before writing it — applyOpenedMove does — can do
@@ -2365,13 +2397,35 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 	}
 }
 
+// refuseIfInMatch is handlePieceMoved's and handlePieceRemoved's shared mid-match refusal
+// (spec §4.3, "Quem move o quê", B14): once r.session != nil, BOTH verbs are refused
+// unconditionally for master AND player alike — the master moves/places/removes pieces
+// through enqueue_master_action's move/remove (Task 5), and a player only ever moves by
+// acting. It does not matter that the master's own placement mechanism (Task 5) is not built
+// yet: this verb specifically is never the master's, in a match.
+//
+// Returns true when it sent a refusal — the caller must return immediately, without touching
+// r.pieces or calling persistBoard.
+func (r *Room) refuseIfInMatch(client *Client) bool {
+	r.mu.RLock()
+	inMatch := r.session != nil
+	isMaster := r.masterUUID == client.userUUID
+	r.mu.RUnlock()
+
+	if !inMatch {
+		return false
+	}
+	if isMaster {
+		client.SendMessage(NewErrorMessage("forbidden", ErrMasterMovesByMasterAction.Error()))
+	} else {
+		client.SendMessage(NewErrorMessage("forbidden", ErrPlayersMoveByAction.Error()))
+	}
+	return true
+}
+
 // handlePieceMoved relays a move a client made in its own browser — but only in the LOBBY,
 // and only a piece the sender is actually allowed to touch (spec §4.3, "Quem move o quê",
-// B14). piece_moved/piece_removed are a lobby-only pair: once a match has a session, the
-// master moves/places/removes pieces through enqueue_master_action's move/remove (Task 5),
-// and a player only ever moves by acting — so BOTH get refused here, unconditionally, the
-// moment a session exists. It does not matter that the master's own placement mechanism
-// (Task 5) is not built yet: this verb specifically is never the master's, in a match.
+// B14). See refuseIfInMatch for the mid-match refusal.
 //
 // In the lobby the master can drag anything — the lobby has no notion of ownership beyond
 // "the master runs the table". A player can only move a piece that ALREADY exists in
@@ -2379,29 +2433,37 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 // no charToPlayer to ask instead), and whose payload does not try to relabel that piece under
 // a different CharacterID: moving is not how a player reassigns whose piece something is.
 //
-// The ownership read is I/O and runs outside r.mu.
+// The ownership read is I/O and runs outside r.mu — which opens a TOCTOU a concurrent
+// handlePieceRemoved (master-only) can hit: the piece this check just approved can be gone by
+// the time the write would happen. applyAndRelayPieceMoveIfOwned is what closes that window —
+// see its own comment (review round 1, Important 1).
 func (r *Room) handlePieceMoved(client *Client, payload PieceMovedPayload) {
+	if r.refuseIfInMatch(client) {
+		return
+	}
+
 	r.mu.RLock()
-	inMatch := r.session != nil
 	isMaster := r.masterUUID == client.userUUID
 	existing, hadExisting := r.pieces[payload.PieceID]
 	r.mu.RUnlock()
 
-	if inMatch {
-		if isMaster {
-			client.SendMessage(NewErrorMessage("forbidden", ErrMasterMovesByMasterAction.Error()))
-		} else {
-			client.SendMessage(NewErrorMessage("forbidden", ErrPlayersMoveByAction.Error()))
+	if isMaster {
+		r.applyAndRelayPieceMove(payload, client.userUUID)
+	} else {
+		if !r.playerOwnsExistingPiece(client.userUUID, payload, existing, hadExisting) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrPieceNotOwnedByPlayer.Error()))
+			return
 		}
-		return
+		if !r.applyAndRelayPieceMoveIfOwned(payload, client.userUUID, existing.CharacterID) {
+			// The piece playerOwnsExistingPiece just approved is gone now, or its
+			// CharacterID changed under us (e.g. the master's handlePieceRemoved ran while
+			// the ownership I/O above was in flight, unlocked) — refuse instead of
+			// resurrecting/relaying/persisting a piece that no longer exists as approved.
+			client.SendMessage(NewErrorMessage("forbidden", ErrPieceNotOwnedByPlayer.Error()))
+			return
+		}
 	}
 
-	if !isMaster && !r.playerOwnsExistingPiece(client.userUUID, payload, existing, hadExisting) {
-		client.SendMessage(NewErrorMessage("forbidden", ErrPieceNotOwnedByPlayer.Error()))
-		return
-	}
-
-	r.applyAndRelayPieceMove(payload, client.userUUID)
 	// "lobby": persistBoard itself only writes once a map is attached (r.mapUUID != uuid.Nil);
 	// restricting this call to the LOBBY phase specifically is T4's job (spec §4.3, "Quando
 	// persiste" lists "movimento e remoção no lobby" as its own line, distinct from the
@@ -2606,22 +2668,17 @@ func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
 // master-only, the same rule handlePieceMoved's own doc comment explains (spec §4.3, "Quem
 // move o quê", B14): a session forbids it outright for master AND player alike (the master
 // removes through enqueue_master_action's remove, Task 5), and even in the lobby a player
-// never removes any piece — only the master does.
+// never removes any piece — only the master does. See refuseIfInMatch for the mid-match half.
 // A hidden piece (visible=false) is treated as master-only.
 func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
+	if r.refuseIfInMatch(client) {
+		return
+	}
+
 	r.mu.RLock()
-	inMatch := r.session != nil
 	isMaster := r.masterUUID == client.userUUID
 	r.mu.RUnlock()
 
-	if inMatch {
-		if isMaster {
-			client.SendMessage(NewErrorMessage("forbidden", ErrMasterMovesByMasterAction.Error()))
-		} else {
-			client.SendMessage(NewErrorMessage("forbidden", ErrPlayersMoveByAction.Error()))
-		}
-		return
-	}
 	if !isMaster {
 		client.SendMessage(NewErrorMessage("forbidden", ErrPlayersCannotRemovePieces.Error()))
 		return
