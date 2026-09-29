@@ -433,6 +433,25 @@ mappings:
       still loads and returns the sheet instead of failing. See match-combat-ws.md §4
       (add_npc) and match-npcs.md.
 
+  - code_path: internal/app/wire/actionwire/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+    notes: >-
+      The ONE action/reaction wire format (Action and its neighbours — RollCheck, Move,
+      Attack, etc.), shared by the REST Action History and every WebSocket surface that
+      sends an action (design spec §4.1, plano T6/T7/T8/T10/T15). From(a, lvl) cuts NUMBERS
+      only, by Level (Full/Opened/Declaration) — the visibility deny-list stays entirely in
+      service.ProjectAction, which always runs upstream of From. get_match_history.go uses
+      From(_, Full), which is why the REST history's JSON is unchanged (golden test,
+      get_match_history_golden_test.go). ActionSkill is named with the Action- prefix, not
+      the bare Skill the spec's type list uses, because huma's OpenAPI schema registry keys
+      components by bare Go type name across every registered package and
+      internal/app/api/sheet already has an unrelated Skill DTO — see
+      api/routes_registration_test.go's own doc for that collision class.
+
   - code_path: internal/app/api/match/get_match_history.go
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -440,9 +459,11 @@ mappings:
     notes: >-
       GET /matches/{uuid}/history — Action History, nested Scene -> Round -> Turn ->
       Action, projected per viewer via the SAME service.ProjectAction/ProjectResolution
-      the WebSocket path runs (Fase 5, Task 12). The response is already filtered; no
-      client-side filtering is expected on top of it, and no DTO here re-applies a
-      deny-list. Two resolution fields are MASTER-ONLY, stripped upstream rather than
+      the WebSocket path runs (Fase 5, Task 12), then cut to actionwire.Full via
+      actionwire.From — see internal/app/wire/actionwire above for the shared shape and
+      the three cut levels. The response is already filtered; no client-side filtering is
+      expected on top of it, and no DTO here re-applies a deny-list. Two resolution fields
+      are MASTER-ONLY, stripped upstream rather than
       here: pendingReactions and errors (engine faults). payouts is withheld on one
       condition only, that the reaction's label was demoted. systemBias IS exposed;
       RollCheck.Context is not.

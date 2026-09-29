@@ -6,11 +6,10 @@ import (
 	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -56,120 +55,19 @@ type HistoryRoundResponse struct {
 
 // HistoryTurnResponse is one closed turn: the action that drove it, whatever reactions
 // answered it, and the settled collision that resulted — each already run through this
-// viewer's projection before it ever reached this struct.
+// viewer's projection (service.ProjectAction/ProjectResolution) before it ever reached this
+// struct, and then through actionwire.From(_, actionwire.Full): the REST history is the ONE
+// surface that always asks for the Full cut level, so it keeps every number ProjectAction let
+// through. See internal/app/wire/actionwire for the shared shape (Action and its field docs
+// — this is where the doc comments that used to live on ActionResponse and its neighbours
+// moved to) and for Opened/Declaration, the two narrower cuts the WebSocket surfaces use.
 type HistoryTurnResponse struct {
 	UUID       uuid.UUID               `json:"uuid"`
 	CreatedAt  string                  `json:"createdAt"`
 	FinishedAt string                  `json:"finishedAt"`
-	Action     ActionResponse          `json:"action"`
-	Reactions  []ActionResponse        `json:"reactions"`
+	Action     actionwire.Action       `json:"action"`
+	Reactions  []actionwire.Action     `json:"reactions"`
 	Resolution *TurnResolutionResponse `json:"resolution,omitempty"`
-}
-
-// ActionResponse is one action or reaction as THIS viewer is entitled to see it. Feint and
-// Trigger are nil, ReactionKind is demoted, and a stripped Evasion skill entry is simply
-// absent — all of that already happened upstream, in service.ProjectAction.
-type ActionResponse struct {
-	UUID         uuid.UUID             `json:"uuid"`
-	ActorID      uuid.UUID             `json:"actorId"`
-	TargetID     []uuid.UUID           `json:"targetId,omitempty"`
-	ReactToID    *uuid.UUID            `json:"reactToId,omitempty"`
-	ReactionKind string                `json:"reactionKind,omitempty"`
-	Skills       []ActionSkillResponse `json:"skills,omitempty"`
-	Speed        ActionSpeedResponse   `json:"speed"`
-	Feint        *RollCheckResponse    `json:"feint,omitempty"`
-	Trigger      *TriggerResponse      `json:"trigger,omitempty"`
-	Move         *MoveResponse         `json:"move,omitempty"`
-	Attack       *AttackResponse       `json:"attack,omitempty"`
-	Defense      *DefenseResponse      `json:"defense,omitempty"`
-	Dodge        *DodgeResponse        `json:"dodge,omitempty"`
-	Repel        *RepelResponse        `json:"repel,omitempty"`
-	Interact     *InteractResponse     `json:"interact,omitempty"`
-	// SystemBias is the engine-imposed advantage/disadvantage this action was charged under:
-	// 0 for a plain action, -1 for a reaction that displaced a queued one. It is a third,
-	// engine-owned origin — neither the master's RollCondition nor the character's
-	// ModifierLedger (see action.Action.SystemBias) — and it is here because it is the REASON
-	// a roll on this surface came out as it did.
-	//
-	// Public for the same reason RollCheckResponse.attempts is: the bias is public by
-	// omission. Both dice sets and the result already travel to every viewer, so WHICH set
-	// the engine read is already derivable — withholding the field would only force the
-	// client into the algebra this repo avoids on purpose (see CharacterResult.ReactionTotal).
-	//
-	// RollCheck.Context (the master's RollCondition) is NOT the same call and stays off every
-	// surface: the master's intervention already has one of its own, in
-	// overridden_action_values.
-	//
-	// omitempty keeps it off the overwhelming majority of actions, which were charged nothing.
-	SystemBias int `json:"systemBias,omitempty"`
-}
-
-type ActionSkillResponse struct {
-	SkillName  string            `json:"skillName"`
-	Difficulty *int              `json:"difficulty,omitempty"`
-	RollCheck  RollCheckResponse `json:"rollCheck"`
-}
-
-// RollCheckResponse is one test's dice and result. The numbers travel to every viewer — public
-// by omission is the rule, and a third party deducing a hidden Evasion from the numbers is
-// impossible without them (see projection.go's own doc). Only the closed reactions' LABEL and
-// the Evasion skill entry itself are on the deny list, and both are handled upstream.
-type RollCheckResponse struct {
-	SkillName  string               `json:"skillName"`
-	SkillValue int                  `json:"skillValue"`
-	Attempts   RollAttemptsResponse `json:"attempts"`
-	Result     int                  `json:"result"`
-}
-
-type RollAttemptsResponse struct {
-	Primary   []int `json:"primary,omitempty"`
-	Secondary []int `json:"secondary,omitempty"`
-}
-
-// TriggerResponse is presence-only: the domain Trigger carries no fields yet (see
-// action.Trigger's own TODO), so its wire shape is deliberately an empty object — what matters
-// here is whether this viewer is entitled to know a trigger exists at all.
-type TriggerResponse struct{}
-
-type ActionSpeedResponse struct {
-	Bar       int               `json:"bar"`
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type MoveResponse struct {
-	Category   string             `json:"category"`
-	From       [3]int             `json:"from,omitempty"`
-	Position   [3]int             `json:"position"`
-	Speed      *RollCheckResponse `json:"speed,omitempty"`
-	Charge     *RollCheckResponse `json:"charge,omitempty"`
-	FinalSpeed int                `json:"finalSpeed"`
-}
-
-type AttackResponse struct {
-	Weapon           *string            `json:"weapon,omitempty"`
-	Hit              RollCheckResponse  `json:"hit"`
-	Damage           RollCheckResponse  `json:"damage"`
-	Charge           *RollCheckResponse `json:"charge,omitempty"`
-	Spread           string             `json:"spread,omitempty"`
-	RelativeVelocity float64            `json:"relativeVelocity"`
-}
-
-type DefenseResponse struct {
-	Weapon    *string           `json:"weapon,omitempty"`
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type DodgeResponse struct {
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type RepelResponse struct {
-	Weapon    *string           `json:"weapon,omitempty"`
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type InteractResponse struct {
-	Kind string `json:"kind"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -348,105 +246,18 @@ func toHistoryRoundResponse(r matchUC.HistoryRound) HistoryRoundResponse {
 }
 
 func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
-	reactions := make([]ActionResponse, 0, len(t.Reactions))
+	reactions := make([]actionwire.Action, 0, len(t.Reactions))
 	for _, r := range t.Reactions {
-		reactions = append(reactions, toActionResponse(r))
+		reactions = append(reactions, actionwire.From(r, actionwire.Full))
 	}
 	return HistoryTurnResponse{
 		UUID:       t.UUID,
 		CreatedAt:  t.CreatedAt.Format(time.RFC3339),
 		FinishedAt: t.FinishedAt.Format(time.RFC3339),
-		Action:     toActionResponse(t.Action),
+		Action:     actionwire.From(t.Action, actionwire.Full),
 		Reactions:  reactions,
 		Resolution: toTurnResolutionResponse(t.Resolution),
 	}
-}
-
-func toActionResponse(a action.Action) ActionResponse {
-	out := ActionResponse{
-		UUID:         a.GetID(),
-		ActorID:      a.GetActorID(),
-		TargetID:     a.TargetID,
-		ReactionKind: string(a.ReactionKind),
-		Speed: ActionSpeedResponse{
-			Bar:       a.Speed.Bar,
-			RollCheck: toRollCheckResponse(a.Speed.RollCheck),
-		},
-	}
-	if a.ReactToID != uuid.Nil {
-		id := a.ReactToID
-		out.ReactToID = &id
-	}
-	for _, s := range a.Skills {
-		out.Skills = append(out.Skills, ActionSkillResponse{
-			SkillName: s.SkillName, Difficulty: s.Difficulty,
-			RollCheck: toRollCheckResponse(s.RollCheck),
-		})
-	}
-	if a.Feint != nil {
-		rc := toRollCheckResponse(*a.Feint)
-		out.Feint = &rc
-	}
-	if a.Trigger != nil {
-		out.Trigger = &TriggerResponse{}
-	}
-	if a.Move != nil {
-		out.Move = &MoveResponse{
-			Category: string(a.Move.Category), From: a.Move.From, Position: a.Move.Position,
-			Speed: rollCheckPtr(a.Move.Speed), Charge: rollCheckPtr(a.Move.Charge),
-			FinalSpeed: a.Move.FinalSpeed,
-		}
-	}
-	if a.Attack != nil {
-		out.Attack = &AttackResponse{
-			Weapon: weaponPtr(a.Attack.Weapon),
-			Hit:    toRollCheckResponse(a.Attack.Hit), Damage: toRollCheckResponse(a.Attack.Damage),
-			Charge: rollCheckPtr(a.Attack.Charge), Spread: string(a.Attack.Spread),
-			RelativeVelocity: a.Attack.RelativeVelocity,
-		}
-	}
-	if a.Defense != nil {
-		out.Defense = &DefenseResponse{
-			Weapon: weaponPtr(a.Defense.Weapon), RollCheck: toRollCheckResponse(a.Defense.RollCheck),
-		}
-	}
-	if a.Dodge != nil {
-		out.Dodge = &DodgeResponse{RollCheck: toRollCheckResponse(a.Dodge.RollCheck)}
-	}
-	if a.Repel != nil {
-		out.Repel = &RepelResponse{
-			Weapon: weaponPtr(a.Repel.Weapon), RollCheck: toRollCheckResponse(a.Repel.RollCheck),
-		}
-	}
-	if a.Interact != nil {
-		out.Interact = &InteractResponse{Kind: string(a.Interact.Kind)}
-	}
-	out.SystemBias = a.SystemBias
-	return out
-}
-
-func toRollCheckResponse(rc action.RollCheck) RollCheckResponse {
-	return RollCheckResponse{
-		SkillName: rc.SkillName, SkillValue: rc.SkillValue,
-		Attempts: RollAttemptsResponse{Primary: rc.Attempts.Primary, Secondary: rc.Attempts.Secondary},
-		Result:   rc.Result,
-	}
-}
-
-func rollCheckPtr(rc *action.RollCheck) *RollCheckResponse {
-	if rc == nil {
-		return nil
-	}
-	out := toRollCheckResponse(*rc)
-	return &out
-}
-
-func weaponPtr(w *enum.WeaponName) *string {
-	if w == nil {
-		return nil
-	}
-	s := string(*w)
-	return &s
 }
 
 func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionResponse {

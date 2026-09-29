@@ -161,7 +161,7 @@ Notas sobre os campos de `action`/`reactions`:
   aqui, nem no WebSocket. Não é o mesmo caso de `systemBias`: a intervenção do mestre já tem
   superfície própria, em `overridden_action_values`, que registra o valor ANTERIOR junto com
   quem trocou e quando. O que o cliente vê aqui são os números já resolvidos
-  (`RollCheckResponse.result`, os totais em `resolution`).
+  (`actionwire.RollCheck.result`, os totais em `resolution`).
 - `systemBias` **não tem equivalente no WebSocket**, e não por política: nenhuma mensagem
   servidor→cliente projeta a declaração de uma `action.Action` **de jogador**
   (`ActionPayload` só existe no sentido cliente→servidor). `master_action_enqueued` é a
@@ -169,7 +169,7 @@ Notas sobre os campos de `action`/`reactions`:
   só existe em ações e reações de jogador (`buildAction`), nunca em `buildMasterAction`. O
   argumento do "já é dedutível" também não valeria lá — `resolution_updated` emite só
   `diceRolled`, o conjunto efetivamente lido. Ver [`match-combat-ws.md`](match-combat-ws.md).
-- `RollCheckResponse.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
+- `actionwire.RollCheck.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
   viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
   público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
   vaza mais do que o total já vaza. Mas é uma superfície de dados estritamente maior que o
