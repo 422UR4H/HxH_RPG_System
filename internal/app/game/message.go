@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -212,14 +213,27 @@ type ActionEnqueuedPayload struct {
 // open_reaction, with the same consequence: an ID a client cannot learn is an operation a
 // client cannot invoke.
 //
-// Nothing here describes the action's CONTENT. Weapon, target, skill and dice stay the
-// player's until the master opens the turn.
+// Design spec §4.1/§4.2, B1: Action now DOES describe the action's content — weapon, target,
+// skills, dice, everything actionwire.Full keeps — where an earlier version of this doc
+// comment said "nothing here describes the action's CONTENT". That is safe for exactly the
+// reason the rest of this doc comment already argues: BOTH surfaces this payload feeds
+// (action_queued and match_full_state.queue) are already master-only, so widening what this
+// struct carries widens nothing about who receives it. The deny-list that decides visibility
+// (service.ProjectAction) is a wholly separate axis from Level and never runs here — see
+// actionwire.From's own doc — but it does not need to: this recipient was already entitled to
+// everything Full holds before this field existed, one number at a time, the instant the
+// master opened the turn. Action only moves that same entitlement earlier, to enqueue time.
 type ActionQueuedPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 	ActorID  uuid.UUID `json:"actorId"`
 	// Bars is which clocks it will charge — the master's scheduling surface, and already
 	// derivable from the public bars_updated order. Nothing new is disclosed by naming it here.
 	Bars []string `json:"bars"`
+	// Action is the whole declaration, at actionwire.Full — no projection: see the type doc
+	// above for why Full is safe on this master-only surface. Shared verbatim by both
+	// action_queued and match_full_state.queue (see newActionQueuedPayload, room.go), so the
+	// two can never describe the same pending action differently.
+	Action actionwire.Action `json:"action"`
 }
 
 // OpenReactionPayload names which attached reaction the master is giving the floor to. The

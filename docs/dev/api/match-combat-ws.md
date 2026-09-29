@@ -810,7 +810,26 @@ conectado, a mensagem simplesmente não é entregue a ninguém.
   "payload": {
     "actionId": "33333333-3333-4333-8333-333333333333",
     "actorId": "11111111-1111-4111-8111-111111111111",
-    "bars": ["action", "move"]
+    "bars": ["action", "move"],
+    "action": {
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "actorId": "11111111-1111-4111-8111-111111111111",
+      "targetId": ["22222222-2222-4222-8222-222222222222"],
+      "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 } },
+      "move": {
+        "category": "Dash",
+        "from": [4, 4, 0],
+        "position": [6, 4, 0],
+        "speed": { "skillName": "Accelerate", "skillValue": 0, "attempts": { "primary": [5, 7] }, "result": 12 },
+        "finalSpeed": 12
+      },
+      "attack": {
+        "weapon": "Sword",
+        "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
+        "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+        "relativeVelocity": 0
+      }
+    }
   }
 }
 ```
@@ -823,9 +842,15 @@ pendente leria as intenções da mesa no wire.
 enfileiramento.** Sem esta mensagem, `pull_action` é inalcançável a partir de um cliente real
 para o que acabou de entrar na fila.
 
-Nada aqui descreve o **conteúdo** da ação: arma, alvo, perícia e dados continuam do jogador
-até o mestre abrir o turno. `bars` (`action` e/ou `move`) já é dedutível da ordem pública em
-`bars_updated` — nomear aqui não revela nada novo.
+**`action` carrega a declaração inteira** (design spec §4.2, B1) — arma, alvo, perícias,
+dados, totais, ambas velocidades. É o mesmo formato do histórico REST
+([`match-history.md`](match-history.md)), no **nível cheio**
+(`actionwire.Full`; ver [`internal/app/wire/actionwire`](../../../internal/app/wire/actionwire)).
+Isso é seguro exatamente porque esta superfície já era master-only: o mestre já veria estes
+mesmos números na abertura do turno — `action` só antecipa essa visibilidade para o instante
+do enfileiramento, não a estende a ninguém novo. `bars` (`action` e/ou `move`) continua
+dedutível da ordem pública em `bars_updated`; `action` é o que passou a não ser mais
+redundante com ela.
 
 **Disparado por:** `enqueue_action` aceito, logo após o ack de quem enviou.
 
@@ -1343,7 +1368,23 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
       "targets": []
     },
     "queue": [
-      { "actionId": "33333333-3333-4333-8333-333333333333", "actorId": "11111111-1111-4111-8111-111111111111", "bars": ["action"] }
+      {
+        "actionId": "33333333-3333-4333-8333-333333333333",
+        "actorId": "11111111-1111-4111-8111-111111111111",
+        "bars": ["action"],
+        "action": {
+          "uuid": "33333333-3333-4333-8333-333333333333",
+          "actorId": "11111111-1111-4111-8111-111111111111",
+          "targetId": ["22222222-2222-4222-8222-222222222222"],
+          "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 } },
+          "attack": {
+            "weapon": "Sword",
+            "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
+            "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+            "relativeVelocity": 0
+          }
+        }
+      }
     ]
   }
 }
@@ -1357,7 +1398,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
-| `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
+| `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
 logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no

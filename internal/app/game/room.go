@@ -8,6 +8,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
@@ -2151,7 +2152,10 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 }
 
 // newActionQueuedPayload is one pending action as the MASTER reads it: the ID pull_action
-// needs, who queued it, and which clocks it will charge. Nothing about its content.
+// needs, who queued it, which clocks it will charge, and — B1, design spec §4.2 — the whole
+// declaration, at actionwire.Full. No projection: both surfaces this feeds are already
+// master-only, so Full is safe here the same way it is safe on the REST Action History (see
+// ActionQueuedPayload's own doc).
 //
 // Shared by the action_queued emitted at enqueue time and by match_full_state's Queue, so the
 // live event and the snapshot can never describe the same action differently.
@@ -2160,7 +2164,10 @@ func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
 	for _, b := range a.Bars() {
 		bars = append(bars, string(b))
 	}
-	return ActionQueuedPayload{ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars}
+	return ActionQueuedPayload{
+		ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars,
+		Action: actionwire.From(*a, actionwire.Full),
+	}
 }
 
 func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload {
