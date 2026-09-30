@@ -145,9 +145,12 @@ Notas sobre os campos de `action`/`reactions`:
   uma regra separada codificada no endpoint: o dia em que um turno aberto atravessar este
   caminho (não acontece agora), a finta dele voltaria a ficar restrita a dono/mestre, turno a
   turno. Quando presente, `feint` é o `RollCheck` da finta. Ver
-  [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra é descrita pelo lado do
-  WebSocket (que nunca expõe `feint` — não há mensagem servidor→cliente que projete a
-  declaração de uma action de jogador).
+  [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra passou a valer também do lado
+  do WebSocket desde B2 (design spec §4.2, PR de fechamento da Fase 6): `turn_opened.action`
+  agora projeta a declaração de uma action de jogador, e `feint` segue exatamente este eixo
+  do TEMPO ali — escondida de um terceiro enquanto o turno está aberto, visível (com ou sem
+  números, conforme o destinatário) para o mestre e para o dono. Ver a seção de `turn_opened`
+  nesse contrato.
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
 - `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
   que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
@@ -162,13 +165,18 @@ Notas sobre os campos de `action`/`reactions`:
   superfície própria, em `overridden_action_values`, que registra o valor ANTERIOR junto com
   quem trocou e quando. O que o cliente vê aqui são os números já resolvidos
   (`actionwire.RollCheck.result`, os totais em `resolution`).
-- `systemBias` **não tem equivalente no WebSocket**, e não por política: nenhuma mensagem
-  servidor→cliente projeta a declaração de uma `action.Action` **de jogador**
-  (`ActionPayload` só existe no sentido cliente→servidor). `master_action_enqueued` é a
-  exceção do lado do mestre, mas não carrega `ActionPayload` nem `systemBias` — `systemBias`
-  só existe em ações e reações de jogador (`buildAction`), nunca em `buildMasterAction`. O
-  argumento do "já é dedutível" também não valeria lá — `resolution_updated` emite só
-  `diceRolled`, o conjunto efetivamente lido. Ver [`match-combat-ws.md`](match-combat-ws.md).
+- `systemBias` **agora tem equivalente no WebSocket** (desde B2, design spec §4.2) —
+  `turn_opened.action.systemBias` e `match_full_state.openTurn.action.systemBias` carregam o
+  mesmo valor. Antes de B2 isso era verdade por falta de superfície: `ActionPayload` só existe
+  no sentido cliente→servidor, e `action_queued` (B1) — a primeira superfície a carregar a
+  ação inteira — é master-only, então nunca precisou do argumento "já é dedutível" (o mestre
+  já era dono de tudo). B2 é a primeira vez que esse argumento passa a valer para quem NÃO é
+  mestre: `actionwire.Action.SystemBias` **não é cortado por nível** (ver
+  `internal/app/wire/actionwire`), então sobrevive ao corte de `Opened` igual sobrevive ao
+  `Full` do mestre — e o motivo é o mesmo de sempre, público por omissão. `master_action_enqueued`
+  continua sem `ActionPayload` nem `systemBias` — o viés só existe em ações e reações de
+  jogador (`buildAction`), nunca em `buildMasterAction`. Ver
+  [`match-combat-ws.md`](match-combat-ws.md).
 - `actionwire.RollCheck.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
   viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
   público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não

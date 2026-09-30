@@ -351,17 +351,28 @@ type ConditionEditPayload struct {
 	Description string `json:"description,omitempty"`
 }
 
-// TurnOpenedPayload announces whose turn it is. BROADCAST — the table has to know.
+// TurnOpenedPayload announces whose turn it is AND, since B2 (design spec §4.2), what that
+// turn's action publicly is — projected PER RECIPIENT, not broadcast: the master gets
+// actionwire.Full (every number), everyone else — the owner included — gets
+// actionwire.Opened, after service.ProjectAction's own deny-list (feint/trigger hidden from a
+// third party while the turn is open, closed reactions' label demoted) already ran. That is
+// why this now travels through dispatchPerPlayer, on the DIRECT lane, one payload built per
+// recipient, and not through r.broadcast.
 //
 // ActionID is the SAME id action_enqueued gave back to whoever enqueued and action_queued
 // gave the master. It is what ties the three messages together, and it is not decoration:
 // actorId alone is ambiguous the moment one character has two actions waiting, and then
 // nothing on the wire says which of them just opened.
+//
+// ⚠️ Moving to the direct lane is not just "add a field": turn_closed had to move there WITH
+// it, in the SAME call chain, or the two could arrive out of order — see broadcastTurnClosed's
+// own doc for why, and the design spec's own ⚠️ in §4.2.
 type TurnOpenedPayload struct {
-	TurnID     uuid.UUID `json:"turnId"`
-	ActorID    uuid.UUID `json:"actorId"`
-	ActionID   uuid.UUID `json:"actionId"`
-	ActionType string    `json:"actionType"`
+	TurnID     uuid.UUID         `json:"turnId"`
+	ActorID    uuid.UUID         `json:"actorId"`
+	ActionID   uuid.UUID         `json:"actionId"`
+	ActionType string            `json:"actionType"`
+	Action     actionwire.Action `json:"action"`
 }
 
 type RoundClosedPayload struct {
@@ -375,9 +386,15 @@ type ReactionOpenedPayload struct {
 	ReactionID uuid.UUID `json:"reactionId"`
 }
 
-// TurnClosedPayload announces that the baton was put down. BROADCAST — that a turn ended is
-// table state. The numbers travel separately, in the projected resolution_updated that
-// follows.
+// TurnClosedPayload announces that the baton was put down. Same message for the whole table —
+// nothing here is projected — but it travels on the DIRECT per-client lane (dispatchPerPlayer),
+// not r.broadcast, since B2 (design spec §4.2): the very next thing the table hears is
+// turn_opened, which IS projected and therefore has to be on that lane, and the two have to
+// stay in the order they were sent in. Putting turn_closed on the direct lane too, from the
+// SAME goroutine, is what makes that order a guarantee rather than a usual case — a fast
+// direct-lane message can no longer overtake a turn_closed still waiting on r.broadcast's
+// Run() goroutine to pick it up. The numbers still travel separately, in the projected
+// resolution_updated that follows.
 type TurnClosedPayload struct {
 	TurnID uuid.UUID `json:"turnId"`
 }
@@ -741,9 +758,19 @@ type MatchFullStatePayload struct {
 	Queue []ActionQueuedPayload `json:"queue,omitempty"`
 }
 
+// OpenTurnPayload is the open turn's snapshot inside MatchFullStatePayload. ActionID and
+// Action are B2 (design spec §4.2): before them, a reconnecting client had turnId/actorId but
+// no way to tell WHICH of an actor's actions opened (the same ambiguity turn_opened's own
+// ActionID exists to close — see its doc), and no cut of the action itself to reconcile
+// against what the live turn_opened already told them. Action follows the exact same
+// per-recipient rule turn_opened does — buildMatchFullState projects it with the recipient's
+// own Viewer, at Full for the master and Opened for everyone else — so the two can never
+// disagree about the same turn.
 type OpenTurnPayload struct {
-	TurnID  uuid.UUID `json:"turnId"`
-	ActorID uuid.UUID `json:"actorId"`
+	TurnID   uuid.UUID         `json:"turnId"`
+	ActorID  uuid.UUID         `json:"actorId"`
+	ActionID uuid.UUID         `json:"actionId"`
+	Action   actionwire.Action `json:"action"`
 }
 
 // payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a

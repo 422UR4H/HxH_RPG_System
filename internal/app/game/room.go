@@ -1376,21 +1376,26 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 // turns beginning and never ending is the front's problem to reconcile, not the back's to
 // create.
 //
-// The send is SYNCHRONOUS, unlike the `go func` its neighbours use, and that is the point:
-// the turn_opened of the next turn travels the same channel, and two detached goroutines
-// racing to it would put the next turn's opening ahead of this turn's ending about half the
-// time. Queueing here first orders the two for good. It cannot deadlock the room: this runs
-// on the client's read pump, never on Run's goroutine (the chat arm sends the same way), and
-// r.mu is already released by every caller.
+// DIRECT lane (dispatchPerPlayer), not r.broadcast, since B2 (design spec §4.2): the very
+// next thing every caller sends is announceOpenedTurn's turn_opened, which is now projected
+// PER RECIPIENT and therefore has to live on this same lane. Sending both from here, in this
+// order, on the SAME lane, from the SAME goroutine, is what makes "turn_closed arrives before
+// turn_opened" a guarantee instead of a usual case: with one lane and one sender, send order
+// IS arrival order — there is no channel hop in between for a later, faster send to overtake.
+// Before B2 this queued onto r.broadcast synchronously, ahead of turn_opened's own detached
+// `go func` — safe only because both eventually rode the SAME channel; the day turn_opened
+// needed per-recipient projection, dispatchPerPlayer was the only way to build it, and leaving
+// this one behind on the channel would have let a fast direct-lane turn_opened overtake a
+// turn_closed still waiting on Run()'s goroutine to pick it up.
 //
-// Ordering against resolution_updated is the one close_turn has always practised: turn_closed
-// is queued first, then the settled resolution goes out. The two travel different lanes —
-// this one through r.broadcast, the resolution straight into each client's queue — so the
-// order they ARRIVE in is not a promise; the contract says as much.
+// The payload is IDENTICAL for every recipient — nothing here is projected — so the builder
+// below ignores both of dispatchPerPlayer's arguments.
 func (r *Room) broadcastTurnClosed(turnID uuid.UUID) {
 	out := NewServerMessage(MsgTypeTurnClosed, TurnClosedPayload{TurnID: turnID})
-	data, _ := json.Marshal(out)
-	r.broadcast <- data
+	r.dispatchPerPlayer(func(_ uuid.UUID, _ bool) *Message {
+		msg := out
+		return &msg
+	})
 }
 
 // broadcastHpChanges tells the master and each damaged character's owner what the close just
@@ -1463,6 +1468,24 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 	}
 }
 
+// turnActionWire projects act to the wire cut this playerID/isMaster is entitled to AT
+// TURN-OPEN TIME (isSettled=false, always — design spec §4.2, B2): the master keeps every
+// number (actionwire.Full); everyone else — the actor's own owner included — gets the
+// mechanics with the numbers cut (actionwire.Opened), only after service.ProjectAction's
+// deny-list has already run (feint/trigger hidden from a third party while the turn stays
+// open, closed reactions' label demoted). From carries no deny-list of its own — see its own
+// doc — so ProjectAction has to run first, every time, for every non-master recipient.
+//
+// Shared by announceOpenedTurn (live turn_opened) and buildMatchFullState (OpenTurn on a
+// reconnect's match_full_state), so a reconnecting client's snapshot can never disagree with
+// the live event they may already have received.
+func turnActionWire(act action.Action, v domainservice.Viewer, isMaster bool) actionwire.Action {
+	if isMaster {
+		return actionwire.From(act, actionwire.Full)
+	}
+	return actionwire.From(domainservice.ProjectAction(act, v, false), actionwire.Opened)
+}
+
 // announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for
 // byte: once the baton has moved, "the next one opened" and "this one was pulled out of
 // order" are the same news, and the two arms had drifted apart only by accident so far.
@@ -1470,7 +1493,15 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 // The move goes out BEFORE turn_opened, with no r.mu held: Execute released it in the caller,
 // and applyMove takes it itself. The table must never see the turn open with the piece still
 // in the old slot, and piece_moved goes straight into each client's queue while turn_opened
-// only reaches it through r.broadcast — so applying the move first is what fixes the order.
+// is now ALSO on that same direct lane — so applying the move first is still what fixes the
+// order, exactly as before B2; only the reason the two shared a fate (both eventually landing
+// in the same client queue) changed from "same broadcast channel" to "same direct lane".
+//
+// turn_opened is PROJECTED per recipient since B2 (design spec §4.2) — the master sees Full,
+// everyone else sees Opened after the deny-list — so it travels through dispatchPerPlayer, one
+// payload built per recipient under r.mu.RLock (session state has no lock of its own), handed
+// back outside the lock as dispatchPerPlayer requires. act is fixed ONCE, before the loop: it
+// does not change per recipient, only its projection (turnActionWire) does.
 //
 // res is nil-safe: a turn can open with nothing to resolve.
 func (r *Room) announceOpenedTurn(
@@ -1481,16 +1512,24 @@ func (r *Room) announceOpenedTurn(
 	// GetAction returns a COPY, so it goes into a variable before any getter with a pointer
 	// receiver is called on it — the same shape persistClosedTurn already uses.
 	act := opened.GetAction()
-	out := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
-		TurnID:  opened.GetID(),
-		ActorID: act.GetActorID(),
-		// The id the enqueuer got back in action_enqueued and the master got in action_queued.
-		// Without it, two queued actions of the same character produce two turn_openeds a
-		// client cannot tell apart — actorId is the same in both.
-		ActionID: act.GetID(),
+	turnID, actorID, actionID := opened.GetID(), act.GetActorID(), act.GetID()
+
+	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		r.mu.RLock()
+		v := r.viewerFor(pid, isMaster)
+		r.mu.RUnlock()
+		msg := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
+			TurnID:  turnID,
+			ActorID: actorID,
+			// The id the enqueuer got back in action_enqueued and the master got in
+			// action_queued. Without it, two queued actions of the same character produce two
+			// turn_openeds a client cannot tell apart — actorId is the same in both.
+			ActionID: actionID,
+			Action:   turnActionWire(act, v, isMaster),
+		})
+		return &msg
 	})
-	data, _ := json.Marshal(out)
-	go func() { r.broadcast <- data }()
+
 	if res != nil {
 		r.broadcastWallResults(session, res.WallResults)
 		// The projection for the turn just opened. publishResolution keeps this master-only on
@@ -1679,6 +1718,29 @@ func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayloa
 	return out
 }
 
+// viewerFor builds the domainservice.Viewer this playerID/isMaster pair is entitled to, from
+// the session's live charToPlayer. The caller MUST hold r.mu (a read lock is enough) —
+// MatchSession has no lock of its own, and GetCharToPlayer reads live session state.
+//
+// Pulled out of buildMatchFullState and publishResolution, which had each grown their own copy
+// of this exact loop (uuid.Parse of the char string, matched against playerID) for the same
+// reason: both need a per-recipient Viewer, one to project a resolution, the other to project
+// an action. Now announceOpenedTurn's per-recipient turn_opened uses it too.
+func (r *Room) viewerFor(playerID uuid.UUID, isMaster bool) domainservice.Viewer {
+	owns := map[uuid.UUID]bool{}
+	if r.session != nil {
+		for charStr, pid := range r.session.GetCharToPlayer() {
+			if pid != playerID {
+				continue
+			}
+			if charID, err := uuid.Parse(charStr); err == nil {
+				owns[charID] = true
+			}
+		}
+	}
+	return domainservice.Viewer{IsMaster: isMaster, Owns: owns}
+}
+
 // publishResolution sends one turn's resolution to everyone entitled to a version of it.
 //
 // TWO axes, not one:
@@ -1698,27 +1760,11 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 			MsgTypeResolutionUpdate, newResolutionUpdatedPayload(turnID, res)))
 		return
 	}
-	r.mu.RLock()
-	charToPlayer := map[string]uuid.UUID{}
-	if r.session != nil {
-		charToPlayer = r.session.GetCharToPlayer()
-	}
-	r.mu.RUnlock()
-
-	owned := make(map[uuid.UUID]map[uuid.UUID]bool, len(charToPlayer))
-	for charStr, playerID := range charToPlayer {
-		charID, err := uuid.Parse(charStr)
-		if err != nil {
-			continue
-		}
-		if owned[playerID] == nil {
-			owned[playerID] = map[uuid.UUID]bool{}
-		}
-		owned[playerID][charID] = true
-	}
 
 	r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
-		v := domainservice.Viewer{IsMaster: isMaster, Owns: owned[playerID]}
+		r.mu.RLock()
+		v := r.viewerFor(playerID, isMaster)
+		r.mu.RUnlock()
 		msg := NewServerMessage(
 			MsgTypeResolutionUpdate,
 			newResolutionUpdatedPayload(turnID, domainservice.ProjectResolution(res, v)),
@@ -2092,9 +2138,20 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 			// is required: Go cannot take the address of a bare method-call result to satisfy
 			// GetActorID's pointer receiver.
 			act := t.GetAction()
+			// v is this recipient's Viewer — built once and reused for BOTH the action
+			// projection below and, on the master branch, the resolution projection: the two
+			// used to build their own copy of the exact same owns-lookup loop (viewerFor's own
+			// doc).
+			v := r.viewerFor(playerID, isMaster)
 			payload.OpenTurn = &OpenTurnPayload{
 				TurnID:  t.GetID(),
 				ActorID: act.GetActorID(),
+				// ActionID and Action are B2 (design spec §4.2): the same two fields the live
+				// turn_opened carries, projected by the exact same rule (turnActionWire) — a
+				// reconnecting client's snapshot can never disagree with the live event they
+				// may already have received.
+				ActionID: act.GetID(),
+				Action:   turnActionWire(act, v, isMaster),
 			}
 			if isMaster {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
@@ -2107,25 +2164,6 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 					// the only emitter of a resolution that never goes through the projection,
 					// and the day reaction visibility stops being master-only it would start
 					// leaking with no test able to catch it.
-					//
-					// Owns is built for real here, the same way publishResolution builds it for the
-					// live per-recipient emitter — not left nil. A nil map reads as "owns nothing"
-					// (service.Viewer.SeesAllOf), which is safe TODAY only because isMaster is always
-					// true on this branch (IsMaster short-circuits SeesAllOf regardless of Owns). The
-					// day this branch widens to a non-master recipient, a nil Owns would downgrade
-					// that player's OWN reaction — erring toward hiding too much, not leaking, but
-					// still not what "stays honest if this branch ever widens" promised. Carrying the
-					// real set makes that promise true instead of merely asserted.
-					owns := make(map[uuid.UUID]bool)
-					for charStr, pid := range session.GetCharToPlayer() {
-						if pid != playerID {
-							continue
-						}
-						if charID, err := uuid.Parse(charStr); err == nil {
-							owns[charID] = true
-						}
-					}
-					v := domainservice.Viewer{IsMaster: isMaster, Owns: owns}
 					p := newResolutionUpdatedPayload(t.GetID(), domainservice.ProjectResolution(res, v))
 					payload.Resolution = &p
 				}

@@ -900,7 +900,11 @@ era a vez dele depois que passou.
 
 ### `turn_opened`
 
-**Direção:** servidor → cliente. **Destino:** **mesa inteira**.
+**Direção:** servidor → cliente. **Destino:** mesa inteira — todo mundo recebe UMA cópia —
+mas, desde B2 (design spec §4.2), o `action` dentro dela **é projetado por destinatário**:
+não é mais broadcast no sentido de "byte idêntico para todos". Por isso saiu de
+`r.broadcast` para a pista direta (`dispatchPerPlayer`), um payload construído por cliente —
+ver a ⚠️ de ordem mais abaixo.
 
 ```json
 {
@@ -909,16 +913,36 @@ era a vez dele depois que passou.
     "turnId": "55555555-5555-4555-8555-555555555555",
     "actorId": "11111111-1111-4111-8111-111111111111",
     "actionId": "33333333-3333-4333-8333-333333333333",
-    "actionType": ""
+    "actionType": "",
+    "action": {
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "actorId": "11111111-1111-4111-8111-111111111111",
+      "targetId": ["22222222-2222-4222-8222-222222222222"],
+      "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 } },
+      "feint": { "skillName": "Feint", "skillValue": 0, "attempts": { "primary": [3, 5] }, "result": 8 },
+      "attack": {
+        "weapon": "Sword",
+        "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
+        "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+        "relativeVelocity": 0
+      }
+    }
   }
 }
 ```
+
+**O exemplo acima é o que o MESTRE vê** (`actionwire.Full` — ver
+[`internal/app/wire/actionwire`](../../../internal/app/wire/actionwire)). Para **todo mundo
+mais, inclusive o dono do ator**, `hit`/`damage` chegam como `{ "skillName": "Accuracy" }` /
+`{ "skillName": "Push" }` — sem `skillValue`, `attempts` nem `result` — enquanto `speed`
+mantém seu `result` para qualquer um dos dois (`actionwire.Opened`).
 
 | Campo | O que é |
 |---|---|
 | `turnId` | O turno que abriu. É ele que aparece em [`turn_closed`](#turn_closed) e em [`resolution_updated`](#resolution_updated). |
 | `actorId` | UUID da ficha de quem age — o mesmo ID que a peça do tabuleiro carrega. |
 | `actionId` | **A ação que este turno abriu.** É o **mesmo** ID que [`action_enqueued`](#action_enqueued) devolveu a quem enfileirou e que [`action_queued`](#action_queued) deu ao mestre: é o que liga as três mensagens. |
+| `action` | **A mecânica pública da ação, cortada por destinatário** (B2, design spec §4.1/§4.2). Ver a tabela de cortes abaixo. |
 
 > **Para que serve `actionId`:** `actorId` sozinho é ambíguo assim que um personagem tem
 > **duas** ações na fila — os dois `turn_opened` saem idênticos e nada no wire diz qual
@@ -935,13 +959,45 @@ era a vez dele depois que passou.
 > preenche, no único call site que emite `turn_opened` (`announceOpenedTurn`, onde
 > `open_next_action` e `pull_action` desembocam). O front **não deve** ramificar por ele.
 
-É este evento que abre a janela de reação: quem está em `targetId` da ação pode mandar
-[`attach_reaction`](#attach_reaction) a partir daqui. Mas o `targetId` **não viaja nesta
-mensagem** — um jogador descobre que foi alvo pelo `resolution_updated` liquidado (depois) ou
-pela narração do mestre. Essa é uma lacuna real do contrato, registrada em §8.
+#### O corte de `action` (design spec §4.1)
+
+`action` nunca sai no nível `Declaration` aqui — só existem dois destinatários possíveis para
+esta mensagem, e nenhum deles é "alguém que só viu a própria declaração sem rolar nada":
+
+| Campo | Mestre (`actionwire.Full`) | Todo mundo mais, inclusive o dono do ator (`actionwire.Opened`) |
+|---|---|---|
+| Alvos, arma, `move` (categoria, origem, destino), nomes das perícias, `reactionKind`, `interact`, `spread`, `relativeVelocity`, `systemBias` | ✔ | ✔ |
+| `speed.rollCheck` (actionSpeed) e `move.speed`/`move.finalSpeed` (moveSpeed) — as duas linhas de "velocidade" do spec | ✔ números | ✔ números — **não** são cortados neste nível |
+| Dados, `skillValue` e `result` de `attack.hit`, `attack.damage`, `attack.charge`, `move.charge`, `skills[]`, `defense`, `dodge`, `repel` | ✔ | corta — só `skillName` sobrevive |
+
+**`feint` não está na tabela acima porque não segue só o corte de NÍVEL — segue primeiro o
+eixo do TEMPO de `service.ProjectAction`** (a mesma função e a mesma regra que
+[`match-history.md`](match-history.md) descreve para o REST, rodando aqui pela primeira vez
+no lado do WebSocket):
+
+| Destinatário | `feint` em `turn_opened` (turno ainda ABERTO) |
+|---|---|
+| Mestre | objeto completo, com números (`actionwire.Full`) |
+| **Dono** do ator (`Viewer.SeesAllOf` verdadeiro) | objeto presente, só `skillName` — o dono nunca é o alvo da própria finta, então nada aqui esconde nada DELE |
+| Qualquer outro (terceiro/bystander) | **ausente por completo** — `ProjectAction` zera o campo enquanto `isSettled` é `false`; reaparece (com números cortados igual ao resto) só quando o turno fecha, no `resolution_updated` liquidado equivalente — a finta nunca teve superfície própria ali, ver a nota do §6 |
+
+É este evento que abre a janela de reação: quem está em `action.targetId` pode mandar
+[`attach_reaction`](#attach_reaction) a partir daqui. **`targetId` agora viaja nesta
+mensagem** (dentro de `action`) — antes de B2 este era um gap real do contrato (§10); deixou
+de ser.
 
 **Disparado por:** `open_next_action` e `pull_action`.
 **Dispara em seguida:** `resolution_updated` master-only do turno aberto.
+
+> ⚠️ **Ordem garantida com `turn_closed` e `resolution_updated` (B2).** `piece_moved` →
+> `turn_closed` → `resolution_updated` → `turn_opened` chegam nessa ordem exata a todo
+> destinatário — os quatro viajam pela pista DIRETA (`dispatchPerPlayer`/`client.SendMessage`),
+> nunca por `r.broadcast`, e todos os quatro são enviados pelo MESMO goroutine (o que processa
+> `open_next_action`/`pull_action`/`close_turn`). Uma pista só, um remetente só: ordem de
+> envio é ordem de chegada. Antes de B2 só `piece_moved` e `resolution_updated` estavam nessa
+> pista; `turn_closed` e `turn_opened` ainda saíam por `r.broadcast`, e a ordem entre eles e o
+> resto não era prometida — ver a nota (agora igualmente revisada) em
+> [`turn_closed`](#turn_closed).
 
 ### `reaction_opened`
 
@@ -1128,7 +1184,9 @@ critério é verificável sem front nenhum).
 ### `turn_closed`
 
 **Direção:** servidor → cliente. **Destino:** **mesa inteira** — que um turno acabou é
-estado de mesa.
+estado de mesa, e a mesma mensagem vai para todo mundo (nada aqui é projetado). Desde B2
+(design spec §4.2) viaja pela pista DIRETA (`dispatchPerPlayer`), não mais por `r.broadcast`
+— ver a ⚠️ de ordem abaixo para o porquê.
 
 ```json
 { "type": "turn_closed", "payload": { "turnId": "55555555-5555-4555-8555-555555555555" } }
@@ -1145,12 +1203,16 @@ estado de mesa.
 > do [`turn_opened`](#turn_opened) do turno seguinte. A mesa tem que ver o turno acabar
 > antes de ver o próximo começar — qual verbo o mestre usou não muda o que a mesa ouve.
 
-> ⚠️ **A ordem contra `resolution_updated` não é promessa.** `turn_closed` é enfileirado
-> antes da resolução liquidada — é a ordem que `close_turn` sempre praticou e que os outros
-> dois agora seguem — mas os dois viajam por caminhos diferentes (`turn_closed` pelo
-> broadcast da sala, `resolution_updated` direto na fila de cada cliente), então a ordem de
-> **chegada** entre esses dois pode inverter. Só a ordem `turn_closed` → `turn_opened`, que
-> compartilham o mesmo caminho, é garantida.
+> ⚠️ **A ordem contra `resolution_updated` e `turn_opened` AGORA é promessa (B2).** Antes de
+> B2, `turn_closed` saía por `r.broadcast` enquanto `resolution_updated` já ia direto para a
+> fila de cada cliente — dois caminhos diferentes, sem ordem de **chegada** garantida entre
+> eles, mesmo enfileirando `turn_closed` primeiro no código. **Isso mudou:** `turn_closed`
+> passou para a MESMA pista direta que `resolution_updated` (settled, quando aplicável) e
+> `turn_opened` já usavam, e os quatro — junto com o `piece_moved` da abertura/fechamento —
+> são enviados pelo MESMO goroutine, na ordem `piece_moved` → `turn_closed` →
+> `resolution_updated` → `turn_opened`. Uma pista, um remetente: ordem de envio é ordem de
+> chegada, para qualquer destinatário — não só para quem tem um atalho de posse. Ver a nota
+> equivalente em [`turn_opened`](#turn_opened).
 
 ### `character_hp_changed`
 
@@ -1359,7 +1421,20 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
     },
     "openTurn": {
       "turnId": "55555555-5555-4555-8555-555555555555",
-      "actorId": "11111111-1111-4111-8111-111111111111"
+      "actorId": "11111111-1111-4111-8111-111111111111",
+      "actionId": "33333333-3333-4333-8333-333333333333",
+      "action": {
+        "uuid": "33333333-3333-4333-8333-333333333333",
+        "actorId": "11111111-1111-4111-8111-111111111111",
+        "targetId": ["22222222-2222-4222-8222-222222222222"],
+        "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 } },
+        "attack": {
+          "weapon": "Sword",
+          "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
+          "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
+          "relativeVelocity": 0
+        }
+      }
     },
     "resolution": {
       "turnId": "55555555-5555-4555-8555-555555555555",
@@ -1397,6 +1472,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
+| `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair. Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 
@@ -1633,17 +1709,22 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
    | `closedDodge` | `dodge` | **some** |
    | `closedEscape` | `escape` | **some** |
 
-### Nota: a finta segue o mesmo eixo do TEMPO, mas em outro documento
+### Nota: a finta segue o mesmo eixo do TEMPO — desde B2, também neste protocolo
 
-`Feint` não aparece em payload nenhum deste protocolo — nenhuma mensagem servidor→cliente
-projeta a **declaração** de uma `action.Action` **de jogador** (`master_action_enqueued` é a
-exceção do lado do mestre, mas projeta `action.MasterAction`, um tipo sem `Feint`; a lacuna
-correspondente está em §10), e é por isso que a finta não tem onde aparecer aqui. Ela vive em `service.ProjectAction`, a mesma
-função que a Action History REST chama, e segue exatamente este eixo do TEMPO: escondida
-enquanto `isSettled` é `false`, revelada quando o turno fecha — quem caiu na finta descobre
-dentro da resolução do MESMO turno (o sucesso foi contra um ataque falso, e o de verdade vem
-em seguida), nunca meses depois olhando o histórico. Ver
-[`match-history.md`](match-history.md).
+`Feint` não aparece em `resolution_updated` — a resolução liquidada não tem campo para ela, a
+finta é da AÇÃO, não do cálculo. **Isso já não é mais "não aparece em payload nenhum deste
+protocolo"** — era verdade até B2 (design spec §4.2), quando [`turn_opened`](#turn_opened)
+passou a carregar `action`. Ela vive em `service.ProjectAction`, a mesma função que a Action
+History REST chama, e segue exatamente este eixo do TEMPO ali e em `turn_opened`: escondida
+de um terceiro enquanto `isSettled` é `false`; o mestre e o **dono** do ator sempre a veem
+(`Viewer.SeesAllOf`), turno aberto ou fechado — quem caiu na finta descobre dentro da
+resolução do MESMO turno (o sucesso foi contra um ataque falso, e o de verdade vem em
+seguida), nunca meses depois olhando o histórico. Ver a tabela de `feint` na seção de
+[`turn_opened`](#turn_opened) e [`match-history.md`](match-history.md), onde a mesma regra
+vale para o REST.
+
+`master_action_enqueued` continua sendo a exceção do lado do mestre — projeta
+`action.MasterAction`, um tipo sem `Feint`, então nenhuma master action tem finta.
 
 ## 7. Catálogo de erros
 
@@ -1757,13 +1838,11 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 
 | Lacuna | Consequência para o front |
 |---|---|
-| **`turn_opened` não carrega `targetId`** | Um jogador não tem como saber, pelo wire, que foi alvo — só pelo `resolution_updated` liquidado (tarde demais para reagir) ou pela narração. A janela de `attach_reaction` depende de canal humano hoje. |
 | **`turn_opened.actionType` é sempre `""`** | Não ramifique por ele. |
 | **A corrente de testes de `skills` não é executada** | `skills[].difficulty` é aceito e persistido, mas nenhuma margem atravessa de um teste para o próximo. A edição de perícias muda uma lista que ainda não decide nada. |
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
 | **`attack` de `enqueue_master_action` não é mapeado** | No-op silencioso até o contrato do front fechar. (`move` é o arrastar do mestre desde B14 — só a `position` conta.) |
-| **Nenhuma mensagem servidor→cliente projeta a declaração de uma action de JOGADOR** | `ActionPayload` só existe no sentido cliente→servidor; o front aprende o que um jogador declarou pelo histórico REST, não pelo WS. (`master_action_enqueued` é a exceção do lado do mestre — ver abaixo — mas não carrega `ActionPayload`, e não tem `Feint`.) É por isso que `systemBias` — exposto em `match-history.md` — **não tem equivalente aqui**: não há onde. O argumento do "já é dedutível" também não valeria, porque `resolution_updated` emite só `diceRolled`, o conjunto efetivamente lido. É também por isso que a finta (§6, nota no fim) não tem superfície neste protocolo — ela só existe em `Action.Feint`, e nenhuma ação de MESTRE tem finta. |
 | **Remoção de NPC ao vivo não existe** | Tirar um NPC de uma sessão VIVA esbarra em ação dele na fila, turno aberto com ele como ator/alvo, reação pendente — regras que ninguém decidiu ainda. O REST `DELETE /matches/{uuid}/npcs/{sheet_uuid}` (ver [`match-npcs.md`](match-npcs.md)) continua funcionando, mas só vale para a próxima vez que a sala nascer: uma partida em andamento não some com o NPC removido, e não existe verbo de WS equivalente a `add_npc` no sentido contrário. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
 | **Colisão contra parede ainda não foi desenhada** | Não é omissão de validação: ainda não existe a regra que decide o que acontece quando um personagem colide com uma parede — compartilhar o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Até essa regra existir, o comportamento observável é a peça atravessando: a única checagem existente (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado, na abertura do turno ou da reação. Vale para os TRÊS momentos que deslocam peça — a ação do turno na abertura, a fuga de `Shift` em `open_reaction`, e a fuga de `Dash` que passou, no fechamento: o deslocamento de uma reação nunca passa por essa checagem, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. O front não deve tratar isso como bug a reportar — é regra de jogo que falta ser escrita. |
