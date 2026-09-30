@@ -90,7 +90,15 @@ func (c *Client) Close() {
 func (c *Client) ReadPump() {
 	defer func() {
 		if c.room != nil {
-			c.room.unregister <- c
+			// B7 (spec §4.6): c.room.done is closed once Run has returned, which means
+			// nobody is draining c.room.unregister anymore — sending there unconditionally
+			// would hang this goroutine forever. Racing the send against done lets it exit
+			// either way: delivered if Run is still up, dropped (safely — Run already tore
+			// every client down on its way out) if it already isn't.
+			select {
+			case c.room.unregister <- c:
+			case <-c.room.done:
+			}
 		}
 		_ = c.conn.Close()
 	}()

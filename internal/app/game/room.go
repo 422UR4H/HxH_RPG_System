@@ -119,7 +119,12 @@ type Room struct {
 	register   chan *Client
 	unregister chan *Client
 	stop       chan struct{}
-	mu         sync.RWMutex
+	// done is closed when Run returns — B7 (spec §4.6). Register and the unregister send in
+	// ReadPump both select on it, so neither blocks forever against a Room whose goroutine
+	// already exited: Register returns ErrRoomClosed instead of hanging on an unregister
+	// channel nobody is draining anymore.
+	done chan struct{}
+	mu   sync.RWMutex
 	// barsSeq stamps every bars_updated snapshot. Bumped under mu at the instant the snapshot
 	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
 	// channel off to a goroutine, and two rapid opens can reach it out of order.
@@ -166,6 +171,7 @@ func NewRoom(
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
 		deps:       deps,
 	}
 }
@@ -243,8 +249,17 @@ func (r *Room) ClientCount() int {
 	return len(r.clients)
 }
 
-func (r *Room) Register(client *Client) {
-	r.register <- client
+// Register hands the client to Run's own goroutine. It returns ErrRoomClosed, instead of
+// blocking forever, when Run has already returned (B7, spec §4.6) — the caller (handler.go)
+// retries against a fresh room (master) or refuses the connection (player), exactly as if
+// the room had never existed.
+func (r *Room) Register(client *Client) error {
+	select {
+	case r.register <- client:
+		return nil
+	case <-r.done:
+		return ErrRoomClosed
+	}
 }
 
 func (r *Room) Broadcast(data []byte) {
@@ -260,9 +275,34 @@ func (r *Room) Stop() {
 }
 
 func (r *Room) Run() {
+	// B7 (spec §4.6): done is closed exactly once Run has genuinely stopped servicing this
+	// room's channels — every select alongside it (Register, ReadPump's unregister send) can
+	// then stop waiting instead of blocking on a goroutine that is never coming back.
+	defer close(r.done)
 	for {
 		select {
 		case client := <-r.register:
+			r.mu.Lock()
+			old, hadOld := r.clients[client.userUUID]
+			r.mu.Unlock()
+
+			// B4 (spec §4.6): the same account connecting again — a second tab, a reload that
+			// raced its own close — means the LAST connection wins. The old one is told and
+			// closed BEFORE the new one is written into r.clients. Neither the send nor the
+			// close runs with r.mu held: SendMessage/Close never touch the room's state, and
+			// nothing that sends to a client runs under this lock (see the file's own rule).
+			// Close() signals `done`, never closes `send` — the old client's own WritePump
+			// flushes this error out before it tears the connection down, and the unregister
+			// its ReadPump sends afterwards is a no-op: by then r.clients[userUUID] already
+			// points at the NEW client, so the pointer guard below skips the removal instead
+			// of evicting the connection that replaced it (review focus 5).
+			if hadOld && old != client {
+				old.SendMessage(NewErrorMessage(
+					"connection_replaced", "this account connected again elsewhere",
+				))
+				old.Close()
+			}
+
 			r.mu.Lock()
 			r.clients[client.userUUID] = client
 			client.SetRoom(r)

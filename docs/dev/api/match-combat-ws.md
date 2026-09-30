@@ -129,6 +129,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
+| [`connection_replaced`](#connection_replaced) | a conexão antiga, quando a mesma conta conecta de novo |
 
 ---
 
@@ -1799,6 +1800,30 @@ escolhido ainda. Ver §10.
 
 Catálogo completo em §7.
 
+### `connection_replaced`
+
+**Direção:** servidor → cliente. **Destino:** a conexão ANTIGA — não quem mandou a mensagem
+mais recente (B4, spec §4.6). É o único `error` deste protocolo que não é resposta a nada que
+o destinatário tenha enviado: a mesma conta (mestre ou jogador) abriu uma segunda conexão —
+segunda aba, um F5 cuja aba antiga não fechou a tempo — e o servidor decide pela última.
+
+```json
+{
+  "type": "error",
+  "payload": {
+    "code": "connection_replaced",
+    "message": "this account connected again elsewhere"
+  }
+}
+```
+
+O servidor fecha essa conexão imediatamente depois de mandar isto — nenhuma outra mensagem
+chega por ela. **O que o cliente faz ao ver este código: nada além de aceitar o fim da
+conexão.** Em particular, **não reconectar por conta própria** — existe uma conexão mais nova
+da mesma conta em algum lugar (a outra aba, o F5 que já terminou), e essa é a que vale; a
+antiga reabrir a sua própria só recriaria o mesmo conflito. A sala continua de pé e a conexão
+nova recebe normalmente tudo que se passar dali em diante.
+
 ---
 
 ## 6. `resolution_updated` tem DOIS eixos
@@ -1914,8 +1939,11 @@ vale para o REST.
 | `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |
 | `unknown_wall` | `"wall <id> is not on this match's board"` — um `targetId` de parede que o servidor não conhece (B14, spec §4.3, "Última defesa"). O resto do lote em `targetIds` ainda é processado. | `enqueue_master_action` (`interact.kind == "reveal"` e qualquer outro `interact`). |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
+| `connection_replaced` | `"this account connected again elsewhere"` — a mesma conta abriu outra conexão; esta é a antiga, e o servidor a fecha a seguir (B4, spec §4.6). Ver [`connection_replaced`](#connection_replaced). | Não é resposta a mensagem nenhuma — dispara no `register`. |
 
-**`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou.
+**`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou — **exceto
+`connection_replaced`**, cujo destinatário não é quem mandou a última mensagem, mas a conexão
+que ela está substituindo (ver acima).
 
 ## 8. A sequência típica de um turno inteiro
 
@@ -1988,6 +2016,8 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
 | Turno aberto, reações anexadas | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido** — o turno só persiste ao FECHAR; a peça da action volta para onde o último fechamento a deixou |
+| Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
+| `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 
 **Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). `Room.persistBoard`
 grava a cada `start_match`, a cada fechamento de turno e a cada interação/revelação de

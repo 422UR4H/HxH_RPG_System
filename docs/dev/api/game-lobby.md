@@ -26,6 +26,28 @@ Sent to a participant who tries to connect before the master has opened the lobb
 
 The server immediately follows with a WebSocket close frame (code 4001, reason: "lobby not open") and closes the connection.
 
+A player gets the exact same message if the room closed in the narrow gap between the
+server checking it exists and actually registering the connection (B7, spec §4.6,
+`Room.Register` returning `ErrRoomClosed` instead of hanging on a dead room) — from the
+player's side there is no way to tell a room that never opened from one that just closed;
+either way the lobby only reopens when the master reconnects. The master never sees this:
+on the same race it transparently retries against a freshly (re)created room.
+
+#### `connection_replaced`
+
+The same account (master or player) opening a second connection — a second tab, a reload
+whose old tab did not close in time — makes the **last** connection win (B4, spec §4.6). The
+OLD connection gets:
+
+```json
+{ "type": "error", "payload": { "code": "connection_replaced", "message": "this account connected again elsewhere" } }
+```
+
+and the server closes it right after. The lobby itself is untouched — the new connection
+keeps whatever seat the account had. Full contract (who receives it, what the client should
+do about it) in [`match-combat-ws.md`](match-combat-ws.md#connection_replaced), since the
+same `register` path is shared by the lobby and a live match.
+
 ### Client → Server
 
 #### `cancel_lobby`
