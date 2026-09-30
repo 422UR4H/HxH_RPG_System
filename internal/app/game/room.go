@@ -199,8 +199,8 @@ func (r *Room) GetSession() *matchsession.MatchSession {
 // processed until Register completes.
 func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.session != nil {
+		r.mu.Unlock()
 		return // another goroutine already rehydrated
 	}
 	r.session = session
@@ -225,6 +225,12 @@ func (r *Room) RehydrateSession(session *matchsession.MatchSession) {
 		}
 	}
 	r.state = RoomStatePlaying
+	r.mu.Unlock()
+
+	// The active pair is usually rows already — FindActiveSession rebuilt the session from them.
+	// It is not when the match had none to find (started before B15, or the start-time write
+	// failed): the session then opened a fresh pair, which becomes rows now, at birth (§4.5).
+	r.ensureActiveSceneAndRound("rehydrate")
 }
 
 func (r *Room) IsMaster(userUUID uuid.UUID) bool {
@@ -522,6 +528,10 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	r.state = RoomStatePlaying
 	r.mu.Unlock()
 
+	// The scene and round the match starts on are rows from this moment, not from their first
+	// closed turn (B15, spec §4.5) — a match whose first scene closes without a turn still has it.
+	r.ensureActiveSceneAndRound("start_match")
+
 	for _, pid := range playerIDs {
 		r.mu.Lock()
 		_, err := r.session.RecomputeVisibility(pid)
@@ -697,7 +707,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// server dies between the two, the board on disk already agrees with the turn
 				// that is about to be lost, not with one that half-committed.
 				r.persistBoard("turn_closed")
-				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				// result.ClosedRound is set when this same call also closed the round by
+				// exhaustion: the session's active round is then already its successor, and
+				// the turn belongs to the round it closed in.
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, result.ClosedRound)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
 				// and before turn_closed: both are on the direct per-client lane now
@@ -726,6 +739,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// The round ran out: nothing pending could still pay, so it closed instead of opening
 		// anything. Everyone is told — the regime and the bars are table state.
 		if result.ClosedRound != nil {
+			// The round that opened in its place is a row from birth (B15, spec §4.5), before any
+			// turn closes in it. CloseRoundUC already closed the exhausted one's row, which is
+			// there to close because it too was written at birth.
+			r.ensureActiveSceneAndRound("round_closed")
 			out := NewServerMessage(MsgTypeRoundClosed, RoundClosedPayload{
 				RoundMode: string(result.ClosedRound.GetMode()),
 			})
@@ -754,11 +771,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Write lock across Execute — the regime decides how every later selection is scored.
 		// The regime the table is told is read back from the session under the same lock, not
 		// echoed from the client's request: what is public is the round's actual state.
+		//
+		// The regime it had before, and the scene/round it was applied to, are read under that
+		// same lock too: they are what the roundModeChanged event records (B15, spec §4.5).
 		r.mu.Lock()
 		session := r.session
 		var err error
-		var newMode enum.RoundMode
+		var oldMode, newMode enum.RoundMode
+		var modeScene *sceneentity.Scene
+		var modeRound *roundentity.Round
 		if session != nil {
+			modeScene, modeRound = session.GetActiveScene(), session.GetActiveRound()
+			oldMode = modeRound.GetMode()
 			err = r.deps.ChangeRoundModeUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID,
 				enum.RoundMode(payload.Mode),
@@ -774,6 +798,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		// Recorded before the table is told, so the history never lags what the table saw.
+		r.recordRoundModeChanged(session, modeScene, modeRound, oldMode, newMode)
 		out := NewServerMessage(MsgTypeRoundModeChanged, RoundModeChangedPayload{Mode: string(newMode)})
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
@@ -827,7 +853,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// server dies between the two, the board on disk already agrees with the turn
 				// that is about to be lost, not with one that half-committed.
 				r.persistBoard("turn_closed")
-				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, nil)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
 				// and before turn_closed: both are on the direct per-client lane now
@@ -1106,7 +1132,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Same order as the two implicit closes: the board — the escape's piece included —
 		// reaches match_boards before persistClosedTurn's own DB round trip (spec §4.3).
 		r.persistBoard("turn_closed")
-		r.persistClosedTurn(session, closedTurn, result.Resolution)
+		r.persistClosedTurn(session, closedTurn, result.Resolution, nil)
 
 		// Same place in the sequence the two implicit closes put it: after the write, before
 		// turn_closed. See the comment there for why the order matters.
@@ -1152,6 +1178,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var oldScene *sceneentity.Scene
 		var oldRound *roundentity.Round
 		var scenePayload SceneChangedPayload
+		var newScene *sceneentity.Scene
+		var newRound *roundentity.Round
 		if session != nil {
 			// Captured BEFORE ChangeScene resets it.
 			sceneWasPersisted = session.IsScenePersisted()
@@ -1161,6 +1189,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				category, payload.BriefInitialDescription,
 			)
 			if err == nil {
+				newScene, newRound = session.GetActiveScene(), session.GetActiveRound()
 				if activeScene := session.GetActiveScene(); activeScene != nil {
 					scenePayload = SceneChangedPayload{
 						SceneID:                 activeScene.GetID(),
@@ -1181,6 +1210,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
+		// Since B15 every scene and round is a row from birth, so sceneWasPersisted is true unless
+		// the birth-time write itself failed (logged there). The check stays: closing a row that
+		// was never written would be an UPDATE of nothing, and the flag is what says which case
+		// this is. The old pair is closed BEFORE the new one is written, so the database never
+		// holds two open scenes for the match — FindActiveSession reads the open one on a restart.
 		if sceneWasPersisted && oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
 			if dbErr := r.deps.RoundRepo.CloseSceneAndRound(
 				context.Background(),
@@ -1189,6 +1223,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				log.Printf("CloseSceneAndRound error: %v", dbErr)
 			}
 		}
+		// The new scene and its round are rows from this moment (B15, spec §4.5).
+		r.ensureSceneAndRoundRows(session, newScene, newRound, "change_scene")
 
 		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)
 		data, _ := json.Marshal(out)
@@ -1542,7 +1578,16 @@ func (r *Room) announceOpenedTurn(
 // A PersistTurnClose failure is logged and swallowed, not returned: the turn already closed
 // in memory and the match goes on regardless. But say WHAT was lost — this ran silently for
 // two phases while an FK mismatch dropped every single turn on the floor.
-func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution) {
+//
+// closedIn is the round the turn closed in when that is no longer the session's active round —
+// an open_next_action that closes the turn AND, finding nothing that can pay, the round with it
+// (CloseRound installs the successor before this runs). nil means the active round. Before B15
+// this read the active round unconditionally and wrote an exhausted round's last turn under its
+// successor, flagging the successor as a row it was not yet.
+func (r *Room) persistClosedTurn(
+	session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution,
+	closedIn *roundentity.Round,
+) {
 	act := t.GetAction()
 	// Write lock, not read: TakeOverridesFor DRAINS two maps on the session, it does not just
 	// read them, so it needs the same lock a mutation would. Reading Scene/Round/MatchUUID
@@ -1556,6 +1601,9 @@ func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnenti
 	r.mu.Lock()
 	activeScene := session.GetActiveScene()
 	activeRound := session.GetActiveRound()
+	if closedIn != nil {
+		activeRound = closedIn
+	}
 	matchUUID := session.GetMatchUUID()
 	overrides := session.TakeOverridesFor(t)
 	r.mu.Unlock()
@@ -1574,8 +1622,12 @@ func (r *Room) persistClosedTurn(session *matchsession.MatchSession, t *turnenti
 		// failure mode is already logged-and-swallowed policy for the whole turn.
 		return
 	}
+	// Only if the round written is still the active one: the successor of an exhausted round is
+	// not the row this just wrote.
 	r.mu.Lock()
-	session.MarkRoundPersisted()
+	if session.GetActiveRound() == activeRound {
+		session.MarkRoundPersisted()
+	}
 	r.mu.Unlock()
 }
 

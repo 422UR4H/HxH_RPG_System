@@ -145,6 +145,9 @@ type combatFixture struct {
 	// enqueue_master_action lands here as a masteraction.Record. restart hands the SAME store to
 	// the second room, the way master_actions rows would survive a real restart.
 	masterActions *fakeMasterActionStore
+	// events backs RoomDeps.EventRepo (spec §4.5, T13): every roundModeChanged the room
+	// records lands here. Like masterActions, restart hands the SAME store to the second room.
+	events *fakeEventStore
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -244,6 +247,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 		memories:   newFakeMemoryStore(),
 
 		masterActions: &fakeMasterActionStore{},
+		events:        &fakeEventStore{},
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -328,6 +332,8 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		SheetOwnership: f.sheets,
 		// T5: every accepted master action is recorded (spec §4.8).
 		MasterActionRepo: f.masterActions,
+		// T13: the round's regime changes are recorded (spec §4.5).
+		EventRepo: f.events,
 	}
 }
 

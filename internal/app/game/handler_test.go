@@ -311,6 +311,21 @@ type mockRoundRepoHandler struct {
 	persistedTurns []uuid.UUID
 	overrides      map[uuid.UUID][]matchDomain.OverriddenValue
 	ensuredRounds  []uuid.UUID
+	ensuredScenes  []uuid.UUID
+	// closedScenes records every CloseSceneAndRound call as a {scene, round} pair, and
+	// closedRounds every CloseRound — what change_scene and a round's close write back.
+	closedScenes [][2]uuid.UUID
+	closedRounds []uuid.UUID
+	// turnRounds maps each persisted turn to the round PersistTurnClose was told it closed in.
+	turnRounds map[uuid.UUID]uuid.UUID
+}
+
+// roundOfPersistedTurn returns the round PersistTurnClose wrote turnID under.
+func (m *mockRoundRepoHandler) roundOfPersistedTurn(turnID uuid.UUID) (uuid.UUID, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rd, ok := m.turnRounds[turnID]
+	return rd, ok
 }
 
 func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
@@ -321,6 +336,10 @@ func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.Tu
 		m.overrides = map[uuid.UUID][]matchDomain.OverriddenValue{}
 	}
 	m.overrides[d.Turn.GetID()] = d.Overrides
+	if m.turnRounds == nil {
+		m.turnRounds = map[uuid.UUID]uuid.UUID{}
+	}
+	m.turnRounds[d.Turn.GetID()] = d.Round.GetID()
 	return nil
 }
 
@@ -340,17 +359,43 @@ func (m *mockRoundRepoHandler) overridesFor(turnID uuid.UUID) []matchDomain.Over
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, sceneID, roundID uuid.UUID, _ time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{sceneID, roundID})
 	return nil
 }
 
-// EnsureSceneAndRound is a no-op that records the round it was asked to ensure — what
-// recordMasterAction calls before writing a master action (spec §4.8).
-func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *scene.Scene, rd *roundentity.Round) error {
+// closedScenePairs returns a snapshot of every {scene, round} CloseSceneAndRound was called with.
+func (m *mockRoundRepoHandler) closedScenePairs() [][2]uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([][2]uuid.UUID(nil), m.closedScenes...)
+}
+
+// closedRoundIDs returns a snapshot of every round ID CloseRound was called with.
+func (m *mockRoundRepoHandler) closedRoundIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.closedRounds...)
+}
+
+// EnsureSceneAndRound is a no-op that records the scene and round it was asked to ensure —
+// what the room calls when a scene or round is born, and before writing a master action or an
+// event (spec §4.5, §4.8).
+func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, sc *scene.Scene, rd *roundentity.Round) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ensuredRounds = append(m.ensuredRounds, rd.GetID())
+	m.ensuredScenes = append(m.ensuredScenes, sc.GetID())
 	return nil
+}
+
+// ensuredSceneIDs returns a snapshot of every scene ID EnsureSceneAndRound was called with.
+func (m *mockRoundRepoHandler) ensuredSceneIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.ensuredScenes...)
 }
 
 // ensuredRoundIDs returns a snapshot of every round ID EnsureSceneAndRound was called with.
@@ -359,7 +404,10 @@ func (m *mockRoundRepoHandler) ensuredRoundIDs() []uuid.UUID {
 	defer m.mu.Unlock()
 	return append([]uuid.UUID(nil), m.ensuredRounds...)
 }
-func (m *mockRoundRepoHandler) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoHandler) CloseRound(_ context.Context, roundID uuid.UUID, _ time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closedRounds = append(m.closedRounds, roundID)
 	return nil
 }
 func (m *mockRoundRepoHandler) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {

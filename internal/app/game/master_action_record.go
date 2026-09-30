@@ -96,11 +96,11 @@ func (r *Room) sessionViews(gate viewGate) map[uuid.UUID]masteraction.View {
 // views is what each player of the session saw of it live; the history shows every reader
 // exactly that. The caller must NOT hold r.mu.
 //
-// master_actions references the ACTIVE scene and round, which only become rows when the first
-// turn of that round closes — so they are ensured first, and the session is told they are rows
-// now, the same flag a persisted turn close sets: without it, change_scene and the round's
-// close would skip closing rows that do exist, and a restart would rehydrate onto a scene that
-// had already ended.
+// master_actions references the ACTIVE scene and round. Since B15 they are rows from birth
+// (ensureActiveSceneAndRound), so this is normally a no-op; if that write failed, they are
+// ensured here first, and the session is told they are rows now (ensureSceneAndRoundRows) —
+// without that flag, change_scene and the round's close would skip closing rows that do exist,
+// and a restart would rehydrate onto a scene that had already ended.
 //
 // A failure is logged saying what was lost and swallowed — the persistClosedTurn policy.
 func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map[uuid.UUID]masteraction.View) {
@@ -127,22 +127,9 @@ func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map
 		return
 	}
 	ctx := context.Background()
-	if !persisted {
-		if r.deps.RoundRepo == nil {
-			log.Printf("recordMasterAction(%s) FAILED — no round repository to ensure scene/round of match %s, action NOT recorded", kind, r.matchUUID)
-			return
-		}
-		if err := r.deps.RoundRepo.EnsureSceneAndRound(ctx, r.matchUUID, sc, rd); err != nil {
-			log.Printf("recordMasterAction(%s) FAILED — scene/round of match %s not ensured, action NOT recorded: %v", kind, r.matchUUID, err)
-			return
-		}
-		r.mu.Lock()
-		// Only if they are still the active pair: a change_scene or a round close in between
-		// already reset the flag for the NEW pair, which is not a row yet.
-		if sess.GetActiveRound() == rd {
-			sess.MarkRoundPersisted()
-		}
-		r.mu.Unlock()
+	if !persisted && !r.ensureSceneAndRoundRows(sess, sc, rd, "recordMasterAction("+string(kind)+")") {
+		log.Printf("recordMasterAction(%s) FAILED — scene/round of match %s not written, action NOT recorded", kind, r.matchUUID)
+		return
 	}
 	rec := masteraction.Record{
 		UUID: uuid.New(), MatchUUID: r.matchUUID, SceneUUID: sc.GetID(), RoundUUID: rd.GetID(),

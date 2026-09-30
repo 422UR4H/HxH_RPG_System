@@ -677,6 +677,18 @@ mappings:
       sessão viu ao vivo, pelos mesmos portões de fog do dispatch (pieceMoveView,
       pieceRemovedView) — mudar um portão muda o que o histórico mostra.
 
+  - code_path: internal/app/game/history_record.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      B15 (spec §4.5): cena e round viram linha quando nascem — ensureActiveSceneAndRound,
+      chamado no start_match, na reidratação, depois do change_scene e quando um round fecha
+      por exaustão — e a troca de regime é gravada em match_events (recordRoundModeChanged,
+      que também atualiza o mode da linha do round). ensureSceneAndRoundRows é o caminho
+      comum, usado também por recordMasterAction. Mudar quando algo vira linha muda o que
+      o GET /history mostra.
+
   - code_path: internal/app/game/message.go
     dev_docs:
       - path: docs/dev/api/match-combat-ws.md

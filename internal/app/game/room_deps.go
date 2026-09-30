@@ -6,6 +6,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 )
 
 // IMasterActionRepo writes one master action row (spec §4.8). recordMasterAction is the one
@@ -64,4 +65,11 @@ type RoomDeps struct {
 	// nil means the room records nothing — the usual "no capability" rule, and what every test
 	// built before T5 still gets by leaving it unset.
 	MasterActionRepo IMasterActionRepo
+	// EventRepo records what happens inside a round that is not a turn and is nobody's action —
+	// today the round's regime change, in the change_round_mode arm (spec §4.5, B15). The one
+	// real implementation is pgmatchevent.Repository. nil means the room records no event — the
+	// usual "no capability" rule.
+	EventRepo interface {
+		Insert(ctx context.Context, e matchevent.Event) error
+	}
 }

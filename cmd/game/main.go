@@ -19,6 +19,7 @@ import (
 	masteractionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	matchboardPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
+	matcheventPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
 	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
@@ -89,6 +90,8 @@ func main() {
 	// Every accepted enqueue_master_action is recorded the instant it is applied, with what
 	// each player saw of it live (spec §4.8) — Room.recordMasterAction is the one writer.
 	masterActionRepository := masteractionPg.NewRepository(pgPool)
+	// What happens inside a round that is not a turn — the regime change (spec §4.5, B15).
+	matchEventRepository := matcheventPg.NewRepository(pgPool)
 
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
@@ -118,6 +121,7 @@ func main() {
 			// lobby player's ownership of an existing piece (spec §4.3, "Quem move o quê", B14).
 			SheetOwnership:   sheetRepository,
 			MasterActionRepo: masterActionRepository,
+			EventRepo:        matchEventRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)
