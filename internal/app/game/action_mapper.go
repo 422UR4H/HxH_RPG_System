@@ -48,7 +48,13 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		}
 		move = &action.Move{
 			Category: category,
-			From:     p.Move.From,
+			// From is NOT read off the payload (B6, spec §4.3 "B5, B6 e B10"): the server
+			// owns the board, so whatever the client declared here is parsed, then discarded.
+			// room.go's enqueue_action arm fills it in afterwards from the actor's own piece
+			// position — nil when the actor has none. A reaction's Move goes through this
+			// same mapper and gets the same nil; nothing derives a reaction's origin today,
+			// since a reaction's movement is applied only at turn close (see applyClosedEscapes
+			// / applyMove), never checked against a wall at attach time.
 			Position: p.Move.Position,
 			// The skill comes from the category, never from the payload. The front shows the
 			// tactical move types explicitly; switching Dash to Shift in the bottom sheet

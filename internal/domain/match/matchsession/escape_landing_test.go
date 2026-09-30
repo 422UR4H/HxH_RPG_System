@@ -66,7 +66,7 @@ func newEscapeFixture(t *testing.T, grid mapentity.GridShape) *escapeFixture {
 		nil,
 		&action.Move{
 			Category: enum.Dash,
-			From:     [3]int{6, 6, 0},
+			From:     &[3]int{6, 6, 0},
 			Position: [3]int{8, 6, 0},
 			Speed:    &action.RollCheck{SkillName: enum.Accelerate.String()},
 		},

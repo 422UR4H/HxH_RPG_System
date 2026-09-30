@@ -78,7 +78,7 @@ func From(a action.Action, lvl Level) Action {
 	}
 	if a.Move != nil {
 		out.Move = &Move{
-			Category: string(a.Move.Category), From: a.Move.From, Position: a.Move.Position,
+			Category: string(a.Move.Category), From: fromPtr(a.Move.From), Position: a.Move.Position,
 			Speed:      rollCheckPtr(a.Move.Speed, speedKeep),
 			Charge:     rollCheckPtr(a.Move.Charge, numbersKeep),
 			FinalSpeed: intPtr(a.Move.FinalSpeed, speedKeep),
@@ -146,6 +146,18 @@ func intPtr(v int, keep bool) *int {
 		return nil
 	}
 	out := v
+	return &out
+}
+
+// fromPtr defensively copies the domain Move.From pointer onto the wire, rather than sharing
+// it: From/Position are copied unconditionally at every level (see From's own doc), but a
+// nil-safe clone keeps a caller that later mutates the domain Action from reaching back
+// through a wire struct that outlives it, the same defensive posture weaponPtr takes below.
+func fromPtr(v *[3]int) *[3]int {
+	if v == nil {
+		return nil
+	}
+	out := *v
 	return &out
 }
 

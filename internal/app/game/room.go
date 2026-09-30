@@ -961,29 +961,40 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		// Movement blocking: validate path against walls with move=true and !open.
+		//
+		// B6: the origin is never the client's — the server owns the board, so `from` is the
+		// ACTOR'S OWN PIECE POSITION, read off r.pieceSlotOf, not payload.Move.From (already
+		// discarded by buildAction). nil (no piece on the board) means there is nothing to
+		// check: the sentinel-based skip this used to do for [0,0,0] — which made a piece
+		// genuinely standing at (0,0) unblockable — is gone along with the sentinel itself.
+		//
+		// B5/B10: the wall check reads cell CENTERS via mapservice.SlotCenterToWorld with the
+		// session's own grid, not `col × cellSize` (yesterday's bug: that lands on a cell's
+		// top-left corner, which is wrong on a square grid and meaningless on a hex one).
 		if a.Move != nil {
-			from := a.Move.From
-			to := a.Move.Position
-			// Only validate when the client provided a non-zero From (zero means "not provided").
-			if from != ([3]int{}) {
-				r.mu.RLock()
-				sess := r.session
-				var gridSize float64
+			r.mu.RLock()
+			from, hasPiece := r.pieceSlotOf(a.GetActorID().String())
+			a.Move.From = from
+			if !hasPiece {
+				r.mu.RUnlock()
+			} else {
+				grid := r.grid
 				var walls []mapentity.WallSegment
-				if sess != nil {
-					gridSize = sess.GetGridSize()
-					walls = sess.GetWalls()
+				if r.session != nil {
+					grid = r.session.GetGrid()
+					walls = r.session.GetWalls()
 				} else {
-					gridSize = r.grid.CellSize
 					walls = make([]mapentity.WallSegment, 0, len(r.walls))
 					for _, w := range r.walls {
 						walls = append(walls, w)
 					}
 				}
 				r.mu.RUnlock()
-				fromWorld := [2]float64{float64(from[0]) * gridSize, float64(from[1]) * gridSize}
-				toWorld := [2]float64{float64(to[0]) * gridSize, float64(to[1]) * gridSize}
-				if mapservice.IsPathBlocked(fromWorld, toWorld, walls) {
+
+				to := a.Move.Position
+				fx, fy := mapservice.SlotCenterToWorld(from[0], from[1], grid)
+				tx, ty := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+				if mapservice.IsPathBlocked([2]float64{fx, fy}, [2]float64{tx, ty}, walls) {
 					client.SendMessage(NewErrorMessage("move_blocked", "movement blocked by a wall"))
 					return
 				}
@@ -2025,8 +2036,11 @@ func (r *Room) gridShape() mapentity.GridShape {
 	return r.grid
 }
 
-func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64) {
-	a, b := 0, 0
+// slotToAB reads a piece's grid position [a, b] out of its SlotPayload — (a, b) is (q, r)
+// axial on a hex slot, (col, row) on a square one. Shared by slotPayloadToWorld (which turns
+// it into a world point) and pieceSlotOf (which reports it as the Move.From a/b pair
+// verbatim), so the two never drift into disagreeing about which field means what.
+func slotToAB(s SlotPayload) (a, b int) {
 	if s.Kind == "hex" {
 		if s.Q != nil {
 			a = *s.Q
@@ -2034,14 +2048,19 @@ func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64)
 		if s.R != nil {
 			b = *s.R
 		}
-	} else {
-		if s.Col != nil {
-			a = *s.Col
-		}
-		if s.Row != nil {
-			b = *s.Row
-		}
+		return a, b
 	}
+	if s.Col != nil {
+		a = *s.Col
+	}
+	if s.Row != nil {
+		b = *s.Row
+	}
+	return a, b
+}
+
+func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64) {
+	a, b := slotToAB(s)
 	return mapservice.SlotCenterToWorld(a, b, g)
 }
 
@@ -2812,6 +2831,27 @@ func (r *Room) pieceOfLocked(characterID string) string {
 		}
 	}
 	return pieceID
+}
+
+// pieceSlotOf is the origin B6 reads for a Move: the ACTOR'S OWN piece position on the
+// server's board, never the client's declared "from" (spec §4.3 "B5, B6 e B10"). It reuses
+// pieceOfLocked for the same "lowest piece ID wins" lookup applyMove already does, so the two
+// never disagree about which piece a multi-piece character moves by.
+//
+// Returns (nil, false) when the character has no piece on the board — there is nothing to
+// check and nothing to report. Otherwise [a, b, 0]: (a, b) is (col, row) on a square slot or
+// (q, r) axial on a hex one (slotToAB), and z is always 0 — a piece's z is its virtual height
+// in metres (see applyMove's own doc), not a grid index, so it has no place in a grid position.
+//
+// The caller MUST hold r.mu (a read lock is enough: this only reads r.pieces).
+func (r *Room) pieceSlotOf(characterID string) (pos *[3]int, ok bool) {
+	pieceID := r.pieceOfLocked(characterID)
+	if pieceID == "" {
+		return nil, false
+	}
+	a, b := slotToAB(r.pieces[pieceID].Slot)
+	out := [3]int{a, b, 0}
+	return &out, true
 }
 
 // slotKeepingKind puts a piece at grid position pos in the slot SHAPE it already had. The

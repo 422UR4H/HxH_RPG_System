@@ -63,8 +63,9 @@ Toda mensagem, nos dois sentidos, é um `Message`:
   - `reactToId` **sempre aparece** num `enqueue_action` de ação comum, com o valor
     `"00000000-0000-0000-0000-000000000000"`. Esse zero é o sentinela de "não é reação" em
     todo o código — não é um bug de serialização, e o front deve tratá-lo como ausência.
-  - `move.from` aparece como `[0, 0, 0]` quando não foi enviado. Zero significa
-    "não informado" (e desliga a checagem de parede).
+  - `move.from` **não é mais afetado por isso** (B6, spec §4.3 "B5, B6 e B10"): virou
+    `*[3]int`, e `omitempty` funciona normalmente em ponteiro. Ausente = o ator não tinha
+    peça no tabuleiro — não "zero não enviado".
 - **O servidor nunca confia no cliente para** qual barra a ação paga (`speed.bar` é
   descartado), qual perícia mede a velocidade (é sempre Legerity), a perícia de velocidade
   de um movimento (vem da categoria), **qual perícia mede o acerto de um ataque (é sempre
@@ -186,7 +187,8 @@ porque uma ação plausível carregue todas.
 | `skills[].difficulty` | CD proposta pelo cliente. A corrente de testes ainda **não é executada** pelo motor (ver §8). |
 | `speed` | **Descartado.** `bar` é derivado do conteúdo por `Action.Bars()`; a perícia é sempre Legerity. |
 | `move.category` | Só **`Dash`** e `Shift` são aceitos. `Back`, `Roll`, `Slide`, `Jump`, `FlatJump` são **recusados** — a fatia de movimento é que vai exercê-los. |
-| `move.from` | `[col, row, z]`. Quando não-zero, o servidor valida o caminho contra paredes com `move=true` e `open=false`. |
+| `move.from` | **Ignorado** (B6, spec §4.3 "B5, B6 e B10"). O servidor é dono do tabuleiro: a origem que ele checa é a **posição da PRÓPRIA peça do ator**, lida do board no instante do enfileiramento — nunca o que o payload manda aqui. Sem peça no tabuleiro, não há origem e não há checagem nenhuma. |
+| `move.position` | Convenção de coordenada, igual em `move.from`: `[a, b, z]`, com `(a, b) = (col, row)` numa grade quadrada ou `(q, r)` axial numa hexagonal. `z` **não é lido** pelo servidor (ver a nota de `Z` mais abaixo, em `piece_moved`). |
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
@@ -866,6 +868,11 @@ conectado, a mensagem simplesmente não é entregue a ninguém.
   }
 }
 ```
+
+**`action.move.from` é a posição da PEÇA do ator no tabuleiro** (B6, spec §4.3 "B5, B6 e B10"),
+nunca o que o payload de `enqueue_action` mandou em `move.from` — por isso o exemplo mostra
+`[4, 4, 0]` mesmo que o cliente tivesse mandado outra coisa. **Ausente** (nenhuma chave
+`from`) quando o ator não tem peça no tabuleiro.
 
 **É master-only porque a fila é secreta** (`combat-engine.md` § *As barras são públicas*: "a
 fila é secreta; a barra e a ordem são públicas"). Um jogador que aprendesse o que está
@@ -1777,15 +1784,21 @@ cliente escrever `Z`. Ver §10.
 
 ⚠️ **Colisão contra parede é uma fatia de regra ainda não desenhada — o efeito hoje é que a
 peça atravessa.** A única checagem existente contra paredes com `move=true` e `open=false`
-acontece no **enfileiramento** (`enqueue_action`, quando `move.from` é não-zero — ver a
-tabela em `enqueue_action`), não de novo aqui na abertura. O caminho de reação **nunca passa
-por essa checagem, nem uma vez**: quando `reactToId` é não-zero, `enqueue_action` roteia para
-o mesmo tratamento de `attach_reaction` e retorna **antes** de alcançar o código que valida a
-parede — esse código só existe no ramo de ação comum. `attach_reaction`, enviado direto,
-também não tem checagem nenhuma no caminho. Não é validação esquecida: **ainda não existe a
-regra que decide o que acontece quando um personagem colide com uma parede** — compartilhar
-o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi
-escolhido ainda. Ver §10.
+acontece no **enfileiramento** (`enqueue_action`, quando o ator TEM peça no tabuleiro — ver a
+tabela em `enqueue_action`), não de novo aqui na abertura. A origem do caminho checado é a
+**posição da própria peça** (B6), nunca o `move.from` que o cliente mandou; o destino é
+`move.position`; e os dois pontos são convertidos para o mundo pelos **centros** dos slots
+(`mapservice.SlotCenterToWorld`, com a grade da sessão) — B5, e também o que torna a conversão
+certa numa grade hexagonal (B10), onde a fórmula de uma grade quadrada não vale. O caminho de
+reação **nunca passa por essa checagem, nem uma vez**: quando `reactToId` é não-zero,
+`enqueue_action` roteia para o mesmo tratamento de `attach_reaction` e retorna **antes** de
+alcançar o código que valida a parede — esse código só existe no ramo de ação comum.
+`attach_reaction`, enviado direto, também não tem checagem nenhuma no caminho, e a Move de uma
+reação nunca recebe um `from` derivado (fica ausente) — o movimento de um escape só é aplicado
+ao tabuleiro no fechamento do turno (`close_turn`), nunca checado contra parede na declaração.
+Não é validação esquecida: **ainda não existe a regra que decide o que acontece quando um
+personagem colide com uma parede** — compartilhar o slot, ser bloqueado, ou quebrar a parede
+no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Ver §10.
 
 ### `error`
 
@@ -1933,7 +1946,7 @@ vale para o REST.
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, ou `remove` de personagem sem peça (`"character has no piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
-| `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move.from` não-zero. |
+| `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6). |
 | `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
 | `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
 | `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |

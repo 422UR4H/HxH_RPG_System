@@ -79,7 +79,7 @@ func newEscapeEditFixture(t *testing.T) *escapeEditFixture {
 		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
 		nil,
 		&action.Move{
-			Category: enum.Dash, From: [3]int{6, 6, 0}, Position: [3]int{8, 6, 0},
+			Category: enum.Dash, From: &[3]int{6, 6, 0}, Position: [3]int{8, 6, 0},
 			Speed: &action.RollCheck{SkillName: enum.Accelerate.String()},
 		},
 		nil, nil, &action.Dodge{}, nil, nil,

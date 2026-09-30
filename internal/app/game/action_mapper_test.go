@@ -154,6 +154,34 @@ func TestBuildAction_KeepsMappingWhatItAlreadyMapped(t *testing.T) {
 	}
 }
 
+// TestBuildAction_IgnoresPayloadMoveFrom is B6 (spec §4.3 "B5, B6 e B10"): the origin the
+// server checks a Move against is never the client's. buildAction must not carry the
+// payload's "from" onto the domain Action at all — room.go's enqueue_action arm is the ONLY
+// place that ever writes action.Move.From, from the actor's own piece position, after
+// buildAction returns.
+func TestBuildAction_IgnoresPayloadMoveFrom(t *testing.T) {
+	actorCharID := uuid.New()
+	p := ActionPayload{
+		ActorID: actorCharID,
+		Move: &MovePayload{
+			Category: string(enum.Dash),
+			From:     [3]int{9, 9, 0},
+			Position: [3]int{2, 1, 0},
+		},
+	}
+	a, err := buildAction(actorCharID, p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Move == nil {
+		t.Fatal("Move was dropped entirely")
+	}
+	if a.Move.From != nil {
+		t.Errorf("Move.From = %v, want nil — the payload's origin must never reach the domain Action",
+			*a.Move.From)
+	}
+}
+
 func TestBuildAction_EmptyPayloadIsValid(t *testing.T) {
 	// A bare action — no attack, no move — is legal; the session still rolls its speed.
 	actorCharID := uuid.New()

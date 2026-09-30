@@ -77,7 +77,7 @@ func fixtureGoldenHistoryTurn() matchUC.HistoryTurn {
 		action.ActionSpeed{Bar: 3, RollCheck: rc(enum.Legerity.String(), 5, []int{5, 6}, []int{2, 3}, 14)},
 		&feint,
 		&action.Move{
-			Category: enum.Dash, From: [3]int{1, 1, 0}, Position: [3]int{4, 4, 0},
+			Category: enum.Dash, From: &[3]int{1, 1, 0}, Position: [3]int{4, 4, 0},
 			Speed: &moveSpeed, Charge: &moveCharge, FinalSpeed: 9,
 		},
 		&action.Attack{

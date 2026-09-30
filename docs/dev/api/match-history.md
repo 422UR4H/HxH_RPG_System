@@ -201,6 +201,12 @@ Notas sobre os campos de `action`/`reactions`:
 
 - `skills`, `move`, `attack`, `defense`, `dodge`, `repel`, `interact` só aparecem quando a
   action de fato os carrega — ausentes (não `null`), do contrário.
+- `move.from` é a posição da PEÇA do ator no tabuleiro no instante do enfileiramento — nunca o
+  que o cliente declarou em `move.from` do payload de `enqueue_action`, que o servidor sempre
+  descarta (B6, spec §4.3 "B5, B6 e B10"). Ausente quando o ator não tinha peça no tabuleiro.
+  Convenção de coordenada, igual em `move.position`: `[a, b, z]`, `(a, b) = (col, row)` numa
+  grade quadrada ou `(q, r)` axial numa hexagonal; `z` não é lido pelo servidor. Uma reação
+  (em `reactions[]`) nunca tem `move.from` — o campo não é derivado para o lado da reação.
 - `trigger` é omitido por completo quando o viewer não é dono nem mestre; quando presente, é
   um objeto vazio (o domínio ainda não tem campos em `action.Trigger`).
 - `feint` segue uma regra **temporal**, não de classe: `ProjectAction`

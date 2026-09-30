@@ -310,8 +310,14 @@ type InteractPayload struct {
 }
 
 type MovePayload struct {
-	Category string            `json:"category"`
-	From     [3]int            `json:"from,omitempty"` // source grid position [col, row, z]; zero = not provided
+	Category string `json:"category"`
+	// From is IGNORED by buildAction (B6, spec §4.3 "B5, B6 e B10"): the server owns the
+	// board, so the origin it checks against is the actor's own piece position, read off
+	// room.go's r.pieceSlotOf at enqueue time — never this field. It stays on the wire only
+	// so a client payload that still sends it decodes without error; nothing reads it.
+	From [3]int `json:"from,omitempty"`
+	// Position is the declared destination — [a, b, z], (a, b) = (col, row) square or (q, r)
+	// axial hex, z not read by the server (see action.Move.From's own doc for the convention).
 	Position [3]int            `json:"position"`
 	Speed    *RollCheckPayload `json:"speed,omitempty"`
 	Charge   *RollCheckPayload `json:"charge,omitempty"`

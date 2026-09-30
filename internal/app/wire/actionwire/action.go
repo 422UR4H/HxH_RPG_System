@@ -131,9 +131,11 @@ type ActionSpeed struct {
 // attack.hit/damage/charge, skills[], feint, defense, dodge, repel — kept only at Full.
 type Move struct {
 	Category string `json:"category"`
-	// From is the source grid position, still the plain [3]int the domain carries: Task 15
-	// changes this to a pointer for a mid-flight action with no origin yet, not this task.
-	From       [3]int     `json:"from,omitempty"`
+	// From is the actor's piece position on the server's board at enqueue time (B6, spec
+	// §4.3 "B5, B6 e B10") — never the client's declared origin, which the server discards.
+	// nil (omitted on the wire) means the actor had no piece to check against. Convention:
+	// [a, b, z], (a, b) = (col, row) square or (q, r) axial hex, z not read.
+	From       *[3]int    `json:"from,omitempty"`
 	Position   [3]int     `json:"position"`
 	Speed      *RollCheck `json:"speed,omitempty"`
 	Charge     *RollCheck `json:"charge,omitempty"`
