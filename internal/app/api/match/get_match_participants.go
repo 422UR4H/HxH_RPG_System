@@ -56,7 +56,7 @@ func GetMatchParticipantsHandler(
 
 		out := make([]ParticipantResponse, 0, len(result.Participants))
 		for _, p := range result.Participants {
-			out = append(out, toParticipantResponse(p, result.ViewerIsMaster))
+			out = append(out, toParticipantResponse(p, result.ViewerIsMaster, result.ViewerUUID))
 		}
 		return &GetMatchParticipantsResponse{
 			Body: GetMatchParticipantsResponseBody{Participants: out},
@@ -64,12 +64,15 @@ func GetMatchParticipantsHandler(
 	}
 }
 
-func toParticipantResponse(p *matchEntity.Participant, viewerIsMaster bool) ParticipantResponse {
+func toParticipantResponse(
+	p *matchEntity.Participant, viewerIsMaster bool, viewerUUID uuid.UUID,
+) ParticipantResponse {
 	sheet := apiSheet.CharacterSheetWithVisibilityResponse{
 		CharacterBaseSummaryResponse: apiSheet.ToBaseSummaryResponse(&p.Sheet),
 		Private:                      nil,
 	}
-	if viewerIsMaster {
+	isOwner := p.Sheet.PlayerUUID != nil && *p.Sheet.PlayerUUID == viewerUUID
+	if viewerIsMaster || isOwner {
 		priv := apiSheet.ToPrivateOnlyResponse(&p.Sheet)
 		sheet.Private = &priv
 	}

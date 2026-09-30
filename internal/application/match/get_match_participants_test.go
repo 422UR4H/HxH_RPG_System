@@ -146,6 +146,9 @@ func TestGetMatchParticipants(t *testing.T) {
 			if result.ViewerIsMaster != tt.wantViewerMaster {
 				t.Errorf("ViewerIsMaster = %v, want %v", result.ViewerIsMaster, tt.wantViewerMaster)
 			}
+			if result.ViewerUUID != tt.userUUID {
+				t.Errorf("ViewerUUID = %v, want %v", result.ViewerUUID, tt.userUUID)
+			}
 		})
 	}
 }

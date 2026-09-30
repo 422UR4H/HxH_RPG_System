@@ -13,6 +13,7 @@ import (
 type GetMatchParticipantsResult struct {
 	Participants   []*matchEntity.Participant
 	ViewerIsMaster bool
+	ViewerUUID     uuid.UUID
 }
 
 type IGetMatchParticipants interface {
@@ -66,5 +67,6 @@ func (uc *GetMatchParticipantsUC) Get(
 	return &GetMatchParticipantsResult{
 		Participants:   participants,
 		ViewerIsMaster: viewerIsMaster,
+		ViewerUUID:     userUUID,
 	}, nil
 }

@@ -20,20 +20,51 @@ import (
 )
 
 func TestGetMatchParticipantsHandler(t *testing.T) {
-	userUUID := uuid.New()
+	requestUUID := uuid.New()
 	matchUUID := uuid.New()
+	ownerUUID := uuid.New()
+	otherPlayerUUID := uuid.New()
+	strangerUUID := uuid.New()
 	now := time.Now()
 
+	// Fixed order: [0] owned by ownerUUID, [1] owned by otherPlayerUUID, [2] NPC (no owner).
 	makeFixture := func() []*matchEntity.Participant {
 		return []*matchEntity.Participant{
 			{
 				UUID:      uuid.New(),
 				MatchUUID: matchUUID,
 				Sheet: csEntity.Summary{
-					UUID:     uuid.New(),
-					NickName: "Gon",
-					FullName: "Gon Freecss",
-					Birthday: now,
+					UUID:       uuid.New(),
+					PlayerUUID: &ownerUUID,
+					NickName:   "Gon",
+					FullName:   "Gon Freecss",
+					Birthday:   now,
+				},
+				JoinedAt: now,
+				LeftAt:   nil,
+			},
+			{
+				UUID:      uuid.New(),
+				MatchUUID: matchUUID,
+				Sheet: csEntity.Summary{
+					UUID:       uuid.New(),
+					PlayerUUID: &otherPlayerUUID,
+					NickName:   "Killua",
+					FullName:   "Killua Zoldyck",
+					Birthday:   now,
+				},
+				JoinedAt: now,
+				LeftAt:   nil,
+			},
+			{
+				UUID:      uuid.New(),
+				MatchUUID: matchUUID,
+				Sheet: csEntity.Summary{
+					UUID:       uuid.New(),
+					PlayerUUID: nil,
+					NickName:   "Goblin",
+					FullName:   "Goblin NPC",
+					Birthday:   now,
 				},
 				JoinedAt: now,
 				LeftAt:   nil,
@@ -42,32 +73,46 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		ucFn           func(ctx context.Context, matchID, uid uuid.UUID) (*match.GetMatchParticipantsResult, error)
-		wantStatus     int
-		wantPrivateNil bool // when status==200, asserts the first row's characterSheet.private nullness
+		name            string
+		ucFn            func(ctx context.Context, matchID, uid uuid.UUID) (*match.GetMatchParticipantsResult, error)
+		wantStatus      int
+		wantPrivateNils []bool // per participant, in fixture order; nil when status != 200
 	}{
 		{
-			name: "200 with private populated when ViewerIsMaster",
+			name: "master receives private on every participant, including the NPC",
 			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
 				return &match.GetMatchParticipantsResult{
 					Participants:   makeFixture(),
 					ViewerIsMaster: true,
+					ViewerUUID:     uuid.New(), // master's own user UUID, irrelevant for the check
 				}, nil
 			},
-			wantStatus:     http.StatusOK,
-			wantPrivateNil: false,
+			wantStatus:      http.StatusOK,
+			wantPrivateNils: []bool{false, false, false},
 		},
 		{
-			name: "200 with private null when not master",
+			name: "owner receives private only on their own sheet",
 			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
 				return &match.GetMatchParticipantsResult{
 					Participants:   makeFixture(),
 					ViewerIsMaster: false,
+					ViewerUUID:     ownerUUID,
 				}, nil
 			},
-			wantStatus:     http.StatusOK,
-			wantPrivateNil: true,
+			wantStatus:      http.StatusOK,
+			wantPrivateNils: []bool{false, true, true},
+		},
+		{
+			name: "a player who owns none of the sheets receives private on none, not even the NPC",
+			ucFn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchParticipantsResult, error) {
+				return &match.GetMatchParticipantsResult{
+					Participants:   makeFixture(),
+					ViewerIsMaster: false,
+					ViewerUUID:     strangerUUID,
+				}, nil
+			},
+			wantStatus:      http.StatusOK,
+			wantPrivateNils: []bool{true, true, true},
 		},
 		{
 			name: "200 with empty list",
@@ -112,7 +157,7 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 				Path:   "/matches/{uuid}/participants",
 			}, handler)
 
-			ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+			ctx := context.WithValue(context.Background(), auth.UserIDKey, requestUUID)
 			resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/participants")
 
 			if resp.Code != tc.wantStatus {
@@ -132,19 +177,24 @@ func TestGetMatchParticipantsHandler(t *testing.T) {
 			if len(participants) == 0 {
 				return // empty-list case
 			}
-			row := participants[0].(map[string]any)
-			sheet := row["characterSheet"].(map[string]any)
-			privateField, present := sheet["private"]
-			if !present {
-				t.Fatal("character_sheet.private must be present (null or populated), not omitted")
+			if len(participants) != len(tc.wantPrivateNils) {
+				t.Fatalf("len(participants) = %d, want %d", len(participants), len(tc.wantPrivateNils))
 			}
-			if tc.wantPrivateNil {
-				if privateField != nil {
-					t.Errorf("character_sheet.private = %v, want null", privateField)
+			for i, wantNil := range tc.wantPrivateNils {
+				row := participants[i].(map[string]any)
+				sheet := row["characterSheet"].(map[string]any)
+				privateField, present := sheet["private"]
+				if !present {
+					t.Fatalf("participant[%d]: character_sheet.private must be present (null or populated), not omitted", i)
 				}
-			} else {
-				if privateField == nil {
-					t.Error("character_sheet.private = null, want populated object")
+				if wantNil {
+					if privateField != nil {
+						t.Errorf("participant[%d]: character_sheet.private = %v, want null", i, privateField)
+					}
+				} else {
+					if privateField == nil {
+						t.Errorf("participant[%d]: character_sheet.private = null, want populated object", i)
+					}
 				}
 			}
 		})
