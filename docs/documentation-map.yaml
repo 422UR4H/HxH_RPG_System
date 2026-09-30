@@ -715,6 +715,13 @@ mappings:
       because both surfaces it feeds (action_queued, match_full_state.queue) were
       already master-only; the field only moves entitlement the master already
       had at turn-open time earlier, to enqueue time.
+      Task 10 (B12, spec §4.2/§5 "fila" row): new OwnQueuedActionPayload
+      (actionId + Action at actionwire.Declaration) and
+      MatchFullStatePayload.OwnQueue *[]OwnQueuedActionPayload with omitempty —
+      nil (absent) for the master, always a non-nil pointer (even to an empty
+      slice) for everyone else. The reconciliation rule (known iff in ownQueue
+      OR equals openTurn.actionId; never resend on your own) is documented in
+      match-combat-ws.md, not just this note.
 
   - code_path: internal/app/game/room.go
     dev_docs:
@@ -781,6 +788,11 @@ mappings:
       actionwire.From(*a, actionwire.Full) — the same call site feeds both
       action_queued and match_full_state.Queue, so the two can never describe
       the same pending action differently.
+      Task 10 (B12, spec §4.2): buildMatchFullState's non-master branch builds
+      OwnQueue by filtering session.PendingActions() through charToPlayer (the
+      same actor-owns-the-entry check EnqueueAction made at insertion), cutting
+      each surviving entry to actionwire.Declaration. Deliberately outside the
+      round/HasOpenTurn block, mirroring Queue.
 
   - code_path: internal/app/game/client.go
     dev_docs:

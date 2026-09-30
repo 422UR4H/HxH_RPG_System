@@ -2195,6 +2195,34 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		for _, a := range session.PendingActions() {
 			payload.Queue = append(payload.Queue, newActionQueuedPayload(a))
 		}
+	} else {
+		// OwnQueue is B12 (design spec §4.2) — see MatchFullStatePayload.OwnQueue's own doc for
+		// the shape and the reconciliation rule. Deliberately OUTSIDE the round/HasOpenTurn
+		// block too, mirroring Queue above: a recipient's own pending actions exist whether or
+		// not a turn is open.
+		//
+		// charToPlayer is read directly rather than through r.viewerFor: viewerFor builds an
+		// Owns SET keyed by character for a visibility deny-list, which is not what this filter
+		// needs — this is the same actor-owns-the-queue-entry check EnqueueAction itself made
+		// at insertion time (matchsession.EnqueueAction's own doc), just re-applied per pending
+		// action instead of once at insert.
+		//
+		// The slice is built non-nil even when no entry matches, and the field is a taken
+		// address of it — never left as the zero `*[]OwnQueuedActionPayload` (nil) — so a
+		// non-master ALWAYS gets `"ownQueue": []` at minimum. See the field's own doc for why
+		// that distinction (present-and-empty vs absent) matters to a reconnecting client.
+		charToPlayer := session.GetCharToPlayer()
+		own := make([]OwnQueuedActionPayload, 0, len(session.PendingActions()))
+		for _, a := range session.PendingActions() {
+			if charToPlayer[a.GetActorID().String()] != playerID {
+				continue
+			}
+			own = append(own, OwnQueuedActionPayload{
+				ActionID: a.GetID(),
+				Action:   actionwire.From(*a, actionwire.Declaration),
+			})
+		}
+		payload.OwnQueue = &own
 	}
 
 	msg := NewServerMessage(MsgTypeMatchFullState, payload)

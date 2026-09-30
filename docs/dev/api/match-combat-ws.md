@@ -1558,6 +1558,37 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 }
 ```
 
+**O exemplo acima é o que o MESTRE vê** (`queue` presente, `ownQueue` ausente). Um jogador
+que reconecta com a MESMA ação ainda na fila vê o espelho — `queue` ausente, `ownQueue`
+presente com a versão em `actionwire.Declaration` da mesma entrada:
+
+```json
+{
+  "type": "match_full_state",
+  "payload": {
+    "roundMode": "Race",
+    "bars": { "seq": 7, "prices": { "action": 14, "move": 12 }, "characters": [], "order": [] },
+    "ownQueue": [
+      {
+        "actionId": "33333333-3333-4333-8333-333333333333",
+        "action": {
+          "uuid": "33333333-3333-4333-8333-333333333333",
+          "actorId": "11111111-1111-4111-8111-111111111111",
+          "targetId": ["22222222-2222-4222-8222-222222222222"],
+          "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity" } },
+          "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" }, "damage": { "skillName": "Push" }, "relativeVelocity": 0 }
+        }
+      }
+    ]
+  }
+}
+```
+
+Note o que sumiu em `ownQueue[0].action` em relação ao `queue[0].action` do mestre:
+`skillValue`/`attempts`/`result` de `speed.rollCheck` e de `attack.hit`/`attack.damage` —
+Declaration não é Full nem Opened rebaixado, é só a declaração; `weapon` e `targetId`
+continuam, porque isso o dono já sabia que declarou.
+
 | Campo | Notas |
 |---|---|
 | `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. **Ausente** (`omitempty`) quando a partida não tem cena ativa — `Scene *SceneChangedPayload` com `omitempty` **omite a chave inteira**, não emite `null`; em TypeScript o campo é `scene?: SceneChangedPayload`, não `scene: SceneChangedPayload \| null`. Leia `scene === undefined` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e é validada contra o enum — ver `change_scene`. |
@@ -1568,6 +1599,17 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair. Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
+| `ownQueue` | **B12 (design spec §4.2).** O espelho de `queue` para quem NÃO é o mestre: as ações ainda pendentes cujo ator pertence a este destinatário (`charToPlayer`), na mesma ordem de inserção da fila, uma `{ actionId, action }` por entrada, `action` em `actionwire.Declaration` (só o que o dono declarou — arma, alvos, `move.category/from/position`, nomes de perícia; **nenhum** dado, total ou velocidade, nem a de `speed`/`move` — ver a tabela de corte, §4.1 do design spec). Ausente **só para o mestre** — o eixo aqui não é tempo, é CLASSE, o oposto de `queue`. **SEMPRE presente para todo o resto**, mesmo sem nada pendente: vem `[]`, não ausente. É por isso que o tipo em Go é ponteiro (`*[]OwnQueuedActionPayload` com `omitempty`) em vez de slice nua — uma slice nua nula ainda serializa `null`, e o contrato aqui não é "nulo ou a lista", é "ausente (mestre) ou presente, vazia ou não (todo mundo mais)"; em TypeScript isso é `ownQueue?: OwnQueuedActionPayload[]`, e a chave só falta quando o destinatário é o mestre — para qualquer outro `ownQueue` está sempre lá, e `.length === 0` é a resposta "nada seu na fila", não a ausência do campo. Ver a **regra de reconciliação** logo abaixo. |
+
+**Regra de reconciliação (B12).** Uma ação que o cliente ainda guarda como declarada (enviada,
+nunca confirmada como aberta ou fechada) é **conhecida pelo servidor** se — e só se — o seu
+`actionId` aparece em `ownQueue` **ou** é igual a `openTurn.actionId`. Essas duas fontes juntas
+são o universo inteiro do que o servidor ainda tem: uma declarada que não está em nenhuma das
+duas foi perdida (reinício — ver §9, linha "Fila") ou nunca chegou a ser aceita. Para essa, o
+cliente descarta com um aviso e devolve o rascunho a quem declarou, para reenviar por conta
+própria se quiser. **O cliente nunca reenvia sozinho**: um reenvio automático rola os dados de
+novo (`EnqueueAction` rola na chegada), então "a mesma ação" reenviada não é mais a mesma ação —
+é uma segunda tentativa com números novos, e só a pessoa que declarou decide se quer isso.
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
 logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
@@ -1903,12 +1945,13 @@ puder pagar, sai
 <a id="reinício-recarga-queda"></a>
 
 Tabela completa (fila, barras, histórico, NPC, duas abas) em
-`docs/superpowers/specs/2026-09-27-combat-closure-back-design.md` §5. Aqui, só as duas
-linhas que este contrato — o tabuleiro e o turno aberto — precisa dizer sozinho:
+`docs/superpowers/specs/2026-09-27-combat-closure-back-design.md` §5. Aqui, só as três
+linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa dizer sozinho:
 
 | Estado | Recarregar o cliente / reconectar | Reiniciar o servidor |
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
+| Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
 | Turno aberto, reações anexadas | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido** — o turno só persiste ao FECHAR; a peça da action volta para onde o último fechamento a deixou |
 
 **Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). `Room.persistBoard`
@@ -1923,6 +1966,14 @@ continuam concordando: o que está gravado é exatamente o que já tinha fechado
 `persistBoard`, então um jogador que reconecta longe de uma parede que já viu antes ainda a
 recebe em `map_full_state` — a memória, não a visão atual, é o que decide (ver a seção de
 fog em [`maps.md`](maps.md)).
+
+**Por que a fila não volta** (design spec §4.2, "Por que só reconciliar"). As barras que uma
+ação enfileirada cobra são cobradas na hora do enfileiramento e vivem só em memória
+(`bars_updated`, sem tabela por trás). Uma fila persistida sobre barras zeradas por um
+reinício seria um estado que nunca existiu — perder a fila é aceitável; fazê-la divergir do
+que as barras mostram não é. Por isso `ownQueue` volta `[]` depois de um reinício, e não uma
+versão "recuperada" das ações que estavam pendentes: ver a regra de reconciliação, acima, na
+seção de [`match_full_state`](#match_full_state).
 
 ## 10. O que este contrato ainda não entrega
 

@@ -756,6 +756,54 @@ type MatchFullStatePayload struct {
 	// and Bars reuse theirs: a second format for the same fact would be a second thing to keep
 	// in sync with the first.
 	Queue []ActionQueuedPayload `json:"queue,omitempty"`
+	// OwnQueue is B12 (design spec §4.2): the reconnecting recipient's OWN queued actions —
+	// the ones whose actor belongs to them (charToPlayer), in the queue's own insertion
+	// order — at actionwire.Declaration. Nothing else about the queue is theirs to see: the
+	// queue stays secret (Queue's own doc), so this is not a weaker Queue, it is a narrower
+	// fact entirely — "what YOU are waiting on", never "what is pending".
+	//
+	// It exists because action_enqueued (the only thing that ever named one of these actions
+	// to its owner) fires ONCE, at enqueue time, and a client that reconnects afterwards —
+	// including the front's own five-attempt auto-reconnect — has no way to learn it again.
+	// Without this field a reconnecting owner cannot tell "the server lost my draft" from "the
+	// server has it and I should not resend" — resending would re-roll the dice
+	// (EnqueueAction rolls on arrival), which is exactly what reconciliation must never do.
+	//
+	// A POINTER, and ALWAYS non-nil for a non-master: nil serializes to an ABSENT key
+	// (`omitempty` on a nil pointer), `&[]OwnQueuedActionPayload{}` to a PRESENT, empty one
+	// (`[]`). The master always gets nil (absent) — Queue is their surface, not this one — and
+	// every other connected recipient always gets a non-nil pointer, even pointing at an empty
+	// slice, so the front can tell "the server says you have nothing queued" apart from "an
+	// older server that never sent this field at all". A bare (non-pointer) slice could not
+	// make that distinction: encoding/json has no `omitempty` reading on "nil vs empty slice",
+	// only on "nil vs non-nil".
+	//
+	// Reconciliation rule (contract, match-combat-ws.md): a declared action the client still
+	// holds is KNOWN to the server iff its actionId is in OwnQueue OR equals
+	// OpenTurn.ActionId — the two together are the complete set of "the server still has
+	// this". Anything else is stale; the client discards it (with a warning) and returns the
+	// draft to the user. The client NEVER re-sends it on its own — see this field's own outer
+	// doc for why a resend is not the same declaration twice.
+	OwnQueue *[]OwnQueuedActionPayload `json:"ownQueue,omitempty"`
+}
+
+// OwnQueuedActionPayload is one entry of MatchFullStatePayload.OwnQueue — see its doc for the
+// reconciliation rule this exists to serve.
+//
+// Action is cut to actionwire.Declaration, not Full or Opened: this is the OWNER'S OWN
+// action, re-read back to them from the queue, not a projection of someone else's — there is
+// no number here they have not already seen (they are the ones who rolled it), so the cut is
+// not about visibility. It is about LOWEST COMMITMENT: the front's reconciliation only needs
+// to know WHICH declared action the server still has (actionId) and WHAT was declared
+// (weapon, targets, move's category/from/position, skill names) to match it against a local
+// draft — never the numbers, which the client already holds locally and which
+// EnqueueActionUC would only reroll anyway on a genuine resend, not report back on a
+// reconnect. actionwire.From carries no visibility deny-list of its own (see its doc), and
+// none is needed here: the actor already owns everything Full would show; Declaration is
+// chosen for economy, not secrecy.
+type OwnQueuedActionPayload struct {
+	ActionID uuid.UUID         `json:"actionId"`
+	Action   actionwire.Action `json:"action"`
 }
 
 // OpenTurnPayload is the open turn's snapshot inside MatchFullStatePayload. ActionID and
