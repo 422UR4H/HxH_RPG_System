@@ -201,6 +201,21 @@ Notas sobre `resolution.targets[]`:
   pode aproveitar"*. Quem pode aproveitar precisa conseguir ler.
 - `applies`, `source`, `againstKind`, `expiresAt` e `reaction.rung` são **snake_case**: são
   valores de enum do domínio serializados como estão, não tags de struct.
+- `escape` é o veredito de uma **fuga** (`escape`, `escapeGuard`, `closedEscape`) — **ausente**
+  em todo alvo que não fugiu. Mesma forma do `targets[].escape` do `resolution_updated` do
+  WebSocket ([`match-combat-ws.md`](match-combat-ws.md#resolution_updated)):
+
+  ```json
+  "escape": { "escaped": false, "movePassed": false, "dodgePassed": true, "awaitsMaster": false, "landing": [7, 6, 0] }
+  ```
+
+  `escaped` = `movePassed` **e** `dodgePassed`, os dois contra o acerto do atacante. É o que
+  diz, depois, por que uma peça andou ou não: escapou → foi ao destino da fuga; falhou com
+  `landing` → foi para onde o mestre escolheu; falhou sem `landing` (`awaitsMaster: true`, que
+  num turno fechado se lê "ficou") → não saiu do lugar. `landing` (`[col, row, z]`) só aparece
+  numa fuga que falhou. Persistido com a resolução do turno
+  (`internal/gateway/pg/round/resolution_record.go`); turnos gravados antes deste campo não o
+  trazem.
 
 - `errors` só aparece quando o motor **não conseguiu** calcular parte da colisão, o que é
   raro — então a presença dela é o sinal. **Não é mensagem de erro:** o request não falhou e

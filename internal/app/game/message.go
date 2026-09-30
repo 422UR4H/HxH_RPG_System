@@ -339,6 +339,17 @@ type EditActionPayload struct {
 	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
 	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
 	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
+	// EscapeLanding is where the master puts the piece of the escape named by ActionID IF it
+	// fails (front-combat-phases.md §6A.5, B13) — the engine has no rule for where a failed
+	// escape ends up. Absent = untouched. It is its own section, independent of the others:
+	// it edits no roll, and a payload may carry it alone.
+	EscapeLanding *EscapeLandingPayload `json:"escapeLanding,omitempty"`
+}
+
+// EscapeLandingPayload is edit_action's escapeLanding. A null Position clears the choice: a
+// failed escape goes back to staying where it stood.
+type EscapeLandingPayload struct {
+	Position *[3]int `json:"position"`
 }
 
 // ConditionEditPayload changes how one test is read. Field and skillName are alternatives:
@@ -612,6 +623,25 @@ type CharacterResultPayload struct {
 	// has to be able to read it, which is what this field is for; deriving it by algebra off
 	// Ladder.Difference is the reconstruction ReactionTotal already exists to spare a client.
 	Payouts []ModifierPayload `json:"payouts,omitempty"`
+	// Escape is how an escape came out — nil for every reaction that does not displace. It
+	// follows the rest of the resolution: master-only while the turn is open, projected to
+	// everyone once it is settled (the numbers are public then).
+	Escape *EscapeResultPayload `json:"escape,omitempty"`
+}
+
+// EscapeResultPayload is service.EscapeResult on the wire. An escape clears its test only if
+// the movement AND the dodge both beat the attacker's hit (front-combat-phases.md §6A.5, B13).
+//
+// AwaitsMaster is derived here, not in the domain: the escape failed and the master has not
+// said where the piece lands, so at the close it would stay where it stood. On a settled
+// resolution it reads "it stayed". Landing is the master's choice, present only while the
+// escape FAILS — an escape that passes goes to its own slot, whatever was chosen.
+type EscapeResultPayload struct {
+	Escaped      bool    `json:"escaped"`
+	MovePassed   bool    `json:"movePassed"`
+	DodgePassed  bool    `json:"dodgePassed"`
+	AwaitsMaster bool    `json:"awaitsMaster"`
+	Landing      *[3]int `json:"landing,omitempty"`
 }
 
 // ModifierPayload is one accumulated bonus or penalty a reaction wrote into its character's
@@ -667,6 +697,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        reactionResultPayloadOf(cr),
 			Payouts:         payoutPayloadsOf(cr.Payouts),
+			Escape:          escapeResultPayloadOf(cr.Escape),
 		})
 	}
 	for _, pr := range res.PendingReactions {
@@ -682,6 +713,24 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			Kind:    string(e.Kind),
 			Detail:  e.Detail,
 		})
+	}
+	return p
+}
+
+// escapeResultPayloadOf projects an escape's verdict; nil outside the escapes.
+func escapeResultPayloadOf(e *service.EscapeResult) *EscapeResultPayload {
+	if e == nil {
+		return nil
+	}
+	p := &EscapeResultPayload{
+		Escaped:      e.Escaped,
+		MovePassed:   e.MovePassed,
+		DodgePassed:  e.DodgePassed,
+		AwaitsMaster: !e.Escaped && e.Landing == nil,
+	}
+	if e.Landing != nil {
+		pos := *e.Landing
+		p.Landing = &pos
 	}
 	return p
 }

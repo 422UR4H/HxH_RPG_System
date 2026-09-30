@@ -535,6 +535,65 @@ func TestPersistTurnCloseWritesTheSettledResolution(t *testing.T) {
 	}
 }
 
+// B13: an escape's verdict — and where the master put a failed one — is part of the settled
+// resolution, so the history can say why a piece moved (or did not) a year later. Three
+// shapes: no escape at all (nil must stay nil, not become a zero verdict), one that escaped,
+// and one that failed with the master's landing.
+func TestPersistTurnCloseKeepsTheEscape(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+
+	landing := [3]int{7, 6, 0}
+	noEscape, escaped, landed := uuid.New(), uuid.New(), uuid.New()
+	res := &service.TurnResolution{
+		IsSettled: true,
+		CharacterResults: []service.CharacterResult{
+			{TargetID: noEscape},
+			{TargetID: escaped, ReactionKind: string(action.ReactEscape),
+				Escape: &service.EscapeResult{MovePassed: true, DodgePassed: true, Escaped: true}},
+			{TargetID: landed, ReactionKind: string(action.ReactEscapeGuard),
+				Escape: &service.EscapeResult{DodgePassed: true, Landing: &landing}},
+		},
+	}
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+		MatchUUID: fx.matchUUID, Resolution: res,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var raw []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT resolution FROM turns WHERE uuid = $1`, tn.GetID()).Scan(&raw); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	got := roundrepo.DecodeResolution(raw)
+	if got == nil || len(got.CharacterResults) != 3 {
+		t.Fatalf("round trip lost the character results: %+v", got)
+	}
+	byTarget := map[uuid.UUID]service.CharacterResult{}
+	for _, cr := range got.CharacterResults {
+		byTarget[cr.TargetID] = cr
+	}
+	if e := byTarget[noEscape].Escape; e != nil {
+		t.Fatalf("a result with no escape read back with one: %+v", *e)
+	}
+	if e := byTarget[escaped].Escape; e == nil || *e != (service.EscapeResult{MovePassed: true, DodgePassed: true, Escaped: true}) {
+		t.Fatalf("the escaped verdict did not survive: %+v", e)
+	}
+	e := byTarget[landed].Escape
+	if e == nil || e.Escaped || e.MovePassed || !e.DodgePassed || e.Landing == nil || *e.Landing != landing {
+		t.Fatalf("the failed escape and its landing did not survive: %+v", e)
+	}
+}
+
 func TestPersistTurnCloseAcceptsANilResolution(t *testing.T) {
 	// A turn with nothing resolvable still closes. NULL, not an error, and not a zero-value
 	// record that would read back as "a collision that produced nothing".

@@ -324,6 +324,81 @@ func (s *MatchSession) ApplyMasterAction(
 	return s.ResolveTurn(t), nil
 }
 
+// SetEscapeLanding records where the master decided an escape's piece lands IF the escape
+// fails, and recomputes. nil clears the choice: a failed escape goes back to staying put.
+//
+// It can be chosen at any moment while the turn is open, for an escape that is failing now or
+// not — the escape can start or stop clearing its test as the master opens other reactions or
+// edits a reading. The resolver copies it into the resolution only while the escape FAILS
+// (see service.EscapeResult.Landing); an escape that passes goes to its own slot whatever is
+// stored here (front-combat-phases.md §6A.5, B13).
+//
+// This is the same edit surface as ApplyMasterAction and it returns the recomputed resolution
+// the same way. The position is a grid cell, like Move.Position.
+func (s *MatchSession) SetEscapeLanding(reactionID uuid.UUID, pos *[3]int) (*service.TurnResolution, error) {
+	if err := s.CheckEscapeLanding(reactionID, pos); err != nil {
+		return nil, err
+	}
+	t := s.activeRound.CurrentTurn()
+	if pos == nil {
+		t.ClearEscapeLanding(reactionID)
+	} else {
+		t.SetEscapeLanding(reactionID, *pos)
+	}
+	return s.ResolveTurn(t), nil
+}
+
+// CheckEscapeLanding is SetEscapeLanding's validation alone, mutating nothing. It exists for
+// the edit that carries a condition edit AND a landing: every part of it has to be validated
+// before any part lands, or a refused landing would leave the master holding a condition edit
+// they were told had failed (the rule ApplyMasterAction already follows for its own parts).
+func (s *MatchSession) CheckEscapeLanding(reactionID uuid.UUID, pos *[3]int) error {
+	if s.activeRound == nil {
+		return ErrNoActiveTurn
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return ErrNoActiveTurn
+	}
+	r := t.ReactionRef(reactionID)
+	if r == nil {
+		// The zero UUID is "the turn's own action" everywhere else on edit_action; an action
+		// is never an escape.
+		if reactionID == uuid.Nil || reactionID == t.ActionRef().GetID() {
+			return ErrNotAnEscape
+		}
+		return ErrActionNotOnTurn
+	}
+	if !r.ReactionKind.Displaces() {
+		return ErrNotAnEscape
+	}
+	if pos != nil && !cellInGrid(s.grid, *pos) {
+		return ErrLandingOutOfGrid
+	}
+	return nil
+}
+
+// cellInGrid reports whether a grid position is a cell of this board. A grid with no
+// dimensions yet (nothing synced) has nothing to check against and accepts anything.
+//
+// Hex positions travel axial (q, r) — see slotKeepingKind in the game package — while the
+// grid's Cols/Rows count odd-r OFFSET cells, so the column is q + floor(r/2). It is the same
+// bridge the front's isSlotInBounds walks; r is already bounded to be non-negative when the
+// division runs, so Go's truncation is the floor.
+func cellInGrid(g mapentity.GridShape, pos [3]int) bool {
+	if g.Cols <= 0 || g.Rows <= 0 {
+		return true
+	}
+	col, row := pos[0], pos[1]
+	if row < 0 || row >= g.Rows {
+		return false
+	}
+	if g.Kind == mapentity.GridKindHex {
+		col += row / 2
+	}
+	return col >= 0 && col < g.Cols
+}
+
 // actionOnTurn finds the turn's action or one of its reactions by ID. The zero UUID means the
 // turn's own action, which is what a client editing "the action" sends.
 func (s *MatchSession) actionOnTurn(t *turn.Turn, id uuid.UUID) (*action.Action, error) {

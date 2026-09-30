@@ -382,6 +382,7 @@ type mockEditActionUCHandler struct{}
 
 func (m *mockEditActionUCHandler) Execute(
 	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
+	_ *appmatch.EscapeLandingEdit,
 ) (*appmatch.EditActionResult, error) {
 	// Non-nil: a test that actually exercises edit_action through a room built with this mock
 	// must fail on an assertion, not panic on a nil-pointer dereference of the result.

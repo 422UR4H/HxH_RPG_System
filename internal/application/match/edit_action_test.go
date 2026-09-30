@@ -325,7 +325,7 @@ func (f *editFixture) editHitModifier(t *testing.T, modifier int) {
 	ma.Conditions = []action.ConditionEdit{{
 		Field: action.FieldHit, Condition: action.RollCondition{Modifier: modifier},
 	}}
-	if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+	if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 		t.Fatalf("editHitModifier: %v", err)
 	}
 }
@@ -342,7 +342,7 @@ func (f *editFixture) editSkills(t *testing.T, names []string) {
 	ma := action.NewMasterAction()
 	ma.ActionID = f.actionID
 	ma.Skills = skills
-	if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+	if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 		t.Fatalf("editSkills: %v", err)
 	}
 }
@@ -403,7 +403,7 @@ func TestEditActionRollCondition(t *testing.T) {
 			Condition: action.RollCondition{Modifier: 3, Description: "creative positioning"},
 		}}
 
-		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
@@ -424,7 +424,7 @@ func TestEditActionRollCondition(t *testing.T) {
 			Field: action.FieldHit, Condition: action.RollCondition{Bias: 1},
 		}}
 
-		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
@@ -450,7 +450,7 @@ func TestEditActionRollCondition(t *testing.T) {
 		ma.Conditions = []action.ConditionEdit{{
 			Field: action.FieldSpeed, Condition: action.RollCondition{Modifier: 12},
 		}}
-		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 
@@ -465,7 +465,7 @@ func TestEditActionRollCondition(t *testing.T) {
 		f := newOpenAttackFixture(t)
 		uc := match.NewEditActionUC()
 		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, uuid.New(),
-			action.NewMasterAction())
+			action.NewMasterAction(), nil)
 		if !errors.Is(err, match.ErrNotMatchMaster) {
 			t.Fatalf("err = %v, want ErrNotMatchMaster", err)
 		}
@@ -480,7 +480,7 @@ func TestEditActionRollCondition(t *testing.T) {
 		ma.Conditions = []action.ConditionEdit{{
 			Field: action.FieldDodge, Condition: action.RollCondition{Modifier: 1},
 		}}
-		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
 		if !errors.Is(err, matchsession.ErrConditionTargetMissing) {
 			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
 		}
@@ -495,7 +495,7 @@ func TestEditActionRollCondition(t *testing.T) {
 			Field: action.FieldHit, SkillName: "whatever",
 			Condition: action.RollCondition{Modifier: 1},
 		}}
-		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
 		if !errors.Is(err, matchsession.ErrAmbiguousConditionEdit) {
 			t.Fatalf("err = %v, want ErrAmbiguousConditionEdit", err)
 		}
@@ -528,7 +528,7 @@ func TestEditActionRollCondition(t *testing.T) {
 			{Field: action.FieldDodge, Condition: action.RollCondition{Modifier: 1}},
 		}
 
-		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
 		if !errors.Is(err, matchsession.ErrConditionTargetMissing) {
 			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
 		}
@@ -643,7 +643,7 @@ func TestApplyMasterAction_PreservesReactionSwapDisadvantage(t *testing.T) {
 	ma.Conditions = []action.ConditionEdit{{
 		Field: action.FieldRepel, Condition: action.RollCondition{Modifier: 7},
 	}}
-	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID, ma); err != nil {
+	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID, ma, nil); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -674,7 +674,7 @@ func TestEditActionSkills(t *testing.T) {
 		ma.ActionID = f.actionID
 		ma.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
 
-		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 		// One 2D10 test: four faces, because Roll always rolls Primary AND Secondary.
@@ -695,7 +695,7 @@ func TestEditActionSkills(t *testing.T) {
 		strip := action.NewMasterAction()
 		strip.ActionID = f.actionID
 		strip.Skills = []action.Skill{} // present and empty: remove them all
-		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, strip); err != nil {
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, strip, nil); err != nil {
 			t.Fatalf("strip: %v", err)
 		}
 		facesAfterStrip := f.rollSource.consumed()
@@ -703,7 +703,7 @@ func TestEditActionSkills(t *testing.T) {
 		restore := action.NewMasterAction()
 		restore.ActionID = f.actionID
 		restore.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
-		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, restore); err != nil {
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, restore, nil); err != nil {
 			t.Fatalf("restore: %v", err)
 		}
 
@@ -725,7 +725,7 @@ func TestEditActionSkills(t *testing.T) {
 		ma := action.NewMasterAction()
 		ma.ActionID = f.actionID
 		ma.Skills = []action.Skill{{SkillName: enum.Acrobatics.String()}}
-		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 
@@ -746,7 +746,7 @@ func TestEditActionTargets(t *testing.T) {
 		ma.ActionID = f.actionID
 		ma.TargetID = []uuid.UUID{other}
 
-		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma)
+		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
@@ -838,7 +838,7 @@ func TestOverrideCapture(t *testing.T) {
 		ma := action.NewMasterAction()
 		ma.ActionID = f.actionID
 		ma.TargetID = []uuid.UUID{}
-		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+		if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 
@@ -877,7 +877,7 @@ func TestOverrideCapture(t *testing.T) {
 			ma := action.NewMasterAction()
 			ma.ActionID = f.actionID
 			ma.TargetID = ids
-			if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma); err != nil {
+			if _, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil); err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
 		}

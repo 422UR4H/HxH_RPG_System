@@ -990,43 +990,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		result, err := r.deps.OpenReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
 		turnID := session.CurrentTurnID()
-		// The reaction the result hands back ALIASES the turn's own, and edit_action can rewrite
-		// a reaction under a different lock holder — so what is needed is copied HERE, inside the
-		// critical section that opened it, and the pointer itself is never read afterwards.
-		var reactor uuid.UUID
-		var reactionMove *action.Move
-		// ReactionKind.Displaces() is consulted here too, not just Move != nil: the mapper is
-		// the client's front door, but it only refuses what IT builds. A Move surviving onto the
-		// reaction by any other path (bug, future refactor, a kind the mapper forgets to police)
-		// must not walk the piece just because the field happens to be non-nil — the kind, not
-		// the shape, is what says whether this reaction moves anyone.
-		//
-		// RollsSpeed() is the third condition, and it is what holds a Dash escape back. Every
-		// REACTION has a difficulty to clear, and it is the action being moved against whoever
-		// reacts — the attacker's own hit. A Shift rolls nothing (it takes the dice set's
-		// average), so there is no reading to put against that hit and the closed escape steps
-		// the moment it gets the floor, exactly as it does today. A Dash rolls its Accelerate,
-		// and that roll IS the test: whether the character got out of the way is only known
-		// once the turn settles, so the piece stays put here and applyClosedEscapes walks it —
-		// or leaves it where it stands — at the close.
-		if err == nil && result.Opened != nil && result.Opened.Move != nil &&
-			result.Opened.ReactionKind.Displaces() && !result.Opened.Move.Category.RollsSpeed() {
-			m := *result.Opened.Move
-			reactionMove = &m
-			reactor = result.Opened.GetActorID()
-		}
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
-		// An escape DISPLACES, and the trigger is the OPENING of the reaction — the analogue of
-		// opening the turn's action, and the same code path. BEFORE reaction_opened and with no
-		// r.mu held, for the reason the action side documents: piece_moved goes straight into
-		// each client's queue while reaction_opened only reaches them through r.broadcast, so a
-		// move applied afterwards would let the table watch the reaction open with the piece
-		// still in the old slot.
-		r.applyMove(reactor, reactionMove)
+		// No escape displaces here, not even the Shift one that rolls nothing: every escape can
+		// FAIL — it clears its test only if the movement AND the dodge both beat the attacker's
+		// hit — and whether it did is only known when the turn closes. Opening one shows the
+		// intention; applyClosedEscapes puts the piece where the close decides
+		// (front-combat-phases.md §6A.5, B13).
+		//
 		// Whose turn it is to narrate is public; the calculation is not, until Phase 5.
 		out := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
 			TurnID: turnID, ReactionID: payload.ReactionID,
@@ -1060,7 +1034,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Write lock across Execute: the edit mutates the action itself and re-derives the
 		// open turn's resolution — the same surface open_next_action and close_turn mutate.
 		r.mu.Lock()
-		result, err := r.deps.EditActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma)
+		result, err := r.deps.EditActionUC.Execute(
+			context.Background(), session, r.masterUUID, client.userUUID, ma, escapeLandingEditOf(payload))
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -2594,25 +2569,19 @@ func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
 	r.applyMove(a.GetActorID(), a.Move)
 }
 
-// applyClosedEscapes walks onto the board the escapes whose displacement was HELD BACK when
-// the master gave them the floor, now that the turn has closed and the test they had to clear
-// has settled.
+// applyClosedEscapes puts on the board what the close decided about every escape of the turn
+// — the one moment an escape's piece moves, since none moves when it opens (any of them can
+// fail; see the open_reaction arm). The rule (front-combat-phases.md §6A.5, B13):
 //
-// The difficulty is the attacker's own hit — the action that was being moved against whoever
-// reacted — and it is the SAME number every other defensive test on this turn was already
-// read against (see service.ReactionInput.HitTotal). Nothing new is rolled here: the escape's
-// own reading is Move.FinalSpeed, which MatchSession.deriveSpeeds computed from the Accelerate
-// dice that fell when the reaction arrived.
+//   - it ESCAPED (movement and dodge both beat the attacker's hit) → its own destination;
+//   - it failed and the master chose where the piece ended up (edit_action's escapeLanding) →
+//     there;
+//   - it failed with no choice → the piece stays where it stood.
 //
-// The CD is read off the CharacterResult THIS reaction produced, not off
-// TurnResolution.ActionResult, so the pairing stays exact: cr.ReactionID is written from the
-// chain step that carried this very reaction, and cr.Hit is the swing derived against that
-// same target. The two totals are equal today — one swing shared by the whole chain — and
-// nothing here has to depend on that staying true.
-//
-// The reading is total >= CD, the same one ResolveReaction uses for Avoided. FAILING means the
-// piece does not leave its slot: there is no halfway position, the engine cannot compute one,
-// and inventing one would be a rule nobody has decided.
+// "Escaped" is read off cr.Escape, the verdict the resolver already reached — never
+// recomputed here, so the board and the resolution the table reads can never disagree about
+// it. cr.Escape is nil for every reaction that does not displace, which is also what keeps a
+// Move that reached a non-escape by some other path from walking anyone.
 //
 // A reaction whose actor produced no CharacterResult at all — the engine could not classify
 // the target, or their sheet never reached the resolver — displaces nothing. That is the safe
@@ -2620,10 +2589,10 @@ func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
 // around, while moving it on a test that was never computed would be a rule applied out of
 // nothing.
 //
-// It reads the closed turn without r.mu. That turn is finished — ApplyMasterAction and
-// OpenReaction both refuse a turn with a finishedAt — so its reactions are frozen; it is the
-// same window persistClosedTurn already reads GetAction() in. The caller must NOT hold r.mu:
-// applyMove takes it.
+// It reads the closed turn without r.mu. That turn is finished — ApplyMasterAction,
+// SetEscapeLanding and OpenReaction all refuse a turn with a finishedAt — so its reactions are
+// frozen; it is the same window persistClosedTurn already reads GetAction() in. The caller
+// must NOT hold r.mu: applyMove takes it.
 func (r *Room) applyClosedEscapes(closed *turnentity.Turn, res *domainservice.TurnResolution) {
 	if closed == nil || res == nil {
 		return
@@ -2640,41 +2609,51 @@ func (r *Room) applyClosedEscapes(closed *turnentity.Turn, res *domainservice.Tu
 			// here too: no reaction, nothing to displace.
 			continue
 		}
-		// Displaces() rather than Move != nil, for the reason the open_reaction arm documents:
-		// the kind, not the shape, says whether this reaction moves anyone.
-		if !reaction.ReactionKind.Displaces() || reaction.Move == nil {
-			continue
+		switch {
+		case cr.Escape != nil && cr.Escape.Escaped:
+			r.applyMove(reaction.GetActorID(), reaction.Move)
+		case cr.Escape != nil && cr.Escape.Landing != nil:
+			// The escape failed and the master decided where the piece ended up, as part of
+			// resolving this turn — not a drag (front-combat-phases.md §6A.5, B13). This is the
+			// branch the definitive collision design will replace: where a failed escape lands
+			// is a rule that does not exist yet.
+			var landing action.Move
+			if reaction.Move != nil {
+				landing = *reaction.Move
+			}
+			landing.Position = *cr.Escape.Landing
+			r.applyMove(reaction.GetActorID(), &landing)
+		default:
+			// Failed with no choice made: the piece stays where it stood. Same pointer as above
+			// for the definitive design.
 		}
-		if !reaction.Move.Category.RollsSpeed() {
-			// Already walked at open_reaction. Walking it again would put a second piece_moved
-			// on the wire for a step the table has been watching since the reaction opened.
-			continue
-		}
-		// total >= CD clears it, the same reading ResolveReaction gives Avoided. Below it the
-		// piece does not leave its slot at all: there is no halfway position to put it in.
-		if reaction.Move.FinalSpeed < cr.Hit.Total {
-			continue
-		}
-		r.applyMove(reaction.GetActorID(), reaction.Move)
 	}
+}
+
+// escapeLandingEditOf lifts edit_action's escapeLanding into the use case's shape. nil when
+// the payload carries none. ActionID names the escape; the session decides whether it is one.
+func escapeLandingEditOf(p EditActionPayload) *appmatch.EscapeLandingEdit {
+	if p.EscapeLanding == nil {
+		return nil
+	}
+	return &appmatch.EscapeLandingEdit{ReactionID: p.ActionID, Position: p.EscapeLanding.Position}
 }
 
 // applyMove walks ONE Move onto the board, on behalf of the character that owns it.
 //
-// It is the ONE displacement path, shared by all three callers: the action of a turn
-// (applyOpenedMove), an escape REACTION that steps on the spot (the open_reaction arm) and an
-// escape whose step had a test to clear (applyClosedEscapes). It does not decide WHETHER the
-// piece moves — each caller has already decided that — it only puts it where the Move says.
+// It is the ONE displacement path, shared by both callers: the action of a turn
+// (applyOpenedMove) and an escape REACTION (applyClosedEscapes). It does not decide WHETHER
+// or WHERE the piece moves — each caller has already decided that — it only puts it where the
+// Move says.
 //
 // WHEN each caller fires is the rule, and the two halves of it are different questions:
 //
 //   - An ACTION displaces at the OPENING, whatever the category. Nothing is coming at it, so
 //     there is nothing to clear, and the position cannot wait the way damage can: the
 //     reactions that follow depend on where the piece stands.
-//   - A REACTION always has a difficulty — the action being moved against whoever reacts, the
-//     attacker's own hit. A Shift rolls nothing, so nothing can be read against that hit and
-//     it displaces at the opening too; a Dash rolls, so it waits for the close. See
-//     MoveCategory.RollsSpeed and applyClosedEscapes.
+//   - An escape REACTION displaces only at the CLOSE. It has a test to clear — movement and
+//     dodge against the attacker's hit — and any escape can fail it, so where its piece ends
+//     up is only known once the turn settles. See applyClosedEscapes.
 //
 // A move that DOES test for any OTHER reason (a leap, a squeeze past, a landing on an occupied
 // slot) still has no case that can reach this code — moveSpeedSkill refuses Back, Roll, Slide,

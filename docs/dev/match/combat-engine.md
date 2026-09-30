@@ -1243,6 +1243,50 @@ que a Fase 2 escreveu como função pura e nunca ligou — é aqui que ela liga.
 passam por `dodgeAndReserve`: reflexo sempre, Evasão só nas variantes fechadas, com o pior dos
 dois contando como "a esquiva" e a diferença virando reserva.
 
+### O escape: esquiva **e** movimento, e a peça só no fechamento (B13)
+
+Um escape é uma esquiva que se move, e o movimento é um **teste próprio contra a mesma CD** — o
+acerto do atacante. Para todo `ReactionKind` com `Displaces()` (`escape`, `escapeGuard`,
+`closedEscape`), `ResolveReaction` lê:
+
+- `dodgePassed = Dodge.Total >= HitTotal`;
+- `movePassed = Move != nil && Move.FinalSpeed >= HitTotal` — o `FinalSpeed` já é o `Accelerate`
+  rolado no `Dash` e o `Brake` passivo no `Shift` (`deriveSpeeds`);
+- **`Avoided = Escaped = dodgePassed && movePassed`.**
+
+Não escapou → o golpe é lido como se o alvo tivesse ficado: o `escapeGuard` cai para a defesa
+(`KeepsDefault`), os outros tomam o golpe inteiro. O veredito viaja em
+`ReactionOutcome.Escape` e `CharacterResult.Escape` (`service.EscapeResult{MovePassed,
+DodgePassed, Escaped, Landing}`), `nil` fora dos escapes.
+
+**Onde a peça de um escape que falhou vai parar não é regra do motor** — é do desenho da
+colisão, que não existe. Até existir, é o **mestre** quem decide, pelo `edit_action`
+(`escapeLanding`): a escolha fica no `Turn` (`SetEscapeLanding`/`ClearEscapeLanding`, por
+`reactionId`), validada por `MatchSession.SetEscapeLanding` (só reação do turno aberto com
+`Displaces()`, posição dentro da grade), e o `TurnResolver` a copia para
+`CharacterResult.Escape.Landing` **só enquanto o escape falha** — a escolha é permanente com o
+turno aberto, mas um escape que passa vai ao destino, qualquer que seja ela.
+`ResolveReaction` nunca preenche `Landing`.
+
+**Nenhum escape desloca na abertura da reação** — qualquer um pode falhar. No fechamento, pelos
+três verbos que fecham, `Room.applyClosedEscapes` lê o `cr.Escape` da resolução liquidada (uma
+fonte só para "escapou") e aplica: `Escaped` → destino; senão `Landing` → onde o mestre
+escolheu; senão a peça fica. O veredito é persistido com a resolução (`turns.resolution`) e
+volta no histórico REST.
+
+> **Regra conhecida, não implementada:** o movimento **soma** à esquiva, o que torna escapar
+> mais fácil que esquivar parado. Quando a colisão existir, a soma entra em `Dodge.Total`
+> antes das duas comparações (há um `TODO(collision)` no ponto exato, em
+> `reaction_collision.go`).
+
+> ⚠️ **Uma condição do mestre sobre `dodge` hoje não chega ao resolvedor.** `deriveReflex` monta
+> o `RollInput` sem ler `Dodge.Context.Condition`, então um `edit_action` com
+> `conditions[].field: "dodge"` é aceito, grava o override e não muda `Dodge.Total`. No pacote
+> `service`, o único `Condition` lido é o do `hit` (o de `moveSpeed`/`speed` chega por
+> `deriveSpeeds`, na sessão); `defense` e `repel` parecem estar no mesmo caso da esquiva. É
+> anterior ao B13 e não foi corrigido aqui; os testes do escape decidem a esquiva pelo outro
+> lado (uma condição no `hit` do ataque).
+
 ### A cadeia: `ChainState`, `Reduce`, e a ordem de abertura do mestre
 
 Com vários alvos a colisão não é `f(action, reactions[])` — é uma caminhada:

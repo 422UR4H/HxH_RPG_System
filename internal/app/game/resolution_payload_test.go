@@ -444,3 +444,66 @@ func TestProjectedPayoutsReachTheRightRecipients(t *testing.T) {
 		t.Errorf("the closed dodge's reserve leaked to a third party: %+v", dodge.Payouts)
 	}
 }
+
+// B13: the escape's verdict reaches the wire as the domain read it, plus the one thing the
+// wire derives — awaitsMaster, "failed and no landing chosen" — and landing only when chosen.
+func TestResolutionUpdatedPayloadCarriesTheEscape(t *testing.T) {
+	landing := [3]int{7, 6, 0}
+	cases := []struct {
+		name   string
+		escape *service.EscapeResult
+		want   *EscapeResultPayload
+		// wantJSON is the substring the marshalled target must contain.
+		wantJSON string
+	}{
+		{"not an escape", nil, nil, ""},
+		{
+			"escaped",
+			&service.EscapeResult{MovePassed: true, DodgePassed: true, Escaped: true},
+			&EscapeResultPayload{Escaped: true, MovePassed: true, DodgePassed: true},
+			`"escape":{"escaped":true,"movePassed":true,"dodgePassed":true,"awaitsMaster":false}`,
+		},
+		{
+			"failed, nothing chosen",
+			&service.EscapeResult{DodgePassed: true},
+			&EscapeResultPayload{DodgePassed: true, AwaitsMaster: true},
+			`"escape":{"escaped":false,"movePassed":false,"dodgePassed":true,"awaitsMaster":true}`,
+		},
+		{
+			"failed, landing chosen",
+			&service.EscapeResult{MovePassed: true, Landing: &landing},
+			&EscapeResultPayload{MovePassed: true, Landing: &landing},
+			`"awaitsMaster":false,"landing":[7,6,0]}`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res := &service.TurnResolution{CharacterResults: []service.CharacterResult{{
+				TargetID: uuid.New(), Escape: c.escape,
+			}}}
+			p := newResolutionUpdatedPayload(uuid.New(), res)
+			got := p.Targets[0].Escape
+			if (got == nil) != (c.want == nil) {
+				t.Fatalf("escape = %+v, want %+v", got, c.want)
+			}
+			if got != nil {
+				if got.Escaped != c.want.Escaped || got.MovePassed != c.want.MovePassed ||
+					got.DodgePassed != c.want.DodgePassed || got.AwaitsMaster != c.want.AwaitsMaster ||
+					(got.Landing == nil) != (c.want.Landing == nil) ||
+					(got.Landing != nil && *got.Landing != *c.want.Landing) {
+					t.Fatalf("escape = %+v, want %+v", *got, *c.want)
+				}
+			}
+			raw, err := json.Marshal(p.Targets[0])
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if c.want == nil && strings.Contains(string(raw), `"escape"`) {
+				t.Fatalf("a non-escape carries an escape key: %s", raw)
+			}
+			if c.wantJSON != "" && !strings.Contains(string(raw), c.wantJSON) {
+				t.Fatalf("JSON = %s, want it to contain %s", raw, c.wantJSON)
+			}
+		})
+	}
+}

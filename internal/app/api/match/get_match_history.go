@@ -143,6 +143,22 @@ type CharacterResultResponse struct {
 	// leftover is public: "a penalidade de quem aparou vale contra todo mundo — qualquer um
 	// pode aproveitar". Whoever may exploit it has to be able to read it.
 	Payouts []ModifierResponse `json:"payouts,omitempty"`
+	// Escape is how an escape came out — absent for every reaction that does not displace.
+	// The REST mirror of the WebSocket's EscapeResultPayload, same fields, same derivation of
+	// awaitsMaster (see EscapeResultResponse).
+	Escape *EscapeResultResponse `json:"escape,omitempty"`
+}
+
+// EscapeResultResponse is an escape's verdict: it escaped only if the movement AND the dodge
+// both beat the attacker's hit (front-combat-phases.md §6A.5, B13). Landing is where the
+// master put the piece of a FAILED escape; AwaitsMaster is "failed and no landing" — on a
+// settled turn, which every history turn is, it means the piece stayed where it stood.
+type EscapeResultResponse struct {
+	Escaped      bool    `json:"escaped"`
+	MovePassed   bool    `json:"movePassed"`
+	DodgePassed  bool    `json:"dodgePassed"`
+	AwaitsMaster bool    `json:"awaitsMaster"`
+	Landing      *[3]int `json:"landing,omitempty"`
 }
 
 // ModifierResponse is one accumulated bonus or penalty a reaction wrote into its character's
@@ -282,6 +298,7 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        toReactionResultResponse(cr),
 			Payouts:         toModifierResponses(cr.Payouts),
+			Escape:          toEscapeResultResponse(cr.Escape),
 		})
 	}
 	for _, pr := range res.PendingReactions {
@@ -293,6 +310,21 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 		out.Errors = append(out.Errors, ResolutionErrorResponse{
 			Subject: e.Subject, Kind: string(e.Kind), Detail: e.Detail,
 		})
+	}
+	return out
+}
+
+func toEscapeResultResponse(e *service.EscapeResult) *EscapeResultResponse {
+	if e == nil {
+		return nil
+	}
+	out := &EscapeResultResponse{
+		Escaped: e.Escaped, MovePassed: e.MovePassed, DodgePassed: e.DodgePassed,
+		AwaitsMaster: !e.Escaped && e.Landing == nil,
+	}
+	if e.Landing != nil {
+		pos := *e.Landing
+		out.Landing = &pos
 	}
 	return out
 }

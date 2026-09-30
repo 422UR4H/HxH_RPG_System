@@ -116,6 +116,20 @@ type characterResultRecord struct {
 	DefenseApplied  int               `json:"defenseApplied"`
 	EffectiveDamage int               `json:"effectiveDamage"`
 	Payouts         []modifierRecord  `json:"payouts,omitempty"`
+	// Escape is the escape's verdict and, when it failed, where the master put the piece —
+	// what the history needs to say why a piece moved or did not (B13). nil outside the
+	// escapes, and written as absent rather than as a zero verdict: an empty record would read
+	// back as "an escape that failed both halves", which is a different claim.
+	Escape *escapeRecord `json:"escape,omitempty"`
+}
+
+// escapeRecord mirrors service.EscapeResult field for field. AwaitsMaster is NOT stored: it
+// is a wire derivation (failed and no landing), recomputed wherever it is shown.
+type escapeRecord struct {
+	MovePassed  bool    `json:"movePassed"`
+	DodgePassed bool    `json:"dodgePassed"`
+	Escaped     bool    `json:"escaped"`
+	Landing     *[3]int `json:"landing,omitempty"`
 }
 
 type ladderRecord struct {
@@ -176,6 +190,12 @@ func encodeResolution(res *service.TurnResolution) ([]byte, error) {
 			DamageDice: cr.DamageDice, RawDamage: cr.RawDamage,
 			DefenseApplied: cr.DefenseApplied, EffectiveDamage: cr.EffectiveDamage,
 		}
+		if cr.Escape != nil {
+			out.Escape = &escapeRecord{
+				MovePassed: cr.Escape.MovePassed, DodgePassed: cr.Escape.DodgePassed,
+				Escaped: cr.Escape.Escaped, Landing: copyPosition(cr.Escape.Landing),
+			}
+		}
 		for _, m := range cr.Payouts {
 			out.Payouts = append(out.Payouts, modifierRecord{
 				Amount: m.Amount, Bias: m.Bias, Applies: string(m.Applies),
@@ -234,6 +254,12 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 			DamageDice: c.DamageDice, RawDamage: c.RawDamage,
 			DefenseApplied: c.DefenseApplied, EffectiveDamage: c.EffectiveDamage,
 		}
+		if c.Escape != nil {
+			cr.Escape = &service.EscapeResult{
+				MovePassed: c.Escape.MovePassed, DodgePassed: c.Escape.DodgePassed,
+				Escaped: c.Escape.Escaped, Landing: copyPosition(c.Escape.Landing),
+			}
+		}
 		for _, m := range c.Payouts {
 			cr.Payouts = append(cr.Payouts, match.Modifier{
 				Amount: m.Amount, Bias: m.Bias, Applies: match.Dimension(m.Applies),
@@ -257,4 +283,13 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 		})
 	}
 	return out
+}
+
+// copyPosition copies a grid position so the record and the resolution never share one.
+func copyPosition(p *[3]int) *[3]int {
+	if p == nil {
+		return nil
+	}
+	c := *p
+	return &c
 }
