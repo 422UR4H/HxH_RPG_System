@@ -433,6 +433,17 @@ mappings:
       still loads and returns the sheet instead of failing. See match-combat-ws.md §4
       (add_npc) and match-npcs.md.
 
+  - code_path: internal/application/match/init_match_session.go
+    dev_docs:
+      - path: docs/dev/api/match-npcs.md
+        confidence: directly_affected
+    notes: >-
+      B11 (spec §4.3): before building the session, Init reads the match's board and calls
+      the SAME AddMatchNPCUC.Add for every piece whose character is not yet a participant
+      — idempotent, and it never aborts Init (ErrSheetNotNPC/ErrCharacterSheetNotFound/
+      ErrSheetNotOwnedByMaster are logged and skipped). Runs on both start_match and
+      rehydration. See match-npcs.md §"B11".
+
   - code_path: internal/app/wire/actionwire/
     dev_docs:
       - path: docs/dev/api/match-history.md

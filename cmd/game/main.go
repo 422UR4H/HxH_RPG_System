@@ -53,7 +53,6 @@ func main() {
 
 	startMatchUC := match.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
-	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository)
 	closeRoundUC := match.NewCloseRoundUC(roundRepository)
 	openNextActionUC := match.NewOpenNextActionUC(sheetRepository, closeRoundUC)
 	pullActionUC := match.NewPullActionUC(sheetRepository, closeRoundUC)
@@ -77,6 +76,11 @@ func main() {
 	matchMapRepository := matchmapPg.NewRepository(pgPool)
 	matchBoardRepository := matchboardPg.NewRepository(pgPool)
 	loadBoardUC := matchboarduc.NewLoadMatchBoardUC(matchBoardRepository, matchMapRepository, mapRepository)
+	// initSessionUC is built AFTER addMatchNPCUC/loadBoardUC: B11 (spec §4.3) has Init scan the
+	// board for a piece whose character is not yet a participant and enroll it as an NPC
+	// through the SAME AddMatchNPCUC add_npc and POST /npcs already use — on start_match and on
+	// rehydration alike, idempotently.
+	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository, loadBoardUC, addMatchNPCUC)
 	// The write side (spec §4.3, "Quando persiste", B3): the board row and every player's fog
 	// memory, saved together by Room.persistBoard. playerMemoryRepository doubles as
 	// RoomDeps.MemoryLoader — its FindByMatchMap is what seeds a rehydrated/started session.
