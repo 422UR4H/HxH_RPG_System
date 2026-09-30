@@ -173,3 +173,121 @@ func TestResolveReaction(t *testing.T) {
 		}
 	})
 }
+
+// TestResolveReaction_EscapeRequiresBothDodgeAndMove pins B13: an escape is a dodge AND a
+// move — both have to clear the attacker's hit, the same CD every defensive test on this turn
+// is read against. Failing either one is not escaping, and the blow is read as if the target
+// had stayed: escapeGuard still falls back to the defense (it KeepsDefault), the other two
+// escapes take the whole blow. Only a plain dodge — which does not displace — is untouched by
+// any of this, and its Escape stays nil.
+func TestResolveReaction_EscapeRequiresBothDodgeAndMove(t *testing.T) {
+	const hit = 15
+	pass := []int{8, 7} // 15, exactly clears the hit
+	fail := []int{1, 2} // 3, nowhere near
+
+	withMove := func(r *action.Action, finalSpeed int) *action.Action {
+		r.Move = &action.Move{FinalSpeed: finalSpeed}
+		return r
+	}
+
+	cases := []struct {
+		name            string
+		kind            action.ReactionKind
+		build           func() *action.Action
+		wantAvoided     bool
+		wantDefended    bool
+		wantEscapeNil   bool
+		wantEscaped     bool
+		wantDodgePassed bool
+		wantMovePassed  bool
+	}{
+		{
+			name: "escape: dodge and move both clear the hit — the only way to actually escape",
+			kind: action.ReactEscape,
+			build: func() *action.Action {
+				return withMove(reactionWith(action.ReactEscape, pass, nil, nil), 20)
+			},
+			wantAvoided: true, wantDodgePassed: true, wantMovePassed: true, wantEscaped: true,
+		},
+		{
+			name: "escape: dodge clears but the move fails — B13, takes the whole blow, not Avoided",
+			kind: action.ReactEscape,
+			build: func() *action.Action {
+				return withMove(reactionWith(action.ReactEscape, pass, nil, nil), 5)
+			},
+			wantAvoided: false, wantDefended: false, wantDodgePassed: true, wantMovePassed: false,
+		},
+		{
+			name: "escape: move clears but the dodge fails — still not escaping",
+			kind: action.ReactEscape,
+			build: func() *action.Action {
+				return withMove(reactionWith(action.ReactEscape, fail, nil, nil), 20)
+			},
+			wantAvoided: false, wantDefended: false, wantDodgePassed: false, wantMovePassed: true,
+		},
+		{
+			name: "escapeGuard: dodge clears but the move fails — the defensive escape falls back to the defense",
+			kind: action.ReactEscapeGuard,
+			build: func() *action.Action {
+				return withMove(reactionWith(action.ReactEscapeGuard, pass, nil, nil), 5)
+			},
+			wantAvoided: false, wantDefended: true, wantDodgePassed: true, wantMovePassed: false,
+		},
+		{
+			name: "closedEscape: Reflex/Evasion clear but the Shift's passive Brake fails — no fallback",
+			kind: action.ReactClosedEscape,
+			build: func() *action.Action {
+				return withMove(reactionWith(action.ReactClosedEscape, pass, pass, nil), 5)
+			},
+			wantAvoided: false, wantDefended: false, wantDodgePassed: true, wantMovePassed: false,
+		},
+		{
+			// Should not happen in production (Task 5 refuses a move-less escape at the WS
+			// boundary), but the engine must not crash or silently pass on a nil Move.
+			name: "escape with no Move at all: MovePassed is false, never a nil-pointer panic",
+			kind: action.ReactEscape,
+			build: func() *action.Action {
+				return reactionWith(action.ReactEscape, pass, nil, nil) // Move stays nil
+			},
+			wantAvoided: false, wantDefended: false, wantDodgePassed: true, wantMovePassed: false,
+		},
+		{
+			name: "plain dodge does not displace: Escape stays nil even carrying a Move",
+			kind: action.ReactDodge,
+			build: func() *action.Action {
+				return withMove(reactionWith(action.ReactDodge, pass, nil, nil), 20)
+			},
+			wantAvoided: true, wantEscapeNil: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := service.ResolveReaction(reactionInput(t, tc.kind, tc.build(), hit))
+			if out.Avoided != tc.wantAvoided {
+				t.Errorf("Avoided = %v, want %v", out.Avoided, tc.wantAvoided)
+			}
+			if out.Defended != tc.wantDefended {
+				t.Errorf("Defended = %v, want %v", out.Defended, tc.wantDefended)
+			}
+			if tc.wantEscapeNil {
+				if out.Escape != nil {
+					t.Fatalf("Escape = %+v, want nil — this kind does not displace", out.Escape)
+				}
+				return
+			}
+			if out.Escape == nil {
+				t.Fatal("Escape must not be nil for a displacing reaction")
+			}
+			if out.Escape.DodgePassed != tc.wantDodgePassed {
+				t.Errorf("DodgePassed = %v, want %v", out.Escape.DodgePassed, tc.wantDodgePassed)
+			}
+			if out.Escape.MovePassed != tc.wantMovePassed {
+				t.Errorf("MovePassed = %v, want %v", out.Escape.MovePassed, tc.wantMovePassed)
+			}
+			if out.Escape.Escaped != tc.wantEscaped {
+				t.Errorf("Escaped = %v, want %v", out.Escape.Escaped, tc.wantEscaped)
+			}
+		})
+	}
+}

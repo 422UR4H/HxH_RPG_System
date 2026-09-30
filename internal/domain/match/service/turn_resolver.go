@@ -183,6 +183,10 @@ type CharacterResult struct {
 	// set it too, and neither is a dodge. Ask ReactionKind if the distinction matters.
 	Avoided  bool
 	Defended bool
+	// Escape is nil outside the three escapes (ReactionKind.Displaces()). See EscapeResult's
+	// own doc — Landing is filled by the resolver from the turn's escapeLanding, never by
+	// ResolveReaction.
+	Escape *EscapeResult
 
 	// ReactionKind is what this target answered with — "" when nothing was opened and the
 	// passive defaults applied instead.
@@ -514,6 +518,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	cr.Defense = out.Defense
 	cr.Avoided = out.Avoided
 	cr.Defended = out.Defended
+	cr.Escape = out.Escape
 	cr.Ladder = out.Ladder
 	cr.Payouts = out.Payouts
 	cr.AttackStopped = chainIn.Stopped
