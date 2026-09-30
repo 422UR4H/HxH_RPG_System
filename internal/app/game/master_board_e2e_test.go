@@ -865,3 +865,34 @@ func TestE2E_TheMasterDraggingAnNPCSkipsTheLineOfSightRecompute(t *testing.T) {
 		}
 	})
 }
+
+// B9 (spec §2, decision closed with the product owner): the master attacks through an NPC
+// with enqueue_action — an "attack" on enqueue_master_action is refused outright, unconditionally,
+// telling the master the correct path. The check reads the RAW JSON (the decoded
+// MasterActionPayload no longer even carries an Attack field), so a client that still sends
+// one is refused instead of having the key silently dropped.
+func TestE2E_MasterActionWithAttackIsRefused(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeEnqueueMasterAction), map[string]any{
+		"targetIds": []string{f.attackerID.String()},
+		"attack": map[string]any{
+			"weapon": "Sword",
+			"hit":    map[string]any{"skillName": "Accuracy"},
+			"damage": map[string]any{"skillName": "Push"},
+		},
+	})
+
+	got := awaitErrorWithCode(t, mc, "invalid_action", 2*time.Second)
+	wantMsg := "the master attacks through an NPC with enqueue_action"
+	if got.Message != wantMsg {
+		t.Fatalf("error message = %q, want %q", got.Message, wantMsg)
+	}
+	if n := len(f.masterActions.snapshot()); n != 0 {
+		t.Fatalf("a refused master action was recorded %d time(s), want 0", n)
+	}
+}

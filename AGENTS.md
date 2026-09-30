@@ -109,7 +109,7 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 - Reaction visibility: players see reactions only when master reveals (currently master-only)
 - Initiative handling in `ChangeMode`
 - `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
-- Attack mapping in `buildMasterAction` (pending frontend contract finalization); Move maps only `position` — it is the master's drag (spec 2026-09-27 §4.3)
+- No Attack mapping in `buildMasterAction` — decided, not pending (spec 2026-09-27 §2, B9): the master attacks through an NPC with `enqueue_action`; `enqueue_master_action` refuses an `attack` key outright. A master attack as an environment effect (a trap) is future work. Move maps only `position` — it is the master's drag (spec 2026-09-27 §4.3)
 
 **Pendente de configurações de campanha/partida:**
 - `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por

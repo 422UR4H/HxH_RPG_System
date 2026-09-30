@@ -1333,6 +1333,21 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_payload", "invalid enqueue_master_action payload"))
 			return
 		}
+		// MasterActionPayload carries no Attack field (B9, spec §2): a plain Unmarshal above
+		// would just drop an "attack" key silently, which is exactly what must not happen — the
+		// master has a way to attack, through an NPC with enqueue_action, and a client still
+		// sending "attack" here needs to be told so, not ignored. Decoded separately, straight
+		// off the raw JSON, so the refusal does not depend on MasterActionPayload ever having
+		// had the field.
+		var attackProbe struct {
+			Attack json.RawMessage `json:"attack"`
+		}
+		_ = json.Unmarshal(incoming.Payload, &attackProbe)
+		if attackProbe.Attack != nil {
+			client.SendMessage(NewErrorMessage("invalid_action",
+				"the master attacks through an NPC with enqueue_action"))
+			return
+		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()

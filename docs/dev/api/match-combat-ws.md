@@ -657,9 +657,15 @@ Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
 }
 ```
 
-Os campos são `targetIds`, `skills`, `actionSpeed`, `move`, `remove`, `interact` (e `attack`,
-não mapeado). **Quais deles vêm decide o caminho** (lista abaixo) — em especial, `move` ou
-`remove` fazem dela uma ação de peça, antes de qualquer `interact`.
+Os campos são `targetIds`, `skills`, `actionSpeed`, `move`, `remove`, `interact`. **Não há
+`attack`** (B9, spec §2, decisão fechada com o dono do produto): o mestre ataca pelo NPC, com
+[`enqueue_action`](#enqueue_action) — um `attack` aqui é recusado, sempre, com `invalid_action`
+`"the master attacks through an NPC with enqueue_action"`, decidido a partir do JSON bruto
+antes de qualquer outro caminho abaixo (um cliente que ainda manda essa chave não pode ser
+ignorado em silêncio). Um "ataque do mestre" só faria sentido como efeito de ambiente — uma
+armadilha —, o que é **futuro**, não pendência. **Quais dos campos restantes vêm decide o
+caminho** (lista abaixo) — em especial, `move` ou `remove` fazem dela uma ação de peça, antes
+de qualquer `interact`.
 
 As duas formas **de peça** (spec §4.3, "Master action de peça" — B14 e o `move` de B9):
 
@@ -707,10 +713,6 @@ Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
 3. **Nenhum dos anteriores** → enfileira a ação do mestre no turno aberto e responde
    [`master_action_enqueued`](#master_action_enqueued) para a mesa.
 
-> **`attack` ainda não é mapeado** (`buildMasterAction` tem um TODO explícito aguardando o
-> contrato do front). Mandar essa seção hoje é no-op silencioso. `targetIds`, `skills`,
-> `actionSpeed`, `interact`, `remove` e a `position` de `move` funcionam.
-
 **Toda master action aceita é gravada no instante em que é aplicada** — com ou sem turno
 aberto — **e aparece no histórico como cada jogador a viu** (spec §4.8; ver
 [`match-history.md`](match-history.md)). O servidor grava, jogador a jogador da sessão
@@ -722,6 +724,8 @@ action **recusada** não é gravada, e [`edit_action`](#edit_action) **não** é
 (fica em `overridden_action_values`, como sempre).
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid enqueue_master_action payload"`) ·
+`invalid_action` (`"the master attacks through an NPC with enqueue_action"` — chave `attack`
+presente, checado antes de tudo abaixo e independente de partida em andamento) ·
 `match_not_started` (**caminhos 0 e 3** — os caminhos de parede retornam antes dessa
 checagem) · `invalid_action` (**caminho 0**: `targetIds` sem exatamente um id; `move` e
 `remove` juntos; `remove` de personagem sem peça — `"character has no piece"`) ·
@@ -2064,7 +2068,6 @@ Registrado aqui para que a Fase 6 não descubra na integração. Fontes:
 | **A corrente de testes de `skills` não é executada** | `skills[].difficulty` é aceito e persistido, mas nenhuma margem atravessa de um teste para o próximo. A edição de perícias muda uma lista que ainda não decide nada. |
 | **`ReboundDamage` nunca é aplicado ao ator** | Viaja no registro do turno, não vira dano. |
 | **Armadura reduz zero** | Não existe entidade de armadura. A linha está codificada porque a forma importa. |
-| **`attack` de `enqueue_master_action` não é mapeado** | No-op silencioso até o contrato do front fechar. (`move` é o arrastar do mestre desde B14 — só a `position` conta.) |
 | **Remoção de NPC ao vivo não existe** | Tirar um NPC de uma sessão VIVA esbarra em ação dele na fila, turno aberto com ele como ator/alvo, reação pendente — regras que ninguém decidiu ainda. O REST `DELETE /matches/{uuid}/npcs/{sheet_uuid}` (ver [`match-npcs.md`](match-npcs.md)) continua funcionando, mas só vale para a próxima vez que a sala nascer: uma partida em andamento não some com o NPC removido, e não existe verbo de WS equivalente a `add_npc` no sentido contrário. |
 | **A semântica de `Z` está em aberto** | `PieceMovedPayload.Z` é altura virtual em metros; `Move.Position[2]` é o índice `z` da grade — grandezas possivelmente diferentes, nunca reconciliadas. Por isso o servidor preserva o `Z` que a peça já tinha em vez de escrever `Move.Position[2]` sobre ele. Bloqueia qualquer cliente que queira escrever elevação até a pergunta "`Move.Position[2]` é metro ou índice de grade?" ser respondida. Vale para todo caminho que aplica movimento (ação de turno e reação, na abertura ou no fechamento) — é o mesmo `applyMove`. |
 | **Colisão contra parede ainda não foi desenhada** | Não é omissão de validação: ainda não existe a regra que decide o que acontece quando um personagem colide com uma parede — compartilhar o slot, ser bloqueado, ou quebrar a parede no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Até essa regra existir, o comportamento observável é a peça atravessando: a única checagem existente (`move=true`, `open=false`) roda no `enqueue_action`, quando `move.from` é não-zero — não de novo quando o movimento é de fato aplicado, na abertura do turno ou no fechamento. Vale para os DOIS momentos que deslocam peça — a ação do turno na abertura e a fuga no fechamento (para o destino, ou para a queda que o mestre escolheu): o deslocamento de uma reação nunca passa por essa checagem, porque `enqueue_action` roteia para reação (quando `reactToId` é não-zero) antes de alcançar o código que valida, e `attach_reaction`, enviado direto, entra sem essa checagem também. O front não deve tratar isso como bug a reportar — é regra de jogo que falta ser escrita. |

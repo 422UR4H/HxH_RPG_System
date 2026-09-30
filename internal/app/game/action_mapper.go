@@ -305,10 +305,10 @@ func buildMasterAction(masterUUID uuid.UUID, p MasterActionPayload) *action.Mast
 		// knows where the piece is.
 		ma.Move = &action.Move{Position: p.Move.Position}
 	}
-	if p.Attack != nil {
-		// TODO: map Attack once frontend contract is finalized
-		_ = p.Attack
-	}
+	// There is no Attack branch here (B9, spec §2): the TODO that used to sit on this line is
+	// gone BECAUSE the decision was taken, not because it was forgotten. The master attacks
+	// through an NPC, with enqueue_action — room.go's enqueue_master_action arm refuses an
+	// "attack" key before it ever reaches this mapper.
 	if p.Interact != nil {
 		ma.Interact = &action.Interact{Kind: action.InteractKind(p.Interact.Kind)}
 	}

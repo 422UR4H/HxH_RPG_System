@@ -958,22 +958,30 @@ type RemovePiecePayload struct{}
 // MasterActionPayload is enqueue_master_action. With Move or Remove it is a PIECE master
 // action (the master's drag, place or take-off — spec §4.3); with Interact, a wall one;
 // otherwise it hangs on the open turn.
+//
+// There is no Attack field (B9, spec §2, decided with the product owner): nothing ever read
+// one — what an "attack" master action would even mean is a game rule that was never
+// written — and the master already has a way to attack: through an NPC, with enqueue_action.
+// room.go's enqueue_master_action arm decodes the raw JSON separately to catch and refuse a
+// client that still sends an "attack" key, since an unknown field here would otherwise be
+// dropped silently instead of telling the master the correct path. A master attack as an
+// environment effect (a trap) is future work, not a pending mapping.
 type MasterActionPayload struct {
 	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
 	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
-	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
 
+// MasterActionEnqueuedPayload echoes the accepted MasterActionPayload back to the master. No
+// Attack field, same reason as MasterActionPayload above (B9).
 type MasterActionEnqueuedPayload struct {
 	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
 	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
-	Attack      *AttackPayload       `json:"attack,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
