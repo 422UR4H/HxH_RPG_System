@@ -920,6 +920,7 @@ ver a ⚠️ de ordem mais abaixo.
       "targetId": ["22222222-2222-4222-8222-222222222222"],
       "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 } },
       "feint": { "skillName": "Feint", "skillValue": 0, "attempts": { "primary": [3, 5] }, "result": 8 },
+      "trigger": {},
       "attack": {
         "weapon": "Sword",
         "hit": { "skillName": "Accuracy", "skillValue": 0, "attempts": { "primary": [6, 8] }, "result": 14 },
@@ -932,10 +933,77 @@ ver a ⚠️ de ordem mais abaixo.
 ```
 
 **O exemplo acima é o que o MESTRE vê** (`actionwire.Full` — ver
-[`internal/app/wire/actionwire`](../../../internal/app/wire/actionwire)). Para **todo mundo
-mais, inclusive o dono do ator**, `hit`/`damage` chegam como `{ "skillName": "Accuracy" }` /
-`{ "skillName": "Push" }` — sem `skillValue`, `attempts` nem `result` — enquanto `speed`
-mantém seu `result` para qualquer um dos dois (`actionwire.Opened`).
+[`internal/app/wire/actionwire`](../../../internal/app/wire/actionwire)).
+
+**O que o DONO do ator vê** (`actionwire.Opened`, mesmo turno ainda aberto) — `hit`/`damage`
+perdem os números, `speed` mantém o `result`, `feint` fica só com `skillName` (o dono nunca é
+segredo dele mesmo, mas Opened corta os números de qualquer forma), e `trigger` continua
+presente (o dono vê tudo do próprio ator, `Viewer.SeesAllOf`):
+
+```json
+{
+  "type": "turn_opened",
+  "payload": {
+    "turnId": "55555555-5555-4555-8555-555555555555",
+    "actorId": "11111111-1111-4111-8111-111111111111",
+    "actionId": "33333333-3333-4333-8333-333333333333",
+    "actionType": "",
+    "action": {
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "actorId": "11111111-1111-4111-8111-111111111111",
+      "targetId": ["22222222-2222-4222-8222-222222222222"],
+      "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } },
+      "feint": { "skillName": "Feint" },
+      "trigger": {},
+      "attack": {
+        "weapon": "Sword",
+        "hit": { "skillName": "Accuracy" },
+        "damage": { "skillName": "Push" },
+        "relativeVelocity": 0
+      }
+    }
+  }
+}
+```
+
+> ⚠️ Note o `speed.rollCheck.skillValue: 14` acima — igual ao `result` neste exemplo, mas por
+> coincidência dos números, não por regra: `skillValue` é cortado pelo MESMO `keep` que
+> `result` (ver `rollCheck` em `internal/app/wire/actionwire/from.go`), então em `Opened` os
+> dois sobrevivem juntos ou somem juntos; nunca um sem o outro.
+
+**O que um TERCEIRO (bystander) vê** — mesmo corte de números que o dono (`Opened`), mas SEM
+`feint` (deny-list temporal de `ProjectAction`, turno ainda aberto) e SEM `trigger` (deny-list
+permanente, `ProjectAction` sempre zera `Trigger` para quem não é dono nem mestre):
+
+```json
+{
+  "type": "turn_opened",
+  "payload": {
+    "turnId": "55555555-5555-4555-8555-555555555555",
+    "actorId": "11111111-1111-4111-8111-111111111111",
+    "actionId": "33333333-3333-4333-8333-333333333333",
+    "actionType": "",
+    "action": {
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "actorId": "11111111-1111-4111-8111-111111111111",
+      "targetId": ["22222222-2222-4222-8222-222222222222"],
+      "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } },
+      "attack": {
+        "weapon": "Sword",
+        "hit": { "skillName": "Accuracy" },
+        "damage": { "skillName": "Push" },
+        "relativeVelocity": 0
+      }
+    }
+  }
+}
+```
+
+Nenhum dos dois exemplos acima tem `skillValue`/`attempts`/`result` em `hit`/`damage` — a
+diferença ENTRE eles é só `feint` e `trigger`, e nenhuma delas é o corte de nível: as duas são
+o deny-list de `service.ProjectAction`, uma temporal (some enquanto o turno está aberto,
+`feint`) e uma permanente (some sempre para quem não é dono nem mestre, `trigger`) — ver a
+tabela dedicada a `feint` mais abaixo.
 
 | Campo | O que é |
 |---|---|
@@ -981,6 +1049,16 @@ no lado do WebSocket):
 | **Dono** do ator (`Viewer.SeesAllOf` verdadeiro) | objeto presente, só `skillName` — o dono nunca é o alvo da própria finta, então nada aqui esconde nada DELE |
 | Qualquer outro (terceiro/bystander) | **ausente por completo** — `ProjectAction` zera o campo enquanto `isSettled` é `false`; reaparece (com números cortados igual ao resto) só quando o turno fecha, no `resolution_updated` liquidado equivalente — a finta nunca teve superfície própria ali, ver a nota do §6 |
 
+**`trigger` segue a mesma lógica de dois eixos, mas sem o eixo do TEMPO** — é presença-só (o
+domínio ainda não tem campos em `action.Trigger`) e o deny-list dele não depende de
+`isSettled`:
+
+| Destinatário | `trigger` em `turn_opened` |
+|---|---|
+| Mestre | `{}` quando a ação tem gatilho |
+| **Dono** do ator | `{}` quando a ação tem gatilho — mesma razão da finta: `Viewer.SeesAllOf` |
+| Qualquer outro (terceiro/bystander) | **ausente por completo, SEMPRE** — `ProjectAction` zera `Trigger` incondicionalmente para quem não é dono nem mestre, aberto ou fechado; ao contrário da finta, não há revelação depois que o turno fecha |
+
 É este evento que abre a janela de reação: quem está em `action.targetId` pode mandar
 [`attach_reaction`](#attach_reaction) a partir daqui. **`targetId` agora viaja nesta
 mensagem** (dentro de `action`) — antes de B2 este era um gap real do contrato (§10); deixou
@@ -989,15 +1067,22 @@ de ser.
 **Disparado por:** `open_next_action` e `pull_action`.
 **Dispara em seguida:** `resolution_updated` master-only do turno aberto.
 
-> ⚠️ **Ordem garantida com `turn_closed` e `resolution_updated` (B2).** `piece_moved` →
-> `turn_closed` → `resolution_updated` → `turn_opened` chegam nessa ordem exata a todo
-> destinatário — os quatro viajam pela pista DIRETA (`dispatchPerPlayer`/`client.SendMessage`),
-> nunca por `r.broadcast`, e todos os quatro são enviados pelo MESMO goroutine (o que processa
+> ⚠️ **Ordem garantida com `turn_closed` e `resolution_updated` (B2).** `turn_closed` →
+> `resolution_updated` (liquidado) → `turn_opened` chegam nessa ordem exata a todo
+> destinatário — os três viajam pela pista DIRETA (`dispatchPerPlayer`/`client.SendMessage`),
+> nunca por `r.broadcast`, e são enviados pelo MESMO goroutine (o que processa
 > `open_next_action`/`pull_action`/`close_turn`). Uma pista só, um remetente só: ordem de
-> envio é ordem de chegada. Antes de B2 só `piece_moved` e `resolution_updated` estavam nessa
-> pista; `turn_closed` e `turn_opened` ainda saíam por `r.broadcast`, e a ordem entre eles e o
-> resto não era prometida — ver a nota (agora igualmente revisada) em
-> [`turn_closed`](#turn_closed).
+> envio é ordem de chegada.
+>
+> **`piece_moved` entra na sequência em DOIS pontos possíveis, não um só:** o da fuga que
+> passou (do turno que está fechando) sai ANTES de `turn_closed`; o da própria ação que está
+> abrindo (quando ela tem `move`) sai DEPOIS do `resolution_updated` liquidado e ANTES deste
+> `turn_opened` — são dois personagens e dois momentos diferentes, ver a nota equivalente em
+> [`turn_closed`](#turn_closed) para o detalhe de onde cada um entra no código.
+>
+> Antes de B2 só `piece_moved` e `resolution_updated` (settled) estavam na pista direta;
+> `turn_closed` e `turn_opened` ainda saíam por `r.broadcast` — nenhum dos dois, `turn_opened`
+> incluído — e a ordem entre eles e o resto não era prometida.
 
 ### `reaction_opened`
 
@@ -1204,15 +1289,23 @@ estado de mesa, e a mesma mensagem vai para todo mundo (nada aqui é projetado).
 > antes de ver o próximo começar — qual verbo o mestre usou não muda o que a mesa ouve.
 
 > ⚠️ **A ordem contra `resolution_updated` e `turn_opened` AGORA é promessa (B2).** Antes de
-> B2, `turn_closed` saía por `r.broadcast` enquanto `resolution_updated` já ia direto para a
-> fila de cada cliente — dois caminhos diferentes, sem ordem de **chegada** garantida entre
-> eles, mesmo enfileirando `turn_closed` primeiro no código. **Isso mudou:** `turn_closed`
-> passou para a MESMA pista direta que `resolution_updated` (settled, quando aplicável) e
-> `turn_opened` já usavam, e os quatro — junto com o `piece_moved` da abertura/fechamento —
-> são enviados pelo MESMO goroutine, na ordem `piece_moved` → `turn_closed` →
-> `resolution_updated` → `turn_opened`. Uma pista, um remetente: ordem de envio é ordem de
-> chegada, para qualquer destinatário — não só para quem tem um atalho de posse. Ver a nota
-> equivalente em [`turn_opened`](#turn_opened).
+> B2, `turn_closed` E `turn_opened` saíam por `r.broadcast` enquanto `resolution_updated`
+> (liquidado) já ia direto para a fila de cada cliente — dois caminhos diferentes, sem ordem
+> de **chegada** garantida entre eles, mesmo enfileirando `turn_closed` primeiro no código.
+> **Isso mudou:** `turn_closed` e `turn_opened` passaram para a MESMA pista direta que
+> `resolution_updated` (settled, quando aplicável) já usava — `turn_opened` NÃO estava nela
+> antes de B2, é o próprio B2 que o move para lá — e agora os três, e o `piece_moved` que
+> cada um deles pode preceder ou seguir, são enviados pelo MESMO goroutine.
+>
+> A sequência exata, quando os dois `piece_moved` possíveis acontecem, é `[piece_moved da
+> fuga que passou, se houver]` → `turn_closed` → `resolution_updated` (liquidado) →
+> `[piece_moved da nova ação, se ela tiver `move`]` → `turn_opened` — são DOIS
+> `piece_moved` diferentes, não um só: o da fuga é de um personagem do turno que ACABOU e sai
+> antes do fechamento (`applyClosedEscapes`, antes de `persistBoard`); o da nova ação é do
+> personagem do turno que ABRE e sai depois da resolução liquidada, dentro de
+> `announceOpenedTurn` (`applyOpenedMove`, antes do `dispatchPerPlayer` de `turn_opened`). Uma
+> pista, um remetente: ordem de envio é ordem de chegada, para qualquer destinatário — não só
+> para quem tem um atalho de posse. Ver a nota equivalente em [`turn_opened`](#turn_opened).
 
 ### `character_hp_changed`
 

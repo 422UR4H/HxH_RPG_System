@@ -1759,12 +1759,18 @@ func TestE2E_OpeningAMoveActionMovesThePieceBeforeTurnOpened(t *testing.T) {
 	// The assertion that actually bites. Both envelopes are stamped when they are BUILT, and
 	// both are built by the SAME goroutine — the master connection's ReadPump, which runs
 	// handleClientMessage's open_next_action arm from end to end. Comparing the stamps
-	// therefore compares the order the server decided, with no scheduling in between.
-	// Arrival order alone cannot do that job here:
-	// turn_opened travels through r.broadcast (a 256-slot buffered channel drained by
-	// Room.Run) while piece_moved goes straight into each client's queue, so a server that
-	// applied the move late would still, most of the time, have its piece_moved overtake the
-	// broadcast on the way out. Verified by injecting exactly that regression.
+	// therefore compares the order the server decided, independent of any lane.
+	//
+	// Before B2 (design spec §4.2), arrival order alone could NOT do this job: turn_opened
+	// travelled through r.broadcast (a 256-slot buffered channel drained by Room.Run) while
+	// piece_moved went straight into each client's queue, so a server that applied the move
+	// late would still, most of the time, have its piece_moved overtake the broadcast on the
+	// way out — this Timestamp check is what caught that regression when it was injected.
+	// Since B2, turn_opened is ALSO on the direct per-client lane (dispatchPerPlayer), sent by
+	// this same goroutine right after applyOpenedMove, so the arrival-order check just below
+	// is now an equally reliable second witness — kept anyway, because it is lane-independent
+	// and would still catch a regression that somehow kept the RIGHT arrival order while
+	// building the two envelopes out of sequence.
 	// Strict: !moved.Before(opened) also passes on a TIE, which is exactly what a same-instant
 	// clock read (or a bug that stamps both at construction time) would produce — a tie proves
 	// nothing about which one was actually built first. moved.Timestamp.Before(opened.Timestamp)

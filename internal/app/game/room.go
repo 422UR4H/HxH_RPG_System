@@ -700,9 +700,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
-				// and before turn_closed: this goes straight into each client's queue while
-				// turn_closed travels through r.broadcast, so sending it first is what keeps
-				// "the bar moved" from landing after "the turn ended".
+				// and before turn_closed: both are on the direct per-client lane now
+				// (dispatchPerPlayer, since B2) and sent by this same goroutine, so send
+				// order IS arrival order — sending this one first is what keeps "the bar
+				// moved" from landing after "the turn ended".
 				r.broadcastHpChanges(result.Damaged)
 				// The implicit close is announced exactly like the explicit one, in the same
 				// place in the sequence close_turn puts it: after the escapes and the write,
@@ -829,9 +830,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
-				// and before turn_closed: this goes straight into each client's queue while
-				// turn_closed travels through r.broadcast, so sending it first is what keeps
-				// "the bar moved" from landing after "the turn ended".
+				// and before turn_closed: both are on the direct per-client lane now
+				// (dispatchPerPlayer, since B2) and sent by this same goroutine, so send
+				// order IS arrival order — sending this one first is what keeps "the bar
+				// moved" from landing after "the turn ended".
 				r.broadcastHpChanges(result.Damaged)
 				// The implicit close is announced exactly like the explicit one, in the same
 				// place in the sequence close_turn puts it: after the escapes and the write,
@@ -1121,9 +1123,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// The escapes that were waiting on their own test settle with it: this is the third
 		// way a turn closes (open_next_action and pull_action are the other two) and all three
 		// have to walk the piece, or an escape's outcome would depend on which verb the master
-		// used. Before turn_closed goes out, for the reason the open_reaction arm documents —
-		// piece_moved goes straight into each client's queue while turn_closed travels through
-		// r.broadcast.
+		// used. Before turn_closed goes out: piece_moved and turn_closed are both on the
+		// direct per-client lane (dispatchPerPlayer) since B2, sent by this same goroutine, so
+		// applying the escape's move first is what keeps the table from seeing the turn end
+		// with the piece still in its old slot.
 		r.applyClosedEscapes(closedTurn, result.Resolution)
 		// Same order as the two implicit closes: the board — the escape's piece included —
 		// reaches match_boards before persistClosedTurn's own DB round trip (spec §4.3).
@@ -1515,8 +1518,17 @@ func (r *Room) announceOpenedTurn(
 	turnID, actorID, actionID := opened.GetID(), act.GetActorID(), act.GetID()
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+		// viewerFor AND turnActionWire both run inside this SAME RLock section — not just
+		// viewerFor. act is a copy of the Turn's Action struct (GetAction's own doc), but its
+		// pointer/slice fields (Move, Attack, Skills, TargetID, ...) still point AT the live
+		// session's memory: a concurrent edit_action/attach_reaction on this same match
+		// mutates through them under r.mu, with no lock of MatchSession's own to stop a
+		// reader outside r.mu from racing it. turnActionWire (via actionwire.From) walks every
+		// one of those fields, so projecting it has to happen under the lock too, not just
+		// building the Viewer.
 		r.mu.RLock()
 		v := r.viewerFor(pid, isMaster)
+		wireAction := turnActionWire(act, v, isMaster)
 		r.mu.RUnlock()
 		msg := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  turnID,
@@ -1525,7 +1537,7 @@ func (r *Room) announceOpenedTurn(
 			// action_queued. Without it, two queued actions of the same character produce two
 			// turn_openeds a client cannot tell apart — actorId is the same in both.
 			ActionID: actionID,
-			Action:   turnActionWire(act, v, isMaster),
+			Action:   wireAction,
 		})
 		return &msg
 	})

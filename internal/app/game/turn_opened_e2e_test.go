@@ -88,7 +88,10 @@ func TestE2E_TurnOpenedProjectsTheActionPerRecipient(t *testing.T) {
 
 	t.Run("the master gets Full — every number, including the closed ones", func(t *testing.T) {
 		a := masterOpened.Action
-		if a.Attack == nil || a.Attack.Hit.Result == nil {
+		if a.Attack == nil {
+			t.Fatal("action.attack is nil — the master must see the whole attack")
+		}
+		if a.Attack.Hit.Result == nil {
 			t.Error("action.attack.hit.result is nil — the master must see Full's numbers")
 		}
 		if a.Attack.Damage.Result == nil {
@@ -178,6 +181,44 @@ func TestE2E_TurnOpenedProjectsTheActionPerRecipient(t *testing.T) {
 		assertSameActionJSON(t, ownerOpened.Action, full.OpenTurn.Action,
 			"match_full_state.openTurn.action", "the owner's live turn_opened.action")
 	})
+
+	t.Run("a reconnecting bystander's match_full_state.openTurn has no feint either", func(t *testing.T) {
+		// The owner subtest above proves the snapshot reproduces WHAT the owner already got —
+		// which, for the owner, includes feint. That alone cannot prove buildMatchFullState
+		// actually runs the deny-list (Opened cuts numbers regardless of who is asking, so an
+		// owner-only comparison could pass even if OpenTurn skipped ProjectAction entirely and
+		// just ran actionwire.From straight). A THIRD party's snapshot is the case that only
+		// passes if service.ProjectAction really ran: bystanderOpened.Action.Feint is already
+		// nil live (asserted above), and this reconnect has to reproduce that absence.
+		bystander.Close() //nolint:errcheck
+		lateBystander := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+		defer lateBystander.Close()   //nolint:errcheck
+		readMessage(t, lateBystander) // room_state
+		lateMsgs := collectFrom(lateBystander)
+		if !lateMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+			t.Fatal("the reconnecting bystander never received match_full_state")
+		}
+		var full game.MatchFullStatePayload
+		if err := json.Unmarshal(
+			findMessage(t, lateMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &full,
+		); err != nil {
+			t.Fatalf("unmarshal match_full_state: %v", err)
+		}
+		if full.OpenTurn == nil {
+			t.Fatal("match_full_state.openTurn is nil — the turn is still open")
+		}
+		if full.OpenTurn.ActionID != bystanderOpened.ActionID {
+			t.Errorf("openTurn.actionId = %v, want the live turn_opened's %v",
+				full.OpenTurn.ActionID, bystanderOpened.ActionID)
+		}
+		if full.OpenTurn.Action.Feint != nil {
+			t.Errorf("match_full_state.openTurn.action.feint = %+v, want nil — a reconnecting "+
+				"bystander must get the same deny-listed cut as the live turn_opened did",
+				full.OpenTurn.Action.Feint)
+		}
+		assertSameActionJSON(t, bystanderOpened.Action, full.OpenTurn.Action,
+			"match_full_state.openTurn.action", "the bystander's live turn_opened.action")
+	})
 }
 
 // unmarshalTurnOpened pulls the most recent turn_opened out of a collector.
@@ -250,8 +291,7 @@ func TestE2E_TurnClosedNeverArrivesAfterTheNextTurnOpened(t *testing.T) {
 		masterMsgs := newCollector(master)
 		bystanderMsgs := newCollector(bystander)
 
-		queued := enqueueTwoFromTheSameActor(t, f, player, masterMsgs)
-		_ = queued
+		enqueueTwoFromTheSameActor(t, f, player, masterMsgs)
 
 		sendWS(t, master, "open_next_action", map[string]any{})
 		if !masterMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
