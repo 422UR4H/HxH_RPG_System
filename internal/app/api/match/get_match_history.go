@@ -2,6 +2,7 @@ package match
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/danielgtaylor/huma/v2"
@@ -44,13 +46,41 @@ type HistorySceneResponse struct {
 	Rounds     []HistoryRoundResponse `json:"rounds"`
 }
 
-// HistoryRoundResponse is one round of a scene's history, with the turns closed inside it.
+// HistoryRoundResponse is one round of a scene's history, with the turns closed inside it and
+// what happened inside it that is not a turn.
 type HistoryRoundResponse struct {
 	UUID       uuid.UUID             `json:"uuid"`
 	Mode       string                `json:"mode"`
 	CreatedAt  string                `json:"createdAt"`
 	FinishedAt *string               `json:"finishedAt,omitempty"`
 	Turns      []HistoryTurnResponse `json:"turns"`
+	// Events is the round's regime changes and the master actions outside any turn the history
+	// holds, in the order they happened (B15, spec §4.5, §4.8). Always a list — [] when nothing
+	// happened — never null.
+	Events []HistoryEventResponse `json:"events"`
+}
+
+// HistoryEventResponse is one entry of a round's events. Kind is the discriminator:
+// "roundModeChanged" carries Payload ({"from", "to"}); "masterAction" carries MasterAction.
+// UUID is the event's own, or the master action's; CreatedAt is when it happened.
+type HistoryEventResponse struct {
+	UUID         uuid.UUID                    `json:"uuid"`
+	Kind         string                       `json:"kind"`
+	CreatedAt    string                       `json:"createdAt"`
+	Payload      json.RawMessage              `json:"payload,omitempty"`
+	MasterAction *HistoryMasterActionResponse `json:"masterAction,omitempty"`
+}
+
+// HistoryMasterActionResponse is one master action as this reader saw it live — already run
+// through masteraction.Record.ProjectFor by the use case (a `left` reader's move has no
+// destination in Content). It deliberately has no field for Record.Views: who saw what is how
+// the projection is decided, not something any reader — the master included — is shown.
+type HistoryMasterActionResponse struct {
+	UUID       uuid.UUID       `json:"uuid"`
+	Kind       string          `json:"kind"`
+	TurnID     *uuid.UUID      `json:"turnId,omitempty"`
+	HappenedAt string          `json:"happenedAt"`
+	Content    json.RawMessage `json:"content"`
 }
 
 // HistoryTurnResponse is one closed turn: the action that drove it, whatever reactions
@@ -68,6 +98,9 @@ type HistoryTurnResponse struct {
 	Action     actionwire.Action       `json:"action"`
 	Reactions  []actionwire.Action     `json:"reactions"`
 	Resolution *TurnResolutionResponse `json:"resolution,omitempty"`
+	// MasterActions are the master actions applied while this turn was open, as this reader
+	// saw them live, in the order they happened (spec §4.8). Always a list, never null.
+	MasterActions []HistoryMasterActionResponse `json:"masterActions"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -253,11 +286,50 @@ func toHistoryRoundResponse(r matchUC.HistoryRound) HistoryRoundResponse {
 	for _, t := range r.Turns {
 		turns = append(turns, toHistoryTurnResponse(t))
 	}
+	events := make([]HistoryEventResponse, 0, len(r.Events))
+	for _, e := range r.Events {
+		if ev, ok := toHistoryEventResponse(e); ok {
+			events = append(events, ev)
+		}
+	}
 	return HistoryRoundResponse{
 		UUID: r.UUID, Mode: r.Mode,
 		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
 		FinishedAt: formatTimePtr(r.FinishedAt),
 		Turns:      turns,
+		Events:     events,
+	}
+}
+
+// toHistoryEventResponse maps one round event; false for an entry whose Kind and pointer
+// disagree, which the use case never builds.
+func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool) {
+	switch {
+	case e.Kind == matchUC.HistoryEventRoundModeChanged && e.RoundModeChange != nil:
+		return HistoryEventResponse{
+			UUID: e.RoundModeChange.UUID, Kind: string(e.Kind),
+			CreatedAt: e.At.Format(time.RFC3339),
+			Payload:   e.RoundModeChange.Payload,
+		}, true
+	case e.Kind == matchUC.HistoryEventMasterAction && e.MasterAction != nil:
+		ma := toHistoryMasterActionResponse(*e.MasterAction)
+		return HistoryEventResponse{
+			UUID: e.MasterAction.UUID, Kind: string(e.Kind),
+			CreatedAt:    e.At.Format(time.RFC3339),
+			MasterAction: &ma,
+		}, true
+	default:
+		return HistoryEventResponse{}, false
+	}
+}
+
+// toHistoryMasterActionResponse maps one already-projected master action. Record.Views is
+// dropped here for every reader — see HistoryMasterActionResponse.
+func toHistoryMasterActionResponse(r masteraction.Record) HistoryMasterActionResponse {
+	return HistoryMasterActionResponse{
+		UUID: r.UUID, Kind: string(r.Kind), TurnID: r.TurnUUID,
+		HappenedAt: r.HappenedAt.Format(time.RFC3339),
+		Content:    r.Content,
 	}
 }
 
@@ -266,13 +338,18 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	for _, r := range t.Reactions {
 		reactions = append(reactions, actionwire.From(r, actionwire.Full))
 	}
+	masterActions := make([]HistoryMasterActionResponse, 0, len(t.MasterActions))
+	for _, ma := range t.MasterActions {
+		masterActions = append(masterActions, toHistoryMasterActionResponse(ma))
+	}
 	return HistoryTurnResponse{
-		UUID:       t.UUID,
-		CreatedAt:  t.CreatedAt.Format(time.RFC3339),
-		FinishedAt: t.FinishedAt.Format(time.RFC3339),
-		Action:     actionwire.From(t.Action, actionwire.Full),
-		Reactions:  reactions,
-		Resolution: toTurnResolutionResponse(t.Resolution),
+		UUID:          t.UUID,
+		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
+		FinishedAt:    t.FinishedAt.Format(time.RFC3339),
+		Action:        actionwire.From(t.Action, actionwire.Full),
+		Reactions:     reactions,
+		Resolution:    toTurnResolutionResponse(t.Resolution),
+		MasterActions: masterActions,
 	}
 }
 

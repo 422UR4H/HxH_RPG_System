@@ -36,6 +36,8 @@ import (
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
+	masteractionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
+	matcheventPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
 	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
@@ -103,6 +105,9 @@ func main() {
 	submitRepo := submissionPg.NewRepository(pgPool)
 	enrollmentRepo := enrollmentPg.NewRepository(pgPool)
 	mapRepo := mapPg.NewRepository(pgPool)
+	// Read by the match history only: the game server writes both (spec §4.5, §4.8).
+	matchEventRepo := matcheventPg.NewRepository(pgPool)
+	masterActionRepo := masteractionPg.NewRepository(pgPool)
 
 	registerUC := authUC.NewRegisterUC(authRepo)
 	loginUC := authUC.NewLoginUC(&sessions, authRepo, sessionRepo)
@@ -199,7 +204,9 @@ func main() {
 	listPublicUpcomingMatchesUC := match.NewListPublicUpcomingMatchesUC(matchRepo)
 	listMatchEnrollmentsUC := match.NewListMatchEnrollmentsUC(matchRepo, enrollmentRepo, characterSheetRepo)
 	getMatchParticipantsUC := match.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
-	getMatchHistoryUC := match.NewGetMatchHistoryUC(matchRepo, roundRepo, characterSheetRepo)
+	getMatchHistoryUC := match.NewGetMatchHistoryUC(
+		matchRepo, roundRepo, characterSheetRepo, matchEventRepo, masterActionRepo,
+	)
 	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepo, characterSheetRepo, matchRepo)
 	removeMatchNPCUC := match.NewRemoveMatchNPCUC(matchRepo, matchRepo)
 

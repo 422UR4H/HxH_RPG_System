@@ -89,6 +89,7 @@ func isPieceKind(k Kind) bool {
 //   - full: the same record without Views (who-saw-what is not table data).
 //   - left: same as full, and for a piece kind, with the destination erased from Content —
 //     a wallInteract has no destination to begin with, so left reads the same as full there.
+//     A piece Content that cannot be decoded fails closed: (Record{}, false).
 //   - absent from Views: the entry does not exist for this reader — (Record{}, false).
 func (r Record) ProjectFor(viewerIsMaster bool, viewer uuid.UUID) (Record, bool) {
 	if viewerIsMaster {
@@ -103,11 +104,15 @@ func (r Record) ProjectFor(viewerIsMaster bool, viewer uuid.UUID) (Record, bool)
 	proj := r
 	proj.Views = nil
 	if view == ViewLeft && isPieceKind(r.Kind) {
-		if cleared, err := clearContentTo(r.Content); err == nil {
-			proj.Content = cleared
+		cleared, err := clearContentTo(r.Content)
+		if err != nil {
+			// Fail closed. A Content that cannot be read cannot have its destination erased,
+			// and handing it over untouched would show this reader where the piece went —
+			// the one thing `left` says they never saw. Losing the entry for them is the
+			// lesser harm; the master still has it whole.
+			return Record{}, false
 		}
-		// A decode error here leaves Content untouched rather than dropping the action
-		// from the history entirely — should not happen for a well-formed record.
+		proj.Content = cleared
 	}
 	return proj, true
 }

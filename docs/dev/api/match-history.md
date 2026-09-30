@@ -22,28 +22,75 @@ bruto.
 
 Estrutura aninhada Scene → Round → Turn → Action, o mesmo formato que o domínio já
 organiza internamente (`docs/dev/match/combat-engine.md`), sem achatamento: o front
-renderiza os cards de ação dentro do escopo de cada cena.
+renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega também
+`events` — o que aconteceu nele que **não é turno** — e cada turno, `masterActions`. Ver
+"O que não é turno" abaixo.
 
 ```json
 {
   "scenes": [
     {
+      "uuid": "a0a0...",
+      "category": "roleplay",
+      "briefDesc": "Taverna",
+      "createdAt": "2026-08-20T13:40:00Z",
+      "finishedAt": "2026-08-20T13:59:00Z",
+      "rounds": [
+        {
+          "uuid": "0f0f...",
+          "mode": "Free",
+          "createdAt": "2026-08-20T13:40:00Z",
+          "finishedAt": "2026-08-20T13:59:00Z",
+          "turns": [],
+          "events": []
+        }
+      ]
+    },
+    {
       "uuid": "b3f1...",
-      "category": "combat",
+      "category": "battle",
       "briefDesc": "Emboscada na floresta",
       "createdAt": "2026-08-20T14:00:00Z",
       "finishedAt": "2026-08-20T14:40:00Z",
       "rounds": [
         {
           "uuid": "1a2b...",
-          "mode": "combat",
+          "mode": "Race",
           "createdAt": "2026-08-20T14:00:05Z",
           "finishedAt": "2026-08-20T14:12:00Z",
+          "events": [
+            {
+              "uuid": "e1e1...",
+              "kind": "roundModeChanged",
+              "createdAt": "2026-08-20T14:00:20Z",
+              "payload": { "from": "Free", "to": "Race" }
+            },
+            {
+              "uuid": "ma02...",
+              "kind": "masterAction",
+              "createdAt": "2026-08-20T14:02:10Z",
+              "masterAction": {
+                "uuid": "ma02...",
+                "kind": "movePiece",
+                "happenedAt": "2026-08-20T14:02:10Z",
+                "content": { "characterId": "char-gon...", "pieceId": "piece-gon", "from": [4, 4, 0], "to": [6, 4, 0] }
+              }
+            }
+          ],
           "turns": [
             {
               "uuid": "9c9c...",
               "createdAt": "2026-08-20T14:01:00Z",
               "finishedAt": "2026-08-20T14:01:30Z",
+              "masterActions": [
+                {
+                  "uuid": "ma01...",
+                  "kind": "wallInteract",
+                  "turnId": "9c9c...",
+                  "happenedAt": "2026-08-20T14:01:10Z",
+                  "content": { "wallIds": ["wall-3"], "interact": "open" }
+                }
+              ],
               "action": {
                 "uuid": "aa11...",
                 "actorId": "char-gon...",
@@ -53,6 +100,14 @@ renderiza os cards de ação dentro do escopo de cada cena.
                   { "skillName": "Legerity", "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } }
                 ],
                 "speed": { "bar": 1, "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } },
+                "move": {
+                  "category": "Dash",
+                  "from": [1, 1, 0],
+                  "position": [4, 4, 0],
+                  "speed": { "skillName": "Legerity", "skillValue": 4, "attempts": { "primary": [2, 5] }, "result": 13 },
+                  "charge": { "skillName": "Legerity", "skillValue": 4, "attempts": { "primary": [1] }, "result": 6 },
+                  "finalSpeed": 9
+                },
                 "attack": {
                   "weapon": "Fist",
                   "hit": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 20 },
@@ -125,6 +180,22 @@ renderiza os cards de ação dentro do escopo de cada cena.
   ]
 }
 ```
+
+O exemplo mostra uma cena **sem turno** (a primeira: começou e terminou sem que um turno
+fechasse nela — aparece mesmo assim, com `turns: []`), e uma master action de cada lugar:
+a de parede dentro do turno em que foi aplicada, a de peça fora de turno, em `events`.
+
+Notas sobre `scenes[]` e `rounds[]`:
+
+- `category` é `battle` ou `roleplay`; `mode` é `Free` ou `Race` — valores de enum do
+  domínio, como estão.
+- **Cena e round aparecem desde que nascem**, não só quando o primeiro turno fecha neles
+  (B15): são gravados no `start_match` (ou na reidratação depois de um reinício), no
+  `change_scene` e quando um round fecha por exaustão e outro nasce. Uma cena em que se só
+  conversou, um round que fechou sem turno — aparecem, com `turns: []`.
+- `mode` do round é o **último** regime em que ele esteve. Por onde ele passou, e quando, está
+  nos `events` (`roundModeChanged`).
+- `finishedAt` ausente = round/cena ainda aberto.
 
 Notas sobre os campos de `action`/`reactions`:
 
@@ -229,12 +300,83 @@ Notas sobre `resolution.targets[]`:
   pressupor. Ver `internal/gateway/pg/round/resolution_record.go`, que persiste as faltas
   pela mesma razão.
 
+### O que não é turno — `rounds[].events` e `turns[].masterActions`
+
+Dois tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
+
+- **`roundModeChanged`** — o mestre trocou o regime do round. Gravado em `match_events` no
+  instante em que a troca é aplicada (`change_round_mode`); uma troca para o regime em que o
+  round já estava não é troca e não grava nada. **Público**, como o próprio regime.
+- **master action** — tudo o que o mestre aplicou pelo `enqueue_master_action` e foi aceito:
+  arrastar, pôr e tirar peça (`movePiece`, `placePiece`, `removePiece`), interagir com uma
+  parede e revelá-la (`wallInteract`, `revealWall`), e as genéricas que só se penduram no
+  turno aberto (`turnNote`). Gravadas em `master_actions`, tabela própria (spec §4.8), **no
+  instante** em que são aplicadas, com ou sem turno aberto.
+
+**`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
+do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
+o histórico mostra a action já editada, que **é** a action. Um turno editado tem
+`masterActions: []`.
+
+**Onde uma master action entra:**
+
+| A master action foi gravada… | Aparece em |
+|---|---|
+| com o turno aberto, e esse turno está no histórico | `turns[].masterActions` daquele turno |
+| sem turno aberto (o arrastar entre turnos é o caso comum) | `rounds[].events`, `kind: "masterAction"` |
+| com um turno que **não foi gravado** (um turno só é gravado ao fechar; um reinício com o turno aberto o perde) | `rounds[].events`, `kind: "masterAction"` — o `turnId` continua lá, apontando um turno que não existe na árvore |
+
+A terceira linha é deliberada: a master action aconteceu, o tabuleiro salvo a confirma, e
+sumir com ela porque o turno não sobreviveu apagaria algo que a mesa viu.
+
+**Formato de `events[]`** — em ordem de tempo, os dois `kind` intercalados:
+
+| Campo | |
+|---|---|
+| `uuid` | do evento (`roundModeChanged`) ou da master action (`masterAction`) |
+| `kind` | `"roundModeChanged"` \| `"masterAction"` |
+| `createdAt` | quando aconteceu |
+| `payload` | só em `roundModeChanged`: `{ "from": "Free", "to": "Race" }` |
+| `masterAction` | só em `masterAction`: o mesmo objeto de `turns[].masterActions[]` |
+
+**Formato de uma master action** (`turns[].masterActions[]` e `events[].masterAction`):
+
+| Campo | |
+|---|---|
+| `uuid` | |
+| `kind` | `movePiece` · `placePiece` · `removePiece` · `wallInteract` · `revealWall` · `turnNote` |
+| `turnId` | o turno aberto quando foi aplicada; **ausente** fora de turno |
+| `happenedAt` | quando foi aplicada |
+| `content` | o que ela fez — peça: `{ characterId, pieceId, from?, to? }` (`from` ausente num `placePiece`, `to` ausente num `removePiece`); parede: `{ wallIds, interact }` (só as paredes que de fato mudaram); `turnNote`: o payload do `enqueue_master_action` como o mestre o mandou |
+
+`events` e `masterActions` são **sempre listas** — `[]` quando não há nada — nunca `null`.
+Dentro de cada uma, a ordem do array é a ordem do tempo; `createdAt`/`happenedAt` têm
+precisão de segundo, então o array é quem desempata.
+
+**Projeção — cada leitor vê a master action como a viu ao vivo.** No instante da aplicação o
+servidor já decide, jogador a jogador, o que cada um recebe (o portão de fog do
+`piece_moved`, a parede que muda às vistas ou não). Essa mesma decisão é gravada com a
+master action, para **todo jogador da sessão**, conectado ou não — o que conta é o fog dele
+naquele instante —, e o histórico devolve a cada um exatamente aquilo:
+
+| O jogador, ao vivo, … | No histórico ele vê |
+|---|---|
+| recebeu a master action (o `piece_moved`, a parede mudando, a remoção) | a master action inteira |
+| recebeu só o `piece_removed` — viu a peça sair e não viu para onde | a master action **sem o destino** (`content.to` ausente) |
+| não recebeu nada | **nada** — a entrada não existe para ele, nem dentro do turno nem em `events` |
+
+O mestre vê todas, inteiras. Revelar parede vai a todos ao vivo, então vai a todos aqui.
+`turnNote` não chega à mesa ao vivo (pendura-se no turno e não emite nada), então é só do
+mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, nem para o mestre:
+é como a projeção é decidida, não dado de mesa.
+
 ### A resposta já vem projetada — não filtre no cliente
 
 **Este é o ponto central deste endpoint.** O Action History é uma superfície de jogo com
 visibilidade por campo, não um log — a mesma política que `resolution_updated` já aplica no
 WebSocket (ver `docs/dev/match/combat-engine.md#visibilidade`), rodada aqui pelas MESMAS
-funções (`service.ProjectAction`, `service.ProjectResolution`).
+funções (`service.ProjectAction`, `service.ProjectResolution`) — e as master actions por
+`masteraction.Record.ProjectFor` (seção acima).
 
 Isso significa, na prática:
 
@@ -270,7 +412,7 @@ deny-list para divergir da primeira da próxima vez que ela mudar.
 
 | Status | Situação |
 |---|---|
-| 200 | Histórico retornado (pode ser `{ "scenes": [] }` para uma partida sem turnos fechados) |
+| 200 | Histórico retornado (`{ "scenes": [] }` para uma partida que nunca começou; uma partida começada tem ao menos a cena e o round em que começou) |
 | 400 | UUID inválido |
 | 401 | Sem JWT |
 | 403 | Partida privada e usuário não é mestre nem participante |

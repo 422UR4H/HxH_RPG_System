@@ -17,13 +17,20 @@ type execer interface {
 }
 
 // EnsureSceneAndRound writes the scene and the round as rows, if they are not rows yet
-// (spec §4.5, §4.8). Idempotent: ON CONFLICT DO NOTHING on both, so calling it any number of
-// times for the same pair writes each once, and a later PersistTurnClose of the same round —
-// which runs these same two inserts — does not fail over them either.
+// (spec §4.5, §4.8). Idempotent: calling it any number of times for the same pair writes each
+// once, and a later PersistTurnClose of the same round — which runs these same two inserts —
+// does not fail over them either.
 //
 // It exists because the scene and round used to become rows only when their first turn
-// closed, and a master action is recorded the instant it happens, with or without a turn:
-// master_actions references both.
+// closed, and both are now rows from the moment they are born (start_match, rehydration,
+// change_scene, a round closing and the next one opening) — master_actions and match_events
+// reference both.
+//
+// The scene is ON CONFLICT DO NOTHING; the round refreshes its mode. Being a row from birth
+// means a round is written in the regime it was born in, and the master may switch it after
+// that: the change_round_mode arm calls this again, and a turn closing does too, so the row
+// always carries the regime the round was last seen in — what the history's round.mode says.
+// Which regime it passed through, and when, is match_events' job (roundModeChanged).
 func (r *Repository) EnsureSceneAndRound(
 	ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, rd *roundentity.Round,
 ) error {
@@ -49,7 +56,7 @@ func ensureSceneAndRound(
 	_, err = q.Exec(ctx,
 		`INSERT INTO rounds (uuid, scene_uuid, mode, created_at)
 		 VALUES ($1, $2, $3, $4)
-		 ON CONFLICT (uuid) DO NOTHING`,
+		 ON CONFLICT (uuid) DO UPDATE SET mode = EXCLUDED.mode`,
 		rd.GetID(), sc.GetID(), string(rd.GetMode()), rd.GetCreatedAt(),
 	)
 	if err != nil {

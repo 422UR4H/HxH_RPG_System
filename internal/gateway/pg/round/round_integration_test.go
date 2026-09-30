@@ -1526,3 +1526,132 @@ func TestEnsureSceneAndRound(t *testing.T) {
 		}
 	})
 }
+
+// TestFindMatchHistoryKeepsWhatIsNotATurn is B15 (spec §4.5): a scene and a round are rows the
+// moment they are born, so the history has to show them even when no turn ever closed inside
+// them — the inner JOIN it used to run dropped both. A turn row with no action row (which
+// PersistTurnClose's own transaction never writes, so only drift produces one) must not break
+// the assembly either: the turn cannot be shown, but its round still is.
+func TestFindMatchHistoryKeepsWhatIsNotATurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	// Fixed, increasing timestamps: the tree's order is (created_at, uuid), and uuid is random.
+	base := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
+	at := func(min int) time.Time { return base.Add(time.Duration(min) * time.Minute) }
+
+	// Scene A — born, and ended, with no turn: one round, no turn.
+	sceneA := sceneentity.ReconstructScene(uuid.New(), enum.Roleplay, "Taverna", at(0))
+	roundA := roundentity.ReconstructRound(uuid.New(), enum.Free, at(0))
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneA, roundA); err != nil {
+		t.Fatalf("EnsureSceneAndRound A: %v", err)
+	}
+	if err := repo.CloseSceneAndRound(ctx, sceneA.GetID(), roundA.GetID(), at(5)); err != nil {
+		t.Fatalf("CloseSceneAndRound A: %v", err)
+	}
+
+	// Scene B — a round closed with no turn, a round with a turn, and a round whose only turn
+	// lost its action row.
+	sceneB := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(10))
+	roundB1 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(10))
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneB, roundB1); err != nil {
+		t.Fatalf("EnsureSceneAndRound B1: %v", err)
+	}
+	if err := repo.CloseRound(ctx, roundB1.GetID(), at(11)); err != nil {
+		t.Fatalf("CloseRound B1: %v", err)
+	}
+
+	roundB2 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(12))
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(at(13))
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sceneB, Round: roundB2, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose B2: %v", err)
+	}
+
+	roundB3 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(14))
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneB, roundB3); err != nil {
+		t.Fatalf("EnsureSceneAndRound B3: %v", err)
+	}
+	orphanTurn := uuid.New()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at) VALUES ($1, $2, $3, $3)`,
+		orphanTurn, roundB3.GetID(), at(15),
+	); err != nil {
+		t.Fatalf("insert turn with no action: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 2 {
+		t.Fatalf("scenes = %d, want 2 — a scene with no turn is still a scene", len(scenes))
+	}
+
+	a := scenes[0]
+	if a.UUID != sceneA.GetID() || a.Category != string(enum.Roleplay) || a.FinishedAt == nil {
+		t.Fatalf("scene A = %+v, want the turnless, finished roleplay scene", a)
+	}
+	if len(a.Rounds) != 1 || a.Rounds[0].UUID != roundA.GetID() {
+		t.Fatalf("scene A rounds = %+v, want only round A", a.Rounds)
+	}
+	if a.Rounds[0].Turns == nil || len(a.Rounds[0].Turns) != 0 {
+		t.Fatalf("round A turns = %#v, want a non-nil empty slice", a.Rounds[0].Turns)
+	}
+
+	b := scenes[1]
+	if b.UUID != sceneB.GetID() || len(b.Rounds) != 3 {
+		t.Fatalf("scene B = %s with %d rounds, want %s with 3", b.UUID, len(b.Rounds), sceneB.GetID())
+	}
+	wantRounds := []uuid.UUID{roundB1.GetID(), roundB2.GetID(), roundB3.GetID()}
+	for i, want := range wantRounds {
+		if b.Rounds[i].UUID != want {
+			t.Fatalf("scene B round %d = %s, want %s", i, b.Rounds[i].UUID, want)
+		}
+	}
+	if b.Rounds[0].FinishedAt == nil || len(b.Rounds[0].Turns) != 0 || b.Rounds[0].Mode != string(enum.Race) {
+		t.Fatalf("round B1 = %+v, want the closed Race round with no turn", b.Rounds[0])
+	}
+	if len(b.Rounds[1].Turns) != 1 || b.Rounds[1].Turns[0].UUID != tn.GetID() ||
+		b.Rounds[1].Turns[0].Action.GetID() != act.GetID() {
+		t.Fatalf("round B2 turns = %+v, want exactly the persisted turn", b.Rounds[1].Turns)
+	}
+	if b.Rounds[2].Turns == nil || len(b.Rounds[2].Turns) != 0 {
+		t.Fatalf("round B3 turns = %#v, want a non-nil empty slice — a turn with no action cannot be shown", b.Rounds[2].Turns)
+	}
+}
+
+// TestEnsureSceneAndRoundRefreshesTheRoundsMode: a round is a row from birth now, so a regime
+// change after that has to reach the row, or the history would read every round as the regime
+// it was born in. EnsureSceneAndRound is what the change_round_mode arm calls.
+func TestEnsureSceneAndRoundRefreshesTheRoundsMode(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, fx.scene, fx.round); err != nil {
+		t.Fatalf("EnsureSceneAndRound (born Free): %v", err)
+	}
+	fx.round.SetMode(enum.Race)
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, fx.scene, fx.round); err != nil {
+		t.Fatalf("EnsureSceneAndRound (now Race): %v", err)
+	}
+
+	var mode string
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT mode, (SELECT COUNT(*) FROM rounds WHERE uuid = $1) FROM rounds WHERE uuid = $1`,
+		fx.round.GetID()).Scan(&mode, &n); err != nil {
+		t.Fatalf("read round: %v", err)
+	}
+	if n != 1 || mode != string(enum.Race) {
+		t.Fatalf("rounds row = %d with mode %q, want exactly 1 with %q", n, mode, enum.Race)
+	}
+}

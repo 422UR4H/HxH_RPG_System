@@ -146,6 +146,22 @@ func TestRecord_ProjectFor(t *testing.T) {
 		}
 	})
 
+	// A piece record whose Content cannot be read cannot have its destination erased, and
+	// handing it over untouched would show a `left` reader where the piece went — exactly what
+	// they never saw. Fail closed: the entry does not exist for them. The master still gets it.
+	t.Run("left view on an unreadable piece content fails closed", func(t *testing.T) {
+		r := baseMove
+		r.Content = json.RawMessage(`"not-a-piece-object"`)
+		r.Views = map[uuid.UUID]masteraction.View{player: masteraction.ViewLeft}
+
+		if proj, ok := r.ProjectFor(false, player); ok {
+			t.Fatalf("expected ok=false for an unreadable left entry, got content %s", proj.Content)
+		}
+		if _, ok := r.ProjectFor(true, master); !ok {
+			t.Fatalf("the master must still see the record")
+		}
+	})
+
 	t.Run("turnNote with empty Views is master-only", func(t *testing.T) {
 		_, ok := baseTurnNote.ProjectFor(false, player)
 		if ok {

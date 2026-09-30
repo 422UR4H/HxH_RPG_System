@@ -114,7 +114,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			return false, nil
 		}}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		_, err := uc.Get(context.Background(), matchUUID, userUUID)
 		if err != auth.ErrInsufficientPermissions {
 			t.Fatalf("got %v, want ErrInsufficientPermissions", err)
@@ -143,7 +143,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 		}
 		checker := &mockParticipationChecker{}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		result, err := uc.Get(context.Background(), matchUUID, masterUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -206,7 +206,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			return true, nil
 		}}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		result, err := uc.Get(context.Background(), matchUUID, playerUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -251,7 +251,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			return true, nil
 		}}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		result, err := uc.Get(context.Background(), matchUUID, thirdPartyUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -311,6 +311,7 @@ func TestGetMatchHistoryProjectsEngineFaults(t *testing.T) {
 				},
 			},
 			&mockParticipationChecker{},
+			nil, nil,
 		)
 	}
 	resolutionOf := func(t *testing.T, res *match.GetMatchHistoryResult) *service.TurnResolution {
@@ -370,7 +371,7 @@ func TestGetMatchHistoryRevealsFeintOfAClosedTurnToAThirdParty(t *testing.T) {
 			return historyWithTurns(closedTurn), nil
 		},
 	}
-	uc := match.NewGetMatchHistoryUC(matchMock, roundMock, &mockParticipationChecker{})
+	uc := match.NewGetMatchHistoryUC(matchMock, roundMock, &mockParticipationChecker{}, nil, nil)
 
 	// thirdPartyUUID is neither the master nor an owner of actorID — exactly the target who
 	// fell for the feint and, before this task, would never have found out.
