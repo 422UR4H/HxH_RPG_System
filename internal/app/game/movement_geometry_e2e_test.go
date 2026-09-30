@@ -59,25 +59,16 @@ func dividingWall(id string, a, b [2]float64) mapentity.WallSegment {
 	}
 }
 
-// squareCornerWall builds the wall for the "passes through the slots' corners" case: a
-// vertical (or, generally, straight) segment running EXACTLY between the two grid corners
-// that flank the shared edge of slots (aq,ar) and (bq,br) — computed as the midpoints of the
-// two diagonal cell pairs around that edge, via mapservice.SlotCenterToWorld, never a
-// hand-picked coordinate.
-func squareCornerWall(id string, grid mapentity.GridShape, aq, ar, bq, br int) mapentity.WallSegment {
-	// The two cells diagonal to the (aq,ar)/(bq,br) pair, on either side of their shared
-	// edge, share the each corner with it. Averaging a diagonal pair's centers lands exactly
-	// on the grid corner between all four cells — true for any uniform square grid.
-	c1x, c1y := mapservice.SlotCenterToWorld(aq, ar-1, grid)
-	c2x, c2y := mapservice.SlotCenterToWorld(bq, br, grid)
-	corner1 := [2]float64{(c1x + c2x) / 2, (c1y + c2y) / 2}
-
-	c3x, c3y := mapservice.SlotCenterToWorld(aq, ar, grid)
-	c4x, c4y := mapservice.SlotCenterToWorld(bq, br+1, grid)
-	corner2 := [2]float64{(c3x + c4x) / 2, (c3y + c4y) / 2}
-
+// bandWall builds a short, purely vertical wall straddling worldX at a height band
+// [centerY-grid.CellSize/4, centerY+grid.CellSize/4] — wide enough to catch a horizontal
+// path that passes through centerY, narrow enough (half of one row) to clear a horizontal
+// path a full half-cell away. It exists so the two tests below can each say exactly which ONE
+// of the two candidate y-levels — the true slot center, or the pre-B5 col×cellSize corner —
+// their wall brackets, and which one it deliberately clears.
+func bandWall(id string, worldX, centerY, cellSize float64) mapentity.WallSegment {
+	half := cellSize / 4
 	return mapentity.WallSegment{
-		ID: id, P1: corner1, P2: corner2,
+		ID: id, P1: [2]float64{worldX, centerY - half}, P2: [2]float64{worldX, centerY + half},
 		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
 		Move: true, Direction: mapentity.WallDirectionBoth, HP: 100, MaxHP: 100,
 	}
@@ -174,12 +165,30 @@ func refutesErrorAfter(t *testing.T, c *collector, code string, want game.Messag
 	}
 }
 
-// TestE2E_MoveWallCheck_CentersCrossTheWall is the straightforward B5 case: a wall sits
-// exactly between two adjacent square slots, corner to corner, and a Dash whose CENTERS
-// cross it is blocked.
-func TestE2E_MoveWallCheck_CentersCrossTheWall(t *testing.T) {
+// TestE2E_MoveWallCheck_CenterCrossesAWallTheOldCornerFormulaWouldHaveMissed is B5's positive
+// case, built to actually DISCRIMINATE the fix rather than just exercise a wall that happens
+// to block under both the old and the new geometry.
+//
+// Before B5, the server computed a piece's world position as `col × cellSize, row × cellSize`
+// — a cell's own top-left CORNER, one half-cell short (in both x and y) of its true center
+// (`(col+0.5) × cellSize`, `(row+0.5) × cellSize`). For a Dash from (4,4) to (5,4) on a
+// 64px grid that puts the two candidate horizontal paths a half-cell apart:
+//
+//	old (corner) path: y = 256, x ∈ [256, 320]
+//	new (center) path: y = 288, x ∈ [288, 352]
+//
+// The wall below is a short vertical band straddling x=320 (the midpoint between the two
+// centers) from y=272 to y=304 — it brackets the CENTER path's y=288 with room to spare, and
+// sits clear of the CORNER path's y=256 by 16 world units. So: the real fix (centers) must
+// report this Dash blocked; the old, buggy formula (corners) would have missed this wall
+// entirely and reported it clear. Verified against both formulas directly (not just this
+// e2e path) in the fix report for this task.
+func TestE2E_MoveWallCheck_CenterCrossesAWallTheOldCornerFormulaWouldHaveMissed(t *testing.T) {
 	f := newCombatFixture(t)
-	wall := squareCornerWall("divider", squareGeomGrid, 4, 4, 5, 4)
+	cellSize := squareGeomGrid.CellSize
+	fx, fy := mapservice.SlotCenterToWorld(4, 4, squareGeomGrid)
+	tx, ty := mapservice.SlotCenterToWorld(5, 4, squareGeomGrid)
+	wall := bandWall("band", (fx+tx)/2, (fy+ty)/2, cellSize)
 	seedGeomBoard(t, f, squareGeomGrid,
 		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 4, 4)},
 		[]mapentity.WallSegment{wall})
@@ -192,23 +201,31 @@ func TestE2E_MoveWallCheck_CentersCrossTheWall(t *testing.T) {
 		t.Fatal("the master never got the board — the fixture never started")
 	}
 
-	// The payload's own "from" is garbage on purpose (case checked properly and separately
-	// below) — this test only cares that (4,4)→(5,4) is blocked.
+	// The payload's own "from" is garbage on purpose (checked properly, separately, below) —
+	// this test only cares that (4,4)→(5,4) is blocked.
 	sendGeomDash(t, player, f.attackerID, [3]int{9, 9, 0}, [3]int{5, 4, 0})
 	awaitErrorWithCode(t, playerMsgs, "move_blocked", 2*time.Second)
 }
 
-// TestE2E_MoveWallCheck_GrazingADifferentCornerIsNotBlocked proves the fix is about CENTERS,
-// not corners: the SAME wall used above sits between (4,4) and (5,4) — one row below this
-// test's piece. A diagonal Dash whose center-to-center line passes through the GRID corner
-// one row up (which the wall does NOT occupy) touches no wall segment at all and must not be
-// blocked. Before B5 the check used col×cellSize (a cell's own corner) instead of its
-// center, which would have put the "piece" ON the wall's corner for this exact geometry.
-func TestE2E_MoveWallCheck_GrazingADifferentCornerIsNotBlocked(t *testing.T) {
+// TestE2E_MoveWallCheck_OldCornerFormulaFalselyBlockedThisCenterFormulaDoesNot is B5's
+// negative case — the mirror of the one above, proving the fix also REMOVES a false
+// positive, not just adds a true one.
+//
+// Same Dash, (4,4)→(5,4), same x=320. This wall instead brackets the OLD CORNER path's
+// y=256 (band y ∈ [240, 272]) and sits clear of the NEW CENTER path's y=288 by 16 world
+// units. So: the old, buggy formula (corners) would have reported this Dash wrongly
+// blocked — the piece's "position" sat exactly on this wall's own corner at (320, 256). The
+// real fix (centers) correctly clears it: the center-to-center path at y=288 never comes
+// near this band. Verified against both formulas directly in the fix report for this task.
+func TestE2E_MoveWallCheck_OldCornerFormulaFalselyBlockedThisCenterFormulaDoesNot(t *testing.T) {
 	f := newCombatFixture(t)
-	wall := squareCornerWall("divider", squareGeomGrid, 4, 4, 5, 4)
+	cellSize := squareGeomGrid.CellSize
+	fx, fy := mapservice.SlotCenterToWorld(4, 4, squareGeomGrid)
+	tx, _ := mapservice.SlotCenterToWorld(5, 4, squareGeomGrid)
+	oldCornerY := fy - cellSize/2 // the pre-B5 col×cellSize formula's y for row 4
+	wall := bandWall("band", (fx+tx)/2, oldCornerY, cellSize)
 	seedGeomBoard(t, f, squareGeomGrid,
-		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 4, 2)},
+		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 4, 4)},
 		[]mapentity.WallSegment{wall})
 
 	master, player := f.connect(t)
@@ -219,7 +236,7 @@ func TestE2E_MoveWallCheck_GrazingADifferentCornerIsNotBlocked(t *testing.T) {
 		t.Fatal("the master never got the board — the fixture never started")
 	}
 
-	sendGeomDash(t, player, f.attackerID, [3]int{4, 2, 0}, [3]int{5, 3, 0})
+	sendGeomDash(t, player, f.attackerID, [3]int{9, 9, 0}, [3]int{5, 4, 0})
 	refutesErrorAfter(t, playerMsgs, "move_blocked", game.MsgTypeActionEnqueued, 2*time.Second)
 }
 
