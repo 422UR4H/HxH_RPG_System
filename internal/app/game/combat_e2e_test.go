@@ -186,6 +186,50 @@ func inLobby(f *combatFixture) { f.lobby = true }
 // fixture's own, and nothing is in flight when a test calls this.
 func (f *combatFixture) setRollSource(src service.RollSource) { f.session.SetRollSource(src) }
 
+// newSheetsAndParticipants builds the sheets map and participants slice a fresh
+// *matchsession.MatchSession needs, over this fixture's attacker/victim/(bystander)
+// IDENTITIES — the character and player UUIDs, which are fixed for the fixture's whole
+// lifetime. The SHEET OBJECTS and participant records themselves are built fresh on every
+// call, never reused: this is what newCombatFixture and restart share, so a restart's fresh
+// session genuinely starts over (fresh status bars, fresh in-memory queue/round/scene — see
+// restart's own doc) instead of dragging the old session's objects along by accident. Both
+// characters belong to the same player (f.playerUUID), which is enough here: authorization
+// is per player and the tests only need one client to send actions through either.
+//
+// Also updates f.victim as a side effect, to the fresh sheet this call just built — a caller
+// that reads f.victim (victimHP, for instance) after a restart must see the sheet the NEW
+// session actually holds, not a stale pointer into the old one. f.sheets (the fake
+// SheetOwnership store) is NOT touched here: it is keyed by IDENTITY — character and player
+// UUIDs — which a restart does not change, so newCombatFixture builds it exactly once.
+func (f *combatFixture) newSheetsAndParticipants(t *testing.T) (
+	map[uuid.UUID]*csSheet.CharacterSheet, []*match.Participant,
+) {
+	t.Helper()
+	f.victim = newCombatSheet(t)
+	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
+		f.attackerID: newCombatSheet(t),
+		f.victimID:   f.victim,
+	}
+	participants := []*match.Participant{
+		{
+			UUID: uuid.New(), MatchUUID: f.matchUUID,
+			Sheet: csEntity.Summary{UUID: f.attackerID, PlayerUUID: &f.playerUUID},
+		},
+		{
+			UUID: uuid.New(), MatchUUID: f.matchUUID,
+			Sheet: csEntity.Summary{UUID: f.victimID, PlayerUUID: &f.playerUUID},
+		},
+	}
+	if f.bystanderUUID != uuid.Nil {
+		sheets[f.bystanderID] = newCombatSheet(t)
+		participants = append(participants, &match.Participant{
+			UUID: uuid.New(), MatchUUID: f.matchUUID,
+			Sheet: csEntity.Summary{UUID: f.bystanderID, PlayerUUID: &f.bystanderUUID},
+		})
+	}
+	return sheets, participants
+}
+
 func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 	t.Helper()
 
@@ -204,37 +248,17 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 	for _, opt := range opts {
 		opt(f)
 	}
-	// Both characters belong to the same player, which is enough here: authorization is
-	// per player and the test only needs one client to send the attack.
-	victimPlayer := f.playerUUID
-	attacker := &match.Participant{
-		UUID: uuid.New(), MatchUUID: f.matchUUID,
-		Sheet: csEntity.Summary{UUID: f.attackerID, PlayerUUID: &f.playerUUID},
-	}
-	victim := &match.Participant{
-		UUID: uuid.New(), MatchUUID: f.matchUUID,
-		Sheet: csEntity.Summary{UUID: f.victimID, PlayerUUID: &victimPlayer},
-	}
 
-	f.victim = newCombatSheet(t)
-	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
-		f.attackerID: newCombatSheet(t),
-		f.victimID:   f.victim,
-	}
-	participants := []*match.Participant{attacker, victim}
-	if f.bystanderUUID != uuid.Nil {
-		sheets[f.bystanderID] = newCombatSheet(t)
-		participants = append(participants, &match.Participant{
-			UUID: uuid.New(), MatchUUID: f.matchUUID,
-			Sheet: csEntity.Summary{UUID: f.bystanderID, PlayerUUID: &f.bystanderUUID},
-		})
-	}
+	sheets, participants := f.newSheetsAndParticipants(t)
 
 	// The lobby's server-side piece ownership check (spec §4.3, B14) reads this instead of
-	// charToPlayer — same mapping the participants above already carry.
+	// charToPlayer — same mapping the participants above already carry. Built ONCE here, not
+	// by newSheetsAndParticipants: it is keyed by character/player IDENTITY, which a restart
+	// does not change, unlike the sheets/participants a restart DOES rebuild fresh (see
+	// restart's own doc).
 	f.sheets = newFakeSheetOwnership()
 	f.sheets.setPlayer(f.attackerID, f.playerUUID)
-	f.sheets.setPlayer(f.victimID, victimPlayer)
+	f.sheets.setPlayer(f.victimID, f.playerUUID)
 	if f.bystanderUUID != uuid.Nil {
 		f.sheets.setPlayer(f.bystanderID, f.bystanderUUID)
 	}
@@ -309,15 +333,35 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 
 // restart simulates the game server restarting (spec §5): it closes the fixture's current
 // server and stands up a brand-new Hub/Handler/Room pair over the SAME fakeBoardStore,
-// fakeMemoryStore, and combatSessionUC (wrapping the fixture's own *matchsession.MatchSession
-// pointer) — so the ONLY thing actually forgotten is the ROOM's own in-memory state (its
-// pieces/walls maps, boardLoaded flag, connected clients): the board and the fog memory come
-// back from the stores, exactly as match_boards/player_memories rows would after a real
-// restart. f.server is replaced; callers reconnect with f.connect (or connectWS directly)
-// exactly as they would against the original server.
+// fakeMemoryStore and fakeMasterActionStore — the durable "database" a restart must survive —
+// but over a GENUINELY FRESH *matchsession.MatchSession, built by newSheetsAndParticipants the
+// same way newCombatFixture's own session was. f.session (and f.victim, which
+// newSheetsAndParticipants also refreshes) are reassigned to point at it.
+//
+// This is deliberate, and used to not be so: an earlier version of this helper handed the new
+// room's combatSessionUC the SAME session pointer as before, on the theory that only the
+// Room's own in-memory state (pieces/walls maps, boardLoaded, connected clients) needed
+// forgetting. That was wrong on two counts a real restart does not share: (1) a real restart's
+// InitMatchSessionUC builds MatchSession from what is actually persisted — sheets and
+// participants from the DB, board/fog separately via LoadBoardUC/MemoryLoader — and nothing
+// else survives a process restart in memory; (2) TestE2E_ARestartMidTurnLosesTheTurnAndTheMove
+// asserted that in its own NAME without actually proving it: reusing the session pointer meant
+// the "lost" open turn was still sitting right there in session.GetActiveRound(), just never
+// checked. B12 (design spec §4.2) needed the queue axis specifically (a queue survives a
+// pointer reuse that a real restart would never survive) and is what surfaced this; T12/T13
+// need the fix for their own reasons. See TestE2E_ARestartMidTurnLosesTheTurnAndTheMove
+// (board_persist_e2e_test.go) for the openTurn assertion this now makes true.
+//
+// f.server is replaced; callers reconnect with f.connect (or connectWS directly) exactly as
+// they would against the original server.
 func (f *combatFixture) restart(t *testing.T) {
 	t.Helper()
 	f.server.Close()
+
+	sheets, participants := f.newSheetsAndParticipants(t)
+	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
+	session.SetRollSource(topFaceSource{})
+	f.session = session
 
 	hub := game.NewHub()
 	go hub.Run()
@@ -328,7 +372,7 @@ func (f *combatFixture) restart(t *testing.T) {
 		hub,
 		&fogMatchRepo{masterUUID: f.masterUUID, started: !f.lobby},
 		&mockEnrollmentChecker{enrolled: true},
-		f.roomDeps(f.session, roundRepo),
+		f.roomDeps(session, roundRepo),
 	)
 
 	mux := http.NewServeMux()

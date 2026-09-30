@@ -2,17 +2,11 @@ package game_test
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
-	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
-	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -67,73 +61,6 @@ func actionIDsInOrder(t *testing.T, c *collector) []uuid.UUID {
 		ids = append(ids, p.ActionID)
 	}
 	return ids
-}
-
-// restartLosingQueue is f.restart (combat_e2e_test.go, T3) with the ONE difference B12 needs:
-// a genuinely FRESH *matchsession.MatchSession, built over the same sheets/participants
-// newCombatFixture always uses, instead of f.restart's own SAME session pointer.
-//
-// f.restart's own doc comment is explicit that reusing the pointer is deliberate for B3
-// (board/fog persistence) and that "the ONLY thing actually forgotten is the ROOM's own
-// in-memory state" — every restart test written against B3 only ever asserts on the board
-// store afterwards, never on session state, so that promise never had to cover the queue.
-// B12 does: design spec §5's "fila" row says a real server restart loses it ("perdida"),
-// because a real restart rebuilds MatchSession from what InitMatchSessionUC actually
-// persists — sheets and participants (the board and fog memory separately, via
-// SaveMatchBoardUC/LoadBoardUC) — and the queue was never among that; a fresh
-// matchsession.NewMatchSession starts with an empty activeQueue, exactly like a real
-// restart's would. Kept local to this file rather than widening f.restart's own promise,
-// which the B3 tests already pass without it.
-func (f *combatFixture) restartLosingQueue(t *testing.T) {
-	t.Helper()
-	f.server.Close()
-
-	victimPlayer := f.playerUUID
-	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
-		f.attackerID: newCombatSheet(t),
-		f.victimID:   f.victim,
-	}
-	participants := []*match.Participant{
-		{
-			UUID: uuid.New(), MatchUUID: f.matchUUID,
-			Sheet: csEntity.Summary{UUID: f.attackerID, PlayerUUID: &f.playerUUID},
-		},
-		{
-			UUID: uuid.New(), MatchUUID: f.matchUUID,
-			Sheet: csEntity.Summary{UUID: f.victimID, PlayerUUID: &victimPlayer},
-		},
-	}
-	if f.bystanderUUID != uuid.Nil {
-		sheets[f.bystanderID] = newCombatSheet(t)
-		participants = append(participants, &match.Participant{
-			UUID: uuid.New(), MatchUUID: f.matchUUID,
-			Sheet: csEntity.Summary{UUID: f.bystanderID, PlayerUUID: &f.bystanderUUID},
-		})
-	}
-
-	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
-	session.SetRollSource(topFaceSource{})
-	f.session = session
-
-	hub := game.NewHub()
-	go hub.Run()
-
-	roundRepo := &mockRoundRepoHandler{}
-	f.roundRepo = roundRepo
-	handler := game.NewHandler(
-		hub,
-		&fogMatchRepo{masterUUID: f.masterUUID, started: !f.lobby},
-		&mockEnrollmentChecker{enrolled: true},
-		f.roomDeps(session, roundRepo),
-	)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ws", handler.HandleWebSocket)
-	f.server = httptest.NewServer(mux)
-	t.Cleanup(func() {
-		f.server.Close()
-		hub.Stop()
-	})
 }
 
 // TestE2E_ReconnectingOwnerGetsOwnQueuedActionsAtDeclaration is B12's core assertion: the
@@ -415,7 +342,7 @@ func TestE2E_AServerRestartEmptiesOwnQueue(t *testing.T) {
 	master.Close() //nolint:errcheck
 	player.Close() //nolint:errcheck
 
-	f.restartLosingQueue(t)
+	f.restart(t)
 
 	// The master reconnects FIRST, exactly as f.connect(t) always orders it: a player is
 	// refused with lobby_not_open until the master has opened the (new) room. See f.connect's

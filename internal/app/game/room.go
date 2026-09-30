@@ -2212,8 +2212,9 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		// non-master ALWAYS gets `"ownQueue": []` at minimum. See the field's own doc for why
 		// that distinction (present-and-empty vs absent) matters to a reconnecting client.
 		charToPlayer := session.GetCharToPlayer()
-		own := make([]OwnQueuedActionPayload, 0, len(session.PendingActions()))
-		for _, a := range session.PendingActions() {
+		pending := session.PendingActions()
+		own := make([]OwnQueuedActionPayload, 0, len(pending))
+		for _, a := range pending {
 			if charToPlayer[a.GetActorID().String()] != playerID {
 				continue
 			}

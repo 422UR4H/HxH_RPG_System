@@ -207,6 +207,24 @@ func TestE2E_ARestartMidTurnLosesTheTurnAndTheMove(t *testing.T) {
 		t.Fatalf("after the restart the attacker is at %+v, want back at the SEEDED (4,4) — the "+
 			"open-but-unclosed Dash should never have reached the store", p.Slot)
 	}
+
+	// The TURN itself must be gone too, not just the piece's position — this test's own name
+	// promised that, but before f.restart built a genuinely fresh MatchSession (B12's own
+	// finding: f.restart used to keep the SAME session pointer, so the "lost" turn was still
+	// sitting right there in session.GetActiveRound(), simply never checked here).
+	if !master2Msgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the master never received match_full_state from the NEW room")
+	}
+	var full game.MatchFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, master2Msgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &full,
+	); err != nil {
+		t.Fatalf("unmarshal match_full_state: %v", err)
+	}
+	if full.OpenTurn != nil {
+		t.Errorf("match_full_state.openTurn = %+v after the restart, want nil — the open turn "+
+			"(and the reactions attached to it) must not survive a real restart", full.OpenTurn)
+	}
 }
 
 // ─── memória de fog sobrevive a um reinício ─────────────────────────────────
