@@ -7,8 +7,6 @@ import (
 
 // Repository implements persistence for the match board (spec §4.3, B3, B14): a
 // per-match snapshot that starts as a copy of the campaign map it was attached to.
-//
-// Copy (T18 — herdar o tabuleiro de uma partida de origem) is not implemented here.
 type Repository struct {
 	q pgfs.IQuerier
 }

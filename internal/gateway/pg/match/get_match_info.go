@@ -13,13 +13,13 @@ import (
 
 func (r *Repository) GetMatchInfo(ctx context.Context, matchUUID uuid.UUID) (*matchmapuc.MatchInfo, error) {
 	const query = `
-		SELECT master_uuid, game_start_at
+		SELECT master_uuid, game_start_at, campaign_uuid
 		FROM matches
 		WHERE uuid = $1
 	`
-	var masterUUID uuid.UUID
+	var masterUUID, campaignUUID uuid.UUID
 	var gameStartAt *time.Time
-	err := r.q.QueryRow(ctx, query, matchUUID).Scan(&masterUUID, &gameStartAt)
+	err := r.q.QueryRow(ctx, query, matchUUID).Scan(&masterUUID, &gameStartAt, &campaignUUID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, matchmapuc.ErrMatchNotFound
@@ -27,7 +27,8 @@ func (r *Repository) GetMatchInfo(ctx context.Context, matchUUID uuid.UUID) (*ma
 		return nil, fmt.Errorf("get match info: %w", err)
 	}
 	return &matchmapuc.MatchInfo{
-		MasterUUID:  masterUUID,
-		GameStartAt: gameStartAt,
+		MasterUUID:   masterUUID,
+		GameStartAt:  gameStartAt,
+		CampaignUUID: campaignUUID,
 	}, nil
 }

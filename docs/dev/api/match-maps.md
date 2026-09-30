@@ -10,15 +10,56 @@ Endpoints to attach, retrieve, and detach a tactical map from a match. One map p
 
 Attach a map to a match. Replaces any previously attached map (upsert).
 
+**Attaching a DIFFERENT map than the one currently attached deletes the match's own board**
+(`match_boards` row and its `player_memories`, see "O tabuleiro da partida" below) — it was a
+portrait of the old map and means nothing on the new one. Attaching the SAME map again leaves
+the board untouched. Neither applies before the match's first board save; see "Ciclo de vida".
+
+**Inheriting another match's board (B16).** Optionally, `inheritBoardFromMatchUuid` names a
+match whose board (pieces, wall state, and each player's fog) becomes this match's starting
+board instead of a fresh snapshot of `mapUuid` — "uma partida começa de onde outra terminou".
+Requirements, checked in this order:
+- the source match must be in the **same campaign** as this one (`ErrSourceMatchNotInCampaign`);
+- the source match's own board must already be on **`mapUuid`** — the map this request is
+  attaching (`ErrSourceMatchOnAnotherMap`);
+- the source match must actually **have** a board to inherit (`ErrSourceMatchHasNoBoard`).
+
+When inheritance is requested, the delete-on-different-map rule above does not run — the
+inherited board replaces whatever was there instead.
+
 **Auth:** required (JWT Bearer)  
 **Role:** match master only
 
 **Request body:**
 ```json
 {
-  "mapUuid": "uuid"
+  "mapUuid": "uuid",
+  "inheritBoardFromMatchUuid": "uuid"
 }
 ```
+`inheritBoardFromMatchUuid` is optional; omit it for a plain attach/re-attach.
+
+**Example — inheriting from a previous session's match:**
+```json
+POST /matches/8f14e2.../map
+{
+  "mapUuid": "76987813-409d-4d61-92d7-9d86aaf824c8",
+  "inheritBoardFromMatchUuid": "6b4f636c-dc55-4a85-a761-0be84357a54c"
+}
+```
+```json
+200 OK
+{
+  "matchMap": {
+    "matchUuid": "8f14e2...",
+    "mapUuid": "76987813-409d-4d61-92d7-9d86aaf824c8",
+    "attachedAt": "2026-09-30T12:00:00Z"
+  }
+}
+```
+The response shape is unchanged — the inherited board is not echoed here; `GET
+/matches/{match_uuid}/map` and the game server's own board load (`LoadMatchBoardUC`) are what
+surface it.
 
 **Responses:**
 | Status | Description |
@@ -27,8 +68,8 @@ Attach a map to a match. Replaces any previously attached map (upsert).
 | 400 | Bad request (invalid UUID) |
 | 401 | Unauthenticated |
 | 403 | Not the match master |
-| 404 | Match or map not found |
-| 422 | Match already started |
+| 404 | Match or map not found (also the source match of `inheritBoardFromMatchUuid`, when absent) |
+| 422 | Match already started, or (B16) the source match is not in this campaign, is on a different map, or has no board to inherit |
 | 500 | Internal server error |
 
 ---
@@ -94,6 +135,18 @@ paredes **inteiras**, com estado — aberta, trancada, HP, destruída, revelada)
 devolver um retrato fresco do mapa anexado, sem gravar nada (`LoadMatchBoardUC`, spec
 §4.3 "Quem carrega", B14). Anexar **outro** mapa antes do início da partida apaga a linha
 velha — ela era de outro mapa; depois do início, anexar é recusado.
+
+**Herdar de outra partida (B16).** `POST /matches/{match_uuid}/map` aceita
+`inheritBoardFromMatchUuid`: em vez de começar de um retrato fresco do mapa, a partida herda
+o tabuleiro — posições, estado das paredes e fog — de uma partida de origem **da mesma
+campanha**, cujo próprio tabuleiro já está no **mesmo mapa** sendo anexado, e que **tem** um
+tabuleiro para herdar (as três checagens, nessa ordem, cada uma com seu erro 422 —
+`ErrSourceMatchNotInCampaign`, `ErrSourceMatchOnAnotherMap`, `ErrSourceMatchHasNoBoard`). É
+literalmente um `INSERT … SELECT` da linha de `match_boards` e das linhas de
+`player_memories` da origem, trocando o `match_uuid`/`match_id` (e, para cada memória, o
+`id`) — `pgmatchboard.Repository.Copy`, numa única transação com a cópia do fog (dentro dela,
+`fog.PlayerMemoryRepository.CopyMatch`). O tabuleiro antigo do destino, se havia algum, é
+apagado por essa mesma cópia — não sobrevive misturado com o herdado.
 
 **Quando persiste** (B3, spec §4.3 "Quando persiste"): a cada mudança definitiva do
 tabuleiro — o movimento e a remoção de peça no lobby, `start_match` (antes de a sessão de

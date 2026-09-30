@@ -120,3 +120,29 @@ func (r *PlayerMemoryRepository) DeleteByMatch(ctx context.Context, matchID uuid
 	}
 	return nil
 }
+
+// CopyMatch copies every player_memories row of srcMatchID to dstMatchID (spec §4.3, B16):
+// same map_id/player_id/seen_features/updated_at, a fresh id, and dstMatchID in place of
+// srcMatchID. dstMatchID's own rows are cleared first — same "replace, not merge" semantics
+// as matchboard's Copy — so a destination match that already had memories (e.g. from a board
+// on a different map) never collides with the UNIQUE(match_id, map_id, player_id) constraint.
+//
+// r.q may be a transaction (pgx.Tx satisfies pgfs.IQuerier) so this can run inside the same
+// atomic unit as matchboard.Repository.Copy's own board-row copy — see NewPlayerMemoryRepository
+// call in pgmatchboard.Repository.Copy.
+func (r *PlayerMemoryRepository) CopyMatch(ctx context.Context, srcMatchID, dstMatchID uuid.UUID) error {
+	const del = `DELETE FROM player_memories WHERE match_id = $1`
+	if _, err := r.q.Exec(ctx, del, dstMatchID); err != nil {
+		return fmt.Errorf("copy match player memories: delete dst: %w", err)
+	}
+
+	const ins = `
+		INSERT INTO player_memories (id, match_id, map_id, player_id, seen_features, updated_at)
+		SELECT gen_random_uuid(), $1, map_id, player_id, seen_features, updated_at
+		FROM player_memories WHERE match_id = $2
+	`
+	if _, err := r.q.Exec(ctx, ins, dstMatchID, srcMatchID); err != nil {
+		return fmt.Errorf("copy match player memories: insert: %w", err)
+	}
+	return nil
+}

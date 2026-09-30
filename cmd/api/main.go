@@ -40,6 +40,7 @@ import (
 	matcheventPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
 	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	matchboardPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	scenarioPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/scenario"
 	sessionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/session"
@@ -280,7 +281,10 @@ func main() {
 	}
 
 	matchmapRepo := matchmapPg.NewRepository(pgPool)
-	attachMatchMapUC := matchmapuc.NewAttachMatchMapUC(matchmapRepo, matchRepo)
+	// matchBoardRepo backs B16 (spec §4.3): AttachMatchMapUC uses it to validate and copy
+	// an inherited board, and to drop the old board when a different map replaces it.
+	matchBoardRepo := matchboardPg.NewRepository(pgPool)
+	attachMatchMapUC := matchmapuc.NewAttachMatchMapUC(matchmapRepo, matchRepo, matchBoardRepo)
 	getMatchMapUC := matchmapuc.NewGetMatchMapUC(matchmapRepo)
 	detachMatchMapUC := matchmapuc.NewDetachMatchMapUC(matchmapRepo, matchRepo)
 

@@ -13,6 +13,11 @@ import (
 
 type AttachMatchMapRequestBody struct {
 	MapUUID uuid.UUID `json:"mapUuid" required:"true" doc:"UUID of the map to attach"`
+	// InheritBoardFromMatchUuid is B16 (spec §4.3): optional. When set, the match starts
+	// with the board (pieces, wall state, fog) that the named match ended with, instead of
+	// a fresh snapshot of mapUuid. The source match must be in the same campaign and
+	// currently on mapUuid, and must already have a board of its own.
+	InheritBoardFromMatchUuid *uuid.UUID `json:"inheritBoardFromMatchUuid,omitempty" doc:"UUID of a match (same campaign, same map) whose board to inherit"`
 }
 
 type AttachMatchMapRequest struct {
@@ -36,9 +41,10 @@ func AttachMatchMapHandler(uc matchmapuc.IAttachMatchMap) func(context.Context, 
 		}
 
 		mm, err := uc.Attach(ctx, &matchmapuc.AttachMatchMapInput{
-			RequesterUUID: userID,
-			MatchUUID:     req.MatchUUID,
-			MapUUID:       req.Body.MapUUID,
+			RequesterUUID:             userID,
+			MatchUUID:                 req.MatchUUID,
+			MapUUID:                   req.Body.MapUUID,
+			InheritBoardFromMatchUUID: req.Body.InheritBoardFromMatchUuid,
 		})
 		if err != nil {
 			switch {
@@ -47,7 +53,10 @@ func AttachMatchMapHandler(uc matchmapuc.IAttachMatchMap) func(context.Context, 
 			case errors.Is(err, matchmapuc.ErrMatchNotFound),
 				errors.Is(err, matchmapuc.ErrMapNotFound):
 				return nil, huma.Error404NotFound(err.Error())
-			case errors.Is(err, matchmapuc.ErrMatchAlreadyStarted):
+			case errors.Is(err, matchmapuc.ErrMatchAlreadyStarted),
+				errors.Is(err, matchmapuc.ErrSourceMatchNotInCampaign),
+				errors.Is(err, matchmapuc.ErrSourceMatchOnAnotherMap),
+				errors.Is(err, matchmapuc.ErrSourceMatchHasNoBoard):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

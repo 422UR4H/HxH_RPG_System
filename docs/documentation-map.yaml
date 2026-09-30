@@ -496,7 +496,13 @@ mappings:
     dev_docs:
       - path: docs/dev/api/match-maps.md
         confidence: directly_affected
-    notes: Match-Maps use cases (AttachMap, GetMap, DetachMap)
+    notes: >-
+      Match-Maps use cases (AttachMap, GetMap, DetachMap). Task 18 (B16) adds
+      AttachMatchMapInput.InheritBoardFromMatchUUID: validates same-campaign/same-map/
+      has-a-board against the source match (ErrSourceMatchNotInCampaign/
+      ErrSourceMatchOnAnotherMap/ErrSourceMatchHasNoBoard) before calling
+      IMatchBoardRepository.Copy; without inheritance, attaching a DIFFERENT map than the
+      one currently attached calls IMatchBoardRepository.Delete on the old board.
 
   - code_path: internal/application/matchboard/
     dev_docs:
@@ -567,6 +573,9 @@ mappings:
       SaveMatchBoardUC's memory writer and RoomDeps.MemoryLoader — Upsert is
       called from Room.persistBoard, FindByMatchMap from StartMatch and from
       loadBoard's session-branch (a rehydrated session's memory seed point).
+      CopyMatch (Task 18, B16) deletes dst's rows then INSERT…SELECTs src's into dst
+      with a fresh id each — called by pgmatchboard.Repository.Copy with a *pgx.Tx*
+      (not the pool) so it lands inside Copy's own match_boards transaction.
 
   - code_path: migrations/20260805000000_player_memories.sql
     dev_docs:
@@ -594,8 +603,13 @@ mappings:
     notes: >-
       pgmatchboard.Repository — Get/Save/Delete against match_boards (upsert on
       match_uuid). Save is called from Task 3's SaveMatchBoardUC, in turn from
-      Room.persistBoard, at every point spec §4.3 lists. Copy (herdar tabuleiro
-      entre partidas, B16) is Task 18's, not implemented here.
+      Room.persistBoard, at every point spec §4.3 lists. Copy (Task 18, B16 — herdar
+      tabuleiro entre partidas) replaces dst's board+player_memories with src's in one
+      transaction: its own INSERT…SELECT for match_boards, then
+      fog.NewPlayerMemoryRepository(tx).CopyMatch for player_memories — tx (pgx.Tx)
+      satisfies pgfs.IQuerier, so the fog half runs inside the SAME transaction without
+      either package needing a transaction type of its own. Called from
+      AttachMatchMapUC.Attach when the request carries inheritBoardFromMatchUuid.
 
   - code_path: migrations/20260927000000_match_boards_and_events.sql
     dev_docs:

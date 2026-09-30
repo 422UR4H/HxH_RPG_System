@@ -133,3 +133,93 @@ func TestAttachMatchMapHandler_AlreadyStarted_Returns422(t *testing.T) {
 		t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusUnprocessableEntity, resp.Body.String())
 	}
 }
+
+// TestAttachMatchMapHandler_ForwardsInheritBoardFromMatchUuid covers B16 (spec §4.3):
+// the optional field must reach AttachMatchMapInput so the use case can validate and copy.
+func TestAttachMatchMapHandler_ForwardsInheritBoardFromMatchUuid(t *testing.T) {
+	userUUID := uuid.New()
+	matchUUID := uuid.New()
+	mapUUID := uuid.New()
+	srcMatchUUID := uuid.New()
+
+	mockFn := func(_ context.Context, input *matchmapuc.AttachMatchMapInput) (*entity.MatchMap, error) {
+		if input.InheritBoardFromMatchUUID == nil {
+			t.Fatalf("expected InheritBoardFromMatchUUID to be forwarded, got nil")
+		}
+		if *input.InheritBoardFromMatchUUID != srcMatchUUID {
+			t.Errorf("got InheritBoardFromMatchUUID %v, want %v", *input.InheritBoardFromMatchUUID, srcMatchUUID)
+		}
+		return &entity.MatchMap{
+			MatchUUID:  matchUUID.String(),
+			MapUUID:    mapUUID.String(),
+			AttachedAt: time.Now(),
+		}, nil
+	}
+
+	_, api := humatest.New(t)
+	handler := matchmapapi.AttachMatchMapHandler(&mockAttachMatchMap{fn: mockFn})
+
+	huma.Register(api, huma.Operation{
+		Method: http.MethodPost,
+		Path:   "/matches/{match_uuid}/map",
+		Errors: []int{
+			http.StatusBadRequest, http.StatusForbidden,
+			http.StatusNotFound, http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+	body := map[string]any{"mapUuid": mapUUID.String(), "inheritBoardFromMatchUuid": srcMatchUUID.String()}
+	resp := api.PostCtx(ctx, "/matches/"+matchUUID.String()+"/map", body)
+
+	if resp.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
+// TestAttachMatchMapHandler_SourceMatchErrors_Return422 covers the three new B16 errors
+// (spec §4.3): all map to 422, same as ErrMatchAlreadyStarted, per match-maps.md's existing
+// pattern of using 422 for semantically-invalid requests rather than 409.
+func TestAttachMatchMapHandler_SourceMatchErrors_Return422(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"not in campaign", matchmapuc.ErrSourceMatchNotInCampaign},
+		{"on another map", matchmapuc.ErrSourceMatchOnAnotherMap},
+		{"has no board", matchmapuc.ErrSourceMatchHasNoBoard},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userUUID := uuid.New()
+			matchUUID := uuid.New()
+			mapUUID := uuid.New()
+
+			mockFn := func(_ context.Context, _ *matchmapuc.AttachMatchMapInput) (*entity.MatchMap, error) {
+				return nil, tc.err
+			}
+
+			_, api := humatest.New(t)
+			handler := matchmapapi.AttachMatchMapHandler(&mockAttachMatchMap{fn: mockFn})
+
+			huma.Register(api, huma.Operation{
+				Method: http.MethodPost,
+				Path:   "/matches/{match_uuid}/map",
+				Errors: []int{
+					http.StatusBadRequest, http.StatusForbidden,
+					http.StatusNotFound, http.StatusUnprocessableEntity,
+					http.StatusInternalServerError,
+				},
+			}, handler)
+
+			ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+			body := map[string]any{"mapUuid": mapUUID.String(), "inheritBoardFromMatchUuid": uuid.New().String()}
+			resp := api.PostCtx(ctx, "/matches/"+matchUUID.String()+"/map", body)
+
+			if resp.Code != http.StatusUnprocessableEntity {
+				t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusUnprocessableEntity, resp.Body.String())
+			}
+		})
+	}
+}
