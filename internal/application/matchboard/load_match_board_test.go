@@ -142,6 +142,45 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 		}
 	})
 
+	// F1: detach + attach another map deletes nothing (AttachMatchMapUC only clears the board
+	// when the PREVIOUS attachment was a different map, and a detach leaves no previous one),
+	// so a row saved for the old map can still be sitting there when the new one is attached.
+	// It is a portrait of a map that is no longer this match's — it must read as absent.
+	t.Run("a saved row for a map other than the attached one is ignored for the map snapshot", func(t *testing.T) {
+		matchMapRepo := &fakeMatchMapRepo{
+			mm: &matchmapentity.MatchMap{MatchUUID: matchUUID.String(), MapUUID: mapUUID.String()},
+		}
+		stale := &matchboard.Board{
+			MatchUUID: matchUUID,
+			MapUUID:   uuid.New(), // the OLD map
+			Pieces:    []mapentity.Piece{{ID: "stale"}},
+		}
+		boardRepo := &fakeBoardRepo{board: stale}
+		m := mapentity.NewTacticalMap(uuid.New(), "New map", "")
+		m.ID = mapUUID
+		m.Pieces = []mapentity.Piece{{ID: "fresh"}}
+		mapRepo := &fakeMapRepo{m: m}
+		uc := matchboarduc.NewLoadMatchBoardUC(boardRepo, matchMapRepo, mapRepo)
+
+		got, err := uc.Load(context.Background(), matchUUID)
+		if err != nil {
+			t.Fatalf("Load returned an error: %v", err)
+		}
+		if got == nil {
+			t.Fatal("Load = nil, want a fresh snapshot of the attached map")
+		}
+		if got.MapUUID != mapUUID {
+			t.Fatalf("MapUUID = %v, want the ATTACHED map %v — the stale row of another map won",
+				got.MapUUID, mapUUID)
+		}
+		if len(got.Pieces) != 1 || got.Pieces[0].ID != "fresh" {
+			t.Fatalf("Pieces = %+v, want the attached map's own", got.Pieces)
+		}
+		if mapRepo.calls != 1 {
+			t.Fatalf("map repo was called %d time(s), want 1", mapRepo.calls)
+		}
+	})
+
 	t.Run("match map repository error other than not-found propagates", func(t *testing.T) {
 		matchMapRepo := &fakeMatchMapRepo{err: context.DeadlineExceeded}
 		uc := matchboarduc.NewLoadMatchBoardUC(&fakeBoardRepo{}, matchMapRepo, &fakeMapRepo{})

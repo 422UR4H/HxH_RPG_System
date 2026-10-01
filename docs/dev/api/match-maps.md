@@ -136,7 +136,12 @@ paredes **inteiras**, com estado — aberta, trancada, HP, destruída, revelada)
 **Ciclo de vida.** A linha nasce no **primeiro salvamento**. Antes disso, carregar =
 devolver um retrato fresco do mapa anexado, sem gravar nada (`LoadMatchBoardUC`, spec
 §4.3 "Quem carrega", B14). Anexar **outro** mapa antes do início da partida apaga a linha
-velha — ela era de outro mapa; depois do início, anexar é recusado.
+velha — ela era de outro mapa; depois do início, anexar é recusado. Desanexar não apaga
+nada, então desanexar e anexar outro mapa pode deixar a linha velha no banco: por isso
+carregar só aceita a linha cujo `map_uuid` é o do mapa anexado **agora** — uma linha de
+outro mapa conta como ausente, e o que vem é o retrato fresco do mapa novo. O `start_match`
+recarrega o tabuleiro antes de gravá-lo, então a partida começa no mapa anexado no
+momento do início, mesmo que ele tenha mudado com a sala do lobby aberta.
 
 **Herdar de outra partida (B16).** `POST /matches/{match_uuid}/map` aceita
 `inheritBoardFromMatchUuid`: em vez de começar de um retrato fresco do mapa, a partida herda
@@ -155,6 +160,11 @@ não devem viajar), trocando o `match_uuid`/`match_id` (e, para cada memória, o
 `pgmatchboard.Repository.Copy`, numa única transação com a cópia do fog (dentro dela,
 `fog.PlayerMemoryRepository.CopyMatch`). O tabuleiro antigo do destino, se havia algum, é
 apagado por essa mesma cópia — não sobrevive misturado com o herdado.
+
+**Anexe/herde com o lobby fechado.** Se a sala do lobby estiver aberta (o mestre conectado),
+ela ainda guarda em memória o tabuleiro de antes, e o próximo salvamento dela — um
+movimento ou remoção de peça no lobby — pode sobrescrever a linha recém-herdada (ou
+recém-anexada, no mesmo mapa); anexe e herde com o lobby fechado.
 
 **Quando persiste** (B3, spec §4.3 "Quando persiste"): a cada mudança definitiva do
 tabuleiro — o movimento e a remoção de peça no lobby, `start_match` (antes de a sessão de

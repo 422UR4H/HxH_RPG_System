@@ -385,3 +385,132 @@ func hasWall(walls []game.WallSegmentPayload, id string) bool {
 	}
 	return false
 }
+
+// ─── o mapa anexado mudou com a sala aberta (F1) ────────────────────────────
+
+// newMapPieceID is the attacker's piece on the board of the map attached AFTER the master's
+// lobby socket opened — a different id and slot from seedBoard's, so the assertions below
+// cannot mistake one map's piece for the other's.
+const newMapPieceID = "piece-on-the-new-map"
+
+// seedNewMapBoard replaces what the store's Load returns with the board of ANOTHER map — the
+// way LoadMatchBoardUC answers once a different map was attached over REST (a fresh snapshot
+// of the new map: an old map's row no longer counts, see LoadMatchBoardUC.Load).
+func (f *combatFixture) seedNewMapBoard(t *testing.T) uuid.UUID {
+	t.Helper()
+	newMap := uuid.New()
+	f.boards.seed(f.matchUUID, &matchboard.Board{
+		MatchUUID: f.matchUUID,
+		MapUUID:   newMap,
+		Grid:      moveBoardGrid,
+		Pieces: []mapentity.Piece{{
+			ID:          newMapPieceID,
+			CharacterID: f.attackerID.String(),
+			Coord:       mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: 2, Row: 2}},
+			Visible:     true,
+		}},
+	})
+	return newMap
+}
+
+// A map attached while the master's lobby socket is already open (the store changed AFTER the
+// connect's loadBoard) must not lose to the room's stale in-memory board at start_match: the
+// start reloads first, so what persists — and what the table sees — is the NEW map's board.
+func TestE2E_StartMatchStartsOnTheCurrentlyAttachedMap(t *testing.T) {
+	f := newCombatFixture(t, inLobby)
+	f.seedBoard(t) // the OLD map, loaded by the master's connect below
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the lobby board")
+	}
+
+	newMap := f.seedNewMapBoard(t)
+
+	sendWS(t, master, string(game.MsgTypeStartMatch), map[string]any{})
+	if !masterMsgs.await(game.MsgTypeMatchStarted, 2*time.Second) {
+		t.Fatalf("start_match never produced match_started; got: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+
+	board, err := f.boards.Load(context.Background(), f.matchUUID)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if board == nil || board.MapUUID != newMap {
+		t.Fatalf("the persisted board belongs to map %v, want the newly attached %v — start_match "+
+			"wrote the room's stale board over the new map's", mapUUIDOf(board), newMap)
+	}
+	if len(board.Pieces) != 1 || board.Pieces[0].ID != newMapPieceID {
+		t.Fatalf("the persisted pieces are %+v, want only the new map's %q", board.Pieces, newMapPieceID)
+	}
+
+	// The map_full_state that follows match_started is the board the match starts on.
+	var started game.MapFullStatePayload
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		msgs := masterMsgs.snapshotMessages()
+		idx := indexOfMessage(msgs, game.MsgTypeMatchStarted)
+		var found *game.Message
+		for i := idx + 1; i < len(msgs); i++ {
+			if msgs[i].Type == game.MsgTypeMapFullState {
+				found = &msgs[i]
+				break
+			}
+		}
+		if found != nil {
+			if err := json.Unmarshal(found.Payload, &started); err != nil {
+				t.Fatalf("unmarshal map_full_state: %v", err)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no map_full_state after match_started; got: %v", messageTypes(msgs))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(started.Pieces) != 1 || started.Pieces[0].PieceID != newMapPieceID {
+		t.Fatalf("the match started with pieces %+v, want only the new map's %q",
+			started.Pieces, newMapPieceID)
+	}
+}
+
+// boardLoaded only stops a playing room's master reconnect from reloading once a board was
+// actually INSTALLED: a birth that found nothing (no map attached yet) must not count as the
+// one load, or the room never picks up a board that shows up later.
+func TestE2E_ABirthWithNoBoardDoesNotCountAsTheOneLoad(t *testing.T) {
+	f := newCombatFixture(t) // a started match, and the store has no board yet
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+
+	f.seedBoard(t)
+
+	// B4: the same account connecting again replaces the first socket; the room (and its
+	// boardLoaded) survives, since the player never left.
+	master2 := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master2.Close() //nolint:errcheck
+	m2 := collectFrom(master2)
+	if !m2.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatalf("the reconnecting master got no board; got: %v — the empty birth was counted "+
+			"as the room's one load", messageTypes(m2.snapshotMessages()))
+	}
+	var board game.MapFullStatePayload
+	if err := json.Unmarshal(
+		findMessage(t, m2.snapshotMessages(), game.MsgTypeMapFullState).Payload, &board,
+	); err != nil {
+		t.Fatalf("unmarshal map_full_state: %v", err)
+	}
+	findPayloadPiece(t, board.Pieces, attackerPieceID)
+}
+
+func mapUUIDOf(b *matchboard.Board) uuid.UUID {
+	if b == nil {
+		return uuid.Nil
+	}
+	return b.MapUUID
+}

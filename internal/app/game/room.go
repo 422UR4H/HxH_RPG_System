@@ -129,7 +129,8 @@ type Room struct {
 	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
 	// channel off to a goroutine, and two rapid opens can reach it out of order.
 	barsSeq uint64
-	// boardLoaded is true once loadBoard has run at least once for this Room. It is what
+	// boardLoaded is true once loadBoard has installed a board at least once for this Room (a
+	// load that found no map attached does not count). It is what
 	// narrows the master-reconnect half of "quando carrega" (spec §4.3) to a SINGLE load once
 	// the match has started: while session == nil (still a lobby) every master register
 	// reloads regardless of this flag, but once playing, boardLoaded stops a reconnecting
@@ -413,7 +414,8 @@ func (r *Room) Run() {
 // board with it — this is what the master's map_state_sync used to seed by hand (spec §4.3,
 // "Quem carrega", B14). Called from Run's register branch: once when the Room is born, and
 // again on every master reconnect while the room is still a lobby (see boardLoaded's own doc
-// comment on the Room struct).
+// comment on the Room struct). StartMatch also calls it, from the master's read pump, right
+// before the start's own save: the map can change over REST while the lobby socket is open.
 //
 // r.deps.LoadBoardUC == nil means the room has no board capability — every test built before
 // B14 leaves it unset, and this is a no-op for them, same as every other optional dependency.
@@ -457,13 +459,15 @@ func (r *Room) loadBoard(ctx context.Context) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.boardLoaded = true
 	if board == nil {
 		// No map attached at all — nothing to load yet. Leaving the current board (empty, on
 		// a fresh Room) alone is correct: a lobby that attaches a map later is picked up by
-		// the NEXT master connect, since boardLoaded only gates the post-start case.
+		// the NEXT master connect, since boardLoaded only gates the post-start case. And
+		// boardLoaded stays as it was: a load that installed nothing is not the room's one
+		// load, or a playing room would never pick up a board that shows up later.
 		return
 	}
+	r.boardLoaded = true
 
 	pieces := make(map[string]PieceMovedPayload, len(board.Pieces))
 	for _, p := range board.Pieces {
@@ -520,6 +524,13 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 		return err
 	}
 
+	// Reloaded first, while still a lobby: the map attached to the match can have changed over
+	// REST (attach/inherit) after the master's socket opened, and the room's in-memory board
+	// would otherwise be written over the new map's row and start the match on the old map.
+	// Every lobby move already persisted, so reloading costs the table nothing it had. This is
+	// also what sets r.mapUUID for the memory read below.
+	r.loadBoard(ctx)
+
 	// The lobby's board — whatever pieces and walls sit on it right now — is written BEFORE
 	// Init, so B11's NPC-enrollment (T9) reads what is actually on screen instead of whatever
 	// the last save happened to catch (spec §4.3, "B11", "Quando persiste").
@@ -530,8 +541,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 		return err
 	}
 
-	// r.mapUUID is already known by now: the master connected before being able to send
-	// start_match at all, and that connect already ran loadBoard once (Room's birth). Read
+	// r.mapUUID is known by now: loadBoard just ran above, against the map attached NOW. Read
 	// outside the lock, same shape every DB-round-trip-before-lock in this file uses.
 	r.mu.RLock()
 	mapUUID := r.mapUUID

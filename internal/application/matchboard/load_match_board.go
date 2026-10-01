@@ -34,8 +34,8 @@ func NewLoadMatchBoardUC(
 	return &LoadMatchBoardUC{boardRepo: boardRepo, matchMapRepo: matchMapRepo, mapRepo: mapRepo}
 }
 
-// Load returns the match's board: the saved line if one exists, else a fresh snapshot of the
-// attached map (read, never written — spec §4.3, "Ciclo de vida": "a linha nasce no primeiro
+// Load returns the match's board: the saved line if one exists for the attached map, else a
+// fresh snapshot of the attached map (read, never written — spec §4.3, "Ciclo de vida": "a linha nasce no primeiro
 // salvamento"). (nil, nil) when the match has no map attached at all.
 //
 // The attach is checked FIRST, and the saved line is checked before ever reading the map: a
@@ -51,18 +51,23 @@ func (uc *LoadMatchBoardUC) Load(ctx context.Context, matchUUID uuid.UUID) (*mat
 		return nil, fmt.Errorf("load match board: get match map: %w", err)
 	}
 
-	board, err := uc.boardRepo.Get(ctx, matchUUID)
-	if err != nil {
-		return nil, fmt.Errorf("load match board: get board: %w", err)
-	}
-	if board != nil {
-		return board, nil
-	}
-
 	mapUUID, err := uuid.Parse(mm.MapUUID)
 	if err != nil {
 		return nil, fmt.Errorf("load match board: parse attached map uuid %q: %w", mm.MapUUID, err)
 	}
+
+	board, err := uc.boardRepo.Get(ctx, matchUUID)
+	if err != nil {
+		return nil, fmt.Errorf("load match board: get board: %w", err)
+	}
+	// A saved row only counts if it is a portrait of the map attached NOW. Detach + attach
+	// another map deletes nothing (AttachMatchMapUC only clears the board when the previous
+	// attachment was a different map, and a detach leaves no previous one), so a row of the
+	// old map can outlive its attachment; it reads as absent, and the new map's snapshot wins.
+	if board != nil && board.MapUUID == mapUUID {
+		return board, nil
+	}
+
 	m, err := uc.mapRepo.GetMap(ctx, mapUUID)
 	if err != nil {
 		return nil, fmt.Errorf("load match board: get map: %w", err)
