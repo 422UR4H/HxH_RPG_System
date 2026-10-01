@@ -1014,19 +1014,30 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
 		// action's dice into it, both of which the master's open_next_action reads.
+		//
+		// The master's action_queued payload is built in the SAME critical section: once
+		// Execute returns, `a` sits in the session's queue and belongs to the session, and
+		// newActionQueuedPayload walks its pointer fields — after the unlock that read would
+		// race whatever the master does to the queue next. Sent after the unlock, like
+		// everything that reaches a client.
 		r.mu.Lock()
 		errEnqueue := r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+		var queued ActionQueuedPayload
+		actionID := a.GetID()
+		if errEnqueue == nil {
+			queued = newActionQueuedPayload(a)
+		}
 		r.mu.Unlock()
 		if errEnqueue != nil {
 			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
 		}
-		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: a.GetID()}))
+		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: actionID}))
 		// The sender's own ack now names the action too — it says "we got it, and here is what
 		// you can refer to it by". This is different news, for a different recipient: the
 		// master is the one who has to decide when it opens, and they need the ID to be able
 		// to pull it.
-		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, newActionQueuedPayload(a)))
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, queued))
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
