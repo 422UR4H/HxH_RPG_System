@@ -1188,16 +1188,17 @@ mappings:
       - path: docs/game/combate/reacoes.md
         confidence: possibly_affected
     notes: >-
-      backend-prep-front-combat: RollsSpeed() diz se a velocidade do movimento é
-      ROLADA (Dash, Accelerate) ou lida passiva (Shift, Brake) — espelha exatamente
-      o ramo que MatchSession.rollActionDice/deriveSpeeds já tomam. É o
-      discriminador de QUANDO o deslocamento de uma REAÇÃO acontece: toda reação
-      tem CD (o acerto do atacante), e um movimento que não rola não tem leitura
-      para pôr contra ela — closedEscape (Shift) desloca na abertura, escape/
-      escapeGuard (Dash) só no fechamento do turno, e falhar é a peça não sair do
-      lugar. Não diz nada sobre o movimento de uma AÇÃO, que desloca na abertura
-      qualquer que seja a categoria. Consumido por room.go (open_reaction e
-      applyClosedEscapes) e documentado em match-combat-ws.md.
+      backend-prep-front-combat: discrimina Dash (rola Accelerate) de Shift (lê
+      Brake passivo) — o ramo que MatchSession.rollActionDice/deriveSpeeds toma.
+      RollsSpeed() foi REMOVIDA no fechamento da Fase 6 (spec 2026-09-27, B13):
+      a regra antiga (closedEscape/Shift desloca na ABERTURA da reação, escape/
+      escapeGuard/Dash só no fechamento) foi substituída pela regra única de B13 —
+      nenhum escape desloca na abertura; Avoided = dodgePassed && movePassed, e só
+      o FECHAMENTO do turno (os três verbos, applyClosedEscapes) move a peça,
+      escapou para o destino ou, falhando, para o escapeLanding que o mestre
+      escolheu por edit_action. Não diz nada sobre o movimento de uma AÇÃO, que
+      desloca na abertura qualquer que seja a categoria. Ver "O escape: esquiva e
+      movimento (B13)" em combat-engine.md e match-combat-ws.md.
 
   - code_path: internal/domain/match/entity/action/repel.go
     dev_docs:

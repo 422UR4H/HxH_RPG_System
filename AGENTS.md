@@ -111,6 +111,34 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 - `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
 - No Attack mapping in `buildMasterAction` — decided, not pending (spec 2026-09-27 §2, B9): the master attacks through an NPC with `enqueue_action`; `enqueue_master_action` refuses an `attack` key outright. A master attack as an environment effect (a trap) is future work. Move maps only `position` — it is the master's drag (spec 2026-09-27 §4.3)
 
+**Fechamento da Fase 6 — pacote de back (B1–B16, spec 2026-09-27):**
+- **O tabuleiro é do servidor.** `match_boards` guarda um retrato por partida (peças, paredes,
+  grade, `bg` — `NULL` herda o do mapa); `player_memories` guarda o fog explorado. A `Room`
+  carrega (`loadBoard`) quando nasce e, em lobby, a cada conexão do mestre; `persistBoard` é o
+  único ponto de gravação, nos três verbos de fechamento de turno, no `start_match`, nas
+  master actions de peça e na interação/revelação de parede, serializado por `persistMu`.
+  `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
+  `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.
+- **Escape = esquiva E movimento.** `Avoided = dodgePassed && movePassed` (spec B13):
+  `movePassed` compara `Move.FinalSpeed` ao acerto do atacante; `dodgePassed`, o `Dodge.Total`.
+  Falhando qualquer um dos dois, o golpe é lido como se o alvo tivesse ficado. Nenhum escape
+  desloca na abertura da reação — só no fechamento, por `applyClosedEscapes`; se falhou, o
+  mestre escolhe onde a peça cai pelo `edit_action.escapeLanding`, guardado no `Turn`. Ver
+  `docs/dev/match/combat-engine.md` ("O escape: esquiva e movimento").
+- **Master actions têm tabela própria (`master_actions`), não `actions`.** O ator de uma master
+  action é o mestre (usuário), não um `character_sheets`, e ela acontece fora de turno — as duas
+  colunas de `actions` (`actor_uuid` → ficha, `turn_uuid NOT NULL`) teriam que afrouxar e toda
+  leitura teria que filtrar um tipo do outro. Gravada no instante em que é aplicada, com a
+  projeção (`views`) do que cada jogador viu dela ao vivo. Decisão do dono do produto, spec §4.8.
+- ⚠️ **Bug conhecido, achado na Task 12 (não corrigido nesta fase):** uma condição do mestre
+  (`edit_action` com `conditions[].field` = `"dodge"`, `"defense"` ou `"repel"`) é aceita,
+  grava o override, e **não muda o resultado** — `deriveReflex`/`resolveRepel`
+  (`internal/domain/match/service/reaction_collision.go`) montam o `RollInput` sem ler
+  `Dodge.Context.Condition`/`Repel.Context.Condition`, e a defesa automática é sempre passiva
+  sem ler `Condition` nenhuma. Só `hit` (e `speed`/`moveSpeed`, via `deriveSpeeds` na sessão)
+  chega ao resolvedor. É anterior a esta fase; documentado em `combat-engine.md` ("O escape:
+  esquiva e movimento").
+
 **Pendente de configurações de campanha/partida:**
 - `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por
   `FilterMapState`, mas nenhum endpoint REST o expõe e `room.go` hardcoda `explored`.

@@ -728,7 +728,10 @@ action **recusada** não é gravada, e [`edit_action`](#edit_action) **não** é
 presente, checado antes de tudo abaixo e independente de partida em andamento) ·
 `match_not_started` (**caminhos 0 e 3** — os caminhos de parede retornam antes dessa
 checagem) · `invalid_action` (**caminho 0**: `targetIds` sem exatamente um id; `move` e
-`remove` juntos; `remove` de personagem sem peça — `"character has no piece"`) ·
+`remove` juntos; `remove` de personagem sem peça — `"character has no piece"`; **pôr**
+quando um segundo socket do mestre acabou de criar a peça entre a leitura de posse e a
+gravação — `"character already has a piece"`, a mesma seção crítica que a leitura de
+`applyMove` deixa como indecisa) ·
 `not_participant` (**caminho 0**, pôr personagem de jogador que não participa) · os erros de
 [`add_npc`](#add_npc) (**caminho 0**, pôr NPC que ainda não participa: `forbidden`,
 `not_found`, `invalid_npc`, `npc_already_in_match`) · `unknown_wall` (**caminhos 1 e 2** —
@@ -1740,10 +1743,15 @@ um jogador, ou o motor aplicando um movimento resolvido). Três ressalvas, todas
   tabuleiro inteiro a cada arrasto de NPC não mudaria nada que o mestre veja — então
   `relayPieceMove` zera o dono quando ele é o mestre e pula os três: recompute, `PlayerMemory`
   e o `map_full_state` extra. O mestre continua recebendo o `piece_moved` normal pelo ramo
-  `isMaster` do despacho (ou nenhum eco, se foi ele quem arrastou — o navegador dele já
-  aplicou). Vale para os três caminhos que passam por `relayPieceMove`: arrasto do cliente,
-  o movimento de uma ação de turno e a fuga de reação. Uma peça cujo `characterId` não está
-  na partida também não tem dono, e ninguém recebe o extra.
+  `isMaster` do despacho. Vale para os caminhos que passam por `relayPieceMove` em combate: o
+  movimento de uma ação de turno, a fuga de reação e a master action de peça (abaixo) — nos
+  três o autor é o SERVIDOR, não há `senderId` a cortar, e por isso o mestre nunca é suprimido:
+  a tela dele espera a confirmação em vez de já ter desenhado o arrasto. **O arrasto do
+  CLIENTE em combate não existe mais desde B14** — com sessão viva, mestre e jogador só movem
+  peça por `enqueue_action` ou `enqueue_master_action`; `piece_moved`/`piece_removed` vindo do
+  cliente só é aceito no lobby, onde o corte de remetente da primeira linha da tabela acima
+  continua valendo. Uma peça cujo `characterId` não está na partida também não tem dono, e
+  ninguém recebe o extra.
 - O dono **offline** tem o cache recalculado mas não recebe nada (ele reconectaria num
   polígono velho).
 - Se o recálculo falhar, o `map_full_state` não sai — o `piece_moved` do par acima sai do
@@ -1948,7 +1956,7 @@ vale para o REST.
 | `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
 | `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
-| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, ou `remove` de personagem sem peça (`"character has no piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
+| `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6). |
 | `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
