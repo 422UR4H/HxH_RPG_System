@@ -209,6 +209,12 @@ peça, e interação/revelação de parede. Um só método, `Room.persistBoard()
 turno só é persistido no fechamento. Se o servidor cair no meio, o turno se perde — e a peça,
 salva no fechamento anterior, volta junto com ele. Tabuleiro e histórico concordam.
 
+**Comportamento atual (registrado no fechamento da Fase 6, a decidir pelo dono do produto):**
+um salvamento feito **com o turno aberto** — master action de peça, interação/revelação de
+parede — é um retrato do tabuleiro como está, e já leva o movimento da abertura. Se o servidor
+cair depois dele e antes do fechamento, o turno se perde mas aquele movimento fica; nesse caso
+tabuleiro e histórico não concordam. Ver `docs/dev/api/match-combat-ws.md` §9.
+
 #### Quem move o quê
 
 | Momento | Quem | Como | Validação |
@@ -416,7 +422,7 @@ CREATE TABLE master_actions (
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor | **volta** do `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue` (B1) · dono: `ownQueue` (B12) | **perdida**; `ownQueue: []` faz o front descartar com aviso e devolver o rascunho. Ninguém reenvia |
-| Turno aberto, reações anexadas | `openTurn` com `action` (B2); mestre: `resolution` | **perdido** (o turno só persiste ao fechar); a peça da action volta junto (§4.3 ⭐) |
+| Turno aberto, reações anexadas | `openTurn` com `action` (B2); mestre: `resolution` | **perdido** (o turno só persiste ao fechar); a peça da action volta junto (§4.3 ⭐) — exceto se houve um salvamento com o turno aberto, que já levou o movimento da abertura (comportamento atual, §4.3) |
 | Escolha do mestre para um escape (B13) | vem na `resolution` do mestre | perdida com o turno aberto |
 | Histórico | REST | REST (B15) — nada que já aconteceu se perde; master actions gravadas no instante (§4.8) |
 | Barras | `bars` com o `seq` atual | zeradas (o de sempre: perdido, não divergente) |

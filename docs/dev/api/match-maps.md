@@ -169,7 +169,10 @@ recém-anexada, no mesmo mapa); anexe e herde com o lobby fechado.
 **Quando persiste** (B3, spec §4.3 "Quando persiste"): a cada mudança definitiva do
 tabuleiro — o movimento e a remoção de peça no lobby, `start_match` (antes de a sessão de
 combate começar), os três verbos que fecham um turno (`close_turn`, `open_next_action`,
-`pull_action`), e a interação/revelação de parede pelo mestre. `Room.persistBoard(reason)`
+`pull_action`), as master actions de peça (mover/pôr/tirar) e a interação/revelação de
+parede pelo mestre. Um salvamento com um turno aberto é um retrato do tabuleiro como está —
+já com o movimento da abertura; ver o reinício em
+[`match-combat-ws.md`](match-combat-ws.md#reinício-recarga-queda). `Room.persistBoard(reason)`
 é o único método que escreve; uma falha é logada e engolida — a jogada em memória continua
 valendo, só a gravação que se perde (mesma política de `persistClosedTurn`).
 

@@ -330,9 +330,16 @@ o histórico mostra a action já editada, que **é** a action. Um turno editado 
 |---|---|
 | com o turno aberto, e esse turno está no histórico | `turns[].masterActions` daquele turno |
 | sem turno aberto (o arrastar entre turnos é o caso comum) | `rounds[].events`, `kind: "masterAction"` |
+| com o turno aberto, e esse turno **ainda não fechou** | `rounds[].events`, `kind: "masterAction"`, com o `turnId` — até o turno fechar e ser gravado; daí em diante, em `turns[].masterActions` dele |
 | com um turno que **não foi gravado** (um turno só é gravado ao fechar; um reinício com o turno aberto o perde) | `rounds[].events`, `kind: "masterAction"` — o `turnId` continua lá, apontando um turno que não existe na árvore |
 
-A terceira linha é deliberada: a master action aconteceu, o tabuleiro salvo a confirma, e
+A segunda linha com turno é consequência de o histórico incluir a round **ao vivo**: um GET
+feito com o turno aberto ainda não tem o turno na árvore (ele só é gravado ao fechar), então a
+master action dele aparece em `events`; o mesmo GET depois do fechamento a mostra dentro do
+turno. Não é duplicata nem mudança de identidade — o `uuid` é o mesmo; o cliente que guarda
+histórico entre leituras deve tratar a versão nova como a que vale.
+
+A última linha é deliberada: a master action aconteceu, o tabuleiro salvo a confirma, e
 sumir com ela porque o turno não sobreviveu apagaria algo que a mesa viu.
 
 **Formato de `events[]`** — em ordem de tempo, os dois `kind` intercalados:

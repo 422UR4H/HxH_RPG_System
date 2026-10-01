@@ -2040,17 +2040,26 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
-| Turno aberto, reações anexadas | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido** — o turno só persiste ao FECHAR; a peça da action volta para onde o último fechamento a deixou |
+| Turno aberto, reações anexadas | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido** — o turno só persiste ao FECHAR; a peça da action volta para onde o último salvamento a deixou — o último fechamento, **ou** um salvamento feito com o turno aberto (ver abaixo), que já leva o movimento da abertura |
 | Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
 | `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 
 **Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). `Room.persistBoard`
-grava a cada `start_match`, a cada fechamento de turno e a cada interação/revelação de
-parede — nunca na ABERTURA de uma action. A peça anda no `piece_moved` que a abertura emite,
-mas se o servidor cair antes do próximo fechamento, essa gravação nunca aconteceu: o
-tabuleiro que volta é o de ANTES da action que estava em curso, e o turno em si — fila,
-reações anexadas, a escolha do mestre para um escape — some inteiro. Tabuleiro e histórico
-continuam concordando: o que está gravado é exatamente o que já tinha fechado.
+grava a cada `start_match`, a cada fechamento de turno, a cada master action de peça e a cada
+interação/revelação de parede — nunca na ABERTURA de uma action. A peça anda no `piece_moved`
+que a abertura emite, mas se o servidor cair antes do próximo salvamento, essa gravação nunca
+aconteceu: o tabuleiro que volta é o de ANTES da action que estava em curso, e o turno em si —
+fila, reações anexadas, a escolha do mestre para um escape — some inteiro.
+
+**Comportamento atual — um salvamento com o turno aberto leva o movimento da abertura.** O
+salvamento é um retrato do tabuleiro **como está**, e com um turno aberto ele já inclui a peça
+que a abertura moveu. Então, se com o turno aberto o mestre fizer uma master action de peça
+(mover/pôr/tirar) ou interagir/revelar uma parede, e o servidor cair antes do fechamento, o
+turno se perde mas aquele movimento **fica**: a peça volta onde a abertura a deixou, não onde
+o último fechamento a deixou. Nesse caso o tabuleiro salvo mostra o efeito de um turno que
+não está no histórico. É o comportamento de hoje, documentado como tal; se ele deve mudar
+(por exemplo, salvar o tabuleiro com o movimento da action aberta desfeito) é decisão do dono
+do produto.
 
 **O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado no mesmo
 `persistBoard`, então um jogador que reconecta longe de uma parede que já viu antes ainda a

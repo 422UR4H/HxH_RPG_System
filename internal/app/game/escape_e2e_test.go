@@ -27,9 +27,8 @@ import (
 // falhou: se o mestre muda a leitura e o escape passa a passar, a peça vai ao DESTINO.
 //
 // Os testes decidem o escape pelas alavancas do próprio mestre (condições em moveSpeed e no
-// acerto do ataque — ver setEscapeReading), não por dados roteirizados — a mesma escolha de biasReactionMoveSpeed, e
-// pela mesma razão: amarrar cada asserção ao número exato de rolagens que um ataque e uma
-// reação fazem hoje.
+// acerto do ataque — ver setEscapeReading), não por dados roteirizados: dados roteirizados
+// amarrariam cada asserção ao número exato de rolagens que um ataque e uma reação fazem hoje.
 
 // The escape the tests below attach: from the victim's own slot to (8,6). escapeLanding is
 // the other slot the master picks when it fails.
