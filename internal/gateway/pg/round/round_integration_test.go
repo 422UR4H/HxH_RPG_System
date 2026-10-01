@@ -157,7 +157,7 @@ func TestPersistTurnClose(t *testing.T) {
 		}
 	})
 
-	t.Run("ON CONFLICT DO NOTHING — second call with same scene/round UUIDs is idempotent", func(t *testing.T) {
+	t.Run("ON CONFLICT upsert — second call with same scene/round UUIDs is idempotent", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		masterUUID := pgtest.InsertTestUser(t, pool, "gm2", "gm2@test.com", "pass")
 		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp2")

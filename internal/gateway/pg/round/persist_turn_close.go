@@ -38,7 +38,8 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		_ = tx.Rollback(ctx) // no-op after Commit
 	}()
 
-	// Scene and round — idempotent (ON CONFLICT DO NOTHING), and the SAME two inserts
+	// Scene and round — idempotent upserts (on conflict only the round's mode and a missing
+	// finished_at are refreshed, see ensureSceneAndRound), and the SAME two inserts
 	// EnsureSceneAndRound runs on its own: a master action may already have written them before
 	// this round's first turn closed (spec §4.8). Inside this transaction, like everything else.
 	if err := ensureSceneAndRound(ctx, tx, matchUUID, sc, rnd); err != nil {

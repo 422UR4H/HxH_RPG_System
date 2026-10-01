@@ -26,7 +26,8 @@ type execer interface {
 // change_scene, a round closing and the next one opening) — master_actions and match_events
 // reference both.
 //
-// The scene is ON CONFLICT DO NOTHING; the round refreshes its mode. Being a row from birth
+// On conflict the scene only gains a finished_at it did not have yet; the round refreshes its
+// mode (and likewise gains a missing finished_at — see below). Being a row from birth
 // means a round is written in the regime it was born in, and the master may switch it after
 // that: the change_round_mode arm calls this again, and a turn closing does too, so the row
 // always carries the regime the round was last seen in — what the history's round.mode says.
