@@ -8,12 +8,14 @@ import (
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // PersistTurnClose atomically writes scene (idempotent), round (idempotent),
-// turn, action, the action's reactions, and the turn's settled resolution (nullable) within
+// turn, action, the action's reactions, the turn's settled resolution (nullable), the values
+// the master's edits displaced, and the master actions applied while the turn was open, within
 // a single database transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
@@ -94,6 +96,19 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		)
 		if err != nil {
 			return fmt.Errorf("PersistTurnClose insert override: %w", err)
+		}
+	}
+
+	// What the master did while this turn was open becomes durable with the turn or not at all
+	// (owner decision, 2026-10-01): a turn lost to a restart takes its master actions with it,
+	// and a master action that fails here takes the turn back with it. The master-action
+	// gateway's own Insert, run on this transaction — the SQL lives in one place.
+	if len(d.MasterActions) > 0 {
+		mas := pgmasteraction.NewRepository(tx)
+		for i := range d.MasterActions {
+			if err := mas.Insert(ctx, d.MasterActions[i]); err != nil {
+				return fmt.Errorf("PersistTurnClose master action %d: %w", i, err)
+			}
 		}
 	}
 

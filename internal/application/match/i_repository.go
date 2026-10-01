@@ -36,6 +36,12 @@ type TurnCloseData struct {
 	// (TakeOverridesFor), not peeked: a closed turn cannot be edited again, so nothing is
 	// left behind to leak into a later turn's close.
 	Overrides []match.OverriddenValue
+	// MasterActions is what the master did INSIDE this turn while it was open (piece and wall
+	// actions, turn notes), each already built the instant it was applied — views, TurnUUID,
+	// HappenedAt — but written only now, in this same transaction: everything that happens
+	// inside an open turn becomes durable together with that turn's close, or not at all
+	// (owner decision, 2026-10-01). Drained from the room, like Overrides from the session.
+	MasterActions []masteraction.Record
 }
 
 type IRepository interface {

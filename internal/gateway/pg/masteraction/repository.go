@@ -14,7 +14,11 @@ import (
 
 // Repository persists master actions: the master's own actions, in a table of their own
 // (spec §4.8, B14) — separate from actions because the actor is the master (a USER), not
-// a character sheet, and the action happens OUTSIDE any turn.
+// a character sheet, and the action can happen OUTSIDE any turn.
+//
+// q is the pool for a master action applied with no turn open, and PersistTurnClose's own
+// transaction for one applied inside a turn — which is written with that turn's close, or not
+// at all (owner decision, 2026-10-01). Same Insert either way: the SQL lives here only.
 type Repository struct {
 	q pgfs.IQuerier
 }

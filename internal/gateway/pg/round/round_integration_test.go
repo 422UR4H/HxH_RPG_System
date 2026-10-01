@@ -11,6 +11,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
@@ -700,6 +701,85 @@ func TestPersistTurnCloseWritesNoRowForAnUneditedTurn(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("wrote %d rows, want 0 — a turn the master never touched leaves no trace", n)
 	}
+}
+
+// TestPersistTurnCloseWritesTheTurnsMasterActions: what the master did inside an open turn is
+// written in the SAME transaction as the turn (owner decision, 2026-10-01) — both land, or
+// neither does. A master action that fails to insert rolls the turn back with it.
+func TestPersistTurnCloseWritesTheTurnsMasterActions(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	build := func(t *testing.T, fx resolutionFixture, tn *turnentity.Turn, masterUUID uuid.UUID) masteraction.Record {
+		t.Helper()
+		turnID := tn.GetID()
+		return masteraction.Record{
+			UUID: uuid.New(), MatchUUID: fx.matchUUID, SceneUUID: fx.scene.GetID(),
+			RoundUUID: fx.round.GetID(), TurnUUID: &turnID, MasterUUID: masterUUID,
+			Kind: masteraction.KindMovePiece, Content: []byte(`{"characterId":"c","pieceId":"p"}`),
+			Views:      map[uuid.UUID]masteraction.View{uuid.New(): masteraction.ViewFull},
+			HappenedAt: time.Now().UTC().Truncate(time.Microsecond),
+		}
+	}
+	countOf := func(t *testing.T, q string, id uuid.UUID) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, q, id).Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+
+	t.Run("writes the turn and its master actions together", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		recs := []masteraction.Record{build(t, fx, tn, fx.masterUUID), build(t, fx, tn, fx.masterUUID)}
+
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+			MatchUUID: fx.matchUUID, MasterActions: recs,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM master_actions WHERE turn_uuid = $1`, tn.GetID()); n != 2 {
+			t.Fatalf("master_actions rows for the turn = %d, want 2", n)
+		}
+		var views []byte
+		if err := pool.QueryRow(ctx, `SELECT views FROM master_actions WHERE uuid = $1`, recs[0].UUID).Scan(&views); err != nil {
+			t.Fatalf("read views: %v", err)
+		}
+		if len(views) <= 2 {
+			t.Fatalf("views = %s, want what the record carried", views)
+		}
+	})
+
+	t.Run("a master action that fails to insert rolls the turn back", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		// A master who is not a user: master_actions.master_uuid's FK refuses it.
+		bad := build(t, fx, tn, uuid.New())
+
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+			MatchUUID: fx.matchUUID, MasterActions: []masteraction.Record{build(t, fx, tn, fx.masterUUID), bad},
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose succeeded with a master action the database refuses")
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM turns WHERE uuid = $1`, tn.GetID()); n != 0 {
+			t.Fatalf("turns rows = %d, want 0 — the turn must not outlive its master actions' failure", n)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM master_actions WHERE turn_uuid = $1`, tn.GetID()); n != 0 {
+			t.Fatalf("master_actions rows = %d, want 0 — the good one must roll back too", n)
+		}
+	})
 }
 
 // TestPersistTurnCloseWritesFinishedAtAsCreatedAt guards AGENTS.md's own known-issues entry:
