@@ -14,6 +14,30 @@ import (
 	"github.com/google/uuid"
 )
 
+// snapshotSceneAndRound copies what the round repository writes of a scene and a round — ids,
+// category, brief, regime, created/finished — into fresh objects. Every write of the pair runs
+// after r.mu is released, and the live *Scene/*Round belong to the session, which the next
+// message mutates under that lock (a regime switch, an exhaustion closing the round): handing
+// them to the gateway would have it read them unguarded. The caller MUST hold r.mu (read or
+// write); either argument may be nil, and its copy is then nil too.
+func snapshotSceneAndRound(sc *sceneentity.Scene, rd *roundentity.Round) (*sceneentity.Scene, *roundentity.Round) {
+	var scCopy *sceneentity.Scene
+	if sc != nil {
+		scCopy = sceneentity.ReconstructScene(sc.GetID(), sc.GetCategory(), sc.BriefInitialDescription, sc.GetCreatedAt())
+		if f := sc.GetFinishedAt(); f != nil {
+			scCopy.Close(*f)
+		}
+	}
+	var rdCopy *roundentity.Round
+	if rd != nil {
+		rdCopy = roundentity.ReconstructRound(rd.GetID(), rd.GetMode(), rd.GetCreatedAt())
+		if f := rd.GetFinishedAt(); f != nil {
+			rdCopy.Close(*f)
+		}
+	}
+	return scCopy, rdCopy
+}
+
 // ensureSceneAndRoundRows writes sc and rd as rows (idempotent) and, only if they are still the
 // session's active pair, tells the session they are rows — the same flag a persisted turn close
 // sets, and the one change_scene and a round's close read to decide whether there is a row to
@@ -23,7 +47,9 @@ import (
 // why names the moment, for the log. A failure is logged saying what was lost and swallowed —
 // the persistClosedTurn policy — and reported as false so a caller writing something that
 // references the pair (a master action, an event) can skip that write instead of failing on
-// the FK. The caller must NOT hold r.mu.
+// the FK. sc and rd are snapshots (snapshotSceneAndRound), never the session's live objects —
+// which is also why "still the active pair" compares ids, not pointers. The caller must NOT
+// hold r.mu.
 func (r *Room) ensureSceneAndRoundRows(
 	sess *matchsession.MatchSession, sc *sceneentity.Scene, rd *roundentity.Round, why string,
 ) bool {
@@ -39,7 +65,7 @@ func (r *Room) ensureSceneAndRoundRows(
 		return false
 	}
 	r.mu.Lock()
-	if sess.GetActiveRound() == rd {
+	if active := sess.GetActiveRound(); active != nil && active.GetID() == rd.GetID() {
 		sess.MarkRoundPersisted()
 	}
 	r.mu.Unlock()
@@ -63,7 +89,7 @@ func (r *Room) ensureActiveSceneAndRound(why string) {
 		r.mu.RUnlock()
 		return
 	}
-	sc, rd := sess.GetActiveScene(), sess.GetActiveRound()
+	sc, rd := snapshotSceneAndRound(sess.GetActiveScene(), sess.GetActiveRound())
 	persisted := sess.IsRoundPersisted()
 	r.mu.RUnlock()
 	if persisted {
@@ -75,7 +101,8 @@ func (r *Room) ensureActiveSceneAndRound(why string) {
 // recordRoundModeChanged writes the round's regime change to match_events (B15, spec §4.5) —
 // the regime a round passed through is history, and the round row only keeps the last one.
 //
-// sc/rd are the pair the change was applied to, read under the lock that applied it. The pair
+// sc/rd are snapshots of the pair the change was applied to, taken under the lock that applied
+// it, after the switch (snapshotSceneAndRound). The pair
 // is ensured first, unconditionally: besides making sure the event's FKs exist, it is what
 // refreshes the round row's mode (EnsureSceneAndRound updates it on conflict). A switch to the
 // regime the round was already in changed nothing and records nothing.

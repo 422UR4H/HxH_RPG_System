@@ -10,6 +10,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 	"github.com/google/uuid"
 )
@@ -219,5 +220,71 @@ func TestE2E_AnExhaustedRoundsSuccessorIsARowAtBirth(t *testing.T) {
 	}
 	if successor == uuid.Nil {
 		t.Fatalf("the round born after the exhaustion was never made a row: ensured %v", f.roundRepo.ensuredRoundIDs())
+	}
+}
+
+// F4: the scene/round writes run after r.mu is released, so the gateway must be handed a COPY
+// taken under the lock — a live *Scene/*Round read there races the next mutation of the session
+// (a regime switch, an exhaustion closing the round). Every pointer the round repository ever
+// received is checked against the session's live objects: the pair the session started on
+// (rehydration, a closed turn, a regime switch) and the pair change_scene installed.
+func TestE2E_TheRoundRepositoryGetsACopyOfTheSceneAndRound(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+	// Read before anyone connects: the session is the fixture's, and nothing runs on it yet.
+	liveScene, liveRound := f.session.GetActiveScene(), f.session.GetActiveRound()
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+
+	turnID := f.openAttackTurn(t, master, player, mc)
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	deadline := time.Now().Add(2 * time.Second)
+	for !contains(f.roundRepo.persistedTurnIDs(), turnID) {
+		if time.Now().After(deadline) {
+			t.Fatal("the closed turn was never persisted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
+	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+	sendWS(t, master, string(game.MsgTypeChangeScene), game.ChangeScenePayload{
+		Category: string(enum.Roleplay), BriefInitialDescription: "Taverna",
+	})
+	if !mc.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("scene_changed never arrived")
+	}
+	newScene := lastSceneChanged(t, mc).SceneID
+	deadline = time.Now().Add(2 * time.Second)
+	for !contains(f.roundRepo.ensuredSceneIDs(), newScene) {
+		if time.Now().After(deadline) {
+			t.Fatal("the new scene was never ensured")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Safe to read: the room wrote the session, then called the repository, whose mutex the
+	// read above already went through.
+	live := map[any]string{
+		liveScene: "the starting scene", liveRound: "the starting round",
+		f.session.GetActiveScene(): "change_scene's new scene", f.session.GetActiveRound(): "change_scene's new round",
+	}
+	sawRaceCopy := false
+	for _, p := range f.roundRepo.handedPointers() {
+		if what, ok := live[p]; ok {
+			t.Errorf("the round repository was handed the session's live object (%s), not a copy", what)
+		}
+		if rd, ok := p.(*roundentity.Round); ok && rd.GetID() == liveRound.GetID() && rd.GetMode() == enum.Race {
+			sawRaceCopy = true
+		}
+	}
+	if !sawRaceCopy {
+		t.Error("no copy of the starting round carried the regime it was switched to — the copy " +
+			"must be taken AFTER the switch, under the same lock")
 	}
 }

@@ -838,6 +838,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				enum.RoundMode(payload.Mode),
 			)
 			newMode = session.GetActiveRound().GetMode()
+			// Copies, taken after the switch: the record below writes them after the unlock.
+			modeScene, modeRound = snapshotSceneAndRound(modeScene, modeRound)
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -1250,7 +1252,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				category, payload.BriefInitialDescription,
 			)
 			if err == nil {
-				newScene, newRound = session.GetActiveScene(), session.GetActiveRound()
+				// Copies: they are written after the unlock (ensureSceneAndRoundRows).
+				newScene, newRound = snapshotSceneAndRound(session.GetActiveScene(), session.GetActiveRound())
 				if activeScene := session.GetActiveScene(); activeScene != nil {
 					scenePayload = SceneChangedPayload{
 						SceneID:                 activeScene.GetID(),
@@ -1686,6 +1689,9 @@ func (r *Room) persistClosedTurn(
 	if closedIn != nil {
 		activeRound = closedIn
 	}
+	// Copies: PersistTurnClose reads the pair after the unlock, and the live objects are the
+	// session's (a regime switch mutates the active round under this lock).
+	activeScene, activeRound = snapshotSceneAndRound(activeScene, activeRound)
 	matchUUID := session.GetMatchUUID()
 	overrides := session.TakeOverridesFor(t)
 	r.mu.Unlock()
@@ -1707,7 +1713,7 @@ func (r *Room) persistClosedTurn(
 	// Only if the round written is still the active one: the successor of an exhausted round is
 	// not the row this just wrote.
 	r.mu.Lock()
-	if session.GetActiveRound() == activeRound {
+	if active := session.GetActiveRound(); active != nil && active.GetID() == activeRound.GetID() {
 		session.MarkRoundPersisted()
 	}
 	r.mu.Unlock()

@@ -115,12 +115,14 @@ func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map
 		r.mu.RUnlock()
 		return
 	}
-	sc, rd := sess.GetActiveScene(), sess.GetActiveRound()
+	liveRound := sess.GetActiveRound()
 	persisted := sess.IsRoundPersisted()
 	var turnID *uuid.UUID
-	if id := sess.CurrentTurnID(); id != uuid.Nil && rd.HasOpenTurn() {
+	if id := sess.CurrentTurnID(); id != uuid.Nil && liveRound.HasOpenTurn() {
 		turnID = &id
 	}
+	// Copies: the writes below run after the unlock, and the live pair is the session's.
+	sc, rd := snapshotSceneAndRound(sess.GetActiveScene(), liveRound)
 	r.mu.RUnlock()
 
 	raw, err := json.Marshal(content)

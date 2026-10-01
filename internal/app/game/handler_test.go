@@ -318,6 +318,17 @@ type mockRoundRepoHandler struct {
 	closedRounds []uuid.UUID
 	// turnRounds maps each persisted turn to the round PersistTurnClose was told it closed in.
 	turnRounds map[uuid.UUID]uuid.UUID
+	// handed keeps every *Scene/*Round pointer the room handed EnsureSceneAndRound and
+	// PersistTurnClose, so a test can prove the gateway got a copy and not the session's live
+	// objects (F4: the gateway reads them after r.mu is released).
+	handed []any
+}
+
+// handedPointers returns every *Scene/*Round the room handed this repository.
+func (m *mockRoundRepoHandler) handedPointers() []any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]any(nil), m.handed...)
 }
 
 // roundOfPersistedTurn returns the round PersistTurnClose wrote turnID under.
@@ -340,6 +351,7 @@ func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.Tu
 		m.turnRounds = map[uuid.UUID]uuid.UUID{}
 	}
 	m.turnRounds[d.Turn.GetID()] = d.Round.GetID()
+	m.handed = append(m.handed, d.Scene, d.Round)
 	return nil
 }
 
@@ -388,6 +400,7 @@ func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUI
 	defer m.mu.Unlock()
 	m.ensuredRounds = append(m.ensuredRounds, rd.GetID())
 	m.ensuredScenes = append(m.ensuredScenes, sc.GetID())
+	m.handed = append(m.handed, sc, rd)
 	return nil
 }
 
