@@ -1655,3 +1655,129 @@ func TestEnsureSceneAndRoundRefreshesTheRoundsMode(t *testing.T) {
 		t.Fatalf("rounds row = %d with mode %q, want exactly 1 with %q", n, mode, enum.Race)
 	}
 }
+
+// TestEnsureSceneAndRoundCarriesFinishedAt (F3): a round whose birth write failed, and that
+// nothing else marked as a row, is closed in memory by exhaustion without CloseRound ever
+// running (it was not a row to close). Its last turn's PersistTurnClose then writes it for
+// the first time — and must write it CLOSED, or the scene ends up with two open rounds (the
+// stray one and the next one, born right after). A finish already on the row is never moved.
+func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	base := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
+	at := func(min int) time.Time { return base.Add(time.Duration(min) * time.Minute) }
+	finishedAt := func(t *testing.T, table string, id uuid.UUID) *time.Time {
+		t.Helper()
+		var f *time.Time
+		if err := pool.QueryRow(ctx, `SELECT finished_at FROM `+table+` WHERE uuid = $1`, id).Scan(&f); err != nil {
+			t.Fatalf("read %s.finished_at: %v", table, err)
+		}
+		return f
+	}
+
+	t.Run("a turn closing on a round closed in memory writes it closed, and only the next round is open", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		stray := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		// The birth write of `stray` failed: no row. Exhaustion closes it in memory.
+		stray.Close(at(3))
+
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(at(2))
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: stray, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if f := finishedAt(t, "rounds", stray.GetID()); f == nil || !f.Equal(at(3)) {
+			t.Fatalf("stray round finished_at = %v, want %v — it was written open", f, at(3))
+		}
+
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, next); err != nil {
+			t.Fatalf("EnsureSceneAndRound next: %v", err)
+		}
+		var open int
+		if err := pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM rounds WHERE scene_uuid = $1 AND finished_at IS NULL`, sc.GetID(),
+		).Scan(&open); err != nil {
+			t.Fatalf("count open rounds: %v", err)
+		}
+		if open != 1 {
+			t.Fatalf("open rounds in the scene = %d, want 1 (only the next one)", open)
+		}
+	})
+
+	t.Run("an open row is closed by a later ensure of the closed round; a finish is never moved", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Free, at(0))
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound (open): %v", err)
+		}
+		if f := finishedAt(t, "rounds", rd.GetID()); f != nil {
+			t.Fatalf("round finished_at = %v right after its birth, want NULL", f)
+		}
+
+		rd.Close(at(5))
+		sc.Close(at(5))
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound (closed): %v", err)
+		}
+		if f := finishedAt(t, "rounds", rd.GetID()); f == nil || !f.Equal(at(5)) {
+			t.Fatalf("round finished_at = %v, want %v", f, at(5))
+		}
+		if f := finishedAt(t, "scenes", sc.GetID()); f == nil || !f.Equal(at(5)) {
+			t.Fatalf("scene finished_at = %v, want %v", f, at(5))
+		}
+
+		// A later ensure carrying a DIFFERENT finish (or none) never moves the recorded one.
+		later := roundentity.ReconstructRound(rd.GetID(), enum.Free, at(0))
+		later.Close(at(9))
+		laterScene := sceneentity.ReconstructScene(sc.GetID(), enum.Battle, "Arena", at(0))
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, laterScene, later); err != nil {
+			t.Fatalf("EnsureSceneAndRound (later finish): %v", err)
+		}
+		if f := finishedAt(t, "rounds", rd.GetID()); f == nil || !f.Equal(at(5)) {
+			t.Fatalf("round finished_at = %v after a later ensure, want it kept at %v", f, at(5))
+		}
+		if f := finishedAt(t, "scenes", sc.GetID()); f == nil || !f.Equal(at(5)) {
+			t.Fatalf("scene finished_at = %v after a later ensure with no finish, want it kept at %v", f, at(5))
+		}
+	})
+}
+
+// TestFindActiveSessionIsDeterministic (F3): LIMIT 1 with no ORDER BY picked whichever open
+// round the plan happened to hand back first. If drift ever leaves two open rounds in an open
+// scene, the active one is the NEWEST — the round born last is the one the table is in.
+func TestFindActiveSessionIsDeterministic(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	base := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", base)
+	older := roundentity.ReconstructRound(uuid.New(), enum.Race, base)
+	newer := roundentity.ReconstructRound(uuid.New(), enum.Race, base.Add(time.Minute))
+	// The older one is written first, so it is also first on disk.
+	for _, rd := range []*roundentity.Round{older, newer} {
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound: %v", err)
+		}
+	}
+
+	data, err := repo.FindActiveSession(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindActiveSession: %v", err)
+	}
+	if data == nil || data.RoundID != newer.GetID() {
+		t.Fatalf("FindActiveSession round = %+v, want the newest open round %s", data, newer.GetID())
+	}
+}
