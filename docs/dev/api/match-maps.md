@@ -19,10 +19,12 @@ the board untouched. Neither applies before the match's first board save; see "C
 match whose board (pieces, wall state, and each player's fog) becomes this match's starting
 board instead of a fresh snapshot of `mapUuid` — "uma partida começa de onde outra terminou".
 Requirements, checked in this order:
+- the source match cannot be **this same match** (`ErrSourceMatchIsTheSameMatch`) —
+  inheriting from yourself would have nothing left to copy from;
 - the source match must be in the **same campaign** as this one (`ErrSourceMatchNotInCampaign`);
-- the source match's own board must already be on **`mapUuid`** — the map this request is
-  attaching (`ErrSourceMatchOnAnotherMap`);
-- the source match must actually **have** a board to inherit (`ErrSourceMatchHasNoBoard`).
+- the source match must actually **have** a board to inherit (`ErrSourceMatchHasNoBoard`);
+- that board must already be on **`mapUuid`** — the map this request is attaching
+  (`ErrSourceMatchOnAnotherMap`).
 
 When inheritance is requested, the delete-on-different-map rule above does not run — the
 inherited board replaces whatever was there instead.
@@ -69,7 +71,7 @@ surface it.
 | 401 | Unauthenticated |
 | 403 | Not the match master |
 | 404 | Match or map not found (also the source match of `inheritBoardFromMatchUuid`, when absent) |
-| 422 | Match already started, or (B16) the source match is not in this campaign, is on a different map, or has no board to inherit |
+| 422 | Match already started, or (B16) the source match is itself, is not in this campaign, has no board to inherit, or is on a different map |
 | 500 | Internal server error |
 
 ---
@@ -138,13 +140,19 @@ velha — ela era de outro mapa; depois do início, anexar é recusado.
 
 **Herdar de outra partida (B16).** `POST /matches/{match_uuid}/map` aceita
 `inheritBoardFromMatchUuid`: em vez de começar de um retrato fresco do mapa, a partida herda
-o tabuleiro — posições, estado das paredes e fog — de uma partida de origem **da mesma
-campanha**, cujo próprio tabuleiro já está no **mesmo mapa** sendo anexado, e que **tem** um
-tabuleiro para herdar (as três checagens, nessa ordem, cada uma com seu erro 422 —
-`ErrSourceMatchNotInCampaign`, `ErrSourceMatchOnAnotherMap`, `ErrSourceMatchHasNoBoard`). É
-literalmente um `INSERT … SELECT` da linha de `match_boards` e das linhas de
-`player_memories` da origem, trocando o `match_uuid`/`match_id` (e, para cada memória, o
-`id`) — `pgmatchboard.Repository.Copy`, numa única transação com a cópia do fog (dentro dela,
+o tabuleiro — posições, estado das paredes e fog — de uma partida de origem **diferente desta
+mesma partida**, **da mesma campanha**, que **tem** um tabuleiro para herdar e cujo tabuleiro
+já está no **mesmo mapa** sendo anexado (as quatro checagens, nessa ordem, cada uma com seu
+erro 422 — `ErrSourceMatchIsTheSameMatch`, `ErrSourceMatchNotInCampaign`,
+`ErrSourceMatchHasNoBoard`, `ErrSourceMatchOnAnotherMap`). A checagem de "é a mesma partida"
+vem primeiro e sem tocar o banco: herdar de si mesmo apagaria, no meio da cópia, a própria
+linha de onde o `INSERT … SELECT` ainda vai ler.
+
+É literalmente um `INSERT … SELECT` da linha de `match_boards` e das linhas de
+`player_memories` da origem **nesse mesmo mapa** (`map_id = <mapa do tabuleiro de origem>` —
+a partida de origem é uma partida passada e pode ter memórias órfãs de um mapa anterior, que
+não devem viajar), trocando o `match_uuid`/`match_id` (e, para cada memória, o `id`) —
+`pgmatchboard.Repository.Copy`, numa única transação com a cópia do fog (dentro dela,
 `fog.PlayerMemoryRepository.CopyMatch`). O tabuleiro antigo do destino, se havia algum, é
 apagado por essa mesma cópia — não sobrevive misturado com o herdado.
 

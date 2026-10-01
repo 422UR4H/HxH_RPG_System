@@ -76,6 +76,44 @@ func TestAttachMatchMapUC_Attach(t *testing.T) {
 		}
 	})
 
+	t.Run("source match is the same match being attached to -> ErrSourceMatchIsTheSameMatch", func(t *testing.T) {
+		repo := newBaseRepo()
+		matchInfoCalls := 0
+		matchRepo := &mockMatchRepository{
+			getMatchInfoFn: func(_ context.Context, _ uuid.UUID) (*matchmapuc.MatchInfo, error) {
+				matchInfoCalls++
+				return dstInfo, nil
+			},
+		}
+		boardRepo := &mockMatchBoardRepository{
+			getFn: func(_ context.Context, _ uuid.UUID) (*matchboard.Board, error) {
+				t.Fatalf("board repo should not be reached when src == dst")
+				return nil, nil
+			},
+		}
+		uc := matchmapuc.NewAttachMatchMapUC(repo, matchRepo, boardRepo)
+
+		_, err := uc.Attach(context.Background(), &matchmapuc.AttachMatchMapInput{
+			RequesterUUID:             requesterUUID,
+			MatchUUID:                 matchUUID,
+			MapUUID:                   mapUUID,
+			InheritBoardFromMatchUUID: &matchUUID, // src == dst
+		})
+		if !errors.Is(err, matchmapuc.ErrSourceMatchIsTheSameMatch) {
+			t.Fatalf("expected ErrSourceMatchIsTheSameMatch, got %v", err)
+		}
+		// Exactly 1 call: the destination match's own GetMatchInfo at the top of Attach.
+		// The guard must short-circuit BEFORE a second GetMatchInfo(src) call — src==dst
+		// here, so a second call would be indistinguishable from the first in this mock,
+		// but counting catches a regression that removes the early return.
+		if matchInfoCalls != 1 {
+			t.Fatalf("expected exactly 1 GetMatchInfo call (guard short-circuits before a second), got %d", matchInfoCalls)
+		}
+		if boardRepo.copyCalled || boardRepo.deleteCalled {
+			t.Fatalf("expected neither Copy nor Delete to be called")
+		}
+	})
+
 	t.Run("source match in a different campaign -> ErrSourceMatchNotInCampaign", func(t *testing.T) {
 		repo := newBaseRepo()
 		otherCampaignUUID := uuid.New()

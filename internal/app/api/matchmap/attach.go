@@ -56,7 +56,8 @@ func AttachMatchMapHandler(uc matchmapuc.IAttachMatchMap) func(context.Context, 
 			case errors.Is(err, matchmapuc.ErrMatchAlreadyStarted),
 				errors.Is(err, matchmapuc.ErrSourceMatchNotInCampaign),
 				errors.Is(err, matchmapuc.ErrSourceMatchOnAnotherMap),
-				errors.Is(err, matchmapuc.ErrSourceMatchHasNoBoard):
+				errors.Is(err, matchmapuc.ErrSourceMatchHasNoBoard),
+				errors.Is(err, matchmapuc.ErrSourceMatchIsTheSameMatch):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				return nil, huma.Error500InternalServerError(err.Error())

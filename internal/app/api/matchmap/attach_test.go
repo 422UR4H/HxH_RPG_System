@@ -178,7 +178,7 @@ func TestAttachMatchMapHandler_ForwardsInheritBoardFromMatchUuid(t *testing.T) {
 	}
 }
 
-// TestAttachMatchMapHandler_SourceMatchErrors_Return422 covers the three new B16 errors
+// TestAttachMatchMapHandler_SourceMatchErrors_Return422 covers the four B16 errors
 // (spec §4.3): all map to 422, same as ErrMatchAlreadyStarted, per match-maps.md's existing
 // pattern of using 422 for semantically-invalid requests rather than 409.
 func TestAttachMatchMapHandler_SourceMatchErrors_Return422(t *testing.T) {
@@ -186,6 +186,7 @@ func TestAttachMatchMapHandler_SourceMatchErrors_Return422(t *testing.T) {
 		name string
 		err  error
 	}{
+		{"is the same match", matchmapuc.ErrSourceMatchIsTheSameMatch},
 		{"not in campaign", matchmapuc.ErrSourceMatchNotInCampaign},
 		{"on another map", matchmapuc.ErrSourceMatchOnAnotherMap},
 		{"has no board", matchmapuc.ErrSourceMatchHasNoBoard},

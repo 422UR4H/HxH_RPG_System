@@ -68,6 +68,13 @@ func (uc *AttachMatchMapUC) Attach(ctx context.Context, input *AttachMatchMapInp
 	}
 
 	if input.InheritBoardFromMatchUUID != nil {
+		// Checked before any repo call: inheriting from itself would have Copy(dst, dst)
+		// delete the very row its own INSERT…SELECT reads from, failing with a plain error
+		// (500) instead of a clean, user-facing one.
+		if *input.InheritBoardFromMatchUUID == input.MatchUUID {
+			return nil, ErrSourceMatchIsTheSameMatch
+		}
+
 		srcInfo, err := uc.matchRepo.GetMatchInfo(ctx, *input.InheritBoardFromMatchUUID)
 		if err != nil {
 			if errors.Is(err, ErrMatchNotFound) {

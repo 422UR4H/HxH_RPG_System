@@ -346,4 +346,68 @@ func TestMatchBoardCopy(t *testing.T) {
 			t.Fatalf("expected an error copying from a match with no board")
 		}
 	})
+
+	// Fix round 1 (review finding): src is a PAST match and may hold player_memories rows
+	// for some OTHER map it was once attached to (e.g. an earlier board, since detached).
+	// Copy must only bring over the memories of the map the source's CURRENT board is on —
+	// a stray memory on another map must NOT ride along into dst.
+	t.Run("does not copy source's player memories from a different map", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm-copy-3", "gm-copy-3@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Copy Campaign 3")
+		srcMatch := uuid.MustParse(pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Src Match"))
+		dstMatch := uuid.MustParse(pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Dst Match"))
+		currentMapUUID := uuid.MustParse(pgtest.InsertTestMap(t, pool, campaignUUID, "Current Map"))
+		otherMapUUID := uuid.MustParse(pgtest.InsertTestMap(t, pool, campaignUUID, "Other (Stale) Map"))
+
+		// src's board is on currentMapUUID.
+		srcBoard := &matchboard.Board{
+			MatchUUID: srcMatch,
+			MapUUID:   currentMapUUID,
+			Grid:      mapentity.DefaultGrid(),
+			Pieces:    []mapentity.Piece{},
+			Walls:     []mapentity.WallSegment{},
+		}
+		if err := repo.Save(ctx, srcBoard); err != nil {
+			t.Fatalf("save src board: %v", err)
+		}
+
+		player := uuid.New()
+		// A memory for the CURRENT map — must be copied.
+		currentMem := fogentity.PlayerMemory{
+			PlayerID: player, MatchID: srcMatch, MapID: currentMapUUID,
+			Seen: map[fogentity.FeatureRef]struct{}{{Kind: fogentity.FeatureWall, ID: "wall-current"}: {}},
+		}
+		// A stray memory for a map src is no longer on — must NOT be copied.
+		staleMem := fogentity.PlayerMemory{
+			PlayerID: player, MatchID: srcMatch, MapID: otherMapUUID,
+			Seen: map[fogentity.FeatureRef]struct{}{{Kind: fogentity.FeatureWall, ID: "wall-stale"}: {}},
+		}
+		if err := fogRepo.Upsert(ctx, currentMem); err != nil {
+			t.Fatalf("upsert currentMem: %v", err)
+		}
+		if err := fogRepo.Upsert(ctx, staleMem); err != nil {
+			t.Fatalf("upsert staleMem: %v", err)
+		}
+
+		if err := repo.Copy(ctx, srcMatch, dstMatch); err != nil {
+			t.Fatalf("Copy: %v", err)
+		}
+
+		gotCurrent, err := fogRepo.FindByMatchMap(ctx, dstMatch, currentMapUUID)
+		if err != nil {
+			t.Fatalf("FindByMatchMap dst/currentMap: %v", err)
+		}
+		if len(gotCurrent) != 1 || !gotCurrent[0].Has(fogentity.FeatureWall, "wall-current") {
+			t.Fatalf("expected the current-map memory to be copied, got %+v", gotCurrent)
+		}
+
+		gotOther, err := fogRepo.FindByMatchMap(ctx, dstMatch, otherMapUUID)
+		if err != nil {
+			t.Fatalf("FindByMatchMap dst/otherMap: %v", err)
+		}
+		if len(gotOther) != 0 {
+			t.Fatalf("expected the OTHER map's stray memory NOT to be copied, got %+v", gotOther)
+		}
+	})
 }

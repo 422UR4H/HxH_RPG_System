@@ -574,8 +574,10 @@ mappings:
       called from Room.persistBoard, FindByMatchMap from StartMatch and from
       loadBoard's session-branch (a rehydrated session's memory seed point).
       CopyMatch (Task 18, B16) deletes dst's rows then INSERT…SELECTs src's into dst
-      with a fresh id each — called by pgmatchboard.Repository.Copy with a *pgx.Tx*
-      (not the pool) so it lands inside Copy's own match_boards transaction.
+      with a fresh id each, filtered to the source board's own map_id (fix round 1 —
+      src is a past match that may hold orphan memories of some OTHER map it was once
+      on) — called by pgmatchboard.Repository.Copy with a *pgx.Tx* (not the pool) so it
+      lands inside Copy's own match_boards transaction.
 
   - code_path: migrations/20260805000000_player_memories.sql
     dev_docs:
