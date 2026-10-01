@@ -133,7 +133,8 @@ type ActionSpeed struct {
 // From and Position are also WHERE a piece stands and goes, which is not a Level question:
 // the game server nils them per recipient after From, by the piece's own fog gate (room.go's
 // turnActionWireLocked, owner decision 2026-10-01), and the REST history by the verdict that
-// gate recorded live (HistoryTurn.MoveSight). From never does — see its own doc.
+// gate recorded live (HistoryTurn.MoveSight, ShownReactionMoves). From never does — see its
+// own doc.
 type Move struct {
 	Category string `json:"category"`
 	// From is the actor's piece position on the server's board at enqueue time (B6, spec
@@ -142,8 +143,9 @@ type Move struct {
 	// [a, b, z], (a, b) = (col, row) square or (q, r) axial hex, z not read.
 	From *[3]int `json:"from,omitempty"`
 	// Position is where the move puts the piece. Always set by From; nil (omitted on the wire)
-	// only when the game server withheld it from a recipient who cannot see that cell. The
-	// REST history (Full, never gated) always carries it.
+	// only when it is withheld from a recipient who did not see that cell — live by the game
+	// server, in the REST history by the verdict recorded live (an action's MoveSight, a
+	// reaction's ShownReactionMoves) — so neither surface can assume it is there.
 	Position   *[3]int    `json:"position,omitempty"`
 	Speed      *RollCheck `json:"speed,omitempty"`
 	Charge     *RollCheck `json:"charge,omitempty"`

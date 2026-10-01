@@ -19,9 +19,10 @@ import (
 // -> Turn -> Action, the same tree FindMatchHistory reads, with service.ProjectAction /
 // service.ProjectResolution run over every action, reaction and resolution in it, and every
 // master action run through masteraction.Record.ProjectFor. The one cut the domain cannot
-// carry — a move's from/position and an escape's landing this reader did not see live — is
-// decided here too (HistoryTurn.MoveSight, HiddenLandings) and only APPLIED by the REST
-// mapping after actionwire.From; otherwise the handler serializes this straight to the wire.
+// carry — where pieces went (a move's from/position, a reaction's position, an escape's
+// landing) as far as this reader saw it live — is decided here too (HistoryTurn.MoveSight,
+// ShownReactionMoves, ShownLandings) and only APPLIED by the REST mapping after
+// actionwire.From; otherwise the handler serializes this straight to the wire.
 type GetMatchHistoryResult struct {
 	Scenes []HistoryScene
 }
@@ -149,7 +150,8 @@ func (uc *GetMatchHistoryUC) Get(
 				}
 				pt.Resolution = service.ProjectResolution(tu.Resolution, viewer)
 				pt.MoveSight = moveSightFor(tu, viewer, userUUID)
-				pt.HiddenLandings = hiddenLandingsFor(tu, viewer, userUUID)
+				pt.ShownLandings = shownLandingsFor(tu, viewer, userUUID)
+				pt.ShownReactionMoves = shownReactionMovesFor(tu, viewer, userUUID)
 				// Who saw what is not table data — the verdicts above are all this reader gets.
 				pt.MoveViews, pt.LandingViews = nil, nil
 				pt.MasterActions = make([]masteraction.Record, 0)
@@ -184,28 +186,68 @@ func moveSightFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) Mov
 	}
 }
 
-// hiddenLandingsFor names the escapes whose landing this reader did not see live: every one
-// with a landing, unless the reader is the master, owns the escaping character, or the verdict
-// recorded at the settled resolution (HistoryTurn.LandingViews) says they saw it. nil when
-// nothing is hidden.
-func hiddenLandingsFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) map[uuid.UUID]bool {
+// sawWhereItEnded reports whether this reader may see where the escape of cr put its piece:
+// the master and the escaping character's owner always; anyone else only when the verdict
+// recorded at the close (HistoryTurn.LandingViews) has an entry for them. A row from before
+// the verdicts has none: fail closed.
+func sawWhereItEnded(tu HistoryTurn, cr service.CharacterResult, viewer service.Viewer, userUUID uuid.UUID) bool {
+	if viewer.SeesAllOf(cr.TargetID) {
+		return true
+	}
+	_, saw := tu.LandingViews[cr.TargetID][userUUID]
+	return saw
+}
+
+// shownLandingsFor names the escapes whose landing this reader may see (sawWhereItEnded). nil
+// when none.
+func shownLandingsFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) map[uuid.UUID]bool {
 	if tu.Resolution == nil {
 		return nil
 	}
-	var hidden map[uuid.UUID]bool
+	var shown map[uuid.UUID]bool
 	for _, cr := range tu.Resolution.CharacterResults {
-		if cr.Escape == nil || cr.Escape.Landing == nil || viewer.SeesAllOf(cr.TargetID) {
+		if cr.Escape == nil || cr.Escape.Landing == nil || !sawWhereItEnded(tu, cr, viewer, userUUID) {
 			continue
 		}
-		if _, saw := tu.LandingViews[cr.TargetID][userUUID]; saw {
-			continue
+		if shown == nil {
+			shown = map[uuid.UUID]bool{}
 		}
-		if hidden == nil {
-			hidden = map[uuid.UUID]bool{}
-		}
-		hidden[cr.TargetID] = true
+		shown[cr.TargetID] = true
 	}
-	return hidden
+	return shown
+}
+
+// shownReactionMovesFor names the reactions whose move.position this reader may see. A
+// reaction's action never reaches the table live — the only way anyone but the master and the
+// reactor's owner learned its destination is the piece itself: an escape that ESCAPED walks its
+// piece there at the close, and the piece_moved reached whoever saw that cell (the verdict
+// recorded then, sawWhereItEnded). A failed escape's position is a destination the piece never
+// reached, and any other reaction's move never moved anything: shown to nobody else. nil when
+// none.
+func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) map[uuid.UUID]bool {
+	escaped := map[uuid.UUID]service.CharacterResult{}
+	if tu.Resolution != nil {
+		for _, cr := range tu.Resolution.CharacterResults {
+			if cr.Escape != nil && cr.Escape.Escaped {
+				escaped[cr.ReactionID] = cr
+			}
+		}
+	}
+	var shown map[uuid.UUID]bool
+	for _, react := range tu.Reactions {
+		if react.Move == nil {
+			continue
+		}
+		cr, ok := escaped[react.GetID()]
+		if !viewer.SeesAllOf(react.GetActorID()) && (!ok || !sawWhereItEnded(tu, cr, viewer, userUUID)) {
+			continue
+		}
+		if shown == nil {
+			shown = map[uuid.UUID]bool{}
+		}
+		shown[react.GetID()] = true
+	}
+	return shown
 }
 
 // stitch hangs the match's events and master actions on the projected tree, in place.

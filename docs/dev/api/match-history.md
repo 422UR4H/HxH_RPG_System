@@ -397,14 +397,17 @@ mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, n
 
 ### O movimento como foi visto ao vivo — `move.from`, `move.position`, `escape.landing`
 
+Vale para o `move` da action, o `move` de cada reação em `reactions[]` e o `escape.landing`.
+
 Onde uma peça estava e para onde foi é a mesma notícia que o relay ao vivo (`piece_moved` /
 `piece_removed`) dá ou nega pelo fog de cada jogador. O histórico não a dá a quem a mesa não
 deu (decisão do dono do produto, 2026-10-01). O fog na hora da leitura não é o fog daquele
 momento, então **nada é recalculado**: no instante em que o movimento é mostrado ao vivo, o
 servidor grava, para **todo jogador da sessão** (conectado ou não), o veredito do mesmo portão
 que decidiu o que ele recebeu — o do `turn_opened` (origem = a casa da peça na abertura) para
-o movimento da action, o do `resolution_updated` liquidado para o pouso de uma fuga — e o
-histórico projeta por ele:
+o movimento da action, o do `resolution_updated` liquidado para onde a peça de uma fuga parou
+(o pouso de uma fuga que falhou, ou o destino de uma que escapou) — e o histórico projeta por
+ele:
 
 | O jogador, ao vivo, … | `move` da action no histórico | `escape.landing` |
 |---|---|---|
@@ -412,17 +415,23 @@ histórico projeta por ele:
 | viu só a peça sair (o `move` do `turn_opened` trouxe só `from`) | `from`, sem `position` | — |
 | não viu nada (fog, peça `visible: false`, ator sem peça) | só `category` | ausente |
 
-O mestre e o dono do ator (do personagem que fugiu, para `landing`) veem tudo, sempre — não
-há veredito gravado para eles. Os vereditos são gravados com o fechamento do turno, na
+**Reações.** A action de uma reação nunca vai à mesa ao vivo; o único jeito de um terceiro
+saber para onde ela levou a peça é ter visto a peça chegar. Então, em `reactions[]`, o
+`move.position` (uma reação nunca tem `move.from`) só vem para quem não é mestre nem dono do
+personagem que reagiu se for uma **fuga que escapou** e ele **viu a peça chegar** ao destino
+(recebeu o `piece_moved` dela no fechamento). O `move.position` de uma fuga que **falhou** é um
+destino que a peça nunca alcançou: não vem para ninguém além de mestre e dono — mesmo para quem
+viu onde ela caiu, que recebe isso em `escape.landing`. `move.category` vem sempre.
+
+O mestre e o dono do ator (do personagem que fugiu, para `landing` e para o `move` da reação)
+veem tudo, sempre — não há veredito gravado para eles. Os vereditos são gravados com o fechamento do turno, na
 transação dele (`actions.move_views`; `landingViews` dentro do `escape` em
 `turns.resolution`), e **nunca saem no wire** — para ninguém, nem para o mestre.
 
 **Linhas antigas falham fechado.** Um turno gravado antes desses vereditos existirem (sem
 `move_views`, sem `landingViews`) mostra a quem não é mestre nem dono só a `category` do
-movimento e nenhum `landing`: na dúvida, não se entrega o que talvez não tenha sido visto.
-
-Uma reação em `reactions[]` não é cortada por esta regra (a action de uma reação não vai à mesa
-ao vivo; o destino de uma fuga que escapou está no `move` dela).
+movimento — da action e das reações — e nenhum `landing`: na dúvida, não se entrega o que
+talvez não tenha sido visto.
 
 ### A resposta já vem projetada — não filtre no cliente
 

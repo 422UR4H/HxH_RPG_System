@@ -2008,6 +2008,8 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
    para todo jogador da sessão (`landingViews`, dentro do `escape` em `turns.resolution`), e
    o [`GET /history`](match-history.md#o-movimento-como-foi-visto-ao-vivo--movefrom-moveposition-escapelanding)
    mostra o `landing` só a quem o viu aqui — linhas antigas, a ninguém além de mestre e dono.
+   O mesmo gate, sobre o destino de uma fuga que **escapou** (o `piece_moved` dela), decide
+   quem vê no histórico o `move.position` da reação.
 
 ### Nota: a finta segue o mesmo eixo do TEMPO — desde B2, também neste protocolo
 

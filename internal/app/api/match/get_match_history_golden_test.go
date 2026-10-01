@@ -117,7 +117,9 @@ func fixtureGoldenHistoryTurn() matchUC.HistoryTurn {
 
 	return matchUC.HistoryTurn{
 		UUID: turnUUID, CreatedAt: createdAt, FinishedAt: finishedAt,
-		Action: *mainAction,
+		// The master's reading: the use case grants the whole move (its zero value hides it).
+		MoveSight: matchUC.MoveSightWhole,
+		Action:    *mainAction,
 		Reactions: []action.Action{
 			*dodgeReaction, *defenseReaction, *repelReaction,
 		},

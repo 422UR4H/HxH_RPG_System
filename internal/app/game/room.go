@@ -1683,24 +1683,10 @@ func (r *Room) openedMoveViewLocked(pid, actorID uuid.UUID, from, to, origin *[3
 	return view, true
 }
 
-// sessionPieceViewsLocked runs gate for EVERY player of the session — connected or not, their
-// fog at this instant from the session's visibility cache, as sessionViews does for master
-// actions — except the master and the character's owner, who always see all of it and are
-// never recorded. Empty (not nil) when nobody else saw anything: "recorded, nobody saw".
-//
-// The caller MUST hold r.mu (a read lock is enough) and r.session must not be nil.
-func (r *Room) sessionPieceViewsLocked(characterID uuid.UUID, gate func(pid uuid.UUID) (masteraction.View, bool)) map[uuid.UUID]masteraction.View {
-	owner, hasOwner := r.session.GetCharToPlayer()[characterID.String()]
-	views := map[uuid.UUID]masteraction.View{}
-	for _, pid := range r.session.PlayerIDs() {
-		if pid == r.masterUUID || (hasOwner && pid == owner) {
-			continue
-		}
-		if v, ok := gate(pid); ok {
-			views[pid] = v
-		}
-	}
-	return views
+// ownerOfLocked is the player who owns characterID in the session (an NPC maps to the master),
+// uuid.Nil when nobody does. The caller MUST hold r.mu and r.session must not be nil.
+func (r *Room) ownerOfLocked(characterID uuid.UUID) uuid.UUID {
+	return r.session.GetCharToPlayer()[characterID.String()]
 }
 
 // recordOpenedMoveViews records, for the turn that just opened, what each session player saw
@@ -1724,7 +1710,7 @@ func (r *Room) recordOpenedMoveViews(opened *turnentity.Turn, origin *[3]int) {
 		return
 	}
 	actorID, from, to := act.GetActorID(), act.Move.From, act.Move.Position
-	r.turnWritesLocked(turnID).moveViews = r.sessionPieceViewsLocked(actorID, func(pid uuid.UUID) (masteraction.View, bool) {
+	r.turnWritesLocked(turnID).moveViews = r.sessionPlayerViewsLocked(r.ownerOfLocked(actorID), func(pid uuid.UUID) (masteraction.View, bool) {
 		return r.openedMoveViewLocked(pid, actorID, from, &to, origin)
 	})
 }
@@ -1805,35 +1791,52 @@ func (r *Room) gateEscapeLandingsLocked(p *ResolutionUpdatedPayload, pid uuid.UU
 }
 
 // escapeLandingViewLocked is whether recipient pid may see where an escaping character's piece
-// landed — the ONE decision behind both the live settled resolution_updated
+// ended — the ONE decision behind both the live settled resolution_updated
 // (gateEscapeLandingsLocked) and the verdict the history records (escapeLandingViewsLocked).
+// With no origin it is "full iff the destination is visible" — exactly when the relay of that
+// move sent this player a piece_moved.
 //
 // The caller MUST hold r.mu (a read lock is enough).
 func (r *Room) escapeLandingViewLocked(pid, characterID uuid.UUID, landing *[3]int) (masteraction.View, bool) {
 	return r.gatePieceMoveLocked(pid, characterID, nil, landing)
 }
 
-// escapeLandingViewsLocked records, per escape of res that has a landing, what each session
-// player saw of it — keyed by the escaping character (TargetID). Run by persistClosedTurn after
+// escapeLandingViewsLocked records, per escape of the closed turn that moved its piece, what
+// each session player saw of WHERE it ended — keyed by the escaping character (TargetID). The
+// destination is closedEscapeMove's, the one applyClosedEscapes applied: a failed escape's
+// landing (the settled escape.landing) or an escaped one's own destination (its reaction's
+// move.position, which the history shows only by this). Run by persistClosedTurn after
 // applyClosedEscapes put the pieces down and before the settled resolution_updated is sent, on
-// that same board, so it is the verdict the live gate reaches. nil when no escape has a landing.
+// that same board, so it is the verdict the live gate and the relay reached. nil when no escape
+// moved.
 //
-// The caller MUST hold r.mu (a read lock is enough).
-func (r *Room) escapeLandingViewsLocked(res *domainservice.TurnResolution) map[uuid.UUID]map[uuid.UUID]masteraction.View {
-	if res == nil || r.session == nil {
+// The caller MUST hold r.mu (a read lock is enough). closed's reactions are frozen (the turn is
+// finished), as applyClosedEscapes already relies on.
+func (r *Room) escapeLandingViewsLocked(closed *turnentity.Turn, res *domainservice.TurnResolution) map[uuid.UUID]map[uuid.UUID]masteraction.View {
+	if closed == nil || res == nil || r.session == nil {
 		return nil
+	}
+	reactions := closed.GetReactions()
+	byID := make(map[uuid.UUID]*action.Action, len(reactions))
+	for i := range reactions {
+		byID[reactions[i].GetID()] = &reactions[i]
 	}
 	var out map[uuid.UUID]map[uuid.UUID]masteraction.View
 	for _, cr := range res.CharacterResults {
-		if cr.Escape == nil || cr.Escape.Landing == nil {
+		reaction, ok := byID[cr.ReactionID]
+		if !ok {
 			continue
 		}
-		target, landing := cr.TargetID, cr.Escape.Landing
+		mv := closedEscapeMove(reaction, cr)
+		if mv == nil {
+			continue
+		}
+		target, dest := cr.TargetID, mv.Position
 		if out == nil {
 			out = map[uuid.UUID]map[uuid.UUID]masteraction.View{}
 		}
-		out[target] = r.sessionPieceViewsLocked(target, func(pid uuid.UUID) (masteraction.View, bool) {
-			return r.escapeLandingViewLocked(pid, target, landing)
+		out[target] = r.sessionPlayerViewsLocked(r.ownerOfLocked(target), func(pid uuid.UUID) (masteraction.View, bool) {
+			return r.escapeLandingViewLocked(pid, target, &dest)
 		})
 	}
 	return out
@@ -1864,7 +1867,10 @@ func (r *Room) announceOpenedTurn(
 	// move on, and so what turn_opened's move gate judges it on too (turnActionWireLocked).
 	origin := r.applyOpenedMove(opened)
 	// What each session player sees of the move — the verdict the dispatch below applies —
-	// recorded for the history, held with the turn until it closes.
+	// recorded for the history, held with the turn until it closes. A separate lock section
+	// from each recipient's projection below, but nothing can move a piece or change anyone's
+	// sight in between: every message that can (master drags, wall changes, a close) comes from
+	// the master, on the same read pump that is running this open.
 	r.recordOpenedMoveViews(opened, origin)
 
 	// GetAction returns a COPY, so it goes into a variable before any getter with a pointer
@@ -1975,10 +1981,12 @@ func (r *Room) persistClosedTurn(
 	// The board as this close left it, in the same critical section: what the turn's write
 	// says the board is, exactly.
 	board, memories := r.boardSnapshotLocked()
-	// Who sees each escape's landing, on that same board — the verdict the settled
+	// Who saw where each escape's piece ended, on that same board — the verdict the settled
 	// resolution_updated sent after this applies (escapeLandingViewLocked), recorded for the
-	// history.
-	landingViews := r.escapeLandingViewsLocked(res)
+	// history. A separate lock section from that send, but nothing can move a piece or change
+	// anyone's sight in between: every message that can (master drags, wall changes, the next
+	// open) comes from the master, on the same read pump that is running this close.
+	landingViews := r.escapeLandingViewsLocked(t, res)
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
@@ -3053,24 +3061,35 @@ func (r *Room) applyClosedEscapes(closed *turnentity.Turn, res *domainservice.Tu
 			// here too: no reaction, nothing to displace.
 			continue
 		}
-		switch {
-		case cr.Escape != nil && cr.Escape.Escaped:
-			r.applyMove(reaction.GetActorID(), reaction.Move)
-		case cr.Escape != nil && cr.Escape.Landing != nil:
-			// The escape failed and the master decided where the piece ended up, as part of
-			// resolving this turn — not a drag (front-combat-phases.md §6A.5, B13). This is the
-			// branch the definitive collision design will replace: where a failed escape lands
-			// is a rule that does not exist yet.
-			var landing action.Move
-			if reaction.Move != nil {
-				landing = *reaction.Move
-			}
-			landing.Position = *cr.Escape.Landing
-			r.applyMove(reaction.GetActorID(), &landing)
-		default:
-			// Failed with no choice made: the piece stays where it stood. Same pointer as above
-			// for the definitive design.
+		if mv := closedEscapeMove(reaction, cr); mv != nil {
+			r.applyMove(reaction.GetActorID(), mv)
 		}
+	}
+}
+
+// closedEscapeMove is the Move the close walks an escape's piece by — nil when it stays put.
+// Shared by applyClosedEscapes (which applies it) and escapeLandingViewsLocked (which records
+// who saw where it put the piece), so the destination recorded is exactly the one applied.
+// Pure.
+func closedEscapeMove(reaction *action.Action, cr domainservice.CharacterResult) *action.Move {
+	switch {
+	case cr.Escape != nil && cr.Escape.Escaped:
+		return reaction.Move
+	case cr.Escape != nil && cr.Escape.Landing != nil:
+		// The escape failed and the master decided where the piece ended up, as part of
+		// resolving this turn — not a drag (front-combat-phases.md §6A.5, B13). This is the
+		// branch the definitive collision design will replace: where a failed escape lands
+		// is a rule that does not exist yet.
+		var landing action.Move
+		if reaction.Move != nil {
+			landing = *reaction.Move
+		}
+		landing.Position = *cr.Escape.Landing
+		return &landing
+	default:
+		// Failed with no choice made: the piece stays where it stood. Same pointer as above
+		// for the definitive design.
+		return nil
 	}
 }
 

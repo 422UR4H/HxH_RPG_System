@@ -57,10 +57,11 @@ type TurnCloseData struct {
 	// the turn (turnWrites) like MasterActions; written to actions.move_views. nil when the
 	// action has no move.
 	MoveViews map[uuid.UUID]masteraction.View
-	// LandingViews is, per escaping character (the CharacterResult's TargetID), who saw the
-	// settled escape's landing — the settled resolution_updated's landing gate, run at this
-	// close for every session player. Written inside the resolution's escape entry. nil when
-	// no escape of the turn has a landing.
+	// LandingViews is, per escaping character (the CharacterResult's TargetID), who saw where
+	// that escape's piece ended — a failed escape's landing, or an escaped one's own
+	// destination — by the settled resolution_updated's landing gate, run at this close for
+	// every session player. Written inside the resolution's escape entry. nil when no escape of
+	// the turn moved its piece.
 	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
 }
 
@@ -164,32 +165,39 @@ type HistoryTurn struct {
 	// column existed — read as "nobody saw it" (fails closed). Read side only: the use case
 	// turns it into MoveSight and clears it, so who saw what never reaches the wire.
 	MoveViews map[uuid.UUID]masteraction.View
-	// LandingViews is, per escaping character (the CharacterResult's TargetID), who saw a
-	// settled escape's landing live — the settled resolution_updated's landing gate (the
-	// escape entry's landingViews in turns.resolution). Same rules as MoveViews: master and
-	// the escaper's owner not stored, absent fails closed, cleared by the use case.
+	// LandingViews is, per escaping character (the CharacterResult's TargetID), who saw
+	// where that escape's piece ENDED live — a failed escape's landing, or an escape that
+	// escaped's own destination (its reaction's move.position) — judged at the close by the
+	// same gate as the settled resolution_updated's landing (the escape entry's landingViews in
+	// turns.resolution). Same rules as MoveViews: master and the escaper's owner not stored,
+	// absent fails closed, cleared by the use case.
 	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
 
-	// MoveSight is how much of the action's move WHERE this reader may see — set by the use
-	// case from MoveViews, applied by the REST mapping after actionwire.From, exactly as
-	// room.go applies the live gate after From (the domain Move cannot say "no position").
+	// The three fields below are what this reader may see of WHERE pieces went — set by the
+	// use case from the views above, applied by the REST mapping after actionwire.From, exactly
+	// as room.go applies the live gate after From (the domain Move cannot say "no position", and
+	// a nil Landing would change awaitsMaster). Their zero values hide: a HistoryTurn that never
+	// went through the use case reveals nothing.
+
+	// MoveSight is how much of the action's move WHERE this reader may see.
 	MoveSight MoveSight
-	// HiddenLandings names the escaping characters whose escape.landing this reader did NOT
-	// see live — set by the use case from LandingViews. A directive rather than a nil Landing
-	// on the resolution: awaitsMaster is derived from Landing on the wire, and a landing
-	// withheld is not a landing the master never chose.
-	HiddenLandings map[uuid.UUID]bool
+	// ShownLandings names the escaping characters whose escape.landing this reader may see.
+	ShownLandings map[uuid.UUID]bool
+	// ShownReactionMoves names the reactions (by ID) whose move.position this reader may see.
+	ShownReactionMoves map[uuid.UUID]bool
 }
 
 // MoveSight is how much of a history action's move one reader saw live. The zero value is the
-// whole move — the master, the actor's owner, an action with no move.
+// category alone — fail closed: only the use case grants more.
 type MoveSight string
 
 const (
-	// MoveSightWhole keeps move.from and move.position.
-	MoveSightWhole MoveSight = ""
+	// MoveSightNone keeps neither from nor position: the category alone (that the actor moved
+	// is public). The zero value.
+	MoveSightNone MoveSight = ""
 	// MoveSightOrigin keeps move.from only — the reader saw the piece leave, not arrive.
 	MoveSightOrigin MoveSight = "origin"
-	// MoveSightNone keeps neither: the category alone (that the actor moved is public).
-	MoveSightNone MoveSight = "none"
+	// MoveSightWhole keeps move.from and move.position — the master, the actor's owner, a
+	// reader who saw the destination, an action with no move.
+	MoveSightWhole MoveSight = "whole"
 )

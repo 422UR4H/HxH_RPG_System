@@ -334,23 +334,32 @@ func toHistoryMasterActionResponse(r masteraction.Record) HistoryMasterActionRes
 }
 
 func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
+	// WHERE pieces went is cut after From, by what the use case read off what this reader saw
+	// live (MoveSight, ShownReactionMoves, ShownLandings) — the order room.go's
+	// turnActionWireLocked applies the live gate in. Every one of them defaults to hidden: a
+	// HistoryTurn that never went through the use case reveals nothing. MoveViews/LandingViews
+	// themselves are never mapped: who saw what is not table data.
 	reactions := make([]actionwire.Action, 0, len(t.Reactions))
 	for _, r := range t.Reactions {
-		reactions = append(reactions, actionwire.From(r, actionwire.Full))
+		wr := actionwire.From(r, actionwire.Full)
+		// A reaction never carries From (see actionwire.Move.From); its Position is where an
+		// escape tried, or managed, to put the piece.
+		if wr.Move != nil && !t.ShownReactionMoves[r.GetID()] {
+			wr.Move.Position = nil
+		}
+		reactions = append(reactions, wr)
 	}
 	masterActions := make([]HistoryMasterActionResponse, 0, len(t.MasterActions))
 	for _, ma := range t.MasterActions {
 		masterActions = append(masterActions, toHistoryMasterActionResponse(ma))
 	}
-	// The move's WHERE is cut after From, by the verdict the use case read off what this reader
-	// saw live (MoveSight) — the order room.go's turnActionWireLocked applies the live gate in.
-	// MoveViews/LandingViews themselves are never mapped: who saw what is not table data.
 	act := actionwire.From(t.Action, actionwire.Full)
 	if act.Move != nil {
 		switch t.MoveSight {
+		case matchUC.MoveSightWhole:
 		case matchUC.MoveSightOrigin:
 			act.Move.Position = nil
-		case matchUC.MoveSightNone:
+		default:
 			act.Move.From, act.Move.Position = nil, nil
 		}
 	}
@@ -359,7 +368,7 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 		// After awaitsMaster was derived from the real landing: a landing withheld from this
 		// reader is not a landing the master never chose.
 		for i := range res.Targets {
-			if esc := res.Targets[i].Escape; esc != nil && t.HiddenLandings[res.Targets[i].TargetID] {
+			if esc := res.Targets[i].Escape; esc != nil && !t.ShownLandings[res.Targets[i].TargetID] {
 				esc.Landing = nil
 			}
 		}

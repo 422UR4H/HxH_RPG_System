@@ -367,6 +367,9 @@ func TestGetMatchHistoryCarriesTheEscape(t *testing.T) {
 			Turns: []match.HistoryTurn{{
 				UUID: uuid.New(), CreatedAt: now, FinishedAt: now,
 				Action: *act,
+				// What the use case grants a reader who may see the landing — the mapping's
+				// own default hides it.
+				ShownLandings: map[uuid.UUID]bool{landed: true},
 				Resolution: &service.TurnResolution{
 					IsSettled: true,
 					CharacterResults: []service.CharacterResult{

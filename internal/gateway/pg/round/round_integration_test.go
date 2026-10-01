@@ -2051,3 +2051,46 @@ func TestPersistTurnCloseRoundTripsTheViewsRecordedLive(t *testing.T) {
 		}
 	}
 }
+
+// An escape that ESCAPED has no landing — its piece went to its own destination — and who saw
+// it arrive is recorded all the same: it is what the history shows the reaction's move.position
+// by. An escape whose piece did not move records nothing.
+func TestPersistTurnCloseKeepsWhoSawAnEscapedEscapeArrive(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+	stayed := uuid.New()
+	saw := uuid.New()
+	landingViews := map[uuid.UUID]map[uuid.UUID]masteraction.View{
+		fx.victimSheet: {saw: masteraction.ViewFull},
+		stayed:         {saw: masteraction.ViewFull}, // not a move: must not be written
+	}
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		Resolution: &service.TurnResolution{IsSettled: true, CharacterResults: []service.CharacterResult{
+			{TargetID: fx.victimSheet, ReactionKind: string(action.ReactEscape),
+				Escape: &service.EscapeResult{MovePassed: true, DodgePassed: true, Escaped: true}},
+			{TargetID: stayed, ReactionKind: string(action.ReactEscape),
+				Escape: &service.EscapeResult{MovePassed: true}},
+		}},
+		LandingViews: landingViews,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	got := scenes[0].Rounds[0].Turns[0].LandingViews
+	want := map[uuid.UUID]map[uuid.UUID]masteraction.View{fx.victimSheet: {saw: masteraction.ViewFull}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("landing views read back = %v, want %v", got, want)
+	}
+}

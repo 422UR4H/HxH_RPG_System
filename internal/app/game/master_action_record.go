@@ -77,12 +77,26 @@ func (r *Room) sessionViews(gate viewGate) map[uuid.UUID]masteraction.View {
 	if r.session == nil {
 		return nil
 	}
+	return r.sessionPlayerViewsLocked(uuid.Nil, func(pid uuid.UUID) (masteraction.View, bool) {
+		return gate(r.session.GetVisibility(pid))
+	})
+}
+
+// sessionPlayerViewsLocked is the one loop behind every "what did each player see" record:
+// gate runs for EVERY player of the session — connected or not, their fog at this instant from
+// the session's visibility cache (spec §4.8) — except the master, who is not a player and sees
+// everything, and except (uuid.Nil for none) — the owner of the piece a move record is about,
+// who also always sees all of it. Neither is ever recorded. Empty (not nil) when nobody else
+// saw anything: "recorded, nobody saw".
+//
+// The caller MUST hold r.mu (a read lock is enough) and r.session must not be nil.
+func (r *Room) sessionPlayerViewsLocked(except uuid.UUID, gate func(pid uuid.UUID) (masteraction.View, bool)) map[uuid.UUID]masteraction.View {
 	views := map[uuid.UUID]masteraction.View{}
 	for _, pid := range r.session.PlayerIDs() {
-		if pid == r.masterUUID {
+		if pid == r.masterUUID || pid == except {
 			continue
 		}
-		if v, ok := gate(r.session.GetVisibility(pid)); ok {
+		if v, ok := gate(pid); ok {
 			views[pid] = v
 		}
 	}

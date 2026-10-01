@@ -127,13 +127,15 @@ type characterResultRecord struct {
 // escapeRecord mirrors service.EscapeResult field for field. AwaitsMaster is NOT stored: it
 // is a wire derivation (failed and no landing), recomputed wherever it is shown.
 //
-// LandingViews is NOT part of service.EscapeResult: it is who saw Landing live, recorded at the
-// close from the settled resolution_updated's own landing gate (owner decision, 2026-10-01) —
-// {"<playerUUID>": "full"}, master and the escaper's owner never in it. It travels beside the
-// resolution (TurnCloseData.LandingViews, HistoryTurn.LandingViews) rather than inside the
-// domain's result, where every other reader of it would have to remember to drop it. Absent on
-// an escape with no landing and on every row written before it existed: the history then
-// shows the landing to nobody but the master and the owner (fails closed).
+// LandingViews is NOT part of service.EscapeResult: it is who saw where the piece ENDED live —
+// a failed escape's Landing, or an escaped one's own destination (its reaction's
+// move.position) — recorded at the close by the settled resolution_updated's own landing gate
+// (owner decision, 2026-10-01): {"<playerUUID>": "full"}, master and the escaper's owner never
+// in it. It travels beside the resolution (TurnCloseData.LandingViews,
+// HistoryTurn.LandingViews) rather than inside the domain's result, where every other reader
+// of it would have to remember to drop it. Absent on an escape whose piece did not move and on
+// every row written before it existed: the history then shows where the piece went to nobody
+// but the master and the owner (fails closed).
 type escapeRecord struct {
 	MovePassed   bool                            `json:"movePassed"`
 	DodgePassed  bool                            `json:"dodgePassed"`
@@ -178,7 +180,7 @@ type wallResultRecord struct {
 // which is a different claim.
 //
 // landingViews (keyed by the escaping character, CharacterResult.TargetID) goes into each
-// escape entry that has a landing — see escapeRecord.LandingViews.
+// escape entry whose piece moved — a landing, or escaped — see escapeRecord.LandingViews.
 func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]map[uuid.UUID]masteraction.View) ([]byte, error) {
 	if res == nil {
 		return nil, nil
@@ -208,7 +210,7 @@ func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]ma
 				MovePassed: cr.Escape.MovePassed, DodgePassed: cr.Escape.DodgePassed,
 				Escaped: cr.Escape.Escaped, Landing: copyPosition(cr.Escape.Landing),
 			}
-			if cr.Escape.Landing != nil {
+			if cr.Escape.Landing != nil || cr.Escape.Escaped {
 				out.Escape.LandingViews = landingViews[cr.TargetID]
 			}
 		}

@@ -1392,7 +1392,7 @@ mappings:
       pelos gateways pgmasteraction, pgmatchboard e fog rodando no tx —, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
       uma query só). Os vereditos de quem viu o movimento ao vivo vão em
       actions.move_views (só a ação do turno) e em landingViews dentro do escape do
-      resolution_record; FindMatchHistory os devolve em HistoryTurn (MoveViews,
+      resolution_record (onde a peça da fuga parou: pouso ou destino de quem escapou); FindMatchHistory os devolve em HistoryTurn (MoveViews,
       LandingViews) e o use case os consome — nunca vão ao wire. resolution_record.go é um record EXPLÍCITO, não json.Marshal em
       service.TurnResolution: battle.Blow e match.Scope têm campos privados e
       serializariam como {} em silêncio. Toda omissão desse record é escolhida e tem

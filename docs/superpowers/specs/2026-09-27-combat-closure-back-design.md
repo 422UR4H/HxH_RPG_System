@@ -117,8 +117,10 @@ func From(a action.Action, lvl Level) Action
   Para caber, `Move.Position` vira `*[3]int` com `omitempty`. O `escape.landing` da resolução
   liquidada segue o mesmo gate. **O REST segue o que foi visto ao vivo** (decisão do dono do
   produto, 2026-10-01, depois desta): o veredito do gate é gravado por jogador da sessão na
-  abertura (`actions.move_views`) e no fechamento (`landingViews` no `escape`), com o turno, e o
-  histórico corta `from`/`position`/`landing` por ele — linhas antigas falham fechado.
+  abertura (`actions.move_views`) e no fechamento (`landingViews` no `escape` — onde a peça da
+  fuga parou), com o turno, e o histórico corta `from`/`position`/`landing` e o `move.position`
+  das reações (só o de uma fuga que escapou, a quem a viu chegar) por ele — linhas antigas falham
+  fechado.
 
 ### 4.2 B1, B2 e B12 — as três superfícies
 

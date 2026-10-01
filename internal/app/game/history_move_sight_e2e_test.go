@@ -235,3 +235,90 @@ func TestE2E_TheHistoryShowsAnEscapeLandingOnlyToWhoSawItLive(t *testing.T) {
 		})
 	}
 }
+
+// An escape's REACTION carries a move too, and its move.position is the same news: where the
+// escaping piece went. The reaction's action never reaches the table live, so the only way a
+// bystander learned that destination is the piece_moved of an escape that ESCAPED — judged at
+// the close, recorded per player, and the history shows the reaction's position by that and
+// nothing else. A failed escape's position is a destination the piece never reached: never
+// shown to anyone but the master and the owner, even to a bystander who saw where it landed.
+func TestE2E_TheHistoryShowsAnEscapesMoveOnlyToWhoSawThePieceGoThere(t *testing.T) {
+	tests := []struct {
+		name    string
+		walls   []mapentity.WallSegment
+		escapes bool
+		// moved is how many piece_moved the bystander gets for the escape at the close.
+		moved int
+		// sees is whether the bystander's history keeps the reaction's move.position.
+		sees bool
+	}{
+		{name: "escaped, destination out of sight", walls: []mapentity.WallSegment{moveBoardWall}, escapes: true},
+		{name: "escaped, destination in sight", escapes: true, moved: 1, sees: true},
+		{name: "failed, the landing in sight: the attempted destination never", moved: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newCombatFixture(t, withVictimPiece, withBystander)
+			f.seedBoardWith(t, tt.walls...)
+			master, player := f.connect(t)
+			defer master.Close() //nolint:errcheck
+			defer player.Close() //nolint:errcheck
+			bystander := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+			defer bystander.Close()   //nolint:errcheck
+			readMessage(t, bystander) // room_state
+			masterMsgs := collectFrom(master)
+			playerMsgs := collectFrom(player)
+			bystanderMsgs := collectFrom(bystander)
+			if !bystanderMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+				t.Fatal("the bystander never got a board — they are not really at the table")
+			}
+
+			reactionID := f.escapeStage(t, master, player, masterMsgs, playerMsgs, false, tt.escapes, true)
+			if !tt.escapes {
+				pos := escapeLanding
+				f.chooseLanding(t, master, masterMsgs, reactionID, &pos)
+			}
+			sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+			if !awaitSettled(bystanderMsgs, 3*time.Second) {
+				t.Fatal("the bystander never received the settled resolution")
+			}
+			// The premise: what the live relay told the bystander about the escaping piece.
+			if n := bystanderMsgs.count(game.MsgTypePieceMoved); n != tt.moved {
+				t.Fatalf("premise: the bystander got %d piece_moved, want %d", n, tt.moved)
+			}
+			f.awaitPersisted(t)
+
+			reactionMove := func(turn map[string]json.RawMessage) map[string]json.RawMessage {
+				var reactions []struct {
+					UUID uuid.UUID                  `json:"uuid"`
+					Move map[string]json.RawMessage `json:"move"`
+				}
+				if err := json.Unmarshal(turn["reactions"], &reactions); err != nil {
+					t.Fatalf("unmarshal reactions: %v (%s)", err, turn["reactions"])
+				}
+				for _, r := range reactions {
+					if r.UUID == reactionID {
+						if r.Move == nil {
+							t.Fatalf("the escape carries no move: %s", turn["reactions"])
+						}
+						return r.Move
+					}
+				}
+				t.Fatalf("no escape %s in %s", reactionID, turn["reactions"])
+				return nil
+			}
+			for who, reader := range map[string]uuid.UUID{"master": f.masterUUID, "owner": f.playerUUID} {
+				if _, ok := reactionMove(f.historyTurnJSON(t, reader))["position"]; !ok {
+					t.Errorf("%s: the escape's move.position is missing — they always see it", who)
+				}
+			}
+			move := reactionMove(f.historyTurnJSON(t, f.bystanderUUID))
+			if _, ok := move["category"]; !ok {
+				t.Error("bystander: the escape's move.category is missing — that it moved is public")
+			}
+			if _, ok := move["position"]; ok != tt.sees {
+				t.Errorf("bystander: the escape's move.position in the history = %v, want %v", ok, tt.sees)
+			}
+		})
+	}
+}
