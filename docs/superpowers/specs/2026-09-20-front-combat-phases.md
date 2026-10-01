@@ -861,6 +861,18 @@ Persista nos mesmos momentos de B3/B15.
 - **`overridden_action_values` continua separado de tudo isso:** a edição do mestre
   (`edit_action`) não é master action.
 
+**Dentro de um turno aberto, a gravação espera o fechamento — decisão do dono do produto
+(2026-10-01).** "Gravar as master actions feitas com um turno aberto e o tabuleiro só no
+fechamento do turno." A master action continua valendo **na hora**, ao vivo, para a mesa toda;
+o que muda é quando ela vira registro: sem turno aberto, no instante; com turno aberto, junto
+com o fechamento do turno, na mesma transação que grava o turno — e o tabuleiro também só é
+salvo pelo fechamento. Tudo o que acontece dentro de um turno aberto (o movimento da abertura,
+o arrasto, a porta aberta pelo mestre, as notas do turno) fica durável junto com o fechamento
+dele, ou não fica: um reinício no meio do turno volta o turno inteiro ao último fechamento, e o
+histórico nunca mostra o efeito de um turno que não tem. Para o front, a consequência é uma só:
+um `GET /history` feito com o turno aberto ainda não traz as master actions daquele turno —
+elas aparecem dentro dele depois que ele fecha.
+
 Mantenha, como **última defesa**, a resposta com `error` para uma ação sobre parede que o
 servidor não conhece. Com o servidor carregando o tabuleiro, esse caminho deveria ficar
 inalcançável; se for alcançado, é bug, e o mestre fica sabendo em vez de ser enganado.

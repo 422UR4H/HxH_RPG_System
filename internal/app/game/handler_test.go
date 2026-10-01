@@ -16,6 +16,7 @@ import (
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
@@ -38,6 +39,9 @@ type fakeBoardStore struct {
 	// saves counts every call to Save (added by T3), so a test can assert the board WAS or
 	// WAS NOT persisted without a second test double.
 	saves int
+	// loads counts every call to Load: a room loads the board once at birth (and in the lobby on
+	// every master connect), so a new load after the match started is a NEW room.
+	loads int
 	// holdNext, when set, makes the NEXT Save block (before writing anything) until the
 	// channel is closed, after closing heldSave to say it is waiting. One-shot: the Save that
 	// takes it clears it. Lets a test keep a save in flight while something else races it.
@@ -66,6 +70,7 @@ func (s *fakeBoardStore) remove(matchUUID uuid.UUID) {
 func (s *fakeBoardStore) Load(_ context.Context, matchUUID uuid.UUID) (*matchboard.Board, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.loads++
 	b, ok := s.boards[matchUUID]
 	if !ok {
 		return nil, nil
@@ -120,6 +125,13 @@ func (s *fakeBoardStore) saveCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.saves
+}
+
+// loadCount returns how many times Load was called.
+func (s *fakeBoardStore) loadCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loads
 }
 
 func newFakeBoardStore() *fakeBoardStore {
@@ -353,6 +365,27 @@ type mockRoundRepoHandler struct {
 	// PersistTurnClose, so a test can prove the gateway got a copy and not the session's live
 	// objects (F4: the gateway reads them after r.mu is released).
 	handed []any
+	// masterActions keeps, per persisted turn, the master actions PersistTurnClose was handed
+	// to write in the turn's own transaction — what the master did inside that open turn.
+	masterActions map[uuid.UUID][]masteraction.Record
+}
+
+// masterActionsFor returns the master actions PersistTurnClose received for one closed turn.
+func (m *mockRoundRepoHandler) masterActionsFor(turnID uuid.UUID) []masteraction.Record {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]masteraction.Record(nil), m.masterActions[turnID]...)
+}
+
+// allMasterActions returns every master action PersistTurnClose received, whatever its turn.
+func (m *mockRoundRepoHandler) allMasterActions() []masteraction.Record {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var all []masteraction.Record
+	for _, recs := range m.masterActions {
+		all = append(all, recs...)
+	}
+	return all
 }
 
 // handedPointers returns every *Scene/*Round the room handed this repository.
@@ -378,6 +411,10 @@ func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.Tu
 		m.overrides = map[uuid.UUID][]matchDomain.OverriddenValue{}
 	}
 	m.overrides[d.Turn.GetID()] = d.Overrides
+	if m.masterActions == nil {
+		m.masterActions = map[uuid.UUID][]masteraction.Record{}
+	}
+	m.masterActions[d.Turn.GetID()] = append([]masteraction.Record(nil), d.MasterActions...)
 	if m.turnRounds == nil {
 		m.turnRounds = map[uuid.UUID]uuid.UUID{}
 	}

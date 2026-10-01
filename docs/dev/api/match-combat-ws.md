@@ -697,7 +697,8 @@ Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
    [`piece_moved`](#piece_moved-servidor) **para todos, inclusive o mestre** — a tela dele
    espera essa confirmação; o `senderId` vem zero (autor servidor). Depois, o mestre recebe
    [`master_action_enqueued`](#master_action_enqueued) — **só ele**: o eco carrega a posição,
-   e para peça oculta isso vazaria para a mesa. O tabuleiro é salvo.
+   e para peça oculta isso vazaria para a mesa. O tabuleiro é salvo — na hora sem turno
+   aberto; **com turno aberto, só no fechamento dele** (ver abaixo).
 1. **`interact.kind == "reveal"` com `targetIds`** → revela portas secretas. As paredes
    viram `revealed` na sessão e o `WallSegment` real é transmitido à mesa
    (`wall_revealed`, ver [`maps.md`](maps.md)). **Retorna sem ack nenhum**, exceto pelo
@@ -713,9 +714,25 @@ Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
 3. **Nenhum dos anteriores** → enfileira a ação do mestre no turno aberto e responde
    [`master_action_enqueued`](#master_action_enqueued) para a mesa.
 
-**Toda master action aceita é gravada no instante em que é aplicada** — com ou sem turno
-aberto — **e aparece no histórico como cada jogador a viu** (spec §4.8; ver
-[`match-history.md`](match-history.md)). O servidor grava, jogador a jogador da sessão
+**Toda master action aceita é gravada e aparece no histórico como cada jogador a viu** (spec
+§4.8; ver [`match-history.md`](match-history.md)). **Quando** ela vira registro depende do
+turno (decisão do dono do produto, 2026-10-01):
+
+- **sem turno aberto** — gravada no instante em que é aplicada, e o tabuleiro salvo junto;
+- **com turno aberto** — o registro é montado no instante (o que cada jogador viu, o `turnId`,
+  a hora), mas só é **gravado no fechamento do turno**, na mesma transação do turno
+  ([`close_turn`](#close_turn), [`open_next_action`](#open_next_action) ou
+  [`pull_action`](#pull_action) — os três). O tabuleiro idem: com turno aberto, nem a master
+  action de peça nem a interação/revelação de parede o salvam; o fechamento salva, com elas
+  dentro. Tudo o que acontece dentro de um turno aberto fica durável junto com o fechamento
+  dele, ou não fica: um reinício no meio do turno perde o turno **inteiro** — o movimento da
+  abertura e as master actions do mestre dentro dele (ver [§9](#reinício-recarga-queda)). As
+  ações do caminho 3 só existem com turno aberto, então são sempre gravadas no fechamento.
+  Exceção: o **pôr** de um NPC que ainda não participava grava a inscrição
+  (`match_participants`) na hora — ela sobrevive a um reinício que perca o turno, e o NPC
+  fica na partida sem peça no tabuleiro.
+
+Ao vivo nada muda: a mesa recebe tudo na hora, com ou sem turno. O servidor grava, jogador a jogador da sessão
 (conectado ou não), a mesma decisão de fog que tomou ao vivo: quem recebeu `piece_moved` (ou
 a parede mudando, a remoção, a revelação) vê a ação inteira; quem só recebeu o
 `piece_removed` de um arrasto a vê **sem o destino**; quem não recebeu nada não a vê. As
@@ -2094,26 +2111,32 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
-| Turno aberto, reações anexadas | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido** — o turno só persiste ao FECHAR; a peça da action volta para onde o último salvamento a deixou — o último fechamento, **ou** um salvamento feito com o turno aberto (ver abaixo), que já leva o movimento da abertura |
+| Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido inteiro** — o turno só persiste ao FECHAR, e tudo o que aconteceu dentro dele vai junto: a peça da action volta para onde o último fechamento a deixou, e as master actions do mestre feitas com o turno aberto (peça, parede, nota) não chegam a ser gravadas (ver abaixo) |
 | Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
 | `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 
 **Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). `Room.persistBoard`
-grava a cada `start_match`, a cada fechamento de turno, a cada master action de peça e a cada
-interação/revelação de parede — nunca na ABERTURA de uma action. A peça anda no `piece_moved`
+grava a cada `start_match`, a cada fechamento de turno e — **entre turnos** — a cada master
+action de peça e a cada interação/revelação de parede; nunca na ABERTURA de uma action, nem
+com um turno aberto. A peça anda no `piece_moved`
 que a abertura emite, mas se o servidor cair antes do próximo salvamento, essa gravação nunca
 aconteceu: o tabuleiro que volta é o de ANTES da action que estava em curso, e o turno em si —
 fila, reações anexadas, a escolha do mestre para um escape — some inteiro.
 
-**Comportamento atual — um salvamento com o turno aberto leva o movimento da abertura.** O
-salvamento é um retrato do tabuleiro **como está**, e com um turno aberto ele já inclui a peça
-que a abertura moveu. Então, se com o turno aberto o mestre fizer uma master action de peça
-(mover/pôr/tirar) ou interagir/revelar uma parede, e o servidor cair antes do fechamento, o
-turno se perde mas aquele movimento **fica**: a peça volta onde a abertura a deixou, não onde
-o último fechamento a deixou. Nesse caso o tabuleiro salvo mostra o efeito de um turno que
-não está no histórico. É o comportamento de hoje, documentado como tal; se ele deve mudar
-(por exemplo, salvar o tabuleiro com o movimento da action aberta desfeito) é decisão do dono
-do produto.
+**Dentro de um turno aberto, nada é salvo antes do fechamento** (decisão do dono do produto,
+2026-10-01). Com o turno aberto o tabuleiro já inclui a peça que a abertura moveu, e um
+salvamento ali gravaria o efeito de um turno que ainda não existe no banco. Por isso a master
+action de peça e a interação/revelação de parede **não** salvam o tabuleiro com turno aberto, e
+as master actions feitas nele ficam guardadas em memória até o fechamento, que grava o turno e
+elas na **mesma transação** (e o tabuleiro logo antes, com tudo dentro). Se o servidor cair —
+ou a sala fechar porque todos saíram, que para a persistência é o mesmo que um reinício — antes
+do fechamento, o turno volta inteiro ao último fechamento: a peça da action, o arrasto do
+mestre, a porta que ele abriu e as master actions correspondentes somem juntos. O histórico
+nunca mostra uma master action de um turno que não foi gravado. Única exceção: a inscrição de
+um NPC posto no tabuleiro com o turno aberto, gravada na hora, sobrevive — o NPC fica na partida,
+sem peça. Nenhum outro verbo encerra um turno sem fechá-lo: `change_scene` é recusado com turno
+aberto, `change_round_mode` troca o regime do MESMO round com o turno ainda aberto, e
+`kick_player` tira um jogador da mesa, não o turno.
 
 **O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado no mesmo
 `persistBoard`, então um jogador que reconecta longe de uma parede que já viu antes ainda a

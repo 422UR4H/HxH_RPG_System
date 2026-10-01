@@ -108,9 +108,10 @@ func payloadToPiece(p PieceMovedPayload) mapentity.Piece {
 
 // persistBoard writes the match's board — pieces, walls, and every player's fog memory — as it
 // stands NOW. It is the ONE place that does, and every definitive change to the board calls it:
-// the lobby's moves, start_match, the three verbs that close a turn, the master's piece actions
-// (applyMasterPieceAction — the "move"/"remove" of B9/B14), and the master's wall interactions
-// and reveals (spec §4.3, "Quando persiste", B3).
+// the lobby's moves, start_match, the three verbs that close a turn, and — between turns — the
+// master's piece actions (applyMasterPieceAction — the "move"/"remove" of B9/B14) and the
+// master's wall interactions and reveals (spec §4.3, "Quando persiste", B3). Those last two go
+// through persistBoardOutsideTurn: inside a turn the board is only written by its close.
 //
 // persistMu wraps the snapshot AND the write, so two saves racing from two read pumps land in
 // the order their snapshots were taken; r.mu is only held for the snapshot, never across the
@@ -123,18 +124,38 @@ func payloadToPiece(p PieceMovedPayload) mapentity.Piece {
 //
 // The caller must NOT hold r.mu.
 func (r *Room) persistBoard(reason string) {
+	r.savePersistedBoard(reason, false)
+}
+
+// persistBoardOutsideTurn is persistBoard for a change the master makes during the match that
+// may happen INSIDE an open turn (a piece action, a wall interact or reveal): with a turn open
+// it writes nothing (owner decision, 2026-10-01). The board then already holds the turn's
+// opened move, and a row written now would outlive the turn if the server died before its
+// close; the close saves the board — this change included — after the escapes, and a restart
+// mid-turn rolls the whole turn back to the last close. With no turn open it is persistBoard.
+//
+// The check runs in the SAME critical section as the snapshot, so a turn opening on another
+// read pump cannot slip its opened move into a save that decided there was no turn.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) persistBoardOutsideTurn(reason string) {
+	r.savePersistedBoard(reason, true)
+}
+
+func (r *Room) savePersistedBoard(reason string, outsideTurnOnly bool) {
 	if r.deps.SaveBoardUC == nil {
 		return
 	}
 	r.persistMu.Lock()
 	defer r.persistMu.Unlock()
-	r.persistBoardLocked(reason)
+	r.persistBoardLocked(reason, outsideTurnOnly)
 }
 
 // persistBoardLocked is persistBoard for a caller that already holds persistMu — StartMatch,
-// which keeps it from its board reload's read through this save. The caller must hold
-// persistMu and must NOT hold r.mu.
-func (r *Room) persistBoardLocked(reason string) {
+// which keeps it from its board reload's read through this save. outsideTurnOnly skips the save
+// when a turn is open (persistBoardOutsideTurn). The caller must hold persistMu and must NOT
+// hold r.mu.
+func (r *Room) persistBoardLocked(reason string, outsideTurnOnly bool) {
 	if r.deps.SaveBoardUC == nil {
 		return
 	}
@@ -142,6 +163,10 @@ func (r *Room) persistBoardLocked(reason string) {
 	if r.mapUUID == uuid.Nil {
 		// No map attached at all — nothing to persist yet (matches loadBoard's own (nil, nil)
 		// no-op for an unattached match).
+		r.mu.RUnlock()
+		return
+	}
+	if outsideTurnOnly && r.openTurnIDLocked() != uuid.Nil {
 		r.mu.RUnlock()
 		return
 	}

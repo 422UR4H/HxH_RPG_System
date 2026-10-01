@@ -316,8 +316,11 @@ Dois tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
 - **master action** — tudo o que o mestre aplicou pelo `enqueue_master_action` e foi aceito:
   arrastar, pôr e tirar peça (`movePiece`, `placePiece`, `removePiece`), interagir com uma
   parede e revelá-la (`wallInteract`, `revealWall`), e as genéricas que só se penduram no
-  turno aberto (`turnNote`). Gravadas em `master_actions`, tabela própria (spec §4.8), **no
-  instante** em que são aplicadas, com ou sem turno aberto.
+  turno aberto (`turnNote`). Gravadas em `master_actions`, tabela própria (spec §4.8): **sem
+  turno aberto, no instante** em que são aplicadas; **com turno aberto, no fechamento desse
+  turno**, na mesma transação que grava o turno (decisão do dono do produto, 2026-10-01). O
+  registro é montado no instante — quem viu o quê, o `turnId`, `happenedAt` são os daquele
+  momento —; só a gravação espera o turno.
 
 **`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
 do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
@@ -326,21 +329,24 @@ o histórico mostra a action já editada, que **é** a action. Um turno editado 
 
 **Onde uma master action entra:**
 
-| A master action foi gravada… | Aparece em |
+| A master action foi aplicada… | Aparece em |
 |---|---|
-| com o turno aberto, e esse turno está no histórico | `turns[].masterActions` daquele turno |
+| com o turno aberto | `turns[].masterActions` daquele turno — **só depois que o turno fecha e é gravado**; antes disso ela não está em lugar nenhum desta resposta |
 | sem turno aberto (o arrastar entre turnos é o caso comum) | `rounds[].events`, `kind: "masterAction"` |
-| com o turno aberto, e esse turno **ainda não fechou** | `rounds[].events`, `kind: "masterAction"`, com o `turnId` — até o turno fechar e ser gravado; daí em diante, em `turns[].masterActions` dele |
-| com um turno que **não foi gravado** (um turno só é gravado ao fechar; um reinício com o turno aberto o perde) | `rounds[].events`, `kind: "masterAction"` — o `turnId` continua lá, apontando um turno que não existe na árvore |
+| com um turno que **não foi gravado** (um reinício com o turno aberto o perde) | **lugar nenhum** — ela some com o turno, e o tabuleiro salvo também volta ao último fechamento |
 
-A segunda linha com turno é consequência de o histórico incluir a round **ao vivo**: um GET
-feito com o turno aberto ainda não tem o turno na árvore (ele só é gravado ao fechar), então a
-master action dele aparece em `events`; o mesmo GET depois do fechamento a mostra dentro do
-turno. Não é duplicata nem mudança de identidade — o `uuid` é o mesmo; o cliente que guarda
-histórico entre leituras deve tratar a versão nova como a que vale.
+Um GET feito com o turno aberto ainda não tem o turno na árvore (ele só é gravado ao fechar) e
+também não tem as master actions feitas dentro dele: elas são gravadas **junto** com o turno, e
+aparecem dentro dele na primeira leitura depois do fechamento. Ao vivo a mesa já as recebeu; o
+histórico é o que ficou durável.
 
-A última linha é deliberada: a master action aconteceu, o tabuleiro salvo a confirma, e
-sumir com ela porque o turno não sobreviveu apagaria algo que a mesa viu.
+Tudo o que acontece dentro de um turno aberto fica durável junto com o fechamento dele, ou não
+fica: um reinício no meio do turno perde o turno inteiro — o movimento da abertura e as master
+actions do mestre dentro dele — e o tabuleiro salvo continua o do último fechamento, então o
+histórico nunca mostra o efeito de um turno que ele não tem. **Linhas antigas:** master actions
+gravadas antes dessa decisão podem ter um `turnId` cujo turno nunca foi gravado (eram gravadas
+no instante, com turno aberto ou não); o histórico as mostra em `rounds[].events`, com o
+`turnId`, apontando um turno que não existe na árvore.
 
 **Formato de `events[]`** — em ordem de tempo, os dois `kind` intercalados:
 

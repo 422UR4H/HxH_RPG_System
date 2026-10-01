@@ -36,16 +36,19 @@ const (
 )
 
 // Record is a master action as persisted: applied at the instant it happened, with or
-// without an open turn.
+// without an open turn. Outside a turn it is written at that instant; inside one it is written
+// with the turn's close, in the turn's own transaction (owner decision, 2026-10-01) — its fields
+// are still those of the instant it was applied.
 type Record struct {
 	UUID       uuid.UUID
 	MatchUUID  uuid.UUID
 	SceneUUID  uuid.UUID
 	RoundUUID  uuid.UUID
 	MasterUUID uuid.UUID
-	// TurnUUID is nil outside a turn. It has no FK: a turn is only written when it closes,
-	// and a restart can lose it after the master action was already recorded — the history
-	// then shows it outside any turn.
+	// TurnUUID is nil outside a turn. It has no FK: a turn is only written when it closes.
+	// Since 2026-10-01 an in-turn master action is written in that same transaction, so a new
+	// row's turn exists; rows written before that could outlive a turn a restart lost, and the
+	// history shows those outside any turn.
 	TurnUUID *uuid.UUID
 	Kind     Kind
 	Content  json.RawMessage

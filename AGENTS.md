@@ -115,8 +115,12 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 - **O tabuleiro é do servidor.** `match_boards` guarda um retrato por partida (peças, paredes,
   grade, `bg` — `NULL` herda o do mapa); `player_memories` guarda o fog explorado. A `Room`
   carrega (`loadBoard`) quando nasce e, em lobby, a cada conexão do mestre; `persistBoard` é o
-  único ponto de gravação, nos três verbos de fechamento de turno, no `start_match`, nas
-  master actions de peça e na interação/revelação de parede, serializado por `persistMu`.
+  único ponto de gravação, nos três verbos de fechamento de turno, no `start_match` e — entre
+  turnos — nas master actions de peça e na interação/revelação de parede, serializado por
+  `persistMu`. **Dentro de um turno aberto nada é gravado antes do fechamento** (dono do
+  produto, 2026-10-01): nem o tabuleiro (`persistBoardOutsideTurn`) nem as master actions, que a
+  `Room` guarda por turno (`turnWrites`, `turn_writes.go`) e `PersistTurnClose` grava na
+  transação do turno. Um reinício no meio do turno o perde inteiro, de propósito.
   `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
   `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.
 - **Escape = esquiva E movimento.** `Avoided = dodgePassed && movePassed` (spec B13):
@@ -128,8 +132,9 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 - **Master actions têm tabela própria (`master_actions`), não `actions`.** O ator de uma master
   action é o mestre (usuário), não um `character_sheets`, e ela acontece fora de turno — as duas
   colunas de `actions` (`actor_uuid` → ficha, `turn_uuid NOT NULL`) teriam que afrouxar e toda
-  leitura teria que filtrar um tipo do outro. Gravada no instante em que é aplicada, com a
-  projeção (`views`) do que cada jogador viu dela ao vivo. Decisão do dono do produto, spec §4.8.
+  leitura teria que filtrar um tipo do outro. Gravada no instante em que é aplicada (com turno
+  aberto, no fechamento dele, na transação do turno), com a projeção (`views`) do que cada
+  jogador viu dela ao vivo. Decisão do dono do produto, spec §4.8.
 - ⚠️ **Bug conhecido, achado na Task 12 (não corrigido nesta fase):** uma condição do mestre
   (`edit_action` com `conditions[].field` = `"dodge"`, `"defense"` ou `"repel"`) é aceita,
   grava o override, e **não muda o resultado** — `deriveReflex`/`resolveRepel`

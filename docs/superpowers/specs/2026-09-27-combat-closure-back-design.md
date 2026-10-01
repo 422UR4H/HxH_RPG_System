@@ -207,8 +207,12 @@ Tabela nova `match_boards`, uma linha por partida:
 #### Quando persiste (B3)
 
 Em todo momento em que o tabuleiro muda de forma definitiva: movimento e remoção no lobby,
-`start_match`, os **três** verbos que fecham turno (depois dos escapes), as master actions de
-peça, e interação/revelação de parede. Um só método, `Room.persistBoard()`:
+`start_match`, os **três** verbos que fecham turno (depois dos escapes), e — **entre turnos** —
+as master actions de peça e a interação/revelação de parede. Com um turno aberto, essas duas
+não salvam: o fechamento do turno salva, com elas dentro (decisão do dono do produto,
+2026-10-01, abaixo). Um só método, `Room.persistBoard()` (e `persistBoardOutsideTurn()`, a
+variante das duas que podem cair dentro de um turno — decide "há turno aberto?" na mesma seção
+crítica do retrato):
 
 - tira o retrato sob `r.mu.RLock`, solta, grava fora do lock;
 - é serializado por um `persistMu` próprio, que envolve retrato **e** gravação — dois
@@ -220,11 +224,20 @@ peça, e interação/revelação de parede. Um só método, `Room.persistBoard()
 turno só é persistido no fechamento. Se o servidor cair no meio, o turno se perde — e a peça,
 salva no fechamento anterior, volta junto com ele. Tabuleiro e histórico concordam.
 
-**Comportamento atual (registrado no fechamento da Fase 6, a decidir pelo dono do produto):**
-um salvamento feito **com o turno aberto** — master action de peça, interação/revelação de
-parede — é um retrato do tabuleiro como está, e já leva o movimento da abertura. Se o servidor
-cair depois dele e antes do fechamento, o turno se perde mas aquele movimento fica; nesse caso
-tabuleiro e histórico não concordam. Ver `docs/dev/api/match-combat-ws.md` §9.
+**Decisão do dono do produto (2026-10-01): dentro de um turno aberto, nada é salvo antes do
+fechamento.** Até então, um salvamento feito com o turno aberto — master action de peça,
+interação/revelação de parede — retratava o tabuleiro como estava, já com o movimento da
+abertura, e um reinício antes do fechamento deixava tabuleiro e histórico discordando. Agora
+tudo o que acontece dentro do turno aberto (o movimento da abertura, as master actions do
+mestre) fica durável **junto** com o fechamento dele: o tabuleiro é salvo pelo fechamento, e as
+master actions são gravadas na transação do turno (§4.8). Um reinício no meio do turno volta o
+turno **inteiro** ao último fechamento. A sala fechar porque todos saíram (ou o hub parar) é,
+para a persistência, um reinício: a próxima sala reidrata do banco, e nada do turno é salvo
+naquele momento — só um log diz o que se perdeu. Nenhum verbo com a sala viva encerra um turno
+sem fechá-lo: `change_scene` e o fechamento do round são recusados com turno aberto,
+`change_round_mode` troca o regime do mesmo round e `kick_player` não toca no turno. A exceção
+é a inscrição de um NPC posto com o turno aberto (B11): a linha em `match_participants` é
+gravada na hora e sobrevive. Ver `docs/dev/api/match-combat-ws.md` §9.
 
 #### Quem move o quê
 
@@ -247,8 +260,8 @@ não existe `charToPlayer`.
 
 - `targetIds[0]` é o personagem; `move.category`, `speed` e `charge` são ignorados (o arrastar
   não é movimento de jogo, não rola nem cobra barra).
-- **Aplica na hora, com ou sem turno aberto.** Com turno aberto, também é pendurada no turno
-  (`EnqueueMasterAction`); sem turno, o `ErrNoActiveTurn` não impede nada.
+- **Aplica na hora, com ou sem turno aberto** (ao vivo). Com turno aberto, também é pendurada
+  no turno (`EnqueueMasterAction`); sem turno, o `ErrNoActiveTurn` não impede nada.
 - **Pôr**: personagem sem peça ganha uma peça nova (`id` novo, forma do slot pela grade,
   visível, `z` 0). Se não é participante e é NPC do mestre → inscrição de B11 + `npc_added` +
   `bars_updated`. Personagem de jogador que não é participante → `error` `not_participant`.
@@ -257,8 +270,9 @@ não existe `charToPlayer`.
   tela dele espera a confirmação, F12, então não há eco a suprimir). O mestre recebe
   `master_action_enqueued` — **só ele**: o eco carrega a posição, e para peça escondida isso
   vazaria para a mesa.
-- Persistência: `persistBoard()` + uma linha em `master_actions` (§4.8), com o `turnId` quando
-  há turno aberto e o que cada jogador viu dela.
+- Persistência: o tabuleiro + uma linha em `master_actions` (§4.8), com o `turnId` quando
+  há turno aberto e o que cada jogador viu dela — na hora sem turno aberto; com turno aberto,
+  as duas esperam o fechamento dele (`persistBoardOutsideTurn`, "Quando persiste" acima).
 
 #### B11 — NPC no mapa é NPC da partida
 
@@ -401,16 +415,25 @@ CREATE TABLE master_actions (
   `overridden_action_values`, como hoje. (A sessão pendura as duas coisas em
   `Turn.masterActions`; por isso a gravação **não** lê `t.GetMasterActions()` — ela acontece no
   braço do `enqueue_master_action`, onde só as de verdade passam.)
-- **Quando grava:** **no instante** em que é aplicada, com ou sem turno — o mesmo momento em que
-  B3 salva o tabuleiro e B15 grava os eventos. `scene_uuid`/`round_uuid` são os ativos (garantidos
-  por `EnsureSceneAndRound`, §4.5). `turn_uuid` não tem FK porque o turno só é gravado no
-  fechamento e pode se perder num reinício; se isso acontecer, a master action continua lá e o
-  histórico a mostra fora de turno (abaixo) — o arrastar aconteceu, e o tabuleiro salvo o
-  confirma.
+- **Quando grava** (decisão do dono do produto, 2026-10-01): **sem turno aberto, no instante**
+  em que é aplicada — o mesmo momento em que B3 salva o tabuleiro e B15 grava os eventos.
+  **Com turno aberto, no fechamento desse turno**, na mesma transação do turno: o registro é
+  montado no instante (views, `turn_uuid`, `happened_at` daquele momento) e guardado pela sala
+  (`turnWrites`, por turno) até um dos três verbos de fechamento entregá-lo a
+  `PersistTurnClose` (`TurnCloseData.MasterActions`), que o insere com o `Insert` do próprio
+  gateway de master actions rodando na transação. Turno e master actions entram juntos ou
+  nenhum entra; uma falha é logada dizendo que se perderam o turno **e** as master actions dele.
+  Um reinício (ou a sala fechar) com o turno aberto perde o turno e as master actions dele —
+  é o ponto: o turno inteiro volta ao último fechamento. `scene_uuid`/`round_uuid` são os ativos
+  (garantidos por `EnsureSceneAndRound`, §4.5; dentro do turno nenhum dos dois muda, e
+  `PersistTurnClose` garante o mesmo par na sua transação). `turn_uuid` continua sem FK: o turno
+  só é gravado no fechamento, e linhas gravadas antes desta decisão podem apontar um turno que um
+  reinício perdeu — o histórico as mostra fora de turno (abaixo).
 - **Onde aparece no `GET /history`:** com `turn_uuid` de um turno que está na árvore → dentro
-  daquele turno, em `turns[].masterActions`, na ordem do tempo. Sem turno (ou com um turno que não
-  foi gravado) → em `rounds[].events`, como entrada `kind: "masterAction"`, na ordem do tempo junto
-  com os `roundModeChanged`.
+  daquele turno, em `turns[].masterActions`, na ordem do tempo — e, desde 2026-10-01, só a partir
+  do fechamento (antes ela não está em lugar nenhum). Sem turno (ou, em linhas antigas, com um
+  turno que não foi gravado) → em `rounds[].events`, como entrada `kind: "masterAction"`, na
+  ordem do tempo junto com os `roundModeChanged`.
 - **Projeção — cada leitor vê como viu ao vivo.** No instante da aplicação, o servidor já decide,
   jogador a jogador, o que cada um recebe (o portão de fog do `relayPieceMove`, o
   `broadcastWallStateChangedGated`). A mesma decisão é **gravada** em `views`, para **todo jogador
@@ -433,9 +456,9 @@ CREATE TABLE master_actions (
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor | **volta** do `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue` (B1) · dono: `ownQueue` (B12) | **perdida**; `ownQueue: []` faz o front descartar com aviso e devolver o rascunho. Ninguém reenvia |
-| Turno aberto, reações anexadas | `openTurn` com `action` (B2); mestre: `resolution` | **perdido** (o turno só persiste ao fechar); a peça da action volta junto (§4.3 ⭐) — exceto se houve um salvamento com o turno aberto, que já levou o movimento da abertura (comportamento atual, §4.3) |
+| Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` com `action` (B2); mestre: `resolution` | **perdido inteiro** (o turno só persiste ao fechar, e o que aconteceu dentro dele vai junto — decisão de 2026-10-01, §4.3); a peça da action e o que o mestre mudou no tabuleiro voltam ao último fechamento, e as master actions feitas no turno não chegam a ser gravadas. Exceção: a inscrição de um NPC posto no turno (B11) sobrevive |
 | Escolha do mestre para um escape (B13) | vem na `resolution` do mestre | perdida com o turno aberto |
-| Histórico | REST | REST (B15) — nada que já aconteceu se perde; master actions gravadas no instante (§4.8) |
+| Histórico | REST | REST (B15) — nada que já fechou se perde; master actions fora de turno gravadas no instante, as de dentro de um turno com o fechamento dele (§4.8) |
 | Barras | `bars` com o `seq` atual | zeradas (o de sempre: perdido, não divergente) |
 | NPC do mapa | — | reinscrito, idempotente, no `Init` (B11) |
 | Duas abas | a última vence (B4) | — |

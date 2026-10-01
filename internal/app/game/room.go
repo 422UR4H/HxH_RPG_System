@@ -150,6 +150,9 @@ type Room struct {
 	// order their DB round trips happened to finish. r.mu is only ever held for the snapshot
 	// half, never across the write.
 	persistMu sync.Mutex
+	// pendingTurns is what happened inside each open turn and is written only with that turn's
+	// close (turnWrites, owner decision 2026-10-01), keyed by turn. Guarded by mu.
+	pendingTurns map[uuid.UUID]*turnWrites
 
 	session *matchsession.MatchSession
 
@@ -385,7 +388,9 @@ func (r *Room) Run() {
 			if empty {
 				r.mu.Lock()
 				r.state = RoomStateClosed
+				dropped := r.describeDroppedTurnLocked()
 				r.mu.Unlock()
+				logDroppedTurn(r.matchUUID, dropped)
 				return
 			}
 
@@ -407,7 +412,9 @@ func (r *Room) Run() {
 				client.Close()
 			}
 			r.clients = make(map[uuid.UUID]*Client)
+			dropped := r.describeDroppedTurnLocked()
 			r.mu.Unlock()
+			logDroppedTurn(r.matchUUID, dropped)
 			return
 		}
 	}
@@ -562,7 +569,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	// persistBoardLocked take r.mu themselves).
 	r.persistMu.Lock()
 	r.loadBoard(ctx)
-	r.persistBoardLocked("start_match")
+	r.persistBoardLocked("start_match", false)
 	r.persistMu.Unlock()
 
 	session, err := r.deps.InitSessionUC.Init(ctx, r.matchUUID)
@@ -1407,7 +1414,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		ma := buildMasterAction(client.userUUID, payload)
 		// Every branch below that ACCEPTS the master action records it, the instant it is
 		// applied, with what each player saw of it (spec §4.8, recordMasterAction). A refused one
-		// is never recorded. edit_action has its own arm and never reaches here.
+		// is never recorded. edit_action has its own arm and never reaches here. With a turn
+		// open, the record and the board save both wait for that turn's close and are written
+		// with it (recordMasterAction, persistBoardOutsideTurn; owner decision, 2026-10-01).
 		//
 		// Piece: the master's drag, place or take-off (spec §4.3, "Master action de peça"). Before
 		// the Interact branch: a piece action names a character, not a wall.
@@ -1419,7 +1428,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// and broadcasts the full real WallSegment to ALL clients.
 		if ma.Interact != nil && ma.Interact.Kind == action.InteractReveal && len(ma.TargetID) > 0 {
 			revealed, views := r.revealSecretDoors(client, ma.TargetID)
-			r.persistBoard("wall_interact")
+			r.persistBoardOutsideTurn("wall_interact")
 			if len(revealed) > 0 {
 				r.recordMasterAction(masteraction.KindRevealWall,
 					wallActionContent{WallIDs: revealed, Interact: string(ma.Interact.Kind)}, views)
@@ -1463,7 +1472,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
-			r.persistBoard("wall_interact")
+			r.persistBoardOutsideTurn("wall_interact")
 			for _, c := range changed {
 				r.recordMasterAction(masteraction.KindWallInteract,
 					wallActionContent{WallIDs: []string{c.wallID}, Interact: string(ma.Interact.Kind)}, c.views)
@@ -1479,7 +1488,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		// A turn note: it hangs on the open turn and emits nothing to the table as an action, so
-		// nobody but the master saw it — no views (spec §4.8).
+		// nobody but the master saw it — no views (spec §4.8). There is always a turn open here
+		// (EnqueueMasterAction refuses otherwise), so it is written with that turn's close.
 		r.recordMasterAction(masteraction.KindTurnNote, payload, map[uuid.UUID]masteraction.View{})
 		out := NewServerMessage(MsgTypeMasterActionEnqueued, MasterActionEnqueuedPayload(payload))
 		data, _ := json.Marshal(out)
@@ -1802,8 +1812,9 @@ func (r *Room) announceOpenedTurn(
 // sequence, and it had been copy-pasted into three ~15-line blocks.
 //
 // It takes r.mu itself, exactly as the three call sites used to: a Lock to snapshot the
-// scene/round/matchUUID session needs and drain the turn's captured overrides — TakeOverridesFor
-// mutates the session, so this is a Lock now, not the RLock it started as — then, only on
+// scene/round/matchUUID session needs and drain the turn's captured overrides and the master
+// actions held for it (turnWrites) — both drains mutate, so this is a Lock now, not the RLock
+// it started as — then, only on
 // success, a second Lock to flip MarkRoundPersisted. Callers must NOT hold r.mu when calling
 // this: sync.RWMutex is not reentrant, and a nested acquire would deadlock the room
 // permanently. Every call site below already releases r.mu before reaching here.
@@ -1842,20 +1853,25 @@ func (r *Room) persistClosedTurn(
 	activeScene, activeRound = snapshotSceneAndRound(activeScene, activeRound)
 	matchUUID := session.GetMatchUUID()
 	overrides := session.TakeOverridesFor(t)
+	// What the master did inside this turn, held until now (turnWrites): written in the turn's
+	// own transaction, or lost with it.
+	inTurn := r.takeTurnWritesLocked(t.GetID())
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
+		MasterActions: inTurn.masterActions,
 	})
 	if err != nil {
-		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted: %v",
-			t.GetID(), matchUUID, err)
-		// The overrides were already drained above and are lost with the turn. That is
-		// correct, not a leak to plug: overridden_action_values.action_uuid references
-		// actions(uuid), and if PersistTurnClose failed the action row was never written —
-		// the override rows could not have been inserted regardless. No retry queue: this
-		// failure mode is already logged-and-swallowed policy for the whole turn.
+		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it: %v",
+			t.GetID(), matchUUID, len(inTurn.masterActions), err)
+		// The overrides and the turn's master actions were already drained above and are lost
+		// with the turn. That is correct, not a leak to plug: overridden_action_values.action_uuid
+		// references actions(uuid), so the override rows could not have been inserted without the
+		// action row; and the master actions belong to the turn by decision — durable with it or
+		// not at all. No retry queue: this failure mode is already logged-and-swallowed policy for
+		// the whole turn.
 		return
 	}
 	// Only if the round written is still the active one: the successor of an exhausted round is

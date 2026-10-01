@@ -18,7 +18,8 @@ import (
 // During a match the master moves, places and removes pieces through enqueue_master_action
 // (spec §4.3, "Master action de peça", B14 + the `move` of B9 + B11 live), and every accepted
 // master action — pieces, walls, and the generic ones that hang on the open turn — is recorded
-// in master_actions the instant it is applied, with what each player saw of it live (spec §4.8).
+// with what each player saw of it live (spec §4.8): in master_actions the instant it is applied
+// when no turn is open, and with the turn's close when one is (turn_scoped_e2e_test.go).
 //
 // Driven over real sockets against a real Room and session; the only fakes are the stores.
 
@@ -299,25 +300,8 @@ func TestMasterBoard_DragSeenLeaving(t *testing.T) {
 	})
 }
 
-// Com turno aberto a master action também é pendurada no turno, e o registro leva o turnId.
-func TestMasterBoard_DragDuringAnOpenTurn(t *testing.T) {
-	f := newCombatFixture(t)
-	f.seedBoard(t)
-	master, player := f.connect(t)
-	defer master.Close() //nolint:errcheck
-	defer player.Close() //nolint:errcheck
-	mc := collectFrom(master)
-	turnID := f.openAttackTurn(t, master, player, mc)
-
-	sendMasterMove(t, master, f.attackerID, [3]int{6, 4, 0})
-	recs := f.masterActions.await(t, 1, 2*time.Second)
-	if recs[0].TurnUUID == nil || *recs[0].TurnUUID != turnID {
-		t.Fatalf("turnUuid = %v, want the open turn %s", recs[0].TurnUUID, turnID)
-	}
-	if n := len(f.session.GetActiveRound().CurrentTurn().GetMasterActions()); n != 1 {
-		t.Fatalf("the open turn carries %d master action(s), want 1", n)
-	}
-}
+// Com turno aberto a master action também é pendurada no turno, e o registro leva o turnId —
+// mas só é gravado com o fechamento do turno: ver turn_scoped_e2e_test.go.
 
 // ─── pôr ────────────────────────────────────────────────────────────────────
 
@@ -689,8 +673,9 @@ func TestMasterBoard_RevealIsRecordedFullForEveryone(t *testing.T) {
 	})
 }
 
-// O caminho genérico (só alvos e perícias, pendurado no turno aberto) grava turnNote, sem views:
-// não chega à mesa ao vivo como ação, fica só para o mestre. O eco continua indo à mesa inteira.
+// O caminho genérico (só alvos e perícias, pendurado no turno aberto) grava turnNote, sem views,
+// junto com o fechamento do turno: não chega à mesa ao vivo como ação, fica só para o mestre. O
+// eco continua indo à mesa inteira.
 func TestMasterBoard_GenericMasterActionIsATurnNote(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)
@@ -706,9 +691,18 @@ func TestMasterBoard_GenericMasterActionIsATurnNote(t *testing.T) {
 	if !pc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
 		t.Fatal("the generic master action's echo no longer reaches the table")
 	}
-	recs := f.masterActions.await(t, 1, 2*time.Second)
-	if recs[0].Kind != masteraction.KindTurnNote {
-		t.Fatalf("kind = %q, want turnNote", recs[0].Kind)
+	// A turn note only exists inside a turn, so it is always written with that turn's close.
+	if n := len(f.masterActions.snapshot()); n != 0 {
+		t.Fatalf("master_actions got %d row(s) while the turn was open, want none", n)
+	}
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	f.awaitPersistedTurn(t, turnID)
+	recs := f.roundRepo.masterActionsFor(turnID)
+	if len(recs) != 1 || recs[0].Kind != masteraction.KindTurnNote {
+		t.Fatalf("PersistTurnClose got %+v, want one turnNote", recs)
 	}
 	if recs[0].TurnUUID == nil || *recs[0].TurnUUID != turnID {
 		t.Fatalf("turnUuid = %v, want %s", recs[0].TurnUUID, turnID)

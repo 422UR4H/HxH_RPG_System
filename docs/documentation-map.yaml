@@ -691,7 +691,21 @@ mappings:
       do braço do enqueue_master_action (edit_action não é master action). Garante
       cena/round (EnsureSceneAndRound) antes, e grava views: o que cada jogador da
       sessão viu ao vivo, pelos mesmos portões de fog do dispatch (pieceMoveView,
-      pieceRemovedView) — mudar um portão muda o que o histórico mostra.
+      pieceRemovedView) — mudar um portão muda o que o histórico mostra. Com turno
+      aberto não insere: guarda o registro para o fechamento (turn_writes.go).
+
+  - code_path: internal/app/game/turn_writes.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      turnWrites — o que aconteceu dentro de um turno aberto e só é gravado com o
+      fechamento dele, na transação de PersistTurnClose (decisão do dono do produto,
+      2026-10-01; spec 2026-09-27-combat-closure-back §4.3/§4.8). Hoje as master
+      actions; um dado novo do turno entra como campo aqui e em TurnCloseData. A sala
+      fechar com turno aberto o perde inteiro, como um reinício (logDroppedTurn).
 
   - code_path: internal/app/game/history_record.go
     dev_docs:
@@ -1356,8 +1370,9 @@ mappings:
     notes: >-
       EnsureSceneAndRound (os dois inserts idempotentes de cena e rodada, também
       chamados de dentro da transação do PersistTurnClose; spec §4.5/§4.8).
-      PersistTurnClose (cena, rodada, turno, ação, reações, overrides e a resolução
-      LIQUIDADA, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
+      PersistTurnClose (cena, rodada, turno, ação, reações, overrides, a resolução
+      LIQUIDADA e as master actions feitas com o turno aberto — pelo Insert do
+      pgmasteraction rodando no tx —, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
       uma query só). resolution_record.go é um record EXPLÍCITO, não json.Marshal em
       service.TurnResolution: battle.Blow e match.Scope têm campos privados e
       serializariam como {} em silêncio. Toda omissão desse record é escolhida e tem

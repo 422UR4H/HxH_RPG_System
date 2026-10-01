@@ -31,7 +31,11 @@ import (
 // it. Each emits piece_moved/piece_removed fog-projected for everyone, the master included —
 // the master's screen waits for that confirmation — and master_action_enqueued to the master
 // ALONE: the echo carries the position, which for a hidden piece would leak to the table.
-// Then the board is saved and the master action recorded with what each player saw (§4.8).
+// Then the board is saved and the master action recorded with what each player saw (§4.8) —
+// at once with no turn open; with one, both wait for that turn's close and are written with it
+// (persistBoardOutsideTurn, recordMasterAction; owner decision, 2026-10-01). The NPC enrolment
+// of a place is the exception: its participant row is written at once either way, and survives
+// a restart that loses the turn — the NPC is then in the match with no piece on the board.
 //
 // In the lobby there is no session: the master moves pieces with piece_moved there.
 //
@@ -79,7 +83,9 @@ func (r *Room) applyMasterPieceAction(client *Client, ma *action.MasterAction, r
 		log.Printf("master piece action: hanging it on the open turn: %v", err)
 	}
 
-	r.persistBoard("master_piece")
+	// Inside an open turn neither writes now: the turn's close saves the board and writes the
+	// master action with the turn, in one transaction.
+	r.persistBoardOutsideTurn("master_piece")
 	r.recordMasterAction(kind, content, views)
 
 	echo := MasterActionEnqueuedPayload{TargetIDs: ma.TargetID}
