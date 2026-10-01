@@ -1385,8 +1385,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		// Wall interaction: handled in-memory + broadcast; does not go through the use case queue.
 		if ma.Interact != nil && len(ma.TargetID) > 0 {
-			var changed []string
-			views := map[uuid.UUID]masteraction.View{}
+			// One record per changed wall, each with ITS OWN views: a batch can mix an ordinary
+			// door the table saw with an unrevealed secret door nobody but the master saw, and a
+			// single record listing both under the union of their views would hand the secret
+			// door's id to every player who saw the ordinary one, through GET /history.
+			type wallRecord struct {
+				wallID string
+				views  map[uuid.UUID]masteraction.View
+			}
+			var changed []wallRecord
 			for _, targetID := range ma.TargetID {
 				wallID := targetID.String()
 				r.mu.RLock()
@@ -1406,18 +1413,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					// server DOES know this wall, it just cannot act on this kind yet.
 					continue
 				}
-				changed = append(changed, wallID)
-				// A player who saw any of the walls change saw the action.
-				for pid, v := range r.broadcastWallStateChangedGated(wallID, newOpen, newLocked) {
-					views[pid] = v
-				}
+				changed = append(changed, wallRecord{
+					wallID: wallID,
+					views:  r.broadcastWallStateChangedGated(wallID, newOpen, newLocked),
+				})
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
 			r.persistBoard("wall_interact")
-			if len(changed) > 0 {
+			for _, c := range changed {
 				r.recordMasterAction(masteraction.KindWallInteract,
-					wallActionContent{WallIDs: changed, Interact: string(ma.Interact.Kind)}, views)
+					wallActionContent{WallIDs: []string{c.wallID}, Interact: string(ma.Interact.Kind)}, c.views)
 			}
 			return
 		}

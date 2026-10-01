@@ -604,6 +604,70 @@ func TestMasterBoard_WallInteractIsRecorded(t *testing.T) {
 	assertViews(t, recs[1].Views, map[uuid.UUID]masteraction.View{})
 }
 
+// Um lote com uma porta comum (vista pela mesa) e uma porta secreta não revelada (vista por
+// ninguém) grava UMA master action por parede, cada uma com as próprias views: misturadas num
+// registro só, o jogador que viu a porta comum receberia no histórico o id da porta secreta.
+func TestMasterBoard_WallInteractBatchRecordsOneActionPerWall(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+	f.seedBoardWithDoors(t)
+	master, player, blind, _, pc, _ := f.connectTable(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	sendWS(t, master, string(game.MsgTypeEnqueueMasterAction), map[string]any{
+		"targetIds": []string{doorID.String(), secretDoorID.String()},
+		"interact":  map[string]any{"kind": "open"},
+	})
+	if !pc.await(game.MsgTypeWallStateChanged, 2*time.Second) {
+		t.Fatal("the player never saw the ordinary door open")
+	}
+	recs := f.masterActions.await(t, 2, 2*time.Second)
+
+	wallsOf := func(r masteraction.Record) []string {
+		t.Helper()
+		var c struct {
+			WallIDs []string `json:"wallIds"`
+		}
+		if err := json.Unmarshal(r.Content, &c); err != nil {
+			t.Fatalf("unmarshal content: %v", err)
+		}
+		return c.WallIDs
+	}
+	// What GET /history hands each reader: the domain's own projection, per record.
+	historyOf := func(viewerIsMaster bool, viewer uuid.UUID) map[string]bool {
+		got := map[string]bool{}
+		for _, r := range recs {
+			if r.Kind != masteraction.KindWallInteract {
+				t.Fatalf("kind = %q, want wallInteract", r.Kind)
+			}
+			if p, ok := r.ProjectFor(viewerIsMaster, viewer); ok {
+				for _, id := range wallsOf(p) {
+					got[id] = true
+				}
+			}
+		}
+		return got
+	}
+
+	for _, r := range recs {
+		if ids := wallsOf(r); len(ids) != 1 {
+			t.Fatalf("a record carries walls %v, want exactly one wall per record", ids)
+		}
+	}
+	playerSaw := historyOf(false, f.playerUUID)
+	if !playerSaw[doorID.String()] {
+		t.Errorf("the player's history lacks the ordinary door they saw open")
+	}
+	if playerSaw[secretDoorID.String()] {
+		t.Errorf("the player's history carries the unrevealed secret door %s — nobody saw it", secretDoorID)
+	}
+	masterSaw := historyOf(true, f.masterUUID)
+	if !masterSaw[doorID.String()] || !masterSaw[secretDoorID.String()] {
+		t.Errorf("the master's history = %v, want both doors", masterSaw)
+	}
+}
+
 // Revelar vai a todos ao vivo, então é full para todo jogador da sessão.
 func TestMasterBoard_RevealIsRecordedFullForEveryone(t *testing.T) {
 	f := newCombatFixture(t, withBystander)

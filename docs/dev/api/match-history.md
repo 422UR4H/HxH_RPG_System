@@ -353,7 +353,7 @@ sumir com ela porque o turno não sobreviveu apagaria algo que a mesa viu.
 | `kind` | `movePiece` · `placePiece` · `removePiece` · `wallInteract` · `revealWall` · `turnNote` |
 | `turnId` | o turno aberto quando foi aplicada; **ausente** fora de turno |
 | `happenedAt` | quando foi aplicada |
-| `content` | o que ela fez — peça: `{ characterId, pieceId, from?, to? }` (`from` ausente num `placePiece`, `to` ausente num `removePiece`); parede: `{ wallIds, interact }` (só as paredes que de fato mudaram); `turnNote`: o payload do `enqueue_master_action` como o mestre o mandou |
+| `content` | o que ela fez — peça: `{ characterId, pieceId, from?, to? }` (`from` ausente num `placePiece`, `to` ausente num `removePiece`); parede: `{ wallIds, interact }` (só as paredes que de fato mudaram — um `wallInteract` traz sempre **uma** parede: um lote do mestre vira uma master action por parede, cada uma com quem viu aquela parede, para que ver uma porta comum não entregue no histórico o id de uma porta secreta não revelada do mesmo lote; um `revealWall` traz todas as reveladas, que vão a todos); `turnNote`: o payload do `enqueue_master_action` como o mestre o mandou |
 
 `events` e `masterActions` são **sempre listas** — `[]` quando não há nada — nunca `null`.
 Dentro de cada uma, a ordem do array é a ordem do tempo; `createdAt`/`happenedAt` têm

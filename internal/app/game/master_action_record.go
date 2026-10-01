@@ -14,6 +14,8 @@ import (
 // wallActionContent is the Content of the two wall kinds (wallInteract, revealWall): the walls
 // the action actually changed — a targetId the server did not know, or whose interact kind does
 // not apply to it, was answered or skipped and is not part of what happened — and the kind.
+// A wallInteract always carries ONE wall (a batch is recorded once per wall, each with its own
+// views); a revealWall carries every wall it revealed, since a reveal reaches every player.
 type wallActionContent struct {
 	WallIDs  []string `json:"wallIds"`
 	Interact string   `json:"interact"`
