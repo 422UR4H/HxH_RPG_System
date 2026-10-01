@@ -69,7 +69,7 @@ func TestFromCutsByLevel(t *testing.T) {
 		if decl.Speed.RollCheck.Result != nil || decl.Move.FinalSpeed != nil || decl.Move.Speed.Result != nil {
 			t.Fatal("declaration must carry no speed")
 		}
-		if decl.Move.Position != a.Move.Position || len(decl.TargetID) != len(a.TargetID) || decl.Attack.Weapon == nil {
+		if decl.Move.Position == nil || *decl.Move.Position != a.Move.Position || len(decl.TargetID) != len(a.TargetID) || decl.Attack.Weapon == nil {
 			t.Fatal("declaration must keep what the owner declared")
 		}
 	})

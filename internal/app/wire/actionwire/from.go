@@ -43,7 +43,9 @@ const (
 // (attack.hit/damage/charge, move.charge, skills[], feint, defense, dodge, repel) is kept only
 // when lvl == Full. Everything that is not a number — targets, weapon, move's category/
 // from/position, skill names, reactionKind, interact, spread, relativeVelocity, systemBias —
-// is copied unconditionally, at every level.
+// is copied unconditionally, at every level. Whether a recipient may see WHERE a piece moves
+// (move.from/position) is the fog's question, not a Level's: the game server answers it after
+// From, per recipient — From itself never withholds them.
 func From(a action.Action, lvl Level) Action {
 	speedKeep := lvl != Declaration
 	numbersKeep := lvl == Full
@@ -78,7 +80,7 @@ func From(a action.Action, lvl Level) Action {
 	}
 	if a.Move != nil {
 		out.Move = &Move{
-			Category: string(a.Move.Category), From: fromPtr(a.Move.From), Position: a.Move.Position,
+			Category: string(a.Move.Category), From: fromPtr(a.Move.From), Position: positionPtr(a.Move.Position),
 			Speed:      rollCheckPtr(a.Move.Speed, speedKeep),
 			Charge:     rollCheckPtr(a.Move.Charge, numbersKeep),
 			FinalSpeed: intPtr(a.Move.FinalSpeed, speedKeep),
@@ -158,6 +160,14 @@ func fromPtr(v *[3]int) *[3]int {
 		return nil
 	}
 	out := *v
+	return &out
+}
+
+// positionPtr lifts the domain's always-present Move.Position onto the wire's pointer. From
+// always fills it; the pointer exists so the game server can withhold it per recipient (see
+// Move's own doc), not because the domain ever lacks it.
+func positionPtr(v [3]int) *[3]int {
+	out := v
 	return &out
 }
 

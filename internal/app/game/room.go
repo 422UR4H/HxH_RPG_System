@@ -1607,7 +1607,7 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 	}
 }
 
-// turnActionWire projects act to the wire cut this playerID/isMaster is entitled to AT
+// turnActionWireLocked projects act to the wire cut this playerID/isMaster is entitled to AT
 // TURN-OPEN TIME (isSettled=false, always — design spec §4.2, B2): the master keeps every
 // number (actionwire.Full); everyone else — the actor's own owner included — gets the
 // mechanics with the numbers cut (actionwire.Opened), only after service.ProjectAction's
@@ -1615,14 +1615,90 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 // open, closed reactions' label demoted). From carries no deny-list of its own — see its own
 // doc — so ProjectAction has to run first, every time, for every non-master recipient.
 //
+// Then the move's WHERE, which no Level decides: move.from and move.position are the actor's
+// piece leaving one cell and entering another, so a non-master who does not own the actor
+// gets them only as far as the piece's own fog gate lets them (gatePieceMoveLocked, the
+// decision the live relay makes) — the whole move, the origin alone, or neither. category
+// stays: that the actor moves is public mechanics, where is not (owner decision 2026-10-01).
+//
 // Shared by announceOpenedTurn (live turn_opened) and buildMatchFullState (OpenTurn on a
 // reconnect's match_full_state), so a reconnecting client's snapshot can never disagree with
 // the live event they may already have received.
-func turnActionWire(act action.Action, v domainservice.Viewer, isMaster bool) actionwire.Action {
-	if isMaster {
+//
+// The caller MUST hold r.mu (a read lock is enough): the gate reads r.pieces and the session's
+// grid and visibility cache, and act's pointer fields point at live session memory (see
+// announceOpenedTurn).
+func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainservice.Viewer) actionwire.Action {
+	if v.IsMaster {
 		return actionwire.From(act, actionwire.Full)
 	}
-	return actionwire.From(domainservice.ProjectAction(act, v, false), actionwire.Opened)
+	out := actionwire.From(domainservice.ProjectAction(act, v, false), actionwire.Opened)
+	if out.Move == nil || v.SeesAllOf(out.ActorID) {
+		return out
+	}
+	var to [3]int
+	if out.Move.Position != nil {
+		to = *out.Move.Position
+	}
+	switch view, ok := r.gatePieceMoveLocked(pid, out.ActorID, out.Move.From, to); {
+	case !ok:
+		out.Move.From, out.Move.Position = nil, nil
+	case view == masteraction.ViewLeft:
+		out.Move.Position = nil
+	}
+	return out
+}
+
+// gatePieceMoveLocked is pieceMoveView — the live relay's fog gate — for one character's piece
+// going from `from` (nil: no known origin) to `to`, as recipient pid sees it RIGHT NOW: their
+// cached visibility polygons, the session's grid (cell centres, as the wall check reads them),
+// and the piece's own visible flag (a visible:false piece reaches no player). It is the one
+// place the wire's move.from/position (turn_opened, openTurn) and a settled escape's landing
+// ask "may this player know where the piece went", so those surfaces cannot drift from what
+// piece_moved/piece_removed told the same player.
+//
+// No session (the lobby) means no fog: everything is visible, as relayPieceMove has it.
+//
+// The caller MUST hold r.mu (a read lock is enough): it reads r.pieces and session state.
+func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from *[3]int, to [3]int) (masteraction.View, bool) {
+	if r.session == nil {
+		return masteraction.ViewFull, true
+	}
+	grid := r.session.GetGrid()
+	hidden := false
+	if pieceID := r.pieceOfLocked(characterID.String()); pieceID != "" {
+		if vis := r.pieces[pieceID].Visible; vis != nil && !*vis {
+			hidden = true
+		}
+	}
+	nx, ny := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+	var oldPt domainservice.Point2D
+	if from != nil {
+		ox, oy := mapservice.SlotCenterToWorld(from[0], from[1], grid)
+		oldPt = domainservice.Point2D{X: ox, Y: oy}
+	}
+	return pieceMoveView(r.session.GetVisibility(pid), domainservice.Point2D{X: nx, Y: ny}, oldPt, from != nil, hidden)
+}
+
+// gateEscapeLandingsLocked withholds a settled escape's landing from a recipient who could not
+// see the piece land there — the same news as a move's destination, so the same gate
+// (gatePieceMoveLocked, with no origin: the escape payload names none). The master and the
+// escaping character's owner keep it. Only the landing goes: the verdict (escaped, movePassed,
+// dodgePassed, awaitsMaster) is public once settled.
+//
+// The caller MUST hold r.mu (a read lock is enough).
+func (r *Room) gateEscapeLandingsLocked(p *ResolutionUpdatedPayload, pid uuid.UUID, v domainservice.Viewer) {
+	for i := range p.Targets {
+		tr := &p.Targets[i]
+		if tr.Escape == nil || tr.Escape.Landing == nil || v.SeesAllOf(tr.TargetID) {
+			continue
+		}
+		if _, ok := r.gatePieceMoveLocked(pid, tr.TargetID, nil, *tr.Escape.Landing); !ok {
+			esc := *tr.Escape
+			esc.Landing = nil
+			tr.Escape = &esc
+		}
+	}
 }
 
 // announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for
@@ -1640,7 +1716,7 @@ func turnActionWire(act action.Action, v domainservice.Viewer, isMaster bool) ac
 // everyone else sees Opened after the deny-list — so it travels through dispatchPerPlayer, one
 // payload built per recipient under r.mu.RLock (session state has no lock of its own), handed
 // back outside the lock as dispatchPerPlayer requires. act is fixed ONCE, before the loop: it
-// does not change per recipient, only its projection (turnActionWire) does.
+// does not change per recipient, only its projection (turnActionWireLocked) does.
 //
 // res is nil-safe: a turn can open with nothing to resolve.
 func (r *Room) announceOpenedTurn(
@@ -1654,17 +1730,17 @@ func (r *Room) announceOpenedTurn(
 	turnID, actorID, actionID := opened.GetID(), act.GetActorID(), act.GetID()
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-		// viewerFor AND turnActionWire both run inside this SAME RLock section — not just
+		// viewerFor AND turnActionWireLocked both run inside this SAME RLock section — not just
 		// viewerFor. act is a copy of the Turn's Action struct (GetAction's own doc), but its
 		// pointer/slice fields (Move, Attack, Skills, TargetID, ...) still point AT the live
 		// session's memory: a concurrent edit_action/attach_reaction on this same match
 		// mutates through them under r.mu, with no lock of MatchSession's own to stop a
-		// reader outside r.mu from racing it. turnActionWire (via actionwire.From) walks every
+		// reader outside r.mu from racing it. turnActionWireLocked (via actionwire.From) walks every
 		// one of those fields, so projecting it has to happen under the lock too, not just
 		// building the Viewer.
 		r.mu.RLock()
 		v := r.viewerFor(pid, isMaster)
-		wireAction := turnActionWire(act, v, isMaster)
+		wireAction := r.turnActionWireLocked(act, pid, v)
 		r.mu.RUnlock()
 		msg := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  turnID,
@@ -1929,13 +2005,14 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 	}
 
 	r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
+		// The landing gate reads the board and the visibility cache, so the payload is built
+		// under the same RLock as the Viewer; it is sent, as always, after the unlock.
 		r.mu.RLock()
 		v := r.viewerFor(playerID, isMaster)
+		p := newResolutionUpdatedPayload(turnID, domainservice.ProjectResolution(res, v))
+		r.gateEscapeLandingsLocked(&p, playerID, v)
 		r.mu.RUnlock()
-		msg := NewServerMessage(
-			MsgTypeResolutionUpdate,
-			newResolutionUpdatedPayload(turnID, domainservice.ProjectResolution(res, v)),
-		)
+		msg := NewServerMessage(MsgTypeResolutionUpdate, p)
 		return &msg
 	})
 }
@@ -2322,11 +2399,11 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 				TurnID:  t.GetID(),
 				ActorID: act.GetActorID(),
 				// ActionID and Action are B2 (design spec §4.2): the same two fields the live
-				// turn_opened carries, projected by the exact same rule (turnActionWire) — a
+				// turn_opened carries, projected by the exact same rule (turnActionWireLocked) — a
 				// reconnecting client's snapshot can never disagree with the live event they
 				// may already have received.
 				ActionID: act.GetID(),
-				Action:   turnActionWire(act, v, isMaster),
+				Action:   r.turnActionWireLocked(act, playerID, v),
 			}
 			if isMaster {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the

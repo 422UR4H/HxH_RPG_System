@@ -124,19 +124,26 @@ type ActionSpeed struct {
 }
 
 // Move is the movement half of an action. Category, From and Position are the DECLARATION —
-// what the owner committed to — and always travel in full, at every level. Speed and
+// what the owner committed to — and From fills them at every level. Speed and
 // FinalSpeed are the moveSpeed roll and its derived result, cut by the same "moveSpeed" row as
 // ActionSpeed above: kept at Full and Opened, cut to the skill name alone (Speed) or absent
 // entirely (FinalSpeed) at Declaration. Charge follows the OTHER row instead — same as
 // attack.hit/damage/charge, skills[], feint, defense, dodge, repel — kept only at Full.
+//
+// From and Position are also WHERE a piece stands and goes, which is not a Level question:
+// the game server nils them per recipient after From, by the piece's own fog gate (room.go's
+// turnActionWireLocked, owner decision 2026-10-01). From never does — see its own doc.
 type Move struct {
 	Category string `json:"category"`
 	// From is the actor's piece position on the server's board at enqueue time (B6, spec
 	// §4.3 "B5, B6 e B10") — never the client's declared origin, which the server discards.
 	// nil (omitted on the wire) means the actor had no piece to check against. Convention:
 	// [a, b, z], (a, b) = (col, row) square or (q, r) axial hex, z not read.
-	From       *[3]int    `json:"from,omitempty"`
-	Position   [3]int     `json:"position"`
+	From *[3]int `json:"from,omitempty"`
+	// Position is where the move puts the piece. Always set by From; nil (omitted on the wire)
+	// only when the game server withheld it from a recipient who cannot see that cell. The
+	// REST history (Full, never gated) always carries it.
+	Position   *[3]int    `json:"position,omitempty"`
 	Speed      *RollCheck `json:"speed,omitempty"`
 	Charge     *RollCheck `json:"charge,omitempty"`
 	FinalSpeed *int       `json:"finalSpeed,omitempty"`

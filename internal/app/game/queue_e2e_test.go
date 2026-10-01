@@ -79,7 +79,7 @@ func TestActionQueuedCarriesTheWholeDeclaration(t *testing.T) {
 		if queued.Action.Move == nil || queued.Action.Move.FinalSpeed == nil {
 			t.Error("action.move.finalSpeed is nil — Full/Opened must keep the derived speed")
 		}
-		if queued.Action.Move == nil || queued.Action.Move.Position != to {
+		if queued.Action.Move == nil || queued.Action.Move.Position == nil || *queued.Action.Move.Position != to {
 			t.Errorf("action.move.position = %+v, want %v", queued.Action.Move, to)
 		}
 		if len(queued.Action.TargetID) != 1 || queued.Action.TargetID[0] != f.victimID {

@@ -97,7 +97,7 @@ func From(a action.Action, lvl Level) Action
 
 | Campo | `Full` | `Opened` | `Declaration` |
 |---|---|---|---|
-| alvos, arma, `move` (categoria, origem, destino), nomes das perícias, `reactionKind`, `interact`, `spread`, `relativeVelocity`, `systemBias` | ✔ | ✔ | ✔ |
+| alvos, arma, `move` (categoria, origem, destino — origem e destino ainda sujeitos à fog da peça para quem não é mestre nem dono, ver abaixo), nomes das perícias, `reactionKind`, `interact`, `spread`, `relativeVelocity`, `systemBias` | ✔ | ✔ | ✔ |
 | `speed.rollCheck` (actionSpeed) — perícia, dados, total | ✔ | ✔ | só o nome da perícia |
 | `move.speed` e `move.finalSpeed` (moveSpeed) | ✔ | ✔ | só o nome da perícia |
 | dados, `skillValue` e `result` de `attack.hit`, `attack.damage`, `attack.charge`, `move.charge`, `skills[]`, `feint`, `defense`, `dodge`, `repel` | ✔ | só o nome da perícia | só o nome da perícia |
@@ -106,6 +106,14 @@ func From(a action.Action, lvl Level) Action
   `Evasion` fora) continua sendo do `service.ProjectAction`, que roda **antes** do `From`. O
   `From` não decide quem vê o quê: ele só corta números. Os dois eixos ficam cada um no seu
   lugar.
+- **`move.from`/`move.position` têm um terceiro eixo, a fog da peça** (decisão do dono do
+  produto, 2026-10-01): no WebSocket, para quem não é mestre nem dono do ator, eles passam
+  ainda pelo gate do relay ao vivo (`pieceMoveView`) — destino visível → os dois; só a origem
+  → `from`; nenhum, ou peça `visible: false` → nenhum (a categoria fica). Quem aplica é o
+  `room.go` (`turnActionWireLocked`), depois do `From`, que continua sem decidir visibilidade.
+  Para caber, `Move.Position` vira `*[3]int` com `omitempty`; no `Full` (o REST) é sempre
+  preenchido, então o JSON do histórico não muda. O `escape.landing` da resolução liquidada
+  segue o mesmo gate.
 
 ### 4.2 B1, B2 e B12 — as três superfícies
 
