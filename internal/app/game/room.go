@@ -1621,14 +1621,22 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 // decision the live relay makes) — the whole move, the origin alone, or neither. category
 // stays: that the actor moves is public mechanics, where is not (owner decision 2026-10-01).
 //
+// origin is the cell the gate judges the piece as LEAVING. On the live turn_opened it is where
+// the piece actually stood when the turn opened (applyOpenedMove) — the very origin the relay
+// judged — because move.from is read at ENQUEUE (B6) and is stale once the piece moved in
+// between (a master drag, an earlier queued move of the same character). On a reconnect there
+// is no record of that slot, so it is move.from itself. And move.from only travels when it IS
+// that origin: an "origin only" verdict on a cell the stale move.from does not name would
+// otherwise hand out a slot the relay never showed this player.
+//
 // Shared by announceOpenedTurn (live turn_opened) and buildMatchFullState (OpenTurn on a
 // reconnect's match_full_state), so a reconnecting client's snapshot can never disagree with
-// the live event they may already have received.
+// the live event they may already have received — save for that one stale-origin window.
 //
 // The caller MUST hold r.mu (a read lock is enough): the gate reads r.pieces and the session's
 // grid and visibility cache, and act's pointer fields point at live session memory (see
 // announceOpenedTurn).
-func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainservice.Viewer) actionwire.Action {
+func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainservice.Viewer, origin *[3]int) actionwire.Action {
 	if v.IsMaster {
 		return actionwire.From(act, actionwire.Full)
 	}
@@ -1636,48 +1644,70 @@ func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainse
 	if out.Move == nil || v.SeesAllOf(out.ActorID) {
 		return out
 	}
-	var to [3]int
-	if out.Move.Position != nil {
-		to = *out.Move.Position
-	}
-	switch view, ok := r.gatePieceMoveLocked(pid, out.ActorID, out.Move.From, to); {
+	switch view, ok := r.gatePieceMoveLocked(pid, out.ActorID, origin, out.Move.Position); {
 	case !ok:
 		out.Move.From, out.Move.Position = nil, nil
 	case view == masteraction.ViewLeft:
 		out.Move.Position = nil
+		if out.Move.From == nil || origin == nil || *out.Move.From != *origin {
+			out.Move.From = nil
+		}
 	}
 	return out
 }
 
+// moveFromOf is an action's enqueue-time move.from, nil when it has no Move or no origin.
+func moveFromOf(a action.Action) *[3]int {
+	if a.Move == nil {
+		return nil
+	}
+	return a.Move.From
+}
+
 // gatePieceMoveLocked is pieceMoveView — the live relay's fog gate — for one character's piece
-// going from `from` (nil: no known origin) to `to`, as recipient pid sees it RIGHT NOW: their
-// cached visibility polygons, the session's grid (cell centres, as the wall check reads them),
-// and the piece's own visible flag (a visible:false piece reaches no player). It is the one
-// place the wire's move.from/position (turn_opened, openTurn) and a settled escape's landing
-// ask "may this player know where the piece went", so those surfaces cannot drift from what
-// piece_moved/piece_removed told the same player.
+// going from `from` to `to`, as recipient pid sees it RIGHT NOW: their cached visibility
+// polygons, the session's grid (cell centres, as the wall check reads them), and the piece's
+// own visible flag. It is the one place the wire's move.from/position (turn_opened, openTurn)
+// and a settled escape's landing ask "may this player know where the piece went", so those
+// surfaces cannot drift from what piece_moved/piece_removed told the same player.
+//
+// nil from means no known origin (only the destination can be seen); nil to means no
+// destination (only the origin can) — never cell (0,0).
+//
+// The piece is hidden — nothing for any player — when it is visible:false, and also when the
+// character has NO piece on the board: applyMove then moves nothing and the relay tells
+// nobody anything, so neither may this.
 //
 // No session (the lobby) means no fog: everything is visible, as relayPieceMove has it.
 //
 // The caller MUST hold r.mu (a read lock is enough): it reads r.pieces and session state.
-func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from *[3]int, to [3]int) (masteraction.View, bool) {
+func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from, to *[3]int) (masteraction.View, bool) {
 	if r.session == nil {
 		return masteraction.ViewFull, true
 	}
-	grid := r.session.GetGrid()
-	hidden := false
-	if pieceID := r.pieceOfLocked(characterID.String()); pieceID != "" {
-		if vis := r.pieces[pieceID].Visible; vis != nil && !*vis {
-			hidden = true
-		}
+	pieceID := r.pieceOfLocked(characterID.String())
+	if pieceID == "" {
+		return "", false
 	}
-	nx, ny := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+	if vis := r.pieces[pieceID].Visible; vis != nil && !*vis {
+		return "", false
+	}
+	grid := r.session.GetGrid()
+	polys := r.session.GetVisibility(pid)
 	var oldPt domainservice.Point2D
 	if from != nil {
 		ox, oy := mapservice.SlotCenterToWorld(from[0], from[1], grid)
 		oldPt = domainservice.Point2D{X: ox, Y: oy}
 	}
-	return pieceMoveView(r.session.GetVisibility(pid), domainservice.Point2D{X: nx, Y: ny}, oldPt, from != nil, hidden)
+	if to == nil {
+		// No destination to see: only the origin can decide, and only as "left".
+		if from != nil && domainservice.IsVisible(oldPt, polys) {
+			return masteraction.ViewLeft, true
+		}
+		return "", false
+	}
+	nx, ny := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+	return pieceMoveView(polys, domainservice.Point2D{X: nx, Y: ny}, oldPt, from != nil, false)
 }
 
 // gateEscapeLandingsLocked withholds a settled escape's landing from a recipient who could not
@@ -1693,7 +1723,7 @@ func (r *Room) gateEscapeLandingsLocked(p *ResolutionUpdatedPayload, pid uuid.UU
 		if tr.Escape == nil || tr.Escape.Landing == nil || v.SeesAllOf(tr.TargetID) {
 			continue
 		}
-		if _, ok := r.gatePieceMoveLocked(pid, tr.TargetID, nil, *tr.Escape.Landing); !ok {
+		if _, ok := r.gatePieceMoveLocked(pid, tr.TargetID, nil, tr.Escape.Landing); !ok {
 			esc := *tr.Escape
 			esc.Landing = nil
 			tr.Escape = &esc
@@ -1722,7 +1752,9 @@ func (r *Room) gateEscapeLandingsLocked(p *ResolutionUpdatedPayload, pid uuid.UU
 func (r *Room) announceOpenedTurn(
 	session *matchsession.MatchSession, opened *turnentity.Turn, res *domainservice.TurnResolution,
 ) {
-	r.applyOpenedMove(opened)
+	// origin is where the piece stood when the turn opened — what the relay just judged the
+	// move on, and so what turn_opened's move gate judges it on too (turnActionWireLocked).
+	origin := r.applyOpenedMove(opened)
 
 	// GetAction returns a COPY, so it goes into a variable before any getter with a pointer
 	// receiver is called on it — the same shape persistClosedTurn already uses.
@@ -1740,7 +1772,7 @@ func (r *Room) announceOpenedTurn(
 		// building the Viewer.
 		r.mu.RLock()
 		v := r.viewerFor(pid, isMaster)
-		wireAction := r.turnActionWireLocked(act, pid, v)
+		wireAction := r.turnActionWireLocked(act, pid, v, origin)
 		r.mu.RUnlock()
 		msg := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
 			TurnID:  turnID,
@@ -2403,7 +2435,9 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 				// reconnecting client's snapshot can never disagree with the live event they
 				// may already have received.
 				ActionID: act.GetID(),
-				Action:   r.turnActionWireLocked(act, playerID, v),
+				// The reconnect has no record of where the piece stood at the opening, so the
+				// gate judges the move from its enqueue-time move.from (turnActionWireLocked).
+				Action: r.turnActionWireLocked(act, playerID, v, moveFromOf(act)),
 			}
 			if isMaster {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
@@ -2828,10 +2862,13 @@ func (r *Room) playerOwnsExistingPiece(
 // The position cannot wait for the close the way damage does: damage may still be edited
 // while the turn is open, but the reactions that follow depend on where the piece IS.
 //
+// It returns applyMove's origin: where the piece stood when the turn opened, nil when nothing
+// moved.
+//
 // The caller must NOT hold r.mu — applyMove takes it.
-func (r *Room) applyOpenedMove(opened *turnentity.Turn) {
+func (r *Room) applyOpenedMove(opened *turnentity.Turn) *[3]int {
 	a := opened.GetAction()
-	r.applyMove(a.GetActorID(), a.Move)
+	return r.applyMove(a.GetActorID(), a.Move)
 }
 
 // applyClosedEscapes puts on the board what the close decided about every escape of the turn
@@ -2930,11 +2967,17 @@ func escapeLandingEditOf(p EditActionPayload) *appmatch.EscapeLandingEdit {
 // A character with no piece on the board is NOT an error: there is simply nothing to move, so
 // no error message goes out for it.
 //
+// It returns where the piece stood BEFORE the write, as a grid position [a, b, 0] (the same
+// shape pieceSlotOf reports) — the origin the relay just judged the move on. nil when nothing
+// moved (no Move, no piece). Only announceOpenedTurn reads it: turn_opened's move.from/position
+// have to be gated from this same origin, not from the enqueue-time move.from, which is stale
+// once the piece moved in between (turnActionWireLocked).
+//
 // The caller must NOT hold r.mu — this takes it, and applyAndRelayPieceMove's relay takes it
 // again afterwards.
-func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
+func (r *Room) applyMove(actor uuid.UUID, move *action.Move) *[3]int {
 	if move == nil {
-		return
+		return nil
 	}
 	actorID := actor.String()
 	pos := move.Position
@@ -2953,9 +2996,11 @@ func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
 	pieceID := r.pieceOfLocked(actorID)
 	if pieceID == "" {
 		r.mu.Unlock()
-		return
+		return nil
 	}
 	old := r.pieces[pieceID]
+	oa, ob := slotToAB(old.Slot)
+	origin := [3]int{oa, ob, 0}
 	moved := old
 	moved.Slot = slotKeepingKind(old.Slot, pos)
 	// Z is deliberately NOT touched. It is the piece's virtual height in METRES, while
@@ -2970,6 +3015,7 @@ func (r *Room) applyMove(actor uuid.UUID, move *action.Move) {
 	// origin is uuid.Nil: the server moved this one and nobody's browser predicted it, so
 	// nobody is skipped and the message goes out as a server message.
 	r.relayPieceMove(moved, old, true, uuid.Nil)
+	return &origin
 }
 
 // pieceOfLocked is the piece a character moves by: its lowest piece ID — see the TODO in

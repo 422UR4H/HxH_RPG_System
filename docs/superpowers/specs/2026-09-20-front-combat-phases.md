@@ -642,7 +642,8 @@ e "todos" inclui o dono. As velocidades vão porque o `bars_updated` já as reve
 peça.** "Movimento" na tabela acima é a categoria para todos; a **origem e o destino**
 (`move.from`/`move.position`) chegam a quem não é mestre nem dono do ator só pelo mesmo gate de
 fog do relay ao vivo da peça: vê o destino → o `move` inteiro; vê só a origem → `from` sem
-`position`; não vê nenhum dos dois, ou a peça é `visible: false` → só a categoria. Vale para
+`position`; não vê nenhum dos dois, a peça é `visible: false` ou o ator não tem peça → só a
+categoria. Vale para
 `turn_opened`, para o `openTurn` do `match_full_state` e para o `escape.landing` da resolução
 liquidada (some para quem não vê a casa de queda). **O front tem que tolerar um `move` sem
 `from` e sem `position`** — contrato em `docs/dev/api/match-combat-ws.md` (`turn_opened`, §6).

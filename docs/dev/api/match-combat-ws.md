@@ -1116,14 +1116,19 @@ peça que a fog dele (ou `visible: false`) esconde, enquanto o relay ao vivo do 
 movimento ([`piece_moved`/`piece_removed`](#piece_moved-também-servidor--cliente-na-abertura-do-turno)) não dizia nada.
 
 Para quem **não é mestre nem dono do ator**, os dois campos passam pelo **mesmo gate** do
-relay ao vivo (`pieceMoveView`, com os polígonos de visão em cache daquele jogador, a origem
-em `move.from`, o destino em `move.position` e o `visible` da peça):
+relay ao vivo (`pieceMoveView`, com os polígonos de visão em cache daquele jogador, o destino
+em `move.position` e o `visible` da peça). **A origem que o gate julga** é, no `turn_opened`
+ao vivo, **a casa em que a peça estava quando o turno abriu** — a mesma que o relay julgou;
+não `move.from`, que é lido no **enfileiramento** (B6) e fica velho se a peça andou no meio
+(arrasto do mestre, uma ação anterior do mesmo personagem). Numa reconexão
+([`openTurn`](#match_full_state)) essa casa não está guardada, e a origem julgada é o próprio
+`move.from`.
 
 | O que o destinatário vê | `move` |
 |---|---|
 | O destino (o relay mandou `piece_moved`) | inteiro: `category`, `from`, `position` |
-| Só a origem (o relay mandou `piece_removed`) | `category` e `from` — **sem `position`** |
-| Nenhum dos dois, **ou** a peça é `visible: false` | só `category` — **sem `from` nem `position`** |
+| Só a origem (o relay mandou `piece_removed`) | `category` e `from` — **sem `position`**; e `from` só se for **essa mesma origem** — se a peça andou desde o enfileiramento, `move.from` aponta para uma casa que o relay nunca mostrou, e sai também |
+| Nenhum dos dois, **ou** a peça é `visible: false`, **ou** o ator não tem peça no tabuleiro (o mestre a tirou depois do enfileiramento: nada anda, o relay não manda nada) | só `category` — **sem `from` nem `position`** |
 
 Mestre e dono do ator recebem o `move` inteiro, sempre. `category` fica para todos: **que** o
 ator se move é mecânica pública; **onde** não é. Os demais campos de `move` (`speed`,
@@ -1687,7 +1692,7 @@ continuam, porque isso o dono já sabia que declarou.
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
-| `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão. Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
+| `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 | `ownQueue` | **B12 (design spec §4.2).** O espelho de `queue` para quem NÃO é o mestre: as ações ainda pendentes cujo ator pertence a este destinatário (`charToPlayer`), na mesma ordem de inserção da fila, uma `{ actionId, action }` por entrada, `action` em `actionwire.Declaration` (só o que o dono declarou — arma, alvos, `move.category/from/position`, nomes de perícia; **nenhum** dado, total ou velocidade, nem a de `speed`/`move` — ver a tabela de corte, §4.1 do design spec). Ausente **só para o mestre** — o eixo aqui não é tempo, é CLASSE, o oposto de `queue`. **SEMPRE presente para todo o resto**, mesmo sem nada pendente: vem `[]`, não ausente. É por isso que o tipo em Go é ponteiro (`*[]OwnQueuedActionPayload` com `omitempty`) em vez de slice nua — uma slice nua nula ainda serializa `null`, e o contrato aqui não é "nulo ou a lista", é "ausente (mestre) ou presente, vazia ou não (todo mundo mais)"; em TypeScript isso é `ownQueue?: OwnQueuedActionPayload[]`, e a chave só falta quando o destinatário é o mestre — para qualquer outro `ownQueue` está sempre lá, e `.length === 0` é a resposta "nada seu na fila", não a ausência do campo. Ver a **regra de reconciliação** logo abaixo. |
@@ -1972,7 +1977,7 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
 5. **`escape.landing` segue a fog da peça, não a classe só.** Onde uma fuga falha caiu é a
    mesma notícia que o destino de um movimento (decisão do dono do produto, 2026-10-01): para
    quem não é mestre nem dono do personagem que fugiu, `landing` **some** quando a casa de
-   queda está fora da visão dele — ou a peça é `visible: false` —, pelo mesmo gate do relay ao
+   queda está fora da visão dele — ou a peça é `visible: false`, ou não está no tabuleiro —, pelo mesmo gate do relay ao
    vivo (`pieceMoveView`, sem origem). O resto do veredito (`escaped`, `movePassed`,
    `dodgePassed`, `awaitsMaster`) continua chegando: é público depois de liquidado. Note que
    `awaitsMaster: false` com `escaped: false` e sem `landing` quer dizer "o mestre escolheu

@@ -1660,6 +1660,14 @@ const (
 // sight, which is the whole point of them.
 func (f *combatFixture) seedBoard(t *testing.T) {
 	t.Helper()
+	f.seedBoardWith(t, moveBoardWall)
+}
+
+// seedBoardWith is seedBoard over other walls — the same pieces, a different line of sight.
+// seedBoard's divider is what makes the bystander blind; a test that needs them to SEE passes
+// none.
+func (f *combatFixture) seedBoardWith(t *testing.T, walls ...mapentity.WallSegment) {
+	t.Helper()
 	pieces := []mapentity.Piece{{
 		ID:          attackerPieceID,
 		CharacterID: f.attackerID.String(),
@@ -1689,7 +1697,7 @@ func (f *combatFixture) seedBoard(t *testing.T) {
 		MapUUID:   uuid.New(),
 		Grid:      moveBoardGrid,
 		Pieces:    pieces,
-		Walls:     []mapentity.WallSegment{moveBoardWall},
+		Walls:     walls,
 	})
 }
 

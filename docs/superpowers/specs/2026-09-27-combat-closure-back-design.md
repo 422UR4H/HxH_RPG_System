@@ -109,8 +109,11 @@ func From(a action.Action, lvl Level) Action
 - **`move.from`/`move.position` têm um terceiro eixo, a fog da peça** (decisão do dono do
   produto, 2026-10-01): no WebSocket, para quem não é mestre nem dono do ator, eles passam
   ainda pelo gate do relay ao vivo (`pieceMoveView`) — destino visível → os dois; só a origem
-  → `from`; nenhum, ou peça `visible: false` → nenhum (a categoria fica). Quem aplica é o
-  `room.go` (`turnActionWireLocked`), depois do `From`, que continua sem decidir visibilidade.
+  → `from` (só se `move.from` for a origem julgada); nenhum, peça `visible: false` ou ator sem
+  peça → nenhum (a categoria fica). A origem julgada no `turn_opened` ao vivo é a casa da peça
+  na abertura (a do relay), não o `move.from` do enfileiramento; na reconexão, `move.from`.
+  Quem aplica é o `room.go` (`turnActionWireLocked`), depois do `From`, que continua sem
+  decidir visibilidade.
   Para caber, `Move.Position` vira `*[3]int` com `omitempty`; no `Full` (o REST) é sempre
   preenchido, então o JSON do histórico não muda. O `escape.landing` da resolução liquidada
   segue o mesmo gate.
