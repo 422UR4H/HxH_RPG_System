@@ -38,6 +38,29 @@ type fakeBoardStore struct {
 	// saves counts every call to Save (added by T3), so a test can assert the board WAS or
 	// WAS NOT persisted without a second test double.
 	saves int
+	// holdNext, when set, makes the NEXT Save block (before writing anything) until the
+	// channel is closed, after closing heldSave to say it is waiting. One-shot: the Save that
+	// takes it clears it. Lets a test keep a save in flight while something else races it.
+	holdNext chan struct{}
+	heldSave chan struct{}
+}
+
+// holdNextSave arms holdNext and returns (entered, release): entered closes once the next Save
+// is blocked; closing release lets it finish.
+func (s *fakeBoardStore) holdNextSave() (entered <-chan struct{}, release chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.holdNext = make(chan struct{})
+	s.heldSave = make(chan struct{})
+	return s.heldSave, s.holdNext
+}
+
+// remove deletes the match's row, the way a detach followed by no attach leaves the match with
+// nothing for LoadMatchBoardUC to return.
+func (s *fakeBoardStore) remove(matchUUID uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.boards, matchUUID)
 }
 
 func (s *fakeBoardStore) Load(_ context.Context, matchUUID uuid.UUID) (*matchboard.Board, error) {
@@ -70,6 +93,14 @@ func (s *fakeBoardStore) seed(matchUUID uuid.UUID, b *matchboard.Board) {
 // writes the row first, so this is also what a real Repository.Save satisfies for
 // matchboarduc.ISaveBoardRepository.
 func (s *fakeBoardStore) Save(_ context.Context, b *matchboard.Board) error {
+	s.mu.Lock()
+	hold, held := s.holdNext, s.heldSave
+	s.holdNext, s.heldSave = nil, nil
+	s.mu.Unlock()
+	if hold != nil {
+		close(held)
+		<-hold
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.boards == nil {

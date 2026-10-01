@@ -141,7 +141,11 @@ nada, então desanexar e anexar outro mapa pode deixar a linha velha no banco: p
 carregar só aceita a linha cujo `map_uuid` é o do mapa anexado **agora** — uma linha de
 outro mapa conta como ausente, e o que vem é o retrato fresco do mapa novo. O `start_match`
 recarrega o tabuleiro antes de gravá-lo, então a partida começa no mapa anexado no
-momento do início, mesmo que ele tenha mudado com a sala do lobby aberta.
+momento do início, mesmo que ele tenha mudado com a sala do lobby aberta. Se o mapa foi
+**desanexado** com o lobby aberto, essa recarga (ou a de uma reconexão do mestre) não acha
+mapa nenhum e **esvazia** o tabuleiro da sala — peças, paredes, grade, fundo — e manda o
+tabuleiro vazio (`map_full_state`) a quem está conectado; uma partida iniciada assim não
+grava linha em `match_boards`.
 
 **Herdar de outra partida (B16).** `POST /matches/{match_uuid}/map` aceita
 `inheritBoardFromMatchUuid`: em vez de começar de um retrato fresco do mapa, a partida herda

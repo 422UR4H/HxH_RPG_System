@@ -317,8 +317,9 @@ func (r *Room) Run() {
 			shouldLoadBoard := isMaster && (r.session == nil || !r.boardLoaded)
 			r.mu.Unlock()
 
+			var boardCleared bool
 			if shouldLoadBoard {
-				r.loadBoard(context.Background())
+				boardCleared = r.loadBoard(context.Background())
 				// r.pieces/r.walls just changed under whoever else was already at the table —
 				// unlike the registering client, handled below, nobody re-reads the board for
 				// them on its own. Re-push a fresh, fog-filtered map_full_state to every OTHER
@@ -340,7 +341,9 @@ func (r *Room) Run() {
 			// old pieces-only condition to go true by luck.
 			hasPieces := len(r.pieces) > 0 || len(r.walls) > 0
 			r.mu.RUnlock()
-			if hasPieces {
+			// A lobby board just cleared (its map was detached) is news too: this client may
+			// still be drawing the old one, and an empty board never passes hasPieces.
+			if hasPieces || boardCleared {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
 				client.SendMessage(*msg)
 			}
@@ -424,14 +427,19 @@ func (r *Room) Run() {
 // hold the room's lock), then takes it once to replace the board — the same
 // read-outside/write-inside shape StartMatch and RehydrateSession already use for the
 // session's own board sync.
-func (r *Room) loadBoard(ctx context.Context) {
+//
+// Returns true when it CLEARED a lobby's board: the match has no map attached any more (it
+// was detached over REST while the lobby was open), so the detached map's board must go — or
+// the lobby keeps showing it, the session is built on its walls, and start_match writes a row
+// for a map the match no longer has. The caller pushes the now-empty board to whoever needs it.
+func (r *Room) loadBoard(ctx context.Context) bool {
 	if r.deps.LoadBoardUC == nil {
-		return
+		return false
 	}
 	board, err := r.deps.LoadBoardUC.Load(ctx, r.matchUUID)
 	if err != nil {
 		log.Printf("load match board for match %s: %v", r.matchUUID, err)
-		return
+		return false
 	}
 
 	// Whether there is already a live session to seed memories for is read under its OWN
@@ -460,12 +468,24 @@ func (r *Room) loadBoard(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if board == nil {
-		// No map attached at all — nothing to load yet. Leaving the current board (empty, on
-		// a fresh Room) alone is correct: a lobby that attaches a map later is picked up by
-		// the NEXT master connect, since boardLoaded only gates the post-start case. And
-		// boardLoaded stays as it was: a load that installed nothing is not the room's one
-		// load, or a playing room would never pick up a board that shows up later.
-		return
+		// No map attached at all — nothing to load. A lobby that attaches a map later is
+		// picked up by the NEXT master connect (or start_match), since boardLoaded only gates
+		// the post-start case. And boardLoaded stays as it was: a load that installed nothing
+		// is not the room's one load, or a playing room would never pick up a board that shows
+		// up later.
+		//
+		// A LOBBY that still holds a board here had its map detached: the board is cleared,
+		// mapUUID with it (so persistBoard is a no-op and start_match writes no row). A live
+		// session's board is left alone — attach/detach are refused once the match started.
+		if r.session == nil && (r.mapUUID != uuid.Nil || len(r.pieces) > 0 || len(r.walls) > 0) {
+			r.pieces = map[string]PieceMovedPayload{}
+			r.walls = map[string]mapentity.WallSegment{}
+			r.grid = mapentity.GridShape{}
+			r.bg = nil
+			r.mapUUID = uuid.Nil
+			return true
+		}
+		return false
 	}
 	r.boardLoaded = true
 
@@ -506,6 +526,7 @@ func (r *Room) loadBoard(ctx context.Context) {
 			}
 		}
 	}
+	return false
 }
 
 func (r *Room) StartMatch(userUUID uuid.UUID) error {
@@ -525,16 +546,24 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	}
 
 	// Reloaded first, while still a lobby: the map attached to the match can have changed over
-	// REST (attach/inherit) after the master's socket opened, and the room's in-memory board
-	// would otherwise be written over the new map's row and start the match on the old map.
-	// Every lobby move already persisted, so reloading costs the table nothing it had. This is
-	// also what sets r.mapUUID for the memory read below.
+	// REST (attach/inherit/detach) after the master's socket opened, and the room's in-memory
+	// board would otherwise be written over the new map's row (or a row written for a map the
+	// match no longer has) and start the match on the old map. Every lobby move already
+	// persisted, so reloading costs the table nothing it had. This is also what sets r.mapUUID
+	// for the memory read below.
+	//
+	// The lobby's board — whatever pieces and walls sit on it right now — is then written
+	// BEFORE Init, so B11's NPC-enrollment (T9) reads what is actually on screen instead of
+	// whatever the last save happened to catch (spec §4.3, "B11", "Quando persiste").
+	//
+	// persistMu is held from the reload's read through that save: a lobby move whose own save
+	// is still in flight would otherwise be read back as the board from BEFORE it, installed,
+	// and saved over the move. Lock order is persistMu, then r.mu (loadBoard and
+	// persistBoardLocked take r.mu themselves).
+	r.persistMu.Lock()
 	r.loadBoard(ctx)
-
-	// The lobby's board — whatever pieces and walls sit on it right now — is written BEFORE
-	// Init, so B11's NPC-enrollment (T9) reads what is actually on screen instead of whatever
-	// the last save happened to catch (spec §4.3, "B11", "Quando persiste").
-	r.persistBoard("start_match")
+	r.persistBoardLocked("start_match")
+	r.persistMu.Unlock()
 
 	session, err := r.deps.InitSessionUC.Init(ctx, r.matchUUID)
 	if err != nil {

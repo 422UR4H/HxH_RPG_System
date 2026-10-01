@@ -514,3 +514,103 @@ func mapUUIDOf(b *matchboard.Board) uuid.UUID {
 	}
 	return b.MapUUID
 }
+
+// R1: a map DETACHED while the lobby socket is open leaves LoadMatchBoardUC nothing to return.
+// The lobby must drop the detached map's board — not keep showing it, start a match on its
+// walls, and write a row for a map the match no longer has.
+func TestE2E_ADetachWithTheLobbyOpenClearsTheBoard(t *testing.T) {
+	f := newCombatFixture(t, inLobby)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	pc := collectFrom(player)
+	if !pc.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the lobby board")
+	}
+
+	f.boards.remove(f.matchUUID) // the map was detached over REST
+	saves := f.boards.saveCount()
+
+	// The master's reconnect reloads the lobby board (B4: the new socket replaces the old).
+	master2 := connectWS(t, f.server.URL, f.masterUUID, f.matchUUID)
+	defer master2.Close() //nolint:errcheck
+	m2 := collectFrom(master2)
+	if !awaitCount(pc, game.MsgTypeMapFullState, 2, 2*time.Second) {
+		t.Fatalf("the player was never re-pushed the board after the reload; got: %v",
+			messageTypes(pc.snapshotMessages()))
+	}
+	msgs := pc.snapshotMessages()
+	var last game.MapFullStatePayload
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type == game.MsgTypeMapFullState {
+			if err := json.Unmarshal(msgs[i].Payload, &last); err != nil {
+				t.Fatalf("unmarshal map_full_state: %v", err)
+			}
+			break
+		}
+	}
+	if len(last.Pieces) != 0 || len(last.Walls) != 0 {
+		t.Fatalf("after the detach the player's board still has %d piece(s) and %d wall(s), want "+
+			"an empty board", len(last.Pieces), len(last.Walls))
+	}
+	if !m2.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatalf("the reconnecting master was never told the board is now empty; got: %v",
+			messageTypes(m2.snapshotMessages()))
+	}
+
+	sendWS(t, master2, string(game.MsgTypeStartMatch), map[string]any{})
+	if !m2.await(game.MsgTypeMatchStarted, 2*time.Second) {
+		t.Fatalf("start_match never produced match_started; got: %v", messageTypes(m2.snapshotMessages()))
+	}
+	if got := f.boards.saveCount(); got != saves {
+		t.Fatalf("saveCount = %d, want %d — a match with no map must not write a board row", got, saves)
+	}
+	if b, _ := f.boards.Load(context.Background(), f.matchUUID); b != nil {
+		t.Fatalf("the store has a board for map %v after start_match, want none", b.MapUUID)
+	}
+}
+
+// R2: start_match's reload reads the store, so it must not slip between a lobby move's own
+// save being snapshotted and being written — or it installs (and the start then saves) the
+// board from BEFORE the move.
+func TestE2E_StartMatchWaitsForAnInFlightLobbySave(t *testing.T) {
+	f := newCombatFixture(t, inLobby)
+	f.seedBoard(t)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	pc := collectFrom(player)
+	if !pc.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the player never got the lobby board")
+	}
+
+	entered, release := f.boards.holdNextSave()
+	sendPieceMoved(t, player, attackerPieceID, f.attackerID.String(), 6, 4)
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the player's lobby move never reached the store")
+	}
+
+	sendWS(t, master, string(game.MsgTypeStartMatch), map[string]any{})
+	// Give a start that does NOT wait the time to read the store and install the stale board.
+	time.Sleep(150 * time.Millisecond)
+	close(release)
+
+	if !mc.await(game.MsgTypeMatchStarted, 2*time.Second) {
+		t.Fatalf("start_match never produced match_started; got: %v", messageTypes(mc.snapshotMessages()))
+	}
+	board, err := f.boards.Load(context.Background(), f.matchUUID)
+	if err != nil || board == nil {
+		t.Fatalf("Load = %v, %v", board, err)
+	}
+	col, row := squareColRow(t, findPiece(t, board.Pieces, attackerPieceID))
+	if col != 6 || row != 4 {
+		t.Fatalf("the stored board has the attacker at (%d,%d), want (6,4) — start_match overwrote "+
+			"the lobby move that was still being saved", col, row)
+	}
+}

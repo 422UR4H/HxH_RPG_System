@@ -128,7 +128,16 @@ func (r *Room) persistBoard(reason string) {
 	}
 	r.persistMu.Lock()
 	defer r.persistMu.Unlock()
+	r.persistBoardLocked(reason)
+}
 
+// persistBoardLocked is persistBoard for a caller that already holds persistMu — StartMatch,
+// which keeps it from its board reload's read through this save. The caller must hold
+// persistMu and must NOT hold r.mu.
+func (r *Room) persistBoardLocked(reason string) {
+	if r.deps.SaveBoardUC == nil {
+		return
+	}
 	r.mu.RLock()
 	if r.mapUUID == uuid.Nil {
 		// No map attached at all — nothing to persist yet (matches loadBoard's own (nil, nil)
