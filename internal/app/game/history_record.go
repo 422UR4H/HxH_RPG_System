@@ -119,7 +119,8 @@ func (r *Room) recordRoundModeChanged(
 	}
 	payload, err := json.Marshal(map[string]string{"from": string(from), "to": string(to)})
 	if err != nil {
-		log.Printf("change_round_mode: marshal event payload: %v", err)
+		log.Printf("change_round_mode FAILED — event payload could not be marshaled, the %s -> %s change of round %s (match %s) was NOT recorded: %v",
+			from, to, rd.GetID(), r.matchUUID, err)
 		return
 	}
 	ev := matchevent.Event{

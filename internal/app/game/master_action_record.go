@@ -127,7 +127,7 @@ func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map
 
 	raw, err := json.Marshal(content)
 	if err != nil {
-		log.Printf("recordMasterAction(%s): marshal: %v", kind, err)
+		log.Printf("recordMasterAction(%s) FAILED — content could not be marshaled, master action of match %s was NOT recorded: %v", kind, r.matchUUID, err)
 		return
 	}
 	ctx := context.Background()
