@@ -118,9 +118,6 @@ func (r *Room) sessionViews(gate viewGate) map[uuid.UUID]masteraction.View {
 //
 // A failure is logged saying what was lost and swallowed — the persistClosedTurn policy.
 func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map[uuid.UUID]masteraction.View) {
-	if r.deps.MasterActionRepo == nil {
-		return
-	}
 	// Before the lock: pure, and the lock below is a write lock.
 	raw, err := json.Marshal(content)
 	if err != nil {
@@ -151,6 +148,11 @@ func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map
 	persisted := sess.IsRoundPersisted()
 	r.mu.Unlock()
 
+	// MasterActionRepo gates only THIS path, the room's own insert: a held record above is
+	// written by PersistTurnClose, which needs nothing of it. nil is the usual "no capability".
+	if r.deps.MasterActionRepo == nil {
+		return
+	}
 	if !persisted && !r.ensureSceneAndRoundRows(sess, sc, rd, "recordMasterAction("+string(kind)+")") {
 		log.Printf("recordMasterAction(%s) FAILED — scene/round of match %s not written, action NOT recorded", kind, r.matchUUID)
 		return

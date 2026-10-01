@@ -210,12 +210,14 @@ Em todo momento em que o tabuleiro muda de forma definitiva: movimento e remoç�
 `start_match`, os **três** verbos que fecham turno (depois dos escapes), e — **entre turnos** —
 as master actions de peça e a interação/revelação de parede. Com um turno aberto, essas duas
 não salvam: o fechamento do turno salva, com elas dentro (decisão do dono do produto,
-2026-10-01, abaixo). Um só método, `Room.persistBoard()` (e `persistBoardOutsideTurn()`, a
-variante das duas que podem cair dentro de um turno — decide "há turno aberto?" na mesma seção
-crítica do retrato):
+2026-10-01, abaixo). Um só retrato, `Room.boardSnapshotLocked()`, e dois escritores: o
+fechamento, que o entrega a `PersistTurnClose` para gravar na transação do turno (abaixo), e
+`Room.persistBoard()` para todo o resto (com `persistBoardOutsideTurn()`, a variante das duas
+que podem cair dentro de um turno — decide "há turno aberto?" na mesma seção crítica do
+retrato). Os dois:
 
-- tira o retrato sob `r.mu.RLock`, solta, grava fora do lock;
-- é serializado por um `persistMu` próprio, que envolve retrato **e** gravação — dois
+- tiram o retrato sob `r.mu`, soltam, gravam fora do lock;
+- são serializados por um `persistMu` próprio (ordem `persistMu` → `r.mu`), que envolve retrato **e** gravação — dois
   salvamentos concorrentes gravam na ordem em que os retratos foram tirados;
 - falha é logada dizendo o que se perdeu, e não derruba a jogada (a política de sempre do
   `persistClosedTurn`).
@@ -229,15 +231,22 @@ fechamento.** Até então, um salvamento feito com o turno aberto — master act
 interação/revelação de parede — retratava o tabuleiro como estava, já com o movimento da
 abertura, e um reinício antes do fechamento deixava tabuleiro e histórico discordando. Agora
 tudo o que acontece dentro do turno aberto (o movimento da abertura, as master actions do
-mestre) fica durável **junto** com o fechamento dele: o tabuleiro é salvo pelo fechamento, e as
-master actions são gravadas na transação do turno (§4.8). Um reinício no meio do turno volta o
+mestre) fica durável **junto** com o fechamento dele: o fechamento grava, numa transação só
+(`PersistTurnClose`), o turno, as master actions feitas nele (§4.8) e o tabuleiro com o fog de
+cada jogador (`TurnCloseData.Board`/`Memories`, retratados por `boardSnapshotLocked` na mesma
+seção crítica que drena o turno, depois dos escapes e antes de o próximo turno andar). Os três
+verbos de fechamento não chamam mais `persistBoard`. Um reinício no meio do turno volta o
 turno **inteiro** ao último fechamento. A sala fechar porque todos saíram (ou o hub parar) é,
 para a persistência, um reinício: a próxima sala reidrata do banco, e nada do turno é salvo
 naquele momento — só um log diz o que se perdeu. Nenhum verbo com a sala viva encerra um turno
 sem fechá-lo: `change_scene` e o fechamento do round são recusados com turno aberto,
-`change_round_mode` troca o regime do mesmo round e `kick_player` não toca no turno. A exceção
-é a inscrição de um NPC posto com o turno aberto (B11): a linha em `match_participants` é
-gravada na hora e sobrevive. Ver `docs/dev/api/match-combat-ws.md` §9.
+`change_round_mode` troca o regime do mesmo round e `kick_player` não toca no turno.
+
+Ficam de fora do "tudo junto": a troca de regime (`match_events` e `rounds.mode`, gravados na
+hora — pertencem ao round, não ao turno); a inscrição de NPC, por `add_npc` ou pelo pôr de um
+NPC que não participava (B11 — `match_participants` na hora, sobrevive sem peça); e o HP que o
+fechamento aplica, gravado pelos casos de uso (`persistDamage`) antes e fora da transação do
+turno, como sempre foi. Ver `docs/dev/api/match-combat-ws.md` §9.
 
 #### Quem move o quê
 
@@ -421,8 +430,9 @@ CREATE TABLE master_actions (
   montado no instante (views, `turn_uuid`, `happened_at` daquele momento) e guardado pela sala
   (`turnWrites`, por turno) até um dos três verbos de fechamento entregá-lo a
   `PersistTurnClose` (`TurnCloseData.MasterActions`), que o insere com o `Insert` do próprio
-  gateway de master actions rodando na transação. Turno e master actions entram juntos ou
-  nenhum entra; uma falha é logada dizendo que se perderam o turno **e** as master actions dele.
+  gateway de master actions rodando na transação — a mesma em que vai o tabuleiro (§4.3).
+  Turno, master actions e tabuleiro entram juntos ou nenhum entra; uma falha é logada dizendo
+  que se perderam o turno, as master actions dele e o tabuleiro que ele deixou.
   Um reinício (ou a sala fechar) com o turno aberto perde o turno e as master actions dele —
   é o ponto: o turno inteiro volta ao último fechamento. `scene_uuid`/`round_uuid` são os ativos
   (garantidos por `EnsureSceneAndRound`, §4.5; dentro do turno nenhum dos dois muda, e

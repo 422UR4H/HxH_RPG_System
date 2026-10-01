@@ -107,11 +107,13 @@ func payloadToPiece(p PieceMovedPayload) mapentity.Piece {
 }
 
 // persistBoard writes the match's board — pieces, walls, and every player's fog memory — as it
-// stands NOW. It is the ONE place that does, and every definitive change to the board calls it:
-// the lobby's moves, start_match, the three verbs that close a turn, and — between turns — the
-// master's piece actions (applyMasterPieceAction — the "move"/"remove" of B9/B14) and the
-// master's wall interactions and reveals (spec §4.3, "Quando persiste", B3). Those last two go
-// through persistBoardOutsideTurn: inside a turn the board is only written by its close.
+// stands NOW, for every definitive change to the board that is NOT a turn closing: the lobby's
+// moves, start_match, and — between turns — the master's piece actions (applyMasterPieceAction,
+// the "move"/"remove" of B9/B14) and the master's wall interactions and reveals (spec §4.3,
+// "Quando persiste", B3). Those last two go through persistBoardOutsideTurn: inside a turn the
+// board is only written by its close. The close does not come here at all: persistClosedTurn
+// takes the same snapshot (boardSnapshotLocked) and hands it to PersistTurnClose, so the board
+// is written in the turn's own transaction (owner decision, 2026-10-01).
 //
 // persistMu wraps the snapshot AND the write, so two saves racing from two read pumps land in
 // the order their snapshots were taken; r.mu is only held for the snapshot, never across the
@@ -131,8 +133,9 @@ func (r *Room) persistBoard(reason string) {
 // may happen INSIDE an open turn (a piece action, a wall interact or reveal): with a turn open
 // it writes nothing (owner decision, 2026-10-01). The board then already holds the turn's
 // opened move, and a row written now would outlive the turn if the server died before its
-// close; the close saves the board — this change included — after the escapes, and a restart
-// mid-turn rolls the whole turn back to the last close. With no turn open it is persistBoard.
+// close; the close writes the board — this change included — in the turn's transaction, and a
+// restart mid-turn rolls the whole turn back to the last close. With no turn open it is
+// persistBoard.
 //
 // The check runs in the SAME critical section as the snapshot, so a turn opening on another
 // read pump cannot slip its opened move into a save that decided there was no turn.
@@ -160,15 +163,29 @@ func (r *Room) persistBoardLocked(reason string, outsideTurnOnly bool) {
 		return
 	}
 	r.mu.RLock()
-	if r.mapUUID == uuid.Nil {
-		// No map attached at all — nothing to persist yet (matches loadBoard's own (nil, nil)
-		// no-op for an unattached match).
-		r.mu.RUnlock()
-		return
-	}
 	if outsideTurnOnly && r.openTurnIDLocked() != uuid.Nil {
 		r.mu.RUnlock()
 		return
+	}
+	b, mems := r.boardSnapshotLocked()
+	r.mu.RUnlock()
+	if b == nil {
+		return
+	}
+	if err := r.deps.SaveBoardUC.Save(context.Background(), b, mems); err != nil {
+		log.Printf("persistBoard(%s) FAILED — board of match %s was NOT saved: %v", reason, r.matchUUID, err)
+	}
+}
+
+// boardSnapshotLocked is the board as it stands NOW — pieces, walls, grid, bg — and every
+// player's fog memory, copied so the write that follows can run after r.mu is released. nil
+// board when no map is attached: there is nothing to write a match_boards row for (matches
+// loadBoard's own (nil, nil) no-op for an unattached match). Both board writers take it:
+// persistBoardLocked, and persistClosedTurn for the turn's own transaction. The caller must
+// hold r.mu (read or write).
+func (r *Room) boardSnapshotLocked() (*matchboard.Board, []fogentity.PlayerMemory) {
+	if r.mapUUID == uuid.Nil {
+		return nil, nil
 	}
 	b := &matchboard.Board{MatchUUID: r.matchUUID, MapUUID: r.mapUUID, Grid: r.grid, Bg: r.bg}
 	if r.session != nil {
@@ -185,20 +202,16 @@ func (r *Room) persistBoardLocked(reason string, outsideTurnOnly bool) {
 		for _, pid := range r.session.PlayerIDs() {
 			if m, ok := r.session.GetPlayerMemory(pid); ok && m != nil {
 				// A copy, with its own Seen map: the snapshot must not alias state the session
-				// keeps mutating after r.mu is released below.
+				// keeps mutating after r.mu is released.
 				cp := *m
 				cp.Seen = maps.Clone(m.Seen)
 				mems = append(mems, cp)
 			}
 		}
 	}
-	r.mu.RUnlock()
-
 	// Deterministic order: two saves racing on the same match must not flip which piece/wall
 	// lands where in the JSONB array for reasons that have nothing to do with the data itself.
 	sort.Slice(b.Pieces, func(i, j int) bool { return b.Pieces[i].ID < b.Pieces[j].ID })
 	sort.Slice(b.Walls, func(i, j int) bool { return b.Walls[i].ID < b.Walls[j].ID })
-	if err := r.deps.SaveBoardUC.Save(context.Background(), b, mems); err != nil {
-		log.Printf("persistBoard(%s) FAILED — board of match %s was NOT saved: %v", reason, r.matchUUID, err)
-	}
+	return b, mems
 }

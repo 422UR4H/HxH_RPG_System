@@ -2,6 +2,8 @@ package game_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -362,5 +364,281 @@ func TestTurnScoped_ARoomThatEmptiesMidTurnWritesNothingOfIt(t *testing.T) {
 	}
 	if recs := f.roundRepo.allMasterActions(); len(recs) != 0 {
 		t.Fatalf("PersistTurnClose got %d master action(s), want none — the turn never closed", len(recs))
+	}
+}
+
+// ─── the board goes in the turn's transaction (fix round 1) ──────────────────
+
+// The board the close leaves is handed to PersistTurnClose itself — written in the turn's own
+// transaction — by every closing verb.
+func TestTurnScoped_TheCloseHandsTheBoardToTheTurnsTransaction(t *testing.T) {
+	for _, c := range turnClosers {
+		t.Run(c.name, func(t *testing.T) {
+			f := newCombatFixture(t)
+			f.seedBoard(t)
+			master, player := f.connect(t)
+			defer master.Close() //nolint:errcheck
+			defer player.Close() //nolint:errcheck
+			mc := collectFrom(master)
+			turnID := f.openAttackTurn(t, master, player, mc)
+
+			sendMasterMove(t, master, f.attackerID, [3]int{6, 4, 0})
+			if !mc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
+				t.Fatal("the drag was never acknowledged")
+			}
+			c.close(t, master)
+			if !mc.await(c.barrier, 3*time.Second) {
+				t.Fatalf("the turn never closed; the master received: %v", messageTypes(mc.snapshotMessages()))
+			}
+			f.awaitPersistedTurn(t, turnID)
+
+			b, ok := f.roundRepo.boardFor(turnID)
+			if !ok {
+				t.Fatal("PersistTurnClose got no board — the close wrote it outside the turn's transaction")
+			}
+			if col, row := squareColRow(t, findPiece(t, b.Pieces, attackerPieceID)); col != 6 || row != 4 {
+				t.Fatalf("the turn's board has the attacker at (%d,%d), want the drag's (6,4)", col, row)
+			}
+		})
+	}
+}
+
+// All or nothing: a close whose transaction fails writes no board either — the store keeps the
+// last closed state, with neither the turn's move nor the master's drag.
+func TestTurnScoped_AFailedCloseWritesNoBoard(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	f.openAttackTurn(t, master, player, mc)
+	saves := f.boards.saveCount()
+	f.roundRepo.setFailPersist(errors.New("transaction rolled back"))
+
+	sendMasterMove(t, master, f.attackerID, [3]int{6, 4, 0})
+	if !mc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
+		t.Fatal("the drag was never acknowledged")
+	}
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	if got := f.boards.saveCount(); got != saves {
+		t.Fatalf("saveCount = %d, want %d — the board was written although the turn's transaction failed", got, saves)
+	}
+	if col, row := storedSquare(t, f, attackerPieceID); col != 4 || row != 4 {
+		t.Fatalf("stored attacker at (%d,%d), want the seeded (4,4)", col, row)
+	}
+	if n := len(f.masterActions.snapshot()); n != 0 {
+		t.Fatalf("master_actions got %d row(s) on its own, want none", n)
+	}
+}
+
+// actionIDOf returns the actionId of the n-th action_enqueued (0-based) the collector has.
+func actionIDOf(t *testing.T, c *collector, n int) uuid.UUID {
+	t.Helper()
+	i := 0
+	for _, m := range c.snapshotMessages() {
+		if m.Type != game.MsgTypeActionEnqueued {
+			continue
+		}
+		if i == n {
+			var p game.ActionEnqueuedPayload
+			if err := json.Unmarshal(m.Payload, &p); err != nil {
+				t.Fatalf("unmarshal action_enqueued: %v", err)
+			}
+			return p.ActionID
+		}
+		i++
+	}
+	t.Fatalf("no action_enqueued #%d", n)
+	return uuid.Nil
+}
+
+// open_next_action closes T1 and opens T2 in one Execute. Each turn's in-turn drag goes with
+// its own turn: T1's into T1's PersistTurnClose, T2's held until T2 closes. And T1's board is
+// T1's: it carries T1's drag but NOT T2's opened move, which only walks after T1 was written.
+func TestTurnScoped_OpenNextActionKeepsEachTurnsWritesWithItsTurn(t *testing.T) {
+	f := newCombatFixture(t, withVictimPiece)
+	f.seedBoard(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+
+	f.enqueueAttack(t, player)
+	if !awaitCount(pc, game.MsgTypeActionEnqueued, 1, 2*time.Second) {
+		t.Fatal("the attack was never enqueued")
+	}
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId": f.victimID.String(),
+		"move":    map[string]any{"category": string(enum.Dash), "from": [3]int{6, 6, 0}, "position": [3]int{6, 7, 0}},
+	})
+	if !awaitCount(pc, game.MsgTypeActionEnqueued, 2, 2*time.Second) {
+		t.Fatal("the victim's dash was never enqueued")
+	}
+
+	// T1 is the attack, pulled explicitly so the order does not hang on the dice.
+	sendWS(t, master, string(game.MsgTypePullAction), game.PullActionPayload{ActionID: actionIDOf(t, pc, 0)})
+	if !awaitCount(mc, game.MsgTypeTurnOpened, 1, 2*time.Second) {
+		t.Fatal("T1 never opened")
+	}
+	t1 := lastTurnOpened(t, mc).TurnID
+	sendMasterMove(t, master, f.attackerID, [3]int{4, 2, 0})
+	if !awaitCount(mc, game.MsgTypeMasterActionEnqueued, 1, 2*time.Second) {
+		t.Fatal("T1's drag was never acknowledged")
+	}
+
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !awaitCount(mc, game.MsgTypeTurnOpened, 2, 2*time.Second) {
+		t.Fatal("T2 never opened")
+	}
+	t2 := lastTurnOpened(t, mc).TurnID
+	f.awaitPersistedTurn(t, t1)
+	sendMasterMove(t, master, f.attackerID, [3]int{3, 2, 0})
+	if !awaitCount(mc, game.MsgTypeMasterActionEnqueued, 2, 2*time.Second) {
+		t.Fatal("T2's drag was never acknowledged")
+	}
+
+	r1 := f.roundRepo.masterActionsFor(t1)
+	if len(r1) != 1 || !samePos(pieceContentOf(t, r1[0]).To, ptrPos([3]int{4, 2, 0})) {
+		t.Fatalf("T1's PersistTurnClose got %+v, want only T1's drag", r1)
+	}
+	b1, ok := f.roundRepo.boardFor(t1)
+	if !ok {
+		t.Fatal("T1's close handed no board")
+	}
+	if col, row := squareColRow(t, findPiece(t, b1.Pieces, victimPieceID)); col != 6 || row != 6 {
+		t.Fatalf("T1's board has the victim at (%d,%d), want (6,6) — T2's opened Dash leaked into T1's write", col, row)
+	}
+	if contains(f.roundRepo.persistedTurnIDs(), t2) {
+		t.Fatal("T2 was written while still open")
+	}
+	if n := len(f.masterActions.snapshot()); n != 0 {
+		t.Fatalf("master_actions got %d row(s) on its own — T2's drag must be held", n)
+	}
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("T2 never closed")
+	}
+	f.awaitPersistedTurn(t, t2)
+	r2 := f.roundRepo.masterActionsFor(t2)
+	if len(r2) != 1 || r2[0].TurnUUID == nil || *r2[0].TurnUUID != t2 ||
+		!samePos(pieceContentOf(t, r2[0]).To, ptrPos([3]int{3, 2, 0})) {
+		t.Fatalf("T2's PersistTurnClose got %+v, want only T2's drag", r2)
+	}
+	b2, _ := f.roundRepo.boardFor(t2)
+	if b2 == nil {
+		t.Fatal("T2's close handed no board")
+	}
+	if col, row := squareColRow(t, findPiece(t, b2.Pieces, victimPieceID)); col != 6 || row != 7 {
+		t.Fatalf("T2's board has the victim at (%d,%d), want its Dash's (6,7)", col, row)
+	}
+}
+
+// A Race round that runs out closes its last turn AND itself in one open_next_action (the
+// closedIn path): the master action held for that turn is written with it, under the round it
+// happened in — not the successor.
+func TestTurnScoped_AnExhaustedRoundWritesTheHeldMasterActionWithItsLastTurn(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+	round1 := f.session.GetActiveRound().GetID()
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
+	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+	f.enqueueAttack(t, player)
+	if !pc.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never enqueued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the action never opened")
+	}
+	turnID := lastTurnOpened(t, mc).TurnID
+	sendMasterMove(t, master, f.attackerID, [3]int{6, 4, 0})
+	if !mc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
+		t.Fatal("the drag was never acknowledged")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeRoundClosed, 2*time.Second) {
+		t.Fatal("the round never ran out")
+	}
+	f.awaitPersistedTurn(t, turnID)
+
+	if rd, ok := f.roundRepo.roundOfPersistedTurn(turnID); !ok || rd != round1 {
+		t.Fatalf("the turn was written under round %s, want the exhausted %s", rd, round1)
+	}
+	recs := f.roundRepo.masterActionsFor(turnID)
+	if len(recs) != 1 || recs[0].RoundUUID != round1 || recs[0].TurnUUID == nil || *recs[0].TurnUUID != turnID {
+		t.Fatalf("PersistTurnClose got %+v, want the drag, in round %s and turn %s", recs, round1, turnID)
+	}
+	if _, ok := f.roundRepo.boardFor(turnID); !ok {
+		t.Fatal("the exhausting close handed no board")
+	}
+}
+
+// After a close the round still names its last turn as current, but no turn is OPEN: a drag
+// then is between turns — saved and inserted at once, with no turnUuid.
+func TestTurnScoped_ADragAfterACloseIsWrittenAtOnce(t *testing.T) {
+	f := newCombatFixture(t)
+	f.seedBoard(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	turnID := f.openAttackTurn(t, master, player, mc)
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	f.awaitPersistedTurn(t, turnID)
+	saves := f.boards.saveCount()
+
+	sendMasterMove(t, master, f.attackerID, [3]int{6, 4, 0})
+	if !mc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
+		t.Fatal("the drag was never acknowledged")
+	}
+	recs := f.masterActions.await(t, 1, 2*time.Second)
+	if recs[0].TurnUUID != nil {
+		t.Fatalf("turnUuid = %v, want nil — the turn had already closed", *recs[0].TurnUUID)
+	}
+	if got := f.boards.saveCount(); got != saves+1 {
+		t.Fatalf("saveCount = %d, want %d — a drag between turns saves at once", got, saves+1)
+	}
+	if col, row := storedSquare(t, f, attackerPieceID); col != 6 || row != 4 {
+		t.Fatalf("stored attacker at (%d,%d), want the drag's (6,4)", col, row)
+	}
+}
+
+// The room needs no master-action repository of its own to hold one for a turn: the held path
+// is written by PersistTurnClose.
+func TestTurnScoped_AHeldMasterActionNeedsNoMasterActionRepo(t *testing.T) {
+	f := newCombatFixture(t, withoutMasterActionRepo)
+	f.seedBoard(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	turnID := f.openAttackTurn(t, master, player, mc)
+
+	sendMasterMove(t, master, f.attackerID, [3]int{6, 4, 0})
+	if !mc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
+		t.Fatal("the drag was never acknowledged")
+	}
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	f.awaitPersistedTurn(t, turnID)
+	if recs := f.roundRepo.masterActionsFor(turnID); len(recs) != 1 {
+		t.Fatalf("PersistTurnClose got %d master action(s), want the drag", len(recs))
 	}
 }

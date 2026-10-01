@@ -318,7 +318,8 @@ Dois tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
   parede e revelá-la (`wallInteract`, `revealWall`), e as genéricas que só se penduram no
   turno aberto (`turnNote`). Gravadas em `master_actions`, tabela própria (spec §4.8): **sem
   turno aberto, no instante** em que são aplicadas; **com turno aberto, no fechamento desse
-  turno**, na mesma transação que grava o turno (decisão do dono do produto, 2026-10-01). O
+  turno**, na mesma transação que grava o turno e o tabuleiro (decisão do dono do produto,
+  2026-10-01). O
   registro é montado no instante — quem viu o quê, o `turnId`, `happenedAt` são os daquele
   momento —; só a gravação espera o turno.
 

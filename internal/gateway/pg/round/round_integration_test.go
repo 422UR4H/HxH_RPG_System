@@ -5,6 +5,7 @@ package round_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,10 +15,13 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	roundrepo "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	"github.com/google/uuid"
@@ -778,6 +782,106 @@ func TestPersistTurnCloseWritesTheTurnsMasterActions(t *testing.T) {
 		}
 		if n := countOf(t, `SELECT COUNT(*) FROM master_actions WHERE turn_uuid = $1`, tn.GetID()); n != 0 {
 			t.Fatalf("master_actions rows = %d, want 0 — the good one must roll back too", n)
+		}
+	})
+}
+
+// TestPersistTurnCloseWritesTheBoardWithTheTurn: the board the close left, and every player's
+// fog memory, are written in the turn's own transaction — a failure anywhere in it (here, a
+// master action the database refuses) leaves the board row and the memories as they were.
+func TestPersistTurnCloseWritesTheBoardWithTheTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	setup := func(t *testing.T) (resolutionFixture, uuid.UUID, *turnentity.Turn, *action.Action) {
+		t.Helper()
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		var campaignUUID string
+		if err := pool.QueryRow(ctx, `SELECT campaign_uuid FROM matches WHERE uuid = $1`, fx.matchUUID).Scan(&campaignUUID); err != nil {
+			t.Fatalf("read campaign: %v", err)
+		}
+		mapUUID := uuid.MustParse(pgtest.InsertTestMap(t, pool, campaignUUID, "Board map"))
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		return fx, mapUUID, tn, act
+	}
+	boardOf := func(fx resolutionFixture, mapUUID uuid.UUID, col int) *matchboard.Board {
+		return &matchboard.Board{
+			MatchUUID: fx.matchUUID, MapUUID: mapUUID,
+			Grid: mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 10, Rows: 10, CellSize: 64, SkewRatio: 1},
+			Pieces: []mapentity.Piece{{
+				ID: "p1", CharacterID: fx.attackerSheet.String(), Visible: true,
+				Coord: mapentity.PieceCoord{Slot: mapentity.SquareCoord{Kind: "square", Col: col, Row: 1}},
+			}},
+		}
+	}
+	memoryOf := func(fx resolutionFixture, mapUUID uuid.UUID) fogentity.PlayerMemory {
+		return fogentity.PlayerMemory{
+			MatchID: fx.matchUUID, MapID: mapUUID, PlayerID: fx.masterUUID,
+			Seen: map[fogentity.FeatureRef]struct{}{{Kind: fogentity.FeatureKind("wall"), ID: "w1"}: {}},
+		}
+	}
+	piecesOf := func(t *testing.T, matchUUID uuid.UUID) string {
+		t.Helper()
+		var pieces string
+		if err := pool.QueryRow(ctx, `SELECT pieces::text FROM match_boards WHERE match_uuid = $1`, matchUUID).Scan(&pieces); err != nil {
+			t.Fatalf("read board: %v", err)
+		}
+		return pieces
+	}
+	memoriesOf := func(t *testing.T, matchUUID uuid.UUID) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM player_memories WHERE match_id = $1`, matchUUID).Scan(&n); err != nil {
+			t.Fatalf("count memories: %v", err)
+		}
+		return n
+	}
+
+	t.Run("writes the board and the memories with the turn", func(t *testing.T) {
+		fx, mapUUID, tn, act := setup(t)
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			Board: boardOf(fx, mapUUID, 7), Memories: []fogentity.PlayerMemory{memoryOf(fx, mapUUID)},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if p := piecesOf(t, fx.matchUUID); !strings.Contains(p, `"col": 7`) {
+			t.Fatalf("board pieces = %s, want the close's piece at col 7", p)
+		}
+		if n := memoriesOf(t, fx.matchUUID); n != 1 {
+			t.Fatalf("player_memories rows = %d, want 1", n)
+		}
+	})
+
+	t.Run("a failing master action rolls the board back with the turn", func(t *testing.T) {
+		fx, mapUUID, tn, act := setup(t)
+		// The board as the LAST close left it.
+		if err := pgmatchboard.NewRepository(pool).Save(ctx, boardOf(fx, mapUUID, 2)); err != nil {
+			t.Fatalf("seed board: %v", err)
+		}
+		turnID := tn.GetID()
+		bad := masteraction.Record{
+			UUID: uuid.New(), MatchUUID: fx.matchUUID, SceneUUID: fx.scene.GetID(), RoundUUID: fx.round.GetID(),
+			TurnUUID: &turnID, MasterUUID: uuid.New(), // not a user: the FK refuses it
+			Kind: masteraction.KindMovePiece, Content: []byte(`{}`), HappenedAt: time.Now().UTC(),
+		}
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			MasterActions: []masteraction.Record{bad},
+			Board:         boardOf(fx, mapUUID, 7), Memories: []fogentity.PlayerMemory{memoryOf(fx, mapUUID)},
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose succeeded with a master action the database refuses")
+		}
+		if p := piecesOf(t, fx.matchUUID); !strings.Contains(p, `"col": 2`) {
+			t.Fatalf("board pieces = %s, want the last close's col 2 — the board must roll back with the turn", p)
+		}
+		if n := memoriesOf(t, fx.matchUUID); n != 0 {
+			t.Fatalf("player_memories rows = %d, want 0 — the memories roll back too", n)
 		}
 	})
 }

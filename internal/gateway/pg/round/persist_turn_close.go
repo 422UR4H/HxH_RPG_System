@@ -8,15 +8,18 @@ import (
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
+	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // PersistTurnClose atomically writes scene (idempotent), round (idempotent),
 // turn, action, the action's reactions, the turn's settled resolution (nullable), the values
-// the master's edits displaced, and the master actions applied while the turn was open, within
-// a single database transaction.
+// the master's edits displaced, the master actions applied while the turn was open, and the
+// board (with every player's fog memory) as the close left it, within a single database
+// transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
 // on — so writing only the action would persist half a turn. The reactions go in after the
@@ -108,6 +111,24 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		for i := range d.MasterActions {
 			if err := mas.Insert(ctx, d.MasterActions[i]); err != nil {
 				return fmt.Errorf("PersistTurnClose master action %d: %w", i, err)
+			}
+		}
+	}
+
+	// The board the close left — the turn's move, its escapes, the master's changes inside it —
+	// and every player's fog memory, in this same transaction: a turn on disk always has its
+	// board on disk, and a turn that is not written leaves the board as the last close did.
+	// Unlike SaveMatchBoardUC, one memory failing fails the whole close: inside a transaction
+	// there is no "keep the others" — the first error aborts it anyway. Same pattern as
+	// pgmatchboard.Copy: both gateways run on the tx, their SQL stays where it lives.
+	if d.Board != nil {
+		if err := pgmatchboard.NewRepository(tx).Save(ctx, d.Board); err != nil {
+			return fmt.Errorf("PersistTurnClose board: %w", err)
+		}
+		mems := fog.NewPlayerMemoryRepository(tx)
+		for i := range d.Memories {
+			if err := mems.Upsert(ctx, d.Memories[i]); err != nil {
+				return fmt.Errorf("PersistTurnClose player memory %s: %w", d.Memories[i].PlayerID, err)
 			}
 		}
 	}

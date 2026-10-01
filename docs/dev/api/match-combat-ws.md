@@ -723,14 +723,12 @@ turno (decisão do dono do produto, 2026-10-01):
   a hora), mas só é **gravado no fechamento do turno**, na mesma transação do turno
   ([`close_turn`](#close_turn), [`open_next_action`](#open_next_action) ou
   [`pull_action`](#pull_action) — os três). O tabuleiro idem: com turno aberto, nem a master
-  action de peça nem a interação/revelação de parede o salvam; o fechamento salva, com elas
-  dentro. Tudo o que acontece dentro de um turno aberto fica durável junto com o fechamento
-  dele, ou não fica: um reinício no meio do turno perde o turno **inteiro** — o movimento da
-  abertura e as master actions do mestre dentro dele (ver [§9](#reinício-recarga-queda)). As
-  ações do caminho 3 só existem com turno aberto, então são sempre gravadas no fechamento.
-  Exceção: o **pôr** de um NPC que ainda não participava grava a inscrição
-  (`match_participants`) na hora — ela sobrevive a um reinício que perca o turno, e o NPC
-  fica na partida sem peça no tabuleiro.
+  action de peça nem a interação/revelação de parede o salvam; o fechamento o grava, com elas
+  dentro, **na mesma transação** do turno e das master actions. Tudo o que acontece dentro de
+  um turno aberto fica durável junto com o fechamento dele, ou não fica: um reinício no meio
+  do turno perde o turno **inteiro** — o movimento da abertura e as master actions do mestre
+  dentro dele (ver [§9](#reinício-recarga-queda), que lista também as exceções). As ações do
+  caminho 3 só existem com turno aberto, então são sempre gravadas no fechamento.
 
 Ao vivo nada muda: a mesa recebe tudo na hora, com ou sem turno. O servidor grava, jogador a jogador da sessão
 (conectado ou não), a mesma decisão de fog que tomou ao vivo: quem recebeu `piece_moved` (ou
@@ -2115,10 +2113,10 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 | Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
 | `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 
-**Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). `Room.persistBoard`
-grava a cada `start_match`, a cada fechamento de turno e — **entre turnos** — a cada master
-action de peça e a cada interação/revelação de parede; nunca na ABERTURA de uma action, nem
-com um turno aberto. A peça anda no `piece_moved`
+**Por que o tabuleiro volta e o turno não** (spec §4.3, marcado com ⭐ lá). O tabuleiro é
+gravado a cada `start_match`, a cada fechamento de turno (na transação do próprio turno) e —
+**entre turnos** — a cada master action de peça e a cada interação/revelação de parede; nunca
+na ABERTURA de uma action, nem com um turno aberto. A peça anda no `piece_moved`
 que a abertura emite, mas se o servidor cair antes do próximo salvamento, essa gravação nunca
 aconteceu: o tabuleiro que volta é o de ANTES da action que estava em curso, e o turno em si —
 fila, reações anexadas, a escolha do mestre para um escape — some inteiro.
@@ -2127,16 +2125,29 @@ fila, reações anexadas, a escolha do mestre para um escape — some inteiro.
 2026-10-01). Com o turno aberto o tabuleiro já inclui a peça que a abertura moveu, e um
 salvamento ali gravaria o efeito de um turno que ainda não existe no banco. Por isso a master
 action de peça e a interação/revelação de parede **não** salvam o tabuleiro com turno aberto, e
-as master actions feitas nele ficam guardadas em memória até o fechamento, que grava o turno e
-elas na **mesma transação** (e o tabuleiro logo antes, com tudo dentro). Se o servidor cair —
+as master actions feitas nele ficam guardadas em memória até o fechamento, que grava numa
+**transação só** o turno, as master actions e o tabuleiro com o fog de cada jogador — ou nada
+disso, se ela falhar (o tabuleiro gravado continua o do último fechamento). Se o servidor cair —
 ou a sala fechar porque todos saíram, que para a persistência é o mesmo que um reinício — antes
 do fechamento, o turno volta inteiro ao último fechamento: a peça da action, o arrasto do
 mestre, a porta que ele abriu e as master actions correspondentes somem juntos. O histórico
-nunca mostra uma master action de um turno que não foi gravado. Única exceção: a inscrição de
-um NPC posto no tabuleiro com o turno aberto, gravada na hora, sobrevive — o NPC fica na partida,
-sem peça. Nenhum outro verbo encerra um turno sem fechá-lo: `change_scene` é recusado com turno
-aberto, `change_round_mode` troca o regime do MESMO round com o turno ainda aberto, e
-`kick_player` tira um jogador da mesa, não o turno.
+nunca mostra uma master action de um turno que não foi gravado. Nenhum outro verbo encerra um
+turno sem fechá-lo: `change_scene` é recusado com turno aberto, `change_round_mode` troca o
+regime do MESMO round com o turno ainda aberto, e `kick_player` tira um jogador da mesa, não o
+turno.
+
+**O que fica de fora do "tudo junto"** — gravado na hora mesmo com turno aberto, ou fora da
+transação do turno:
+
+- a troca de regime ([`change_round_mode`](#change_round_mode)) — o evento em `match_events` e o
+  `mode` da linha do round são gravados no instante: pertencem ao **round**, não ao turno, e
+  sobrevivem a um reinício que perca o turno;
+- a inscrição de um NPC — por [`add_npc`](#add_npc) ou pelo **pôr** de um NPC que ainda não
+  participava — grava `match_participants` na hora; depois de um reinício que perca o turno, o
+  NPC continua na partida, sem peça no tabuleiro;
+- o HP que o fechamento aplica é gravado no fechamento, mas pelos casos de uso
+  (`persistDamage`), **antes** e **fora** da transação do turno — como sempre foi. Se a
+  transação do turno falhar, o dano já está na ficha.
 
 **O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado no mesmo
 `persistBoard`, então um jogador que reconecta longe de uma parede que já viu antes ainda a

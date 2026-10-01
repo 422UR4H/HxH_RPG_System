@@ -119,8 +119,11 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   turnos — nas master actions de peça e na interação/revelação de parede, serializado por
   `persistMu`. **Dentro de um turno aberto nada é gravado antes do fechamento** (dono do
   produto, 2026-10-01): nem o tabuleiro (`persistBoardOutsideTurn`) nem as master actions, que a
-  `Room` guarda por turno (`turnWrites`, `turn_writes.go`) e `PersistTurnClose` grava na
-  transação do turno. Um reinício no meio do turno o perde inteiro, de propósito.
+  `Room` guarda por turno (`turnWrites`, `turn_writes.go`). O fechamento grava turno, master
+  actions e tabuleiro+fog numa transação só (`PersistTurnClose`; os três verbos não chamam
+  `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito. Fora disso:
+  `change_round_mode` (do round), inscrição de NPC e o HP do fechamento (`persistDamage`, fora
+  do tx).
   `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
   `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.
 - **Escape = esquiva E movimento.** `Avoided = dodgePassed && movePassed` (spec B13):

@@ -7,11 +7,13 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 	"github.com/google/uuid"
 )
@@ -42,6 +44,12 @@ type TurnCloseData struct {
 	// inside an open turn becomes durable together with that turn's close, or not at all
 	// (owner decision, 2026-10-01). Drained from the room, like Overrides from the session.
 	MasterActions []masteraction.Record
+	// Board is the match's board as this close left it — the turn's move, its escapes and the
+	// master's changes inside it — and Memories every player's fog memory with it, written in
+	// this same transaction: the board on disk and the turns on disk never disagree. Board nil
+	// means the match has no map attached (nothing to write a match_boards row for).
+	Board    *matchboard.Board
+	Memories []fogentity.PlayerMemory
 }
 
 type IRepository interface {

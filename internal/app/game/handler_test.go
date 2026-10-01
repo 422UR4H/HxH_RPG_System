@@ -368,6 +368,32 @@ type mockRoundRepoHandler struct {
 	// masterActions keeps, per persisted turn, the master actions PersistTurnClose was handed
 	// to write in the turn's own transaction — what the master did inside that open turn.
 	masterActions map[uuid.UUID][]masteraction.Record
+	// boards keeps, per persisted turn, the board PersistTurnClose was handed to write in the
+	// turn's own transaction (nil entry = no board handed).
+	boards map[uuid.UUID]*matchboard.Board
+	// boardStore/memoryStore, when set, receive the board and memories of every SUCCESSFUL
+	// PersistTurnClose — what the real gateway writes in the turn's transaction — so a test
+	// reading the store (or a restart loading from it) sees what a close persisted.
+	boardStore  *fakeBoardStore
+	memoryStore *fakeMemoryStore
+	// failPersist, when set, makes PersistTurnClose fail and write NOTHING — a rolled-back
+	// transaction.
+	failPersist error
+}
+
+// boardFor returns the board PersistTurnClose received for one closed turn.
+func (m *mockRoundRepoHandler) boardFor(turnID uuid.UUID) (*matchboard.Board, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.boards[turnID]
+	return b, ok && b != nil
+}
+
+// setFailPersist makes every later PersistTurnClose fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailPersist(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failPersist = err
 }
 
 // masterActionsFor returns the master actions PersistTurnClose received for one closed turn.
@@ -403,9 +429,28 @@ func (m *mockRoundRepoHandler) roundOfPersistedTurn(turnID uuid.UUID) (uuid.UUID
 	return rd, ok
 }
 
-func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
+func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.failPersist != nil {
+		return m.failPersist
+	}
+	if m.boards == nil {
+		m.boards = map[uuid.UUID]*matchboard.Board{}
+	}
+	m.boards[d.Turn.GetID()] = d.Board
+	if d.Board != nil && m.boardStore != nil {
+		if err := m.boardStore.Save(ctx, d.Board); err != nil {
+			return err
+		}
+	}
+	if m.memoryStore != nil {
+		for _, mem := range d.Memories {
+			if err := m.memoryStore.Upsert(ctx, mem); err != nil {
+				return err
+			}
+		}
+	}
 	m.persistedTurns = append(m.persistedTurns, d.Turn.GetID())
 	if m.overrides == nil {
 		m.overrides = map[uuid.UUID][]matchDomain.OverriddenValue{}

@@ -788,11 +788,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
-				// The board — the escape's piece included — is written to match_boards BEFORE
-				// persistClosedTurn's own DB round trip (spec §4.3, "Quando persiste"): if the
-				// server dies between the two, the board on disk already agrees with the turn
-				// that is about to be lost, not with one that half-committed.
-				r.persistBoard("turn_closed")
+				// The board — the escape's piece included — is written by persistClosedTurn, in the
+				// turn's own transaction (spec §4.3, "Quando persiste"; owner decision 2026-10-01):
+				// the board on disk and the turns on disk never disagree. Before announceOpenedTurn
+				// below, so the next turn's opened move is not in this turn's board.
 				// result.ClosedRound is set when this same call also closed the round by
 				// exhaustion: the session's active round is then already its successor, and
 				// the turn belongs to the round it closed in.
@@ -936,11 +935,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
-				// The board — the escape's piece included — is written to match_boards BEFORE
-				// persistClosedTurn's own DB round trip (spec §4.3, "Quando persiste"): if the
-				// server dies between the two, the board on disk already agrees with the turn
-				// that is about to be lost, not with one that half-committed.
-				r.persistBoard("turn_closed")
+				// The board — the escape's piece included — is written by persistClosedTurn, in the
+				// turn's own transaction (spec §4.3, "Quando persiste"; owner decision 2026-10-01):
+				// the board on disk and the turns on disk never disagree. Before announceOpenedTurn
+				// below, so the next turn's opened move is not in this turn's board.
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, nil)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
@@ -1239,9 +1237,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// applying the escape's move first is what keeps the table from seeing the turn end
 		// with the piece still in its old slot.
 		r.applyClosedEscapes(closedTurn, result.Resolution)
-		// Same order as the two implicit closes: the board — the escape's piece included —
-		// reaches match_boards before persistClosedTurn's own DB round trip (spec §4.3).
-		r.persistBoard("turn_closed")
+		// Same as the two implicit closes: the board — the escape's piece included — is written
+		// by persistClosedTurn, in the turn's own transaction (spec §4.3).
 		r.persistClosedTurn(session, closedTurn, result.Resolution, nil)
 
 		// Same place in the sequence the two implicit closes put it: after the write, before
@@ -1812,12 +1809,25 @@ func (r *Room) announceOpenedTurn(
 // sequence, and it had been copy-pasted into three ~15-line blocks.
 //
 // It takes r.mu itself, exactly as the three call sites used to: a Lock to snapshot the
-// scene/round/matchUUID session needs and drain the turn's captured overrides and the master
-// actions held for it (turnWrites) — both drains mutate, so this is a Lock now, not the RLock
-// it started as — then, only on
-// success, a second Lock to flip MarkRoundPersisted. Callers must NOT hold r.mu when calling
-// this: sync.RWMutex is not reentrant, and a nested acquire would deadlock the room
-// permanently. Every call site below already releases r.mu before reaching here.
+// scene/round/matchUUID session needs, the board as the close left it (boardSnapshotLocked) and
+// drain the turn's captured overrides and the master actions held for it (turnWrites) — both
+// drains mutate, so this is a Lock now, not the RLock it started as — then, only on success, a
+// second Lock to flip MarkRoundPersisted. Callers must NOT hold r.mu when calling this:
+// sync.RWMutex is not reentrant, and a nested acquire would deadlock the room permanently.
+// Every call site below already releases r.mu before reaching here.
+//
+// Everything the turn changed is written by ONE PersistTurnClose, in one transaction: the turn,
+// its action and reactions, the overrides, the master actions applied inside it, and the board
+// with every player's fog memory (owner decision, 2026-10-01). The board is the board AFTER
+// applyClosedEscapes and BEFORE announceOpenedTurn — every caller walks the escapes first and
+// announces the next turn after this returns — so an open_next_action that already opened the
+// next turn in the same Execute never writes that turn's opened move under this one. The one
+// write of the close that is NOT in this transaction is the HP the close applied: the use cases
+// write it (persistDamage) before they return, as they always have.
+//
+// persistMu is held from the snapshot through the write, the same rule persistBoard follows
+// (lock order persistMu, then r.mu): a between-turns save racing this close lands after it,
+// never under it with an older picture.
 //
 // A PersistTurnClose failure is logged and swallowed, not returned: the turn already closed
 // in memory and the match goes on regardless. But say WHAT was lost — this ran silently for
@@ -1833,6 +1843,8 @@ func (r *Room) persistClosedTurn(
 	closedIn *roundentity.Round,
 ) {
 	act := t.GetAction()
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
 	// Write lock, not read: TakeOverridesFor DRAINS two maps on the session, it does not just
 	// read them, so it needs the same lock a mutation would. Reading Scene/Round/MatchUUID
 	// here too costs nothing extra — they were already read under a lock, just a lesser one —
@@ -1856,22 +1868,27 @@ func (r *Room) persistClosedTurn(
 	// What the master did inside this turn, held until now (turnWrites): written in the turn's
 	// own transaction, or lost with it.
 	inTurn := r.takeTurnWritesLocked(t.GetID())
+	// The board as this close left it, in the same critical section: what the turn's write
+	// says the board is, exactly.
+	board, memories := r.boardSnapshotLocked()
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
-		MasterActions: inTurn.masterActions,
+		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
 	})
 	if err != nil {
-		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it: %v",
+		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it, "+
+			"nor the board it left (match_boards and player_memories keep the last close): %v",
 			t.GetID(), matchUUID, len(inTurn.masterActions), err)
 		// The overrides and the turn's master actions were already drained above and are lost
 		// with the turn. That is correct, not a leak to plug: overridden_action_values.action_uuid
 		// references actions(uuid), so the override rows could not have been inserted without the
 		// action row; and the master actions belong to the turn by decision — durable with it or
-		// not at all. No retry queue: this failure mode is already logged-and-swallowed policy for
-		// the whole turn.
+		// not at all. The board in memory is untouched and still live: the next save (a close,
+		// or a change between turns) writes it whole. No retry queue: this failure mode is
+		// already logged-and-swallowed policy for the whole turn.
 		return
 	}
 	// Only if the round written is still the active one: the successor of an exhausted round is

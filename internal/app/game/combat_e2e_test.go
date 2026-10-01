@@ -131,6 +131,8 @@ type combatFixture struct {
 	bystanderID   uuid.UUID
 	// victimOnBoard is set by withVictimPiece. See it there.
 	victimOnBoard bool
+	// noMasterActionRepo is set by withoutMasterActionRepo. See it there.
+	noMasterActionRepo bool
 	// addLiveNPC is nil unless withAddLiveNPC was passed. See it there.
 	addLiveNPC game.IAddLiveNPC
 	// lobby is set by inLobby. See it there.
@@ -174,6 +176,10 @@ func withBystander(f *combatFixture) {
 // holding exactly the mover (and, with withBystander, the blind one) keep the board they
 // were written for.
 func withVictimPiece(f *combatFixture) { f.victimOnBoard = true }
+
+// withoutMasterActionRepo leaves RoomDeps.MasterActionRepo nil: the room cannot insert a
+// master action on its own, but the ones held for a turn still go through PersistTurnClose.
+func withoutMasterActionRepo(f *combatFixture) { f.noMasterActionRepo = true }
 
 // withAddLiveNPC hands the room the add_npc use case. Only the add_npc tests need one; every
 // other test runs with nil, which is fine because none of them sends add_npc.
@@ -274,7 +280,9 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 	hub := game.NewHub()
 	go hub.Run()
 
-	roundRepo := &mockRoundRepoHandler{}
+	// The close writes the board in the turn's own transaction: the mock hands it to the SAME
+	// stores the room loads from, so a restart sees what a close persisted.
+	roundRepo := &mockRoundRepoHandler{boardStore: f.boards, memoryStore: f.memories}
 	f.roundRepo = roundRepo
 	handler := game.NewHandler(
 		hub,
@@ -298,7 +306,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 // cases are real and which are mocks — restart's whole POINT is standing up a room that is
 // otherwise identical, just over a fresh Hub/Handler.
 func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *mockRoundRepoHandler) game.RoomDeps {
-	return game.RoomDeps{
+	deps := game.RoomDeps{
 		StartMatchUC:  &mockStartMatchUC{},
 		KickPlayerUC:  &mockKickPlayerUC{},
 		InitSessionUC: &combatSessionUC{session: session},
@@ -335,6 +343,10 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		// T13: the round's regime changes are recorded (spec §4.5).
 		EventRepo: f.events,
 	}
+	if f.noMasterActionRepo {
+		deps.MasterActionRepo = nil
+	}
+	return deps
 }
 
 // restart simulates the game server restarting (spec §5): it closes the fixture's current
@@ -372,7 +384,9 @@ func (f *combatFixture) restart(t *testing.T) {
 	hub := game.NewHub()
 	go hub.Run()
 
-	roundRepo := &mockRoundRepoHandler{}
+	// The close writes the board in the turn's own transaction: the mock hands it to the SAME
+	// stores the room loads from, so a restart sees what a close persisted.
+	roundRepo := &mockRoundRepoHandler{boardStore: f.boards, memoryStore: f.memories}
 	f.roundRepo = roundRepo
 	handler := game.NewHandler(
 		hub,
