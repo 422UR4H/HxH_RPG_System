@@ -207,6 +207,9 @@ Notas sobre os campos de `action`/`reactions`:
   Convenção de coordenada, igual em `move.position`: `[a, b, z]`, `(a, b) = (col, row)` numa
   grade quadrada ou `(q, r)` axial numa hexagonal; `z` não é lido pelo servidor. Uma reação
   (em `reactions[]`) nunca tem `move.from` — o campo não é derivado para o lado da reação.
+- `move.from` e `move.position` da **action do turno** chegam a cada leitor **como ele os viu
+  ao vivo** (decisão do dono do produto, 2026-10-01) — ver "O movimento como foi visto ao
+  vivo" abaixo. `move.category` chega sempre.
 - `trigger` é omitido por completo quando o viewer não é dono nem mestre; quando presente, é
   um objeto vazio (o domínio ainda não tem campos em `action.Trigger`).
 - `feint` segue uma regra **temporal**, não de classe: `ProjectAction`
@@ -292,7 +295,9 @@ Notas sobre `resolution.targets[]`:
   num turno fechado se lê "ficou") → não saiu do lugar. `landing` (`[col, row, z]`) só aparece
   numa fuga que falhou. Persistido com a resolução do turno
   (`internal/gateway/pg/round/resolution_record.go`); turnos gravados antes deste campo não o
-  trazem.
+  trazem. Para quem não é mestre nem dono do personagem que fugiu, `landing` só vem se ele
+  viu a peça pousar ao vivo — ver "O movimento como foi visto ao vivo" abaixo; sem ele,
+  `awaitsMaster` continua `false` (o mestre escolheu; só não se diz onde).
 
 - `errors` só aparece quando o motor **não conseguiu** calcular parte da colisão, o que é
   raro — então a presença dela é o sinal. **Não é mensagem de erro:** o request não falhou e
@@ -390,13 +395,43 @@ O mestre vê todas, inteiras. Revelar parede vai a todos ao vivo, então vai a t
 mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, nem para o mestre:
 é como a projeção é decidida, não dado de mesa.
 
+### O movimento como foi visto ao vivo — `move.from`, `move.position`, `escape.landing`
+
+Onde uma peça estava e para onde foi é a mesma notícia que o relay ao vivo (`piece_moved` /
+`piece_removed`) dá ou nega pelo fog de cada jogador. O histórico não a dá a quem a mesa não
+deu (decisão do dono do produto, 2026-10-01). O fog na hora da leitura não é o fog daquele
+momento, então **nada é recalculado**: no instante em que o movimento é mostrado ao vivo, o
+servidor grava, para **todo jogador da sessão** (conectado ou não), o veredito do mesmo portão
+que decidiu o que ele recebeu — o do `turn_opened` (origem = a casa da peça na abertura) para
+o movimento da action, o do `resolution_updated` liquidado para o pouso de uma fuga — e o
+histórico projeta por ele:
+
+| O jogador, ao vivo, … | `move` da action no histórico | `escape.landing` |
+|---|---|---|
+| viu o destino | `from` e `position` | presente |
+| viu só a peça sair (o `move` do `turn_opened` trouxe só `from`) | `from`, sem `position` | — |
+| não viu nada (fog, peça `visible: false`, ator sem peça) | só `category` | ausente |
+
+O mestre e o dono do ator (do personagem que fugiu, para `landing`) veem tudo, sempre — não
+há veredito gravado para eles. Os vereditos são gravados com o fechamento do turno, na
+transação dele (`actions.move_views`; `landingViews` dentro do `escape` em
+`turns.resolution`), e **nunca saem no wire** — para ninguém, nem para o mestre.
+
+**Linhas antigas falham fechado.** Um turno gravado antes desses vereditos existirem (sem
+`move_views`, sem `landingViews`) mostra a quem não é mestre nem dono só a `category` do
+movimento e nenhum `landing`: na dúvida, não se entrega o que talvez não tenha sido visto.
+
+Uma reação em `reactions[]` não é cortada por esta regra (a action de uma reação não vai à mesa
+ao vivo; o destino de uma fuga que escapou está no `move` dela).
+
 ### A resposta já vem projetada — não filtre no cliente
 
 **Este é o ponto central deste endpoint.** O Action History é uma superfície de jogo com
 visibilidade por campo, não um log — a mesma política que `resolution_updated` já aplica no
 WebSocket (ver `docs/dev/match/combat-engine.md#visibilidade`), rodada aqui pelas MESMAS
-funções (`service.ProjectAction`, `service.ProjectResolution`) — e as master actions por
-`masteraction.Record.ProjectFor` (seção acima).
+funções (`service.ProjectAction`, `service.ProjectResolution`) — as master actions por
+`masteraction.Record.ProjectFor` e o onde do movimento pelos vereditos gravados ao vivo
+(seções acima).
 
 Isso significa, na prática:
 

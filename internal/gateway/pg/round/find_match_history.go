@@ -8,6 +8,7 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
 )
@@ -50,7 +51,7 @@ func (r *Repository) FindMatchHistory(
 		        t.uuid, t.created_at, t.finished_at, t.resolution,
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
 		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
-		        a.trigger, a.interact, a.system_bias
+		        a.trigger, a.interact, a.system_bias, a.move_views
 		 FROM scenes s
 		 LEFT JOIN rounds  ro ON ro.scene_uuid = s.uuid
 		 LEFT JOIN turns   t  ON t.round_uuid = ro.uuid
@@ -114,6 +115,8 @@ func (r *Repository) FindMatchHistory(
 			defenseRaw, dodgeRaw, repelRaw          []byte
 			feintRaw, triggerRaw, interactRaw       []byte
 			systemBias                              *int
+			// moveViewsRaw is read only off the turn's action row (a reaction's is NULL).
+			moveViewsRaw []byte
 		)
 
 		if err := rows.Scan(
@@ -122,7 +125,7 @@ func (r *Repository) FindMatchHistory(
 			&turnUUID, &turnCreatedAt, &turnFinishedAt, &resolutionRaw,
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
-			&feintRaw, &triggerRaw, &interactRaw, &systemBias,
+			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw,
 		); err != nil {
 			return nil, fmt.Errorf("FindMatchHistory scan: %w", err)
 		}
@@ -238,12 +241,25 @@ func (r *Repository) FindMatchHistory(
 				curTurn = nil
 				continue
 			}
+			// What each player saw of the move live. An unreadable value is dropped, not the
+			// turn: nil fails closed in the use case (category only), which is what a row from
+			// before the column reads as anyway.
+			var moveViews map[uuid.UUID]masteraction.View
+			if len(moveViewsRaw) > 0 {
+				if err := json.Unmarshal(moveViewsRaw, &moveViews); err != nil {
+					log.Printf("FindMatchHistory: turn %s — move_views of action %s failed to decode, shown to nobody "+
+						"but the master and the owner: %v", *turnUUID, *actionUUID, err)
+					moveViews = nil
+				}
+			}
 			// turns.created_at and turns.finished_at are NOT NULL; the pointers only exist
 			// because the LEFT join could have handed NULL for a turn that is not there.
 			curRound.Turns = append(curRound.Turns, appmatch.HistoryTurn{
 				UUID: *turnUUID, CreatedAt: derefTime(turnCreatedAt), FinishedAt: derefTime(turnFinishedAt),
-				Action:     *act,
-				Resolution: DecodeResolution(resolutionRaw),
+				Action:       *act,
+				Resolution:   DecodeResolution(resolutionRaw),
+				MoveViews:    moveViews,
+				LandingViews: decodeLandingViews(resolutionRaw),
 			})
 			curTurn = &curRound.Turns[len(curRound.Turns)-1]
 		}

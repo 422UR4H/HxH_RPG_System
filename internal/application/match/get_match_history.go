@@ -18,8 +18,10 @@ import (
 // GetMatchHistoryResult is the match's history, ALREADY projected per viewer — Scene -> Round
 // -> Turn -> Action, the same tree FindMatchHistory reads, with service.ProjectAction /
 // service.ProjectResolution run over every action, reaction and resolution in it, and every
-// master action run through masteraction.Record.ProjectFor. The REST handler serializes this
-// straight to the wire; it does not filter anything itself.
+// master action run through masteraction.Record.ProjectFor. The one cut the domain cannot
+// carry — a move's from/position and an escape's landing this reader did not see live — is
+// decided here too (HistoryTurn.MoveSight, HiddenLandings) and only APPLIED by the REST
+// mapping after actionwire.From; otherwise the handler serializes this straight to the wire.
 type GetMatchHistoryResult struct {
 	Scenes []HistoryScene
 }
@@ -146,6 +148,10 @@ func (uc *GetMatchHistoryUC) Get(
 					pt.Reactions[l] = service.ProjectAction(react, viewer, settled)
 				}
 				pt.Resolution = service.ProjectResolution(tu.Resolution, viewer)
+				pt.MoveSight = moveSightFor(tu, viewer, userUUID)
+				pt.HiddenLandings = hiddenLandingsFor(tu, viewer, userUUID)
+				// Who saw what is not table data — the verdicts above are all this reader gets.
+				pt.MoveViews, pt.LandingViews = nil, nil
 				pt.MasterActions = make([]masteraction.Record, 0)
 				projected[i].Rounds[j].Turns[k] = pt
 			}
@@ -157,6 +163,49 @@ func (uc *GetMatchHistoryUC) Get(
 		return nil, err
 	}
 	return &GetMatchHistoryResult{Scenes: projected}, nil
+}
+
+// moveSightFor is how much of tu's move WHERE this reader saw live (owner decision,
+// 2026-10-01): the master and the actor's owner the whole move, anyone else what the verdict
+// recorded for them at the opening says (HistoryTurn.MoveViews) — never recomputed here: the
+// fog at read time is not the fog of that moment. No entry, or a row from before the verdicts
+// were recorded, is the category alone: fail closed, like Record.ProjectFor.
+func moveSightFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) MoveSight {
+	if tu.Action.Move == nil || viewer.SeesAllOf(tu.Action.GetActorID()) {
+		return MoveSightWhole
+	}
+	switch tu.MoveViews[userUUID] {
+	case masteraction.ViewFull:
+		return MoveSightWhole
+	case masteraction.ViewLeft:
+		return MoveSightOrigin
+	default:
+		return MoveSightNone
+	}
+}
+
+// hiddenLandingsFor names the escapes whose landing this reader did not see live: every one
+// with a landing, unless the reader is the master, owns the escaping character, or the verdict
+// recorded at the settled resolution (HistoryTurn.LandingViews) says they saw it. nil when
+// nothing is hidden.
+func hiddenLandingsFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) map[uuid.UUID]bool {
+	if tu.Resolution == nil {
+		return nil
+	}
+	var hidden map[uuid.UUID]bool
+	for _, cr := range tu.Resolution.CharacterResults {
+		if cr.Escape == nil || cr.Escape.Landing == nil || viewer.SeesAllOf(cr.TargetID) {
+			continue
+		}
+		if _, saw := tu.LandingViews[cr.TargetID][userUUID]; saw {
+			continue
+		}
+		if hidden == nil {
+			hidden = map[uuid.UUID]bool{}
+		}
+		hidden[cr.TargetID] = true
+	}
+	return hidden
 }
 
 // stitch hangs the match's events and master actions on the projected tree, in place.

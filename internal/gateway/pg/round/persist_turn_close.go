@@ -7,6 +7,7 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
@@ -58,7 +59,7 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	// invisible while nothing read created_at, and nonsense the moment something sorts by it
 	// (HistoryTurnResponse.CreatedAt, since Task 12).
 	finishedAt := t.GetFinishedAt()
-	resolutionJSON, err := encodeResolution(d.Resolution)
+	resolutionJSON, err := encodeResolution(d.Resolution, d.LandingViews)
 	if err != nil {
 		return fmt.Errorf("PersistTurnClose marshal resolution: %w", err)
 	}
@@ -71,14 +72,16 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		return fmt.Errorf("PersistTurnClose insert turn: %w", err)
 	}
 
-	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt); err != nil {
+	// The action carries what each player saw of its move live (move_views); a reaction carries
+	// none — an escape's landing is recorded in the resolution above.
+	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt, d.MoveViews); err != nil {
 		return fmt.Errorf("PersistTurnClose insert action: %w", err)
 	}
 
 	// Reactions after the action, never before: react_to_uuid references it.
 	reactions := t.GetReactions()
 	for i := range reactions {
-		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt); err != nil {
+		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, nil); err != nil {
 			return fmt.Errorf("PersistTurnClose insert reaction %d: %w", i, err)
 		}
 	}
@@ -142,12 +145,16 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 // insertAction writes one row of the actions table, for the turn's action or for one of its
 // reactions. The two are the same shape and the same table; what tells them apart in the row
 // is react_to_uuid being set and reaction_kind carrying the declared kind.
+//
+// moveViews is move_views: nil writes SQL NULL ("not recorded"), an empty map '{}' ("recorded,
+// nobody but the master and the owner saw it") — the history reads both the same way.
 func insertAction(
 	ctx context.Context,
 	tx pgx.Tx,
 	act *action.Action,
 	turnID uuid.UUID,
 	createdAt time.Time,
+	moveViews map[uuid.UUID]masteraction.View,
 ) error {
 	speedJSON, err := json.Marshal(act.Speed)
 	if err != nil {
@@ -199,6 +206,13 @@ func insertAction(
 		return fmt.Errorf("marshal interact: %w", err)
 	}
 
+	var moveViewsJSON []byte
+	if moveViews != nil {
+		if moveViewsJSON, err = json.Marshal(moveViews); err != nil {
+			return fmt.Errorf("marshal move views: %w", err)
+		}
+	}
+
 	// react_to_uuid: nil SQL when ReactToID is zero UUID
 	var reactToUUID *uuid.UUID
 	if act.ReactToID != uuid.Nil {
@@ -223,14 +237,14 @@ func insertAction(
 		`INSERT INTO actions
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, repel, feint, trigger,
-		  interact, system_bias, reaction_kind, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+		  interact, system_bias, reaction_kind, created_at, move_views)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, deriveActionType(act),
 		speedJSON, skillsJSON, moveJSON, attackJSON,
 		defenseJSON, dodgeJSON, repelJSON, feintJSON, triggerJSON,
 		interactJSON, act.SystemBias,
-		reactionKind, createdAt,
+		reactionKind, createdAt, moveViewsJSON,
 	)
 	return err
 }

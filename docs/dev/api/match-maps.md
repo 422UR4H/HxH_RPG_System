@@ -178,8 +178,10 @@ interação/revelação de parede pelo mestre. Com um turno aberto nada é salvo
 fechamento dele (decisão do dono do produto, 2026-10-01): o fechamento grava o tabuleiro com
 tudo o que aconteceu no turno, na mesma transação do turno, e um reinício no meio do turno volta
 ao último fechamento — ver
-[`match-combat-ws.md`](match-combat-ws.md#reinício-recarga-queda). `Room.persistBoard(reason)`
-é o único método que escreve; uma falha é logada e engolida — a jogada em memória continua
+[`match-combat-ws.md`](match-combat-ws.md#reinício-recarga-queda). Dois caminhos escrevem, os
+dois serializados por `persistMu`: no fechamento de turno, `Room.persistClosedTurn` (o
+tabuleiro e o fog vão na transação do `PersistTurnClose`, com o turno); fora dele,
+`Room.persistBoard(reason)`. Uma falha é logada e engolida — a jogada em memória continua
 valendo, só a gravação que se perde (mesma política de `persistClosedTurn`).
 
 **O fog do jogador vai junto.** Cada salvamento também grava a memória explorada de cada

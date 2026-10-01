@@ -1149,6 +1149,14 @@ Mestre e dono do ator recebem o `move` inteiro, sempre. `category` fica para tod
 ator se move é mecânica pública; **onde** não é. Os demais campos de `move` (`speed`,
 `finalSpeed`) seguem o corte de nível acima, sem mudança.
 
+**O histórico segue esta mesma regra.** No `turn_opened` ao vivo, o servidor grava o veredito
+deste gate para **todo jogador da sessão** (conectado ou não; mestre e dono do ator não são
+gravados), com a mesma origem julgada, e o grava com o fechamento do turno
+(`actions.move_views`). O [`GET /history`](match-history.md#o-movimento-como-foi-visto-ao-vivo--movefrom-moveposition-escapelanding)
+mostra a cada leitor o `move` da action exatamente como esta tabela o deu a ele ao vivo — nada
+é recalculado com o fog da hora da leitura; um turno gravado antes disso falha fechado (só
+`category`).
+
 Para um `Dash` de `[4, 4, 0]` a `[6, 4, 0]` (o do exemplo de [`action_queued`](#action_queued)), um terceiro que não enxerga nenhuma das pontas recebe:
 
 ```json
@@ -1162,9 +1170,9 @@ Para um `Dash` de `[4, 4, 0]` a `[6, 4, 0]` (o do exemplo de [`action_queued`](#
 e um que via só a origem recebe o mesmo com `"from": [4, 4, 0]` — sem `position`.
 
 > ⚠️ **O front tem que tolerar um `move` sem `from` e sem `position`.** `position` deixou de
-> ser sempre presente neste protocolo (no TS: `position?: [number, number, number]`). O
-> [histórico REST](match-history.md) não muda: lá o `move` sai sempre inteiro, `position`
-> incluído.
+> ser sempre presente neste protocolo (no TS: `position?: [number, number, number]`) — e
+> também no [histórico REST](match-history.md), onde o `move` da action vem cortado pelo
+> veredito gravado ao vivo (ver acima). Para o mestre e o dono do ator ele continua inteiro.
 
 É este evento que abre a janela de reação: quem está em `action.targetId` pode mandar
 [`attach_reaction`](#attach_reaction) a partir daqui. **`targetId` agora viaja nesta
@@ -1996,7 +2004,10 @@ por omissão. "O oponente tem que deduzir pelos números" é impossível sem ele
    vivo (`pieceMoveView`, sem origem). O resto do veredito (`escaped`, `movePassed`,
    `dodgePassed`, `awaitsMaster`) continua chegando: é público depois de liquidado. Note que
    `awaitsMaster: false` com `escaped: false` e sem `landing` quer dizer "o mestre escolheu
-   uma queda que você não vê", não "ficou".
+   uma queda que você não vê", não "ficou". O veredito deste gate é gravado no fechamento
+   para todo jogador da sessão (`landingViews`, dentro do `escape` em `turns.resolution`), e
+   o [`GET /history`](match-history.md#o-movimento-como-foi-visto-ao-vivo--movefrom-moveposition-escapelanding)
+   mostra o `landing` só a quem o viu aqui — linhas antigas, a ninguém além de mestre e dono.
 
 ### Nota: a finta segue o mesmo eixo do TEMPO — desde B2, também neste protocolo
 
@@ -2149,8 +2160,9 @@ transação do turno:
   (`persistDamage`), **antes** e **fora** da transação do turno — como sempre foi. Se a
   transação do turno falhar, o dano já está na ficha.
 
-**O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado no mesmo
-`persistBoard`, então um jogador que reconecta longe de uma parede que já viu antes ainda a
+**O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado junto com o
+tabuleiro — no fechamento de turno, dentro da transação do `PersistTurnClose`; entre turnos, no
+mesmo `persistBoard` —, então um jogador que reconecta longe de uma parede que já viu antes ainda a
 recebe em `map_full_state` — a memória, não a visão atual, é o que decide (ver a seção de
 fog em [`maps.md`](maps.md)).
 

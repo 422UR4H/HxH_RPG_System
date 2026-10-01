@@ -145,10 +145,11 @@ type Room struct {
 	// (matchboard.Board.Bg's own doc comment) — nobody writes a non-nil value yet; the
 	// in-match map editor that will is future work.
 	bg *mapentity.BgImage
-	// persistMu serializes persistBoard's snapshot-and-write pair across goroutines, so two
-	// saves racing from two read pumps land in the order their SNAPSHOTS were taken, not the
-	// order their DB round trips happened to finish. r.mu is only ever held for the snapshot
-	// half, never across the write.
+	// persistMu serializes every board snapshot-and-write pair across goroutines — persistBoard's
+	// and persistClosedTurn's (whose PersistTurnClose writes the board in the turn's own
+	// transaction) — so two saves racing from two read pumps land in the order their SNAPSHOTS
+	// were taken, not the order their DB round trips happened to finish. Lock order: persistMu,
+	// then r.mu. r.mu is only ever held for the snapshot half, never across the write.
 	persistMu sync.Mutex
 	// pendingTurns is what happened inside each open turn and is written only with that turn's
 	// close (turnWrites, owner decision 2026-10-01), keyed by turn. Guarded by mu.
@@ -1651,16 +1652,81 @@ func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainse
 	if out.Move == nil || v.SeesAllOf(out.ActorID) {
 		return out
 	}
-	switch view, ok := r.gatePieceMoveLocked(pid, out.ActorID, origin, out.Move.Position); {
+	switch view, ok := r.openedMoveViewLocked(pid, out.ActorID, out.Move.From, out.Move.Position, origin); {
 	case !ok:
 		out.Move.From, out.Move.Position = nil, nil
 	case view == masteraction.ViewLeft:
 		out.Move.Position = nil
-		if out.Move.From == nil || origin == nil || *out.Move.From != *origin {
-			out.Move.From = nil
-		}
 	}
 	return out
+}
+
+// openedMoveViewLocked is what recipient pid may see of an opened move's WHERE: full (from and
+// position), left (from only), or nothing (false). It is the ONE decision behind both the
+// live turn_opened/openTurn (turnActionWireLocked) and the verdict the history records for
+// the move (recordOpenedMoveViews), so GET /history can only ever show a reader what this
+// told them live (owner decision, 2026-10-01).
+//
+// The piece's fog gate (gatePieceMoveLocked) judges the move from origin, and a "left" verdict
+// carries move.from only when move.from IS that origin — otherwise it would hand out a slot the
+// relay never showed this player, so it is nothing instead (see turnActionWireLocked).
+//
+// The caller MUST hold r.mu (a read lock is enough).
+func (r *Room) openedMoveViewLocked(pid, actorID uuid.UUID, from, to, origin *[3]int) (masteraction.View, bool) {
+	view, ok := r.gatePieceMoveLocked(pid, actorID, origin, to)
+	if !ok {
+		return "", false
+	}
+	if view == masteraction.ViewLeft && (from == nil || origin == nil || *from != *origin) {
+		return "", false
+	}
+	return view, true
+}
+
+// sessionPieceViewsLocked runs gate for EVERY player of the session — connected or not, their
+// fog at this instant from the session's visibility cache, as sessionViews does for master
+// actions — except the master and the character's owner, who always see all of it and are
+// never recorded. Empty (not nil) when nobody else saw anything: "recorded, nobody saw".
+//
+// The caller MUST hold r.mu (a read lock is enough) and r.session must not be nil.
+func (r *Room) sessionPieceViewsLocked(characterID uuid.UUID, gate func(pid uuid.UUID) (masteraction.View, bool)) map[uuid.UUID]masteraction.View {
+	owner, hasOwner := r.session.GetCharToPlayer()[characterID.String()]
+	views := map[uuid.UUID]masteraction.View{}
+	for _, pid := range r.session.PlayerIDs() {
+		if pid == r.masterUUID || (hasOwner && pid == owner) {
+			continue
+		}
+		if v, ok := gate(pid); ok {
+			views[pid] = v
+		}
+	}
+	return views
+}
+
+// recordOpenedMoveViews records, for the turn that just opened, what each session player saw
+// of its move — openedMoveViewLocked from the same origin the live turn_opened is judged on —
+// and holds it with the turn (turnWrites.moveViews), to be written by PersistTurnClose with the
+// action (actions.move_views). The history projects the move by it: nothing is recomputed at
+// read time, when the fog is no longer that moment's.
+//
+// Only while that turn is still the open one: a turn already closed by a racing close has been
+// drained, and an entry written now would never be. The caller must NOT hold r.mu.
+func (r *Room) recordOpenedMoveViews(opened *turnentity.Turn, origin *[3]int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	turnID := opened.GetID()
+	if r.openTurnIDLocked() != turnID {
+		return
+	}
+	// Under the lock: the copy's Move points at live session memory (announceOpenedTurn).
+	act := opened.GetAction()
+	if act.Move == nil {
+		return
+	}
+	actorID, from, to := act.GetActorID(), act.Move.From, act.Move.Position
+	r.turnWritesLocked(turnID).moveViews = r.sessionPieceViewsLocked(actorID, func(pid uuid.UUID) (masteraction.View, bool) {
+		return r.openedMoveViewLocked(pid, actorID, from, &to, origin)
+	})
 }
 
 // moveFromOf is an action's enqueue-time move.from, nil when it has no Move or no origin.
@@ -1730,12 +1796,47 @@ func (r *Room) gateEscapeLandingsLocked(p *ResolutionUpdatedPayload, pid uuid.UU
 		if tr.Escape == nil || tr.Escape.Landing == nil || v.SeesAllOf(tr.TargetID) {
 			continue
 		}
-		if _, ok := r.gatePieceMoveLocked(pid, tr.TargetID, nil, tr.Escape.Landing); !ok {
+		if _, ok := r.escapeLandingViewLocked(pid, tr.TargetID, tr.Escape.Landing); !ok {
 			esc := *tr.Escape
 			esc.Landing = nil
 			tr.Escape = &esc
 		}
 	}
+}
+
+// escapeLandingViewLocked is whether recipient pid may see where an escaping character's piece
+// landed — the ONE decision behind both the live settled resolution_updated
+// (gateEscapeLandingsLocked) and the verdict the history records (escapeLandingViewsLocked).
+//
+// The caller MUST hold r.mu (a read lock is enough).
+func (r *Room) escapeLandingViewLocked(pid, characterID uuid.UUID, landing *[3]int) (masteraction.View, bool) {
+	return r.gatePieceMoveLocked(pid, characterID, nil, landing)
+}
+
+// escapeLandingViewsLocked records, per escape of res that has a landing, what each session
+// player saw of it — keyed by the escaping character (TargetID). Run by persistClosedTurn after
+// applyClosedEscapes put the pieces down and before the settled resolution_updated is sent, on
+// that same board, so it is the verdict the live gate reaches. nil when no escape has a landing.
+//
+// The caller MUST hold r.mu (a read lock is enough).
+func (r *Room) escapeLandingViewsLocked(res *domainservice.TurnResolution) map[uuid.UUID]map[uuid.UUID]masteraction.View {
+	if res == nil || r.session == nil {
+		return nil
+	}
+	var out map[uuid.UUID]map[uuid.UUID]masteraction.View
+	for _, cr := range res.CharacterResults {
+		if cr.Escape == nil || cr.Escape.Landing == nil {
+			continue
+		}
+		target, landing := cr.TargetID, cr.Escape.Landing
+		if out == nil {
+			out = map[uuid.UUID]map[uuid.UUID]masteraction.View{}
+		}
+		out[target] = r.sessionPieceViewsLocked(target, func(pid uuid.UUID) (masteraction.View, bool) {
+			return r.escapeLandingViewLocked(pid, target, landing)
+		})
+	}
+	return out
 }
 
 // announceOpenedTurn is the tail both open_next_action and pull_action end with, byte for
@@ -1762,6 +1863,9 @@ func (r *Room) announceOpenedTurn(
 	// origin is where the piece stood when the turn opened — what the relay just judged the
 	// move on, and so what turn_opened's move gate judges it on too (turnActionWireLocked).
 	origin := r.applyOpenedMove(opened)
+	// What each session player sees of the move — the verdict the dispatch below applies —
+	// recorded for the history, held with the turn until it closes.
+	r.recordOpenedMoveViews(opened, origin)
 
 	// GetAction returns a COPY, so it goes into a variable before any getter with a pointer
 	// receiver is called on it — the same shape persistClosedTurn already uses.
@@ -1871,12 +1975,17 @@ func (r *Room) persistClosedTurn(
 	// The board as this close left it, in the same critical section: what the turn's write
 	// says the board is, exactly.
 	board, memories := r.boardSnapshotLocked()
+	// Who sees each escape's landing, on that same board — the verdict the settled
+	// resolution_updated sent after this applies (escapeLandingViewLocked), recorded for the
+	// history.
+	landingViews := r.escapeLandingViewsLocked(res)
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
+		MoveViews: inTurn.moveViews, LandingViews: landingViews,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it, "+

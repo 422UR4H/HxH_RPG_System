@@ -23,7 +23,9 @@ const (
 )
 
 // View is what one player saw of a master action LIVE, at the instant it was applied —
-// recorded so the history can show every reader exactly that and no more (spec §4.8).
+// recorded so the history can show every reader exactly that and no more (spec §4.8). The same
+// two values record what a player saw of a turn's move and of an escape's landing
+// (actions.move_views, the escape's landingViews — owner decision, 2026-10-01).
 type View string
 
 const (

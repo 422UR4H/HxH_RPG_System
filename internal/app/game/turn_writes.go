@@ -20,6 +20,10 @@ import (
 type turnWrites struct {
 	// masterActions are the turn's master actions, in the order they were applied.
 	masterActions []masteraction.Record
+	// moveViews is what each session player saw of the turn's opened move, recorded at the
+	// opening (recordOpenedMoveViews) and written with the action (actions.move_views): the
+	// history shows each reader the move as they saw it then. nil when the action has no move.
+	moveViews map[uuid.UUID]masteraction.View
 }
 
 // openTurnIDLocked is the session's open turn, uuid.Nil when there is none (or no session).

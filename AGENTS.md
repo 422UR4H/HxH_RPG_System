@@ -114,14 +114,16 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 **Fechamento da Fase 6 — pacote de back (B1–B16, spec 2026-09-27):**
 - **O tabuleiro é do servidor.** `match_boards` guarda um retrato por partida (peças, paredes,
   grade, `bg` — `NULL` herda o do mapa); `player_memories` guarda o fog explorado. A `Room`
-  carrega (`loadBoard`) quando nasce e, em lobby, a cada conexão do mestre; `persistBoard` é o
-  único ponto de gravação, nos três verbos de fechamento de turno, no `start_match` e — entre
-  turnos — nas master actions de peça e na interação/revelação de parede, serializado por
-  `persistMu`. **Dentro de um turno aberto nada é gravado antes do fechamento** (dono do
-  produto, 2026-10-01): nem o tabuleiro (`persistBoardOutsideTurn`) nem as master actions, que a
-  `Room` guarda por turno (`turnWrites`, `turn_writes.go`). O fechamento grava turno, master
-  actions e tabuleiro+fog numa transação só (`PersistTurnClose`; os três verbos não chamam
-  `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito. Fora disso:
+  carrega (`loadBoard`) quando nasce e, em lobby, a cada conexão do mestre. Grava em dois
+  pontos, os dois serializados por `persistMu`: o fechamento de turno (`persistClosedTurn`, na
+  transação do `PersistTurnClose` — ver abaixo) e `persistBoard`, no `start_match` e — entre
+  turnos — nas master actions de peça e na interação/revelação de parede. **Dentro de um
+  turno aberto nada é gravado antes do fechamento** (dono do produto, 2026-10-01): nem o
+  tabuleiro (`persistBoardOutsideTurn`) nem as master actions nem o que cada jogador viu do
+  movimento aberto, que a `Room` guarda por turno (`turnWrites`, `turn_writes.go`). O
+  fechamento grava turno, master actions, vereditos de movimento/pouso (o `GET /history` mostra
+  o `move` como cada um o viu ao vivo) e tabuleiro+fog numa transação só (`PersistTurnClose`;
+  os três verbos não chamam `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito. Fora disso:
   `change_round_mode` (do round), inscrição de NPC e o HP do fechamento (`persistDamage`, fora
   do tx).
   `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.

@@ -5,6 +5,7 @@ import (
 	"log"
 
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -125,11 +126,20 @@ type characterResultRecord struct {
 
 // escapeRecord mirrors service.EscapeResult field for field. AwaitsMaster is NOT stored: it
 // is a wire derivation (failed and no landing), recomputed wherever it is shown.
+//
+// LandingViews is NOT part of service.EscapeResult: it is who saw Landing live, recorded at the
+// close from the settled resolution_updated's own landing gate (owner decision, 2026-10-01) —
+// {"<playerUUID>": "full"}, master and the escaper's owner never in it. It travels beside the
+// resolution (TurnCloseData.LandingViews, HistoryTurn.LandingViews) rather than inside the
+// domain's result, where every other reader of it would have to remember to drop it. Absent on
+// an escape with no landing and on every row written before it existed: the history then
+// shows the landing to nobody but the master and the owner (fails closed).
 type escapeRecord struct {
-	MovePassed  bool    `json:"movePassed"`
-	DodgePassed bool    `json:"dodgePassed"`
-	Escaped     bool    `json:"escaped"`
-	Landing     *[3]int `json:"landing,omitempty"`
+	MovePassed   bool                            `json:"movePassed"`
+	DodgePassed  bool                            `json:"dodgePassed"`
+	Escaped      bool                            `json:"escaped"`
+	Landing      *[3]int                         `json:"landing,omitempty"`
+	LandingViews map[uuid.UUID]masteraction.View `json:"landingViews,omitempty"`
 }
 
 type ladderRecord struct {
@@ -166,7 +176,10 @@ type wallResultRecord struct {
 // encodeResolution returns nil (SQL NULL) for a nil resolution. A turn that resolved nothing
 // stores nothing — a zero-value record would read back as "a collision that produced zero",
 // which is a different claim.
-func encodeResolution(res *service.TurnResolution) ([]byte, error) {
+//
+// landingViews (keyed by the escaping character, CharacterResult.TargetID) goes into each
+// escape entry that has a landing — see escapeRecord.LandingViews.
+func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]map[uuid.UUID]masteraction.View) ([]byte, error) {
 	if res == nil {
 		return nil, nil
 	}
@@ -194,6 +207,9 @@ func encodeResolution(res *service.TurnResolution) ([]byte, error) {
 			out.Escape = &escapeRecord{
 				MovePassed: cr.Escape.MovePassed, DodgePassed: cr.Escape.DodgePassed,
 				Escaped: cr.Escape.Escaped, Landing: copyPosition(cr.Escape.Landing),
+			}
+			if cr.Escape.Landing != nil {
+				out.Escape.LandingViews = landingViews[cr.TargetID]
 			}
 		}
 		for _, m := range cr.Payouts {
@@ -281,6 +297,31 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 			ReboundDamage:   wr.ReboundDamage,
 			Kind:            service.WallResultKind(wr.Kind),
 		})
+	}
+	return out
+}
+
+// decodeLandingViews reads back, per escaping character, who saw each escape's landing live
+// (escapeRecord.LandingViews). nil when no escape entry carries any — no landing, or a row
+// written before they were recorded — and for a row that will not decode (DecodeResolution
+// already logs that one).
+func decodeLandingViews(raw []byte) map[uuid.UUID]map[uuid.UUID]masteraction.View {
+	if len(raw) == 0 {
+		return nil
+	}
+	var rec resolutionRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return nil
+	}
+	var out map[uuid.UUID]map[uuid.UUID]masteraction.View
+	for _, c := range rec.Characters {
+		if c.Escape == nil || c.Escape.LandingViews == nil {
+			continue
+		}
+		if out == nil {
+			out = map[uuid.UUID]map[uuid.UUID]masteraction.View{}
+		}
+		out[c.TargetID] = c.Escape.LandingViews
 	}
 	return out
 }

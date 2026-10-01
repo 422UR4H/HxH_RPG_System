@@ -114,9 +114,11 @@ func From(a action.Action, lvl Level) Action
   na abertura (a do relay), não o `move.from` do enfileiramento; na reconexão, `move.from`.
   Quem aplica é o `room.go` (`turnActionWireLocked`), depois do `From`, que continua sem
   decidir visibilidade.
-  Para caber, `Move.Position` vira `*[3]int` com `omitempty`; no `Full` (o REST) é sempre
-  preenchido, então o JSON do histórico não muda. O `escape.landing` da resolução liquidada
-  segue o mesmo gate.
+  Para caber, `Move.Position` vira `*[3]int` com `omitempty`. O `escape.landing` da resolução
+  liquidada segue o mesmo gate. **O REST segue o que foi visto ao vivo** (decisão do dono do
+  produto, 2026-10-01, depois desta): o veredito do gate é gravado por jogador da sessão na
+  abertura (`actions.move_views`) e no fechamento (`landingViews` no `escape`), com o turno, e o
+  histórico corta `from`/`position`/`landing` por ele — linhas antigas falham fechado.
 
 ### 4.2 B1, B2 e B12 — as três superfícies
 
@@ -375,7 +377,8 @@ vai editar rolagens):
   consultas separadas, costuradas na árvore por `round_uuid`, para não multiplicar o join grande.
   Round fechado = `finishedAt` do round; troca de cena = a própria cena.
 - **Visibilidade:** `roundModeChanged` é público (o regime é público). As master actions seguem a
-  projeção do §4.8.
+  projeção do §4.8. O `move` de cada action e o `escape.landing` saem a cada leitor como ele os
+  viu ao vivo, pelo veredito gravado no turno (§4.1; dono do produto, 2026-10-01).
 - **Conserto do `match-history.md`**: `category` é `battle`/`roleplay`, `mode` é `Free`/`Race`,
   e o `move` passa a ser mostrado.
 

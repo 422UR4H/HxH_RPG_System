@@ -50,6 +50,18 @@ type TurnCloseData struct {
 	// means the match has no map attached (nothing to write a match_boards row for).
 	Board    *matchboard.Board
 	Memories []fogentity.PlayerMemory
+	// MoveViews is what each player of the session saw of the action's move when the turn
+	// opened — turn_opened's own move gate, run for every session player, connected or not
+	// (owner decision, 2026-10-01): full, left, or no entry for "saw nothing". The master and
+	// the actor's owner are not in it. Recorded the instant the move was shown and held with
+	// the turn (turnWrites) like MasterActions; written to actions.move_views. nil when the
+	// action has no move.
+	MoveViews map[uuid.UUID]masteraction.View
+	// LandingViews is, per escaping character (the CharacterResult's TargetID), who saw the
+	// settled escape's landing — the settled resolution_updated's landing gate, run at this
+	// close for every session player. Written inside the resolution's escape entry. nil when
+	// no escape of the turn has a landing.
+	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
 }
 
 type IRepository interface {
@@ -144,4 +156,40 @@ type HistoryTurn struct {
 	// for the reader (masteraction.Record.ProjectFor), in the order they happened. Never nil
 	// once the use case has run.
 	MasterActions []masteraction.Record
+
+	// MoveViews is what each player of the session saw LIVE of the action's move — the
+	// verdict turn_opened's move gate reached for them at the opening (actions.move_views):
+	// full (from and position), left (from only), no entry (neither). The master and the
+	// actor's owner have no entry: they always see it all. nil on a row written before the
+	// column existed — read as "nobody saw it" (fails closed). Read side only: the use case
+	// turns it into MoveSight and clears it, so who saw what never reaches the wire.
+	MoveViews map[uuid.UUID]masteraction.View
+	// LandingViews is, per escaping character (the CharacterResult's TargetID), who saw a
+	// settled escape's landing live — the settled resolution_updated's landing gate (the
+	// escape entry's landingViews in turns.resolution). Same rules as MoveViews: master and
+	// the escaper's owner not stored, absent fails closed, cleared by the use case.
+	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+
+	// MoveSight is how much of the action's move WHERE this reader may see — set by the use
+	// case from MoveViews, applied by the REST mapping after actionwire.From, exactly as
+	// room.go applies the live gate after From (the domain Move cannot say "no position").
+	MoveSight MoveSight
+	// HiddenLandings names the escaping characters whose escape.landing this reader did NOT
+	// see live — set by the use case from LandingViews. A directive rather than a nil Landing
+	// on the resolution: awaitsMaster is derived from Landing on the wire, and a landing
+	// withheld is not a landing the master never chose.
+	HiddenLandings map[uuid.UUID]bool
 }
+
+// MoveSight is how much of a history action's move one reader saw live. The zero value is the
+// whole move — the master, the actor's owner, an action with no move.
+type MoveSight string
+
+const (
+	// MoveSightWhole keeps move.from and move.position.
+	MoveSightWhole MoveSight = ""
+	// MoveSightOrigin keeps move.from only — the reader saw the piece leave, not arrive.
+	MoveSightOrigin MoveSight = "origin"
+	// MoveSightNone keeps neither: the category alone (that the actor moved is public).
+	MoveSightNone MoveSight = "none"
+)

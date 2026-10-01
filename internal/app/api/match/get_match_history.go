@@ -342,13 +342,35 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	for _, ma := range t.MasterActions {
 		masterActions = append(masterActions, toHistoryMasterActionResponse(ma))
 	}
+	// The move's WHERE is cut after From, by the verdict the use case read off what this reader
+	// saw live (MoveSight) — the order room.go's turnActionWireLocked applies the live gate in.
+	// MoveViews/LandingViews themselves are never mapped: who saw what is not table data.
+	act := actionwire.From(t.Action, actionwire.Full)
+	if act.Move != nil {
+		switch t.MoveSight {
+		case matchUC.MoveSightOrigin:
+			act.Move.Position = nil
+		case matchUC.MoveSightNone:
+			act.Move.From, act.Move.Position = nil, nil
+		}
+	}
+	res := toTurnResolutionResponse(t.Resolution)
+	if res != nil {
+		// After awaitsMaster was derived from the real landing: a landing withheld from this
+		// reader is not a landing the master never chose.
+		for i := range res.Targets {
+			if esc := res.Targets[i].Escape; esc != nil && t.HiddenLandings[res.Targets[i].TargetID] {
+				esc.Landing = nil
+			}
+		}
+	}
 	return HistoryTurnResponse{
 		UUID:          t.UUID,
 		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
 		FinishedAt:    t.FinishedAt.Format(time.RFC3339),
-		Action:        actionwire.From(t.Action, actionwire.Full),
+		Action:        act,
 		Reactions:     reactions,
-		Resolution:    toTurnResolutionResponse(t.Resolution),
+		Resolution:    res,
 		MasterActions: masterActions,
 	}
 }

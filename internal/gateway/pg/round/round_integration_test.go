@@ -1965,3 +1965,89 @@ func TestFindActiveSessionIsDeterministic(t *testing.T) {
 		t.Fatalf("FindActiveSession round = %+v, want the newest open round %s", data, newer.GetID())
 	}
 }
+
+// TestPersistTurnCloseRoundTripsTheViewsRecordedLive is the persistence half of "the history
+// shows each reader a move as they saw it live" (owner decision, 2026-10-01): the opened move's
+// per-player verdicts go to actions.move_views, each landed escape's to its escape entry
+// (landingViews), and FindMatchHistory reads both back. A turn closed without them — what every
+// row written before this column existed looks like — reads back with neither, and decodes.
+func TestPersistTurnCloseRoundTripsTheViewsRecordedLive(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	sawAll, sawLeave, sawLanding := uuid.New(), uuid.New(), uuid.New()
+	landing := [3]int{7, 6, 0}
+	escapeRes := func() *service.TurnResolution {
+		return &service.TurnResolution{IsSettled: true, CharacterResults: []service.CharacterResult{{
+			TargetID: fx.victimSheet, ReactionKind: string(action.ReactEscapeGuard),
+			Escape: &service.EscapeResult{DodgePassed: true, Landing: &landing},
+		}}}
+	}
+	dash := func() *action.Action {
+		return action.NewAction(
+			fx.attackerSheet, nil, uuid.Nil, nil, action.ActionSpeed{}, nil,
+			&action.Move{Category: enum.Dash, From: &[3]int{1, 1, 0}, Position: [3]int{4, 4, 0}},
+			nil, nil, nil, nil, nil,
+		)
+	}
+
+	// Turn 1 carries the views; turn 2 is shaped like a row from before them.
+	act1 := dash()
+	tn1 := turnentity.NewTurn(*act1)
+	tn1.Close(time.Now())
+	moveViews := map[uuid.UUID]masteraction.View{sawAll: masteraction.ViewFull, sawLeave: masteraction.ViewLeft}
+	landingViews := map[uuid.UUID]map[uuid.UUID]masteraction.View{fx.victimSheet: {sawLanding: masteraction.ViewFull}}
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn1, Action: act1, MatchUUID: fx.matchUUID,
+		Resolution: escapeRes(), MoveViews: moveViews, LandingViews: landingViews,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 1: %v", err)
+	}
+	act2 := dash()
+	tn2 := turnentity.NewTurn(*act2)
+	tn2.Close(time.Now().Add(time.Second))
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn2, Action: act2, MatchUUID: fx.matchUUID,
+		Resolution: escapeRes(),
+	}); err != nil {
+		t.Fatalf("PersistTurnClose turn 2: %v", err)
+	}
+
+	var raw []byte
+	if err := pool.QueryRow(ctx, `SELECT move_views FROM actions WHERE uuid = $1`, act2.GetID()).Scan(&raw); err != nil {
+		t.Fatalf("read move_views of turn 2: %v", err)
+	}
+	if raw != nil {
+		t.Fatalf("a turn closed with no views wrote move_views = %s, want NULL", raw)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	turns := scenes[0].Rounds[0].Turns
+	if len(turns) != 2 {
+		t.Fatalf("got %d turns, want 2", len(turns))
+	}
+	if !reflect.DeepEqual(turns[0].MoveViews, moveViews) {
+		t.Errorf("move views read back = %v, want %v", turns[0].MoveViews, moveViews)
+	}
+	if !reflect.DeepEqual(turns[0].LandingViews, landingViews) {
+		t.Errorf("landing views read back = %v, want %v", turns[0].LandingViews, landingViews)
+	}
+	if turns[1].MoveViews != nil || turns[1].LandingViews != nil {
+		t.Errorf("a row with no views read back with some: move %v, landing %v", turns[1].MoveViews, turns[1].LandingViews)
+	}
+	// The resolution itself is untouched by the views, old row or new.
+	for i, tu := range turns {
+		if tu.Resolution == nil || len(tu.Resolution.CharacterResults) != 1 {
+			t.Fatalf("turn %d: the resolution did not decode: %+v", i+1, tu.Resolution)
+		}
+		if e := tu.Resolution.CharacterResults[0].Escape; e == nil || e.Landing == nil || *e.Landing != landing {
+			t.Errorf("turn %d: the escape's landing did not survive: %+v", i+1, e)
+		}
+	}
+}

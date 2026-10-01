@@ -647,6 +647,8 @@ categoria. Vale para
 `turn_opened`, para o `openTurn` do `match_full_state` e para o `escape.landing` da resolução
 liquidada (some para quem não vê a casa de queda). **O front tem que tolerar um `move` sem
 `from` e sem `position`** — contrato em `docs/dev/api/match-combat-ws.md` (`turn_opened`, §6).
+O `GET /history` segue o mesmo: cada leitor recebe o `move` e o `landing` como os viu ao vivo
+(veredito gravado com o turno; linhas antigas falham fechado) — `docs/dev/api/match-history.md`.
 
 **B3 a B10 — as pendências que a revisão da Fase 6 anotou.** Todas entram: o dono do produto
 não quer bug conhecido aberto.

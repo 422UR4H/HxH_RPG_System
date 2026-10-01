@@ -44,6 +44,7 @@ que receber a sessão herda essa obrigação.
 | `Turn` **fechado**, sua `Action` **e suas reactions** | ✅ | `PersistTurnClose` (atômico) |
 | `TurnResolution` **liquidada** | ✅ | `turns.resolution` JSONB — a colisão, não só a declaração |
 | Valores que o mestre sobrepôs | ✅ | `overridden_action_values`, drenados do `MatchSession` na mesma transação |
+| O que cada jogador viu, ao vivo, do movimento da action e do pouso de uma fuga | ✅ | `actions.move_views` e `landingViews` no `escape` de `turns.resolution`, na mesma transação — o `GET /history` projeta o `move`/`landing` por eles |
 | HP após o dano | ✅ | `UpdateStatusBars`, nas **duas** rotas que fecham turno |
 | `Turn` **aberto** | ❌ | só memória |
 | `activeQueue` (ações declaradas, não abertas) | ❌ | **morre com o processo** |

@@ -379,6 +379,9 @@ type mockRoundRepoHandler struct {
 	// failPersist, when set, makes PersistTurnClose fail and write NOTHING — a rolled-back
 	// transaction.
 	failPersist error
+	// closes keeps every SUCCESSFUL PersistTurnClose's data, in order — what FindMatchHistory
+	// hands back, the way the real gateway reads back what the close wrote.
+	closes []appmatch.TurnCloseData
 }
 
 // boardFor returns the board PersistTurnClose received for one closed turn.
@@ -465,6 +468,7 @@ func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.
 	}
 	m.turnRounds[d.Turn.GetID()] = d.Round.GetID()
 	m.handed = append(m.handed, d.Scene, d.Round)
+	m.closes = append(m.closes, d)
 	return nil
 }
 
@@ -536,8 +540,43 @@ func (m *mockRoundRepoHandler) CloseRound(_ context.Context, roundID uuid.UUID, 
 	m.closedRounds = append(m.closedRounds, roundID)
 	return nil
 }
+
+// FindMatchHistory reads back what the successful closes persisted, as the real gateway
+// does: the turn, its action and reactions, the settled resolution and the views recorded live
+// (MoveViews, LandingViews). Scenes and rounds in the order their first turn closed.
 func (m *mockRoundRepoHandler) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	scenes := []appmatch.HistoryScene{}
+	for _, d := range m.closes {
+		si := -1
+		for i := range scenes {
+			if scenes[i].UUID == d.Scene.GetID() {
+				si = i
+			}
+		}
+		if si < 0 {
+			scenes = append(scenes, appmatch.HistoryScene{UUID: d.Scene.GetID()})
+			si = len(scenes) - 1
+		}
+		sc := &scenes[si]
+		ri := -1
+		for i := range sc.Rounds {
+			if sc.Rounds[i].UUID == d.Round.GetID() {
+				ri = i
+			}
+		}
+		if ri < 0 {
+			sc.Rounds = append(sc.Rounds, appmatch.HistoryRound{UUID: d.Round.GetID(), Mode: string(d.Round.GetMode())})
+			ri = len(sc.Rounds) - 1
+		}
+		sc.Rounds[ri].Turns = append(sc.Rounds[ri].Turns, appmatch.HistoryTurn{
+			UUID: d.Turn.GetID(), FinishedAt: *d.Turn.GetFinishedAt(),
+			Action: *d.Action, Reactions: d.Turn.GetReactions(), Resolution: d.Resolution,
+			MoveViews: d.MoveViews, LandingViews: d.LandingViews,
+		})
+	}
+	return scenes, nil
 }
 
 type mockEnqueueMasterActionUCHandler struct{}
