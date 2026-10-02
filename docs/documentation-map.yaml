@@ -634,6 +634,20 @@ mappings:
       por ele; NULL (linha antiga, ou ação sem move) falha fechado. Dono do produto,
       2026-10-01.
 
+  - code_path: migrations/20261002000000_scenes_rounds_turns_timestamptz.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      Fix D (fix-tz-brief.md, 2026-10-02): scenes/rounds/turns.created_at/finished_at
+      eram TIMESTAMP sem fuso — o Go escrevia a hora local do processo (zoned
+      time.Now()), e o driver lia de volta rotulando UTC, três horas fora do instante
+      real neste host (-03:00). Migrados para TIMESTAMPTZ, interpretando os valores
+      existentes como America/Belem (único host que já escreveu linhas). Nenhuma
+      mudança no lado do Go: time.Time já é zoned, TIMESTAMPTZ é quem precisava ser
+      zone-aware. Ver auditoria das demais colunas TIMESTAMP (sem fuso) expostas por
+      REST em fix-tz-report.md — fora do escopo desta migração.
+
   # ─── Match History: round-scoped events and master actions (Phase 6 closure, B15/B14) ───
   - code_path: internal/domain/matchevent/
     dev_docs:

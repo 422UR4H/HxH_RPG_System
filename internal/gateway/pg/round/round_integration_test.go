@@ -22,6 +22,7 @@ import (
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	roundrepo "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
@@ -2440,5 +2441,90 @@ func TestPersistTurnCloseKeepsWhoSawAnEscapedEscapeArrive(t *testing.T) {
 	want := map[uuid.UUID]map[uuid.UUID]masteraction.View{fx.victimSheet: {saw: masteraction.ViewFull}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("landing views read back = %v, want %v", got, want)
+	}
+}
+
+// TestFindMatchHistoryReturnsTheRealInstant guards Fix D (fix-tz-brief.md, 2026-10-02):
+// scenes.created_at/finished_at, rounds.created_at/finished_at and turns.created_at/finished_at
+// used to be TIMESTAMP with no time zone. Go wrote the process's local wall clock (a zoned
+// time.Time, e.g. 11:57:33-03:00); pgx's TIMESTAMP codec drops the zone and keeps the wall-clock
+// digits, and reads them back labelled UTC — the same row came back as "...11:57:33Z", three
+// hours before the real instant, while master_actions.happened_at (already TIMESTAMPTZ, same
+// transaction, same close) read back correctly in the SAME response.
+//
+// America/Belem is loaded explicitly (not time.Local) so this test catches the regression
+// regardless of the machine running it — it has no DST, so the offset never shifts under it.
+func TestFindMatchHistoryReturnsTheRealInstant(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	loc, err := time.LoadLocation("America/Belem")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	// 2026-10-01T11:57:33-03:00 == 2026-10-01T14:57:33Z. The bug reads this back as
+	// 2026-10-01T11:57:33Z — the local digits, mislabelled UTC — three hours off.
+	closedAt := time.Date(2026, 10, 1, 11, 57, 33, 0, loc)
+
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", closedAt)
+	rd := roundentity.ReconstructRound(uuid.New(), enum.Free, closedAt)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.Close(closedAt)
+
+	turnID := tn.GetID()
+	ma := masteraction.Record{
+		UUID: uuid.New(), MatchUUID: fx.matchUUID, SceneUUID: sc.GetID(), RoundUUID: rd.GetID(),
+		TurnUUID: &turnID, MasterUUID: fx.masterUUID, Kind: masteraction.KindMovePiece,
+		Content: []byte(`{}`), HappenedAt: closedAt, // same instant, already TIMESTAMPTZ
+	}
+
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sc, Round: rd, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		MasterActions: []masteraction.Record{ma},
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 || len(scenes[0].Rounds[0].Turns) != 1 {
+		t.Fatalf("unexpected tree shape: %+v", scenes)
+	}
+	gotScene, gotRound := scenes[0], scenes[0].Rounds[0]
+	gotTurn := gotRound.Turns[0]
+
+	if !gotScene.CreatedAt.Equal(closedAt) {
+		t.Errorf("scene.CreatedAt = %v, want the real instant %v (off by %v)",
+			gotScene.CreatedAt, closedAt, gotScene.CreatedAt.Sub(closedAt))
+	}
+	if !gotRound.CreatedAt.Equal(closedAt) {
+		t.Errorf("round.CreatedAt = %v, want the real instant %v (off by %v)",
+			gotRound.CreatedAt, closedAt, gotRound.CreatedAt.Sub(closedAt))
+	}
+	if !gotTurn.FinishedAt.Equal(closedAt) {
+		t.Errorf("turn.FinishedAt = %v, want the real instant %v (off by %v)",
+			gotTurn.FinishedAt, closedAt, gotTurn.FinishedAt.Sub(closedAt))
+	}
+
+	// Cross-check against master_actions (already TIMESTAMPTZ, same close, same transaction):
+	// a turn and a master action written at the same instant must read back equal to EACH
+	// OTHER too, not just each individually close to the fixture.
+	records, err := pgmasteraction.NewRepository(pool).ListByMatch(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("ListByMatch: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 master action, got %d", len(records))
+	}
+	if !gotTurn.FinishedAt.Equal(records[0].HappenedAt) {
+		t.Errorf("turn.FinishedAt %v != master action.HappenedAt %v for the same instant",
+			gotTurn.FinishedAt, records[0].HappenedAt)
 	}
 }

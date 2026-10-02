@@ -197,6 +197,16 @@ Notas sobre `scenes[]` e `rounds[]`:
 - `mode` do round é o **último** regime em que ele esteve. Por onde ele passou, e quando, está
   nos `events` (`roundModeChanged`).
 - `finishedAt` ausente = round/cena ainda aberto.
+- **Todo instante deste endpoint é RFC3339 do instante real** (`createdAt`/`finishedAt` de
+  `scenes[]`/`rounds[]`/`turns[]`, `happenedAt` de master action, `createdAt` de evento) — o
+  sufixo `Z` nos exemplos acima é literal (UTC), não um rótulo colado em cima da hora local de
+  quem fechou o turno. Até 2026-10-02, `scenes`/`rounds`/`turns` eram `TIMESTAMP` sem fuso no
+  banco: o Go escrevia a hora local do processo, e o driver lia de volta rotulando UTC — um
+  turno fechado às 11:57 em -03:00 saía como `"...11:57:33Z"`, três horas antes do instante
+  real, dessincronizado de `masterActions[].happenedAt`/`events[].createdAt` (já
+  `TIMESTAMPTZ`) na MESMA resposta. Migração `20261002000000` corrigiu as três tabelas para
+  `TIMESTAMPTZ`; nenhuma mudança foi necessária do lado do Go (que já escrevia `time.Time`
+  com fuso — `time.Now()` — ver `gateway-conventions.instructions.md`).
 
 Notas sobre os campos de `action`/`reactions`:
 
