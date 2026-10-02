@@ -1126,13 +1126,23 @@ si, ligável pelo mestre.
 
 ### O round fecha sozinho
 
-O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem". Quando
-nenhuma ação pendente passa no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca
-`TurnTransition.RoundExhausted = true` em vez de abrir algo, e é aí que `CloseRoundUC`
-finalmente ganha um chamador: o caminho de auto-fechamento em
-`application/match/open_next_action.go` o executa na hora, loga e segue adiante se falhar — a
-mesa não pode ficar sem o bastão por causa de uma falha de fechamento. `bars_updated` e
-`round_closed` saem de `room.go` nessa mesma passada.
+O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem": o round
+acaba quando nenhuma ação na fila consegue mais pagar o preço. Quando nenhuma ação pendente passa
+no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca `TurnTransition.RoundExhausted =
+true` em vez de abrir algo, e é aí que `CloseRoundUC` finalmente ganha um chamador: o caminho de
+auto-fechamento em `application/match/open_next_action.go` o executa na hora, loga e segue
+adiante se falhar — a mesa não pode ficar sem o bastão por causa de uma falha de fechamento.
+`CloseRoundUC` só mexe na memória (liquida as barras, expira os modificadores de fim de round,
+abre o round seguinte); quem grava é o `room.go`, depois de soltar `r.mu`: o fim do round e a
+linha do seguinte vão **juntos** na transação do turno que o mesmo comando fechou
+(`TurnCloseData.NextRound`), ou numa só deles (`PersistRoundClose`) se nenhum turno fechou — um
+comando do mestre, uma transação (dono do produto, 2026-10-02). `bars_updated` e `round_closed`
+saem de `room.go` nessa mesma passada, depois da gravação.
+
+O que o `CloseRound` liquida em memória **não é durável** em lugar nenhum: o saldo que cruza para
+o round seguinte e os modificadores do round vivem só na sessão (um reinício zera as barras —
+perdido, não divergente). Por isso não há nada além das duas linhas de round para pôr na
+transação.
 
 ⚠️ **`ProjectOrder` e `SelectNext` compartilham a pontuação inteira, não só o desempate.** Os
 dois passam pelo mesmo `RoundScheduler.best` — a chave é `keyOf`, e o empate vai para quem
@@ -1627,7 +1637,7 @@ código, então adicionar e remover skills muda uma lista que não decide nada.
 | Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars`, na transação do turno (`PersistTurnClose`) |
 | `PriorityQueue` | ✅ Fase 3 — deixou de ser heap; virou lista simples, chave calculada em `RoundScheduler` na hora da seleção |
 | `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
-| Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
+| Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` grava o fim do round com o seguinte (na transação do turno, ou numa só deles) e emite `round_closed` |
 | `RoundMode.Race` | ✅ Fase 3 — alcançável via `ChangeRoundModeUC`/`change_round_mode`, master only. Iniciativa continua fora — `action.Initiative` segue órfão |
 | `bars_updated` | ✅ Fase 3 — broadcast com `seq`, preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |
 | `ReactionKind` | ✅ Fase 4 — sete valores declarados no envio, `Bars()`/`RequiredComponents()`/`Displaces()` no próprio tipo; `enum.DodgeCategory` removida |

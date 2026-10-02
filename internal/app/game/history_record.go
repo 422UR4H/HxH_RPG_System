@@ -73,9 +73,11 @@ func (r *Room) ensureSceneAndRoundRows(
 }
 
 // ensureActiveSceneAndRound makes the session's ACTIVE scene and round rows the moment they are
-// born (B15, spec §4.5): start_match and rehydration (the pair the session starts on),
-// change_scene (the new pair), a round closed by exhaustion (the round that opened in its
-// place). A scene the table spent talking and a round that closed with no turn in it happened
+// born (B15, spec §4.5): start_match and rehydration (the pair the session starts on) and
+// change_scene (the new pair). The round born when another ends is not written here: it goes
+// with its predecessor's end, in one transaction (persistClosedTurn's, or writeRoundClose's) —
+// written alone, next to a predecessor still open on disk, it would be a second open round in
+// the scene. A scene the table spent talking and a round that closed with no turn in it happened
 // all the same — before B15 they only became rows when their first turn closed, and so were
 // missing from the history.
 //
@@ -96,6 +98,49 @@ func (r *Room) ensureActiveSceneAndRound(why string) {
 		return
 	}
 	r.ensureSceneAndRoundRows(sess, sc, rd, why)
+}
+
+// persistRoundClose writes a round that ended with no turn closing in the same command (an
+// open_next_action with nothing open and no action that can still pay its price): its end and
+// the round CloseRound installed in its place, in one transaction of their own. closed is the
+// round the use case returned; the scene and the successor are read here, under r.mu. The caller
+// must NOT hold r.mu.
+func (r *Room) persistRoundClose(sess *matchsession.MatchSession, closed *roundentity.Round) {
+	r.mu.RLock()
+	sc, closedCopy := snapshotSceneAndRound(sess.GetActiveScene(), closed)
+	_, next := snapshotSceneAndRound(nil, sess.GetActiveRound())
+	r.mu.RUnlock()
+	r.writeRoundClose(sess, sc, closedCopy, next, "round_closed")
+}
+
+// writeRoundClose writes a round's end and its successor's birth together
+// (RoundRepo.PersistRoundClose) and, on success, tells the session the successor is a row — if
+// it is still the active round. Never one write without the other: a successor born open next
+// to a predecessor still open on disk is two open rounds in one scene. sc, closed and next are
+// snapshots (snapshotSceneAndRound). why names the moment, for the log; a failure is logged
+// saying what was lost and swallowed — the persistClosedTurn policy. The caller must NOT hold
+// r.mu.
+func (r *Room) writeRoundClose(
+	sess *matchsession.MatchSession, sc *sceneentity.Scene, closed, next *roundentity.Round, why string,
+) {
+	if sc == nil || closed == nil || next == nil {
+		return
+	}
+	if r.deps.RoundRepo == nil {
+		log.Printf("%s: no round repository — the end of round %s and the birth of round %s (match %s) NOT written",
+			why, closed.GetID(), next.GetID(), r.matchUUID)
+		return
+	}
+	if err := r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, sc, closed, next); err != nil {
+		log.Printf("%s FAILED — the end of round %s and the birth of round %s (scene %s, match %s) were NOT written: %v",
+			why, closed.GetID(), next.GetID(), sc.GetID(), r.matchUUID, err)
+		return
+	}
+	r.mu.Lock()
+	if active := sess.GetActiveRound(); active != nil && active.GetID() == next.GetID() {
+		sess.MarkRoundPersisted()
+	}
+	r.mu.Unlock()
 }
 
 // recordRoundModeChanged writes the round's regime change to match_events (B15, spec §4.5) —

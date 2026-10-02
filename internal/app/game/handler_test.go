@@ -355,10 +355,9 @@ type mockRoundRepoHandler struct {
 	overrides      map[uuid.UUID][]matchDomain.OverriddenValue
 	ensuredRounds  []uuid.UUID
 	ensuredScenes  []uuid.UUID
-	// closedScenes records every CloseSceneAndRound call as a {scene, round} pair, and
-	// closedRounds every CloseRound — what change_scene and a round's close write back.
+	// closedScenes records every CloseSceneAndRound call as a {scene, round} pair — what
+	// change_scene writes back.
 	closedScenes [][2]uuid.UUID
-	closedRounds []uuid.UUID
 	// turnRounds maps each persisted turn to the round PersistTurnClose was told it closed in.
 	turnRounds map[uuid.UUID]uuid.UUID
 	// handed keeps every *Scene/*Round pointer the room handed EnsureSceneAndRound and
@@ -386,6 +385,15 @@ type mockRoundRepoHandler struct {
 	// closes keeps every SUCCESSFUL PersistTurnClose's data, in order — what FindMatchHistory
 	// hands back, the way the real gateway reads back what the close wrote.
 	closes []appmatch.TurnCloseData
+	// roundCloses keeps every PersistRoundClose — a round that ended with no turn closing in the
+	// same command, written with its successor in a transaction of their own.
+	roundCloses []roundCloseCall
+}
+
+// roundCloseCall is one PersistRoundClose: the scene, the round that ended, the one born after.
+type roundCloseCall struct {
+	scene        *scene.Scene
+	closed, next *roundentity.Round
 }
 
 // boardFor returns the board PersistTurnClose received for one closed turn.
@@ -479,6 +487,9 @@ func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.
 	}
 	m.turnRounds[d.Turn.GetID()] = d.Round.GetID()
 	m.handed = append(m.handed, d.Scene, d.Round)
+	if d.NextRound != nil {
+		m.handed = append(m.handed, d.NextRound)
+	}
 	m.closes = append(m.closes, d)
 	return nil
 }
@@ -520,13 +531,6 @@ func (m *mockRoundRepoHandler) closedScenePairs() [][2]uuid.UUID {
 	return append([][2]uuid.UUID(nil), m.closedScenes...)
 }
 
-// closedRoundIDs returns a snapshot of every round ID CloseRound was called with.
-func (m *mockRoundRepoHandler) closedRoundIDs() []uuid.UUID {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]uuid.UUID(nil), m.closedRounds...)
-}
-
 // EnsureSceneAndRound is a no-op that records the scene and round it was asked to ensure —
 // what the room calls when a scene or round is born, and before writing a master action or an
 // event (spec §4.5, §4.8).
@@ -537,6 +541,24 @@ func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUI
 	m.ensuredScenes = append(m.ensuredScenes, sc.GetID())
 	m.handed = append(m.handed, sc, rd)
 	return nil
+}
+
+// PersistRoundClose records the round's end and its successor's birth, written together.
+func (m *mockRoundRepoHandler) PersistRoundClose(
+	_ context.Context, _ uuid.UUID, sc *scene.Scene, closed, next *roundentity.Round,
+) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.roundCloses = append(m.roundCloses, roundCloseCall{scene: sc, closed: closed, next: next})
+	m.handed = append(m.handed, sc, closed, next)
+	return nil
+}
+
+// roundCloseCalls returns a snapshot of every PersistRoundClose call.
+func (m *mockRoundRepoHandler) roundCloseCalls() []roundCloseCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]roundCloseCall(nil), m.roundCloses...)
 }
 
 // ensuredSceneIDs returns a snapshot of every scene ID EnsureSceneAndRound was called with.
@@ -551,12 +573,6 @@ func (m *mockRoundRepoHandler) ensuredRoundIDs() []uuid.UUID {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]uuid.UUID(nil), m.ensuredRounds...)
-}
-func (m *mockRoundRepoHandler) CloseRound(_ context.Context, roundID uuid.UUID, _ time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.closedRounds = append(m.closedRounds, roundID)
-	return nil
 }
 
 // FindMatchHistory reads back what the successful closes persisted, as the real gateway

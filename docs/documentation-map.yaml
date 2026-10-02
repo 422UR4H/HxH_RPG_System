@@ -729,8 +729,10 @@ mappings:
         confidence: directly_affected
     notes: >-
       B15 (spec §4.5): cena e round viram linha quando nascem — ensureActiveSceneAndRound,
-      chamado no start_match, na reidratação, depois do change_scene e quando um round fecha
-      por exaustão — e a troca de regime é gravada em match_events (recordRoundModeChanged,
+      chamado no start_match, na reidratação e depois do change_scene; o round que nasce
+      quando outro acaba (nenhuma ação na fila consegue mais pagar o preço) vira linha junto
+      com o fim do anterior, na transação do turno (persistClosedTurn) ou na de
+      persistRoundClose/writeRoundClose — e a troca de regime é gravada em match_events (recordRoundModeChanged,
       que também atualiza o mode da linha do round). ensureSceneAndRoundRows é o caminho
       comum, usado também por recordMasterAction. Mudar quando algo vira linha muda o que
       o GET /history mostra.
@@ -1386,7 +1388,10 @@ mappings:
         confidence: directly_affected
     notes: >-
       EnsureSceneAndRound (os dois inserts idempotentes de cena e rodada, também
-      chamados de dentro da transação do PersistTurnClose; spec §4.5/§4.8).
+      chamados de dentro da transação do PersistTurnClose; spec §4.5/§4.8). O mesmo
+      upsert é o SQL de fechar um round (COALESCE do finished_at): PersistRoundClose
+      grava o fim de um round e o nascimento do seguinte numa transação, e
+      PersistTurnClose faz o mesmo quando recebe NextRound.
       PersistTurnClose (cena, rodada, turno, ação, reações, overrides, a resolução
       LIQUIDADA, as barras das fichas que o fechamento atingiu, as master actions feitas
       com o turno aberto e o tabuleiro + fog — pelos gateways pgsheet, pgmasteraction,

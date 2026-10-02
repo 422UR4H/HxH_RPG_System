@@ -316,8 +316,8 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		// The real use cases: this is what makes the test end-to-end rather than a mock
 		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
 		// round to actually close when the bar economy runs out, not just report it.
-		OpenNextActionUC: appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC(roundRepo)),
-		PullActionUC:     appmatch.NewPullActionUC(appmatch.NewCloseRoundUC(roundRepo)),
+		OpenNextActionUC: appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC()),
+		PullActionUC:     appmatch.NewPullActionUC(appmatch.NewCloseRoundUC()),
 		EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
 		AttachReactionUC: appmatch.NewAttachReactionUC(),
 		OpenReactionUC:   appmatch.NewOpenReactionUC(),

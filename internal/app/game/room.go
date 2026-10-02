@@ -794,9 +794,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// turn's own transaction (spec §4.3, "Quando persiste"; owner decision 2026-10-01):
 				// the board on disk and the turns on disk never disagree. Before announceOpenedTurn
 				// below, so the next turn's opened move is not in this turn's board.
-				// result.ClosedRound is set when this same call also closed the round by
-				// exhaustion: the session's active round is then already its successor, and
-				// the turn belongs to the round it closed in.
+				// result.ClosedRound is set when this same call also ended the round — no action
+				// left that can pay its price: the session's active round is then already its
+				// successor, the turn belongs to the round it closed in, and the round's end and
+				// the successor's birth go in the turn's transaction.
 				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, result.ClosedRound, result.Damaged)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
@@ -823,13 +824,16 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		// The round ran out: nothing pending could still pay, so it closed instead of opening
-		// anything. Everyone is told — the regime and the bars are table state.
+		// The round ended: no action pending could still pay its price, so it closed instead of
+		// opening anything. Everyone is told — the regime and the bars are table state.
 		if result.ClosedRound != nil {
-			// The round that opened in its place is a row from birth (B15, spec §4.5), before any
-			// turn closes in it. CloseRoundUC already closed the exhausted one's row, which is
-			// there to close because it too was written at birth.
-			r.ensureActiveSceneAndRound("round_closed")
+			// Written before the table is told. Its end and the round born in its place (a row
+			// from birth, B15) go together: when a turn closed in this same command,
+			// persistClosedTurn above already wrote both in that turn's transaction; when none
+			// did, they get a transaction of their own. Never one without the other.
+			if result.ClosedTurn == nil {
+				r.persistRoundClose(session, result.ClosedRound)
+			}
 			out := NewServerMessage(MsgTypeRoundClosed, RoundClosedPayload{
 				RoundMode: string(result.ClosedRound.GetMode()),
 			})
@@ -1944,10 +1948,11 @@ func (r *Room) announceOpenedTurn(
 // two phases while an FK mismatch dropped every single turn on the floor.
 //
 // closedIn is the round the turn closed in when that is no longer the session's active round —
-// an open_next_action that closes the turn AND, finding nothing that can pay, the round with it
-// (CloseRound installs the successor before this runs). nil means the active round. Before B15
-// this read the active round unconditionally and wrote an exhausted round's last turn under its
-// successor, flagging the successor as a row it was not yet.
+// an open_next_action that closes the turn AND, finding no action that can still pay its price,
+// the round with it (CloseRound installs the successor before this runs). nil means the active
+// round. The turn is written under closedIn, and closedIn's finish and the successor's birth go
+// in the same transaction (TurnCloseData.NextRound): one master command, one transaction (owner
+// decision, 2026-10-02).
 func (r *Room) persistClosedTurn(
 	session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution,
 	closedIn *roundentity.Round, damaged []matchsession.DamagedCharacter,
@@ -1967,12 +1972,19 @@ func (r *Room) persistClosedTurn(
 	r.mu.Lock()
 	activeScene := session.GetActiveScene()
 	activeRound := session.GetActiveRound()
+	var nextRound *roundentity.Round
 	if closedIn != nil {
+		// This same command also ended the round: CloseRound already made its successor the
+		// active round, and that successor is born a row in this turn's transaction.
+		if activeRound != nil && activeRound.GetID() != closedIn.GetID() {
+			nextRound = activeRound
+		}
 		activeRound = closedIn
 	}
-	// Copies: PersistTurnClose reads the pair after the unlock, and the live objects are the
+	// Copies: PersistTurnClose reads them after the unlock, and the live objects are the
 	// session's (a regime switch mutates the active round under this lock).
 	activeScene, activeRound = snapshotSceneAndRound(activeScene, activeRound)
+	_, nextRound = snapshotSceneAndRound(nil, nextRound)
 	matchUUID := session.GetMatchUUID()
 	overrides := session.TakeOverridesFor(t)
 	// What the master did inside this turn, held until now (turnWrites): written in the turn's
@@ -1997,6 +2009,7 @@ func (r *Room) persistClosedTurn(
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, StatusBars: statusBars,
+		NextRound: nextRound,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it, "+
@@ -2009,14 +2022,28 @@ func (r *Room) persistClosedTurn(
 		// action row; and the master actions belong to the turn by decision — durable with it or
 		// not at all. The board in memory is untouched and still live: the next save (a close,
 		// or a change between turns) writes it whole. So is the HP: the sheet in memory keeps it,
-		// and the next close that damages that sheet writes its bars whole. No retry queue: this failure mode is
-		// already logged-and-swallowed policy for the whole turn.
+		// and the next close that damages that sheet writes its bars whole. No retry queue: this
+		// failure mode is already logged-and-swallowed policy for the whole turn.
+		//
+		// The round's end is the one thing salvaged. The round DID end at the table, and leaving
+		// its row open while the successor is not one would have the successor's first write (a
+		// master action, the next close) leave the scene with two open rounds. So the end and the
+		// birth still go together, in a transaction of their own — the same one a round that ends
+		// with no turn closing writes.
+		if nextRound != nil {
+			r.writeRoundClose(session, activeScene, activeRound, nextRound, "round end after its last turn's failed close")
+		}
 		return
 	}
-	// Only if the round written is still the active one: the successor of an exhausted round is
-	// not the row this just wrote.
+	// The round the session is in is a row now — the one this wrote, or, when this close also
+	// ended it, the successor this same transaction gave birth to. Only if it is still the active
+	// one: a later command may already have moved on.
+	written := activeRound
+	if nextRound != nil {
+		written = nextRound
+	}
 	r.mu.Lock()
-	if active := session.GetActiveRound(); active != nil && active.GetID() == activeRound.GetID() {
+	if active := session.GetActiveRound(); active != nil && active.GetID() == written.GetID() {
 		session.MarkRoundPersisted()
 	}
 	r.mu.Unlock()

@@ -36,11 +36,11 @@ func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ 
 func (m *noopRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
+func (m *noopRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _, _ *roundentity.Round) error {
+	return nil
+}
 func (m *noopRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
 	return nil, nil
-}
-func (m *noopRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
-	return nil
 }
 
 // mockRoundRepo allows controlling FindActiveSession per test.
@@ -63,7 +63,7 @@ func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ 
 func (m *mockRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *mockRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _, _ *roundentity.Round) error {
 	return nil
 }
 func (m *mockRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {

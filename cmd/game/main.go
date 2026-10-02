@@ -54,7 +54,7 @@ func main() {
 
 	startMatchUC := match.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
-	closeRoundUC := match.NewCloseRoundUC(roundRepository)
+	closeRoundUC := match.NewCloseRoundUC()
 	openNextActionUC := match.NewOpenNextActionUC(closeRoundUC)
 	pullActionUC := match.NewPullActionUC(closeRoundUC)
 	enqueueActionUC := match.NewEnqueueActionUC()

@@ -125,9 +125,11 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   o `move` como cada um o viu ao vivo) e tabuleiro+fog numa transação só (`PersistTurnClose`;
   os três verbos não chamam `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito.
   **Um comando do mestre, uma transação** (dono do produto, 2026-10-02): o HP que o fechamento
-  aplica também vai nela (`TurnCloseData.StatusBars`, copiado sob `r.mu` em `persistClosedTurn`);
-  os casos de uso de fechamento não fazem I/O nenhum. Fora disso: `change_round_mode` (do round)
-  e inscrição de NPC.
+  aplica também vai nela (`TurnCloseData.StatusBars`, copiado sob `r.mu` em `persistClosedTurn`),
+  e, quando o mesmo `open_next_action` acaba o round, o fim dele e o round seguinte
+  (`TurnCloseData.NextRound`; sem turno fechado, `PersistRoundClose`, uma transação só deles).
+  Os casos de uso de fechamento e o `CloseRoundUC` não fazem I/O nenhum. Fora disso:
+  `change_round_mode` (do round) e inscrição de NPC.
   `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
   `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.
 - **Escape = esquiva E movimento.** `Avoided = dodgePassed && movePassed` (spec B13):

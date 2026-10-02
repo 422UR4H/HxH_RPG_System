@@ -17,7 +17,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PersistTurnClose atomically writes scene (idempotent), round (idempotent),
+// PersistTurnClose atomically writes scene (idempotent), round (idempotent — with its
+// finished_at when this close also ended it, and then the round born in its place, NextRound),
 // turn, action, the action's reactions, the turn's settled resolution (nullable), the values
 // the master's edits displaced, the bars of every sheet the close damaged, the master actions
 // applied while the turn was open, and the board (with every player's fog memory) as the close
@@ -31,6 +32,11 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	sc, rnd, t, act, matchUUID := d.Scene, d.Round, d.Turn, d.Action, d.MatchUUID
 	if t.GetFinishedAt() == nil {
 		return fmt.Errorf("PersistTurnClose: turn must be closed before persisting")
+	}
+	// A successor is born only when this close also ended the round: written next to a round
+	// that is still open, the scene would hold two.
+	if d.NextRound != nil && (rnd == nil || rnd.GetFinishedAt() == nil) {
+		return fmt.Errorf("PersistTurnClose: a next round needs the closed round's finished_at")
 	}
 
 	tx, err := r.pool.Begin(ctx)
@@ -51,6 +57,15 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	// this round's first turn closed (spec §4.8). Inside this transaction, like everything else.
 	if err := ensureSceneAndRound(ctx, tx, matchUUID, sc, rnd); err != nil {
 		return fmt.Errorf("PersistTurnClose %w", err)
+	}
+	// This close also ended the round (rnd carries its finished_at, which the upsert above just
+	// wrote — the round-close SQL is that COALESCE): the round born in its place is a row from
+	// this same transaction (owner decision, 2026-10-02). The round's end, the successor's birth
+	// and the turn are one master command, so they are durable together or not at all.
+	if d.NextRound != nil {
+		if err := ensureSceneAndRound(ctx, tx, matchUUID, sc, d.NextRound); err != nil {
+			return fmt.Errorf("PersistTurnClose next round: %w", err)
+		}
 	}
 
 	// Insert turn — turn entity has no createdAt field. AGENTS.md's own known-issues entry

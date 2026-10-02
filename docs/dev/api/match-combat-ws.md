@@ -334,7 +334,11 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
 2. Se um turno fechou: persistência + [`turn_closed`](#turn_closed) — mesa — +
    [`resolution_updated`](#resolution_updated) **settled e projetado** do turno que acabou
    (é essa a resolução cujo dano foi aplicado de verdade).
-3. Se a rodada esgotou: [`round_closed`](#round_closed) — mesa — e **para por aí**.
+3. Se nenhuma ação na fila consegue mais pagar o preço, a rodada acaba:
+   [`round_closed`](#round_closed) — mesa — e **para por aí**. O fim da rodada e a rodada que
+   nasce no lugar dela são gravados **antes** do aviso, na mesma transação do turno que este
+   comando fechou (ou numa só deles, se nenhum turno fechou) — um comando do mestre, uma
+   transação.
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
    [`resolution_updated`](#resolution_updated) **master-only** do turno recém-aberto
    (`isSettled: false`).
@@ -1491,9 +1495,17 @@ banco ainda não tem) e **antes** do `turn_closed` do mesmo fechamento.
 { "type": "round_closed", "payload": { "roundMode": "Race" } }
 ```
 
-A rodada acabou porque **nada pendente ainda conseguia pagar** — nenhum turno foi aberto.
+A rodada acabou porque **nenhuma ação na fila conseguia mais pagar o preço** — nenhum turno foi
+aberto. As ações que ficaram na fila guardam a rolagem que já fizeram e pertencem à próxima
+rodada.
 
 **Disparado por:** `open_next_action`, e só ele.
+
+**Já gravado quando chega** (dono do produto, 2026-10-02 — um comando do mestre, uma transação):
+o `finishedAt` da rodada que acabou e a linha da rodada que nasceu no lugar dela vão juntos, na
+transação do turno que o mesmo `open_next_action` fechou — ou, se ele não fechou turno nenhum,
+numa transação só deles. Nunca um sem o outro: o banco nunca fica com duas rodadas abertas na
+cena, nem com nenhuma.
 
 ### `round_mode_changed`
 
@@ -2106,9 +2118,9 @@ JOGADOR A                    SERVIDOR                         MESTRE            
 **O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** nada no
 fechamento — persistência, `turn_closed`, `resolution_updated` liquidado e o `piece_moved`
 das fugas cuja peça sai do lugar saem igual, e o `turn_closed` do turno que acabou vem
-**antes** do `turn_opened` do próximo. O que muda é o que vem depois: se nada pendente ainda
-puder pagar, sai
-[`round_closed`](#round_closed) e nenhum turno novo abre.
+**antes** do `turn_opened` do próximo. O que muda é o que vem depois: se nenhuma ação na fila
+conseguir mais pagar o preço, sai [`round_closed`](#round_closed) e nenhum turno novo abre — e o
+fim da rodada vai na transação desse mesmo fechamento.
 
 ## 9. Reinício, recarga, queda
 
@@ -2140,9 +2152,11 @@ salvamento ali gravaria o efeito de um turno que ainda não existe no banco. Por
 action de peça e a interação/revelação de parede **não** salvam o tabuleiro com turno aberto, e
 as master actions feitas nele ficam guardadas em memória até o fechamento, que grava numa
 **transação só** o turno, as master actions, o HP que ele aplicou (as barras de cada ficha
-atingida, em `character_sheets`) e o tabuleiro com o fog de cada jogador — ou nada disso, se ela
-falhar (o tabuleiro e as fichas gravados continuam os do último fechamento). Um comando do
-mestre, uma transação (dono do produto, 2026-10-02). Se o servidor cair —
+atingida, em `character_sheets`), o tabuleiro com o fog de cada jogador e — quando o mesmo
+`open_next_action` também acaba a rodada — o fim dela e a rodada seguinte; ou nada disso, se ela
+falhar (o tabuleiro e as fichas gravados continuam os do último fechamento; o fim da rodada, que
+aconteceu na mesa, ainda é gravado com a seguinte numa transação só deles). Um comando do mestre,
+uma transação (dono do produto, 2026-10-02). Se o servidor cair —
 ou a sala fechar porque todos saíram, que para a persistência é o mesmo que um reinício — antes
 do fechamento, o turno volta inteiro ao último fechamento: a peça da action, o arrasto do
 mestre, a porta que ele abriu e as master actions correspondentes somem juntos. O histórico

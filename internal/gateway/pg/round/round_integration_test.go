@@ -342,44 +342,6 @@ func TestCloseSceneAndRound(t *testing.T) {
 	})
 }
 
-func TestCloseRound(t *testing.T) {
-	pool := pgtest.SetupTestDB(t)
-	repo := roundrepo.NewRepository(pool)
-	ctx := context.Background()
-
-	t.Run("happy path — sets finished_at on round only", func(t *testing.T) {
-		pgtest.TruncateAll(t, pool)
-		masterUUID := pgtest.InsertTestUser(t, pool, "gm1", "gm1@test.com", "pass")
-		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
-		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
-
-		sceneUUID := pgtest.InsertTestScene(t, pool, matchUUID, "Battle")
-		roundUUID := pgtest.InsertTestRound(t, pool, sceneUUID, "Race")
-
-		roundUUIDParsed, _ := uuid.Parse(roundUUID)
-		at := time.Now().UTC().Truncate(time.Microsecond)
-
-		err := repo.CloseRound(ctx, roundUUIDParsed, at)
-		if err != nil {
-			t.Fatalf("CloseRound error: %v", err)
-		}
-
-		var roundFinishedAt time.Time
-		pool.QueryRow(ctx, `SELECT finished_at FROM rounds WHERE uuid = $1`, roundUUID).Scan(&roundFinishedAt) //nolint:errcheck
-
-		if !roundFinishedAt.Truncate(time.Microsecond).Equal(at) {
-			t.Errorf("round finished_at: got %v, want %v", roundFinishedAt, at)
-		}
-
-		// Scene must NOT be closed
-		var sceneFinishedAt *time.Time
-		pool.QueryRow(ctx, `SELECT finished_at FROM scenes WHERE uuid = $1`, sceneUUID).Scan(&sceneFinishedAt) //nolint:errcheck
-		if sceneFinishedAt != nil {
-			t.Error("expected scene finished_at to remain NULL")
-		}
-	})
-}
-
 // resolutionFixture is a match, a master, and two character sheets to attack and be
 // attacked — everything TestPersistTurnCloseWritesTheSettledResolution and its neighbour
 // need to build a turn whose action targets a real FK-satisfying victim.
@@ -1821,11 +1783,12 @@ func TestFindMatchHistoryKeepsWhatIsNotATurn(t *testing.T) {
 	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneB, roundB1); err != nil {
 		t.Fatalf("EnsureSceneAndRound B1: %v", err)
 	}
-	if err := repo.CloseRound(ctx, roundB1.GetID(), at(11)); err != nil {
-		t.Fatalf("CloseRound B1: %v", err)
-	}
-
+	// B1 ends with no turn: its end and B2's birth go together.
+	roundB1.Close(at(11))
 	roundB2 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(12))
+	if err := repo.PersistRoundClose(ctx, fx.matchUUID, sceneB, roundB1, roundB2); err != nil {
+		t.Fatalf("PersistRoundClose B1 -> B2: %v", err)
+	}
 	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
 	tn := turnentity.NewTurn(*act)
 	tn.Close(at(13))
@@ -2009,6 +1972,199 @@ func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 		}
 		if f := finishedAt(t, "scenes", sc.GetID()); f == nil || !f.Equal(at(5)) {
 			t.Fatalf("scene finished_at = %v after a later ensure with no finish, want it kept at %v", f, at(5))
+		}
+	})
+}
+
+// roundRowsOf reads what a round-end test asserts: a round's finished_at (exists=false when the
+// round is not a row) and how many rounds of the scene are open.
+func roundRowsOf(t *testing.T, pool *pgxpool.Pool, rd uuid.UUID, sc uuid.UUID) (finished *time.Time, exists bool, open int) {
+	t.Helper()
+	ctx := context.Background()
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM rounds WHERE uuid = $1`, rd).Scan(&n); err != nil {
+		t.Fatalf("count round: %v", err)
+	}
+	if n == 1 {
+		if err := pool.QueryRow(ctx, `SELECT finished_at FROM rounds WHERE uuid = $1`, rd).Scan(&finished); err != nil {
+			t.Fatalf("read round finished_at: %v", err)
+		}
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM rounds WHERE scene_uuid = $1 AND finished_at IS NULL`, sc,
+	).Scan(&open); err != nil {
+		t.Fatalf("count open rounds: %v", err)
+	}
+	return finished, n == 1, open
+}
+
+// TestPersistTurnCloseWritesTheRoundEndWithTheTurn: an open_next_action that closes the last
+// turn of a round and finds nothing that can still pay its price ends the round too — one master
+// command, one transaction (owner decision, 2026-10-02). The round's finish and its successor's
+// birth go in the turn's transaction (TurnCloseData.NextRound), and roll back with it.
+func TestPersistTurnCloseWritesTheRoundEndWithTheTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	base := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
+	at := func(min int) time.Time { return base.Add(time.Duration(min) * time.Minute) }
+	setup := func(t *testing.T) (resolutionFixture, *sceneentity.Scene, *roundentity.Round, *roundentity.Round, *turnentity.Turn, *action.Action) {
+		t.Helper()
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		// Born a row (B15), open.
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound: %v", err)
+		}
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(at(2))
+		rd.Close(at(2))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(2))
+		return fx, sc, rd, next, tn, act
+	}
+
+	t.Run("the round's finish and the successor's birth go with the turn", func(t *testing.T) {
+		fx, sc, rd, next, tn, act := setup(t)
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: rd, NextRound: next, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if f, ok, _ := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f == nil || !f.Equal(at(2)) {
+			t.Fatalf("closed round finished_at = %v (row %v), want %v", f, ok, at(2))
+		}
+		f, ok, open := roundRowsOf(t, pool, next.GetID(), sc.GetID())
+		if !ok || f != nil {
+			t.Fatalf("successor round row %v with finished_at %v, want an open row", ok, f)
+		}
+		if open != 1 {
+			t.Fatalf("open rounds in the scene = %d, want 1 — the successor alone", open)
+		}
+	})
+
+	t.Run("a failing master action rolls the round's end back with the turn", func(t *testing.T) {
+		fx, sc, rd, next, tn, act := setup(t)
+		turnID := tn.GetID()
+		bad := masteraction.Record{
+			UUID: uuid.New(), MatchUUID: fx.matchUUID, SceneUUID: sc.GetID(), RoundUUID: rd.GetID(),
+			TurnUUID: &turnID, MasterUUID: uuid.New(), // not a user: the FK refuses it
+			Kind: masteraction.KindMovePiece, Content: []byte(`{}`), HappenedAt: at(1),
+		}
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: rd, NextRound: next, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			MasterActions: []masteraction.Record{bad},
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose succeeded with a master action the database refuses")
+		}
+		if f, ok, open := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f != nil || open != 1 {
+			t.Fatalf("closed round row %v finished_at %v, %d open — want it still the one open round", ok, f, open)
+		}
+		if _, ok, _ := roundRowsOf(t, pool, next.GetID(), sc.GetID()); ok {
+			t.Fatal("the successor became a row although the turn's transaction failed")
+		}
+	})
+
+	t.Run("a successor with an open round refuses to write two open rounds", func(t *testing.T) {
+		fx, sc, rd, next, tn, act := setup(t)
+		stillOpen := roundentity.ReconstructRound(rd.GetID(), enum.Race, at(0))
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: stillOpen, NextRound: next, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose wrote a successor next to a round that is not finished")
+		}
+		if _, ok, open := roundRowsOf(t, pool, next.GetID(), sc.GetID()); ok || open != 1 {
+			t.Fatalf("successor row %v, %d open rounds — want no successor and the one open round", ok, open)
+		}
+	})
+}
+
+// TestPersistRoundClose: a round that ends with no turn closing in the same command writes its
+// end and its successor's birth in one transaction of their own — never one without the other,
+// so the scene never holds two open rounds, nor none.
+func TestPersistRoundClose(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	base := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
+	at := func(min int) time.Time { return base.Add(time.Duration(min) * time.Minute) }
+
+	t.Run("writes the round's finish and the successor's birth", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound: %v", err)
+		}
+		rd.Close(at(3))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, sc, rd, next); err != nil {
+			t.Fatalf("PersistRoundClose: %v", err)
+		}
+		if f, ok, _ := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f == nil || !f.Equal(at(3)) {
+			t.Fatalf("closed round finished_at = %v (row %v), want %v", f, ok, at(3))
+		}
+		if f, ok, open := roundRowsOf(t, pool, next.GetID(), sc.GetID()); !ok || f != nil || open != 1 {
+			t.Fatalf("successor row %v finished_at %v, %d open — want the successor as the one open round", ok, f, open)
+		}
+		data, err := repo.FindActiveSession(ctx, fx.matchUUID)
+		if err != nil || data == nil || data.RoundID != next.GetID() {
+			t.Fatalf("FindActiveSession = %+v (%v), want the successor %s", data, err, next.GetID())
+		}
+	})
+
+	t.Run("a round that was never a row lands closed", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		rd.Close(at(3))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, sc, rd, next); err != nil {
+			t.Fatalf("PersistRoundClose: %v", err)
+		}
+		if f, ok, open := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f == nil || open != 1 {
+			t.Fatalf("closed round row %v finished_at %v, %d open — want it written closed", ok, f, open)
+		}
+	})
+
+	t.Run("a successor the database refuses rolls the round's finish back", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound: %v", err)
+		}
+		rd.Close(at(3))
+		// rounds.mode is VARCHAR(16): a longer regime is refused by the database.
+		next := roundentity.ReconstructRound(uuid.New(), enum.RoundMode("a-regime-too-long-for-the-column"), at(3))
+
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, sc, rd, next); err == nil {
+			t.Fatal("PersistRoundClose succeeded with a successor the database refuses")
+		}
+		if f, ok, open := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f != nil || open != 1 {
+			t.Fatalf("closed round row %v finished_at %v, %d open — want it still the one open round", ok, f, open)
+		}
+	})
+
+	t.Run("a round that is not finished is refused", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, sc, rd, next); err == nil {
+			t.Fatal("PersistRoundClose accepted a round with no finished_at")
 		}
 	})
 }

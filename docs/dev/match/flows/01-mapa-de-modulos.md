@@ -129,8 +129,9 @@ todo `Execute`. Quem é dono dela é o `Room`. A única responsabilidade real de
 **política de autorização** (`callerUUID != masterUUID → ErrNotMatchMaster`) — a regra de jogo
 está toda no domínio, o I/O está todo no `Room`. É uma camada fina de propósito.
 
-Exceções ao sabor A: `CloseRoundUC` (tem `IRoundRepository` — persiste o fechamento) e
-`InitMatchSessionUC` (é a fábrica: lê DB e constrói a sessão).
+Exceção ao sabor A: `InitMatchSessionUC` (é a fábrica: lê DB e constrói a sessão).
+`CloseRoundUC` deixou de ser exceção em 2026-10-02: o fim do round é gravado pelo `Room`, junto
+com a rodada seguinte, na transação do turno que o mesmo comando fechou (ou numa só deles).
 
 ## Onde cada arquivo vive
 

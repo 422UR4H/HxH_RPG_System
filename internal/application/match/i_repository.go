@@ -70,6 +70,13 @@ type TurnCloseData struct {
 	// is not written leaves the rows as the last close did — the HP lives on in memory and the
 	// next close that touches the sheet writes it whole. Empty when the close damaged nobody.
 	StatusBars []SheetStatusBars
+	// NextRound is the round born when this same close also ended Round — an open_next_action
+	// that closes the last turn and finds nothing that can still pay its price. Round then
+	// carries its finished_at, and both are written in this same transaction: the round's end,
+	// the successor's birth and the turn are one master command, one transaction (owner
+	// decision, 2026-10-02) — and the scene never holds two open rounds, nor none. nil when the
+	// round goes on.
+	NextRound *roundentity.Round
 }
 
 // SheetStatusBars is one sheet's three bars as a turn's close left them — detached copies
@@ -101,7 +108,13 @@ type IRoundRepository interface {
 	EnsureSceneAndRound(ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, rd *roundentity.Round) error
 	FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error)
 	CloseSceneAndRound(ctx context.Context, sceneUUID, roundUUID uuid.UUID, at time.Time) error
-	CloseRound(ctx context.Context, roundUUID uuid.UUID, at time.Time) error
+	// PersistRoundClose writes a round's end and its successor's birth in one transaction — the
+	// round that ends with no turn closing in the same command (open_next_action with nothing
+	// open and nothing that can still pay). closed carries its finished_at; both are written with
+	// the same idempotent upsert as EnsureSceneAndRound, so a round that was never a row lands
+	// closed. When a turn closes in the same command, PersistTurnClose writes both instead
+	// (TurnCloseData.NextRound).
+	PersistRoundClose(ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, closed, next *roundentity.Round) error
 	// FindMatchHistory returns the match's scenes, rounds and closed turns as the TREE the
 	// domain already is — Scene -> Round -> Turn -> Action — not a flat list. See
 	// HistoryScene's own doc for why flattening here would be the wrong call. A scene or round

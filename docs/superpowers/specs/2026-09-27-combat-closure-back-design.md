@@ -371,11 +371,20 @@ vai editar rolagens):
 ### 4.5 B15 — o histórico guarda o que não é turno
 
 - **Cena e round são persistidos quando nascem**, não no primeiro turno fechado: no
-  `start_match`/reidratação (os ativos), no `change_scene` e quando o round fecha por exaustão e
-  outro nasce. O insert idempotente que hoje mora dentro de `PersistTurnClose` vira um método do
-  repositório (`EnsureSceneAndRound`), chamado dos dois lugares. O `finished_at` do round e da
-  cena já é gravado (`CloseRound`, `CloseSceneAndRound`); com o "persistir ao nascer", o `if
-  sceneWasPersisted` deixa de pular fechamentos.
+  `start_match`/reidratação (os ativos), no `change_scene` e quando o round acaba (nenhuma ação
+  na fila consegue mais pagar o preço) e outro nasce. O insert idempotente que hoje mora dentro
+  de `PersistTurnClose` vira um método do repositório (`EnsureSceneAndRound`), chamado dos dois
+  lugares. O `finished_at` da cena é gravado por `CloseSceneAndRound`; o do round, pelo mesmo
+  upsert idempotente (o `COALESCE` do `finished_at` é o SQL de fechar um round). Com o
+  "persistir ao nascer", o `if sceneWasPersisted` deixa de pular fechamentos.
+- **O fim do round e o nascimento do seguinte vão juntos** (dono do produto, 2026-10-02 — um
+  comando do mestre, uma transação). Quando o `open_next_action` fecha o último turno e acaba o
+  round, os dois entram na transação do turno (`TurnCloseData.NextRound`); quando acaba o round
+  sem fechar turno, numa transação só deles (`PersistRoundClose`). Se a transação do turno
+  falhar, o turno se perde (logado), mas o fim do round — que aconteceu na mesa — ainda vai com o
+  seguinte pelo `PersistRoundClose`: o banco nunca fica com duas rodadas abertas na cena. O que o
+  `CloseRound` liquida em memória (saldo das barras, modificadores de fim de round) não é durável
+  em lugar nenhum — não há o que mais pôr na transação.
 - **Tabela nova `match_events`** para o que acontece **dentro** de um round e não é turno:
   `(uuid, match_uuid, scene_uuid, round_uuid, turn_uuid NULL, kind, payload JSONB, created_at)`.
   `turn_uuid` não tem FK: o turno só é gravado no fechamento, e pode nunca ser (reinício).
@@ -541,6 +550,7 @@ Cada tarefa do plano atualiza o contrato **no mesmo commit** que muda o wire.
 | Tabuleiro como retrato inteiro em `match_boards`, com `bg` nulo = herda | B16 vira uma cópia de linha; editar o mapa da campanha não toca partida; o editor futuro tem onde escrever |
 | Persistir o tabuleiro no fechamento de turno, não na abertura | tabuleiro e histórico caem juntos num reinício |
 | O HP do fechamento na transação do turno (2026-10-02) | **dono do produto** — um comando do mestre, uma transação; e nenhum I/O de ficha sob `r.mu` |
+| O fim do round e o round seguinte na transação do turno que o mesmo comando fechou, ou numa só deles (2026-10-02) | **dono do produto** — um comando do mestre, uma transação; nunca duas rodadas abertas na cena |
 | `map_state_sync` aceito e ignorado, não recusado | não quebrar o front que está no ar antes do F13 |
 | Lobby recarrega o tabuleiro a cada conexão do mestre | é quando o `map_state_sync` chegava; edição de mapa antes do primeiro movimento aparece |
 | `from` derivado da peça no servidor | mata o sentinela de B6 em vez de trocá-lo por outro |

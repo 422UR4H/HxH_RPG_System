@@ -124,7 +124,8 @@ sequenceDiagram
         S->>SCH: SelectNext — porteiro + chave
         alt nenhuma passa
             S->>S: closeOpenTurn() · RoundExhausted = true
-            UC->>UC: CloseRoundUC — liquida saldos
+            UC->>UC: CloseRoundUC — liquida saldos (só memória)
+            R->>DB: fim do round + round seguinte — no PersistTurnClose do turno fechado, ou PersistRoundClose
             R-->>M: round_closed (mesa inteira)
         else escolheu
             S->>S: closeOpenTurn()
