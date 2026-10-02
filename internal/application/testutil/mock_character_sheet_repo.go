@@ -20,8 +20,8 @@ type MockCharacterSheetRepo struct {
 	UpdateNenHexagonValueFn              func(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDsFn func(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)
 	ExistsSheetInCampaignFn              func(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
-	UpdateStatusBarsFn                   func(ctx context.Context, uuid string, health, stamina, aura status.IStatusBar) error
-	UpdateCharExpFn                       func(ctx context.Context, sheetUUID string, charExp int) error
+	UpdateStatusBarsFn                   func(ctx context.Context, uuid string, health, stamina, aura status.IStatusBarReader) error
+	UpdateCharExpFn                      func(ctx context.Context, sheetUUID string, charExp int) error
 	DeleteCharacterSheetFn               func(ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID) error
 	DeleteNPCCharacterSheetFn            func(ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID) error
 	ExistsMatchParticipantForSheetFn     func(ctx context.Context, sheetUUID uuid.UUID) (bool, error)
@@ -98,7 +98,7 @@ func (m *MockCharacterSheetRepo) ExistsSheetInCampaign(ctx context.Context, play
 	return false, nil
 }
 
-func (m *MockCharacterSheetRepo) UpdateStatusBars(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
+func (m *MockCharacterSheetRepo) UpdateStatusBars(ctx context.Context, id string, health, stamina, aura status.IStatusBarReader) error {
 	if m.UpdateStatusBarsFn != nil {
 		return m.UpdateStatusBarsFn(ctx, id, health, stamina, aura)
 	}

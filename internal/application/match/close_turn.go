@@ -24,12 +24,13 @@ type ICloseTurn interface {
 		masterUUID, callerUUID uuid.UUID, confirm bool) (*CloseTurnResult, error)
 }
 
-type CloseTurnUC struct {
-	statusWriter ISheetStatusWriter
-}
+// CloseTurnUC writes nothing: the HP the close applies (Damaged) is written by the room in the
+// turn's own transaction (PersistTurnClose) — one master command, one transaction (owner
+// decision, 2026-10-02). It runs under r.mu, so it does no I/O.
+type CloseTurnUC struct{}
 
-func NewCloseTurnUC(statusWriter ISheetStatusWriter) *CloseTurnUC {
-	return &CloseTurnUC{statusWriter: statusWriter}
+func NewCloseTurnUC() *CloseTurnUC {
+	return &CloseTurnUC{}
 }
 
 // Execute ends the open turn on purpose.
@@ -59,9 +60,6 @@ func (uc *CloseTurnUC) Execute(
 	if err != nil {
 		return nil, err
 	}
-	// Same policy as OpenNextActionUC: persist before anything can bail out. The damage is
-	// already applied in memory and the turn is already closed.
-	persistDamage(ctx, uc.statusWriter, tr.Damaged)
 	return &CloseTurnResult{
 		ClosedTurn: tr.Closed,
 		Resolution: tr.ClosedResolution,

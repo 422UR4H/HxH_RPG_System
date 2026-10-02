@@ -264,7 +264,8 @@ da resolução já usa.
 
 **O HP já tem fonte única.** `applyDamage` muta `s.charSheets[targetID]` — a ficha viva — e
 `UpdateStatusBars` persiste essa mesma ficha, que é o que o REST lê. A ficha do personagem já é
-a verdade para os dois canais.
+a verdade para os dois canais. (Desde 2026-10-02 essa gravação acontece na transação do
+fechamento do turno, `PersistTurnClose` — ver adiante, "um comando do mestre, uma transação".)
 
 **A visibilidade do HP no REST já está certa.** `GET /matches/{uuid}/participants` devolve
 `CharacterSheetWithVisibilityResponse`, que põe o HP dentro de um `private` **nulo** para quem
@@ -868,8 +869,9 @@ Persista nos mesmos momentos de B3/B15.
 fechamento do turno." A master action continua valendo **na hora**, ao vivo, para a mesa toda;
 o que muda é quando ela vira registro: sem turno aberto, no instante; com turno aberto, junto
 com o fechamento do turno, na mesma transação que grava o turno e o tabuleiro. Ficam de fora a
-troca de regime (é do round), a inscrição de NPC e o HP do fechamento (gravado pelos casos de
-uso, fora dessa transação). Tudo o que acontece dentro de um turno aberto (o movimento da abertura,
+troca de regime (é do round) e a inscrição de NPC. O HP do fechamento entrou nessa transação em
+2026-10-02 (dono do produto: **um comando do mestre, uma transação**) — até ali os casos de uso o
+gravavam fora dela. Tudo o que acontece dentro de um turno aberto (o movimento da abertura,
 o arrasto, a porta aberta pelo mestre, as notas do turno) fica durável junto com o fechamento
 dele, ou não fica: um reinício no meio do turno volta o turno inteiro ao último fechamento, e o
 histórico nunca mostra o efeito de um turno que não tem. Para o front, a consequência é uma só:

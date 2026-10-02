@@ -246,11 +246,19 @@ naquele momento — só um log diz o que se perdeu. Nenhum verbo com a sala viva
 sem fechá-lo: `change_scene` e o fechamento do round são recusados com turno aberto,
 `change_round_mode` troca o regime do mesmo round e `kick_player` não toca no turno.
 
+**Decisão do dono do produto (2026-10-02): um comando do mestre, uma transação.** O HP que o
+fechamento aplica entra na mesma transação: os casos de uso de fechamento não escrevem mais
+fichas (saiu o `persistDamage`, que fazia um `UPDATE character_sheets` por ficha atingida, fora
+de transação e sob `r.mu`); a `Room` copia as barras (vida, estamina, aura) de cada ficha
+atingida na seção crítica do `persistClosedTurn` (`TurnCloseData.StatusBars`) e o
+`PersistTurnClose` as grava com o `UpdateStatusBars` do gateway da ficha rodando no `tx`. Se a
+transação falhar, o dano continua na ficha em memória e a linha fica como o último fechamento
+gravado a deixou.
+
 Ficam de fora do "tudo junto": a troca de regime (`match_events` e `rounds.mode`, gravados na
-hora — pertencem ao round, não ao turno); a inscrição de NPC, por `add_npc` ou pelo pôr de um
-NPC que não participava (B11 — `match_participants` na hora, sobrevive sem peça); e o HP que o
-fechamento aplica, gravado pelos casos de uso (`persistDamage`) antes e fora da transação do
-turno, como sempre foi. Ver `docs/dev/api/match-combat-ws.md` §9.
+hora — pertencem ao round, não ao turno); e a inscrição de NPC, por `add_npc` ou pelo pôr de um
+NPC que não participava (B11 — `match_participants` na hora, sobrevive sem peça). Ver
+`docs/dev/api/match-combat-ws.md` §9.
 
 #### Quem move o quê
 
@@ -475,6 +483,7 @@ CREATE TABLE master_actions (
 | Escolha do mestre para um escape (B13) | vem na `resolution` do mestre | perdida com o turno aberto |
 | Histórico | REST | REST (B15) — nada que já fechou se perde; master actions fora de turno gravadas no instante, as de dentro de um turno com o fechamento dele (§4.8) |
 | Barras | `bars` com o `seq` atual | zeradas (o de sempre: perdido, não divergente) |
+| HP (vida, estamina, aura da ficha) | `character_hp_changed` ao vivo; a ficha por REST | **volta** de `character_sheets` como o último fechamento **gravado** o deixou — gravado na transação do turno (decisão de 2026-10-02, §4.3); um fechamento cuja transação falhou não chega à linha |
 | NPC do mapa | — | reinscrito, idempotente, no `Init` (B11) |
 | Duas abas | a última vence (B4) | — |
 
@@ -531,6 +540,7 @@ Cada tarefa do plano atualiza o contrato **no mesmo commit** que muda o wire.
 | `ownQueue` sempre presente para não-mestre | o front precisa distinguir "nada" de "servidor antigo" |
 | Tabuleiro como retrato inteiro em `match_boards`, com `bg` nulo = herda | B16 vira uma cópia de linha; editar o mapa da campanha não toca partida; o editor futuro tem onde escrever |
 | Persistir o tabuleiro no fechamento de turno, não na abertura | tabuleiro e histórico caem juntos num reinício |
+| O HP do fechamento na transação do turno (2026-10-02) | **dono do produto** — um comando do mestre, uma transação; e nenhum I/O de ficha sob `r.mu` |
 | `map_state_sync` aceito e ignorado, não recusado | não quebrar o front que está no ar antes do F13 |
 | Lobby recarrega o tabuleiro a cada conexão do mestre | é quando o `map_state_sync` chegava; edição de mapa antes do primeiro movimento aparece |
 | `from` derivado da peça no servidor | mata o sentinela de B6 em vez de trocá-lo por outro |

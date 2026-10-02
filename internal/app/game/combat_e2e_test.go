@@ -57,7 +57,10 @@ func (m *combatSessionUC) Init(_ context.Context, _ uuid.UUID) (*matchsession.Ma
 	return m.session, nil
 }
 
-// recordingStatusWriter stands in for the sheet gateway.
+// recordingStatusWriter stands in for the character_sheets rows. Nothing writes it but
+// mockRoundRepoHandler.PersistTurnClose, from TurnCloseData.StatusBars — the HP of a close is
+// written in the turn's own transaction (owner decision, 2026-10-02), so a failed close writes
+// nothing here. restart reads it back (applyHealthTo) the way a real restart reads the rows.
 type recordingStatusWriter struct {
 	mu         sync.Mutex
 	sheetUUIDs []string
@@ -65,7 +68,7 @@ type recordingStatusWriter struct {
 }
 
 func (w *recordingStatusWriter) UpdateStatusBars(
-	_ context.Context, sheetUUID string, health, _, _ status.IStatusBar,
+	_ context.Context, sheetUUID string, health, _, _ status.IStatusBarReader,
 ) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -282,7 +285,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 
 	// The close writes the board in the turn's own transaction: the mock hands it to the SAME
 	// stores the room loads from, so a restart sees what a close persisted.
-	roundRepo := &mockRoundRepoHandler{boardStore: f.boards, memoryStore: f.memories}
+	roundRepo := &mockRoundRepoHandler{boardStore: f.boards, memoryStore: f.memories, sheetRows: f.writer}
 	f.roundRepo = roundRepo
 	handler := game.NewHandler(
 		hub,
@@ -313,12 +316,12 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		// The real use cases: this is what makes the test end-to-end rather than a mock
 		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
 		// round to actually close when the bar economy runs out, not just report it.
-		OpenNextActionUC: appmatch.NewOpenNextActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
-		PullActionUC:     appmatch.NewPullActionUC(f.writer, appmatch.NewCloseRoundUC(roundRepo)),
+		OpenNextActionUC: appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC(roundRepo)),
+		PullActionUC:     appmatch.NewPullActionUC(appmatch.NewCloseRoundUC(roundRepo)),
 		EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
 		AttachReactionUC: appmatch.NewAttachReactionUC(),
 		OpenReactionUC:   appmatch.NewOpenReactionUC(),
-		CloseTurnUC:      appmatch.NewCloseTurnUC(f.writer),
+		CloseTurnUC:      appmatch.NewCloseTurnUC(),
 		// The real UC: the scene assertions in match_full_state need the session's ACTIVE scene
 		// to actually change, and the mock returns a fresh scene without touching the session.
 		ChangeSceneUC:         appmatch.NewChangeSceneUC(),
@@ -377,6 +380,9 @@ func (f *combatFixture) restart(t *testing.T) {
 	f.server.Close()
 
 	sheets, participants := f.newSheetsAndParticipants(t)
+	// A real restart's InitMatchSessionUC reads each sheet from its character_sheets row: the HP
+	// a persisted close wrote there is the HP the new session starts with.
+	f.writer.applyHealthTo(t, sheets)
 	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
 	session.SetRollSource(topFaceSource{})
 	f.session = session
@@ -386,7 +392,7 @@ func (f *combatFixture) restart(t *testing.T) {
 
 	// The close writes the board in the turn's own transaction: the mock hands it to the SAME
 	// stores the room loads from, so a restart sees what a close persisted.
-	roundRepo := &mockRoundRepoHandler{boardStore: f.boards, memoryStore: f.memories}
+	roundRepo := &mockRoundRepoHandler{boardStore: f.boards, memoryStore: f.memories, sheetRows: f.writer}
 	f.roundRepo = roundRepo
 	handler := game.NewHandler(
 		hub,
@@ -468,8 +474,9 @@ func (f *combatFixture) victimHP(t *testing.T) int {
 	return bar.GetCurrent()
 }
 
-// awaitPersisted waits for the gateway to have been written to, which is the room
-// goroutine's last act on the closing path — after it, the sheet is safe to read.
+// awaitPersisted waits for a close's PersistTurnClose to have written a sheet, which comes after
+// the room goroutine's last mutation of the sheet on the closing path — after it, the sheet is
+// safe to read.
 func (w *recordingStatusWriter) awaitPersisted(d time.Duration) bool {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
@@ -482,6 +489,23 @@ func (w *recordingStatusWriter) awaitPersisted(d time.Duration) bool {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return false
+}
+
+// applyHealthTo sets each sheet's current HP to the last value written for it — what a sheet
+// read back from its row holds. A sheet never written keeps the HP it was built with.
+func (w *recordingStatusWriter) applyHealthTo(t *testing.T, sheets map[uuid.UUID]*csSheet.CharacterSheet) {
+	t.Helper()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i, id := range w.sheetUUIDs {
+		sh := sheets[uuid.MustParse(id)]
+		if sh == nil {
+			continue
+		}
+		if err := sh.GetAllStatusBar()[enum.Health].SetCurrent(w.healthCurr[i]); err != nil {
+			t.Fatalf("restore HP %d on %s: %v", w.healthCurr[i], id, err)
+		}
+	}
 }
 
 func (w *recordingStatusWriter) snapshot() ([]string, []int) {

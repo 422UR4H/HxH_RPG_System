@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -63,6 +64,19 @@ type TurnCloseData struct {
 	// every session player. Written inside the resolution's escape entry. nil when no escape of
 	// the turn moved its piece.
 	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// StatusBars is every sheet this close damaged, with its bars as the session holds them
+	// after the close (copies taken under r.mu), written to character_sheets in this same
+	// transaction: one master command, one transaction (owner decision, 2026-10-02). A turn that
+	// is not written leaves the rows as the last close did — the HP lives on in memory and the
+	// next close that touches the sheet writes it whole. Empty when the close damaged nobody.
+	StatusBars []SheetStatusBars
+}
+
+// SheetStatusBars is one sheet's three bars as a turn's close left them — detached copies
+// (status.ReconstructBar), never the live bars of the session's sheet.
+type SheetStatusBars struct {
+	CharacterID           uuid.UUID
+	Health, Stamina, Aura status.IStatusBarReader
 }
 
 type IRepository interface {

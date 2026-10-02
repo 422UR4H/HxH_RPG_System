@@ -12,15 +12,16 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
+	pgsheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // PersistTurnClose atomically writes scene (idempotent), round (idempotent),
 // turn, action, the action's reactions, the turn's settled resolution (nullable), the values
-// the master's edits displaced, the master actions applied while the turn was open, and the
-// board (with every player's fog memory) as the close left it, within a single database
-// transaction.
+// the master's edits displaced, the bars of every sheet the close damaged, the master actions
+// applied while the turn was open, and the board (with every player's fog memory) as the close
+// left it, within a single database transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
 // on — so writing only the action would persist half a turn. The reactions go in after the
@@ -102,6 +103,19 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		)
 		if err != nil {
 			return fmt.Errorf("PersistTurnClose insert override: %w", err)
+		}
+	}
+
+	// The HP the close applied, in this same transaction (owner decision, 2026-10-02): one master
+	// command, one transaction — a failure anywhere in it (the master actions, the board) takes
+	// the sheets back with the turn. The sheet gateway's own UpdateStatusBars, run on this
+	// transaction — the SQL lives in one place.
+	if len(d.StatusBars) > 0 {
+		sheets := pgsheet.NewRepository(tx)
+		for _, sb := range d.StatusBars {
+			if err := sheets.UpdateStatusBars(ctx, sb.CharacterID.String(), sb.Health, sb.Stamina, sb.Aura); err != nil {
+				return fmt.Errorf("PersistTurnClose status bars of %s: %w", sb.CharacterID, err)
+			}
 		}
 	}
 

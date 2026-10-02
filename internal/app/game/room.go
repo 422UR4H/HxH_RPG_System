@@ -10,6 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
@@ -796,7 +797,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// result.ClosedRound is set when this same call also closed the round by
 				// exhaustion: the session's active round is then already its successor, and
 				// the turn belongs to the round it closed in.
-				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, result.ClosedRound)
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, result.ClosedRound, result.Damaged)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
 				// and before turn_closed: both are on the direct per-client lane now
@@ -940,7 +941,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// turn's own transaction (spec §4.3, "Quando persiste"; owner decision 2026-10-01):
 				// the board on disk and the turns on disk never disagree. Before announceOpenedTurn
 				// below, so the next turn's opened move is not in this turn's board.
-				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, nil)
+				r.persistClosedTurn(session, closedTurn, result.ClosedResolution, nil, result.Damaged)
 				// The HP the close applied, to the master and to each damaged sheet's owner.
 				// After the write, so nobody is told a number the database does not hold yet,
 				// and before turn_closed: both are on the direct per-client lane now
@@ -1240,7 +1241,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.applyClosedEscapes(closedTurn, result.Resolution)
 		// Same as the two implicit closes: the board — the escape's piece included — is written
 		// by persistClosedTurn, in the turn's own transaction (spec §4.3).
-		r.persistClosedTurn(session, closedTurn, result.Resolution, nil)
+		r.persistClosedTurn(session, closedTurn, result.Resolution, nil, result.Damaged)
 
 		// Same place in the sequence the two implicit closes put it: after the write, before
 		// turn_closed. See the comment there for why the order matters.
@@ -1927,13 +1928,12 @@ func (r *Room) announceOpenedTurn(
 // Every call site below already releases r.mu before reaching here.
 //
 // Everything the turn changed is written by ONE PersistTurnClose, in one transaction: the turn,
-// its action and reactions, the overrides, the master actions applied inside it, and the board
-// with every player's fog memory (owner decision, 2026-10-01). The board is the board AFTER
-// applyClosedEscapes and BEFORE announceOpenedTurn — every caller walks the escapes first and
-// announces the next turn after this returns — so an open_next_action that already opened the
-// next turn in the same Execute never writes that turn's opened move under this one. The one
-// write of the close that is NOT in this transaction is the HP the close applied: the use cases
-// write it (persistDamage) before they return, as they always have.
+// its action and reactions, the overrides, the HP the close applied (damaged, copied here), the
+// master actions applied inside it, and the board with every player's fog memory (owner
+// decisions, 2026-10-01 and 2026-10-02: one master command, one transaction). The board is the
+// board AFTER applyClosedEscapes and BEFORE announceOpenedTurn — every caller walks the escapes
+// first and announces the next turn after this returns — so an open_next_action that already
+// opened the next turn in the same Execute never writes that turn's opened move under this one.
 //
 // persistMu is held from the snapshot through the write, the same rule persistBoard follows
 // (lock order persistMu, then r.mu): a between-turns save racing this close lands after it,
@@ -1950,7 +1950,7 @@ func (r *Room) announceOpenedTurn(
 // successor, flagging the successor as a row it was not yet.
 func (r *Room) persistClosedTurn(
 	session *matchsession.MatchSession, t *turnentity.Turn, res *domainservice.TurnResolution,
-	closedIn *roundentity.Round,
+	closedIn *roundentity.Round, damaged []matchsession.DamagedCharacter,
 ) {
 	act := t.GetAction()
 	r.persistMu.Lock()
@@ -1987,24 +1987,29 @@ func (r *Room) persistClosedTurn(
 	// anyone's sight in between: every message that can (master drags, wall changes, the next
 	// open) comes from the master, on the same read pump that is running this close.
 	landingViews := r.escapeLandingViewsLocked(t, res)
+	// The bars of every sheet this close damaged, as the session holds them now — copies, read
+	// in this same critical section: the next message may move the live ones.
+	statusBars := statusBarsLocked(damaged)
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
-		MoveViews: inTurn.moveViews, LandingViews: landingViews,
+		MoveViews: inTurn.moveViews, LandingViews: landingViews, StatusBars: statusBars,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it, "+
+			"nor the HP it applied to %d sheet(s) (character_sheets keep the last close), "+
 			"nor the board it left (match_boards and player_memories keep the last close): %v",
-			t.GetID(), matchUUID, len(inTurn.masterActions), err)
+			t.GetID(), matchUUID, len(inTurn.masterActions), len(statusBars), err)
 		// The overrides and the turn's master actions were already drained above and are lost
 		// with the turn. That is correct, not a leak to plug: overridden_action_values.action_uuid
 		// references actions(uuid), so the override rows could not have been inserted without the
 		// action row; and the master actions belong to the turn by decision — durable with it or
 		// not at all. The board in memory is untouched and still live: the next save (a close,
-		// or a change between turns) writes it whole. No retry queue: this failure mode is
+		// or a change between turns) writes it whole. So is the HP: the sheet in memory keeps it,
+		// and the next close that damages that sheet writes its bars whole. No retry queue: this failure mode is
 		// already logged-and-swallowed policy for the whole turn.
 		return
 	}
@@ -2015,6 +2020,38 @@ func (r *Room) persistClosedTurn(
 		session.MarkRoundPersisted()
 	}
 	r.mu.Unlock()
+}
+
+// statusBarsLocked copies the bars of every sheet a close damaged, one entry per sheet, for the
+// turn's own transaction (TurnCloseData.StatusBars). The caller must hold r.mu: the sheets are
+// the session's. A sheet missing one of its three bars is left out and logged — writing a zero
+// in its place would wipe the row.
+func statusBarsLocked(damaged []matchsession.DamagedCharacter) []appmatch.SheetStatusBars {
+	if len(damaged) == 0 {
+		return nil
+	}
+	out := make([]appmatch.SheetStatusBars, 0, len(damaged))
+	seen := make(map[uuid.UUID]bool, len(damaged))
+	for _, d := range damaged {
+		if d.Sheet == nil || seen[d.CharacterID] {
+			continue
+		}
+		seen[d.CharacterID] = true
+		bars := d.Sheet.GetAllStatusBar()
+		health, stamina, aura := bars[enum.Health], bars[enum.Stamina], bars[enum.Aura]
+		if health == nil || stamina == nil || aura == nil {
+			log.Printf("sheet %s has no %s/%s/%s bar — its HP after the close is NOT written",
+				d.CharacterID, enum.Health, enum.Stamina, enum.Aura)
+			continue
+		}
+		out = append(out, appmatch.SheetStatusBars{
+			CharacterID: d.CharacterID,
+			Health:      status.ReconstructBar(health.GetMin(), health.GetCurrent(), health.GetMax()),
+			Stamina:     status.ReconstructBar(stamina.GetMin(), stamina.GetCurrent(), stamina.GetMax()),
+			Aura:        status.ReconstructBar(aura.GetMin(), aura.GetCurrent(), aura.GetMax()),
+		})
+	}
+	return out
 }
 
 func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {

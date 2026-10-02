@@ -1446,7 +1446,7 @@ ficha** que mudou, e mais ninguém.
 | Campo | O que é |
 |---|---|
 | `characterId` | UUID da ficha — o mesmo ID que a peça do tabuleiro e `bars_updated.characters[].characterId` carregam. |
-| `hp` | O valor que a ficha tem **agora**, já aplicado e já persistido. |
+| `hp` | O valor que a ficha tem **agora**, já aplicado — e já persistido, na transação do turno que o aplicou (se ela falhar, a mensagem sai igual: o dano vale na mesa, mas não sobrevive a um reinício; ver [§9](#reinício-recarga-queda)). |
 | `maxHp` | O máximo da mesma barra de vida, para o cliente desenhar a barra sem um round trip REST. |
 | `damage` | O quanto acabou de sair. É o que deixa uma linha de histórico dizer "−16" sem diffar dois snapshots. |
 
@@ -2139,8 +2139,10 @@ fila, reações anexadas, a escolha do mestre para um escape — some inteiro.
 salvamento ali gravaria o efeito de um turno que ainda não existe no banco. Por isso a master
 action de peça e a interação/revelação de parede **não** salvam o tabuleiro com turno aberto, e
 as master actions feitas nele ficam guardadas em memória até o fechamento, que grava numa
-**transação só** o turno, as master actions e o tabuleiro com o fog de cada jogador — ou nada
-disso, se ela falhar (o tabuleiro gravado continua o do último fechamento). Se o servidor cair —
+**transação só** o turno, as master actions, o HP que ele aplicou (as barras de cada ficha
+atingida, em `character_sheets`) e o tabuleiro com o fog de cada jogador — ou nada disso, se ela
+falhar (o tabuleiro e as fichas gravados continuam os do último fechamento). Um comando do
+mestre, uma transação (dono do produto, 2026-10-02). Se o servidor cair —
 ou a sala fechar porque todos saíram, que para a persistência é o mesmo que um reinício — antes
 do fechamento, o turno volta inteiro ao último fechamento: a peça da action, o arrasto do
 mestre, a porta que ele abriu e as master actions correspondentes somem juntos. O histórico
@@ -2157,10 +2159,13 @@ transação do turno:
   sobrevivem a um reinício que perca o turno;
 - a inscrição de um NPC — por [`add_npc`](#add_npc) ou pelo **pôr** de um NPC que ainda não
   participava — grava `match_participants` na hora; depois de um reinício que perca o turno, o
-  NPC continua na partida, sem peça no tabuleiro;
-- o HP que o fechamento aplica é gravado no fechamento, mas pelos casos de uso
-  (`persistDamage`), **antes** e **fora** da transação do turno — como sempre foi. Se a
-  transação do turno falhar, o dano já está na ficha.
+  NPC continua na partida, sem peça no tabuleiro.
+
+O HP **não** é mais exceção: até 2026-10-02 os casos de uso o gravavam antes e fora da transação
+do turno. Se a transação do turno falhar, o dano aplicado continua na ficha em memória — a mesa
+já recebeu o [`character_hp_changed`](#character_hp_changed) —, mas a linha da ficha fica como o
+último fechamento gravado a deixou; o próximo fechamento que atingir aquela ficha grava as barras
+inteiras. Depois de um reinício, a ficha volta com o HP do último fechamento **gravado**.
 
 **O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado junto com o
 tabuleiro — no fechamento de turno, dentro da transação do `PersistTurnClose`; entre turnos, no

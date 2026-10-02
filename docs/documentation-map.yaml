@@ -1388,8 +1388,9 @@ mappings:
       EnsureSceneAndRound (os dois inserts idempotentes de cena e rodada, também
       chamados de dentro da transação do PersistTurnClose; spec §4.5/§4.8).
       PersistTurnClose (cena, rodada, turno, ação, reações, overrides, a resolução
-      LIQUIDADA, as master actions feitas com o turno aberto e o tabuleiro + fog —
-      pelos gateways pgmasteraction, pgmatchboard e fog rodando no tx —, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
+      LIQUIDADA, as barras das fichas que o fechamento atingiu, as master actions feitas
+      com o turno aberto e o tabuleiro + fog — pelos gateways pgsheet, pgmasteraction,
+      pgmatchboard e fog rodando no tx —, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
       uma query só). Os vereditos de quem viu o movimento ao vivo vão em
       actions.move_views (só a ação do turno) e em landingViews dentro do escape do
       resolution_record (onde a peça da fuga parou: pouso ou destino de quem escapou); FindMatchHistory os devolve em HistoryTurn (MoveViews,

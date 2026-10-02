@@ -133,7 +133,7 @@ sequenceDiagram
     end
     S-->>UC: TurnTransition {Closed, Opened, resoluções, Damaged}
     R->>R: persistClosedTurn(turno fechado)
-    R->>DB: PersistTurnClose — action · reactions · resolution · overrides
+    R->>DB: PersistTurnClose — action · reactions · resolution · overrides · HP das fichas atingidas (uma transação)
     R-->>R: publishResolution(fechado) — SETTLED, projetado por destinatário
     R-->>R: turn_opened (mesa inteira)
     R-->>M: resolution_updated do aberto — master-only (não liquidado)
@@ -242,6 +242,7 @@ flowchart TB
     DB --> D1["actions — action + reactions"]
     DB --> D2["turns.resolution — a colisão"]
     DB --> D3["overridden_action_values — o que o mestre atropelou"]
+    DB --> D4["character_sheets — o HP que o fechamento aplicou"]
 
     style REF fill:#fff3cd,stroke:#856404
 ```

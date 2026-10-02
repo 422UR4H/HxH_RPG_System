@@ -123,9 +123,11 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   movimento aberto, que a `Room` guarda por turno (`turnWrites`, `turn_writes.go`). O
   fechamento grava turno, master actions, vereditos de movimento/pouso (o `GET /history` mostra
   o `move` como cada um o viu ao vivo) e tabuleiro+fog numa transação só (`PersistTurnClose`;
-  os três verbos não chamam `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito. Fora disso:
-  `change_round_mode` (do round), inscrição de NPC e o HP do fechamento (`persistDamage`, fora
-  do tx).
+  os três verbos não chamam `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito.
+  **Um comando do mestre, uma transação** (dono do produto, 2026-10-02): o HP que o fechamento
+  aplica também vai nela (`TurnCloseData.StatusBars`, copiado sob `r.mu` em `persistClosedTurn`);
+  os casos de uso de fechamento não fazem I/O nenhum. Fora disso: `change_round_mode` (do round)
+  e inscrição de NPC.
   `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
   `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.
 - **Escape = esquiva E movimento.** `Avoided = dodgePassed && movePassed` (spec B13):

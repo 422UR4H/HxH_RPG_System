@@ -450,7 +450,7 @@ func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
 			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, true, nil // wasCorrected = true
 			},
-			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
+			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBarReader) error {
 				close(done)
 				return nil
 			},
@@ -479,7 +479,7 @@ func TestGetCharacterSheet_checkAndNormalize(t *testing.T) {
 			GetCharacterSheetByUUIDFn: func(ctx context.Context, id string) (*sheetEntity.CharacterSheet, bool, error) {
 				return domainS, false, nil // wasCorrected = false
 			},
-			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBar) error {
+			UpdateStatusBarsFn: func(ctx context.Context, id string, health, stamina, aura status.IStatusBarReader) error {
 				updateStatusBarsCalled = true
 				return nil
 			},

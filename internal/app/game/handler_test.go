@@ -376,6 +376,10 @@ type mockRoundRepoHandler struct {
 	// reading the store (or a restart loading from it) sees what a close persisted.
 	boardStore  *fakeBoardStore
 	memoryStore *fakeMemoryStore
+	// sheetRows, when set, receives the status bars of every SUCCESSFUL PersistTurnClose — the
+	// character_sheets rows the real gateway updates in the turn's transaction — so a restart
+	// rebuilding its sheets from it sees the HP a close persisted, and a failed close none.
+	sheetRows *recordingStatusWriter
 	// failPersist, when set, makes PersistTurnClose fail and write NOTHING — a rolled-back
 	// transaction.
 	failPersist error
@@ -447,6 +451,13 @@ func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.
 			return err
 		}
 	}
+	if m.sheetRows != nil {
+		for _, sb := range d.StatusBars {
+			if err := m.sheetRows.UpdateStatusBars(ctx, sb.CharacterID.String(), sb.Health, sb.Stamina, sb.Aura); err != nil {
+				return err
+			}
+		}
+	}
 	if m.memoryStore != nil {
 		for _, mem := range d.Memories {
 			if err := m.memoryStore.Upsert(ctx, mem); err != nil {
@@ -470,6 +481,13 @@ func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.
 	m.handed = append(m.handed, d.Scene, d.Round)
 	m.closes = append(m.closes, d)
 	return nil
+}
+
+// closeData returns the data of every successful PersistTurnClose, in order.
+func (m *mockRoundRepoHandler) closeData() []appmatch.TurnCloseData {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]appmatch.TurnCloseData(nil), m.closes...)
 }
 
 // persistedTurnIDs returns a snapshot of every turn ID PersistTurnClose was called with.

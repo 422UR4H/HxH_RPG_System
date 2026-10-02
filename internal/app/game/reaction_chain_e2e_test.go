@@ -21,7 +21,7 @@ import (
 // three different answers, and a master who opens those answers in two different orders —
 // producing two different outcomes for the same scripted dice. That difference IS the phase.
 //
-// It reuses combat_e2e_test.go's shape (combatSessionUC, recordingStatusWriter, scriptedFaces,
+// It reuses combat_e2e_test.go's shape (combatSessionUC, scriptedFaces,
 // newCombatSheet, sendWS, connectWS, readMessage, collector, awaitCount) and extends it to four
 // characters, each driven by its own player, so AttachReaction's ownership check is exercised
 // for real: only a target may react, and only through a character its own player owns.
@@ -108,7 +108,6 @@ func newAreaFixture(t *testing.T, faces []int) *areaFixture {
 	go hub.Run()
 	t.Cleanup(hub.Stop)
 
-	writer := &recordingStatusWriter{}
 	roundRepo := &mockRoundRepoHandler{}
 	handler := game.NewHandler(
 		hub,
@@ -118,12 +117,12 @@ func newAreaFixture(t *testing.T, faces []int) *areaFixture {
 			StartMatchUC:          &mockStartMatchUC{},
 			KickPlayerUC:          &mockKickPlayerUC{},
 			InitSessionUC:         &combatSessionUC{session: session},
-			OpenNextActionUC:      appmatch.NewOpenNextActionUC(writer, appmatch.NewCloseRoundUC(roundRepo)),
-			PullActionUC:          appmatch.NewPullActionUC(writer, appmatch.NewCloseRoundUC(roundRepo)),
+			OpenNextActionUC:      appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC(roundRepo)),
+			PullActionUC:          appmatch.NewPullActionUC(appmatch.NewCloseRoundUC(roundRepo)),
 			EnqueueActionUC:       appmatch.NewEnqueueActionUC(),
 			AttachReactionUC:      appmatch.NewAttachReactionUC(),
 			OpenReactionUC:        appmatch.NewOpenReactionUC(),
-			CloseTurnUC:           appmatch.NewCloseTurnUC(writer),
+			CloseTurnUC:           appmatch.NewCloseTurnUC(),
 			ChangeSceneUC:         &mockChangeSceneUCHandler{},
 			RoundRepo:             roundRepo,
 			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},

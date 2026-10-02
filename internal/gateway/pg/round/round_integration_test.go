@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
@@ -882,6 +883,82 @@ func TestPersistTurnCloseWritesTheBoardWithTheTurn(t *testing.T) {
 		}
 		if n := memoriesOf(t, fx.matchUUID); n != 0 {
 			t.Fatalf("player_memories rows = %d, want 0 — the memories roll back too", n)
+		}
+	})
+}
+
+// TestPersistTurnCloseWritesTheStatusBarsWithTheTurn: the HP a close applied is written in the
+// turn's own transaction (owner decision, 2026-10-02) — one master command, one transaction. A
+// failure anywhere in it (here, a master action the database refuses, written after the bars)
+// leaves the sheet as the last close did.
+func TestPersistTurnCloseWritesTheStatusBarsWithTheTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	barsOf := func(id uuid.UUID, hp int) appmatch.SheetStatusBars {
+		return appmatch.SheetStatusBars{
+			CharacterID: id,
+			Health:      status.ReconstructBar(0, hp, 20),
+			Stamina:     status.ReconstructBar(0, 9, 10),
+			Aura:        status.ReconstructBar(0, 4, 5),
+		}
+	}
+	healthOf := func(t *testing.T, id uuid.UUID) (curr, max, stamina, aura int) {
+		t.Helper()
+		if err := pool.QueryRow(ctx,
+			// A seeded sheet has no bars yet (NULL): -1 stands for "never written".
+			`SELECT COALESCE(health_curr_pts, -1), COALESCE(health_max_pts, -1),
+			        COALESCE(stamina_curr_pts, -1), COALESCE(aura_curr_pts, -1)
+			 FROM character_sheets WHERE uuid = $1`, id,
+		).Scan(&curr, &max, &stamina, &aura); err != nil {
+			t.Fatalf("read sheet: %v", err)
+		}
+		return curr, max, stamina, aura
+	}
+
+	t.Run("writes the damaged sheet's bars with the turn", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusBars: []appmatch.SheetStatusBars{barsOf(fx.victimSheet, 13)},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		curr, max, stamina, aura := healthOf(t, fx.victimSheet)
+		if curr != 13 || max != 20 || stamina != 9 || aura != 4 {
+			t.Fatalf("victim bars = hp %d/%d, stamina %d, aura %d — want 13/20, 9, 4", curr, max, stamina, aura)
+		}
+	})
+
+	t.Run("a failing master action rolls the sheet back with the turn", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		before, beforeMax, _, _ := healthOf(t, fx.victimSheet)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		turnID := tn.GetID()
+		bad := masteraction.Record{
+			UUID: uuid.New(), MatchUUID: fx.matchUUID, SceneUUID: fx.scene.GetID(), RoundUUID: fx.round.GetID(),
+			TurnUUID: &turnID, MasterUUID: uuid.New(), // not a user: the FK refuses it
+			Kind: masteraction.KindMovePiece, Content: []byte(`{}`), HappenedAt: time.Now().UTC(),
+		}
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusBars:    []appmatch.SheetStatusBars{barsOf(fx.victimSheet, 13)},
+			MasterActions: []masteraction.Record{bad},
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose succeeded with a master action the database refuses")
+		}
+		if curr, max, _, _ := healthOf(t, fx.victimSheet); curr != before || max != beforeMax {
+			t.Fatalf("victim hp = %d/%d, want it untouched at %d/%d — the bars must roll back with the turn", curr, max, before, beforeMax)
 		}
 	})
 }

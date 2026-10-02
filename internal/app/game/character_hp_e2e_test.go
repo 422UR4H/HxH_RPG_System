@@ -2,10 +2,12 @@ package game_test
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -190,4 +192,76 @@ func TestE2E_TheImplicitCloseAlsoTellsTheNewHP(t *testing.T) {
 			messageTypes(playerMsgs.snapshotMessages()))
 	}
 	assertVictimHpChange(t, playerMsgs, f, hpBefore, maxHP, "the victim's owner")
+}
+
+// ─── one master command, one transaction (owner decision, 2026-10-02) ───────
+
+// TestE2E_ARestartKeepsTheHPTheTurnCloseWrote: the HP a close applied is written in the turn's
+// own transaction (TurnCloseData.StatusBars), so a restart after the close starts the victim at
+// exactly that HP — not at the full bar a fresh sheet is built with.
+func TestE2E_ARestartKeepsTheHPTheTurnCloseWrote(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	mc := collectFrom(master)
+	hpBefore, _ := victimHealthBar(t, f)
+
+	turnID := f.openAttackTurn(t, master, player, mc)
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	f.awaitPersistedTurn(t, turnID)
+	// Safe now: persisting is behind the close's last mutation of the sheet.
+	hpAfter := f.victimHP(t)
+	if hpAfter >= hpBefore {
+		t.Fatalf("victim HP %d -> %d: the close applied no damage, so this test proves nothing", hpBefore, hpAfter)
+	}
+
+	var bars []appmatch.SheetStatusBars
+	for _, d := range f.roundRepo.closeData() {
+		if d.Turn.GetID() == turnID {
+			bars = d.StatusBars
+		}
+	}
+	if len(bars) != 1 || bars[0].CharacterID != f.victimID || bars[0].Health.GetCurrent() != hpAfter {
+		t.Fatalf("PersistTurnClose got status bars %+v, want exactly the victim %s at %d HP", bars, f.victimID, hpAfter)
+	}
+
+	master.Close() //nolint:errcheck
+	player.Close() //nolint:errcheck
+	f.restart(t)
+	if got := f.victimHP(t); got != hpAfter {
+		t.Fatalf("after the restart the victim has %d HP, want the %d the close wrote", got, hpAfter)
+	}
+}
+
+// TestE2E_AFailedTurnCloseLeavesTheSheetAsItWas: the HP is durable with its turn or not at all.
+// A PersistTurnClose that fails writes no sheet — the table still saw the damage live (it is in
+// memory), but a restart starts the victim where the last written close left it.
+func TestE2E_AFailedTurnCloseLeavesTheSheetAsItWas(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	mc := collectFrom(master)
+	hpBefore, _ := victimHealthBar(t, f)
+
+	turnID := f.openAttackTurn(t, master, player, mc)
+	f.roundRepo.setFailPersist(errors.New("the transaction rolled back"))
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	// turn_closed goes out after the write attempt: by then the close is over, written or not.
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	if !mc.await(game.MsgTypeCharacterHpChanged, 2*time.Second) {
+		t.Fatal("the table was never told the HP moved — the damage must still apply in memory")
+	}
+	if contains(f.roundRepo.persistedTurnIDs(), turnID) {
+		t.Fatal("the failing repository reports the turn persisted — the fake is wrong")
+	}
+	if rows, hps := f.writer.snapshot(); len(rows) != 0 {
+		t.Fatalf("character_sheets got %v (HP %v) although the turn's transaction failed", rows, hps)
+	}
+
+	master.Close() //nolint:errcheck
+	player.Close() //nolint:errcheck
+	f.restart(t)
+	if got := f.victimHP(t); got != hpBefore {
+		t.Fatalf("after the restart the victim has %d HP, want the untouched %d", got, hpBefore)
+	}
 }

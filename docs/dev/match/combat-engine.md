@@ -1019,8 +1019,11 @@ exatamente na CD já é linha de defensor.
 
 `TurnResolution` carrega `CharacterResults` com o dano **projetado** — nada tocou ficha
 nenhuma. A aplicação de verdade acontece em `MatchSession.closeOpenTurn`, no fechamento
-implícito que `OpenNextAction`/`PullAction` já faziam, e devolve `[]DamagedCharacter` para o
-use case persistir com `sheet.Repository.UpdateStatusBars`.
+implícito que `OpenNextAction`/`PullAction` já faziam, e devolve `[]DamagedCharacter`. O use
+case não grava nada: a `Room` copia as barras das fichas atingidas sob `r.mu`
+(`TurnCloseData.StatusBars`) e o `PersistTurnClose` as grava com
+`sheet.Repository.UpdateStatusBars` **na transação do turno** — um comando do mestre, uma
+transação (dono do produto, 2026-10-02).
 
 ### Serialização: `r.mu` atravessa o `Execute`
 
@@ -1621,7 +1624,7 @@ código, então adicionar e remover skills muda uma lista que não decide nada.
 | Conflito no `Bias` | ✅ Fase 1 — `RollCondition.Bias` é do mestre; o viés do sistema é um `Modifier` de `Source: system`, e o `RollCalculator` soma os dois em `Derive` |
 | Tela de enviar action | **não existe no front** — Fase 6 |
 | Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. ✅ Fase 4 — `resolveRepel` liga o repelir; os quatro degraus são alcançáveis (antes, `RungFailure` era o único possível) |
-| Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars` |
+| Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars`, na transação do turno (`PersistTurnClose`) |
 | `PriorityQueue` | ✅ Fase 3 — deixou de ser heap; virou lista simples, chave calculada em `RoundScheduler` na hora da seleção |
 | `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
 | Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
