@@ -707,6 +707,21 @@ mappings:
       pieceRemovedView) — mudar um portão muda o que o histórico mostra. Com turno
       aberto não insere: guarda o registro para o fechamento (turn_writes.go).
 
+  - code_path: internal/app/game/unwritten.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: >-
+      O que uma gravação que falhou deixou para a próxima carregar, na mesma transação
+      (decisão do controlador sobre o Fix C, 2026-10-02): unwrittenSheets (fichas cujo HP
+      um fechamento falho não gravou — vão no StatusBars do próximo fechamento; nunca todas
+      as fichas, para não atropelar edição por REST) e unwrittenRoundEnds (fins de round
+      não gravados — vão em TurnCloseData.UnwrittenRoundEnds ou no PersistRoundClose da
+      próxima gravação do round seguinte, para nunca haver duas rodadas abertas na cena).
+      Mudar quando algo é carregado muda o §9 do contrato WS.
+
   - code_path: internal/app/game/turn_writes.go
     dev_docs:
       - path: docs/dev/api/match-combat-ws.md

@@ -569,7 +569,7 @@ func TestTurnScoped_ARoundEndWritesTheHeldMasterActionWithItsLastTurn(t *testing
 	}
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 	if !mc.await(game.MsgTypeRoundClosed, 2*time.Second) {
-		t.Fatal("the round never ran out")
+		t.Fatal("the round never ended")
 	}
 	f.awaitPersistedTurn(t, turnID)
 

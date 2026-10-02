@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
@@ -297,6 +298,123 @@ func TestE2E_AFailedLastTurnStillWritesTheRoundEndWithItsSuccessor(t *testing.T)
 	if len(calls) != 1 || calls[0].closed.GetID() != round1 || calls[0].closed.GetFinishedAt() == nil ||
 		calls[0].next == nil || calls[0].next.GetID() == round1 {
 		t.Fatalf("PersistRoundClose calls = %+v, want one: %s ended, with its successor", calls, round1)
+	}
+}
+
+// Um fim de round que não foi gravado fica guardado na sala e vai junto com a próxima gravação do
+// round seguinte, na mesma transação — aqui, a troca de regime que o garante como linha. Sem
+// isso, o round seguinte nasceria aberto ao lado do anterior ainda aberto no banco.
+func TestE2E_AnUnwrittenRoundEndRidesTheSuccessorsNextWrite(t *testing.T) {
+	f := newCombatFixture(t)
+	round1 := f.session.GetActiveRound().GetID()
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
+	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+	// The round ends with no turn, and its write fails.
+	f.roundRepo.setFailRoundClose(errors.New("the transaction rolled back"))
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeRoundClosed, 2*time.Second) {
+		t.Fatal("the round ended and nobody was told")
+	}
+	if n := len(f.roundRepo.roundCloseCalls()); n != 0 {
+		t.Fatalf("PersistRoundClose recorded %d successful calls, want 0 — the fake should have failed", n)
+	}
+	f.roundRepo.setFailRoundClose(nil)
+
+	// The successor's next write: the regime change ensures it as a row.
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Free)})
+	if !awaitCount(mc, game.MsgTypeRoundModeChanged, 2, 2*time.Second) {
+		t.Fatal("the second regime switch was never announced")
+	}
+	calls := f.roundRepo.roundCloseCalls()
+	if len(calls) != 1 {
+		t.Fatalf("PersistRoundClose calls = %d, want 1 — the successor's ensure carries the unwritten end", len(calls))
+	}
+	c := calls[0]
+	if len(c.ends) != 1 || c.ends[0].Round.GetID() != round1 || c.ends[0].Round.GetFinishedAt() == nil {
+		t.Fatalf("ends = %+v, want exactly round %s, finished", c.ends, round1)
+	}
+	successor := c.next.GetID()
+	if successor == round1 || c.next.GetFinishedAt() != nil {
+		t.Fatalf("next = %+v, want the open successor of %s", c.next, round1)
+	}
+	if contains(f.roundRepo.ensuredRoundIDs(), successor) {
+		t.Fatal("the successor was ensured on its own, outside the transaction that closes its predecessor")
+	}
+
+	// Once written, the end is forgotten: the next write of the successor is a plain ensure.
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
+	if !awaitCount(mc, game.MsgTypeRoundModeChanged, 3, 2*time.Second) {
+		t.Fatal("the third regime switch was never announced")
+	}
+	if n := len(f.roundRepo.roundCloseCalls()); n != 1 {
+		t.Fatalf("PersistRoundClose calls = %d, want still 1 — nothing was left to carry", n)
+	}
+	if !contains(f.roundRepo.ensuredRoundIDs(), successor) {
+		t.Fatal("the successor's later write never happened as a plain ensure")
+	}
+}
+
+// O turno que fecha o round falha, o salvamento do fim do round também; o próximo turno fechado no
+// round seguinte grava o fim do anterior na própria transação.
+func TestE2E_AnUnwrittenRoundEndRidesTheSuccessorsFirstTurnClose(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+
+	round1, turn1 := raceRoundWithOneOpenTurn(t, f, master, player, mc, pc)
+	f.roundRepo.setFailPersist(errors.New("the transaction rolled back"))
+	f.roundRepo.setFailRoundClose(errors.New("the salvage rolled back too"))
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeRoundClosed, 2*time.Second) {
+		t.Fatal("the round ended and nobody was told")
+	}
+	if contains(f.roundRepo.persistedTurnIDs(), turn1) || len(f.roundRepo.roundCloseCalls()) != 0 {
+		t.Fatal("the failing repository reports a write — the fake is wrong")
+	}
+	f.roundRepo.setFailPersist(nil)
+	f.roundRepo.setFailRoundClose(nil)
+
+	// A turn in the round born after it, closed: no other write of that round came first.
+	f.enqueueAttack(t, player)
+	if !awaitCount(pc, game.MsgTypeActionEnqueued, 2, 2*time.Second) {
+		t.Fatal("the second attack was never enqueued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !awaitCount(mc, game.MsgTypeTurnOpened, 2, 2*time.Second) {
+		t.Fatalf("the second attack never opened; master got %v", messageTypes(mc.snapshotMessages()))
+	}
+	turn2 := lastTurnOpened(t, mc).TurnID
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	f.awaitPersistedTurn(t, turn2)
+
+	var d *appmatch.TurnCloseData
+	for _, c := range f.roundRepo.closeData() {
+		if c.Turn.GetID() == turn2 {
+			c := c
+			d = &c
+		}
+	}
+	if d == nil {
+		t.Fatal("turn 2's PersistTurnClose data is missing")
+	}
+	if len(d.UnwrittenRoundEnds) != 1 || d.UnwrittenRoundEnds[0].Round.GetID() != round1 ||
+		d.UnwrittenRoundEnds[0].Round.GetFinishedAt() == nil {
+		t.Fatalf("turn 2 carried round ends %+v, want round %s, finished", d.UnwrittenRoundEnds, round1)
+	}
+	if d.Round.GetID() == round1 {
+		t.Fatal("turn 2 was written under the round that had ended")
+	}
+	if contains(f.roundRepo.ensuredRoundIDs(), d.Round.GetID()) || len(f.roundRepo.roundCloseCalls()) != 0 {
+		t.Fatal("the successor was written before turn 2's transaction — without its predecessor's end")
 	}
 }
 

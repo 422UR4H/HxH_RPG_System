@@ -36,7 +36,7 @@ func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.U
 func (m *mockHistoryRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *mockHistoryRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _, _ *roundentity.Round) error {
+func (m *mockHistoryRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
 func (m *mockHistoryRoundRepo) FindActiveSession(

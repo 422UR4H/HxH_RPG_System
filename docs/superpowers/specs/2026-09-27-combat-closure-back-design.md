@@ -252,8 +252,10 @@ fichas (saiu o `persistDamage`, que fazia um `UPDATE character_sheets` por ficha
 de transação e sob `r.mu`); a `Room` copia as barras (vida, estamina, aura) de cada ficha
 atingida na seção crítica do `persistClosedTurn` (`TurnCloseData.StatusBars`) e o
 `PersistTurnClose` as grava com o `UpdateStatusBars` do gateway da ficha rodando no `tx`. Se a
-transação falhar, o dano continua na ficha em memória e a linha fica como o último fechamento
-gravado a deixou.
+transação falhar, o dano continua na ficha em memória e a `Room` a guarda como não gravada
+(`unwritten.go`): o próximo fechamento bem-sucedido a grava junto com as fichas que ele mesmo
+atingiu. Nunca todas as fichas da sessão — isso atropelaria uma edição feita por REST no meio da
+partida. Só um reinício antes desse próximo fechamento perde o HP não gravado.
 
 Ficam de fora do "tudo junto": a troca de regime (`match_events` e `rounds.mode`, gravados na
 hora — pertencem ao round, não ao turno); e a inscrição de NPC, por `add_npc` ou pelo pôr de um
@@ -382,7 +384,11 @@ vai editar rolagens):
   round, os dois entram na transação do turno (`TurnCloseData.NextRound`); quando acaba o round
   sem fechar turno, numa transação só deles (`PersistRoundClose`). Se a transação do turno
   falhar, o turno se perde (logado), mas o fim do round — que aconteceu na mesa — ainda vai com o
-  seguinte pelo `PersistRoundClose`: o banco nunca fica com duas rodadas abertas na cena. O que o
+  seguinte pelo `PersistRoundClose`. Se também esse falhar (ou o `PersistRoundClose` do caminho
+  sem turno), a `Room` guarda o fim como não gravado e o põe na transação da próxima gravação do
+  round seguinte (`TurnCloseData.UnwrittenRoundEnds`, ou `PersistRoundClose` com as pontas no
+  lugar do `EnsureSceneAndRound`): o round seguinte nunca vira linha aberta ao lado de um anterior
+  ainda aberto, e o banco nunca fica com duas rodadas abertas na cena. O que o
   `CloseRound` liquida em memória (saldo das barras, modificadores de fim de round) não é durável
   em lugar nenhum — não há o que mais pôr na transação.
 - **Tabela nova `match_events`** para o que acontece **dentro** de um round e não é turno:
@@ -492,7 +498,7 @@ CREATE TABLE master_actions (
 | Escolha do mestre para um escape (B13) | vem na `resolution` do mestre | perdida com o turno aberto |
 | Histórico | REST | REST (B15) — nada que já fechou se perde; master actions fora de turno gravadas no instante, as de dentro de um turno com o fechamento dele (§4.8) |
 | Barras | `bars` com o `seq` atual | zeradas (o de sempre: perdido, não divergente) |
-| HP (vida, estamina, aura da ficha) | `character_hp_changed` ao vivo; a ficha por REST | **volta** de `character_sheets` como o último fechamento **gravado** o deixou — gravado na transação do turno (decisão de 2026-10-02, §4.3); um fechamento cuja transação falhou não chega à linha |
+| HP (vida, estamina, aura da ficha) | `character_hp_changed` ao vivo; a ficha por REST | **volta** de `character_sheets` como o último fechamento **gravado** o deixou — gravado na transação do turno (decisão de 2026-10-02, §4.3); o HP de um fechamento cuja transação falhou vai com o próximo fechamento bem-sucedido, e só se perde num reinício antes dele |
 | NPC do mapa | — | reinscrito, idempotente, no `Init` (B11) |
 | Duas abas | a última vence (B4) | — |
 

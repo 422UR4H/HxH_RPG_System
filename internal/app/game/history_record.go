@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -50,6 +51,10 @@ func snapshotSceneAndRound(sc *sceneentity.Scene, rd *roundentity.Round) (*scene
 // the FK. sc and rd are snapshots (snapshotSceneAndRound), never the session's live objects —
 // which is also why "still the active pair" compares ids, not pointers. The caller must NOT
 // hold r.mu.
+//
+// While a round end is still unwritten (unwritten.go), rd may be the round born after it: then
+// the pair goes through PersistRoundClose with those ends, in one transaction, instead of
+// EnsureSceneAndRound alone — rd is never written open next to a predecessor still open on disk.
 func (r *Room) ensureSceneAndRoundRows(
 	sess *matchsession.MatchSession, sc *sceneentity.Scene, rd *roundentity.Round, why string,
 ) bool {
@@ -60,14 +65,23 @@ func (r *Room) ensureSceneAndRoundRows(
 		log.Printf("%s: no round repository — scene %s / round %s of match %s NOT written", why, sc.GetID(), rd.GetID(), r.matchUUID)
 		return false
 	}
-	if err := r.deps.RoundRepo.EnsureSceneAndRound(context.Background(), r.matchUUID, sc, rd); err != nil {
-		log.Printf("%s FAILED — scene %s / round %s of match %s NOT written: %v", why, sc.GetID(), rd.GetID(), r.matchUUID, err)
+	r.mu.RLock()
+	ends := r.unwrittenRoundEndsLocked()
+	r.mu.RUnlock()
+	var err error
+	if len(ends) == 0 {
+		err = r.deps.RoundRepo.EnsureSceneAndRound(context.Background(), r.matchUUID, sc, rd)
+	} else {
+		err = r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, rd)
+	}
+	if err != nil {
+		log.Printf("%s FAILED — scene %s / round %s of match %s NOT written, nor the %d round end(s) still waiting: %v",
+			why, sc.GetID(), rd.GetID(), r.matchUUID, len(ends), err)
 		return false
 	}
 	r.mu.Lock()
-	if active := sess.GetActiveRound(); active != nil && active.GetID() == rd.GetID() {
-		sess.MarkRoundPersisted()
-	}
+	r.forgetRoundEndsWrittenLocked(ends)
+	markRoundPersistedIfActiveLocked(sess, rd.GetID())
 	r.mu.Unlock()
 	return true
 }
@@ -114,12 +128,13 @@ func (r *Room) persistRoundClose(sess *matchsession.MatchSession, closed *rounde
 }
 
 // writeRoundClose writes a round's end and its successor's birth together
-// (RoundRepo.PersistRoundClose) and, on success, tells the session the successor is a row — if
-// it is still the active round. Never one write without the other: a successor born open next
-// to a predecessor still open on disk is two open rounds in one scene. sc, closed and next are
-// snapshots (snapshotSceneAndRound). why names the moment, for the log; a failure is logged
-// saying what was lost and swallowed — the persistClosedTurn policy. The caller must NOT hold
-// r.mu.
+// (RoundRepo.PersistRoundClose) — with any earlier round end still unwritten — and, on success,
+// tells the session the successor is a row, if it is still the active round. Never one write
+// without the other: a successor born open next to a predecessor still open on disk is two open
+// rounds in one scene. sc, closed and next are snapshots (snapshotSceneAndRound). why names the
+// moment, for the log; a failure is logged saying what was lost and swallowed — the
+// persistClosedTurn policy — and the end is remembered (unwritten.go), so the successor's next
+// write carries it. The caller must NOT hold r.mu.
 func (r *Room) writeRoundClose(
 	sess *matchsession.MatchSession, sc *sceneentity.Scene, closed, next *roundentity.Round, why string,
 ) {
@@ -131,15 +146,22 @@ func (r *Room) writeRoundClose(
 			why, closed.GetID(), next.GetID(), r.matchUUID)
 		return
 	}
-	if err := r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, sc, closed, next); err != nil {
-		log.Printf("%s FAILED — the end of round %s and the birth of round %s (scene %s, match %s) were NOT written: %v",
-			why, closed.GetID(), next.GetID(), sc.GetID(), r.matchUUID, err)
+	end := appmatch.RoundEnd{Scene: sc, Round: closed}
+	r.mu.RLock()
+	ends := append(r.unwrittenRoundEndsLocked(), end)
+	r.mu.RUnlock()
+	if err := r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, next); err != nil {
+		log.Printf("%s FAILED — the end of round %s and the birth of round %s (scene %s, match %s) were NOT written "+
+			"(kept for the next write of round %s): %v",
+			why, closed.GetID(), next.GetID(), sc.GetID(), r.matchUUID, next.GetID(), err)
+		r.mu.Lock()
+		r.markRoundEndUnwrittenLocked(end)
+		r.mu.Unlock()
 		return
 	}
 	r.mu.Lock()
-	if active := sess.GetActiveRound(); active != nil && active.GetID() == next.GetID() {
-		sess.MarkRoundPersisted()
-	}
+	r.forgetRoundEndsWrittenLocked(ends)
+	markRoundPersistedIfActiveLocked(sess, next.GetID())
 	r.mu.Unlock()
 }
 

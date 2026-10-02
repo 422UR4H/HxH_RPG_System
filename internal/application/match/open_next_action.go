@@ -20,8 +20,9 @@ type OpenNextActionResult struct {
 	// closed. Nil on the first open of a round.
 	ClosedResolution *service.TurnResolution
 	Damaged          []matchsession.DamagedCharacter
-	// ClosedRound is set when the round ran out: nothing pending could still pay, so the
-	// round closed instead of opening anything. The caller announces round_closed.
+	// ClosedRound is set when the round ended because no action in the queue could still pay its
+	// price, so it closed instead of opening anything. The caller writes it and announces
+	// round_closed.
 	ClosedRound *round.Round
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/google/uuid"
 )
 
 // This file covers the live HP path: until it existed, the damage a close applied only
@@ -263,5 +264,119 @@ func TestE2E_AFailedTurnCloseLeavesTheSheetAsItWas(t *testing.T) {
 	f.restart(t)
 	if got := f.victimHP(t); got != hpBefore {
 		t.Fatalf("after the restart the victim has %d HP, want the untouched %d", got, hpBefore)
+	}
+}
+
+// statusBarsOf returns the status bars the successful PersistTurnClose of one turn carried.
+func statusBarsOf(f *combatFixture, turnID uuid.UUID) []appmatch.SheetStatusBars {
+	for _, d := range f.roundRepo.closeData() {
+		if d.Turn.GetID() == turnID {
+			return d.StatusBars
+		}
+	}
+	return nil
+}
+
+// TestE2E_TheNextCloseWritesTheSheetAFailedCloseLeft: a failed close's HP is not lost until a
+// restart — the sheet is remembered as unwritten, and the NEXT close writes it, even when that
+// close damages a different character (controller ruling on Fix C). Only the sheets a close
+// touched are ever written, never every sheet: that would clobber a REST edit made meanwhile.
+func TestE2E_TheNextCloseWritesTheSheetAFailedCloseLeft(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	pc := collectFrom(player)
+
+	// Close 1: the attacker hits the victim, and the turn's transaction fails.
+	turn1 := f.openAttackTurn(t, master, player, mc)
+	f.roundRepo.setFailPersist(errors.New("the transaction rolled back"))
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("turn 1 never closed")
+	}
+	if contains(f.roundRepo.persistedTurnIDs(), turn1) {
+		t.Fatal("the failing repository reports turn 1 persisted — the fake is wrong")
+	}
+	f.roundRepo.setFailPersist(nil)
+
+	// Close 2: the victim hits the attacker — a different character — and the write succeeds.
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId":  f.victimID.String(),
+		"targetId": []string{f.attackerID.String()},
+		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
+		"attack": map[string]any{
+			"weapon": "Sword",
+			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
+	// The count, not the type: the first attack's acknowledgement is already in the collector.
+	if !awaitCount(pc, game.MsgTypeActionEnqueued, 2, 2*time.Second) {
+		t.Fatal("the second attack was never enqueued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !awaitCount(mc, game.MsgTypeTurnOpened, 2, 2*time.Second) {
+		t.Fatalf("the second attack never opened; master got %v", messageTypes(mc.snapshotMessages()))
+	}
+	turn2 := lastTurnOpened(t, mc).TurnID
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	f.awaitPersistedTurn(t, turn2)
+
+	victimHP := f.victimHP(t) // safe: turn 2's write is behind its last mutation of the sheets
+	written := map[uuid.UUID]int{}
+	for _, sb := range statusBarsOf(f, turn2) {
+		written[sb.CharacterID] = sb.Health.GetCurrent()
+	}
+	if len(written) != 2 {
+		t.Fatalf("turn 2's PersistTurnClose wrote %v, want both the attacker it damaged and the victim turn 1 left unwritten", written)
+	}
+	if hp, ok := written[f.victimID]; !ok || hp != victimHP {
+		t.Fatalf("victim written at %d (present %v), want the %d turn 1 applied", hp, ok, victimHP)
+	}
+
+	// Close 3 damages nobody new: the victim is not written again — it is no longer unwritten.
+	f.enqueueAttack(t, player)
+	if !awaitCount(pc, game.MsgTypeActionEnqueued, 3, 2*time.Second) {
+		t.Fatal("the third attack was never enqueued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !awaitCount(mc, game.MsgTypeTurnOpened, 3, 2*time.Second) {
+		t.Fatal("the third attack never opened")
+	}
+	turn3 := lastTurnOpened(t, mc).TurnID
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	f.awaitPersistedTurn(t, turn3)
+	for _, sb := range statusBarsOf(f, turn3) {
+		if sb.CharacterID == f.attackerID {
+			t.Fatalf("turn 3 wrote the attacker again although nothing left it unwritten: %+v", statusBarsOf(f, turn3))
+		}
+	}
+}
+
+// TestE2E_TheHalfSuccessCloseWritesItsHP: an open_next_action that closes a turn and then fails
+// to open the next one (empty Free queue) still hands that turn's HP to its PersistTurnClose —
+// the use case returns the result alongside the error, and the room persists the closed half.
+func TestE2E_TheHalfSuccessCloseWritesItsHP(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	hpBefore, _ := victimHealthBar(t, f)
+
+	turnID := f.openAttackTurn(t, master, player, mc)
+	// Nothing else queued: this closes the turn, applies its damage, and fails to open anything.
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	f.awaitPersistedTurn(t, turnID)
+
+	hpAfter := f.victimHP(t)
+	if hpAfter >= hpBefore {
+		t.Fatalf("victim HP %d -> %d: the close applied no damage, so this test proves nothing", hpBefore, hpAfter)
+	}
+	bars := statusBarsOf(f, turnID)
+	if len(bars) != 1 || bars[0].CharacterID != f.victimID || bars[0].Health.GetCurrent() != hpAfter {
+		t.Fatalf("the half-success close's PersistTurnClose got %+v, want the victim at %d HP", bars, hpAfter)
 	}
 }

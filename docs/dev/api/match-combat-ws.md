@@ -1506,7 +1506,10 @@ rodada.
 o `finishedAt` da rodada que acabou e a linha da rodada que nasceu no lugar dela vão juntos, na
 transação do turno que o mesmo `open_next_action` fechou — ou, se ele não fechou turno nenhum,
 numa transação só deles. Nunca um sem o outro: o banco nunca fica com duas rodadas abertas na
-cena, nem com nenhuma.
+cena, nem com nenhuma. Se essa gravação falhar, a sala guarda o fim da rodada e o grava, na
+mesma transação, com a próxima gravação da rodada seguinte (um fechamento de turno, uma master
+action, uma troca de regime) — a rodada seguinte nunca nasce aberta ao lado da anterior ainda
+aberta no banco.
 
 ### `round_mode_changed`
 
@@ -2156,7 +2159,8 @@ as master actions feitas nele ficam guardadas em memória até o fechamento, que
 atingida, em `character_sheets`), o tabuleiro com o fog de cada jogador e — quando o mesmo
 `open_next_action` também acaba a rodada — o fim dela e a rodada seguinte; ou nada disso, se ela
 falhar (o tabuleiro e as fichas gravados continuam os do último fechamento; o fim da rodada, que
-aconteceu na mesa, ainda é gravado com a seguinte numa transação só deles). Um comando do mestre,
+aconteceu na mesa, ainda é gravado com a seguinte numa transação só deles — e, se também essa
+falhar, vai com a próxima gravação da rodada seguinte). Um comando do mestre,
 uma transação (dono do produto, 2026-10-02). Se o servidor cair —
 ou a sala fechar porque todos saíram, que para a persistência é o mesmo que um reinício — antes
 do fechamento, o turno volta inteiro ao último fechamento: a peça da action, o arrasto do
@@ -2178,9 +2182,12 @@ transação do turno:
 
 O HP **não** é mais exceção: até 2026-10-02 os casos de uso o gravavam antes e fora da transação
 do turno. Se a transação do turno falhar, o dano aplicado continua na ficha em memória — a mesa
-já recebeu o [`character_hp_changed`](#character_hp_changed) —, mas a linha da ficha fica como o
-último fechamento gravado a deixou; o próximo fechamento que atingir aquela ficha grava as barras
-inteiras. Depois de um reinício, a ficha volta com o HP do último fechamento **gravado**.
+já recebeu o [`character_hp_changed`](#character_hp_changed) —, e a sala guarda a ficha como
+**não gravada**: o próximo fechamento bem-sucedido, qualquer que seja a ficha que ele atingir,
+grava também as barras dela. Só as fichas que um fechamento atingiu são gravadas, nunca todas —
+gravar uma ficha que a partida não tocou atropelaria uma edição feita nela por REST. Se o servidor
+reiniciar antes desse próximo fechamento, a ficha volta com o HP do último fechamento
+**gravado**.
 
 **O fog memory do jogador volta pelo mesmo caminho.** `player_memories` é gravado junto com o
 tabuleiro — no fechamento de turno, dentro da transação do `PersistTurnClose`; entre turnos, no

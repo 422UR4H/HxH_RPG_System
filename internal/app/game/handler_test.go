@@ -385,15 +385,27 @@ type mockRoundRepoHandler struct {
 	// closes keeps every SUCCESSFUL PersistTurnClose's data, in order — what FindMatchHistory
 	// hands back, the way the real gateway reads back what the close wrote.
 	closes []appmatch.TurnCloseData
-	// roundCloses keeps every PersistRoundClose — a round that ended with no turn closing in the
-	// same command, written with its successor in a transaction of their own.
+	// roundCloses keeps every SUCCESSFUL PersistRoundClose — round ends written with the round
+	// born after them (or being written) in one transaction.
 	roundCloses []roundCloseCall
+	// failRoundClose, when set, makes PersistRoundClose fail and write nothing.
+	failRoundClose error
 }
 
-// roundCloseCall is one PersistRoundClose: the scene, the round that ended, the one born after.
+// roundCloseCall is one PersistRoundClose: the round ends it wrote closed, then the scene and the
+// round written after them. closed is the last end — the round that ended in that command.
 type roundCloseCall struct {
-	scene        *scene.Scene
-	closed, next *roundentity.Round
+	ends   []appmatch.RoundEnd
+	scene  *scene.Scene
+	closed *roundentity.Round
+	next   *roundentity.Round
+}
+
+// setFailRoundClose makes every later PersistRoundClose fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailRoundClose(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failRoundClose = err
 }
 
 // boardFor returns the board PersistTurnClose received for one closed turn.
@@ -487,6 +499,9 @@ func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.
 	}
 	m.turnRounds[d.Turn.GetID()] = d.Round.GetID()
 	m.handed = append(m.handed, d.Scene, d.Round)
+	for _, e := range d.UnwrittenRoundEnds {
+		m.handed = append(m.handed, e.Scene, e.Round)
+	}
 	if d.NextRound != nil {
 		m.handed = append(m.handed, d.NextRound)
 	}
@@ -543,14 +558,24 @@ func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUI
 	return nil
 }
 
-// PersistRoundClose records the round's end and its successor's birth, written together.
+// PersistRoundClose records round ends and the round written after them, written together.
 func (m *mockRoundRepoHandler) PersistRoundClose(
-	_ context.Context, _ uuid.UUID, sc *scene.Scene, closed, next *roundentity.Round,
+	_ context.Context, _ uuid.UUID, ends []appmatch.RoundEnd, sc *scene.Scene, next *roundentity.Round,
 ) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.roundCloses = append(m.roundCloses, roundCloseCall{scene: sc, closed: closed, next: next})
-	m.handed = append(m.handed, sc, closed, next)
+	if m.failRoundClose != nil {
+		return m.failRoundClose
+	}
+	call := roundCloseCall{ends: append([]appmatch.RoundEnd(nil), ends...), scene: sc, next: next}
+	if len(ends) > 0 {
+		call.closed = ends[len(ends)-1].Round
+	}
+	m.roundCloses = append(m.roundCloses, call)
+	for _, e := range ends {
+		m.handed = append(m.handed, e.Scene, e.Round)
+	}
+	m.handed = append(m.handed, sc, next)
 	return nil
 }
 

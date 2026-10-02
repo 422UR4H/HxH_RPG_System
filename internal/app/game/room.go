@@ -10,7 +10,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
+	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
@@ -155,6 +155,10 @@ type Room struct {
 	// pendingTurns is what happened inside each open turn and is written only with that turn's
 	// close (turnWrites, owner decision 2026-10-01), keyed by turn. Guarded by mu.
 	pendingTurns map[uuid.UUID]*turnWrites
+	// unwrittenSheets and unwrittenRoundEnds are what a failed write left for the next one to
+	// carry (unwritten.go). Guarded by mu.
+	unwrittenSheets    map[uuid.UUID]*csSheet.CharacterSheet
+	unwrittenRoundEnds []appmatch.RoundEnd
 
 	session *matchsession.MatchSession
 
@@ -1934,7 +1938,9 @@ func (r *Room) announceOpenedTurn(
 // Everything the turn changed is written by ONE PersistTurnClose, in one transaction: the turn,
 // its action and reactions, the overrides, the HP the close applied (damaged, copied here), the
 // master actions applied inside it, and the board with every player's fog memory (owner
-// decisions, 2026-10-01 and 2026-10-02: one master command, one transaction). The board is the
+// decisions, 2026-10-01 and 2026-10-02: one master command, one transaction). It also carries
+// what an earlier failed write left behind (unwritten.go): sheets whose HP a failed close never
+// wrote, and round ends that were never written — so a failure heals on the next success. The board is the
 // board AFTER applyClosedEscapes and BEFORE announceOpenedTurn — every caller walks the escapes
 // first and announces the next turn after this returns — so an open_next_action that already
 // opened the next turn in the same Execute never writes that turn's opened move under this one.
@@ -1999,9 +2005,14 @@ func (r *Room) persistClosedTurn(
 	// anyone's sight in between: every message that can (master drags, wall changes, the next
 	// open) comes from the master, on the same read pump that is running this close.
 	landingViews := r.escapeLandingViewsLocked(t, res)
-	// The bars of every sheet this close damaged, as the session holds them now — copies, read
-	// in this same critical section: the next message may move the live ones.
-	statusBars := statusBarsLocked(damaged)
+	// The bars of every sheet this close damaged — and of any an earlier failed close left
+	// unwritten — as the session holds them now: copies, read in this same critical section,
+	// since the next message may move the live ones.
+	sheets := r.sheetsToWriteLocked(damaged)
+	statusBars := statusBarsLocked(sheets)
+	// Round ends an earlier command could not write: closed in this same transaction, before the
+	// round this turn belongs to (or its successor) can be born next to them still open.
+	roundEnds := r.unwrittenRoundEndsLocked()
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
@@ -2009,7 +2020,7 @@ func (r *Room) persistClosedTurn(
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, StatusBars: statusBars,
-		NextRound: nextRound,
+		NextRound: nextRound, UnwrittenRoundEnds: roundEnds,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it, "+
@@ -2021,15 +2032,20 @@ func (r *Room) persistClosedTurn(
 		// references actions(uuid), so the override rows could not have been inserted without the
 		// action row; and the master actions belong to the turn by decision — durable with it or
 		// not at all. The board in memory is untouched and still live: the next save (a close,
-		// or a change between turns) writes it whole. So is the HP: the sheet in memory keeps it,
-		// and the next close that damages that sheet writes its bars whole. No retry queue: this
-		// failure mode is already logged-and-swallowed policy for the whole turn.
+		// or a change between turns) writes it whole.
 		//
-		// The round's end is the one thing salvaged. The round DID end at the table, and leaving
+		// The HP is not lost either: the sheets keep it in memory, and they are remembered as
+		// unwritten (the ones of earlier failed closes stay remembered), so the NEXT close writes
+		// them with its own, whichever character it damages (unwritten.go).
+		r.mu.Lock()
+		r.markSheetsUnwrittenLocked(damaged)
+		r.mu.Unlock()
+		// The round's end is salvaged at once. The round DID end at the table, and leaving
 		// its row open while the successor is not one would have the successor's first write (a
 		// master action, the next close) leave the scene with two open rounds. So the end and the
 		// birth still go together, in a transaction of their own — the same one a round that ends
-		// with no turn closing writes.
+		// with no turn closing writes. If that fails too, writeRoundClose remembers the end, and
+		// the successor's next write carries it.
 		if nextRound != nil {
 			r.writeRoundClose(session, activeScene, activeRound, nextRound, "round end after its last turn's failed close")
 		}
@@ -2043,42 +2059,10 @@ func (r *Room) persistClosedTurn(
 		written = nextRound
 	}
 	r.mu.Lock()
-	if active := session.GetActiveRound(); active != nil && active.GetID() == written.GetID() {
-		session.MarkRoundPersisted()
-	}
+	r.forgetSheetsWrittenLocked(sheets)
+	r.forgetRoundEndsWrittenLocked(roundEnds)
+	markRoundPersistedIfActiveLocked(session, written.GetID())
 	r.mu.Unlock()
-}
-
-// statusBarsLocked copies the bars of every sheet a close damaged, one entry per sheet, for the
-// turn's own transaction (TurnCloseData.StatusBars). The caller must hold r.mu: the sheets are
-// the session's. A sheet missing one of its three bars is left out and logged — writing a zero
-// in its place would wipe the row.
-func statusBarsLocked(damaged []matchsession.DamagedCharacter) []appmatch.SheetStatusBars {
-	if len(damaged) == 0 {
-		return nil
-	}
-	out := make([]appmatch.SheetStatusBars, 0, len(damaged))
-	seen := make(map[uuid.UUID]bool, len(damaged))
-	for _, d := range damaged {
-		if d.Sheet == nil || seen[d.CharacterID] {
-			continue
-		}
-		seen[d.CharacterID] = true
-		bars := d.Sheet.GetAllStatusBar()
-		health, stamina, aura := bars[enum.Health], bars[enum.Stamina], bars[enum.Aura]
-		if health == nil || stamina == nil || aura == nil {
-			log.Printf("sheet %s has no %s/%s/%s bar — its HP after the close is NOT written",
-				d.CharacterID, enum.Health, enum.Stamina, enum.Aura)
-			continue
-		}
-		out = append(out, appmatch.SheetStatusBars{
-			CharacterID: d.CharacterID,
-			Health:      status.ReconstructBar(health.GetMin(), health.GetCurrent(), health.GetMax()),
-			Stamina:     status.ReconstructBar(stamina.GetMin(), stamina.GetCurrent(), stamina.GetMax()),
-			Aura:        status.ReconstructBar(aura.GetMin(), aura.GetCurrent(), aura.GetMax()),
-		})
-	}
-	return out
 }
 
 func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {

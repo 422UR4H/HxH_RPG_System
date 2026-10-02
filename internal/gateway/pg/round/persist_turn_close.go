@@ -38,6 +38,9 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	if d.NextRound != nil && (rnd == nil || rnd.GetFinishedAt() == nil) {
 		return fmt.Errorf("PersistTurnClose: a next round needs the closed round's finished_at")
 	}
+	if err := validateRoundEnds(d.UnwrittenRoundEnds); err != nil {
+		return fmt.Errorf("PersistTurnClose: %w", err)
+	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -50,6 +53,12 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		}
 		_ = tx.Rollback(ctx) // no-op after Commit
 	}()
+
+	// Round ends an earlier command could not write go first, closed: the round below may be the
+	// one born after them, and it must never be born open next to a predecessor still open on disk.
+	if err := writeRoundEnds(ctx, tx, matchUUID, d.UnwrittenRoundEnds); err != nil {
+		return fmt.Errorf("PersistTurnClose %w", err)
+	}
 
 	// Scene and round — idempotent upserts (on conflict only the round's mode and a missing
 	// finished_at are refreshed, see ensureSceneAndRound), and the SAME two inserts

@@ -128,7 +128,9 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   aplica também vai nela (`TurnCloseData.StatusBars`, copiado sob `r.mu` em `persistClosedTurn`),
   e, quando o mesmo `open_next_action` acaba o round, o fim dele e o round seguinte
   (`TurnCloseData.NextRound`; sem turno fechado, `PersistRoundClose`, uma transação só deles).
-  Os casos de uso de fechamento e o `CloseRoundUC` não fazem I/O nenhum. Fora disso:
+  Os casos de uso de fechamento e o `CloseRoundUC` não fazem I/O nenhum. Uma gravação que falha
+  se cura na próxima que dá certo (`internal/app/game/unwritten.go`): fichas e fins de round não
+  gravados vão na transação seguinte. Fora disso:
   `change_round_mode` (do round) e inscrição de NPC.
   `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
   `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.

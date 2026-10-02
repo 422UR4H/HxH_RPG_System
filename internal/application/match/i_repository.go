@@ -77,6 +77,19 @@ type TurnCloseData struct {
 	// decision, 2026-10-02) — and the scene never holds two open rounds, nor none. nil when the
 	// round goes on.
 	NextRound *roundentity.Round
+	// UnwrittenRoundEnds are rounds that ended in an EARLIER command whose write failed — still
+	// open rows on disk, or not rows at all. They are written closed in this same transaction,
+	// before anything here can give birth to the round the session is in now: written alone, that
+	// round would be a second open round next to a stale one. Empty in the normal case.
+	UnwrittenRoundEnds []RoundEnd
+}
+
+// RoundEnd is a round that ended, with the scene it ended in — both snapshots, the round carrying
+// its finished_at. Written with the same idempotent upsert as EnsureSceneAndRound, so a round that
+// was never a row lands closed and a finish already on the row never moves.
+type RoundEnd struct {
+	Scene *sceneentity.Scene
+	Round *roundentity.Round
 }
 
 // SheetStatusBars is one sheet's three bars as a turn's close left them — detached copies
@@ -108,13 +121,16 @@ type IRoundRepository interface {
 	EnsureSceneAndRound(ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, rd *roundentity.Round) error
 	FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error)
 	CloseSceneAndRound(ctx context.Context, sceneUUID, roundUUID uuid.UUID, at time.Time) error
-	// PersistRoundClose writes a round's end and its successor's birth in one transaction — the
-	// round that ends with no turn closing in the same command (open_next_action with nothing
-	// open and nothing that can still pay). closed carries its finished_at; both are written with
-	// the same idempotent upsert as EnsureSceneAndRound, so a round that was never a row lands
-	// closed. When a turn closes in the same command, PersistTurnClose writes both instead
-	// (TurnCloseData.NextRound).
-	PersistRoundClose(ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, closed, next *roundentity.Round) error
+	// PersistRoundClose writes round ends and the round the session is in now in one transaction:
+	// every end in ends closed (each carries its finished_at and its own scene), then sc/next. It is
+	// what a round that ends with no turn closing in the same command writes (open_next_action with
+	// nothing open and no action that can still pay its price: ends = that round, next = its
+	// successor), and what any write of a round goes through while an earlier round end is still
+	// unwritten (ends = those, next = the round being written) — so no round is ever born open next
+	// to a predecessor still open on disk. All rows go through the same idempotent upsert as
+	// EnsureSceneAndRound. When a turn closes in the same command, PersistTurnClose writes them
+	// instead (TurnCloseData.NextRound, UnwrittenRoundEnds).
+	PersistRoundClose(ctx context.Context, matchUUID uuid.UUID, ends []RoundEnd, sc *sceneentity.Scene, next *roundentity.Round) error
 	// FindMatchHistory returns the match's scenes, rounds and closed turns as the TREE the
 	// domain already is — Scene -> Round -> Turn -> Action — not a flat list. See
 	// HistoryScene's own doc for why flattening here would be the wrong call. A scene or round

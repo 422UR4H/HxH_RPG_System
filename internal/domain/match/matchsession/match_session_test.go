@@ -277,7 +277,7 @@ func closeRoundWhenNoActionCanPay(t *testing.T, s *matchsession.MatchSession) {
 			return
 		}
 	}
-	t.Fatal("the round never ran out — the gate is letting through more than it should")
+	t.Fatal("the round never reached a point where no action can pay — the gate is letting through more than it should")
 }
 
 func makeAction(actorID uuid.UUID) *action.Action {

@@ -314,8 +314,9 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		KickPlayerUC:  &mockKickPlayerUC{},
 		InitSessionUC: &combatSessionUC{session: session},
 		// The real use cases: this is what makes the test end-to-end rather than a mock
-		// round-trip. closeRound is real too — TestE2E_ARoundWhereNoActionCanPayClosesItself needs the
-		// round to actually close when the bar economy runs out, not just report it.
+		// round-trip. closeRound is real too — TestE2E_ARoundWhereNoActionCanPayClosesItself needs
+		// the round to actually close when no action in the queue can still pay its price, not just
+		// report it.
 		OpenNextActionUC: appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC()),
 		PullActionUC:     appmatch.NewPullActionUC(appmatch.NewCloseRoundUC()),
 		EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
@@ -891,7 +892,7 @@ func TestE2E_ARoundWhereNoActionCanPayClosesItself(t *testing.T) {
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 
 	if !masterMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
-		t.Fatal("the round ran out and nobody was told")
+		t.Fatal("the round ended and nobody was told")
 	}
 
 	t.Run("the payload names the regime that just ended", func(t *testing.T) {
@@ -1161,7 +1162,7 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 	t.Run("the third open finds nothing that can pay, and the round closes itself", func(t *testing.T) {
 		sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 		if !masterMsgs.await(game.MsgTypeRoundClosed, 2*time.Second) {
-			t.Fatal("the round ran out and nobody was told")
+			t.Fatal("the round ended and nobody was told")
 		}
 	})
 
