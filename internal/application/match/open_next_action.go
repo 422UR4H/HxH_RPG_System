@@ -59,10 +59,10 @@ func (uc *OpenNextActionUC) Execute(
 		Damaged:          tr.Damaged,
 	}
 
-	// The round ran out. Nothing pending passes the gate that applies to it, so the round
-	// ends — and whatever is still queued keeps the roll it already made and belongs to the
-	// next one. This is the moment CloseRoundUC finally has a caller.
-	if tr.RoundExhausted {
+	// No action in the queue can still pay its price — none passes the gate that applies to
+	// it — so the round ends, and whatever is still queued keeps the roll it already made and
+	// belongs to the next one. This is the moment CloseRoundUC finally has a caller.
+	if tr.NoActionCanPay {
 		if uc.closeRound == nil {
 			return res, nil
 		}

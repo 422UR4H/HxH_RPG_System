@@ -538,10 +538,10 @@ func TestTurnScoped_OpenNextActionKeepsEachTurnsWritesWithItsTurn(t *testing.T) 
 	}
 }
 
-// A Race round that runs out closes its last turn AND itself in one open_next_action (the
-// closedIn path): the master action held for that turn is written with it, under the round it
+// A Race round where no action can still pay closes its last turn AND itself in one
+// open_next_action (the closedIn path): the master action held for that turn is written with it, under the round it
 // happened in — not the successor.
-func TestTurnScoped_AnExhaustedRoundWritesTheHeldMasterActionWithItsLastTurn(t *testing.T) {
+func TestTurnScoped_ARoundEndWritesTheHeldMasterActionWithItsLastTurn(t *testing.T) {
 	f := newCombatFixture(t)
 	f.seedBoard(t)
 	round1 := f.session.GetActiveRound().GetID()
@@ -574,14 +574,14 @@ func TestTurnScoped_AnExhaustedRoundWritesTheHeldMasterActionWithItsLastTurn(t *
 	f.awaitPersistedTurn(t, turnID)
 
 	if rd, ok := f.roundRepo.roundOfPersistedTurn(turnID); !ok || rd != round1 {
-		t.Fatalf("the turn was written under round %s, want the exhausted %s", rd, round1)
+		t.Fatalf("the turn was written under round %s, want the ended %s", rd, round1)
 	}
 	recs := f.roundRepo.masterActionsFor(turnID)
 	if len(recs) != 1 || recs[0].RoundUUID != round1 || recs[0].TurnUUID == nil || *recs[0].TurnUUID != turnID {
 		t.Fatalf("PersistTurnClose got %+v, want the drag, in round %s and turn %s", recs, round1, turnID)
 	}
 	if _, ok := f.roundRepo.boardFor(turnID); !ok {
-		t.Fatal("the exhausting close handed no board")
+		t.Fatal("the round-ending close handed no board")
 	}
 }
 

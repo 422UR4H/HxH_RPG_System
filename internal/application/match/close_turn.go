@@ -39,8 +39,8 @@ func NewCloseTurnUC() *CloseTurnUC {
 // criterion verifiable without a browser. What is being confirmed away is not the
 // calculation — an unopened reaction is in the chain either way — it is the moment to narrate.
 //
-// Closing a turn does NOT close the round. Exhaustion stays detected in exactly one place,
-// OpenNextActionUC, where the scheduling happens. Two detection points is how two versions of
+// Closing a turn does NOT close the round. That no action in the queue can still pay its price
+// is detected in exactly one place, OpenNextActionUC, where the scheduling happens. Two detection points is how two versions of
 // one rule are born.
 func (uc *CloseTurnUC) Execute(
 	ctx context.Context,

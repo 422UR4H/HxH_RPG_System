@@ -258,19 +258,19 @@ func mustOpenNext(t *testing.T, s *matchsession.MatchSession) *matchsession.Turn
 	return tr
 }
 
-// closeExhaustedRound drives the round the way production does: open until the session
+// closeRoundWhenNoActionCanPay drives the round the way production does: open until the session
 // reports there is nothing left that can pay, and only THEN close.
 //
 // Calling CloseRound directly after an open would fail with ErrRoundHasOpenTurn — the turn
 // under the baton is closed by the open that finds nothing, not by the round close.
-func closeExhaustedRound(t *testing.T, s *matchsession.MatchSession) {
+func closeRoundWhenNoActionCanPay(t *testing.T, s *matchsession.MatchSession) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
 		tr, err := s.OpenNextAction()
 		if err != nil {
 			t.Fatalf("OpenNextAction: %v", err)
 		}
-		if tr.RoundExhausted {
+		if tr.NoActionCanPay {
 			if _, err := s.CloseRound(); err != nil {
 				t.Fatalf("CloseRound: %v", err)
 			}
@@ -1219,7 +1219,7 @@ func (c *countingSource) RollDie(_ enum.DieSides) int {
 	return c.face
 }
 
-// scriptedFaces hands out faces in order and repeats the last one once exhausted.
+// scriptedFaces hands out faces in order and repeats the last one once the script runs out.
 type scriptedFaces struct {
 	faces []int
 	i     int
@@ -1298,7 +1298,7 @@ func TestMatchSession_OpenNextAction_UsesTheBarEconomy(t *testing.T) {
 	})
 }
 
-func TestMatchSession_OpenNextAction_ReportsExhaustion(t *testing.T) {
+func TestMatchSession_OpenNextAction_ReportsThatNoActionCanPay(t *testing.T) {
 	matchUUID := uuid.New()
 	playerUUID := uuid.New()
 	participant := makeParticipant(matchUUID, &playerUUID)
@@ -1319,12 +1319,12 @@ func TestMatchSession_OpenNextAction_ReportsExhaustion(t *testing.T) {
 
 	tr, err := s.OpenNextAction()
 
-	t.Run("exhaustion is a report, not an error", func(t *testing.T) {
+	t.Run("no action that can pay is a report, not an error", func(t *testing.T) {
 		if err != nil {
-			t.Errorf("err = %v, want nil: an exhausted Race round is a normal outcome", err)
+			t.Errorf("err = %v, want nil: a Race round where no action can pay is a normal outcome", err)
 		}
-		if !tr.RoundExhausted {
-			t.Error("nothing pending passes its gate, so the round is exhausted")
+		if !tr.NoActionCanPay {
+			t.Error("nothing pending passes its gate, so no action can pay")
 		}
 		if tr.Opened != nil {
 			t.Error("nothing opened")
@@ -1443,7 +1443,7 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
 		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
 
-		closeExhaustedRound(t, s)
+		closeRoundWhenNoActionCanPay(t, s)
 
 		carry, acted := s.BarState(p2.Sheet.UUID, action.BarAction)
 		if carry != 6 {
@@ -1464,7 +1464,7 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
 		enqueueAttack(t, s, p2UUID, p2.Sheet.UUID)
 
-		closeExhaustedRound(t, s)
+		closeRoundWhenNoActionCanPay(t, s)
 
 		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry != 4 {
 			t.Errorf("carry = %v, want the ceiling 4 — standing time may not compound", carry)
@@ -1477,7 +1477,7 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 		s := newRacingSession([]int{6, 6, 6, 6})
 		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
 
-		closeExhaustedRound(t, s)
+		closeRoundWhenNoActionCanPay(t, s)
 
 		if carry, _ := s.BarState(p2.Sheet.UUID, action.BarAction); carry != 12 {
 			t.Errorf("p2 carry = %v, want the floor 12: reading the fight instead of acting is a legitimate trade", carry)
@@ -1491,7 +1491,7 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 		s := newRacingSession([]int{6, 6, 6, 6})
 		enqueueAttack(t, s, p1UUID, p1.Sheet.UUID)
 
-		closeExhaustedRound(t, s)
+		closeRoundWhenNoActionCanPay(t, s)
 
 		if carry, _ := s.BarState(p1.Sheet.UUID, action.BarMove); carry != 0 {
 			t.Errorf("move carry = %v, want 0 — nobody moved, so no round happened on that bar", carry)
@@ -1514,7 +1514,7 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 		}
 		speedBefore := pending[0].SpeedOn(action.BarAction)
 
-		closeExhaustedRound(t, s)
+		closeRoundWhenNoActionCanPay(t, s)
 
 		after := s.PendingActions()
 		if len(after) != 1 {
@@ -1539,8 +1539,8 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 // settleBars skips any bar that never priced. The number was therefore never charged and never
 // reset. On the switch to Race it read as "this character already acted", so IsEligible took
 // its second-action branch — Balance(0, [20], 20) = 0, which is not >= 20 — and the character's
-// FIRST Race action was denied. Nothing pending could pay, so the round reported exhausted and
-// closed with nothing opened.
+// FIRST Race action was denied. Nothing pending could pay, so the round reported that no action
+// can pay and closed with nothing opened.
 func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
 	playerA := uuid.New()
 	s, chars := sessionWithParticipants(playerA)
@@ -1571,8 +1571,8 @@ func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenNextAction: %v", err)
 	}
-	if tr.RoundExhausted {
-		t.Fatal("the round reported exhausted before its first Race action ever opened")
+	if tr.NoActionCanPay {
+		t.Fatal("the round reported that no action can pay before its first Race action ever opened")
 	}
 	if tr.Opened == nil {
 		t.Fatal("expected the first Race action to open")
@@ -1626,7 +1626,7 @@ func TestMatchSession_ModifiersExpireOnClose(t *testing.T) {
 			ExpiresAt: match.LifetimeEndOfRound, Reason: "round penalty",
 		})
 
-		// closeExhaustedRound only terminates in a Race round; sessionWithParticipants starts
+		// closeRoundWhenNoActionCanPay only terminates in a Race round; sessionWithParticipants starts
 		// in Free with an empty queue, so it can't be used here. There is no open turn and
 		// nothing pending, so CloseRound succeeds directly — and it is the exact call whose
 		// expiry behaviour this subtest exists to prove.

@@ -27,8 +27,8 @@ type IPullAction interface {
 // PullActionUC writes nothing: the HP its close applies (Damaged) is written by the room in the
 // closed turn's own transaction (PersistTurnClose) — see OpenNextActionUC.
 type PullActionUC struct {
-	// closeRound is held, not used. PullAction never reports exhaustion: the master named an
-	// action explicitly, so there is always something to open. It is kept for the explicit
+	// closeRound is held, not used. PullAction never reports that no action can pay: the
+	// master named an action explicitly, so there is always something to open. It is kept for the explicit
 	// round-close path a later phase adds — removing the parameter would churn four call sites
 	// for nothing, and re-adding it later would churn them again.
 	closeRound ICloseRound //nolint:unused // reserved for the explicit round-close path

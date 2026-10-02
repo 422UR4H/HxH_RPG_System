@@ -35,8 +35,8 @@ type execer interface {
 //
 // Both carry finished_at when the entity already has one, and a finish already on the row is
 // never moved (COALESCE keeps the first). A round whose birth write failed and that nothing
-// else marked as a row is closed in memory by exhaustion with no CloseRound (there was no row
-// to close); its last turn's PersistTurnClose is then its first write, and it must land
+// else marked as a row is closed in memory when no action can still pay its price; its last
+// turn's PersistTurnClose (or PersistRoundClose) is then its first write, and it must land
 // closed — or the scene would carry two open rounds, it and the one born right after.
 func (r *Repository) EnsureSceneAndRound(
 	ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, rd *roundentity.Round,

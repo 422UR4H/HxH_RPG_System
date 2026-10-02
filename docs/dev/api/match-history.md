@@ -191,8 +191,9 @@ Notas sobre `scenes[]` e `rounds[]`:
   domínio, como estão.
 - **Cena e round aparecem desde que nascem**, não só quando o primeiro turno fecha neles
   (B15): são gravados no `start_match` (ou na reidratação depois de um reinício), no
-  `change_scene` e quando um round fecha por exaustão e outro nasce. Uma cena em que se só
-  conversou, um round que fechou sem turno — aparecem, com `turns: []`.
+  `change_scene` e quando um round acaba — nenhuma ação na fila consegue mais pagar o preço — e
+  outro nasce (o fim de um e o nascimento do outro vão juntos, na mesma transação). Uma cena em
+  que se só conversou, um round que fechou sem turno — aparecem, com `turns: []`.
 - `mode` do round é o **último** regime em que ele esteve. Por onde ele passou, e quando, está
   nos `events` (`roundModeChanged`).
 - `finishedAt` ausente = round/cena ainda aberto.

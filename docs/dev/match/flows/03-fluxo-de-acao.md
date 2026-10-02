@@ -123,7 +123,7 @@ sequenceDiagram
     else modo Race
         S->>SCH: SelectNext — porteiro + chave
         alt nenhuma passa
-            S->>S: closeOpenTurn() · RoundExhausted = true
+            S->>S: closeOpenTurn() · NoActionCanPay = true
             UC->>UC: CloseRoundUC — liquida saldos (só memória)
             R->>DB: fim do round + round seguinte — no PersistTurnClose do turno fechado, ou PersistRoundClose
             R-->>M: round_closed (mesa inteira)

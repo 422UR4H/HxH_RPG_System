@@ -96,7 +96,7 @@ seleção que vê trabalho pendente naquela barra, e nunca mais alterado no roun
 
 `MatchSession.OpenNextAction` consulta `RoundScheduler.SelectNext` a cada chamada. O round
 acaba quando nenhuma ação na fila consegue mais pagar o preço: nada pendente passa no porteiro
-que lhe cabe, a resposta vem com `TurnTransition.RoundExhausted = true`, e `OpenNextActionUC`
+que lhe cabe, a resposta vem com `TurnTransition.NoActionCanPay = true`, e `OpenNextActionUC`
 (`internal/application/match/open_next_action.go`) chama `CloseRoundUC` na hora — o primeiro
 chamador que esse use case ganha. O round não depende mais só do caminho indireto via
 `change_scene`. `CloseRoundUC` não grava: o `Room` grava o fim do round e a linha do seguinte

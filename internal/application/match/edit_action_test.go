@@ -25,7 +25,7 @@ import (
 // server, hub and handler: the edit use case is driven directly against the session, the way
 // every other application/match test already does (see attach_reaction_test.go).
 
-// scriptedFaces hands out faces in order and NEVER repeats: once exhausted, it records an
+// scriptedFaces hands out faces in order and NEVER repeats: once the script runs out, it records an
 // overrun instead of silently replaying the last face — see combat_e2e_test.go's same-named
 // type for the full rationale (a repeat can never be told apart from a genuine match by a
 // test that relies on it). That one lives in internal/app/game, a different Go package, and

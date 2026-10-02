@@ -1881,9 +1881,8 @@ func TestEnsureSceneAndRoundRefreshesTheRoundsMode(t *testing.T) {
 }
 
 // TestEnsureSceneAndRoundCarriesFinishedAt (F3): a round whose birth write failed, and that
-// nothing else marked as a row, is closed in memory by exhaustion without CloseRound ever
-// running (it was not a row to close). Its last turn's PersistTurnClose then writes it for
-// the first time — and must write it CLOSED, or the scene ends up with two open rounds (the
+// nothing else marked as a row, is closed in memory when no action can still pay its price. Its
+// last turn's PersistTurnClose then writes it for the first time — and must write it CLOSED, or the scene ends up with two open rounds (the
 // stray one and the next one, born right after). A finish already on the row is never moved.
 func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 	ctx := context.Background()
@@ -1906,7 +1905,7 @@ func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
 		stray := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
-		// The birth write of `stray` failed: no row. Exhaustion closes it in memory.
+		// The birth write of `stray` failed: no row. No action could still pay: it closes in memory.
 		stray.Close(at(3))
 
 		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)

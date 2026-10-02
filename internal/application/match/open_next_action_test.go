@@ -58,7 +58,7 @@ func TestOpenNextActionUC(t *testing.T) {
 			t.Error("expected non-nil Resolution")
 		}
 		if spy.calls != 0 {
-			t.Errorf("close calls = %d, want 0 — the round is not exhausted, nothing should close", spy.calls)
+			t.Errorf("close calls = %d, want 0 — an action can still pay, nothing should close", spy.calls)
 		}
 	})
 
@@ -84,7 +84,7 @@ func TestOpenNextActionUC_NilCloseRoundIsSafe(t *testing.T) {
 	}
 }
 
-// spyCloseRound records that the exhausted round was handed to the close use case.
+// spyCloseRound records that the round no action could pay in was handed to the close use case.
 type spyCloseRound struct {
 	calls  int
 	closed *round.Round
@@ -105,7 +105,7 @@ func (s *spyCloseRound) Execute(
 
 // racingSessionWithOneAction builds a Race-mode session — one participant, a factory-built
 // sheet, a fixed roll source — with a single enqueued attack: enough for one open to drain
-// the queue and the next to find it empty, tripping RoundExhausted.
+// the queue and the next to find it empty, tripping NoActionCanPay.
 func racingSessionWithOneAction(t *testing.T, playerUUID uuid.UUID) (*matchsession.MatchSession, uuid.UUID) {
 	t.Helper()
 	matchUUID := uuid.New()
@@ -155,7 +155,7 @@ type fixedSource struct{ face int }
 
 func (f fixedSource) RollDie(_ enum.DieSides) int { return f.face }
 
-func TestOpenNextAction_ClosesAnExhaustedRound(t *testing.T) {
+func TestOpenNextAction_ClosesTheRoundWhenNoActionCanPay(t *testing.T) {
 	masterUUID := uuid.New()
 	playerUUID := uuid.New()
 	session, charID := racingSessionWithOneAction(t, playerUUID)
@@ -171,7 +171,7 @@ func TestOpenNextAction_ClosesAnExhaustedRound(t *testing.T) {
 
 	res, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)
 
-	t.Run("no error — an exhausted round is a normal outcome", func(t *testing.T) {
+	t.Run("no error — a round where no action can pay is a normal outcome", func(t *testing.T) {
 		if err != nil {
 			t.Errorf("err = %v, want nil", err)
 		}

@@ -83,7 +83,7 @@ type topFaceSource struct{}
 
 func (topFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
 
-// scriptedFaces hands out faces in order and NEVER repeats: once exhausted, it records an
+// scriptedFaces hands out faces in order and NEVER repeats: once the script runs out, it records an
 // overrun instead of silently replaying the last face.
 //
 // A silent repeat is a trap. An earlier version of this file's racing-round test scripted only
@@ -314,7 +314,7 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		KickPlayerUC:  &mockKickPlayerUC{},
 		InitSessionUC: &combatSessionUC{session: session},
 		// The real use cases: this is what makes the test end-to-end rather than a mock
-		// round-trip. closeRound is real too — TestE2E_AnExhaustedRoundClosesItself needs the
+		// round-trip. closeRound is real too — TestE2E_ARoundWhereNoActionCanPayClosesItself needs the
 		// round to actually close when the bar economy runs out, not just report it.
 		OpenNextActionUC: appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC()),
 		PullActionUC:     appmatch.NewPullActionUC(appmatch.NewCloseRoundUC()),
@@ -327,7 +327,7 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		ChangeSceneUC:         appmatch.NewChangeSceneUC(),
 		RoundRepo:             roundRepo,
 		EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
-		// The real UC: the exhaustion economy in TestE2E_AnExhaustedRoundClosesItself only
+		// The real UC: the bar economy in TestE2E_ARoundWhereNoActionCanPayClosesItself only
 		// exists in Race mode, and the mock never actually flips the session's round mode.
 		ChangeRoundModeUC: appmatch.NewChangeRoundModeUC(),
 		EditActionUC:      appmatch.NewEditActionUC(),
@@ -848,9 +848,9 @@ func TestE2E_ActingThroughAnotherPlayersCharacterIsRefused(t *testing.T) {
 	}
 }
 
-// TestE2E_AnExhaustedRoundClosesItself proves the second done-criterion: the round ends on
+// TestE2E_ARoundWhereNoActionCanPayClosesItself proves the second done-criterion: the round ends on
 // its own when nothing pending can still pay, and the whole table is told.
-func TestE2E_AnExhaustedRoundClosesItself(t *testing.T) {
+func TestE2E_ARoundWhereNoActionCanPayClosesItself(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -911,7 +911,7 @@ func TestE2E_AnExhaustedRoundClosesItself(t *testing.T) {
 // TestE2E_ReopeningAnEmptyQueueStillSettlesTheClosedTurn is Task 4b's delivery-level guarantee:
 // a closed turn must never be dropped because the next one could not open.
 //
-// The fixture is Free mode (the default — no economy, no RoundExhausted branch), with exactly
+// The fixture is Free mode (the default — no economy, no NoActionCanPay branch), with exactly
 // one queued action. The first open_next_action opens it as turn 1. The second finds an empty
 // queue: MatchSession.OpenNextAction closes turn 1 (applying its damage) BEFORE it can fail to
 // find a next action, so by the time Execute returns an error, turn 1 is already closed. This

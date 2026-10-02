@@ -752,10 +752,11 @@ type TurnTransition struct {
 	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
 	// a round, when nothing closed.
 	Damaged []DamagedCharacter
-	// RoundExhausted reports that no pending action passes the gate that applies to it, which
-	// is what ends a Race round. It is not an error: the actions still queued keep the roll
-	// they already made and belong to the next round. The caller closes the round.
-	RoundExhausted bool
+	// NoActionCanPay reports that no action in the queue can still pay its price — none passes
+	// the gate that applies to it — which is what ends a Race round. It is not an error: the
+	// actions still queued keep the roll they already made and belong to the next round. The
+	// caller closes the round. (Not "exhaustion": that word is reserved for the real mechanic.)
+	NoActionCanPay bool
 }
 
 // DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
@@ -832,8 +833,8 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 	next := s.scheduler.SelectNext(s.scheduleInput())
 	tr := s.closeOpenTurn()
 	if next == nil {
-		// Nothing pending can still pay. The round is over — the caller closes it.
-		tr.RoundExhausted = true
+		// No action in the queue can still pay its price. The round is over — the caller closes it.
+		tr.NoActionCanPay = true
 		return tr, nil
 	}
 

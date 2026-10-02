@@ -565,7 +565,8 @@ a **mesma mensagem com `confirm: true`**.
 > — é o **momento de narrar**, que ela vai perder. Um cliente que manda `confirm: true`
 > sempre não burla nada: sem pendência, não há o que confirmar.
 
-Fechar um turno **não fecha a rodada**. Só `open_next_action` detecta exaustão.
+Fechar um turno **não fecha a rodada**. Só `open_next_action` detecta que nenhuma ação na fila
+consegue mais pagar o preço — o que acaba a rodada.
 
 **Dispara** (no caminho que de fato fecha):
 

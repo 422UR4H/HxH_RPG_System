@@ -1128,7 +1128,7 @@ si, ligável pelo mestre.
 
 O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem": o round
 acaba quando nenhuma ação na fila consegue mais pagar o preço. Quando nenhuma ação pendente passa
-no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca `TurnTransition.RoundExhausted =
+no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca `TurnTransition.NoActionCanPay =
 true` em vez de abrir algo, e é aí que `CloseRoundUC` finalmente ganha um chamador: o caminho de
 auto-fechamento em `application/match/open_next_action.go` o executa na hora, loga e segue
 adiante se falhar — a mesa não pode ficar sem o bastão por causa de uma falha de fechamento.
@@ -1138,6 +1138,10 @@ linha do seguinte vão **juntos** na transação do turno que o mesmo comando fe
 (`TurnCloseData.NextRound`), ou numa só deles (`PersistRoundClose`) se nenhum turno fechou — um
 comando do mestre, uma transação (dono do produto, 2026-10-02). `bars_updated` e `round_closed`
 saem de `room.go` nessa mesma passada, depois da gravação.
+
+> Nomenclatura: até 2026-10-02 esse campo se chamava `RoundExhausted` e o texto falava em
+> "exaustão". O nome estava errado — o round acaba porque nenhuma ação na fila consegue mais
+> pagar o preço; exaustão vai ser uma mecânica de verdade (dono do produto) — e saiu.
 
 O que o `CloseRound` liquida em memória **não é durável** em lugar nenhum: o saldo que cruza para
 o round seguinte e os modificadores do round vivem só na sessão (um reinício zera as barras —

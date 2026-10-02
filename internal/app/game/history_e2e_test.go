@@ -18,8 +18,8 @@ import (
 )
 
 // B15 (spec §4.5): the history keeps what is not a turn. A scene and a round are rows the
-// moment they are born — rehydration, change_scene, a round closing by exhaustion — and a
-// regime change is recorded in match_events the instant it is applied.
+// moment they are born — rehydration, change_scene, a round ending because no action can still
+// pay its price — and a regime change is recorded in match_events the instant it is applied.
 //
 // Driven over real sockets against a real Room and session; the only fakes are the stores.
 
@@ -302,7 +302,7 @@ func TestE2E_AFailedLastTurnStillWritesTheRoundEndWithItsSuccessor(t *testing.T)
 
 // F4: the scene/round writes run after r.mu is released, so the gateway must be handed a COPY
 // taken under the lock — a live *Scene/*Round read there races the next mutation of the session
-// (a regime switch, an exhaustion closing the round). Every pointer the round repository ever
+// (a regime switch, a round ending because no action can pay). Every pointer the round repository ever
 // received is checked against the session's live objects: the pair the session started on
 // (rehydration, a closed turn, a regime switch) and the pair change_scene installed.
 func TestE2E_TheRoundRepositoryGetsACopyOfTheSceneAndRound(t *testing.T) {

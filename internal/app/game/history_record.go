@@ -17,7 +17,7 @@ import (
 // snapshotSceneAndRound copies what the round repository writes of a scene and a round — ids,
 // category, brief, regime, created/finished — into fresh objects. Every write of the pair runs
 // after r.mu is released, and the live *Scene/*Round belong to the session, which the next
-// message mutates under that lock (a regime switch, an exhaustion closing the round): handing
+// message mutates under that lock (a regime switch, a round ending because no action can still pay): handing
 // them to the gateway would have it read them unguarded. The caller MUST hold r.mu (read or
 // write); either argument may be nil, and its copy is then nil too.
 func snapshotSceneAndRound(sc *sceneentity.Scene, rd *roundentity.Round) (*sceneentity.Scene, *roundentity.Round) {

@@ -897,7 +897,8 @@ recarregar, três linhas que hoje só existem ao vivo — e o REST não guarda:
 - **a troca de regime**: ela acontece **dentro** do round em andamento (`Round.SetMode`), sem
   abrir outro, e o REST guarda só o regime final de cada round;
 - **a cena e o round sem nenhum turno**: a resposta pode vir `{ "scenes": [] }` numa partida
-  sem turno fechado, então uma troca de cena ou um round fechado por exaustão se perdem;
+  sem turno fechado, então uma troca de cena ou um round que acabou (nenhuma ação na fila
+  conseguia mais pagar o preço) se perdem;
 - **o round fechado** em si.
 
 Persista esses três eventos e devolva-os no `GET /matches/{uuid}/history`, na posição certa da
