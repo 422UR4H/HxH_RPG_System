@@ -390,6 +390,32 @@ type mockRoundRepoHandler struct {
 	roundCloses []roundCloseCall
 	// failRoundClose, when set, makes PersistRoundClose fail and write nothing.
 	failRoundClose error
+	// failEnsure, when set, makes EnsureSceneAndRound fail and write nothing; failedEnsures
+	// counts the calls it refused. failCloseScene does the same for CloseSceneAndRound.
+	failEnsure     error
+	failedEnsures  int
+	failCloseScene error
+}
+
+// setFailEnsure makes every later EnsureSceneAndRound fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailEnsure(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failEnsure = err
+}
+
+// failedEnsureCount returns how many EnsureSceneAndRound calls failEnsure refused.
+func (m *mockRoundRepoHandler) failedEnsureCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.failedEnsures
+}
+
+// setFailCloseScene makes every later CloseSceneAndRound fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailCloseScene(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failCloseScene = err
 }
 
 // roundCloseCall is one PersistRoundClose: the round ends it wrote closed, then the scene and the
@@ -535,6 +561,9 @@ func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID)
 func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, sceneID, roundID uuid.UUID, _ time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.failCloseScene != nil {
+		return m.failCloseScene
+	}
 	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{sceneID, roundID})
 	return nil
 }
@@ -552,6 +581,10 @@ func (m *mockRoundRepoHandler) closedScenePairs() [][2]uuid.UUID {
 func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, sc *scene.Scene, rd *roundentity.Round) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.failEnsure != nil {
+		m.failedEnsures++
+		return m.failEnsure
+	}
 	m.ensuredRounds = append(m.ensuredRounds, rd.GetID())
 	m.ensuredScenes = append(m.ensuredScenes, sc.GetID())
 	m.handed = append(m.handed, sc, rd)

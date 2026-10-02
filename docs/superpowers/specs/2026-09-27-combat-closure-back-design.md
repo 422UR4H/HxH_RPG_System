@@ -388,7 +388,9 @@ vai editar rolagens):
   sem turno), a `Room` guarda o fim como não gravado e o põe na transação da próxima gravação do
   round seguinte (`TurnCloseData.UnwrittenRoundEnds`, ou `PersistRoundClose` com as pontas no
   lugar do `EnsureSceneAndRound`): o round seguinte nunca vira linha aberta ao lado de um anterior
-  ainda aberto, e o banco nunca fica com duas rodadas abertas na cena. O que o
+  ainda aberto, e o banco nunca fica com duas rodadas abertas na cena. O `change_scene` usa o
+  mesmo mecanismo: se o par antigo nunca virou linha, ou se o `CloseSceneAndRound` dele falha,
+  o par antigo (fechado) vira um fim não gravado e vai na transação que grava o par novo. O que o
   `CloseRound` liquida em memória (saldo das barras, modificadores de fim de round) não é durável
   em lugar nenhum — não há o que mais pôr na transação.
 - **Tabela nova `match_events`** para o que acontece **dentro** de um round e não é turno:

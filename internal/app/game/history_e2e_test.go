@@ -418,6 +418,88 @@ func TestE2E_AnUnwrittenRoundEndRidesTheSuccessorsFirstTurnClose(t *testing.T) {
 	}
 }
 
+// assertSceneChangeCarriesTheOldPair checks that the change_scene's write of the new pair was ONE
+// PersistRoundClose that also closed the old scene and round — and that nothing wrote the new pair
+// on its own.
+func assertSceneChangeCarriesTheOldPair(t *testing.T, f *combatFixture, oldScene, oldRound uuid.UUID) {
+	t.Helper()
+	calls := f.roundRepo.roundCloseCalls()
+	if len(calls) != 1 {
+		t.Fatalf("PersistRoundClose calls = %d, want 1 — the new pair's write carries the old pair's end", len(calls))
+	}
+	c := calls[0]
+	if len(c.ends) != 1 {
+		t.Fatalf("ends = %+v, want exactly the old pair", c.ends)
+	}
+	e := c.ends[0]
+	if e.Round.GetID() != oldRound || e.Round.GetFinishedAt() == nil ||
+		e.Scene.GetID() != oldScene || e.Scene.GetFinishedAt() == nil {
+		t.Fatalf("end = scene %s (finished %v) / round %s (finished %v), want the closed %s / %s",
+			e.Scene.GetID(), e.Scene.GetFinishedAt(), e.Round.GetID(), e.Round.GetFinishedAt(), oldScene, oldRound)
+	}
+	if c.scene.GetID() == oldScene || c.next.GetID() == oldRound || c.next.GetFinishedAt() != nil {
+		t.Fatalf("next = scene %s / round %s, want the new open pair", c.scene.GetID(), c.next.GetID())
+	}
+	if contains(f.roundRepo.ensuredRoundIDs(), c.next.GetID()) {
+		t.Fatal("the new pair was also written on its own, without the old pair's end")
+	}
+}
+
+// change_scene sobre uma cena que nunca virou linha (a gravação de nascimento falhou): não há
+// linha para o CloseSceneAndRound fechar, então o par antigo vira um fim não gravado e vai,
+// fechado, na mesma transação que grava o par novo.
+func TestE2E_ChangeSceneWritesAnUnwrittenOldPairClosedWithTheNewOne(t *testing.T) {
+	f := newCombatFixture(t)
+	oldScene, oldRound := f.session.GetActiveScene().GetID(), f.session.GetActiveRound().GetID()
+	f.roundRepo.setFailEnsure(errors.New("the birth write failed"))
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	deadline := time.Now().Add(2 * time.Second)
+	for f.roundRepo.failedEnsureCount() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the rehydration never tried to write the active pair")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	f.roundRepo.setFailEnsure(nil)
+
+	sendWS(t, master, string(game.MsgTypeChangeScene), game.ChangeScenePayload{
+		Category: string(enum.Roleplay), BriefInitialDescription: "Taverna",
+	})
+	if !mc.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("scene_changed never arrived")
+	}
+	if pairs := f.roundRepo.closedScenePairs(); len(pairs) != 0 {
+		t.Fatalf("CloseSceneAndRound calls = %v, want none — the old pair was never a row", pairs)
+	}
+	assertSceneChangeCarriesTheOldPair(t, f, oldScene, oldRound)
+}
+
+// change_scene cujo CloseSceneAndRound falha: o par antigo fica aberto no banco — vira um fim não
+// gravado, e a gravação do par novo, logo em seguida, o fecha na mesma transação.
+func TestE2E_AFailedSceneCloseHealsWithTheNewPairsWrite(t *testing.T) {
+	f := newCombatFixture(t)
+	oldScene, oldRound := f.session.GetActiveScene().GetID(), f.session.GetActiveRound().GetID()
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+
+	f.roundRepo.setFailCloseScene(errors.New("the transaction rolled back"))
+	sendWS(t, master, string(game.MsgTypeChangeScene), game.ChangeScenePayload{
+		Category: string(enum.Roleplay), BriefInitialDescription: "Taverna",
+	})
+	if !mc.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("scene_changed never arrived")
+	}
+	if pairs := f.roundRepo.closedScenePairs(); len(pairs) != 0 {
+		t.Fatalf("CloseSceneAndRound recorded %v, want none — the fake should have failed", pairs)
+	}
+	assertSceneChangeCarriesTheOldPair(t, f, oldScene, oldRound)
+}
+
 // F4: the scene/round writes run after r.mu is released, so the gateway must be handed a COPY
 // taken under the lock — a live *Scene/*Round read there races the next mutation of the session
 // (a regime switch, a round ending because no action can pay). Every pointer the round repository ever

@@ -1297,6 +1297,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var scenePayload SceneChangedPayload
 		var newScene *sceneentity.Scene
 		var newRound *roundentity.Round
+		var oldEnd *appmatch.RoundEnd
 		if session != nil {
 			// Captured BEFORE ChangeScene resets it.
 			sceneWasPersisted = session.IsScenePersisted()
@@ -1308,6 +1309,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			if err == nil {
 				// Copies: they are written after the unlock (ensureSceneAndRoundRows).
 				newScene, newRound = snapshotSceneAndRound(session.GetActiveScene(), session.GetActiveRound())
+				if oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
+					sc, rd := snapshotSceneAndRound(oldScene, oldRound)
+					oldEnd = &appmatch.RoundEnd{Scene: sc, Round: rd}
+					// The old pair was never a row (its birth write failed): there is nothing for
+					// CloseSceneAndRound to close, but the pair happened. It becomes an unwritten
+					// round end, and the new pair's write below carries it, closed, in its own
+					// transaction (unwritten.go).
+					if !sceneWasPersisted {
+						r.markRoundEndUnwrittenLocked(*oldEnd)
+					}
+				}
 				if activeScene := session.GetActiveScene(); activeScene != nil {
 					scenePayload = SceneChangedPayload{
 						SceneID:                 activeScene.GetID(),
@@ -1333,15 +1345,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// was never written would be an UPDATE of nothing, and the flag is what says which case
 		// this is. The old pair is closed BEFORE the new one is written, so the database never
 		// holds two open scenes for the match — FindActiveSession reads the open one on a restart.
-		if sceneWasPersisted && oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
+		if sceneWasPersisted && oldEnd != nil {
 			if dbErr := r.deps.RoundRepo.CloseSceneAndRound(
 				context.Background(),
-				oldScene.GetID(), oldRound.GetID(), *oldRound.GetFinishedAt(),
+				oldEnd.Scene.GetID(), oldEnd.Round.GetID(), *oldEnd.Round.GetFinishedAt(),
 			); dbErr != nil {
-				log.Printf("CloseSceneAndRound error: %v", dbErr)
+				// Left open on disk, the old pair would sit next to the new one. Not just logged:
+				// it becomes an unwritten round end, and the new pair's write right below closes it
+				// in the same transaction — or, if that fails too, the next write does.
+				log.Printf("CloseSceneAndRound FAILED — scene %s / round %s of match %s left open (kept for the next write): %v",
+					oldEnd.Scene.GetID(), oldEnd.Round.GetID(), r.matchUUID, dbErr)
+				r.mu.Lock()
+				r.markRoundEndUnwrittenLocked(*oldEnd)
+				r.mu.Unlock()
 			}
 		}
-		// The new scene and its round are rows from this moment (B15, spec §4.5).
+		// The new scene and its round are rows from this moment (B15, spec §4.5) — with any
+		// round end still unwritten, the old pair's included, in the same transaction.
 		r.ensureSceneAndRoundRows(session, newScene, newRound, "change_scene")
 
 		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)

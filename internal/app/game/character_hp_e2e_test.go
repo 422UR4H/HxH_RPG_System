@@ -336,8 +336,18 @@ func TestE2E_TheNextCloseWritesTheSheetAFailedCloseLeft(t *testing.T) {
 		t.Fatalf("victim written at %d (present %v), want the %d turn 1 applied", hp, ok, victimHP)
 	}
 
-	// Close 3 damages nobody new: the victim is not written again — it is no longer unwritten.
-	f.enqueueAttack(t, player)
+	// Close 3: the victim hits the attacker again, so only the attacker is damaged. The victim is
+	// not written — turn 2 wrote it, so it is no longer unwritten.
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId":  f.victimID.String(),
+		"targetId": []string{f.attackerID.String()},
+		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
+		"attack": map[string]any{
+			"weapon": "Sword",
+			"hit":    map[string]any{"skillName": enum.Accuracy.String()},
+			"damage": map[string]any{"skillName": enum.Push.String()},
+		},
+	})
 	if !awaitCount(pc, game.MsgTypeActionEnqueued, 3, 2*time.Second) {
 		t.Fatal("the third attack was never enqueued")
 	}
@@ -348,10 +358,9 @@ func TestE2E_TheNextCloseWritesTheSheetAFailedCloseLeft(t *testing.T) {
 	turn3 := lastTurnOpened(t, mc).TurnID
 	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
 	f.awaitPersistedTurn(t, turn3)
-	for _, sb := range statusBarsOf(f, turn3) {
-		if sb.CharacterID == f.attackerID {
-			t.Fatalf("turn 3 wrote the attacker again although nothing left it unwritten: %+v", statusBarsOf(f, turn3))
-		}
+	bars3 := statusBarsOf(f, turn3)
+	if len(bars3) != 1 || bars3[0].CharacterID != f.attackerID {
+		t.Fatalf("turn 3 wrote %+v, want only the attacker it damaged — the victim was written by turn 2", bars3)
 	}
 }
 

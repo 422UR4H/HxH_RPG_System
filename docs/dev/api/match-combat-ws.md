@@ -1508,8 +1508,10 @@ transação do turno que o mesmo `open_next_action` fechou — ou, se ele não f
 numa transação só deles. Nunca um sem o outro: o banco nunca fica com duas rodadas abertas na
 cena, nem com nenhuma. Se essa gravação falhar, a sala guarda o fim da rodada e o grava, na
 mesma transação, com a próxima gravação da rodada seguinte (um fechamento de turno, uma master
-action, uma troca de regime) — a rodada seguinte nunca nasce aberta ao lado da anterior ainda
-aberta no banco.
+action, uma troca de regime, um `change_scene`) — a rodada seguinte nunca nasce aberta ao lado
+da anterior ainda aberta no banco. O `change_scene` faz o mesmo com o par antigo quando ele nunca
+virou linha ou quando fechá-lo no banco falha: ele vai, fechado, na transação que grava o par
+novo.
 
 ### `round_mode_changed`
 

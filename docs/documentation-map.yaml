@@ -719,7 +719,9 @@ mappings:
       um fechamento falho não gravou — vão no StatusBars do próximo fechamento; nunca todas
       as fichas, para não atropelar edição por REST) e unwrittenRoundEnds (fins de round
       não gravados — vão em TurnCloseData.UnwrittenRoundEnds ou no PersistRoundClose da
-      próxima gravação do round seguinte, para nunca haver duas rodadas abertas na cena).
+      próxima gravação do round seguinte, para nunca haver duas rodadas abertas na cena;
+      o change_scene também alimenta a lista quando o par antigo nunca virou linha ou o
+      CloseSceneAndRound dele falha).
       Mudar quando algo é carregado muda o §9 do contrato WS.
 
   - code_path: internal/app/game/turn_writes.go

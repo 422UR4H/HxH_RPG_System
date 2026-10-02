@@ -23,7 +23,8 @@ import (
 //     the session: writing a sheet the match did not touch would clobber an edit made to it over
 //     REST meanwhile.
 //   - unwrittenRoundEnds: rounds that ended at the table but whose end was not written (a failed
-//     PersistRoundClose, or a failed turn close plus a failed salvage). The next write that could
+//     PersistRoundClose, a failed turn close plus a failed salvage, a change_scene whose old pair
+//     was never a row or whose CloseSceneAndRound failed). The next write that could
 //     give birth to the round the session is in now — a turn close, an ensure (master action,
 //     regime change, change_scene), another round's end — writes them closed first, in its own
 //     transaction: no round is ever born open next to a predecessor still open on disk.
