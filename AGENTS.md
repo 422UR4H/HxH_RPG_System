@@ -71,8 +71,8 @@ and heavy integration. When genuinely unsure between Haiku and Sonnet, prefer So
 
 ```bash
 # CI (default):
-rtk gh run list --workflow=ci.yml --limit=1   # check status
-rtk gh run view <run-id> --log-failed         # failure logs
+gh run list --workflow=ci.yml --limit=1   # check status
+gh run view <run-id> --log-failed         # failure logs
 
 # Local (when needed):
 go test ./...                                         # all tests
