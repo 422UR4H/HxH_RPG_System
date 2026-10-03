@@ -285,6 +285,49 @@ func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
 	}
 }
 
+// TestNewRoom_BarsSeqOutrunsAnEarlierRoom pins the contract's "the counter never restarts"
+// across Rooms. A client keeps the highest seq it applied and drops anything lower, through
+// reconnects — so a Room that replaces another for the same match (the process restarted, or
+// the room emptied and closed itself in Run) must not start counting from 0 again, or every
+// bars_updated it sends loses to the old room's last one and the client's bars freeze.
+func TestNewRoom_BarsSeqOutrunsAnEarlierRoom(t *testing.T) {
+	session, _, _ := racingSessionWithTwoActors(t)
+	matchID, masterID := uuid.New(), uuid.New()
+	lastSeq := func(r *Room, n int) uint64 {
+		t.Helper()
+		var seq uint64
+		for i := range n {
+			r.broadcastBars(session)
+			select {
+			case data := <-r.broadcast:
+				var msg Message
+				if err := json.Unmarshal(data, &msg); err != nil {
+					t.Fatalf("unmarshal message: %v", err)
+				}
+				var p BarsUpdatedPayload
+				if err := json.Unmarshal(msg.Payload, &p); err != nil {
+					t.Fatalf("unmarshal bars_updated: %v", err)
+				}
+				seq = max(seq, p.Seq)
+			case <-time.After(2 * time.Second):
+				t.Fatalf("bars_updated %d of %d never reached the broadcast channel", i+1, n)
+			}
+		}
+		return seq
+	}
+
+	old := lastSeq(NewRoom(matchID, masterID, RoomDeps{}), 3)
+	// The old room ran for a while before the new one replaced it — a millisecond is already
+	// a thousand times more time than the three snapshots it sent.
+	time.Sleep(time.Millisecond)
+	replacement := lastSeq(NewRoom(matchID, masterID, RoomDeps{}), 1)
+
+	if replacement <= old {
+		t.Errorf("the replacement room's first seq is %d, not above the old room's last %d — a "+
+			"client that reconnects into it would drop every bars_updated it sends", replacement, old)
+	}
+}
+
 // TestResolutionUpdatedPayloadCarriesEngineFaults pins the wire half of the two faults the
 // resolver used to swallow. The TODOs that marked them asked for them to be surfaced in the
 // resolution "for caller to surface" — this is that caller.

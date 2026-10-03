@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
@@ -129,6 +130,13 @@ type Room struct {
 	// barsSeq stamps every bars_updated snapshot. Bumped under mu at the instant the snapshot
 	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
 	// channel off to a goroutine, and two rapid opens can reach it out of order.
+	//
+	// It starts at the clock (NewRoom), not at 0: the contract promises the counter never
+	// restarts, and clients drop any seq lower than the highest they applied, across
+	// reconnects. A Room that replaces another for the same match — the process restarted, or
+	// the room emptied and closed itself in Run — would otherwise count from 0 again and lose
+	// every snapshot to the old room's last one. Microseconds keep it below 2^53, exact as a
+	// JavaScript number.
 	barsSeq uint64
 	// boardLoaded is true once loadBoard has installed a board at least once for this Room (a
 	// load that found no map attached does not count). It is what
@@ -183,6 +191,7 @@ func NewRoom(
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
 		deps:       deps,
+		barsSeq:    uint64(time.Now().UnixMicro()),
 	}
 }
 
