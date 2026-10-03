@@ -29,7 +29,13 @@ type PiecePositionSource interface {
 }
 
 type MatchSession struct {
-	matchUUID   uuid.UUID
+	matchUUID uuid.UUID
+	// mapUUID is the map the session's board belongs to — set by Room via SetMapUUID once it
+	// knows it (StartMatch/RehydrateSession/loadBoard, from Board.MapUUID). It exists so a
+	// PlayerMemory created for the first time (memoryFor) is stamped with the REAL map instead
+	// of uuid.Nil — see memoryFor's own doc comment for the persistence bug that left as a TODO
+	// until this field was threaded through (spec §4.3, B3).
+	mapUUID     uuid.UUID
 	activeScene *scene.Scene
 	activeRound *round.Round
 	activeQueue action.PriorityQueue
@@ -161,6 +167,12 @@ func indexParticipants(participants []*match.Participant) (
 	}
 	return pMap, charToPlayer, statuses
 }
+
+// SetMapUUID tells the session which map its board belongs to. Room calls it in StartMatch,
+// RehydrateSession and loadBoard, right after SyncMapState — BEFORE any RecomputeVisibility
+// that could lazily create a PlayerMemory (memoryFor), so that memory is stamped with the
+// real map from the moment it exists rather than uuid.Nil and drifting later.
+func (s *MatchSession) SetMapUUID(mapUUID uuid.UUID) { s.mapUUID = mapUUID }
 
 func (s *MatchSession) GetMatchUUID() uuid.UUID      { return s.matchUUID }
 func (s *MatchSession) GetActiveRound() *round.Round { return s.activeRound }
@@ -310,6 +322,81 @@ func (s *MatchSession) ApplyMasterAction(
 	ma.SetHappenedAt(time.Now())
 	t.AddMasterAction(*ma)
 	return s.ResolveTurn(t), nil
+}
+
+// SetEscapeLanding records where the master decided an escape's piece lands IF the escape
+// fails, and recomputes. nil clears the choice: a failed escape goes back to staying put.
+//
+// It can be chosen at any moment while the turn is open, for an escape that is failing now or
+// not — the escape can start or stop clearing its test as the master opens other reactions or
+// edits a reading. The resolver copies it into the resolution only while the escape FAILS
+// (see service.EscapeResult.Landing); an escape that passes goes to its own slot whatever is
+// stored here (front-combat-phases.md §6A.5, B13).
+//
+// This is the same edit surface as ApplyMasterAction and it returns the recomputed resolution
+// the same way. The position is a grid cell, like Move.Position.
+func (s *MatchSession) SetEscapeLanding(reactionID uuid.UUID, pos *[3]int) (*service.TurnResolution, error) {
+	if err := s.CheckEscapeLanding(reactionID, pos); err != nil {
+		return nil, err
+	}
+	t := s.activeRound.CurrentTurn()
+	if pos == nil {
+		t.ClearEscapeLanding(reactionID)
+	} else {
+		t.SetEscapeLanding(reactionID, *pos)
+	}
+	return s.ResolveTurn(t), nil
+}
+
+// CheckEscapeLanding is SetEscapeLanding's validation alone, mutating nothing. It exists for
+// the edit that carries a condition edit AND a landing: every part of it has to be validated
+// before any part lands, or a refused landing would leave the master holding a condition edit
+// they were told had failed (the rule ApplyMasterAction already follows for its own parts).
+func (s *MatchSession) CheckEscapeLanding(reactionID uuid.UUID, pos *[3]int) error {
+	if s.activeRound == nil {
+		return ErrNoActiveTurn
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return ErrNoActiveTurn
+	}
+	r := t.ReactionRef(reactionID)
+	if r == nil {
+		// The zero UUID is "the turn's own action" everywhere else on edit_action; an action
+		// is never an escape.
+		if reactionID == uuid.Nil || reactionID == t.ActionRef().GetID() {
+			return ErrNotAnEscape
+		}
+		return ErrActionNotOnTurn
+	}
+	if !r.ReactionKind.Displaces() {
+		return ErrNotAnEscape
+	}
+	if pos != nil && !cellInGrid(s.grid, *pos) {
+		return ErrLandingOutOfGrid
+	}
+	return nil
+}
+
+// cellInGrid reports whether a grid position is a cell of this board. A grid with no
+// dimensions yet (nothing synced) has nothing to check against and accepts anything.
+//
+// Hex positions travel axial (q, r) — see slotKeepingKind in the game package — while the
+// grid's Cols/Rows count odd-r OFFSET cells, so the column is q + floor(r/2). It is the same
+// bridge the front's isSlotInBounds walks; r is already bounded to be non-negative when the
+// division runs, so Go's truncation is the floor.
+func cellInGrid(g mapentity.GridShape, pos [3]int) bool {
+	if g.Cols <= 0 || g.Rows <= 0 {
+		return true
+	}
+	col, row := pos[0], pos[1]
+	if row < 0 || row >= g.Rows {
+		return false
+	}
+	if g.Kind == mapentity.GridKindHex {
+		col += row / 2
+	}
+	return col >= 0 && col < g.Cols
 }
 
 // actionOnTurn finds the turn's action or one of its reactions by ID. The zero UUID means the
@@ -665,10 +752,11 @@ type TurnTransition struct {
 	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
 	// a round, when nothing closed.
 	Damaged []DamagedCharacter
-	// RoundExhausted reports that no pending action passes the gate that applies to it, which
-	// is what ends a Race round. It is not an error: the actions still queued keep the roll
-	// they already made and belong to the next round. The caller closes the round.
-	RoundExhausted bool
+	// NoActionCanPay reports that no action in the queue can still pay its price — none passes
+	// the gate that applies to it — which is what ends a Race round. It is not an error: the
+	// actions still queued keep the roll they already made and belong to the next round. The
+	// caller closes the round. (Not "exhaustion": that word is reserved for the real mechanic.)
+	NoActionCanPay bool
 }
 
 // DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
@@ -745,8 +833,8 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 	next := s.scheduler.SelectNext(s.scheduleInput())
 	tr := s.closeOpenTurn()
 	if next == nil {
-		// Nothing pending can still pay. The round is over — the caller closes it.
-		tr.RoundExhausted = true
+		// No action in the queue can still pay its price. The round is over — the caller closes it.
+		tr.NoActionCanPay = true
 		return tr, nil
 	}
 
@@ -1382,11 +1470,12 @@ func (s *MatchSession) memoryFor(playerID uuid.UUID) *fog.PlayerMemory {
 	}
 	m, ok := s.memories[playerID]
 	if !ok {
-		// TODO(persistence): MapID is uuid.Nil because MatchSession doesn't carry the
-		// active map's UUID yet. Thread the real mapUUID in (constructor or
-		// SyncPlayerMemories) before wiring the repository, so persisted rows don't all
-		// collide on the (match_id, map_id, player_id) unique key with map_id = Nil.
-		m = fog.NewPlayerMemory(playerID, s.matchUUID, uuid.Nil)
+		// mapUUID comes from SetMapUUID (Room, on StartMatch/RehydrateSession/loadBoard) —
+		// the persistence-blocking TODO that used to sit here (MapID stuck at uuid.Nil,
+		// colliding every player onto one row of the (match_id, map_id, player_id) unique
+		// key) is resolved by T3 threading it through instead. uuid.Nil here now only means
+		// "no board loaded yet", the same as before any SetMapUUID call.
+		m = fog.NewPlayerMemory(playerID, s.matchUUID, s.mapUUID)
 		s.memories[playerID] = m
 	}
 	return m

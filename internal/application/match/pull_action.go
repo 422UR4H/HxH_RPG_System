@@ -24,17 +24,18 @@ type IPullAction interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, actionID uuid.UUID) (*PullActionResult, error)
 }
 
+// PullActionUC writes nothing: the HP its close applies (Damaged) is written by the room in the
+// closed turn's own transaction (PersistTurnClose) — see OpenNextActionUC.
 type PullActionUC struct {
-	statusWriter ISheetStatusWriter
-	// closeRound is held, not used. PullAction never reports exhaustion: the master named an
-	// action explicitly, so there is always something to open. It is kept for the explicit
+	// closeRound is held, not used. PullAction never reports that no action can pay: the
+	// master named an action explicitly, so there is always something to open. It is kept for the explicit
 	// round-close path a later phase adds — removing the parameter would churn four call sites
 	// for nothing, and re-adding it later would churn them again.
 	closeRound ICloseRound //nolint:unused // reserved for the explicit round-close path
 }
 
-func NewPullActionUC(statusWriter ISheetStatusWriter, closeRound ICloseRound) *PullActionUC {
-	return &PullActionUC{statusWriter: statusWriter, closeRound: closeRound}
+func NewPullActionUC(closeRound ICloseRound) *PullActionUC {
+	return &PullActionUC{closeRound: closeRound}
 }
 
 func (uc *PullActionUC) Execute(
@@ -47,8 +48,6 @@ func (uc *PullActionUC) Execute(
 		return nil, ErrNotMatchMaster
 	}
 	tr, err := session.PullAction(actionID)
-	// Persist before the error check — see OpenNextActionUC.Execute for why.
-	persistDamage(ctx, uc.statusWriter, tr.Damaged)
 
 	res := &PullActionResult{
 		ClosedTurn:       tr.Closed,
@@ -60,9 +59,9 @@ func (uc *PullActionUC) Execute(
 
 	if err != nil {
 		// A non-nil result alongside a non-nil error is unusual, but tr.Closed != nil means
-		// session.PullAction already closed the previous turn and applied its damage (persisted
-		// above) before it failed to find the requested action — see OpenNextActionUC.Execute
-		// for why discarding res here is worse than returning both.
+		// session.PullAction already closed the previous turn and applied its damage before it
+		// failed to find the requested action — see OpenNextActionUC.Execute for why discarding
+		// res here is worse than returning both.
 		if tr.Closed != nil {
 			return res, err
 		}

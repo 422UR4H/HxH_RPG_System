@@ -34,7 +34,7 @@ applyTo: "internal/**"
 - ✅ `domain/match/entity/scene/` — Scene entity with UUID id, Close(), GetID(); ReconstructScene for DB hydration
 - ✅ `domain/match/matchsession/` — In-memory match state: MatchSession, persistence flags, NewMatchSessionWithState; rolls an action's dice on arrival, resolves turns and applies damage on turn close (`TurnTransition`)
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented)
-- ✅ `gateway/pg/round/` — PersistTurnClose (atomic), FindActiveSession, CloseSceneAndRound, CloseRound
+- ✅ `gateway/pg/round/` — PersistTurnClose (atomic: turn, HP, master actions, board, and a round's end + successor), PersistRoundClose (a round's end + successor, atomic), EnsureSceneAndRound, FindActiveSession, CloseSceneAndRound
 - ✅ `app/api/` — HTTP handlers (unit tested with humatest)
 - ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern); ChangeScene and EnqueueMasterAction messages; PersistTurnClose on turn close
 - ✅ `application/` — Use cases migrated from domain/ (all features); ChangeSceneUC, EnqueueMasterActionUC added

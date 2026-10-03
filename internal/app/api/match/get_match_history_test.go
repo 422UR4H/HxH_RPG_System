@@ -347,6 +347,108 @@ func TestGetMatchHistoryCarriesPayouts(t *testing.T) {
 	}
 }
 
+// TestGetMatchHistoryCarriesTheEscape: an escape's verdict and the master's landing are
+// persisted with the turn (B13), and the history shows them in the SAME shape the WebSocket's
+// resolution_updated does — awaitsMaster derived the same way. A settled "awaitsMaster: true"
+// reads as "it failed and nobody chose, so the piece stayed".
+func TestGetMatchHistoryCarriesTheEscape(t *testing.T) {
+	userUUID, matchUUID := uuid.New(), uuid.New()
+	escaped, landed, stayed, dodged, attacker := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+	landing := [3]int{7, 6, 0}
+
+	act := action.NewAction(attacker, []uuid.UUID{escaped, landed, stayed, dodged}, uuid.Nil, nil,
+		action.ActionSpeed{}, nil, nil, &action.Attack{}, nil, nil, nil, nil)
+
+	scenes := []match.HistoryScene{{
+		UUID: uuid.New(), Category: "battle", CreatedAt: now,
+		Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "Free", CreatedAt: now,
+			Turns: []match.HistoryTurn{{
+				UUID: uuid.New(), CreatedAt: now, FinishedAt: now,
+				Action: *act,
+				// What the use case grants a reader who may see the landing — the mapping's
+				// own default hides it.
+				ShownLandings: map[uuid.UUID]bool{landed: true},
+				Resolution: &service.TurnResolution{
+					IsSettled: true,
+					CharacterResults: []service.CharacterResult{
+						{TargetID: escaped, ReactionKind: string(action.ReactEscape),
+							Escape: &service.EscapeResult{MovePassed: true, DodgePassed: true, Escaped: true}},
+						{TargetID: landed, ReactionKind: string(action.ReactEscape),
+							Escape: &service.EscapeResult{DodgePassed: true, Landing: &landing}},
+						{TargetID: stayed, ReactionKind: string(action.ReactEscape),
+							Escape: &service.EscapeResult{MovePassed: true}},
+						{TargetID: dodged, ReactionKind: string(action.ReactDodge)},
+					},
+				},
+			}},
+		}},
+	}}
+
+	_, api := humatest.New(t)
+	handler := apiMatch.GetMatchHistoryHandler(&mockGetMatchHistory{
+		fn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchHistoryResult, error) {
+			return &match.GetMatchHistoryResult{Scenes: scenes}, nil
+		},
+	})
+	huma.Register(api, huma.Operation{
+		Method: http.MethodGet,
+		Path:   "/matches/{uuid}/history",
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+	resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	type escapeJSON struct {
+		Escaped      bool    `json:"escaped"`
+		MovePassed   bool    `json:"movePassed"`
+		DodgePassed  bool    `json:"dodgePassed"`
+		AwaitsMaster bool    `json:"awaitsMaster"`
+		Landing      *[3]int `json:"landing"`
+	}
+	var body struct {
+		Scenes []struct {
+			Rounds []struct {
+				Turns []struct {
+					Resolution struct {
+						Targets []struct {
+							TargetID uuid.UUID   `json:"targetId"`
+							Escape   *escapeJSON `json:"escape"`
+						} `json:"targets"`
+					} `json:"resolution"`
+				} `json:"turns"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v — body: %s", err, resp.Body.String())
+	}
+	got := map[uuid.UUID]*escapeJSON{}
+	for _, tr := range body.Scenes[0].Rounds[0].Turns[0].Resolution.Targets {
+		got[tr.TargetID] = tr.Escape
+	}
+
+	if e := got[escaped]; e == nil || !e.Escaped || !e.MovePassed || !e.DodgePassed || e.AwaitsMaster || e.Landing != nil {
+		t.Errorf("escaped target = %+v, want escaped with no landing", e)
+	}
+	if e := got[landed]; e == nil || e.Escaped || e.AwaitsMaster || e.Landing == nil || *e.Landing != landing {
+		t.Errorf("landed target = %+v, want a failed escape carrying landing %v", e, landing)
+	}
+	if e := got[stayed]; e == nil || e.Escaped || !e.MovePassed || e.DodgePassed || !e.AwaitsMaster || e.Landing != nil {
+		t.Errorf("stayed target = %+v, want a failed escape with awaitsMaster and no landing", e)
+	}
+	if e := got[dodged]; e != nil {
+		t.Errorf("a dodge carries an escape: %+v", e)
+	}
+	if strings.Count(resp.Body.String(), `"escape":`) != 3 {
+		t.Errorf("want exactly three escape keys (none on the dodge); body: %s", resp.Body.String())
+	}
+}
+
 // TestGetMatchHistoryCarriesEngineFaults is the DTO half of the pair whose other half is
 // TestGetMatchHistoryProjectsEngineFaults in the use case package.
 //

@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )
@@ -145,6 +145,9 @@ func TestGetMatchParticipants(t *testing.T) {
 			}
 			if result.ViewerIsMaster != tt.wantViewerMaster {
 				t.Errorf("ViewerIsMaster = %v, want %v", result.ViewerIsMaster, tt.wantViewerMaster)
+			}
+			if result.ViewerUUID != tt.userUUID {
+				t.Errorf("ViewerUUID = %v, want %v", result.ViewerUUID, tt.userUUID)
 			}
 		})
 	}

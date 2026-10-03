@@ -303,7 +303,9 @@ Lista personagens que entraram na partida (snapshot a partir de `StartMatch`).
 }
 ```
 
-`characterSheet.private` é enviado apenas ao mestre da partida; para os demais vem `null`.
+`characterSheet.private` é enviado ao mestre da partida (em todas as fichas, incluindo NPCs) e
+ao jogador dono da ficha (na própria ficha apenas). Para os demais — outro jogador, ou qualquer
+jogador olhando a ficha de um NPC — vem `null`.
 
 ### Erros
 

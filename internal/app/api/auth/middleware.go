@@ -42,24 +42,12 @@ func AuthMiddlewareProvider(
 			return
 		}
 
-		// find token in memory cache first
+		// find token in memory cache first. A miss (the process just restarted) falls to the
+		// same database check a cache mismatch does: every login is a session row, and a token
+		// from another tab or device is as valid as the user's latest login — comparing it to
+		// the latest alone logged everyone else out on each restart.
 		token, exists := sessions.Load(claims.UserID)
-		if !exists {
-			// if not found, verify in sessions db table
-			dbToken, err := sessionRepo.GetSessionTokenByUserUUID(ctx.Context(), claims.UserID)
-			if err == nil && dbToken == tokenStr {
-				// if found, add session into memory cache
-				sessions.Store(claims.UserID, tokenStr)
-				exists = true
-				token = tokenStr
-			}
-		}
-		if !exists {
-			ctx.SetStatus(http.StatusUnauthorized)
-			WriteAuthError(ctx.BodyWriter(), "Authentication failed", "Access Denied")
-			return
-		}
-		if token != tokenStr {
+		if !exists || token != tokenStr {
 			// check directly with the bank as a last resort
 			valid, err := sessionRepo.ValidateSession(ctx.Context(), claims.UserID, tokenStr)
 			errMsg := "Access Denied!"

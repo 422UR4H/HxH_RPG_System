@@ -20,7 +20,7 @@ type IRepository interface {
 	UpdateNenHexagonValue(ctx context.Context, uuid string, val int) error
 	GetCharacterSheetRelationshipUUIDs(ctx context.Context, uuid uuid.UUID) (csEntity.RelationshipUUIDs, error)
 	ExistsSheetInCampaign(ctx context.Context, playerUUID uuid.UUID, campaignUUID uuid.UUID) (bool, error)
-	UpdateStatusBars(ctx context.Context, sheetUUID string, health, stamina, aura status.IStatusBar) error
+	UpdateStatusBars(ctx context.Context, sheetUUID string, health, stamina, aura status.IStatusBarReader) error
 	UpdateCharExp(ctx context.Context, sheetUUID string, charExp int) error
 	DeleteCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, playerUUID uuid.UUID) error
 	DeleteNPCCharacterSheet(ctx context.Context, sheetUUID uuid.UUID, masterUUID uuid.UUID) error

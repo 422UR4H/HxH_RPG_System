@@ -102,19 +102,37 @@ func TestPushVisibilityUpdates_DoesNotDeadlock(t *testing.T) {
 	})
 }
 
-// A wall-only sync (no "pieces" field at all) must leave the board alone. Wiping
-// r.pieces removes every LOS origin, which empties the player's visibility polygons
-// and makes the fog cover the whole map — the exact production symptom.
-func TestMapStateSync_WithoutPieceInfoKeepsBoard(t *testing.T) {
+// B14 (spec §4.3, "Quem carrega") retires map_state_sync's write side entirely: the server
+// owns the board now, loaded from the database at the moments loadBoard's own doc comment
+// names, and this arm is kept only so the front that has not dropped the send yet (F13) gets
+// an answer instead of silence. TestMapStateSync_WithoutPieceInfoKeepsBoard and
+// TestMapStateSync_ExplicitEmptyArrayClearsBoard used to prove the OLD write behavior — the
+// "nil pieces keeps the board, an explicit empty array clears it" contract this arm no longer
+// has, since it does not write under EITHER shape any more. Repurposed below into
+// TestMapStateSync_NeverWritesTheBoard, which proves the new contract covers both shapes at
+// once. TestMapStateSync_RefreshesPlayerVisibilityAndRepushesState asserted the recompute-and-
+// repush-to-every-client half of the old behavior, which B14 also removes (the answer now
+// goes only to the sender) — repurposed into
+// TestMapStateSync_AnswersOnlyTheSenderWithoutTouchingTheSession below.
+
+// A sync payload carrying pieces, walls and a grid that all disagree with the real board must
+// change NOTHING: no new piece appears, the real one stays, and the grid is not overwritten.
+// Covers both of the old contract's shapes (nil Pieces and a present-but-different array) with
+// one assertion, because neither one means anything to this arm any more.
+func TestMapStateSync_NeverWritesTheBoard(t *testing.T) {
 	room, masterUUID, _, _ := liveMatchRoom(t)
 	master := NewClient(masterUUID, nil, "gm")
 	room.clients[masterUUID] = master
 
-	wall := room.walls["w1"]
-	grid := toGridShapePayload(room.grid)
+	intruder := []PieceMovedPayload{{
+		PieceID: "intruder", CharacterID: uuid.New().String(), Slot: squareSlot(9, 9),
+	}}
+	grid := toGridShapePayload(mapentity.GridShape{
+		Kind: mapentity.GridKindSquare, Cols: 5, Rows: 5, CellSize: 999, SkewRatio: 1,
+	})
 	raw := mustSyncMessage(t, MapStateSyncPayload{
-		Pieces: nil, // field absent → "this sync carries no piece information"
-		Walls:  []WallSegmentPayload{toWallSegmentPayload(wall)},
+		Pieces: &intruder,
+		Walls:  nil,
 		Grid:   &grid,
 	})
 
@@ -123,89 +141,68 @@ func TestMapStateSync_WithoutPieceInfoKeepsBoard(t *testing.T) {
 	})
 
 	room.mu.RLock()
-	got := len(room.pieces)
+	_, hasIntruder := room.pieces["intruder"]
+	_, hasReal := room.pieces["p1"]
+	_, hasWall := room.walls["w1"]
+	gotCellSize := room.grid.CellSize
 	room.mu.RUnlock()
-	if got != 1 {
-		t.Fatalf("wall-only map_state_sync wiped the board: got %d pieces, want 1", got)
+	if hasIntruder {
+		t.Fatal("map_state_sync wrote a piece from its payload — it must write nothing at all (spec §4.3, B14)")
+	}
+	if !hasReal {
+		t.Fatal("map_state_sync erased the real board's piece — it must write nothing at all")
+	}
+	if !hasWall {
+		t.Fatal("map_state_sync erased the real board's wall (payload sent Walls: nil) — it must write nothing at all")
+	}
+	if gotCellSize == 999 {
+		t.Fatal("map_state_sync overwrote the grid from its payload — it must write nothing at all")
 	}
 }
 
-// The other half of the contract: an explicitly present (even empty) array is
-// authoritative and does replace the board.
-func TestMapStateSync_ExplicitEmptyArrayClearsBoard(t *testing.T) {
-	room, masterUUID, _, _ := liveMatchRoom(t)
-	master := NewClient(masterUUID, nil, "gm")
-	room.clients[masterUUID] = master
-
-	empty := []PieceMovedPayload{}
-	grid := toGridShapePayload(room.grid)
-	raw := mustSyncMessage(t, MapStateSyncPayload{
-		Pieces: &empty,
-		Walls:  []WallSegmentPayload{toWallSegmentPayload(room.walls["w1"])},
-		Grid:   &grid,
-	})
-
-	withinTimeout(t, 3*time.Second, "handleClientMessage(map_state_sync)", func() {
-		room.handleClientMessage(master, raw)
-	})
-
-	room.mu.RLock()
-	got := len(room.pieces)
-	room.mu.RUnlock()
-	if got != 0 {
-		t.Fatalf("explicit empty pieces array must clear the board: got %d pieces, want 0", got)
-	}
-}
-
-// After the board is (re)seeded, the player's cached visibility must be refreshed and
-// re-pushed. buildMapFullState reads the CACHE, so a sync that does not recompute leaves
-// the player with the polygons computed when the board was still empty — total fog.
-func TestMapStateSync_RefreshesPlayerVisibilityAndRepushesState(t *testing.T) {
+// The other half of B14's contract: the answer goes to the SENDER alone, and nothing about
+// the session — a player's cached visibility included — is touched along the way. Before
+// B14 this same sync would have recomputed and re-pushed to every client; now the recompute
+// stays as stale as it was, which is exactly the proof that map_state_sync no longer reaches
+// the session at all.
+func TestMapStateSync_AnswersOnlyTheSenderWithoutTouchingTheSession(t *testing.T) {
 	room, masterUUID, playerUUID, sheetUUID := liveMatchRoom(t)
 	master := NewClient(masterUUID, nil, "gm")
 	player := NewClient(playerUUID, nil, "p1")
 	room.clients[masterUUID] = master
 	room.clients[playerUUID] = player
 
-	// Simulate the real ordering: visibility was computed while the board was empty.
-	saved := room.pieces
-	withinTimeout(t, 3*time.Second, "seed stale visibility", func() {
+	withinTimeout(t, 3*time.Second, "invalidate visibility cache", func() {
 		room.mu.Lock()
 		defer room.mu.Unlock()
-		room.pieces = make(map[string]PieceMovedPayload)
-		_, _ = room.session.RecomputeVisibility(playerUUID)
-		room.pieces = saved
+		room.session.InvalidateVisibilityCache()
 	})
 	if len(room.visibilityFor(playerUUID)) != 0 {
-		t.Fatal("precondition failed: expected an empty (stale) visibility cache")
+		t.Fatal("precondition failed: expected an empty (invalidated) visibility cache")
 	}
 
-	pieces := []PieceMovedPayload{saved["p1"]}
 	grid := toGridShapePayload(room.grid)
-	raw := mustSyncMessage(t, MapStateSyncPayload{
-		Pieces: &pieces,
-		Walls:  []WallSegmentPayload{toWallSegmentPayload(room.walls["w1"])},
-		Grid:   &grid,
-	})
+	raw := mustSyncMessage(t, MapStateSyncPayload{Grid: &grid})
 
 	withinTimeout(t, 3*time.Second, "handleClientMessage(map_state_sync)", func() {
 		room.handleClientMessage(master, raw)
 	})
 
-	polys := room.visibilityFor(playerUUID)
-	if len(polys) == 0 {
-		t.Fatal("player has no visibility polygon after map_state_sync — fog would cover everything")
+	if len(room.visibilityFor(playerUUID)) != 0 {
+		t.Fatal("map_state_sync recomputed a player's visibility — it must not touch the session at all")
+	}
+	select {
+	case <-player.send:
+		t.Fatal("the player received a message from the MASTER's map_state_sync — it must answer only the sender")
+	default:
 	}
 
-	full := drainMapFullState(t, player)
+	full := drainMapFullState(t, master)
 	if full == nil {
-		t.Fatal("player did not receive a refreshed map_full_state after map_state_sync")
-	}
-	if len(full.VisiblePolygons) == 0 {
-		t.Fatal("refreshed map_full_state carries no visible_polygons")
+		t.Fatal("the sender never received a map_full_state answer")
 	}
 	if !hasPieceForCharacter(full.Pieces, sheetUUID.String()) {
-		t.Fatal("player cannot see their own character's piece in the refreshed map_full_state")
+		t.Fatal("the sender's map_full_state answer does not carry the real board's piece")
 	}
 }
 

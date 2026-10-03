@@ -1,0 +1,238 @@
+{
+  "uuid": "00000000-0000-0000-0000-000000000001",
+  "createdAt": "2026-09-27T10:00:00Z",
+  "finishedAt": "2026-09-27T10:00:30Z",
+  "action": {
+    "uuid": "00000000-0000-0000-0000-0000000000aa",
+    "actorId": "00000000-0000-0000-0000-000000000002",
+    "targetId": [
+      "00000000-0000-0000-0000-000000000003",
+      "00000000-0000-0000-0000-000000000004"
+    ],
+    "skills": [
+      {
+        "skillName": "Legerity",
+        "difficulty": 12,
+        "rollCheck": {
+          "skillName": "Legerity",
+          "skillValue": 5,
+          "attempts": {
+            "primary": [
+              3,
+              4
+            ],
+            "secondary": [
+              1,
+              2
+            ]
+          },
+          "result": 11
+        }
+      },
+      {
+        "skillName": "Evasion",
+        "rollCheck": {
+          "skillName": "Evasion",
+          "skillValue": 3,
+          "attempts": {
+            "primary": [
+              2
+            ]
+          },
+          "result": 5
+        }
+      }
+    ],
+    "speed": {
+      "bar": 3,
+      "rollCheck": {
+        "skillName": "Legerity",
+        "skillValue": 5,
+        "attempts": {
+          "primary": [
+            5,
+            6
+          ],
+          "secondary": [
+            2,
+            3
+          ]
+        },
+        "result": 14
+      }
+    },
+    "feint": {
+      "skillName": "Feint",
+      "skillValue": 2,
+      "attempts": {
+        "primary": [
+          6
+        ]
+      },
+      "result": 8
+    },
+    "trigger": {},
+    "move": {
+      "category": "Dash",
+      "from": [
+        1,
+        1,
+        0
+      ],
+      "position": [
+        4,
+        4,
+        0
+      ],
+      "speed": {
+        "skillName": "Legerity",
+        "skillValue": 4,
+        "attempts": {
+          "primary": [
+            2,
+            5
+          ]
+        },
+        "result": 13
+      },
+      "charge": {
+        "skillName": "Legerity",
+        "skillValue": 4,
+        "attempts": {
+          "primary": [
+            1
+          ]
+        },
+        "result": 6
+      },
+      "finalSpeed": 9
+    },
+    "attack": {
+      "weapon": "Halberd",
+      "hit": {
+        "skillName": "Legerity",
+        "skillValue": 6,
+        "attempts": {
+          "primary": [
+            4,
+            5
+          ]
+        },
+        "result": 17
+      },
+      "damage": {
+        "skillName": "Legerity",
+        "skillValue": 4,
+        "attempts": {
+          "primary": [
+            2,
+            3
+          ]
+        },
+        "result": 10
+      },
+      "charge": {
+        "skillName": "Legerity",
+        "skillValue": 3,
+        "attempts": {
+          "primary": [
+            4
+          ]
+        },
+        "result": 9
+      },
+      "spread": "simultaneous",
+      "relativeVelocity": 12.5
+    },
+    "interact": {
+      "kind": "reveal"
+    },
+    "systemBias": -1
+  },
+  "reactions": [
+    {
+      "uuid": "00000000-0000-0000-0000-0000000000bb",
+      "actorId": "00000000-0000-0000-0000-000000000005",
+      "reactToId": "00000000-0000-0000-0000-0000000000aa",
+      "reactionKind": "dodge",
+      "speed": {
+        "bar": 0,
+        "rollCheck": {
+          "skillName": "",
+          "skillValue": 0,
+          "attempts": {},
+          "result": 0
+        }
+      },
+      "dodge": {
+        "rollCheck": {
+          "skillName": "Legerity",
+          "skillValue": 4,
+          "attempts": {
+            "primary": [
+              3,
+              3
+            ]
+          },
+          "result": 9
+        }
+      }
+    },
+    {
+      "uuid": "00000000-0000-0000-0000-0000000000cc",
+      "actorId": "00000000-0000-0000-0000-000000000006",
+      "reactToId": "00000000-0000-0000-0000-0000000000aa",
+      "speed": {
+        "bar": 0,
+        "rollCheck": {
+          "skillName": "",
+          "skillValue": 0,
+          "attempts": {},
+          "result": 0
+        }
+      },
+      "defense": {
+        "weapon": "Dagger",
+        "rollCheck": {
+          "skillName": "Legerity",
+          "skillValue": 4,
+          "attempts": {
+            "primary": [
+              5
+            ]
+          },
+          "result": 10
+        }
+      }
+    },
+    {
+      "uuid": "00000000-0000-0000-0000-0000000000dd",
+      "actorId": "00000000-0000-0000-0000-000000000007",
+      "reactToId": "00000000-0000-0000-0000-0000000000aa",
+      "reactionKind": "repel",
+      "speed": {
+        "bar": 0,
+        "rollCheck": {
+          "skillName": "",
+          "skillValue": 0,
+          "attempts": {},
+          "result": 0
+        }
+      },
+      "repel": {
+        "weapon": "ThrowingDagger",
+        "rollCheck": {
+          "skillName": "Legerity",
+          "skillValue": 5,
+          "attempts": {
+            "primary": [
+              6
+            ]
+          },
+          "result": 15
+        }
+      }
+    }
+  ],
+  "masterActions": []
+}

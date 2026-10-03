@@ -111,27 +111,27 @@ func newVisibilityFixture(t *testing.T) *visibilityFixture {
 	go hub.Run()
 	t.Cleanup(hub.Stop)
 
-	writer := &recordingStatusWriter{}
 	roundRepo := &mockRoundRepoHandler{}
 	handler := game.NewHandler(
 		hub,
 		&fogMatchRepo{masterUUID: masterUUID, started: true},
 		&mockEnrollmentChecker{enrolled: true},
-		&mockStartMatchUC{},
-		&mockKickPlayerUC{},
-		&combatSessionUC{session: session},
-		appmatch.NewOpenNextActionUC(writer, appmatch.NewCloseRoundUC(roundRepo)),
-		appmatch.NewPullActionUC(writer, appmatch.NewCloseRoundUC(roundRepo)),
-		appmatch.NewEnqueueActionUC(),
-		appmatch.NewAttachReactionUC(),
-		appmatch.NewOpenReactionUC(),
-		appmatch.NewCloseTurnUC(writer),
-		&mockChangeSceneUCHandler{},
-		roundRepo,
-		&mockEnqueueMasterActionUCHandler{},
-		appmatch.NewChangeRoundModeUC(),
-		appmatch.NewEditActionUC(),
-		nil,
+		game.RoomDeps{
+			StartMatchUC:          &mockStartMatchUC{},
+			KickPlayerUC:          &mockKickPlayerUC{},
+			InitSessionUC:         &combatSessionUC{session: session},
+			OpenNextActionUC:      appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC()),
+			PullActionUC:          appmatch.NewPullActionUC(appmatch.NewCloseRoundUC()),
+			EnqueueActionUC:       appmatch.NewEnqueueActionUC(),
+			AttachReactionUC:      appmatch.NewAttachReactionUC(),
+			OpenReactionUC:        appmatch.NewOpenReactionUC(),
+			CloseTurnUC:           appmatch.NewCloseTurnUC(),
+			ChangeSceneUC:         &mockChangeSceneUCHandler{},
+			RoundRepo:             roundRepo,
+			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
+			ChangeRoundModeUC:     appmatch.NewChangeRoundModeUC(),
+			EditActionUC:          appmatch.NewEditActionUC(),
+		},
 	)
 
 	mux := http.NewServeMux()

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
 )
 
-// FindMatchHistory returns the match's closed turns as the TREE the domain already is —
-// Scene -> Round -> Turn -> Action — not a flat list.
+// FindMatchHistory returns the match's scenes, rounds and closed turns as the TREE the domain
+// already is — Scene -> Round -> Turn -> Action — not a flat list.
 //
 // The hierarchy is not decoration: the front renders action cards INSIDE the scope of each
 // scene, because scenes are the logical blocks the match is organised into. Flattening here
@@ -22,16 +23,25 @@ import (
 // One query, ordered, assembled in one pass. Reactions come back in the same result set,
 // discriminated by react_to_uuid IS NOT NULL, so there is no N+1 over turns.
 //
+// The joins are LEFT joins (B15, spec §4.5): a scene and a round are rows from the moment they
+// are born, not from their first closed turn, and a scene the table spent talking or a round
+// that closed without a turn happened just the same. So a row may stop at the scene (no round
+// yet) or at the round (no turn), and the assembly only builds a level whose UUID is not NULL.
+// A turn row with no action row cannot be shown — the action IS the turn — and is skipped; it
+// never takes its round with it.
+//
 // s.uuid and ro.uuid tiebreak s.created_at and ro.created_at for the same reason t.uuid
 // tiebreaks t.finished_at below: the assembly groups scenes and rounds by "does the UUID
 // still match the one being built" (curScene.UUID != sceneUUID, curRound.UUID != roundUUID),
 // and two scenes or two rounds tied on their timestamp could otherwise interleave and corrupt
 // that grouping — the identical defect the turn level already paid to fix.
 //
-// The master's own actions (Turn.GetMasterActions()) are NOT read here: actions has no column
-// for them — they are deliberately never persisted (spec § A edição do mestre). What the
-// master's edits displaced lives in overridden_action_values, and that table is not part of
-// this read either; the history shows the edited action, which IS the action.
+// The master's own actions ARE persisted now, in a table of their own (master_actions, spec
+// §4.8), and so are the round's regime changes (match_events) — but neither is read here. Both
+// come from separate queries the use case stitches into this tree by round and turn UUID
+// (GetMatchHistoryUC), so this join does not multiply by them. What the master's EDITS
+// displaced lives in overridden_action_values, which is not part of this read either: an edit
+// is not a master action, and the history shows the edited action, which IS the action.
 func (r *Repository) FindMatchHistory(
 	ctx context.Context, matchUUID uuid.UUID,
 ) ([]appmatch.HistoryScene, error) {
@@ -41,11 +51,11 @@ func (r *Repository) FindMatchHistory(
 		        t.uuid, t.created_at, t.finished_at, t.resolution,
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
 		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
-		        a.trigger, a.interact, a.system_bias
+		        a.trigger, a.interact, a.system_bias, a.move_views
 		 FROM scenes s
-		 JOIN rounds ro ON ro.scene_uuid = s.uuid
-		 JOIN turns  t  ON t.round_uuid = ro.uuid
-		 JOIN actions a ON a.turn_uuid = t.uuid
+		 LEFT JOIN rounds  ro ON ro.scene_uuid = s.uuid
+		 LEFT JOIN turns   t  ON t.round_uuid = ro.uuid
+		 LEFT JOIN actions a  ON a.turn_uuid = t.uuid
 		 WHERE s.match_uuid = $1
 		 ORDER BY s.created_at, s.uuid, ro.created_at, ro.uuid, t.finished_at, t.uuid,
 		          (a.react_to_uuid IS NOT NULL), a.created_at`,
@@ -56,8 +66,8 @@ func (r *Repository) FindMatchHistory(
 	}
 	defer rows.Close()
 
-	// Never nil: a match with no closed turns is an empty slice, so it marshals as [] on the
-	// wire (Task 12), not null.
+	// Never nil: a match with no scene is an empty slice, so it marshals as [] on the wire
+	// (Task 12), not null.
 	scenes := make([]appmatch.HistoryScene, 0)
 	var curScene *appmatch.HistoryScene
 	var curRound *appmatch.HistoryRound
@@ -71,6 +81,8 @@ func (r *Repository) FindMatchHistory(
 	var poisonedTurnUUID uuid.UUID
 
 	for rows.Next() {
+		// Everything past the scene is a pointer (or a nil-able slice): the LEFT joins hand a
+		// NULL to every level that does not exist for this row.
 		var (
 			sceneUUID       uuid.UUID
 			category        string
@@ -78,31 +90,33 @@ func (r *Repository) FindMatchHistory(
 			sceneCreatedAt  time.Time
 			sceneFinishedAt *time.Time
 
-			roundUUID       uuid.UUID
-			mode            string
-			roundCreatedAt  time.Time
+			roundUUID       *uuid.UUID
+			mode            *string
+			roundCreatedAt  *time.Time
 			roundFinishedAt *time.Time
 
-			turnUUID       uuid.UUID
-			turnCreatedAt  time.Time
-			turnFinishedAt time.Time
+			turnUUID       *uuid.UUID
+			turnCreatedAt  *time.Time
+			turnFinishedAt *time.Time
 			resolutionRaw  []byte
 
-			actionUUID  uuid.UUID
-			actorUUID   uuid.UUID
+			actionUUID  *uuid.UUID
+			actorUUID   *uuid.UUID
 			reactToUUID *uuid.UUID
 			targetIDs   []uuid.UUID
 			// actionType is scanned only for symmetry with insertAction's INSERT column list
 			// (persist_turn_close.go) and to keep this query's column list self-documenting
 			// against the table — deriveActionType is a write-time classification with no
 			// field on the domain Action to land in, so it is read and discarded here.
-			actionType   string
+			actionType   *string
 			reactionKind *string
 
 			speedRaw, skillsRaw, moveRaw, attackRaw []byte
 			defenseRaw, dodgeRaw, repelRaw          []byte
 			feintRaw, triggerRaw, interactRaw       []byte
-			systemBias                              int
+			systemBias                              *int
+			// moveViewsRaw is read only off the turn's action row (a reaction's is NULL).
+			moveViewsRaw []byte
 		)
 
 		if err := rows.Scan(
@@ -111,7 +125,7 @@ func (r *Repository) FindMatchHistory(
 			&turnUUID, &turnCreatedAt, &turnFinishedAt, &resolutionRaw,
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
-			&feintRaw, &triggerRaw, &interactRaw, &systemBias,
+			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw,
 		); err != nil {
 			return nil, fmt.Errorf("FindMatchHistory scan: %w", err)
 		}
@@ -128,10 +142,15 @@ func (r *Repository) FindMatchHistory(
 			turnPoisoned = false
 		}
 
-		if curRound == nil || curRound.UUID != roundUUID {
+		// A scene with no round: the scene row is all there is.
+		if roundUUID == nil {
+			continue
+		}
+
+		if curRound == nil || curRound.UUID != *roundUUID {
 			curScene.Rounds = append(curScene.Rounds, appmatch.HistoryRound{
-				UUID: roundUUID, Mode: mode,
-				CreatedAt: roundCreatedAt, FinishedAt: roundFinishedAt,
+				UUID: *roundUUID, Mode: *mode,
+				CreatedAt: *roundCreatedAt, FinishedAt: roundFinishedAt,
 				Turns: make([]appmatch.HistoryTurn, 0),
 			})
 			curRound = &curScene.Rounds[len(curScene.Rounds)-1]
@@ -139,20 +158,45 @@ func (r *Repository) FindMatchHistory(
 			turnPoisoned = false
 		}
 
-		// A turn already dropped for an unreadable row: absorb the rest of its rows without
-		// retrying them — see the doc on turnPoisoned above.
-		if turnPoisoned && turnUUID == poisonedTurnUUID {
+		// A round with no turn — born, and maybe closed, without one closing inside it.
+		if turnUUID == nil {
 			continue
 		}
 
-		switch {
-		case curTurn != nil && curTurn.UUID == turnUUID:
-			// A reaction row for the turn currently being assembled.
-			react, err := decodeActionRow(
-				actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
-				speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
-				feintRaw, triggerRaw, interactRaw, systemBias,
+		// A turn already dropped for an unreadable row: absorb the rest of its rows without
+		// retrying them — see the doc on turnPoisoned above.
+		if turnPoisoned && *turnUUID == poisonedTurnUUID {
+			continue
+		}
+
+		// A turn row with no action row. PersistTurnClose writes the two in one transaction, so
+		// only drift produces this; the turn cannot be shown without the action that drove it,
+		// and it must not take its round down with it.
+		if actionUUID == nil {
+			log.Printf(
+				"FindMatchHistory: dropping turn %s (scene %s, round %s) — it has no action row",
+				*turnUUID, sceneUUID, *roundUUID,
 			)
+			turnPoisoned, poisonedTurnUUID = true, *turnUUID
+			curTurn = nil
+			continue
+		}
+
+		row := actionRow{
+			actionUUID: *actionUUID, actorUUID: derefUUID(actorUUID), reactToUUID: reactToUUID,
+			targetIDs: targetIDs, reactionKind: reactionKind,
+			speedRaw: speedRaw, skillsRaw: skillsRaw, moveRaw: moveRaw, attackRaw: attackRaw,
+			defenseRaw: defenseRaw, dodgeRaw: dodgeRaw, repelRaw: repelRaw,
+			feintRaw: feintRaw, triggerRaw: triggerRaw, interactRaw: interactRaw,
+		}
+		if systemBias != nil {
+			row.systemBias = *systemBias
+		}
+
+		switch {
+		case curTurn != nil && curTurn.UUID == *turnUUID:
+			// A reaction row for the turn currently being assembled.
+			react, err := row.decode()
 			if err != nil {
 				// Contain the damage to this ONE turn, the same trade-off DecodeResolution
 				// already makes for a stored collision: a history with one logged hole is
@@ -161,11 +205,11 @@ func (r *Repository) FindMatchHistory(
 				// — so the whole turn, not just this row, comes back out.
 				log.Printf(
 					"FindMatchHistory: dropping turn %s (scene %s, round %s) — reaction %s failed to decode: %v",
-					turnUUID, sceneUUID, roundUUID, actionUUID, err,
+					*turnUUID, sceneUUID, *roundUUID, *actionUUID, err,
 				)
 				curRound.Turns = curRound.Turns[:len(curRound.Turns)-1]
 				curTurn = nil
-				turnPoisoned, poisonedTurnUUID = true, turnUUID
+				turnPoisoned, poisonedTurnUUID = true, *turnUUID
 				continue
 			}
 			curTurn.Reactions = append(curTurn.Reactions, *react)
@@ -184,27 +228,38 @@ func (r *Repository) FindMatchHistory(
 			// where there are two. It takes BOTH tied turns carrying a reaction to reproduce —
 			// with only one, the remaining sort keys still happen to produce a workable order,
 			// which is why the earlier tie test passed either way.
-			act, err := decodeActionRow(
-				actionUUID, actorUUID, reactToUUID, targetIDs, reactionKind,
-				speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw,
-				feintRaw, triggerRaw, interactRaw, systemBias,
-			)
+			act, err := row.decode()
 			if err != nil {
 				// See the reaction-row branch above for why this is contained to the turn
 				// rather than propagated: one bad row must not take the whole match's history
 				// offline, the same trade-off DecodeResolution makes.
 				log.Printf(
 					"FindMatchHistory: dropping turn %s (scene %s, round %s) — action %s failed to decode: %v",
-					turnUUID, sceneUUID, roundUUID, actionUUID, err,
+					*turnUUID, sceneUUID, *roundUUID, *actionUUID, err,
 				)
-				turnPoisoned, poisonedTurnUUID = true, turnUUID
+				turnPoisoned, poisonedTurnUUID = true, *turnUUID
 				curTurn = nil
 				continue
 			}
+			// What each player saw of the move live. An unreadable value is dropped, not the
+			// turn: nil fails closed in the use case (category only), which is what a row from
+			// before the column reads as anyway.
+			var moveViews map[uuid.UUID]masteraction.View
+			if len(moveViewsRaw) > 0 {
+				if err := json.Unmarshal(moveViewsRaw, &moveViews); err != nil {
+					log.Printf("FindMatchHistory: turn %s — move_views of action %s failed to decode, shown to nobody "+
+						"but the master and the owner: %v", *turnUUID, *actionUUID, err)
+					moveViews = nil
+				}
+			}
+			// turns.created_at and turns.finished_at are NOT NULL; the pointers only exist
+			// because the LEFT join could have handed NULL for a turn that is not there.
 			curRound.Turns = append(curRound.Turns, appmatch.HistoryTurn{
-				UUID: turnUUID, CreatedAt: turnCreatedAt, FinishedAt: turnFinishedAt,
-				Action:     *act,
-				Resolution: DecodeResolution(resolutionRaw),
+				UUID: *turnUUID, CreatedAt: derefTime(turnCreatedAt), FinishedAt: derefTime(turnFinishedAt),
+				Action:       *act,
+				Resolution:   DecodeResolution(resolutionRaw),
+				MoveViews:    moveViews,
+				LandingViews: decodeLandingViews(resolutionRaw),
 			})
 			curTurn = &curRound.Turns[len(curRound.Turns)-1]
 		}
@@ -213,6 +268,41 @@ func (r *Repository) FindMatchHistory(
 		return nil, fmt.Errorf("FindMatchHistory rows: %w", err)
 	}
 	return scenes, nil
+}
+
+// actionRow is one actions row as FindMatchHistory scanned it, bundled so the two branches
+// that decode one (the turn's action, a reaction) do not repeat sixteen arguments each.
+type actionRow struct {
+	actionUUID, actorUUID                   uuid.UUID
+	reactToUUID                             *uuid.UUID
+	targetIDs                               []uuid.UUID
+	reactionKind                            *string
+	speedRaw, skillsRaw, moveRaw, attackRaw []byte
+	defenseRaw, dodgeRaw, repelRaw          []byte
+	feintRaw, triggerRaw, interactRaw       []byte
+	systemBias                              int
+}
+
+func (a actionRow) decode() (*action.Action, error) {
+	return decodeActionRow(
+		a.actionUUID, a.actorUUID, a.reactToUUID, a.targetIDs, a.reactionKind,
+		a.speedRaw, a.skillsRaw, a.moveRaw, a.attackRaw, a.defenseRaw, a.dodgeRaw, a.repelRaw,
+		a.feintRaw, a.triggerRaw, a.interactRaw, a.systemBias,
+	)
+}
+
+func derefUUID(p *uuid.UUID) uuid.UUID {
+	if p == nil {
+		return uuid.Nil
+	}
+	return *p
+}
+
+func derefTime(p *time.Time) time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	return *p
 }
 
 // decodeActionRow rebuilds one actions row — the turn's own action or one of its reactions,

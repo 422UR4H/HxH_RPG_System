@@ -48,7 +48,13 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		}
 		move = &action.Move{
 			Category: category,
-			From:     p.Move.From,
+			// From is NOT read off the payload (B6, spec §4.3 "B5, B6 e B10"): the server
+			// owns the board, so whatever the client declared here is parsed, then discarded.
+			// room.go's enqueue_action arm fills it in afterwards from the actor's own piece
+			// position — nil when the actor has none. A reaction's Move goes through this
+			// same mapper and gets the same nil; nothing derives a reaction's origin today,
+			// since a reaction's movement is applied only at turn close (see applyClosedEscapes
+			// / applyMove), never checked against a wall at attach time.
 			Position: p.Move.Position,
 			// The skill comes from the category, never from the payload. The front shows the
 			// tactical move types explicitly; switching Dash to Shift in the bottom sheet
@@ -291,12 +297,18 @@ func buildMasterAction(masterUUID uuid.UUID, p MasterActionPayload) *action.Mast
 	}
 	if p.Move != nil {
 		// TODO: map Move fully once frontend contract is finalized
-		_ = p.Move
+		//
+		// Only Position is mapped, and on purpose: a master action's move is the master's
+		// DRAG (spec §4.3, "Master action de peça"), not a game movement. Category, speed and
+		// charge are what make a movement cost bars and roll dice — the drag does neither, so
+		// they are ignored even when a client sends them. From is not read either: the server
+		// knows where the piece is.
+		ma.Move = &action.Move{Position: p.Move.Position}
 	}
-	if p.Attack != nil {
-		// TODO: map Attack once frontend contract is finalized
-		_ = p.Attack
-	}
+	// There is no Attack branch here (B9, spec §2): the TODO that used to sit on this line is
+	// gone BECAUSE the decision was taken, not because it was forgotten. The master attacks
+	// through an NPC, with enqueue_action — room.go's enqueue_master_action arm refuses an
+	// "attack" key before it ever reaches this mapper.
 	if p.Interact != nil {
 		ma.Interact = &action.Interact{Kind: action.InteractKind(p.Interact.Kind)}
 	}

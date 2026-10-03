@@ -776,8 +776,9 @@ Ela existe porque **o mestre também age**, em dois níveis: dentro de uma actio
 ainda não está escrito, e é ele que impede `MasterAction` de ser um caso particular de
 `Action`.
 
-> `buildMasterAction` (`action_mapper.go`) mapeia só parte dela — `Move` e `Attack` caem em
-> `TODO`. É o **mapper** que está incompleto, não a entidade.
+> `buildMasterAction` (`action_mapper.go`) mapeia só parte dela — `Attack` cai em `TODO`, e de
+> `Move` só a posição (é o arrastar do mestre, não movimento de jogo). É o **mapper** que está
+> incompleto, não a entidade.
 
 #### A corrente de testes
 
@@ -1018,8 +1019,11 @@ exatamente na CD já é linha de defensor.
 
 `TurnResolution` carrega `CharacterResults` com o dano **projetado** — nada tocou ficha
 nenhuma. A aplicação de verdade acontece em `MatchSession.closeOpenTurn`, no fechamento
-implícito que `OpenNextAction`/`PullAction` já faziam, e devolve `[]DamagedCharacter` para o
-use case persistir com `sheet.Repository.UpdateStatusBars`.
+implícito que `OpenNextAction`/`PullAction` já faziam, e devolve `[]DamagedCharacter`. O use
+case não grava nada: a `Room` copia as barras das fichas atingidas sob `r.mu`
+(`TurnCloseData.StatusBars`) e o `PersistTurnClose` as grava com
+`sheet.Repository.UpdateStatusBars` **na transação do turno** — um comando do mestre, uma
+transação (dono do produto, 2026-10-02).
 
 ### Serialização: `r.mu` atravessa o `Execute`
 
@@ -1122,13 +1126,27 @@ si, ligável pelo mestre.
 
 ### O round fecha sozinho
 
-O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem". Quando
-nenhuma ação pendente passa no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca
-`TurnTransition.RoundExhausted = true` em vez de abrir algo, e é aí que `CloseRoundUC`
-finalmente ganha um chamador: o caminho de auto-fechamento em
-`application/match/open_next_action.go` o executa na hora, loga e segue adiante se falhar — a
-mesa não pode ficar sem o bastão por causa de uma falha de fechamento. `bars_updated` e
-`round_closed` saem de `room.go` nessa mesma passada.
+O predicado é `RoundScheduler.AnyEligible` — sua negação, não "as barras acabarem": o round
+acaba quando nenhuma ação na fila consegue mais pagar o preço. Quando nenhuma ação pendente passa
+no porteiro que lhe cabe, `MatchSession.OpenNextAction` marca `TurnTransition.NoActionCanPay =
+true` em vez de abrir algo, e é aí que `CloseRoundUC` finalmente ganha um chamador: o caminho de
+auto-fechamento em `application/match/open_next_action.go` o executa na hora, loga e segue
+adiante se falhar — a mesa não pode ficar sem o bastão por causa de uma falha de fechamento.
+`CloseRoundUC` só mexe na memória (liquida as barras, expira os modificadores de fim de round,
+abre o round seguinte); quem grava é o `room.go`, depois de soltar `r.mu`: o fim do round e a
+linha do seguinte vão **juntos** na transação do turno que o mesmo comando fechou
+(`TurnCloseData.NextRound`), ou numa só deles (`PersistRoundClose`) se nenhum turno fechou — um
+comando do mestre, uma transação (dono do produto, 2026-10-02). `bars_updated` e `round_closed`
+saem de `room.go` nessa mesma passada, depois da gravação.
+
+> Nomenclatura: até 2026-10-02 esse campo se chamava `RoundExhausted` e o texto falava em
+> "exaustão". O nome estava errado — o round acaba porque nenhuma ação na fila consegue mais
+> pagar o preço; exaustão vai ser uma mecânica de verdade (dono do produto) — e saiu.
+
+O que o `CloseRound` liquida em memória **não é durável** em lugar nenhum: o saldo que cruza para
+o round seguinte e os modificadores do round vivem só na sessão (um reinício zera as barras —
+perdido, não divergente). Por isso não há nada além das duas linhas de round para pôr na
+transação.
 
 ⚠️ **`ProjectOrder` e `SelectNext` compartilham a pontuação inteira, não só o desempate.** Os
 dois passam pelo mesmo `RoundScheduler.best` — a chave é `keyOf`, e o empate vai para quem
@@ -1241,6 +1259,50 @@ até as passivas e retorna cedo. `ReactRepel` vai para `resolveRepel`, que lê a
 que a Fase 2 escreveu como função pura e nunca ligou — é aqui que ela liga. As outras cinco
 passam por `dodgeAndReserve`: reflexo sempre, Evasão só nas variantes fechadas, com o pior dos
 dois contando como "a esquiva" e a diferença virando reserva.
+
+### O escape: esquiva **e** movimento, e a peça só no fechamento (B13)
+
+Um escape é uma esquiva que se move, e o movimento é um **teste próprio contra a mesma CD** — o
+acerto do atacante. Para todo `ReactionKind` com `Displaces()` (`escape`, `escapeGuard`,
+`closedEscape`), `ResolveReaction` lê:
+
+- `dodgePassed = Dodge.Total >= HitTotal`;
+- `movePassed = Move != nil && Move.FinalSpeed >= HitTotal` — o `FinalSpeed` já é o `Accelerate`
+  rolado no `Dash` e o `Brake` passivo no `Shift` (`deriveSpeeds`);
+- **`Avoided = Escaped = dodgePassed && movePassed`.**
+
+Não escapou → o golpe é lido como se o alvo tivesse ficado: o `escapeGuard` cai para a defesa
+(`KeepsDefault`), os outros tomam o golpe inteiro. O veredito viaja em
+`ReactionOutcome.Escape` e `CharacterResult.Escape` (`service.EscapeResult{MovePassed,
+DodgePassed, Escaped, Landing}`), `nil` fora dos escapes.
+
+**Onde a peça de um escape que falhou vai parar não é regra do motor** — é do desenho da
+colisão, que não existe. Até existir, é o **mestre** quem decide, pelo `edit_action`
+(`escapeLanding`): a escolha fica no `Turn` (`SetEscapeLanding`/`ClearEscapeLanding`, por
+`reactionId`), validada por `MatchSession.SetEscapeLanding` (só reação do turno aberto com
+`Displaces()`, posição dentro da grade), e o `TurnResolver` a copia para
+`CharacterResult.Escape.Landing` **só enquanto o escape falha** — a escolha é permanente com o
+turno aberto, mas um escape que passa vai ao destino, qualquer que seja ela.
+`ResolveReaction` nunca preenche `Landing`.
+
+**Nenhum escape desloca na abertura da reação** — qualquer um pode falhar. No fechamento, pelos
+três verbos que fecham, `Room.applyClosedEscapes` lê o `cr.Escape` da resolução liquidada (uma
+fonte só para "escapou") e aplica: `Escaped` → destino; senão `Landing` → onde o mestre
+escolheu; senão a peça fica. O veredito é persistido com a resolução (`turns.resolution`) e
+volta no histórico REST.
+
+> **Regra conhecida, não implementada:** o movimento **soma** à esquiva, o que torna escapar
+> mais fácil que esquivar parado. Quando a colisão existir, a soma entra em `Dodge.Total`
+> antes das duas comparações (há um `TODO(collision)` no ponto exato, em
+> `reaction_collision.go`).
+
+> ⚠️ **Uma condição do mestre sobre `dodge` hoje não chega ao resolvedor.** `deriveReflex` monta
+> o `RollInput` sem ler `Dodge.Context.Condition`, então um `edit_action` com
+> `conditions[].field: "dodge"` é aceito, grava o override e não muda `Dodge.Total`. No pacote
+> `service`, o único `Condition` lido é o do `hit` (o de `moveSpeed`/`speed` chega por
+> `deriveSpeeds`, na sessão); `defense` e `repel` parecem estar no mesmo caso da esquiva. É
+> anterior ao B13 e não foi corrigido aqui; os testes do escape decidem a esquiva pelo outro
+> lado (uma condição no `hit` do ataque).
 
 ### A cadeia: `ChainState`, `Reduce`, e a ordem de abertura do mestre
 
@@ -1576,10 +1638,10 @@ código, então adicionar e remover skills muda uma lista que não decide nada.
 | Conflito no `Bias` | ✅ Fase 1 — `RollCondition.Bias` é do mestre; o viés do sistema é um `Modifier` de `Source: system`, e o `RollCalculator` soma os dois em `Derive` |
 | Tela de enviar action | **não existe no front** — Fase 6 |
 | Escada de margem | ✅ Fase 2 — `service.ClimbLadder` como função pura, sem reação ligada nela. ✅ Fase 4 — `resolveRepel` liga o repelir; os quatro degraus são alcançáveis (antes, `RungFailure` era o único possível) |
-| Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars` |
+| Aplicação do dano na ficha | ✅ Fase 2 — dry-run em toda resolução, aplicado uma vez no fechamento do turno e persistido via `UpdateStatusBars`, na transação do turno (`PersistTurnClose`) |
 | `PriorityQueue` | ✅ Fase 3 — deixou de ser heap; virou lista simples, chave calculada em `RoundScheduler` na hora da seleção |
 | `BarEconomy` / `RoundScheduler` | ✅ Fase 3 — preço por barra, média sem truncar, porteiro duplo (`IsEligible`), chave (`Key`), carry-over com teto (`CloseBalance`), projeção da ordem (`ProjectOrder`) |
-| Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` emite `round_closed` |
+| Fechamento do round | ✅ Fase 3 — `RoundScheduler.AnyEligible` nega, `OpenNextActionUC` chama `CloseRoundUC` (primeiro chamador que ele ganha), `room.go` grava o fim do round com o seguinte (na transação do turno, ou numa só deles) e emite `round_closed` |
 | `RoundMode.Race` | ✅ Fase 3 — alcançável via `ChangeRoundModeUC`/`change_round_mode`, master only. Iniciativa continua fora — `action.Initiative` segue órfão |
 | `bars_updated` | ✅ Fase 3 — broadcast com `seq`, preços, saldos/velocidades por personagem e a ordem projetada; nada que identifique a action |
 | `ReactionKind` | ✅ Fase 4 — sete valores declarados no envio, `Bars()`/`RequiredComponents()`/`Displaces()` no próprio tipo; `enum.DodgeCategory` removida |

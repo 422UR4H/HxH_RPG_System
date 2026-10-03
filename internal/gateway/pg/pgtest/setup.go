@@ -73,7 +73,8 @@ func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 	ctx := context.Background()
 
 	_, err := pool.Exec(ctx, `
-		TRUNCATE TABLE actions, turns, rounds, scenes,
+		TRUNCATE TABLE match_boards, match_events, master_actions,
+			actions, turns, rounds, scenes,
 			enrollments, submissions, sessions,
 			match_participants, matches, maps, campaigns, scenarios,
 			joint_proficiencies, proficiencies, character_profiles,
@@ -208,6 +209,25 @@ func InsertTestCharacterSheet(t *testing.T, pool *pgxpool.Pool, playerUUID *stri
 		t.Fatalf("failed to insert test character profile: %v", err)
 	}
 	return sheetUUID
+}
+
+func InsertTestMap(t *testing.T, pool *pgxpool.Pool, campaignUUID, name string) string {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+
+	var mapUUID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO maps (campaign_uuid, name, description, grid, pieces, walls, decorations, items, created_at, updated_at)
+		 VALUES ($1, $2, $3, '{"kind":"square","cols":25,"rows":25,"cell_size":64,"skew_ratio":1,"rotation":0,"color":"#ffffff","opacity":0.5,"line_style":"solid"}',
+		         '[]', '[]', '[]', '[]', $4, $5)
+		 RETURNING uuid`,
+		campaignUUID, name, "Test map description", now, now,
+	).Scan(&mapUUID)
+	if err != nil {
+		t.Fatalf("failed to insert test map: %v", err)
+	}
+	return mapUUID
 }
 
 func InsertTestScene(t *testing.T, pool *pgxpool.Pool, matchUUID, category string) string {

@@ -44,4 +44,11 @@ var (
 	// of them would corrupt charSheets/statuses/charToPlayer for a character nobody can
 	// address afterwards.
 	ErrInvalidNPC = errors.New("cannot add NPC: sheetUUID, sheet and masterUUID are all required")
+	// ErrNotAnEscape means an escapeLanding named something that does not displace — the
+	// turn's own action, or a reaction whose kind is not one of the three escapes. Only an
+	// escape has a piece whose landing the master can decide.
+	ErrNotAnEscape = errors.New("escapeLanding only applies to an escape reaction on the open turn")
+	// ErrLandingOutOfGrid means the master put a failed escape's piece on a cell the board
+	// does not have.
+	ErrLandingOutOfGrid = errors.New("escapeLanding position is outside the grid")
 )

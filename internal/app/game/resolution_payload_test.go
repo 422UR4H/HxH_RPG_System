@@ -285,6 +285,49 @@ func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
 	}
 }
 
+// TestNewRoom_BarsSeqOutrunsAnEarlierRoom pins the contract's "the counter never restarts"
+// across Rooms. A client keeps the highest seq it applied and drops anything lower, through
+// reconnects — so a Room that replaces another for the same match (the process restarted, or
+// the room emptied and closed itself in Run) must not start counting from 0 again, or every
+// bars_updated it sends loses to the old room's last one and the client's bars freeze.
+func TestNewRoom_BarsSeqOutrunsAnEarlierRoom(t *testing.T) {
+	session, _, _ := racingSessionWithTwoActors(t)
+	matchID, masterID := uuid.New(), uuid.New()
+	lastSeq := func(r *Room, n int) uint64 {
+		t.Helper()
+		var seq uint64
+		for i := range n {
+			r.broadcastBars(session)
+			select {
+			case data := <-r.broadcast:
+				var msg Message
+				if err := json.Unmarshal(data, &msg); err != nil {
+					t.Fatalf("unmarshal message: %v", err)
+				}
+				var p BarsUpdatedPayload
+				if err := json.Unmarshal(msg.Payload, &p); err != nil {
+					t.Fatalf("unmarshal bars_updated: %v", err)
+				}
+				seq = max(seq, p.Seq)
+			case <-time.After(2 * time.Second):
+				t.Fatalf("bars_updated %d of %d never reached the broadcast channel", i+1, n)
+			}
+		}
+		return seq
+	}
+
+	old := lastSeq(NewRoom(matchID, masterID, RoomDeps{}), 3)
+	// The old room ran for a while before the new one replaced it — a millisecond is already
+	// a thousand times more time than the three snapshots it sent.
+	time.Sleep(time.Millisecond)
+	replacement := lastSeq(NewRoom(matchID, masterID, RoomDeps{}), 1)
+
+	if replacement <= old {
+		t.Errorf("the replacement room's first seq is %d, not above the old room's last %d — a "+
+			"client that reconnects into it would drop every bars_updated it sends", replacement, old)
+	}
+}
+
 // TestResolutionUpdatedPayloadCarriesEngineFaults pins the wire half of the two faults the
 // resolver used to swallow. The TODOs that marked them asked for them to be surfaced in the
 // resolution "for caller to surface" — this is that caller.
@@ -442,5 +485,68 @@ func TestProjectedPayoutsReachTheRightRecipients(t *testing.T) {
 	}
 	if len(dodge.Payouts) != 0 {
 		t.Errorf("the closed dodge's reserve leaked to a third party: %+v", dodge.Payouts)
+	}
+}
+
+// B13: the escape's verdict reaches the wire as the domain read it, plus the one thing the
+// wire derives — awaitsMaster, "failed and no landing chosen" — and landing only when chosen.
+func TestResolutionUpdatedPayloadCarriesTheEscape(t *testing.T) {
+	landing := [3]int{7, 6, 0}
+	cases := []struct {
+		name   string
+		escape *service.EscapeResult
+		want   *EscapeResultPayload
+		// wantJSON is the substring the marshalled target must contain.
+		wantJSON string
+	}{
+		{"not an escape", nil, nil, ""},
+		{
+			"escaped",
+			&service.EscapeResult{MovePassed: true, DodgePassed: true, Escaped: true},
+			&EscapeResultPayload{Escaped: true, MovePassed: true, DodgePassed: true},
+			`"escape":{"escaped":true,"movePassed":true,"dodgePassed":true,"awaitsMaster":false}`,
+		},
+		{
+			"failed, nothing chosen",
+			&service.EscapeResult{DodgePassed: true},
+			&EscapeResultPayload{DodgePassed: true, AwaitsMaster: true},
+			`"escape":{"escaped":false,"movePassed":false,"dodgePassed":true,"awaitsMaster":true}`,
+		},
+		{
+			"failed, landing chosen",
+			&service.EscapeResult{MovePassed: true, Landing: &landing},
+			&EscapeResultPayload{MovePassed: true, Landing: &landing},
+			`"awaitsMaster":false,"landing":[7,6,0]}`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res := &service.TurnResolution{CharacterResults: []service.CharacterResult{{
+				TargetID: uuid.New(), Escape: c.escape,
+			}}}
+			p := newResolutionUpdatedPayload(uuid.New(), res)
+			got := p.Targets[0].Escape
+			if (got == nil) != (c.want == nil) {
+				t.Fatalf("escape = %+v, want %+v", got, c.want)
+			}
+			if got != nil {
+				if got.Escaped != c.want.Escaped || got.MovePassed != c.want.MovePassed ||
+					got.DodgePassed != c.want.DodgePassed || got.AwaitsMaster != c.want.AwaitsMaster ||
+					(got.Landing == nil) != (c.want.Landing == nil) ||
+					(got.Landing != nil && *got.Landing != *c.want.Landing) {
+					t.Fatalf("escape = %+v, want %+v", *got, *c.want)
+				}
+			}
+			raw, err := json.Marshal(p.Targets[0])
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if c.want == nil && strings.Contains(string(raw), `"escape"`) {
+				t.Fatalf("a non-escape carries an escape key: %s", raw)
+			}
+			if c.wantJSON != "" && !strings.Contains(string(raw), c.wantJSON) {
+				t.Fatalf("JSON = %s, want it to contain %s", raw, c.wantJSON)
+			}
+		})
 	}
 }

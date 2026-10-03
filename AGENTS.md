@@ -71,8 +71,8 @@ and heavy integration. When genuinely unsure between Haiku and Sonnet, prefer So
 
 ```bash
 # CI (default):
-rtk gh run list --workflow=ci.yml --limit=1   # check status
-rtk gh run view <run-id> --log-failed         # failure logs
+gh run list --workflow=ci.yml --limit=1   # check status
+gh run view <run-id> --log-failed         # failure logs
 
 # Local (when needed):
 go test ./...                                         # all tests
@@ -109,7 +109,51 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 - Reaction visibility: players see reactions only when master reveals (currently master-only)
 - Initiative handling in `ChangeMode`
 - `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
-- Full Move/Attack mapping in `buildMasterAction` (pending frontend contract finalization)
+- No Attack mapping in `buildMasterAction` — decided, not pending (spec 2026-09-27 §2, B9): the master attacks through an NPC with `enqueue_action`; `enqueue_master_action` refuses an `attack` key outright. A master attack as an environment effect (a trap) is future work. Move maps only `position` — it is the master's drag (spec 2026-09-27 §4.3)
+
+**Fechamento da Fase 6 — pacote de back (B1–B16, spec 2026-09-27):**
+- **O tabuleiro é do servidor.** `match_boards` guarda um retrato por partida (peças, paredes,
+  grade, `bg` — `NULL` herda o do mapa); `player_memories` guarda o fog explorado. A `Room`
+  carrega (`loadBoard`) quando nasce e, em lobby, a cada conexão do mestre. Grava em dois
+  pontos, os dois serializados por `persistMu`: o fechamento de turno (`persistClosedTurn`, na
+  transação do `PersistTurnClose` — ver abaixo) e `persistBoard`, no `start_match` e — entre
+  turnos — nas master actions de peça e na interação/revelação de parede. **Dentro de um
+  turno aberto nada é gravado antes do fechamento** (dono do produto, 2026-10-01): nem o
+  tabuleiro (`persistBoardOutsideTurn`) nem as master actions nem o que cada jogador viu do
+  movimento aberto, que a `Room` guarda por turno (`turnWrites`, `turn_writes.go`). O
+  fechamento grava turno, master actions, vereditos de movimento/pouso (o `GET /history` mostra
+  o `move` como cada um o viu ao vivo) e tabuleiro+fog numa transação só (`PersistTurnClose`;
+  os três verbos não chamam `persistBoard`). Um reinício no meio do turno o perde inteiro, de propósito.
+  **Um comando do mestre, uma transação** (dono do produto, 2026-10-02): o HP que o fechamento
+  aplica também vai nela (`TurnCloseData.StatusBars`, copiado sob `r.mu` em `persistClosedTurn`),
+  e, quando o mesmo `open_next_action` acaba o round, o fim dele e o round seguinte
+  (`TurnCloseData.NextRound`; sem turno fechado, `PersistRoundClose`, uma transação só deles).
+  Os casos de uso de fechamento e o `CloseRoundUC` não fazem I/O nenhum. Uma gravação que falha
+  se cura na próxima que dá certo (`internal/app/game/unwritten.go`): fichas e fins de round não
+  gravados vão na transação seguinte. Fora disso:
+  `change_round_mode` (do round) e inscrição de NPC.
+  `map_state_sync` deixou de escrever: é aceito, ignorado, e responde só ao remetente.
+  `RoomDeps` (`internal/app/game/room_deps.go`) concentra toda dependência externa da `Room`.
+- **Escape = esquiva E movimento.** `Avoided = dodgePassed && movePassed` (spec B13):
+  `movePassed` compara `Move.FinalSpeed` ao acerto do atacante; `dodgePassed`, o `Dodge.Total`.
+  Falhando qualquer um dos dois, o golpe é lido como se o alvo tivesse ficado. Nenhum escape
+  desloca na abertura da reação — só no fechamento, por `applyClosedEscapes`; se falhou, o
+  mestre escolhe onde a peça cai pelo `edit_action.escapeLanding`, guardado no `Turn`. Ver
+  `docs/dev/match/combat-engine.md` ("O escape: esquiva e movimento").
+- **Master actions têm tabela própria (`master_actions`), não `actions`.** O ator de uma master
+  action é o mestre (usuário), não um `character_sheets`, e ela acontece fora de turno — as duas
+  colunas de `actions` (`actor_uuid` → ficha, `turn_uuid NOT NULL`) teriam que afrouxar e toda
+  leitura teria que filtrar um tipo do outro. Gravada no instante em que é aplicada (com turno
+  aberto, no fechamento dele, na transação do turno), com a projeção (`views`) do que cada
+  jogador viu dela ao vivo. Decisão do dono do produto, spec §4.8.
+- ⚠️ **Bug conhecido, achado na Task 12 (não corrigido nesta fase):** uma condição do mestre
+  (`edit_action` com `conditions[].field` = `"dodge"`, `"defense"` ou `"repel"`) é aceita,
+  grava o override, e **não muda o resultado** — `deriveReflex`/`resolveRepel`
+  (`internal/domain/match/service/reaction_collision.go`) montam o `RollInput` sem ler
+  `Dodge.Context.Condition`/`Repel.Context.Condition`, e a defesa automática é sempre passiva
+  sem ler `Condition` nenhuma. Só `hit` (e `speed`/`moveSpeed`, via `deriveSpeeds` na sessão)
+  chega ao resolvedor. É anterior a esta fase; documentado em `combat-engine.md` ("O escape:
+  esquiva e movimento").
 
 **Pendente de configurações de campanha/partida:**
 - `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por

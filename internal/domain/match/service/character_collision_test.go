@@ -217,6 +217,58 @@ func TestResolve_CharacterBranch(t *testing.T) {
 			t.Errorf("expected no character results without the target's sheet, got %d", len(res.CharacterResults))
 		}
 	})
+
+	// B13: an escape is a dodge AND a move, both read against the same CD (the attacker's
+	// hit). This pins ResolveReaction's EscapeResult reaching CharacterResult through
+	// resolveCharacterStep, and the chain consequence of a failed move: no Avoided, no
+	// Defended (escape gives up the safety net), full damage — exactly as if the target had
+	// stayed and just watched the blow land.
+	t.Run("an escape's EscapeResult reaches CharacterResult, and a failed move takes the whole blow (B13)", func(t *testing.T) {
+		// Hit = 8 + 7 = 15. The dodge dice are the same set, so DodgePassed clears it exactly;
+		// Move.FinalSpeed 5 does not.
+		tn := attackTurn(actorID, targetID, []int{8, 7}, []int{9, 3}, &sword)
+		react := action.NewAction(targetID, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, &action.Move{FinalSpeed: 5}, nil, nil,
+			&action.Dodge{RollCheck: action.RollCheck{
+				SkillName: enum.Reflex.String(), Attempts: action.RollAttempts{Primary: []int{8, 7}},
+			}}, nil, nil)
+		react.ReactionKind = action.ReactEscape
+		opened := tn.GetAction()
+		react.ReactToID = opened.GetID()
+		tn.AddReaction(react)
+		if !tn.OpenReaction(react.GetID()) {
+			t.Fatal("the escape reaction was not attached")
+		}
+
+		res := service.TurnResolver{}.Resolve(resolveInput(t, actorID, targetID, tn))
+		if len(res.CharacterResults) != 1 {
+			t.Fatalf("expected 1 character result, got %d", len(res.CharacterResults))
+		}
+		cr := res.CharacterResults[0]
+
+		if cr.Escape == nil {
+			t.Fatal("an escape must produce an EscapeResult on CharacterResult")
+		}
+		if !cr.Escape.DodgePassed {
+			t.Error("DodgePassed should be true: 15 clears the hit of 15")
+		}
+		if cr.Escape.MovePassed {
+			t.Error("MovePassed should be false: FinalSpeed 5 does not clear the hit of 15")
+		}
+		if cr.Escape.Escaped {
+			t.Error("Escaped requires BOTH the dodge and the move to clear the hit")
+		}
+		if cr.Avoided {
+			t.Error("failing the move means the blow is read as if the target had stayed — Avoided must be false")
+		}
+		if cr.Defended {
+			t.Error("escape gives up the safety net: a failed escape takes the whole blow")
+		}
+		if cr.EffectiveDamage != cr.RawDamage {
+			t.Errorf("EffectiveDamage = %d, want the full RawDamage %d — nothing stood behind the failed escape",
+				cr.EffectiveDamage, cr.RawDamage)
+		}
+	})
 }
 
 // TestResolve_SurfacesEngineFaults pins the two failures the resolver used to swallow whole.

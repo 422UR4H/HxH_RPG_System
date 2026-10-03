@@ -183,6 +183,10 @@ type CharacterResult struct {
 	// set it too, and neither is a dodge. Ask ReactionKind if the distinction matters.
 	Avoided  bool
 	Defended bool
+	// Escape is nil outside the three escapes (ReactionKind.Displaces()). See EscapeResult's
+	// own doc — Landing is filled by the resolver from the turn's escapeLanding, never by
+	// ResolveReaction.
+	Escape *EscapeResult
 
 	// ReactionKind is what this target answered with — "" when nothing was opened and the
 	// passive defaults applied instead.
@@ -262,6 +266,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 		// without their sheet the walk has nothing to derive anyway.
 		if a.Attack != nil && !tr.actorSheetMissing(in, a, res) {
 			chain := tr.seedChain(in, a)
+			landings := in.Turn.EscapeLandings()
 			for _, step := range buildChainOrder(a, in.Turn.GetReactions(), in.Turn.OpenedReactionIDs()) {
 				if in.Targets.CategorizeTarget(step.targetID) != TargetKindCharacter {
 					continue
@@ -270,6 +275,19 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 				if resErr != nil {
 					res.Errors = append(res.Errors, *resErr)
 					continue
+				}
+				// Where a FAILED escape lands is the master's choice, stored on the turn
+				// (edit_action's escapeLanding) — the engine has no rule for it
+				// (front-combat-phases.md §6A.5, B13). An escape that passed goes to its own
+				// slot, so a stored choice is not copied for it: the choice stands while the
+				// turn is open and only counts if, as read now, the escape failed. A fresh
+				// EscapeResult rather than a write through the pointer ResolveReaction made.
+				if cr.Escape != nil && !cr.Escape.Escaped {
+					if pos, ok := landings[cr.ReactionID]; ok {
+						esc := *cr.Escape
+						esc.Landing = &pos
+						cr.Escape = &esc
+					}
 				}
 				chain = next
 				res.CharacterResults = append(res.CharacterResults, cr)
@@ -514,6 +532,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	cr.Defense = out.Defense
 	cr.Avoided = out.Avoided
 	cr.Defended = out.Defended
+	cr.Escape = out.Escape
 	cr.Ladder = out.Ladder
 	cr.Payouts = out.Payouts
 	cr.AttackStopped = chainIn.Stopped

@@ -118,7 +118,8 @@ Note que a cena nova **sempre volta para `Free`**, mesmo que a anterior estivess
 ## `close_round`
 
 `CloseRoundUC` fecha o round atual e **abre um novo já preservando o `mode`**
-(`round.NewRound(mode)`), marcando `roundPersisted = false`. Persiste via
-`IRoundRepository.CloseRound` apenas se o round fechado já existia no banco.
-Erro de persistência é engolido (`_ = dbErr // log in production`) — a partida em memória
-segue em frente.
+(`round.NewRound(mode)`), marcando `roundPersisted = false`. Não grava nada (2026-10-02): o
+`Room` grava o fim do round e a linha do seguinte **juntos** — na transação do turno que o mesmo
+`open_next_action` fechou (`TurnCloseData.NextRound`), ou, se nenhum fechou, numa transação só
+deles (`IRoundRepository.PersistRoundClose`). Erro de persistência é logado dizendo o que se
+perdeu e engolido — a partida em memória segue em frente.

@@ -12,6 +12,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -28,10 +30,13 @@ func (m *mockHistoryRoundRepo) FindMatchHistory(
 ) ([]match.HistoryScene, error) {
 	return m.fn(ctx, matchUUID)
 }
-func (m *mockHistoryRoundRepo) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
+func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
 	return nil
 }
-func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockHistoryRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
+	return nil
+}
+func (m *mockHistoryRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
 func (m *mockHistoryRoundRepo) FindActiveSession(
@@ -109,7 +114,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			return false, nil
 		}}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		_, err := uc.Get(context.Background(), matchUUID, userUUID)
 		if err != auth.ErrInsufficientPermissions {
 			t.Fatalf("got %v, want ErrInsufficientPermissions", err)
@@ -138,7 +143,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 		}
 		checker := &mockParticipationChecker{}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		result, err := uc.Get(context.Background(), matchUUID, masterUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -201,7 +206,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			return true, nil
 		}}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		result, err := uc.Get(context.Background(), matchUUID, playerUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -246,7 +251,7 @@ func TestGetMatchHistoryUC(t *testing.T) {
 			return true, nil
 		}}
 
-		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker)
+		uc := match.NewGetMatchHistoryUC(matchMock, roundMock, checker, nil, nil)
 		result, err := uc.Get(context.Background(), matchUUID, thirdPartyUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -306,6 +311,7 @@ func TestGetMatchHistoryProjectsEngineFaults(t *testing.T) {
 				},
 			},
 			&mockParticipationChecker{},
+			nil, nil,
 		)
 	}
 	resolutionOf := func(t *testing.T, res *match.GetMatchHistoryResult) *service.TurnResolution {
@@ -365,7 +371,7 @@ func TestGetMatchHistoryRevealsFeintOfAClosedTurnToAThirdParty(t *testing.T) {
 			return historyWithTurns(closedTurn), nil
 		},
 	}
-	uc := match.NewGetMatchHistoryUC(matchMock, roundMock, &mockParticipationChecker{})
+	uc := match.NewGetMatchHistoryUC(matchMock, roundMock, &mockParticipationChecker{}, nil, nil)
 
 	// thirdPartyUUID is neither the master nor an owner of actorID — exactly the target who
 	// fell for the feint and, before this task, would never have found out.

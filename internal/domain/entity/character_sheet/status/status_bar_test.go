@@ -96,3 +96,19 @@ func TestStatusBar_SetCurrent_Invalid(t *testing.T) {
 		})
 	}
 }
+
+// TestReconstructBar: a bar rebuilt from its three numbers reads exactly as them, and is its own
+// object — what a turn's close hands the sheet gateway after r.mu is released, while the live
+// bar goes on belonging to the session.
+func TestReconstructBar(t *testing.T) {
+	live := status.ReconstructBar(0, 7, 10)
+	if live.GetMin() != 0 || live.GetCurrent() != 7 || live.GetMax() != 10 {
+		t.Fatalf("ReconstructBar(0, 7, 10) = %d/%d/%d, want 0/7/10", live.GetMin(), live.GetCurrent(), live.GetMax())
+	}
+
+	snap := status.ReconstructBar(live.GetMin(), live.GetCurrent(), live.GetMax())
+	live.DecreaseAt(5)
+	if snap.GetCurrent() != 7 {
+		t.Fatalf("the copy moved with the live bar: current = %d, want 7", snap.GetCurrent())
+	}
+}

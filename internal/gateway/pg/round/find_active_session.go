@@ -11,7 +11,9 @@ import (
 )
 
 // FindActiveSession returns the current unfinished scene+round for the given match,
-// or nil if none exists.
+// or nil if none exists. Ordered newest first: should drift ever leave more than one open
+// round (or scene), the one born last is the one the table is in — and LIMIT 1 alone would
+// pick whichever the plan happened to return first.
 func (r *Repository) FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT s.uuid, s.category, s.brief_initial_description, s.created_at,
@@ -21,6 +23,7 @@ func (r *Repository) FindActiveSession(ctx context.Context, matchUUID uuid.UUID)
 		 WHERE s.match_uuid = $1
 		   AND s.finished_at IS NULL
 		   AND ro.finished_at IS NULL
+		 ORDER BY s.created_at DESC, ro.created_at DESC, ro.uuid DESC
 		 LIMIT 1`,
 		matchUUID,
 	)
