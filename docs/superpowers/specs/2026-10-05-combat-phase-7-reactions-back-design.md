@@ -121,8 +121,7 @@ e as perícias lidas pelo resolvedor já estão em código; o que muda é que o 
 - **O que `Opened` corta e o que mantém é exatamente o do `turn_opened`**: cortados os dados,
   `skillValue` e `result` de `dodge`, `repel`, `skills[]`, `move.charge`; **mantidos**
   `speed.rollCheck` e `move.speed`/`move.finalSpeed`. É a leitura de "projetada como o
-  `turn_opened.action` do B2" — ver a decisão D1 em §9, que é o ponto que o revisor deve
-  confirmar.
+  `turn_opened.action` do B2" — decisão D1 em §9, confirmada pelo dono do produto.
 - **O `move` passa pelo portão de fog da peça**, como o de uma ação. A origem julgada é **a casa
   em que a peça do reator está quando a reação abre** (`pieceSlotOf`) — a peça de uma fuga não
   anda na abertura, então é também onde ela está. Uma reação nunca tem `move.from` (o mapper não
@@ -430,11 +429,11 @@ arquivo e função). Implementadores despachados com `model: sonnet`; a tarefa q
 
 ## 9. Decisões desta sessão
 
-Forma técnica, decidida aqui. **D1 e D3 são as que o revisor deve olhar.**
+Forma técnica, decidida aqui. D1 e D3 foram confirmadas pelo dono do produto em 2026-10-05.
 
 | # | Decisão | Por quê |
 |---|---|---|
-| **D1** | O corte do `reaction` no `reaction_opened` é **exatamente** o `Opened` do `turn_opened`: mantém `speed` e `move.speed`/`finalSpeed`, corta os números de `dodge`/`repel`/`skills` | "Projetada como o `turn_opened.action` do B2" é a instrução operativa, e uma segunda função de corte divergiria da primeira. As velocidades já vão a público pelo `bars_updated` (a reação cobrada grava a velocidade dela na barra). ⚠️ Ponto a confirmar: no escape, o `move.finalSpeed` é uma das duas metades do teste de fuga. Ele só não entrega o desfecho porque o acerto do atacante continua escondido. Se "sem números" quis dizer **nenhum**, a troca é cortar `speed`/`move.speed`/`finalSpeed` só no ramo da reação — uma linha |
+| **D1** | O corte do `reaction` no `reaction_opened` é **exatamente** o `Opened` do `turn_opened`: mantém `speed` e `move.speed`/`finalSpeed`, corta os números de `dodge`/`repel`/`skills` | "Projetada como o `turn_opened.action` do B2" é a instrução operativa, e uma segunda função de corte divergiria da primeira. As velocidades já vão a público pelo `bars_updated` (a reação cobrada grava a velocidade dela na barra). ⚠️ Ponto a confirmar: no escape, o `move.finalSpeed` é uma das duas metades do teste de fuga. Ele só não entrega o desfecho porque o acerto do atacante continua escondido. **Aprovado pelo dono do produto (2026-10-05):** as velocidades ficam visíveis — escondê-las só no cartão não adiantaria, porque a reação cobrada grava a velocidade na barra pública no attach |
 | D2 | `reaction_attached` vai a quem reagiu **e** ao mestre, uma mensagem só | A decisão 3 manda nomear o consumo ao mestre; um segundo tipo para o mesmo fato iria contra a convenção do servidor de jogo |
 | **D3** | No histórico, o terceiro vê o `move.position` da reação se o viu **na abertura** ou viu a peça chegar | A regra-mãe do histórico é "como foi visto ao vivo"; a regra antiga só escondia porque a reação não ia à mesa ao vivo. Consequência visível: o destino de uma fuga que **falhou** passa a aparecer no histórico para quem o viu na abertura. **Aprovado pelo dono do produto (2026-10-05)** "por enquanto": ao fim da partida, quem participou vê tudo — §4.6.1 |
 | D4 | O consumo é persistido numa coluna da linha da reação (`actions.consumed_action_ids`) | É a única superfície que sobrevive a "o turno fechou com o jogador fora, e depois o servidor reiniciou" — e a decisão 3 diz que a consumida nunca aparece como perdida |
