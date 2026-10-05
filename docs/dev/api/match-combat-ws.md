@@ -89,6 +89,9 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 > [`add_npc`](#add_npc) — os dois caem no mesmo `charToPlayer`, pelo mesmo mecanismo (Decisão
 > 6 do plano). **Ficha de jogador continua negada ao mestre:** o dono ali é o jogador, e isso
 > não muda por quem enviou a mensagem.
+>
+> O mesmo vale para [`attach_reaction`](#attach_reaction): o mestre reage **pelo NPC** que é
+> alvo, pela mesma checagem `charToPlayer`. A ficha de jogador continua negada a ele.
 
 ## 3. Índice
 
@@ -97,7 +100,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | Mensagem | Quem pode enviar |
 |---|---|
 | [`enqueue_action`](#enqueue_action) | jogador (pelo próprio personagem) |
-| [`attach_reaction`](#attach_reaction) | jogador **alvo** da ação aberta |
+| [`attach_reaction`](#attach_reaction) | jogador **alvo** da ação aberta, pelo próprio personagem; o mestre, pelo NPC alvo |
 | [`open_next_action`](#open_next_action) | mestre |
 | [`pull_action`](#pull_action) | mestre |
 | [`open_reaction`](#open_reaction) | mestre |
@@ -116,7 +119,8 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`action_queued`](#action_queued) | **só o mestre** |
 | [`bars_updated`](#bars_updated) | mesa inteira |
 | [`turn_opened`](#turn_opened) | mesa inteira |
-| [`reaction_opened`](#reaction_opened) | mesa inteira |
+| [`reaction_attached`](#reaction_attached) | quem reagiu **+ mestre** |
+| [`reaction_opened`](#reaction_opened) | mesa inteira (projetado por destinatário) |
 | [`resolution_updated`](#resolution_updated) | **mestre, ou mesa projetada** — ver §5 |
 | [`action_edited`](#action_edited) | só o mestre |
 | [`close_turn_refused`](#close_turn_refused) | só o mestre |
@@ -241,8 +245,7 @@ O payload é o mesmo `ActionPayload`, com `reactToId` e `reactionKind` obrigató
     "actorId": "22222222-2222-4222-8222-222222222222",
     "reactToId": "33333333-3333-4333-8333-333333333333",
     "reactionKind": "closedDodge",
-    "skills": [ { "skillName": "Evasion" } ],
-    "dodge": { "category": "Dash", "rollCheck": { "skillName": "Reflex" } }
+    "dodge": {}
   }
 }
 ```
@@ -254,7 +257,7 @@ O payload é o mesmo `ActionPayload`, com `reactToId` e `reactionKind` obrigató
     "actorId": "22222222-2222-4222-8222-222222222222",
     "reactToId": "33333333-3333-4333-8333-333333333333",
     "reactionKind": "repel",
-    "repel": { "weapon": "Sword", "rollCheck": { "skillName": "Repel" } }
+    "repel": { "weapon": "Sword" }
   }
 }
 ```
@@ -267,11 +270,28 @@ as separa, porque o que as separa é a intenção do jogador.
 |---|---|---|---|
 | `nothing` | — | nenhuma | — |
 | `dodge` | `dodge` | nenhuma | — |
-| `closedDodge` | `dodge` + entrada `Evasion` em `skills` | nenhuma | — |
+| `closedDodge` | `dodge` (+ `Evasion`, acrescentada pelo servidor) | nenhuma | — |
 | `escape` | `dodge` + `move` | `action` + `move` | **Dash** |
 | `escapeGuard` | `dodge` + `move` | `action` + `move` | **Dash** |
-| `closedEscape` | `dodge` + `move` + entrada `Evasion` em `skills` | `move` | **Shift** |
+| `closedEscape` | `dodge` + `move` (+ `Evasion`, acrescentada pelo servidor) | `move` | **Shift** |
 | `repel` | `repel` | `action` | — |
+
+**As perícias da reação são derivadas pelo servidor.** `dodge.rollCheck.skillName` é sempre
+`Reflex`, `repel.rollCheck.skillName` é sempre `Repel`, e `closedDodge`/`closedEscape` ganham a
+entrada `{ "skillName": "Evasion" }` em `skills` quando ela falta (uma entrada `Evasion` já
+presente não é duplicada). O que o payload mandar nesses campos é validado — nome de perícia
+desconhecido continua recusado com `invalid_action` — e substituído: o mesmo estado do
+`attack.hit`, que é sempre `Accuracy`. O front não escreve nome de perícia nenhum para reagir.
+
+Payload mínimo de cada tipo, além de `actorId`, `reactToId` e `reactionKind`:
+
+| `reactionKind` | Payload mínimo |
+|---|---|
+| `nothing` | — |
+| `dodge`, `closedDodge` | `dodge: {}` |
+| `escape`, `escapeGuard` | `dodge: {}`, `move: {category: "Dash", position}` |
+| `closedEscape` | `dodge: {}`, `move: {category: "Shift", position}` |
+| `repel` | `repel: {}` ou `repel: {weapon}` |
 
 **A categoria de `move` das três fugas é validada no SERVIDOR, não sugerida.**
 `ReactionKind.RequiredMoveCategory()` (`reaction_kind.go`) fixa o par; `action_mapper.go`
@@ -294,11 +314,15 @@ esse veredito só existe para os `reactionKind` com `Displaces()`.
 Uma reação **livre** (as que não cobram barra) não consome a ação que o personagem tinha na
 fila e não rola em Desvantagem. Uma reação **cobrada** consome a ação enfileirada daquele
 personagem em cada barra que cobra — e, se consumiu algo, a troca custa **Desvantagem**
-(`SystemBias = -1`).
+(`SystemBias = -1`). Por barra que cobra, a ação consumida é a de **melhor chave** naquela barra
+(`BestPendingFor`, a mesma escolha do escalonador); uma ação combinada, que está nas duas
+barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
+[`reaction_attached`](#reaction_attached).
 
-**Dispara:** [`resolution_updated`](#resolution_updated) **só para o mestre** — o turno está
-aberto, logo `isSettled: false`. A reação aparece em `pendingReactions`.
-Não há ack próprio e **não há broadcast**: a mesa não é avisada de que alguém reagiu.
+**Dispara:** [`reaction_attached`](#reaction_attached) (a quem reagiu e ao mestre; uma cópia só
+quando quem reagiu é o mestre), depois [`resolution_updated`](#resolution_updated) **só para o
+mestre** — o turno está aberto, logo `isSettled: false`. A reação aparece em
+`pendingReactions`. **Não há broadcast**: a mesa não é avisada de que alguém reagiu.
 
 **Erros**
 
@@ -308,9 +332,9 @@ Não há ack próprio e **não há broadcast**: a mesa não é avisada de que al
 | `invalid_action` | `"reaction requires react_to_id"` |
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` |
 | `invalid_action` | `"actorId is required: …"` |
-| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel` / `an evasion skill entry`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
+| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
-| `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action`. |
+| `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action` · `this character already reacted to the open action` (segundo `attach_reaction` do mesmo personagem na mesma ação, de qualquer tipo, aberta ou não. Recusado antes de rolar ou cobrar: a fila e as barras não mudam). |
 
 ### `open_next_action`
 
@@ -394,8 +418,8 @@ poder de mestre e muda o resultado**: uma reação anexada mas não aberta delib
 Abrir **não cobra nada**: as barras foram debitadas no *attach*, justamente para que narrar
 não mova número.
 
-**Dispara:** [`reaction_opened`](#reaction_opened) para a **mesa** (de quem é a vez de narrar
-é público) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
+**Dispara:** [`reaction_opened`](#reaction_opened) à **mesa**, **projetado por destinatário**
+(de quem é a vez de narrar, e com o quê, é público; os números não) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
 sendo do mestre — o turno ainda está aberto). **Nunca** um
 [`piece_moved`](#piece_moved-servidor): abrir uma fuga mostra a intenção, e a peça dela só anda
 no fechamento do turno — ver abaixo.
@@ -926,6 +950,37 @@ redundante com ela.
 > é a versão do MESMO fato que **sobrevive à reconexão**: um payload `action_queued` inteiro
 > por ação ainda pendente, na ordem de inserção da fila. Ver a seção de `match_full_state`.
 
+### `reaction_attached`
+
+**Direção:** servidor → cliente. **Destino:** quem reagiu **+ o mestre** — uma cópia só quando
+o mestre é quem reagiu.
+
+Responde um [`attach_reaction`](#attach_reaction) aceito.
+
+```json
+{ "type": "reaction_attached", "payload": { "turnId": "5555…", "reactionId": "4444…", "actorId": "2222…", "consumedActionIds": ["3333…"] } }
+```
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `turnId` | uuid | O turno aberto a que a reação foi anexada. |
+| `reactionId` | uuid | O ID da reação — o que [`open_reaction`](#open_reaction) pede de volta e o que `ownReactions` indexa. |
+| `actorId` | uuid | O personagem que reagiu (o NPC, quando o mestre reage por ele). |
+| `consumedActionIds` | uuid[] | As ações da fila que uma reação cobrada consumiu. |
+
+**Destino:** quem reagiu **e** o mestre — a mesma mensagem, o mesmo conteúdo. Quando quem
+reagiu é o mestre (reação de NPC), ele recebe **uma** cópia só. **A mesa não recebe nada**: que
+alguém reagiu não é notícia de mesa até o mestre abrir a reação.
+
+**`consumedActionIds` é sempre lista:** `[]` numa reação livre ou numa cobrada que não achou
+nada na fila — nunca `null`, nunca ausente.
+
+**Uso:** o front tira a ação consumida da lista de declaradas (dono) e da fila (mestre); ela
+**não** foi perdida — ver a regra de reconciliação em [`match_full_state`](#match_full_state).
+
+**Disparado por:** `attach_reaction` aceito, **antes** do `resolution_updated` do mesmo attach
+(mesma goroutine).
+
 ### `bars_updated`
 
 **Direção:** servidor → cliente. **Destino:** **mesa inteira**, em broadcast — *não* é
@@ -1207,21 +1262,114 @@ de ser.
 
 ### `reaction_opened`
 
-**Direção:** servidor → cliente. **Destino:** **mesa inteira** — de quem é a vez de narrar
-é estado de mesa.
+**Direção:** servidor → cliente. **Destino:** **mesa inteira**, **uma cópia por destinatário**
+— de quem é a vez de narrar, e com o quê, é estado de mesa (Fase 7, item 1; design spec §4.1).
+Como `reaction` é **projetada por destinatário**, a mensagem viaja pela **pista direta**
+(`dispatchPerPlayer`), um payload construído por cliente, e não por `r.broadcast`.
+
+**O que o MESTRE vê** (`actionwire.Full`) — uma `closedEscape` (`Shift`) de `[6, 6, 0]` para
+`[8, 6, 0]`, com o rótulo fechado, a entrada `Evasion` e os números:
 
 ```json
 {
   "type": "reaction_opened",
   "payload": {
     "turnId": "55555555-5555-4555-8555-555555555555",
-    "reactionId": "44444444-4444-4444-8444-444444444444"
+    "reactionId": "44444444-4444-4444-8444-444444444444",
+    "reaction": {
+      "uuid": "44444444-4444-4444-8444-444444444444",
+      "actorId": "22222222-2222-4222-8222-222222222222",
+      "reactToId": "33333333-3333-4333-8333-333333333333",
+      "reactionKind": "closedEscape",
+      "skills": [
+        { "skillName": "Evasion", "rollCheck": { "skillName": "Evasion", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+      ],
+      "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": {}, "result": 11 } },
+      "move": {
+        "category": "Shift",
+        "position": [8, 6, 0],
+        "speed": { "skillName": "Brake", "skillValue": 0, "attempts": {}, "result": 11 },
+        "finalSpeed": 11
+      },
+      "dodge": { "rollCheck": { "skillName": "Reflex", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+    }
   }
 }
 ```
 
-Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master-only** — o
-`resolution_updated` que vem junto é de turno aberto.
+**O que um TERCEIRO vê** (nem mestre nem dono do reator) — a mesma reação, `Opened` depois de
+`ProjectAction`: o rótulo rebaixado a `escape`, sem a entrada `Evasion`, sem `consumedActionIds`,
+sem os números de `dodge`; as **velocidades ficam** (decisão D1). `move.position` está aqui
+**só porque este terceiro vê o destino** — ver o `move` abaixo:
+
+```json
+"reaction": {
+  "uuid": "44444444-4444-4444-8444-444444444444",
+  "actorId": "22222222-2222-4222-8222-222222222222",
+  "reactToId": "33333333-3333-4333-8333-333333333333",
+  "reactionKind": "escape",
+  "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": {}, "result": 11 } },
+  "move": {
+    "category": "Shift",
+    "position": [8, 6, 0],
+    "speed": { "skillName": "Brake", "skillValue": 0, "attempts": {}, "result": 11 },
+    "finalSpeed": 11
+  },
+  "dodge": { "rollCheck": { "skillName": "Reflex" } }
+}
+```
+
+#### O corte de `reaction`
+
+O mesmo de [`turn_opened`](#o-corte-de-action-design-spec-41) — a mesma função
+(`turnActionWireLocked`), aplicada à reação:
+
+| Destinatário | `reaction` |
+|---|---|
+| Mestre | `actionwire.Full` — inteira, com números |
+| **Dono** do reator | `actionwire.Opened` depois de `ProjectAction`: `reactionKind` fechado (`closedDodge`/`closedEscape`) e a entrada `Evasion` **ficam**; dados, `skillValue` e `result` de `skills[]`, `dodge`, `defense`, `repel`, `move.charge` saem; velocidades ficam; `consumedActionIds` **fica** (`ProjectAction` o mantém para dono e mestre) |
+| Qualquer outro (terceiro) | o mesmo `Opened`, e ainda: `closedDodge`→`dodge`, `closedEscape`→`escape`; a entrada `Evasion` de `skills[]` e `consumedActionIds` **tirados** |
+
+> **O rebaixamento do escape fechado é cosmético.** O rótulo `closedEscape`→`escape` não esconde
+> o que a mecânica já mostra: a categoria do deslocamento é fixa por tipo (`closedEscape` move
+> com **Shift**, medido pelo Brake; `escape`/`escapeGuard`, com **Dash**, medido pelo
+> Accelerate), e `move.category`/`move.speed.skillName` viajam a todos no `reaction_opened`; a
+> barra pública também mostra que o escape fechado cobrou só a barra de movimento. É a doutrina
+> de sempre — deduzir pela barra pública é legítimo, ser avisado não é: o rótulo não é
+> entregue, mas a mecânica permite deduzi-lo. Escondê-lo de verdade exigiria mexer nas barras e
+> no corte da categoria, o que não está decidido.
+
+#### O `move` da reação: o destino segue a fog
+
+Uma fuga leva um `move`, e o `move.position` dela passa pelo **mesmo portão de fog** do
+[`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog) para quem não é mestre
+nem dono do reator. **A origem julgada é a casa da peça do reator na abertura** — ela não anda
+ao abrir (a peça de toda fuga espera o fechamento), então é também a casa que uma reconexão lê.
+
+**Uma reação nunca tem `move.from`** (o servidor não o deriva para reação). Por isso o veredito
+"só a origem" vira o mesmo que "nenhuma das pontas":
+
+| O que o terceiro vê | `move` da reação |
+|---|---|
+| O destino | `category`, `position`, velocidades |
+| Só a origem, nenhuma das duas, a peça é `visible: false`, ou o reator não tem peça no tabuleiro | `category` e velocidades — **sem `position`** |
+
+Mestre e dono do reator recebem `position` sempre.
+
+> ⚠️ **O front tem que tolerar `reaction.move` sem `position`** — o mesmo `position?` do
+> `turn_opened`.
+
+O servidor grava, na abertura, o veredito deste portão para **todo jogador da sessão**
+(conectado ou não; mestre e dono do reator não são gravados), e o grava com o fechamento do
+turno, na linha da própria reação — para o histórico mostrar a cada leitor o `move` da reação
+como ele o viu ao vivo.
+
+> ⚠️ **Ordem garantida:** `reaction_opened` chega ao mestre **antes** do
+> [`resolution_updated`](#resolution_updated) recomputado pela abertura — mesma pista (a
+> direta), mesmo goroutine. Ordem de envio é ordem de chegada.
+
+**O cálculo que a abertura desencadeia continua master-only** — o `resolution_updated` que vem
+junto é de turno aberto.
 
 **Disparado por:** `open_reaction`.
 
@@ -1300,6 +1448,7 @@ Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master
 | `isSettled` | `false` = turno aberto, cálculo provisório, **master-only**. `true` = turno fechado, é **este** o cálculo cujo dano foi aplicado. |
 | `action` | O teste de acerto do atacante — **um golpe só**, compartilhado por toda a cadeia. `margin` só existe quando há CD única, isto é, **num ataque de alvo único**; num ataque multi-alvo o campo é **omitido**. |
 | `action.diceRolled` | Os dados **efetivamente lidos**. Um teste enviesado rolou dois conjuntos; só o lido viaja. |
+| `targets` | **Na ordem da cadeia**: primeiro os alvos cuja reação foi aberta, na ordem em que o mestre as abriu; depois os alvos sem reação aberta, na ordem de `action.targetId`. Vale para o payload aberto, o liquidado projetado, o `match_full_state.resolution` e o histórico. É assim que a ordem de abertura — que muda o desfecho — sobrevive à reconexão. Só personagens: parede não entra em `targets`. |
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
 | `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. |
 | `targets[].reaction` | **Ausente** quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio — `Reaction *ReactionResultPayload` com `omitempty` **omite a chave**, não emite `null`; em TypeScript o campo é `reaction?: ReactionResultPayload`, não `reaction: ReactionResultPayload \| null`. Uma passiva silenciosa não é resposta a reportar. |
@@ -1678,7 +1827,26 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
           "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
           "relativeVelocity": 0
         }
-      }
+      },
+      "reactions": [
+        {
+          "uuid": "44444444-4444-4444-8444-444444444444",
+          "actorId": "22222222-2222-4222-8222-222222222222",
+          "reactToId": "33333333-3333-4333-8333-333333333333",
+          "reactionKind": "closedEscape",
+          "skills": [
+            { "skillName": "Evasion", "rollCheck": { "skillName": "Evasion", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+          ],
+          "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": {}, "result": 11 } },
+          "move": {
+            "category": "Shift",
+            "position": [8, 6, 0],
+            "speed": { "skillName": "Brake", "skillValue": 0, "attempts": {}, "result": 11 },
+            "finalSpeed": 11
+          },
+          "dodge": { "rollCheck": { "skillName": "Reflex", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+        }
+      ]
     },
     "resolution": {
       "turnId": "55555555-5555-4555-8555-555555555555",
@@ -1709,7 +1877,11 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 }
 ```
 
-**O exemplo acima é o que o MESTRE vê** (`queue` presente, `ownQueue` ausente). Um jogador
+**O exemplo acima é o que o MESTRE vê** (`queue` presente, `ownQueue` ausente). A reação aberta
+em `openTurn.reactions` vem `actionwire.Full`, igual ao [`reaction_opened`](#reaction_opened) que o
+mestre recebeu ao vivo. `ownReactions` está **ausente** porque o reator (`2222…`) é personagem
+de jogador, não NPC do mestre — o mestre só recebe em `ownReactions` as reações dos NPCs dele; o dono do
+`2222…`, ao reconectar, a recebe em `ownReactions` (ver a tabela abaixo). Um jogador
 que reconecta com a MESMA ação ainda na fila vê o espelho — `queue` ausente, `ownQueue`
 presente com a versão em `actionwire.Declaration` da mesma entrada:
 
@@ -1748,6 +1920,8 @@ continuam, porque isso o dono já sabia que declarou.
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
+| `openTurn.reactions` | **Fase 7 (design spec §4.1).** As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. Ausente (`omitempty`) quando nenhuma está aberta. |
+| `ownReactions` | **Fase 7 (design spec §4.2, decisões D5/D6).** As reações do turno aberto cujo ator pertence a este destinatário (`charToPlayer` — o mestre, pelos NPCs dele), **abertas ou não**, na ordem de chegada: o que o [`reaction_attached`](#reaction_attached) disse ao vivo, para um cliente que reconectou depois dele. Uma entrada é `{ reactionId, actorId, reactionKind, opened, consumedActionIds }`. `opened` diz se o mestre já deu a palavra ("reação enviada, aguardando o mestre" × "é a sua vez de narrar"). `reactionKind` é o **verdadeiro** — o dono vê o próprio (`closedEscape`, não `escape`). `consumedActionIds` são as ações da fila que ela consumiu — **sempre** lista, `[]` numa reação livre; uma declarada nomeada ali foi consumida, não perdida (regra de reconciliação abaixo). Ausente (`omitempty`) quando o destinatário não tem nenhuma, ou não há turno aberto — aqui ausente e vazio querem dizer a mesma coisa, diferente de `ownQueue`: nenhuma reconciliação depende de distinguir os dois. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 | `ownQueue` | **B12 (design spec §4.2).** O espelho de `queue` para quem NÃO é o mestre: as ações ainda pendentes cujo ator pertence a este destinatário (`charToPlayer`), na mesma ordem de inserção da fila, uma `{ actionId, action }` por entrada, `action` em `actionwire.Declaration` (só o que o dono declarou — arma, alvos, `move.category/from/position`, nomes de perícia; **nenhum** dado, total ou velocidade, nem a de `speed`/`move` — ver a tabela de corte, §4.1 do design spec). Ausente **só para o mestre** — o eixo aqui não é tempo, é CLASSE, o oposto de `queue`. **SEMPRE presente para todo o resto**, mesmo sem nada pendente: vem `[]`, não ausente. É por isso que o tipo em Go é ponteiro (`*[]OwnQueuedActionPayload` com `omitempty`) em vez de slice nua — uma slice nua nula ainda serializa `null`, e o contrato aqui não é "nulo ou a lista", é "ausente (mestre) ou presente, vazia ou não (todo mundo mais)"; em TypeScript isso é `ownQueue?: OwnQueuedActionPayload[]`, e a chave só falta quando o destinatário é o mestre — para qualquer outro `ownQueue` está sempre lá, e `.length === 0` é a resposta "nada seu na fila", não a ausência do campo. Ver a **regra de reconciliação** logo abaixo. |
@@ -1761,6 +1935,11 @@ cliente descarta com um aviso e devolve o rascunho a quem declarou, para reenvia
 própria se quiser. **O cliente nunca reenvia sozinho**: um reenvio automático rola os dados de
 novo (`EnqueueAction` rola na chegada), então "a mesma ação" reenviada não é mais a mesma ação —
 é uma segunda tentativa com números novos, e só a pessoa que declarou decide se quer isso.
+
+Uma declarada cujo `actionId` aparece em `ownReactions[].consumedActionIds` — ou no
+`consumedActionIds` de uma reação do [histórico](match-history.md) — **foi consumida** por uma
+reação cobrada, não perdida: sai da lista sem o aviso de perda e sem devolver o rascunho. Ao
+vivo, o mesmo fato chega em [`reaction_attached`](#reaction_attached).
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
 logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
@@ -2002,6 +2181,14 @@ possui:
    fuga fechada cobra uma barra onde a padrão cobra duas, e `bars_updated` é público); ser
    avisado não é.
 
+   Para o escape, o rebaixamento `closedEscape`→`escape` é **cosmético**: a categoria do
+   movimento é fixa por tipo (§11.4 do documento mestre: `closedEscape` move com Shift,
+   medido pelo Brake; `escape`/`escapeGuard`, com Dash, medido pelo Accelerate), e
+   `move.category`/`move.speed.skillName` chegam a todos no `reaction_opened`; a barra pública
+   também mostra que o escape fechado cobrou só a barra de movimento. O rótulo não é entregue,
+   mas a mecânica deixa deduzi-lo — a mesma doutrina acima. Escondê-lo de verdade exigiria
+   mudar as barras e o corte da categoria, o que não está decidido.
+
    Todos os outros tipos — `dodge`, `escape`, `escapeGuard`, `nothing`, `repel` — chegam com
    o nome verdadeiro.
 
@@ -2105,12 +2292,17 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │     isSettled:false (MASTER-ONLY)                  │
     │                            │                               │                    │
     │                            │◄────────── attach_reaction ────────────────────────┤
+    │                            ├──── reaction_attached ───────►│◄──────────────────►│
+    │                            │     {turnId, reactionId, actorId,                  │
+    │                            │     consumedActionIds}                             │
+    │                            │     (a quem reagiu + mestre)                       │
     │                            ├──── resolution_updated ──────►│                    │
     │                            │     isSettled:false, pendingReactions[]            │
     │                            │                               │                    │
     │                            │◄──── open_reaction ───────────┤                    │
     │                            │      {reactionId de pendingReactions}              │
-    │◄─────────── reaction_opened {turnId, reactionId} (mesa) ──►│◄──────────────────►│
+    │◄─ reaction_opened {turnId, reactionId, reaction} (mesa) ──►│◄──────────────────►│
+    │                            │     reaction PROJETADA por destinatário            │
     │                            ├──── resolution_updated ──────►│                    │
     │                            │     isSettled:false (MASTER-ONLY)                  │
     │                            │                               │                    │
@@ -2154,7 +2346,7 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
-| Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido inteiro** — o turno só persiste ao FECHAR, e tudo o que aconteceu dentro dele vai junto: a peça da action volta para onde o último fechamento a deixou, e as master actions do mestre feitas com o turno aberto (peça, parede, nota) não chegam a ser gravadas (ver abaixo) |
+| Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` em [`match_full_state`](#match_full_state) com `action` e `reactions` (abertas); `ownReactions` com as suas; mestre recebe `resolution` | **perdido inteiro** — o turno só persiste ao FECHAR, e tudo o que aconteceu dentro dele vai junto: a peça da action volta para onde o último fechamento a deixou, as master actions do mestre feitas com o turno aberto (peça, parede, nota) não chegam a ser gravadas (ver abaixo), e as reações e o que elas consumiram vão junto |
 | Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
 | `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 

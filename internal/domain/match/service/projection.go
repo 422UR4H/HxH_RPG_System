@@ -111,6 +111,14 @@ func ProjectAction(a action.Action, v Viewer, isSettled bool) action.Action {
 	// been written, and action.Trigger is an empty object today. Do not widen the decision by
 	// symmetry.
 	out.Trigger = nil
+	// What the reaction took off the queue is the queue's secret (the queue is the master's;
+	// the owner knows their own) — see action.Action.ConsumedActionIDs.
+	out.ConsumedActionIDs = nil
+	// For the escape the demotion closedEscape->escape is cosmetic: the movement category is
+	// fixed per kind (closedEscape moves with Shift, escape/escapeGuard with Dash) and
+	// move.category/move.speed.skillName travel to everyone, and the public bar shows a closed
+	// escape charged only the move bar. The label is not handed out, but the mechanics let it
+	// be deduced; hiding it for real would mean changing the bars and the category cut.
 	out.ReactionKind = action.ReactionKind(publicKind(string(a.ReactionKind)))
 	if len(a.Skills) > 0 {
 		// The Evasion entry is NOT the same rule as the feint: it is the other half of the

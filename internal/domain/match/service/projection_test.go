@@ -256,3 +256,29 @@ func TestProjectResolutionKeepsEngineFaultsMasterOnly(t *testing.T) {
 		t.Fatalf("an owner read the engine's diagnostics: %+v", got.Errors)
 	}
 }
+
+func TestProjectAction_ConsumedActionIDsAreTheOwnersAndTheMasters(t *testing.T) {
+	reactor := uuid.New()
+	consumed := []uuid.UUID{uuid.New()}
+	r := action.NewAction(reactor, nil, uuid.New(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	r.ReactionKind = action.ReactRepel
+	r.ConsumedActionIDs = consumed
+
+	tests := []struct {
+		name   string
+		viewer service.Viewer
+		want   int
+	}{
+		{"master", service.Viewer{IsMaster: true}, 1},
+		{"owner", service.Viewer{Owns: map[uuid.UUID]bool{reactor: true}}, 1},
+		{"third party", service.Viewer{Owns: map[uuid.UUID]bool{}}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := service.ProjectAction(*r, tt.viewer, false)
+			if len(got.ConsumedActionIDs) != tt.want {
+				t.Fatalf("ConsumedActionIDs = %v, want %d entries", got.ConsumedActionIDs, tt.want)
+			}
+		})
+	}
+}

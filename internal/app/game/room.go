@@ -1143,6 +1143,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		result, err := r.deps.OpenReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
 		turnID := session.CurrentTurnID()
+		var opened action.Action
+		if err == nil {
+			// A copy, under the lock: result.Opened aliases the turn's own reaction.
+			opened = *result.Opened
+		}
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -1154,12 +1159,28 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// intention; applyClosedEscapes puts the piece where the close decides
 		// (front-combat-phases.md §6A.5, B13).
 		//
-		// Whose turn it is to narrate is public; the calculation is not, until Phase 5.
-		out := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
-			TurnID: turnID, ReactionID: payload.ReactionID,
+		// What each session player sees of the escape's destination — the verdict the dispatch
+		// below applies — recorded for the history, held with the turn until it closes. A
+		// separate lock section from each recipient's projection, as in announceOpenedTurn, and
+		// for the same reason nothing can change the verdict in between: every message that
+		// could comes from the master, on the read pump that is running this open.
+		r.recordOpenedReactionMoveViews(turnID, opened)
+		// Who narrates next, and with what, is public — cut per recipient, so on the direct lane;
+		// the master's resolution_updated below goes after it on the same lane, from this same
+		// goroutine, which is what makes "reaction_opened, then the recomputed resolution" a
+		// promise rather than luck.
+		r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+			// viewerFor AND the projection both run inside this RLock: opened is a copy of the
+			// reaction's struct, but its pointer fields still point at live session memory
+			// (see announceOpenedTurn).
+			r.mu.RLock()
+			defer r.mu.RUnlock()
+			msg := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
+				TurnID: turnID, ReactionID: payload.ReactionID,
+				Reaction: r.reactionWireLocked(opened, pid, r.viewerFor(pid, isMaster)),
+			})
+			return &msg
 		})
-		data, _ := json.Marshal(out)
-		go func() { r.broadcast <- data }()
 		r.publishResolution(turnID, result.Resolution)
 
 	case MsgTypeEditAction:
@@ -1699,6 +1720,20 @@ func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainse
 	return out
 }
 
+// reactionWireLocked cuts an opened reaction for one recipient — the same rule as the turn's
+// action (turnActionWireLocked), with the gate's origin at the reactor's piece NOW: a reaction
+// never moves at the opening (an escape waits for the close, B13), so where the piece stands is
+// both where it stood when the master opened it and what a reconnect can still read. A reaction
+// carries no move.from (buildAction never derives one), so an "origin only" verdict leaves it
+// with the category alone — position only reaches who sees the destination.
+//
+// Shared by the live reaction_opened and match_full_state's openTurn.reactions. The caller
+// MUST hold r.mu (a read lock is enough).
+func (r *Room) reactionWireLocked(react action.Action, pid uuid.UUID, v domainservice.Viewer) actionwire.Action {
+	origin, _ := r.pieceSlotOf(react.GetActorID().String())
+	return r.turnActionWireLocked(react, pid, v, origin)
+}
+
 // openedMoveViewLocked is what recipient pid may see of an opened move's WHERE: full (from and
 // position), left (from only), or nothing (false). It is the ONE decision behind both the
 // live turn_opened/openTurn (turnActionWireLocked) and the verdict the history records for
@@ -1751,6 +1786,35 @@ func (r *Room) recordOpenedMoveViews(opened *turnentity.Turn, origin *[3]int) {
 	r.turnWritesLocked(turnID).moveViews = r.sessionPlayerViewsLocked(r.ownerOfLocked(actorID), func(pid uuid.UUID) (masteraction.View, bool) {
 		return r.openedMoveViewLocked(pid, actorID, from, &to, origin)
 	})
+}
+
+// recordOpenedReactionMoveViews records what each session player saw of an opened reaction's
+// destination — the verdict reactionWireLocked's gate reached for them — and holds it with the
+// turn (turnWrites.reactionMoveViews), to be written with the reaction's row at the close.
+// Only while that turn is still the open one, like recordOpenedMoveViews. The caller must NOT
+// hold r.mu.
+func (r *Room) recordOpenedReactionMoveViews(turnID uuid.UUID, react action.Action) {
+	if react.Move == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.openTurnIDLocked() != turnID {
+		return
+	}
+	// from is the reaction's own move.from, as the wire path (turnActionWireLocked) passes it:
+	// none today (buildAction never derives one), but the recorded verdict and the live one
+	// must not be able to diverge the day one carries it.
+	actorID, from, to := react.GetActorID(), react.Move.From, react.Move.Position
+	origin, _ := r.pieceSlotOf(actorID.String())
+	views := r.sessionPlayerViewsLocked(r.ownerOfLocked(actorID), func(pid uuid.UUID) (masteraction.View, bool) {
+		return r.openedMoveViewLocked(pid, actorID, from, &to, origin)
+	})
+	w := r.turnWritesLocked(turnID)
+	if w.reactionMoveViews == nil {
+		w.reactionMoveViews = map[uuid.UUID]map[uuid.UUID]masteraction.View{}
+	}
+	w.reactionMoveViews[react.GetID()] = views
 }
 
 // moveFromOf is an action's enqueue-time move.from, nil when it has no Move or no origin.
@@ -2048,7 +2112,7 @@ func (r *Room) persistClosedTurn(
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
-		MoveViews: inTurn.moveViews, LandingViews: landingViews, StatusBars: statusBars,
+		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
 		NextRound: nextRound, UnwrittenRoundEnds: roundEnds,
 	})
 	if err != nil {
@@ -2105,13 +2169,29 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	r.mu.Lock()
 	result, err := r.deps.AttachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
+	var attached ReactionAttachedPayload
 	if err == nil {
 		turnID = session.CurrentTurnID()
+		// Read under the lock: `reaction` is ours, but Execute just wrote ConsumedActionIDs into
+		// it, and the session's copy is the one later readers use — both are written before the
+		// unlock, never after.
+		attached = ReactionAttachedPayload{
+			TurnID: turnID, ReactionID: reaction.GetID(), ActorID: reaction.GetActorID(),
+			ConsumedActionIDs: append([]uuid.UUID{}, reaction.ConsumedActionIDs...),
+		}
 	}
 	r.mu.Unlock()
 	if err != nil {
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
 		return
+	}
+	// Before the master's resolution_updated, on the same lane and goroutine: the reactor and
+	// the master learn the reaction's ID before anything else names it.
+	ack := NewServerMessage(MsgTypeReactionAttached, attached)
+	client.SendMessage(ack)
+	if !r.IsMaster(client.userUUID) {
+		// The master reacting through an NPC is reactor AND master: one copy, not two.
+		r.sendToMaster(ack)
 	}
 	// publishResolution is the single place that decides master-only vs projected, by reading
 	// IsSettled. An attach lands on an open, unsettled turn — and ONLY that, because
@@ -2665,6 +2745,37 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 				// The reconnect has no record of where the piece stood at the opening, so the
 				// gate judges the move from its enqueue-time move.from (turnActionWireLocked).
 				Action: r.turnActionWireLocked(act, playerID, v, moveFromOf(act)),
+			}
+			// The opened reactions, in opening order, each cut as the live reaction_opened cut
+			// it — reactionWireLocked needs r.mu, held here for the whole function.
+			reactions := t.GetReactions()
+			byID := make(map[uuid.UUID]action.Action, len(reactions))
+			for _, re := range reactions {
+				byID[re.GetID()] = re
+			}
+			openedIDs := t.OpenedReactionIDs()
+			opened := make(map[uuid.UUID]bool, len(openedIDs))
+			for _, id := range openedIDs {
+				opened[id] = true
+				if re, ok := byID[id]; ok {
+					payload.OpenTurn.Reactions = append(payload.OpenTurn.Reactions, r.reactionWireLocked(re, playerID, v))
+				}
+			}
+			// This recipient's own reactions, opened or not (OwnReactions' doc) — the master's
+			// through their NPCs, which charToPlayer maps to them. Unprojected: the owner sees
+			// their own true kind and what it consumed.
+			charToPlayer := session.GetCharToPlayer()
+			for _, re := range reactions {
+				if charToPlayer[re.GetActorID().String()] != playerID {
+					continue
+				}
+				payload.OwnReactions = append(payload.OwnReactions, OwnReactionPayload{
+					ReactionID: re.GetID(), ActorID: re.GetActorID(),
+					ReactionKind: string(re.ReactionKind), Opened: opened[re.GetID()],
+					// A fresh slice: never nil (always a list on the wire), and never aliasing
+					// the turn's own reaction once the lock is released.
+					ConsumedActionIDs: append([]uuid.UUID{}, re.ConsumedActionIDs...),
+				})
 			}
 			if isMaster {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the

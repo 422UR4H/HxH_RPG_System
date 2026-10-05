@@ -24,6 +24,12 @@ type turnWrites struct {
 	// opening (recordOpenedMoveViews) and written with the action (actions.move_views): the
 	// history shows each reader the move as they saw it then. nil when the action has no move.
 	moveViews map[uuid.UUID]masteraction.View
+	// reactionMoveViews is, per opened reaction that moves (an escape), what each session
+	// player saw of its destination when the master opened it (recordOpenedReactionMoveViews) —
+	// written with the reaction's own row (actions.move_views): the history shows each reader
+	// a reaction's move as they saw it then (Phase 7, item 1). Absent for a reaction never
+	// opened: it was never shown.
+	reactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
 }
 
 // openTurnIDLocked is the session's open turn, uuid.Nil when there is none (or no session).

@@ -719,6 +719,11 @@ inventa critério novo.
 | Escape padrão / defensivo | a próxima pendente **em cada** barra (ação combinada conta uma vez, e vai) |
 | Esquiva fechada, esquiva, não fazer nada, passivas | **nada** — é o desconto se pagando |
 
+A lista do que foi consumido fica na própria reação (`Action.ConsumedActionIDs`) e chega ao dono
+e ao mestre em `reaction_attached`, na reconexão (`ownReactions`) e no histórico
+(`actions.consumed_action_ids`). Um segundo attach do mesmo personagem na mesma ação é recusado
+(`ErrReactorAlreadyReacted`).
+
 Se não havia pendente, a reação **vira** a sua ação, sem Desvantagem. Se havia, a Desvantagem
 entra pelo `RollInput` (§ *Onde mora o viés de uma rolagem só*) — e note que Desvantagem é
 **modo de rolagem**, não `Amount`: `RollAttempts` já rola os dois conjuntos, e a Desvantagem só
@@ -1378,9 +1383,13 @@ ligou nos dois fechamentos, turno e round.
 ### `open_reaction` / `reaction_opened`, e o `PendingReactions` que os liga
 
 `open_reaction` é master-only, abre uma reação por ID e devolve `reaction_opened`
-(`TurnID`, `ReactionID`) em broadcast — público porque de quem é a vez de narrar é público; o
-cálculo continua não sendo, até a Fase 5. A projeção completa (`CharacterResults`, dano
-projetado) só vai para o mestre, em `resolution_updated`.
+(`TurnID`, `ReactionID` e, desde a Fase 7, a própria `Reaction`) à mesa inteira — público
+porque de quem é a vez de narrar, e com o quê, é público. A reação vai **cortada por
+destinatário** pela mesma regra do `turn_opened` (`reactionWireLocked` → `turnActionWireLocked`:
+mestre `Full`, o resto `ProjectAction` + `Opened`, `move.position` pelo portão de fog da peça
+do reator), por isso pela pista direta, antes do `resolution_updated` recomputado. O cálculo da
+colisão (`CharacterResults`, dano projetado) continua só do mestre, em `resolution_updated`,
+enquanto o turno está aberto. Contrato: `match-combat-ws.md` § `reaction_opened`.
 
 `TurnResolution.PendingReactions` é o que fecha o ciclo: cada reação **anexada e ainda não
 aberta**, com `ReactionID`, `ActorID` e `Kind`. Sem ela, `open_reaction` era inalcançável a
@@ -1445,7 +1454,7 @@ sortear a metade do que o código realmente consome. Só o dano da arma (`RollCa
 .RollDice`, chamado à parte, fora do laço de `test()`) rola um único conjunto — 2 dados para
 uma Espada (D10+D4), sem Secondary, porque dano não tem Vantagem.
 
-Por reação:
+Por reação (os nomes das perícias são derivados no `buildAction`; o payload não decide nenhum):
 
 | `ReactionKind` | O que rola | Faces (teste 2D10 = 4, sempre) |
 |---|---|---|

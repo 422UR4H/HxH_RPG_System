@@ -64,6 +64,11 @@ type TurnCloseData struct {
 	// every session player. Written inside the resolution's escape entry. nil when no escape of
 	// the turn moved its piece.
 	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// ReactionMoveViews is, per opened reaction that moves (an escape), what each session player
+	// saw of its destination when the master opened it (reaction_opened's own gate, Phase 7) —
+	// held with the turn (turnWrites) and written to that reaction's actions.move_views. A
+	// reaction never opened has no entry: it was never shown. Same keys and rules as MoveViews.
+	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
 	// StatusBars is every sheet this close damaged, with its bars as the session holds them
 	// after the close (copies taken under r.mu), written to character_sheets in this same
 	// transaction: one master command, one transaction (owner decision, 2026-10-02). A turn that
@@ -215,6 +220,11 @@ type HistoryTurn struct {
 	// turns.resolution). Same rules as MoveViews: master and the escaper's owner not stored,
 	// absent fails closed, cleared by the use case.
 	LandingViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// ReactionMoveViews is, per reaction (by its id), what each session player saw of its
+	// destination when the master opened it (that reaction's actions.move_views). Same rules as
+	// MoveViews: absent fails closed. Read side only: the use case turns it into
+	// ShownReactionMoves and clears it.
+	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
 
 	// The three fields below are what this reader may see of WHERE pieces went — set by the
 	// use case from the views above, applied by the REST mapping after actionwire.From, exactly

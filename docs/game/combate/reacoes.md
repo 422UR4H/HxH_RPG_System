@@ -16,11 +16,14 @@ coisas acontecem automaticamente, nesta ordem:
 
 Essas são passivas. Elas usam o **valor médio do dado** em vez de rolar — seu Reflexo + 11.
 
-Se o reflexo não for suficiente, o sistema avisa você. Aí você escolhe:
+Enquanto o golpe está no ar, **só o mestre vê os números** — você não sabe se o seu reflexo
+basta, porque saber disso seria saber o quanto o ataque acertou. Então você aposta:
 
+- **ficar na passiva** — confiar no reflexo e, se ele falhar, na defesa;
 - **arriscar** — rolar Reflexo + 2 D10 de verdade, torcendo por sorte acima da média;
-- **gastar sua ação** em algo mais forte (escapar, repelir);
-- **aceitar** e deixar a defesa fazer o trabalho.
+- **gastar sua ação** em algo mais forte (escapar, repelir).
+
+Você decide sem saber se precisava. É aposta — e é por isso que arriscar existe.
 
 > Arriscar não melhora sua média — o valor passivo já **é** a média. Você rola quando precisa
 > de sorte, não para ganhar de graça.
@@ -89,10 +92,10 @@ E note a diferença de alcance: o **bônus** de quem repeliu bem vale só contra
 oponente — você aprendeu a leitura *dele*. Já a **penalidade** de quem aparou vale contra
 todo mundo — você ficou desequilibrado, e qualquer um pode aproveitar.
 
-## As duas esquivas difíceis
+## As esquivas fechadas
 
-**Esquiva fechada** e **escape fechado** são propositalmente trabalhosas de configurar. Elas
-existem para quem sabe o que está fazendo.
+**Esquiva fechada** e **escape fechado** são para quem quer esquivar no instante exato. Montar
+uma é simples: segure o botão (Esquivar ou Escapar) e toque em **Evasão**.
 
 A ideia é esquivar **sem abrir brecha nenhuma** — no instante exato, sem dar espaço para
 outro adversário se aproveitar. Por isso não custam sua ação: você não se descuidou.
@@ -115,23 +118,22 @@ desnecessária e guarda para quem vier de fora.
 
 ## Como configurar
 
-Ao ser alvo, você tem dois gestos:
+Ao ser alvo, aparecem cinco botões ao lado do seu personagem: **Não fazer nada**,
+**Esquivar**, **Escapar**, **Escape defensivo** e **Repelir**. Você tem dois gestos:
 
-- **Clicar** no botão — envia a reação direto, sem configurar nada. É o caminho rápido.
-- **Clicar e segurar** — abre a tela de configuração, onde você monta a reação em detalhe.
-  A narração vem depois; primeiro você define a mecânica.
+- **Clicar** — o caminho rápido. Esquivar, Não fazer nada e Repelir saem na hora (Repelir com a
+  arma que você estava usando; sem ela, de mãos nuas). Escapar e Escape defensivo pedem só uma
+  coisa: **a casa para onde você vai** — toque nela no mapa e a reação sai.
+- **Clicar e segurar** — abre a configuração, onde você monta a reação em detalhe. É ali que
+  entra a **Evasão**: Esquivar + Evasão é a esquiva fechada; Escapar + Evasão é o escape
+  fechado. A narração vem depois; primeiro você define a mecânica.
 
-Segurando em **Escapar**, a tela já vem com **Accelerate** escolhido. É a perícia de
-deslocamento que define o escape — sem deslocamento, é só uma esquiva comum. Ali você pode
-trocar por **Brake**:
+**O tipo de escape decide o deslocamento** — você não escolhe:
 
-| Perícia | Deslocamento | Como é |
-|---------|--------------|--------|
-| **Accelerate** | **Dash** | Arranque rápido. Durante o dash você está "no ar" e **não consegue esquivar** — fica exposto. |
-| **Brake** | **Shift** | Deslocamento controlado. Não rola dado: usa o valor médio. |
-
-**Num escape, o movimento precisa ser Shift** — justamente porque durante o Dash você não
-consegue esquivar.
+| Reação | Deslocamento | Como é |
+|---|---|---|
+| **Escapar** e **Escape defensivo** | **Dash** | Arranque rápido, medido pelo **Accelerate**. Durante o dash você está "no ar" e **não pode esquivar**: fica exposto. Por isso o escape fechado se move com Shift. |
+| **Escape fechado** | **Shift** | Deslocamento controlado, medido pelo **Brake**. Não rola dado: usa o valor médio. |
 
 Por que Brake governa o Shift: é a perícia que mede sua capacidade de **frear**. Se você
 acelera além do que consegue frear, é rápido mas não é ágil — não para de uma vez. Quando
@@ -140,8 +142,6 @@ Brake e Accelerate estão equilibrados, você para num instante.
 > Ficar exposto durante o próprio ataque é o que Gon aproveita no Exame Hunter: sem saber
 > ainda o que é Nen, mas já dominando o Zetsu, ele rouba a plaqueta de Hisoka exatamente no
 > instante em que Hisoka atacava outra pessoa.
-
-Segurando em **Esquivar** e adicionando **Evasão**, você monta a esquiva fechada.
 
 ---
 

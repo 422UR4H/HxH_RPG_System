@@ -14,6 +14,10 @@ var (
 	ErrReactionActorMismatch = errors.New("the reacting character does not belong to this player")
 	// ErrReactorNotTargeted means the caller was not aimed at. Bystanders watch.
 	ErrReactorNotTargeted = errors.New("only a target of the open action may react to it")
+	// ErrReactorAlreadyReacted means this character already has a reaction attached to the open
+	// action. One reaction per character per action: the chain counts a character once
+	// (buildChainOrder), so a second one would be charged and then ignored.
+	ErrReactorAlreadyReacted = errors.New("this character already reacted to the open action")
 	// ErrTurnAlreadyClosed means the turn the caller tried to open a reaction on has already
 	// finished — there is no one left to narrate for.
 	ErrTurnAlreadyClosed = errors.New("cannot open a reaction: turn already closed")

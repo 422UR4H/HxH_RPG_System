@@ -153,7 +153,7 @@ func (uc *GetMatchHistoryUC) Get(
 				pt.ShownLandings = shownLandingsFor(tu, viewer, userUUID)
 				pt.ShownReactionMoves = shownReactionMovesFor(tu, viewer, userUUID)
 				// Who saw what is not table data — the verdicts above are all this reader gets.
-				pt.MoveViews, pt.LandingViews = nil, nil
+				pt.MoveViews, pt.LandingViews, pt.ReactionMoveViews = nil, nil, nil
 				pt.MasterActions = make([]masteraction.Record, 0)
 				projected[i].Rounds[j].Turns[k] = pt
 			}
@@ -217,12 +217,14 @@ func shownLandingsFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID)
 	return shown
 }
 
-// shownReactionMovesFor names the reactions whose move.position this reader may see. A
-// reaction's action never reaches the table live — the only way anyone but the master and the
-// reactor's owner learned its destination is the piece itself: an escape that ESCAPED walks its
-// piece there at the close, and the piece_moved reached whoever saw that cell (the verdict
-// recorded then, sawWhereItEnded). A failed escape's position is a destination the piece never
-// reached, and any other reaction's move never moved anything: shown to nobody else. nil when
+// shownReactionMovesFor names the reactions whose move.position this reader may see — as it was
+// seen LIVE, the same rule as the turn's own move. A reaction reaches the table when the master
+// opens it (reaction_opened), and what each player was shown of its destination then is the
+// verdict recorded with the turn (HistoryTurn.ReactionMoveViews): whoever saw it there sees it
+// here, even when the escape failed. The other way to have seen it is the piece itself: an
+// escape that ESCAPED walks its piece there at the close, and the piece_moved reached whoever
+// saw that cell (sawWhereItEnded). A reaction never opened and never arrived (an old row, or a
+// move that moved nothing): shown to nobody but the master and the reactor's owner. nil when
 // none.
 func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID) map[uuid.UUID]bool {
 	escaped := map[uuid.UUID]service.CharacterResult{}
@@ -239,7 +241,9 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 			continue
 		}
 		cr, ok := escaped[react.GetID()]
-		if !viewer.SeesAllOf(react.GetActorID()) && (!ok || !sawWhereItEnded(tu, cr, viewer, userUUID)) {
+		sawAtOpening := tu.ReactionMoveViews[react.GetID()][userUUID] == masteraction.ViewFull
+		if !viewer.SeesAllOf(react.GetActorID()) && !sawAtOpening &&
+			(!ok || !sawWhereItEnded(tu, cr, viewer, userUUID)) {
 			continue
 		}
 		if shown == nil {

@@ -89,4 +89,3 @@ func TestComputeVisibility_OneWay_BlocksFromOneSide(t *testing.T) {
 		t.Fatalf("one-way wall must block from exactly one side (A=%v B=%v)", behindFromA, behindFromB)
 	}
 }
-

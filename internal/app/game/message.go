@@ -48,6 +48,9 @@ const (
 	MsgTypeActionQueued     MessageType = "action_queued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
+	// reaction_attached answers attach_reaction: to whoever reacted, and to the master — the
+	// one message that names the queued actions a charged reaction consumed (Phase 7, item 3).
+	MsgTypeReactionAttached MessageType = "reaction_attached"
 	MsgTypeTurnClosed       MessageType = "turn_closed"
 	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
 	MsgTypeActionEdited     MessageType = "action_edited"
@@ -396,11 +399,33 @@ type RoundClosedPayload struct {
 	RoundMode string `json:"roundMode"`
 }
 
-// ReactionOpenedPayload announces who narrates next. It is BROADCAST — whose turn it is to
-// narrate is public — while the resolution it triggers stays master-only until Phase 5.
+// ReactionAttachedPayload answers an accepted attach_reaction. It goes to whoever reacted —
+// the only one who did not otherwise learn the reaction's ID, which open_reaction and the
+// reconnect's ownReactions key on — and to the master, because ConsumedActionIDs is the news
+// that a pending action left the queue, and the queue is theirs. The same message, not two
+// shapes for one fact (game-server.instructions.md, "fewer event types"). The table hears
+// nothing: that someone reacted is not table news until the master opens it.
+//
+// ConsumedActionIDs is ALWAYS a list ([] on a free reaction): the client reconciles its
+// declared actions against it, and "absent" would be one more case to read.
+type ReactionAttachedPayload struct {
+	TurnID            uuid.UUID   `json:"turnId"`
+	ReactionID        uuid.UUID   `json:"reactionId"`
+	ActorID           uuid.UUID   `json:"actorId"`
+	ConsumedActionIDs []uuid.UUID `json:"consumedActionIds"`
+}
+
+// ReactionOpenedPayload announces who narrates next, and with what (Phase 7, item 1). Reaction
+// is the opened reaction cut for THIS recipient by the very rule turn_opened.action uses
+// (turnActionWireLocked): the master gets it whole (Full); everyone else — its own owner
+// included — gets service.ProjectAction (closedDodge/closedEscape demoted, the Evasion entry
+// and consumedActionIds stripped for a third party) at Opened, with move.position passing the
+// reactor's piece's fog gate. Projected, so it travels on the DIRECT lane (dispatchPerPlayer),
+// and the master's resolution_updated that follows is sent after it by the same goroutine.
 type ReactionOpenedPayload struct {
-	TurnID     uuid.UUID `json:"turnId"`
-	ReactionID uuid.UUID `json:"reactionId"`
+	TurnID     uuid.UUID         `json:"turnId"`
+	ReactionID uuid.UUID         `json:"reactionId"`
+	Reaction   actionwire.Action `json:"reaction"`
 }
 
 // TurnClosedPayload announces that the baton was put down. Same message for the whole table —
@@ -840,6 +865,25 @@ type MatchFullStatePayload struct {
 	// draft to the user. The client NEVER re-sends it on its own — see this field's own outer
 	// doc for why a resend is not the same declaration twice.
 	OwnQueue *[]OwnQueuedActionPayload `json:"ownQueue,omitempty"`
+	// OwnReactions are the open turn's reactions whose actor belongs to this recipient
+	// (charToPlayer — the master through their NPCs), opened or not, in arrival order: what
+	// reaction_attached told them live, for a client that reconnected after it. Opened says
+	// whether the master already gave it the floor. ReactionKind is the TRUE kind — the owner
+	// sees their own. ConsumedActionIDs are the queued actions it consumed: a declared action
+	// named there was consumed, not lost (the contract's reconciliation rule). Absent when the
+	// recipient has none, or no turn is open — absent and empty mean the same here, unlike
+	// OwnQueue: no reconciliation hinges on telling them apart.
+	OwnReactions []OwnReactionPayload `json:"ownReactions,omitempty"`
+}
+
+// OwnReactionPayload is one entry of MatchFullStatePayload.OwnReactions — see its doc.
+// ConsumedActionIDs is never nil: [] on a free reaction, like reaction_attached's.
+type OwnReactionPayload struct {
+	ReactionID        uuid.UUID   `json:"reactionId"`
+	ActorID           uuid.UUID   `json:"actorId"`
+	ReactionKind      string      `json:"reactionKind"`
+	Opened            bool        `json:"opened"`
+	ConsumedActionIDs []uuid.UUID `json:"consumedActionIds"`
 }
 
 // OwnQueuedActionPayload is one entry of MatchFullStatePayload.OwnQueue — see its doc for the
@@ -874,6 +918,12 @@ type OpenTurnPayload struct {
 	ActorID  uuid.UUID         `json:"actorId"`
 	ActionID uuid.UUID         `json:"actionId"`
 	Action   actionwire.Action `json:"action"`
+	// Reactions are the open turn's OPENED reactions, in the order the master opened them —
+	// each cut for this recipient exactly as the live reaction_opened cut it
+	// (reactionWireLocked), so a reconnect shows the table the same balloons and escape ghosts,
+	// in the same order (the order changes the outcome). A reaction attached but not opened is
+	// never here: it was never announced. Absent when none is open.
+	Reactions []actionwire.Action `json:"reactions,omitempty"`
 }
 
 // payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a

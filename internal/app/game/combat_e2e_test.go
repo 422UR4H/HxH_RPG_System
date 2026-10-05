@@ -140,6 +140,8 @@ type combatFixture struct {
 	addLiveNPC game.IAddLiveNPC
 	// lobby is set by inLobby. See it there.
 	lobby bool
+	// npcID is the sheet ID of the master's NPC seated by withNPCTarget; uuid.Nil without it.
+	npcID uuid.UUID
 	// sheets backs RoomDeps.SheetOwnership (spec §4.3, "Quem move o quê", B14): the lobby's
 	// server-side check for a player's piece_moved reads a sheet's PlayerUUID from here,
 	// since the lobby has no charToPlayer. Populated below with the attacker/victim/bystander
@@ -188,6 +190,26 @@ func withoutMasterActionRepo(f *combatFixture) { f.noMasterActionRepo = true }
 // other test runs with nil, which is fine because none of them sends add_npc.
 func withAddLiveNPC(uc game.IAddLiveNPC) combatOpt {
 	return func(f *combatFixture) { f.addLiveNPC = uc }
+}
+
+// withNPCTarget seats an NPC owned by the MASTER in the session, with its sheet ID on f.npcID.
+//
+// The way an NPC lives at a real table is session.AddNPC: the sheet joins the combat and
+// charToPlayer maps it to the master, which is what lets the master act and react through it
+// (a player's sheet stays denied to him). Tests that need a target the master — not a player —
+// answers for (a reaction attached through an NPC) take this option and aim at f.npcID. It is
+// re-seated by restart, since a restart builds a fresh session.
+func withNPCTarget(f *combatFixture) { f.npcID = uuid.New() }
+
+// seatNPC puts the withNPCTarget NPC into a freshly built session; a no-op without the option.
+func (f *combatFixture) seatNPC(t *testing.T, session *matchsession.MatchSession) {
+	t.Helper()
+	if f.npcID == uuid.Nil {
+		return
+	}
+	if err := session.AddNPC(f.npcID, newCombatSheet(t), f.masterUUID); err != nil {
+		t.Fatalf("seat the NPC target: %v", err)
+	}
 }
 
 // inLobby reports the match as NOT started, so the master's connection opens a room with no
@@ -278,6 +300,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 
 	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
 	session.SetRollSource(topFaceSource{})
+	f.seatNPC(t, session)
 	f.session = session
 
 	hub := game.NewHub()
@@ -386,6 +409,7 @@ func (f *combatFixture) restart(t *testing.T) {
 	f.writer.applyHealthTo(t, sheets)
 	session := matchsession.NewMatchSession(f.matchUUID, sheets, participants)
 	session.SetRollSource(topFaceSource{})
+	f.seatNPC(t, session)
 	f.session = session
 
 	hub := game.NewHub()
@@ -437,9 +461,15 @@ func (f *combatFixture) enqueueAttack(t *testing.T, conn *websocket.Conn) {
 // the same time.
 func (f *combatFixture) enqueueAttackFrom(t *testing.T, conn *websocket.Conn, actorID uuid.UUID) {
 	t.Helper()
+	f.enqueueAttackAt(t, conn, actorID, f.victimID)
+}
+
+// enqueueAttackAt is enqueueAttackFrom with the TARGET spelled out too (an NPC, say).
+func (f *combatFixture) enqueueAttackAt(t *testing.T, conn *websocket.Conn, actorID, targetID uuid.UUID) {
+	t.Helper()
 	sendWS(t, conn, "enqueue_action", map[string]any{
 		"actorId":  actorID.String(),
-		"targetId": []string{f.victimID.String()},
+		"targetId": []string{targetID.String()},
 		"speed":    map[string]any{"bar": 0, "rollCheck": map[string]any{"skillName": enum.Legerity.String()}},
 		"attack": map[string]any{
 			"weapon": "Sword",

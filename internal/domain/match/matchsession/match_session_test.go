@@ -549,6 +549,66 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 				pendingBefore, got)
 		}
 	})
+
+	t.Run("a second reaction by the same character is refused, charging nothing", func(t *testing.T) {
+		playerA, playerB, playerC := uuid.New(), uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB, playerC)
+		s.SetRoundMode(enum.Race)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1], chars[2]}
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+
+		first := makeReactionTo(chars[1], act.GetID())
+		first.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerB, first); err != nil {
+			t.Fatalf("first attach: %v", err)
+		}
+		// Something the second one could consume, if it were (wrongly) let through.
+		queued := makeActionWithSpeed(chars[1], 30)
+		if err := s.EnqueueAction(playerB, queued); err != nil {
+			t.Fatalf("EnqueueAction(queued): %v", err)
+		}
+		pendingBefore := len(s.PendingActions())
+		actionBalanceBefore, actionSpeedsBefore := s.BarState(chars[1], action.BarAction)
+		moveBalanceBefore, moveSpeedsBefore := s.BarState(chars[1], action.BarMove)
+
+		second := makeReactionTo(chars[1], act.GetID())
+		second.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, second); !errors.Is(err, matchsession.ErrReactorAlreadyReacted) {
+			t.Fatalf("second attach: err = %v, want ErrReactorAlreadyReacted", err)
+		}
+		if got := len(s.PendingActions()); got != pendingBefore {
+			t.Fatalf("the refused attach consumed from the queue: %d -> %d", pendingBefore, got)
+		}
+		if got := len(opened.GetReactions()); got != 1 {
+			t.Fatalf("the turn holds %d reactions, want 1", got)
+		}
+		// A regression that charged before the check would move the action bar (repel).
+		actionBalanceAfter, actionSpeedsAfter := s.BarState(chars[1], action.BarAction)
+		if actionBalanceAfter != actionBalanceBefore || !slices.Equal(actionSpeedsAfter, actionSpeedsBefore) {
+			t.Fatalf("the refused attach moved the action bar: %v/%v -> %v/%v",
+				actionBalanceBefore, actionSpeedsBefore, actionBalanceAfter, actionSpeedsAfter)
+		}
+		moveBalanceAfter, moveSpeedsAfter := s.BarState(chars[1], action.BarMove)
+		if moveBalanceAfter != moveBalanceBefore || !slices.Equal(moveSpeedsAfter, moveSpeedsBefore) {
+			t.Fatalf("the refused attach moved the move bar: %v/%v -> %v/%v",
+				moveBalanceBefore, moveSpeedsBefore, moveBalanceAfter, moveSpeedsAfter)
+		}
+
+		// Positive control: the refusal is per character, another target still reacts.
+		other := makeReactionTo(chars[2], act.GetID())
+		other.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerC, other); err != nil {
+			t.Fatalf("a different targeted character was refused: %v", err)
+		}
+		if got := len(opened.GetReactions()); got != 2 {
+			t.Fatalf("the turn holds %d reactions, want 2", got)
+		}
+	})
 }
 
 func TestMatchSession_CloseOpenTurn(t *testing.T) {
@@ -1783,6 +1843,40 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 		}
 	})
 
+	t.Run("a charged reaction names the action it consumed", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		pending := makeActionWithSpeed(chars[1], 30)
+		if err := s.EnqueueAction(playerB, pending); err != nil {
+			t.Fatalf("EnqueueAction: %v", err)
+		}
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if len(r.ConsumedActionIDs) != 1 || r.ConsumedActionIDs[0] != pending.GetID() {
+			t.Fatalf("ConsumedActionIDs = %v, want [%v]", r.ConsumedActionIDs, pending.GetID())
+		}
+		// The copy the turn holds says the same: the persistence and the history read it there.
+		reacts := s.GetActiveRound().CurrentTurn().GetReactions()
+		if len(reacts) != 1 || len(reacts[0].ConsumedActionIDs) != 1 {
+			t.Fatalf("the turn's copy of the reaction lost ConsumedActionIDs: %+v", reacts)
+		}
+	})
+
+	t.Run("a free reaction consumes nothing and names nothing", func(t *testing.T) {
+		s, chars, _, playerB, act := setup(t)
+		s.EnqueueAction(playerB, makeActionWithSpeed(chars[1], 30)) //nolint:errcheck
+		r := makeReactionTo(chars[1], act.GetID())
+		r.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if r.ConsumedActionIDs != nil {
+			t.Fatalf("a free reaction consumed %v", r.ConsumedActionIDs)
+		}
+	})
+
 	// A two-bar reaction must consume its one combined pending action exactly once.
 	//
 	// consumePendingFor loops bar by bar and asks the scheduler for the best pending action on
@@ -1844,6 +1938,9 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 		_, moveSpeeds := s.BarState(chars[1], action.BarMove)
 		if len(moveSpeeds) != 1 {
 			t.Fatalf("move-bar speeds = %v, want exactly one — the escape's own speed, recorded once", moveSpeeds)
+		}
+		if len(r.ConsumedActionIDs) != 1 || r.ConsumedActionIDs[0] != combined.GetID() {
+			t.Fatalf("ConsumedActionIDs = %v, want [%v] — the combined action, once", r.ConsumedActionIDs, combined.GetID())
 		}
 	})
 

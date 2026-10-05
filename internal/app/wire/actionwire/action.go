@@ -60,6 +60,12 @@ type Action struct {
 	//
 	// omitempty keeps it off the overwhelming majority of actions, which were charged nothing.
 	SystemBias int `json:"systemBias,omitempty"`
+
+	// ConsumedActionIDs is what a charged reaction took off the reactor's queue
+	// (action.Action.ConsumedActionIDs). Not cut by Level: who may see it is
+	// service.ProjectAction's decision, already taken upstream (it nils it for anyone but the
+	// master and the owner). omitempty keeps it off every action and every free reaction.
+	ConsumedActionIDs []uuid.UUID `json:"consumedActionIds,omitempty"`
 }
 
 // ActionSkill is one skill test this action rolled — a plain attribute/skill check outside

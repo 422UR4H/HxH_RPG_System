@@ -3,9 +3,9 @@ package service
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
+	"github.com/google/uuid"
 )
 
 func TestFilterMapState_PlayerSeesOnlyVisibleAndOwn(t *testing.T) {
