@@ -2105,13 +2105,29 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	r.mu.Lock()
 	result, err := r.deps.AttachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
+	var attached ReactionAttachedPayload
 	if err == nil {
 		turnID = session.CurrentTurnID()
+		// Read under the lock: `reaction` is ours, but Execute just wrote ConsumedActionIDs into
+		// it, and the session's copy is the one later readers use — both are written before the
+		// unlock, never after.
+		attached = ReactionAttachedPayload{
+			TurnID: turnID, ReactionID: reaction.GetID(), ActorID: reaction.GetActorID(),
+			ConsumedActionIDs: append([]uuid.UUID{}, reaction.ConsumedActionIDs...),
+		}
 	}
 	r.mu.Unlock()
 	if err != nil {
 		client.SendMessage(NewErrorMessage("game_error", err.Error()))
 		return
+	}
+	// Before the master's resolution_updated, on the same lane and goroutine: the reactor and
+	// the master learn the reaction's ID before anything else names it.
+	ack := NewServerMessage(MsgTypeReactionAttached, attached)
+	client.SendMessage(ack)
+	if !r.IsMaster(client.userUUID) {
+		// The master reacting through an NPC is reactor AND master: one copy, not two.
+		r.sendToMaster(ack)
 	}
 	// publishResolution is the single place that decides master-only vs projected, by reading
 	// IsSettled. An attach lands on an open, unsettled turn — and ONLY that, because

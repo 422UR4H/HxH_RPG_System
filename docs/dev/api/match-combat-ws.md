@@ -89,6 +89,9 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 > [`add_npc`](#add_npc) — os dois caem no mesmo `charToPlayer`, pelo mesmo mecanismo (Decisão
 > 6 do plano). **Ficha de jogador continua negada ao mestre:** o dono ali é o jogador, e isso
 > não muda por quem enviou a mensagem.
+>
+> O mesmo vale para [`attach_reaction`](#attach_reaction): o mestre reage **pelo NPC** que é
+> alvo, pela mesma checagem `charToPlayer`. A ficha de jogador continua negada a ele.
 
 ## 3. Índice
 
@@ -97,7 +100,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | Mensagem | Quem pode enviar |
 |---|---|
 | [`enqueue_action`](#enqueue_action) | jogador (pelo próprio personagem) |
-| [`attach_reaction`](#attach_reaction) | jogador **alvo** da ação aberta |
+| [`attach_reaction`](#attach_reaction) | jogador **alvo** da ação aberta, pelo próprio personagem; o mestre, pelo NPC alvo |
 | [`open_next_action`](#open_next_action) | mestre |
 | [`pull_action`](#pull_action) | mestre |
 | [`open_reaction`](#open_reaction) | mestre |
@@ -116,6 +119,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`action_queued`](#action_queued) | **só o mestre** |
 | [`bars_updated`](#bars_updated) | mesa inteira |
 | [`turn_opened`](#turn_opened) | mesa inteira |
+| [`reaction_attached`](#reaction_attached) | quem reagiu **+ mestre** |
 | [`reaction_opened`](#reaction_opened) | mesa inteira |
 | [`resolution_updated`](#resolution_updated) | **mestre, ou mesa projetada** — ver §5 |
 | [`action_edited`](#action_edited) | só o mestre |
@@ -315,9 +319,10 @@ personagem em cada barra que cobra — e, se consumiu algo, a troca custa **Desv
 barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 [`reaction_attached`](#reaction_attached).
 
-**Dispara:** [`resolution_updated`](#resolution_updated) **só para o mestre** — o turno está
-aberto, logo `isSettled: false`. A reação aparece em `pendingReactions`.
-Não há ack próprio e **não há broadcast**: a mesa não é avisada de que alguém reagiu.
+**Dispara:** [`reaction_attached`](#reaction_attached) (a quem reagiu e ao mestre; uma cópia só
+quando quem reagiu é o mestre), depois [`resolution_updated`](#resolution_updated) **só para o
+mestre** — o turno está aberto, logo `isSettled: false`. A reação aparece em
+`pendingReactions`. **Não há broadcast**: a mesa não é avisada de que alguém reagiu.
 
 **Erros**
 
@@ -944,6 +949,34 @@ redundante com ela.
 > desconectado nesse momento não a recebe depois. [`match_full_state`.`queue`](#match_full_state)
 > é a versão do MESMO fato que **sobrevive à reconexão**: um payload `action_queued` inteiro
 > por ação ainda pendente, na ordem de inserção da fila. Ver a seção de `match_full_state`.
+
+### `reaction_attached`
+
+Responde um [`attach_reaction`](#attach_reaction) aceito.
+
+```json
+{ "type": "reaction_attached", "payload": { "turnId": "5555…", "reactionId": "4444…", "actorId": "2222…", "consumedActionIds": ["3333…"] } }
+```
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `turnId` | uuid | O turno aberto a que a reação foi anexada. |
+| `reactionId` | uuid | O ID da reação — o que [`open_reaction`](#open_reaction) pede de volta e o que `ownReactions` indexa. |
+| `actorId` | uuid | O personagem que reagiu (o NPC, quando o mestre reage por ele). |
+| `consumedActionIds` | uuid[] | As ações da fila que uma reação cobrada consumiu. |
+
+**Destino:** quem reagiu **e** o mestre — a mesma mensagem, o mesmo conteúdo. Quando quem
+reagiu é o mestre (reação de NPC), ele recebe **uma** cópia só. **A mesa não recebe nada**: que
+alguém reagiu não é notícia de mesa até o mestre abrir a reação.
+
+**`consumedActionIds` é sempre lista:** `[]` numa reação livre ou numa cobrada que não achou
+nada na fila — nunca `null`, nunca ausente.
+
+**Uso:** o front tira a ação consumida da lista de declaradas (dono) e da fila (mestre); ela
+**não** foi perdida — ver a regra de reconciliação em [`match_full_state`](#match_full_state).
+
+**Disparado por:** `attach_reaction` aceito, **antes** do `resolution_updated` do mesmo attach
+(mesma goroutine).
 
 ### `bars_updated`
 

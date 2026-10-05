@@ -48,6 +48,9 @@ const (
 	MsgTypeActionQueued     MessageType = "action_queued"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
+	// reaction_attached answers attach_reaction: to whoever reacted, and to the master — the
+	// one message that names the queued actions a charged reaction consumed (Phase 7, item 3).
+	MsgTypeReactionAttached MessageType = "reaction_attached"
 	MsgTypeTurnClosed       MessageType = "turn_closed"
 	MsgTypeCloseTurnRefused MessageType = "close_turn_refused"
 	MsgTypeActionEdited     MessageType = "action_edited"
@@ -394,6 +397,22 @@ type TurnOpenedPayload struct {
 
 type RoundClosedPayload struct {
 	RoundMode string `json:"roundMode"`
+}
+
+// ReactionAttachedPayload answers an accepted attach_reaction. It goes to whoever reacted —
+// the only one who did not otherwise learn the reaction's ID, which open_reaction and the
+// reconnect's ownReactions key on — and to the master, because ConsumedActionIDs is the news
+// that a pending action left the queue, and the queue is theirs. The same message, not two
+// shapes for one fact (game-server.instructions.md, "fewer event types"). The table hears
+// nothing: that someone reacted is not table news until the master opens it.
+//
+// ConsumedActionIDs is ALWAYS a list ([] on a free reaction): the client reconciles its
+// declared actions against it, and "absent" would be one more case to read.
+type ReactionAttachedPayload struct {
+	TurnID            uuid.UUID   `json:"turnId"`
+	ReactionID        uuid.UUID   `json:"reactionId"`
+	ActorID           uuid.UUID   `json:"actorId"`
+	ConsumedActionIDs []uuid.UUID `json:"consumedActionIds"`
 }
 
 // ReactionOpenedPayload announces who narrates next. It is BROADCAST — whose turn it is to
