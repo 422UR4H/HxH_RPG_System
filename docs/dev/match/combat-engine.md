@@ -719,6 +719,11 @@ inventa critério novo.
 | Escape padrão / defensivo | a próxima pendente **em cada** barra (ação combinada conta uma vez, e vai) |
 | Esquiva fechada, esquiva, não fazer nada, passivas | **nada** — é o desconto se pagando |
 
+A lista do que foi consumido fica na própria reação (`Action.ConsumedActionIDs`) e chega ao dono
+e ao mestre em `reaction_attached`, na reconexão (`ownReactions`) e no histórico
+(`actions.consumed_action_ids`). Um segundo attach do mesmo personagem na mesma ação é recusado
+(`ErrReactorAlreadyReacted`).
+
 Se não havia pendente, a reação **vira** a sua ação, sem Desvantagem. Se havia, a Desvantagem
 entra pelo `RollInput` (§ *Onde mora o viés de uma rolagem só*) — e note que Desvantagem é
 **modo de rolagem**, não `Amount`: `RollAttempts` já rola os dois conjuntos, e a Desvantagem só
@@ -1449,7 +1454,7 @@ sortear a metade do que o código realmente consome. Só o dano da arma (`RollCa
 .RollDice`, chamado à parte, fora do laço de `test()`) rola um único conjunto — 2 dados para
 uma Espada (D10+D4), sem Secondary, porque dano não tem Vantagem.
 
-Por reação:
+Por reação (os nomes das perícias são derivados no `buildAction`; o payload não decide nenhum):
 
 | `ReactionKind` | O que rola | Faces (teste 2D10 = 4, sempre) |
 |---|---|---|

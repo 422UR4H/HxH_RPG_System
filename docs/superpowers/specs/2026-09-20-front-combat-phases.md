@@ -16,8 +16,8 @@ fontes de verdade.
 | Fase | O quê | Estado |
 |---|---|---|
 | **6** | A casca e o loop mínimo (§6) | ✅ feita — e revisada no front (`System_X_System_React/docs/dev/match/combate-fase-6.md`) |
-| **Fechamento da 6** | Visibilidade do mestre, consistência da partida, NPC, histórico, ficha, cards, barras (§6A) | **próxima** — um PR de back e um de front, em paralelo |
-| **7** | Reações (§7) | depois do fechamento |
+| **Fechamento da 6** | Visibilidade do mestre, consistência da partida, NPC, histórico, ficha, cards, barras (§6A) | ✅ feito (PRs #82 e #69) |
+| **7** | Reações (§7) | back feito (pacote de back da Fase 7, branch feat/combat-phase-7-reactions-back); front **próximo** |
 | **8** | Regência — a edição do mestre (§8) | depois da 7 |
 
 **Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
@@ -25,6 +25,12 @@ fontes de verdade.
 faria sentido, §6A.5 B9), e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
 nada disso trava as fases acima. **Não há uma "Fase 9" planejada**: inventário e Nen não existem
 no back e não são o próximo passo.
+
+**O histórico se revela ao fim da partida.** Direção do dono do produto (2026-10-05): quando a
+partida encerrar, os jogadores que participaram veem todos os dados do histórico. Ainda não
+desenhado nem implementado; o banco guarda a verdade e a projeção só acontece na leitura, então
+é um ramo no `GET /history`. As perguntas em aberto (quem conta como participante; se o que é do
+mestre também se revela; WS ou só REST) estão no spec do pacote de back da Fase 7, §4.6.1.
 
 **O "fechamento" não vira fase numerada** pelo mesmo motivo de sempre: "Fase 7 = reações" e
 "Fase 8 = regência" já são citadas em documentos dos dois repos. Renumerar tornaria todas essas
@@ -1107,6 +1113,37 @@ depois de B3.
 **Objetivo:** o combate de verdade.
 
 **Escopo:**
+
+**Decisões de 2026-10-05 (pacote de back da Fase 7).**
+
+| # | Lacuna | Decisão |
+|---|---|---|
+| 1 | Ninguém recebia a declaração de uma reação | `reaction_opened` leva a reação projetada como o `turn_opened.action`: ator, tipo, `move` filtrado pelo fog, sem os números do teste. O mestre recebe inteira. `closedEscape`/`closedDodge` chegam a terceiros rebaixados (`escape`/`dodge`). `match_full_state.openTurn` leva as reações já abertas, com a mesma projeção |
+| 2 | Quem reagiu não tinha resposta nem reconciliação | `attach_reaction` ganha resposta só para quem reagiu (`reaction_attached`). O `match_full_state` traz as reações que o destinatário já anexou (`ownReactions`). Segundo attach do mesmo personagem na mesma ação: **recusado**, com `error` |
+| 3 | A ação consumida sumia calada | O servidor nomeia os `actionId` consumidos (`consumedActionIds`) para o mestre e para o dono — ao vivo, na reconexão e no histórico. Na reconexão, uma ação consumida não aparece como perdida |
+| 4 | Não estava escrito que o mestre reage pelo NPC | O mestre anexa reação pelo NPC alvo. Documentado |
+| 5 | A ordem de abertura se perdia ao recarregar | `targets[]` vem na ordem da cadeia |
+| 10 | O front teria que escrever nomes de perícia | O servidor deriva os nomes de perícia das reações (`Reflex`, `Repel`, `Evasion`), como já deriva o `hit` |
+| 7 | "Default" do escape | A categoria do movimento de cada escape é **fixa** por tipo (matriz do §11.4). Não há seletor |
+| 8 | O aviso do reflexo | **Sai.** Com o turno aberto o resultado é só do mestre; "seu reflexo não basta" revelaria o acerto do atacante. O jogador escolhe entre a passiva, rolar ou escapar **sem saber se precisa** — é aposta, e combina com "arriscar" |
+
+Decisões de front (6 e 9), uma linha cada:
+
+- **6:** Clicar em **Escapar** (ou Escape defensivo) arma a escolha da casa de destino no mapa; o
+  toque na casa envia, sem diálogo. Clicar em **Repelir** envia com a arma do rascunho daquele
+  personagem; sem rascunho, desarmado. Segurar abre a configuração em todos.
+- **9:** **Cinco botões**: Não fazer nada, Esquivar, Escapar, Escape defensivo, Repelir. As
+  fechadas saem da configuração (segurar) com **um toque em Evasão**: Esquivar + Evasão =
+  `closedDodge`; Escapar + Evasão = `closedEscape`.
+
+**O que o pacote de back entregou** (contrato em `docs/dev/api/match-combat-ws.md` e
+`match-history.md`): `reaction_attached` (para quem reagiu e para o mestre, com
+`consumedActionIds`); `reaction_opened.reaction` (projetada por destinatário, com o `move`
+filtrado pelo fog); `match_full_state.openTurn.reactions` e `ownReactions`; `consumedActionIds`
+na reconexão e no histórico (mestre e dono); segundo attach recusado (`this character already
+reacted to the open action`); `targets[]` na ordem da cadeia; nomes de perícia derivados pelo
+servidor.
+
 - Os **sete** `reactionKind`, cada um com seus componentes obrigatórios e seu custo de barra.
   ⚠️ Não é um gesto só: `nothing`, `dodge`, `closedDodge`, `escape`, `escapeGuard`,
   `closedEscape`, `repel`.
@@ -1114,16 +1151,21 @@ depois de B3.
   configuração. O gesto de segurar **já foi decidido na Fase 6** — reuse o mesmo mecanismo, não
   invente um segundo.
 - Mestre: `open_reaction`, com a ordem de abertura visível — ela muda o desfecho.
-- Balões: mecânica ao abrir, resultado ao encerrar.
-- O default do escape é **Dash**; o fechado é **Shift** (§11.4).
+- Balões: mecânica ao abrir, resultado ao encerrar — a mecânica da reação chega à mesa em
+  `reaction_opened.reaction`; o resultado, no `resolution_updated` liquidado.
+- **A categoria do movimento de cada escape é fixa por tipo** (matriz do §11.4) e validada no
+  servidor: escape e escape defensivo usam Dash; o escape fechado usa Shift. Não é default e não
+  há seletor.
 - **Os botões aparecem para o alvo porque `turn_opened` passa a dizer quem é alvo** (B2, §6A.5).
   Sem isso não há como desenhá-los. Depois de enviar, o alvo vê "reação enviada, aguardando o
-  mestre".
+  mestre" — e, desde o pacote de back da Fase 7, o mestre também reage **pelo NPC** alvo: os
+  botões aparecem ao lado dos NPCs alvo na tela dele.
 - **Dar a palavra** às reações pendentes entra no cálculo do turno aberto, no card da ação na fila do mestre (F7, §6A.6), que
   já as lista.
 - **O fantasma de espera** (§10.2): **todo escape** espera o fechamento para mover a peça — ele
   pode falhar (B13, §6A.5). Na abertura, a peça mostra para onde quer ir; no fechamento, vai
-  para onde o servidor mandar.
+  para onde o servidor mandar. O destino chega à mesa em `reaction_opened.reaction.move.position`,
+  pelo portão de fog — quem não vê a casa não recebe o destino e não desenha o fantasma.
 
   ⭐ **Reuse o que o movimento puro já tem.** A revisão da Fase 6 construiu o `IntentLayer` (seta
   e marcador de destino), a lista de declaradas e o destaque de slot. O fantasma do escape é o
@@ -1257,15 +1299,15 @@ A matriz, fechada:
 
 | Reação | Movimento |
 |---|---|
-| `escape` (padrão) | **Dash** — o default do botão |
+| `escape` (padrão) | **Dash** |
 | `escapeGuard` (defensivo padrão) | **Dash** — mesma lógica do padrão |
 | `closedEscape` (fechado) | **Shift** |
 
 O discriminador é **fechado × aberto**, não defensivo × padrão. Fechado usa Shift; os outros
 usam Dash.
 
-⚠️ **Nada disso está em código.** `Displaces()` só exige que exista um `Move`, sem olhar a
-categoria. Validação no servidor, §4.8.
+✅ **Validado no servidor** desde o pacote de back da Fase 7 (antes, `Displaces()` só exigia que
+existisse um `Move`, sem olhar a categoria).
 
 **E quando a peça do escape se move** não depende da categoria: **todo escape espera o
 fechamento**, porque pode falhar (B13, §6A.5). Uma versão anterior deste documento tratava "o
@@ -1280,7 +1322,7 @@ posturas.
 
 ---
 
-## 12. Consertos de documentação
+## 12. Consertos de documentação — ✅ feitos no pacote de back da Fase 7
 
 Foram escritos por uma sessão nossa que injetou a contradição sem questionar. **Conserte junto
 com a fase que tocar no assunto (Fase 7).**
