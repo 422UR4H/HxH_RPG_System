@@ -22,28 +22,75 @@ bruto.
 
 Estrutura aninhada Scene → Round → Turn → Action, o mesmo formato que o domínio já
 organiza internamente (`docs/dev/match/combat-engine.md`), sem achatamento: o front
-renderiza os cards de ação dentro do escopo de cada cena.
+renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega também
+`events` — o que aconteceu nele que **não é turno** — e cada turno, `masterActions`. Ver
+"O que não é turno" abaixo.
 
 ```json
 {
   "scenes": [
     {
+      "uuid": "a0a0...",
+      "category": "roleplay",
+      "briefDesc": "Taverna",
+      "createdAt": "2026-08-20T13:40:00Z",
+      "finishedAt": "2026-08-20T13:59:00Z",
+      "rounds": [
+        {
+          "uuid": "0f0f...",
+          "mode": "Free",
+          "createdAt": "2026-08-20T13:40:00Z",
+          "finishedAt": "2026-08-20T13:59:00Z",
+          "turns": [],
+          "events": []
+        }
+      ]
+    },
+    {
       "uuid": "b3f1...",
-      "category": "combat",
+      "category": "battle",
       "briefDesc": "Emboscada na floresta",
       "createdAt": "2026-08-20T14:00:00Z",
       "finishedAt": "2026-08-20T14:40:00Z",
       "rounds": [
         {
           "uuid": "1a2b...",
-          "mode": "combat",
+          "mode": "Race",
           "createdAt": "2026-08-20T14:00:05Z",
           "finishedAt": "2026-08-20T14:12:00Z",
+          "events": [
+            {
+              "uuid": "e1e1...",
+              "kind": "roundModeChanged",
+              "createdAt": "2026-08-20T14:00:20Z",
+              "payload": { "from": "Free", "to": "Race" }
+            },
+            {
+              "uuid": "ma02...",
+              "kind": "masterAction",
+              "createdAt": "2026-08-20T14:02:10Z",
+              "masterAction": {
+                "uuid": "ma02...",
+                "kind": "movePiece",
+                "happenedAt": "2026-08-20T14:02:10Z",
+                "content": { "characterId": "char-gon...", "pieceId": "piece-gon", "from": [4, 4, 0], "to": [6, 4, 0] }
+              }
+            }
+          ],
           "turns": [
             {
               "uuid": "9c9c...",
               "createdAt": "2026-08-20T14:01:00Z",
               "finishedAt": "2026-08-20T14:01:30Z",
+              "masterActions": [
+                {
+                  "uuid": "ma01...",
+                  "kind": "wallInteract",
+                  "turnId": "9c9c...",
+                  "happenedAt": "2026-08-20T14:01:10Z",
+                  "content": { "wallIds": ["wall-3"], "interact": "open" }
+                }
+              ],
               "action": {
                 "uuid": "aa11...",
                 "actorId": "char-gon...",
@@ -53,6 +100,14 @@ renderiza os cards de ação dentro do escopo de cada cena.
                   { "skillName": "Legerity", "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } }
                 ],
                 "speed": { "bar": 1, "rollCheck": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 14 } },
+                "move": {
+                  "category": "Dash",
+                  "from": [1, 1, 0],
+                  "position": [4, 4, 0],
+                  "speed": { "skillName": "Legerity", "skillValue": 4, "attempts": { "primary": [2, 5] }, "result": 13 },
+                  "charge": { "skillName": "Legerity", "skillValue": 4, "attempts": { "primary": [1] }, "result": 6 },
+                  "finalSpeed": 9
+                },
                 "attack": {
                   "weapon": "Fist",
                   "hit": { "skillName": "Legerity", "skillValue": 14, "attempts": { "primary": [6, 8] }, "result": 20 },
@@ -126,10 +181,46 @@ renderiza os cards de ação dentro do escopo de cada cena.
 }
 ```
 
+O exemplo mostra uma cena **sem turno** (a primeira: começou e terminou sem que um turno
+fechasse nela — aparece mesmo assim, com `turns: []`), e uma master action de cada lugar:
+a de parede dentro do turno em que foi aplicada, a de peça fora de turno, em `events`.
+
+Notas sobre `scenes[]` e `rounds[]`:
+
+- `category` é `battle` ou `roleplay`; `mode` é `Free` ou `Race` — valores de enum do
+  domínio, como estão.
+- **Cena e round aparecem desde que nascem**, não só quando o primeiro turno fecha neles
+  (B15): são gravados no `start_match` (ou na reidratação depois de um reinício), no
+  `change_scene` e quando um round acaba — nenhuma ação na fila consegue mais pagar o preço — e
+  outro nasce (o fim de um e o nascimento do outro vão juntos, na mesma transação). Uma cena em
+  que se só conversou, um round que fechou sem turno — aparecem, com `turns: []`.
+- `mode` do round é o **último** regime em que ele esteve. Por onde ele passou, e quando, está
+  nos `events` (`roundModeChanged`).
+- `finishedAt` ausente = round/cena ainda aberto.
+- **Todo instante deste endpoint é RFC3339 do instante real** (`createdAt`/`finishedAt` de
+  `scenes[]`/`rounds[]`/`turns[]`, `happenedAt` de master action, `createdAt` de evento) — o
+  sufixo `Z` nos exemplos acima é literal (UTC), não um rótulo colado em cima da hora local de
+  quem fechou o turno. Até 2026-10-02, `scenes`/`rounds`/`turns` eram `TIMESTAMP` sem fuso no
+  banco: o Go escrevia a hora local do processo, e o driver lia de volta rotulando UTC — um
+  turno fechado às 11:57 em -03:00 saía como `"...11:57:33Z"`, três horas antes do instante
+  real, dessincronizado de `masterActions[].happenedAt`/`events[].createdAt` (já
+  `TIMESTAMPTZ`) na MESMA resposta. Migração `20261002000000` corrigiu as três tabelas para
+  `TIMESTAMPTZ`; nenhuma mudança foi necessária do lado do Go (que já escrevia `time.Time`
+  com fuso — `time.Now()` — ver `gateway-conventions.instructions.md`).
+
 Notas sobre os campos de `action`/`reactions`:
 
 - `skills`, `move`, `attack`, `defense`, `dodge`, `repel`, `interact` só aparecem quando a
   action de fato os carrega — ausentes (não `null`), do contrário.
+- `move.from` é a posição da PEÇA do ator no tabuleiro no instante do enfileiramento — nunca o
+  que o cliente declarou em `move.from` do payload de `enqueue_action`, que o servidor sempre
+  descarta (B6, spec §4.3 "B5, B6 e B10"). Ausente quando o ator não tinha peça no tabuleiro.
+  Convenção de coordenada, igual em `move.position`: `[a, b, z]`, `(a, b) = (col, row)` numa
+  grade quadrada ou `(q, r)` axial numa hexagonal; `z` não é lido pelo servidor. Uma reação
+  (em `reactions[]`) nunca tem `move.from` — o campo não é derivado para o lado da reação.
+- `move.from` e `move.position` da **action do turno** chegam a cada leitor **como ele os viu
+  ao vivo** (decisão do dono do produto, 2026-10-01) — ver "O movimento como foi visto ao
+  vivo" abaixo. `move.category` chega sempre.
 - `trigger` é omitido por completo quando o viewer não é dono nem mestre; quando presente, é
   um objeto vazio (o domínio ainda não tem campos em `action.Trigger`).
 - `feint` segue uma regra **temporal**, não de classe: `ProjectAction`
@@ -145,9 +236,12 @@ Notas sobre os campos de `action`/`reactions`:
   uma regra separada codificada no endpoint: o dia em que um turno aberto atravessar este
   caminho (não acontece agora), a finta dele voltaria a ficar restrita a dono/mestre, turno a
   turno. Quando presente, `feint` é o `RollCheck` da finta. Ver
-  [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra é descrita pelo lado do
-  WebSocket (que nunca expõe `feint` — não há mensagem servidor→cliente que projete a
-  declaração de uma action de jogador).
+  [`match-combat-ws.md`](match-combat-ws.md), onde a mesma regra passou a valer também do lado
+  do WebSocket desde B2 (design spec §4.2, PR de fechamento da Fase 6): `turn_opened.action`
+  agora projeta a declaração de uma action de jogador, e `feint` segue exatamente este eixo
+  do TEMPO ali — escondida de um terceiro enquanto o turno está aberto, visível (com ou sem
+  números, conforme o destinatário) para o mestre e para o dono. Ver a seção de `turn_opened`
+  nesse contrato.
 - `reactToId` só aparece em uma reaction (uma action raiz não reage a nada).
 - `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
   que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
@@ -161,15 +255,20 @@ Notas sobre os campos de `action`/`reactions`:
   aqui, nem no WebSocket. Não é o mesmo caso de `systemBias`: a intervenção do mestre já tem
   superfície própria, em `overridden_action_values`, que registra o valor ANTERIOR junto com
   quem trocou e quando. O que o cliente vê aqui são os números já resolvidos
-  (`RollCheckResponse.result`, os totais em `resolution`).
-- `systemBias` **não tem equivalente no WebSocket**, e não por política: nenhuma mensagem
-  servidor→cliente projeta a declaração de uma `action.Action` **de jogador**
-  (`ActionPayload` só existe no sentido cliente→servidor). `master_action_enqueued` é a
-  exceção do lado do mestre, mas não carrega `ActionPayload` nem `systemBias` — `systemBias`
-  só existe em ações e reações de jogador (`buildAction`), nunca em `buildMasterAction`. O
-  argumento do "já é dedutível" também não valeria lá — `resolution_updated` emite só
-  `diceRolled`, o conjunto efetivamente lido. Ver [`match-combat-ws.md`](match-combat-ws.md).
-- `RollCheckResponse.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
+  (`actionwire.RollCheck.result`, os totais em `resolution`).
+- `systemBias` **agora tem equivalente no WebSocket** (desde B2, design spec §4.2) —
+  `turn_opened.action.systemBias` e `match_full_state.openTurn.action.systemBias` carregam o
+  mesmo valor. Antes de B2 isso era verdade por falta de superfície: `ActionPayload` só existe
+  no sentido cliente→servidor, e `action_queued` (B1) — a primeira superfície a carregar a
+  ação inteira — é master-only, então nunca precisou do argumento "já é dedutível" (o mestre
+  já era dono de tudo). B2 é a primeira vez que esse argumento passa a valer para quem NÃO é
+  mestre: `actionwire.Action.SystemBias` **não é cortado por nível** (ver
+  `internal/app/wire/actionwire`), então sobrevive ao corte de `Opened` igual sobrevive ao
+  `Full` do mestre — e o motivo é o mesmo de sempre, público por omissão. `master_action_enqueued`
+  continua sem `ActionPayload` nem `systemBias` — o viés só existe em ações e reações de
+  jogador (`buildAction`), nunca em `buildMasterAction`. Ver
+  [`match-combat-ws.md`](match-combat-ws.md).
+- `actionwire.RollCheck.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
   viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
   público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
   vaza mais do que o total já vaza. Mas é uma superfície de dados estritamente maior que o
@@ -193,6 +292,23 @@ Notas sobre `resolution.targets[]`:
   pode aproveitar"*. Quem pode aproveitar precisa conseguir ler.
 - `applies`, `source`, `againstKind`, `expiresAt` e `reaction.rung` são **snake_case**: são
   valores de enum do domínio serializados como estão, não tags de struct.
+- `escape` é o veredito de uma **fuga** (`escape`, `escapeGuard`, `closedEscape`) — **ausente**
+  em todo alvo que não fugiu. Mesma forma do `targets[].escape` do `resolution_updated` do
+  WebSocket ([`match-combat-ws.md`](match-combat-ws.md#resolution_updated)):
+
+  ```json
+  "escape": { "escaped": false, "movePassed": false, "dodgePassed": true, "awaitsMaster": false, "landing": [7, 6, 0] }
+  ```
+
+  `escaped` = `movePassed` **e** `dodgePassed`, os dois contra o acerto do atacante. É o que
+  diz, depois, por que uma peça andou ou não: escapou → foi ao destino da fuga; falhou com
+  `landing` → foi para onde o mestre escolheu; falhou sem `landing` (`awaitsMaster: true`, que
+  num turno fechado se lê "ficou") → não saiu do lugar. `landing` (`[col, row, z]`) só aparece
+  numa fuga que falhou. Persistido com a resolução do turno
+  (`internal/gateway/pg/round/resolution_record.go`); turnos gravados antes deste campo não o
+  trazem. Para quem não é mestre nem dono do personagem que fugiu, `landing` só vem se ele
+  viu a peça pousar ao vivo — ver "O movimento como foi visto ao vivo" abaixo; sem ele,
+  `awaitsMaster` continua `false` (o mestre escolheu; só não se diz onde).
 
 - `errors` só aparece quando o motor **não conseguiu** calcular parte da colisão, o que é
   raro — então a presença dela é o sinal. **Não é mensagem de erro:** o request não falhou e
@@ -206,12 +322,136 @@ Notas sobre `resolution.targets[]`:
   pressupor. Ver `internal/gateway/pg/round/resolution_record.go`, que persiste as faltas
   pela mesma razão.
 
+### O que não é turno — `rounds[].events` e `turns[].masterActions`
+
+Dois tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
+
+- **`roundModeChanged`** — o mestre trocou o regime do round. Gravado em `match_events` no
+  instante em que a troca é aplicada (`change_round_mode`); uma troca para o regime em que o
+  round já estava não é troca e não grava nada. **Público**, como o próprio regime.
+- **master action** — tudo o que o mestre aplicou pelo `enqueue_master_action` e foi aceito:
+  arrastar, pôr e tirar peça (`movePiece`, `placePiece`, `removePiece`), interagir com uma
+  parede e revelá-la (`wallInteract`, `revealWall`), e as genéricas que só se penduram no
+  turno aberto (`turnNote`). Gravadas em `master_actions`, tabela própria (spec §4.8): **sem
+  turno aberto, no instante** em que são aplicadas; **com turno aberto, no fechamento desse
+  turno**, na mesma transação que grava o turno e o tabuleiro (decisão do dono do produto,
+  2026-10-01). O
+  registro é montado no instante — quem viu o quê, o `turnId`, `happenedAt` são os daquele
+  momento —; só a gravação espera o turno.
+
+**`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
+do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
+o histórico mostra a action já editada, que **é** a action. Um turno editado tem
+`masterActions: []`.
+
+**Onde uma master action entra:**
+
+| A master action foi aplicada… | Aparece em |
+|---|---|
+| com o turno aberto | `turns[].masterActions` daquele turno — **só depois que o turno fecha e é gravado**; antes disso ela não está em lugar nenhum desta resposta |
+| sem turno aberto (o arrastar entre turnos é o caso comum) | `rounds[].events`, `kind: "masterAction"` |
+| com um turno que **não foi gravado** (um reinício com o turno aberto o perde) | **lugar nenhum** — ela some com o turno, e o tabuleiro salvo também volta ao último fechamento |
+
+Um GET feito com o turno aberto ainda não tem o turno na árvore (ele só é gravado ao fechar) e
+também não tem as master actions feitas dentro dele: elas são gravadas **junto** com o turno, e
+aparecem dentro dele na primeira leitura depois do fechamento. Ao vivo a mesa já as recebeu; o
+histórico é o que ficou durável.
+
+Tudo o que acontece dentro de um turno aberto fica durável junto com o fechamento dele, ou não
+fica: um reinício no meio do turno perde o turno inteiro — o movimento da abertura e as master
+actions do mestre dentro dele — e o tabuleiro salvo continua o do último fechamento, então o
+histórico nunca mostra o efeito de um turno que ele não tem. **Linhas antigas:** master actions
+gravadas antes dessa decisão podem ter um `turnId` cujo turno nunca foi gravado (eram gravadas
+no instante, com turno aberto ou não); o histórico as mostra em `rounds[].events`, com o
+`turnId`, apontando um turno que não existe na árvore.
+
+**Formato de `events[]`** — em ordem de tempo, os dois `kind` intercalados:
+
+| Campo | |
+|---|---|
+| `uuid` | do evento (`roundModeChanged`) ou da master action (`masterAction`) |
+| `kind` | `"roundModeChanged"` \| `"masterAction"` |
+| `createdAt` | quando aconteceu |
+| `payload` | só em `roundModeChanged`: `{ "from": "Free", "to": "Race" }` |
+| `masterAction` | só em `masterAction`: o mesmo objeto de `turns[].masterActions[]` |
+
+**Formato de uma master action** (`turns[].masterActions[]` e `events[].masterAction`):
+
+| Campo | |
+|---|---|
+| `uuid` | |
+| `kind` | `movePiece` · `placePiece` · `removePiece` · `wallInteract` · `revealWall` · `turnNote` |
+| `turnId` | o turno aberto quando foi aplicada; **ausente** fora de turno |
+| `happenedAt` | quando foi aplicada |
+| `content` | o que ela fez — peça: `{ characterId, pieceId, from?, to? }` (`from` ausente num `placePiece`, `to` ausente num `removePiece`); parede: `{ wallIds, interact }` (só as paredes que de fato mudaram — um `wallInteract` traz sempre **uma** parede: um lote do mestre vira uma master action por parede, cada uma com quem viu aquela parede, para que ver uma porta comum não entregue no histórico o id de uma porta secreta não revelada do mesmo lote; um `revealWall` traz todas as reveladas, que vão a todos); `turnNote`: o payload do `enqueue_master_action` como o mestre o mandou |
+
+`events` e `masterActions` são **sempre listas** — `[]` quando não há nada — nunca `null`.
+Dentro de cada uma, a ordem do array é a ordem do tempo; `createdAt`/`happenedAt` têm
+precisão de segundo, então o array é quem desempata.
+
+**Projeção — cada leitor vê a master action como a viu ao vivo.** No instante da aplicação o
+servidor já decide, jogador a jogador, o que cada um recebe (o portão de fog do
+`piece_moved`, a parede que muda às vistas ou não). Essa mesma decisão é gravada com a
+master action, para **todo jogador da sessão**, conectado ou não — o que conta é o fog dele
+naquele instante —, e o histórico devolve a cada um exatamente aquilo:
+
+| O jogador, ao vivo, … | No histórico ele vê |
+|---|---|
+| recebeu a master action (o `piece_moved`, a parede mudando, a remoção) | a master action inteira |
+| recebeu só o `piece_removed` — viu a peça sair e não viu para onde | a master action **sem o destino** (`content.to` ausente) |
+| não recebeu nada | **nada** — a entrada não existe para ele, nem dentro do turno nem em `events` |
+
+O mestre vê todas, inteiras. Revelar parede vai a todos ao vivo, então vai a todos aqui.
+`turnNote` não chega à mesa ao vivo (pendura-se no turno e não emite nada), então é só do
+mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, nem para o mestre:
+é como a projeção é decidida, não dado de mesa.
+
+### O movimento como foi visto ao vivo — `move.from`, `move.position`, `escape.landing`
+
+Vale para o `move` da action, o `move` de cada reação em `reactions[]` e o `escape.landing`.
+
+Onde uma peça estava e para onde foi é a mesma notícia que o relay ao vivo (`piece_moved` /
+`piece_removed`) dá ou nega pelo fog de cada jogador. O histórico não a dá a quem a mesa não
+deu (decisão do dono do produto, 2026-10-01). O fog na hora da leitura não é o fog daquele
+momento, então **nada é recalculado**: no instante em que o movimento é mostrado ao vivo, o
+servidor grava, para **todo jogador da sessão** (conectado ou não), o veredito do mesmo portão
+que decidiu o que ele recebeu — o do `turn_opened` (origem = a casa da peça na abertura) para
+o movimento da action, o do `resolution_updated` liquidado para onde a peça de uma fuga parou
+(o pouso de uma fuga que falhou, ou o destino de uma que escapou) — e o histórico projeta por
+ele:
+
+| O jogador, ao vivo, … | `move` da action no histórico | `escape.landing` |
+|---|---|---|
+| viu o destino | `from` e `position` | presente |
+| viu só a peça sair (o `move` do `turn_opened` trouxe só `from`) | `from`, sem `position` | — |
+| não viu nada (fog, peça `visible: false`, ator sem peça) | só `category` | ausente |
+
+**Reações.** A action de uma reação nunca vai à mesa ao vivo; o único jeito de um terceiro
+saber para onde ela levou a peça é ter visto a peça chegar. Então, em `reactions[]`, o
+`move.position` (uma reação nunca tem `move.from`) só vem para quem não é mestre nem dono do
+personagem que reagiu se for uma **fuga que escapou** e ele **viu a peça chegar** ao destino
+(recebeu o `piece_moved` dela no fechamento). O `move.position` de uma fuga que **falhou** é um
+destino que a peça nunca alcançou: não vem para ninguém além de mestre e dono — mesmo para quem
+viu onde ela caiu, que recebe isso em `escape.landing`. `move.category` vem sempre.
+
+O mestre e o dono do ator (do personagem que fugiu, para `landing` e para o `move` da reação)
+veem tudo, sempre — não há veredito gravado para eles. Os vereditos são gravados com o fechamento do turno, na
+transação dele (`actions.move_views`; `landingViews` dentro do `escape` em
+`turns.resolution`), e **nunca saem no wire** — para ninguém, nem para o mestre.
+
+**Linhas antigas falham fechado.** Um turno gravado antes desses vereditos existirem (sem
+`move_views`, sem `landingViews`) mostra a quem não é mestre nem dono só a `category` do
+movimento — da action e das reações — e nenhum `landing`: na dúvida, não se entrega o que
+talvez não tenha sido visto.
+
 ### A resposta já vem projetada — não filtre no cliente
 
 **Este é o ponto central deste endpoint.** O Action History é uma superfície de jogo com
 visibilidade por campo, não um log — a mesma política que `resolution_updated` já aplica no
 WebSocket (ver `docs/dev/match/combat-engine.md#visibilidade`), rodada aqui pelas MESMAS
-funções (`service.ProjectAction`, `service.ProjectResolution`).
+funções (`service.ProjectAction`, `service.ProjectResolution`) — as master actions por
+`masteraction.Record.ProjectFor` e o onde do movimento pelos vereditos gravados ao vivo
+(seções acima).
 
 Isso significa, na prática:
 
@@ -247,7 +487,7 @@ deny-list para divergir da primeira da próxima vez que ela mudar.
 
 | Status | Situação |
 |---|---|
-| 200 | Histórico retornado (pode ser `{ "scenes": [] }` para uma partida sem turnos fechados) |
+| 200 | Histórico retornado (`{ "scenes": [] }` para uma partida que nunca começou; uma partida começada tem ao menos a cena e o round em que começou) |
 | 400 | UUID inválido |
 | 401 | Sem JWT |
 | 403 | Partida privada e usuário não é mestre nem participante |

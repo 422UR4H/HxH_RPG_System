@@ -106,7 +106,43 @@ até o mestre reenviar `add_npc` pelo WS: o verbo tolera a "duplicata" que o ban
 (o NPC já está em `match_participants`, `ErrNPCAlreadyInMatch`) e sincroniza a sessão mesmo
 assim — é assim que o REST-no-meio-da-partida se resolve.
 
+**Pôr a peça de um NPC no tabuleiro também o inscreve.** Com a partida em andamento, o mestre
+põe uma peça pelo WS (`enqueue_master_action` com `move`, ver
+[`match-combat-ws.md`](match-combat-ws.md) §4); se o personagem é NPC dele e ainda não está na
+partida, o game server roda o MESMO caminho do `add_npc` — `AddMatchNPCUC`, injeção na sessão,
+`npc_added` para a mesa e `bars_updated` — e só então cria a peça. Um NPC que já participa só
+ganha a peça. Tirar a peça (`remove`) **não** o desinscreve.
+
 **Remoção continua só-na-próxima-sala.** O `DELETE` abaixo não tem par ao vivo: tirar um NPC
 de uma sessão em andamento esbarra em regras de combate ainda não decididas (ação dele na
 fila, turno aberto com ele como ator/alvo, reação pendente) e fica registrado como lacuna em
-[`match-combat-ws.md`](match-combat-ws.md) §9.
+[`match-combat-ws.md`](match-combat-ws.md) §10.
+
+---
+
+## B11 — peça de NPC no tabuleiro entra sozinha, sem passar por este POST
+
+`InitMatchSessionUC.Init` — que roda tanto no `start_match` quanto na reidratação depois de um
+reinício do `cmd/game` — lê o tabuleiro da partida (`match_boards`, spec §4.3) **antes** de
+montar a sessão. Para cada peça cujo personagem ainda não é participante, ele chama o MESMO
+`AddMatchNPCUC.Add` que este POST usa, com o mestre da partida como requisitante:
+
+- Sucesso ou `ErrNPCAlreadyInMatch` (o NPC já estava no roster, por uma corrida ou por já ter
+  passado por este POST ou pelo `add_npc`) → segue normal; a lista de participantes é relida
+  depois do laço, então o NPC recém-inscrito já entra na sessão que nasce.
+- `ErrSheetNotNPC`, `ErrCharacterSheetNotFound`, `ErrSheetNotOwnedByMaster` → a peça é
+  **pulada**, com log. Uma peça de personagem de jogador que nunca foi inscrito (`ErrSheetNotNPC`)
+  fica no tabuleiro mas o personagem **não** entra na sessão — o Init nunca aborta por causa de
+  uma peça que não devia estar ali.
+- Qualquer erro ao ler o tabuleiro ou o mestre da partida também é logado e engolido: a sessão
+  tem que nascer de qualquer jeito, o B11 é uma conveniência, não uma precondição.
+
+**É idempotente.** Chamar `Init` de novo sobre o mesmo estado (uma reidratação, por exemplo)
+não gera uma segunda inscrição: a peça do NPC já enrolado aparece na primeira leitura de
+participantes, então `Add` nem é chamado de novo. Isso também conserta, sem tocar no banco à
+mão, qualquer partida que já exista com uma peça de NPC solta no tabuleiro e nunca inscrita.
+
+Isto fecha, pelo lado do `Init`, o que a seção anterior já descrevia pelo lado do `add_npc`
+mid-match e do "pôr" de uma peça pelo master action: as três portas — este POST, o `add_npc`
+de WS, e agora o próprio nascimento da sessão — rodam o mesmo `AddMatchNPCUC.Add` e por isso
+concordam sobre quem está na partida.

@@ -433,6 +433,36 @@ mappings:
       still loads and returns the sheet instead of failing. See match-combat-ws.md §4
       (add_npc) and match-npcs.md.
 
+  - code_path: internal/application/match/init_match_session.go
+    dev_docs:
+      - path: docs/dev/api/match-npcs.md
+        confidence: directly_affected
+    notes: >-
+      B11 (spec §4.3): before building the session, Init reads the match's board and calls
+      the SAME AddMatchNPCUC.Add for every piece whose character is not yet a participant
+      — idempotent, and it never aborts Init (ErrSheetNotNPC/ErrCharacterSheetNotFound/
+      ErrSheetNotOwnedByMaster are logged and skipped). Runs on both start_match and
+      rehydration. See match-npcs.md §"B11".
+
+  - code_path: internal/app/wire/actionwire/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+    notes: >-
+      The ONE action/reaction wire format (Action and its neighbours — RollCheck, Move,
+      Attack, etc.), shared by the REST Action History and every WebSocket surface that
+      sends an action (design spec §4.1, plano T6/T7/T8/T10/T15). From(a, lvl) cuts NUMBERS
+      only, by Level (Full/Opened/Declaration) — the visibility deny-list stays entirely in
+      service.ProjectAction, which always runs upstream of From. get_match_history.go uses
+      From(_, Full), which is why the REST history's JSON is unchanged (golden test,
+      get_match_history_golden_test.go). ActionSkill is named with the Action- prefix, not
+      the bare Skill the spec's type list uses, because huma's OpenAPI schema registry keys
+      components by bare Go type name across every registered package and
+      internal/app/api/sheet already has an unrelated Skill DTO — see
+      api/routes_registration_test.go's own doc for that collision class.
+
   - code_path: internal/app/api/match/get_match_history.go
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -440,9 +470,11 @@ mappings:
     notes: >-
       GET /matches/{uuid}/history — Action History, nested Scene -> Round -> Turn ->
       Action, projected per viewer via the SAME service.ProjectAction/ProjectResolution
-      the WebSocket path runs (Fase 5, Task 12). The response is already filtered; no
-      client-side filtering is expected on top of it, and no DTO here re-applies a
-      deny-list. Two resolution fields are MASTER-ONLY, stripped upstream rather than
+      the WebSocket path runs (Fase 5, Task 12), then cut to actionwire.Full via
+      actionwire.From — see internal/app/wire/actionwire above for the shared shape and
+      the three cut levels. The response is already filtered; no client-side filtering is
+      expected on top of it, and no DTO here re-applies a deny-list. Two resolution fields
+      are MASTER-ONLY, stripped upstream rather than
       here: pendingReactions and errors (engine faults). payouts is withheld on one
       condition only, that the reaction's label was demoted. systemBias IS exposed;
       RollCheck.Context is not.
@@ -464,7 +496,32 @@ mappings:
     dev_docs:
       - path: docs/dev/api/match-maps.md
         confidence: directly_affected
-    notes: Match-Maps use cases (AttachMap, GetMap, DetachMap)
+    notes: >-
+      Match-Maps use cases (AttachMap, GetMap, DetachMap). Task 18 (B16) adds
+      AttachMatchMapInput.InheritBoardFromMatchUUID: validates same-campaign/same-map/
+      has-a-board against the source match (ErrSourceMatchNotInCampaign/
+      ErrSourceMatchOnAnotherMap/ErrSourceMatchHasNoBoard) before calling
+      IMatchBoardRepository.Copy; without inheritance, attaching a DIFFERENT map than the
+      one currently attached calls IMatchBoardRepository.Delete on the old board.
+
+  - code_path: internal/application/matchboard/
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: directly_affected
+    notes: >-
+      LoadMatchBoardUC (spec 2026-09-27-combat-closure-back §4.3, "Quem carrega",
+      B14) — the match's own match_boards line if one exists, else a snapshot of
+      the attached campaign map (Bg nil); nil, nil when no map is attached. The
+      game Room calls it through RoomDeps.LoadBoardUC.
+      SaveMatchBoardUC (Task 3, §4.3 "Quando persiste") — writes the board row
+      first; a failure there aborts before any memory is attempted. Every
+      memory upsert then runs regardless of an earlier one failing, and every
+      failure comes back joined via errors.Join. Room.persistBoard is the one
+      caller, through RoomDeps.SaveBoardUC. IMemoryLoader (FindByMatchMap) is
+      what RoomDeps.MemoryLoader satisfies — StartMatch/RehydrateSession use it
+      to seed a session's fog memory instead of starting empty.
 
   # ─── Fog of War / Visibility (Phase 10-D, revised Phase 10-E) ───
   - code_path: internal/domain/match/entity/fog/
@@ -499,19 +556,217 @@ mappings:
     dev_docs:
       - path: docs/dev/api/maps.md
         confidence: possibly_affected
-    notes: IPlayerMemoryRepository interface (memory persistence scaffold); currently a stub — impacts maps.md if persistence behavior changes
+    notes: IPlayerMemoryRepository interface (memory persistence scaffold); satisfied by fog.PlayerMemoryRepository, which Task 3 wires as RoomDeps.MemoryLoader — impacts maps.md if persistence behavior changes
 
   - code_path: internal/gateway/pg/fog/
     dev_docs:
       - path: docs/dev/api/maps.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-maps.md
         confidence: possibly_affected
-    notes: PlayerMemoryRepository PG implementation (stub); impacts maps.md when memory persistence is fully wired
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
+    notes: >-
+      PlayerMemoryRepository (spec 2026-09-27-combat-closure-back §4.3) —
+      Upsert/FindByMatchMap/DeleteByMatch against player_memories, Seen
+      serialized as [{"kind":"wall","id":"<id>"}]. Task 3 wires it as BOTH
+      SaveMatchBoardUC's memory writer and RoomDeps.MemoryLoader — Upsert is
+      called from Room.persistBoard, FindByMatchMap from StartMatch and from
+      loadBoard's session-branch (a rehydrated session's memory seed point).
+      CopyMatch (Task 18, B16) deletes dst's rows then INSERT…SELECTs src's into dst
+      with a fresh id each, filtered to the source board's own map_id (fix round 1 —
+      src is a past match that may hold orphan memories of some OTHER map it was once
+      on) — called by pgmatchboard.Repository.Copy with a *pgx.Tx* (not the pool) so it
+      lands inside Copy's own match_boards transaction.
 
   - code_path: migrations/20260805000000_player_memories.sql
     dev_docs:
       - path: docs/dev/api/maps.md
         confidence: possibly_affected
     notes: Renames player_fog_states to player_memories (explored JSONB → seen_features JSONB, drops grid_kind); no data migration, the old table was never written to
+
+  # ─── Match Board: per-match snapshot (Phase 6 closure, B3/B14) ───
+  - code_path: internal/domain/matchboard/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: >-
+      matchboard.Board — the match's own board, a SNAPSHOT that starts as a copy of the
+      campaign map it was attached to (spec 2026-09-27-combat-closure-back §4.3). Grid/Bg/
+      Pieces/Walls reuse the mapentity JSON shapes maps.pieces/maps.walls already store.
+      Task 3 makes Bg a real, if still one-way, field: Room.bg is loaded from it
+      and preserved on every persistBoard save — nobody WRITES a non-nil Bg yet
+      (the in-match map editor is future work).
+
+  - code_path: internal/gateway/pg/matchboard/
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: directly_affected
+    notes: >-
+      pgmatchboard.Repository — Get/Save/Delete against match_boards (upsert on
+      match_uuid). Save is called from Task 3's SaveMatchBoardUC, in turn from
+      Room.persistBoard, at every point spec §4.3 lists. Copy (Task 18, B16 — herdar
+      tabuleiro entre partidas) replaces dst's board+player_memories with src's in one
+      transaction: its own INSERT…SELECT for match_boards, then
+      fog.NewPlayerMemoryRepository(tx).CopyMatch for player_memories — tx (pgx.Tx)
+      satisfies pgfs.IQuerier, so the fog half runs inside the SAME transaction without
+      either package needing a transaction type of its own. Called from
+      AttachMatchMapUC.Attach when the request carries inheritBoardFromMatchUuid.
+
+  - code_path: migrations/20260927000000_match_boards_and_events.sql
+    dev_docs:
+      - path: docs/dev/api/match-maps.md
+        confidence: possibly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: Creates match_boards, match_events and master_actions (spec 2026-09-27-combat-closure-back, Task 1)
+
+  - code_path: migrations/20261001000000_actions_move_views.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
+    notes: >-
+      actions.move_views JSONB NULL — o que cada jogador da sessão viu ao vivo do
+      movimento da ação do turno ({"<playerUUID>": "full"|"left"}; mestre e dono do
+      ator fora), gravado com o fechamento. O GET /history corta move.from/position
+      por ele; NULL (linha antiga, ou ação sem move) falha fechado. Dono do produto,
+      2026-10-01.
+
+  - code_path: migrations/20261002000000_scenes_rounds_turns_timestamptz.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      Fix D (fix-tz-brief.md, 2026-10-02): scenes/rounds/turns.created_at/finished_at
+      eram TIMESTAMP sem fuso — o Go escrevia a hora local do processo (zoned
+      time.Now()), e o driver lia de volta rotulando UTC, três horas fora do instante
+      real neste host (-03:00). Migrados para TIMESTAMPTZ, interpretando os valores
+      existentes como America/Belem (único host que já escreveu linhas). Nenhuma
+      mudança no lado do Go: time.Time já é zoned, TIMESTAMPTZ é quem precisava ser
+      zone-aware. Ver auditoria das demais colunas TIMESTAMP (sem fuso) expostas por
+      REST em fix-tz-report.md — fora do escopo desta migração.
+
+  # ─── Match History: round-scoped events and master actions (Phase 6 closure, B15/B14) ───
+  - code_path: internal/domain/matchevent/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      matchevent.Event/Kind — what happens inside a round that is not a turn and is
+      nobody's action (spec §4.5, B15); today only KindRoundModeChanged. Master actions
+      have their own table/package (masteraction) and are never recorded here.
+
+  - code_path: internal/gateway/pg/matchevent/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: pgmatchevent.Repository — Insert/ListByMatch against match_events, ordered by (created_at, uuid).
+
+  - code_path: internal/domain/masteraction/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      masteraction.Record/Kind/View — the master's own actions, persisted separately from
+      actions because the actor is the master (a USER) and the action happens outside any
+      turn (spec §4.8, B14). ProjectFor is the pure per-viewer projection (master sees all;
+      full drops Views; left also erases a piece kind's destination; absent → not in the
+      reader's history at all). PieceContent is the Content shape of the three piece kinds.
+
+  - code_path: internal/gateway/pg/masteraction/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: pgmasteraction.Repository — Insert/ListByMatch against master_actions, ordered by (happened_at, uuid).
+
+  - code_path: internal/app/game/board.go
+    dev_docs:
+      - path: docs/dev/api/game-lobby.md
+        confidence: possibly_affected
+    notes: >-
+      pieceToPayload/payloadToPiece — the board's own entity<->wire conversion
+      (spec 2026-09-27-combat-closure-back §4.3, B14). pieceToPayload reads
+      Piece.Coord.Slot (any: SquareCoord/HexCoord or a map[string]any from a JSON
+      round-trip) via marshal/unmarshal into a shared shape, robust to both; errors
+      on an unrecognized kind, which Room.loadBoard logs and skips rather than
+      failing the whole board. payloadToPiece is the reverse, for persistBoard
+      (Task 3) — never errors, defaults an unrecognized kind to square.
+
+  - code_path: internal/app/game/master_board.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-npcs.md
+        confidence: directly_affected
+    notes: >-
+      applyMasterPieceAction — o braço de peça do enqueue_master_action (spec
+      2026-09-27-combat-closure-back §4.3, B14 + o move de B9 + B11 com a sala viva):
+      arrastar, pôr e tirar peça no meio da partida, com ou sem turno aberto;
+      master_action_enqueued só para o mestre. enrollLiveNPC é o corpo do add_npc,
+      chamado também pelo "pôr" de um NPC que ainda não participa (npc_added igual).
+
+  - code_path: internal/app/game/master_action_record.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: >-
+      recordMasterAction — o ÚNICO escritor de master_actions (spec §4.8), chamado só
+      do braço do enqueue_master_action (edit_action não é master action). Garante
+      cena/round (EnsureSceneAndRound) antes, e grava views: o que cada jogador da
+      sessão viu ao vivo, pelos mesmos portões de fog do dispatch (pieceMoveView,
+      pieceRemovedView) — mudar um portão muda o que o histórico mostra. Com turno
+      aberto não insere: guarda o registro para o fechamento (turn_writes.go).
+
+  - code_path: internal/app/game/unwritten.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: >-
+      O que uma gravação que falhou deixou para a próxima carregar, na mesma transação
+      (decisão do controlador sobre o Fix C, 2026-10-02): unwrittenSheets (fichas cujo HP
+      um fechamento falho não gravou — vão no StatusBars do próximo fechamento; nunca todas
+      as fichas, para não atropelar edição por REST) e unwrittenRoundEnds (fins de round
+      não gravados — vão em TurnCloseData.UnwrittenRoundEnds ou no PersistRoundClose da
+      próxima gravação do round seguinte, para nunca haver duas rodadas abertas na cena;
+      o change_scene também alimenta a lista quando o par antigo nunca virou linha ou o
+      CloseSceneAndRound dele falha).
+      Mudar quando algo é carregado muda o §9 do contrato WS.
+
+  - code_path: internal/app/game/turn_writes.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      turnWrites — o que aconteceu dentro de um turno aberto e só é gravado com o
+      fechamento dele, na transação de PersistTurnClose (decisão do dono do produto,
+      2026-10-01; spec 2026-09-27-combat-closure-back §4.3/§4.8). Hoje as master
+      actions e moveViews (o que cada jogador da sessão viu do movimento aberto, pelo
+      mesmo gate do turn_opened — openedMoveViewLocked em room.go; o GET /history
+      projeta o move por ele); um dado novo do turno entra como campo aqui e em
+      TurnCloseData. A sala
+      fechar com turno aberto o perde inteiro, como um reinício (logDroppedTurn).
+
+  - code_path: internal/app/game/history_record.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: >-
+      B15 (spec §4.5): cena e round viram linha quando nascem — ensureActiveSceneAndRound,
+      chamado no start_match, na reidratação e depois do change_scene; o round que nasce
+      quando outro acaba (nenhuma ação na fila consegue mais pagar o preço) vira linha junto
+      com o fim do anterior, na transação do turno (persistClosedTurn) ou na de
+      persistRoundClose/writeRoundClose — e a troca de regime é gravada em match_events (recordRoundModeChanged,
+      que também atualiza o mode da linha do round). ensureSceneAndRoundRows é o caminho
+      comum, usado também por recordMasterAction. Mudar quando algo vira linha muda o que
+      o GET /history mostra.
 
   - code_path: internal/app/game/message.go
     dev_docs:
@@ -526,9 +781,11 @@ mappings:
       - path: System_X_System_React/docs/dev/http-boundary-inventory.md
         confidence: possibly_affected
     notes: >
-      WS message type definitions — piece_moved, piece_removed, map_state_sync,
-      map_full_state (visible_polygons/fog_mode; explored_cells/explored_delta
-      removed in Phase 10-E), wall_hp_changed, wall_state_changed,
+      WS message type definitions — piece_moved, piece_removed, map_state_sync
+      (OBSOLETE since B14 — accepted, ignored, answers only the sender with the
+      current map_full_state; removed from the contract once F13 drops the send
+      from the front), map_full_state (visible_polygons/fog_mode;
+      explored_cells/explored_delta removed in Phase 10-E), wall_hp_changed, wall_state_changed,
       visibility_updated, wall_revealed, match_full_state (backend-prep-front-combat:
       combat snapshot on register/reconnect — MatchFullStatePayload, OpenTurnPayload)
       and the now-populated ActionEnqueuedPayload.
@@ -544,6 +801,18 @@ mappings:
       examples were GENERATED by serializing these structs — a field added,
       renamed or retagged here makes that doc wrong, including the omitempty
       traps it documents (uuid.UUID and [3]int never elide).
+      Task 7 (B1, spec §4.2): ActionQueuedPayload gained Action actionwire.Action
+      (Full, no projection — see internal/app/wire/actionwire above). Safe
+      because both surfaces it feeds (action_queued, match_full_state.queue) were
+      already master-only; the field only moves entitlement the master already
+      had at turn-open time earlier, to enqueue time.
+      Task 10 (B12, spec §4.2/§5 "fila" row): new OwnQueuedActionPayload
+      (actionId + Action at actionwire.Declaration) and
+      MatchFullStatePayload.OwnQueue *[]OwnQueuedActionPayload with omitempty —
+      nil (absent) for the master, always a non-nil pointer (even to an empty
+      slice) for everyone else. The reconciliation rule (known iff in ownQueue
+      OR equals openTurn.actionId; never resend on your own) is documented in
+      match-combat-ws.md, not just this note.
 
   - code_path: internal/app/game/room.go
     dev_docs:
@@ -555,9 +824,15 @@ mappings:
         confidence: directly_affected
     notes: >-
       Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) +
-      piece_moved/piece_removed/map_state_sync/map_full_state broadcast;
-      wall_hp_changed + wall_state_changed from WallResults; map_state_sync seeds
-      the board, recomputes LOS and re-pushes map_full_state per player.
+      piece_moved/piece_removed/map_full_state broadcast; wall_hp_changed +
+      wall_state_changed from WallResults. B14 (spec 2026-09-27-combat-closure-back
+      §4.3): the Room loads its own board via RoomDeps.LoadBoardUC (nil = no board
+      capability) in Run's register branch — at birth, and on every master
+      register while still a lobby (boardLoaded gates that to once after the
+      match starts). map_state_sync no longer writes anything (see message.go's
+      own note); applyWallInteract/revealSecretDoors answer unknown_wall to the
+      master for a targetId the server does not know, instead of the old silent
+      skip.
       match-combat-ws.md documents this file's DISPATCH: who may send each combat
       message, the exact error code each refusal uses, which events each one emits
       and in what order, and publishResolution's two visibility axes (master-only
@@ -574,6 +849,42 @@ mappings:
       a peça não sair do lugar. Os três verbos que fecham um turno (close_turn,
       open_next_action, pull_action) aplicam esse desfecho. Z is preserved, never
       overwritten from Move.Position[2] (units unresolved).
+      Task 3 (B3, spec §4.3 "Quando persiste"): Room.persistBoard(reason), in
+      board.go, is now the ONE write path — the lobby's move/remove, start_match
+      (before Init), the three verbs that close a turn (right after
+      applyClosedEscapes, before persistClosedTurn — since 2026-10-01 the close's board
+      goes inside PersistTurnClose's transaction instead) and the master's wall
+      interact/reveal all call it. RoomDeps.SaveBoardUC/MemoryLoader (nil = no
+      persistence capability, same rule as LoadBoardUC). StartMatch and
+      RehydrateSession seed a session's fog memory from MemoryLoader instead of
+      SyncPlayerMemories(nil, ...) — RehydrateSession itself still seeds none (its
+      own doc comment explains why: the real mapUUID is not known until
+      loadBoard runs moments later, on the same register path, which is where a
+      rehydrated session's persisted memory now actually arrives).
+      MatchSession.SetMapUUID resolves the mapUUID-stuck-at-uuid.Nil TODO that used
+      to sit in memoryFor.
+      Task 4 (B14, spec §4.3 "Quem move o quê"): piece_moved/piece_removed are
+      LOBBY-ONLY now — handlePieceMoved/handlePieceRemoved refuse both master and
+      player outright the instant r.session != nil (the master's mid-match
+      move/place/remove becomes enqueue_master_action's move/remove, Task 5). In
+      the lobby the master still moves/removes any piece; a player's piece_moved
+      is checked against RoomDeps.SheetOwnership (GetCharacterSheetRelationshipUUIDs
+      — the lobby has no charToPlayer) for the piece's CURRENT CharacterID, the
+      piece must already exist, and the payload's characterId must match the
+      existing one (a player cannot relabel whose piece it is). A player's
+      piece_removed is refused unconditionally in the lobby too — only the master
+      removes. This resolved the "No server-side piece ownership validation in
+      Phase 6 / TODO: validate piece ownership per user (Phase 7+)" comment that
+      used to sit on the piece_moved case in handleClientMessage.
+      Task 7 (B1, spec §4.2): newActionQueuedPayload now fills Action via
+      actionwire.From(*a, actionwire.Full) — the same call site feeds both
+      action_queued and match_full_state.Queue, so the two can never describe
+      the same pending action differently.
+      Task 10 (B12, spec §4.2): buildMatchFullState's non-master branch builds
+      OwnQueue by filtering session.PendingActions() through charToPlayer (the
+      same actor-owns-the-entry check EnqueueAction made at insertion), cutting
+      each surviving entry to actionwire.Declaration. Deliberately outside the
+      round/HasOpenTurn block, mirroring Queue.
 
   - code_path: internal/app/game/client.go
     dev_docs:
@@ -635,7 +946,10 @@ mappings:
       propriedade de estado. match_session.go.OpenReaction mudou de assinatura
       (passou a devolver a reação aberta, para a delivery layer aplicar o Move
       dela ao tabuleiro) — o contrato WS é quem documenta o piece_moved que
-      isso disparou.
+      isso disparou. Task 3 (spec 2026-09-27-combat-closure-back §4.3) adds
+      SetMapUUID: Room threads the board's real mapUUID into the session, so a
+      PlayerMemory created for the first time (memoryFor) stamps it instead of
+      uuid.Nil — resolving the persistence-blocking TODO that used to sit there.
 
   - code_path: internal/application/match/
     dev_docs:
@@ -938,16 +1252,17 @@ mappings:
       - path: docs/game/combate/reacoes.md
         confidence: possibly_affected
     notes: >-
-      backend-prep-front-combat: RollsSpeed() diz se a velocidade do movimento é
-      ROLADA (Dash, Accelerate) ou lida passiva (Shift, Brake) — espelha exatamente
-      o ramo que MatchSession.rollActionDice/deriveSpeeds já tomam. É o
-      discriminador de QUANDO o deslocamento de uma REAÇÃO acontece: toda reação
-      tem CD (o acerto do atacante), e um movimento que não rola não tem leitura
-      para pôr contra ela — closedEscape (Shift) desloca na abertura, escape/
-      escapeGuard (Dash) só no fechamento do turno, e falhar é a peça não sair do
-      lugar. Não diz nada sobre o movimento de uma AÇÃO, que desloca na abertura
-      qualquer que seja a categoria. Consumido por room.go (open_reaction e
-      applyClosedEscapes) e documentado em match-combat-ws.md.
+      backend-prep-front-combat: discrimina Dash (rola Accelerate) de Shift (lê
+      Brake passivo) — o ramo que MatchSession.rollActionDice/deriveSpeeds toma.
+      RollsSpeed() foi REMOVIDA no fechamento da Fase 6 (spec 2026-09-27, B13):
+      a regra antiga (closedEscape/Shift desloca na ABERTURA da reação, escape/
+      escapeGuard/Dash só no fechamento) foi substituída pela regra única de B13 —
+      nenhum escape desloca na abertura; Avoided = dodgePassed && movePassed, e só
+      o FECHAMENTO do turno (os três verbos, applyClosedEscapes) move a peça,
+      escapou para o destino ou, falhando, para o escapeLanding que o mestre
+      escolheu por edit_action. Não diz nada sobre o movimento de uma AÇÃO, que
+      desloca na abertura qualquer que seja a categoria. Ver "O escape: esquiva e
+      movimento (B13)" em combat-engine.md e match-combat-ws.md.
 
   - code_path: internal/domain/match/entity/action/repel.go
     dev_docs:
@@ -1033,7 +1348,8 @@ mappings:
       tabela: nome de perícia/arma desconhecido, categoria de movimento não
       suportada, campo de condição irreconhecível, e o componente obrigatório que
       falta em cada reactionKind. Descarta speed (bar e perícia) e a categoria da
-      esquiva; buildMasterAction ainda não mapeia move nem attack.
+      esquiva; buildMasterAction mapeia de move só a position (é o arrastar do
+      mestre, spec §4.3 — categoria, speed e charge ignorados) e ainda não mapeia attack.
 
   - code_path: internal/domain/entity/enrollment/
     dev_docs:
@@ -1102,9 +1418,19 @@ mappings:
       - path: docs/dev/match/flows/04-estado-e-persistencia.md
         confidence: directly_affected
     notes: >-
-      PersistTurnClose (cena, rodada, turno, ação, reações, overrides e a resolução
-      LIQUIDADA, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
-      uma query só). resolution_record.go é um record EXPLÍCITO, não json.Marshal em
+      EnsureSceneAndRound (os dois inserts idempotentes de cena e rodada, também
+      chamados de dentro da transação do PersistTurnClose; spec §4.5/§4.8). O mesmo
+      upsert é o SQL de fechar um round (COALESCE do finished_at): PersistRoundClose
+      grava o fim de um round e o nascimento do seguinte numa transação, e
+      PersistTurnClose faz o mesmo quando recebe NextRound.
+      PersistTurnClose (cena, rodada, turno, ação, reações, overrides, a resolução
+      LIQUIDADA, as barras das fichas que o fechamento atingiu, as master actions feitas
+      com o turno aberto e o tabuleiro + fog — pelos gateways pgsheet, pgmasteraction,
+      pgmatchboard e fog rodando no tx —, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
+      uma query só). Os vereditos de quem viu o movimento ao vivo vão em
+      actions.move_views (só a ação do turno) e em landingViews dentro do escape do
+      resolution_record (onde a peça da fuga parou: pouso ou destino de quem escapou); FindMatchHistory os devolve em HistoryTurn (MoveViews,
+      LandingViews) e o use case os consome — nunca vão ao wire. resolution_record.go é um record EXPLÍCITO, não json.Marshal em
       service.TurnResolution: battle.Blow e match.Scope têm campos privados e
       serializariam como {} em silêncio. Toda omissão desse record é escolhida e tem
       de estar justificada no comentário dele. O desempate t.uuid no ORDER BY não é

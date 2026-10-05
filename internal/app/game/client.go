@@ -13,12 +13,12 @@ const (
 	writeWait  = 10 * time.Second
 	pongWait   = 60 * time.Second
 	pingPeriod = (pongWait * 9) / 10
-	// maxMessageSize must fit the master's map_state_sync, whose size grows with the
-	// board: every wall segment and every piece is serialized in one frame. A real
-	// 35x35 map with 17 walls already exceeds 4 KB, and going over the limit makes
-	// gorilla close the connection — the master then reconnects and re-sends forever
-	// while players never receive a board, so their fog never lifts.
-	// Guarded by TestE2E_LargeBoardSyncIsNotRejected.
+	// maxMessageSize used to have to fit the master's map_state_sync, whose size grew with
+	// the board: every wall segment and every piece serialized in one frame, and a real
+	// 35x35 map with 17 walls already exceeded 4 KB. Since B14 (spec §4.3, "Quem carrega")
+	// the board is the server's own — loaded from the database, never carried in over this
+	// socket — but a generous limit is still cheap insurance against whatever message grows
+	// large next, so it stays at 1 MiB rather than shrinking back down.
 	maxMessageSize = 1 << 20 // 1 MiB
 )
 
@@ -90,7 +90,15 @@ func (c *Client) Close() {
 func (c *Client) ReadPump() {
 	defer func() {
 		if c.room != nil {
-			c.room.unregister <- c
+			// B7 (spec §4.6): c.room.done is closed once Run has returned, which means
+			// nobody is draining c.room.unregister anymore — sending there unconditionally
+			// would hang this goroutine forever. Racing the send against done lets it exit
+			// either way: delivered if Run is still up, dropped (safely — Run already tore
+			// every client down on its way out) if it already isn't.
+			select {
+			case c.room.unregister <- c:
+			case <-c.room.done:
+			}
 		}
 		_ = c.conn.Close()
 	}()

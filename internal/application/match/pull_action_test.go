@@ -16,7 +16,7 @@ func TestPullActionUC(t *testing.T) {
 
 	t.Run("returns ErrNotMatchMaster when caller is not master", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		uc := match.NewPullActionUC(&fakeStatusWriter{}, nil)
+		uc := match.NewPullActionUC(nil)
 		_, err := uc.Execute(context.Background(), session, masterUUID, uuid.New(), uuid.New())
 		if !errors.Is(err, match.ErrNotMatchMaster) {
 			t.Errorf("expected ErrNotMatchMaster, got %v", err)
@@ -25,7 +25,7 @@ func TestPullActionUC(t *testing.T) {
 
 	t.Run("returns ErrActionNotFound for unknown actionID", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		uc := match.NewPullActionUC(&fakeStatusWriter{}, nil)
+		uc := match.NewPullActionUC(nil)
 		_, err := uc.Execute(context.Background(), session, masterUUID, masterUUID, uuid.New())
 		if !errors.Is(err, service.ErrActionNotFound) {
 			t.Errorf("expected ErrActionNotFound, got %v", err)
@@ -40,8 +40,7 @@ func TestPullActionUC(t *testing.T) {
 // session with an open turn and nothing else queued must still report that turn closed.
 func TestPullActionUC_ClosedTurnSurvivesAPullFailure(t *testing.T) {
 	f := newTurnFixture(t)
-	writer := &fakeStatusWriter{}
-	uc := match.NewPullActionUC(writer, nil)
+	uc := match.NewPullActionUC(nil)
 
 	res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, uuid.New())
 
@@ -57,7 +56,8 @@ func TestPullActionUC_ClosedTurnSurvivesAPullFailure(t *testing.T) {
 	if res.ClosedResolution == nil {
 		t.Error("expected the settled resolution for the closed turn")
 	}
-	if len(writer.calls) != 1 || writer.calls[0] != f.victimChar.String() {
-		t.Errorf("persisted = %v, want exactly the victim %s", writer.calls, f.victimChar)
+	// The HP the close applied travels in Damaged to the room's PersistTurnClose.
+	if len(res.Damaged) != 1 || res.Damaged[0].CharacterID != f.victimChar {
+		t.Errorf("Damaged = %+v, want exactly the victim %s", res.Damaged, f.victimChar)
 	}
 }

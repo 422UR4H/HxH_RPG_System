@@ -40,11 +40,12 @@ que receber a sessão herda essa obrigação.
 | `Match` (título, datas, público) | ✅ | `matches` |
 | `Participant` / enrollment | ✅ | `enrollments` + `character_sheets` |
 | `Scene` (id, categoria, descrição, createdAt/finishedAt) | ✅ | via `PersistTurnClose` / `CloseSceneAndRound` |
-| `Round` (id, mode, createdAt/finishedAt) | ✅ | idem |
+| `Round` (id, mode, createdAt/finishedAt) | ✅ | nasce linha (`EnsureSceneAndRound`); o fim dele e a linha do seguinte vão juntos — na transação do `PersistTurnClose` quando o mesmo comando fechou um turno (`TurnCloseData.NextRound`), senão no `PersistRoundClose` |
 | `Turn` **fechado**, sua `Action` **e suas reactions** | ✅ | `PersistTurnClose` (atômico) |
 | `TurnResolution` **liquidada** | ✅ | `turns.resolution` JSONB — a colisão, não só a declaração |
 | Valores que o mestre sobrepôs | ✅ | `overridden_action_values`, drenados do `MatchSession` na mesma transação |
-| HP após o dano | ✅ | `UpdateStatusBars`, nas **duas** rotas que fecham turno |
+| O que cada jogador viu, ao vivo, do movimento da action e do pouso de uma fuga | ✅ | `actions.move_views` e `landingViews` no `escape` de `turns.resolution`, na mesma transação — o `GET /history` projeta o `move`/`landing` por eles |
+| HP após o dano | ✅ | `UpdateStatusBars`, na transação do `PersistTurnClose` (`TurnCloseData.StatusBars`), nos **três** verbos que fecham turno |
 | `Turn` **aberto** | ❌ | só memória |
 | `activeQueue` (ações declaradas, não abertas) | ❌ | **morre com o processo** |
 | `MasterAction`s do turno | ❌ | só memória — o que sobrevive é o *valor atropelado*, não o ato |
@@ -75,10 +76,9 @@ criados **em memória primeiro** e só chegam ao banco quando o primeiro turno f
 ```mermaid
 stateDiagram-v2
     [*] --> NaoPersistido: NewScene/NewRound (ChangeScene, CloseRound)
-    NaoPersistido --> Persistido: PersistTurnClose ok → MarkRoundPersisted()
+    NaoPersistido --> Persistido: EnsureSceneAndRound / PersistTurnClose / PersistRoundClose ok → MarkRoundPersisted()
     Persistido --> NaoPersistido: ChangeScene / CloseRound cria os próximos
-    NaoPersistido --> [*]: fechamento NÃO vai ao banco (não há linha)
-    Persistido --> [*]: CloseSceneAndRound / CloseRound
+    Persistido --> [*]: CloseSceneAndRound / fim do round (PersistTurnClose com NextRound, ou PersistRoundClose)
 ```
 
 `NewMatchSessionWithState` (retomada) nasce com as duas flags em `true`, porque veio do banco.
@@ -86,14 +86,15 @@ stateDiagram-v2
 
 ## Onde o I/O acontece
 
-O domínio não faz I/O. Os UCs de sessão também não — **exceto `CloseRoundUC`**. Quem escreve
-no banco durante o jogo é o `Room`:
+O domínio não faz I/O. Os UCs de sessão também não (desde 2026-10-02 nem `CloseRoundUC`, nem os
+três de fechamento de turno, que gravavam o HP). Quem escreve no banco durante o jogo é o `Room`,
+fora de `r.mu`:
 
 | Gatilho | Chamada | Camada |
 |---|---|---|
-| turno fecha (dentro de `open_next_action`/`pull_action`) | `IRoundRepository.PersistTurnClose` | `Room` |
+| turno fecha (`close_turn`, `open_next_action`, `pull_action`) — com o HP aplicado e, se o mesmo comando acabou o round, o fim dele e o round seguinte | `IRoundRepository.PersistTurnClose` (uma transação) | `Room` |
 | `change_scene` | `IRoundRepository.CloseSceneAndRound` | `Room` |
-| fechar round | `IRoundRepository.CloseRound` | `CloseRoundUC`, chamado por `OpenNextActionUC` quando nenhuma pendente passa no porteiro |
+| round acaba sem turno fechado no mesmo comando (nenhuma ação na fila consegue mais pagar o preço) | `IRoundRepository.PersistRoundClose` (fim + round seguinte, uma transação) | `Room` |
 | `start_match` | `IRepository.StartMatch` | `StartMatchUC` |
 
 Erros de persistência durante o jogo são **logados e ignorados** — a partida em memória é a

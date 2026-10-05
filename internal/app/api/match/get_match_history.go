@@ -2,15 +2,16 @@ package match
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -45,131 +46,61 @@ type HistorySceneResponse struct {
 	Rounds     []HistoryRoundResponse `json:"rounds"`
 }
 
-// HistoryRoundResponse is one round of a scene's history, with the turns closed inside it.
+// HistoryRoundResponse is one round of a scene's history, with the turns closed inside it and
+// what happened inside it that is not a turn.
 type HistoryRoundResponse struct {
 	UUID       uuid.UUID             `json:"uuid"`
 	Mode       string                `json:"mode"`
 	CreatedAt  string                `json:"createdAt"`
 	FinishedAt *string               `json:"finishedAt,omitempty"`
 	Turns      []HistoryTurnResponse `json:"turns"`
+	// Events is the round's regime changes and the master actions outside any turn the history
+	// holds, in the order they happened (B15, spec §4.5, §4.8). Always a list — [] when nothing
+	// happened — never null.
+	Events []HistoryEventResponse `json:"events"`
+}
+
+// HistoryEventResponse is one entry of a round's events. Kind is the discriminator:
+// "roundModeChanged" carries Payload ({"from", "to"}); "masterAction" carries MasterAction.
+// UUID is the event's own, or the master action's; CreatedAt is when it happened.
+type HistoryEventResponse struct {
+	UUID         uuid.UUID                    `json:"uuid"`
+	Kind         string                       `json:"kind"`
+	CreatedAt    string                       `json:"createdAt"`
+	Payload      json.RawMessage              `json:"payload,omitempty"`
+	MasterAction *HistoryMasterActionResponse `json:"masterAction,omitempty"`
+}
+
+// HistoryMasterActionResponse is one master action as this reader saw it live — already run
+// through masteraction.Record.ProjectFor by the use case (a `left` reader's move has no
+// destination in Content). It deliberately has no field for Record.Views: who saw what is how
+// the projection is decided, not something any reader — the master included — is shown.
+type HistoryMasterActionResponse struct {
+	UUID       uuid.UUID       `json:"uuid"`
+	Kind       string          `json:"kind"`
+	TurnID     *uuid.UUID      `json:"turnId,omitempty"`
+	HappenedAt string          `json:"happenedAt"`
+	Content    json.RawMessage `json:"content"`
 }
 
 // HistoryTurnResponse is one closed turn: the action that drove it, whatever reactions
 // answered it, and the settled collision that resulted — each already run through this
-// viewer's projection before it ever reached this struct.
+// viewer's projection (service.ProjectAction/ProjectResolution) before it ever reached this
+// struct, and then through actionwire.From(_, actionwire.Full): the REST history is the ONE
+// surface that always asks for the Full cut level, so it keeps every number ProjectAction let
+// through. See internal/app/wire/actionwire for the shared shape (Action and its field docs
+// — this is where the doc comments that used to live on ActionResponse and its neighbours
+// moved to) and for Opened/Declaration, the two narrower cuts the WebSocket surfaces use.
 type HistoryTurnResponse struct {
 	UUID       uuid.UUID               `json:"uuid"`
 	CreatedAt  string                  `json:"createdAt"`
 	FinishedAt string                  `json:"finishedAt"`
-	Action     ActionResponse          `json:"action"`
-	Reactions  []ActionResponse        `json:"reactions"`
+	Action     actionwire.Action       `json:"action"`
+	Reactions  []actionwire.Action     `json:"reactions"`
 	Resolution *TurnResolutionResponse `json:"resolution,omitempty"`
-}
-
-// ActionResponse is one action or reaction as THIS viewer is entitled to see it. Feint and
-// Trigger are nil, ReactionKind is demoted, and a stripped Evasion skill entry is simply
-// absent — all of that already happened upstream, in service.ProjectAction.
-type ActionResponse struct {
-	UUID         uuid.UUID             `json:"uuid"`
-	ActorID      uuid.UUID             `json:"actorId"`
-	TargetID     []uuid.UUID           `json:"targetId,omitempty"`
-	ReactToID    *uuid.UUID            `json:"reactToId,omitempty"`
-	ReactionKind string                `json:"reactionKind,omitempty"`
-	Skills       []ActionSkillResponse `json:"skills,omitempty"`
-	Speed        ActionSpeedResponse   `json:"speed"`
-	Feint        *RollCheckResponse    `json:"feint,omitempty"`
-	Trigger      *TriggerResponse      `json:"trigger,omitempty"`
-	Move         *MoveResponse         `json:"move,omitempty"`
-	Attack       *AttackResponse       `json:"attack,omitempty"`
-	Defense      *DefenseResponse      `json:"defense,omitempty"`
-	Dodge        *DodgeResponse        `json:"dodge,omitempty"`
-	Repel        *RepelResponse        `json:"repel,omitempty"`
-	Interact     *InteractResponse     `json:"interact,omitempty"`
-	// SystemBias is the engine-imposed advantage/disadvantage this action was charged under:
-	// 0 for a plain action, -1 for a reaction that displaced a queued one. It is a third,
-	// engine-owned origin — neither the master's RollCondition nor the character's
-	// ModifierLedger (see action.Action.SystemBias) — and it is here because it is the REASON
-	// a roll on this surface came out as it did.
-	//
-	// Public for the same reason RollCheckResponse.attempts is: the bias is public by
-	// omission. Both dice sets and the result already travel to every viewer, so WHICH set
-	// the engine read is already derivable — withholding the field would only force the
-	// client into the algebra this repo avoids on purpose (see CharacterResult.ReactionTotal).
-	//
-	// RollCheck.Context (the master's RollCondition) is NOT the same call and stays off every
-	// surface: the master's intervention already has one of its own, in
-	// overridden_action_values.
-	//
-	// omitempty keeps it off the overwhelming majority of actions, which were charged nothing.
-	SystemBias int `json:"systemBias,omitempty"`
-}
-
-type ActionSkillResponse struct {
-	SkillName  string            `json:"skillName"`
-	Difficulty *int              `json:"difficulty,omitempty"`
-	RollCheck  RollCheckResponse `json:"rollCheck"`
-}
-
-// RollCheckResponse is one test's dice and result. The numbers travel to every viewer — public
-// by omission is the rule, and a third party deducing a hidden Evasion from the numbers is
-// impossible without them (see projection.go's own doc). Only the closed reactions' LABEL and
-// the Evasion skill entry itself are on the deny list, and both are handled upstream.
-type RollCheckResponse struct {
-	SkillName  string               `json:"skillName"`
-	SkillValue int                  `json:"skillValue"`
-	Attempts   RollAttemptsResponse `json:"attempts"`
-	Result     int                  `json:"result"`
-}
-
-type RollAttemptsResponse struct {
-	Primary   []int `json:"primary,omitempty"`
-	Secondary []int `json:"secondary,omitempty"`
-}
-
-// TriggerResponse is presence-only: the domain Trigger carries no fields yet (see
-// action.Trigger's own TODO), so its wire shape is deliberately an empty object — what matters
-// here is whether this viewer is entitled to know a trigger exists at all.
-type TriggerResponse struct{}
-
-type ActionSpeedResponse struct {
-	Bar       int               `json:"bar"`
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type MoveResponse struct {
-	Category   string             `json:"category"`
-	From       [3]int             `json:"from,omitempty"`
-	Position   [3]int             `json:"position"`
-	Speed      *RollCheckResponse `json:"speed,omitempty"`
-	Charge     *RollCheckResponse `json:"charge,omitempty"`
-	FinalSpeed int                `json:"finalSpeed"`
-}
-
-type AttackResponse struct {
-	Weapon           *string            `json:"weapon,omitempty"`
-	Hit              RollCheckResponse  `json:"hit"`
-	Damage           RollCheckResponse  `json:"damage"`
-	Charge           *RollCheckResponse `json:"charge,omitempty"`
-	Spread           string             `json:"spread,omitempty"`
-	RelativeVelocity float64            `json:"relativeVelocity"`
-}
-
-type DefenseResponse struct {
-	Weapon    *string           `json:"weapon,omitempty"`
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type DodgeResponse struct {
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type RepelResponse struct {
-	Weapon    *string           `json:"weapon,omitempty"`
-	RollCheck RollCheckResponse `json:"rollCheck"`
-}
-
-type InteractResponse struct {
-	Kind string `json:"kind"`
+	// MasterActions are the master actions applied while this turn was open, as this reader
+	// saw them live, in the order they happened (spec §4.8). Always a list, never null.
+	MasterActions []HistoryMasterActionResponse `json:"masterActions"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -245,6 +176,22 @@ type CharacterResultResponse struct {
 	// leftover is public: "a penalidade de quem aparou vale contra todo mundo — qualquer um
 	// pode aproveitar". Whoever may exploit it has to be able to read it.
 	Payouts []ModifierResponse `json:"payouts,omitempty"`
+	// Escape is how an escape came out — absent for every reaction that does not displace.
+	// The REST mirror of the WebSocket's EscapeResultPayload, same fields, same derivation of
+	// awaitsMaster (see EscapeResultResponse).
+	Escape *EscapeResultResponse `json:"escape,omitempty"`
+}
+
+// EscapeResultResponse is an escape's verdict: it escaped only if the movement AND the dodge
+// both beat the attacker's hit (front-combat-phases.md §6A.5, B13). Landing is where the
+// master put the piece of a FAILED escape; AwaitsMaster is "failed and no landing" — on a
+// settled turn, which every history turn is, it means the piece stayed where it stood.
+type EscapeResultResponse struct {
+	Escaped      bool    `json:"escaped"`
+	MovePassed   bool    `json:"movePassed"`
+	DodgePassed  bool    `json:"dodgePassed"`
+	AwaitsMaster bool    `json:"awaitsMaster"`
+	Landing      *[3]int `json:"landing,omitempty"`
 }
 
 // ModifierResponse is one accumulated bonus or penalty a reaction wrote into its character's
@@ -339,114 +286,102 @@ func toHistoryRoundResponse(r matchUC.HistoryRound) HistoryRoundResponse {
 	for _, t := range r.Turns {
 		turns = append(turns, toHistoryTurnResponse(t))
 	}
+	events := make([]HistoryEventResponse, 0, len(r.Events))
+	for _, e := range r.Events {
+		if ev, ok := toHistoryEventResponse(e); ok {
+			events = append(events, ev)
+		}
+	}
 	return HistoryRoundResponse{
 		UUID: r.UUID, Mode: r.Mode,
 		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
 		FinishedAt: formatTimePtr(r.FinishedAt),
 		Turns:      turns,
+		Events:     events,
+	}
+}
+
+// toHistoryEventResponse maps one round event; false for an entry whose Kind and pointer
+// disagree, which the use case never builds.
+func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool) {
+	switch {
+	case e.Kind == matchUC.HistoryEventRoundModeChanged && e.RoundModeChange != nil:
+		return HistoryEventResponse{
+			UUID: e.RoundModeChange.UUID, Kind: string(e.Kind),
+			CreatedAt: e.At.Format(time.RFC3339),
+			Payload:   e.RoundModeChange.Payload,
+		}, true
+	case e.Kind == matchUC.HistoryEventMasterAction && e.MasterAction != nil:
+		ma := toHistoryMasterActionResponse(*e.MasterAction)
+		return HistoryEventResponse{
+			UUID: e.MasterAction.UUID, Kind: string(e.Kind),
+			CreatedAt:    e.At.Format(time.RFC3339),
+			MasterAction: &ma,
+		}, true
+	default:
+		return HistoryEventResponse{}, false
+	}
+}
+
+// toHistoryMasterActionResponse maps one already-projected master action. Record.Views is
+// dropped here for every reader — see HistoryMasterActionResponse.
+func toHistoryMasterActionResponse(r masteraction.Record) HistoryMasterActionResponse {
+	return HistoryMasterActionResponse{
+		UUID: r.UUID, Kind: string(r.Kind), TurnID: r.TurnUUID,
+		HappenedAt: r.HappenedAt.Format(time.RFC3339),
+		Content:    r.Content,
 	}
 }
 
 func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
-	reactions := make([]ActionResponse, 0, len(t.Reactions))
+	// WHERE pieces went is cut after From, by what the use case read off what this reader saw
+	// live (MoveSight, ShownReactionMoves, ShownLandings) — the order room.go's
+	// turnActionWireLocked applies the live gate in. Every one of them defaults to hidden: a
+	// HistoryTurn that never went through the use case reveals nothing. MoveViews/LandingViews
+	// themselves are never mapped: who saw what is not table data.
+	reactions := make([]actionwire.Action, 0, len(t.Reactions))
 	for _, r := range t.Reactions {
-		reactions = append(reactions, toActionResponse(r))
+		wr := actionwire.From(r, actionwire.Full)
+		// A reaction never carries From (see actionwire.Move.From); its Position is where an
+		// escape tried, or managed, to put the piece.
+		if wr.Move != nil && !t.ShownReactionMoves[r.GetID()] {
+			wr.Move.Position = nil
+		}
+		reactions = append(reactions, wr)
+	}
+	masterActions := make([]HistoryMasterActionResponse, 0, len(t.MasterActions))
+	for _, ma := range t.MasterActions {
+		masterActions = append(masterActions, toHistoryMasterActionResponse(ma))
+	}
+	act := actionwire.From(t.Action, actionwire.Full)
+	if act.Move != nil {
+		switch t.MoveSight {
+		case matchUC.MoveSightWhole:
+		case matchUC.MoveSightOrigin:
+			act.Move.Position = nil
+		default:
+			act.Move.From, act.Move.Position = nil, nil
+		}
+	}
+	res := toTurnResolutionResponse(t.Resolution)
+	if res != nil {
+		// After awaitsMaster was derived from the real landing: a landing withheld from this
+		// reader is not a landing the master never chose.
+		for i := range res.Targets {
+			if esc := res.Targets[i].Escape; esc != nil && !t.ShownLandings[res.Targets[i].TargetID] {
+				esc.Landing = nil
+			}
+		}
 	}
 	return HistoryTurnResponse{
-		UUID:       t.UUID,
-		CreatedAt:  t.CreatedAt.Format(time.RFC3339),
-		FinishedAt: t.FinishedAt.Format(time.RFC3339),
-		Action:     toActionResponse(t.Action),
-		Reactions:  reactions,
-		Resolution: toTurnResolutionResponse(t.Resolution),
+		UUID:          t.UUID,
+		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
+		FinishedAt:    t.FinishedAt.Format(time.RFC3339),
+		Action:        act,
+		Reactions:     reactions,
+		Resolution:    res,
+		MasterActions: masterActions,
 	}
-}
-
-func toActionResponse(a action.Action) ActionResponse {
-	out := ActionResponse{
-		UUID:         a.GetID(),
-		ActorID:      a.GetActorID(),
-		TargetID:     a.TargetID,
-		ReactionKind: string(a.ReactionKind),
-		Speed: ActionSpeedResponse{
-			Bar:       a.Speed.Bar,
-			RollCheck: toRollCheckResponse(a.Speed.RollCheck),
-		},
-	}
-	if a.ReactToID != uuid.Nil {
-		id := a.ReactToID
-		out.ReactToID = &id
-	}
-	for _, s := range a.Skills {
-		out.Skills = append(out.Skills, ActionSkillResponse{
-			SkillName: s.SkillName, Difficulty: s.Difficulty,
-			RollCheck: toRollCheckResponse(s.RollCheck),
-		})
-	}
-	if a.Feint != nil {
-		rc := toRollCheckResponse(*a.Feint)
-		out.Feint = &rc
-	}
-	if a.Trigger != nil {
-		out.Trigger = &TriggerResponse{}
-	}
-	if a.Move != nil {
-		out.Move = &MoveResponse{
-			Category: string(a.Move.Category), From: a.Move.From, Position: a.Move.Position,
-			Speed: rollCheckPtr(a.Move.Speed), Charge: rollCheckPtr(a.Move.Charge),
-			FinalSpeed: a.Move.FinalSpeed,
-		}
-	}
-	if a.Attack != nil {
-		out.Attack = &AttackResponse{
-			Weapon: weaponPtr(a.Attack.Weapon),
-			Hit:    toRollCheckResponse(a.Attack.Hit), Damage: toRollCheckResponse(a.Attack.Damage),
-			Charge: rollCheckPtr(a.Attack.Charge), Spread: string(a.Attack.Spread),
-			RelativeVelocity: a.Attack.RelativeVelocity,
-		}
-	}
-	if a.Defense != nil {
-		out.Defense = &DefenseResponse{
-			Weapon: weaponPtr(a.Defense.Weapon), RollCheck: toRollCheckResponse(a.Defense.RollCheck),
-		}
-	}
-	if a.Dodge != nil {
-		out.Dodge = &DodgeResponse{RollCheck: toRollCheckResponse(a.Dodge.RollCheck)}
-	}
-	if a.Repel != nil {
-		out.Repel = &RepelResponse{
-			Weapon: weaponPtr(a.Repel.Weapon), RollCheck: toRollCheckResponse(a.Repel.RollCheck),
-		}
-	}
-	if a.Interact != nil {
-		out.Interact = &InteractResponse{Kind: string(a.Interact.Kind)}
-	}
-	out.SystemBias = a.SystemBias
-	return out
-}
-
-func toRollCheckResponse(rc action.RollCheck) RollCheckResponse {
-	return RollCheckResponse{
-		SkillName: rc.SkillName, SkillValue: rc.SkillValue,
-		Attempts: RollAttemptsResponse{Primary: rc.Attempts.Primary, Secondary: rc.Attempts.Secondary},
-		Result:   rc.Result,
-	}
-}
-
-func rollCheckPtr(rc *action.RollCheck) *RollCheckResponse {
-	if rc == nil {
-		return nil
-	}
-	out := toRollCheckResponse(*rc)
-	return &out
-}
-
-func weaponPtr(w *enum.WeaponName) *string {
-	if w == nil {
-		return nil
-	}
-	s := string(*w)
-	return &s
 }
 
 func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionResponse {
@@ -471,6 +406,7 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        toReactionResultResponse(cr),
 			Payouts:         toModifierResponses(cr.Payouts),
+			Escape:          toEscapeResultResponse(cr.Escape),
 		})
 	}
 	for _, pr := range res.PendingReactions {
@@ -482,6 +418,21 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 		out.Errors = append(out.Errors, ResolutionErrorResponse{
 			Subject: e.Subject, Kind: string(e.Kind), Detail: e.Detail,
 		})
+	}
+	return out
+}
+
+func toEscapeResultResponse(e *service.EscapeResult) *EscapeResultResponse {
+	if e == nil {
+		return nil
+	}
+	out := &EscapeResultResponse{
+		Escaped: e.Escaped, MovePassed: e.MovePassed, DodgePassed: e.DodgePassed,
+		AwaitsMaster: !e.Escaped && e.Landing == nil,
+	}
+	if e.Landing != nil {
+		pos := *e.Landing
+		out.Landing = &pos
 	}
 	return out
 }

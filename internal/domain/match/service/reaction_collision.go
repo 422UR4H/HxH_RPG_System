@@ -40,6 +40,20 @@ type ReactionOutcome struct {
 	Defended    bool
 	StopsAttack bool             // a successful repel — nothing travels on
 	Payouts     []match.Modifier // what this reaction wrote into the target's ledger
+	// Escape is how an escape came out — nil on every reaction that does not displace
+	// (ReactionKind.Displaces()). See EscapeResult's own doc.
+	Escape *EscapeResult
+}
+
+// EscapeResult is how an escape came out. nil on every reaction that does not displace.
+type EscapeResult struct {
+	MovePassed  bool // Move.FinalSpeed >= the attacker's hit
+	DodgePassed bool // Dodge.Total >= the attacker's hit
+	Escaped     bool // both — the only way an escape avoids the blow and reaches its slot
+	// Landing is where the MASTER put the piece of an escape that failed (edit_action,
+	// escapeLanding). nil = not chosen; the piece stays where it stood. Filled by the
+	// resolver from the turn, never by ResolveReaction.
+	Landing *[3]int
 }
 
 // ResolveReaction is one target's answer to one attack, as a pure function.
@@ -72,7 +86,23 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 	if bonus != nil {
 		out.Payouts = append(out.Payouts, *bonus)
 	}
-	out.Avoided = out.Dodge.Total >= in.HitTotal
+	dodgePassed := out.Dodge.Total >= in.HitTotal
+	out.Avoided = dodgePassed
+	if in.Kind.Displaces() {
+		// An escape is a dodge that moves, and the move is its own test against the same CD:
+		// the attacker's hit. Both have to clear it (front-combat-phases.md §6A.5, B13) — the
+		// user cannot get out of the way if the step fails. Failing either one is not escaping,
+		// and the blow is read as if they had stayed: escapeGuard still falls back on the
+		// defense below, the others take it whole.
+		//
+		// TODO(collision): the known rule is that the movement ADDS to the dodge, which makes
+		// escaping easier than dodging in place. It is part of the collision design that does
+		// not exist yet — when it does, the sum goes into out.Dodge.Total right here, before
+		// either comparison.
+		movePassed := in.Reaction != nil && in.Reaction.Move != nil && in.Reaction.Move.FinalSpeed >= in.HitTotal
+		out.Escape = &EscapeResult{MovePassed: movePassed, DodgePassed: dodgePassed, Escaped: dodgePassed && movePassed}
+		out.Avoided = out.Escape.Escaped
+	}
 	if out.Avoided {
 		return out
 	}

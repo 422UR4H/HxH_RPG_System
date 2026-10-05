@@ -101,3 +101,57 @@ func TestUnopenedReactions(t *testing.T) {
 		}
 	})
 }
+
+func TestEscapeLandings(t *testing.T) {
+	newTurn := func() *turn.Turn {
+		return turn.NewTurn(*action.NewAction(uuid.New(), nil, uuid.Nil, nil,
+			action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil))
+	}
+
+	t.Run("a fresh turn has no landing chosen", func(t *testing.T) {
+		if got := newTurn().EscapeLandings(); len(got) != 0 {
+			t.Fatalf("EscapeLandings() = %v, want empty", got)
+		}
+	})
+
+	t.Run("setting stores the position under the reaction, and setting again replaces it", func(t *testing.T) {
+		tn := newTurn()
+		reactionID := uuid.New()
+		tn.SetEscapeLanding(reactionID, [3]int{7, 6, 0})
+		tn.SetEscapeLanding(reactionID, [3]int{5, 2, 0})
+
+		got := tn.EscapeLandings()
+		if len(got) != 1 || got[reactionID] != [3]int{5, 2, 0} {
+			t.Fatalf("EscapeLandings() = %v, want only %s → [5 2 0]", got, reactionID)
+		}
+	})
+
+	t.Run("clearing removes only that reaction's choice", func(t *testing.T) {
+		tn := newTurn()
+		kept, cleared := uuid.New(), uuid.New()
+		tn.SetEscapeLanding(kept, [3]int{1, 1, 0})
+		tn.SetEscapeLanding(cleared, [3]int{2, 2, 0})
+		tn.ClearEscapeLanding(cleared)
+		// Clearing what was never set is a no-op, not a panic.
+		tn.ClearEscapeLanding(uuid.New())
+
+		got := tn.EscapeLandings()
+		if len(got) != 1 || got[kept] != [3]int{1, 1, 0} {
+			t.Fatalf("EscapeLandings() = %v, want only %s → [1 1 0]", got, kept)
+		}
+	})
+
+	t.Run("the map handed out is a copy", func(t *testing.T) {
+		tn := newTurn()
+		reactionID := uuid.New()
+		tn.SetEscapeLanding(reactionID, [3]int{3, 3, 0})
+
+		got := tn.EscapeLandings()
+		got[reactionID] = [3]int{9, 9, 9}
+		delete(got, reactionID)
+
+		if again := tn.EscapeLandings(); again[reactionID] != [3]int{3, 3, 0} {
+			t.Fatalf("mutating the returned map reached the turn: %v", again)
+		}
+	})
+}

@@ -24,12 +24,13 @@ type ICloseTurn interface {
 		masterUUID, callerUUID uuid.UUID, confirm bool) (*CloseTurnResult, error)
 }
 
-type CloseTurnUC struct {
-	statusWriter ISheetStatusWriter
-}
+// CloseTurnUC writes nothing: the HP the close applies (Damaged) is written by the room in the
+// turn's own transaction (PersistTurnClose) — one master command, one transaction (owner
+// decision, 2026-10-02). It runs under r.mu, so it does no I/O.
+type CloseTurnUC struct{}
 
-func NewCloseTurnUC(statusWriter ISheetStatusWriter) *CloseTurnUC {
-	return &CloseTurnUC{statusWriter: statusWriter}
+func NewCloseTurnUC() *CloseTurnUC {
+	return &CloseTurnUC{}
 }
 
 // Execute ends the open turn on purpose.
@@ -38,8 +39,8 @@ func NewCloseTurnUC(statusWriter ISheetStatusWriter) *CloseTurnUC {
 // criterion verifiable without a browser. What is being confirmed away is not the
 // calculation — an unopened reaction is in the chain either way — it is the moment to narrate.
 //
-// Closing a turn does NOT close the round. Exhaustion stays detected in exactly one place,
-// OpenNextActionUC, where the scheduling happens. Two detection points is how two versions of
+// Closing a turn does NOT close the round. That no action in the queue can still pay its price
+// is detected in exactly one place, OpenNextActionUC, where the scheduling happens. Two detection points is how two versions of
 // one rule are born.
 func (uc *CloseTurnUC) Execute(
 	ctx context.Context,
@@ -59,9 +60,6 @@ func (uc *CloseTurnUC) Execute(
 	if err != nil {
 		return nil, err
 	}
-	// Same policy as OpenNextActionUC: persist before anything can bail out. The damage is
-	// already applied in memory and the turn is already closed.
-	persistDamage(ctx, uc.statusWriter, tr.Damaged)
 	return &CloseTurnResult{
 		ClosedTurn: tr.Closed,
 		Resolution: tr.ClosedResolution,

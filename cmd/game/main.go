@@ -12,8 +12,15 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
+	fogPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
+	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
+	masteractionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
+	matchboardPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
+	matcheventPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
+	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
@@ -47,14 +54,13 @@ func main() {
 
 	startMatchUC := match.NewStartMatchUC(matchRepository)
 	kickPlayerUC := enrollment.NewKickPlayerUC(matchRepository, enrollmentRepository)
-	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository)
-	closeRoundUC := match.NewCloseRoundUC(roundRepository)
-	openNextActionUC := match.NewOpenNextActionUC(sheetRepository, closeRoundUC)
-	pullActionUC := match.NewPullActionUC(sheetRepository, closeRoundUC)
+	closeRoundUC := match.NewCloseRoundUC()
+	openNextActionUC := match.NewOpenNextActionUC(closeRoundUC)
+	pullActionUC := match.NewPullActionUC(closeRoundUC)
 	enqueueActionUC := match.NewEnqueueActionUC()
 	attachReactionUC := match.NewAttachReactionUC()
 	openReactionUC := match.NewOpenReactionUC()
-	closeTurnUC := match.NewCloseTurnUC(sheetRepository)
+	closeTurnUC := match.NewCloseTurnUC()
 	changeSceneUC := match.NewChangeSceneUC()
 	enqueueMasterActionUC := match.NewEnqueueMasterActionUC()
 	changeRoundModeUC := match.NewChangeRoundModeUC()
@@ -64,18 +70,59 @@ func main() {
 	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepository, sheetRepository, matchRepository)
 	addLiveNPCUC := match.NewAddLiveNPCUC(addMatchNPCUC, sheetRepository)
 
+	// The board's own three repositories (spec §4.3, "Quem carrega", B14): what map is
+	// attached, the match's own saved board line (if any), and the campaign map it started
+	// as a fallback for one that never saved.
+	mapRepository := mapPg.NewRepository(pgPool)
+	matchMapRepository := matchmapPg.NewRepository(pgPool)
+	matchBoardRepository := matchboardPg.NewRepository(pgPool)
+	loadBoardUC := matchboarduc.NewLoadMatchBoardUC(matchBoardRepository, matchMapRepository, mapRepository)
+	// initSessionUC is built AFTER addMatchNPCUC/loadBoardUC: B11 (spec §4.3) has Init scan the
+	// board for a piece whose character is not yet a participant and enroll it as an NPC
+	// through the SAME AddMatchNPCUC add_npc and POST /npcs already use — on start_match and on
+	// rehydration alike, idempotently.
+	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository, loadBoardUC, addMatchNPCUC)
+	// The write side (spec §4.3, "Quando persiste", B3): the board row and every player's fog
+	// memory, saved together by Room.persistBoard. playerMemoryRepository doubles as
+	// RoomDeps.MemoryLoader — its FindByMatchMap is what seeds a rehydrated/started session.
+	playerMemoryRepository := fogPg.NewPlayerMemoryRepository(pgPool)
+	saveBoardUC := matchboarduc.NewSaveMatchBoardUC(matchBoardRepository, playerMemoryRepository)
+	// Every accepted enqueue_master_action is recorded the instant it is applied, with what
+	// each player saw of it live (spec §4.8) — Room.recordMasterAction is the one writer.
+	masterActionRepository := masteractionPg.NewRepository(pgPool)
+	// What happens inside a round that is not a turn — the regime change (spec §4.5, B15).
+	matchEventRepository := matcheventPg.NewRepository(pgPool)
+
 	hub := game.NewHub()
 	// TODO: evaluate to a handler for package
 	handler := game.NewHandler(
 		hub, matchRepository, enrollmentRepository,
-		startMatchUC, kickPlayerUC,
-		initSessionUC, openNextActionUC, pullActionUC,
-		enqueueActionUC, attachReactionUC, openReactionUC, closeTurnUC,
-		changeSceneUC, roundRepository,
-		enqueueMasterActionUC,
-		changeRoundModeUC,
-		editActionUC,
-		addLiveNPCUC,
+		game.RoomDeps{
+			StartMatchUC:          startMatchUC,
+			KickPlayerUC:          kickPlayerUC,
+			InitSessionUC:         initSessionUC,
+			OpenNextActionUC:      openNextActionUC,
+			PullActionUC:          pullActionUC,
+			EnqueueActionUC:       enqueueActionUC,
+			AttachReactionUC:      attachReactionUC,
+			OpenReactionUC:        openReactionUC,
+			CloseTurnUC:           closeTurnUC,
+			ChangeSceneUC:         changeSceneUC,
+			RoundRepo:             roundRepository,
+			EnqueueMasterActionUC: enqueueMasterActionUC,
+			ChangeRoundModeUC:     changeRoundModeUC,
+			EditActionUC:          editActionUC,
+			AddLiveNPCUC:          addLiveNPCUC,
+			LoadBoardUC:           loadBoardUC,
+			SaveBoardUC:           saveBoardUC,
+			MemoryLoader:          playerMemoryRepository,
+			// Same sheetRepository already wired into addMatchNPCUC above — it satisfies
+			// appmatch.ISheetOwnershipReader, which is all handlePieceMoved needs to check a
+			// lobby player's ownership of an existing piece (spec §4.3, "Quem move o quê", B14).
+			SheetOwnership:   sheetRepository,
+			MasterActionRepo: masterActionRepository,
+			EventRepo:        matchEventRepository,
+		},
 	)
 	server := game.NewServer(addr, hub, handler)
 

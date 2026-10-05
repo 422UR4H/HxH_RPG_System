@@ -11,7 +11,7 @@ import (
 func (r *Repository) UpdateStatusBars(
 	ctx context.Context,
 	sheetUUID string,
-	health, stamina, aura status.IStatusBar,
+	health, stamina, aura status.IStatusBarReader,
 ) error {
 	const query = `
 		UPDATE character_sheets

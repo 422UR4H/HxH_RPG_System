@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -212,14 +213,27 @@ type ActionEnqueuedPayload struct {
 // open_reaction, with the same consequence: an ID a client cannot learn is an operation a
 // client cannot invoke.
 //
-// Nothing here describes the action's CONTENT. Weapon, target, skill and dice stay the
-// player's until the master opens the turn.
+// Design spec §4.1/§4.2, B1: Action now DOES describe the action's content — weapon, target,
+// skills, dice, everything actionwire.Full keeps — where an earlier version of this doc
+// comment said "nothing here describes the action's CONTENT". That is safe for exactly the
+// reason the rest of this doc comment already argues: BOTH surfaces this payload feeds
+// (action_queued and match_full_state.queue) are already master-only, so widening what this
+// struct carries widens nothing about who receives it. The deny-list that decides visibility
+// (service.ProjectAction) is a wholly separate axis from Level and never runs here — see
+// actionwire.From's own doc — but it does not need to: this recipient was already entitled to
+// everything Full holds before this field existed, one number at a time, the instant the
+// master opened the turn. Action only moves that same entitlement earlier, to enqueue time.
 type ActionQueuedPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 	ActorID  uuid.UUID `json:"actorId"`
 	// Bars is which clocks it will charge — the master's scheduling surface, and already
 	// derivable from the public bars_updated order. Nothing new is disclosed by naming it here.
 	Bars []string `json:"bars"`
+	// Action is the whole declaration, at actionwire.Full — no projection: see the type doc
+	// above for why Full is safe on this master-only surface. Shared verbatim by both
+	// action_queued and match_full_state.queue (see newActionQueuedPayload, room.go), so the
+	// two can never describe the same pending action differently.
+	Action actionwire.Action `json:"action"`
 }
 
 // OpenReactionPayload names which attached reaction the master is giving the floor to. The
@@ -296,8 +310,14 @@ type InteractPayload struct {
 }
 
 type MovePayload struct {
-	Category string            `json:"category"`
-	From     [3]int            `json:"from,omitempty"` // source grid position [col, row, z]; zero = not provided
+	Category string `json:"category"`
+	// From is IGNORED by buildAction (B6, spec §4.3 "B5, B6 e B10"): the server owns the
+	// board, so the origin it checks against is the actor's own piece position, read off
+	// room.go's r.pieceSlotOf at enqueue time — never this field. It stays on the wire only
+	// so a client payload that still sends it decodes without error; nothing reads it.
+	From [3]int `json:"from,omitempty"`
+	// Position is the declared destination — [a, b, z], (a, b) = (col, row) square or (q, r)
+	// axial hex, z not read by the server (see action.Move.From's own doc for the convention).
 	Position [3]int            `json:"position"`
 	Speed    *RollCheckPayload `json:"speed,omitempty"`
 	Charge   *RollCheckPayload `json:"charge,omitempty"`
@@ -325,6 +345,17 @@ type EditActionPayload struct {
 	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
 	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
 	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
+	// EscapeLanding is where the master puts the piece of the escape named by ActionID IF it
+	// fails (front-combat-phases.md §6A.5, B13) — the engine has no rule for where a failed
+	// escape ends up. Absent = untouched. It is its own section, independent of the others:
+	// it edits no roll, and a payload may carry it alone.
+	EscapeLanding *EscapeLandingPayload `json:"escapeLanding,omitempty"`
+}
+
+// EscapeLandingPayload is edit_action's escapeLanding. A null Position clears the choice: a
+// failed escape goes back to staying where it stood.
+type EscapeLandingPayload struct {
+	Position *[3]int `json:"position"`
 }
 
 // ConditionEditPayload changes how one test is read. Field and skillName are alternatives:
@@ -337,17 +368,28 @@ type ConditionEditPayload struct {
 	Description string `json:"description,omitempty"`
 }
 
-// TurnOpenedPayload announces whose turn it is. BROADCAST — the table has to know.
+// TurnOpenedPayload announces whose turn it is AND, since B2 (design spec §4.2), what that
+// turn's action publicly is — projected PER RECIPIENT, not broadcast: the master gets
+// actionwire.Full (every number), everyone else — the owner included — gets
+// actionwire.Opened, after service.ProjectAction's own deny-list (feint/trigger hidden from a
+// third party while the turn is open, closed reactions' label demoted) already ran. That is
+// why this now travels through dispatchPerPlayer, on the DIRECT lane, one payload built per
+// recipient, and not through r.broadcast.
 //
 // ActionID is the SAME id action_enqueued gave back to whoever enqueued and action_queued
 // gave the master. It is what ties the three messages together, and it is not decoration:
 // actorId alone is ambiguous the moment one character has two actions waiting, and then
 // nothing on the wire says which of them just opened.
+//
+// ⚠️ Moving to the direct lane is not just "add a field": turn_closed had to move there WITH
+// it, in the SAME call chain, or the two could arrive out of order — see broadcastTurnClosed's
+// own doc for why, and the design spec's own ⚠️ in §4.2.
 type TurnOpenedPayload struct {
-	TurnID     uuid.UUID `json:"turnId"`
-	ActorID    uuid.UUID `json:"actorId"`
-	ActionID   uuid.UUID `json:"actionId"`
-	ActionType string    `json:"actionType"`
+	TurnID     uuid.UUID         `json:"turnId"`
+	ActorID    uuid.UUID         `json:"actorId"`
+	ActionID   uuid.UUID         `json:"actionId"`
+	ActionType string            `json:"actionType"`
+	Action     actionwire.Action `json:"action"`
 }
 
 type RoundClosedPayload struct {
@@ -361,9 +403,15 @@ type ReactionOpenedPayload struct {
 	ReactionID uuid.UUID `json:"reactionId"`
 }
 
-// TurnClosedPayload announces that the baton was put down. BROADCAST — that a turn ended is
-// table state. The numbers travel separately, in the projected resolution_updated that
-// follows.
+// TurnClosedPayload announces that the baton was put down. Same message for the whole table —
+// nothing here is projected — but it travels on the DIRECT per-client lane (dispatchPerPlayer),
+// not r.broadcast, since B2 (design spec §4.2): the very next thing the table hears is
+// turn_opened, which IS projected and therefore has to be on that lane, and the two have to
+// stay in the order they were sent in. Putting turn_closed on the direct lane too, from the
+// SAME goroutine, is what makes that order a guarantee rather than a usual case — a fast
+// direct-lane message can no longer overtake a turn_closed still waiting on r.broadcast's
+// Run() goroutine to pick it up. The numbers still travel separately, in the projected
+// resolution_updated that follows.
 type TurnClosedPayload struct {
 	TurnID uuid.UUID `json:"turnId"`
 }
@@ -581,6 +629,25 @@ type CharacterResultPayload struct {
 	// has to be able to read it, which is what this field is for; deriving it by algebra off
 	// Ladder.Difference is the reconstruction ReactionTotal already exists to spare a client.
 	Payouts []ModifierPayload `json:"payouts,omitempty"`
+	// Escape is how an escape came out — nil for every reaction that does not displace. It
+	// follows the rest of the resolution: master-only while the turn is open, projected to
+	// everyone once it is settled (the numbers are public then).
+	Escape *EscapeResultPayload `json:"escape,omitempty"`
+}
+
+// EscapeResultPayload is service.EscapeResult on the wire. An escape clears its test only if
+// the movement AND the dodge both beat the attacker's hit (front-combat-phases.md §6A.5, B13).
+//
+// AwaitsMaster is derived here, not in the domain: the escape failed and the master has not
+// said where the piece lands, so at the close it would stay where it stood. On a settled
+// resolution it reads "it stayed". Landing is the master's choice, present only while the
+// escape FAILS — an escape that passes goes to its own slot, whatever was chosen.
+type EscapeResultPayload struct {
+	Escaped      bool    `json:"escaped"`
+	MovePassed   bool    `json:"movePassed"`
+	DodgePassed  bool    `json:"dodgePassed"`
+	AwaitsMaster bool    `json:"awaitsMaster"`
+	Landing      *[3]int `json:"landing,omitempty"`
 }
 
 // ModifierPayload is one accumulated bonus or penalty a reaction wrote into its character's
@@ -636,6 +703,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			ProjectedDamage: cr.EffectiveDamage,
 			Reaction:        reactionResultPayloadOf(cr),
 			Payouts:         payoutPayloadsOf(cr.Payouts),
+			Escape:          escapeResultPayloadOf(cr.Escape),
 		})
 	}
 	for _, pr := range res.PendingReactions {
@@ -651,6 +719,24 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			Kind:    string(e.Kind),
 			Detail:  e.Detail,
 		})
+	}
+	return p
+}
+
+// escapeResultPayloadOf projects an escape's verdict; nil outside the escapes.
+func escapeResultPayloadOf(e *service.EscapeResult) *EscapeResultPayload {
+	if e == nil {
+		return nil
+	}
+	p := &EscapeResultPayload{
+		Escaped:      e.Escaped,
+		MovePassed:   e.MovePassed,
+		DodgePassed:  e.DodgePassed,
+		AwaitsMaster: !e.Escaped && e.Landing == nil,
+	}
+	if e.Landing != nil {
+		pos := *e.Landing
+		p.Landing = &pos
 	}
 	return p
 }
@@ -725,11 +811,69 @@ type MatchFullStatePayload struct {
 	// and Bars reuse theirs: a second format for the same fact would be a second thing to keep
 	// in sync with the first.
 	Queue []ActionQueuedPayload `json:"queue,omitempty"`
+	// OwnQueue is B12 (design spec §4.2): the reconnecting recipient's OWN queued actions —
+	// the ones whose actor belongs to them (charToPlayer), in the queue's own insertion
+	// order — at actionwire.Declaration. Nothing else about the queue is theirs to see: the
+	// queue stays secret (Queue's own doc), so this is not a weaker Queue, it is a narrower
+	// fact entirely — "what YOU are waiting on", never "what is pending".
+	//
+	// It exists because action_enqueued (the only thing that ever named one of these actions
+	// to its owner) fires ONCE, at enqueue time, and a client that reconnects afterwards —
+	// including the front's own five-attempt auto-reconnect — has no way to learn it again.
+	// Without this field a reconnecting owner cannot tell "the server lost my draft" from "the
+	// server has it and I should not resend" — resending would re-roll the dice
+	// (EnqueueAction rolls on arrival), which is exactly what reconciliation must never do.
+	//
+	// A POINTER, and ALWAYS non-nil for a non-master: nil serializes to an ABSENT key
+	// (`omitempty` on a nil pointer), `&[]OwnQueuedActionPayload{}` to a PRESENT, empty one
+	// (`[]`). The master always gets nil (absent) — Queue is their surface, not this one — and
+	// every other connected recipient always gets a non-nil pointer, even pointing at an empty
+	// slice, so the front can tell "the server says you have nothing queued" apart from "an
+	// older server that never sent this field at all". A bare (non-pointer) slice could not
+	// make that distinction: encoding/json has no `omitempty` reading on "nil vs empty slice",
+	// only on "nil vs non-nil".
+	//
+	// Reconciliation rule (contract, match-combat-ws.md): a declared action the client still
+	// holds is KNOWN to the server iff its actionId is in OwnQueue OR equals
+	// OpenTurn.ActionId — the two together are the complete set of "the server still has
+	// this". Anything else is stale; the client discards it (with a warning) and returns the
+	// draft to the user. The client NEVER re-sends it on its own — see this field's own outer
+	// doc for why a resend is not the same declaration twice.
+	OwnQueue *[]OwnQueuedActionPayload `json:"ownQueue,omitempty"`
 }
 
+// OwnQueuedActionPayload is one entry of MatchFullStatePayload.OwnQueue — see its doc for the
+// reconciliation rule this exists to serve.
+//
+// Action is cut to actionwire.Declaration, not Full or Opened: this is the OWNER'S OWN
+// action, re-read back to them from the queue, not a projection of someone else's — there is
+// no number here they have not already seen (they are the ones who rolled it), so the cut is
+// not about visibility. It is about LOWEST COMMITMENT: the front's reconciliation only needs
+// to know WHICH declared action the server still has (actionId) and WHAT was declared
+// (weapon, targets, move's category/from/position, skill names) to match it against a local
+// draft — never the numbers, which the client already holds locally and which
+// EnqueueActionUC would only reroll anyway on a genuine resend, not report back on a
+// reconnect. actionwire.From carries no visibility deny-list of its own (see its doc), and
+// none is needed here: the actor already owns everything Full would show; Declaration is
+// chosen for economy, not secrecy.
+type OwnQueuedActionPayload struct {
+	ActionID uuid.UUID         `json:"actionId"`
+	Action   actionwire.Action `json:"action"`
+}
+
+// OpenTurnPayload is the open turn's snapshot inside MatchFullStatePayload. ActionID and
+// Action are B2 (design spec §4.2): before them, a reconnecting client had turnId/actorId but
+// no way to tell WHICH of an actor's actions opened (the same ambiguity turn_opened's own
+// ActionID exists to close — see its doc), and no cut of the action itself to reconcile
+// against what the live turn_opened already told them. Action follows the exact same
+// per-recipient rule turn_opened does — buildMatchFullState projects it with the recipient's
+// own Viewer, at Full for the master and Opened for everyone else — so the two can never
+// disagree about the same turn.
 type OpenTurnPayload struct {
-	TurnID  uuid.UUID `json:"turnId"`
-	ActorID uuid.UUID `json:"actorId"`
+	TurnID   uuid.UUID         `json:"turnId"`
+	ActorID  uuid.UUID         `json:"actorId"`
+	ActionID uuid.UUID         `json:"actionId"`
+	Action   actionwire.Action `json:"action"`
 }
 
 // payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a
@@ -806,20 +950,38 @@ type NPCAddedPayload struct {
 	CharacterID uuid.UUID `json:"characterId"`
 }
 
+// RemovePiecePayload is the master taking a character's piece off the board mid-match (spec
+// §4.3, "Master action de peça"). Empty on purpose: its presence is the whole verb — the
+// character is targetIds[0], and the server knows where the piece is.
+type RemovePiecePayload struct{}
+
+// MasterActionPayload is enqueue_master_action. With Move or Remove it is a PIECE master
+// action (the master's drag, place or take-off — spec §4.3); with Interact, a wall one;
+// otherwise it hangs on the open turn.
+//
+// There is no Attack field (B9, spec §2, decided with the product owner): nothing ever read
+// one — what an "attack" master action would even mean is a game rule that was never
+// written — and the master already has a way to attack: through an NPC, with enqueue_action.
+// room.go's enqueue_master_action arm decodes the raw JSON separately to catch and refuse a
+// client that still sends an "attack" key, since an unknown field here would otherwise be
+// dropped silently instead of telling the master the correct path. A master attack as an
+// environment effect (a trap) is future work, not a pending mapping.
 type MasterActionPayload struct {
 	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
-	Attack      *AttackPayload       `json:"attack,omitempty"`
+	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
 
+// MasterActionEnqueuedPayload echoes the accepted MasterActionPayload back to the master. No
+// Attack field, same reason as MasterActionPayload above (B9).
 type MasterActionEnqueuedPayload struct {
 	TargetIDs   []uuid.UUID          `json:"targetIds"`
 	Skills      []ActionSkillPayload `json:"skills,omitempty"`
 	Move        *MovePayload         `json:"move,omitempty"`
-	Attack      *AttackPayload       `json:"attack,omitempty"`
+	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
 }
@@ -951,45 +1113,8 @@ func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {
 	return p
 }
 
-func toEntityWallSegment(w WallSegmentPayload) mapentity.WallSegment {
-	seg := mapentity.WallSegment{
-		ID:         w.ID,
-		P1:         w.P1,
-		P2:         w.P2,
-		WallType:   mapentity.WallType(w.WallType),
-		Material:   mapentity.WallMaterial(w.Material),
-		Move:       w.Move,
-		Sense:      mapentity.SenseKind(w.Sense),
-		Direction:  mapentity.WallDirection(w.Direction),
-		Open:       w.Open,
-		Locked:     w.Locked,
-		HP:         w.HP,
-		MaxHP:      w.MaxHP,
-		Resistance: w.Resistance,
-		Destroyed:  w.Destroyed,
-		Revealed:   w.Revealed,
-	}
-	if w.DoorSubtype != nil {
-		d := mapentity.DoorSubtype(*w.DoorSubtype)
-		seg.DoorSubtype = &d
-	}
-	if w.WindowSubtype != nil {
-		wi := mapentity.WindowSubtype(*w.WindowSubtype)
-		seg.WindowSubtype = &wi
-	}
-	return seg
-}
-
-func toEntityGridShape(g GridShapePayload) mapentity.GridShape {
-	return mapentity.GridShape{
-		Kind:      mapentity.GridKind(g.Kind),
-		Cols:      g.Cols,
-		Rows:      g.Rows,
-		CellSize:  g.CellSize,
-		SkewRatio: g.SkewRatio,
-		Rotation:  g.Rotation,
-		Color:     g.Color,
-		Opacity:   g.Opacity,
-		LineStyle: mapentity.LineStyle(g.LineStyle),
-	}
-}
+// toEntityWallSegment and toEntityGridShape (payload → entity, the inbound half of
+// map_state_sync) were removed with B14: the arm no longer writes anything it receives, so
+// nothing decodes a WallSegmentPayload/GridShapePayload back into the domain shape any more.
+// toWallSegmentPayload above (entity → payload) is still very much alive — it is how the
+// server's OWN board goes out over the wire.

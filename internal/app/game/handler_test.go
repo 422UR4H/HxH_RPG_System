@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,17 +13,246 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	scene "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+// fakeBoardStore is the board repository the e2e tests share between rooms. Handing the SAME
+// store to a second room is how a test simulates a server restart: memory goes, the store
+// stays (spec §4.3, B14; see combatFixture.seedBoard and TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect).
+type fakeBoardStore struct {
+	mu     sync.Mutex
+	boards map[uuid.UUID]*matchboard.Board
+	// saves counts every call to Save (added by T3), so a test can assert the board WAS or
+	// WAS NOT persisted without a second test double.
+	saves int
+	// loads counts every call to Load: a room loads the board once at birth (and in the lobby on
+	// every master connect), so a new load after the match started is a NEW room.
+	loads int
+	// holdNext, when set, makes the NEXT Save block (before writing anything) until the
+	// channel is closed, after closing heldSave to say it is waiting. One-shot: the Save that
+	// takes it clears it. Lets a test keep a save in flight while something else races it.
+	holdNext chan struct{}
+	heldSave chan struct{}
+}
+
+// holdNextSave arms holdNext and returns (entered, release): entered closes once the next Save
+// is blocked; closing release lets it finish.
+func (s *fakeBoardStore) holdNextSave() (entered <-chan struct{}, release chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.holdNext = make(chan struct{})
+	s.heldSave = make(chan struct{})
+	return s.heldSave, s.holdNext
+}
+
+// remove deletes the match's row, the way a detach followed by no attach leaves the match with
+// nothing for LoadMatchBoardUC to return.
+func (s *fakeBoardStore) remove(matchUUID uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.boards, matchUUID)
+}
+
+func (s *fakeBoardStore) Load(_ context.Context, matchUUID uuid.UUID) (*matchboard.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loads++
+	b, ok := s.boards[matchUUID]
+	if !ok {
+		return nil, nil
+	}
+	cp := *b
+	cp.Pieces = append([]mapentity.Piece(nil), b.Pieces...)
+	cp.Walls = append([]mapentity.WallSegment(nil), b.Walls...)
+	return &cp, nil
+}
+
+// seed puts a board directly into the store, bypassing Save — for a test to set up state the
+// server will read back on register, the same way a real match_boards row would already exist
+// before the room comes up.
+func (s *fakeBoardStore) seed(matchUUID uuid.UUID, b *matchboard.Board) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = map[uuid.UUID]*matchboard.Board{}
+	}
+	s.boards[matchUUID] = b
+}
+
+// Save stores a COPY of the board (so a caller's later mutation of its own Pieces/Walls
+// slices cannot reach back into the store) and counts the call — matchboarduc.SaveMatchBoardUC
+// writes the row first, so this is also what a real Repository.Save satisfies for
+// matchboarduc.ISaveBoardRepository.
+func (s *fakeBoardStore) Save(_ context.Context, b *matchboard.Board) error {
+	s.mu.Lock()
+	hold, held := s.holdNext, s.heldSave
+	s.holdNext, s.heldSave = nil, nil
+	s.mu.Unlock()
+	if hold != nil {
+		close(held)
+		<-hold
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = map[uuid.UUID]*matchboard.Board{}
+	}
+	cp := *b
+	cp.Pieces = append([]mapentity.Piece(nil), b.Pieces...)
+	cp.Walls = append([]mapentity.WallSegment(nil), b.Walls...)
+	s.boards[b.MatchUUID] = &cp
+	s.saves++
+	return nil
+}
+
+// saveCount returns how many times Save was called, for a test to assert the board WAS (or
+// WAS NOT) persisted.
+func (s *fakeBoardStore) saveCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saves
+}
+
+// loadCount returns how many times Load was called.
+func (s *fakeBoardStore) loadCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loads
+}
+
+func newFakeBoardStore() *fakeBoardStore {
+	return &fakeBoardStore{boards: map[uuid.UUID]*matchboard.Board{}}
+}
+
+// fakeMemoryStore is the player-memory repository the e2e tests share between rooms — the
+// same sharing shape as fakeBoardStore, and for the same reason: a second Room built over the
+// SAME store is how a test simulates a server restart (spec §4.3, B3; see combatFixture.restart).
+type fakeMemoryStore struct {
+	mu    sync.Mutex
+	byKey map[string]fogentity.PlayerMemory // keyed by matchID|mapID|playerID
+}
+
+func memoryKey(matchID, mapID, playerID uuid.UUID) string {
+	return matchID.String() + "|" + mapID.String() + "|" + playerID.String()
+}
+
+func (s *fakeMemoryStore) Upsert(_ context.Context, m fogentity.PlayerMemory) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.byKey == nil {
+		s.byKey = map[string]fogentity.PlayerMemory{}
+	}
+	cp := m
+	cp.Seen = maps.Clone(m.Seen)
+	s.byKey[memoryKey(m.MatchID, m.MapID, m.PlayerID)] = cp
+	return nil
+}
+
+func (s *fakeMemoryStore) FindByMatchMap(_ context.Context, matchID, mapID uuid.UUID) ([]fogentity.PlayerMemory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []fogentity.PlayerMemory{}
+	prefix := matchID.String() + "|" + mapID.String() + "|"
+	for k, m := range s.byKey {
+		if strings.HasPrefix(k, prefix) {
+			cp := m
+			cp.Seen = maps.Clone(m.Seen)
+			out = append(out, cp)
+		}
+	}
+	return out, nil
+}
+
+func (s *fakeMemoryStore) DeleteByMatch(_ context.Context, matchID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prefix := matchID.String() + "|"
+	for k := range s.byKey {
+		if strings.HasPrefix(k, prefix) {
+			delete(s.byKey, k)
+		}
+	}
+	return nil
+}
+
+func newFakeMemoryStore() *fakeMemoryStore {
+	return &fakeMemoryStore{byKey: map[string]fogentity.PlayerMemory{}}
+}
+
+// fakeSheetOwnership answers GetCharacterSheetRelationshipUUIDs for RoomDeps.SheetOwnership —
+// the lobby's server-side piece ownership check (spec §4.3, "Quem move o quê", B14): the
+// lobby has no charToPlayer, so handlePieceMoved reads a sheet's own PlayerUUID instead. An
+// unmapped sheet UUID answers with the zero RelationshipUUIDs (no player, no master) rather
+// than an error — no test needs a distinguishable not-found case today, and a zero PlayerUUID
+// already fails the ownership check the same way a real not-found would.
+type fakeSheetOwnership struct {
+	mu     sync.Mutex
+	byUUID map[uuid.UUID]csEntity.RelationshipUUIDs
+	// blockFor/entered/release back armBlock — uuid.Nil means no block is armed. See armBlock.
+	blockFor uuid.UUID
+	entered  chan struct{}
+	release  chan struct{}
+}
+
+func newFakeSheetOwnership() *fakeSheetOwnership {
+	return &fakeSheetOwnership{byUUID: map[uuid.UUID]csEntity.RelationshipUUIDs{}}
+}
+
+// setPlayer records that sheetUUID belongs to playerUUID — the only relationship the lobby
+// check reads (MasterUUID/CampaignUUID are AddMatchNPCUC's concern, not this one's).
+func (s *fakeSheetOwnership) setPlayer(sheetUUID, playerUUID uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pid := playerUUID
+	s.byUUID[sheetUUID] = csEntity.RelationshipUUIDs{PlayerUUID: &pid}
+}
+
+// armBlock makes the NEXT GetCharacterSheetRelationshipUUIDs call for sheetUUID block until
+// the returned release func is called — simulating that ownership read still being "in
+// flight", unlocked, while something else concurrently mutates the board (regression test for
+// review round 1, Important 1: the TOCTOU between handlePieceMoved's unlocked ownership check
+// and its write). The returned channel closes once the blocked call has actually started
+// waiting, so a caller can synchronize on the block being live instead of racing a sleep
+// against it.
+func (s *fakeSheetOwnership) armBlock(sheetUUID uuid.UUID) (entered <-chan struct{}, release func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.blockFor = sheetUUID
+	s.entered = make(chan struct{})
+	s.release = make(chan struct{})
+	enteredCh, releaseCh := s.entered, s.release
+	return enteredCh, func() { close(releaseCh) }
+}
+
+func (s *fakeSheetOwnership) GetCharacterSheetRelationshipUUIDs(
+	_ context.Context, id uuid.UUID,
+) (csEntity.RelationshipUUIDs, error) {
+	s.mu.Lock()
+	blockFor, entered, release := s.blockFor, s.entered, s.release
+	s.mu.Unlock()
+	if blockFor != uuid.Nil && id == blockFor {
+		close(entered)
+		<-release
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.byUUID[id], nil
+}
 
 type mockMatchRepo struct {
 	masterUUID uuid.UUID
@@ -123,17 +353,193 @@ type mockRoundRepoHandler struct {
 	mu             sync.Mutex
 	persistedTurns []uuid.UUID
 	overrides      map[uuid.UUID][]matchDomain.OverriddenValue
+	ensuredRounds  []uuid.UUID
+	ensuredScenes  []uuid.UUID
+	// closedScenes records every CloseSceneAndRound call as a {scene, round} pair — what
+	// change_scene writes back.
+	closedScenes [][2]uuid.UUID
+	// turnRounds maps each persisted turn to the round PersistTurnClose was told it closed in.
+	turnRounds map[uuid.UUID]uuid.UUID
+	// handed keeps every *Scene/*Round pointer the room handed EnsureSceneAndRound and
+	// PersistTurnClose, so a test can prove the gateway got a copy and not the session's live
+	// objects (F4: the gateway reads them after r.mu is released).
+	handed []any
+	// masterActions keeps, per persisted turn, the master actions PersistTurnClose was handed
+	// to write in the turn's own transaction — what the master did inside that open turn.
+	masterActions map[uuid.UUID][]masteraction.Record
+	// boards keeps, per persisted turn, the board PersistTurnClose was handed to write in the
+	// turn's own transaction (nil entry = no board handed).
+	boards map[uuid.UUID]*matchboard.Board
+	// boardStore/memoryStore, when set, receive the board and memories of every SUCCESSFUL
+	// PersistTurnClose — what the real gateway writes in the turn's transaction — so a test
+	// reading the store (or a restart loading from it) sees what a close persisted.
+	boardStore  *fakeBoardStore
+	memoryStore *fakeMemoryStore
+	// sheetRows, when set, receives the status bars of every SUCCESSFUL PersistTurnClose — the
+	// character_sheets rows the real gateway updates in the turn's transaction — so a restart
+	// rebuilding its sheets from it sees the HP a close persisted, and a failed close none.
+	sheetRows *recordingStatusWriter
+	// failPersist, when set, makes PersistTurnClose fail and write NOTHING — a rolled-back
+	// transaction.
+	failPersist error
+	// closes keeps every SUCCESSFUL PersistTurnClose's data, in order — what FindMatchHistory
+	// hands back, the way the real gateway reads back what the close wrote.
+	closes []appmatch.TurnCloseData
+	// roundCloses keeps every SUCCESSFUL PersistRoundClose — round ends written with the round
+	// born after them (or being written) in one transaction.
+	roundCloses []roundCloseCall
+	// failRoundClose, when set, makes PersistRoundClose fail and write nothing.
+	failRoundClose error
+	// failEnsure, when set, makes EnsureSceneAndRound fail and write nothing; failedEnsures
+	// counts the calls it refused. failCloseScene does the same for CloseSceneAndRound.
+	failEnsure     error
+	failedEnsures  int
+	failCloseScene error
 }
 
-func (m *mockRoundRepoHandler) PersistTurnClose(_ context.Context, d appmatch.TurnCloseData) error {
+// setFailEnsure makes every later EnsureSceneAndRound fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailEnsure(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.failEnsure = err
+}
+
+// failedEnsureCount returns how many EnsureSceneAndRound calls failEnsure refused.
+func (m *mockRoundRepoHandler) failedEnsureCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.failedEnsures
+}
+
+// setFailCloseScene makes every later CloseSceneAndRound fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailCloseScene(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failCloseScene = err
+}
+
+// roundCloseCall is one PersistRoundClose: the round ends it wrote closed, then the scene and the
+// round written after them. closed is the last end — the round that ended in that command.
+type roundCloseCall struct {
+	ends   []appmatch.RoundEnd
+	scene  *scene.Scene
+	closed *roundentity.Round
+	next   *roundentity.Round
+}
+
+// setFailRoundClose makes every later PersistRoundClose fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailRoundClose(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failRoundClose = err
+}
+
+// boardFor returns the board PersistTurnClose received for one closed turn.
+func (m *mockRoundRepoHandler) boardFor(turnID uuid.UUID) (*matchboard.Board, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.boards[turnID]
+	return b, ok && b != nil
+}
+
+// setFailPersist makes every later PersistTurnClose fail with err (nil restores success).
+func (m *mockRoundRepoHandler) setFailPersist(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failPersist = err
+}
+
+// masterActionsFor returns the master actions PersistTurnClose received for one closed turn.
+func (m *mockRoundRepoHandler) masterActionsFor(turnID uuid.UUID) []masteraction.Record {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]masteraction.Record(nil), m.masterActions[turnID]...)
+}
+
+// allMasterActions returns every master action PersistTurnClose received, whatever its turn.
+func (m *mockRoundRepoHandler) allMasterActions() []masteraction.Record {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var all []masteraction.Record
+	for _, recs := range m.masterActions {
+		all = append(all, recs...)
+	}
+	return all
+}
+
+// handedPointers returns every *Scene/*Round the room handed this repository.
+func (m *mockRoundRepoHandler) handedPointers() []any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]any(nil), m.handed...)
+}
+
+// roundOfPersistedTurn returns the round PersistTurnClose wrote turnID under.
+func (m *mockRoundRepoHandler) roundOfPersistedTurn(turnID uuid.UUID) (uuid.UUID, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rd, ok := m.turnRounds[turnID]
+	return rd, ok
+}
+
+func (m *mockRoundRepoHandler) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failPersist != nil {
+		return m.failPersist
+	}
+	if m.boards == nil {
+		m.boards = map[uuid.UUID]*matchboard.Board{}
+	}
+	m.boards[d.Turn.GetID()] = d.Board
+	if d.Board != nil && m.boardStore != nil {
+		if err := m.boardStore.Save(ctx, d.Board); err != nil {
+			return err
+		}
+	}
+	if m.sheetRows != nil {
+		for _, sb := range d.StatusBars {
+			if err := m.sheetRows.UpdateStatusBars(ctx, sb.CharacterID.String(), sb.Health, sb.Stamina, sb.Aura); err != nil {
+				return err
+			}
+		}
+	}
+	if m.memoryStore != nil {
+		for _, mem := range d.Memories {
+			if err := m.memoryStore.Upsert(ctx, mem); err != nil {
+				return err
+			}
+		}
+	}
 	m.persistedTurns = append(m.persistedTurns, d.Turn.GetID())
 	if m.overrides == nil {
 		m.overrides = map[uuid.UUID][]matchDomain.OverriddenValue{}
 	}
 	m.overrides[d.Turn.GetID()] = d.Overrides
+	if m.masterActions == nil {
+		m.masterActions = map[uuid.UUID][]masteraction.Record{}
+	}
+	m.masterActions[d.Turn.GetID()] = append([]masteraction.Record(nil), d.MasterActions...)
+	if m.turnRounds == nil {
+		m.turnRounds = map[uuid.UUID]uuid.UUID{}
+	}
+	m.turnRounds[d.Turn.GetID()] = d.Round.GetID()
+	m.handed = append(m.handed, d.Scene, d.Round)
+	for _, e := range d.UnwrittenRoundEnds {
+		m.handed = append(m.handed, e.Scene, e.Round)
+	}
+	if d.NextRound != nil {
+		m.handed = append(m.handed, d.NextRound)
+	}
+	m.closes = append(m.closes, d)
 	return nil
+}
+
+// closeData returns the data of every successful PersistTurnClose, in order.
+func (m *mockRoundRepoHandler) closeData() []appmatch.TurnCloseData {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]appmatch.TurnCloseData(nil), m.closes...)
 }
 
 // persistedTurnIDs returns a snapshot of every turn ID PersistTurnClose was called with.
@@ -152,14 +558,117 @@ func (m *mockRoundRepoHandler) overridesFor(turnID uuid.UUID) []matchDomain.Over
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, sceneID, roundID uuid.UUID, _ time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failCloseScene != nil {
+		return m.failCloseScene
+	}
+	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{sceneID, roundID})
 	return nil
 }
-func (m *mockRoundRepoHandler) CloseRound(_ context.Context, _ uuid.UUID, _ time.Time) error {
+
+// closedScenePairs returns a snapshot of every {scene, round} CloseSceneAndRound was called with.
+func (m *mockRoundRepoHandler) closedScenePairs() [][2]uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([][2]uuid.UUID(nil), m.closedScenes...)
+}
+
+// EnsureSceneAndRound is a no-op that records the scene and round it was asked to ensure —
+// what the room calls when a scene or round is born, and before writing a master action or an
+// event (spec §4.5, §4.8).
+func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, sc *scene.Scene, rd *roundentity.Round) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failEnsure != nil {
+		m.failedEnsures++
+		return m.failEnsure
+	}
+	m.ensuredRounds = append(m.ensuredRounds, rd.GetID())
+	m.ensuredScenes = append(m.ensuredScenes, sc.GetID())
+	m.handed = append(m.handed, sc, rd)
 	return nil
 }
+
+// PersistRoundClose records round ends and the round written after them, written together.
+func (m *mockRoundRepoHandler) PersistRoundClose(
+	_ context.Context, _ uuid.UUID, ends []appmatch.RoundEnd, sc *scene.Scene, next *roundentity.Round,
+) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failRoundClose != nil {
+		return m.failRoundClose
+	}
+	call := roundCloseCall{ends: append([]appmatch.RoundEnd(nil), ends...), scene: sc, next: next}
+	if len(ends) > 0 {
+		call.closed = ends[len(ends)-1].Round
+	}
+	m.roundCloses = append(m.roundCloses, call)
+	for _, e := range ends {
+		m.handed = append(m.handed, e.Scene, e.Round)
+	}
+	m.handed = append(m.handed, sc, next)
+	return nil
+}
+
+// roundCloseCalls returns a snapshot of every PersistRoundClose call.
+func (m *mockRoundRepoHandler) roundCloseCalls() []roundCloseCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]roundCloseCall(nil), m.roundCloses...)
+}
+
+// ensuredSceneIDs returns a snapshot of every scene ID EnsureSceneAndRound was called with.
+func (m *mockRoundRepoHandler) ensuredSceneIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.ensuredScenes...)
+}
+
+// ensuredRoundIDs returns a snapshot of every round ID EnsureSceneAndRound was called with.
+func (m *mockRoundRepoHandler) ensuredRoundIDs() []uuid.UUID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]uuid.UUID(nil), m.ensuredRounds...)
+}
+
+// FindMatchHistory reads back what the successful closes persisted, as the real gateway
+// does: the turn, its action and reactions, the settled resolution and the views recorded live
+// (MoveViews, LandingViews). Scenes and rounds in the order their first turn closed.
 func (m *mockRoundRepoHandler) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
-	return nil, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	scenes := []appmatch.HistoryScene{}
+	for _, d := range m.closes {
+		si := -1
+		for i := range scenes {
+			if scenes[i].UUID == d.Scene.GetID() {
+				si = i
+			}
+		}
+		if si < 0 {
+			scenes = append(scenes, appmatch.HistoryScene{UUID: d.Scene.GetID()})
+			si = len(scenes) - 1
+		}
+		sc := &scenes[si]
+		ri := -1
+		for i := range sc.Rounds {
+			if sc.Rounds[i].UUID == d.Round.GetID() {
+				ri = i
+			}
+		}
+		if ri < 0 {
+			sc.Rounds = append(sc.Rounds, appmatch.HistoryRound{UUID: d.Round.GetID(), Mode: string(d.Round.GetMode())})
+			ri = len(sc.Rounds) - 1
+		}
+		sc.Rounds[ri].Turns = append(sc.Rounds[ri].Turns, appmatch.HistoryTurn{
+			UUID: d.Turn.GetID(), FinishedAt: *d.Turn.GetFinishedAt(),
+			Action: *d.Action, Reactions: d.Turn.GetReactions(), Resolution: d.Resolution,
+			MoveViews: d.MoveViews, LandingViews: d.LandingViews,
+		})
+	}
+	return scenes, nil
 }
 
 type mockEnqueueMasterActionUCHandler struct{}
@@ -178,6 +687,7 @@ type mockEditActionUCHandler struct{}
 
 func (m *mockEditActionUCHandler) Execute(
 	_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ *action.MasterAction,
+	_ *appmatch.EscapeLandingEdit,
 ) (*appmatch.EditActionResult, error) {
 	// Non-nil: a test that actually exercises edit_action through a room built with this mock
 	// must fail on an assertion, not panic on a nil-pointer dereference of the result.
@@ -194,20 +704,22 @@ func setupTestServer(masterUUID uuid.UUID, enrolled bool) (*httptest.Server, *ga
 	kickUC := &mockKickPlayerUC{}
 	handler := game.NewHandler(
 		hub, matchRepo, enrollmentRepo,
-		startUC, kickUC,
-		&mockInitSessionUCHandler{},
-		&mockOpenNextActionUCHandler{},
-		&mockPullActionUCHandler{},
-		&mockEnqueueActionUCHandler{},
-		&mockAttachReactionUCHandler{},
-		&mockOpenReactionUCHandler{},
-		&mockCloseTurnUCHandler{},
-		&mockChangeSceneUCHandler{},
-		&mockRoundRepoHandler{},
-		&mockEnqueueMasterActionUCHandler{},
-		&mockChangeRoundModeUCHandler{},
-		&mockEditActionUCHandler{},
-		nil,
+		game.RoomDeps{
+			StartMatchUC:          startUC,
+			KickPlayerUC:          kickUC,
+			InitSessionUC:         &mockInitSessionUCHandler{},
+			OpenNextActionUC:      &mockOpenNextActionUCHandler{},
+			PullActionUC:          &mockPullActionUCHandler{},
+			EnqueueActionUC:       &mockEnqueueActionUCHandler{},
+			AttachReactionUC:      &mockAttachReactionUCHandler{},
+			OpenReactionUC:        &mockOpenReactionUCHandler{},
+			CloseTurnUC:           &mockCloseTurnUCHandler{},
+			ChangeSceneUC:         &mockChangeSceneUCHandler{},
+			RoundRepo:             &mockRoundRepoHandler{},
+			EnqueueMasterActionUC: &mockEnqueueMasterActionUCHandler{},
+			ChangeRoundModeUC:     &mockChangeRoundModeUCHandler{},
+			EditActionUC:          &mockEditActionUCHandler{},
+		},
 	)
 
 	mux := http.NewServeMux()

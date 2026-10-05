@@ -8,7 +8,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -24,7 +23,7 @@ func TestOpenNextActionUC(t *testing.T) {
 
 	t.Run("returns ErrNotMatchMaster when caller is not master", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		uc := match.NewOpenNextActionUC(&fakeStatusWriter{}, nil)
+		uc := match.NewOpenNextActionUC(nil)
 		_, err := uc.Execute(context.Background(), session, masterUUID, uuid.New())
 		if !errors.Is(err, match.ErrNotMatchMaster) {
 			t.Errorf("expected ErrNotMatchMaster, got %v", err)
@@ -44,7 +43,7 @@ func TestOpenNextActionUC(t *testing.T) {
 		session.EnqueueAction(playerUUID, a) //nolint:errcheck
 
 		spy := &spyCloseRound{}
-		uc := match.NewOpenNextActionUC(&fakeStatusWriter{}, spy)
+		uc := match.NewOpenNextActionUC(spy)
 		result, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -59,13 +58,13 @@ func TestOpenNextActionUC(t *testing.T) {
 			t.Error("expected non-nil Resolution")
 		}
 		if spy.calls != 0 {
-			t.Errorf("close calls = %d, want 0 — the round is not exhausted, nothing should close", spy.calls)
+			t.Errorf("close calls = %d, want 0 — an action can still pay, nothing should close", spy.calls)
 		}
 	})
 
 	t.Run("returns ErrQueueEmpty when queue is empty", func(t *testing.T) {
 		session := matchsession.NewMatchSession(uuid.New(), nil, nil)
-		uc := match.NewOpenNextActionUC(&fakeStatusWriter{}, nil)
+		uc := match.NewOpenNextActionUC(nil)
 		_, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)
 		if !errors.Is(err, service.ErrQueueEmpty) {
 			t.Errorf("expected ErrQueueEmpty, got %v", err)
@@ -73,53 +72,19 @@ func TestOpenNextActionUC(t *testing.T) {
 	})
 }
 
-// fakeStatusWriter records which sheets were persisted.
-type fakeStatusWriter struct {
-	calls []string
-	err   error
-}
-
-func (f *fakeStatusWriter) UpdateStatusBars(
-	_ context.Context, sheetUUID string, _, _, _ status.IStatusBar,
-) error {
-	f.calls = append(f.calls, sheetUUID)
-	return f.err
-}
-
-func TestOpenNextActionUC_PersistsOnlyWhatTookDamage(t *testing.T) {
-	// A transition that damaged nobody must not write.
-	writer := &fakeStatusWriter{}
-	playerA := uuid.New()
-	session, chars := sessionWithPlayers(playerA)
-	masterUUID := uuid.New()
-
-	a := action.NewAction(chars[0], nil, uuid.Nil, nil,
-		action.ActionSpeed{RollCheck: action.RollCheck{Result: 5}},
-		nil, nil, nil, nil, nil, nil, nil)
-	session.EnqueueAction(playerA, a) //nolint:errcheck
-
-	uc := match.NewOpenNextActionUC(writer, nil)
-	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(writer.calls) != 0 {
-		t.Errorf("expected no persistence when nothing took damage, got %v", writer.calls)
-	}
-}
-
-func TestOpenNextActionUC_NilWriterIsSafe(t *testing.T) {
-	// Delivery tests build these use cases without a gateway; a nil writer must no-op
-	// rather than panic.
+func TestOpenNextActionUC_NilCloseRoundIsSafe(t *testing.T) {
+	// Delivery tests build these use cases without a round closer; nil must no-op rather than
+	// panic.
 	session, chars := sessionWithPlayers(uuid.New())
 	_ = chars
 	masterUUID := uuid.New()
-	uc := match.NewOpenNextActionUC(nil, nil)
+	uc := match.NewOpenNextActionUC(nil)
 	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID); err == nil {
 		t.Error("expected ErrQueueEmpty on an empty queue")
 	}
 }
 
-// spyCloseRound records that the exhausted round was handed to the close use case.
+// spyCloseRound records that the round no action could pay in was handed to the close use case.
 type spyCloseRound struct {
 	calls  int
 	closed *round.Round
@@ -140,7 +105,7 @@ func (s *spyCloseRound) Execute(
 
 // racingSessionWithOneAction builds a Race-mode session — one participant, a factory-built
 // sheet, a fixed roll source — with a single enqueued attack: enough for one open to drain
-// the queue and the next to find it empty, tripping RoundExhausted.
+// the queue and the next to find it empty, tripping NoActionCanPay.
 func racingSessionWithOneAction(t *testing.T, playerUUID uuid.UUID) (*matchsession.MatchSession, uuid.UUID) {
 	t.Helper()
 	matchUUID := uuid.New()
@@ -190,14 +155,14 @@ type fixedSource struct{ face int }
 
 func (f fixedSource) RollDie(_ enum.DieSides) int { return f.face }
 
-func TestOpenNextAction_ClosesAnExhaustedRound(t *testing.T) {
+func TestOpenNextAction_ClosesTheRoundWhenNoActionCanPay(t *testing.T) {
 	masterUUID := uuid.New()
 	playerUUID := uuid.New()
 	session, charID := racingSessionWithOneAction(t, playerUUID)
 	_ = charID
 
 	spy := &spyCloseRound{}
-	uc := match.NewOpenNextActionUC(nil, spy)
+	uc := match.NewOpenNextActionUC(spy)
 
 	// First open consumes the only action.
 	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID); err != nil {
@@ -206,7 +171,7 @@ func TestOpenNextAction_ClosesAnExhaustedRound(t *testing.T) {
 
 	res, err := uc.Execute(context.Background(), session, masterUUID, masterUUID)
 
-	t.Run("no error — an exhausted round is a normal outcome", func(t *testing.T) {
+	t.Run("no error — a round where no action can pay is a normal outcome", func(t *testing.T) {
 		if err != nil {
 			t.Errorf("err = %v, want nil", err)
 		}
@@ -229,7 +194,7 @@ func TestOpenNextAction_ClosesAnExhaustedRound(t *testing.T) {
 func TestOpenNextAction_EmptyFreeQueueStillErrors(t *testing.T) {
 	masterUUID := uuid.New()
 	session := freeSessionWithNoActions(t)
-	uc := match.NewOpenNextActionUC(nil, &spyCloseRound{})
+	uc := match.NewOpenNextActionUC(&spyCloseRound{})
 
 	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID); err == nil {
 		t.Error("a Free round has no economy: an empty queue is still an error, as it always was")
@@ -289,7 +254,7 @@ func TestOpenNextAction_AutoCloseFailureIsLoggedNotReturned(t *testing.T) {
 	session, victimID := racingSessionWithAttackThatHits(t)
 
 	spy := &spyCloseRound{err: errors.New("close boom")}
-	uc := match.NewOpenNextActionUC(nil, spy)
+	uc := match.NewOpenNextActionUC(spy)
 
 	// First open consumes the only action and projects the damage.
 	if _, err := uc.Execute(context.Background(), session, masterUUID, masterUUID); err != nil {
@@ -333,8 +298,7 @@ func TestOpenNextAction_AutoCloseFailureIsLoggedNotReturned(t *testing.T) {
 // turn — a real turn's resolution and history silently dropped.
 func TestOpenNextActionUC_ClosedTurnSurvivesAnOpenFailure(t *testing.T) {
 	f := newTurnFixture(t)
-	writer := &fakeStatusWriter{}
-	uc := match.NewOpenNextActionUC(writer, nil)
+	uc := match.NewOpenNextActionUC(nil)
 
 	res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID)
 
@@ -350,7 +314,9 @@ func TestOpenNextActionUC_ClosedTurnSurvivesAnOpenFailure(t *testing.T) {
 	if res.ClosedResolution == nil {
 		t.Error("expected the settled resolution for the closed turn")
 	}
-	if len(writer.calls) != 1 || writer.calls[0] != f.victimChar.String() {
-		t.Errorf("persisted = %v, want exactly the victim %s", writer.calls, f.victimChar)
+	// The HP the close applied travels in Damaged to the room, which writes it in the closed
+	// turn's own transaction — dropping it here would lose it.
+	if len(res.Damaged) != 1 || res.Damaged[0].CharacterID != f.victimChar {
+		t.Errorf("Damaged = %+v, want exactly the victim %s", res.Damaged, f.victimChar)
 	}
 }

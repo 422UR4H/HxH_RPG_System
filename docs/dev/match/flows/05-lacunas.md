@@ -16,7 +16,7 @@
 > (uma reação de escape não move a peça, a semântica de `Z` em `piece_moved` está em aberto,
 > a colisão contra parede — compartilhar slot, bloquear, quebrar — ainda não foi desenhada),
 > estão em
-> [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md) §9. O catálogo de combate
+> [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md) §10. O catálogo de combate
 > por personagem (`GET /charactersheets/{uuid}/combat-catalogue`) também nasceu desta rodada
 > — ver [`../../api/character-sheet.md`](../../api/character-sheet.md).
 
@@ -130,7 +130,7 @@ regra de jogo que normalmente forçará `Race`; quem troca o regime hoje é o me
 | Item | Quando |
 |---|---|
 | Qualquer tela do fluxo | Fase 6 |
-| ~~Rostering de NPC — nada cria um NPC hoje~~ | **resolvido.** PR #73 trouxe o REST (`POST`/`DELETE /matches/{uuid}/npcs`, ver [`../../api/match-npcs.md`](../../api/match-npcs.md)) e o NPC passou a entrar em `charToPlayer` como personagem do mestre. Esta rodada (live-npc-ws) fechou o que sobrava — pôr um NPC no MEIO de uma partida já em andamento — com o verbo de WS `add_npc` (ver [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md) §4). Remoção ao vivo continua fora — nova lacuna em `match-combat-ws.md` §9. |
+| ~~Rostering de NPC — nada cria um NPC hoje~~ | **resolvido.** PR #73 trouxe o REST (`POST`/`DELETE /matches/{uuid}/npcs`, ver [`../../api/match-npcs.md`](../../api/match-npcs.md)) e o NPC passou a entrar em `charToPlayer` como personagem do mestre. Esta rodada (live-npc-ws) fechou o que sobrava — pôr um NPC no MEIO de uma partida já em andamento — com o verbo de WS `add_npc` (ver [`../../api/match-combat-ws.md`](../../api/match-combat-ws.md) §4). Remoção ao vivo continua fora — nova lacuna em `match-combat-ws.md` §10. |
 | Exceção do percept no início de batalha | bloqueada: os subatributos mentais não existem |
 | Posturas (condicionam o desconto do escape fechado) | pós-MVP |
 | Override do desfecho da cadeia em área | regra de jogo ainda não escrita |

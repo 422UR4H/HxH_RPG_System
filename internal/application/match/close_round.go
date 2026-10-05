@@ -12,31 +12,28 @@ type ICloseRound interface {
 	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID) (*round.Round, error)
 }
 
-type CloseRoundUC struct {
-	roundRepo IRoundRepository
-}
+// CloseRoundUC ends the session's active round in memory — settles the bars, expires the
+// end-of-round modifiers, starts the next round — and writes nothing. Its one caller,
+// OpenNextActionUC, runs under r.mu; the round's end and the successor's birth are written by the
+// room after the unlock, together: in the turn's own transaction when that same command closed a
+// turn (TurnCloseData.NextRound), in one of their own otherwise (PersistRoundClose). One master
+// command, one transaction (owner decision, 2026-10-02).
+//
+// What CloseRound settles in memory is not durable anywhere: the bars' carry-over and the
+// round's modifiers live only in the session (a restart zeroes the bars — lost, not divergent).
+type CloseRoundUC struct{}
 
-func NewCloseRoundUC(roundRepo IRoundRepository) *CloseRoundUC {
-	return &CloseRoundUC{roundRepo: roundRepo}
+func NewCloseRoundUC() *CloseRoundUC {
+	return &CloseRoundUC{}
 }
 
 func (uc *CloseRoundUC) Execute(
-	ctx context.Context,
+	_ context.Context,
 	session *matchsession.MatchSession,
 	masterUUID, callerUUID uuid.UUID,
 ) (*round.Round, error) {
 	if callerUUID != masterUUID {
 		return nil, ErrNotMatchMaster
 	}
-	wasPersisted := session.IsRoundPersisted()
-	closedRound, err := session.CloseRound()
-	if err != nil {
-		return nil, err
-	}
-	if wasPersisted && closedRound.GetFinishedAt() != nil {
-		if dbErr := uc.roundRepo.CloseRound(ctx, closedRound.GetID(), *closedRound.GetFinishedAt()); dbErr != nil {
-			_ = dbErr // log in production
-		}
-	}
-	return closedRound, nil
+	return session.CloseRound()
 }

@@ -19,6 +19,12 @@ type Turn struct {
 	openedReactions []uuid.UUID
 	masterActions   []action.MasterAction
 	finishedAt      *time.Time
+	// escapeLandings is where the MASTER put the piece of an escape, keyed by the reaction's
+	// own ID — chosen over edit_action while the turn is open (front-combat-phases.md §6A.5,
+	// B13). It is only a standing choice: the resolver copies it into the resolution only
+	// for an escape that FAILED, and an escape that passes goes to its own slot whatever is
+	// stored here. nil until the first choice.
+	escapeLandings map[uuid.UUID][3]int
 }
 
 func NewTurn(action action.Action) *Turn {
@@ -120,6 +126,31 @@ func (t *Turn) UnopenedReactions() []action.Action {
 		if !slices.Contains(t.openedReactions, t.reactions[i].GetID()) {
 			out = append(out, t.reactions[i])
 		}
+	}
+	return out
+}
+
+// SetEscapeLanding records where the master decided a failed escape leaves the piece. Setting
+// it again replaces the previous choice. The turn does not judge the reaction or the position
+// — MatchSession.SetEscapeLanding does, before calling this.
+func (t *Turn) SetEscapeLanding(reactionID uuid.UUID, pos [3]int) {
+	if t.escapeLandings == nil {
+		t.escapeLandings = make(map[uuid.UUID][3]int)
+	}
+	t.escapeLandings[reactionID] = pos
+}
+
+// ClearEscapeLanding takes the master's choice back: a failed escape goes back to staying
+// where it stood. Clearing what was never set is a no-op.
+func (t *Turn) ClearEscapeLanding(reactionID uuid.UUID) {
+	delete(t.escapeLandings, reactionID)
+}
+
+// EscapeLandings returns a copy of every landing the master has chosen, by reaction ID.
+func (t *Turn) EscapeLandings() map[uuid.UUID][3]int {
+	out := make(map[uuid.UUID][3]int, len(t.escapeLandings))
+	for id, pos := range t.escapeLandings {
+		out[id] = pos
 	}
 	return out
 }

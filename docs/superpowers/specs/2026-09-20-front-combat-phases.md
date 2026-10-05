@@ -264,7 +264,8 @@ da resolução já usa.
 
 **O HP já tem fonte única.** `applyDamage` muta `s.charSheets[targetID]` — a ficha viva — e
 `UpdateStatusBars` persiste essa mesma ficha, que é o que o REST lê. A ficha do personagem já é
-a verdade para os dois canais.
+a verdade para os dois canais. (Desde 2026-10-02 essa gravação acontece na transação do
+fechamento do turno, `PersistTurnClose` — ver adiante, "um comando do mestre, uma transação".)
 
 **A visibilidade do HP no REST já está certa.** `GET /matches/{uuid}/participants` devolve
 `CharacterSheetWithVisibilityResponse`, que põe o HP dentro de um `private` **nulo** para quem
@@ -638,6 +639,18 @@ O formato continua o do histórico REST; só esses campos ficam de fora. Não é
 sempre — *"todos veem a mecânica da ação; só o mestre vê o resultado"* (`acoes.md`, passo 4) —,
 e "todos" inclui o dono. As velocidades vão porque o `bars_updated` já as revela ao abrir (F6).
 
+**Decisão do dono do produto (2026-10-01): o movimento não chega a quem não deveria ver a
+peça.** "Movimento" na tabela acima é a categoria para todos; a **origem e o destino**
+(`move.from`/`move.position`) chegam a quem não é mestre nem dono do ator só pelo mesmo gate de
+fog do relay ao vivo da peça: vê o destino → o `move` inteiro; vê só a origem → `from` sem
+`position`; não vê nenhum dos dois, a peça é `visible: false` ou o ator não tem peça → só a
+categoria. Vale para
+`turn_opened`, para o `openTurn` do `match_full_state` e para o `escape.landing` da resolução
+liquidada (some para quem não vê a casa de queda). **O front tem que tolerar um `move` sem
+`from` e sem `position`** — contrato em `docs/dev/api/match-combat-ws.md` (`turn_opened`, §6).
+O `GET /history` segue o mesmo: cada leitor recebe o `move` e o `landing` como os viu ao vivo
+(veredito gravado com o turno; linhas antigas falham fechado) — `docs/dev/api/match-history.md`.
+
 **B3 a B10 — as pendências que a revisão da Fase 6 anotou.** Todas entram: o dono do produto
 não quer bug conhecido aberto.
 
@@ -851,6 +864,20 @@ Persista nos mesmos momentos de B3/B15.
 - **`overridden_action_values` continua separado de tudo isso:** a edição do mestre
   (`edit_action`) não é master action.
 
+**Dentro de um turno aberto, a gravação espera o fechamento — decisão do dono do produto
+(2026-10-01).** "Gravar as master actions feitas com um turno aberto e o tabuleiro só no
+fechamento do turno." A master action continua valendo **na hora**, ao vivo, para a mesa toda;
+o que muda é quando ela vira registro: sem turno aberto, no instante; com turno aberto, junto
+com o fechamento do turno, na mesma transação que grava o turno e o tabuleiro. Ficam de fora a
+troca de regime (é do round) e a inscrição de NPC. O HP do fechamento entrou nessa transação em
+2026-10-02 (dono do produto: **um comando do mestre, uma transação**) — até ali os casos de uso o
+gravavam fora dela. Tudo o que acontece dentro de um turno aberto (o movimento da abertura,
+o arrasto, a porta aberta pelo mestre, as notas do turno) fica durável junto com o fechamento
+dele, ou não fica: um reinício no meio do turno volta o turno inteiro ao último fechamento, e o
+histórico nunca mostra o efeito de um turno que não tem. Para o front, a consequência é uma só:
+um `GET /history` feito com o turno aberto ainda não traz as master actions daquele turno —
+elas aparecem dentro dele depois que ele fecha.
+
 Mantenha, como **última defesa**, a resposta com `error` para uma ação sobre parede que o
 servidor não conhece. Com o servidor carregando o tabuleiro, esse caminho deveria ficar
 inalcançável; se for alcançado, é bug, e o mestre fica sabendo em vez de ser enganado.
@@ -870,7 +897,8 @@ recarregar, três linhas que hoje só existem ao vivo — e o REST não guarda:
 - **a troca de regime**: ela acontece **dentro** do round em andamento (`Round.SetMode`), sem
   abrir outro, e o REST guarda só o regime final de cada round;
 - **a cena e o round sem nenhum turno**: a resposta pode vir `{ "scenes": [] }` numa partida
-  sem turno fechado, então uma troca de cena ou um round fechado por exaustão se perdem;
+  sem turno fechado, então uma troca de cena ou um round que acabou (nenhuma ação na fila
+  conseguia mais pagar o preço) se perdem;
 - **o round fechado** em si.
 
 Persista esses três eventos e devolva-os no `GET /matches/{uuid}/history`, na posição certa da

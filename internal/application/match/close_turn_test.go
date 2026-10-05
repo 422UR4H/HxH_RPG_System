@@ -8,7 +8,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -82,23 +81,12 @@ func (f *turnFixture) attachReaction(t *testing.T) {
 	}
 }
 
-// noopStatusWriter discards every write. CloseTurnUC's persistence is a straight call into
-// persistDamage, already covered end to end by open_next_action_test.go's fakeStatusWriter;
-// here Execute only needs a writer that does not panic.
-type noopStatusWriter struct{}
-
-func (noopStatusWriter) UpdateStatusBars(
-	_ context.Context, _ string, _, _, _ status.IStatusBar,
-) error {
-	return nil
-}
-
 func TestCloseTurnUC(t *testing.T) {
 	t.Run("refuses when a reaction was attached and never opened", func(t *testing.T) {
 		f := newTurnFixture(t) // session with one open turn
 		f.attachReaction(t)    // one reaction, not opened
 
-		uc := match.NewCloseTurnUC(&noopStatusWriter{})
+		uc := match.NewCloseTurnUC()
 		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, false)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -115,7 +103,7 @@ func TestCloseTurnUC(t *testing.T) {
 		f := newTurnFixture(t)
 		f.attachReaction(t)
 
-		uc := match.NewCloseTurnUC(&noopStatusWriter{})
+		uc := match.NewCloseTurnUC()
 		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, true)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -130,7 +118,7 @@ func TestCloseTurnUC(t *testing.T) {
 
 	t.Run("closes without confirm when nothing is pending", func(t *testing.T) {
 		f := newTurnFixture(t)
-		uc := match.NewCloseTurnUC(&noopStatusWriter{})
+		uc := match.NewCloseTurnUC()
 		res, err := uc.Execute(context.Background(), f.session, f.masterUUID, f.masterUUID, false)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -142,7 +130,7 @@ func TestCloseTurnUC(t *testing.T) {
 
 	t.Run("only the master may close", func(t *testing.T) {
 		f := newTurnFixture(t)
-		uc := match.NewCloseTurnUC(&noopStatusWriter{})
+		uc := match.NewCloseTurnUC()
 		_, err := uc.Execute(context.Background(), f.session, f.masterUUID, uuid.New(), true)
 		if !errors.Is(err, match.ErrNotMatchMaster) {
 			t.Fatalf("err = %v, want ErrNotMatchMaster", err)
