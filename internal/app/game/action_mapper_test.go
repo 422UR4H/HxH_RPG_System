@@ -423,17 +423,23 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 	})
 
-	// Without this, a closedDodge accepted with a Dodge but no Evasion entry derives Evasion
-	// against an empty RollCheck (skillValue + 0, Passive: false) — strictly worse than a
-	// plain dodge, and dodgeAndReserve still banks a reserve off the bogus gap. See
+	// A closedDodge without an Evasion entry would derive Evasion against an empty RollCheck
+	// (skillValue + 0, Passive: false). The server now adds the entry itself. See
 	// ReactionKind.RequiresEvasionSkill.
-	t.Run("closedDodge with a dodge but no evasion skill entry is refused", func(t *testing.T) {
-		_, err := buildAction(actorID, ActionPayload{
+	t.Run("closedDodge with a dodge but no evasion skill entry is accepted, with the Evasion entry added by the server", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedDodge",
 			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
 		})
-		if err == nil {
-			t.Fatal("a closedDodge with no Evasion entry must be refused, never derived against an empty roll")
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
+		}
+		found := false
+		for _, s := range a.Skills {
+			found = found || s.SkillName == enum.Evasion.String()
+		}
+		if !found {
+			t.Fatal("the server must add the Evasion entry")
 		}
 	})
 
@@ -460,21 +466,21 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 	})
 
-	t.Run("closedEscape with a dodge and a move but no evasion skill entry is refused", func(t *testing.T) {
-		_, err := buildAction(actorID, ActionPayload{
+	t.Run("closedEscape with a dodge and a move but no evasion skill entry is accepted, with the Evasion entry added by the server", func(t *testing.T) {
+		a, err := buildAction(actorID, ActionPayload{
 			ActorID: actorID, ReactToID: uuid.New(), ReactionKind: "closedEscape",
 			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: enum.Reflex.String()}},
-			// Category must be the CORRECT one (Shift) for closedEscape here — otherwise the
-			// move-category check in RequiredComponents' loop fires first (it runs before the
-			// RequiresEvasionSkill check below it) and this test would pass for the wrong
-			// reason, proving nothing about Evasion at all.
-			Move: &MovePayload{Category: string(enum.Shift), Position: [3]int{1, 1, 0}},
+			Move:  &MovePayload{Category: string(enum.Shift), Position: [3]int{1, 1, 0}},
 		})
-		if err == nil {
-			t.Fatal("a closedEscape with no Evasion entry must be refused just like closedDodge")
+		if err != nil {
+			t.Fatalf("buildAction: %v", err)
 		}
-		if !strings.Contains(err.Error(), "must carry an evasion skill entry") {
-			t.Fatalf("refused for the wrong reason: %v", err)
+		found := false
+		for _, s := range a.Skills {
+			found = found || s.SkillName == enum.Evasion.String()
+		}
+		if !found {
+			t.Fatal("the server must add the Evasion entry to a closedEscape")
 		}
 	})
 
@@ -748,6 +754,99 @@ func TestBuildMasterAction_MapsMovePositionOnly(t *testing.T) {
 		ma := buildMasterAction(uuid.New(), MasterActionPayload{TargetIDs: []uuid.UUID{c}})
 		if ma.Move != nil {
 			t.Fatalf("ma.Move = %+v, want nil", ma.Move)
+		}
+	})
+}
+
+func TestBuildAction_DerivesReactionSkillNames(t *testing.T) {
+	actor, reactTo := uuid.New(), uuid.New()
+
+	t.Run("dodge reads Reflex whatever the payload named", func(t *testing.T) {
+		for _, sent := range []string{"", "Legerity"} {
+			a, err := buildAction(actor, ActionPayload{
+				ActorID: actor, ReactToID: reactTo, ReactionKind: "dodge",
+				Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: sent}},
+			})
+			if err != nil {
+				t.Fatalf("sent %q: %v", sent, err)
+			}
+			if got := a.Dodge.RollCheck.SkillName; got != enum.Reflex.String() {
+				t.Errorf("sent %q: dodge skill = %q, want Reflex", sent, got)
+			}
+		}
+	})
+
+	t.Run("an empty dodge object is enough", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{
+			ActorID: actor, ReactToID: reactTo, ReactionKind: "dodge", Dodge: &DodgePayload{},
+		})
+		if err != nil {
+			t.Fatalf("dodge: {}: %v", err)
+		}
+		if got := a.Dodge.RollCheck.SkillName; got != enum.Reflex.String() {
+			t.Errorf("dodge skill = %q, want Reflex", got)
+		}
+	})
+
+	t.Run("an unknown dodge skill name is still refused at the door", func(t *testing.T) {
+		_, err := buildAction(actor, ActionPayload{
+			ActorID: actor, ReactToID: reactTo, ReactionKind: "dodge",
+			Dodge: &DodgePayload{RollCheck: &RollCheckPayload{SkillName: "NotASkill"}},
+		})
+		if err == nil {
+			t.Fatal("an unknown skill name must stay a client bug, refused here")
+		}
+	})
+
+	t.Run("repel reads Repel whatever the payload named", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{
+			ActorID: actor, ReactToID: reactTo, ReactionKind: "repel",
+			Repel: &RepelPayload{RollCheck: RollCheckPayload{SkillName: "Defense"}},
+		})
+		if err != nil {
+			t.Fatalf("repel: %v", err)
+		}
+		if got := a.Repel.RollCheck.SkillName; got != enum.Repel.String() {
+			t.Errorf("repel skill = %q, want Repel", got)
+		}
+	})
+
+	t.Run("a closed dodge gets its Evasion entry from the server, once", func(t *testing.T) {
+		for _, sent := range [][]ActionSkillPayload{nil, {{SkillName: enum.Evasion.String()}}} {
+			a, err := buildAction(actor, ActionPayload{
+				ActorID: actor, ReactToID: reactTo, ReactionKind: "closedDodge",
+				Dodge: &DodgePayload{}, Skills: sent,
+			})
+			if err != nil {
+				t.Fatalf("skills %v: %v", sent, err)
+			}
+			n := 0
+			for _, s := range a.Skills {
+				if s.SkillName == enum.Evasion.String() {
+					n++
+				}
+			}
+			if n != 1 {
+				t.Errorf("skills %v: %d Evasion entries, want exactly 1", sent, n)
+			}
+		}
+	})
+
+	t.Run("a closed escape gets its Evasion entry from the server", func(t *testing.T) {
+		a, err := buildAction(actor, ActionPayload{
+			ActorID: actor, ReactToID: reactTo, ReactionKind: "closedEscape",
+			Dodge: &DodgePayload{},
+			Move:  &MovePayload{Category: string(enum.Shift), Position: [3]int{2, 2, 0}},
+		})
+		if err != nil {
+			t.Fatalf("closedEscape: %v", err)
+		}
+		found := false
+		for _, s := range a.Skills {
+			found = found || s.SkillName == enum.Evasion.String()
+		}
+		if !found {
+			t.Fatal("closedEscape without an Evasion entry in the payload must still read Evasion")
 		}
 	})
 }

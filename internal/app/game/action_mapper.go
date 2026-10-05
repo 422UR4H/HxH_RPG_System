@@ -124,6 +124,11 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		if rc != nil {
 			dodge.RollCheck = *rc
 		}
+		// Derived, like the hit's Accuracy: the dodge is ALWAYS read on Reflex (deriveReflex,
+		// reaction_collision.go, reads exactly that name). The payload's name was validated above
+		// — an unknown one is still a client bug — and is replaced here, so the front never has
+		// to write a skill name to react (front-combat-phases.md §7, item 10).
+		dodge.RollCheck.SkillName = enum.Reflex.String()
 	}
 
 	var interact *action.Interact
@@ -142,6 +147,8 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 			return nil, err
 		}
 		repel = &action.Repel{Weapon: weapon, RollCheck: *rc}
+		// Derived for the same reason as the dodge's Reflex: resolveRepel reads Repel by name.
+		repel.RollCheck.SkillName = enum.Repel.String()
 	}
 
 	var kind action.ReactionKind
@@ -190,10 +197,12 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		if !kind.Displaces() && p.Move != nil {
 			return nil, fmt.Errorf("reaction %q must not carry a move", p.ReactionKind)
 		}
-		// Evasion is not a ReactionComponent — it names an entry inside Skills, not a piece
-		// shaped like an Action sub-struct — so it is not covered by the loop above. The two
-		// closed variants need it anyway: without it they derive against an empty RollCheck
-		// and end up strictly worse than a plain dodge. See ReactionKind.RequiresEvasionSkill.
+		// Evasion is not a ReactionComponent — it names an entry inside Skills — so the loop
+		// above does not cover it. The closed variants need it: without it they derive against
+		// an empty RollCheck and end up strictly worse than a plain dodge. The KIND already says
+		// the player wants it, so the server adds the entry instead of refusing a payload that
+		// forgot it (item 10: the server derives the reactions' skill names). See
+		// ReactionKind.RequiresEvasionSkill.
 		if kind.RequiresEvasionSkill() {
 			hasEvasion := false
 			for _, s := range skills {
@@ -203,7 +212,8 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 				}
 			}
 			if !hasEvasion {
-				return nil, fmt.Errorf("reaction %q must carry an evasion skill entry", p.ReactionKind)
+				ev := enum.Evasion.String()
+				skills = append(skills, action.Skill{SkillName: ev, RollCheck: action.RollCheck{SkillName: ev}})
 			}
 		}
 	}

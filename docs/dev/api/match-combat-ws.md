@@ -241,8 +241,7 @@ O payload é o mesmo `ActionPayload`, com `reactToId` e `reactionKind` obrigató
     "actorId": "22222222-2222-4222-8222-222222222222",
     "reactToId": "33333333-3333-4333-8333-333333333333",
     "reactionKind": "closedDodge",
-    "skills": [ { "skillName": "Evasion" } ],
-    "dodge": { "category": "Dash", "rollCheck": { "skillName": "Reflex" } }
+    "dodge": {}
   }
 }
 ```
@@ -254,7 +253,7 @@ O payload é o mesmo `ActionPayload`, com `reactToId` e `reactionKind` obrigató
     "actorId": "22222222-2222-4222-8222-222222222222",
     "reactToId": "33333333-3333-4333-8333-333333333333",
     "reactionKind": "repel",
-    "repel": { "weapon": "Sword", "rollCheck": { "skillName": "Repel" } }
+    "repel": { "weapon": "Sword" }
   }
 }
 ```
@@ -272,6 +271,23 @@ as separa, porque o que as separa é a intenção do jogador.
 | `escapeGuard` | `dodge` + `move` | `action` + `move` | **Dash** |
 | `closedEscape` | `dodge` + `move` + entrada `Evasion` em `skills` | `move` | **Shift** |
 | `repel` | `repel` | `action` | — |
+
+**As perícias da reação são derivadas pelo servidor.** `dodge.rollCheck.skillName` é sempre
+`Reflex`, `repel.rollCheck.skillName` é sempre `Repel`, e `closedDodge`/`closedEscape` ganham a
+entrada `{ "skillName": "Evasion" }` em `skills` quando ela falta (uma entrada `Evasion` já
+presente não é duplicada). O que o payload mandar nesses campos é validado — nome de perícia
+desconhecido continua recusado com `invalid_action` — e substituído: o mesmo estado do
+`attack.hit`, que é sempre `Accuracy`. O front não escreve nome de perícia nenhum para reagir.
+
+Payload mínimo de cada tipo, além de `actorId`, `reactToId` e `reactionKind`:
+
+| `reactionKind` | Payload mínimo |
+|---|---|
+| `nothing` | — |
+| `dodge`, `closedDodge` | `dodge: {}` |
+| `escape`, `escapeGuard` | `dodge: {}`, `move: {category: "Dash", position}` |
+| `closedEscape` | `dodge: {}`, `move: {category: "Shift", position}` |
+| `repel` | `repel: {}` ou `repel: {weapon}` |
 
 **A categoria de `move` das três fugas é validada no SERVIDOR, não sugerida.**
 `ReactionKind.RequiredMoveCategory()` (`reaction_kind.go`) fixa o par; `action_mapper.go`
@@ -308,7 +324,7 @@ Não há ack próprio e **não há broadcast**: a mesa não é avisada de que al
 | `invalid_action` | `"reaction requires react_to_id"` |
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` |
 | `invalid_action` | `"actorId is required: …"` |
-| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel` / `an evasion skill entry`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
+| `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
 | `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action`. |
 

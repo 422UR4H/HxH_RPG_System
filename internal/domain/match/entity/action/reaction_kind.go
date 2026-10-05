@@ -156,8 +156,8 @@ func (k ReactionKind) RequiredComponents() []ReactionComponent {
 // that it is a different kind of check; a separate method says so honestly. Without this, a
 // closed dodge accepted with no Evasion entry derives against an empty RollCheck (skillValue +
 // 0, Passive: false) — worse than the passive it was meant to replace, and dodgeAndReserve
-// still takes it as "the dodge" and banks a reserve off the bogus gap. Enforced at the WS
-// boundary, refused the same way a missing Dodge/Move/Repel is.
+// still takes it as "the dodge" and banks a reserve off the bogus gap. Supplied at the WS
+// boundary (buildAction adds the entry when the payload lacks it).
 func (k ReactionKind) RequiresEvasionSkill() bool {
 	return k == ReactClosedDodge || k == ReactClosedEscape
 }
