@@ -415,11 +415,17 @@ type ReactionAttachedPayload struct {
 	ConsumedActionIDs []uuid.UUID `json:"consumedActionIds"`
 }
 
-// ReactionOpenedPayload announces who narrates next. It is BROADCAST — whose turn it is to
-// narrate is public — while the resolution it triggers stays master-only until Phase 5.
+// ReactionOpenedPayload announces who narrates next, and with what (Phase 7, item 1). Reaction
+// is the opened reaction cut for THIS recipient by the very rule turn_opened.action uses
+// (turnActionWireLocked): the master gets it whole (Full); everyone else — its own owner
+// included — gets service.ProjectAction (closedDodge/closedEscape demoted, the Evasion entry
+// and consumedActionIds stripped for a third party) at Opened, with move.position passing the
+// reactor's piece's fog gate. Projected, so it travels on the DIRECT lane (dispatchPerPlayer),
+// and the master's resolution_updated that follows is sent after it by the same goroutine.
 type ReactionOpenedPayload struct {
-	TurnID     uuid.UUID `json:"turnId"`
-	ReactionID uuid.UUID `json:"reactionId"`
+	TurnID     uuid.UUID         `json:"turnId"`
+	ReactionID uuid.UUID         `json:"reactionId"`
+	Reaction   actionwire.Action `json:"reaction"`
 }
 
 // TurnClosedPayload announces that the baton was put down. Same message for the whole table —

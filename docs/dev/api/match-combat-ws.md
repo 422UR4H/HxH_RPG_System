@@ -120,7 +120,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`bars_updated`](#bars_updated) | mesa inteira |
 | [`turn_opened`](#turn_opened) | mesa inteira |
 | [`reaction_attached`](#reaction_attached) | quem reagiu **+ mestre** |
-| [`reaction_opened`](#reaction_opened) | mesa inteira |
+| [`reaction_opened`](#reaction_opened) | mesa inteira (projetado por destinatário) |
 | [`resolution_updated`](#resolution_updated) | **mestre, ou mesa projetada** — ver §5 |
 | [`action_edited`](#action_edited) | só o mestre |
 | [`close_turn_refused`](#close_turn_refused) | só o mestre |
@@ -418,8 +418,8 @@ poder de mestre e muda o resultado**: uma reação anexada mas não aberta delib
 Abrir **não cobra nada**: as barras foram debitadas no *attach*, justamente para que narrar
 não mova número.
 
-**Dispara:** [`reaction_opened`](#reaction_opened) para a **mesa** (de quem é a vez de narrar
-é público) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
+**Dispara:** [`reaction_opened`](#reaction_opened) à **mesa**, **projetado por destinatário**
+(de quem é a vez de narrar, e com o quê, é público; os números não) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
 sendo do mestre — o turno ainda está aberto). **Nunca** um
 [`piece_moved`](#piece_moved-servidor): abrir uma fuga mostra a intenção, e a peça dela só anda
 no fechamento do turno — ver abaixo.
@@ -1259,21 +1259,105 @@ de ser.
 
 ### `reaction_opened`
 
-**Direção:** servidor → cliente. **Destino:** **mesa inteira** — de quem é a vez de narrar
-é estado de mesa.
+**Direção:** servidor → cliente. **Destino:** **mesa inteira**, **uma cópia por destinatário**
+— de quem é a vez de narrar, e com o quê, é estado de mesa (Fase 7, item 1; design spec §4.1).
+Como `reaction` é **projetada por destinatário**, a mensagem viaja pela **pista direta**
+(`dispatchPerPlayer`), um payload construído por cliente, e não por `r.broadcast`.
+
+**O que o MESTRE vê** (`actionwire.Full`) — uma `closedEscape` (`Shift`) de `[6, 6, 0]` para
+`[8, 6, 0]`, com o rótulo fechado, a entrada `Evasion` e os números:
 
 ```json
 {
   "type": "reaction_opened",
   "payload": {
     "turnId": "55555555-5555-4555-8555-555555555555",
-    "reactionId": "44444444-4444-4444-8444-444444444444"
+    "reactionId": "44444444-4444-4444-8444-444444444444",
+    "reaction": {
+      "uuid": "44444444-4444-4444-8444-444444444444",
+      "actorId": "22222222-2222-4222-8222-222222222222",
+      "reactToId": "33333333-3333-4333-8333-333333333333",
+      "reactionKind": "closedEscape",
+      "skills": [
+        { "skillName": "Evasion", "rollCheck": { "skillName": "Evasion", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+      ],
+      "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": {}, "result": 11 } },
+      "move": {
+        "category": "Shift",
+        "position": [8, 6, 0],
+        "speed": { "skillName": "Brake", "skillValue": 0, "attempts": {}, "result": 11 },
+        "finalSpeed": 11
+      },
+      "dodge": { "rollCheck": { "skillName": "Reflex", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+    }
   }
 }
 ```
 
-Anuncia quem narra em seguida. **O cálculo que isso desencadeia continua master-only** — o
-`resolution_updated` que vem junto é de turno aberto.
+**O que um TERCEIRO vê** (nem mestre nem dono do reator) — a mesma reação, `Opened` depois de
+`ProjectAction`: o rótulo rebaixado a `escape`, sem a entrada `Evasion`, sem `consumedActionIds`,
+sem os números de `dodge`; as **velocidades ficam** (decisão D1). `move.position` está aqui
+**só porque este terceiro vê o destino** — ver o `move` abaixo:
+
+```json
+"reaction": {
+  "uuid": "44444444-4444-4444-8444-444444444444",
+  "actorId": "22222222-2222-4222-8222-222222222222",
+  "reactToId": "33333333-3333-4333-8333-333333333333",
+  "reactionKind": "escape",
+  "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": {}, "result": 11 } },
+  "move": {
+    "category": "Shift",
+    "position": [8, 6, 0],
+    "speed": { "skillName": "Brake", "skillValue": 0, "attempts": {}, "result": 11 },
+    "finalSpeed": 11
+  },
+  "dodge": { "rollCheck": { "skillName": "Reflex" } }
+}
+```
+
+#### O corte de `reaction`
+
+O mesmo de [`turn_opened`](#o-corte-de-action-design-spec-41) — a mesma função
+(`turnActionWireLocked`), aplicada à reação:
+
+| Destinatário | `reaction` |
+|---|---|
+| Mestre | `actionwire.Full` — inteira, com números |
+| **Dono** do reator | `actionwire.Opened` depois de `ProjectAction`: `reactionKind` fechado (`closedDodge`/`closedEscape`) e a entrada `Evasion` **ficam**; dados, `skillValue` e `result` de `skills[]`, `dodge`, `defense`, `repel`, `move.charge` saem; velocidades ficam |
+| Qualquer outro (terceiro) | o mesmo `Opened`, e ainda: `closedDodge`→`dodge`, `closedEscape`→`escape`; a entrada `Evasion` de `skills[]` e `consumedActionIds` **tirados** |
+
+#### O `move` da reação: o destino segue a fog
+
+Uma fuga leva um `move`, e o `move.position` dela passa pelo **mesmo portão de fog** do
+[`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog) para quem não é mestre
+nem dono do reator. **A origem julgada é a casa da peça do reator na abertura** — ela não anda
+ao abrir (a peça de toda fuga espera o fechamento), então é também a casa que uma reconexão lê.
+
+**Uma reação nunca tem `move.from`** (o servidor não o deriva para reação). Por isso o veredito
+"só a origem" vira o mesmo que "nenhuma das pontas":
+
+| O que o terceiro vê | `move` da reação |
+|---|---|
+| O destino | `category`, `position`, velocidades |
+| Só a origem, nenhuma das duas, a peça é `visible: false`, ou o reator não tem peça no tabuleiro | `category` e velocidades — **sem `position`** |
+
+Mestre e dono do reator recebem `position` sempre.
+
+> ⚠️ **O front tem que tolerar `reaction.move` sem `position`** — o mesmo `position?` do
+> `turn_opened`.
+
+O servidor grava, na abertura, o veredito deste portão para **todo jogador da sessão**
+(conectado ou não; mestre e dono do reator não são gravados), e o grava com o fechamento do
+turno, na linha da própria reação — para o histórico mostrar a cada leitor o `move` da reação
+como ele o viu ao vivo.
+
+> ⚠️ **Ordem garantida:** `reaction_opened` chega ao mestre **antes** do
+> [`resolution_updated`](#resolution_updated) recomputado pela abertura — mesma pista (a
+> direta), mesmo goroutine. Ordem de envio é ordem de chegada.
+
+**O cálculo que a abertura desencadeia continua master-only** — o `resolution_updated` que vem
+junto é de turno aberto.
 
 **Disparado por:** `open_reaction`.
 
@@ -2162,7 +2246,8 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │                               │                    │
     │                            │◄──── open_reaction ───────────┤                    │
     │                            │      {reactionId de pendingReactions}              │
-    │◄─────────── reaction_opened {turnId, reactionId} (mesa) ──►│◄──────────────────►│
+    │◄─ reaction_opened {turnId, reactionId, reaction} (mesa) ──►│◄──────────────────►│
+    │                            │     reaction PROJETADA por destinatário            │
     │                            ├──── resolution_updated ──────►│                    │
     │                            │     isSettled:false (MASTER-ONLY)                  │
     │                            │                               │                    │
