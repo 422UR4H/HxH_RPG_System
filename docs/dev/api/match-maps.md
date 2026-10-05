@@ -74,6 +74,23 @@ surface it.
 | 422 | Match already started, or (B16) the source match is itself, is not in this campaign, has no board to inherit, or is on a different map |
 | 500 | Internal server error |
 
+**`detail` strings — stable, the front maps them to its own text.** Every refusal of this route
+carries the domain error's message verbatim in `detail` (no prefix). The 422s share one status,
+so `detail` is the only way to tell them apart:
+
+| Status | `detail` | When |
+|--------|----------|------|
+| 422 | `cannot change map after match has started` | the match already started (with or without inheriting) |
+| 422 | `source match cannot be the same match being attached to` | `inheritBoardFromMatchUuid` is this match |
+| 422 | `source match is not in the same campaign` | the source match is in another campaign |
+| 422 | `source match's board is on a different map` | the source's board is a portrait of another map |
+| 422 | `source match has no board to inherit` | the source never saved a board |
+| 404 | `match not found` | this match, or the source match, does not exist |
+| 404 | `map not found` | `mapUuid` does not exist |
+
+Changing one of these strings is a contract change: the front's `INHERIT_REFUSALS`
+(`MatchPage.tsx`) must change with it.
+
 ---
 
 ### GET /matches/{match_uuid}/map

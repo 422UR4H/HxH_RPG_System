@@ -1522,6 +1522,10 @@ mundo precisa saber se as barras estão correndo.
 { "type": "round_mode_changed", "payload": { "mode": "Race" } }
 ```
 
+**Gravado antes de emitido.** A troca já está em `match_events` (e em `rounds.mode`) quando esta
+mensagem sai — inclusive com turno aberto. Um `GET /history` que comece depois de recebê-la já a
+traz.
+
 ### `scene_changed`
 
 **Direção:** servidor → cliente. **Destino:** **mesa inteira**.
@@ -1537,11 +1541,21 @@ mundo precisa saber se as barras estão correndo.
 }
 ```
 
+**Gravado antes de emitido.** O par antigo (cena e round) já foi fechado e o novo já existe no
+banco quando esta mensagem sai (`change_scene` recusa turno aberto). Um `GET /history` que comece
+depois de recebê-la já traz a cena nova. Se a gravação falhar, o par fica marcado e vai na
+próxima gravação que der certo — o histórico se atrasa, mas não perde a cena.
+
 ### `master_action_enqueued`
 
 **Direção:** servidor → cliente. **Destino:** **mesa inteira** (broadcast) no caminho 3;
 **só o mestre** nas ações de peça (caminho 0) — o eco carrega a posição, e para peça oculta
 isso vazaria para a mesa.
+
+**Gravado antes de emitido — fora de turno.** Sem turno aberto, a master action já está em
+`master_actions` quando esta mensagem sai, e um `GET /history` que comece depois de recebê-la já
+a traz. **Com turno aberto, não:** ela é gravada no fechamento do turno, na mesma transação
+dele, e só aparece no histórico depois do `turn_closed`.
 
 No caminho 3 é o **eco literal** do `MasterActionPayload` recebido:
 
