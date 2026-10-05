@@ -59,7 +59,8 @@ func From(a action.Action, lvl Level) Action {
 			Bar:       a.Speed.Bar,
 			RollCheck: rollCheck(a.Speed.RollCheck, speedKeep),
 		},
-		SystemBias: a.SystemBias,
+		SystemBias:        a.SystemBias,
+		ConsumedActionIDs: a.ConsumedActionIDs,
 	}
 	if a.ReactToID != uuid.Nil {
 		id := a.ReactToID

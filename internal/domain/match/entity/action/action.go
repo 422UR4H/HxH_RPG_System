@@ -42,6 +42,15 @@ type Action struct {
 	// silently erase whatever disadvantage this action was actually charged under.
 	SystemBias int
 
+	// ConsumedActionIDs is what this REACTION took off the queue when it was attached — one
+	// pending action of the reactor per bar its kind charges, the best-keyed one
+	// (scheduler.BestPendingFor), a combined action counted once. nil on a free reaction, on a
+	// charged one that found nothing queued, and on every plain action. Set only by
+	// MatchSession.AttachReaction. It is the queue's secret, so service.ProjectAction keeps it
+	// for the master and the reactor's owner only; the owner needs it to tell "consumed" apart
+	// from "lost" when reconciling what they had declared (front-combat-phases.md §7, item 3).
+	ConsumedActionIDs []uuid.UUID
+
 	openedAt    *time.Time //nolint:unused // WIP: match system under development
 	confirmedAt *time.Time //nolint:unused // WIP: match system under development
 }

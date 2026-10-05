@@ -1,6 +1,8 @@
 package actionwire_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
@@ -71,6 +73,31 @@ func TestFromCutsByLevel(t *testing.T) {
 		}
 		if decl.Move.Position == nil || *decl.Move.Position != a.Move.Position || len(decl.TargetID) != len(a.TargetID) || decl.Attack.Weapon == nil {
 			t.Fatal("declaration must keep what the owner declared")
+		}
+	})
+}
+
+func TestFromCarriesConsumedActionIDs(t *testing.T) {
+	id := uuid.New()
+	a := fixtureAction()
+	a.ConsumedActionIDs = []uuid.UUID{id}
+	for name, lvl := range map[string]actionwire.Level{
+		"full": actionwire.Full, "opened": actionwire.Opened, "declaration": actionwire.Declaration,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := actionwire.From(a, lvl).ConsumedActionIDs
+			if len(got) != 1 || got[0] != id {
+				t.Fatalf("ConsumedActionIDs = %v, want [%v]", got, id)
+			}
+		})
+	}
+	t.Run("nil is off the wire", func(t *testing.T) {
+		raw, err := json.Marshal(actionwire.From(fixtureAction(), actionwire.Full))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "consumedActionIds") {
+			t.Fatalf("consumedActionIds present on an action that consumed nothing: %s", raw)
 		}
 	})
 }

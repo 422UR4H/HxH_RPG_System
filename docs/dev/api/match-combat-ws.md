@@ -310,7 +310,10 @@ esse veredito só existe para os `reactionKind` com `Displaces()`.
 Uma reação **livre** (as que não cobram barra) não consome a ação que o personagem tinha na
 fila e não rola em Desvantagem. Uma reação **cobrada** consome a ação enfileirada daquele
 personagem em cada barra que cobra — e, se consumiu algo, a troca custa **Desvantagem**
-(`SystemBias = -1`).
+(`SystemBias = -1`). Por barra que cobra, a ação consumida é a de **melhor chave** naquela barra
+(`BestPendingFor`, a mesma escolha do escalonador); uma ação combinada, que está nas duas
+barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
+[`reaction_attached`](#reaction_attached).
 
 **Dispara:** [`resolution_updated`](#resolution_updated) **só para o mestre** — o turno está
 aberto, logo `isSettled: false`. A reação aparece em `pendingReactions`.
@@ -326,7 +329,7 @@ Não há ack próprio e **não há broadcast**: a mesa não é avisada de que al
 | `invalid_action` | `"actorId is required: …"` |
 | `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
-| `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action`. |
+| `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action` · `this character already reacted to the open action` (segundo `attach_reaction` do mesmo personagem na mesma ação, de qualquer tipo, aberta ou não. Recusado antes de rolar ou cobrar: a fila e as barras não mudam). |
 
 ### `open_next_action`
 

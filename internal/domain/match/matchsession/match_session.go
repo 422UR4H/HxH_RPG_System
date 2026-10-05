@@ -1031,19 +1031,27 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	if act.GetID() != r.ReactToID {
 		return nil, service.ErrReactionNotCompatible
 	}
+	// One reaction per character per action, refused before a die falls or a bar is charged —
+	// the same "validate before mutating" rule as the checks above. A second one was accepted,
+	// charged and then silently skipped by the chain (buildChainOrder counts a character once).
+	for _, existing := range t.GetReactions() {
+		if existing.GetActorID() == r.GetActorID() {
+			return nil, ErrReactorAlreadyReacted
+		}
+	}
 
 	s.rollActionDice(r)
 
 	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
 	// discount: done in the exact instant, without opening the guard, it gives the action back.
 	if !r.ReactionKind.IsFree() {
-		consumed := s.consumePendingFor(r)
+		r.ConsumedActionIDs = s.consumePendingFor(r)
 		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
 		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
 		// Amount: RollAttempts already holds both sets and the bias only picks which one.
 		// With nothing queued there was no swap, so there is no penalty.
 		systemBias := 0
-		if consumed {
+		if len(r.ConsumedActionIDs) > 0 {
 			systemBias = -1
 		}
 		s.deriveSpeeds(r, systemBias)
@@ -1057,19 +1065,20 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 }
 
 // consumePendingFor pulls this character's about-to-open action off the queue, once per bar the
-// reaction charges, and reports whether anything was taken.
+// reaction charges, and returns what it took — in the order of ReactionKind.Bars(), nil when
+// nothing was there.
 //
 // A combined action sits on both bars and is counted once — it leaves on the first bar that
 // finds it and is simply not there for the second.
-func (s *MatchSession) consumePendingFor(r *action.Action) bool {
-	consumed := false
+func (s *MatchSession) consumePendingFor(r *action.Action) []uuid.UUID {
+	var consumed []uuid.UUID
 	for _, bar := range r.ReactionKind.Bars() {
 		victim := s.scheduler.BestPendingFor(s.scheduleInput(), r.GetActorID(), bar)
 		if victim == nil {
 			continue
 		}
 		s.activeQueue.ExtractByID(victim.GetID())
-		consumed = true
+		consumed = append(consumed, victim.GetID())
 	}
 	return consumed
 }
