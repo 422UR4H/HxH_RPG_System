@@ -865,6 +865,25 @@ type MatchFullStatePayload struct {
 	// draft to the user. The client NEVER re-sends it on its own — see this field's own outer
 	// doc for why a resend is not the same declaration twice.
 	OwnQueue *[]OwnQueuedActionPayload `json:"ownQueue,omitempty"`
+	// OwnReactions are the open turn's reactions whose actor belongs to this recipient
+	// (charToPlayer — the master through their NPCs), opened or not, in arrival order: what
+	// reaction_attached told them live, for a client that reconnected after it. Opened says
+	// whether the master already gave it the floor. ReactionKind is the TRUE kind — the owner
+	// sees their own. ConsumedActionIDs are the queued actions it consumed: a declared action
+	// named there was consumed, not lost (the contract's reconciliation rule). Absent when the
+	// recipient has none, or no turn is open — absent and empty mean the same here, unlike
+	// OwnQueue: no reconciliation hinges on telling them apart.
+	OwnReactions []OwnReactionPayload `json:"ownReactions,omitempty"`
+}
+
+// OwnReactionPayload is one entry of MatchFullStatePayload.OwnReactions — see its doc.
+// ConsumedActionIDs is never nil: [] on a free reaction, like reaction_attached's.
+type OwnReactionPayload struct {
+	ReactionID        uuid.UUID   `json:"reactionId"`
+	ActorID           uuid.UUID   `json:"actorId"`
+	ReactionKind      string      `json:"reactionKind"`
+	Opened            bool        `json:"opened"`
+	ConsumedActionIDs []uuid.UUID `json:"consumedActionIds"`
 }
 
 // OwnQueuedActionPayload is one entry of MatchFullStatePayload.OwnQueue — see its doc for the
@@ -899,6 +918,12 @@ type OpenTurnPayload struct {
 	ActorID  uuid.UUID         `json:"actorId"`
 	ActionID uuid.UUID         `json:"actionId"`
 	Action   actionwire.Action `json:"action"`
+	// Reactions are the open turn's OPENED reactions, in the order the master opened them —
+	// each cut for this recipient exactly as the live reaction_opened cut it
+	// (reactionWireLocked), so a reconnect shows the table the same balloons and escape ghosts,
+	// in the same order (the order changes the outcome). A reaction attached but not opened is
+	// never here: it was never announced. Absent when none is open.
+	Reactions []actionwire.Action `json:"reactions,omitempty"`
 }
 
 // payoutPayloadsOf projects a reaction's payouts onto the wire. It does NOT decide what a

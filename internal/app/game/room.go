@@ -1802,10 +1802,13 @@ func (r *Room) recordOpenedReactionMoveViews(turnID uuid.UUID, react action.Acti
 	if r.openTurnIDLocked() != turnID {
 		return
 	}
-	actorID, to := react.GetActorID(), react.Move.Position
+	// from is the reaction's own move.from, as the wire path (turnActionWireLocked) passes it:
+	// none today (buildAction never derives one), but the recorded verdict and the live one
+	// must not be able to diverge the day one carries it.
+	actorID, from, to := react.GetActorID(), react.Move.From, react.Move.Position
 	origin, _ := r.pieceSlotOf(actorID.String())
 	views := r.sessionPlayerViewsLocked(r.ownerOfLocked(actorID), func(pid uuid.UUID) (masteraction.View, bool) {
-		return r.openedMoveViewLocked(pid, actorID, nil, &to, origin)
+		return r.openedMoveViewLocked(pid, actorID, from, &to, origin)
 	})
 	w := r.turnWritesLocked(turnID)
 	if w.reactionMoveViews == nil {
@@ -2742,6 +2745,37 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 				// The reconnect has no record of where the piece stood at the opening, so the
 				// gate judges the move from its enqueue-time move.from (turnActionWireLocked).
 				Action: r.turnActionWireLocked(act, playerID, v, moveFromOf(act)),
+			}
+			// The opened reactions, in opening order, each cut as the live reaction_opened cut
+			// it — reactionWireLocked needs r.mu, held here for the whole function.
+			reactions := t.GetReactions()
+			byID := make(map[uuid.UUID]action.Action, len(reactions))
+			for _, re := range reactions {
+				byID[re.GetID()] = re
+			}
+			openedIDs := t.OpenedReactionIDs()
+			opened := make(map[uuid.UUID]bool, len(openedIDs))
+			for _, id := range openedIDs {
+				opened[id] = true
+				if re, ok := byID[id]; ok {
+					payload.OpenTurn.Reactions = append(payload.OpenTurn.Reactions, r.reactionWireLocked(re, playerID, v))
+				}
+			}
+			// This recipient's own reactions, opened or not (OwnReactions' doc) — the master's
+			// through their NPCs, which charToPlayer maps to them. Unprojected: the owner sees
+			// their own true kind and what it consumed.
+			charToPlayer := session.GetCharToPlayer()
+			for _, re := range reactions {
+				if charToPlayer[re.GetActorID().String()] != playerID {
+					continue
+				}
+				payload.OwnReactions = append(payload.OwnReactions, OwnReactionPayload{
+					ReactionID: re.GetID(), ActorID: re.GetActorID(),
+					ReactionKind: string(re.ReactionKind), Opened: opened[re.GetID()],
+					// A fresh slice: never nil (always a list on the wire), and never aliasing
+					// the turn's own reaction once the lock is released.
+					ConsumedActionIDs: append([]uuid.UUID{}, re.ConsumedActionIDs...),
+				})
 			}
 			if isMaster {
 				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the

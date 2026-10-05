@@ -33,6 +33,7 @@ import (
 type wsConn struct {
 	conn *websocket.Conn
 	msgs *collector
+	user uuid.UUID // who dialled it — what a reconnect dials again with
 }
 
 // dialAreaConn connects, drains the initial room_state, and starts collecting.
@@ -40,7 +41,7 @@ func dialAreaConn(t *testing.T, serverURL string, userUUID, matchUUID uuid.UUID)
 	t.Helper()
 	conn := connectWS(t, serverURL, userUUID, matchUUID)
 	readMessage(t, conn) // room_state — confirms the client is registered in the room
-	return &wsConn{conn: conn, msgs: newCollector(conn)}
+	return &wsConn{conn: conn, msgs: newCollector(conn), user: userUUID}
 }
 
 // send marshals a client message and writes it, failing the test on any error.
@@ -60,6 +61,7 @@ func (c *wsConn) sawAny(mt game.MessageType) bool {
 // a different player, so the ownership check in AttachReaction is genuinely crossed.
 type areaFixture struct {
 	server     *httptest.Server
+	matchUUID  uuid.UUID
 	session    *matchsession.MatchSession
 	source     *scriptedFaces
 	master     *wsConn
@@ -137,6 +139,7 @@ func newAreaFixture(t *testing.T, faces []int) *areaFixture {
 
 	f := &areaFixture{
 		server:     server,
+		matchUUID:  matchUUID,
 		session:    session,
 		source:     source,
 		attackerID: attackerID,

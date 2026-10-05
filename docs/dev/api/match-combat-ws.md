@@ -1814,7 +1814,26 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
           "damage": { "skillName": "Push", "skillValue": 0, "attempts": { "primary": [4] }, "result": 4 },
           "relativeVelocity": 0
         }
-      }
+      },
+      "reactions": [
+        {
+          "uuid": "44444444-4444-4444-8444-444444444444",
+          "actorId": "22222222-2222-4222-8222-222222222222",
+          "reactToId": "33333333-3333-4333-8333-333333333333",
+          "reactionKind": "closedEscape",
+          "skills": [
+            { "skillName": "Evasion", "rollCheck": { "skillName": "Evasion", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+          ],
+          "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity", "skillValue": 0, "attempts": {}, "result": 11 } },
+          "move": {
+            "category": "Shift",
+            "position": [8, 6, 0],
+            "speed": { "skillName": "Brake", "skillValue": 0, "attempts": {}, "result": 11 },
+            "finalSpeed": 11
+          },
+          "dodge": { "rollCheck": { "skillName": "Reflex", "skillValue": 0, "attempts": { "primary": [7, 9] }, "result": 16 } }
+        }
+      ]
     },
     "resolution": {
       "turnId": "55555555-5555-4555-8555-555555555555",
@@ -1845,7 +1864,11 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 }
 ```
 
-**O exemplo acima é o que o MESTRE vê** (`queue` presente, `ownQueue` ausente). Um jogador
+**O exemplo acima é o que o MESTRE vê** (`queue` presente, `ownQueue` ausente). A reação aberta
+em `openTurn.reactions` vem `actionwire.Full`, igual ao [`reaction_opened`](#reaction_opened) que o
+mestre recebeu ao vivo. `ownReactions` está **ausente** porque o reator (`2222…`) é personagem
+de jogador, não NPC do mestre — o mestre só a recebe pelas reações dos NPCs dele; o dono do
+`2222…`, ao reconectar, a recebe em `ownReactions` (ver a tabela abaixo). Um jogador
 que reconecta com a MESMA ação ainda na fila vê o espelho — `queue` ausente, `ownQueue`
 presente com a versão em `actionwire.Declaration` da mesma entrada:
 
@@ -1884,6 +1907,8 @@ continuam, porque isso o dono já sabia que declarou.
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
+| `openTurn.reactions` | **Fase 7 (design spec §4.1).** As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. Ausente (`omitempty`) quando nenhuma está aberta. |
+| `ownReactions` | **Fase 7 (design spec §4.2, decisões D5/D6).** As reações do turno aberto cujo ator pertence a este destinatário (`charToPlayer` — o mestre, pelos NPCs dele), **abertas ou não**, na ordem de chegada: o que o [`reaction_attached`](#reaction_attached) disse ao vivo, para um cliente que reconectou depois dele. Uma entrada é `{ reactionId, actorId, reactionKind, opened, consumedActionIds }`. `opened` diz se o mestre já deu a palavra ("reação enviada, aguardando o mestre" × "é a sua vez de narrar"). `reactionKind` é o **verdadeiro** — o dono vê o próprio (`closedEscape`, não `escape`). `consumedActionIds` são as ações da fila que ela consumiu — **sempre** lista, `[]` numa reação livre; uma declarada nomeada ali foi consumida, não perdida (regra de reconciliação abaixo). Ausente (`omitempty`) quando o destinatário não tem nenhuma, ou não há turno aberto — aqui ausente e vazio querem dizer a mesma coisa, diferente de `ownQueue`: nenhuma reconciliação depende de distinguir os dois. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 | `ownQueue` | **B12 (design spec §4.2).** O espelho de `queue` para quem NÃO é o mestre: as ações ainda pendentes cujo ator pertence a este destinatário (`charToPlayer`), na mesma ordem de inserção da fila, uma `{ actionId, action }` por entrada, `action` em `actionwire.Declaration` (só o que o dono declarou — arma, alvos, `move.category/from/position`, nomes de perícia; **nenhum** dado, total ou velocidade, nem a de `speed`/`move` — ver a tabela de corte, §4.1 do design spec). Ausente **só para o mestre** — o eixo aqui não é tempo, é CLASSE, o oposto de `queue`. **SEMPRE presente para todo o resto**, mesmo sem nada pendente: vem `[]`, não ausente. É por isso que o tipo em Go é ponteiro (`*[]OwnQueuedActionPayload` com `omitempty`) em vez de slice nua — uma slice nua nula ainda serializa `null`, e o contrato aqui não é "nulo ou a lista", é "ausente (mestre) ou presente, vazia ou não (todo mundo mais)"; em TypeScript isso é `ownQueue?: OwnQueuedActionPayload[]`, e a chave só falta quando o destinatário é o mestre — para qualquer outro `ownQueue` está sempre lá, e `.length === 0` é a resposta "nada seu na fila", não a ausência do campo. Ver a **regra de reconciliação** logo abaixo. |
@@ -1897,6 +1922,11 @@ cliente descarta com um aviso e devolve o rascunho a quem declarou, para reenvia
 própria se quiser. **O cliente nunca reenvia sozinho**: um reenvio automático rola os dados de
 novo (`EnqueueAction` rola na chegada), então "a mesma ação" reenviada não é mais a mesma ação —
 é uma segunda tentativa com números novos, e só a pessoa que declarou decide se quer isso.
+
+Uma declarada cujo `actionId` aparece em `ownReactions[].consumedActionIds` — ou no
+`consumedActionIds` de uma reação do [histórico](match-history.md) — **foi consumida** por uma
+reação cobrada, não perdida: sai da lista sem o aviso de perda e sem devolver o rascunho. Ao
+vivo, o mesmo fato chega em [`reaction_attached`](#reaction_attached).
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
 logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
@@ -2291,7 +2321,7 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 |---|---|---|
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
-| Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` em [`match_full_state`](#match_full_state), com `action`; mestre recebe `resolution` | **perdido inteiro** — o turno só persiste ao FECHAR, e tudo o que aconteceu dentro dele vai junto: a peça da action volta para onde o último fechamento a deixou, e as master actions do mestre feitas com o turno aberto (peça, parede, nota) não chegam a ser gravadas (ver abaixo) |
+| Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` em [`match_full_state`](#match_full_state) com `action` e `reactions` (abertas); `ownReactions` com as suas; mestre recebe `resolution` | **perdido inteiro** — o turno só persiste ao FECHAR, e tudo o que aconteceu dentro dele vai junto: a peça da action volta para onde o último fechamento a deixou, as master actions do mestre feitas com o turno aberto (peça, parede, nota) não chegam a ser gravadas (ver abaixo), e as reações e o que elas consumiram vão junto |
 | Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
 | `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 

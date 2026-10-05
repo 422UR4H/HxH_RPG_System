@@ -132,8 +132,9 @@ func (f *combatFixture) escapeStage(
 			messageTypes(masterMsgs.snapshotMessages()))
 	}
 	// The resolution recomputed by the opening is the first one in which the escape is a step
-	// of the chain (an unopened reaction is only named in pendingReactions). It travels on a
-	// different lane from reaction_opened, so it is waited for on its own.
+	// of the chain (an unopened reaction is only named in pendingReactions). It goes out after
+	// reaction_opened, on the same direct lane and from the same goroutine, but seeing
+	// reaction_opened does not mean the collector already read it — so it is waited for on its own.
 	if !awaitCount(masterMsgs, game.MsgTypeResolutionUpdate, resolved+1, 2*time.Second) {
 		t.Fatal("no resolution_updated followed the opening")
 	}
