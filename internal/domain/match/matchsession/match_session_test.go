@@ -551,11 +551,11 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 	})
 
 	t.Run("a second reaction by the same character is refused, charging nothing", func(t *testing.T) {
-		playerA, playerB := uuid.New(), uuid.New()
-		s, chars := sessionWithParticipants(playerA, playerB)
+		playerA, playerB, playerC := uuid.New(), uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB, playerC)
 		s.SetRoundMode(enum.Race)
 		a := makeActionWithSpeed(chars[0], 10)
-		a.TargetID = []uuid.UUID{chars[1]}
+		a.TargetID = []uuid.UUID{chars[1], chars[2]}
 		if err := s.EnqueueAction(playerA, a); err != nil {
 			t.Fatalf("EnqueueAction: %v", err)
 		}
@@ -573,6 +573,8 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 			t.Fatalf("EnqueueAction(queued): %v", err)
 		}
 		pendingBefore := len(s.PendingActions())
+		actionBalanceBefore, actionSpeedsBefore := s.BarState(chars[1], action.BarAction)
+		moveBalanceBefore, moveSpeedsBefore := s.BarState(chars[1], action.BarMove)
 
 		second := makeReactionTo(chars[1], act.GetID())
 		second.ReactionKind = action.ReactRepel
@@ -584,6 +586,27 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 		}
 		if got := len(opened.GetReactions()); got != 1 {
 			t.Fatalf("the turn holds %d reactions, want 1", got)
+		}
+		// A regression that charged before the check would move the action bar (repel).
+		actionBalanceAfter, actionSpeedsAfter := s.BarState(chars[1], action.BarAction)
+		if actionBalanceAfter != actionBalanceBefore || !slices.Equal(actionSpeedsAfter, actionSpeedsBefore) {
+			t.Fatalf("the refused attach moved the action bar: %v/%v -> %v/%v",
+				actionBalanceBefore, actionSpeedsBefore, actionBalanceAfter, actionSpeedsAfter)
+		}
+		moveBalanceAfter, moveSpeedsAfter := s.BarState(chars[1], action.BarMove)
+		if moveBalanceAfter != moveBalanceBefore || !slices.Equal(moveSpeedsAfter, moveSpeedsBefore) {
+			t.Fatalf("the refused attach moved the move bar: %v/%v -> %v/%v",
+				moveBalanceBefore, moveSpeedsBefore, moveBalanceAfter, moveSpeedsAfter)
+		}
+
+		// Positive control: the refusal is per character, another target still reacts.
+		other := makeReactionTo(chars[2], act.GetID())
+		other.ReactionKind = action.ReactDodge
+		if _, err := s.AttachReaction(playerC, other); err != nil {
+			t.Fatalf("a different targeted character was refused: %v", err)
+		}
+		if got := len(opened.GetReactions()); got != 2 {
+			t.Fatalf("the turn holds %d reactions, want 2", got)
 		}
 	})
 }
