@@ -275,6 +275,37 @@ consumido (ou linha antiga). Só uma reação cobrada a preenche.
   peça chegar (a regra de hoje). Linha antiga ou reação nunca aberta: sem veredito, falha fechada.
   `match-history.md` é corrigido junto. Ver D3 em §9.
 
+### 4.6.1 O fim da partida revela tudo — o desenho não fecha essa porta
+
+**Direção do dono do produto (2026-10-05):** quando a partida encerrar, os jogadores que
+participaram devem poder ver **todos os dados** do histórico — o rótulo verdadeiro das fechadas, a
+Evasão, o consumo, o destino de toda fuga, o que o fog escondeu. **Não é implementado neste PR**;
+o que este PR garante é que nada impeça implementar depois.
+
+O que torna isso possível, e que este PR preserva:
+
+- **O banco guarda a verdade, não a projeção.** A linha de `actions` tem o `reaction_kind`
+  verdadeiro, a entrada de `Evasion`, a finta, o `move` inteiro e agora o `consumed_action_ids`;
+  `turns.resolution` tem a resolução liquidada inteira, com o `landing`; `master_actions.content`
+  tem o conteúdo inteiro. Os vereditos de fog (`move_views`, `landingViews`, `views`) são gravados
+  **ao lado** do dado, nunca no lugar dele.
+- **A projeção só acontece na leitura**, em `GetMatchHistoryUC` (`ProjectAction`,
+  `ProjectResolution`, os vereditos, `Record.ProjectFor`), a partir de um `Viewer`.
+
+Então a revelação, quando vier, é **um ramo na leitura**: partida encerrada (`match.StoryEndAt !=
+nil`, o mesmo critério de `ErrMatchAlreadyFinished`) e leitor que participou → o use case não
+projeta (ou projeta como para o mestre). Nenhuma migração, nenhum dado a recuperar.
+
+**Regra para este PR e para os próximos:** nada que uma projeção esconde pode ser descartado na
+**gravação**. Um dado escondido de alguém é gravado inteiro e escondido na leitura. A Task 6 do
+plano tem um teste que prende isso para as reações (o `closedEscape` volta do banco como
+`closedEscape`, com a `Evasion`, o destino e o consumo).
+
+Ficam para quando a revelação for desenhada, e são decisão de produto: quem conta como "participou"
+(inscrito aceito? jogou ao menos um turno?), se o que é do mestre (`errors` do motor, notas de
+turno, `overridden_action_values`) também se revela, e se a revelação vale para o WS ou só para o
+`GET /history`.
+
 ### 4.7 Item 10 — o servidor deriva as perícias das reações
 
 Em `buildAction` (`action_mapper.go`), como o `hit`:
@@ -405,7 +436,7 @@ Forma técnica, decidida aqui. **D1 e D3 são as que o revisor deve olhar.**
 |---|---|---|
 | **D1** | O corte do `reaction` no `reaction_opened` é **exatamente** o `Opened` do `turn_opened`: mantém `speed` e `move.speed`/`finalSpeed`, corta os números de `dodge`/`repel`/`skills` | "Projetada como o `turn_opened.action` do B2" é a instrução operativa, e uma segunda função de corte divergiria da primeira. As velocidades já vão a público pelo `bars_updated` (a reação cobrada grava a velocidade dela na barra). ⚠️ Ponto a confirmar: no escape, o `move.finalSpeed` é uma das duas metades do teste de fuga. Ele só não entrega o desfecho porque o acerto do atacante continua escondido. Se "sem números" quis dizer **nenhum**, a troca é cortar `speed`/`move.speed`/`finalSpeed` só no ramo da reação — uma linha |
 | D2 | `reaction_attached` vai a quem reagiu **e** ao mestre, uma mensagem só | A decisão 3 manda nomear o consumo ao mestre; um segundo tipo para o mesmo fato iria contra a convenção do servidor de jogo |
-| **D3** | No histórico, o terceiro vê o `move.position` da reação se o viu **na abertura** ou viu a peça chegar | A regra-mãe do histórico é "como foi visto ao vivo"; a regra antiga só escondia porque a reação não ia à mesa ao vivo. Consequência visível: o destino de uma fuga que **falhou** passa a aparecer no histórico para quem o viu na abertura |
+| **D3** | No histórico, o terceiro vê o `move.position` da reação se o viu **na abertura** ou viu a peça chegar | A regra-mãe do histórico é "como foi visto ao vivo"; a regra antiga só escondia porque a reação não ia à mesa ao vivo. Consequência visível: o destino de uma fuga que **falhou** passa a aparecer no histórico para quem o viu na abertura. **Aprovado pelo dono do produto (2026-10-05)** "por enquanto": ao fim da partida, quem participou vê tudo — §4.6.1 |
 | D4 | O consumo é persistido numa coluna da linha da reação (`actions.consumed_action_ids`) | É a única superfície que sobrevive a "o turno fechou com o jogador fora, e depois o servidor reiniciou" — e a decisão 3 diz que a consumida nunca aparece como perdida |
 | D5 | `ownReactions` vai a todo destinatário que tem reação no turno aberto, **o mestre incluído** (pelos NPCs) | O mestre declara e reage pelos NPCs; a reconciliação dele (`queue`) precisa do mesmo dado |
 | D6 | `ownReactions` e `openTurn.reactions` são `omitempty` (ausente = vazio) | Nenhuma reconciliação depende de distinguir "ausente" de "vazio" aqui — diferente de `ownQueue` |
@@ -417,6 +448,8 @@ Forma técnica, decidida aqui. **D1 e D3 são as que o revisor deve olhar.**
 - **O front da Fase 7** — botões, gesto, balões, fantasma de espera, "dar a palavra" no card F7.
   Outro PR, depois deste merge, com spec e plano próprios.
 - `bars_updated` depois do attach (§4.3).
+- A revelação do histórico inteiro ao fim da partida (§4.6.1) — o desenho a permite; a regra
+  ainda vai ser desenhada.
 - Cancelar ou trocar uma reação já anexada (o segundo attach é recusado, não substitui).
 - A soma do movimento à esquiva, a colisão, a resolução da finta (§11 do mestre).
 - O bug conhecido das condições do mestre sobre `dodge`/`defense`/`repel` (`AGENTS.md`) — Fase 8.

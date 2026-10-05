@@ -36,6 +36,7 @@ Contrato: `docs/dev/api/match-combat-ws.md`.
 - Verificação por tarefa: `go build ./...`, `go vet ./...`, `go vet -tags integration ./...`, `go vet -tags smoke ./...`, `go test ./internal/...`. Tarefa que toca `room.go`: também `go test -race ./internal/app/game/`. Tarefa que toca `internal/gateway/pg/`: também `go test -tags=integration -p 1 ./internal/gateway/pg/...` (banco em `TEST_DATABASE_URL`, padrão `postgres://postgres:postgres@localhost:5432/hxh_rpg_test?sslmode=disable`; aplique a migração nova no banco de teste antes).
 - Commits terminam com a linha `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Docs em PT-BR; nomes de código em inglês.
+- **Nada que uma projeção esconde é descartado na gravação** (spec §4.6.1): o dado vai inteiro para o banco e é escondido só na leitura. Ao fim da partida, os participantes vão poder ver tudo — e isso só é possível se o banco tiver tudo.
 
 ## Review Focus
 
@@ -1173,6 +1174,12 @@ uma reação cobrada com `ConsumedActionIDs = [x]` e um `Move`; chame `PersistTu
 Uma reação **sem** consumo volta com `ConsumedActionIDs == nil`. Monte os dados copiando o teste
 vizinho que já grava `MoveViews` (procure `MoveViews:` nos testes de `round/`).
 
+No mesmo arquivo, `TestFindMatchHistory_KeepsTheReactionsTruthUnprojected` (spec §4.6.1 — o fim da
+partida vai revelar tudo, então o banco tem que ter tudo): grave uma reação `closedEscape` com a
+entrada `Evasion` em `Skills`, `Move.Position` e `ConsumedActionIDs`; o que `FindMatchHistory`
+devolve (antes de qualquer projeção — o repositório não projeta) tem `ReactionKind ==
+action.ReactClosedEscape`, a entrada `Evasion`, o `Move.Position` e os `ConsumedActionIDs`.
+
 - [ ] **Step 3: Write the failing use-case test**
 
 Em `get_match_history_test.go`, table-driven sobre `GetMatchHistory` com um `HistoryTurn` cuja
@@ -1361,6 +1368,12 @@ Sem código. Cada texto abaixo é o conteúdo a escrever (ajuste só a costura c
 - **§7, o fantasma de espera**: acrescente "o destino chega à mesa em `reaction_opened.reaction.move.position`,
   pelo portão de fog — quem não vê a casa não recebe o destino e não desenha o fantasma".
 - **§12**: título vira "## 12. Consertos de documentação — ✅ feitos no pacote de back da Fase 7"; mantenha o texto como registro.
+- **§0, depois do parágrafo "Depois da Fase 8…"**: um parágrafo **"O histórico se revela ao fim
+  da partida"** — direção do dono do produto (2026-10-05): quando a partida encerrar, os jogadores
+  que participaram veem todos os dados do histórico. Ainda não desenhado nem implementado; o banco
+  guarda a verdade e a projeção só acontece na leitura, então é um ramo no `GET /history`. As
+  perguntas em aberto (quem conta como participante; se o que é do mestre também se revela; WS ou
+  só REST) estão no spec do pacote de back da Fase 7, §4.6.1.
 
 - [ ] **Step 2: `reacoes.md`** (linguagem de jogador, sem código — regra de `docs/game/`)
 
