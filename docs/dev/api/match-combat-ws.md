@@ -270,10 +270,10 @@ as separa, porque o que as separa é a intenção do jogador.
 |---|---|---|---|
 | `nothing` | — | nenhuma | — |
 | `dodge` | `dodge` | nenhuma | — |
-| `closedDodge` | `dodge` + entrada `Evasion` em `skills` | nenhuma | — |
+| `closedDodge` | `dodge` (+ `Evasion`, acrescentada pelo servidor) | nenhuma | — |
 | `escape` | `dodge` + `move` | `action` + `move` | **Dash** |
 | `escapeGuard` | `dodge` + `move` | `action` + `move` | **Dash** |
-| `closedEscape` | `dodge` + `move` + entrada `Evasion` em `skills` | `move` | **Shift** |
+| `closedEscape` | `dodge` + `move` (+ `Evasion`, acrescentada pelo servidor) | `move` | **Shift** |
 | `repel` | `repel` | `action` | — |
 
 **As perícias da reação são derivadas pelo servidor.** `dodge.rollCheck.skillName` é sempre
@@ -952,6 +952,9 @@ redundante com ela.
 
 ### `reaction_attached`
 
+**Direção:** servidor → cliente. **Destino:** quem reagiu **+ o mestre** — uma cópia só quando
+o mestre é quem reagiu.
+
 Responde um [`attach_reaction`](#attach_reaction) aceito.
 
 ```json
@@ -1324,8 +1327,17 @@ O mesmo de [`turn_opened`](#o-corte-de-action-design-spec-41) — a mesma funç�
 | Destinatário | `reaction` |
 |---|---|
 | Mestre | `actionwire.Full` — inteira, com números |
-| **Dono** do reator | `actionwire.Opened` depois de `ProjectAction`: `reactionKind` fechado (`closedDodge`/`closedEscape`) e a entrada `Evasion` **ficam**; dados, `skillValue` e `result` de `skills[]`, `dodge`, `defense`, `repel`, `move.charge` saem; velocidades ficam |
+| **Dono** do reator | `actionwire.Opened` depois de `ProjectAction`: `reactionKind` fechado (`closedDodge`/`closedEscape`) e a entrada `Evasion` **ficam**; dados, `skillValue` e `result` de `skills[]`, `dodge`, `defense`, `repel`, `move.charge` saem; velocidades ficam; `consumedActionIds` **fica** (`ProjectAction` o mantém para dono e mestre) |
 | Qualquer outro (terceiro) | o mesmo `Opened`, e ainda: `closedDodge`→`dodge`, `closedEscape`→`escape`; a entrada `Evasion` de `skills[]` e `consumedActionIds` **tirados** |
+
+> **O rebaixamento do escape fechado é cosmético.** O rótulo `closedEscape`→`escape` não esconde
+> o que a mecânica já mostra: a categoria do deslocamento é fixa por tipo (`closedEscape` move
+> com **Shift**, medido pelo Brake; `escape`/`escapeGuard`, com **Dash**, medido pelo
+> Accelerate), e `move.category`/`move.speed.skillName` viajam a todos no `reaction_opened`; a
+> barra pública também mostra que o escape fechado cobrou só a barra de movimento. É a doutrina
+> de sempre — deduzir pela barra pública é legítimo, ser avisado não é: o rótulo não é
+> entregue, mas a mecânica permite deduzi-lo. Escondê-lo de verdade exigiria mexer nas barras e
+> no corte da categoria, o que não está decidido.
 
 #### O `move` da reação: o destino segue a fog
 
@@ -1868,7 +1880,7 @@ mudar por acaso. É essa lacuna que esta mensagem fecha.
 **O exemplo acima é o que o MESTRE vê** (`queue` presente, `ownQueue` ausente). A reação aberta
 em `openTurn.reactions` vem `actionwire.Full`, igual ao [`reaction_opened`](#reaction_opened) que o
 mestre recebeu ao vivo. `ownReactions` está **ausente** porque o reator (`2222…`) é personagem
-de jogador, não NPC do mestre — o mestre só a recebe pelas reações dos NPCs dele; o dono do
+de jogador, não NPC do mestre — o mestre só recebe em `ownReactions` as reações dos NPCs dele; o dono do
 `2222…`, ao reconectar, a recebe em `ownReactions` (ver a tabela abaixo). Um jogador
 que reconecta com a MESMA ação ainda na fila vê o espelho — `queue` ausente, `ownQueue`
 presente com a versão em `actionwire.Declaration` da mesma entrada:
@@ -2169,6 +2181,14 @@ possui:
    fuga fechada cobra uma barra onde a padrão cobra duas, e `bars_updated` é público); ser
    avisado não é.
 
+   Para o escape, o rebaixamento `closedEscape`→`escape` é **cosmético**: a categoria do
+   movimento é fixa por tipo (§11.4 do documento mestre: `closedEscape` move com Shift,
+   medido pelo Brake; `escape`/`escapeGuard`, com Dash, medido pelo Accelerate), e
+   `move.category`/`move.speed.skillName` chegam a todos no `reaction_opened`; a barra pública
+   também mostra que o escape fechado cobrou só a barra de movimento. O rótulo não é entregue,
+   mas a mecânica deixa deduzi-lo — a mesma doutrina acima. Escondê-lo de verdade exigiria
+   mudar as barras e o corte da categoria, o que não está decidido.
+
    Todos os outros tipos — `dodge`, `escape`, `escapeGuard`, `nothing`, `repel` — chegam com
    o nome verdadeiro.
 
@@ -2272,6 +2292,10 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │     isSettled:false (MASTER-ONLY)                  │
     │                            │                               │                    │
     │                            │◄────────── attach_reaction ────────────────────────┤
+    │                            ├──── reaction_attached ───────►│◄──────────────────►│
+    │                            │     {turnId, reactionId, actorId,                  │
+    │                            │     consumedActionIds}                             │
+    │                            │     (a quem reagiu + mestre)                       │
     │                            ├──── resolution_updated ──────►│                    │
     │                            │     isSettled:false, pendingReactions[]            │
     │                            │                               │                    │

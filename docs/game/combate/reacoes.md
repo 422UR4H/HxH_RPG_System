@@ -132,7 +132,7 @@ Ao ser alvo, aparecem cinco botões ao lado do seu personagem: **Não fazer nada
 
 | Reação | Deslocamento | Como é |
 |---|---|---|
-| **Escapar** e **Escape defensivo** | **Dash** | Arranque rápido, medido pelo **Accelerate**. Durante o dash você está "no ar". |
+| **Escapar** e **Escape defensivo** | **Dash** | Arranque rápido, medido pelo **Accelerate**. Durante o dash você está "no ar" e **não pode esquivar**: fica exposto. Por isso o escape fechado se move com Shift. |
 | **Escape fechado** | **Shift** | Deslocamento controlado, medido pelo **Brake**. Não rola dado: usa o valor médio. |
 
 Por que Brake governa o Shift: é a perícia que mede sua capacidade de **frear**. Se você
