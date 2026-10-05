@@ -262,9 +262,9 @@ da resolução já usa.
 
 - `useMatchWs.ts` não manda `nickname` no handshake (o do lobby manda). Definir se é
   obrigatório e alinhar.
-- Validar a categoria de movimento dos escapes no **servidor** (§11.4). Hoje `Displaces()` só
-  exige que exista um `Move`, sem olhar a categoria — se a regra ficar só no front, o cliente
-  vira dono dela.
+- ✅ Feito: a categoria de movimento dos escapes é validada no **servidor**
+  (`RequiredMoveCategory`, no `attach_reaction`) — §11.4. Antes, `Displaces()` só exigia que
+  existisse um `Move`, sem olhar a categoria.
 
 ### 4.9 O que NÃO precisa de conserto
 
