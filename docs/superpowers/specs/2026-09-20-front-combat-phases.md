@@ -17,7 +17,7 @@ fontes de verdade.
 |---|---|---|
 | **6** | A casca e o loop mínimo (§6) | ✅ feita — e revisada no front (`System_X_System_React/docs/dev/match/combate-fase-6.md`) |
 | **Fechamento da 6** | Visibilidade do mestre, consistência da partida, NPC, histórico, ficha, cards, barras (§6A) | ✅ feito (PRs #82 e #69) |
-| **7** | Reações (§7) | back feito (pacote de back da Fase 7, branch feat/combat-phase-7-reactions-back); front **próximo** |
+| **7** | Reações (§7) | back feito (PR #83); front **próximo** |
 | **8** | Regência — a edição do mestre (§8) | depois da 7 |
 
 **Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
