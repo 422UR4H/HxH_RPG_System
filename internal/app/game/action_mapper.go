@@ -128,7 +128,7 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		// reaction_collision.go, reads exactly that name). The payload's name was validated above
 		// — an unknown one is still a client bug — and is replaced here, so the front never has
 		// to write a skill name to react (front-combat-phases.md §7, item 10).
-		dodge.RollCheck.SkillName = enum.Reflex.String()
+		dodge.SkillName = enum.Reflex.String()
 	}
 
 	var interact *action.Interact
@@ -148,7 +148,7 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		}
 		repel = &action.Repel{Weapon: weapon, RollCheck: *rc}
 		// Derived for the same reason as the dodge's Reflex: resolveRepel reads Repel by name.
-		repel.RollCheck.SkillName = enum.Repel.String()
+		repel.SkillName = enum.Repel.String()
 	}
 
 	var kind action.ReactionKind

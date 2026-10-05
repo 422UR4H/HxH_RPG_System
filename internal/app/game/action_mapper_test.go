@@ -770,7 +770,7 @@ func TestBuildAction_DerivesReactionSkillNames(t *testing.T) {
 			if err != nil {
 				t.Fatalf("sent %q: %v", sent, err)
 			}
-			if got := a.Dodge.RollCheck.SkillName; got != enum.Reflex.String() {
+			if got := a.Dodge.SkillName; got != enum.Reflex.String() {
 				t.Errorf("sent %q: dodge skill = %q, want Reflex", sent, got)
 			}
 		}
@@ -783,7 +783,7 @@ func TestBuildAction_DerivesReactionSkillNames(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dodge: {}: %v", err)
 		}
-		if got := a.Dodge.RollCheck.SkillName; got != enum.Reflex.String() {
+		if got := a.Dodge.SkillName; got != enum.Reflex.String() {
 			t.Errorf("dodge skill = %q, want Reflex", got)
 		}
 	})
@@ -806,7 +806,7 @@ func TestBuildAction_DerivesReactionSkillNames(t *testing.T) {
 		if err != nil {
 			t.Fatalf("repel: %v", err)
 		}
-		if got := a.Repel.RollCheck.SkillName; got != enum.Repel.String() {
+		if got := a.Repel.SkillName; got != enum.Repel.String() {
 			t.Errorf("repel skill = %q, want Repel", got)
 		}
 	})
