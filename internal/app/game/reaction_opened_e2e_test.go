@@ -2,7 +2,6 @@ package game_test
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
 	"time"
 
@@ -264,7 +263,6 @@ func TestE2E_ReactionOpenedReachesTheMasterBeforeTheRecomputedResolution(t *test
 // What each player saw of the escape's destination at the opening is held with the turn and
 // written with it, so GET /history can show each reader the reaction's move as they saw it then.
 func TestE2E_OpeningAReactionRecordsWhatEachPlayerSawOfItsDestination(t *testing.T) {
-	t.Skip("Task 6 wires TurnCloseData.ReactionMoveViews")
 	f := newCombatFixture(t, withBystander)
 	// The bystander sees the destination: the reactor and its destination are east of the wall.
 	f.seedReactorBoard(t, [2]int{14, 4}, true, moveBoardWall)
@@ -285,13 +283,7 @@ func TestE2E_OpeningAReactionRecordsWhatEachPlayerSawOfItsDestination(t *testing
 		if d.Turn.GetID() != turnID {
 			continue
 		}
-		// Read by name until Task 6 adds the field: a direct d.ReactionMoveViews would not
-		// compile before then. Task 6 swaps this for the field itself.
-		field := reflect.ValueOf(d).FieldByName("ReactionMoveViews")
-		if !field.IsValid() {
-			t.Fatal("TurnCloseData has no ReactionMoveViews")
-		}
-		views, found = field.Interface().(map[uuid.UUID]map[uuid.UUID]masteraction.View), true
+		views, found = d.ReactionMoveViews, true
 	}
 	if !found {
 		t.Fatalf("turn %s never reached PersistTurnClose", turnID)

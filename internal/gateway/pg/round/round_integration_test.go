@@ -2528,3 +2528,131 @@ func TestFindMatchHistoryReturnsTheRealInstant(t *testing.T) {
 			gotTurn.FinishedAt, records[0].HappenedAt)
 	}
 }
+
+// TestPersistTurnClose_WritesTheReactionsConsumedActionsAndMoveViews: what a charged reaction
+// consumed (actions.consumed_action_ids) and what each player saw of an opened reaction's
+// destination (that reaction's own move_views) are written with the turn and read back
+// unprojected. A reaction that consumed nothing reads back with a nil list.
+func TestPersistTurnClose_WritesTheReactionsConsumedActionsAndMoveViews(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	bystander, consumedID := uuid.New(), uuid.New()
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	mkReaction := func(consumed []uuid.UUID) *action.Action {
+		r := action.NewAction(fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{}, nil,
+			&action.Move{Category: enum.Dash, Position: [3]int{9, 9, 0}}, nil, nil, &action.Dodge{}, nil, nil)
+		r.ReactionKind = action.ReactEscape
+		r.ConsumedActionIDs = consumed
+		return r
+	}
+	charged, free := mkReaction([]uuid.UUID{consumedID}), mkReaction(nil)
+
+	tn := turnentity.NewTurn(*act)
+	tn.AddReaction(charged)
+	tn.AddReaction(free)
+	tn.Close(time.Now())
+	views := map[uuid.UUID]map[uuid.UUID]masteraction.View{charged.GetID(): {bystander: masteraction.ViewFull}}
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		ReactionMoveViews: views,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var freeRaw []byte
+	var freeConsumed []uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT move_views, consumed_action_ids FROM actions WHERE uuid = $1`,
+		free.GetID()).Scan(&freeRaw, &freeConsumed); err != nil {
+		t.Fatalf("read the free reaction's row: %v", err)
+	}
+	if freeRaw != nil || freeConsumed != nil {
+		t.Errorf("a reaction with nothing recorded wrote move_views = %s, consumed = %v, want NULL both", freeRaw, freeConsumed)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	turn := scenes[0].Rounds[0].Turns[0]
+	if len(turn.Reactions) != 2 {
+		t.Fatalf("got %d reactions, want 2", len(turn.Reactions))
+	}
+	for _, r := range turn.Reactions {
+		switch r.GetID() {
+		case charged.GetID():
+			if !reflect.DeepEqual(r.ConsumedActionIDs, []uuid.UUID{consumedID}) {
+				t.Errorf("charged reaction consumed = %v, want [%s]", r.ConsumedActionIDs, consumedID)
+			}
+		case free.GetID():
+			if r.ConsumedActionIDs != nil {
+				t.Errorf("free reaction consumed = %v, want nil", r.ConsumedActionIDs)
+			}
+		}
+	}
+	if got := turn.ReactionMoveViews[charged.GetID()][bystander]; got != masteraction.ViewFull {
+		t.Errorf("reaction move views read back = %v, want the bystander's full", turn.ReactionMoveViews)
+	}
+	if _, ok := turn.ReactionMoveViews[free.GetID()]; ok {
+		t.Errorf("a reaction never opened has a move-views entry: %v", turn.ReactionMoveViews)
+	}
+}
+
+// TestFindMatchHistory_KeepsTheReactionsTruthUnprojected (spec §4.6.1): the end of the match
+// will reveal everything to its participants, so the database keeps the whole reaction — kind,
+// the Evasion the closed escape folds in, the destination, what it consumed. The repository
+// does not project; the use case does.
+func TestFindMatchHistory_KeepsTheReactionsTruthUnprojected(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	consumedID := uuid.New()
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	pos := [3]int{9, 9, 0}
+	r := action.NewAction(fx.victimSheet, nil, act.GetID(),
+		[]action.Skill{{SkillName: enum.Evasion.String()}}, action.ActionSpeed{}, nil,
+		&action.Move{Category: enum.Dash, Position: pos}, nil, nil, &action.Dodge{}, nil, nil)
+	r.ReactionKind = action.ReactClosedEscape
+	r.ConsumedActionIDs = []uuid.UUID{consumedID}
+
+	tn := turnentity.NewTurn(*act)
+	tn.AddReaction(r)
+	tn.Close(time.Now())
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	reactions := scenes[0].Rounds[0].Turns[0].Reactions
+	if len(reactions) != 1 {
+		t.Fatalf("got %d reactions, want 1", len(reactions))
+	}
+	got := reactions[0]
+	if got.ReactionKind != action.ReactClosedEscape {
+		t.Errorf("ReactionKind = %q, want %q", got.ReactionKind, action.ReactClosedEscape)
+	}
+	hasEvasion := false
+	for _, s := range got.Skills {
+		hasEvasion = hasEvasion || s.SkillName == enum.Evasion.String()
+	}
+	if !hasEvasion {
+		t.Errorf("the Evasion entry did not survive: %+v", got.Skills)
+	}
+	if got.Move == nil || got.Move.Position != pos {
+		t.Errorf("Move = %+v, want position %v", got.Move, pos)
+	}
+	if !reflect.DeepEqual(got.ConsumedActionIDs, []uuid.UUID{consumedID}) {
+		t.Errorf("ConsumedActionIDs = %v, want [%s]", got.ConsumedActionIDs, consumedID)
+	}
+}

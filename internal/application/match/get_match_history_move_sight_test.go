@@ -226,3 +226,92 @@ func TestGetMatchHistoryShowsAReactionsMoveOnlyToWhoSawThePieceGoThere(t *testin
 		})
 	}
 }
+
+// A reaction goes to the table live when the master opens it (reaction_opened), and what each
+// player saw of its destination then is recorded with the turn (HistoryTurn.ReactionMoveViews).
+// A third party sees the reaction's move.position if they saw it at the opening OR saw the piece
+// arrive — so a FAILED escape's attempted destination shows to whoever was shown it at the
+// opening. What the reaction consumed is for the master and the reactor's owner only.
+func TestGetMatchHistoryShowsAReactionAsItWasSeenWhenOpened(t *testing.T) {
+	masterUUID, ownerUUID, readerUUID, matchUUID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	attackerID, escaperID := uuid.New(), uuid.New()
+	consumed := uuid.New()
+
+	tests := []struct {
+		name         string
+		reader       uuid.UUID
+		reactionView map[uuid.UUID]masteraction.View
+		escaped      bool
+		want         bool
+		wantConsumed bool
+	}{
+		{name: "the master", reader: masterUUID, want: true, wantConsumed: true},
+		{name: "the reactor's owner", reader: ownerUUID, want: true, wantConsumed: true},
+		{
+			name: "a third party who saw it at the opening, the escape failed (D3)", reader: readerUUID,
+			reactionView: map[uuid.UUID]masteraction.View{readerUUID: masteraction.ViewFull}, want: true,
+		},
+		{
+			name: "a third party who did not see it at the opening", reader: readerUUID,
+			reactionView: map[uuid.UUID]masteraction.View{},
+		},
+		{
+			name: "a third party, an old row: escaped, no landing views", reader: readerUUID,
+			escaped: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attack := *action.NewAction(attackerID, []uuid.UUID{escaperID}, uuid.Nil, nil, action.ActionSpeed{},
+				nil, nil, &action.Attack{}, nil, nil, nil, nil)
+			escape := *action.NewAction(escaperID, nil, attack.GetID(), nil, action.ActionSpeed{}, nil,
+				&action.Move{Category: enum.Dash, Position: [3]int{9, 9, 0}}, nil, nil, &action.Dodge{}, nil, nil)
+			escape.ReactionKind = action.ReactEscape
+			escape.ConsumedActionIDs = []uuid.UUID{consumed}
+			esc := &service.EscapeResult{DodgePassed: true, Escaped: tt.escaped}
+			stored := match.HistoryTurn{
+				UUID: uuid.New(), FinishedAt: time.Now(),
+				Action: attack, Reactions: []action.Action{escape},
+				Resolution: &service.TurnResolution{IsSettled: true, CharacterResults: []service.CharacterResult{{
+					TargetID: escaperID, ReactionID: escape.GetID(), ReactionKind: string(action.ReactEscape), Escape: esc,
+				}}},
+			}
+			if tt.reactionView != nil {
+				stored.ReactionMoveViews = map[uuid.UUID]map[uuid.UUID]masteraction.View{escape.GetID(): tt.reactionView}
+			}
+			uc := match.NewGetMatchHistoryUC(
+				&testutil.MockMatchRepo{
+					GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+						return &matchEntity.Match{UUID: matchUUID, MasterUUID: masterUUID, IsPublic: true}, nil
+					},
+					ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+						return []*matchEntity.Participant{{Sheet: csEntity.Summary{UUID: escaperID, PlayerUUID: &ownerUUID}}}, nil
+					},
+				},
+				&mockHistoryRoundRepo{fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+					return historyWithTurns(stored), nil
+				}},
+				&mockParticipationChecker{}, nil, nil,
+			)
+			got, err := uc.Get(context.Background(), matchUUID, tt.reader)
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			tu := got.Scenes[0].Rounds[0].Turns[0]
+			if shown := tu.ShownReactionMoves[escape.GetID()]; shown != tt.want {
+				t.Errorf("reaction move shown = %v, want %v", shown, tt.want)
+			}
+			gotConsumed := tu.Reactions[0].ConsumedActionIDs
+			if tt.wantConsumed && (len(gotConsumed) != 1 || gotConsumed[0] != consumed) {
+				t.Errorf("consumed = %v, want [%s]", gotConsumed, consumed)
+			}
+			if !tt.wantConsumed && gotConsumed != nil {
+				t.Errorf("consumed = %v, want nil for this reader", gotConsumed)
+			}
+			// Who saw what is not table data: it never reaches the wire.
+			if tu.ReactionMoveViews != nil {
+				t.Errorf("the recorded reaction views left the use case: %v", tu.ReactionMoveViews)
+			}
+		})
+	}
+}

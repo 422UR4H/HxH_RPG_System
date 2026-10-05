@@ -2112,7 +2112,7 @@ func (r *Room) persistClosedTurn(
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
-		MoveViews: inTurn.moveViews, LandingViews: landingViews, StatusBars: statusBars,
+		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
 		NextRound: nextRound, UnwrittenRoundEnds: roundEnds,
 	})
 	if err != nil {

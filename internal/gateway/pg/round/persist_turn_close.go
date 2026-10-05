@@ -98,7 +98,8 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	}
 
 	// The action carries what each player saw of its move live (move_views); a reaction carries
-	// none — an escape's landing is recorded in the resolution above.
+	// what each player saw of its destination when it was opened (nil if never opened); an
+	// escape's landing is recorded in the resolution above.
 	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt, d.MoveViews); err != nil {
 		return fmt.Errorf("PersistTurnClose insert action: %w", err)
 	}
@@ -106,7 +107,7 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	// Reactions after the action, never before: react_to_uuid references it.
 	reactions := t.GetReactions()
 	for i := range reactions {
-		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, nil); err != nil {
+		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, d.ReactionMoveViews[reactions[i].GetID()]); err != nil {
 			return fmt.Errorf("PersistTurnClose insert reaction %d: %w", i, err)
 		}
 	}
@@ -275,16 +276,25 @@ func insertAction(
 		`INSERT INTO actions
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, repel, feint, trigger,
-		  interact, system_bias, reaction_kind, created_at, move_views)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+		  interact, system_bias, reaction_kind, created_at, move_views, consumed_action_ids)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, deriveActionType(act),
 		speedJSON, skillsJSON, moveJSON, attackJSON,
 		defenseJSON, dodgeJSON, repelJSON, feintJSON, triggerJSON,
 		interactJSON, act.SystemBias,
-		reactionKind, createdAt, moveViewsJSON,
+		reactionKind, createdAt, moveViewsJSON, consumedOrNil(act.ConsumedActionIDs),
 	)
 	return err
+}
+
+// consumedOrNil is consumed_action_ids: NULL when the reaction consumed nothing (or the row is a
+// plain action), never an empty array — one way to say "nothing", the way the history reads it.
+func consumedOrNil(ids []uuid.UUID) []uuid.UUID {
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }
 
 // deriveActionType returns a string action type based on which payload field is set.

@@ -51,7 +51,7 @@ func (r *Repository) FindMatchHistory(
 		        t.uuid, t.created_at, t.finished_at, t.resolution,
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
 		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
-		        a.trigger, a.interact, a.system_bias, a.move_views
+		        a.trigger, a.interact, a.system_bias, a.move_views, a.consumed_action_ids
 		 FROM scenes s
 		 LEFT JOIN rounds  ro ON ro.scene_uuid = s.uuid
 		 LEFT JOIN turns   t  ON t.round_uuid = ro.uuid
@@ -115,8 +115,10 @@ func (r *Repository) FindMatchHistory(
 			defenseRaw, dodgeRaw, repelRaw          []byte
 			feintRaw, triggerRaw, interactRaw       []byte
 			systemBias                              *int
-			// moveViewsRaw is read only off the turn's action row (a reaction's is NULL).
+			// moveViewsRaw is the turn's action's verdicts, or — on a reaction row — what each
+			// player saw of an opened reaction's destination (NULL when it was never opened).
 			moveViewsRaw []byte
+			consumed     []uuid.UUID
 		)
 
 		if err := rows.Scan(
@@ -125,7 +127,7 @@ func (r *Repository) FindMatchHistory(
 			&turnUUID, &turnCreatedAt, &turnFinishedAt, &resolutionRaw,
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
-			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw,
+			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw, &consumed,
 		); err != nil {
 			return nil, fmt.Errorf("FindMatchHistory scan: %w", err)
 		}
@@ -188,6 +190,7 @@ func (r *Repository) FindMatchHistory(
 			speedRaw: speedRaw, skillsRaw: skillsRaw, moveRaw: moveRaw, attackRaw: attackRaw,
 			defenseRaw: defenseRaw, dodgeRaw: dodgeRaw, repelRaw: repelRaw,
 			feintRaw: feintRaw, triggerRaw: triggerRaw, interactRaw: interactRaw,
+			consumed: consumed,
 		}
 		if systemBias != nil {
 			row.systemBias = *systemBias
@@ -213,6 +216,12 @@ func (r *Repository) FindMatchHistory(
 				continue
 			}
 			curTurn.Reactions = append(curTurn.Reactions, *react)
+			if views := decodeMoveViews(moveViewsRaw, *turnUUID, *actionUUID); views != nil {
+				if curTurn.ReactionMoveViews == nil {
+					curTurn.ReactionMoveViews = map[uuid.UUID]map[uuid.UUID]masteraction.View{}
+				}
+				curTurn.ReactionMoveViews[react.GetID()] = views
+			}
 
 		default:
 			// The ORDER BY's t.uuid tiebreaker (ahead of the react-to-uuid boolean) keeps a
@@ -244,14 +253,7 @@ func (r *Repository) FindMatchHistory(
 			// What each player saw of the move live. An unreadable value is dropped, not the
 			// turn: nil fails closed in the use case (category only), which is what a row from
 			// before the column reads as anyway.
-			var moveViews map[uuid.UUID]masteraction.View
-			if len(moveViewsRaw) > 0 {
-				if err := json.Unmarshal(moveViewsRaw, &moveViews); err != nil {
-					log.Printf("FindMatchHistory: turn %s — move_views of action %s failed to decode, shown to nobody "+
-						"but the master and the owner: %v", *turnUUID, *actionUUID, err)
-					moveViews = nil
-				}
-			}
+			moveViews := decodeMoveViews(moveViewsRaw, *turnUUID, *actionUUID)
 			// turns.created_at and turns.finished_at are NOT NULL; the pointers only exist
 			// because the LEFT join could have handed NULL for a turn that is not there.
 			curRound.Turns = append(curRound.Turns, appmatch.HistoryTurn{
@@ -281,14 +283,37 @@ type actionRow struct {
 	defenseRaw, dodgeRaw, repelRaw          []byte
 	feintRaw, triggerRaw, interactRaw       []byte
 	systemBias                              int
+	consumed                                []uuid.UUID
+}
+
+// decodeMoveViews reads actions.move_views of the turn's action or of a reaction. An unreadable
+// value is logged and dropped, not the turn: nil fails closed in the use case, which is what a
+// row from before the column reads as anyway.
+func decodeMoveViews(raw []byte, turnUUID, actionUUID uuid.UUID) map[uuid.UUID]masteraction.View {
+	if len(raw) == 0 {
+		return nil
+	}
+	var views map[uuid.UUID]masteraction.View
+	if err := json.Unmarshal(raw, &views); err != nil {
+		log.Printf("FindMatchHistory: turn %s — move_views of action %s failed to decode, shown to nobody "+
+			"but the master and the owner: %v", turnUUID, actionUUID, err)
+		return nil
+	}
+	return views
 }
 
 func (a actionRow) decode() (*action.Action, error) {
-	return decodeActionRow(
+	act, err := decodeActionRow(
 		a.actionUUID, a.actorUUID, a.reactToUUID, a.targetIDs, a.reactionKind,
 		a.speedRaw, a.skillsRaw, a.moveRaw, a.attackRaw, a.defenseRaw, a.dodgeRaw, a.repelRaw,
 		a.feintRaw, a.triggerRaw, a.interactRaw, a.systemBias,
 	)
+	if err != nil {
+		return nil, err
+	}
+	// NULL scans as nil: "nothing consumed" is nil here the way consumedOrNil wrote it.
+	act.ConsumedActionIDs = a.consumed
+	return act, nil
 }
 
 func derefUUID(p *uuid.UUID) uuid.UUID {
