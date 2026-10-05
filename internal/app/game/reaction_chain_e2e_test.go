@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -405,4 +406,114 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestE2E_TargetsComeInChainOrder proves spec §4.5: resolution_updated.targets[] follows the
+// chain, not action.targetId — the reactions the master opened first, in opening order, then
+// the targets without one. Opening order changes the outcome, so it has to survive the three
+// places a client reads it from: the master's open payload, the reconnect's
+// match_full_state.resolution, and the settled payload projected to a bystander.
+func TestE2E_TargetsComeInChainOrder(t *testing.T) {
+	// Attack.Hit (4) + Sword damage (2) + two dodges (4 each) = 14 faces; the tail is slack,
+	// because a short script makes the source overrun and drives everything by the -1 sentinel.
+	faces := []int{
+		6, 4, 1, 1, // Attack.Hit
+		7, 3, // Sword damage
+		3, 3, 1, 1, // first dodge
+		3, 3, 1, 1, // second dodge
+		1, 1, 1, 1, // slack
+	}
+	f := newAreaFixture(t, faces)
+	defer f.server.Close()
+
+	sword := "Sword"
+	f.attacker.send(t, game.MsgTypeEnqueueAction, game.ActionPayload{
+		ActorID:  f.attackerID,
+		TargetID: []uuid.UUID{f.a, f.b, f.c},
+		Attack: &game.AttackPayload{
+			Weapon: &sword,
+			Hit:    game.RollCheckPayload{SkillName: "Accuracy"},
+			Damage: game.RollCheckPayload{},
+		},
+	})
+	if !f.attacker.msgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the attack was never acknowledged as enqueued")
+	}
+	f.master.send(t, game.MsgTypeOpenNextAction, struct{}{})
+	_, actionID := f.awaitTurnOpened(t)
+
+	aReaction := f.attachReaction(t, f.pA, game.ActionPayload{
+		ActorID: f.a, ReactToID: actionID, ReactionKind: "dodge", Dodge: &game.DodgePayload{},
+	})
+	bReaction := f.attachReaction(t, f.pB, game.ActionPayload{
+		ActorID: f.b, ReactToID: actionID, ReactionKind: "dodge", Dodge: &game.DodgePayload{},
+	})
+	// B first, then A: the opposite of targetId order, so only the chain explains the result.
+	f.openReaction(t, bReaction)
+	f.openReaction(t, aReaction)
+
+	want := []uuid.UUID{f.b, f.a, f.c}
+	targetOrder := func(p game.ResolutionUpdatedPayload) []uuid.UUID {
+		ids := make([]uuid.UUID, 0, len(p.Targets))
+		for _, tgt := range p.Targets {
+			ids = append(ids, tgt.TargetID)
+		}
+		return ids
+	}
+	lastResolution := func(c *wsConn) game.ResolutionUpdatedPayload {
+		t.Helper()
+		msgs := c.msgs.snapshotMessages()
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Type != game.MsgTypeResolutionUpdate {
+				continue
+			}
+			var p game.ResolutionUpdatedPayload
+			if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+				t.Fatalf("unmarshal resolution_updated: %v", err)
+			}
+			return p
+		}
+		t.Fatal("no resolution_updated collected")
+		return game.ResolutionUpdatedPayload{}
+	}
+
+	t.Run("the master's open payload", func(t *testing.T) {
+		got := lastResolution(f.master)
+		if got.IsSettled {
+			t.Fatal("the last resolution is already settled; the turn should still be open")
+		}
+		if ids := targetOrder(got); !reflect.DeepEqual(ids, want) {
+			t.Fatalf("targets = %v, want chain order [B A C] = %v", ids, want)
+		}
+	})
+
+	t.Run("a reconnecting master's match_full_state", func(t *testing.T) {
+		// Reconnect before closing, then keep using the new connection as the fixture's master.
+		f.master = f.reconnect(t, f.master)
+		full, _ := fullStateFrom(t, "the master", f.master.msgs)
+		if full.Resolution == nil {
+			t.Fatal("match_full_state.resolution is absent with a turn open")
+		}
+		if ids := targetOrder(*full.Resolution); !reflect.DeepEqual(ids, want) {
+			t.Fatalf("reconnect targets = %v, want %v", ids, want)
+		}
+	})
+
+	t.Run("the settled payload projected to the third target", func(t *testing.T) {
+		f.master.send(t, game.MsgTypeCloseTurn, game.CloseTurnPayload{Confirm: true})
+		if !f.pC.msgs.await(game.MsgTypeResolutionUpdate, 3*time.Second) {
+			t.Fatalf("C never got the settled resolution; got %v", messageTypes(f.pC.msgs.snapshotMessages()))
+		}
+		got := lastResolution(f.pC)
+		if !got.IsSettled {
+			t.Fatal("the resolution C received is not settled")
+		}
+		if ids := targetOrder(got); !reflect.DeepEqual(ids, want) {
+			t.Fatalf("settled targets = %v, want %v", ids, want)
+		}
+	})
+
+	if f.source.overran {
+		t.Fatal("the scripted source ran out: a roll happened that this test did not account for")
+	}
 }
