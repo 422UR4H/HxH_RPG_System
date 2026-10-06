@@ -158,6 +158,7 @@ type RollResultResponse struct {
 type CharacterResultResponse struct {
 	TargetID        uuid.UUID               `json:"targetId"`
 	Avoided         bool                    `json:"avoided"`
+	AttackStopped   bool                    `json:"attackStopped,omitempty"`
 	Defended        bool                    `json:"defended"`
 	DodgeTotal      int                     `json:"dodgeTotal"`
 	DefenseTotal    int                     `json:"defenseTotal"`
@@ -400,7 +401,7 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 	}
 	for _, cr := range res.CharacterResults {
 		out.Targets = append(out.Targets, CharacterResultResponse{
-			TargetID: cr.TargetID, Avoided: cr.Avoided, Defended: cr.Defended,
+			TargetID: cr.TargetID, Avoided: cr.Avoided || cr.AttackStopped, AttackStopped: cr.AttackStopped, Defended: cr.Defended,
 			DodgeTotal: cr.Dodge.Total, DefenseTotal: cr.Defense.Total,
 			RawDamage: cr.RawDamage, DefenseApplied: cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,

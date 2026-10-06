@@ -281,6 +281,9 @@ Notas sobre os campos de `action`/`reactions`:
 
 Notas sobre `resolution.targets[]`:
 
+- `avoided` vale `true` também quando um aparo anterior na corrente já tinha parado o golpe; `attackStopped`
+  (`true`, ausente quando `false`) diz que foi isso. Mesma semântica do `resolution_updated`. Registros
+  antigos, de antes do campo, leem ausente.
 - `payouts` é o que a reação **daquele alvo rendeu**: o bônus ou a penalidade do aparar, a
   reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria das reações.
   Um payout é um modificador acumulado no personagem, escrito na ficha no fechamento do
