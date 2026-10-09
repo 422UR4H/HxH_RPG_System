@@ -548,3 +548,75 @@ func TestGetMatchHistoryCarriesEngineFaults(t *testing.T) {
 		}
 	})
 }
+
+func TestGetMatchHistoryProjectsAStoppedChain(t *testing.T) {
+	userUUID, matchUUID := uuid.New(), uuid.New()
+	stopped, plain, attacker := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+
+	act := action.NewAction(attacker, []uuid.UUID{stopped, plain}, uuid.Nil, nil,
+		action.ActionSpeed{}, nil, nil, &action.Attack{}, nil, nil, nil, nil)
+
+	scenes := []match.HistoryScene{{
+		UUID: uuid.New(), Category: "combat", CreatedAt: now,
+		Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "combat", CreatedAt: now,
+			Turns: []match.HistoryTurn{{
+				UUID: uuid.New(), CreatedAt: now, FinishedAt: now,
+				Action: *act,
+				Resolution: &service.TurnResolution{
+					IsSettled: true,
+					CharacterResults: []service.CharacterResult{
+						{TargetID: stopped, AttackStopped: true},
+						{TargetID: plain},
+					},
+				},
+			}},
+		}},
+	}}
+
+	_, api := humatest.New(t)
+	handler := apiMatch.GetMatchHistoryHandler(&mockGetMatchHistory{
+		fn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchHistoryResult, error) {
+			return &match.GetMatchHistoryResult{Scenes: scenes}, nil
+		},
+	})
+	huma.Register(api, huma.Operation{
+		Method: http.MethodGet,
+		Path:   "/matches/{uuid}/history",
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+	resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Scenes []struct {
+			Rounds []struct {
+				Turns []struct {
+					Resolution struct {
+						Targets []map[string]any `json:"targets"`
+					} `json:"resolution"`
+				} `json:"turns"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v — body: %s", err, resp.Body.String())
+	}
+	targets := body.Scenes[0].Rounds[0].Turns[0].Resolution.Targets
+	if len(targets) != 2 {
+		t.Fatalf("targets = %d, want 2", len(targets))
+	}
+	if targets[0]["avoided"] != true || targets[0]["attackStopped"] != true {
+		t.Errorf("stopped target = %v, want avoided and attackStopped true", targets[0])
+	}
+	if targets[1]["avoided"] != false {
+		t.Errorf("plain target avoided = %v, want false", targets[1]["avoided"])
+	}
+	if _, present := targets[1]["attackStopped"]; present {
+		t.Errorf("attackStopped must be omitted when false: %v", targets[1])
+	}
+}

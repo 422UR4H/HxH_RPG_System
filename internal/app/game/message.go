@@ -631,7 +631,11 @@ type CharacterResultPayload struct {
 	// dodged: true for a repel that stopped the attack was misled about what happened. Safe
 	// to rename now: there is no front-end consumer yet (grepped both repos; the only other
 	// reader was this package's own e2e test, updated alongside this field).
-	Avoided         bool `json:"avoided"`
+	Avoided bool `json:"avoided"`
+	// AttackStopped is true when an EARLIER parry in the chain had already stopped the blow
+	// by the time it reached this target (avoided is then true too). It lets a client tell
+	// "dodged" from "the blow was already stopped" when this target's reaction was nothing.
+	AttackStopped   bool `json:"attackStopped,omitempty"`
 	Defended        bool `json:"defended"`
 	DodgeTotal      int  `json:"dodgeTotal"`
 	DefenseTotal    int  `json:"defenseTotal"`
@@ -719,7 +723,8 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 	for _, cr := range res.CharacterResults {
 		p.Targets = append(p.Targets, CharacterResultPayload{
 			TargetID:        cr.TargetID,
-			Avoided:         cr.Avoided,
+			Avoided:         cr.Avoided || cr.AttackStopped,
+			AttackStopped:   cr.AttackStopped,
 			Defended:        cr.Defended,
 			DodgeTotal:      cr.Dodge.Total,
 			DefenseTotal:    cr.Defense.Total,

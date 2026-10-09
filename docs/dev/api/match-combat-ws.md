@@ -1450,6 +1450,7 @@ junto é de turno aberto.
 | `action.diceRolled` | Os dados **efetivamente lidos**. Um teste enviesado rolou dois conjuntos; só o lido viaja. |
 | `targets` | **Na ordem da cadeia**: primeiro os alvos cuja reação foi aberta, na ordem em que o mestre as abriu; depois os alvos sem reação aberta, na ordem de `action.targetId`. Vale para o payload aberto, o liquidado projetado, o `match_full_state.resolution` e o histórico. É assim que a ordem de abertura — que muda o desfecho — sobrevive à reconexão. Só personagens: parede não entra em `targets`. |
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
+| `targets[].attackStopped` | `true` quando um aparo **anterior** na corrente já tinha parado o golpe ao chegar a este alvo (`avoided` vem `true` junto). Distingue "esquivou" de "o golpe já tinha parado" quando `reaction.kind` é `nothing`. **Ausente** quando `false`. |
 | `targets[].projectedDamage` | **Projeção.** O HP só muda no fechamento do turno. |
 | `targets[].reaction` | **Ausente** quando nada foi aberto e as passivas (esquiva por reflexo, depois defesa) se aplicaram em silêncio — `Reaction *ReactionResultPayload` com `omitempty` **omite a chave**, não emite `null`; em TypeScript o campo é `reaction?: ReactionResultPayload`, não `reaction: ReactionResultPayload \| null`. Uma passiva silenciosa não é resposta a reportar. |
 | `reaction.rung` | `great_success` · `success` · `near_miss` · `failure` — **snake_case**, diferente de todo o resto do wire. Ausente fora de um aparo. |
@@ -1945,6 +1946,8 @@ vivo, o mesmo fato chega em [`reaction_attached`](#reaction_attached).
 logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
 tabuleiro — desde B14 um tabuleiro pode ter paredes sem nenhuma peça), e antes do
 `player_joined` que avisa os demais da chegada.
+
+Quem já estava conectado também recebe `match_full_state` (logo depois do `map_full_state` reenviado) quando a sessão é restaurada depois de um reinício do servidor, no registro do mestre — o jogador que chegou antes da reidratação foi recebido sem sessão e, sem isso, ficaria sem ele.
 
 ### `piece_moved` (também servidor → cliente, na ABERTURA do turno)
 

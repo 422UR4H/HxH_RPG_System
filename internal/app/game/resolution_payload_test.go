@@ -550,3 +550,29 @@ func TestResolutionUpdatedPayloadCarriesTheEscape(t *testing.T) {
 		})
 	}
 }
+
+// TestResolutionPayloadProjectsAStoppedChain: a target the blow reached already stopped by
+// an earlier parry was not hit, so avoided is true on the wire, and attackStopped says why.
+func TestResolutionPayloadProjectsAStoppedChain(t *testing.T) {
+	stopped, plain := uuid.New(), uuid.New()
+	res := &service.TurnResolution{CharacterResults: []service.CharacterResult{
+		{TargetID: stopped, Avoided: false, AttackStopped: true},
+		{TargetID: plain},
+	}}
+
+	p := newResolutionUpdatedPayload(uuid.New(), res)
+
+	if !p.Targets[0].Avoided || !p.Targets[0].AttackStopped {
+		t.Errorf("stopped target = %+v, want avoided and attackStopped", p.Targets[0])
+	}
+	if p.Targets[1].Avoided || p.Targets[1].AttackStopped {
+		t.Errorf("plain target = %+v, want neither flag", p.Targets[1])
+	}
+	raw, err := json.Marshal(p.Targets[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "attackStopped") {
+		t.Errorf("attackStopped must be omitted when false: %s", raw)
+	}
+}

@@ -350,6 +350,18 @@ func (r *Room) Run() {
 					}
 					return r.buildMapFullState(pid, isMaster)
 				})
+				// match_full_state goes along, AFTER the map (the same order as the client's own
+				// register below): the session may have just come alive under whoever was already
+				// at the table — a server restart, with a player faster than the master's
+				// rehydration, registered while r.session was nil and was greeted with no
+				// match_full_state at all. Nothing else would ever send it. buildMatchFullState
+				// is nil without a session, so a lobby sends nothing here.
+				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+					if pid == client.userUUID {
+						return nil // this client's own is the buildMatchFullState branch below
+					}
+					return r.buildMatchFullState(pid, isMaster)
+				})
 			}
 
 			r.sendRoomState(client)
