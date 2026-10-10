@@ -169,13 +169,19 @@ func dodgeAndReserve(in ReactionInput, calc RollCalculator) (dodge, evasion Roll
 func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
 	passive := in.Reaction == nil
 	var attempts action.RollAttempts
+	var cond *action.RollCondition
 	if !passive && in.Reaction.Dodge != nil {
 		attempts = in.Reaction.Dodge.Attempts
+		// The master's edit on this reaction's dodge (edit_action, field "dodge"). Nil reads
+		// neutral. A passive dodge has no reaction and therefore nowhere to carry one — the
+		// passive of a target that did not react is not editable yet (front-combat-phases.md).
+		cond = in.Reaction.Dodge.Context.Condition
 	}
 	return calc.Derive(in.Rules, attempts, RollInput{
 		SkillName:  enum.Reflex.String(),
 		SkillValue: skillValueOf(in.Target, enum.Reflex.String()),
 		Passive:    passive,
+		Condition:  cond,
 		// A closed dodge banked in an earlier turn lives on this same dimension, scoped
 		// AllBut the attacker it was earned against — reading it here, against the CURRENT
 		// attacker, is what lets "whoever comes at this target next turn" actually count.
@@ -190,10 +196,15 @@ func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
 // build against. Evasion never has a passive reading: the closed variants always send it rolled.
 func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 	var attempts action.RollAttempts
+	var cond *action.RollCondition
 	if in.Reaction != nil {
 		for _, s := range in.Reaction.Skills {
 			if s.SkillName == enum.Evasion.String() {
 				attempts = s.Attempts
+				// edit_action's skillName "Evasion". The master's panel does not offer it
+				// (front-combat-phases.md §8 — the test chain will redesign it), but the engine
+				// reads every condition it accepts.
+				cond = s.Context.Condition
 				break
 			}
 		}
@@ -201,6 +212,7 @@ func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 	return calc.Derive(in.Rules, attempts, RollInput{
 		SkillName:  enum.Evasion.String(),
 		SkillValue: skillValueOf(in.Target, enum.Evasion.String()),
+		Condition:  cond,
 		// Same reserve, same dimension: the closed variants take the worse of Reflex and
 		// Evasion as "the dodge" (dodgeAndReserve), so a banked reserve has to reach whichever
 		// of the two ends up being read as that.
@@ -228,12 +240,15 @@ func resolveRepel(in ReactionInput, calc RollCalculator) ReactionOutcome {
 	out := ReactionOutcome{Kind: in.Kind}
 
 	var attempts action.RollAttempts
+	var cond *action.RollCondition
 	if in.Reaction != nil && in.Reaction.Repel != nil {
 		attempts = in.Reaction.Repel.Attempts
+		cond = in.Reaction.Repel.Context.Condition
 	}
 	out.Repel = calc.Derive(in.Rules, attempts, RollInput{
 		SkillName:  enum.Repel.String(),
 		SkillValue: skillValueOf(in.Target, enum.Repel.String()),
+		Condition:  cond,
 		AgainstID:  &in.AttackerID,
 	})
 
