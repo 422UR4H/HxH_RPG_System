@@ -802,6 +802,41 @@ func TestOverrideCapture(t *testing.T) {
 		}
 	})
 
+	t.Run("a zeroed condition is no condition: editing back erases the capture", func(t *testing.T) {
+		// The wire cannot say "no condition" — the closest it can send is
+		// {bias: 0, modifier: 0, description: ""}. That has to read as the original nil, or
+		// cancelling an edit would leave a row claiming the master changed something.
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 3)
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 1 {
+			t.Fatalf("captured %d values after the real edit, want 1", got)
+		}
+
+		f.editHitModifier(t, 0)
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values after editing back to zero, want 0", got)
+		}
+		if c := f.openTurn().ActionRef().Attack.Hit.Context.Condition; c != nil {
+			t.Fatalf("hit condition = %+v, want nil — a zeroed condition is no condition", *c)
+		}
+		if got := f.currentResolution(t).ActionResult.Total; got != f.primaryTotal {
+			t.Fatalf("Total = %d, want the untouched %d", got, f.primaryTotal)
+		}
+	})
+
+	t.Run("a zeroed first edit captures nothing and stores nothing", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 0)
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values for an edit that displaced nothing, want 0", got)
+		}
+		if c := f.openTurn().ActionRef().Attack.Hit.Context.Condition; c != nil {
+			t.Fatalf("hit condition = %+v, want nil", *c)
+		}
+	})
+
 	t.Run("the removed skill's dice ride along in the captured list", func(t *testing.T) {
 		f := newOpenAttackFixtureWithSkill(t, enum.Acrobatics.String())
 		f.editSkills(t, []string{})

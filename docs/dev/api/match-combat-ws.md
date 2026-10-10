@@ -492,8 +492,17 @@ porque as reações seguintes dependem de onde a peça está.
 **Direção:** cliente → servidor. **Quem:** **só o mestre** (`forbidden` para os demais).
 
 Edita a ação do turno aberto, ou uma das reações dela. Toda seção é opcional e independente
-— mande só o que muda. **Uma seção presente SUBSTITUI a lista inteira**: não há merge
-parcial, porque o wire não tem identidade por entrada.
+— mande só o que muda.
+
+- **`skills` e `targetIds` substituem a lista inteira**: não há merge parcial, porque o wire não
+  tem identidade por entrada.
+- **`conditions` se aplica por rolagem.** Cada entrada nomeia uma rolagem (`field` ou
+  `skillName`) e substitui a condição **daquela** rolagem; as rolagens que não aparecem ficam
+  como estão.
+- **Uma entrada zerada limpa.** `bias`, `modifier` e `description` ausentes ou zero/vazios
+  (`{ "field": "hit" }`) devolvem a rolagem a "sem condição" — e, se a edição anterior tinha sido
+  capturada, apagam a captura: é assim que o mestre **cancela** uma edição. Não há verbo de
+  confirmação nem de cancelamento.
 
 ```json
 {

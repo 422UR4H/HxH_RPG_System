@@ -309,9 +309,23 @@ func (s *MatchSession) ApplyMasterAction(
 			current = *rc.Context.Condition
 		}
 		cond := edit.Condition
+		// A zeroed condition IS "no condition". The wire cannot send nil — the closest a client
+		// can say is {bias: 0, modifier: 0, description: ""} — and the original a first edit
+		// captures is nil (the player sends no condition). Without this, cancelling an edit by
+		// editing back would compare RollCondition{} to nil, keep the capture, and write a row
+		// at the close claiming the master changed a test they had put back. incoming stays an
+		// UNTYPED nil for the same reason current does above.
+		var incoming any
+		if cond != (action.RollCondition{}) {
+			incoming = cond
+		}
 		s.captureOverride(target.GetID(), conditionFieldKey(edit), match.OriginPlayer, masterUUID,
-			current, cond)
-		rc.Context.Condition = &cond
+			current, incoming)
+		if incoming == nil {
+			rc.Context.Condition = nil
+		} else {
+			rc.Context.Condition = &cond
+		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
 	// never a literal 0: the disadvantage of an action→reaction conversion was decided once, at
