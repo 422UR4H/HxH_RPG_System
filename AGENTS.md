@@ -146,14 +146,12 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   leitura teria que filtrar um tipo do outro. Gravada no instante em que é aplicada (com turno
   aberto, no fechamento dele, na transação do turno), com a projeção (`views`) do que cada
   jogador viu dela ao vivo. Decisão do dono do produto, spec §4.8.
-- ⚠️ **Bug conhecido, achado na Task 12 (não corrigido nesta fase):** uma condição do mestre
-  (`edit_action` com `conditions[].field` = `"dodge"`, `"defense"` ou `"repel"`) é aceita,
-  grava o override, e **não muda o resultado** — `deriveReflex`/`resolveRepel`
-  (`internal/domain/match/service/reaction_collision.go`) montam o `RollInput` sem ler
-  `Dodge.Context.Condition`/`Repel.Context.Condition`, e a defesa automática é sempre passiva
-  sem ler `Condition` nenhuma. Só `hit` (e `speed`/`moveSpeed`, via `deriveSpeeds` na sessão)
-  chega ao resolvedor. É anterior a esta fase; documentado em `combat-engine.md` ("O escape:
-  esquiva e movimento").
+- **A condição do mestre é lida em toda rolagem que a resolução usa** (Fase 8, spec
+  2026-10-09): acerto, dano (só o ajuste; viés recusado), esquiva, Evasion das fechadas, aparo,
+  defesa padrão (portador `Action.DefaultDefense`, fora do wire) e o `moveSpeed` das fugas.
+  `speed`, o `moveSpeed` da própria ação e `feint` são aceitos e não mudam o desfecho do turno
+  aberto. Condição zerada é "sem condição". Ver `docs/dev/match/combat-engine.md` ("A edição do
+  mestre").
 
 **Pendente de configurações de campanha/partida:**
 - `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por

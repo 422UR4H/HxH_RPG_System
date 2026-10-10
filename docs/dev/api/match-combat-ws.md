@@ -529,6 +529,27 @@ Edita a ação do turno aberto, ou uma das reações dela. Toda seção é opcio
 | `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `damageSkill edit targets an action with no attack`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
 
+> **O que cada rolagem muda com o turno aberto.**
+>
+> | `field` / `skillName` | Onde | Muda o desfecho? | Leitura |
+> |---|---|---|---|
+> | `hit` | a ação | sim — o golpe é um só, vale para todos os alvos | rolada |
+> | `damage` | a ação | sim — só o `modifier` (soma ao dano bruto, piso zero, vale para a cadeia); `bias` é recusado | — |
+> | `dodge` | reação de esquiva/fuga | sim | rolada |
+> | `defense` | reação `dodge`, `closedDodge`, `escapeGuard` | sim — é a **defesa padrão** atrás da reação | **passiva**: só o `modifier` move |
+> | `repel` | reação `repel` | sim | rolada |
+> | `moveSpeed` | reação de fuga | sim — decide se a fuga escapa | rolada no `escape`/`escapeGuard` (Dash); **passiva** no `closedEscape` (Shift) |
+> | `skillName: "Evasion"` | reação fechada | sim — entra na esquiva fechada e na reserva | rolada |
+> | `speed` | qualquer | **não** — move a economia, que não se refaz | passiva fora do regime Race |
+> | `moveSpeed` | a ação | **não** — a peça já andou na abertura, e nada testa contra o movimento de uma ação | — |
+> | `feint` | a ação | **não** — a resolução da finta não existe ainda | — |
+> | outro `skillName` | qualquer | **não** — ninguém lê o resultado das perícias (corrente de testes) | — |
+>
+> Tudo é aceito e guardado — a regra pode crescer; a tela é que esconde o que não muda nada. Viés
+> numa leitura **passiva** é aceito e não tem efeito (não há dado para escolher). A **esquiva e a
+> defesa passivas de um alvo que não reagiu** não são editáveis: não há reação onde guardar a
+> condição.
+
 **`escapeLanding` — a queda da fuga que falha é do mestre.** O motor não tem regra para onde
 uma fuga que falhou vai parar (ver [`open_reaction`](#open_reaction)); o mestre decide, por esta
 mesma superfície de edição. `actionId` nomeia a **reação de fuga**:
@@ -2221,6 +2242,11 @@ possui:
 2. **`pendingReactions` some.** Sempre, para todo mundo que não é o mestre.
 
 3. **`errors` some.** Sempre, para todo mundo que não é o mestre.
+
+   O mesmo vale para **`conditions`** (as condições do mestre em vigor): o que o mestre editou, e por quê, é só dele.
+   E ela **nem existe** num payload liquidado (`isSettled: true`) — as condições em vigor são do
+   turno aberto, e a gravação as guarda dentro da ação, não na resolução. Ou seja: só o mestre,
+   só com o turno aberto.
 
 **Os números NÃO somem.** `total`, `diceRolled`, `rawDamage`, `projectedDamage`,
 `dodgeTotal`, `defenseTotal`, `rung`, `margin`, `difference` viajam para todo mundo — público

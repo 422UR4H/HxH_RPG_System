@@ -887,6 +887,63 @@ permite reconstruir o original lendo de trás para frente.
 > se só o mestre sobrepõe, `Source` não tem o que discriminar. O viés que o *sistema* aplica já
 > é um `Modifier` no ledger e nunca foi sobreposição.
 
+#### O que cada condição move, e onde ela mora
+
+Fase 8 (spec `2026-10-09-combat-phase-8-regency-back-design.md`): a resolução passou a ler **toda
+condição que o `edit_action` aceita e que muda um desfecho**. O contrato
+(`match-combat-ws.md`, `edit_action`) tem a tabela completa; em resumo:
+
+| Rolagem | Lida por | Observação |
+|---|---|---|
+| `hit` | `TurnResolver` | um golpe só, vale para todos os alvos |
+| `damage` | `TurnResolver.rawDamage` | só o `modifier` (soma ao bruto, piso zero); `bias` é recusado na borda |
+| `dodge`, `repel` | `deriveReflex`, `resolveRepel` | rolada |
+| `defense` | `ResolveReaction` | a defesa **padrão**, passiva: só o `modifier` move |
+| `skillName: "Evasion"` | `deriveEvasion` | rolada; entra na esquiva fechada e na reserva |
+| `moveSpeed` de fuga | `deriveSpeeds` | rolada no Dash, passiva no Shift; decide `movePassed` |
+| `speed`, `moveSpeed` da ação, `feint`, outras perícias | — | aceitas e guardadas; **não mudam o desfecho** |
+
+`speed` mexeria na economia, que não se refaz (acima); o `moveSpeed` da própria ação já gastou o
+movimento na abertura e nada testa contra ele; a finta não tem resolução; e ninguém lê o
+resultado das perícias (a corrente de testes não está em código). A tela do mestre esconde o que
+não muda nada, mas o motor guarda tudo — a regra pode crescer sem mudar o wire.
+
+**`DefaultDefense`, e não `Defense`.** A defesa padrão é passiva e não tem componente na ação
+da reação; `Defense` é o componente que um jogador pode *declarar*, que o resolvedor nunca lê e
+que **vai ao wire da action** — uma reação que de repente carregasse um `Defense` diria à mesa que
+o mestre mexeu na defesa dela antes de o turno fechar. `Action.DefaultDefense` (`*RollCheck`) é um
+portador **que nenhum wire mapeia**, criado por `resolveRollCheck` na **primeira edição** de
+`field: "defense"` numa reação cujo tipo guarda a defesa padrão (`ReactionKind.KeepsDefault`:
+`dodge`, `closedDodge`, `escapeGuard`). Em qualquer outra ação, `defense` continua nomeando o
+`Defense` declarado. Um alvo que **não reagiu** não tem reação onde pendurar a condição: a
+esquiva e a defesa passivas dele não são editáveis (pendência no documento mestre).
+
+**A perícia do dano.** `Attack.DamageSkill` (`enum.SkillName`; o valor zero lê como `Push`, via
+`EffectiveDamageSkill()`). Mora em `Attack`, e não em `Damage.SkillName`, porque o `Damage` é um
+`RollCheck` — rastro do que o jogador mandou — e o jogador nunca escolheu a perícia do dano: o
+campo dele é descartado (`actorDamageSkill` lê a perícia do atacante direto da ficha). Trocar é
+prerrogativa do mestre (`edit_action.damageSkill`) e a captura em `overridden_action_values` tem
+origem **`system`**: o original (`Push`) foi o motor quem escolheu, não o jogador. Editar de volta
+para `Push` apaga a captura, como qualquer outra edição revertida. A resolução diz qual mediu
+(`TurnResolution.DamageSkill`).
+
+**Condição zerada é sem condição.** O wire não consegue mandar `nil`; o mais perto que o mestre
+chega é `{bias: 0, modifier: 0, description: ""}`. `ApplyMasterAction` trata a condição zerada
+como `nil`: grava `Context.Condition = nil` e compara com o original (que, quando o jogador não
+mandou condição, é `nil`). É isso que faz "cancelar é editar de volta" valer para a condição —
+sem isso a captura ficaria, e o fechamento gravaria uma linha dizendo que o mestre mudou um teste
+que ele já tinha devolvido.
+
+**A reserva da esquiva fechada lê a condição** (spec D4). A reserva é a diferença das leituras, e
+a condição é parte da leitura: `deriveReflex` e `deriveEvasion` aplicam a condição do mestre
+**antes** de o saldo virar reserva. Uma condição na `Evasion` ou no reflexo move, portanto, a
+esquiva e o que ela banca contra quem vem de fora do duelo.
+
+**O que o mestre vê depois de recarregar.** `TurnResolution.Conditions` (`turnConditions`, em
+`turn_conditions.go`) lista as condições em vigor — uma por rolagem, ação e reações — lidas da
+própria action ("a action editada É a action"; não há segunda cópia). Só com o turno aberto, só
+para o mestre (`ProjectResolution` a zera para os demais, e o payload liquidado não a tem).
+
 ### Os fluxos, e quais confirmações existem de verdade
 
 O fluxo principal não é um: são seis, e eles foram descobertos aos poucos porque *"enviar
@@ -1301,13 +1358,11 @@ volta no histórico REST.
 > antes das duas comparações (há um `TODO(collision)` no ponto exato, em
 > `reaction_collision.go`).
 
-> ⚠️ **Uma condição do mestre sobre `dodge` hoje não chega ao resolvedor.** `deriveReflex` monta
-> o `RollInput` sem ler `Dodge.Context.Condition`, então um `edit_action` com
-> `conditions[].field: "dodge"` é aceito, grava o override e não muda `Dodge.Total`. No pacote
-> `service`, o único `Condition` lido é o do `hit` (o de `moveSpeed`/`speed` chega por
-> `deriveSpeeds`, na sessão); `defense` e `repel` parecem estar no mesmo caso da esquiva. É
-> anterior ao B13 e não foi corrigido aqui; os testes do escape decidem a esquiva pelo outro
-> lado (uma condição no `hit` do ataque).
+> **A condição do mestre chega a todo resolvedor** (Fase 8). `deriveReflex`, `deriveEvasion`,
+> `resolveRepel` e a defesa padrão leem a `Condition` da rolagem correspondente; o `moveSpeed`
+> da fuga chega por `deriveSpeeds`, na sessão. (Antes da Fase 8, só `hit`, `speed` e `moveSpeed`
+> chegavam: uma condição em `dodge`, `defense` ou `repel` era aceita, gravava o override e não
+> mudava o resultado.) Ver "O que cada condição move, e onde ela mora", na edição do mestre.
 
 ### A cadeia: `ChainState`, `Reduce`, e a ordem de abertura do mestre
 
