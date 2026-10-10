@@ -262,6 +262,10 @@ func (s *MatchSession) ApplyMasterAction(
 	if err != nil {
 		return nil, err
 	}
+	// A damage skill needs an attack to measure; refuse before anything else is looked at.
+	if ma.DamageSkill != nil && target.Attack == nil {
+		return nil, ErrNoDamageToMeasure
+	}
 	// Validate every condition edit BEFORE mutating TargetID, Skills or any condition. A
 	// mid-loop resolveRollCheck failure used to return nil, err after TargetID/Skills had
 	// already mutated (and, for an earlier condition in the same list, already captured an
@@ -275,9 +279,8 @@ func (s *MatchSession) ApplyMasterAction(
 	// what it used to be. applySkillEdit never adds or drops a name beyond what ma.Skills
 	// lists (it only ever decides Attempts per name), so that name set is exactly ma.Skills's.
 	// Attack/Dodge/Defense/etc. are shared pointers, untouched by the copy, read-only here.
-	if ma.DamageSkill != nil && target.Attack == nil {
-		return nil, ErrNoDamageToMeasure
-	}
+	// Validation may create shadow.DefaultDefense (resolveRollCheck); that lands on the copy
+	// only, never on target.
 	shadow := *target
 	if ma.Skills != nil {
 		shadow.Skills = ma.Skills
@@ -337,6 +340,11 @@ func (s *MatchSession) ApplyMasterAction(
 			current, incoming)
 		if incoming == nil {
 			rc.Context.Condition = nil
+			// A zeroed default defense is "the master did not edit": drop the carrier
+			// resolveRollCheck created, or the close would store JSON where NULL belongs.
+			if rc == target.DefaultDefense {
+				target.DefaultDefense = nil
+			}
 		} else {
 			rc.Context.Condition = &cond
 		}

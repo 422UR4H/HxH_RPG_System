@@ -23,7 +23,7 @@ fontes de verdade.
 **Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
 (§11.3), iniciativa, **editar uma ação na fila antes de ela agir** (velocidade e o resto — o
 `edit_action` só aceita o turno aberto) e **a edição da esquiva e da defesa passivas de um alvo
-que não reagiu** (não há reação onde guardar a condição), efeitos de ambiente (armadilha — o único caso em que um "ataque do mestre"
+que não reagiu** (não há reação onde guardar a condição) e a **visibilidade das seções `targetIds` e `skills` do `edit_action`**: elas mudam a ação viva, que vai ao wire — um jogador que reconecta com o turno aberto provavelmente vê alvos editados antes do fechamento (observado no spec do pacote de back da Fase 8, §6; não verificado por teste), efeitos de ambiente (armadilha — o único caso em que um "ataque do mestre"
 faria sentido, §6A.5 B9), e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
 nada disso trava as fases acima. **Não há uma "Fase 9" planejada**: inventário e Nen não existem
 no back e não são o próximo passo.

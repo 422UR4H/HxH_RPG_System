@@ -85,6 +85,8 @@ func TestE2E_Regency(t *testing.T) {
 			t.Fatal("the reconnecting player never received match_full_state")
 		}
 		raw := string(findMessage(t, playerMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload)
+		// "defaultDefense" cannot fail today (the field has no JSON tag); it guards against a
+		// future tag or wire mapping exposing the master's passive-defense edit.
 		for _, leak := range []string{"Grab", "escuridao", "damageSkill", "conditions", "defaultDefense"} {
 			if strings.Contains(raw, leak) {
 				t.Errorf("match_full_state for a player carries %q: %s", leak, raw)

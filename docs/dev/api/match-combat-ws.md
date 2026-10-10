@@ -538,6 +538,8 @@ Edita a ação do turno aberto, ou uma das reações dela. Toda seção é opcio
 > | `dodge` | reação de esquiva/fuga | sim | rolada |
 > | `defense` | reação `dodge`, `closedDodge`, `escapeGuard` | sim — é a **defesa padrão** atrás da reação | **passiva**: só o `modifier` move |
 > | `repel` | reação `repel` | sim | rolada |
+> | `defense` | a ação própria | **não** — é o componente `Defense` que o jogador declarou, e a resolução nunca o lê; aceito e guardado, não muda nada (sem `Defense` declarado: recusado, `condition edit targets a check that is not on this action`) | — |
+> | `defense` | reação `escape`, `closedEscape`, `repel`, `nothing` | — | recusado, `condition edit targets a check that is not on this action`: a reação desiste da defesa padrão, a menos que tenha declarado um `Defense` |
 > | `moveSpeed` | reação de fuga | sim — decide se a fuga escapa | rolada no `escape`/`escapeGuard` (Dash); **passiva** no `closedEscape` (Shift) |
 > | `skillName: "Evasion"` | reação fechada | sim — entra na esquiva fechada e na reserva | rolada |
 > | `speed` | qualquer | **não** — move a economia, que não se refaz | passiva fora do regime Race |

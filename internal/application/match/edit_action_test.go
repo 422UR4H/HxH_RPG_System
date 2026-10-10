@@ -1024,6 +1024,51 @@ func TestEditActionDefaultDefense(t *testing.T) {
 			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
 		}
 	})
+
+	t.Run("a zeroed first edit leaves no default defense behind and captures nothing", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactDodge)
+		if _, _, err := f.session.OpenReaction(id); err != nil {
+			t.Fatalf("OpenReaction: %v", err)
+		}
+		if err := editDefense(t, f, id, 0); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		// NULL means "the master did not edit": an empty carrier would be stored as JSON.
+		if f.reactionRef(t, id).DefaultDefense != nil {
+			t.Fatalf("DefaultDefense = %+v, want nil", f.reactionRef(t, id).DefaultDefense)
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d overrides, want 0", got)
+		}
+	})
+
+	t.Run("editing back to zero clears the default defense, the capture and the total", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactDodge)
+		if _, _, err := f.session.OpenReaction(id); err != nil {
+			t.Fatalf("OpenReaction: %v", err)
+		}
+		f.editHitModifier(t, 20)
+		before := f.currentResolution(t).CharacterResults[0].Defense.Total
+		if err := editDefense(t, f, id, 4); err != nil {
+			t.Fatalf("Execute +4: %v", err)
+		}
+		if err := editDefense(t, f, id, 0); err != nil {
+			t.Fatalf("Execute 0: %v", err)
+		}
+		if f.reactionRef(t, id).DefaultDefense != nil {
+			t.Fatalf("DefaultDefense = %+v, want nil", f.reactionRef(t, id).DefaultDefense)
+		}
+		for _, o := range f.session.PeekOverridesFor(f.openTurn()) {
+			if o.Field == "defense.condition" {
+				t.Fatalf("a defense capture survived the edit back: %+v", o)
+			}
+		}
+		if got := f.currentResolution(t).CharacterResults[0].Defense.Total; got != before {
+			t.Fatalf("Defense.Total = %d, want %d", got, before)
+		}
+	})
 }
 
 func TestEditActionDamageCondition(t *testing.T) {
@@ -1178,6 +1223,9 @@ func TestEditActionDamageSkill(t *testing.T) {
 		}
 		if f.openTurn().ActionRef().Speed.Context.Condition != nil {
 			t.Fatal("a refused edit left the speed condition behind")
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("a refused edit captured %d overrides", got)
 		}
 	})
 }
