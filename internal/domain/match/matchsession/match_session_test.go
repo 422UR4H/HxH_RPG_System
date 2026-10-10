@@ -346,6 +346,119 @@ func TestMatchSession_EnqueueAction(t *testing.T) {
 	})
 }
 
+func TestMatchSession_CancelAction(t *testing.T) {
+	pendingIDs := func(s *matchsession.MatchSession) []uuid.UUID {
+		var ids []uuid.UUID
+		for _, a := range s.PendingActions() {
+			ids = append(ids, a.GetID())
+		}
+		return ids
+	}
+
+	t.Run("a player cancels their own queued action", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if err := s.CancelAction(playerA, a.GetID()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if slices.Contains(pendingIDs(s), a.GetID()) {
+			t.Error("the cancelled action is still pending")
+		}
+	})
+
+	t.Run("the master cancels the action of their NPC", func(t *testing.T) {
+		matchUUID := uuid.New()
+		masterUUID := uuid.New()
+		npc := makeNPCParticipant(matchUUID, &masterUUID)
+		s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{npc})
+		a := makeAction(npc.Sheet.UUID)
+		if err := s.EnqueueAction(masterUUID, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if err := s.CancelAction(masterUUID, a.GetID()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(s.PendingActions()) != 0 {
+			t.Error("the NPC action is still pending")
+		}
+	})
+
+	t.Run("another player's action is refused and stays queued", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		err := s.CancelAction(playerB, a.GetID())
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Fatalf("err = %v, want ErrActionActorMismatch", err)
+		}
+		if !slices.Contains(pendingIDs(s), a.GetID()) {
+			t.Error("a refused cancel removed the action")
+		}
+	})
+
+	t.Run("a non-participant is refused", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		err := s.CancelAction(uuid.New(), a.GetID())
+		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
+			t.Fatalf("err = %v, want ErrParticipantNotFound", err)
+		}
+		if len(s.PendingActions()) != 1 {
+			t.Error("a refused cancel removed the action")
+		}
+	})
+
+	t.Run("an unknown id answers ErrActionNotFound", func(t *testing.T) {
+		playerA := uuid.New()
+		s, _ := sessionWithParticipants(playerA)
+		err := s.CancelAction(playerA, uuid.New())
+		if !errors.Is(err, service.ErrActionNotFound) {
+			t.Fatalf("err = %v, want ErrActionNotFound", err)
+		}
+	})
+
+	t.Run("an action that already opened cannot be cancelled", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		mustOpen(t, s)
+		err := s.CancelAction(playerA, a.GetID())
+		if !errors.Is(err, service.ErrActionNotFound) {
+			t.Fatalf("err = %v, want ErrActionNotFound", err)
+		}
+	})
+
+	t.Run("cancelling twice: the second is ErrActionNotFound", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if err := s.CancelAction(playerA, a.GetID()); err != nil {
+			t.Fatalf("first cancel: %v", err)
+		}
+		err := s.CancelAction(playerA, a.GetID())
+		if !errors.Is(err, service.ErrActionNotFound) {
+			t.Fatalf("second cancel err = %v, want ErrActionNotFound", err)
+		}
+	})
+}
+
 func TestMatchSession_OpenNextAction(t *testing.T) {
 	t.Run("opens Turn from highest-priority action in queue", func(t *testing.T) {
 		playerA := uuid.New()

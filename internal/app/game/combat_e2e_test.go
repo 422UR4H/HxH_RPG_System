@@ -343,6 +343,7 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		OpenNextActionUC: appmatch.NewOpenNextActionUC(appmatch.NewCloseRoundUC()),
 		PullActionUC:     appmatch.NewPullActionUC(appmatch.NewCloseRoundUC()),
 		EnqueueActionUC:  appmatch.NewEnqueueActionUC(),
+		CancelActionUC:   appmatch.NewCancelActionUC(),
 		AttachReactionUC: appmatch.NewAttachReactionUC(),
 		OpenReactionUC:   appmatch.NewOpenReactionUC(),
 		CloseTurnUC:      appmatch.NewCloseTurnUC(),

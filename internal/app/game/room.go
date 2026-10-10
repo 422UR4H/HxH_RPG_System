@@ -1105,6 +1105,39 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, queued))
 		r.broadcastBars(session)
 
+	case MsgTypeCancelAction:
+		var payload CancelActionPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil || payload.ActionID == uuid.Nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid cancel_action payload"))
+			return
+		}
+		// Write lock across Execute: cancelling takes the action out of the same queue
+		// open_next_action and pull_action read. Nothing is sent under the lock.
+		r.mu.Lock()
+		session := r.session
+		var err error
+		if session != nil && r.deps.CancelActionUC != nil {
+			err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
+		}
+		r.mu.Unlock()
+		if session == nil || r.deps.CancelActionUC == nil {
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		if err != nil {
+			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			return
+		}
+		// The master decides what opens next, so they hear it first; the sender gets the same
+		// news as the ack of their own request. A master cancelling an NPC's action is both —
+		// one message, not two. The table only sees the public order change.
+		cancelled := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload{ActionID: payload.ActionID})
+		r.sendToMaster(cancelled)
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(cancelled)
+		}
+		r.broadcastBars(session)
+
 	case MsgTypeAttachReaction:
 		var payload ActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {

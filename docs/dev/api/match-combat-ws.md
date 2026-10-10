@@ -103,6 +103,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`attach_reaction`](#attach_reaction) | jogador **alvo** da ação aberta, pelo próprio personagem; o mestre, pelo NPC alvo |
 | [`open_next_action`](#open_next_action) | mestre |
 | [`pull_action`](#pull_action) | mestre |
+| [`cancel_action`](#cancel_action) | jogador (as ações do próprio personagem); o mestre (as dos NPCs) |
 | [`open_reaction`](#open_reaction) | mestre |
 | [`edit_action`](#edit_action) | mestre |
 | [`close_turn`](#close_turn) | mestre |
@@ -117,6 +118,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 |---|---|
 | [`action_enqueued`](#action_enqueued) | só quem enviou |
 | [`action_queued`](#action_queued) | **só o mestre** |
+| [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu** |
 | [`bars_updated`](#bars_updated) | mesa inteira |
 | [`turn_opened`](#turn_opened) | mesa inteira |
 | [`reaction_attached`](#reaction_attached) | quem reagiu **+ mestre** |
@@ -398,6 +400,51 @@ rodada — `round_closed` só sai de `open_next_action`.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid pull_action payload"`) ·
 `match_not_started` · `game_error` (`action not found in queue`).
+
+### `cancel_action`
+
+**Direção:** cliente → servidor. **Quem:** qualquer cliente da partida; a autorização é **por
+ação**: cada um cancela só o que declarou — o jogador as ações dos personagens dele, o mestre as
+dos NPCs (o mesmo critério de [`enqueue_action`](#enqueue_action)). O mestre cancelar a ação de
+um jogador **não existe**.
+
+Tira da fila uma ação **ainda pendente**, antes de abrir.
+
+```json
+{ "type": "cancel_action", "payload": { "actionId": "33333333-3333-4333-8333-333333333333" } }
+```
+
+O `actionId` é o que o cliente já conhece: o jogador, pelo [`action_enqueued`](#action_enqueued)
+(ou pelo `match_full_state.ownQueue`); o mestre, pelo [`action_queued`](#action_queued) (ou pelo
+`match_full_state.queue`).
+
+**Dispara, nesta ordem:** [`action_cancelled`](#action_cancelled) (o mestre, depois quem pediu)
+→ [`bars_updated`](#bars_updated) (mesa inteira, já sem a ação na ordem pública).
+
+**Só ação ainda na fila.** A ação que já abriu é o turno — não se cancela. Uma ação consumida por
+uma reação já saiu da fila — também não.
+
+**Nada é gravado, nada é devolvido, nada fecha:**
+- A fila vive só em memória; a ação só vira linha em `actions` quando o turno dela fecha. Cancelar
+  **não aparece no histórico**.
+- A velocidade só é cobrada quando a ação abre, então uma ação na fila ainda não pagou nada:
+  **nada é devolvido nas barras**. Um preço da rodada que já foi congelado **continua congelado**
+  (a mesma regra de uma ação mais lenta que chega depois do congelamento).
+- Cancelar **não fecha a rodada** — só `open_next_action` fecha (`round_closed`).
+
+**Erros:**
+
+| `code` | Quando |
+|---|---|
+| `invalid_payload` (`"invalid cancel_action payload"`) | payload não parseia, ou `actionId` ausente/nulo |
+| `match_not_started` | sala sem sessão |
+| `game_error` (`action not found in queue`) | a ação não está na fila: já abriu, foi consumida por uma reação, já foi cancelada, ou nunca existiu |
+| `game_error` (`action actor does not match player`) | a ação é de um personagem que não é de quem pediu |
+| `game_error` (`participant not found in match session`) | quem pediu não participa da partida — **inclui o mestre pedindo a ação de um jogador** (o mestre não é participante; é a mesma resposta que `enqueue_action` daria) |
+
+A ordem de checagem é "existe na fila" → "é de quem pediu". Um id que não está na fila responde
+`action not found in queue` para qualquer um: não vaza a existência da ação de outro (a fila é
+secreta). Uma ação de outro personagem que **está** na fila responde o erro de autorização.
 
 ### `open_reaction`
 
@@ -910,7 +957,7 @@ completo em §7).
 
 **Deixou de ser `{}`.** Nomeia a MESMA ação que `action_queued` acabou de nomear para o
 mestre. Sem o ID, o navegador de quem enviou não tinha como se referir ao que acabou de
-mandar: não cancelava, não destacava na barra geral, não sabia que a próxima a abrir era
+mandar: não cancelava ([`cancel_action`](#cancel_action)), não destacava na barra geral, não sabia que a próxima a abrir era
 dela. É o mesmo buraco que `PendingReactions` fechou para o mestre — um ID que o cliente
 não aprende é uma operação que ele não consegue invocar.
 
@@ -983,6 +1030,23 @@ redundante com ela.
 > desconectado nesse momento não a recebe depois. [`match_full_state`.`queue`](#match_full_state)
 > é a versão do MESMO fato que **sobrevive à reconexão**: um payload `action_queued` inteiro
 > por ação ainda pendente, na ordem de inserção da fila. Ver a seção de `match_full_state`.
+
+### `action_cancelled`
+
+**Direção:** servidor → cliente. **Destino:** **o mestre e quem pediu** o
+[`cancel_action`](#cancel_action) (quando quem pediu não é o mestre). Um mestre que cancela a
+ação de um NPC recebe **uma só**.
+
+```json
+{ "type": "action_cancelled", "payload": { "actionId": "33333333-3333-4333-8333-333333333333" } }
+```
+
+**Nunca broadcast:** a fila é secreta — a mesa só vê a ordem pública mudar, pelo
+[`bars_updated`](#bars_updated) que vem logo depois. O mestre é avisado na hora porque é ele quem
+decide o que abre a seguir.
+
+**Disparado por:** `cancel_action` aceito. Dispara **uma vez**; quem reconecta depois acha a fila
+já sem a ação em `match_full_state.queue` (mestre) e `.ownQueue` (jogador).
 
 ### `reaction_attached`
 

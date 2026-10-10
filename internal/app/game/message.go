@@ -35,6 +35,7 @@ const (
 	MsgTypeEnqueueAction  MessageType = "enqueue_action"
 	MsgTypeOpenNextAction MessageType = "open_next_action"
 	MsgTypePullAction     MessageType = "pull_action"
+	MsgTypeCancelAction   MessageType = "cancel_action"
 	MsgTypeAttachReaction MessageType = "attach_reaction"
 	MsgTypeOpenReaction   MessageType = "open_reaction"
 	MsgTypeCloseTurn      MessageType = "close_turn"
@@ -46,6 +47,7 @@ const (
 	MsgTypeResolutionUpdate MessageType = "resolution_updated"
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 	MsgTypeActionQueued     MessageType = "action_queued"
+	MsgTypeActionCancelled  MessageType = "action_cancelled"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
 	// reaction_attached answers attach_reaction: to whoever reacted, and to the master — the
@@ -187,6 +189,17 @@ type PieceRemovedPayload struct {
 }
 
 type PullActionPayload struct {
+	ActionID uuid.UUID `json:"actionId"`
+}
+
+// CancelActionPayload withdraws one of the sender's own queued actions (spec 2026-10-10).
+type CancelActionPayload struct {
+	ActionID uuid.UUID `json:"actionId"`
+}
+
+// ActionCancelledPayload names the action that left the queue. Master-only plus the sender:
+// the queue is secret, the table only sees the public order change in bars_updated.
+type ActionCancelledPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
 }
 

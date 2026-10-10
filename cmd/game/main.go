@@ -58,6 +58,7 @@ func main() {
 	openNextActionUC := match.NewOpenNextActionUC(closeRoundUC)
 	pullActionUC := match.NewPullActionUC(closeRoundUC)
 	enqueueActionUC := match.NewEnqueueActionUC()
+	cancelActionUC := match.NewCancelActionUC()
 	attachReactionUC := match.NewAttachReactionUC()
 	openReactionUC := match.NewOpenReactionUC()
 	closeTurnUC := match.NewCloseTurnUC()
@@ -104,6 +105,7 @@ func main() {
 			OpenNextActionUC:      openNextActionUC,
 			PullActionUC:          pullActionUC,
 			EnqueueActionUC:       enqueueActionUC,
+			CancelActionUC:        cancelActionUC,
 			AttachReactionUC:      attachReactionUC,
 			OpenReactionUC:        openReactionUC,
 			CloseTurnUC:           closeTurnUC,

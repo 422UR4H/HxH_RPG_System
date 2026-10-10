@@ -1279,6 +1279,40 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	return nil
 }
 
+// CancelAction takes one of the caller's own actions out of the queue before it opens
+// (acoes.md: "Uma ação específica pode ser cancelada e removida da fila").
+//
+// Same authorization as EnqueueAction — whoever may declare through a character may withdraw
+// what they declared through it; the master's NPCs map to the master in charToPlayer. The queue
+// is looked up FIRST: an id that is not pending answers ErrActionNotFound to anyone, so the
+// answer never tells a caller whether someone else's action exists (the queue is secret).
+//
+// Nothing is refunded and nothing else moves: a queued action has paid nothing yet (speeds are
+// recorded when an action opens), and a price already frozen stays frozen — the same rule as a
+// slower action arriving after the freeze. Cancelling never closes the round; only
+// OpenNextAction does.
+func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) error {
+	var target *action.Action
+	for _, a := range s.activeQueue.All() {
+		if a.GetID() == actionID {
+			target = a
+			break
+		}
+	}
+	if target == nil {
+		return service.ErrActionNotFound
+	}
+	owner, ok := s.charToPlayer[target.GetActorID().String()]
+	if !ok || owner != playerUUID {
+		if _, isParticipant := s.participants[playerUUID]; !isParticipant {
+			return ErrParticipantNotFound
+		}
+		return ErrActionActorMismatch
+	}
+	s.activeQueue.ExtractByID(actionID)
+	return nil
+}
+
 // PendingActions returns the actions still waiting for the master, in insertion order. Read
 // by the delivery layer to publish the general bar, and by tests.
 func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.All() }

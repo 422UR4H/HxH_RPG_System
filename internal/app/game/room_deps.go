@@ -28,6 +28,7 @@ type RoomDeps struct {
 	OpenNextActionUC      IOpenNextAction
 	PullActionUC          IPullAction
 	EnqueueActionUC       IEnqueueAction
+	CancelActionUC        appmatch.ICancelAction
 	AttachReactionUC      IAttachReaction
 	OpenReactionUC        IOpenReaction
 	CloseTurnUC           ICloseTurn
