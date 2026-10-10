@@ -343,7 +343,11 @@ mappings:
     dev_docs:
       - path: docs/dev/match/turns-rounds.md
         confidence: directly_affected
-    notes: TurnResolver — routes Action targets (character vs wall) and computes resolution
+    notes: >-
+      TurnResolver — routes Action targets (character vs wall) and computes resolution.
+      Fase 8: lê a condição do mestre no acerto e no dano (só o ajuste; viés recusado);
+      TurnResolution.Conditions (só com o turno aberto, só o mestre) e DamageSkill (a
+      perícia que mediu o dano).
 
   - code_path: internal/domain/match/service/structural_damage.go
     dev_docs:
@@ -646,6 +650,19 @@ mappings:
       (reação gratuita, linha de ação, linha antiga). Só mestre e dono do reator leem no
       GET /history (consumedActionIds). Também: actions.move_views passa a valer para a linha
       de uma reação aberta (o que cada jogador viu do destino na abertura).
+
+  - code_path: migrations/20261009000000_actions_default_defense.sql
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
+    notes: >-
+      actions.default_defense JSONB NULL — Action.DefaultDefense, o portador da condição do mestre
+      na defesa padrão de uma reação que a mantém (dodge, closedDodge, escapeGuard); criado no
+      primeiro edit_action com field "defense" nessa reação. Fora de toda superfície de wire
+      (não é o componente Defense declarado, que viaja); o histórico não o lê de volta. NULL = o
+      mestre não editou. Fase 8, spec 2026-10-09 §3.2.
 
   - code_path: migrations/20261002000000_scenes_rounds_turns_timestamptz.sql
     dev_docs:
@@ -1026,7 +1043,9 @@ mappings:
       projetado (dry-run) e só é aplicado no fechamento do turno. Com vários alvos
       será uma CADEIA sequencial, não um lote (Fase 4): o estado do ataque sai
       alterado de cada resolução e entra na próxima, e a ordem em que o mestre abre
-      muda o resultado. Escada de margem com degrau padrão de 10.
+      muda o resultado. Escada de margem com degrau padrão de 10. Fase 8: a condição do
+      mestre é lida em todas as derivações; TurnResolution.Conditions (só aberto) e
+      DamageSkill.
 
 
   - code_path: internal/app/game/combat_e2e_test.go
@@ -1059,7 +1078,7 @@ mappings:
       dano, armadura e Nen. A margem do acerto NÃO entra no dano, por decisão de
       produto. Hoje toda arma do catálogo tem defense 0, então a subtração é inerte.
       backend-prep-front-combat: RawDamage ganhou o parâmetro push — soma o Push do
-      atacante (actorPush em turn_resolver.go), lido da ficha, nos dois call sites
+      atacante (actorDamageSkill em turn_resolver.go: lê Attack.EffectiveDamageSkill(), Push por padrão), lido da ficha, nos dois call sites
       (parede e personagem). Consequência de contrato: attack.damage.skillName no WS
       passou a ser aceito/validado mas descartado — documentado em match-combat-ws.md
       junto de speed.
@@ -1303,6 +1322,20 @@ mappings:
       função pura (deriva, nunca rola). A reserva da esquiva fechada
       (Dimension: DimDodge, Against: ScopeAllBut(atacante)) era escrita no ledger do
       alvo e nunca lida de volta até esta fase ligar ResolveInput.Statuses até aqui.
+      Fase 8: a condição do mestre é lida em todas as derivações (reflexo, Evasion,
+      aparo, defesa padrão via Action.DefaultDefense) — antes da reserva da esquiva
+      fechada.
+
+  - code_path: internal/domain/match/service/turn_conditions.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+    notes: >-
+      Fase 8. turnConditions — as condições do mestre em vigor no turno aberto, lidas da
+      própria action, uma por rolagem; alimenta resolution_updated.conditions (só o
+      mestre, só com o turno aberto, nunca no payload liquidado).
 
   - code_path: internal/domain/match/service/attack_chain.go
     dev_docs:

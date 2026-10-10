@@ -17,11 +17,13 @@ fontes de verdade.
 |---|---|---|
 | **6** | A casca e o loop mínimo (§6) | ✅ feita — e revisada no front (`System_X_System_React/docs/dev/match/combate-fase-6.md`) |
 | **Fechamento da 6** | Visibilidade do mestre, consistência da partida, NPC, histórico, ficha, cards, barras (§6A) | ✅ feito (PRs #82 e #69) |
-| **7** | Reações (§7) | back feito (PR #83); front **próximo** |
-| **8** | Regência — a edição do mestre (§8) | depois da 7 |
+| **7** | Reações (§7) | ✅ feita — back (PR #83) e front (PR #70) |
+| **8** | Regência — a edição do mestre (§8) | back feito (este PR); front **próximo** |
 
 **Depois da Fase 8, o próximo passo é enriquecer a mecânica de combate** — regras de colisão
-(§11.3), iniciativa, efeitos de ambiente (armadilha — o único caso em que um "ataque do mestre"
+(§11.3), iniciativa, **editar uma ação na fila antes de ela agir** (velocidade e o resto — o
+`edit_action` só aceita o turno aberto) e **a edição da esquiva e da defesa passivas de um alvo
+que não reagiu** (não há reação onde guardar a condição) e a **visibilidade das seções `targetIds` e `skills` do `edit_action`**: elas mudam a ação viva, que vai ao wire — um jogador que reconecta com o turno aberto provavelmente vê alvos editados antes do fechamento (observado no spec do pacote de back da Fase 8, §6; não verificado por teste), efeitos de ambiente (armadilha — o único caso em que um "ataque do mestre"
 faria sentido, §6A.5 B9), e o que mais o dono do produto desenhar. Nada disso tem desenho ainda, e
 nada disso trava as fases acima. **Não há uma "Fase 9" planejada**: inventário e Nen não existem
 no back e não são o próximo passo.
@@ -243,6 +245,8 @@ por **Push** — que já existe em `enum.SkillName`, junto com `Grab`.
 Passe o `Push` do personagem para dentro do `RawDamage`. **Sem seletor**: o jogador não escolhe
 isso, a arma é que dá o dano. Trocar `Push` por `Grab` (ou outra) é prerrogativa do mestre e
 entra na superfície de edição dele, na **Fase 8**.
+
+✅ **Feito no pacote de back da Fase 8:** `edit_action.damageSkill` aceita qualquer perícia do enum; a tela oferece Push e Grab. A resolução diz qual mediu (`damageSkill`).
 
 ### 4.7 A finta está escondida para sempre, e não deveria
 
@@ -1003,9 +1007,13 @@ item novo do rail. A ação aberta **continua na fila**, no topo, marcada como e
 cálculo embaixo. (Hoje, ao abrir, ela some da fila.) O desenho ainda vai ser refinado.
 
 > **Por que ele nasce só de leitura:** os botões que agem sobre ele pertencem a fases que ainda
-> não chegaram — **dar a palavra** a uma reação é da Fase 7, **editar** é da Fase 8. Pôr o botão
-> antes da fase seria um controle que não faz nada. O painel **fica completo ao fim da Fase 8**,
-> e cada fase acrescenta o seu.
+> não chegaram. **Ao fim da Fase 8 o painel está completo**, com: **edição de rolagem** (viés,
+> ajuste, motivo), **troca da perícia do dano**, **escolha de onde cai o escape que falhou**
+> (F14) e **dar a palavra às reações** (Fase 7). **Editar perícias fica fora** até existir a
+> corrente de testes (§11.1): hoje ninguém lê o resultado delas, e um controle que não muda nada
+> é pior que controle nenhum. A condição na **Evasion das reações fechadas** também fica fora do
+> painel — seria uma tela especial para uma perícia só, que a corrente vai redesenhar. (O motor
+> lê as duas; é a tela que não as oferece.)
 
 **F8 — Trocar de cena.** Na topbar do mestre, categoria e descrição inicial → `change_scene`. A
 categoria é validada no servidor desde o PR #74: mande o valor do enum, minúsculo.
@@ -1182,10 +1190,18 @@ ordem inversa produz resultado diferente na tela.
 **Objetivo:** o mestre com todas as ferramentas.
 
 **Escopo:**
-- Edição do mestre: `edit_action` / `action_edited` — rolagem e perícias. É aqui que entra o
-  seletor de perícia de dano, `Push` → `Grab` (§4.6).
-- Os botões de **editar** no cálculo do turno aberto, no card da ação (F7, §6A.6). Com eles, o cálculo fica
-  completo.
+- Edição do mestre: `edit_action` / `action_edited`. **Edição de rolagem** — viés, ajuste e
+  motivo — em toda rolagem que muda o desfecho do turno aberto (o contrato tem a tabela); a tela
+  esconde o viés onde ele não faz sentido (leitura passiva) e não oferece as rolagens que não
+  mudam nada. **Troca da perícia do dano**, `Push` → `Grab` (§4.6).
+- Os botões de **editar** no cálculo do turno aberto, no card da ação (F7, §6A.6). Com eles, o
+  cálculo fica completo: edição de rolagem, troca da perícia do dano, onde cai o escape que
+  falhou e dar a palavra às reações.
+- **Fora:** editar **perícias** (até existir a corrente de testes, §11.1) e a condição na
+  **Evasion** das reações fechadas.
+- O pacote de back desta fase ([spec](2026-10-09-combat-phase-8-regency-back-design.md)) fez a
+  resolução ler toda condição que aceita, criou o portador da defesa padrão, a perícia do dano,
+  e mandou ao mestre as condições em vigor (sobrevivem a recarregar).
 
 > O histórico, a ficha dentro da partida e `change_scene` eram desta fase e **subiram para o
 > fechamento da Fase 6** (F4, F3, F8): o dono do produto os quer antes, e nenhum depende da
@@ -1270,6 +1286,8 @@ em toda a colisão é a `Evasion` da esquiva fechada, por nome.
 
 ⚠️ **Por isso a Fase 6 não põe seletor de perícias na bottom sheet.** Um controle que o jogador
 mexe e que não muda nada é pior do que controle nenhum.
+
+Por isso também **o painel do mestre não edita perícias** (Fase 8, §8): o motor guarda e lê o que receber, mas uma edição que não muda nada não ganha botão.
 
 ### 11.2 A resolução da finta
 

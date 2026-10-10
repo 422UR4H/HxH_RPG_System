@@ -282,3 +282,25 @@ func TestProjectAction_ConsumedActionIDsAreTheOwnersAndTheMasters(t *testing.T) 
 		})
 	}
 }
+
+func TestProjectResolution_TheConditionsAreTheMasters(t *testing.T) {
+	res := &service.TurnResolution{
+		DamageSkill: "Grab",
+		Conditions: []service.CheckCondition{
+			{ActionID: uuid.New(), Field: "hit", Condition: action.RollCondition{Modifier: 2}},
+		},
+	}
+	if got := service.ProjectResolution(res, service.Viewer{IsMaster: true}); len(got.Conditions) != 1 {
+		t.Fatalf("the master lost the conditions: %+v", got.Conditions)
+	}
+	player := service.ProjectResolution(res, service.Viewer{})
+	if player.Conditions != nil {
+		t.Fatalf("a player received the master's conditions: %+v", player.Conditions)
+	}
+	if player.DamageSkill != "Grab" {
+		t.Fatalf("DamageSkill = %q for a player, want Grab — it is public, like rawDamage", player.DamageSkill)
+	}
+	if len(res.Conditions) != 1 {
+		t.Fatal("ProjectResolution mutated the master's copy")
+	}
+}

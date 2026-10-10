@@ -576,3 +576,47 @@ func TestResolutionPayloadProjectsAStoppedChain(t *testing.T) {
 		t.Errorf("attackStopped must be omitted when false: %s", raw)
 	}
 }
+
+func TestResolutionUpdatedPayloadCarriesTheRegency(t *testing.T) {
+	actionID := uuid.New()
+	res := &service.TurnResolution{
+		DamageSkill: "Grab",
+		Conditions: []service.CheckCondition{
+			{ActionID: actionID, Field: "hit", Condition: action.RollCondition{Bias: -1, Modifier: -2, Description: "escuridao"}},
+			{ActionID: actionID, SkillName: "Evasion", Condition: action.RollCondition{Bias: 1}},
+		},
+	}
+	raw, err := json.Marshal(newResolutionUpdatedPayload(uuid.New(), res))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got struct {
+		DamageSkill string           `json:"damageSkill"`
+		Conditions  []map[string]any `json:"conditions"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.DamageSkill != "Grab" {
+		t.Errorf("damageSkill = %q, want Grab", got.DamageSkill)
+	}
+	if len(got.Conditions) != 2 {
+		t.Fatalf("conditions = %v, want 2 entries", got.Conditions)
+	}
+	first := got.Conditions[0]
+	if first["actionId"] != actionID.String() || first["field"] != "hit" ||
+		first["bias"] != float64(-1) || first["modifier"] != float64(-2) || first["description"] != "escuridao" {
+		t.Errorf("conditions[0] = %v", first)
+	}
+	if _, ok := first["skillName"]; ok {
+		t.Error("conditions[0] carries skillName — field and skillName are alternatives")
+	}
+	if got.Conditions[1]["skillName"] != "Evasion" {
+		t.Errorf("conditions[1] = %v, want skillName Evasion", got.Conditions[1])
+	}
+
+	empty, _ := json.Marshal(newResolutionUpdatedPayload(uuid.New(), &service.TurnResolution{}))
+	if strings.Contains(string(empty), "conditions") || strings.Contains(string(empty), "damageSkill") {
+		t.Errorf("an empty resolution carries the keys anyway: %s", empty)
+	}
+}

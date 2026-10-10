@@ -377,6 +377,13 @@ func buildEditAction(p EditActionPayload) (*action.MasterAction, error) {
 	if p.TargetIDs != nil {
 		ma.TargetID = *p.TargetIDs
 	}
+	if p.DamageSkill != nil {
+		name, err := enum.SkillNameFrom(*p.DamageSkill)
+		if err != nil {
+			return nil, err
+		}
+		ma.DamageSkill = &name
+	}
 	return ma, nil
 }
 

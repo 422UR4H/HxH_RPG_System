@@ -133,6 +133,7 @@ renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega t
               ],
               "resolution": {
                 "isSettled": true,
+                "damageSkill": "Push",
                 "action": { "skillName": "Legerity", "skillValue": 14, "diceRolled": [6, 8], "total": 20, "isCritical": false, "isCriticalFailure": false },
                 "targets": [
                   {
@@ -278,6 +279,16 @@ Notas sobre os campos de `action`/`reactions`:
   vaza mais do que o total já vaza. Mas é uma superfície de dados estritamente maior que o
   WebSocket: `resolution_updated` só emite `diceRolled`, o conjunto efetivamente lido —
   `attempts` do REST é o único lugar onde o conjunto NÃO lido também aparece.
+
+Notas sobre `resolution`:
+
+- `damageSkill` é a perícia que mediu o dano: `Push`, ou a que o mestre escolheu
+  ([`edit_action`](match-combat-ws.md#edit_action) `damageSkill`). Pública, como `rawDamage`.
+  **Ausente** em turno sem ataque e em turnos gravados antes da Fase 8, que foram todos `Push`.
+- `conditions` **não existe no histórico.** As condições do mestre em vigor só viajam no
+  `resolution_updated` do turno aberto (e no `match_full_state`), para o mestre; gravadas,
+  elas ficam dentro da própria ação (tabela `actions`), não numa segunda cópia em
+  `turns.resolution`.
 
 Notas sobre `resolution.targets[]`:
 

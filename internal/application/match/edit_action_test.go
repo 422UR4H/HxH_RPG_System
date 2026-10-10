@@ -9,6 +9,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -802,6 +803,41 @@ func TestOverrideCapture(t *testing.T) {
 		}
 	})
 
+	t.Run("a zeroed condition is no condition: editing back erases the capture", func(t *testing.T) {
+		// The wire cannot say "no condition" — the closest it can send is
+		// {bias: 0, modifier: 0, description: ""}. That has to read as the original nil, or
+		// cancelling an edit would leave a row claiming the master changed something.
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 3)
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 1 {
+			t.Fatalf("captured %d values after the real edit, want 1", got)
+		}
+
+		f.editHitModifier(t, 0)
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values after editing back to zero, want 0", got)
+		}
+		if c := f.openTurn().ActionRef().Attack.Hit.Context.Condition; c != nil {
+			t.Fatalf("hit condition = %+v, want nil — a zeroed condition is no condition", *c)
+		}
+		if got := f.currentResolution(t).ActionResult.Total; got != f.primaryTotal {
+			t.Fatalf("Total = %d, want the untouched %d", got, f.primaryTotal)
+		}
+	})
+
+	t.Run("a zeroed first edit captures nothing and stores nothing", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 0)
+
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values for an edit that displaced nothing, want 0", got)
+		}
+		if c := f.openTurn().ActionRef().Attack.Hit.Context.Condition; c != nil {
+			t.Fatalf("hit condition = %+v, want nil", *c)
+		}
+	})
+
 	t.Run("the removed skill's dice ride along in the captured list", func(t *testing.T) {
 		f := newOpenAttackFixtureWithSkill(t, enum.Acrobatics.String())
 		f.editSkills(t, []string{})
@@ -895,6 +931,301 @@ func TestOverrideCapture(t *testing.T) {
 		editTo(original) // put it back exactly
 		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
 			t.Fatalf("captured %d values after reverting targetIds, want 0", got)
+		}
+	})
+}
+
+// attachReaction attaches a reaction of the given kind from the victim to the fixture's open
+// attack and returns its ID. Free mode rolls no speed; a dodge rolls its 2D10 Dodge (4 faces —
+// exactly the fixture's reserved budget), a repel its 2D10 Repel.
+func (f *editFixture) attachReaction(t *testing.T, kind action.ReactionKind) uuid.UUID {
+	t.Helper()
+	r := action.NewAction(
+		f.victimID, []uuid.UUID{f.attackerID}, f.actionID, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	r.ReactionKind = kind
+	if kind == action.ReactRepel {
+		r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+	} else {
+		r.Dodge = &action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}}
+	}
+	if _, err := f.session.AttachReaction(f.playerUUID, r); err != nil {
+		t.Fatalf("AttachReaction(%s): %v", kind, err)
+	}
+	return r.GetID()
+}
+
+// reactionRef reads one reaction of the open turn by ID, or fails the test.
+func (f *editFixture) reactionRef(t *testing.T, id uuid.UUID) *action.Action {
+	t.Helper()
+	r := f.openTurn().ReactionRef(id)
+	if r == nil {
+		t.Fatalf("reaction %v is not on the open turn", id)
+	}
+	return r
+}
+
+func TestEditActionDefaultDefense(t *testing.T) {
+	editDefense := func(t *testing.T, f *editFixture, id uuid.UUID, modifier int) error {
+		t.Helper()
+		ma := action.NewMasterAction()
+		ma.ActionID = id
+		ma.Conditions = []action.ConditionEdit{{
+			Field: action.FieldDefense, Condition: action.RollCondition{Modifier: modifier},
+		}}
+		_, err := match.NewEditActionUC().Execute(
+			context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
+		return err
+	}
+
+	t.Run("on a dodge reaction it lands on the default defense, and the resolution reads it", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactDodge)
+		if _, _, err := f.session.OpenReaction(id); err != nil {
+			t.Fatalf("OpenReaction: %v", err)
+		}
+		// Push the hit past the rolled dodge (6+7 = 13) so the default defense is reached.
+		f.editHitModifier(t, 20)
+		before := f.currentResolution(t).CharacterResults[0].Defense.Total
+
+		if err := editDefense(t, f, id, 4); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+
+		r := f.reactionRef(t, id)
+		if r.DefaultDefense == nil || r.DefaultDefense.Context.Condition == nil ||
+			r.DefaultDefense.Context.Condition.Modifier != 4 {
+			t.Fatalf("DefaultDefense = %+v, want the +4 condition", r.DefaultDefense)
+		}
+		if r.Defense != nil {
+			t.Fatal("the edit created a declared Defense component — that one travels on the wire")
+		}
+		if got := f.currentResolution(t).CharacterResults[0].Defense.Total; got != before+4 {
+			t.Fatalf("Defense.Total = %d, want %d", got, before+4)
+		}
+	})
+
+	t.Run("on a repel reaction it is refused — a repel gives the default defense up", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactRepel)
+		if err := editDefense(t, f, id, 4); !errors.Is(err, matchsession.ErrConditionTargetMissing) {
+			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
+		}
+		if f.reactionRef(t, id).DefaultDefense != nil {
+			t.Fatal("a refused edit left a DefaultDefense behind")
+		}
+	})
+
+	t.Run("on the turn's own action it keeps today's meaning: the declared Defense", func(t *testing.T) {
+		f := newOpenAttackFixture(t) // a plain attack: no Defense declared
+		if err := editDefense(t, f, f.actionID, 4); !errors.Is(err, matchsession.ErrConditionTargetMissing) {
+			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
+		}
+	})
+
+	t.Run("a zeroed first edit leaves no default defense behind and captures nothing", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactDodge)
+		if _, _, err := f.session.OpenReaction(id); err != nil {
+			t.Fatalf("OpenReaction: %v", err)
+		}
+		if err := editDefense(t, f, id, 0); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		// NULL means "the master did not edit": an empty carrier would be stored as JSON.
+		if f.reactionRef(t, id).DefaultDefense != nil {
+			t.Fatalf("DefaultDefense = %+v, want nil", f.reactionRef(t, id).DefaultDefense)
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d overrides, want 0", got)
+		}
+	})
+
+	t.Run("editing back to zero clears the default defense, the capture and the total", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactDodge)
+		if _, _, err := f.session.OpenReaction(id); err != nil {
+			t.Fatalf("OpenReaction: %v", err)
+		}
+		f.editHitModifier(t, 20)
+		before := f.currentResolution(t).CharacterResults[0].Defense.Total
+		if err := editDefense(t, f, id, 4); err != nil {
+			t.Fatalf("Execute +4: %v", err)
+		}
+		if err := editDefense(t, f, id, 0); err != nil {
+			t.Fatalf("Execute 0: %v", err)
+		}
+		if f.reactionRef(t, id).DefaultDefense != nil {
+			t.Fatalf("DefaultDefense = %+v, want nil", f.reactionRef(t, id).DefaultDefense)
+		}
+		for _, o := range f.session.PeekOverridesFor(f.openTurn()) {
+			if o.Field == "defense.condition" {
+				t.Fatalf("a defense capture survived the edit back: %+v", o)
+			}
+		}
+		if got := f.currentResolution(t).CharacterResults[0].Defense.Total; got != before {
+			t.Fatalf("Defense.Total = %d, want %d", got, before)
+		}
+	})
+}
+
+func TestEditActionDamageCondition(t *testing.T) {
+	editDamage := func(t *testing.T, f *editFixture, cond action.RollCondition, extra ...action.ConditionEdit) error {
+		t.Helper()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.Conditions = append(extra, action.ConditionEdit{Field: action.FieldDamage, Condition: cond})
+		_, err := match.NewEditActionUC().Execute(
+			context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
+		return err
+	}
+	// The fixture's hit (7) does not beat the victim's passive reflex (11): the blow would be
+	// avoided and RawDamage would read 0 regardless. Lift the hit first.
+	landed := func(t *testing.T) *editFixture {
+		t.Helper()
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 20)
+		return f
+	}
+
+	t.Run("the modifier moves the raw damage", func(t *testing.T) {
+		f := landed(t)
+		before := f.currentResolution(t).CharacterResults[0].RawDamage
+		if err := editDamage(t, f, action.RollCondition{Modifier: 5}); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if got := f.currentResolution(t).CharacterResults[0].RawDamage; got != before+5 {
+			t.Fatalf("RawDamage = %d, want %d", got, before+5)
+		}
+	})
+
+	t.Run("the raw damage floors at zero", func(t *testing.T) {
+		f := landed(t)
+		if err := editDamage(t, f, action.RollCondition{Modifier: -1000}); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if got := f.currentResolution(t).CharacterResults[0].RawDamage; got != 0 {
+			t.Fatalf("RawDamage = %d, want 0", got)
+		}
+	})
+
+	t.Run("bias on the damage is refused, and nothing in the payload lands", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		hit := action.ConditionEdit{Field: action.FieldHit, Condition: action.RollCondition{Modifier: 3}}
+		err := editDamage(t, f, action.RollCondition{Bias: 1}, hit)
+		if !errors.Is(err, matchsession.ErrDamageHasNoAdvantage) {
+			t.Fatalf("err = %v, want ErrDamageHasNoAdvantage", err)
+		}
+		a := f.openTurn().ActionRef()
+		if a.Attack.Damage.Context.Condition != nil || a.Attack.Hit.Context.Condition != nil {
+			t.Fatal("a refused edit left a condition behind")
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values for a refused edit, want 0", got)
+		}
+	})
+}
+
+func TestEditActionDamageSkill(t *testing.T) {
+	editSkill := func(t *testing.T, f *editFixture, id uuid.UUID, name enum.SkillName, extra ...action.ConditionEdit) error {
+		t.Helper()
+		ma := action.NewMasterAction()
+		ma.ActionID = id
+		ma.DamageSkill = &name
+		ma.Conditions = extra
+		_, err := match.NewEditActionUC().Execute(
+			context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
+		return err
+	}
+	// grabbing raises the attacker's Grab and lifts the hit past the passive dodge, so the
+	// blow lands and RawDamage is read. Raising Grab can also move Push (they share an
+	// attribute), so the test reads both off the sheet instead of assuming either.
+	grabbing := func(t *testing.T) (f *editFixture, push, grab int) {
+		t.Helper()
+		f = newOpenAttackFixture(t)
+		cs, err := f.session.GetCharSheet(f.attackerID)
+		if err != nil {
+			t.Fatalf("GetCharSheet: %v", err)
+		}
+		if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(900), enum.Grab); err != nil {
+			t.Fatalf("IncreaseExpForSkill(Grab): %v", err)
+		}
+		push, _ = cs.GetValueForTestOfSkill(enum.Push)
+		grab, _ = cs.GetValueForTestOfSkill(enum.Grab)
+		if grab == push {
+			t.Fatal("fixture: Grab equals Push, the swap would prove nothing")
+		}
+		f.editHitModifier(t, 20)
+		return f, push, grab
+	}
+
+	t.Run("an untouched attack is measured by Push", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		if got := f.currentResolution(t).DamageSkill; got != enum.Push.String() {
+			t.Fatalf("DamageSkill = %q, want Push", got)
+		}
+	})
+
+	t.Run("Grab measures the damage, and the resolution says so", func(t *testing.T) {
+		f, push, grab := grabbing(t)
+		before := f.currentResolution(t).CharacterResults[0].RawDamage
+		if err := editSkill(t, f, f.actionID, enum.Grab); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		res := f.currentResolution(t)
+		if res.DamageSkill != enum.Grab.String() {
+			t.Fatalf("DamageSkill = %q, want Grab", res.DamageSkill)
+		}
+		if got, want := res.CharacterResults[0].RawDamage, before-push+grab; got != want {
+			t.Fatalf("RawDamage = %d, want %d (Push %d swapped for Grab %d)", got, want, push, grab)
+		}
+	})
+
+	t.Run("the capture keeps the original Push, from the system", func(t *testing.T) {
+		f, _, _ := grabbing(t)
+		before := len(f.session.PeekOverridesFor(f.openTurn())) // the hit edit's row
+		if err := editSkill(t, f, f.actionID, enum.Grab); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		var row *matchDomain.OverriddenValue
+		for _, o := range f.session.PeekOverridesFor(f.openTurn()) {
+			if o.Field == "damageSkill" {
+				o := o
+				row = &o
+			}
+		}
+		if row == nil {
+			t.Fatal("no damageSkill row was captured")
+		}
+		if row.Origin != matchDomain.OriginSystem {
+			t.Fatalf("Origin = %q, want system — the engine chose Push, not the player", row.Origin)
+		}
+		if row.Original != enum.Push {
+			t.Fatalf("Original = %#v, want Push", row.Original)
+		}
+
+		if err := editSkill(t, f, f.actionID, enum.Push); err != nil {
+			t.Fatalf("Execute (back to Push): %v", err)
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != before {
+			t.Fatalf("captured %d values after editing back to Push, want %d", got, before)
+		}
+	})
+
+	t.Run("an action with no attack is refused, and nothing in the payload lands", func(t *testing.T) {
+		f := newOpenMoveFixture(t)
+		speed := action.ConditionEdit{Field: action.FieldSpeed, Condition: action.RollCondition{Modifier: 2}}
+		err := editSkill(t, f, f.actionID, enum.Grab, speed)
+		if !errors.Is(err, matchsession.ErrNoDamageToMeasure) {
+			t.Fatalf("err = %v, want ErrNoDamageToMeasure", err)
+		}
+		if f.openTurn().ActionRef().Speed.Context.Condition != nil {
+			t.Fatal("a refused edit left the speed condition behind")
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("a refused edit captured %d overrides", got)
 		}
 	})
 }

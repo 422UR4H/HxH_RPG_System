@@ -850,3 +850,27 @@ func TestBuildAction_DerivesReactionSkillNames(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildEditActionDamageSkill(t *testing.T) {
+	grab := "Grab"
+	ma, err := buildEditAction(EditActionPayload{DamageSkill: &grab})
+	if err != nil {
+		t.Fatalf("buildEditAction: %v", err)
+	}
+	if ma.DamageSkill == nil || *ma.DamageSkill != enum.Grab {
+		t.Fatalf("DamageSkill = %v, want Grab", ma.DamageSkill)
+	}
+
+	unknown := "Telekinesis"
+	if _, err := buildEditAction(EditActionPayload{DamageSkill: &unknown}); err == nil {
+		t.Fatal("an unknown skill name was accepted")
+	}
+
+	ma, err = buildEditAction(EditActionPayload{})
+	if err != nil {
+		t.Fatalf("buildEditAction: %v", err)
+	}
+	if ma.DamageSkill != nil {
+		t.Fatal("an absent damageSkill must stay nil — untouched")
+	}
+}

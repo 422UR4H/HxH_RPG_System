@@ -291,3 +291,70 @@ func TestResolveReaction_EscapeRequiresBothDodgeAndMove(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveReaction_ReadsTheMastersCondition pins the bug AGENTS.md carried as "known": the
+// master's edit_action on a reaction's dodge, Evasion or repel was accepted, captured, and
+// never read. A plain sheet has every skill at 0, so a rolled test is just its dice plus the
+// condition.
+func TestResolveReaction_ReadsTheMastersCondition(t *testing.T) {
+	t.Run("dodge: the modifier moves the reflex", func(t *testing.T) {
+		r := reactionWith(action.ReactDodge, []int{5, 5}, nil, nil)
+		r.Dodge.Context.Condition = &action.RollCondition{Modifier: 4}
+		out := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30))
+		if out.Dodge.Total != 14 {
+			t.Fatalf("Dodge.Total = %d, want 14 (dice 10 + modifier 4)", out.Dodge.Total)
+		}
+	})
+
+	t.Run("dodge: advantage reads the secondary set that already fell", func(t *testing.T) {
+		r := reactionWith(action.ReactDodge, []int{2, 2}, nil, nil)
+		r.Dodge.Attempts.Secondary = []int{9, 9}
+		r.Dodge.Context.Condition = &action.RollCondition{Bias: 1}
+		out := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30))
+		if out.Dodge.Total != 18 {
+			t.Fatalf("Dodge.Total = %d, want 18 (the better set)", out.Dodge.Total)
+		}
+	})
+
+	t.Run("repel: the modifier moves the repel total", func(t *testing.T) {
+		r := reactionWith(action.ReactRepel, nil, nil, []int{6, 6})
+		r.Repel.Context.Condition = &action.RollCondition{Modifier: -3}
+		out := service.ResolveReaction(reactionInput(t, action.ReactRepel, r, 30))
+		if out.Repel.Total != 9 {
+			t.Fatalf("Repel.Total = %d, want 9 (dice 12 − 3)", out.Repel.Total)
+		}
+	})
+
+	t.Run("closed dodge: the Evasion condition moves Evasion, and the reserve with it", func(t *testing.T) {
+		// Reflex 18, Evasion 10 + 3 = 13: the dodge is the worse (13) and the reserve is the
+		// gap between the two READINGS — 5, not the 8 the bare dice would give (spec D4).
+		r := reactionWith(action.ReactClosedDodge, []int{9, 9}, []int{5, 5}, nil)
+		r.Skills[0].Context.Condition = &action.RollCondition{Modifier: 3}
+		out := service.ResolveReaction(reactionInput(t, action.ReactClosedDodge, r, 30))
+		if out.Evasion.Total != 13 {
+			t.Fatalf("Evasion.Total = %d, want 13", out.Evasion.Total)
+		}
+		if out.Dodge.Total != 13 {
+			t.Fatalf("Dodge.Total = %d, want 13 (the worse of 18 and 13)", out.Dodge.Total)
+		}
+		if len(out.Payouts) != 1 || out.Payouts[0].Amount != 5 {
+			t.Fatalf("Payouts = %+v, want one reserve of 5", out.Payouts)
+		}
+	})
+}
+
+func TestResolveReaction_TheDefaultDefenseReadsItsCarrier(t *testing.T) {
+	// A dodge that fails (2 vs a hit of 30) falls back on the default defense, which is
+	// always passive: 0 skill + 11. The master's +4 on it lives in DefaultDefense.
+	r := reactionWith(action.ReactDodge, []int{1, 1}, nil, nil)
+	before := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30)).Defense.Total
+
+	r.DefaultDefense = &action.RollCheck{
+		SkillName: enum.Defense.String(),
+		Context:   action.RollContext{Condition: &action.RollCondition{Modifier: 4}},
+	}
+	after := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30)).Defense.Total
+	if after != before+4 {
+		t.Fatalf("Defense.Total = %d, want %d (the passive %d + 4)", after, before+4, before)
+	}
+}

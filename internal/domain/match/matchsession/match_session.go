@@ -262,6 +262,10 @@ func (s *MatchSession) ApplyMasterAction(
 	if err != nil {
 		return nil, err
 	}
+	// A damage skill needs an attack to measure; refuse before anything else is looked at.
+	if ma.DamageSkill != nil && target.Attack == nil {
+		return nil, ErrNoDamageToMeasure
+	}
 	// Validate every condition edit BEFORE mutating TargetID, Skills or any condition. A
 	// mid-loop resolveRollCheck failure used to return nil, err after TargetID/Skills had
 	// already mutated (and, for an earlier condition in the same list, already captured an
@@ -275,11 +279,16 @@ func (s *MatchSession) ApplyMasterAction(
 	// what it used to be. applySkillEdit never adds or drops a name beyond what ma.Skills
 	// lists (it only ever decides Attempts per name), so that name set is exactly ma.Skills's.
 	// Attack/Dodge/Defense/etc. are shared pointers, untouched by the copy, read-only here.
+	// Validation may create shadow.DefaultDefense (resolveRollCheck); that lands on the copy
+	// only, never on target.
 	shadow := *target
 	if ma.Skills != nil {
 		shadow.Skills = ma.Skills
 	}
 	for _, edit := range ma.Conditions {
+		if edit.Field == action.FieldDamage && edit.Condition.Bias != 0 {
+			return nil, ErrDamageHasNoAdvantage
+		}
 		if _, err := resolveRollCheck(&shadow, edit); err != nil {
 			return nil, err
 		}
@@ -292,6 +301,14 @@ func (s *MatchSession) ApplyMasterAction(
 	}
 	if ma.Skills != nil {
 		s.applySkillEdit(target, ma.Skills, masterUUID)
+	}
+	if ma.DamageSkill != nil {
+		// The ORIGINAL is the effective skill — Push when the field was never set — and its
+		// origin is the system: the engine chose Push, the player never did. Editing back to
+		// Push erases the capture, like any other edit-back.
+		s.captureOverride(target.GetID(), "damageSkill", match.OriginSystem, masterUUID,
+			target.Attack.EffectiveDamageSkill(), *ma.DamageSkill)
+		target.Attack.DamageSkill = *ma.DamageSkill
 	}
 	for _, edit := range ma.Conditions {
 		rc, err := resolveRollCheck(target, edit)
@@ -309,9 +326,28 @@ func (s *MatchSession) ApplyMasterAction(
 			current = *rc.Context.Condition
 		}
 		cond := edit.Condition
+		// A zeroed condition IS "no condition". The wire cannot send nil — the closest a client
+		// can say is {bias: 0, modifier: 0, description: ""} — and the original a first edit
+		// captures is nil (the player sends no condition). Without this, cancelling an edit by
+		// editing back would compare RollCondition{} to nil, keep the capture, and write a row
+		// at the close claiming the master changed a test they had put back. incoming stays an
+		// UNTYPED nil for the same reason current does above.
+		var incoming any
+		if cond != (action.RollCondition{}) {
+			incoming = cond
+		}
 		s.captureOverride(target.GetID(), conditionFieldKey(edit), match.OriginPlayer, masterUUID,
-			current, cond)
-		rc.Context.Condition = &cond
+			current, incoming)
+		if incoming == nil {
+			rc.Context.Condition = nil
+			// A zeroed default defense is "the master did not edit": drop the carrier
+			// resolveRollCheck created, or the close would store JSON where NULL belongs.
+			if rc == target.DefaultDefense {
+				target.DefaultDefense = nil
+			}
+		} else {
+			rc.Context.Condition = &cond
+		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
 	// never a literal 0: the disadvantage of an action→reaction conversion was decided once, at
@@ -451,6 +487,15 @@ func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollChe
 		}
 		return &a.Dodge.RollCheck, nil
 	case action.FieldDefense:
+		// On a reaction that keeps the default defense, "defense" names THAT one — the passive
+		// the resolver actually reads — and its carrier is created on first edit. Everywhere
+		// else it keeps naming the declared Defense component, as before.
+		if a.ReactionKind != "" && a.ReactionKind.KeepsDefault() {
+			if a.DefaultDefense == nil {
+				a.DefaultDefense = &action.RollCheck{SkillName: enum.Defense.String()}
+			}
+			return a.DefaultDefense, nil
+		}
 		if a.Defense == nil {
 			return nil, ErrConditionTargetMissing
 		}

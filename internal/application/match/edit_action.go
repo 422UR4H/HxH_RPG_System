@@ -83,7 +83,8 @@ func (uc *EditActionUC) Execute(
 // hasRollEdits reports whether a MasterAction carries any of the sections ApplyMasterAction
 // applies. nil Skills/TargetID mean "not sent"; an empty-but-present list is an edit.
 func hasRollEdits(ma *action.MasterAction) bool {
-	return ma != nil && (len(ma.Conditions) > 0 || ma.Skills != nil || ma.TargetID != nil)
+	return ma != nil && (len(ma.Conditions) > 0 || ma.Skills != nil || ma.TargetID != nil ||
+		ma.DamageSkill != nil)
 }
 
 var _ IEditAction = (*EditActionUC)(nil)

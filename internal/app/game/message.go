@@ -348,6 +348,9 @@ type EditActionPayload struct {
 	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
 	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
 	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
+	// DamageSkill swaps the skill that measures the damage of the action's attack (Push by
+	// default): any valid skill name. Absent = untouched; "Push" puts it back.
+	DamageSkill *string `json:"damageSkill,omitempty"`
 	// EscapeLanding is where the master puts the piece of the escape named by ActionID IF it
 	// fails (front-combat-phases.md §6A.5, B13) — the engine has no rule for where a failed
 	// escape ends up. Absent = untouched. It is its own section, independent of the others:
@@ -566,6 +569,27 @@ type ResolutionUpdatedPayload struct {
 	// It is NOT an error MESSAGE: a fault here does not mean the operation failed. The turn
 	// resolved, these numbers are real, and one part of the collision is missing from them.
 	Errors []ResolutionErrorPayload `json:"errors,omitempty"`
+	// DamageSkill names the skill that measured the attack's damage — "Push" unless the master
+	// swapped it (edit_action damageSkill). Absent when the action has no attack. Public on a
+	// settled resolution, like rawDamage.
+	DamageSkill string `json:"damageSkill,omitempty"`
+	// Conditions is every master condition in force on the open turn — what the master's
+	// editor shows after a reload. MASTER-ONLY and OPEN-TURN-ONLY: service.ProjectResolution
+	// strips it for anyone else, and the resolver does not fill it once the turn is settled.
+	// Absent = nothing edited.
+	Conditions []ConditionPayload `json:"conditions,omitempty"`
+}
+
+// ConditionPayload is one master condition in force — the shape of an edit_action conditions
+// entry plus the action it lives on. ActionID is always the real ID (the turn's own action
+// included, never zero). Field and SkillName are alternatives.
+type ConditionPayload struct {
+	ActionID    uuid.UUID `json:"actionId"`
+	Field       string    `json:"field,omitempty"`
+	SkillName   string    `json:"skillName,omitempty"`
+	Bias        int       `json:"bias"`
+	Modifier    int       `json:"modifier"`
+	Description string    `json:"description,omitempty"`
 }
 
 // ResolutionErrorPayload is one engine fault, as the master's client reads it. Kind is the
@@ -748,6 +772,13 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			Subject: e.Subject,
 			Kind:    string(e.Kind),
 			Detail:  e.Detail,
+		})
+	}
+	p.DamageSkill = res.DamageSkill
+	for _, c := range res.Conditions {
+		p.Conditions = append(p.Conditions, ConditionPayload{
+			ActionID: c.ActionID, Field: c.Field, SkillName: c.SkillName,
+			Bias: c.Condition.Bias, Modifier: c.Condition.Modifier, Description: c.Condition.Description,
 		})
 	}
 	return p

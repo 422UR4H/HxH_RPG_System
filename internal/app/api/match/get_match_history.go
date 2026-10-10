@@ -109,9 +109,12 @@ type HistoryTurnResponse struct {
 // the SAME projected service.TurnResolution; only the wire shape is duplicated, never the
 // deny-list itself.
 type TurnResolutionResponse struct {
-	IsSettled        bool                      `json:"isSettled"`
-	Action           RollResultResponse        `json:"action"`
-	Targets          []CharacterResultResponse `json:"targets"`
+	IsSettled bool                      `json:"isSettled"`
+	Action    RollResultResponse        `json:"action"`
+	Targets   []CharacterResultResponse `json:"targets"`
+	// DamageSkill names the skill that measured the damage ("Push" unless the master swapped
+	// it). Absent on a turn with no attack and on turns recorded before Phase 8 (all Push).
+	DamageSkill      string                    `json:"damageSkill,omitempty"`
 	PendingReactions []PendingReactionResponse `json:"pendingReactions,omitempty"`
 	// Errors is every engine fault hit while computing this resolution — a target the engine
 	// could not classify, a character on the board whose sheet it was not handed. Absent on a
@@ -397,7 +400,8 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 			IsCritical: res.ActionResult.IsCritical, IsCriticalFailure: res.ActionResult.IsCriticalFailure,
 			Margin: res.ActionResult.Margin,
 		},
-		Targets: make([]CharacterResultResponse, 0, len(res.CharacterResults)),
+		Targets:     make([]CharacterResultResponse, 0, len(res.CharacterResults)),
+		DamageSkill: res.DamageSkill,
 	}
 	for _, cr := range res.CharacterResults {
 		out.Targets = append(out.Targets, CharacterResultResponse{

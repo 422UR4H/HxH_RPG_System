@@ -197,7 +197,7 @@ porque uma ação plausível carregue todas.
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
 | `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
-| `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorPush`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por `Grab` é prerrogativa do mestre, ainda não implementada. |
+| `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorDamageSkill`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por outra perícia é prerrogativa do mestre: [`edit_action`](#edit_action) `damageSkill`. A escolha dele **não** aparece aqui — este campo continua sendo o do jogador, descartado. |
 
 **Como o acerto é montado.** A perícia é `Accuracy`, sempre, e a arma entra pela
 **proficiência**: o acerto soma o `proficiencyLevel` que o personagem tem **com a arma que
@@ -492,8 +492,17 @@ porque as reações seguintes dependem de onde a peça está.
 **Direção:** cliente → servidor. **Quem:** **só o mestre** (`forbidden` para os demais).
 
 Edita a ação do turno aberto, ou uma das reações dela. Toda seção é opcional e independente
-— mande só o que muda. **Uma seção presente SUBSTITUI a lista inteira**: não há merge
-parcial, porque o wire não tem identidade por entrada.
+— mande só o que muda.
+
+- **`skills` e `targetIds` substituem a lista inteira**: não há merge parcial, porque o wire não
+  tem identidade por entrada.
+- **`conditions` se aplica por rolagem.** Cada entrada nomeia uma rolagem (`field` ou
+  `skillName`) e substitui a condição **daquela** rolagem; as rolagens que não aparecem ficam
+  como estão.
+- **Uma entrada zerada limpa.** `bias`, `modifier` e `description` ausentes ou zero/vazios
+  (`{ "field": "hit" }`) devolvem a rolagem a "sem condição" — e, se a edição anterior tinha sido
+  capturada, apagam a captura: é assim que o mestre **cancela** uma edição. Não há verbo de
+  confirmação nem de cancelamento.
 
 ```json
 {
@@ -515,9 +524,33 @@ parcial, porque o wire não tem identidade por entrada.
 | `actionId` | Ausente ou zero = **a ação própria do turno**. Senão, o ID de uma reação anexada. |
 | `conditions[].field` | `speed` · `hit` · `damage` · `dodge` · `defense` · `repel` · `feint` · `moveSpeed`. |
 | `conditions[].skillName` | **Alternativa** a `field`, nomeando uma entrada de `skills`. Mandar os dois é erro. |
-| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. |
+| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `damage has no advantage: a damage condition takes no bias`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
 | `modifier` | Ajuste plano no total. |
+| `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `damageSkill edit targets an action with no attack`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
+
+> **O que cada rolagem muda com o turno aberto.**
+>
+> | `field` / `skillName` | Onde | Muda o desfecho? | Leitura |
+> |---|---|---|---|
+> | `hit` | a ação | sim — o golpe é um só, vale para todos os alvos | rolada |
+> | `damage` | a ação | sim — só o `modifier` (soma ao dano bruto, piso zero, vale para a cadeia); `bias` é recusado | — |
+> | `dodge` | reação de esquiva/fuga | sim | rolada |
+> | `defense` | reação `dodge`, `closedDodge`, `escapeGuard` | sim — é a **defesa padrão** atrás da reação | **passiva**: só o `modifier` move |
+> | `repel` | reação `repel` | sim | rolada |
+> | `defense` | a ação própria | **não** — é o componente `Defense` que o jogador declarou, e a resolução nunca o lê; aceito e guardado, não muda nada (sem `Defense` declarado: recusado, `condition edit targets a check that is not on this action`) | — |
+> | `defense` | reação `escape`, `closedEscape`, `repel`, `nothing` | — | recusado, `condition edit targets a check that is not on this action`: a reação desiste da defesa padrão, a menos que tenha declarado um `Defense` |
+> | `moveSpeed` | reação de fuga | sim — decide se a fuga escapa | rolada no `escape`/`escapeGuard` (Dash); **passiva** no `closedEscape` (Shift) |
+> | `skillName: "Evasion"` | reação fechada | sim — entra na esquiva fechada e na reserva | rolada |
+> | `speed` | qualquer | **não** — move a economia, que não se refaz | passiva fora do regime Race |
+> | `moveSpeed` | a ação | **não** — a peça já andou na abertura, e nada testa contra o movimento de uma ação | — |
+> | `feint` | a ação | **não** — a resolução da finta não existe ainda | — |
+> | outro `skillName` | qualquer | **não** — ninguém lê o resultado das perícias (corrente de testes) | — |
+>
+> Tudo é aceito e guardado — a regra pode crescer; a tela é que esconde o que não muda nada. Viés
+> numa leitura **passiva** é aceito e não tem efeito (não há dado para escolher). A **esquiva e a
+> defesa passivas de um alvo que não reagiu** não são editáveis: não há reação onde guardar a
+> condição.
 
 **`escapeLanding` — a queda da fuga que falha é do mestre.** O motor não tem regra para onde
 uma fuga que falhou vai parar (ver [`open_reaction`](#open_reaction)); o mestre decide, por esta
@@ -563,7 +596,8 @@ deixa `targetIds` ou `skills` já alterados.
 `condition edit targets a check that is not on this action`,
 `condition edit must set either field or skillName, not both`,
 `escapeLanding only applies to an escape reaction on the open turn`,
-`escapeLanding position is outside the grid`).
+`escapeLanding position is outside the grid`, `damage has no advantage: a damage condition takes no bias`,
+`damageSkill edit targets an action with no attack`).
 
 ### `close_turn`
 
@@ -1383,6 +1417,7 @@ junto é de turno aberto.
   "payload": {
     "turnId": "55555555-5555-4555-8555-555555555555",
     "isSettled": false,
+    "damageSkill": "Push",
     "action": {
       "skillName": "Accuracy",
       "skillValue": 14,
@@ -1438,6 +1473,15 @@ junto é de turno aberto.
         "kind": "unknown_target",
         "detail": "action target is neither a character nor a wall segment"
       }
+    ],
+    "conditions": [
+      {
+        "actionId": "33333333-3333-4333-8333-333333333333",
+        "field": "hit",
+        "bias": -1,
+        "modifier": -2,
+        "description": "escuridao"
+      }
     ]
   }
 }
@@ -1462,6 +1506,8 @@ junto é de turno aberto.
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas**. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre, não estado de mesa. Uma reação não aberta nunca vira passo da cadeia, então o ID dela não aparece em `targets[].reaction` — esta é a única superfície que o nomeia. |
 | `errors` | **Sempre master-only.** Faltas do **motor**, não do jogo — ver abaixo. Ausente numa resolução limpa. |
+| `damageSkill` | A perícia que mediu o dano: `Push`, ou a que o mestre escolheu ([`edit_action`](#edit_action) `damageSkill`). **Ausente** sem ataque. Segue o eixo de `rawDamage`: com o turno aberto, só o mestre; fechado, todos. |
+| `conditions` | As condições do mestre **em vigor** no turno aberto: uma entrada por rolagem com condição, no formato de uma entrada de `edit_action.conditions` mais `actionId` (sempre o ID real, inclusive da ação do turno). **Só o mestre, só com turno aberto** — nunca no payload liquidado, nunca no histórico (a condição fica gravada dentro da ação, na tabela `actions`). É o que o editor do mestre mostra depois de recarregar. Ausente = nada editado. `field: "defense"` numa reação é a defesa padrão dela. |
 
 **Um `payout` é um modificador acumulado no personagem**, escrito na ficha dele no fechamento
 do turno. Os campos:
@@ -1923,7 +1969,7 @@ continuam, porque isso o dono já sabia que declarou.
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
 | `openTurn.reactions` | **Fase 7 (design spec §4.1).** As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. Ausente (`omitempty`) quando nenhuma está aberta. |
 | `ownReactions` | **Fase 7 (design spec §4.2, decisões D5/D6).** As reações do turno aberto cujo ator pertence a este destinatário (`charToPlayer` — o mestre, pelos NPCs dele), **abertas ou não**, na ordem de chegada: o que o [`reaction_attached`](#reaction_attached) disse ao vivo, para um cliente que reconectou depois dele. Uma entrada é `{ reactionId, actorId, reactionKind, opened, consumedActionIds }`. `opened` diz se o mestre já deu a palavra ("reação enviada, aguardando o mestre" × "é a sua vez de narrar"). `reactionKind` é o **verdadeiro** — o dono vê o próprio (`closedEscape`, não `escape`). `consumedActionIds` são as ações da fila que ela consumiu — **sempre** lista, `[]` numa reação livre; uma declarada nomeada ali foi consumida, não perdida (regra de reconciliação abaixo). Ausente (`omitempty`) quando o destinatário não tem nenhuma, ou não há turno aberto — aqui ausente e vazio querem dizer a mesma coisa, diferente de `ownQueue`: nenhuma reconciliação depende de distinguir os dois. |
-| `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. |
+| `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. Traz `conditions` e `damageSkill` como o `resolution_updated` — é o que faz a edição do mestre sobreviver a recarregar. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
 | `ownQueue` | **B12 (design spec §4.2).** O espelho de `queue` para quem NÃO é o mestre: as ações ainda pendentes cujo ator pertence a este destinatário (`charToPlayer`), na mesma ordem de inserção da fila, uma `{ actionId, action }` por entrada, `action` em `actionwire.Declaration` (só o que o dono declarou — arma, alvos, `move.category/from/position`, nomes de perícia; **nenhum** dado, total ou velocidade, nem a de `speed`/`move` — ver a tabela de corte, §4.1 do design spec). Ausente **só para o mestre** — o eixo aqui não é tempo, é CLASSE, o oposto de `queue`. **SEMPRE presente para todo o resto**, mesmo sem nada pendente: vem `[]`, não ausente. É por isso que o tipo em Go é ponteiro (`*[]OwnQueuedActionPayload` com `omitempty`) em vez de slice nua — uma slice nua nula ainda serializa `null`, e o contrato aqui não é "nulo ou a lista", é "ausente (mestre) ou presente, vazia ou não (todo mundo mais)"; em TypeScript isso é `ownQueue?: OwnQueuedActionPayload[]`, e a chave só falta quando o destinatário é o mestre — para qualquer outro `ownQueue` está sempre lá, e `.length === 0` é a resposta "nada seu na fila", não a ausência do campo. Ver a **regra de reconciliação** logo abaixo. |
 
@@ -2198,6 +2244,11 @@ possui:
 2. **`pendingReactions` some.** Sempre, para todo mundo que não é o mestre.
 
 3. **`errors` some.** Sempre, para todo mundo que não é o mestre.
+
+   O mesmo vale para **`conditions`** (as condições do mestre em vigor): o que o mestre editou, e por quê, é só dele.
+   E ela **nem existe** num payload liquidado (`isSettled: true`) — as condições em vigor são do
+   turno aberto, e a gravação as guarda dentro da ação, não na resolução. Ou seja: só o mestre,
+   só com o turno aberto.
 
 **Os números NÃO somem.** `total`, `diceRolled`, `rawDamage`, `projectedDamage`,
 `dodgeTotal`, `defenseTotal`, `rung`, `margin`, `difference` viajam para todo mundo — público
