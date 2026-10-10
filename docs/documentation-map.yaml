@@ -664,6 +664,19 @@ mappings:
       (não é o componente Defense declarado, que viaja); o histórico não o lê de volta. NULL = o
       mestre não editou. Fase 8, spec 2026-10-09 §3.2.
 
+  - code_path: migrations/20261010000000_cancelled_actions.sql
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: >-
+      cancelled_actions — a ação tirada da fila por cancel_action (spec 2026-10-10 §8.1 P6),
+      tabela própria porque nunca teve turno (actions.turn_uuid é NOT NULL). turn_uuid = o turno
+      aberto no instante, NULL se nenhum; sem FK, como em master_actions. action JSONB guarda a
+      ação no formato de armazenamento de actions (as mesmas peças, chaves = nomes das colunas;
+      internal/gateway/pg/actioncodec). Gravada pela regra das master actions (P7).
+
   - code_path: migrations/20261002000000_scenes_rounds_turns_timestamptz.sql
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -711,6 +724,35 @@ mappings:
         confidence: directly_affected
     notes: pgmasteraction.Repository — Insert/ListByMatch against master_actions, ordered by (happened_at, uuid).
 
+  - code_path: internal/domain/cancelledaction/
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: >-
+      cancelledaction.Record — a ação cancelada como persistida (spec 2026-10-10 §8.2): UUID =
+      id da ação, cena/rodada/turno do instante, ActorUUID (ficha), CancelledBy (usuário), a
+      action.Action inteira e CancelledAt.
+
+  - code_path: internal/gateway/pg/cancelledaction/
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+    notes: >-
+      pgcancelledaction.Repository — Insert em cancelled_actions, no pool (sem turno aberto) ou
+      na transação do PersistTurnClose (cancelada com turno aberto).
+
+  - code_path: internal/gateway/pg/actioncodec/
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: >-
+      O mapeamento único action.Action <-> peças JSON de armazenamento: EncodeColumns/DecodeRow
+      (as colunas de actions, usadas por insertAction e FindMatchHistory) e Marshal/Unmarshal
+      (as mesmas peças num documento só, cancelled_actions.action). Mudar uma peça aqui muda as
+      duas tabelas juntas — de propósito.
+
   - code_path: internal/app/game/board.go
     dev_docs:
       - path: docs/dev/api/game-lobby.md
@@ -751,6 +793,17 @@ mappings:
       pieceRemovedView) — mudar um portão muda o que o histórico mostra. Com turno
       aberto não insere: guarda o registro para o fechamento (turn_writes.go).
 
+  - code_path: internal/app/game/cancelled_action_record.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+    notes: >-
+      holdCancelledActionLocked/writeCancelledAction — o registro da ação cancelada (spec
+      2026-10-10 §8.1 P6–P7), montado na MESMA seção crítica do CancelActionUC.Execute (o
+      turno que ele nomeia é o aberto no cancelamento). Com turno aberto vai para turnWrites
+      e o PersistTurnClose grava; sem turno, grava fora do lock como recordMasterAction
+      (cena/round garantidos antes).
+
   - code_path: internal/app/game/unwritten.go
     dev_docs:
       - path: docs/dev/api/match-combat-ws.md
@@ -778,7 +831,7 @@ mappings:
       turnWrites — o que aconteceu dentro de um turno aberto e só é gravado com o
       fechamento dele, na transação de PersistTurnClose (decisão do dono do produto,
       2026-10-01; spec 2026-09-27-combat-closure-back §4.3/§4.8). Hoje as master
-      actions e moveViews (o que cada jogador da sessão viu do movimento aberto, pelo
+      actions, as ações canceladas com o turno aberto (spec 2026-10-10 §8.1 P7) e moveViews (o que cada jogador da sessão viu do movimento aberto, pelo
       mesmo gate do turn_opened — openedMoveViewLocked em room.go; o GET /history
       projeta o move por ele); um dado novo do turno entra como campo aqui e em
       TurnCloseData. A sala
@@ -1472,8 +1525,9 @@ mappings:
       PersistTurnClose faz o mesmo quando recebe NextRound.
       PersistTurnClose (cena, rodada, turno, ação, reações, overrides, a resolução
       LIQUIDADA, as barras das fichas que o fechamento atingiu, as master actions feitas
-      com o turno aberto e o tabuleiro + fog — pelos gateways pgsheet, pgmasteraction,
-      pgmatchboard e fog rodando no tx —, numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
+      com o turno aberto, as ações canceladas com ele aberto e o tabuleiro + fog — pelos
+      gateways pgsheet, pgmasteraction, pgcancelledaction, pgmatchboard e fog rodando no tx —,
+      numa transação) e FindMatchHistory (a árvore Cena→Rodada→Turno→Ação,
       uma query só). Os vereditos de quem viu o movimento ao vivo vão em
       actions.move_views (só a ação do turno) e em landingViews dentro do escape do
       resolution_record (onde a peça da fuga parou: pouso ou destino de quem escapou); FindMatchHistory os devolve em HistoryTurn (MoveViews,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -45,6 +46,11 @@ type TurnCloseData struct {
 	// inside an open turn becomes durable together with that turn's close, or not at all
 	// (owner decision, 2026-10-01). Drained from the room, like Overrides from the session.
 	MasterActions []masteraction.Record
+	// CancelledActions are the actions cancelled while this turn was open (spec 2026-10-10
+	// §8.1 P7), each built the instant it was cancelled — TurnUUID, CancelledAt — and written
+	// only now, in this same transaction, by the same rule as MasterActions. Drained from the
+	// room with them.
+	CancelledActions []cancelledaction.Record
 	// Board is the match's board as this close left it — the turn's move, its escapes and the
 	// master's changes inside it — and Memories every player's fog memory with it, written in
 	// this same transaction: the board on disk and the turns on disk never disagree. Board nil

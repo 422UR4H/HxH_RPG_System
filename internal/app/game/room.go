@@ -1116,9 +1116,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		session := r.session
 		var err error
+		var write *cancelledWrite
 		if session != nil && r.deps.CancelActionUC != nil {
-			// The cancelled action is ignored for now: recording it is the next step.
-			_, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
+			var act *action.Action
+			act, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
+			// The record is built in this same critical section, so the turn it names is the one
+			// open at the cancellation; with a turn open it is held for that turn's close.
+			if err == nil && act != nil {
+				write = r.holdCancelledActionLocked(act, client.userUUID)
+			}
 		}
 		r.mu.Unlock()
 		if session == nil || r.deps.CancelActionUC == nil {
@@ -1129,6 +1135,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
 		}
+		// No turn open: written now, before the news goes out.
+		r.writeCancelledAction(write)
 		// The master decides what opens next, so they hear it first; the sender gets the same
 		// news as the ack of their own request. A master cancelling an NPC's action is both —
 		// one message, not two. The table only sees the public order change.
@@ -2157,21 +2165,22 @@ func (r *Room) persistClosedTurn(
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
 		Scene: activeScene, Round: activeRound, Turn: t, Action: &act,
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
-		MasterActions: inTurn.masterActions, Board: board, Memories: memories,
+		MasterActions: inTurn.masterActions, CancelledActions: inTurn.cancelledActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
 		NextRound: nextRound, UnwrittenRoundEnds: roundEnds,
 	})
 	if err != nil {
-		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied inside it, "+
+		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied and the %d action(s) cancelled inside it, "+
 			"nor the HP it applied to %d sheet(s) (character_sheets keep the last close), "+
 			"nor the board it left (match_boards and player_memories keep the last close): %v",
-			t.GetID(), matchUUID, len(inTurn.masterActions), len(statusBars), err)
-		// The overrides and the turn's master actions were already drained above and are lost
-		// with the turn. That is correct, not a leak to plug: overridden_action_values.action_uuid
-		// references actions(uuid), so the override rows could not have been inserted without the
-		// action row; and the master actions belong to the turn by decision — durable with it or
-		// not at all. The board in memory is untouched and still live: the next save (a close,
-		// or a change between turns) writes it whole.
+			t.GetID(), matchUUID, len(inTurn.masterActions), len(inTurn.cancelledActions), len(statusBars), err)
+		// The overrides, the turn's master actions and its cancellations were already drained
+		// above and are lost with the turn. That is correct, not a leak to plug:
+		// overridden_action_values.action_uuid references actions(uuid), so the override rows
+		// could not have been inserted without the action row; and the master actions and
+		// cancellations belong to the turn by decision — durable with it or not at all. The
+		// board in memory is untouched and still live: the next save (a close, or a change
+		// between turns) writes it whole.
 		//
 		// The HP is not lost either: the sheets keep it in memory, and they are remembered as
 		// unwritten (the ones of earlier failed closes stay remembered), so the NEXT close writes

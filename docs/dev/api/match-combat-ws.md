@@ -428,9 +428,14 @@ O `actionId` é o que o cliente já conhece: o jogador, pelo [`action_enqueued`]
 **Só ação ainda na fila.** A ação que já abriu é o turno — não se cancela. Uma ação consumida por
 uma reação já saiu da fila — também não.
 
-**Nada é gravado, nada é devolvido, nada fecha:**
-- A fila vive só em memória; a ação só vira linha em `actions` quando o turno dela fecha. Cancelar
-  **não aparece no histórico**.
+**A ação cancelada fica registrada** (tabela `cancelled_actions`, não `actions` — ela nunca teve
+turno): a ação inteira como estava na fila, quem cancelou, e a cena, a rodada e o turno aberto no
+instante (nenhum, se não havia). **Quando grava** é a regra das master actions: sem turno aberto,
+na hora; com turno aberto, junto com o fechamento desse turno, na mesma transação — um reinício no
+meio do turno a perde com o turno, de propósito. Nada disso vai ao wire agora.
+
+**Nada é devolvido, nada fecha:**
+- A fila vive só em memória; a ação só vira linha em `actions` quando o turno dela fecha.
 - A velocidade só é cobrada quando a ação abre, então uma ação na fila ainda não pagou nada:
   **nada é devolvido nas barras**. Um preço da rodada que já foi congelado **continua congelado**
   (a mesma regra de uma ação mais lenta que chega depois do congelamento).

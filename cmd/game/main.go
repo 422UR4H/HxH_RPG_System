@@ -13,6 +13,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
+	cancelledactionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/cancelledaction"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	fogPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
@@ -91,6 +92,9 @@ func main() {
 	// Every accepted enqueue_master_action is recorded the instant it is applied, with what
 	// each player saw of it live (spec §4.8) — Room.recordMasterAction is the one writer.
 	masterActionRepository := masteractionPg.NewRepository(pgPool)
+	// Every action taken back out of the queue (cancel_action), written the instant it is
+	// cancelled with no turn open (spec 2026-10-10 §8.1 P7) — Room.writeCancelledAction.
+	cancelledActionRepository := cancelledactionPg.NewRepository(pgPool)
 	// What happens inside a round that is not a turn — the regime change (spec §4.5, B15).
 	matchEventRepository := matcheventPg.NewRepository(pgPool)
 
@@ -121,9 +125,10 @@ func main() {
 			// Same sheetRepository already wired into addMatchNPCUC above — it satisfies
 			// appmatch.ISheetOwnershipReader, which is all handlePieceMoved needs to check a
 			// lobby player's ownership of an existing piece (spec §4.3, "Quem move o quê", B14).
-			SheetOwnership:   sheetRepository,
-			MasterActionRepo: masterActionRepository,
-			EventRepo:        matchEventRepository,
+			SheetOwnership:      sheetRepository,
+			MasterActionRepo:    masterActionRepository,
+			EventRepo:           matchEventRepository,
+			CancelledActionRepo: cancelledActionRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

@@ -5,6 +5,7 @@ import (
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 )
@@ -13,6 +14,13 @@ import (
 // caller; the one real implementation is pgmasteraction.Repository.
 type IMasterActionRepo interface {
 	Insert(ctx context.Context, r masteraction.Record) error
+}
+
+// ICancelledActionRepo writes one cancelled action row (spec 2026-10-10 §8.1 P6).
+// writeCancelledAction is the one caller; the one real implementation is
+// pgcancelledaction.Repository.
+type ICancelledActionRepo interface {
+	Insert(ctx context.Context, r cancelledaction.Record) error
 }
 
 // RoomDeps is everything a Room needs from the outside, in one place.
@@ -66,6 +74,11 @@ type RoomDeps struct {
 	// nil means the room records nothing — the usual "no capability" rule, and what every test
 	// built before T5 still gets by leaving it unset.
 	MasterActionRepo IMasterActionRepo
+	// CancelledActionRepo records every action cancelled with no turn open, the instant it is
+	// cancelled (spec 2026-10-10 §8.1 P7); one cancelled inside a turn is written by
+	// PersistTurnClose and needs none of it. nil means the room inserts nothing on its own — the
+	// usual "no capability" rule.
+	CancelledActionRepo ICancelledActionRepo
 	// EventRepo records what happens inside a round that is not a turn and is nobody's action —
 	// today the round's regime change, in the change_round_mode arm (spec §4.5, B15). The one
 	// real implementation is pgmatchevent.Repository. nil means the room records no event — the

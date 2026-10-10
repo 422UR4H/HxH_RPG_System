@@ -155,6 +155,10 @@ type combatFixture struct {
 	// events backs RoomDeps.EventRepo (spec §4.5, T13): every roundModeChanged the room
 	// records lands here. Like masterActions, restart hands the SAME store to the second room.
 	events *fakeEventStore
+	// cancelled backs RoomDeps.CancelledActionRepo (spec 2026-10-10 §8.1 P7): every action
+	// cancelled with no turn open lands here at once; one cancelled inside a turn reaches
+	// PersistTurnClose instead (roundRepo.closeData).
+	cancelled *fakeCancelledActionStore
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -279,6 +283,7 @@ func newCombatFixture(t *testing.T, opts ...combatOpt) *combatFixture {
 
 		masterActions: &fakeMasterActionStore{},
 		events:        &fakeEventStore{},
+		cancelled:     &fakeCancelledActionStore{},
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -370,6 +375,8 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 		MasterActionRepo: f.masterActions,
 		// T13: the round's regime changes are recorded (spec §4.5).
 		EventRepo: f.events,
+		// Every cancelled action is recorded (spec 2026-10-10 §8.1 P6–P7).
+		CancelledActionRepo: f.cancelled,
 	}
 	if f.noMasterActionRepo {
 		deps.MasterActionRepo = nil

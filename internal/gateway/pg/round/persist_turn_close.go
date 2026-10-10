@@ -9,6 +9,8 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
+	pgcancelledaction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
@@ -21,7 +23,7 @@ import (
 // finished_at when this close also ended it, and then the round born in its place, NextRound),
 // turn, action, the action's reactions, the turn's settled resolution (nullable), the values
 // the master's edits displaced, the bars of every sheet the close damaged, the master actions
-// applied while the turn was open, and the board (with every player's fog memory) as the close
+// applied and the actions cancelled while the turn was open, and the board (with every player's fog memory) as the close
 // left it, within a single database transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
@@ -157,6 +159,18 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		}
 	}
 
+	// The actions cancelled while this turn was open follow the master actions' rule (spec
+	// 2026-10-10 §8.1 P7): durable with the turn or not at all. pgcancelledaction's own Insert,
+	// run on this transaction.
+	if len(d.CancelledActions) > 0 {
+		cas := pgcancelledaction.NewRepository(tx)
+		for i := range d.CancelledActions {
+			if err := cas.Insert(ctx, d.CancelledActions[i]); err != nil {
+				return fmt.Errorf("PersistTurnClose cancelled action %d: %w", i, err)
+			}
+		}
+	}
+
 	// The board the close left — the turn's move, its escapes, the master's changes inside it —
 	// and every player's fog memory, in this same transaction: a turn on disk always has its
 	// board on disk, and a turn that is not written leaves the board as the last close did.
@@ -195,58 +209,10 @@ func insertAction(
 	createdAt time.Time,
 	moveViews map[uuid.UUID]masteraction.View,
 ) error {
-	speedJSON, err := json.Marshal(act.Speed)
+	// The JSON pieces are actioncodec's: cancelled_actions stores the same pieces, mapped once.
+	cols, err := actioncodec.EncodeColumns(act)
 	if err != nil {
-		return fmt.Errorf("marshal speed: %w", err)
-	}
-
-	skillsJSON, err := marshalNullableSlice(act.Skills)
-	if err != nil {
-		return fmt.Errorf("marshal skills: %w", err)
-	}
-
-	moveJSON, err := marshalNullablePtr(act.Move)
-	if err != nil {
-		return fmt.Errorf("marshal move: %w", err)
-	}
-
-	attackJSON, err := marshalNullablePtr(act.Attack)
-	if err != nil {
-		return fmt.Errorf("marshal attack: %w", err)
-	}
-
-	defenseJSON, err := marshalNullablePtr(act.Defense)
-	if err != nil {
-		return fmt.Errorf("marshal defense: %w", err)
-	}
-
-	dodgeJSON, err := marshalNullablePtr(act.Dodge)
-	if err != nil {
-		return fmt.Errorf("marshal dodge: %w", err)
-	}
-
-	repelJSON, err := marshalNullablePtr(act.Repel)
-	if err != nil {
-		return fmt.Errorf("marshal repel: %w", err)
-	}
-
-	feintJSON, err := marshalNullablePtr(act.Feint)
-	if err != nil {
-		return fmt.Errorf("marshal feint: %w", err)
-	}
-
-	triggerJSON, err := marshalNullablePtr(act.Trigger)
-	if err != nil {
-		return fmt.Errorf("marshal trigger: %w", err)
-	}
-
-	interactJSON, err := marshalNullablePtr(act.Interact)
-	if err != nil {
-		return fmt.Errorf("marshal interact: %w", err)
-	}
-	defaultDefenseJSON, err := marshalNullablePtr(act.DefaultDefense)
-	if err != nil {
-		return fmt.Errorf("marshal default defense: %w", err)
+		return err
 	}
 
 	var moveViewsJSON []byte
@@ -285,11 +251,11 @@ func insertAction(
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, deriveActionType(act),
-		speedJSON, skillsJSON, moveJSON, attackJSON,
-		defenseJSON, dodgeJSON, repelJSON, feintJSON, triggerJSON,
-		interactJSON, act.SystemBias,
+		cols.Speed, cols.Skills, cols.Move, cols.Attack,
+		cols.Defense, cols.Dodge, cols.Repel, cols.Feint, cols.Trigger,
+		cols.Interact, act.SystemBias,
 		reactionKind, createdAt, moveViewsJSON, consumedOrNil(act.ConsumedActionIDs),
-		defaultDefenseJSON,
+		cols.DefaultDefense,
 	)
 	return err
 }
@@ -332,22 +298,6 @@ func deriveActionType(act *action.Action) string {
 	default:
 		return "unspecified"
 	}
-}
-
-// marshalNullablePtr returns nil (SQL NULL) for a nil pointer, else JSON bytes.
-func marshalNullablePtr[T any](v *T) ([]byte, error) {
-	if v == nil {
-		return nil, nil
-	}
-	return json.Marshal(v)
-}
-
-// marshalNullableSlice returns nil (SQL NULL) for a nil or empty slice, else JSON bytes.
-func marshalNullableSlice[T any](v []T) ([]byte, error) {
-	if len(v) == 0 {
-		return nil, nil
-	}
-	return json.Marshal(v)
 }
 
 // marshalNullableAny returns nil (SQL NULL) for a nil value. NULL says "there was no value"

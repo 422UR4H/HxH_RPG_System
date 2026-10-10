@@ -10,6 +10,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
 	"github.com/google/uuid"
 )
 
@@ -302,18 +303,18 @@ func decodeMoveViews(raw []byte, turnUUID, actionUUID uuid.UUID) map[uuid.UUID]m
 	return views
 }
 
+// decode rebuilds the row through actioncodec — the same mapping insertAction wrote it with,
+// and the one cancelled_actions shares.
 func (a actionRow) decode() (*action.Action, error) {
-	act, err := decodeActionRow(
-		a.actionUUID, a.actorUUID, a.reactToUUID, a.targetIDs, a.reactionKind,
-		a.speedRaw, a.skillsRaw, a.moveRaw, a.attackRaw, a.defenseRaw, a.dodgeRaw, a.repelRaw,
-		a.feintRaw, a.triggerRaw, a.interactRaw, a.systemBias,
-	)
-	if err != nil {
-		return nil, err
-	}
-	// NULL scans as nil: "nothing consumed" is nil here the way consumedOrNil wrote it.
-	act.ConsumedActionIDs = a.consumed
-	return act, nil
+	return actioncodec.DecodeRow(actioncodec.Row{
+		ID: a.actionUUID, ActorID: a.actorUUID, ReactToID: a.reactToUUID, TargetIDs: a.targetIDs,
+		ReactionKind: a.reactionKind, SystemBias: a.systemBias, ConsumedActionIDs: a.consumed,
+		Columns: actioncodec.Columns{
+			Speed: a.speedRaw, Skills: a.skillsRaw, Move: a.moveRaw, Attack: a.attackRaw,
+			Defense: a.defenseRaw, Dodge: a.dodgeRaw, Repel: a.repelRaw, Feint: a.feintRaw,
+			Trigger: a.triggerRaw, Interact: a.interactRaw,
+		},
+	})
 }
 
 func derefUUID(p *uuid.UUID) uuid.UUID {
@@ -328,102 +329,4 @@ func derefTime(p *time.Time) time.Time {
 		return time.Time{}
 	}
 	return *p
-}
-
-// decodeActionRow rebuilds one actions row — the turn's own action or one of its reactions,
-// the same table and the same shape — back into an action.Action. It is the read-side mirror
-// of insertAction in persist_turn_close.go: one unmarshal per JSONB component, in the same
-// order they were written.
-func decodeActionRow(
-	actionUUID, actorUUID uuid.UUID, reactToUUID *uuid.UUID, targetIDs []uuid.UUID,
-	reactionKind *string,
-	speedRaw, skillsRaw, moveRaw, attackRaw, defenseRaw, dodgeRaw, repelRaw []byte,
-	feintRaw, triggerRaw, interactRaw []byte,
-	systemBias int,
-) (*action.Action, error) {
-	var speed action.ActionSpeed
-	if len(speedRaw) > 0 {
-		if err := json.Unmarshal(speedRaw, &speed); err != nil {
-			return nil, fmt.Errorf("unmarshal speed: %w", err)
-		}
-	}
-
-	var skills []action.Skill
-	if len(skillsRaw) > 0 {
-		if err := json.Unmarshal(skillsRaw, &skills); err != nil {
-			return nil, fmt.Errorf("unmarshal skills: %w", err)
-		}
-	}
-
-	move, err := unmarshalNullablePtr[action.Move](moveRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal move: %w", err)
-	}
-	attack, err := unmarshalNullablePtr[action.Attack](attackRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal attack: %w", err)
-	}
-	defense, err := unmarshalNullablePtr[action.Defense](defenseRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal defense: %w", err)
-	}
-	dodge, err := unmarshalNullablePtr[action.Dodge](dodgeRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal dodge: %w", err)
-	}
-	repel, err := unmarshalNullablePtr[action.Repel](repelRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal repel: %w", err)
-	}
-	feint, err := unmarshalNullablePtr[action.RollCheck](feintRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal feint: %w", err)
-	}
-	trigger, err := unmarshalNullablePtr[action.Trigger](triggerRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal trigger: %w", err)
-	}
-	interact, err := unmarshalNullablePtr[action.Interact](interactRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal interact: %w", err)
-	}
-
-	reactTo := uuid.Nil
-	if reactToUUID != nil {
-		reactTo = *reactToUUID
-	}
-
-	// WithReconstructedID overrides the id NewAction would otherwise mint. actions.uuid is
-	// exactly what react_to_uuid on this action's own reactions points at, and what
-	// action_uuid in overridden_action_values keys on — a fabricated id here would make the
-	// tree uncorrelatable with both. See the option's own doc in action.go for why this is a
-	// constructor-time option and not a mutating setter.
-	act := action.NewAction(
-		actorUUID, targetIDs, reactTo, skills, speed,
-		feint, move, attack, defense, dodge, trigger, interact,
-		action.WithReconstructedID(actionUUID),
-	)
-	act.Repel = repel
-	// SystemBias is set after construction for the same reason Repel is: NewAction already
-	// takes twelve positional parameters, and the field's own doc says growing it buys
-	// nothing. See action.Action.SystemBias for why a stored 0 and a re-derived 0 are not the
-	// same claim — reading it back is what keeps the history's version honest.
-	act.SystemBias = systemBias
-	if reactionKind != nil {
-		act.ReactionKind = action.ReactionKind(*reactionKind)
-	}
-	return act, nil
-}
-
-// unmarshalNullablePtr is the read-side mirror of marshalNullablePtr in persist_turn_close.go:
-// nil for a NULL/empty JSONB column, else the unmarshaled value.
-func unmarshalNullablePtr[T any](raw []byte) (*T, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	var v T
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return nil, err
-	}
-	return &v, nil
 }

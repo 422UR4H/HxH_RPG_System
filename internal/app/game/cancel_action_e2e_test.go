@@ -1,11 +1,14 @@
 package game_test
 
 import (
+	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/google/uuid"
 )
 
@@ -305,5 +308,135 @@ func TestE2E_CancelActionRejectsBadPayload(t *testing.T) {
 	}
 	if e := lastError(t, playerMsgs); e.Code != "invalid_payload" || e.Message != "invalid cancel_action payload" {
 		t.Errorf("error = %+v, want invalid_payload / invalid cancel_action payload", e)
+	}
+}
+
+// fakeCancelledActionStore stands in for pgcancelledaction.Repository: it keeps every Record it
+// was handed, in order.
+type fakeCancelledActionStore struct {
+	mu   sync.Mutex
+	recs []cancelledaction.Record
+}
+
+func (s *fakeCancelledActionStore) Insert(_ context.Context, r cancelledaction.Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recs = append(s.recs, r)
+	return nil
+}
+
+func (s *fakeCancelledActionStore) snapshot() []cancelledaction.Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]cancelledaction.Record(nil), s.recs...)
+}
+
+// await waits for at least n records. Like fakeMasterActionStore.await, reading under the
+// store's mutex is the barrier that makes reading the session afterwards race-free.
+func (s *fakeCancelledActionStore) await(t *testing.T, n int, d time.Duration) []cancelledaction.Record {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if recs := s.snapshot(); len(recs) >= n {
+			return recs
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("cancelled_actions has %d record(s), want at least %d", len(s.snapshot()), n)
+	return nil
+}
+
+// With no turn open, a cancelled action is written the instant it is cancelled (spec 2026-10-10
+// §8.1 P7): the action whole, who cancelled it, where it would have happened, and no turn.
+func TestE2E_ACancelWithNoOpenTurnIsRecordedAtOnce(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	playerMsgs := collectFrom(player)
+
+	f.enqueueAttack(t, player)
+	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+	actionID := actionIDsInOrder(t, playerMsgs)[0]
+	sendWS(t, player, "cancel_action", map[string]any{"actionId": actionID.String()})
+
+	recs := f.cancelled.await(t, 1, 2*time.Second)
+	if len(recs) != 1 {
+		t.Fatalf("cancelled_actions = %d record(s), want 1", len(recs))
+	}
+	rec := recs[0]
+	if rec.UUID != actionID || rec.Action.GetID() != actionID {
+		t.Errorf("record uuid = %v, action id = %v, want both %v", rec.UUID, rec.Action.GetID(), actionID)
+	}
+	if rec.MatchUUID != f.matchUUID || rec.ActorUUID != f.attackerID || rec.CancelledBy != f.playerUUID {
+		t.Errorf("record = match %v actor %v by %v, want %v %v %v",
+			rec.MatchUUID, rec.ActorUUID, rec.CancelledBy, f.matchUUID, f.attackerID, f.playerUUID)
+	}
+	if rec.TurnUUID != nil {
+		t.Errorf("turnUuid = %v, want nil — no turn was open", *rec.TurnUUID)
+	}
+	if rec.Action.Attack == nil {
+		t.Error("the recorded action lost its attack")
+	}
+	if rec.CancelledAt.IsZero() {
+		t.Error("cancelledAt is zero")
+	}
+	if rd := f.session.GetActiveRound(); rd == nil || rec.RoundUUID != rd.GetID() {
+		t.Errorf("round = %v, want the active round", rec.RoundUUID)
+	}
+	if sc := f.session.GetActiveScene(); sc == nil || rec.SceneUUID != sc.GetID() {
+		t.Errorf("scene = %v, want the active scene", rec.SceneUUID)
+	}
+}
+
+// With a turn open, the record is built at the instant of the cancellation but written only by
+// that turn's close, in its transaction (spec 2026-10-10 §8.1 P7) — nothing before it.
+func TestE2E_ACancelInsideAnOpenTurnIsRecordedWithItsClose(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+	turnID := f.openAttackTurn(t, master, player, mc)
+
+	// A second character of the same player queues while the turn is open, then takes it back.
+	f.enqueueAttackAt(t, player, f.victimID, f.attackerID)
+	if !awaitCount(mc, game.MsgTypeActionQueued, 2, 2*time.Second) {
+		t.Fatalf("the second action was never queued; errors: %v", errorCodes(t, pc))
+	}
+	actionID := lastActionQueuedID(t, mc)
+	sendWS(t, player, "cancel_action", map[string]any{"actionId": actionID.String()})
+	if !pc.await(game.MsgTypeActionCancelled, 2*time.Second) {
+		t.Fatalf("the cancellation was never acknowledged; errors: %v", errorCodes(t, pc))
+	}
+	// The ack is sent after the arm's write would have run: anything written at once is here.
+	if recs := f.cancelled.snapshot(); len(recs) != 0 {
+		t.Fatalf("cancelled_actions got %d record(s) mid-turn, want none before the close", len(recs))
+	}
+	if n := len(f.roundRepo.closeData()); n != 0 {
+		t.Fatalf("PersistTurnClose ran %d time(s) before the close", n)
+	}
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	f.awaitPersistedTurn(t, turnID)
+
+	closes := f.roundRepo.closeData()
+	if len(closes) != 1 {
+		t.Fatalf("PersistTurnClose ran %d time(s), want 1", len(closes))
+	}
+	got := closes[0].CancelledActions
+	if len(got) != 1 || got[0].UUID != actionID || got[0].ActorUUID != f.victimID {
+		t.Fatalf("PersistTurnClose got cancelled actions %+v, want the victim's %v", got, actionID)
+	}
+	if got[0].TurnUUID == nil || *got[0].TurnUUID != turnID {
+		t.Errorf("turnUuid = %v, want the open turn %v", got[0].TurnUUID, turnID)
+	}
+	if recs := f.cancelled.snapshot(); len(recs) != 0 {
+		t.Errorf("the room also inserted %d record(s) on its own — a held one is the close's alone", len(recs))
 	}
 }
