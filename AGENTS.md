@@ -105,6 +105,8 @@ Uma coisa parece lacuna e é **deliberada**:
 máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensagem
 (`broadcastHpChanges` em `room.go`). Ver `docs/dev/api/match-combat-ws.md` §5.
 
+**Cancelar ação existe** (spec 2026-10-10): `cancel_action` tira da fila uma ação ainda não aberta; quem declarou cancela (o NPC é do mestre); nada é gravado nem devolvido. Ver `match-combat-ws.md`.
+
 **Deferred to Phase 4 (reações):**
 - Reaction visibility — **feito** (Fase 7, pacote de back): a reação vai à mesa projetada em `reaction_opened` e na reconexão; o cálculo continua do mestre até o fechamento.
 - Initiative handling in `ChangeMode`

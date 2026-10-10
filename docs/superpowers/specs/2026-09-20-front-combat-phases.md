@@ -216,6 +216,8 @@ o cliente não recebe é uma operação que o cliente não consegue invocar.**
 > O ID é daqui. **O verbo de cancelar não é da Fase 6**: ele não existe no contrato, e o front
 > não tem contra o que implementar. É fatia futura de back + contrato.
 
+**Feito em 2026-10-10** (spec `2026-10-10-combat-cancel-action-back-design.md`): `cancel_action` / `action_cancelled`; cada um cancela o que declarou; só na fila.
+
 ### 4.4 Um bug vivo que o front esconde
 
 `GamePage.tsx` manda `skillName: "combat_strength"`, que não existe em `enum.SkillName`. O
@@ -494,7 +496,7 @@ Tudo acima é implementável com o que está em `main` **exceto** o que depende 
 de §4.10.** O resto não espera.
 
 **Fora de escopo:** reações; edição do mestre; o histórico completo por REST (Fase 8); ficha;
-inventário; Nen; **cancelar ação** (não existe no contrato — §4.3); **adicionar NPC com a sala
+inventário; Nen; **cancelar ação** (feito depois, em 2026-10-10 — §4.3); **adicionar NPC com a sala
 já viva** (depende do PR paralelo do verbo WS do rostering); **o fantasma de teste** — o de um
 movimento que depende de CD — que só tem caso alcançável quando os movimentos com teste chegarem
 (§4.1).

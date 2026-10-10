@@ -1099,6 +1099,8 @@ A Fase 2 passou a segurar o **write lock durante o `Execute`** nas quatro rotas.
 grave com esta fase porque essas rotas passaram a sortear dados, resolver o turno e escrever
 HP em ficha. Provado pelo `TestE2E_AttackAgainstACharacterProducesDamage` sob `-race`.
 
+`cancel_action` (2026-10-10) tira uma action da mesma `PriorityQueue` e segue a mesma regra: write lock durante o `Execute`.
+
 ### `actorID` é o `sheetUUID`
 
 `Action.actorID` deixou de ser o jogador autenticado e passou a ser o **personagem** que age —
