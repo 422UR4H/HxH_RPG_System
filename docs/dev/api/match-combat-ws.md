@@ -524,7 +524,7 @@ Edita a ação do turno aberto, ou uma das reações dela. Toda seção é opcio
 | `actionId` | Ausente ou zero = **a ação própria do turno**. Senão, o ID de uma reação anexada. |
 | `conditions[].field` | `speed` · `hit` · `damage` · `dodge` · `defense` · `repel` · `feint` · `moveSpeed`. |
 | `conditions[].skillName` | **Alternativa** a `field`, nomeando uma entrada de `skills`. Mandar os dois é erro. |
-| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. |
+| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `damage has no advantage: a damage condition takes no bias`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
 | `modifier` | Ajuste plano no total. |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
 
@@ -572,7 +572,7 @@ deixa `targetIds` ou `skills` já alterados.
 `condition edit targets a check that is not on this action`,
 `condition edit must set either field or skillName, not both`,
 `escapeLanding only applies to an escape reaction on the open turn`,
-`escapeLanding position is outside the grid`).
+`escapeLanding position is outside the grid`, `damage has no advantage: a damage condition takes no bias`).
 
 ### `close_turn`
 

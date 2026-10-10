@@ -38,6 +38,11 @@ var (
 	// ErrAmbiguousConditionEdit means a condition edit set both Field and SkillName. They are
 	// alternatives, never both at once.
 	ErrAmbiguousConditionEdit = errors.New("condition edit must set either field or skillName, not both")
+	// ErrDamageHasNoAdvantage means a condition edit set a bias on the damage. Damage rolls a
+	// single set of dice (rollActionDice: "damage has no advantage"), so there is no second set
+	// for a bias to choose — accepting it would store something no reading can ever use. The
+	// flat modifier is accepted.
+	ErrDamageHasNoAdvantage = errors.New("damage has no advantage: a damage condition takes no bias")
 	// ErrCharacterAlreadyInSession means AddNPC was asked to add a character that already has
 	// combat state in this session — a second AddNPC for the same sheetUUID, or one that
 	// collides with an existing player character. It is an error rather than a silent

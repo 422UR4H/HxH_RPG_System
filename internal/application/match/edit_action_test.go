@@ -1024,3 +1024,60 @@ func TestEditActionDefaultDefense(t *testing.T) {
 		}
 	})
 }
+
+func TestEditActionDamageCondition(t *testing.T) {
+	editDamage := func(t *testing.T, f *editFixture, cond action.RollCondition, extra ...action.ConditionEdit) error {
+		t.Helper()
+		ma := action.NewMasterAction()
+		ma.ActionID = f.actionID
+		ma.Conditions = append(extra, action.ConditionEdit{Field: action.FieldDamage, Condition: cond})
+		_, err := match.NewEditActionUC().Execute(
+			context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
+		return err
+	}
+	// The fixture's hit (7) does not beat the victim's passive reflex (11): the blow would be
+	// avoided and RawDamage would read 0 regardless. Lift the hit first.
+	landed := func(t *testing.T) *editFixture {
+		t.Helper()
+		f := newOpenAttackFixture(t)
+		f.editHitModifier(t, 20)
+		return f
+	}
+
+	t.Run("the modifier moves the raw damage", func(t *testing.T) {
+		f := landed(t)
+		before := f.currentResolution(t).CharacterResults[0].RawDamage
+		if err := editDamage(t, f, action.RollCondition{Modifier: 5}); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if got := f.currentResolution(t).CharacterResults[0].RawDamage; got != before+5 {
+			t.Fatalf("RawDamage = %d, want %d", got, before+5)
+		}
+	})
+
+	t.Run("the raw damage floors at zero", func(t *testing.T) {
+		f := landed(t)
+		if err := editDamage(t, f, action.RollCondition{Modifier: -1000}); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if got := f.currentResolution(t).CharacterResults[0].RawDamage; got != 0 {
+			t.Fatalf("RawDamage = %d, want 0", got)
+		}
+	})
+
+	t.Run("bias on the damage is refused, and nothing in the payload lands", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		hit := action.ConditionEdit{Field: action.FieldHit, Condition: action.RollCondition{Modifier: 3}}
+		err := editDamage(t, f, action.RollCondition{Bias: 1}, hit)
+		if !errors.Is(err, matchsession.ErrDamageHasNoAdvantage) {
+			t.Fatalf("err = %v, want ErrDamageHasNoAdvantage", err)
+		}
+		a := f.openTurn().ActionRef()
+		if a.Attack.Damage.Context.Condition != nil || a.Attack.Hit.Context.Condition != nil {
+			t.Fatal("a refused edit left a condition behind")
+		}
+		if got := len(f.session.PeekOverridesFor(f.openTurn())); got != 0 {
+			t.Fatalf("captured %d values for a refused edit, want 0", got)
+		}
+	})
+}

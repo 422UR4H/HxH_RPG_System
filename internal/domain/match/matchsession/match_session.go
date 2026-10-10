@@ -280,6 +280,9 @@ func (s *MatchSession) ApplyMasterAction(
 		shadow.Skills = ma.Skills
 	}
 	for _, edit := range ma.Conditions {
+		if edit.Field == action.FieldDamage && edit.Condition.Bias != 0 {
+			return nil, ErrDamageHasNoAdvantage
+		}
 		if _, err := resolveRollCheck(&shadow, edit); err != nil {
 			return nil, err
 		}

@@ -328,9 +328,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 					continue
 				}
 				if a.Attack != nil {
-					raw, err := RawDamage(
-						a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorPush(in, a),
-					)
+					raw, err := tr.rawDamage(in, a)
 					if err != nil {
 						raw = 0
 					}
@@ -413,6 +411,25 @@ func (tr TurnResolver) actorPush(in ResolveInput, a action.Action) int {
 	return skillValueOf(cs, enum.Push.String())
 }
 
+// rawDamage is the attack's raw damage as the chain and a wall read it: RawDamage (the
+// weapon's dice, its flat bonus and the skill that measures damage) plus the master's flat
+// adjustment on the damage (edit_action, field "damage"). Only the Modifier: damage rolls one
+// set of dice, so a bias has nothing to choose, and the session refuses one.
+//
+// Floored at zero. A cut bigger than the blow would otherwise seed the chain with a negative
+// residual; EffectiveDamage and the chain's own floorZero already floor every later step, and
+// this is the same floor one step earlier.
+func (tr TurnResolver) rawDamage(in ResolveInput, a action.Action) (int, error) {
+	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorPush(in, a))
+	if err != nil {
+		return 0, err
+	}
+	if c := a.Attack.Damage.Context.Condition; c != nil {
+		raw = floorZero(raw + c.Modifier)
+	}
+	return raw, nil
+}
+
 // actorWeaponProficiency reads the attacker's proficiency LEVEL with the weapon this attack
 // swings — the number the combat catalogue publishes as proficiencyLevel — which is added to
 // the hit, the same way actorPush is added to the damage.
@@ -441,7 +458,7 @@ func (tr TurnResolver) actorWeaponProficiency(in ResolveInput, a action.Action) 
 // arrived and never re-rolled. Every target in the walk only ever subtracts from this one
 // number — it is not recomputed per target.
 func (tr TurnResolver) seedChain(in ResolveInput, a action.Action) ChainState {
-	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorPush(in, a))
+	raw, err := tr.rawDamage(in, a)
 	if err != nil {
 		return ChainState{}
 	}
