@@ -24,6 +24,18 @@ type Action struct {
 	Repel    *Repel
 	Interact *Interact
 
+	// DefaultDefense carries the master's condition on the DEFAULT defense — the passive one
+	// that stands behind a reaction whose kind keeps it (ReactionKind.KeepsDefault: dodge,
+	// closedDodge, escapeGuard). It exists only on such a reaction, and only once the master
+	// edited its "defense" (resolveRollCheck creates it). It has no dice: the default defense
+	// is passive, so only the condition's Modifier ever moves it.
+	//
+	// It is NOT Defense. Defense is a component a player may DECLARE, the resolver never reads
+	// it, and it travels on the action wire to everyone — a reaction that suddenly carried one
+	// would tell the table the master touched its defense before the turn closed. This field is
+	// mapped by no wire, the same way RollCheck.Context is not.
+	DefaultDefense *RollCheck
+
 	// ReactionKind is set only on a reaction, and it is what decides the cost — never the
 	// shape. It is deliberately a field rather than a constructor parameter: NewAction already
 	// takes twelve positional arguments and is called from dozens of sites, and growing it

@@ -342,3 +342,19 @@ func TestResolveReaction_ReadsTheMastersCondition(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveReaction_TheDefaultDefenseReadsItsCarrier(t *testing.T) {
+	// A dodge that fails (2 vs a hit of 30) falls back on the default defense, which is
+	// always passive: 0 skill + 11. The master's +4 on it lives in DefaultDefense.
+	r := reactionWith(action.ReactDodge, []int{1, 1}, nil, nil)
+	before := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30)).Defense.Total
+
+	r.DefaultDefense = &action.RollCheck{
+		SkillName: enum.Defense.String(),
+		Context:   action.RollContext{Condition: &action.RollCondition{Modifier: 4}},
+	}
+	after := service.ResolveReaction(reactionInput(t, action.ReactDodge, r, 30)).Defense.Total
+	if after != before+4 {
+		t.Fatalf("Defense.Total = %d, want %d (the passive %d + 4)", after, before+4, before)
+	}
+}

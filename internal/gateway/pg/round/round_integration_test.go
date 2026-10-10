@@ -2656,3 +2656,46 @@ func TestFindMatchHistory_KeepsTheReactionsTruthUnprojected(t *testing.T) {
 		t.Errorf("ConsumedActionIDs = %v, want [%s]", got.ConsumedActionIDs, consumedID)
 	}
 }
+
+func TestPersistTurnCloseWritesTheDefaultDefense(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+
+	edited := action.NewAction(fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{},
+		nil, nil, nil, nil, nil, nil, nil)
+	edited.ReactionKind = action.ReactDodge
+	edited.DefaultDefense = &action.RollCheck{
+		SkillName: "Defense",
+		Context:   action.RollContext{Condition: &action.RollCondition{Modifier: 4, Description: "cansado"}},
+	}
+	tn.AddReaction(edited)
+	tn.Close(time.Now())
+
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var reactionCol, actionCol []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT default_defense FROM actions WHERE uuid = $1`, edited.GetID()).Scan(&reactionCol); err != nil {
+		t.Fatalf("read reaction default_defense: %v", err)
+	}
+	if !strings.Contains(string(reactionCol), "cansado") {
+		t.Errorf("default_defense = %s, want the master's condition in it", reactionCol)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT default_defense FROM actions WHERE uuid = $1`, act.GetID()).Scan(&actionCol); err != nil {
+		t.Fatalf("read action default_defense: %v", err)
+	}
+	if actionCol != nil {
+		t.Errorf("default_defense = %s on an action with none, want SQL NULL", actionCol)
+	}
+}

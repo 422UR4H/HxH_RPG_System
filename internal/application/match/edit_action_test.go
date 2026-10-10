@@ -933,3 +933,94 @@ func TestOverrideCapture(t *testing.T) {
 		}
 	})
 }
+
+// attachReaction attaches a reaction of the given kind from the victim to the fixture's open
+// attack and returns its ID. Free mode rolls no speed; a dodge rolls its 2D10 Dodge (4 faces —
+// exactly the fixture's reserved budget), a repel its 2D10 Repel.
+func (f *editFixture) attachReaction(t *testing.T, kind action.ReactionKind) uuid.UUID {
+	t.Helper()
+	r := action.NewAction(
+		f.victimID, []uuid.UUID{f.attackerID}, f.actionID, nil,
+		action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	r.ReactionKind = kind
+	if kind == action.ReactRepel {
+		r.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+	} else {
+		r.Dodge = &action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}}
+	}
+	if _, err := f.session.AttachReaction(f.playerUUID, r); err != nil {
+		t.Fatalf("AttachReaction(%s): %v", kind, err)
+	}
+	return r.GetID()
+}
+
+// reactionRef reads one reaction of the open turn by ID, or fails the test.
+func (f *editFixture) reactionRef(t *testing.T, id uuid.UUID) *action.Action {
+	t.Helper()
+	r := f.openTurn().ReactionRef(id)
+	if r == nil {
+		t.Fatalf("reaction %v is not on the open turn", id)
+	}
+	return r
+}
+
+func TestEditActionDefaultDefense(t *testing.T) {
+	editDefense := func(t *testing.T, f *editFixture, id uuid.UUID, modifier int) error {
+		t.Helper()
+		ma := action.NewMasterAction()
+		ma.ActionID = id
+		ma.Conditions = []action.ConditionEdit{{
+			Field: action.FieldDefense, Condition: action.RollCondition{Modifier: modifier},
+		}}
+		_, err := match.NewEditActionUC().Execute(
+			context.Background(), f.session, f.masterUUID, f.masterUUID, ma, nil)
+		return err
+	}
+
+	t.Run("on a dodge reaction it lands on the default defense, and the resolution reads it", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactDodge)
+		if _, _, err := f.session.OpenReaction(id); err != nil {
+			t.Fatalf("OpenReaction: %v", err)
+		}
+		// Push the hit past the rolled dodge (6+7 = 13) so the default defense is reached.
+		f.editHitModifier(t, 20)
+		before := f.currentResolution(t).CharacterResults[0].Defense.Total
+
+		if err := editDefense(t, f, id, 4); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+
+		r := f.reactionRef(t, id)
+		if r.DefaultDefense == nil || r.DefaultDefense.Context.Condition == nil ||
+			r.DefaultDefense.Context.Condition.Modifier != 4 {
+			t.Fatalf("DefaultDefense = %+v, want the +4 condition", r.DefaultDefense)
+		}
+		if r.Defense != nil {
+			t.Fatal("the edit created a declared Defense component — that one travels on the wire")
+		}
+		if got := f.currentResolution(t).CharacterResults[0].Defense.Total; got != before+4 {
+			t.Fatalf("Defense.Total = %d, want %d", got, before+4)
+		}
+	})
+
+	t.Run("on a repel reaction it is refused — a repel gives the default defense up", func(t *testing.T) {
+		f := newOpenAttackFixture(t)
+		id := f.attachReaction(t, action.ReactRepel)
+		if err := editDefense(t, f, id, 4); !errors.Is(err, matchsession.ErrConditionTargetMissing) {
+			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
+		}
+		if f.reactionRef(t, id).DefaultDefense != nil {
+			t.Fatal("a refused edit left a DefaultDefense behind")
+		}
+	})
+
+	t.Run("on the turn's own action it keeps today's meaning: the declared Defense", func(t *testing.T) {
+		f := newOpenAttackFixture(t) // a plain attack: no Defense declared
+		if err := editDefense(t, f, f.actionID, 4); !errors.Is(err, matchsession.ErrConditionTargetMissing) {
+			t.Fatalf("err = %v, want ErrConditionTargetMissing", err)
+		}
+	})
+}

@@ -244,6 +244,10 @@ func insertAction(
 	if err != nil {
 		return fmt.Errorf("marshal interact: %w", err)
 	}
+	defaultDefenseJSON, err := marshalNullablePtr(act.DefaultDefense)
+	if err != nil {
+		return fmt.Errorf("marshal default defense: %w", err)
+	}
 
 	var moveViewsJSON []byte
 	if moveViews != nil {
@@ -276,14 +280,16 @@ func insertAction(
 		`INSERT INTO actions
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, repel, feint, trigger,
-		  interact, system_bias, reaction_kind, created_at, move_views, consumed_action_ids)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		  interact, system_bias, reaction_kind, created_at, move_views, consumed_action_ids,
+		  default_defense)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, deriveActionType(act),
 		speedJSON, skillsJSON, moveJSON, attackJSON,
 		defenseJSON, dodgeJSON, repelJSON, feintJSON, triggerJSON,
 		interactJSON, act.SystemBias,
 		reactionKind, createdAt, moveViewsJSON, consumedOrNil(act.ConsumedActionIDs),
+		defaultDefenseJSON,
 	)
 	return err
 }

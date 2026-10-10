@@ -110,10 +110,18 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		// Escaping and repelling give up the automatic defense. Miss, and the blow lands whole.
 		return out
 	}
+	// The master's condition on the default defense lives on the reaction's DefaultDefense
+	// (edit_action, field "defense"). A target that did not react has no reaction to carry it
+	// — that passive is not editable yet (front-combat-phases.md, pendências).
+	var defenseCond *action.RollCondition
+	if in.Reaction != nil && in.Reaction.DefaultDefense != nil {
+		defenseCond = in.Reaction.DefaultDefense.Context.Condition
+	}
 	out.Defense = calc.Derive(in.Rules, action.RollAttempts{}, RollInput{
 		SkillName:  enum.Defense.String(),
 		SkillValue: skillValueOf(in.Target, enum.Defense.String()),
 		Passive:    true,
+		Condition:  defenseCond,
 	})
 	out.Defended = out.Defense.Total >= in.HitTotal-in.Rules.LadderStep
 	return out

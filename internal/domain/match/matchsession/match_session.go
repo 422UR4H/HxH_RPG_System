@@ -465,6 +465,15 @@ func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollChe
 		}
 		return &a.Dodge.RollCheck, nil
 	case action.FieldDefense:
+		// On a reaction that keeps the default defense, "defense" names THAT one — the passive
+		// the resolver actually reads — and its carrier is created on first edit. Everywhere
+		// else it keeps naming the declared Defense component, as before.
+		if a.ReactionKind != "" && a.ReactionKind.KeepsDefault() {
+			if a.DefaultDefense == nil {
+				a.DefaultDefense = &action.RollCheck{SkillName: enum.Defense.String()}
+			}
+			return a.DefaultDefense, nil
+		}
 		if a.Defense == nil {
 			return nil, ErrConditionTargetMissing
 		}
