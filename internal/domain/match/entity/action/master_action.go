@@ -3,6 +3,7 @@ package action
 import (
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/google/uuid"
 )
 
@@ -44,7 +45,10 @@ type MasterAction struct {
 	// Conditions is the master changing how existing tests are read. Skills and TargetID
 	// change WHICH tests exist; this changes how they are read. The two surfaces are
 	// deliberately separate — see combat-engine.md § A edição do mestre.
-	Conditions  []ConditionEdit
+	Conditions []ConditionEdit
+	// DamageSkill swaps the skill that measures the damage of the action's attack (Push by
+	// default). nil = not sent, untouched.
+	DamageSkill *enum.SkillName
 	Move        *Move
 	Attack      *Attack
 	ActionSpeed *RollCheck

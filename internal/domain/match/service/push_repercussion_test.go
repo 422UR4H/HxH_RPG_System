@@ -19,8 +19,8 @@ import (
 // CHARACTERS, same weapon, same dice, different Push, different final damage — not just the
 // RawDamage formula in isolation (damage_test.go's TestRawDamageAddsThePush covers that, and
 // still does). Round 1 review found this gap: TestRawDamageAddsThePush calls
-// service.RawDamage with push as a literal int, which never touches actorPush, skillValueOf,
-// in.Sheets, or the two real call sites in turn_resolver.go. Without this file, actorPush
+// service.RawDamage with push as a literal int, which never touches actorDamageSkill, skillValueOf,
+// in.Sheets, or the two real call sites in turn_resolver.go. Without this file, actorDamageSkill
 // could be reverted to always returning 0 (a bad merge, a wrong map key, Push swapped for
 // another enum) and every test in the suite would still pass.
 
@@ -47,7 +47,7 @@ func sheetWithPush(t *testing.T) (*sheetPkg.CharacterSheet, int) {
 // repercussion: two attackers, same sword, same dice — one with Push 0, one with real Push —
 // against the same kind of target. Only the attacker's Push differs, and RawDamage on the
 // resolved CharacterResult must differ by exactly that Push, end to end through
-// TurnResolver.Resolve → seedChain → actorPush → skillValueOf.
+// TurnResolver.Resolve → seedChain → actorDamageSkill → skillValueOf.
 func TestSeedChain_ActorPushRaisesDamageAgainstACharacter(t *testing.T) {
 	actorID, targetID := uuid.New(), uuid.New()
 	sword := enum.Sword
@@ -81,7 +81,7 @@ func TestSeedChain_ActorPushRaisesDamageAgainstACharacter(t *testing.T) {
 }
 
 // TestWallBranch_ActorPushRaisesDamageAgainstAWall is the wall-branch half: the wall attack
-// is NOT behind actorSheetMissing, so it is the one place a broken actorPush wire could hide
+// is NOT behind actorSheetMissing, so it is the one place a broken actorDamageSkill wire could hide
 // even after the character branch was covered. Same weapon, same dice, an indestructible
 // margin (huge HP, zero resistance) so EffectiveDamage tracks RawDamage 1:1 with no clamping.
 func TestWallBranch_ActorPushRaisesDamageAgainstAWall(t *testing.T) {

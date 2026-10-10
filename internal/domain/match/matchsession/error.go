@@ -60,4 +60,7 @@ var (
 	// ErrLandingOutOfGrid means the master put a failed escape's piece on a cell the board
 	// does not have.
 	ErrLandingOutOfGrid = errors.New("escapeLanding position is outside the grid")
+	// ErrNoDamageToMeasure means a damageSkill edit named an action that carries no attack —
+	// there is no damage for a skill to measure.
+	ErrNoDamageToMeasure = errors.New("damageSkill edit targets an action with no attack")
 )

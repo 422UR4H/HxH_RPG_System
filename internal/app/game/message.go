@@ -348,6 +348,9 @@ type EditActionPayload struct {
 	Conditions []ConditionEditPayload `json:"conditions,omitempty"`
 	Skills     *[]ActionSkillPayload  `json:"skills,omitempty"`
 	TargetIDs  *[]uuid.UUID           `json:"targetIds,omitempty"`
+	// DamageSkill swaps the skill that measures the damage of the action's attack (Push by
+	// default): any valid skill name. Absent = untouched; "Push" puts it back.
+	DamageSkill *string `json:"damageSkill,omitempty"`
 	// EscapeLanding is where the master puts the piece of the escape named by ActionID IF it
 	// fails (front-combat-phases.md §6A.5, B13) — the engine has no rule for where a failed
 	// escape ends up. Absent = untouched. It is its own section, independent of the others:

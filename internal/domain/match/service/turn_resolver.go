@@ -129,6 +129,10 @@ type TurnResolution struct {
 	Blows            []*battle.Blow
 	WallResults      []WallResult
 	IsSettled        bool
+	// DamageSkill names the skill that measured the attack's damage — "Push" unless the master
+	// swapped it. Empty when the action has no attack. Public, like rawDamage: once settled,
+	// whoever reads the damage reads what measured it.
+	DamageSkill string
 	// PendingReactions is every reaction that has been ATTACHED but not yet OPENED — the
 	// master's own to-do list. An unopened reaction deliberately does not become a chain step
 	// (see buildChainOrder): dragging it into the walk would let it affect the collision before
@@ -252,6 +256,9 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	}
 	res.IsSettled = in.Turn.GetFinishedAt() != nil
 	a := in.Turn.GetAction()
+	if a.Attack != nil {
+		res.DamageSkill = a.Attack.EffectiveDamageSkill().String()
+	}
 
 	if in.Targets != nil {
 		// The character targets are NOT an independent loop over a.TargetID: they are a
@@ -397,18 +404,23 @@ func (tr TurnResolver) actorSheetMissing(in ResolveInput, a action.Action, res *
 	return true
 }
 
-// actorPush reads the attacker's Push — the skill that measures damage.
+// actorDamageSkill reads the attacker's skill that measures damage — Push, unless the master
+// swapped it (Attack.DamageSkill, edit_action damageSkill).
 //
 // It nil-guards on purpose: the wall branch is NOT behind actorSheetMissing, so an action
 // whose actor sheet never reached the resolver arrives here with nothing. Zero is the honest
 // answer there, and the missing sheet is already reported as a ResolutionError by the
 // character branch when it applies.
-func (tr TurnResolver) actorPush(in ResolveInput, a action.Action) int {
+func (tr TurnResolver) actorDamageSkill(in ResolveInput, a action.Action) int {
 	cs, ok := in.Sheets[a.GetActorID()]
 	if !ok || cs == nil {
 		return 0
 	}
-	return skillValueOf(cs, enum.Push.String())
+	skill := enum.Push
+	if a.Attack != nil {
+		skill = a.Attack.EffectiveDamageSkill()
+	}
+	return skillValueOf(cs, skill.String())
 }
 
 // rawDamage is the attack's raw damage as the chain and a wall read it: RawDamage (the
@@ -420,7 +432,7 @@ func (tr TurnResolver) actorPush(in ResolveInput, a action.Action) int {
 // residual; EffectiveDamage and the chain's own floorZero already floor every later step, and
 // this is the same floor one step earlier.
 func (tr TurnResolver) rawDamage(in ResolveInput, a action.Action) (int, error) {
-	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorPush(in, a))
+	raw, err := RawDamage(a.Attack.Damage.Attempts.Primary, a.Attack.Weapon, in.Weapons, tr.actorDamageSkill(in, a))
 	if err != nil {
 		return 0, err
 	}
@@ -432,12 +444,12 @@ func (tr TurnResolver) rawDamage(in ResolveInput, a action.Action) (int, error) 
 
 // actorWeaponProficiency reads the attacker's proficiency LEVEL with the weapon this attack
 // swings — the number the combat catalogue publishes as proficiencyLevel — which is added to
-// the hit, the same way actorPush is added to the damage.
+// the hit, the same way actorDamageSkill is added to the damage.
 //
 // The weapon decides which proficiency, and Accuracy stays the skill: proficiency is a bonus
 // on top of it, not a skill of its own. A nil weapon is the bare-handed blow, so it reads the
 // Fist proficiency; a character without that proficiency (or without a sheet here, for the
-// same reason actorPush nil-guards) adds zero, which is the honest answer, not a penalty.
+// same reason actorDamageSkill nil-guards) adds zero, which is the honest answer, not a penalty.
 func (tr TurnResolver) actorWeaponProficiency(in ResolveInput, a action.Action) int {
 	cs, ok := in.Sheets[a.GetActorID()]
 	if !ok || cs == nil || a.Attack == nil {

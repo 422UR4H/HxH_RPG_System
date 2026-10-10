@@ -50,8 +50,8 @@ func TestActorPush_ReadsTheAttackersSheet(t *testing.T) {
 		nil, nil, nil, nil, nil, nil, nil)
 	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}
 
-	if got := (TurnResolver{}).actorPush(in, *a); got != wantPush {
-		t.Fatalf("actorPush() = %d, want %d (the sheet's own Push)", got, wantPush)
+	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != wantPush {
+		t.Fatalf("actorDamageSkill() = %d, want %d (the sheet's own Push)", got, wantPush)
 	}
 }
 
@@ -65,15 +65,36 @@ func TestActorPush_MissingSheetIsZero(t *testing.T) {
 
 	t.Run("the actor's sheet was never handed to the resolver", func(t *testing.T) {
 		in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{}}
-		if got := (TurnResolver{}).actorPush(in, *a); got != 0 {
-			t.Fatalf("actorPush() = %d, want 0 for an absent sheet", got)
+		if got := (TurnResolver{}).actorDamageSkill(in, *a); got != 0 {
+			t.Fatalf("actorDamageSkill() = %d, want 0 for an absent sheet", got)
 		}
 	})
 
 	t.Run("Sheets itself is nil — the wall branch's own shape", func(t *testing.T) {
 		in := ResolveInput{}
-		if got := (TurnResolver{}).actorPush(in, *a); got != 0 {
-			t.Fatalf("actorPush() = %d, want 0 when Sheets is nil", got)
+		if got := (TurnResolver{}).actorDamageSkill(in, *a); got != 0 {
+			t.Fatalf("actorDamageSkill() = %d, want 0 when Sheets is nil", got)
 		}
 	})
+}
+
+// TestActorDamageSkill_ReadsTheMastersChoice: with the master's Grab on the attack, the damage
+// is measured by the sheet's Grab, not its Push.
+func TestActorDamageSkill_ReadsTheMastersChoice(t *testing.T) {
+	actorID := uuid.New()
+	cs, _ := pushedSheet(t)
+	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(900), enum.Grab); err != nil {
+		t.Fatalf("IncreaseExpForSkill(Grab): %v", err)
+	}
+	grab, err := cs.GetValueForTestOfSkill(enum.Grab)
+	if err != nil {
+		t.Fatalf("GetValueForTestOfSkill(Grab): %v", err)
+	}
+	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{DamageSkill: enum.Grab}, nil, nil, nil, nil)
+	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}
+
+	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != grab {
+		t.Fatalf("actorDamageSkill() = %d, want the sheet's Grab %d", got, grab)
+	}
 }
