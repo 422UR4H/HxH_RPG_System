@@ -57,6 +57,21 @@ func orderHasActor(p game.BarsUpdatedPayload, actor uuid.UUID) bool {
 	return false
 }
 
+// awaitBarsAfter waits for a bars_updated whose Seq is above seq. Counting messages is not a
+// barrier: the enqueue's own bars_updated can land after a count snapshot and satisfy "one
+// more", so the count would run before the cancel's messages.
+func awaitBarsAfter(t *testing.T, c *collector, seq uint64, d time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if c.count(game.MsgTypeBarsUpdated) > 0 && lastBarsUpdated(t, c).Seq > seq {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
 func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 	f := newCombatFixture(t, withBystander)
 	master, player := f.connect(t)
@@ -80,7 +95,7 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 	if !orderHasActor(lastBarsUpdated(t, bystanderMsgs), f.attackerID) {
 		t.Fatal("the attacker is not in the public order before cancelling — the fixture proves nothing")
 	}
-	barsBefore := bystanderMsgs.count(game.MsgTypeBarsUpdated)
+	seqBefore := lastBarsUpdated(t, bystanderMsgs).Seq
 
 	sendWS(t, player, "cancel_action", map[string]any{"actionId": actionID.String()})
 
@@ -99,7 +114,7 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 
 	// The bystander's bars_updated is the barrier: broadcastBars runs after the targeted
 	// sends, so once it lands any leaked action_cancelled would have landed too.
-	if !awaitCount(bystanderMsgs, game.MsgTypeBarsUpdated, barsBefore+1, 2*time.Second) {
+	if !awaitBarsAfter(t, bystanderMsgs, seqBefore, 2*time.Second) {
 		t.Fatal("the table never saw the order change after the cancel")
 	}
 	if n := bystanderMsgs.count(game.MsgTypeActionCancelled); n != 0 {
@@ -196,13 +211,18 @@ func TestE2E_MasterCancelsAnNPCActionOnce(t *testing.T) {
 		t.Fatalf("the master never saw their NPC's action queued; errors: %v", errorCodes(t, masterMsgs))
 	}
 	actionID := lastActionQueuedID(t, masterMsgs)
-	barsBefore := masterMsgs.count(game.MsgTypeBarsUpdated)
+	// The enqueue's own bars_updated goes out on another goroutine: wait for it, then take its
+	// Seq as the line the cancel's bars_updated must cross.
+	if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the master never saw the order after the enqueue")
+	}
+	seqBefore := lastBarsUpdated(t, masterMsgs).Seq
 
 	sendWS(t, master, "cancel_action", map[string]any{"actionId": actionID.String()})
 
 	// The master's bars_updated is the barrier: broadcastBars runs after the targeted sends
 	// to the master, so once it lands a duplicate action_cancelled would have landed too.
-	if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, barsBefore+1, 2*time.Second) {
+	if !awaitBarsAfter(t, masterMsgs, seqBefore, 2*time.Second) {
 		t.Fatalf("the master never saw the order change; errors: %v", errorCodes(t, masterMsgs))
 	}
 	if got := cancelledIDs(t, masterMsgs); len(got) != 1 || got[0] != actionID {
