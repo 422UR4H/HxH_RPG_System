@@ -173,9 +173,9 @@ type HistoryRound struct {
 	FinishedAt *time.Time
 	Turns      []HistoryTurn
 	// Events is what happened inside this round outside any turn the tree holds — the regime
-	// changes and the master actions with no turn (or whose turn was never written), already
-	// projected for the reader, in the order they happened (spec §4.5, §4.8). Never nil once
-	// the use case has run.
+	// changes, the master actions with no turn (or whose turn was never written) and the
+	// cancelled actions, already projected for the reader, in the order they happened (spec
+	// §4.5, §4.8; spec 2026-10-10 §8.1 P8). Never nil once the use case has run.
 	Events []HistoryEvent
 }
 
@@ -185,16 +185,49 @@ type HistoryEventKind string
 const (
 	HistoryEventRoundModeChanged HistoryEventKind = "roundModeChanged"
 	HistoryEventMasterAction     HistoryEventKind = "masterAction"
+	HistoryEventActionCancelled  HistoryEventKind = "actionCancelled"
 )
 
-// HistoryEvent is one entry of HistoryRound.Events: exactly one of RoundModeChange and
-// MasterAction is set, the one Kind names. At is when it happened — what Events is ordered by.
+// HistoryEvent is one entry of HistoryRound.Events: exactly one of RoundModeChange,
+// MasterAction and CancelledAction is set, the one Kind names. At is when it happened — what
+// Events is ordered by.
 type HistoryEvent struct {
 	Kind            HistoryEventKind
 	At              time.Time
 	RoundModeChange *matchevent.Event
 	MasterAction    *masteraction.Record
+	CancelledAction *HistoryCancelledAction
 }
+
+// HistoryCancelledAction is an action its declarer took back out of the queue (spec 2026-10-10
+// §8.1 P8), already decided for this reader: who cancelled is public — the public bar already
+// showed the order change — and the action itself only for the master and the actor's owner.
+type HistoryCancelledAction struct {
+	// UUID is the cancelled action's own id.
+	UUID uuid.UUID
+	// ActorUUID is the character sheet that would have acted.
+	ActorUUID uuid.UUID
+	// Action is nil when Cut is CancelledActionCutActor: a reader who may not see it never
+	// holds it.
+	Action *action.Action
+	// Cut is how much of Action this reader may see — applied by the REST mapping as an
+	// actionwire level, the way MoveSight is applied after From.
+	Cut CancelledActionCut
+}
+
+// CancelledActionCut is how much of a cancelled action one reader may see. The zero value is
+// the actor alone — fail closed: only the use case grants more.
+type CancelledActionCut string
+
+const (
+	// CancelledActionCutActor shows who cancelled and nothing of the action. The zero value.
+	CancelledActionCutActor CancelledActionCut = ""
+	// CancelledActionCutDeclaration shows what the owner declared, no numbers — the cut of
+	// their own ownQueue. The actor's owner.
+	CancelledActionCutDeclaration CancelledActionCut = "declaration"
+	// CancelledActionCutFull shows the whole action, dice included. The master.
+	CancelledActionCutFull CancelledActionCut = "full"
+)
 
 // HistoryTurn is one closed turn: the action that drove it, whatever reactions answered it,
 // the settled collision that resulted, and the master's own actions applied while it was open

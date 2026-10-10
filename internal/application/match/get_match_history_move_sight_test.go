@@ -99,7 +99,7 @@ func TestGetMatchHistoryShowsEachReaderTheMoveAsTheySawIt(t *testing.T) {
 				&mockHistoryRoundRepo{fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
 					return historyWithTurns(stored), nil
 				}},
-				&mockParticipationChecker{}, nil, nil,
+				&mockParticipationChecker{}, nil, nil, nil,
 			)
 			got, err := uc.Get(context.Background(), matchUUID, tt.reader)
 			if err != nil {
@@ -136,7 +136,7 @@ func TestGetMatchHistoryShowsEachReaderTheMoveAsTheySawIt(t *testing.T) {
 			&mockHistoryRoundRepo{fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
 				return historyWithTurns(stored), nil
 			}},
-			&mockParticipationChecker{}, nil, nil,
+			&mockParticipationChecker{}, nil, nil, nil,
 		)
 		got, err := uc.Get(context.Background(), matchUUID, readerUUID)
 		if err != nil {
@@ -213,7 +213,7 @@ func TestGetMatchHistoryShowsAReactionsMoveOnlyToWhoSawThePieceGoThere(t *testin
 				&mockHistoryRoundRepo{fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
 					return historyWithTurns(stored), nil
 				}},
-				&mockParticipationChecker{}, nil, nil,
+				&mockParticipationChecker{}, nil, nil, nil,
 			)
 			got, err := uc.Get(context.Background(), matchUUID, tt.reader)
 			if err != nil {
@@ -291,7 +291,7 @@ func TestGetMatchHistoryShowsAReactionAsItWasSeenWhenOpened(t *testing.T) {
 				&mockHistoryRoundRepo{fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
 					return historyWithTurns(stored), nil
 				}},
-				&mockParticipationChecker{}, nil, nil,
+				&mockParticipationChecker{}, nil, nil, nil,
 			)
 			got, err := uc.Get(context.Background(), matchUUID, tt.reader)
 			if err != nil {

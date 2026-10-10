@@ -47,7 +47,7 @@ func (f *combatFixture) historyTurnJSON(t *testing.T, reader uuid.UUID) map[stri
 				return participants, nil
 			},
 		},
-		f.roundRepo, historyNoParticipationCheck{}, nil, nil,
+		f.roundRepo, historyNoParticipationCheck{}, nil, nil, nil,
 	)
 	ctx := context.WithValue(context.Background(), apiAuth.UserIDKey, reader)
 	resp, err := apiMatch.GetMatchHistoryHandler(uc)(ctx, &apiMatch.GetMatchHistoryRequest{UUID: f.matchUUID})

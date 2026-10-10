@@ -93,6 +93,63 @@ func TestCancelledAction(t *testing.T) {
 		}
 	})
 
+	t.Run("ListByMatch reads this match's records in time order, action decoded", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterStr := pgtest.InsertTestUser(t, pool, "gm-cl", "gm-cl@test.com", "pass")
+		playerStr := pgtest.InsertTestUser(t, pool, "pl-cl", "pl-cl@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterStr, "CL Campaign")
+		sheetStr := pgtest.InsertTestCharacterSheet(t, pool, &playerStr, nil, nil, "Gon")
+		sheetUUID := uuid.MustParse(sheetStr)
+
+		build := func(matchStr string, turn *uuid.UUID, at time.Time) cancelledaction.Record {
+			sceneStr := pgtest.InsertTestScene(t, pool, matchStr, "Battle")
+			roundStr := pgtest.InsertTestRound(t, pool, sceneStr, "Race")
+			act := action.NewAction(sheetUUID, []uuid.UUID{uuid.New()}, uuid.Nil, nil,
+				action.ActionSpeed{Bar: 1, RollCheck: action.RollCheck{SkillName: "Legerity", Result: 8}},
+				nil, nil, &action.Attack{Hit: action.RollCheck{SkillName: "Accuracy", Result: 12}},
+				nil, nil, nil, nil)
+			return cancelledaction.Record{
+				UUID: act.GetID(), MatchUUID: uuid.MustParse(matchStr),
+				SceneUUID: uuid.MustParse(sceneStr), RoundUUID: uuid.MustParse(roundStr),
+				TurnUUID: turn, ActorUUID: sheetUUID, CancelledBy: uuid.MustParse(playerStr),
+				Action: *act, CancelledAt: at,
+			}
+		}
+		matchStr := pgtest.InsertTestMatch(t, pool, masterStr, campaignUUID, "CL Match")
+		otherMatch := pgtest.InsertTestMatch(t, pool, masterStr, campaignUUID, "CL Other")
+		turnID := uuid.New()
+		at := time.Now().UTC().Truncate(time.Microsecond)
+		first := build(matchStr, &turnID, at)
+		second := build(matchStr, nil, at.Add(time.Second))
+		elsewhere := build(otherMatch, nil, at.Add(500*time.Millisecond))
+
+		// Inserted out of time order: the read orders.
+		for _, rec := range []cancelledaction.Record{second, elsewhere, first} {
+			if err := repo.Insert(ctx, rec); err != nil {
+				t.Fatalf("Insert: %v", err)
+			}
+		}
+
+		got, err := repo.ListByMatch(ctx, uuid.MustParse(matchStr))
+		if err != nil {
+			t.Fatalf("ListByMatch: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("records = %d, want 2 (only this match's)", len(got))
+		}
+		for i, want := range []cancelledaction.Record{first, second} {
+			got[i].CancelledAt = got[i].CancelledAt.UTC()
+			if !reflect.DeepEqual(got[i], want) {
+				t.Errorf("record %d:\n got  %+v\n want %+v", i, got[i], want)
+			}
+		}
+
+		empty, err := repo.ListByMatch(ctx, uuid.New())
+		if err != nil || empty == nil || len(empty) != 0 {
+			t.Fatalf("ListByMatch of a match with none = %#v, %v; want a non-nil empty slice", empty, err)
+		}
+	})
+
 	t.Run("an actor that is not a sheet is refused", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		masterStr := pgtest.InsertTestUser(t, pool, "gm-ca2", "gm-ca2@test.com", "pass")

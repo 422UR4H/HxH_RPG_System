@@ -101,6 +101,7 @@ func TestGetMatchHistoryStitchesEventsAndMasterActions(t *testing.T) {
 			&fakeEventLister{events: []matchevent.Event{strayEvent, modeChange}},
 			// Deliberately out of time order: the use case orders, it does not trust the feed.
 			&fakeMasterActionLister{recs: []masteraction.Record{outside, inTurn, strayRound, lost, note}},
+			nil,
 		)
 	}
 
@@ -259,7 +260,7 @@ func TestGetMatchHistoryStitchesEventsAndMasterActions(t *testing.T) {
 				return tree(), nil
 			}},
 			&mockParticipationChecker{},
-			&fakeEventLister{}, &fakeMasterActionLister{},
+			&fakeEventLister{}, &fakeMasterActionLister{}, nil,
 		)
 		res, err := uc.Get(context.Background(), matchUUID, masterUUID)
 		if err != nil {

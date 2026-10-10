@@ -481,7 +481,9 @@ mappings:
       are MASTER-ONLY, stripped upstream rather than
       here: pendingReactions and errors (engine faults). payouts is withheld on one
       condition only, that the reaction's label was demoted. systemBias IS exposed;
-      RollCheck.Context is not.
+      RollCheck.Context is not. A round event kind "actionCancelled" carries actorId always
+      and action only for the master (Full) or the actor's owner (Declaration) — the use case
+      (GetMatchHistoryUC, HistoryCancelledAction.Cut) decides, this file only applies the cut.
 
   # ─── Match: Maps REST + WS API ───
   - code_path: internal/app/api/matchmap/
@@ -739,9 +741,12 @@ mappings:
     dev_docs:
       - path: docs/dev/api/match-combat-ws.md
         confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
     notes: >-
       pgcancelledaction.Repository — Insert em cancelled_actions, no pool (sem turno aberto) ou
-      na transação do PersistTurnClose (cancelada com turno aberto).
+      na transação do PersistTurnClose (cancelada com turno aberto). ListByMatch lê para o GET
+      /history (eventos "actionCancelled"), ação reconstruída por actioncodec.Unmarshal.
 
   - code_path: internal/gateway/pg/actioncodec/
     dev_docs:
