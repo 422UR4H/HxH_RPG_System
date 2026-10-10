@@ -1131,7 +1131,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// The master decides what opens next, so they hear it first; the sender gets the same
 		// news as the ack of their own request. A master cancelling an NPC's action is both —
 		// one message, not two. The table only sees the public order change.
-		cancelled := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload{ActionID: payload.ActionID})
+		cancelled := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload(payload))
 		r.sendToMaster(cancelled)
 		if !r.IsMaster(client.userUUID) {
 			client.SendMessage(cancelled)

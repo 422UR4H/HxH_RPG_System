@@ -401,6 +401,10 @@ rodada — `round_closed` só sai de `open_next_action`.
 **Erros:** `forbidden` · `invalid_payload` (`"invalid pull_action payload"`) ·
 `match_not_started` · `game_error` (`action not found in queue`).
 
+> O `game_error` `action not found in queue` também ocorre quando o dono da ação a
+> [cancelou](#cancel_action) no meio-tempo; o mestre fica sabendo por
+> [`action_cancelled`](#action_cancelled).
+
 ### `cancel_action`
 
 **Direção:** cliente → servidor. **Quem:** qualquer cliente da partida; a autorização é **por
@@ -1116,7 +1120,8 @@ era a vez dele depois que passou.
 | `order` | Projeção de quem age em seguida, **maior `key` primeiro**. Carrega quem e em qual barra, e **nada que identifique a ação** — nem ID, nem arma, nem alvo, nem perícia. |
 
 **Disparado por:** qualquer coisa que mova as barras — `enqueue_action`,
-`open_next_action`, `pull_action`, `close_turn`, `change_round_mode`.
+[`cancel_action`](#cancel_action), `open_next_action`, `pull_action`, `close_turn`,
+`change_round_mode`.
 
 ### `turn_opened`
 

@@ -182,6 +182,37 @@ func TestE2E_CancelledActionIsGoneAfterReconnect(t *testing.T) {
 	}
 }
 
+// The master cancelling an NPC's action is both the master and the sender: the arm must send
+// ONE action_cancelled, not two, and nothing to the players.
+func TestE2E_MasterCancelsAnNPCActionOnce(t *testing.T) {
+	f := newCombatFixture(t, withNPCTarget)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs, playerMsgs := collectFrom(master), collectFrom(player)
+
+	f.enqueueAttackFrom(t, master, f.npcID)
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatalf("the master never saw their NPC's action queued; errors: %v", errorCodes(t, masterMsgs))
+	}
+	actionID := lastActionQueuedID(t, masterMsgs)
+	barsBefore := masterMsgs.count(game.MsgTypeBarsUpdated)
+
+	sendWS(t, master, "cancel_action", map[string]any{"actionId": actionID.String()})
+
+	// The master's bars_updated is the barrier: broadcastBars runs after the targeted sends
+	// to the master, so once it lands a duplicate action_cancelled would have landed too.
+	if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, barsBefore+1, 2*time.Second) {
+		t.Fatalf("the master never saw the order change; errors: %v", errorCodes(t, masterMsgs))
+	}
+	if got := cancelledIDs(t, masterMsgs); len(got) != 1 || got[0] != actionID {
+		t.Errorf("master action_cancelled ids = %v, want exactly [%v]", got, actionID)
+	}
+	if n := playerMsgs.count(game.MsgTypeActionCancelled); n != 0 {
+		t.Errorf("the player received %d action_cancelled for the master's NPC — the queue is secret", n)
+	}
+}
+
 func TestE2E_CannotCancelSomeoneElsesAction(t *testing.T) {
 	f := newCombatFixture(t, withBystander)
 	master, player := f.connect(t)
@@ -206,8 +237,9 @@ func TestE2E_CannotCancelSomeoneElsesAction(t *testing.T) {
 	if e := lastError(t, bystanderMsgs); e.Code != "game_error" || e.Message != "action actor does not match player" {
 		t.Errorf("error = %+v, want game_error / action actor does not match player", e)
 	}
-	// The refusal is the barrier for the master: the arm answers the sender before any
-	// targeted send could have happened.
+	// No barrier orders the bystander's refusal against the master's connection (different
+	// sockets); these counts only catch a leak that already landed. The reconnection check
+	// below is what proves the queue is intact.
 	if n := masterMsgs.count(game.MsgTypeActionCancelled); n != 0 {
 		t.Errorf("the master received %d action_cancelled for a refused cancel", n)
 	}
