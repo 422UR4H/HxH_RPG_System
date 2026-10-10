@@ -620,3 +620,69 @@ func TestGetMatchHistoryProjectsAStoppedChain(t *testing.T) {
 		t.Errorf("attackStopped must be omitted when false: %v", targets[1])
 	}
 }
+
+// TestGetMatchHistoryCarriesTheDamageSkill pins the history's damageSkill: the skill that
+// measured the damage reaches the table, like rawDamage, once the turn is settled. A turn
+// with no attack — and every turn recorded before Phase 8 — omits the key.
+func TestGetMatchHistoryCarriesTheDamageSkill(t *testing.T) {
+	userUUID, matchUUID := uuid.New(), uuid.New()
+	now := time.Now()
+
+	act := action.NewAction(uuid.New(), nil, uuid.Nil, nil,
+		action.ActionSpeed{}, nil, nil, &action.Attack{}, nil, nil, nil, nil)
+
+	scenes := []match.HistoryScene{{
+		UUID: uuid.New(), Category: "combat", CreatedAt: now,
+		Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "combat", CreatedAt: now,
+			Turns: []match.HistoryTurn{{
+				UUID: uuid.New(), CreatedAt: now, FinishedAt: now,
+				Action:     *act,
+				Resolution: &service.TurnResolution{IsSettled: true, DamageSkill: "Grab"},
+			}},
+		}},
+	}}
+
+	_, api := humatest.New(t)
+	handler := apiMatch.GetMatchHistoryHandler(&mockGetMatchHistory{
+		fn: func(_ context.Context, _, _ uuid.UUID) (*match.GetMatchHistoryResult, error) {
+			return &match.GetMatchHistoryResult{Scenes: scenes}, nil
+		},
+	})
+	huma.Register(api, huma.Operation{
+		Method: http.MethodGet,
+		Path:   "/matches/{uuid}/history",
+	}, handler)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+	resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Scenes []struct {
+			Rounds []struct {
+				Turns []struct {
+					Resolution struct {
+						DamageSkill string `json:"damageSkill"`
+					} `json:"resolution"`
+				} `json:"turns"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v — body: %s", err, resp.Body.String())
+	}
+	if got := body.Scenes[0].Rounds[0].Turns[0].Resolution.DamageSkill; got != "Grab" {
+		t.Errorf("damageSkill = %q, want Grab — body: %s", got, resp.Body.String())
+	}
+
+	t.Run("a turn with no damage skill omits the key", func(t *testing.T) {
+		scenes[0].Rounds[0].Turns[0].Resolution = &service.TurnResolution{IsSettled: true}
+		resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+		if strings.Contains(resp.Body.String(), `"damageSkill"`) {
+			t.Errorf("a resolution with no damage skill advertised the key: %s", resp.Body.String())
+		}
+	})
+}

@@ -4,6 +4,7 @@ package round_test
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -2697,5 +2698,60 @@ func TestPersistTurnCloseWritesTheDefaultDefense(t *testing.T) {
 	}
 	if actionCol != nil {
 		t.Errorf("default_defense = %s on an action with none, want SQL NULL", actionCol)
+	}
+}
+
+func TestPersistTurnCloseWritesTheDamageSkill(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	act.Attack.DamageSkill = enum.Grab
+	tn := turnentity.NewTurn(*act)
+	tn.Close(time.Now())
+	res := &service.TurnResolution{
+		IsSettled:   true,
+		DamageSkill: "Grab",
+		// A resolution handed in with conditions must not write them: they live in actions.
+		Conditions: []service.CheckCondition{{ActionID: act.GetID(), Field: "hit",
+			Condition: action.RollCondition{Modifier: 2, Description: "nao-gravar"}}},
+	}
+
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		Resolution: res,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var stored []byte
+	if err := pool.QueryRow(ctx, `SELECT resolution FROM turns WHERE uuid = $1`, tn.GetID()).Scan(&stored); err != nil {
+		t.Fatalf("read back resolution: %v", err)
+	}
+	// JSONB re-renders the document (`"key": "value"`), so the key is read, not grepped.
+	var keys map[string]any
+	if err := json.Unmarshal(stored, &keys); err != nil {
+		t.Fatalf("unmarshal turns.resolution: %v", err)
+	}
+	if keys["damageSkill"] != "Grab" {
+		t.Errorf("turns.resolution = %s, want damageSkill Grab", stored)
+	}
+	if strings.Contains(string(stored), "nao-gravar") {
+		t.Errorf("turns.resolution carries the master's conditions: %s", stored)
+	}
+	if got := roundrepo.DecodeResolution(stored); got == nil || got.DamageSkill != "Grab" {
+		t.Errorf("DecodeResolution lost damageSkill: %+v", got)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	got := scenes[0].Rounds[0].Turns[0]
+	if got.Action.Attack == nil || got.Action.Attack.DamageSkill != enum.Grab {
+		t.Errorf("the attack read back without the damage skill: %+v", got.Action.Attack)
 	}
 }

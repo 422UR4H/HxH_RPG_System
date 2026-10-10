@@ -84,6 +84,10 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 		// only recipient who can act on one. A target the engine could not classify is also,
 		// in practice, a name the table was never told about.
 		out.Errors = nil
+		// The master's conditions — what they edited, and why — are theirs alone, open turn or
+		// not. The numbers they produced are the table's once the turn settles; the reasons
+		// are not.
+		out.Conditions = nil
 	}
 	// Blows carry no numbers (see battle.Blow) and are not projected. There is no separate
 	// per-reaction list to project either — every reaction outcome is already on the

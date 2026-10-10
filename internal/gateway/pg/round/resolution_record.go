@@ -23,7 +23,7 @@ import (
 //     silent way. It travels through Scope.Kind()/ID() and comes back through ScopeFrom.
 //
 // Being explicit cuts both ways: every omission below is CHOSEN, not accidental, and has to
-// be justified in this comment or in the record's own fields. Two fields of
+// be justified in this comment or in the record's own fields. Three fields of
 // service.TurnResolution are dropped on purpose:
 //
 //   - Blows ([]*battle.Blow) — the same reason as above: Blow carries no numbers by its own
@@ -33,14 +33,21 @@ import (
 //     its own doc comment on TurnResolution): the reactions attached but not yet given the
 //     floor. It describes what has NOT happened yet, not an outcome of the collision, so it
 //     has nothing to persist once the turn is closed and settled.
+//   - Conditions ([]service.CheckCondition) — the master's conditions in force on the OPEN
+//     turn (the resolver does not even fill it once settled). Each one already lives in the
+//     actions table, inside the RollCheck it bends; a copy here would be a second source of
+//     truth that can diverge (spec 2026-10-09 D5).
 //
-// (A third, ReactionResults, used to be listed here as an unimplemented stub. It no longer
+// (One more, ReactionResults, used to be listed here as an unimplemented stub. It no longer
 // exists on TurnResolution at all — every reaction outcome is on the CharacterResult of the
 // target that sent it, and this record already keeps those.)
 //
 // Tags are camelCase, like every other wire shape in this repo.
 type resolutionRecord struct {
-	IsSettled    bool                    `json:"isSettled"`
+	IsSettled bool `json:"isSettled"`
+	// DamageSkill is what measured the damage ("Push" unless the master swapped it). Absent
+	// on rows from before Phase 8 — all of those were Push — and on a turn with no attack.
+	DamageSkill  string                  `json:"damageSkill,omitempty"`
 	ActionResult rollResultRecord        `json:"actionResult"`
 	Characters   []characterResultRecord `json:"characters"`
 	// WallResults holds the wall's ID, not its full mapentity.WallSegment: the wall's
@@ -187,6 +194,7 @@ func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]ma
 	}
 	rec := resolutionRecord{
 		IsSettled:    res.IsSettled,
+		DamageSkill:  res.DamageSkill,
 		ActionResult: rollResultRecord(res.ActionResult),
 		Characters:   make([]characterResultRecord, 0, len(res.CharacterResults)),
 	}
@@ -254,6 +262,7 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 	}
 	out := &service.TurnResolution{
 		IsSettled:        rec.IsSettled,
+		DamageSkill:      rec.DamageSkill,
 		ActionResult:     service.RollResult(rec.ActionResult),
 		CharacterResults: make([]service.CharacterResult, 0, len(rec.Characters)),
 	}

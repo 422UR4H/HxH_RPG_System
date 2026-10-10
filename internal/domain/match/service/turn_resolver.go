@@ -133,6 +133,13 @@ type TurnResolution struct {
 	// swapped it. Empty when the action has no attack. Public, like rawDamage: once settled,
 	// whoever reads the damage reads what measured it.
 	DamageSkill string
+	// Conditions is every master condition in force on the turn — filled only while the turn
+	// is OPEN, when the whole resolution is the master's. It is how a master who reloads
+	// mid-edit finds what they had set (match_full_state.resolution is a fresh Resolve). Not
+	// persisted: the conditions already live in the actions table, inside each RollCheck, and a
+	// second copy in turns.resolution would be one that can diverge. ProjectResolution strips
+	// it for anyone but the master.
+	Conditions []CheckCondition
 	// PendingReactions is every reaction that has been ATTACHED but not yet OPENED — the
 	// master's own to-do list. An unopened reaction deliberately does not become a chain step
 	// (see buildChainOrder): dragging it into the walk would let it affect the collision before
@@ -385,6 +392,9 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 			ActorID:    r.GetActorID(),
 			Kind:       string(r.ReactionKind),
 		})
+	}
+	if !res.IsSettled {
+		res.Conditions = turnConditions(in.Turn)
 	}
 	return res
 }
