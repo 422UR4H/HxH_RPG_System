@@ -1332,9 +1332,18 @@ func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) (*action.Act
 }
 
 // swapBias is the systemBias a character's next derivation starts from: -1 while their cancel
-// mark belongs to the round that is active now, 0 otherwise (including a mark left by a
-// round that has since closed).
+// mark belongs to the round that is active now AND that round is in Race, 0 otherwise
+// (including a mark left by a round that has since closed).
+//
+// The regime is checked here, not only when the mark is written: Dash's moveSpeed (and an
+// escape's) is rolled in ANY regime and FinalSpeed decides an escape in Free too, so a mark
+// left in Race would otherwise bias them after the master switches to Free. SetRoundMode keeps
+// the round id, so the mark is not erased by the switch — it is only ignored while the round is
+// not in Race, and applies again if the master goes back to Race within the same round.
 func (s *MatchSession) swapBias(charID uuid.UUID) int {
+	if s.activeRound.GetMode() != enum.Race {
+		return 0
+	}
 	if markedIn, ok := s.swapMarks[charID]; ok && markedIn == s.activeRound.GetID() {
 		return -1
 	}

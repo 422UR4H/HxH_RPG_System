@@ -569,6 +569,36 @@ func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
 		}
 	})
 
+	t.Run("a Free regime ignores the mark, and Race brings it back within the same round", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA)
+		first := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, first); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(playerA, first.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		// SetRoundMode keeps the round id, so the mark is still this round's. Dash's moveSpeed
+		// is rolled in any regime — the gate has to be the regime, not the speed being passive.
+		s.SetRoundMode(enum.Free)
+		inFree := dashAction(chars[0])
+		if err := s.EnqueueAction(playerA, inFree); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if inFree.SystemBias != 0 {
+			t.Errorf("Dash in Free: SystemBias = %d, want 0 — the mark only biases in Race", inFree.SystemBias)
+		}
+		s.SetRoundMode(enum.Race)
+		backInRace := dashAction(chars[0])
+		if err := s.EnqueueAction(playerA, backInRace); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if backInRace.SystemBias != -1 {
+			t.Errorf("Dash back in Race: SystemBias = %d, want -1 — the mark is still this round's", backInRace.SystemBias)
+		}
+	})
+
 	t.Run("the mark ends with the round", func(t *testing.T) {
 		playerA := uuid.New()
 		s, chars := raceSessionWithSheets(t, enum.Race, playerA)
@@ -658,6 +688,20 @@ func TestMatchSession_CancelAction_MarksReactions(t *testing.T) {
 		}
 	})
 
+	t.Run("an escape in Free ignores the mark", func(t *testing.T) {
+		s, chars, playerB, targetID, _ := setup(t)
+		cancelOne(t, s, playerB, chars[1])
+		s.SetRoundMode(enum.Free)
+		r := makeReactionTo(chars[1], targetID)
+		r.ReactionKind = action.ReactEscape
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if r.SystemBias != 0 {
+			t.Errorf("SystemBias = %d, want 0 — FinalSpeed decides an escape in Free too, but the mark is Race-only", r.SystemBias)
+		}
+	})
+
 	t.Run("a repel without a cancel keeps no bias", func(t *testing.T) {
 		s, chars, playerB, targetID, _ := setup(t)
 		r := makeReactionTo(chars[1], targetID)
@@ -690,7 +734,7 @@ func TestMatchSession_CancelAction_MarksReactions(t *testing.T) {
 	})
 
 	t.Run("free reactions stay free even for a marked character", func(t *testing.T) {
-		for _, kind := range []action.ReactionKind{action.ReactDodge, action.ReactNothing} {
+		for _, kind := range []action.ReactionKind{action.ReactDodge, action.ReactClosedDodge, action.ReactNothing} {
 			s, chars, playerB, targetID, _ := setup(t)
 			cancelOne(t, s, playerB, chars[1])
 			r := makeReactionTo(chars[1], targetID)

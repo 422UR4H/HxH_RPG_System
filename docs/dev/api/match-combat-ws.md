@@ -442,7 +442,7 @@ meio do turno a perde com o turno, de propósito. Nada disso vai ao wire agora.
 - Cancelar **não fecha a rodada** — só `open_next_action` fecha (`round_closed`).
 
 **Cancelar marca o personagem com a Desvantagem de troca, até o fim da rodada** (só no regime
-`Race`; em `Free` a velocidade é passiva e ninguém é marcado). Cancelar é trocar de ação: dali em
+`Race`; em `Free` ninguém é marcado e uma marca feita em `Race` é ignorada enquanto o regime for `Free`, voltando a valer se o mestre retornar a `Race` na mesma rodada). Cancelar é trocar de ação: dali em
 diante, na mesma rodada, tudo que ele declarar ([`enqueue_action`](#enqueue_action)) e toda reação
 dele que cobra barra (repelir, os três escapes) deriva a velocidade com Desvantagem
 (`systemBias: -1`, o mesmo campo que a troca de uma reação já grava): o `actionSpeed` sempre, o

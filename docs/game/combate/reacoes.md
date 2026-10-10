@@ -61,7 +61,7 @@ isso custa **Desvantagem**: o sistema rola de novo e fica com o pior dos dois re
 
 Se você **não** tinha ação declarada, a reação simplesmente vira a sua ação. Sem penalidade.
 
-**Cancelar uma ação também é trocar.** Na disputa de velocidade, até o fim da rodada em que você
+**Cancelar uma ação também é trocar.** No regime disputado, até o fim do round em que você
 cancelou, tudo o que você fizer de novo — declarar outra ação ou reagir ativamente — rola a
 velocidade com **Desvantagem**. Só a velocidade piora: o acerto, a esquiva, a defesa e o dano
 continuam como sempre.
