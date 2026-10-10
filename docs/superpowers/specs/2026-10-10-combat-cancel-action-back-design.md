@@ -131,3 +131,72 @@ A reconexão já sai certa sem código novo: `match_full_state.queue` (mestre) e
 - Cancelar uma reação já anexada (`attach_reaction`) — reação não está na fila; é outro verbo, se
   um dia fizer falta.
 - Qualquer registro do cancelamento no histórico (§4).
+
+---
+
+## 8. Adendo (2026-10-10, mesmo PR): cancelar custa Desvantagem, e a cancelada fica registrada
+
+Decidido pelo dono do produto depois da revisão final, que achou a lacuna: com o verbo novo,
+cancelar e depois reagir ou declarar de novo escapava da Desvantagem que `reacoes.md` cobra de
+quem **troca** de ação. Supera C3 só no que diz respeito à Desvantagem (barras continuam sem
+devolução nem cobrança).
+
+### 8.1 Decisões
+
+| # | Decisão |
+|---|---|
+| P1 | **Cancelar marca o personagem até o fim da rodada.** Toda ação que ele declarar dali em diante, e toda reação dele que cobra barra (repelir, os três escapes), deriva a velocidade com Desvantagem (`systemBias = -1`) — a mesma da troca de ação de hoje: `actionSpeed` (Legerity) sempre; `moveSpeed` quando a ação ou a reação move. Acerto, esquiva, defesa e dano **não** pioram (dono do produto: "o acerto, a esquiva e o dano dele não pioram"). |
+| P2 | **Só o que vem depois do cancelamento, só na rodada em que ele aconteceu.** As outras ações que ele já tinha na fila já rolaram e não são re-derivadas. |
+| P3 | **Só no regime Race.** No Free a velocidade é passiva e o viés não teria efeito; o cancelamento em Free não marca ninguém. |
+| P4 | **Não acumula.** Marca + consumo numa mesma reação continua sendo uma Desvantagem só (`-1`), como a troca já é. Esquiva, esquiva fechada, "não fazer nada" e as passivas não rolam velocidade e continuam sem custo. |
+| P5 | **O perdão do mestre** fica com as alavancas de hoje (abrir antes com `pull_action`, deixar acontecer). Nenhum verbo novo de "perdoar". |
+| P6 | **A ação cancelada é gravada**, em tabela própria `cancelled_actions` (não em `actions`, que exige turno — a cancelada nunca teve; mesmo motivo de `master_actions`, spec 2026-09-27 §4.8), com referência à **rodada** (e à cena e à partida) em que ela aconteceria; `turn_uuid` = o turno aberto no instante do cancelamento, ou NULL. |
+| P7 | **Quando grava:** a mesma regra das master actions — com turno aberto, junto com o fechamento desse turno (`turnWrites` → `PersistTurnClose`, mesma transação); sem turno aberto, na hora (`ensureSceneAndRoundRows` antes, como `recordMasterAction`). Um reinício no meio do turno perde o registro junto com o turno, de propósito. |
+| P8 | **No histórico** (`GET /history`): um evento de rodada `kind: "actionCancelled"` em `rounds[].events`, na ordem do tempo. O **mestre** vê `actorId` + `action` (nível `Full`); o **dono** do personagem vê `actorId` + `action` (nível `Declaration`, o mesmo do `ownQueue`); **os outros** veem só `actorId` ("Fulano cancelou uma ação") — não revela nada que a barra geral pública já não tenha mostrado. |
+
+### 8.2 Onde mora
+
+- **A marca:** `MatchSession.swapMarks map[uuid.UUID]uuid.UUID` (personagem → id da rodada em que
+  cancelou). Vale enquanto o id for o da rodada ativa — sem gancho de reset: a rodada seguinte
+  tem outro id. `CancelAction` grava a marca quando o regime ativo é Race. Um helper
+  `swapBias(charID) int` devolve `-1` com marca válida, senão `0`.
+- **Quem lê:** `EnqueueAction` (hoje `deriveSpeeds(a, 0)` → `deriveSpeeds(a, s.swapBias(actor))`)
+  e `AttachReaction` para reação não-livre (`systemBias = -1` se consumiu **ou** se marcado).
+  `Action.SystemBias` guarda o viés, então a re-derivação de uma edição do mestre o preserva (já é assim).
+- **O registro:** `CancelAction` passa a devolver a ação removida (`(*action.Action, error)`), para
+  a `Room` montar o registro. `cancelledaction.Record` (pacote novo em
+  `internal/domain/match/entity/` ou ao lado de `masteraction` — siga onde `masteraction` mora):
+  `UUID` (= id da ação), `MatchUUID`, `SceneUUID`, `RoundUUID`, `TurnUUID *uuid.UUID`,
+  `ActorUUID` (ficha), `CancelledBy` (usuário), `Action action.Action`, `CancelledAt`.
+- **Tabela** (migração nova): `cancelled_actions (uuid PK, match_uuid FK matches ON DELETE
+  CASCADE, scene_uuid FK scenes, round_uuid FK rounds, turn_uuid NULL sem FK (como em
+  master_actions), actor_uuid FK character_sheets, cancelled_by FK users, action JSONB NOT NULL,
+  cancelled_at TIMESTAMPTZ NOT NULL)` + índice `(match_uuid, cancelled_at)`. `action` guarda a
+  ação no **formato de armazenamento do domínio** (as mesmas peças JSON que `insertAction` grava
+  nas colunas de `actions` — reaproveite o mapeamento, não invente outro), para o histórico
+  reconstruir uma `action.Action` e projetá-la com `actionwire.From`, como já faz com `actions`.
+- **Gravação:** gateway `internal/gateway/pg/cancelledaction` (Insert) e, no `PersistTurnClose`,
+  `TurnCloseData.CancelledActions` inserido na mesma transação; `turnWrites` ganha
+  `cancelledActions`. `RoomDeps.CancelledActionRepo` (nil = não grava, a convenção).
+- **Leitura:** um lister no use case do histórico, como `IMasterActionLister`; o `stitch` põe cada
+  registro em `rounds[].events` com `Kind: HistoryEventActionCancelled`; a projeção por leitor
+  (P8) segue o padrão de visibilidade do use case (mestre / dono / resto).
+
+### 8.3 Contrato
+
+- `cancel_action`: a Desvantagem até o fim da rodada (Race), a gravação e onde aparece.
+- `match-history.md`: `events[].kind` ganha `"actionCancelled"`, com `actorId` e `action?` e a
+  tabela de visibilidade de P8.
+- `combat-engine.md` (tabela de custos da troca) e `docs/game/combate/acoes.md` ou
+  `reacoes.md`: uma frase de regra — "cancelar uma ação também é trocar: até o fim da rodada, o
+  que você fizer de novo rola a velocidade com Desvantagem".
+
+### 8.4 Testes
+
+- Domínio: Race, cancela e declara → velocidade com `SystemBias -1`; Free → 0; cancela, rodada
+  fecha, declara → 0; cancela e reage com repelir sem nada na fila → `-1`; cancela e esquiva →
+  livre, sem viés; consumo + marca → `-1` (não `-2`); outra ação que já estava na fila não muda.
+- Gateway (integração, `-tags integration`): insert e leitura de `cancelled_actions`; o
+  `PersistTurnClose` grava as canceladas do turno na transação.
+- E2E: cancelar sem turno aberto grava na hora; com turno aberto grava só no fechamento; `GET
+  /history` (handler real) projeta mestre/dono/outro.
