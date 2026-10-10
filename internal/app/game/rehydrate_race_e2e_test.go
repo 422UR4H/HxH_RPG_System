@@ -43,7 +43,7 @@ func TestE2E_PlayerThereBeforeTheMasterRehydratesGetsMatchFullState(t *testing.T
 	lateMasterTable(t, f)
 
 	player := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
-	defer player.Close() //nolint:errcheck
+	defer player.Close()   //nolint:errcheck
 	readMessage(t, player) // room_state
 	pc := collectFrom(player)
 
@@ -64,7 +64,7 @@ func TestE2E_MasterReconnectInALobbySendsNoMatchFullState(t *testing.T) {
 	lateMasterTable(t, f)
 
 	player := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
-	defer player.Close() //nolint:errcheck
+	defer player.Close()   //nolint:errcheck
 	readMessage(t, player) // room_state
 	pc := collectFrom(player)
 

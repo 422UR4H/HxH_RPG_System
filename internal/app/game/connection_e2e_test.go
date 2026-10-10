@@ -50,16 +50,16 @@ func TestConnection_LastConnectionWins(t *testing.T) {
 	defer hub.Stop()
 
 	master := connectWS(t, server.URL, masterUUID, matchUUID)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	oldConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer oldConn.Close() //nolint:errcheck
+	defer oldConn.Close()   //nolint:errcheck
 	readMessage(t, oldConn) // room_state
 
 	// Same account, second tab.
 	newConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer newConn.Close() //nolint:errcheck
+	defer newConn.Close()   //nolint:errcheck
 	readMessage(t, newConn) // room_state — the new connection registers exactly like any other
 
 	// The OLD connection's next message is the replacement notice, not silence and not a
@@ -101,7 +101,7 @@ func TestConnection_OldClosingAfterwardsDoesNotEvictTheNewConnection(t *testing.
 	defer hub.Stop()
 
 	master := connectWS(t, server.URL, masterUUID, matchUUID)
-	defer master.Close() //nolint:errcheck
+	defer master.Close()   //nolint:errcheck
 	readMessage(t, master) // room_state
 
 	oldConn := connectWS(t, server.URL, playerUUID, matchUUID)
@@ -116,7 +116,7 @@ func TestConnection_OldClosingAfterwardsDoesNotEvictTheNewConnection(t *testing.
 	}
 
 	newConn := connectWS(t, server.URL, playerUUID, matchUUID)
-	defer newConn.Close() //nolint:errcheck
+	defer newConn.Close()   //nolint:errcheck
 	readMessage(t, newConn) // room_state
 
 	// Drain the replacement notice, then let the OLD connection actually finish closing —
