@@ -436,6 +436,17 @@ uma reação já saiu da fila — também não.
   (a mesma regra de uma ação mais lenta que chega depois do congelamento).
 - Cancelar **não fecha a rodada** — só `open_next_action` fecha (`round_closed`).
 
+**Cancelar marca o personagem com a Desvantagem de troca, até o fim da rodada** (só no regime
+`Race`; em `Free` a velocidade é passiva e ninguém é marcado). Cancelar é trocar de ação: dali em
+diante, na mesma rodada, tudo que ele declarar ([`enqueue_action`](#enqueue_action)) e toda reação
+dele que cobra barra (repelir, os três escapes) deriva a velocidade com Desvantagem
+(`systemBias: -1`, o mesmo campo que a troca de uma reação já grava): o `actionSpeed` sempre, o
+`moveSpeed` quando a ação ou a reação move. **Não piora** o acerto, a esquiva, a defesa nem o
+dano. Não acumula: marca e consumo numa mesma reação são uma Desvantagem só; esquiva, esquiva
+fechada e "não fazer nada" não rolam velocidade e seguem sem custo. As ações que ele já tinha na
+fila não são re-derivadas, e a marca morre com a rodada. O perdão é do mestre, pelas alavancas de
+sempre (`pull_action`, deixar acontecer).
+
 **Erros:**
 
 | `code` | Quando |

@@ -1117,7 +1117,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		var err error
 		if session != nil && r.deps.CancelActionUC != nil {
-			err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
+			// The cancelled action is ignored for now: recording it is the next step.
+			_, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
 		}
 		r.mu.Unlock()
 		if session == nil || r.deps.CancelActionUC == nil {

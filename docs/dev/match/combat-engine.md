@@ -512,6 +512,8 @@ calcular, e é poder de jogo que a interface precisa tornar visível.
 | Esquiva por reflexo, defesa padrão | passivas, sem custo. Ordem: esquiva → (se falhar) defesa |
 | Reação ativa **sem** action enfileirada | a reaction **é** a action |
 | Reação ativa **com** action enfileirada | **Desvantagem**: rola de novo, vale a pior das duas velocidades |
+| Reação ativa de quem **cancelou** uma action nesta rodada (Race) | **Desvantagem**, igual à troca: `swapMarks` marca o personagem com o id da rodada; `swapBias` lê `-1` até a rodada fechar. Marca + consumo = uma Desvantagem só |
+| Action declarada por quem cancelou nesta rodada (Race) | `EnqueueAction` deriva `actionSpeed`/`moveSpeed` com `systemBias -1`; acerto, esquiva, defesa e dano não são lidos pelo viés |
 
 ⚠️ Na conversão action→reaction **não há média** — há Desvantagem. Média é para múltiplas
 actions no round; Desvantagem é para *trocar* o que se ia fazer.
