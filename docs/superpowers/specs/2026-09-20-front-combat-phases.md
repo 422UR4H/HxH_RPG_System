@@ -316,7 +316,7 @@ N idas ao servidor para reenviar ficha inteira por causa de um número — e o g
 isso, o `turn_closed`, nem é emitido em metade dos fechamentos (P3). O REST do HP fica para o
 carregamento inicial.
 
-**O que continua fora:** o verbo de cancelar ação (§4.3) e adicionar NPC com a sala já viva, que
+**O que continua fora:** o verbo de cancelar ação (§4.3) — feito depois, em 2026-10-10 — e adicionar NPC com a sala já viva, que
 é do PR paralelo do verbo WS do rostering. A Fase 6 **não** depende de nenhum dos dois.
 
 ---
