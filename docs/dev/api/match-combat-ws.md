@@ -350,7 +350,11 @@ esse veredito só existe para os `reactionKind` com `Displaces()`.
 Uma reação **livre** (as que não cobram barra) não consome a ação que o personagem tinha na
 fila e não rola em Desvantagem. Uma reação **cobrada** consome a ação enfileirada daquele
 personagem em cada barra que cobra — e, se consumiu algo, a troca custa **Desvantagem**
-(`SystemBias = -1`). Por barra que cobra, a ação consumida é a de **melhor chave** naquela barra
+(`SystemBias = -1`). **Exceção (2026-10-11, versão simples, vai ser enriquecida):** uma fuga para
+**a mesma casa** (col, row) do movimento que estava na fila não é troca — se toda ação consumida é
+um movimento puro (sem ataque nem interação) para aquele destino, ela é consumida mas a reação
+**não** rola com Desvantagem (`sameMoveAsQueued` em `match_session.go`). Cancelar antes na rodada
+continua marcando a Desvantagem. Por barra que cobra, a ação consumida é a de **melhor chave** naquela barra
 (`BestPendingFor`, a mesma escolha do escalonador); uma ação combinada, que está nas duas
 barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 [`reaction_attached`](#reaction_attached).
@@ -1632,7 +1636,7 @@ junto é de turno aberto.
 | `escape.landing` | Onde o mestre pôs a peça ([`edit_action`](#edit_action) `escapeLanding`), `[col, row, z]` — **presente só enquanto a fuga falha** e há escolha. Uma fuga que escapa não o mostra, mesmo com escolha guardada: vai ao destino. **No payload liquidado, sujeito à fog** — ausente para quem não é mestre nem dono do personagem e não enxerga a casa onde a peça caiu (ver §6, item 5). |
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
-| `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action` (um `+1` do mestre a anula). O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
+| `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila (menos a fuga para o mesmo destino do movimento consumido) ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action`: um `+1` do mestre a **anula** (neutro — lê o primeiro conjunto de dados, não o melhor); o viés só decide o sinal, então não há como ir além de neutro com viés — vantagem líquida é o `modifier`. O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas**. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre, não estado de mesa. Uma reação não aberta nunca vira passo da cadeia, então o ID dela não aparece em `targets[].reaction` — esta é a única superfície que o nomeia. |
 | `pendingReactions[].arrival` | A ordem em que a reação foi anexada neste turno (`1` = a primeira), contando as já abertas. |
 | `pendingReactions[].systemBias` | Como `reaction.systemBias`, para a reação ainda não aberta. |
