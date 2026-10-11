@@ -1,7 +1,0 @@
-# GitGuardian: o que não é segredo de verdade.
-version: 2
-secret:
-  # cmd/devseed cria contas de teste num banco LOCAL com uma senha pública, documentada em
-  # docs/dev/seed.md. Não dá acesso a nada fora da máquina de quem roda.
-  ignored_paths:
-    - cmd/devseed/**
