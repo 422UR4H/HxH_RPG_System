@@ -2299,8 +2299,8 @@ peça atravessa.** A única checagem existente contra paredes com `move=true` e 
 acontece no **enfileiramento** (`enqueue_action`, quando o ator TEM peça no tabuleiro — ver a
 tabela em `enqueue_action`), não de novo aqui na abertura. A origem do caminho checado é a
 **posição da própria peça** (B6), nunca o `move.from` que o cliente mandou; o destino é
-`move.position`; e os dois pontos são convertidos para o mundo pelos **centros** dos slots
-(`mapservice.SlotCenterToWorld`, com a grade da sessão) — B5, e também o que torna a conversão
+`move.position`; e os dois pontos são convertidos para o espaço LOCAL da grade (o mesmo das paredes `p1`/`p2`)
+pelos **centros** dos slots (`mapservice.SlotCenterToLocal`, com a grade da sessão) — B5, e também o que torna a conversão
 certa numa grade hexagonal (B10), onde a fórmula de uma grade quadrada não vale. O caminho de
 reação **nunca passa por essa checagem, nem uma vez**: quando `reactToId` é não-zero,
 `enqueue_action` roteia para o mesmo tratamento de `attach_reaction` e retorna **antes** de

@@ -765,7 +765,7 @@ func TestMasterBoard_APlayerCannotSendAMasterAction(t *testing.T) {
 // relayPieceMove — então as mesmas garantias são provadas por ela.
 
 // polygonsFromPayload rebuilds the domain polygons from the wire shape, so a test can ask the
-// fog gate's own question — "is this world point inside what the player can see?" — instead of
+// fog gate's own question — "is this LOCAL point inside what the player can see?" — instead of
 // asserting a geometry it merely assumes. Origin is left zero: IsVisible never reads it.
 func polygonsFromPayload(polys [][]game.Point2DPayload) []service.VisibilityPolygon {
 	out := make([]service.VisibilityPolygon, 0, len(polys))

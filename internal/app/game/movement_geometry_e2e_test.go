@@ -60,16 +60,16 @@ func dividingWall(id string, a, b [2]float64) mapentity.WallSegment {
 	}
 }
 
-// bandWall builds a short, purely vertical wall straddling worldX at a height band
+// bandWall builds a short, purely vertical wall straddling localX at a height band
 // [centerY-grid.CellSize/4, centerY+grid.CellSize/4] — wide enough to catch a horizontal
 // path that passes through centerY, narrow enough (half of one row) to clear a horizontal
 // path a full half-cell away. It exists so the two tests below can each say exactly which ONE
 // of the two candidate y-levels — the true slot center, or the pre-B5 col×cellSize corner —
 // their wall brackets, and which one it deliberately clears.
-func bandWall(id string, worldX, centerY, cellSize float64) mapentity.WallSegment {
+func bandWall(id string, localX, centerY, cellSize float64) mapentity.WallSegment {
 	half := cellSize / 4
 	return mapentity.WallSegment{
-		ID: id, P1: [2]float64{worldX, centerY - half}, P2: [2]float64{worldX, centerY + half},
+		ID: id, P1: [2]float64{localX, centerY - half}, P2: [2]float64{localX, centerY + half},
 		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
 		Move: true, Direction: mapentity.WallDirectionBoth, HP: 100, MaxHP: 100,
 	}
@@ -170,7 +170,7 @@ func refutesErrorAfter(t *testing.T, c *collector, code string, want game.Messag
 // case, built to actually DISCRIMINATE the fix rather than just exercise a wall that happens
 // to block under both the old and the new geometry.
 //
-// Before B5, the server computed a piece's world position as `col × cellSize, row × cellSize`
+// Before B5, the server computed a piece's LOCAL position as `col × cellSize, row × cellSize`
 // — a cell's own top-left CORNER, one half-cell short (in both x and y) of its true center
 // (`(col+0.5) × cellSize`, `(row+0.5) × cellSize`). For a Dash from (4,4) to (5,4) on a
 // 64px grid that puts the two candidate horizontal paths a half-cell apart:
@@ -180,7 +180,7 @@ func refutesErrorAfter(t *testing.T, c *collector, code string, want game.Messag
 //
 // The wall below is a short vertical band straddling x=320 (the midpoint between the two
 // centers) from y=272 to y=304 — it brackets the CENTER path's y=288 with room to spare, and
-// sits clear of the CORNER path's y=256 by 16 world units. So: the real fix (centers) must
+// sits clear of the CORNER path's y=256 by 16 LOCAL units. So: the real fix (centers) must
 // report this Dash blocked; the old, buggy formula (corners) would have missed this wall
 // entirely and reported it clear. Verified against both formulas directly (not just this
 // e2e path) in the fix report for this task.
@@ -213,7 +213,7 @@ func TestE2E_MoveWallCheck_CenterCrossesAWallTheOldCornerFormulaWouldHaveMissed(
 // positive, not just adds a true one.
 //
 // Same Dash, (4,4)→(5,4), same x=320. This wall instead brackets the OLD CORNER path's
-// y=256 (band y ∈ [240, 272]) and sits clear of the NEW CENTER path's y=288 by 16 world
+// y=256 (band y ∈ [240, 272]) and sits clear of the NEW CENTER path's y=288 by 16 LOCAL
 // units. So: the old, buggy formula (corners) would have reported this Dash wrongly
 // blocked — the piece's "position" sat exactly on this wall's own corner at (320, 256). The
 // real fix (centers) correctly clears it: the center-to-center path at y=288 never comes
