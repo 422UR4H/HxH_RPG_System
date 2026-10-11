@@ -181,6 +181,10 @@ type wallResultRecord struct {
 	ReboundDamage   int    `json:"reboundDamage"`
 	Kind            string `json:"kind"`
 	Failure         string `json:"failure,omitempty"`
+	// HiddenSecretDoor: the wall was a secret door nobody but the master had been shown when
+	// the turn closed. Kept so the history's projection can still withhold it — the row has the
+	// id only, not the wall.
+	HiddenSecretDoor bool `json:"hiddenSecretDoor,omitempty"`
 }
 
 // encodeResolution returns nil (SQL NULL) for a nil resolution. A turn that resolved nothing
@@ -241,6 +245,7 @@ func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]ma
 		rec.WallResults = append(rec.WallResults, wallResultRecord{
 			WallID: wr.UpdatedWall.ID, EffectiveDamage: wr.EffectiveDamage,
 			ReboundDamage: wr.ReboundDamage, Kind: string(wr.Kind), Failure: wr.Failure,
+			HiddenSecretDoor: wr.UpdatedWall.WallType == mapentity.WallTypeSecretDoor && !wr.UpdatedWall.Revealed,
 		})
 	}
 	return json.Marshal(rec)
@@ -303,8 +308,12 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 		})
 	}
 	for _, wr := range rec.WallResults {
+		wall := mapentity.WallSegment{ID: wr.WallID}
+		if wr.HiddenSecretDoor {
+			wall.WallType = mapentity.WallTypeSecretDoor // unrevealed: ProjectResolution withholds it
+		}
 		out.WallResults = append(out.WallResults, service.WallResult{
-			UpdatedWall:     mapentity.WallSegment{ID: wr.WallID},
+			UpdatedWall:     wall,
 			EffectiveDamage: wr.EffectiveDamage,
 			ReboundDamage:   wr.ReboundDamage,
 			Kind:            service.WallResultKind(wr.Kind),

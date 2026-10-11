@@ -121,6 +121,10 @@ type TurnResolutionResponse struct {
 	// it). Absent on a turn with no attack and on turns recorded before Phase 8 (all Push).
 	DamageSkill      string                    `json:"damageSkill,omitempty"`
 	PendingReactions []PendingReactionResponse `json:"pendingReactions,omitempty"`
+	// Walls is what the turn did to each wall it targeted — the blow's effective damage, or why
+	// an interact changed nothing. The row keeps the wall's id only (its HP lives in the map
+	// tables), so no hp here. An unrevealed secret door is withheld by ProjectResolution.
+	Walls []WallResultResponse `json:"walls,omitempty"`
 	// Errors is every engine fault hit while computing this resolution — a target the engine
 	// could not classify, a character on the board whose sheet it was not handed. Absent on a
 	// clean resolution, which is the normal case, so its presence is the signal.
@@ -414,6 +418,14 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	}
 }
 
+// WallResultResponse is one wall's outcome in a recorded turn.
+type WallResultResponse struct {
+	WallID          string `json:"wallId"`
+	Kind            string `json:"kind"`
+	EffectiveDamage int    `json:"effectiveDamage"`
+	Failure         string `json:"failure,omitempty"`
+}
+
 func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionResponse {
 	if res == nil {
 		return nil
@@ -428,6 +440,11 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 		},
 		Targets:     make([]CharacterResultResponse, 0, len(res.CharacterResults)),
 		DamageSkill: res.DamageSkill,
+	}
+	for _, wr := range res.WallResults {
+		out.Walls = append(out.Walls, WallResultResponse{
+			WallID: wr.UpdatedWall.ID, Kind: string(wr.Kind), EffectiveDamage: wr.EffectiveDamage, Failure: wr.Failure,
+		})
 	}
 	for _, cr := range res.CharacterResults {
 		out.Targets = append(out.Targets, CharacterResultResponse{
