@@ -4,7 +4,7 @@ package game_test
 // checked against is never the client's — it is the actor's own piece position on the
 // server's board (B6) — and the wall check itself reads cell CENTERS with the session's own
 // grid (B5) — in LOCAL grid space, where walls live (see wall_reach_e2e_test.go for the rotated
-// case; on these unrotated grids local and world coincide) — with the right conversion
+// case; on these unrotated grids the transform is the identity) — with the right conversion
 // for a hexagonal grid too (B10). Before this task the check multiplied col×cellSize (a
 // cell's top-left CORNER, wrong on both grids) and skipped validation whenever the client's
 // declared "from" happened to be the zero value [0,0,0] — indistinguishable, under that old
@@ -37,11 +37,11 @@ var hexGeomGrid = mapentity.GridShape{
 }
 
 // dividingWall builds a wall segment perpendicular to a→b, centered on a→b's own midpoint,
-// long enough (100 world units, split evenly across the midpoint) to guarantee an
+// long enough (100 local units, split evenly across the midpoint) to guarantee an
 // intersection with the straight a→b path regardless of that path's own length or
 // orientation. It exists so every "blocked" case in this file can say exactly which two
-// slot centers its wall sits between, in world coordinates produced by
-// mapservice.SlotCenterToWorld, rather than hand-picked P1/P2 numbers.
+// slot centers its wall sits between, in LOCAL coordinates produced by
+// mapservice.SlotCenterToLocal, rather than hand-picked P1/P2 numbers.
 func dividingWall(id string, a, b [2]float64) mapentity.WallSegment {
 	mx, my := (a[0]+b[0])/2, (a[1]+b[1])/2
 	dx, dy := b[0]-a[0], b[1]-a[1]
@@ -187,8 +187,8 @@ func refutesErrorAfter(t *testing.T, c *collector, code string, want game.Messag
 func TestE2E_MoveWallCheck_CenterCrossesAWallTheOldCornerFormulaWouldHaveMissed(t *testing.T) {
 	f := newCombatFixture(t)
 	cellSize := squareGeomGrid.CellSize
-	fx, fy := mapservice.SlotCenterToWorld(4, 4, squareGeomGrid)
-	tx, ty := mapservice.SlotCenterToWorld(5, 4, squareGeomGrid)
+	fx, fy := mapservice.SlotCenterToLocal(4, 4, squareGeomGrid)
+	tx, ty := mapservice.SlotCenterToLocal(5, 4, squareGeomGrid)
 	wall := bandWall("band", (fx+tx)/2, (fy+ty)/2, cellSize)
 	seedGeomBoard(t, f, squareGeomGrid,
 		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 4, 4)},
@@ -221,8 +221,8 @@ func TestE2E_MoveWallCheck_CenterCrossesAWallTheOldCornerFormulaWouldHaveMissed(
 func TestE2E_MoveWallCheck_OldCornerFormulaFalselyBlockedThisCenterFormulaDoesNot(t *testing.T) {
 	f := newCombatFixture(t)
 	cellSize := squareGeomGrid.CellSize
-	fx, fy := mapservice.SlotCenterToWorld(4, 4, squareGeomGrid)
-	tx, _ := mapservice.SlotCenterToWorld(5, 4, squareGeomGrid)
+	fx, fy := mapservice.SlotCenterToLocal(4, 4, squareGeomGrid)
+	tx, _ := mapservice.SlotCenterToLocal(5, 4, squareGeomGrid)
 	oldCornerY := fy - cellSize/2 // the pre-B5 col×cellSize formula's y for row 4
 	wall := bandWall("band", (fx+tx)/2, oldCornerY, cellSize)
 	seedGeomBoard(t, f, squareGeomGrid,
@@ -248,8 +248,8 @@ func TestE2E_MoveWallCheck_OldCornerFormulaFalselyBlockedThisCenterFormulaDoesNo
 // nil means "no piece"; a non-nil pointer to [0,0,0] means exactly what it says.
 func TestE2E_MoveWallCheck_ZeroZeroIsNotASentinelAnymore(t *testing.T) {
 	f := newCombatFixture(t)
-	fromX, fromY := mapservice.SlotCenterToWorld(0, 0, squareGeomGrid)
-	toX, toY := mapservice.SlotCenterToWorld(0, 2, squareGeomGrid)
+	fromX, fromY := mapservice.SlotCenterToLocal(0, 0, squareGeomGrid)
+	toX, toY := mapservice.SlotCenterToLocal(0, 2, squareGeomGrid)
 	wall := dividingWall("divider", [2]float64{fromX, fromY}, [2]float64{toX, toY})
 	seedGeomBoard(t, f, squareGeomGrid,
 		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 0, 0)},
@@ -348,14 +348,14 @@ func TestE2E_MoveFromIsAbsentWhenTheActorHasNoPiece(t *testing.T) {
 }
 
 // TestE2E_HexGridWallBlocksTheStepAndAppliesTheMoveWithQR is B10: the wall check on a hex
-// grid must use the hex axial→world conversion (mapservice.SlotCenterToWorld already branches
+// grid must use the hex axial→local conversion (mapservice.SlotCenterToLocal already branches
 // on GridKindHex), not the square formula. It also closes the brief's open question — no
 // existing e2e test moved a piece across a hex grid and checked that applyMove wrote q/r
 // (as opposed to col/row) on the resulting piece_moved.
 func TestE2E_HexGridWallBlocksTheStepAndAppliesTheMoveWithQR(t *testing.T) {
 	f := newCombatFixture(t)
-	fromX, fromY := mapservice.SlotCenterToWorld(2, 1, hexGeomGrid)
-	toX, toY := mapservice.SlotCenterToWorld(3, 1, hexGeomGrid)
+	fromX, fromY := mapservice.SlotCenterToLocal(2, 1, hexGeomGrid)
+	toX, toY := mapservice.SlotCenterToLocal(3, 1, hexGeomGrid)
 	wall := dividingWall("hex-divider", [2]float64{fromX, fromY}, [2]float64{toX, toY})
 	seedGeomBoard(t, f, hexGeomGrid,
 		[]mapentity.Piece{hexPiece("p-attacker", f.attackerID, 2, 1)},

@@ -14,7 +14,7 @@ import (
 )
 
 // fogTestRoom builds a Room with a live session in which playerUUID owns one piece
-// sitting at the world center of cell (0,0), plus a secret door near that piece so the
+// sitting at the local center of cell (0,0), plus a secret door near that piece so the
 // player has line of sight to it. Returns the room and the secret door's wall ID.
 func fogTestRoom(t *testing.T) (*Room, uuid.UUID, string) {
 	t.Helper()

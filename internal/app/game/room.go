@@ -1925,7 +1925,7 @@ func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from, to *[3]int)
 	polys := r.session.GetVisibility(pid)
 	var oldPt domainservice.Point2D
 	if from != nil {
-		ox, oy := mapservice.SlotCenterToWorld(from[0], from[1], grid)
+		ox, oy := mapservice.SlotCenterToLocal(from[0], from[1], grid)
 		oldPt = domainservice.Point2D{X: ox, Y: oy}
 	}
 	if to == nil {
@@ -1935,7 +1935,7 @@ func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from, to *[3]int)
 		}
 		return "", false
 	}
-	nx, ny := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+	nx, ny := mapservice.SlotCenterToLocal(to[0], to[1], grid)
 	return pieceMoveView(polys, domainservice.Point2D{X: nx, Y: ny}, oldPt, from != nil, false)
 }
 
@@ -2597,8 +2597,8 @@ func (r *Room) gridShape() mapentity.GridShape {
 }
 
 // slotToAB reads a piece's grid position [a, b] out of its SlotPayload — (a, b) is (q, r)
-// axial on a hex slot, (col, row) on a square one. Shared by slotPayloadToWorld (which turns
-// it into a world point) and pieceSlotOf (which reports it as the Move.From a/b pair
+// axial on a hex slot, (col, row) on a square one. Shared by slotPayloadToLocal (which turns
+// it into a LOCAL point) and pieceSlotOf (which reports it as the Move.From a/b pair
 // verbatim), so the two never drift into disagreeing about which field means what.
 func slotToAB(s SlotPayload) (a, b int) {
 	if s.Kind == "hex" {
@@ -2619,12 +2619,14 @@ func slotToAB(s SlotPayload) (a, b int) {
 	return a, b
 }
 
-func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64) {
+// slotPayloadToLocal returns the center of a piece's slot in the grid's LOCAL (pre-transform)
+// space — the space walls and visibility polygons live in.
+func slotPayloadToLocal(s SlotPayload, g mapentity.GridShape) (float64, float64) {
 	a, b := slotToAB(s)
-	return mapservice.SlotCenterToWorld(a, b, g)
+	return mapservice.SlotCenterToLocal(a, b, g)
 }
 
-// PlayerPiecePositions implements matchsession.PiecePositionSource. It returns the world
+// PlayerPiecePositions implements matchsession.PiecePositionSource. It returns the LOCAL
 // positions of the pieces owned by playerID (resolved via the session's char→player map).
 //
 // LOCKING: the caller MUST already hold r.mu. This method deliberately takes no lock of
@@ -2649,7 +2651,7 @@ func (r *Room) PlayerPiecePositions(playerID uuid.UUID) []domainservice.Point2D 
 		if charToPlayer == nil || charToPlayer[p.CharacterID] != playerID {
 			continue
 		}
-		x, y := slotPayloadToWorld(p.Slot, grid)
+		x, y := slotPayloadToLocal(p.Slot, grid)
 		out = append(out, domainservice.Point2D{X: x, Y: y})
 	}
 	return out
@@ -2672,7 +2674,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	}
 	for _, p := range r.pieces {
 		allPieces = append(allPieces, p)
-		x, y := slotPayloadToWorld(p.Slot, grid)
+		x, y := slotPayloadToLocal(p.Slot, grid)
 		visible := true
 		if p.Visible != nil {
 			visible = *p.Visible
@@ -3040,10 +3042,10 @@ func (r *Room) applyAndRelayPieceMoveIfOwned(
 // The caller must NOT hold r.mu.
 func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origin uuid.UUID) map[uuid.UUID]masteraction.View {
 	grid := r.gridShape()
-	newX, newY := slotPayloadToWorld(payload.Slot, grid)
+	newX, newY := slotPayloadToLocal(payload.Slot, grid)
 	var oldX, oldY float64
 	if hadOld {
-		oldX, oldY = slotPayloadToWorld(old.Slot, grid)
+		oldX, oldY = slotPayloadToLocal(old.Slot, grid)
 	}
 	hidden := payload.Visible != nil && !*payload.Visible
 
@@ -3522,8 +3524,8 @@ func (r *Room) pieceSlotOf(characterID string) (pos *[3]int, ok bool) {
 }
 
 // slotKeepingKind puts a piece at grid position pos in the slot SHAPE it already had. The
-// board can be hexagonal, and forcing "square" here would put a hex piece at the world position
-// of a square cell. An empty Kind is left empty on purpose: slotPayloadToWorld already reads
+// board can be hexagonal, and forcing "square" here would put a hex piece at the LOCAL position
+// of a square cell. An empty Kind is left empty on purpose: slotPayloadToLocal already reads
 // anything that is not "hex" as square, and rewriting it would change what the client seeded.
 func slotKeepingKind(old SlotPayload, pos [3]int) SlotPayload {
 	if old.Kind == "hex" {
@@ -3594,7 +3596,7 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 	grid := r.gridShape()
 	var oldPt domainservice.Point2D
 	if hadOld {
-		oldPt.X, oldPt.Y = slotPayloadToWorld(old.Slot, grid)
+		oldPt.X, oldPt.Y = slotPayloadToLocal(old.Slot, grid)
 	}
 
 	payload := PieceRemovedPayload{PieceID: old.PieceID}

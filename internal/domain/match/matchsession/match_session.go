@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/item"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
@@ -21,7 +22,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// PiecePositionSource yields the current world positions of a player's pieces.
+// PiecePositionSource yields the current LOCAL positions of a player's pieces.
 // Implemented by room.go (which owns the live piece payloads), keeping the session
 // decoupled from delivery types.
 type PiecePositionSource interface {
@@ -1647,9 +1648,10 @@ func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.Visibi
 	// The board edges block vision too, which keeps the polygon inside the map instead
 	// of spilling out to maxRadius in every open direction.
 	losWalls := append(service.ToLOSWalls(walls), service.BoundaryLOSWalls(s.grid)...)
-	// Bound the polygon to the map diagonal (+20% margin) so a wall-less map still
-	// produces a finite polygon. Falls back to visRadius when CellSize is 0.
-	maxRadius := math.Hypot(float64(s.grid.Cols)*s.grid.CellSize, float64(s.grid.Rows)*s.grid.CellSize) * 1.2
+	// Bound the polygon to the diagonal of the grid's LOCAL bounds (+20% margin) so a
+	// wall-less map still produces a finite polygon. Falls back to visRadius when CellSize is 0.
+	minX, minY, maxX, maxY := mapservice.GridLocalBounds(s.grid)
+	maxRadius := math.Hypot(maxX-minX, maxY-minY) * 1.2
 
 	var positions []service.Point2D
 	if s.pieceSource != nil {

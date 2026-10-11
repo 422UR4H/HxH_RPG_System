@@ -9,7 +9,7 @@ import (
 
 type Point2D struct{ X, Y float64 }
 
-// VisibilityPolygon is the sweep result for one origin (one piece). World coords.
+// VisibilityPolygon is the sweep result for one origin (one piece), in LOCAL grid coordinates.
 type VisibilityPolygon struct {
 	Origin   Point2D
 	Vertices []Point2D
@@ -43,7 +43,7 @@ func ToLOSWalls(walls []mapentity.WallSegment) []WallSegmentLOS {
 // polygon can never reach past the board.
 //
 // Without them the sweep is only bounded by maxRadius (the map diagonal plus a margin),
-// so a polygon on a 3360x3360 board spans roughly 7500x9700 world units. That has two
+// so a polygon on a 3360x3360 board spans roughly 7500x9700 LOCAL units. That has two
 // costly consequences downstream: CellsInPolygon walks a slot envelope far wider than
 // the grid and marks thousands of off-board cells as explored, and the client has to
 // rasterize the polygon into an erase-blended render texture whose size then exceeds
@@ -55,7 +55,10 @@ func BoundaryLOSWalls(grid mapentity.GridShape) []WallSegmentLOS {
 	if grid.CellSize <= 0 || grid.Cols <= 0 || grid.Rows <= 0 {
 		return nil
 	}
-	c := mapservice.GridWorldCorners(grid)
+	// LOCAL space, like the walls and the visibility origins: the client applies the grid
+	// transform, and only to draw.
+	minX, minY, maxX, maxY := mapservice.GridLocalBounds(grid)
+	c := [4][2]float64{{minX, minY}, {maxX, minY}, {maxX, maxY}, {minX, maxY}} // TL→TR→BR→BL
 	out := make([]WallSegmentLOS, 0, 4)
 	for i := range 4 {
 		a, b := c[i], c[(i+1)%4]
@@ -96,7 +99,7 @@ func IsVisible(target Point2D, polys []VisibilityPolygon) bool {
 	return false
 }
 
-const visRadius = 1e7 // effective "infinite" ray length in world units
+const visRadius = 1e7 // effective "infinite" ray length in LOCAL units
 
 // blocksFor reports whether a one-way wall occludes for an origin on its given side.
 // For Direction "both" it always blocks. For "left"/"right" it blocks only when the

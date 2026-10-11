@@ -432,7 +432,7 @@ func TestBuildMapFullState_PlayerDoesNotSeePieceBehindWall(t *testing.T) {
 	room, masterUUID, playerUUID, _ := liveMatchRoom(t)
 
 	// liveMatchRoom puts w1 at x=192 spanning y 0..320, and the player's piece at
-	// slot (1,1) → world (96,96). Slot (4,1) → world (288,96) is on the far side.
+	// slot (1,1) → local (96,96). Slot (4,1) → local (288,96) is on the far side.
 	room.pieces["enemy"] = PieceMovedPayload{
 		PieceID: "enemy", CharacterID: uuid.New().String(), Slot: squareSlot(4, 1),
 	}
