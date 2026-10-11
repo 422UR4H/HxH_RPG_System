@@ -2,8 +2,9 @@ package game_test
 
 // This file is B5, B6 and B10 (design spec §4.3 "B5, B6 e B10"): the origin a Move is
 // checked against is never the client's — it is the actor's own piece position on the
-// server's board (B6) — and the wall check itself reads cell CENTERS via
-// mapservice.SlotCenterToWorld with the session's own grid (B5), with the right conversion
+// server's board (B6) — and the wall check itself reads cell CENTERS with the session's own
+// grid (B5) — in LOCAL grid space, where walls live (see wall_reach_e2e_test.go for the rotated
+// case; on these unrotated grids local and world coincide) — with the right conversion
 // for a hexagonal grid too (B10). Before this task the check multiplied col×cellSize (a
 // cell's top-left CORNER, wrong on both grids) and skipped validation whenever the client's
 // declared "from" happened to be the zero value [0,0,0] — indistinguishable, under that old

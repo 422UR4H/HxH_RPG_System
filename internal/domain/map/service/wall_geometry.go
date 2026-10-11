@@ -5,12 +5,12 @@ import (
 )
 
 // IsPathBlocked reports whether the straight path from→to is blocked by any wall
-// that has move=true and open=false. WallDirection is respected: "left" blocks
+// that has move=true and open=false and is still standing (a destroyed wall is rubble). WallDirection is respected: "left" blocks
 // only movement originating from the left side of the wall vector p1→p2; "right"
 // from the right; "both" from either side.
 func IsPathBlocked(from, to [2]float64, walls []entity.WallSegment) bool {
 	for _, w := range walls {
-		if !w.Move || w.Open {
+		if !w.Move || w.Open || w.Destroyed {
 			continue
 		}
 		if !segmentsIntersect(from, to, w.P1, w.P2) {

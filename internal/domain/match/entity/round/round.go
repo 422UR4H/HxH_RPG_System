@@ -64,6 +64,11 @@ func (r *Round) CurrentTurn() *turn.Turn {
 	return r.turns[len(r.turns)-1]
 }
 
+// TurnCount is how many turns opened in this round, closed or not.
+func (r *Round) TurnCount() int {
+	return len(r.turns)
+}
+
 func (r *Round) HasOpenTurn() bool {
 	t := r.CurrentTurn()
 	return t != nil && t.GetFinishedAt() == nil

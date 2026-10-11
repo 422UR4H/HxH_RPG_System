@@ -79,6 +79,7 @@ go test ./...                                         # all tests
 go test -tags=integration ./internal/gateway/pg/...   # integration tests
 make build / make dev-api / make dev-game   # dev-* usa air (hot reload); run-dev sem hot reload
 make migrate-up / migrate-down / migrate-create name=X
+go run ./cmd/devseed   # mesa de teste local: mestre + 2 jogadores com senha conhecida (docs/dev/seed.md)
 ```
 
 ## Scoped Instructions

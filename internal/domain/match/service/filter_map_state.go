@@ -46,6 +46,13 @@ func wallInLOS(w mapentity.WallSegment, polys []VisibilityPolygon) bool {
 	return false
 }
 
+// IsWallInSight is wallInLOS for the room's per-player news about one wall (wall_hp_changed
+// and the view it records): the same predicate that puts the wall on the player's screen, so
+// a player is never shown a wall and then denied the news of what happened to it.
+func IsWallInSight(w mapentity.WallSegment, polys []VisibilityPolygon) bool {
+	return wallInLOS(w, polys)
+}
+
 // SeenWalls returns a memory reference for every wall currently in the viewer's line of
 // sight, so the caller can union them into the player's PlayerMemory.
 //

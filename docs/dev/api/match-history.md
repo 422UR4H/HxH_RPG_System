@@ -285,6 +285,12 @@ Notas sobre `resolution`:
 - `damageSkill` é a perícia que mediu o dano: `Push`, ou a que o mestre escolheu
   ([`edit_action`](match-combat-ws.md#edit_action) `damageSkill`). Pública, como `rawDamage`.
   **Ausente** em turno sem ataque e em turnos gravados antes da Fase 8, que foram todos `Push`.
+  `"None"` = o mestre tirou a perícia do dano (só a arma).
+- `walls[]` — `{ wallId, kind, effectiveDamage, failure? }`: o que o turno fez a cada parede que
+  mirou (`kind` `attack`: o dano depois da resistência; `interact`: `failure` quando nada mudou —
+  `locked`, `noRoll`, `notApplicable`). Sem `hp`: a vida da parede mora nas tabelas do mapa, não no
+  turno. Uma porta secreta que ninguém tinha visto quando o turno fechou só aparece para o mestre.
+  **Ausente** sem parede e em turnos gravados antes deste campo.
 - `conditions` **não existe no histórico.** As condições do mestre em vigor só viajam no
   `resolution_updated` do turno aberto (e no `match_full_state`), para o mestre; gravadas,
   elas ficam dentro da própria ação (tabela `actions`), não numa segunda cópia em

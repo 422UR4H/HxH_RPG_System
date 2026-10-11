@@ -835,6 +835,11 @@ func (s *MatchSession) BarState(charID uuid.UUID, bar action.Bar) (float64, []in
 
 // RoundPrices returns the frozen price of each bar that has priced this round. Read by the
 // delivery layer to publish the general bar.
+// RoundTurnCount is how many turns opened in the active round.
+func (s *MatchSession) RoundTurnCount() int {
+	return s.activeRound.TurnCount()
+}
+
 func (s *MatchSession) RoundPrices() map[action.Bar]int {
 	out := map[action.Bar]int{}
 	for _, bar := range []action.Bar{action.BarAction, action.BarMove} {
@@ -1098,15 +1103,17 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
 	// discount: done in the exact instant, without opening the guard, it gives the action back.
 	if !r.ReactionKind.IsFree() {
-		r.ConsumedActionIDs = s.consumePendingFor(r)
+		var consumed []*action.Action
+		r.ConsumedActionIDs, consumed = s.consumePendingFor(r)
 		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
 		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
 		// Amount: RollAttempts already holds both sets and the bias only picks which one.
 		// With nothing queued there was no swap, so there is no penalty.
 		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
-		// never two.
+		// never two. Fleeing to where the queued move was already going is NOT a swap
+		// (sameMoveAsQueued — a first, simple version of that rule).
 		systemBias := 0
-		if len(r.ConsumedActionIDs) > 0 || s.swapBias(r.GetActorID()) < 0 {
+		if (len(consumed) > 0 && !sameMoveAsQueued(r, consumed)) || s.swapBias(r.GetActorID()) < 0 {
 			systemBias = -1
 		}
 		s.deriveSpeeds(r, systemBias)
@@ -1125,17 +1132,44 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 //
 // A combined action sits on both bars and is counted once — it leaves on the first bar that
 // finds it and is simply not there for the second.
-func (s *MatchSession) consumePendingFor(r *action.Action) []uuid.UUID {
-	var consumed []uuid.UUID
+func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*action.Action) {
+	var ids []uuid.UUID
+	var victims []*action.Action
 	for _, bar := range r.ReactionKind.Bars() {
 		victim := s.scheduler.BestPendingFor(s.scheduleInput(), r.GetActorID(), bar)
 		if victim == nil {
 			continue
 		}
 		s.activeQueue.ExtractByID(victim.GetID())
-		consumed = append(consumed, victim.GetID())
+		ids = append(ids, victim.GetID())
+		victims = append(victims, victim)
 	}
-	return consumed
+	return ids, victims
+}
+
+// sameMoveAsQueued: the reaction is a flight to exactly where the character was already going.
+// It still consumes the queued move (the flight IS that move now), but it is not a swap — the
+// character did what they had declared, only sooner — so it costs no Disadvantage (owner
+// decision, 2026-10-11).
+//
+// Deliberately simple: every consumed action must be a pure move (no attack, no interaction)
+// whose destination is the reaction's own, compared by (col, row) — z is never read by the
+// server. This rule WILL be enriched (partial overlap, a combined move+attack, a destination
+// that merely lies on the way) and will likely need refactoring when that happens: today it is
+// a single yes/no inside AttachReaction, not a policy of its own.
+func sameMoveAsQueued(r *action.Action, consumed []*action.Action) bool {
+	if r.Move == nil {
+		return false
+	}
+	for _, c := range consumed {
+		if c.Move == nil || c.Attack != nil || c.Interact != nil {
+			return false
+		}
+		if c.Move.Position[0] != r.Move.Position[0] || c.Move.Position[1] != r.Move.Position[1] {
+			return false
+		}
+	}
+	return true
 }
 
 // chargeReactionBars debits the reaction's own speed on every bar its kind charges.

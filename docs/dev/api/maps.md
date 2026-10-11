@@ -501,7 +501,7 @@ Broadcast para **todos os clientes** quando o master revela uma porta secreta. A
 
 #### `wall_hp_changed`
 
-Enviado apenas aos clientes que conseguem **ver** o midpoint da parede afetada (LOS ativo). O master sempre recebe. O payload não carrega `wallType`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
+Enviado apenas aos clientes que conseguem **ver** a parede afetada — qualquer trecho dela, pelo mesmo teste que a põe na tela do jogador no `map_full_state` (`IsWallInSight`; ver [game-lobby.md](game-lobby.md#paredes-que-o-jogador-recebe-em-map_full_state)). Antes testava só o ponto médio, que fica **sobre** a borda do polígono de visão de quem está de frente para a parede, e o jogador encarando a parede não recebia a notícia. O master sempre recebe. Sai no **fechamento** do turno que atacou a parede (o golpe cai com o dano nos personagens) e quando o mestre derruba a parede pela mão dele (`interact.kind = "destroy"`). O payload não carrega `wallType`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
 
 #### `wall_state_changed`
 

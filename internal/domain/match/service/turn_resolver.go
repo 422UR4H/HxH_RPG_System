@@ -81,11 +81,21 @@ const (
 )
 
 // WallResult is the computed outcome of one player action targeting a wall.
+//
+// When it lands differs by kind, like a move and a blow on a character: an INTERACT is applied
+// when the turn opens (the door opens with the step that reaches it), an ATTACK when the turn
+// closes, with the characters' damage — so the master's edits to the damage reach the wall too,
+// and the projection recomputed after each reaction never counts a blow twice.
 type WallResult struct {
 	UpdatedWall     mapentity.WallSegment
 	EffectiveDamage int
 	ReboundDamage   int // melee rebound candidate; TODO: apply to actor if melee, subtract actor Defense
 	Kind            WallResultKind
+	// Failure is why an interact changed nothing ("" = it changed the wall): "locked" for a
+	// character trying a locked passage, "noRoll" for lockpick/examine (the roll chain does
+	// not run yet), "notApplicable" for anything else. UpdatedWall is then the wall as it was.
+	// Only the result's readers see it; nothing is applied to the board.
+	Failure string
 }
 
 // ResolveInput is everything a resolution reads. It is a struct rather than a parameter
@@ -165,6 +175,34 @@ type PendingReaction struct {
 	ReactionID uuid.UUID
 	ActorID    uuid.UUID
 	Kind       string
+	// Arrival is the reaction's place in the order the reactions of this turn were attached
+	// (1 = first), counting the opened ones too.
+	Arrival int
+	// Speed is the reaction's key — the same number that orders the action queue: its speed on
+	// the bars it charges (the slower one, for an escape that charges two). Nil for a reaction
+	// that charges no bar (dodge, closed dodge, nothing): it rolls no speed.
+	Speed *int
+	// SystemBias is the engine's own advantage/disadvantage on this reaction's speeds
+	// (action.Action.SystemBias): -1 when it swapped out a queued action. The master reads it
+	// to know what the system already applied before adding a condition of their own.
+	SystemBias int
+}
+
+// reactionKey is the speed a reaction entered the round with — the lowest across the bars it
+// charges, like a combined action, which happens at the time of its slower half. Nil when it
+// charges none.
+func reactionKey(r action.Action) *int {
+	bars := r.Bars()
+	if len(bars) == 0 {
+		return nil
+	}
+	key := r.SpeedOn(bars[0])
+	for _, b := range bars[1:] {
+		if v := r.SpeedOn(b); v < key {
+			key = v
+		}
+	}
+	return &key
 }
 
 // RollResult holds the outcome of a single dice roll check.
@@ -217,6 +255,8 @@ type CharacterResult struct {
 	// AttackStopped true and ReactionStopsAttack false (an earlier repel stopped it before
 	// they even got a swing to answer).
 	ReactionStopsAttack bool
+	// ReactionSystemBias is the opened reaction's SystemBias (see PendingReaction.SystemBias).
+	ReactionSystemBias int
 	// ReactionTotal is the reaction's own roll total, whichever kind it was — the dodge
 	// family's Dodge.Total, or a repel's own total (which CharacterResult otherwise has no
 	// place for: ResolveReaction's Repel RollOutcome is not copied onto this struct the way
@@ -338,7 +378,8 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 
 			case TargetKindWallSegment:
 				wall, found := in.Targets.GetWall(targetID.String())
-				if !found {
+				if !found || wall.Destroyed {
+					// Rubble takes nothing: no blow lands on it, no passage is left to open.
 					continue
 				}
 				if a.Attack != nil {
@@ -355,13 +396,13 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 					})
 				}
 				if a.Interact != nil {
-					updated, ok := ApplyWallInteract(wall, a.Interact)
-					if ok {
-						res.WallResults = append(res.WallResults, WallResult{
-							UpdatedWall: updated,
-							Kind:        WallResultKindInteract,
-						})
+					updated, ok := ApplyWallInteract(wall, a.Interact, false)
+					wr := WallResult{UpdatedWall: updated, Kind: WallResultKindInteract}
+					if !ok {
+						wr.UpdatedWall = wall
+						wr.Failure = interactFailure(wall, a.Interact)
 					}
+					res.WallResults = append(res.WallResults, wr)
 				}
 
 			case TargetKindUnknown:
@@ -383,15 +424,19 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	for _, id := range in.Turn.OpenedReactionIDs() {
 		opened[id] = true
 	}
-	for _, r := range reactions {
+	for i, r := range reactions {
 		if opened[r.GetID()] {
 			continue
 		}
-		res.PendingReactions = append(res.PendingReactions, PendingReaction{
+		pr := PendingReaction{
 			ReactionID: r.GetID(),
 			ActorID:    r.GetActorID(),
 			Kind:       string(r.ReactionKind),
-		})
+			Arrival:    i + 1,
+			SystemBias: r.SystemBias,
+		}
+		pr.Speed = reactionKey(r)
+		res.PendingReactions = append(res.PendingReactions, pr)
 	}
 	if !res.IsSettled {
 		res.Conditions = turnConditions(in.Turn)
@@ -429,6 +474,9 @@ func (tr TurnResolver) actorDamageSkill(in ResolveInput, a action.Action) int {
 	skill := enum.Push
 	if a.Attack != nil {
 		skill = a.Attack.EffectiveDamageSkill()
+	}
+	if skill == action.DamageSkillNone {
+		return 0 // the master said no skill measures this blow
 	}
 	return skillValueOf(cs, skill.String())
 }
@@ -585,6 +633,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	}
 	if step.reaction != nil {
 		cr.ReactionID = step.reaction.GetID()
+		cr.ReactionSystemBias = step.reaction.SystemBias
 	}
 
 	// 3. What THIS target takes: the chain's current residual, reduced exactly the way a

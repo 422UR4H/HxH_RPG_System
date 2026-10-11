@@ -18,6 +18,9 @@ var (
 	ErrMatchAlreadyStarted  = domain.NewValidationError(errors.New("match has already started"))
 	ErrMatchAlreadyFinished = domain.NewValidationError(errors.New("match has already finished"))
 	ErrNotMatchMaster       = domain.NewValidationError(errors.New("user is not the match master"))
+	// ErrRoundHasNoTurns: ending a round in which no turn ever opened. A round closes on what
+	// happened in it; ending empty rounds one after another would only spin the clock.
+	ErrRoundHasNoTurns = domain.NewValidationError(errors.New("no turn opened in this round yet"))
 	ErrInvalidRoundMode     = domain.NewValidationError(errors.New("round mode must be Free or Race"))
 
 	ErrSheetNotNPC            = domain.NewValidationError(errors.New("character sheet is not an npc"))
