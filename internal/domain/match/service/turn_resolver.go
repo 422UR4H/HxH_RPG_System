@@ -178,9 +178,27 @@ type PendingReaction struct {
 	// Arrival is the reaction's place in the order the reactions of this turn were attached
 	// (1 = first), counting the opened ones too.
 	Arrival int
-	// Speed is the reaction's action-speed result — its key, the same number that orders the
-	// action queue. Nil for a reaction that rolls no speed (dodge, closed dodge, nothing).
+	// Speed is the reaction's key — the same number that orders the action queue: its speed on
+	// the bars it charges (the slower one, for an escape that charges two). Nil for a reaction
+	// that charges no bar (dodge, closed dodge, nothing): it rolls no speed.
 	Speed *int
+}
+
+// reactionKey is the speed a reaction entered the round with — the lowest across the bars it
+// charges, like a combined action, which happens at the time of its slower half. Nil when it
+// charges none.
+func reactionKey(r action.Action) *int {
+	bars := r.Bars()
+	if len(bars) == 0 {
+		return nil
+	}
+	key := r.SpeedOn(bars[0])
+	for _, b := range bars[1:] {
+		if v := r.SpeedOn(b); v < key {
+			key = v
+		}
+	}
+	return &key
 }
 
 // RollResult holds the outcome of a single dice roll check.
@@ -410,10 +428,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 			Kind:       string(r.ReactionKind),
 			Arrival:    i + 1,
 		}
-		if !r.Speed.Attempts.IsEmpty() {
-			speed := r.Speed.Result
-			pr.Speed = &speed
-		}
+		pr.Speed = reactionKey(r)
 		res.PendingReactions = append(res.PendingReactions, pr)
 	}
 	if !res.IsSettled {
