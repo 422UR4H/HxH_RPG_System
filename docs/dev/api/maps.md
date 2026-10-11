@@ -312,7 +312,7 @@ Sem body.
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `id` | string (UUID) | Identificador único do segmento, gerado pelo frontend via `crypto.randomUUID()` |
-| `p1`, `p2` | `[number, number]` | Endpoints em coordenadas de mundo (pré-transform); `p1 ≠ p2` |
+| `p1`, `p2` | `[number, number]` | Endpoints em coordenadas LOCAIS da grade (pré-transform); `p1 ≠ p2` |
 | `wallType` | enum | Comportamento funcional |
 | `material` | enum | Propriedades físicas (HP, resistência, cor) |
 | `doorSubtype` | enum? | Presente apenas quando `wallType = "door"` |
@@ -421,7 +421,7 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 |---|---|---|
 | `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. Cada peça inclui `z` (elevação em metros, 0 = chão, omitido quando 0). |
 | `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
-| `visiblePolygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
+| `visiblePolygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas LOCAIS da grade (pré-transform, o mesmo espaço de `p1`/`p2` das paredes); o cliente aplica o transform da grade (rotação, achatamento, origem) a cada vértice para desenhar. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
 | `fogMode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
 
 ##### Máscara de porta secreta não revelada
@@ -458,7 +458,7 @@ Enviado a cada jogador individual quando seu LOS muda (ex.: após movimento de p
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `visiblePolygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador. |
+| `visiblePolygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador, em coordenadas LOCAIS da grade (pré-transform, o mesmo espaço de `p1`/`p2` das paredes); o cliente aplica o transform da grade para desenhar. |
 
 ---
 

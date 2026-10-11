@@ -82,9 +82,10 @@ O custo é que a borda da área iluminada fica alinhada à grade em vez de segui
 do polígono. A camada de "explorado" já era por célula, então fica coerente. A borda suave
 é possível com `Graphics.cut()`, mas exige repensar o tom intermediário de explorado.
 
-## Divergência conhecida (não corrigida)
+## Divergência conhecida (resolvida)
 
-`applyTransform` do Go e o do TypeScript não são equivalentes: o Go aplica o squash antes
-da rotação e ignora `originX`/`originY`; o front rotaciona em torno do centro da grade e
-depois aplica o squash. Com `rotation: 0` e `skewRatio: 1` ambos são identidade, então
-nada quebra hoje. Em mapa rotacionado ou isométrico o fog sairia fora de lugar.
+O `applyTransform` do Go divergia do TypeScript (squash antes da rotação, sem `originX`/`originY`).
+Resolvida removendo o espaço de mundo do servidor: ele calcula tudo em coordenadas LOCAIS da grade
+(o espaço de `p1`/`p2` das paredes) — peças, contorno do tabuleiro e polígonos de visibilidade — e
+não transforma mais nada. Só o front aplica o transform da grade, e só para desenhar. A visibilidade
+por raio comuta com transformações afins, então o polígono LOCAL transformado é o polígono em tela.
