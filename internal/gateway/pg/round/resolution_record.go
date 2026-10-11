@@ -180,6 +180,7 @@ type wallResultRecord struct {
 	EffectiveDamage int    `json:"effectiveDamage"`
 	ReboundDamage   int    `json:"reboundDamage"`
 	Kind            string `json:"kind"`
+	Failure         string `json:"failure,omitempty"`
 }
 
 // encodeResolution returns nil (SQL NULL) for a nil resolution. A turn that resolved nothing
@@ -239,7 +240,7 @@ func encodeResolution(res *service.TurnResolution, landingViews map[uuid.UUID]ma
 	for _, wr := range res.WallResults {
 		rec.WallResults = append(rec.WallResults, wallResultRecord{
 			WallID: wr.UpdatedWall.ID, EffectiveDamage: wr.EffectiveDamage,
-			ReboundDamage: wr.ReboundDamage, Kind: string(wr.Kind),
+			ReboundDamage: wr.ReboundDamage, Kind: string(wr.Kind), Failure: wr.Failure,
 		})
 	}
 	return json.Marshal(rec)
@@ -307,6 +308,7 @@ func DecodeResolution(raw []byte) *service.TurnResolution {
 			EffectiveDamage: wr.EffectiveDamage,
 			ReboundDamage:   wr.ReboundDamage,
 			Kind:            service.WallResultKind(wr.Kind),
+			Failure:         wr.Failure,
 		})
 	}
 	return out

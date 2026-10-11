@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/google/uuid"
 )
@@ -74,6 +75,17 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 			cr.ReactionKind = public
 		}
 		out.CharacterResults = append(out.CharacterResults, cr)
+	}
+	// A wall the table cannot see as itself — an unrevealed secret door — leaves no result for
+	// anyone but the master: naming its id, or its damage, would give the door away.
+	if !v.IsMaster && len(res.WallResults) > 0 {
+		out.WallResults = make([]WallResult, 0, len(res.WallResults))
+		for _, wr := range res.WallResults {
+			if wr.UpdatedWall.WallType == mapentity.WallTypeSecretDoor && !wr.UpdatedWall.Revealed {
+				continue
+			}
+			out.WallResults = append(out.WallResults, wr)
+		}
 	}
 	// PendingReactions is the master's own to-do list — attached, not yet given the floor.
 	// Nobody else is owed the knowledge that an answer is waiting.

@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
@@ -60,6 +61,18 @@ func pieceRemovedView(polys []domainservice.VisibilityPolygon, oldPt domainservi
 // not an unrevealed secret door, a reveal).
 func seenByAll([]domainservice.VisibilityPolygon) (masteraction.View, bool) {
 	return masteraction.ViewFull, true
+}
+
+// seenWallMidpoint is the gate of a wall's HP news (wall_hp_changed): who has the wall's
+// midpoint in sight saw it whole; nobody else saw anything.
+func seenWallMidpoint(w mapentity.WallSegment) viewGate {
+	mid := domainservice.Point2D{X: (w.P1[0] + w.P2[0]) / 2, Y: (w.P1[1] + w.P2[1]) / 2}
+	return func(polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
+		if domainservice.IsVisible(mid, polys) {
+			return masteraction.ViewFull, true
+		}
+		return "", false
+	}
 }
 
 // seenByNone is the gate of what reaches the master alone (an unrevealed secret door changing).

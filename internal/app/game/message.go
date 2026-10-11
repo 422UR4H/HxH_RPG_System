@@ -523,6 +523,9 @@ type BarsUpdatedPayload struct {
 	Characters []CharacterBarsPayload `json:"characters"`
 	// Order is the projection of who acts next, highest key first.
 	Order []BarSlotPayload `json:"order"`
+	// RoundTurns is how many turns opened in the current round. Zero = nothing happened yet,
+	// and the round cannot be ended (open_next_action refuses: no turn opened in this round yet).
+	RoundTurns int `json:"roundTurns"`
 }
 
 type CharacterBarsPayload struct {
@@ -591,6 +594,10 @@ type ResolutionUpdatedPayload struct {
 	// strips it for anyone else, and the resolver does not fill it once the turn is settled.
 	// Absent = nothing edited.
 	Conditions []ConditionPayload `json:"conditions,omitempty"`
+	// Walls is what the turn did to each wall it targeted, in targetId order. Projected like
+	// the targets (master while open, everyone once settled), minus an unrevealed secret door
+	// for anyone but the master. Absent when the action targets no wall.
+	Walls []WallResultPayload `json:"walls,omitempty"`
 }
 
 // ConditionPayload is one master condition in force — the shape of an edit_action conditions
@@ -619,6 +626,25 @@ type PendingReactionPayload struct {
 	ReactionID uuid.UUID `json:"reactionId"`
 	ActorID    uuid.UUID `json:"actorId"`
 	Kind       string    `json:"kind"`
+	// Arrival is the order the reaction was attached in this turn (1 = first).
+	Arrival int `json:"arrival"`
+	// Speed is the reaction's action-speed key; absent when it rolls none (dodge, nothing).
+	Speed *int `json:"speed,omitempty"`
+}
+
+// WallResultPayload is what the turn did to one wall. Attack: the blow's effective damage and
+// the wall as the close will leave it (hp, destroyed) — indestructible walls (maxHp 0) take
+// none. Interact: the wall as the open left it, or failure ("locked", "noRoll",
+// "notApplicable") when nothing changed.
+type WallResultPayload struct {
+	WallID          string `json:"wallId"`
+	Kind            string `json:"kind"`
+	EffectiveDamage int    `json:"effectiveDamage"`
+	HP              int    `json:"hp"`
+	MaxHP           int    `json:"maxHp"`
+	Destroyed       bool   `json:"destroyed"`
+	Open            bool   `json:"open"`
+	Failure         string `json:"failure,omitempty"`
 }
 
 // RollResultPayload is one test as the master reads it. The individual dice travel because
@@ -778,6 +804,20 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			ReactionID: pr.ReactionID,
 			ActorID:    pr.ActorID,
 			Kind:       pr.Kind,
+			Arrival:    pr.Arrival,
+			Speed:      pr.Speed,
+		})
+	}
+	for _, wr := range res.WallResults {
+		p.Walls = append(p.Walls, WallResultPayload{
+			WallID:          wr.UpdatedWall.ID,
+			Kind:            string(wr.Kind),
+			EffectiveDamage: wr.EffectiveDamage,
+			HP:              wr.UpdatedWall.HP,
+			MaxHP:           wr.UpdatedWall.MaxHP,
+			Destroyed:       wr.UpdatedWall.Destroyed,
+			Open:            wr.UpdatedWall.Open,
+			Failure:         wr.Failure,
 		})
 	}
 	for _, e := range res.Errors {

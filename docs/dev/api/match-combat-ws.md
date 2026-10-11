@@ -195,7 +195,7 @@ porque uma ação plausível carregue todas.
 | `move.category` | Só **`Dash`** e `Shift` são aceitos. `Back`, `Roll`, `Slide`, `Jump`, `FlatJump` são **recusados** — a fatia de movimento é que vai exercê-los. |
 | `move.from` | **Ignorado** (B6, spec §4.3 "B5, B6 e B10"). O servidor é dono do tabuleiro: a origem que ele checa é a **posição da PRÓPRIA peça do ator**, lida do board no instante do enfileiramento — nunca o que o payload manda aqui. Sem peça no tabuleiro, não há origem e não há checagem nenhuma. |
 | `move.position` | Convenção de coordenada, igual em `move.from`: `[a, b, z]`, com `(a, b) = (col, row)` numa grade quadrada ou `(q, r)` axial numa hexagonal. `z` **não é lido** pelo servidor (ver a nota de `Z` mais abaixo, em `piece_moved`). |
-| `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. Qualquer outro valor é `invalid_action` — `reveal`, `lock` e `unlock` são **do mestre**, por [`enqueue_master_action`](#enqueue_master_action). Ver [Interagir com parede](#interagir-com-parede-alcance-e-tranca) logo abaixo. |
+| `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. Qualquer outro valor é `invalid_action` — `reveal`, `lock`, `unlock` e `destroy` são **do mestre**, por [`enqueue_master_action`](#enqueue_master_action). Ver [Interagir com parede](#interagir-com-parede-alcance-e-tranca) logo abaixo. |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
 | `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
@@ -240,7 +240,9 @@ não é executada (ver [§10](#10-o-que-este-contrato-ainda-não-entrega)). A a�
 aparece para o mestre; quando ele julga que deu certo, destranca pela mão dele (`unlock`).
 
 `open`/`close`/`toggle` só valem para **passagem** em pé (`door`, `window`, `secret_door`, não
-destruída); numa parede comum ou terreno o turno resolve sem mudar nada.
+destruída); numa parede comum ou terreno o turno resolve sem mudar nada. Uma parede
+**destruída** é entulho: não bloqueia movimento (`move_blocked` a ignora), não bloqueia visão
+(o fog já a ignorava), e nenhuma ação a atinge.
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
@@ -395,7 +397,10 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
    [`round_closed`](#round_closed) — mesa — e **para por aí**. O fim da rodada e a rodada que
    nasce no lugar dela são gravados **antes** do aviso, na mesma transação do turno que este
    comando fechou (ou numa só deles, se nenhum turno fechou) — um comando do mestre, uma
-   transação.
+   transação. **Uma rodada em que nenhum turno abriu não acaba**: sem turno aberto, sem turno
+   fechando agora e `bars_updated.roundTurns == 0`, o comando é recusado com `game_error`
+   `validation error: no turn opened in this round yet` e nada muda (o mestre não roda o relógio
+   de rodada vazia em rodada vazia).
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
    [`resolution_updated`](#resolution_updated) **master-only** do turno recém-aberto
    (`isSettled: false`).
@@ -404,7 +409,7 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
 > que já fechou e já aplicou dano precisa chegar à mesa de qualquer jeito.
 
 **Erros:** `forbidden` · `match_not_started` · `game_error` (`action queue is empty`,
-`action not found in queue`).
+`action not found in queue`, `validation error: no turn opened in this round yet`).
 
 > O use case também recusa um chamador que não é o mestre (`user is not the match master`),
 > mas por esta porta isso é inalcançável: `room.go` já recusou antes, com `forbidden`. Vale
@@ -624,7 +629,7 @@ Edita a ação do turno aberto, ou uma das reações dela. Toda seção é opcio
 | `conditions[].skillName` | **Alternativa** a `field`, nomeando uma entrada de `skills`. Mandar os dois é erro. |
 | `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `damage has no advantage: a damage condition takes no bias`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
 | `modifier` | Ajuste plano no total. |
-| `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `damageSkill edit targets an action with no attack`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
+| `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`), ou **`"None"`**: nenhuma perícia soma no dano — só os dados e o bônus fixo da arma (uma arma de fogo, por exemplo). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `damageSkill edit targets an action with no attack`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
 
 > **O que cada rolagem muda com o turno aberto.**
@@ -866,8 +871,11 @@ Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
    `unknown_wall` abaixo.
 2. **Qualquer outro `interact` com `targetIds`** → interação com parede, resolvida em
    memória. A mão do mestre: `open`/`close`/`toggle` ignoram a tranca; **`lock` e `unlock`**
-   trancam e destrancam **porta e janela** (em outro tipo de parede, nada muda). Sem alcance:
-   o mestre não está no tabuleiro. `wall_state_changed` (por jogador, com gate de linha de visão; uma porta secreta
+   trancam e destrancam **porta, janela e porta secreta** (em outro tipo de parede, nada muda);
+   **`destroy`** derruba **qualquer** parede ainda em pé — a indestrutível também (um terremoto,
+   não um ataque): `hp` 0, `destroyed`, sem resistência nem rebote. A destruição sai como
+   `wall_hp_changed` (com o gate de linha de visão dele), não `wall_state_changed`. Parede já
+   destruída não aceita nada. Sem alcance: o mestre não está no tabuleiro. `wall_state_changed` (por jogador, com gate de linha de visão; uma porta secreta
    não revelada vai **só para o mestre**) + recálculo de `visibility_updated`. Também
    **retorna sem ack**. Um `targetId` que EXISTE no tabuleiro mas cujo `interact.kind` não se
    aplica a ele (`lockpick`/`examine` — exigem rolagem, ainda não implementado) é ignorado em
@@ -1167,6 +1175,7 @@ era a vez dele depois que passou.
 | `characters[].actionBalance` / `moveBalance` | Saldo (crédito ou débito) — **fracionário**, não arredondado. |
 | `characters[].actionSpeeds` / `moveSpeeds` | Velocidades que **já agiram** nesta rodada. Públicas, porque a média que produzem é o que ordena todo mundo. |
 | `order` | Projeção de quem age em seguida, **maior `key` primeiro**. Carrega quem e em qual barra, e **nada que identifique a ação** — nem ID, nem arma, nem alvo, nem perícia. |
+| `roundTurns` | Quantos turnos abriram na rodada atual (abertos ou fechados). `0` = nada aconteceu ainda: `open_next_action` não encerra essa rodada. |
 
 **Disparado por:** qualquer coisa que mova as barras — `enqueue_action`,
 [`cancel_action`](#cancel_action), `open_next_action`, `pull_action`, `close_turn`,
@@ -1623,9 +1632,25 @@ junto é de turno aberto.
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas**. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre, não estado de mesa. Uma reação não aberta nunca vira passo da cadeia, então o ID dela não aparece em `targets[].reaction` — esta é a única superfície que o nomeia. |
+| `pendingReactions[].arrival` | A ordem em que a reação foi anexada neste turno (`1` = a primeira), contando as já abertas. |
+| `pendingReactions[].speed` | A **chave** da reação: o resultado da velocidade de ação dela — o mesmo número que ordena a fila de ações. **Ausente** numa reação que não rola velocidade (esquiva, esquiva fechada, não fazer nada). A ordem de abrir continua sendo do mestre; isto é o que ele lê para decidir. |
+| `walls` | O que o turno fez a **cada parede** que mirou, na ordem de `targetId`. **Ausente** sem parede. Projeção como `targets`: com o turno aberto, só o mestre; fechado, todos — menos uma `secret_door` não revelada, que só o mestre vê. Ver abaixo. |
 | `errors` | **Sempre master-only.** Faltas do **motor**, não do jogo — ver abaixo. Ausente numa resolução limpa. |
-| `damageSkill` | A perícia que mediu o dano: `Push`, ou a que o mestre escolheu ([`edit_action`](#edit_action) `damageSkill`). **Ausente** sem ataque. Segue o eixo de `rawDamage`: com o turno aberto, só o mestre; fechado, todos. |
+| `damageSkill` | A perícia que mediu o dano: `Push`, ou a que o mestre escolheu ([`edit_action`](#edit_action) `damageSkill`); `"None"` = nenhuma. **Ausente** sem ataque. Segue o eixo de `rawDamage`: com o turno aberto, só o mestre; fechado, todos. |
 | `conditions` | As condições do mestre **em vigor** no turno aberto: uma entrada por rolagem com condição, no formato de uma entrada de `edit_action.conditions` mais `actionId` (sempre o ID real, inclusive da ação do turno). **Só o mestre, só com turno aberto** — nunca no payload liquidado, nunca no histórico (a condição fica gravada dentro da ação, na tabela `actions`). É o que o editor do mestre mostra depois de recarregar. Ausente = nada editado. `field: "defense"` numa reação é a defesa padrão dela. |
+
+**`walls[]`** — `{ wallId, kind, effectiveDamage, hp, maxHp, destroyed, open, failure? }`:
+
+- `kind: "attack"`: `effectiveDamage` é o dano depois da resistência (zero numa parede
+  indestrutível, `maxHp: 0`); `hp` e `destroyed` são a parede **como o fechamento a deixará**.
+  **O golpe numa parede cai no fechamento do turno**, junto com o dano nos personagens — por isso
+  as edições do mestre no dano (modificador, `damageSkill`) valem para a parede, e o
+  `wall_hp_changed` sai no fechamento (antes: na abertura).
+- `kind: "interact"`: a parede **como a abertura a deixou** (a interação continua caindo na
+  abertura, com o passo que chega nela). `failure` quando nada mudou: `"locked"` (personagem
+  tentou abrir passagem trancada), `"noRoll"` (`lockpick`/`examine`: a corrente de testes ainda
+  não roda), `"notApplicable"` (o resto).
+- Parede **destruída** não entra: um golpe ou uma interação nela não produz resultado.
 
 **Um `payout` é um modificador acumulado no personagem**, escrito na ficha dele no fechamento
 do turno. Os campos:

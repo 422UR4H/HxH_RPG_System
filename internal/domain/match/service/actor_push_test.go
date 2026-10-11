@@ -98,3 +98,16 @@ func TestActorDamageSkill_ReadsTheMastersChoice(t *testing.T) {
 		t.Fatalf("actorDamageSkill() = %d, want the sheet's Grab %d", got, grab)
 	}
 }
+
+// The master's "no skill measures this blow" (edit_action damageSkill "None"): the damage reads
+// zero from the sheet, however strong the Push.
+func TestActorDamageSkill_NoneAddsNothing(t *testing.T) {
+	actorID := uuid.New()
+	cs, _ := pushedSheet(t)
+	a := action.NewAction(actorID, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, nil, &action.Attack{DamageSkill: action.DamageSkillNone}, nil, nil, nil, nil)
+	in := ResolveInput{Sheets: map[uuid.UUID]*csSheet.CharacterSheet{actorID: cs}}
+	if got := (TurnResolver{}).actorDamageSkill(in, *a); got != 0 {
+		t.Fatalf("actorDamageSkill() = %d, want 0 with no damage skill", got)
+	}
+}

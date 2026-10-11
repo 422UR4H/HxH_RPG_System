@@ -77,3 +77,11 @@ func TestIsPathBlocked_DirectionLeft_FromLeft(t *testing.T) {
 		t.Error("direction=left wall should block from the left side")
 	}
 }
+
+func TestIsPathBlocked_DestroyedWallIsRubble(t *testing.T) {
+	w := wall([2]float64{50, 0}, [2]float64{50, 100})
+	w.Destroyed = true
+	if service.IsPathBlocked([2]float64{0, 50}, [2]float64{100, 50}, []entity.WallSegment{w}) {
+		t.Error("expected a destroyed wall not to block movement")
+	}
+}

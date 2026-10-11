@@ -125,4 +125,27 @@ func TestApplyWallInteract(t *testing.T) {
 			t.Error("a destroyed door does not open")
 		}
 	})
+
+	t.Run("only the master destroys, and any wall falls — the indestructible too", func(t *testing.T) {
+		destroy := &action.Interact{Kind: action.InteractDestroy}
+		if _, ok := service.ApplyWallInteract(plainWall, destroy, false); ok {
+			t.Error("a character must not destroy by interact")
+		}
+		solid := mapentity.WallSegment{ID: "w", WallType: mapentity.WallTypeWall, HP: 0, MaxHP: 0}
+		updated, ok := service.ApplyWallInteract(solid, destroy, true)
+		if !ok || !updated.Destroyed || updated.HP != 0 {
+			t.Errorf("got ok=%v destroyed=%v hp=%d", ok, updated.Destroyed, updated.HP)
+		}
+		door := mapentity.WallSegment{ID: "d", WallType: mapentity.WallTypeDoor, HP: 7, MaxHP: 10}
+		if updated, _ := service.ApplyWallInteract(door, destroy, true); updated.HP != 0 || !updated.Destroyed {
+			t.Error("a destroyed door has no HP left")
+		}
+	})
+
+	t.Run("a secret door locks like a door", func(t *testing.T) {
+		secret := mapentity.WallSegment{ID: "s", WallType: mapentity.WallTypeSecretDoor}
+		if updated, ok := service.ApplyWallInteract(secret, &action.Interact{Kind: action.InteractLock}, true); !ok || !updated.Locked {
+			t.Error("expected the master to lock a secret door")
+		}
+	})
 }

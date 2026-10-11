@@ -501,7 +501,7 @@ Broadcast para **todos os clientes** quando o master revela uma porta secreta. A
 
 #### `wall_hp_changed`
 
-Enviado apenas aos clientes que conseguem **ver** o midpoint da parede afetada (LOS ativo). O master sempre recebe. O payload não carrega `wallType`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
+Enviado apenas aos clientes que conseguem **ver** o midpoint da parede afetada (LOS ativo). O master sempre recebe. Sai no **fechamento** do turno que atacou a parede (o golpe cai com o dano nos personagens) e quando o mestre derruba a parede pela mão dele (`interact.kind = "destroy"`). O payload não carrega `wallType`, portanto nunca vaza a identidade de uma porta secreta não revelada para jogadores.
 
 #### `wall_state_changed`
 

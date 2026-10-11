@@ -81,11 +81,21 @@ const (
 )
 
 // WallResult is the computed outcome of one player action targeting a wall.
+//
+// When it lands differs by kind, like a move and a blow on a character: an INTERACT is applied
+// when the turn opens (the door opens with the step that reaches it), an ATTACK when the turn
+// closes, with the characters' damage — so the master's edits to the damage reach the wall too,
+// and the projection recomputed after each reaction never counts a blow twice.
 type WallResult struct {
 	UpdatedWall     mapentity.WallSegment
 	EffectiveDamage int
 	ReboundDamage   int // melee rebound candidate; TODO: apply to actor if melee, subtract actor Defense
 	Kind            WallResultKind
+	// Failure is why an interact changed nothing ("" = it changed the wall): "locked" for a
+	// character trying a locked passage, "noRoll" for lockpick/examine (the roll chain does
+	// not run yet), "notApplicable" for anything else. UpdatedWall is then the wall as it was.
+	// Only the result's readers see it; nothing is applied to the board.
+	Failure string
 }
 
 // ResolveInput is everything a resolution reads. It is a struct rather than a parameter
@@ -165,6 +175,12 @@ type PendingReaction struct {
 	ReactionID uuid.UUID
 	ActorID    uuid.UUID
 	Kind       string
+	// Arrival is the reaction's place in the order the reactions of this turn were attached
+	// (1 = first), counting the opened ones too.
+	Arrival int
+	// Speed is the reaction's action-speed result — its key, the same number that orders the
+	// action queue. Nil for a reaction that rolls no speed (dodge, closed dodge, nothing).
+	Speed *int
 }
 
 // RollResult holds the outcome of a single dice roll check.
@@ -338,7 +354,8 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 
 			case TargetKindWallSegment:
 				wall, found := in.Targets.GetWall(targetID.String())
-				if !found {
+				if !found || wall.Destroyed {
+					// Rubble takes nothing: no blow lands on it, no passage is left to open.
 					continue
 				}
 				if a.Attack != nil {
@@ -356,12 +373,12 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 				}
 				if a.Interact != nil {
 					updated, ok := ApplyWallInteract(wall, a.Interact, false)
-					if ok {
-						res.WallResults = append(res.WallResults, WallResult{
-							UpdatedWall: updated,
-							Kind:        WallResultKindInteract,
-						})
+					wr := WallResult{UpdatedWall: updated, Kind: WallResultKindInteract}
+					if !ok {
+						wr.UpdatedWall = wall
+						wr.Failure = interactFailure(wall, a.Interact)
 					}
+					res.WallResults = append(res.WallResults, wr)
 				}
 
 			case TargetKindUnknown:
@@ -383,15 +400,21 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	for _, id := range in.Turn.OpenedReactionIDs() {
 		opened[id] = true
 	}
-	for _, r := range reactions {
+	for i, r := range reactions {
 		if opened[r.GetID()] {
 			continue
 		}
-		res.PendingReactions = append(res.PendingReactions, PendingReaction{
+		pr := PendingReaction{
 			ReactionID: r.GetID(),
 			ActorID:    r.GetActorID(),
 			Kind:       string(r.ReactionKind),
-		})
+			Arrival:    i + 1,
+		}
+		if !r.Speed.Attempts.IsEmpty() {
+			speed := r.Speed.Result
+			pr.Speed = &speed
+		}
+		res.PendingReactions = append(res.PendingReactions, pr)
 	}
 	if !res.IsSettled {
 		res.Conditions = turnConditions(in.Turn)
@@ -429,6 +452,9 @@ func (tr TurnResolver) actorDamageSkill(in ResolveInput, a action.Action) int {
 	skill := enum.Push
 	if a.Attack != nil {
 		skill = a.Attack.EffectiveDamageSkill()
+	}
+	if skill == action.DamageSkillNone {
+		return 0 // the master said no skill measures this blow
 	}
 	return skillValueOf(cs, skill.String())
 }

@@ -835,6 +835,11 @@ func (s *MatchSession) BarState(charID uuid.UUID, bar action.Bar) (float64, []in
 
 // RoundPrices returns the frozen price of each bar that has priced this round. Read by the
 // delivery layer to publish the general bar.
+// RoundTurnCount is how many turns opened in the active round.
+func (s *MatchSession) RoundTurnCount() int {
+	return s.activeRound.TurnCount()
+}
+
 func (s *MatchSession) RoundPrices() map[action.Bar]int {
 	out := map[action.Bar]int{}
 	for _, bar := range []action.Bar{action.BarAction, action.BarMove} {

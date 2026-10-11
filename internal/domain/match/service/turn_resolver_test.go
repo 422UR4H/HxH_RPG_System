@@ -181,6 +181,46 @@ func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
 		}
 	})
 
+	t.Run("a destroyed wall takes nothing: no result, attack or interact", func(t *testing.T) {
+		rubble := wall
+		rubble.Destroyed = true
+		for _, a := range []*action.Action{
+			action.NewAction(uuid.New(), []uuid.UUID{wallID}, uuid.Nil, nil, action.ActionSpeed{},
+				nil, nil, &action.Attack{}, nil, nil, nil, nil),
+			action.NewAction(uuid.New(), []uuid.UUID{wallID}, uuid.Nil, nil, action.ActionSpeed{},
+				nil, nil, nil, nil, nil, nil, &action.Interact{Kind: action.InteractOpen}),
+		} {
+			res := resolver.Resolve(resolveWith(turn.NewTurn(*a), mockWallReader{wallID: wallID.String(), wall: rubble}))
+			if len(res.WallResults) != 0 {
+				t.Errorf("expected no WallResult on a destroyed wall, got %+v", res.WallResults)
+			}
+		}
+	})
+
+	t.Run("opening a locked door changes nothing and says why", func(t *testing.T) {
+		locked := wall
+		locked.Locked = true
+		a := action.NewAction(uuid.New(), []uuid.UUID{wallID}, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, &action.Interact{Kind: action.InteractOpen})
+		res := resolver.Resolve(resolveWith(turn.NewTurn(*a), mockWallReader{wallID: wallID.String(), wall: locked}))
+		if len(res.WallResults) != 1 {
+			t.Fatalf("expected 1 WallResult, got %d", len(res.WallResults))
+		}
+		wr := res.WallResults[0]
+		if wr.Failure != "locked" || wr.UpdatedWall.Open {
+			t.Errorf("got failure=%q open=%v, want locked and still shut", wr.Failure, wr.UpdatedWall.Open)
+		}
+	})
+
+	t.Run("lockpick has no roll yet: changes nothing, says so", func(t *testing.T) {
+		a := action.NewAction(uuid.New(), []uuid.UUID{wallID}, uuid.Nil, nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, &action.Interact{Kind: action.InteractLockpick})
+		res := resolver.Resolve(resolveWith(turn.NewTurn(*a), reader))
+		if len(res.WallResults) != 1 || res.WallResults[0].Failure != "noRoll" {
+			t.Errorf("got %+v, want one noRoll result", res.WallResults)
+		}
+	})
+
 	t.Run("nil targets skips wall routing", func(t *testing.T) {
 		a := action.NewAction(
 			uuid.New(),

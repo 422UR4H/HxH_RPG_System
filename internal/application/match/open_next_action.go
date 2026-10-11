@@ -64,6 +64,12 @@ func (uc *OpenNextActionUC) Execute(
 	// it — so the round ends, and whatever is still queued keeps the roll it already made and
 	// belongs to the next one. This is the moment CloseRoundUC finally has a caller.
 	if tr.NoActionCanPay {
+		// A round where nothing happened is not ended: no turn opened in it, none closing now.
+		// Ending it would only start another just like it — and the master could spin the
+		// clock one empty round after another.
+		if tr.Closed == nil && session.RoundTurnCount() == 0 {
+			return nil, ErrRoundHasNoTurns
+		}
 		if uc.closeRound == nil {
 			return res, nil
 		}

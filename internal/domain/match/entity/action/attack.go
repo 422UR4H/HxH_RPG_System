@@ -49,6 +49,11 @@ type Attack struct {
 	// 		- ActorSpeed e TargetSpeed são da action move e serão resolvidas lá
 }
 
+// DamageSkillNone is the master's "no skill measures this damage": the weapon's dice and flat
+// bonus alone (a firearm, say). Not a skill of the enum — a choice of the master's, on the wire
+// as "None".
+const DamageSkillNone enum.SkillName = "None"
+
 // EffectiveDamageSkill is DamageSkill with its zero value read as Push.
 func (a Attack) EffectiveDamageSkill() enum.SkillName {
 	if a.DamageSkill == "" {

@@ -815,6 +815,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
+				// A blow on a wall lands with the blows on characters: at the close (see WallResult).
+				r.applyClosedWallDamage(session, result.ClosedResolution)
 				// The board — the escape's piece included — is written by persistClosedTurn, in the
 				// turn's own transaction (spec §4.3, "Quando persiste"; owner decision 2026-10-01):
 				// the board on disk and the turns on disk never disagree. Before announceOpenedTurn
@@ -966,6 +968,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// persistClosedTurn (a DB round trip) and before announceOpenedTurn, so the
 				// table sees the turn that ended finish moving before the next one starts.
 				r.applyClosedEscapes(closedTurn, result.ClosedResolution)
+				// A blow on a wall lands with the blows on characters: at the close (see WallResult).
+				r.applyClosedWallDamage(session, result.ClosedResolution)
 				// The board — the escape's piece included — is written by persistClosedTurn, in the
 				// turn's own transaction (spec §4.3, "Quando persiste"; owner decision 2026-10-01):
 				// the board on disk and the turns on disk never disagree. Before announceOpenedTurn
@@ -1333,6 +1337,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// applying the escape's move first is what keeps the table from seeing the turn end
 		// with the piece still in its old slot.
 		r.applyClosedEscapes(closedTurn, result.Resolution)
+		// A blow on a wall lands with the blows on characters: at the close (see WallResult).
+		r.applyClosedWallDamage(session, result.Resolution)
 		// Same as the two implicit closes: the board — the escape's piece included — is written
 		// by persistClosedTurn, in the turn's own transaction (spec §4.3).
 		r.persistClosedTurn(session, closedTurn, result.Resolution, nil, result.Damaged)
@@ -1571,17 +1577,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 						fmt.Sprintf("wall %s is not on this match's board", wallID)))
 					continue
 				}
-				newOpen, newLocked, ok := r.applyWallInteract(wallID, ma.Interact)
+				updated, ok := r.applyWallInteract(wallID, ma.Interact)
 				if !ok {
 					// The wall exists but the interact kind does not apply to it (lockpick,
 					// examine — require a roll check, not yet handled). Not "unknown": the
 					// server DOES know this wall, it just cannot act on this kind yet.
 					continue
 				}
-				changed = append(changed, wallRecord{
-					wallID: wallID,
-					views:  r.broadcastWallStateChangedGated(wallID, newOpen, newLocked),
-				})
+				var views map[uuid.UUID]masteraction.View
+				if ma.Interact.Kind == action.InteractDestroy {
+					// Destroyed lives in the HP news, gated by line of sight to the wall — what
+					// an attack that brought it down would have sent.
+					r.broadcastWallHpChanged(updated)
+					views = r.sessionViews(seenWallMidpoint(updated))
+				} else {
+					views = r.broadcastWallStateChangedGated(wallID, updated.Open, updated.Locked)
+				}
+				changed = append(changed, wallRecord{wallID: wallID, views: views})
 			}
 			// Wall geometry may have changed (open/close) → recompute and push LOS.
 			r.pushVisibilityUpdates()
@@ -2062,7 +2074,9 @@ func (r *Room) announceOpenedTurn(
 	})
 
 	if res != nil {
-		r.broadcastWallResults(session, res.WallResults)
+		// The interacts land as the turn opens (the door opens with the step that reaches it);
+		// the blows wait for the close — applyClosedWallDamage.
+		r.broadcastWallResults(session, res.WallResults, domainservice.WallResultKindInteract)
 		// The projection for the turn just opened. publishResolution keeps this master-only on
 		// its own: the mechanics are public when a turn opens, but the calculation stays with
 		// the master until it closes (IsSettled is false here).
@@ -2263,10 +2277,10 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	r.publishResolution(turnID, result.Resolution)
 }
 
-// applyWallInteract updates in-memory wall state for open/close/toggle.
-// Returns (newOpen, newLocked, ok). ok=false means wall not found or interaction
-// not applicable (e.g. lockpick/examine are player-only actions requiring rolls).
-func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open, locked bool, ok bool) {
+// applyWallInteract applies the master's hand to a wall in memory (open, close, toggle, lock,
+// unlock, destroy). Returns the updated wall; ok=false means wall not found or interaction
+// not applicable (e.g. lockpick/examine are character actions requiring rolls).
+func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (mapentity.WallSegment, bool) {
 	// Hold the write lock across the session update too: MatchSession has no internal
 	// lock, so r.mu is the only thing serializing access to its wall map.
 	r.mu.Lock()
@@ -2274,17 +2288,17 @@ func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open
 
 	w, exists := r.walls[wallID]
 	if !exists {
-		return false, false, false
+		return mapentity.WallSegment{}, false
 	}
 	updated, ok := domainservice.ApplyWallInteract(w, interact, true)
 	if !ok {
-		return false, false, false
+		return mapentity.WallSegment{}, false
 	}
 	r.walls[wallID] = updated
 	if r.session != nil {
 		r.session.UpdateWall(updated)
 	}
-	return updated.Open, updated.Locked, true
+	return updated, true
 }
 
 // ---------------------------------------------------------------------------
@@ -2330,7 +2344,7 @@ func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayloa
 		prices[string(bar)] = price
 	}
 
-	out := BarsUpdatedPayload{Prices: prices}
+	out := BarsUpdatedPayload{Prices: prices, RoundTurns: session.RoundTurnCount()}
 	for _, charID := range session.CharacterIDs() {
 		actionCarry, actionSpeeds := session.BarState(charID, action.BarAction)
 		moveCarry, moveSpeeds := session.BarState(charID, action.BarMove)
@@ -3714,9 +3728,24 @@ func (r *Room) broadcastPlayerLeft(client *Client) {
 	}
 }
 
-func (r *Room) broadcastWallResults(session *matchsession.MatchSession, results []domainservice.WallResult) {
+// applyClosedWallDamage writes a closed turn's blows on walls to the board and tells the table —
+// the wall half of what applyResolution does for character HP. Before persistClosedTurn, so the
+// board the close saves holds them.
+func (r *Room) applyClosedWallDamage(session *matchsession.MatchSession, res *domainservice.TurnResolution) {
+	if res == nil {
+		return
+	}
+	r.broadcastWallResults(session, res.WallResults, domainservice.WallResultKindAttack)
+}
+
+// broadcastWallResults applies the results of one kind to the board and broadcasts them; an
+// interact that changed nothing (Failure) is not news.
+func (r *Room) broadcastWallResults(session *matchsession.MatchSession, results []domainservice.WallResult, kind domainservice.WallResultKind) {
 	changed := false
 	for _, wr := range results {
+		if wr.Kind != kind || wr.Failure != "" {
+			continue
+		}
 		session.UpdateWall(wr.UpdatedWall)
 		r.mu.Lock()
 		r.walls[wr.UpdatedWall.ID] = wr.UpdatedWall

@@ -199,6 +199,41 @@ func raceRoundWithOneOpenTurn(t *testing.T, f *combatFixture, master, player *we
 	return round1, lastTurnOpened(t, mc).TurnID
 }
 
+// roundWithOneClosedTurn plays one turn of a Race round to its close (close_turn), so the round
+// has happened and nothing is open: the next open_next_action ends it without closing a turn.
+func roundWithOneClosedTurn(t *testing.T, f *combatFixture, master, player *websocket.Conn, mc, pc *collector) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	round1, turnID := raceRoundWithOneOpenTurn(t, f, master, player, mc, pc)
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 2*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	return round1, turnID
+}
+
+// Um round em que nenhum turno abriu não se encerra: o mestre não roda o relógio de rodada vazia
+// em rodada vazia. open_next_action responde game_error e nada é gravado.
+func TestE2E_ARoundWithNoTurnIsNotEnded(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
+	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	ep := awaitErrorWithCode(t, mc, "game_error", 2*time.Second)
+	if ep.Message != "validation error: no turn opened in this round yet" {
+		t.Fatalf("message = %q", ep.Message)
+	}
+	if mc.count(game.MsgTypeRoundClosed) != 0 || len(f.roundRepo.roundCloseCalls()) != 0 {
+		t.Fatal("an empty round was ended")
+	}
+}
+
 // Um open_next_action que fecha o último turno e acaba o round grava tudo numa transação só
 // (dono do produto, 2026-10-02): o turno, o fim do round e o round que nasce no lugar dele — um
 // PersistTurnClose, e nada gravado à parte.
@@ -235,20 +270,18 @@ func TestE2E_TheRoundEndGoesInTheLastTurnsTransaction(t *testing.T) {
 	}
 }
 
-// Um round que acaba sem turno fechado no mesmo comando (nada aberto, nada na fila que pague o
-// preço) grava o seu fim e o round seguinte numa transação deles — nunca um sem o outro.
+// Um round que acaba sem turno fechado no mesmo comando (o último turno já fechou por
+// close_turn, e nada na fila paga o preço) grava o seu fim e o round seguinte numa transação
+// deles — nunca um sem o outro.
 func TestE2E_ARoundThatEndsWithNoTurnWritesItsEndAndSuccessorTogether(t *testing.T) {
 	f := newCombatFixture(t)
-	round1 := f.session.GetActiveRound().GetID()
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
 	defer player.Close() //nolint:errcheck
-	mc := collectFrom(master)
+	mc, pc := collectFrom(master), collectFrom(player)
 
-	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
-	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
-		t.Fatal("the regime switch was never announced")
-	}
+	round1, _ := roundWithOneClosedTurn(t, f, master, player, mc, pc)
+	turnsBefore := len(f.roundRepo.persistedTurnIDs())
 	// Nothing open, nothing queued: no action can pay, so the round ends with no turn closing.
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 	if !mc.await(game.MsgTypeRoundClosed, 2*time.Second) {
@@ -266,8 +299,8 @@ func TestE2E_ARoundThatEndsWithNoTurnWritesItsEndAndSuccessorTogether(t *testing
 	if c.next == nil || c.next.GetID() == round1 || c.next.GetFinishedAt() != nil {
 		t.Fatalf("next = %+v, want the open round born in place of %s", c.next, round1)
 	}
-	if n := len(f.roundRepo.persistedTurnIDs()); n != 0 {
-		t.Fatalf("PersistTurnClose calls = %d, want 0 — no turn closed", n)
+	if n := len(f.roundRepo.persistedTurnIDs()); n != turnsBefore {
+		t.Fatalf("PersistTurnClose calls = %d, want %d — no turn closed in this command", n, turnsBefore)
 	}
 	if contains(f.roundRepo.ensuredRoundIDs(), c.next.GetID()) {
 		t.Fatal("the successor was also written on its own, outside the round's transaction")
@@ -306,17 +339,13 @@ func TestE2E_AFailedLastTurnStillWritesTheRoundEndWithItsSuccessor(t *testing.T)
 // isso, o round seguinte nasceria aberto ao lado do anterior ainda aberto no banco.
 func TestE2E_AnUnwrittenRoundEndRidesTheSuccessorsNextWrite(t *testing.T) {
 	f := newCombatFixture(t)
-	round1 := f.session.GetActiveRound().GetID()
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
 	defer player.Close() //nolint:errcheck
-	mc := collectFrom(master)
+	mc, pc := collectFrom(master), collectFrom(player)
 
-	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
-	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
-		t.Fatal("the regime switch was never announced")
-	}
-	// The round ends with no turn, and its write fails.
+	round1, _ := roundWithOneClosedTurn(t, f, master, player, mc, pc)
+	// The round ends with no turn closing in the command, and its write fails.
 	f.roundRepo.setFailRoundClose(errors.New("the transaction rolled back"))
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 	if !mc.await(game.MsgTypeRoundClosed, 2*time.Second) {

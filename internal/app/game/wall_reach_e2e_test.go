@@ -169,3 +169,105 @@ func TestE2E_MoveWallCheck_RotatedGridMeasuresInLocalSpace(t *testing.T) {
 	sendGeomDash(t, player, f.attackerID, [3]int{4, 4, 0}, [3]int{5, 4, 0})
 	awaitErrorWithCode(t, playerMsgs, "move_blocked", 2*time.Second)
 }
+
+// The master's hand brings a wall down — the indestructible included (an earthquake is not an
+// attack). The table hears it as HP news: hp 0, destroyed.
+func TestE2E_MasterDestroysAWall(t *testing.T) {
+	f := newCombatFixture(t)
+	solid := reachDoor(false)
+	solid.WallType = mapentity.WallTypeWall
+	solid.HP, solid.MaxHP = 0, 0
+	seedGeomBoard(t, f, squareGeomGrid,
+		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 3, 4)},
+		[]mapentity.WallSegment{solid})
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board — the fixture never started")
+	}
+	sendWS(t, master, "enqueue_master_action", map[string]any{
+		"targetIds": []string{reachDoorID}, "interact": map[string]any{"kind": "destroy"},
+	})
+	got := awaitWallHp(t, masterMsgs, reachDoorID, 2*time.Second)
+	if !got.Destroyed || got.HP != 0 {
+		t.Errorf("got %+v, want destroyed with hp 0", got)
+	}
+}
+
+func awaitWallHp(t *testing.T, c *collector, wallID string, d time.Duration) game.WallHpChangedPayload {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		for _, m := range c.snapshotMessages() {
+			if m.Type != game.MsgTypeWallHpChanged {
+				continue
+			}
+			var p game.WallHpChangedPayload
+			if err := json.Unmarshal(m.Payload, &p); err == nil && p.WallID == wallID {
+				return p
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("never saw wall_hp_changed for %s", wallID)
+	return game.WallHpChangedPayload{}
+}
+
+// A blow on a wall lands with the blows on characters — at the close. While the turn is open the
+// master reads it in the resolution (walls[]); the board only changes when the turn closes. The
+// master's "no skill measures the damage" reaches the wall too.
+func TestE2E_WallBlowLandsAtTheClose(t *testing.T) {
+	f := newCombatFixture(t)
+	door := reachDoor(false)
+	door.HP, door.MaxHP, door.Resistance = 1000, 1000, 0
+	seedGeomBoard(t, f, squareGeomGrid,
+		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 3, 0)},
+		[]mapentity.WallSegment{door})
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+	if !mc.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board — the fixture never started")
+	}
+	sendWS(t, player, "enqueue_action", map[string]any{
+		"actorId": f.attackerID.String(), "targetId": []string{reachDoorID}, "attack": map[string]any{},
+	})
+	if !pc.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the attack was never enqueued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeResolutionUpdate, 2*time.Second) {
+		t.Fatal("no resolution for the opened turn")
+	}
+	res := lastResolutionUpdated(t, mc)
+	if len(res.Walls) != 1 || res.Walls[0].WallID != reachDoorID || res.Walls[0].Kind != "attack" {
+		t.Fatalf("walls = %+v, want the door's attack result", res.Walls)
+	}
+	if res.Walls[0].HP != 1000-res.Walls[0].EffectiveDamage {
+		t.Errorf("projected hp %d, want 1000 - %d", res.Walls[0].HP, res.Walls[0].EffectiveDamage)
+	}
+	if mc.count(game.MsgTypeWallHpChanged) != 0 {
+		t.Fatal("the wall changed when the turn opened — the blow lands at the close")
+	}
+
+	sendWS(t, master, string(game.MsgTypeEditAction), map[string]any{"damageSkill": "None"})
+	if !awaitCount(mc, game.MsgTypeResolutionUpdate, 2, 2*time.Second) {
+		t.Fatal("the edit never republished the resolution")
+	}
+	edited := lastResolutionUpdated(t, mc)
+	if edited.DamageSkill != "None" {
+		t.Fatalf("damageSkill = %q, want None", edited.DamageSkill)
+	}
+	if edited.Walls[0].EffectiveDamage > res.Walls[0].EffectiveDamage {
+		t.Errorf("no damage skill raised the blow: %d > %d", edited.Walls[0].EffectiveDamage, res.Walls[0].EffectiveDamage)
+	}
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	got := awaitWallHp(t, mc, reachDoorID, 2*time.Second)
+	if got.HP != 1000-edited.Walls[0].EffectiveDamage {
+		t.Errorf("hp after close = %d, want %d", got.HP, 1000-edited.Walls[0].EffectiveDamage)
+	}
+}

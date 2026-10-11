@@ -9,7 +9,7 @@ As paredes do mapa tático são alvos válidos para ações de jogadores. Toda a
 | `wall` / `terrain` | Parede sólida ou terreno. Pode ser atacada (se tiver HP). |
 | `door` | Porta. Pode ser aberta, fechada ou atacada. |
 | `window` | Janela. Comporta-se como porta para fins de ação. |
-| `secret_door` | Porta secreta. Invisível para jogadores — não aparece no menu de ação. |
+| `secret_door` | Porta secreta. Invisível para jogadores até o mestre revelá-la; revelada, é uma porta como as outras (abrir, fechar, trancar, arrombar). |
 
 ## Ações Disponíveis por Tipo
 
@@ -38,6 +38,24 @@ Uma habilidade que permita agir numa parede de longe passa pela mão do mestre.
   tentativa é declarada e o mestre decide. Se deu certo, ele destranca.
 - O **mestre** abre e fecha qualquer passagem, trancada ou não, e **tranca e destranca** portas
   e janelas.
+
+## A mão do mestre
+
+Sem NPC escolhido, o mestre toca em **qualquer** parede e vê a vida dela (ou que é indestrutível,
+ou que está destruída). Ele abre, fecha, tranca, destranca, revela porta secreta e **destrói**
+paredes na hora — uma ou várias de uma vez (um terremoto). Destruir não é ataque: a parede
+indestrutível também cai. Com um NPC escolhido, o mestre age só através do NPC.
+
+## Parede destruída
+
+Vira entulho: não bloqueia movimento nem visão, e não aceita mais nenhuma ação (abrir, fechar,
+arrombar, atacar).
+
+## Quando o dano cai
+
+O dano de um ataque numa parede cai no **fechamento** do turno, junto com o dano nos personagens.
+Enquanto o turno está aberto, o mestre vê no cálculo quanto cada parede vai perder. Uma parede
+indestrutível pode estar entre os alvos de um golpe em área — ela só não recebe dano.
 
 ## Resistência e Dano
 
