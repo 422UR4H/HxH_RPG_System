@@ -73,6 +73,10 @@ const (
 
 	// Server → Client
 	MsgTypeMasterActionEnqueued MessageType = "master_action_enqueued"
+	// MsgTypeMasterActionRecorded: a master action applied outside a turn is now a row of
+	// the history this reader can read — the cue to refetch GET /history (see
+	// Room.notifyMasterActionRecorded).
+	MsgTypeMasterActionRecorded MessageType = "master_action_recorded"
 	MsgTypeRoundModeChanged     MessageType = "round_mode_changed"
 
 	// Client → Server (roster, master only): put an NPC into the match — live if a session
@@ -630,6 +634,9 @@ type PendingReactionPayload struct {
 	Arrival int `json:"arrival"`
 	// Speed is the reaction's action-speed key; absent when it rolls none (dodge, nothing).
 	Speed *int `json:"speed,omitempty"`
+	// SystemBias is the disadvantage the engine itself put on the reaction's speeds (-1 when it
+	// swapped out a queued action or the reactor cancelled earlier this round); absent = none.
+	SystemBias int `json:"systemBias,omitempty"`
 }
 
 // WallResultPayload is what the turn did to one wall. Attack: the blow's effective damage and
@@ -683,6 +690,8 @@ type ReactionResultPayload struct {
 	// before it reached this one (that is CharacterResultPayload's concern, not this
 	// reaction's).
 	StopsAttack bool `json:"stopsAttack"`
+	// SystemBias: see PendingReactionPayload.SystemBias.
+	SystemBias int `json:"systemBias,omitempty"`
 }
 
 // CharacterResultPayload is what one attack did to one target.
@@ -806,6 +815,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			Kind:       pr.Kind,
 			Arrival:    pr.Arrival,
 			Speed:      pr.Speed,
+			SystemBias: pr.SystemBias,
 		})
 	}
 	for _, wr := range res.WallResults {
@@ -877,6 +887,7 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 		Margin:      cr.Ladder.Margin,
 		Difference:  cr.Ladder.Difference,
 		StopsAttack: cr.ReactionStopsAttack,
+		SystemBias:  cr.ReactionSystemBias,
 	}
 }
 
@@ -1123,6 +1134,12 @@ type MasterActionEnqueuedPayload struct {
 	Remove      *RemovePiecePayload  `json:"remove,omitempty"`
 	ActionSpeed *RollCheckPayload    `json:"actionSpeed,omitempty"`
 	Interact    *InteractPayload     `json:"interact,omitempty"`
+}
+
+// MasterActionRecordedPayload names only the kind: like scene_changed, it announces that
+// something changed and the reader fetches it — the history projects it per reader.
+type MasterActionRecordedPayload struct {
+	Kind string `json:"kind"`
 }
 
 // ChangeRoundModePayload asks to switch the round regime. Master only.

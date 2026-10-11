@@ -63,12 +63,11 @@ func seenByAll([]domainservice.VisibilityPolygon) (masteraction.View, bool) {
 	return masteraction.ViewFull, true
 }
 
-// seenWallMidpoint is the gate of a wall's HP news (wall_hp_changed): who has the wall's
-// midpoint in sight saw it whole; nobody else saw anything.
-func seenWallMidpoint(w mapentity.WallSegment) viewGate {
-	mid := domainservice.Point2D{X: (w.P1[0] + w.P2[0]) / 2, Y: (w.P1[1] + w.P2[1]) / 2}
+// seenWall is the gate of a wall's HP news (wall_hp_changed): who has any part of the wall in
+// sight (domainservice.IsWallInSight — the predicate that draws it on their screen) saw it whole; nobody else saw anything.
+func seenWall(w mapentity.WallSegment) viewGate {
 	return func(polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
-		if domainservice.IsVisible(mid, polys) {
+		if domainservice.IsWallInSight(w, polys) {
 			return masteraction.ViewFull, true
 		}
 		return "", false
@@ -186,5 +185,22 @@ func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map
 	}
 	if err := r.deps.MasterActionRepo.Insert(context.Background(), rec); err != nil {
 		log.Printf("recordMasterAction(%s) FAILED — master action of match %s was NOT recorded: %v", kind, r.matchUUID, err)
+		return
 	}
+	r.notifyMasterActionRecorded(rec)
+}
+
+// notifyMasterActionRecorded tells each reader who can read this record in GET /history that
+// it is there now. The board news (wall_state_changed, piece_moved…) goes out BEFORE the row
+// is written, so a refetch on it raced the insert and came back without the action — the live
+// history only caught up on a reload. The readers are exactly Record.ProjectFor's: the master,
+// and the players with an entry in Views; nobody else learns that the master did something.
+func (r *Room) notifyMasterActionRecorded(rec masteraction.Record) {
+	msg := NewServerMessage(MsgTypeMasterActionRecorded, MasterActionRecordedPayload{Kind: string(rec.Kind)})
+	r.dispatchPerPlayer(func(id uuid.UUID, isMaster bool) *Message {
+		if _, ok := rec.ProjectFor(isMaster, id); !ok {
+			return nil
+		}
+		return &msg
+	})
 }

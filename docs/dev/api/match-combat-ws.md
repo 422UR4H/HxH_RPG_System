@@ -132,6 +132,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`round_mode_changed`](#round_mode_changed) | mesa inteira |
 | [`scene_changed`](#scene_changed) | mesa inteira |
 | [`master_action_enqueued`](#master_action_enqueued) | mesa inteira; **só o mestre** nas ações de peça |
+| [`master_action_recorded`](#master_action_recorded) | o mestre + quem pode ler o registro no histórico |
 | [`npc_added`](#npc_added) | mesa inteira |
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
@@ -1631,8 +1632,10 @@ junto é de turno aberto.
 | `escape.landing` | Onde o mestre pôs a peça ([`edit_action`](#edit_action) `escapeLanding`), `[col, row, z]` — **presente só enquanto a fuga falha** e há escolha. Uma fuga que escapa não o mostra, mesmo com escolha guardada: vai ao destino. **No payload liquidado, sujeito à fog** — ausente para quem não é mestre nem dono do personagem e não enxerga a casa onde a peça caiu (ver §6, item 5). |
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
+| `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action` (um `+1` do mestre a anula). O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas**. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre, não estado de mesa. Uma reação não aberta nunca vira passo da cadeia, então o ID dela não aparece em `targets[].reaction` — esta é a única superfície que o nomeia. |
 | `pendingReactions[].arrival` | A ordem em que a reação foi anexada neste turno (`1` = a primeira), contando as já abertas. |
+| `pendingReactions[].systemBias` | Como `reaction.systemBias`, para a reação ainda não aberta. |
 | `pendingReactions[].speed` | A **chave** da reação: o resultado da velocidade de ação dela — o mesmo número que ordena a fila de ações. **Ausente** numa reação que não rola velocidade (esquiva, esquiva fechada, não fazer nada). A ordem de abrir continua sendo do mestre; isto é o que ele lê para decidir. |
 | `walls` | O que o turno fez a **cada parede** que mirou, na ordem de `targetId`. **Ausente** sem parede. Projeção como `targets`: com o turno aberto, só o mestre; fechado, todos — menos uma `secret_door` não revelada, que só o mestre vê. Ver abaixo. |
 | `errors` | **Sempre master-only.** Faltas do **motor**, não do jogo — ver abaixo. Ausente numa resolução limpa. |
@@ -1913,6 +1916,28 @@ Nas ações de peça é o que foi **aplicado**: `targetIds` e `move: { "position
 (sem `category`/`speed`/`charge`, que são ignorados), ou `remove: {}`.
 
 **Disparado por:** `enqueue_master_action` nos caminhos 0 (peça) e 3 (sem `interact`).
+
+### `master_action_recorded`
+
+**Direção:** servidor → cliente. **Destino:** o mestre e cada jogador que **pode ler** o
+registro no histórico (`masteraction.Record.ProjectFor`: quem tem entrada em `views` — quem viu
+a ação ao vivo). Mais ninguém: um jogador que não viu nada não fica sabendo que o mestre agiu.
+
+```json
+{ "type": "master_action_recorded", "payload": { "kind": "wallInteract" } }
+```
+
+Sai **depois** que uma master action **sem turno aberto** virou linha em `master_actions` — é o
+sinal para (re)buscar `GET /history`. Existe porque as notícias de tabuleiro
+(`wall_state_changed`, `wall_hp_changed`, `piece_moved`, `wall_revealed`) saem **antes** da
+gravação: um refetch disparado por elas corria contra o insert e voltava sem a ação. `kind` é o
+`masteraction.Kind` (`wallInteract`, `revealWall`, `movePiece`, `placePiece`, `removePiece`);
+o cliente não precisa dele para nada além de log.
+
+Com turno aberto não há esta mensagem: a ação é gravada no fechamento, junto do turno, e o
+`turn_closed` já é o sinal. Uma falha de gravação também não a emite.
+
+**Disparado por:** `enqueue_master_action`, quando a gravação fora de turno dá certo.
 
 ### `npc_added`
 

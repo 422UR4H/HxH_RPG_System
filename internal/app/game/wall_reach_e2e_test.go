@@ -196,6 +196,42 @@ func TestE2E_MasterDestroysAWall(t *testing.T) {
 	}
 }
 
+// The live history refetches on master_action_recorded, which leaves only after the row is
+// written — the board news alone went out before the insert and the refetch missed it. It
+// reaches whoever can read the record (Record.ProjectFor): the master always, and the player
+// standing beside the door, who saw it come down. (Until IsWallSeen, the wall's midpoint sat on
+// the edge of that player's own sight polygon and they read as not having seen it.)
+func TestE2E_AMasterActionOutsideATurnAnnouncesItsRecord(t *testing.T) {
+	f := newCombatFixture(t)
+	seedGeomBoard(t, f, squareGeomGrid,
+		[]mapentity.Piece{squarePiece("p-attacker", f.attackerID, 3, 4)},
+		[]mapentity.WallSegment{reachDoor(false)})
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+	if !masterMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the board — the fixture never started")
+	}
+	sendWS(t, master, "enqueue_master_action", map[string]any{
+		"targetIds": []string{reachDoorID}, "interact": map[string]any{"kind": "destroy"},
+	})
+	if !masterMsgs.await(game.MsgTypeMasterActionRecorded, 2*time.Second) {
+		t.Fatal("the master got no master_action_recorded after the destroy")
+	}
+	rec := f.masterActions.await(t, 1, 2*time.Second)[0]
+	if _, saw := rec.Views[f.playerUUID]; !saw {
+		t.Fatal("the player beside the door has no view of its destruction")
+	}
+	if !playerMsgs.await(game.MsgTypeWallHpChanged, 2*time.Second) {
+		t.Error("the player beside the door got no wall_hp_changed")
+	}
+	if !playerMsgs.await(game.MsgTypeMasterActionRecorded, 2*time.Second) {
+		t.Error("the player who saw the wall got no master_action_recorded")
+	}
+}
+
 func awaitWallHp(t *testing.T, c *collector, wallID string, d time.Duration) game.WallHpChangedPayload {
 	t.Helper()
 	deadline := time.Now().Add(d)

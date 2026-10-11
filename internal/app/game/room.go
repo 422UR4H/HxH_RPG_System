@@ -1589,7 +1589,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					// Destroyed lives in the HP news, gated by line of sight to the wall — what
 					// an attack that brought it down would have sent.
 					r.broadcastWallHpChanged(updated)
-					views = r.sessionViews(seenWallMidpoint(updated))
+					views = r.sessionViews(seenWall(updated))
 				} else {
 					views = r.broadcastWallStateChangedGated(wallID, updated.Open, updated.Locked)
 				}
@@ -2482,12 +2482,8 @@ func (r *Room) broadcastWallStateChangedGated(wallID string, open, locked bool) 
 // The master always receives it. The payload carries no wall type, so this never leaks
 // secret-door identity.
 func (r *Room) broadcastWallHpChanged(w mapentity.WallSegment) {
-	mid := domainservice.Point2D{
-		X: (w.P1[0] + w.P2[0]) / 2,
-		Y: (w.P1[1] + w.P2[1]) / 2,
-	}
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-		if !isMaster && !domainservice.IsVisible(mid, r.visibilityFor(pid)) {
+		if !isMaster && !domainservice.IsWallInSight(w, r.visibilityFor(pid)) {
 			return nil
 		}
 		m := NewServerMessage(MsgTypeWallHpChanged, WallHpChangedPayload{

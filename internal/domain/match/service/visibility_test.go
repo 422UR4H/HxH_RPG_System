@@ -89,3 +89,20 @@ func TestComputeVisibility_OneWay_BlocksFromOneSide(t *testing.T) {
 		t.Fatalf("one-way wall must block from exactly one side (A=%v B=%v)", behindFromA, behindFromB)
 	}
 }
+
+// The wall in front of you bounds your own polygon: its midpoint sits on the polygon's edge and
+// read "not seen" (the bug that kept a player from getting the HP news of the wall they faced).
+// A wall hidden behind another stays unseen.
+func TestIsWallInSight(t *testing.T) {
+	front := mapentity.WallSegment{P1: [2]float64{64 * 8, 64 * 2}, P2: [2]float64{64 * 8, 64 * 9}, Direction: mapentity.WallDirectionBoth}
+	los := []WallSegmentLOS{{ID: "front", P1: Point2D{64 * 8, 64 * 2}, P2: Point2D{64 * 8, 64 * 9}, Direction: "both"}}
+	polys := []VisibilityPolygon{ComputeVisibilityPolygon(Point2D{64*3 + 32, 64*4 + 32}, los, 1e4)}
+
+	if !IsWallInSight(front, polys) {
+		t.Error("the wall right in front of the viewer must be in sight")
+	}
+	behind := mapentity.WallSegment{P1: [2]float64{64 * 10, 64 * 5}, P2: [2]float64{64 * 10, 64 * 8}}
+	if IsWallInSight(behind, polys) {
+		t.Error("a wall behind the front wall must not be in sight")
+	}
+}

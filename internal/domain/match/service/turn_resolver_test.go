@@ -84,6 +84,22 @@ func TestTurnResolver_Resolve(t *testing.T) {
 			t.Errorf("PendingReactions[0].ReactionID = %s, want %s", got, reaction.GetID())
 		}
 	})
+
+	// The master has to know what the engine already applied before adding a condition: a
+	// reaction that swapped out a queued action carries the system's Disadvantage.
+	t.Run("a pending reaction carries the engine's own bias", func(t *testing.T) {
+		tRn := makeTurn()
+		act := tRn.GetAction()
+		reaction := makeReactionTo((&act).GetID())
+		reaction.SystemBias = -1
+		tRn.AddReaction(reaction)
+
+		res := resolver.Resolve(resolveWith(tRn, noopTargetReader{}))
+
+		if got := res.PendingReactions[0].SystemBias; got != -1 {
+			t.Errorf("PendingReactions[0].SystemBias = %d, want -1", got)
+		}
+	})
 }
 
 func makeTurn() *turn.Turn {

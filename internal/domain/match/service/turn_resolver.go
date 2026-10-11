@@ -182,6 +182,10 @@ type PendingReaction struct {
 	// the bars it charges (the slower one, for an escape that charges two). Nil for a reaction
 	// that charges no bar (dodge, closed dodge, nothing): it rolls no speed.
 	Speed *int
+	// SystemBias is the engine's own advantage/disadvantage on this reaction's speeds
+	// (action.Action.SystemBias): -1 when it swapped out a queued action. The master reads it
+	// to know what the system already applied before adding a condition of their own.
+	SystemBias int
 }
 
 // reactionKey is the speed a reaction entered the round with — the lowest across the bars it
@@ -251,6 +255,8 @@ type CharacterResult struct {
 	// AttackStopped true and ReactionStopsAttack false (an earlier repel stopped it before
 	// they even got a swing to answer).
 	ReactionStopsAttack bool
+	// ReactionSystemBias is the opened reaction's SystemBias (see PendingReaction.SystemBias).
+	ReactionSystemBias int
 	// ReactionTotal is the reaction's own roll total, whichever kind it was — the dodge
 	// family's Dodge.Total, or a repel's own total (which CharacterResult otherwise has no
 	// place for: ResolveReaction's Repel RollOutcome is not copied onto this struct the way
@@ -427,6 +433,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 			ActorID:    r.GetActorID(),
 			Kind:       string(r.ReactionKind),
 			Arrival:    i + 1,
+			SystemBias: r.SystemBias,
 		}
 		pr.Speed = reactionKey(r)
 		res.PendingReactions = append(res.PendingReactions, pr)
@@ -626,6 +633,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	}
 	if step.reaction != nil {
 		cr.ReactionID = step.reaction.GetID()
+		cr.ReactionSystemBias = step.reaction.SystemBias
 	}
 
 	// 3. What THIS target takes: the chain's current residual, reduced exactly the way a

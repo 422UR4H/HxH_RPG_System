@@ -338,6 +338,16 @@ mappings:
     game_docs: []
     notes: API entrypoint — usually no doc impact unless adding new routes
 
+  # ─── Dev seed (mesa de teste com logins conhecidos) ───
+  - code_path: cmd/devseed/
+    dev_docs:
+      - path: docs/dev/seed.md
+        confidence: directly_affected
+    game_docs: []
+    notes: >-
+      Só fala REST + WS, como o front: um contrato que muda (payload de criação de ficha,
+      campanha, partida, mapa, start_match) quebra a seed — rode-a depois de mexer neles.
+
   # ─── Match: Domain Services (TurnResolver, structural damage, wall interact) ───
   - code_path: internal/domain/match/service/turn_resolver.go
     dev_docs:
@@ -805,7 +815,9 @@ mappings:
       cena/round (EnsureSceneAndRound) antes, e grava views: o que cada jogador da
       sessão viu ao vivo, pelos mesmos portões de fog do dispatch (pieceMoveView,
       pieceRemovedView) — mudar um portão muda o que o histórico mostra. Com turno
-      aberto não insere: guarda o registro para o fechamento (turn_writes.go).
+      aberto não insere: guarda o registro para o fechamento (turn_writes.go). Depois
+      de um insert fora de turno avisa master_action_recorded a quem o ProjectFor deixa
+      ler o registro — é o sinal do histórico ao vivo para rebuscar.
 
   - code_path: internal/app/game/cancelled_action_record.go
     dev_docs:
