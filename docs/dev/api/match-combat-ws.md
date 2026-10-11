@@ -195,7 +195,7 @@ porque uma ação plausível carregue todas.
 | `move.category` | Só **`Dash`** e `Shift` são aceitos. `Back`, `Roll`, `Slide`, `Jump`, `FlatJump` são **recusados** — a fatia de movimento é que vai exercê-los. |
 | `move.from` | **Ignorado** (B6, spec §4.3 "B5, B6 e B10"). O servidor é dono do tabuleiro: a origem que ele checa é a **posição da PRÓPRIA peça do ator**, lida do board no instante do enfileiramento — nunca o que o payload manda aqui. Sem peça no tabuleiro, não há origem e não há checagem nenhuma. |
 | `move.position` | Convenção de coordenada, igual em `move.from`: `[a, b, z]`, com `(a, b) = (col, row)` numa grade quadrada ou `(q, r)` axial numa hexagonal. `z` **não é lido** pelo servidor (ver a nota de `Z` mais abaixo, em `piece_moved`). |
-| `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. (`reveal` é master-only, por `enqueue_master_action`.) |
+| `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. Qualquer outro valor é `invalid_action` — `reveal`, `lock` e `unlock` são **do mestre**, por [`enqueue_master_action`](#enqueue_master_action). Ver [Interagir com parede](#interagir-com-parede-alcance-e-tranca) logo abaixo. |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
 | `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
@@ -213,6 +213,35 @@ penalidade de arma destreinada; se um dia existir, é regra nova, não este cami
 do atacante; o acerto rola o conjunto da partida sobre `Accuracy` e soma a **proficiência**
 daquela arma.
 
+#### Interagir com parede: alcance e tranca
+
+Um personagem só põe a mão numa parede (`interact` com uma parede em `targetId`) se **encosta**
+nela: a casa onde a ação o deixa — o `move.position` da própria ação, ou a casa da peça quando
+não há `move` — tem de ser uma das casas que tocam o segmento. Sem isso: `out_of_reach`, e nada
+é enfileirado. Sem peça no tabuleiro também é `out_of_reach`. A regra é a de
+`mapservice.WallContactSlots`, a mesma do front (`wallContactSlots`): o segmento é amostrado no
+espaço **local** da grade (o de `p1/p2`), olhando um quarto de célula para cada lado; numa
+parede sobre a aresta da grade, são as casas dos dois lados dela, sem as que só tocam a ponta.
+
+- **Ataque não exige alcance.** Um ataque a distância é um ataque a distância; só a interação
+  exige encostar. Alcançar uma parede de longe por uma habilidade é coisa do mestre, pela mão
+  dele (`enqueue_master_action`).
+- **Alvo personagem** não passa por esta checagem — ela só olha os `targetId` que são paredes.
+- A checagem é no enfileiramento, como o `move_blocked`. Se a peça for movida depois (fuga, arrasto
+  do mestre) antes de o turno abrir, a ação não é checada de novo.
+
+**Tranca.** `open` (e `toggle` que abriria) de um **personagem** numa passagem **trancada** não
+abre: o turno resolve sem mudar a parede — sem `wall_state_changed`. Não é recusado no
+enfileiramento de propósito: quem tenta abrir descobre que está trancada **tentando**. `close`
+fecha sempre, trancada ou não. A mão do mestre ignora a tranca.
+
+**`lockpick` e `examine` não mudam nada ainda**: exigem um teste de perícia, e a corrente de testes
+não é executada (ver [§10](#10-o-que-este-contrato-ainda-não-entrega)). A ação é declarada e
+aparece para o mestre; quando ele julga que deu certo, destranca pela mão dele (`unlock`).
+
+`open`/`close`/`toggle` só valem para **passagem** em pé (`door`, `window`, `secret_door`, não
+destruída); numa parede comum ou terreno o turno resolve sem mudar nada.
+
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
 [`bars_updated`](#bars_updated) para a mesa.
@@ -225,8 +254,10 @@ daquela arma.
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` — os dois viajam juntos ou nenhum. |
 | `invalid_action` | `"actorId is required: the acting character's sheet UUID"` |
 | `invalid_action` | Erro do mapper: perícia desconhecida, arma desconhecida, `move category "X" is not supported yet`. |
+| `invalid_action` | `interact kind "X" is not a character action` — `lock`, `unlock`, `reveal` ou um valor desconhecido. |
 | `match_not_started` | `"match session not initialized"` — sessão ainda não existe. |
-| `move_blocked` | `"movement blocked by a wall"` |
+| `move_blocked` | `"movement blocked by a wall"` — o caminho em linha reta entre os **centros** da casa da peça e de `move.position`, medido no espaço **local** da grade (o das paredes), cruza uma parede com `move` e fechada. |
+| `out_of_reach` | `"wall <id> is out of reach: the actor must stand next to it"` · `"the actor has no piece on the board to reach the wall from"` — `interact` numa parede que a casa final do ator não toca (ver acima). |
 | `game_error` | `participant not found in match session` · `action actor does not match player`. |
 
 ### `attach_reaction`
@@ -834,7 +865,9 @@ Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
    (`wall_revealed`, ver [`maps.md`](maps.md)). **Retorna sem ack nenhum**, exceto pelo
    `unknown_wall` abaixo.
 2. **Qualquer outro `interact` com `targetIds`** → interação com parede, resolvida em
-   memória: `wall_state_changed` (por jogador, com gate de linha de visão; uma porta secreta
+   memória. A mão do mestre: `open`/`close`/`toggle` ignoram a tranca; **`lock` e `unlock`**
+   trancam e destrancam **porta e janela** (em outro tipo de parede, nada muda). Sem alcance:
+   o mestre não está no tabuleiro. `wall_state_changed` (por jogador, com gate de linha de visão; uma porta secreta
    não revelada vai **só para o mestre**) + recálculo de `visibility_updated`. Também
    **retorna sem ack**. Um `targetId` que EXISTE no tabuleiro mas cujo `interact.kind` não se
    aplica a ele (`lockpick`/`examine` — exigem rolagem, ainda não implementado) é ignorado em
@@ -2398,7 +2431,8 @@ vale para o REST.
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
-| `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6). |
+| `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6). Centros medidos no espaço local da grade. |
+| `out_of_reach` | A parede-alvo de um `interact` não encosta na casa onde a ação deixa o ator (ou ele não tem peça). | `enqueue_action` com `interact`. |
 | `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
 | `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
 | `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |

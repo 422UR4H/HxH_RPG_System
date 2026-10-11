@@ -123,6 +123,7 @@ func TestTurnResolver_Resolve_WallTargets(t *testing.T) {
 	wallID := uuid.New()
 	wall := mapentity.WallSegment{
 		ID:         wallID.String(),
+		WallType:   mapentity.WallTypeDoor, // a passage: the interact case opens it
 		HP:         40,
 		MaxHP:      40,
 		Resistance: 5,

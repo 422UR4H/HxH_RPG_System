@@ -1045,36 +1045,38 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// check: the sentinel-based skip this used to do for [0,0,0] — which made a piece
 		// genuinely standing at (0,0) unblockable — is gone along with the sentinel itself.
 		//
-		// B5/B10: the wall check reads cell CENTERS via mapservice.SlotCenterToWorld with the
-		// session's own grid, not `col × cellSize` (yesterday's bug: that lands on a cell's
-		// top-left corner, which is wrong on a square grid and meaningless on a hex one).
+		// B5/B10: the wall check reads cell CENTERS with the session's own grid, not
+		// `col × cellSize` (that lands on a cell's top-left corner). The centers are LOCAL
+		// (SlotCenterToLocal), because that is the space wall P1/P2 live in: comparing
+		// transformed centers against local walls put the path somewhere else on any rotated
+		// or squashed grid.
 		if a.Move != nil {
 			r.mu.RLock()
 			from, hasPiece := r.pieceSlotOf(a.GetActorID().String())
 			a.Move.From = from
-			if !hasPiece {
-				r.mu.RUnlock()
-			} else {
-				grid := r.grid
-				var walls []mapentity.WallSegment
-				if r.session != nil {
-					grid = r.session.GetGrid()
-					walls = r.session.GetWalls()
-				} else {
-					walls = make([]mapentity.WallSegment, 0, len(r.walls))
-					for _, w := range r.walls {
-						walls = append(walls, w)
-					}
-				}
-				r.mu.RUnlock()
-
+			grid, walls := r.boardGeometryLocked()
+			r.mu.RUnlock()
+			if hasPiece {
 				to := a.Move.Position
-				fx, fy := mapservice.SlotCenterToWorld(from[0], from[1], grid)
-				tx, ty := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+				fx, fy := mapservice.SlotCenterToLocal(from[0], from[1], grid)
+				tx, ty := mapservice.SlotCenterToLocal(to[0], to[1], grid)
 				if mapservice.IsPathBlocked([2]float64{fx, fy}, [2]float64{tx, ty}, walls) {
 					client.SendMessage(NewErrorMessage("move_blocked", "movement blocked by a wall"))
 					return
 				}
+			}
+		}
+		// A character's hand on a wall: only the kinds a character declares (lock, unlock and
+		// reveal are the master's, through enqueue_master_action), and only within reach.
+		if a.Interact != nil {
+			if !a.Interact.Kind.IsCharacterInteract() {
+				client.SendMessage(NewErrorMessage("invalid_action",
+					fmt.Sprintf("interact kind %q is not a character action", a.Interact.Kind)))
+				return
+			}
+			if refusal := r.interactOutOfReach(a); refusal != "" {
+				client.SendMessage(NewErrorMessage("out_of_reach", refusal))
+				return
 			}
 		}
 		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
@@ -2274,7 +2276,7 @@ func (r *Room) applyWallInteract(wallID string, interact *action.Interact) (open
 	if !exists {
 		return false, false, false
 	}
-	updated, ok := domainservice.ApplyWallInteract(w, interact)
+	updated, ok := domainservice.ApplyWallInteract(w, interact, true)
 	if !ok {
 		return false, false, false
 	}
@@ -3448,6 +3450,57 @@ func (r *Room) pieceOfLocked(characterID string) string {
 // in metres (see applyMove's own doc), not a grid index, so it has no place in a grid position.
 //
 // The caller MUST hold r.mu (a read lock is enough: this only reads r.pieces).
+// boardGeometryLocked returns the grid and the walls everything spatial is checked against: the
+// session's once the match runs, the room's own before. The caller holds r.mu.
+func (r *Room) boardGeometryLocked() (mapentity.GridShape, []mapentity.WallSegment) {
+	if r.session != nil {
+		return r.session.GetGrid(), r.session.GetWalls()
+	}
+	walls := make([]mapentity.WallSegment, 0, len(r.walls))
+	for _, w := range r.walls {
+		walls = append(walls, w)
+	}
+	return r.grid, walls
+}
+
+// interactOutOfReach checks that a character interacting with walls (open, close, lockpick…)
+// TOUCHES each of them — stands on one of the wall's contact cells (WallContactSlots) — where
+// the action leaves them: the action's own move destination, or where the piece stands now.
+// An attack needs nothing of the sort: a ranged attack is a ranged attack. Something that would
+// let a character act on a wall from afar (an ability) goes through the master's hand.
+//
+// Returns the refusal, or "" when every wall target is within reach. Character targets are
+// not this check's business.
+func (r *Room) interactOutOfReach(a *action.Action) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	grid, walls := r.boardGeometryLocked()
+	byID := make(map[string]mapentity.WallSegment, len(walls))
+	for _, w := range walls {
+		byID[w.ID] = w
+	}
+	var at *[3]int
+	if a.Move != nil {
+		to := a.Move.Position
+		at = &to
+	} else if pos, ok := r.pieceSlotOf(a.GetActorID().String()); ok {
+		at = pos
+	}
+	for _, id := range a.TargetID {
+		w, isWall := byID[id.String()]
+		if !isWall {
+			continue
+		}
+		if at == nil {
+			return "the actor has no piece on the board to reach the wall from"
+		}
+		if !mapservice.IsWallInReach(at[0], at[1], w, grid) {
+			return fmt.Sprintf("wall %s is out of reach: the actor must stand next to it", w.ID)
+		}
+	}
+	return ""
+}
+
 func (r *Room) pieceSlotOf(characterID string) (pos *[3]int, ok bool) {
 	pieceID := r.pieceOfLocked(characterID)
 	if pieceID == "" {

@@ -365,7 +365,16 @@ mappings:
     game_docs:
       - path: docs/game/combate/paredes.md
         confidence: directly_affected
-    notes: ApplyWallInteract — open/close/toggle; lockpick/examine are TODO (roll check)
+    notes: ApplyWallInteract — open/close/toggle (a character cannot open a locked passage; the master's hand ignores the lock); lock/unlock master-only on doors/windows; lockpick/examine are TODO (roll check)
+
+  - code_path: internal/domain/map/service/wall_reach.go
+    dev_docs:
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/paredes.md
+        confidence: directly_affected
+    notes: WallContactSlots — the cells that touch a wall (reach for interact, out_of_reach); mirrors the front's wallContactSlots
 
   - code_path: internal/domain/match/modifier.go
     dev_docs:

@@ -83,9 +83,20 @@ func SlotCenterToWorld(a, b int, g entity.GridShape) (float64, float64) {
 	return applyTransform(bx, by, g)
 }
 
+// SlotCenterToLocal returns cell (a,b)'s center in the grid's LOCAL (pre-transform) space —
+// the space WallSegment.P1/P2 live in. Anything measured against a wall measures here.
+func SlotCenterToLocal(a, b int, g entity.GridShape) (float64, float64) {
+	return baseCenter(a, b, g)
+}
+
 // WorldToSlot returns the cell (a,b) whose region contains world point (x,y).
 func WorldToSlot(x, y float64, g entity.GridShape) (int, int) {
 	bx, by := reverseTransform(x, y, g)
+	return LocalToSlot(bx, by, g)
+}
+
+// LocalToSlot returns the cell (a,b) whose region contains LOCAL point (x,y).
+func LocalToSlot(bx, by float64, g entity.GridShape) (int, int) {
 	if g.Kind == entity.GridKindHex {
 		size := g.CellSize / 2
 		q := (math.Sqrt(3)/3*bx - 1.0/3*by) / size
@@ -106,4 +117,18 @@ func hexRound(q, r float64) (int, int) {
 		rr = -rq - rs
 	}
 	return int(rq), int(rr)
+}
+
+// SlotInGrid reports whether (a,b) is a cell of the grid. Hex cells travel axial (q, r) while
+// Cols/Rows count odd-r offset cells, so the column is q + floor(r/2) — the front's
+// isSlotInBounds.
+func SlotInGrid(a, b int, g entity.GridShape) bool {
+	if b < 0 || b >= g.Rows {
+		return false
+	}
+	col := a
+	if g.Kind == entity.GridKindHex {
+		col += b / 2 // b >= 0 here, so the truncation is the floor
+	}
+	return col >= 0 && col < g.Cols
 }

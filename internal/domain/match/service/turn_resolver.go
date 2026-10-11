@@ -355,7 +355,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 					})
 				}
 				if a.Interact != nil {
-					updated, ok := ApplyWallInteract(wall, a.Interact)
+					updated, ok := ApplyWallInteract(wall, a.Interact, false)
 					if ok {
 						res.WallResults = append(res.WallResults, WallResult{
 							UpdatedWall: updated,

@@ -20,6 +20,25 @@ As paredes do mapa tático são alvos válidos para ações de jogadores. Toda a
 | `door` (trancada) | "Arrombar fechadura", "Atacar" |
 | `window` | "Abrir", "Atacar" |
 
+## Alcance
+
+Para **abrir, fechar ou arrombar**, o personagem precisa estar **encostado** na parede: numa das
+casas que tocam nela, de qualquer um dos lados. Se está longe, a própria ação pode incluir o
+movimento até lá (ação combinada). Sem estar encostado, a ação é recusada.
+
+**Atacar** uma parede não exige estar encostado — um ataque a distância continua valendo.
+
+Uma habilidade que permita agir numa parede de longe passa pela mão do mestre.
+
+## Tranca
+
+- Um personagem **não abre** uma porta ou janela trancada: a tentativa não muda nada.
+- **Fechar** funciona sempre, trancada ou não.
+- **Arrombar fechadura** ainda não rola teste (a corrente de testes de perícia não existe): a
+  tentativa é declarada e o mestre decide. Se deu certo, ele destranca.
+- O **mestre** abre e fecha qualquer passagem, trancada ou não, e **tranca e destranca** portas
+  e janelas.
+
 ## Resistência e Dano
 
 Cada parede tem:
