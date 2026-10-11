@@ -346,6 +346,409 @@ func TestMatchSession_EnqueueAction(t *testing.T) {
 	})
 }
 
+func TestMatchSession_CancelAction(t *testing.T) {
+	pendingIDs := func(s *matchsession.MatchSession) []uuid.UUID {
+		var ids []uuid.UUID
+		for _, a := range s.PendingActions() {
+			ids = append(ids, a.GetID())
+		}
+		return ids
+	}
+
+	t.Run("a player cancels their own queued action", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(playerA, a.GetID()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if slices.Contains(pendingIDs(s), a.GetID()) {
+			t.Error("the cancelled action is still pending")
+		}
+	})
+
+	t.Run("the master cancels the action of their NPC", func(t *testing.T) {
+		matchUUID := uuid.New()
+		masterUUID := uuid.New()
+		npc := makeNPCParticipant(matchUUID, &masterUUID)
+		s := matchsession.NewMatchSession(matchUUID, nil, []*match.Participant{npc})
+		a := makeAction(npc.Sheet.UUID)
+		if err := s.EnqueueAction(masterUUID, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(masterUUID, a.GetID()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(s.PendingActions()) != 0 {
+			t.Error("the NPC action is still pending")
+		}
+	})
+
+	t.Run("another player's action is refused and stays queued", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(playerA, playerB)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		_, err := s.CancelAction(playerB, a.GetID())
+		if !errors.Is(err, matchsession.ErrActionActorMismatch) {
+			t.Fatalf("err = %v, want ErrActionActorMismatch", err)
+		}
+		if !slices.Contains(pendingIDs(s), a.GetID()) {
+			t.Error("a refused cancel removed the action")
+		}
+	})
+
+	t.Run("a non-participant is refused", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		_, err := s.CancelAction(uuid.New(), a.GetID())
+		if !errors.Is(err, matchsession.ErrParticipantNotFound) {
+			t.Fatalf("err = %v, want ErrParticipantNotFound", err)
+		}
+		if len(s.PendingActions()) != 1 {
+			t.Error("a refused cancel removed the action")
+		}
+	})
+
+	t.Run("an unknown id answers ErrActionNotFound", func(t *testing.T) {
+		playerA := uuid.New()
+		s, _ := sessionWithParticipants(playerA)
+		_, err := s.CancelAction(playerA, uuid.New())
+		if !errors.Is(err, service.ErrActionNotFound) {
+			t.Fatalf("err = %v, want ErrActionNotFound", err)
+		}
+	})
+
+	t.Run("an action that already opened cannot be cancelled", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		mustOpen(t, s)
+		_, err := s.CancelAction(playerA, a.GetID())
+		if !errors.Is(err, service.ErrActionNotFound) {
+			t.Fatalf("err = %v, want ErrActionNotFound", err)
+		}
+	})
+
+	t.Run("cancelling twice: the second is ErrActionNotFound", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := sessionWithParticipants(playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(playerA, a.GetID()); err != nil {
+			t.Fatalf("first cancel: %v", err)
+		}
+		_, err := s.CancelAction(playerA, a.GetID())
+		if !errors.Is(err, service.ErrActionNotFound) {
+			t.Fatalf("second cancel err = %v, want ErrActionNotFound", err)
+		}
+	})
+}
+
+// raceSessionWithSheets is a Race session whose characters carry real sheets, so deriveSpeeds
+// runs and stores SystemBias — sessionWithParticipants has none, and there the derivation is a
+// no-op that would leave every bias at 0 whatever the engine decided.
+func raceSessionWithSheets(t *testing.T, mode enum.RoundMode, playerUUIDs ...uuid.UUID) (*matchsession.MatchSession, []uuid.UUID) {
+	t.Helper()
+	matchUUID := uuid.New()
+	participants := make([]*match.Participant, len(playerUUIDs))
+	charIDs := make([]uuid.UUID, len(playerUUIDs))
+	sheets := make(map[uuid.UUID]*csSheet.CharacterSheet, len(playerUUIDs))
+	for i, id := range playerUUIDs {
+		pID := id
+		participants[i] = makeParticipant(matchUUID, &pID)
+		charIDs[i] = participants[i].Sheet.UUID
+		sheets[charIDs[i]] = buildPlainSheet(t)
+	}
+	s := matchsession.NewMatchSession(matchUUID, sheets, participants)
+	s.GetActiveRound().SetMode(mode)
+	return s, charIDs
+}
+
+func dashAction(actor uuid.UUID) *action.Action {
+	return action.NewAction(actor, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, &action.Move{Category: enum.Dash, Position: [3]int{2, 2, 0}}, nil, nil, nil, nil, nil)
+}
+
+// A cancel is a swap: until the round ends, what the character does next derives its speeds
+// with Disadvantage (spec 2026-10-10 §8). Only the speeds — hit, dodge, defense and damage
+// are never read through the bias.
+func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
+	t.Run("declaring after a cancel in Race derives with Disadvantage, move speed included", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA)
+		first := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, first); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if first.SystemBias != 0 {
+			t.Fatalf("SystemBias before any cancel = %d, want 0", first.SystemBias)
+		}
+		if _, err := s.CancelAction(playerA, first.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		next := dashAction(chars[0])
+		if err := s.EnqueueAction(playerA, next); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if next.SystemBias != -1 {
+			t.Errorf("SystemBias after a cancel = %d, want -1", next.SystemBias)
+		}
+		if next.Move.Speed == nil || next.Move.Speed.Attempts.IsEmpty() {
+			t.Error("the move speed must have been derived (and rolled) too")
+		}
+	})
+
+	t.Run("the cancel returns the removed action", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		got, err := s.CancelAction(playerA, a.GetID())
+		if err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		if got == nil || got.GetID() != a.GetID() {
+			t.Errorf("returned %v, want the cancelled action %v", got, a.GetID())
+		}
+	})
+
+	t.Run("a refused cancel returns no action and marks nobody", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA, playerB)
+		a := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if got, err := s.CancelAction(playerB, a.GetID()); err == nil || got != nil {
+			t.Fatalf("cancel by the wrong player = (%v, %v), want (nil, error)", got, err)
+		}
+		next := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, next); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if next.SystemBias != 0 {
+			t.Errorf("SystemBias after a refused cancel = %d, want 0", next.SystemBias)
+		}
+	})
+
+	t.Run("Free marks nobody: speed is passive there", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Free, playerA)
+		first := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, first); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(playerA, first.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		// The master turns Race on after the fact; the Free cancel must not come back.
+		s.SetRoundMode(enum.Race)
+		next := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, next); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if next.SystemBias != 0 {
+			t.Errorf("SystemBias = %d, want 0 — a Free cancel marks no one", next.SystemBias)
+		}
+	})
+
+	t.Run("a Free regime ignores the mark, and Race brings it back within the same round", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA)
+		first := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, first); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(playerA, first.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		// SetRoundMode keeps the round id, so the mark is still this round's. Dash's moveSpeed
+		// is rolled in any regime — the gate has to be the regime, not the speed being passive.
+		s.SetRoundMode(enum.Free)
+		inFree := dashAction(chars[0])
+		if err := s.EnqueueAction(playerA, inFree); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if inFree.SystemBias != 0 {
+			t.Errorf("Dash in Free: SystemBias = %d, want 0 — the mark only biases in Race", inFree.SystemBias)
+		}
+		s.SetRoundMode(enum.Race)
+		backInRace := dashAction(chars[0])
+		if err := s.EnqueueAction(playerA, backInRace); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if backInRace.SystemBias != -1 {
+			t.Errorf("Dash back in Race: SystemBias = %d, want -1 — the mark is still this round's", backInRace.SystemBias)
+		}
+	})
+
+	t.Run("the mark ends with the round", func(t *testing.T) {
+		playerA := uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA)
+		first := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, first); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(playerA, first.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		if _, err := s.CloseRound(); err != nil {
+			t.Fatalf("CloseRound: %v", err)
+		}
+		next := makeAction(chars[0])
+		if err := s.EnqueueAction(playerA, next); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if next.SystemBias != 0 {
+			t.Errorf("SystemBias in the next round = %d, want 0", next.SystemBias)
+		}
+	})
+
+	t.Run("other actions already queued and other characters are untouched", func(t *testing.T) {
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA, playerB)
+		kept, doomed := makeAction(chars[0]), makeAction(chars[0])
+		for _, a := range []*action.Action{kept, doomed} {
+			if err := s.EnqueueAction(playerA, a); err != nil {
+				t.Fatalf("enqueue: %v", err)
+			}
+		}
+		if _, err := s.CancelAction(playerA, doomed.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		if kept.SystemBias != 0 {
+			t.Errorf("an action already queued was re-derived: SystemBias = %d, want 0", kept.SystemBias)
+		}
+		other := makeAction(chars[1])
+		if err := s.EnqueueAction(playerB, other); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if other.SystemBias != 0 {
+			t.Errorf("another character was marked: SystemBias = %d, want 0", other.SystemBias)
+		}
+	})
+}
+
+func TestMatchSession_CancelAction_MarksReactions(t *testing.T) {
+	// playerA opens a turn targeting B's character; B (who may have cancelled something) reacts.
+	setup := func(t *testing.T) (*matchsession.MatchSession, []uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {
+		t.Helper()
+		playerA, playerB := uuid.New(), uuid.New()
+		s, chars := raceSessionWithSheets(t, enum.Race, playerA, playerB)
+		a := makeActionWithSpeed(chars[0], 10)
+		a.TargetID = []uuid.UUID{chars[1]}
+		if err := s.EnqueueAction(playerA, a); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		opened := mustOpen(t, s)
+		act := opened.GetAction()
+		return s, chars, playerB, act.GetID(), playerA
+	}
+	cancelOne := func(t *testing.T, s *matchsession.MatchSession, player, char uuid.UUID) {
+		t.Helper()
+		c := makeAction(char)
+		if err := s.EnqueueAction(player, c); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if _, err := s.CancelAction(player, c.GetID()); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+	}
+
+	t.Run("a repel with nothing queued, after a cancel, derives with Disadvantage", func(t *testing.T) {
+		s, chars, playerB, targetID, _ := setup(t)
+		cancelOne(t, s, playerB, chars[1])
+		r := makeReactionTo(chars[1], targetID)
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if len(r.ConsumedActionIDs) != 0 {
+			t.Fatalf("nothing was queued, yet consumed %v", r.ConsumedActionIDs)
+		}
+		if r.SystemBias != -1 {
+			t.Errorf("SystemBias = %d, want -1", r.SystemBias)
+		}
+	})
+
+	t.Run("an escape in Free ignores the mark", func(t *testing.T) {
+		s, chars, playerB, targetID, _ := setup(t)
+		cancelOne(t, s, playerB, chars[1])
+		s.SetRoundMode(enum.Free)
+		r := makeReactionTo(chars[1], targetID)
+		r.ReactionKind = action.ReactEscape
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if r.SystemBias != 0 {
+			t.Errorf("SystemBias = %d, want 0 — FinalSpeed decides an escape in Free too, but the mark is Race-only", r.SystemBias)
+		}
+	})
+
+	t.Run("a repel without a cancel keeps no bias", func(t *testing.T) {
+		s, chars, playerB, targetID, _ := setup(t)
+		r := makeReactionTo(chars[1], targetID)
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if r.SystemBias != 0 {
+			t.Errorf("SystemBias = %d, want 0", r.SystemBias)
+		}
+	})
+
+	t.Run("mark and consumption together are one Disadvantage, not two", func(t *testing.T) {
+		s, chars, playerB, targetID, _ := setup(t)
+		cancelOne(t, s, playerB, chars[1])
+		if err := s.EnqueueAction(playerB, makeAction(chars[1])); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		r := makeReactionTo(chars[1], targetID)
+		r.ReactionKind = action.ReactRepel
+		if _, err := s.AttachReaction(playerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if len(r.ConsumedActionIDs) != 1 {
+			t.Fatalf("ConsumedActionIDs = %v, want the queued action", r.ConsumedActionIDs)
+		}
+		if r.SystemBias != -1 {
+			t.Errorf("SystemBias = %d, want -1 (never -2)", r.SystemBias)
+		}
+	})
+
+	t.Run("free reactions stay free even for a marked character", func(t *testing.T) {
+		for _, kind := range []action.ReactionKind{action.ReactDodge, action.ReactClosedDodge, action.ReactNothing} {
+			s, chars, playerB, targetID, _ := setup(t)
+			cancelOne(t, s, playerB, chars[1])
+			r := makeReactionTo(chars[1], targetID)
+			r.ReactionKind = kind
+			if _, err := s.AttachReaction(playerB, r); err != nil {
+				t.Fatalf("AttachReaction(%s): %v", kind, err)
+			}
+			if r.SystemBias != 0 {
+				t.Errorf("%s: SystemBias = %d, want 0 — free reactions roll no speed", kind, r.SystemBias)
+			}
+		}
+	})
+}
+
 func TestMatchSession_OpenNextAction(t *testing.T) {
 	t.Run("opens Turn from highest-priority action in queue", func(t *testing.T) {
 		playerA := uuid.New()

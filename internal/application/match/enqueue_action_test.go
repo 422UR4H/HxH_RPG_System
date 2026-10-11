@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	matchDomain "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"

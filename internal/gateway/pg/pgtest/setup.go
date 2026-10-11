@@ -73,7 +73,7 @@ func TruncateAll(t *testing.T, pool *pgxpool.Pool) {
 	ctx := context.Background()
 
 	_, err := pool.Exec(ctx, `
-		TRUNCATE TABLE match_boards, match_events, master_actions,
+		TRUNCATE TABLE match_boards, match_events, master_actions, cancelled_actions,
 			actions, turns, rounds, scenes,
 			enrollments, submissions, sessions,
 			match_participants, matches, maps, campaigns, scenarios,

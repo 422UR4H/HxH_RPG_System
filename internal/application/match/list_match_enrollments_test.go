@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	enrollmentEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enrollment"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
-	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )

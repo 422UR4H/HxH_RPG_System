@@ -76,6 +76,12 @@ type MatchSession struct {
 	// close transaction by TakeOverridesFor. A revert deletes its entry rather than adding
 	// a second one.
 	overrides map[uuid.UUID]map[string]match.OverriddenValue
+	// swapMarks records who cancelled an action in a Race round: character -> the id of that
+	// round. Cancelling is swapping (reacoes.md), so until the round ends whatever the character
+	// declares, and any non-free reaction, derives its speeds with the swap Disadvantage. The
+	// round id is the whole expiry — the next round has another id, so no reset hook exists.
+	// In memory only: a restart is a fresh round anyway.
+	swapMarks map[uuid.UUID]uuid.UUID
 }
 
 func NewMatchSession(
@@ -100,6 +106,7 @@ func NewMatchSession(
 		charToPlayer: charToPlayer,
 		memories:     make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:     make(map[uuid.UUID][]service.VisibilityPolygon),
+		swapMarks:    make(map[uuid.UUID]uuid.UUID),
 	}
 }
 
@@ -129,6 +136,7 @@ func NewMatchSessionWithState(
 		charToPlayer:   charToPlayer,
 		memories:       make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:       make(map[uuid.UUID][]service.VisibilityPolygon),
+		swapMarks:      make(map[uuid.UUID]uuid.UUID),
 	}
 }
 
@@ -1095,8 +1103,10 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
 		// Amount: RollAttempts already holds both sets and the bias only picks which one.
 		// With nothing queued there was no swap, so there is no penalty.
+		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
+		// never two.
 		systemBias := 0
-		if len(r.ConsumedActionIDs) > 0 {
+		if len(r.ConsumedActionIDs) > 0 || s.swapBias(r.GetActorID()) < 0 {
 			systemBias = -1
 		}
 		s.deriveSpeeds(r, systemBias)
@@ -1274,9 +1284,70 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 		return ErrActionActorMismatch
 	}
 	s.rollActionDice(a)
-	s.deriveSpeeds(a, 0)
+	s.deriveSpeeds(a, s.swapBias(a.GetActorID()))
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// CancelAction takes one of the caller's own actions out of the queue before it opens
+// (acoes.md: "Uma ação específica pode ser cancelada e removida da fila").
+//
+// Same authorization as EnqueueAction — whoever may declare through a character may withdraw
+// what they declared through it; the master's NPCs map to the master in charToPlayer. The queue
+// is looked up FIRST: an id that is not pending answers ErrActionNotFound to anyone, so the
+// answer never tells a caller whether someone else's action exists (the queue is secret).
+//
+// In a Race round the cancel marks the character (swapMarks): until the round ends, what they
+// declare next and their non-free reactions derive speeds with Disadvantage, like any swap.
+// Free marks no one — speed is passive there, a bias would change nothing. Actions already in
+// the queue were derived before the cancel and are not touched.
+//
+// Nothing is refunded and nothing else moves: a queued action has paid nothing yet (speeds are
+// recorded when an action opens), and a price already frozen stays frozen — the same rule as a
+// slower action arriving after the freeze. Cancelling never closes the round; only
+// OpenNextAction does.
+func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) (*action.Action, error) {
+	var target *action.Action
+	for _, a := range s.activeQueue.All() {
+		if a.GetID() == actionID {
+			target = a
+			break
+		}
+	}
+	if target == nil {
+		return nil, service.ErrActionNotFound
+	}
+	owner, ok := s.charToPlayer[target.GetActorID().String()]
+	if !ok || owner != playerUUID {
+		if _, isParticipant := s.participants[playerUUID]; !isParticipant {
+			return nil, ErrParticipantNotFound
+		}
+		return nil, ErrActionActorMismatch
+	}
+	s.activeQueue.ExtractByID(actionID)
+	if s.activeRound.GetMode() == enum.Race {
+		s.swapMarks[target.GetActorID()] = s.activeRound.GetID()
+	}
+	return target, nil
+}
+
+// swapBias is the systemBias a character's next derivation starts from: -1 while their cancel
+// mark belongs to the round that is active now AND that round is in Race, 0 otherwise
+// (including a mark left by a round that has since closed).
+//
+// The regime is checked here, not only when the mark is written: Dash's moveSpeed (and an
+// escape's) is rolled in ANY regime and FinalSpeed decides an escape in Free too, so a mark
+// left in Race would otherwise bias them after the master switches to Free. SetRoundMode keeps
+// the round id, so the mark is not erased by the switch — it is only ignored while the round is
+// not in Race, and applies again if the master goes back to Race within the same round.
+func (s *MatchSession) swapBias(charID uuid.UUID) int {
+	if s.activeRound.GetMode() != enum.Race {
+		return 0
+	}
+	if markedIn, ok := s.swapMarks[charID]; ok && markedIn == s.activeRound.GetID() {
+		return -1
+	}
+	return 0
 }
 
 // PendingActions returns the actions still waiting for the master, in insertion order. Read

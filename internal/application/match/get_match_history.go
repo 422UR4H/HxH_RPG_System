@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -44,24 +45,31 @@ type IMasterActionLister interface {
 	ListByMatch(ctx context.Context, matchUUID uuid.UUID) ([]masteraction.Record, error)
 }
 
+// ICancelledActionLister reads the match's cancelled actions (cancelled_actions, spec
+// 2026-10-10 §8.1 P6). The one real implementation is pgcancelledaction.Repository.
+type ICancelledActionLister interface {
+	ListByMatch(ctx context.Context, matchUUID uuid.UUID) ([]cancelledaction.Record, error)
+}
+
 // GetMatchHistoryUC is the read side of the Action History — a game surface with per-field
 // visibility, not a log. Authorization mirrors GetMatchParticipantsUC exactly (public match, or
 // master, or a campaign participant); the only thing this use case adds on top is running the
 // tree through the SAME projection functions the WebSocket path runs, so a field can never end
 // up public on one surface and hidden on the other.
 //
-// It also stitches in what is not a turn (B15, spec §4.5, §4.8): the round's regime changes and
-// the master's own actions come from their own tables, read in separate queries — joining them
-// into FindMatchHistory's already-large join would multiply its rows — and are hung on the tree
-// here by round and turn UUID.
+// It also stitches in what is not a turn (B15, spec §4.5, §4.8; spec 2026-10-10 §8.1 P8): the
+// round's regime changes, the master's own actions and the cancelled actions come from their
+// own tables, read in separate queries — joining them into FindMatchHistory's already-large
+// join would multiply its rows — and are hung on the tree here by round and turn UUID.
 type GetMatchHistoryUC struct {
 	matchRepo            IRepository
 	roundRepo            IRoundRepository
 	participationChecker CampaignParticipationChecker
-	// events and masterActions may be nil: nothing of that kind is stitched in. Production
-	// wires both (cmd/api/main.go).
-	events        IEventLister
-	masterActions IMasterActionLister
+	// events, masterActions and cancelledActions may be nil: nothing of that kind is stitched
+	// in. Production wires all three (cmd/api/main.go).
+	events           IEventLister
+	masterActions    IMasterActionLister
+	cancelledActions ICancelledActionLister
 }
 
 func NewGetMatchHistoryUC(
@@ -70,6 +78,7 @@ func NewGetMatchHistoryUC(
 	participationChecker CampaignParticipationChecker,
 	events IEventLister,
 	masterActions IMasterActionLister,
+	cancelledActions ICancelledActionLister,
 ) *GetMatchHistoryUC {
 	return &GetMatchHistoryUC{
 		matchRepo:            matchRepo,
@@ -77,6 +86,7 @@ func NewGetMatchHistoryUC(
 		participationChecker: participationChecker,
 		events:               events,
 		masterActions:        masterActions,
+		cancelledActions:     cancelledActions,
 	}
 }
 
@@ -161,7 +171,7 @@ func (uc *GetMatchHistoryUC) Get(
 		}
 	}
 
-	if err := uc.stitch(ctx, matchUUID, projected, viewerIsMaster, userUUID); err != nil {
+	if err := uc.stitch(ctx, matchUUID, projected, viewer, userUUID); err != nil {
 		return nil, err
 	}
 	return &GetMatchHistoryResult{Scenes: projected}, nil
@@ -254,7 +264,8 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 	return shown
 }
 
-// stitch hangs the match's events and master actions on the projected tree, in place.
+// stitch hangs the match's events, master actions and cancelled actions on the projected tree,
+// in place.
 //
 // A master action goes INSIDE the turn it was recorded with when that turn is in the tree;
 // otherwise — recorded with no turn, or with a turn that was never written because a restart
@@ -266,11 +277,16 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 // same decision the live dispatch made, recorded in Views): an entry the reader did not see
 // does not exist for them. A regime change is public, like the regime itself.
 //
+// A cancelled action always goes in its round's events, even when it was cancelled while a turn
+// the tree holds was open: it never belonged to that turn — it left the queue before it could
+// be one. Who cancelled is public (the public bar already showed the order change); the action
+// itself is cut per reader by cancelledActionFor.
+//
 // An entry whose round is not in the tree is logged and dropped: every round is a row from
 // birth (EnsureSceneAndRound), so this is drift, and there is no place in the tree to show it.
 func (uc *GetMatchHistoryUC) stitch(
 	ctx context.Context, matchUUID uuid.UUID, scenes []HistoryScene,
-	viewerIsMaster bool, userUUID uuid.UUID,
+	viewer service.Viewer, userUUID uuid.UUID,
 ) error {
 	var events []matchevent.Event
 	if uc.events != nil {
@@ -288,7 +304,15 @@ func (uc *GetMatchHistoryUC) stitch(
 		}
 		records = recs
 	}
-	if len(events) == 0 && len(records) == 0 {
+	var cancelled []cancelledaction.Record
+	if uc.cancelledActions != nil {
+		recs, err := uc.cancelledActions.ListByMatch(ctx, matchUUID)
+		if err != nil {
+			return err
+		}
+		cancelled = recs
+	}
+	if len(events) == 0 && len(records) == 0 && len(cancelled) == 0 {
 		return nil
 	}
 
@@ -320,7 +344,7 @@ func (uc *GetMatchHistoryUC) stitch(
 	}
 
 	for _, r := range records {
-		proj, ok := r.ProjectFor(viewerIsMaster, userUUID)
+		proj, ok := r.ProjectFor(viewer.IsMaster, userUUID)
 		if !ok {
 			continue
 		}
@@ -342,9 +366,21 @@ func (uc *GetMatchHistoryUC) stitch(
 		})
 	}
 
-	// Stable: the two lists arrive ordered by (time, uuid) from their tables, so a tie keeps
-	// that order — and between a regime change and a master action tied to the instant, the
-	// regime change (appended first) comes first.
+	for _, c := range cancelled {
+		ro, ok := rounds[c.RoundUUID]
+		if !ok {
+			log.Printf("GetMatchHistory: match %s — cancelled action %s points at round %s, which is not in the history; dropped",
+				matchUUID, c.UUID, c.RoundUUID)
+			continue
+		}
+		ro.Events = append(ro.Events, HistoryEvent{
+			Kind: HistoryEventActionCancelled, At: c.CancelledAt, CancelledAction: cancelledActionFor(c, viewer),
+		})
+	}
+
+	// Stable: the lists arrive ordered by (time, uuid) from their tables, so a tie keeps that
+	// order — and between entries tied to the instant, the one appended first (regime change,
+	// then master action, then cancelled action) comes first.
 	for _, ro := range rounds {
 		sort.SliceStable(ro.Events, func(a, b int) bool { return ro.Events[a].At.Before(ro.Events[b].At) })
 	}
@@ -354,4 +390,23 @@ func (uc *GetMatchHistoryUC) stitch(
 		})
 	}
 	return nil
+}
+
+// cancelledActionFor is c as this reader may see it (spec 2026-10-10 §8.1 P8): the master the
+// whole action, the actor's owner what they declared (the cut of their own ownQueue), anyone
+// else only who cancelled. Both readers who get the action see all of it under
+// service.ProjectAction, so the deny-list has nothing to strip; only the cut differs.
+func cancelledActionFor(c cancelledaction.Record, viewer service.Viewer) *HistoryCancelledAction {
+	out := &HistoryCancelledAction{UUID: c.UUID, ActorUUID: c.ActorUUID}
+	switch {
+	case viewer.IsMaster:
+		out.Cut = CancelledActionCutFull
+	case viewer.Owns[c.ActorUUID]:
+		out.Cut = CancelledActionCutDeclaration
+	default:
+		return out
+	}
+	a := c.Action
+	out.Action = &a
+	return out
 }

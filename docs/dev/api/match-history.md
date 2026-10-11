@@ -342,7 +342,7 @@ Notas sobre `resolution.targets[]`:
 
 ### O que não é turno — `rounds[].events` e `turns[].masterActions`
 
-Dois tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
+Três tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
 
 - **`roundModeChanged`** — o mestre trocou o regime do round. Gravado em `match_events` no
   instante em que a troca é aplicada (`change_round_mode`); uma troca para o regime em que o
@@ -356,6 +356,12 @@ Dois tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
   2026-10-01). O
   registro é montado no instante — quem viu o quê, o `turnId`, `happenedAt` são os daquele
   momento —; só a gravação espera o turno.
+- **`actionCancelled`** — quem declarou uma ação a tirou da fila antes de ela abrir
+  (`cancel_action`, `match-combat-ws.md`). Gravada em `cancelled_actions` pela mesma regra das
+  master actions: sem turno aberto, no instante; com turno aberto, no fechamento dele (e um
+  reinício no meio do turno a perde junto com o turno). Vai **sempre** em `rounds[].events` —
+  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Projetada por leitor: ver
+  "A ação cancelada" abaixo.
 
 **`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
 do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
@@ -383,15 +389,17 @@ gravadas antes dessa decisão podem ter um `turnId` cujo turno nunca foi gravado
 no instante, com turno aberto ou não); o histórico as mostra em `rounds[].events`, com o
 `turnId`, apontando um turno que não existe na árvore.
 
-**Formato de `events[]`** — em ordem de tempo, os dois `kind` intercalados:
+**Formato de `events[]`** — em ordem de tempo, os três `kind` intercalados:
 
 | Campo | |
 |---|---|
-| `uuid` | do evento (`roundModeChanged`) ou da master action (`masterAction`) |
-| `kind` | `"roundModeChanged"` \| `"masterAction"` |
-| `createdAt` | quando aconteceu |
+| `uuid` | do evento (`roundModeChanged`), da master action (`masterAction`) ou da ação cancelada (`actionCancelled` — o id que a ação tinha na fila) |
+| `kind` | `"roundModeChanged"` \| `"masterAction"` \| `"actionCancelled"` |
+| `createdAt` | quando aconteceu (em `actionCancelled`, quando foi cancelada) |
 | `payload` | só em `roundModeChanged`: `{ "from": "Free", "to": "Race" }` |
 | `masterAction` | só em `masterAction`: o mesmo objeto de `turns[].masterActions[]` |
+| `actorId` | só em `actionCancelled`, **sempre**: a ficha do personagem que agiria |
+| `action` | só em `actionCancelled`, e só para o mestre e o dono do personagem: a ação como estava na fila, no formato de `turns[].action` cortado por leitor (tabela abaixo); **ausente** para os outros |
 
 **Formato de uma master action** (`turns[].masterActions[]` e `events[].masterAction`):
 
@@ -423,6 +431,28 @@ O mestre vê todas, inteiras. Revelar parede vai a todos ao vivo, então vai a t
 `turnNote` não chega à mesa ao vivo (pendura-se no turno e não emite nada), então é só do
 mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, nem para o mestre:
 é como a projeção é decidida, não dado de mesa.
+
+**A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8). Quem cancelou é
+público: a barra geral já mostrou a ordem mudar. O que a ação seria, não:
+
+| Leitor | Recebe |
+|---|---|
+| mestre | `actorId` + `action` inteira (o corte do resto do histórico: dados, totais e velocidades) |
+| dono do personagem | `actorId` + `action` no corte da própria fila (`ownQueue` do `match_full_state`): alvos, arma, movimento, **nomes** das perícias, `reactionKind`, `systemBias` — **sem números**: sem dados, sem totais, sem velocidade |
+| qualquer outro | só `actorId` — a chave `action` não vem |
+
+```json
+{
+  "uuid": "33333333-3333-4333-8333-333333333333",
+  "kind": "actionCancelled",
+  "createdAt": "2026-10-10T10:00:07Z",
+  "actorId": "5a0e3b52-7f4c-4c8e-9d2a-1b6f0c9e8a71",
+  "action": { "uuid": "33333333-3333-4333-8333-333333333333", "actorId": "5a0e3b52-7f4c-4c8e-9d2a-1b6f0c9e8a71", "...": "o mesmo formato de turns[].action" }
+}
+```
+
+Para o front: com `action`, "Fulano cancelou: <descrição da ação>"; sem, "Fulano cancelou uma
+ação". O NPC é do mestre, então só o mestre vê o que ele cancelou.
 
 ### O movimento como foi visto ao vivo — `move.from`, `move.position`, `escape.landing`
 

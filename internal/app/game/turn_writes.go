@@ -3,6 +3,7 @@ package game
 import (
 	"log"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/google/uuid"
 )
@@ -20,6 +21,9 @@ import (
 type turnWrites struct {
 	// masterActions are the turn's master actions, in the order they were applied.
 	masterActions []masteraction.Record
+	// cancelledActions are the actions cancelled while the turn was open, in the order they were
+	// cancelled (holdCancelledActionLocked; spec 2026-10-10 §8.1 P7).
+	cancelledActions []cancelledaction.Record
 	// moveViews is what each session player saw of the turn's opened move, recorded at the
 	// opening (recordOpenedMoveViews) and written with the action (actions.move_views): the
 	// history shows each reader the move as they saw it then. nil when the action has no move.
@@ -74,10 +78,12 @@ func (r *Room) takeTurnWritesLocked(turnID uuid.UUID) turnWrites {
 }
 
 // droppedTurn is what a room that goes away with a turn still open loses: the turn (its opened
-// move and anything else applied live inside it) and the master actions held for it.
+// move and anything else applied live inside it) and the master actions and cancellations held
+// for it.
 type droppedTurn struct {
-	turnID        uuid.UUID
-	masterActions int
+	turnID           uuid.UUID
+	masterActions    int
+	cancelledActions int
 }
 
 // describeDroppedTurnLocked reads what is lost when the room itself goes away — its last client
@@ -91,15 +97,17 @@ func (r *Room) describeDroppedTurnLocked() droppedTurn {
 	d := droppedTurn{turnID: r.openTurnIDLocked()}
 	for _, w := range r.pendingTurns {
 		d.masterActions += len(w.masterActions)
+		d.cancelledActions += len(w.cancelledActions)
 	}
 	return d
 }
 
 // logDroppedTurn says what a room that went away mid-turn did not write — never silently.
 func logDroppedTurn(matchUUID uuid.UUID, d droppedTurn) {
-	if d.turnID == uuid.Nil && d.masterActions == 0 {
+	if d.turnID == uuid.Nil && d.masterActions == 0 && d.cancelledActions == 0 {
 		return
 	}
-	log.Printf("room of match %s closed with turn %s still open — the turn, its opened move and the %d master action(s) "+
-		"applied inside it were NOT persisted; the match resumes from the last closed turn", matchUUID, d.turnID, d.masterActions)
+	log.Printf("room of match %s closed with turn %s still open — the turn, its opened move, the %d master action(s) "+
+		"applied and the %d action(s) cancelled inside it were NOT persisted; the match resumes from the last closed turn",
+		matchUUID, d.turnID, d.masterActions, d.cancelledActions)
 }

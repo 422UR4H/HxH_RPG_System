@@ -8,10 +8,10 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
+	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"

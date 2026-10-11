@@ -11,6 +11,7 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
@@ -23,6 +24,7 @@ import (
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
@@ -747,6 +749,92 @@ func TestPersistTurnCloseWritesTheTurnsMasterActions(t *testing.T) {
 		}
 		if n := countOf(t, `SELECT COUNT(*) FROM master_actions WHERE turn_uuid = $1`, tn.GetID()); n != 0 {
 			t.Fatalf("master_actions rows = %d, want 0 — the good one must roll back too", n)
+		}
+	})
+}
+
+// TestPersistTurnCloseWritesTheTurnsCancelledActions: an action cancelled while a turn was open
+// is written in that turn's own transaction (spec 2026-10-10 §8.1 P7) — both land, or neither.
+func TestPersistTurnCloseWritesTheTurnsCancelledActions(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	build := func(t *testing.T, fx resolutionFixture, tn *turnentity.Turn, actor uuid.UUID) cancelledaction.Record {
+		t.Helper()
+		turnID := tn.GetID()
+		act := buildAttackAction(t, actor, fx.victimSheet)
+		act.SystemBias = -1
+		return cancelledaction.Record{
+			UUID: act.GetID(), MatchUUID: fx.matchUUID, SceneUUID: fx.scene.GetID(),
+			RoundUUID: fx.round.GetID(), TurnUUID: &turnID, ActorUUID: actor,
+			CancelledBy: fx.masterUUID, Action: *act,
+			CancelledAt: time.Now().UTC().Truncate(time.Microsecond),
+		}
+	}
+	countOf := func(t *testing.T, q string, id uuid.UUID) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, q, id).Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+
+	t.Run("writes the turn and its cancelled actions together", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		rec := build(t, fx, tn, fx.victimSheet)
+
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+			MatchUUID: fx.matchUUID, CancelledActions: []cancelledaction.Record{rec},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		var raw []byte
+		var turnUUID *uuid.UUID
+		if err := pool.QueryRow(ctx, `SELECT turn_uuid, action FROM cancelled_actions WHERE uuid = $1`, rec.UUID).
+			Scan(&turnUUID, &raw); err != nil {
+			t.Fatalf("read cancelled action: %v", err)
+		}
+		if turnUUID == nil || *turnUUID != tn.GetID() {
+			t.Fatalf("turn_uuid = %v, want %s", turnUUID, tn.GetID())
+		}
+		got, err := actioncodec.Unmarshal(rec.UUID, rec.ActorUUID, raw)
+		if err != nil {
+			t.Fatalf("decode action: %v", err)
+		}
+		if got.SystemBias != -1 || got.Attack == nil {
+			t.Fatalf("action = %+v, want the cancelled attack with its SystemBias -1", got)
+		}
+	})
+
+	t.Run("a cancelled action that fails to insert rolls the turn back", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		good := build(t, fx, tn, fx.victimSheet)
+		// An actor that is not a sheet: cancelled_actions.actor_uuid's FK refuses it.
+		bad := build(t, fx, tn, uuid.New())
+
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act,
+			MatchUUID: fx.matchUUID, CancelledActions: []cancelledaction.Record{good, bad},
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose succeeded with a cancelled action the database refuses")
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM turns WHERE uuid = $1`, tn.GetID()); n != 0 {
+			t.Fatalf("turns rows = %d, want 0 — the turn must not outlive its cancelled actions' failure", n)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM cancelled_actions WHERE uuid = $1`, good.UUID); n != 0 {
+			t.Fatalf("cancelled_actions rows = %d, want 0 — the good one must roll back too", n)
 		}
 	})
 }

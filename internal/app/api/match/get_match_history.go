@@ -54,21 +54,26 @@ type HistoryRoundResponse struct {
 	CreatedAt  string                `json:"createdAt"`
 	FinishedAt *string               `json:"finishedAt,omitempty"`
 	Turns      []HistoryTurnResponse `json:"turns"`
-	// Events is the round's regime changes and the master actions outside any turn the history
-	// holds, in the order they happened (B15, spec §4.5, §4.8). Always a list — [] when nothing
-	// happened — never null.
+	// Events is the round's regime changes, the master actions outside any turn the history
+	// holds and the cancelled actions, in the order they happened (B15, spec §4.5, §4.8; spec
+	// 2026-10-10 §8.1 P8). Always a list — [] when nothing happened — never null.
 	Events []HistoryEventResponse `json:"events"`
 }
 
 // HistoryEventResponse is one entry of a round's events. Kind is the discriminator:
-// "roundModeChanged" carries Payload ({"from", "to"}); "masterAction" carries MasterAction.
-// UUID is the event's own, or the master action's; CreatedAt is when it happened.
+// "roundModeChanged" carries Payload ({"from", "to"}); "masterAction" carries MasterAction;
+// "actionCancelled" carries ActorID always and Action only for the master (Full cut) and the
+// actor's owner (Declaration cut) — the use case decided which (matchUC.HistoryCancelledAction).
+// UUID is the event's own, the master action's, or the cancelled action's; CreatedAt is when it
+// happened.
 type HistoryEventResponse struct {
 	UUID         uuid.UUID                    `json:"uuid"`
 	Kind         string                       `json:"kind"`
 	CreatedAt    string                       `json:"createdAt"`
 	Payload      json.RawMessage              `json:"payload,omitempty"`
 	MasterAction *HistoryMasterActionResponse `json:"masterAction,omitempty"`
+	ActorID      *uuid.UUID                   `json:"actorId,omitempty"`
+	Action       *actionwire.Action           `json:"action,omitempty"`
 }
 
 // HistoryMasterActionResponse is one master action as this reader saw it live — already run
@@ -322,6 +327,27 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 			CreatedAt:    e.At.Format(time.RFC3339),
 			MasterAction: &ma,
 		}, true
+	case e.Kind == matchUC.HistoryEventActionCancelled && e.CancelledAction != nil:
+		ca := e.CancelledAction
+		actor := ca.ActorUUID
+		out := HistoryEventResponse{
+			UUID: ca.UUID, Kind: string(e.Kind),
+			CreatedAt: e.At.Format(time.RFC3339),
+			ActorID:   &actor,
+		}
+		// The cut the use case granted, as an actionwire level; anything else — the zero value
+		// included — keeps the action off the wire even if one were set.
+		if ca.Action != nil {
+			switch ca.Cut {
+			case matchUC.CancelledActionCutFull:
+				w := actionwire.From(*ca.Action, actionwire.Full)
+				out.Action = &w
+			case matchUC.CancelledActionCutDeclaration:
+				w := actionwire.From(*ca.Action, actionwire.Declaration)
+				out.Action = &w
+			}
+		}
+		return out, true
 	default:
 		return HistoryEventResponse{}, false
 	}
