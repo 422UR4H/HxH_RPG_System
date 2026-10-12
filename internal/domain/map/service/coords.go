@@ -56,17 +56,31 @@ func LocalToSlot(bx, by float64, g entity.GridShape) (int, int) {
 	return int(math.Floor(bx / g.CellSize)), int(math.Floor(by / g.CellSize))
 }
 
-// hexRound rounds fractional axial coords to the nearest hex (cube rounding).
+// hexRound rounds fractional axial coords to the nearest hex (cube rounding). It mirrors
+// hex.ts hexRound exactly, ties included: jsRound for the rounding and the same correction
+// order (q first; then s if ds > dr, else r), so back and front pick the same hex.
 func hexRound(q, r float64) (int, int) {
 	s := -q - r
-	rq, rr, rs := math.Round(q), math.Round(r), math.Round(s)
+	rq, rr, rs := jsRound(q), jsRound(r), jsRound(s)
 	dq, dr, ds := math.Abs(rq-q), math.Abs(rr-r), math.Abs(rs-s)
-	if dq > dr && dq > ds {
-		rq = -rr - rs
-	} else if dr > ds {
+	if dq > ds && dq > dr {
+		rq = -rs - rr
+	} else if ds > dr {
+		rs = -rq - rr
+	} else {
 		rr = -rq - rs
 	}
 	return int(rq), int(rr)
+}
+
+// jsRound is JS Math.round: halves round toward +Inf (math.Round rounds them away from
+// zero, which differs only on negative ties; the subtraction is exact for such values).
+func jsRound(x float64) float64 {
+	r := math.Round(x)
+	if x-r == 0.5 {
+		r++
+	}
+	return r
 }
 
 // SlotInGrid reports whether (a,b) is a cell of the grid. Hex cells travel axial (q, r) while

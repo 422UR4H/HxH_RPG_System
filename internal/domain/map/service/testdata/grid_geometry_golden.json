@@ -1,5 +1,5 @@
 {
-  "_doc": "Golden de geometria da grade, em espaço LOCAL (o de WallSegment.p1/p2). Cópia idêntica em System_X_System/internal/domain/map/service/testdata/grid_geometry_golden.json e System_X_System_React/src/features/tactical-map/utils/__tests__/fixtures/gridGeometryGolden.json: mude os dois juntos. Slots são [a, b] = [col, row] no quadrado e [q, r] axial no hex. hex40Iso tem rotação e achatamento para provar que o LOCAL os ignora. Números com tolerância 1e-9.",
+  "_doc": "Golden de geometria da grade, em espaço LOCAL (o de WallSegment.p1/p2). Cópia idêntica em System_X_System/internal/domain/map/service/testdata/grid_geometry_golden.json e System_X_System_React/src/features/tactical-map/utils/__tests__/fixtures/gridGeometryGolden.json: mude os dois juntos. Slots são [a, b] = [col, row] no quadrado e [q, r] axial no hex. hex40Iso tem rotação e achatamento para provar que o LOCAL os ignora. Números com tolerância 1e-9. A seção localToSlot inclui empates exatos, que os dois lados devem desempatar igual (Math.round do JS: metades rumo a +∞).",
   "grids": {
     "square40": { "kind": "square", "cols": 10, "rows": 10, "cellSize": 40, "skewRatio": 1, "rotation": 0 },
     "hex40": { "kind": "hex", "cols": 10, "rows": 10, "cellSize": 40, "skewRatio": 1, "rotation": 0 },
@@ -27,7 +27,9 @@
     { "grid": "hex40", "x": 34.64, "y": 50, "slot": [0, 1] },
     { "grid": "hex40", "x": 0, "y": 120, "slot": [-1, 2] },
     { "grid": "hex40", "x": 252.49, "y": 170, "slot": [2, 3] },
-    { "grid": "hex40Iso", "x": 252.49, "y": 170, "slot": [2, 3] }
+    { "grid": "hex40Iso", "x": 252.49, "y": 170, "slot": [2, 3] },
+    { "grid": "hex40", "x": -17.32050807568877, "y": 30, "slot": [0, 0] },
+    { "grid": "hex64x3", "x": 27.712812921102035, "y": 48, "slot": [0, 0] }
   ],
   "bounds": [
     { "grid": "square40", "minX": 0, "minY": 0, "maxX": 400, "maxY": 400 },
