@@ -106,3 +106,32 @@ func TestFog_HexGrid_NoWalls_PolygonReachesTheBoardCorners(t *testing.T) {
 		}
 	}
 }
+
+// On a hex grid with front-scale coordinates (size = CellSize), a wall on the edge shared by
+// hexes (2,0) and (3,0) hides the piece at (4,0) but not the one at (2,0). The wall numbers are
+// literal (x = 2.5*64*sqrt(3)) on purpose: the test must catch a change in the Go hex scale.
+// With the hex at half size, (4,0) sat at x~221, BEFORE the wall, and would show up.
+func TestFog_HexGrid_LocalWallHidesThePieceBehindIt(t *testing.T) {
+	grid := mapentity.GridShape{Kind: mapentity.GridKindHex, Cols: 10, Rows: 10, CellSize: 64, SkewRatio: 1}
+	wall := mapentity.WallSegment{
+		ID: "w1", P1: [2]float64{277.12812921102035, -32}, P2: [2]float64{277.12812921102035, 32},
+		WallType: mapentity.WallTypeWall, Material: mapentity.WallMaterialStone,
+		Sense: mapentity.SenseSight, HP: 100, MaxHP: 100,
+	}
+	room, playerUUID := fogRoomOn(t, grid, []mapentity.WallSegment{wall}, hexSlot(1, 0))
+	room.pieces["near"] = PieceMovedPayload{PieceID: "near", CharacterID: uuid.NewString(), Slot: hexSlot(2, 0)}
+	room.pieces["behind"] = PieceMovedPayload{PieceID: "behind", CharacterID: uuid.NewString(), Slot: hexSlot(4, 0)}
+	recompute(t, room, playerUUID)
+
+	view := decodeMapFull(t, room.buildMapFullState(playerUUID, false))
+	seen := map[string]bool{}
+	for _, p := range view.Pieces {
+		seen[p.PieceID] = true
+	}
+	if !seen["own"] || !seen["near"] {
+		t.Fatalf("the player must see their own piece and the one before the wall, got %v", seen)
+	}
+	if seen["behind"] {
+		t.Fatal("the piece behind the wall is visible: the hex scale does not match the front's")
+	}
+}
