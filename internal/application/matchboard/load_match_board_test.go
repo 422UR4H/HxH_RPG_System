@@ -207,16 +207,16 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 		}
 	})
 
-	// Legacy rows were saved with bg NULL ("inherit"). They resolve to the map's current
-	// background at read time; the next board save writes that value and freezes the row.
-	t.Run("saved row with nil Bg resolves to the map's current background", func(t *testing.T) {
+	// bg NULL on a saved row means "no background", frozen: a background the campaign map
+	// gains later must not leak into the match.
+	t.Run("saved row with nil Bg stays nil even if the map now has a background", func(t *testing.T) {
 		matchMapRepo := &fakeMatchMapRepo{
 			mm: &matchmapentity.MatchMap{MatchUUID: matchUUID.String(), MapUUID: mapUUID.String()},
 		}
 		saved := &matchboard.Board{MatchUUID: matchUUID, MapUUID: mapUUID, Pieces: []mapentity.Piece{{ID: "p1"}}}
 		m := mapentity.NewTacticalMap(uuid.New(), "Dungeon", "")
 		m.ID = mapUUID
-		m.Bg = &mapentity.BgImage{URL: "map-bg", Width: 10}
+		m.Bg = &mapentity.BgImage{URL: "added-later"}
 		mapRepo := &fakeMapRepo{m: m}
 		uc := matchboarduc.NewLoadMatchBoardUC(&fakeBoardRepo{board: saved}, matchMapRepo, mapRepo)
 
@@ -224,32 +224,11 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load returned an error: %v", err)
 		}
-		if got.Bg == nil || *got.Bg != *m.Bg {
-			t.Fatalf("Bg = %+v, want the map's %+v", got.Bg, m.Bg)
-		}
-		if got.Bg == m.Bg {
-			t.Fatal("Bg shares the map's pointer, want a value copy")
-		}
-		if len(got.Pieces) != 1 || got.Pieces[0].ID != "p1" {
-			t.Fatalf("Pieces = %+v, want the saved row's own", got.Pieces)
-		}
-	})
-
-	t.Run("saved row with nil Bg and a map without background stays nil", func(t *testing.T) {
-		matchMapRepo := &fakeMatchMapRepo{
-			mm: &matchmapentity.MatchMap{MatchUUID: matchUUID.String(), MapUUID: mapUUID.String()},
-		}
-		saved := &matchboard.Board{MatchUUID: matchUUID, MapUUID: mapUUID}
-		m := mapentity.NewTacticalMap(uuid.New(), "Plain", "")
-		m.ID = mapUUID
-		uc := matchboarduc.NewLoadMatchBoardUC(&fakeBoardRepo{board: saved}, matchMapRepo, &fakeMapRepo{m: m})
-
-		got, err := uc.Load(context.Background(), matchUUID)
-		if err != nil {
-			t.Fatalf("Load returned an error: %v", err)
-		}
 		if got.Bg != nil {
-			t.Fatalf("Bg = %+v, want nil", got.Bg)
+			t.Fatalf("Bg = %+v, want nil (frozen, no leak from the map)", got.Bg)
+		}
+		if mapRepo.calls != 0 {
+			t.Fatalf("map repo was called %d time(s), want 0", mapRepo.calls)
 		}
 	})
 

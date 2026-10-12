@@ -150,8 +150,7 @@ type Room struct {
 	// no-op in that state: there is nothing to write a match_boards row FOR (spec §4.3).
 	mapUUID uuid.UUID
 	// bg is the board's own background, part of its portrait: loaded from Board.Bg in
-	// loadBoard (LoadMatchBoardUC already resolved any legacy NULL to the map's) and
-	// preserved on every persistBoard save. nil means the board has no background.
+	// loadBoard and preserved on every persistBoard save. nil means the board has no background.
 	bg *mapentity.BgImage
 	// persistMu serializes every board snapshot-and-write pair across goroutines — persistBoard's
 	// and persistClosedTurn's (whose PersistTurnClose writes the board in the turn's own
@@ -2671,7 +2670,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	if r.session != nil {
 		grid = r.session.GetGrid()
 	}
-	boardGrid, boardBg := r.grid, r.bg
+	boardBg := r.bg
 	for _, p := range r.pieces {
 		allPieces = append(allPieces, p)
 		x, y := slotPayloadToLocal(p.Slot, grid)
@@ -2735,8 +2734,8 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 		Pieces: pieces, Walls: wallPayloads, FogMode: string(fogMode),
 		Bg: toBgImagePayload(boardBg),
 	}
-	if boardGrid.CellSize > 0 {
-		g := toGridShapePayload(boardGrid)
+	if grid.CellSize > 0 {
+		g := toGridShapePayload(grid)
 		payload.Grid = &g
 	}
 	if !isMaster && isLobby {
