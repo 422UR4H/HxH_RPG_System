@@ -89,6 +89,16 @@ func loadGolden(t *testing.T) goldenFile {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("decodificando golden: %v", err)
 	}
+	// Seção vazia faria o teste correspondente passar sem checar nada.
+	for name, n := range map[string]int{
+		"grids": len(f.Grids), "slotCenters": len(f.SlotCenters), "localToSlot": len(f.LocalToSlot),
+		"bounds": len(f.Bounds), "slotInGrid": len(f.SlotInGrid),
+		"wallContactSlots": len(f.WallContactSlots), "pathBlocked": len(f.PathBlocked),
+	} {
+		if n == 0 {
+			t.Fatalf("golden: seção %q vazia", name)
+		}
+	}
 	return f
 }
 

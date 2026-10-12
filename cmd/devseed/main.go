@@ -266,7 +266,7 @@ func (s *seed) createSheet(owner *account, campaignID, nick, fullname, class str
 
 // createMap: a 16×12 square map with one of each wall kind the table handles — a plain wall,
 // a locked door, an open door, a window and an unrevealed secret door — and a piece for each
-// character. Walls are in world coordinates (cellSize 64), the same space the editor saves.
+// character. Walls are in LOCAL grid coordinates (cellSize 64), the space the editor saves.
 func (s *seed) createMap(master *account, campaignID string, characterIDs []string) string {
 	const c = 64.0
 	grid := map[string]any{

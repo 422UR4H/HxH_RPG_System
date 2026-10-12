@@ -207,7 +207,7 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]`; em `walls`: `p1 = p2`, `wallType` inválido, `hp < 0`, ou ponta fora do contorno LOCAL da grade (`wall segment out of grid bounds`; ver nota abaixo) |
 | 500 | Erro interno |
 
-> **Limites das paredes.** O contorno é o `GridLocalBounds` da grade, em coordenadas LOCAL (pré-transform). Na grade quadrada vai de 0 a `cols·cellSize` × `rows·cellSize`; num hex as células são centradas nos pontos da grade, então o contorno **começa antes de 0** (a partir de `-hexW/2` em x) — uma parede na borda esquerda de um hex tem x negativo e é válida. A checagem tem tolerância de `1e-6` (`wallBoundsTolerance`) para absorver ruído de ponto flutuante do cálculo feito no front. Qualquer erro do `PUT` que não seja 403/404 sai como 422, inclusive falha do repositório.
+> **Limites das paredes.** O contorno é o `GridLocalBounds` da grade, em coordenadas LOCAL (pré-transform). Na grade quadrada vai de 0 a `cols·cellSize` × `rows·cellSize`; num hex as células são centradas nos pontos da grade, então o contorno **começa antes de 0** (a partir de `-hexW/2` em x) — uma parede na borda esquerda de um hex tem x negativo e é válida. A checagem tem tolerância de `1e-6` (`wallBoundsTolerance`) para absorver ruído de ponto flutuante do cálculo feito no front. **Bug conhecido do handler (não é contrato):** hoje `update_map.go` mapeia todo erro que não seja 403/404 para 422, inclusive falha do repositório; esta deveria ser 500, como na tabela acima. Não dependa do 422 para erros de infraestrutura.
 
 ---
 
@@ -329,6 +329,16 @@ Sem body.
 | `resistance` | int | Dano absorvido por ataque |
 | `destroyed` | bool | Segmento destruído (visual alterado) |
 | `revealed` | bool | Porta secreta já revelada pelo master (sempre `false` para paredes que não são `secret_door`) — ver seção Fog of War abaixo |
+
+### Espaço LOCAL da grade
+
+`p1`/`p2`, `visiblePolygons` e toda a geometria de jogo vivem no espaço LOCAL da grade: o da grade antes de rotação, achatamento e origem. `rotation`/`skewRatio` nunca entram nele; o cliente os aplica só para desenhar.
+
+- **Quadrada:** a célula `(col, row)` ocupa `[col·cellSize, (col+1)·cellSize] × [row·cellSize, (row+1)·cellSize]`; o centro fica em `+cellSize/2` nos dois eixos.
+- **Hex:** pointy-top, e `cellSize` é o circunraio (centro → vértice). Os slots são axiais `(q, r)`; o centro é `(cellSize·√3·(q + r/2), 1.5·cellSize·r)`. `cols`/`rows` contam células em offset odd-r, então `col = q + floor(r/2)`.
+- **Contorno (`GridLocalBounds`):** quadrada, `[0, cols·cellSize] × [0, rows·cellSize]`. Hex, com `hexW = cellSize·√3`: x vai de `−hexW/2` a `(cols−1)·hexW + hexW/2`, mais `hexW/2` se `rows ≥ 2` (as linhas ímpares deslocam `hexW/2` à direita); y vai de `−cellSize` a `(rows−1)·1.5·cellSize + cellSize`.
+
+A definição executável é o par de goldens `internal/domain/map/service/testdata/grid_geometry_golden.json` (back) e `src/features/tactical-map/utils/__tests__/fixtures/gridGeometryGolden.json` (front), idênticos byte a byte: mude os dois juntos.
 
 ### Defaults por tipo (aplicados pelo frontend ao criar o segmento)
 

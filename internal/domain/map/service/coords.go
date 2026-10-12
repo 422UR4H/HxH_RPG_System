@@ -65,9 +65,9 @@ func hexRound(q, r float64) (int, int) {
 	dq, dr, ds := math.Abs(rq-q), math.Abs(rr-r), math.Abs(rs-s)
 	if dq > ds && dq > dr {
 		rq = -rs - rr
-	} else if ds > dr {
-		rs = -rq - rr
-	} else {
+	} else if ds <= dr {
+		// r absorbs. (When ds > dr, s absorbs instead: it is not returned, so q and r keep
+		// their rounding.)
 		rr = -rq - rs
 	}
 	return int(rq), int(rr)
