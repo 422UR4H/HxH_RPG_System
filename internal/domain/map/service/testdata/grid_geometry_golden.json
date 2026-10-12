@@ -1,0 +1,70 @@
+{
+  "_doc": "Golden de geometria da grade, em espaço LOCAL (o de WallSegment.p1/p2). Cópia idêntica em System_X_System/internal/domain/map/service/testdata/grid_geometry_golden.json e System_X_System_React/src/features/tactical-map/utils/__tests__/fixtures/gridGeometryGolden.json: mude os dois juntos. Slots são [a, b] = [col, row] no quadrado e [q, r] axial no hex. hex40Iso tem rotação e achatamento para provar que o LOCAL os ignora. Números com tolerância 1e-9.",
+  "grids": {
+    "square40": { "kind": "square", "cols": 10, "rows": 10, "cellSize": 40, "skewRatio": 1, "rotation": 0 },
+    "hex40": { "kind": "hex", "cols": 10, "rows": 10, "cellSize": 40, "skewRatio": 1, "rotation": 0 },
+    "hex40Iso": { "kind": "hex", "cols": 10, "rows": 10, "cellSize": 40, "skewRatio": 0.6, "rotation": 30 },
+    "hex64x3": { "kind": "hex", "cols": 3, "rows": 3, "cellSize": 64, "skewRatio": 1, "rotation": 0 },
+    "hex64Row": { "kind": "hex", "cols": 4, "rows": 1, "cellSize": 64, "skewRatio": 1, "rotation": 0 }
+  },
+  "slotCenters": [
+    { "grid": "square40", "slot": [0, 0], "x": 20, "y": 20 },
+    { "grid": "square40", "slot": [3, 7], "x": 140, "y": 300 },
+    { "grid": "hex40", "slot": [0, 0], "x": 0, "y": 0 },
+    { "grid": "hex40", "slot": [1, 0], "x": 69.28203230275508, "y": 0 },
+    { "grid": "hex40", "slot": [0, 1], "x": 34.64101615137754, "y": 60 },
+    { "grid": "hex40", "slot": [-1, 2], "x": 0, "y": 120 },
+    { "grid": "hex40", "slot": [2, 3], "x": 242.4871130596428, "y": 180 },
+    { "grid": "hex40Iso", "slot": [0, 1], "x": 34.64101615137754, "y": 60 },
+    { "grid": "hex40Iso", "slot": [2, 3], "x": 242.4871130596428, "y": 180 }
+  ],
+  "localToSlot": [
+    { "grid": "square40", "x": 20, "y": 20, "slot": [0, 0] },
+    { "grid": "square40", "x": 139.9, "y": 300, "slot": [3, 7] },
+    { "grid": "square40", "x": 160, "y": 300, "slot": [4, 7] },
+    { "grid": "hex40", "x": 0, "y": 0, "slot": [0, 0] },
+    { "grid": "hex40", "x": 74.28, "y": 3, "slot": [1, 0] },
+    { "grid": "hex40", "x": 34.64, "y": 50, "slot": [0, 1] },
+    { "grid": "hex40", "x": 0, "y": 120, "slot": [-1, 2] },
+    { "grid": "hex40", "x": 252.49, "y": 170, "slot": [2, 3] },
+    { "grid": "hex40Iso", "x": 252.49, "y": 170, "slot": [2, 3] }
+  ],
+  "bounds": [
+    { "grid": "square40", "minX": 0, "minY": 0, "maxX": 400, "maxY": 400 },
+    { "grid": "hex40", "minX": -34.64101615137754, "minY": -40, "maxX": 692.8203230275509, "maxY": 580 },
+    { "grid": "hex40Iso", "minX": -34.64101615137754, "minY": -40, "maxX": 692.8203230275509, "maxY": 580 },
+    { "grid": "hex64x3", "minX": -55.42562584220407, "minY": -64, "maxX": 332.5537550532244, "maxY": 256 },
+    { "grid": "hex64Row", "minX": -55.42562584220407, "minY": -64, "maxX": 387.9793808954285, "maxY": 64 }
+  ],
+  "slotInGrid": [
+    { "grid": "square40", "slot": [0, 0], "inGrid": true },
+    { "grid": "square40", "slot": [9, 9], "inGrid": true },
+    { "grid": "square40", "slot": [10, 0], "inGrid": false },
+    { "grid": "square40", "slot": [0, -1], "inGrid": false },
+    { "grid": "hex40", "slot": [-2, 5], "inGrid": true },
+    { "grid": "hex40", "slot": [-3, 5], "inGrid": false },
+    { "grid": "hex40", "slot": [9, 0], "inGrid": true },
+    { "grid": "hex40", "slot": [10, 0], "inGrid": false },
+    { "grid": "hex40", "slot": [0, 10], "inGrid": false },
+    { "grid": "hex40", "slot": [-4, 9], "inGrid": true },
+    { "grid": "hex40", "slot": [5, 9], "inGrid": true },
+    { "grid": "hex40", "slot": [6, 9], "inGrid": false }
+  ],
+  "wallContactSlots": [
+    { "grid": "square40", "p1": [120, 200], "p2": [160, 200], "slots": [[3, 4], [3, 5]] },
+    { "grid": "square40", "p1": [160, 80], "p2": [160, 160], "slots": [[3, 2], [3, 3], [4, 2], [4, 3]] },
+    { "grid": "square40", "p1": [0, 0], "p2": [40, 0], "slots": [[0, 0]] },
+    { "grid": "hex40", "p1": [34.64101615137755, -20], "p2": [34.64101615137755, 20], "slots": [[0, 0], [1, 0]] },
+    { "grid": "hex40", "p1": [34.64101615137755, 20], "p2": [0, 40], "slots": [[0, 0], [0, 1]] },
+    { "grid": "hex40Iso", "p1": [34.64101615137755, -20], "p2": [34.64101615137755, 20], "slots": [[0, 0], [1, 0]] }
+  ],
+  "pathBlocked": [
+    { "grid": "square40", "from": [4, 4], "to": [5, 4], "wall": { "p1": [200, 160], "p2": [200, 200], "direction": "both" }, "blocked": true },
+    { "grid": "square40", "from": [4, 4], "to": [5, 4], "wall": { "p1": [200, 200], "p2": [200, 240], "direction": "both" }, "blocked": false },
+    { "grid": "square40", "from": [4, 4], "to": [5, 4], "wall": { "p1": [200, 160], "p2": [200, 200], "direction": "left" }, "blocked": true },
+    { "grid": "square40", "from": [5, 4], "to": [4, 4], "wall": { "p1": [200, 160], "p2": [200, 200], "direction": "left" }, "blocked": false },
+    { "grid": "hex40", "from": [0, 0], "to": [1, 0], "wall": { "p1": [34.64101615137755, -20], "p2": [34.64101615137755, 20], "direction": "both" }, "blocked": true },
+    { "grid": "hex40", "from": [0, 0], "to": [0, 1], "wall": { "p1": [34.64101615137755, -20], "p2": [34.64101615137755, 20], "direction": "both" }, "blocked": false },
+    { "grid": "hex40", "from": [1, 0], "to": [2, 0], "wall": { "p1": [103.92304845413263, -20], "p2": [103.92304845413263, 20], "direction": "both" }, "blocked": true }
+  ]
+}
