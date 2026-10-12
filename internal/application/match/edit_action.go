@@ -12,6 +12,10 @@ import (
 type EditActionResult struct {
 	Resolution *service.TurnResolution
 	TurnID     uuid.UUID
+	// Queued is true when the edit landed on an action still waiting in the queue: there is no
+	// turn to resolve (Resolution is nil and TurnID the zero UUID), and what changed is the
+	// queue — the master's view of that action, and the order when the speed moved.
+	Queued bool
 }
 
 // EscapeLandingEdit is edit_action's escapeLanding: where the master puts the piece of an
@@ -56,6 +60,14 @@ func (uc *EditActionUC) Execute(
 		if err := session.CheckEscapeLanding(landing.ReactionID, landing.Position); err != nil {
 			return nil, err
 		}
+	}
+	if ma != nil && session.IsQueued(ma.ActionID) {
+		// A landing names an escape on the open turn; a queued action is never one, and
+		// CheckEscapeLanding above already refused it.
+		if _, err := session.ApplyMasterAction(ma, masterUUID); err != nil {
+			return nil, err
+		}
+		return &EditActionResult{Queued: true}, nil
 	}
 	var res *service.TurnResolution
 	// A payload with ONLY escapeLanding edits no roll, so it does not go through

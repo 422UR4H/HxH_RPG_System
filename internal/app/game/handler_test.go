@@ -1207,8 +1207,9 @@ func TestPlayerCannotCancelLobby(t *testing.T) {
 }
 
 // TestE2E_CloseTurn drives close_turn over a real socket: a non-master is refused, the master
-// gets the server-computed refusal naming the one reaction that was attached and never opened,
-// and the same master resending with confirm:true actually closes the turn.
+// gets the server-computed refusal naming the one reaction a player sent and that was never
+// opened — not the defaults the engine seated for the other targets, which nobody is waiting
+// to narrate — and the same master resending with confirm:true actually closes the turn.
 //
 // Reuses reaction_chain_e2e_test.go's areaFixture — the same real Room, real use cases and
 // wsConn helpers the reaction-chain tests already exercise close_turn's neighbours with.
@@ -1216,6 +1217,7 @@ func TestE2E_CloseTurn(t *testing.T) {
 	faces := []int{
 		6, 4, 1, 1, // Attack.Hit: primary 6,4 (→10); secondary 1,1 (unused filler)
 		7, 3, // Sword damage: D10=7, D4=3 → raw 7+3+2=12
+		5, 5, 5, 5, // A's dodge: primary 5,5; secondary 5,5
 	}
 	f := newAreaFixture(t, faces)
 	defer f.server.Close()
@@ -1223,7 +1225,7 @@ func TestE2E_CloseTurn(t *testing.T) {
 	sword := "Sword"
 	f.attacker.send(t, game.MsgTypeEnqueueAction, game.ActionPayload{
 		ActorID:  f.attackerID,
-		TargetID: []uuid.UUID{f.a},
+		TargetID: []uuid.UUID{f.a, f.b},
 		Attack: &game.AttackPayload{
 			Weapon: &sword,
 			Hit:    game.RollCheckPayload{SkillName: "Accuracy"},
@@ -1237,9 +1239,9 @@ func TestE2E_CloseTurn(t *testing.T) {
 	_, actionID := f.awaitTurnOpened(t)
 
 	// A attaches a reaction and the master never opens it — exactly the scenario close_turn's
-	// refusal exists for.
+	// refusal exists for. B never answers: the default seated for them does not hold the close.
 	reactionID := f.attachReaction(t, f.pA, game.ActionPayload{
-		ActorID: f.a, ReactToID: actionID, ReactionKind: "nothing",
+		ActorID: f.a, ReactToID: actionID, ReactionKind: "dodge", Dodge: &game.DodgePayload{},
 	})
 
 	t.Run("a non-master gets forbidden", func(t *testing.T) {

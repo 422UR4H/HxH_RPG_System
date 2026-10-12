@@ -16,6 +16,11 @@ coisas acontecem automaticamente, nesta ordem:
 
 Essas são passivas. Elas usam o **valor médio do dado** em vez de rolar — seu Reflexo + 11.
 
+Juntas, elas são a sua **reação padrão**: é a resposta que vale enquanto você não escolhe outra,
+e ela conta como uma reação de verdade — o mestre pode pedir que você a narre, pode ajustá-la, e
+ela aparece no histórico da partida. Escolher qualquer outra reação a substitui. **Não fazer
+nada** é a única escolha que abre mão dela.
+
 Enquanto o golpe está no ar, **só o mestre vê os números** — você não sabe se o seu reflexo
 basta, porque saber disso seria saber o quanto o ataque acertou. Então você aposta:
 

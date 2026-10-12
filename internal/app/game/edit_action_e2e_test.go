@@ -80,3 +80,84 @@ func lastResolutionUpdated(t *testing.T, c *collector) game.ResolutionUpdatedPay
 	t.Fatal("no resolution_updated in the collected messages")
 	return game.ResolutionUpdatedPayload{}
 }
+
+// TestE2E_EditQueuedAction drives edit_action on an action still in the QUEUE (owner decision,
+// 2026-10-12): the master gets action_edited, then the action_queued that re-describes the same
+// action with the condition and the damage skill in force, and the public bars; the player who
+// declared it gets none of it.
+func TestE2E_EditQueuedAction(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	masterMsgs, playerMsgs := newCollector(master), newCollector(player)
+
+	f.enqueueAttack(t, player)
+	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the master was never told an action was queued")
+	}
+	queued := lastActionQueued(t, masterMsgs)
+	if len(queued.Conditions) != 0 || queued.DamageSkill != "Push" {
+		t.Fatalf("fresh action_queued = %+v, want no condition and the default Push", queued)
+	}
+
+	t.Run("its targets are not editable on the queue", func(t *testing.T) {
+		sendWS(t, master, "edit_action", map[string]any{
+			"actionId": queued.ActionID.String(), "targetIds": []string{f.attackerID.String()},
+		})
+		if !masterMsgs.await(game.MsgTypeError, 2*time.Second) {
+			t.Fatal("the master never got the refusal")
+		}
+	})
+
+	t.Run("a condition and the damage skill land, and the master sees them", func(t *testing.T) {
+		beforeQueued := masterMsgs.count(game.MsgTypeActionQueued)
+		beforeBars := masterMsgs.count(game.MsgTypeBarsUpdated)
+		sendWS(t, master, "edit_action", map[string]any{
+			"actionId":    queued.ActionID.String(),
+			"conditions":  []map[string]any{{"field": "hit", "modifier": 3, "description": "mira"}},
+			"damageSkill": "Grab",
+		})
+		if !masterMsgs.await(game.MsgTypeActionEdited, 2*time.Second) {
+			t.Fatal("the master never received action_edited")
+		}
+		if !awaitCount(masterMsgs, game.MsgTypeActionQueued, beforeQueued+1, 2*time.Second) {
+			t.Fatal("the master never received the action_queued that re-describes the action")
+		}
+		if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, beforeBars+1, 2*time.Second) {
+			t.Fatal("the bars never went out after the edit")
+		}
+		got := lastActionQueued(t, masterMsgs)
+		if got.ActionID != queued.ActionID || got.DamageSkill != "Grab" {
+			t.Fatalf("action_queued = %+v, want the same action measured by Grab", got)
+		}
+		if len(got.Conditions) != 1 || got.Conditions[0].Field != "hit" || got.Conditions[0].Modifier != 3 ||
+			got.Conditions[0].ActionID != queued.ActionID {
+			t.Fatalf("conditions = %+v, want the master's +3 on the hit", got.Conditions)
+		}
+	})
+
+	t.Run("the player who declared it sees none of it", func(t *testing.T) {
+		time.Sleep(100 * time.Millisecond)
+		if n := playerMsgs.count(game.MsgTypeActionQueued) + playerMsgs.count(game.MsgTypeActionEdited); n != 0 {
+			t.Fatalf("the player got %d queue/edit messages, want 0", n)
+		}
+	})
+}
+
+func lastActionQueued(t *testing.T, c *collector) game.ActionQueuedPayload {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeActionQueued {
+			continue
+		}
+		var p game.ActionQueuedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+			t.Fatalf("unmarshal action_queued: %v", err)
+		}
+		return p
+	}
+	t.Fatal("no action_queued in the collected messages")
+	return game.ActionQueuedPayload{}
+}

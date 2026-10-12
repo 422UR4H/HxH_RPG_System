@@ -184,11 +184,9 @@ func (f *areaFixture) awaitTurnOpened(t *testing.T) (turnID, actionID uuid.UUID)
 }
 
 // attachReaction sends one reaction, waits for the fresh resolution_updated it produces, and
-// returns the reaction's own ID for the later open_reaction — read off that same message's
-// PendingReactions, which is where an attached-but-not-yet-opened reaction's ID lives on the
-// wire (see ResolutionUpdatedPayload.PendingReactions and its own comment for why: an unopened
-// reaction never becomes a chain step, so CharacterResultPayload.Reaction stays nil for it, and
-// PendingReactions is the one place left that still names it). Earlier revisions of this helper
+// returns the reaction's own ID for the later open_reaction — read off the reactor's own
+// reaction_attached ack, which names it over the wire (pendingReactions no longer lists every
+// reaction: a "nothing" never waits for the floor). Earlier revisions of this helper
 // read the ID straight off the fixture's own session — a workaround for a real gap, now closed
 // upstream, that let an operation a real client could not actually reach look reachable in this
 // test. It is gone: the ID now genuinely comes over the wire, the same way a browser client
@@ -196,27 +194,30 @@ func (f *areaFixture) awaitTurnOpened(t *testing.T) (turnID, actionID uuid.UUID)
 func (f *areaFixture) attachReaction(t *testing.T, c *wsConn, p game.ActionPayload) uuid.UUID {
 	t.Helper()
 	before := f.master.msgs.count(game.MsgTypeResolutionUpdate)
+	acks := c.msgs.count(game.MsgTypeReactionAttached)
 	c.send(t, game.MsgTypeAttachReaction, p)
 	if !awaitCount(f.master.msgs, game.MsgTypeResolutionUpdate, before+1, 2*time.Second) {
 		t.Fatalf("attach_reaction for actor %v: master never got a fresh resolution_updated", p.ActorID)
 	}
-	msgs := f.master.msgs.snapshotMessages()
+	// The reactor's own ack names the reaction: pendingReactions no longer lists every one
+	// (a "nothing" has nothing to narrate and never waits for the floor).
+	if !awaitCount(c.msgs, game.MsgTypeReactionAttached, acks+1, 2*time.Second) {
+		t.Fatalf("attach_reaction for actor %v: the reactor never got reaction_attached", p.ActorID)
+	}
+	msgs := c.msgs.snapshotMessages()
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Type != game.MsgTypeResolutionUpdate {
+		if msgs[i].Type != game.MsgTypeReactionAttached {
 			continue
 		}
-		var resolved game.ResolutionUpdatedPayload
-		if err := json.Unmarshal(msgs[i].Payload, &resolved); err != nil {
-			t.Fatalf("unmarshal resolution_updated: %v", err)
+		var attached game.ReactionAttachedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &attached); err != nil {
+			t.Fatalf("unmarshal reaction_attached: %v", err)
 		}
-		for _, pr := range resolved.PendingReactions {
-			if pr.ActorID == p.ActorID {
-				return pr.ReactionID
-			}
+		if attached.ActorID == p.ActorID {
+			return attached.ReactionID
 		}
-		break
 	}
-	t.Fatalf("attach_reaction for actor %v: no pending reaction in the master's resolution_updated", p.ActorID)
+	t.Fatalf("attach_reaction for actor %v: no reaction_attached names it", p.ActorID)
 	return uuid.Nil
 }
 
@@ -298,11 +299,14 @@ func TestE2E_AreaAttackFixtureStandsATurn(t *testing.T) {
 //
 //	target A sends an ACTIVE reaction (repel) and clears the CD
 //	target B sends "nothing"        — refusing even the passives
-//	target C sends no answer at all — the engine applies the defaults
+//	target C sends no answer at all — the default reaction the engine seated for them stands
 //
-// The same three answers and the same scripted faces run twice, with the master opening A→B
-// and then B→A. What each target takes differs between the two runs, and that difference IS
-// the phase's objective.
+// The same three answers and the same scripted faces run twice. The attack names B first, so
+// with nothing opened the chain walks B before A; when the master opens A's repel, A collides
+// before everyone unopened. What each target takes differs between the two runs, and that
+// difference IS the phase's objective: an unopened reaction counts (B's "nothing" takes the
+// blow raw), and the order the master opens in moves it. A "nothing" itself is never opened —
+// it has nothing to narrate.
 //
 // Faces, empirically established by reading rollActionDice/RollCalculator.Roll rather than
 // trusting the brief's count (which predicted 6 and does not account for the fact that a 2D10
@@ -327,11 +331,11 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 		7, 4, 1, 1, // A's repel: primary 7,4 (→11); secondary 1,1 (unused filler)
 	}
 
-	// run drives one full pass: attacker attacks all three, A attaches repel, B attaches
-	// nothing, C stays silent, and the master opens the two attached reactions in the order
-	// repelFirst dictates. It returns the fixture it built (so callers read target IDs off the
-	// SAME fixture the run used) alongside the projected damage per target.
-	run := func(t *testing.T, repelFirst bool) (*areaFixture, map[uuid.UUID]int) {
+	// run drives one full pass: attacker attacks all three (B named first), A attaches repel, B
+	// attaches nothing, C stays silent, and the master opens A's repel when repelOpened. It
+	// returns the fixture it built (so callers read target IDs off the SAME fixture the run
+	// used) alongside the projected damage per target.
+	run := func(t *testing.T, repelOpened bool) (*areaFixture, map[uuid.UUID]int) {
 		t.Helper()
 		f := newAreaFixture(t, faces)
 		defer f.server.Close()
@@ -339,7 +343,7 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 		sword := "Sword"
 		f.attacker.send(t, game.MsgTypeEnqueueAction, game.ActionPayload{
 			ActorID:  f.attackerID,
-			TargetID: []uuid.UUID{f.a, f.b, f.c},
+			TargetID: []uuid.UUID{f.b, f.a, f.c},
 			Attack: &game.AttackPayload{
 				Weapon: &sword,
 				Hit:    game.RollCheckPayload{SkillName: "Accuracy"},
@@ -356,18 +360,14 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 			ActorID: f.a, ReactToID: actionID, ReactionKind: "repel",
 			Repel: &game.RepelPayload{RollCheck: game.RollCheckPayload{SkillName: "Repel"}},
 		})
-		nothingID := f.attachReaction(t, f.pB, game.ActionPayload{
+		f.attachReaction(t, f.pB, game.ActionPayload{
 			ActorID: f.b, ReactToID: actionID, ReactionKind: "nothing",
 		})
 		// C sends nothing at all. That silence is the third answer, and it is not the same
 		// thing as B's "nothing".
 
-		order := []uuid.UUID{nothingID, repelID}
-		if repelFirst {
-			order = []uuid.UUID{repelID, nothingID}
-		}
-		for _, id := range order {
-			f.openReaction(t, id)
+		if repelOpened {
+			f.openReaction(t, repelID)
 		}
 
 		got := f.projectedDamage(t, turnID)
@@ -391,7 +391,7 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 		}
 	})
 
-	t.Run("opened second, the repel arrives too late for whoever was walked first", func(t *testing.T) {
+	t.Run("unopened, the repel arrives too late for whoever the attack named first", func(t *testing.T) {
 		f, got := run(t, false)
 		if got[f.b] != 12 {
 			t.Fatalf("B took %d, want 12 — refusing the passives takes the blow raw", got[f.b])
@@ -399,8 +399,8 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 	})
 
 	t.Run("C, who answered nothing at all, is covered by the passives either way", func(t *testing.T) {
-		for _, repelFirst := range []bool{true, false} {
-			f, got := run(t, repelFirst)
+		for _, repelOpened := range []bool{true, false} {
+			f, got := run(t, repelOpened)
 			if g := got[f.c]; g != 0 {
 				t.Fatalf("C took %d, want 0 — the reflex dodge is free and automatic", g)
 			}

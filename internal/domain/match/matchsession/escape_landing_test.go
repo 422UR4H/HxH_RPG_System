@@ -76,8 +76,7 @@ func newEscapeFixture(t *testing.T, grid mapentity.GridShape) *escapeFixture {
 	if _, err := s.AttachReaction(playerB, r); err != nil {
 		t.Fatalf("AttachReaction(escape): %v", err)
 	}
-	// Opened, so it is a step of the chain and produces the victim's CharacterResult — an
-	// attached-but-unopened reaction is only named in PendingReactions.
+	// Opened, as a master would; an unopened one is in the calculation all the same.
 	if _, _, err := s.OpenReaction(r.GetID()); err != nil {
 		t.Fatalf("OpenReaction(escape): %v", err)
 	}
@@ -92,11 +91,10 @@ var escapeGrid = mapentity.GridShape{
 }
 
 // decide settles the escape with the master's own levers, so the TEST decides each half, not
-// the dice. The movement is a condition on the escape's moveSpeed (±5000). The dodge cannot be
-// levered the same way — a condition on the reaction's dodge does not read through to the
-// resolver's Reflex derivation today — so it is decided from the other side, a condition on
-// the attack's hit: −1000 and the dodge clears it, +1000 and it cannot. ±5000 on the movement
-// stays clear of both hits. It returns the resolution after the second edit.
+// the dice. The movement is a condition on the escape's moveSpeed (±5000). The dodge is decided
+// from the other side, which keeps both halves independent of the reaction's own dice: a
+// condition on the attack's hit, −1000 and the dodge clears it, +1000 and it cannot. ±5000 on
+// the movement stays clear of both hits. It returns the resolution after the second edit.
 func (f *escapeFixture) decide(t *testing.T, movePasses, dodgePasses bool) *service.TurnResolution {
 	t.Helper()
 	hit, move := 1000, -5000

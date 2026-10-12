@@ -254,6 +254,13 @@ type ActionQueuedPayload struct {
 	// action_queued and match_full_state.queue (see newActionQueuedPayload, room.go), so the
 	// two can never describe the same pending action differently.
 	Action actionwire.Action `json:"action"`
+	// Conditions is every master condition in force on this queued action (edit_action on the
+	// queue) — the same shape as resolution_updated.conditions, and the only surface that
+	// carries them: actionwire never maps RollCheck.Context. Absent when there is none.
+	Conditions []ConditionPayload `json:"conditions,omitempty"`
+	// DamageSkill is the skill that measures the damage of the action's attack, as
+	// resolution_updated.damageSkill names it. Absent when the action has no attack.
+	DamageSkill string `json:"damageSkill,omitempty"`
 }
 
 // OpenReactionPayload names which attached reaction the master is giving the floor to. The
@@ -485,7 +492,9 @@ type CharacterHpChangedPayload struct {
 }
 
 // ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed
-// resolution travels in the resolution_updated that follows, projected like every other.
+// resolution travels in the resolution_updated that follows, projected like every other. An
+// edit on a QUEUED action has no turn: TurnID is the zero UUID, and what follows is the
+// action_queued that re-describes that action (and bars_updated) instead of a resolution.
 type ActionEditedPayload struct {
 	TurnID   uuid.UUID `json:"turnId"`
 	ActionID uuid.UUID `json:"actionId"`
@@ -569,14 +578,11 @@ type ResolutionUpdatedPayload struct {
 	IsSettled bool                     `json:"isSettled"`
 	Action    RollResultPayload        `json:"action"`
 	Targets   []CharacterResultPayload `json:"targets"`
-	// PendingReactions is every reaction that has been attached but not yet opened — master-
-	// only, like the rest of this payload. It exists because an unopened reaction deliberately
-	// never becomes a chain step (letting it affect the collision before the master gave it the
-	// floor would break the whole point of this phase: that the ORDER matters), so
-	// CharacterResultPayload.Reaction stays nil for it and never carries its ID either. Without
-	// this field, open_reaction is unreachable from a real client: the master would have no
-	// legitimate way to learn the ID it is supposed to send back. An ID a client cannot learn
-	// is an operation a client cannot invoke.
+	// PendingReactions is every reaction attached and not yet opened that has something to
+	// narrate (every kind but "nothing", the seated default included) — master-only, like the
+	// rest of this payload. An unopened reaction IS in the calculation (Targets[].Reaction,
+	// opened false, after every opened one); this list is the master's to-do list of who can
+	// still get the floor, which is how they choose the ORDER — the power opening carries.
 	PendingReactions []PendingReactionPayload `json:"pendingReactions,omitempty"`
 	// Errors is every engine fault hit while computing this resolution — a target the engine
 	// could not classify, a character on the board whose sheet it was not handed. Absent on a
@@ -637,6 +643,9 @@ type PendingReactionPayload struct {
 	// SystemBias is the disadvantage the engine itself put on the reaction's speeds (-1 when it
 	// swapped out a queued action or the reactor cancelled earlier this round); absent = none.
 	SystemBias int `json:"systemBias,omitempty"`
+	// Seated is true for the default reaction the engine seated for a target that has not
+	// answered yet; absent once the target answered (a "default" they declared included).
+	Seated bool `json:"seated,omitempty"`
 }
 
 // WallResultPayload is what the turn did to one wall. Attack: the blow's effective damage and
@@ -692,6 +701,10 @@ type ReactionResultPayload struct {
 	StopsAttack bool `json:"stopsAttack"`
 	// SystemBias: see PendingReactionPayload.SystemBias.
 	SystemBias int `json:"systemBias,omitempty"`
+	// Opened is whether the master gave this reaction the floor. An unopened reaction is in
+	// the calculation all the same — it collides after every opened one — and is still listed
+	// in pendingReactions (unless it is a "nothing", which has nothing to narrate).
+	Opened bool `json:"opened"`
 }
 
 // CharacterResultPayload is what one attack did to one target.
@@ -714,9 +727,9 @@ type CharacterResultPayload struct {
 	RawDamage       int  `json:"rawDamage"`
 	DefenseApplied  int  `json:"defenseApplied"`
 	ProjectedDamage int  `json:"projectedDamage"`
-	// Reaction is what this target answered with — nil when nothing was opened and the
-	// passive defaults (reflex dodge, then defense) applied silently instead. A silent
-	// default is not an answer to report.
+	// Reaction is what this target answered with, opened or not — the default reaction the
+	// engine seated for a target that never answered included. nil only when the turn holds
+	// no reaction for this target.
 	Reaction *ReactionResultPayload `json:"reaction,omitempty"`
 	// Payouts is what this target's own reaction EARNED — a repel's bonus or penalty, a
 	// closed dodge's reserve. Absent when the reaction earned nothing, which is most of them.
@@ -816,6 +829,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			Arrival:    pr.Arrival,
 			Speed:      pr.Speed,
 			SystemBias: pr.SystemBias,
+			Seated:     pr.Seated,
 		})
 	}
 	for _, wr := range res.WallResults {
@@ -838,13 +852,19 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 		})
 	}
 	p.DamageSkill = res.DamageSkill
-	for _, c := range res.Conditions {
-		p.Conditions = append(p.Conditions, ConditionPayload{
+	p.Conditions = conditionPayloadsOf(res.Conditions)
+	return p
+}
+
+func conditionPayloadsOf(cs []service.CheckCondition) []ConditionPayload {
+	var out []ConditionPayload
+	for _, c := range cs {
+		out = append(out, ConditionPayload{
 			ActionID: c.ActionID, Field: c.Field, SkillName: c.SkillName,
 			Bias: c.Condition.Bias, Modifier: c.Condition.Modifier, Description: c.Condition.Description,
 		})
 	}
-	return p
+	return out
 }
 
 // escapeResultPayloadOf projects an escape's verdict; nil outside the escapes.
@@ -865,9 +885,9 @@ func escapeResultPayloadOf(e *service.EscapeResult) *EscapeResultPayload {
 	return p
 }
 
-// reactionResultPayloadOf projects what one target answered with. It returns nil when
-// ReactionKind is empty — nothing was opened, so the passive defaults applied and there is
-// no answer to report.
+// reactionResultPayloadOf projects what one target answered with — opened or not, the default
+// reaction the engine seated included. It returns nil only when ReactionKind is empty: the
+// turn held no reaction for this target at all.
 //
 // Total and StopsAttack are read straight off CharacterResult, not recomputed here: both are
 // domain facts service.resolveCharacterStep already derived (ReactionTotal, ReactionStopsAttack)
@@ -888,6 +908,7 @@ func reactionResultPayloadOf(cr service.CharacterResult) *ReactionResultPayload 
 		Difference:  cr.Ladder.Difference,
 		StopsAttack: cr.ReactionStopsAttack,
 		SystemBias:  cr.ReactionSystemBias,
+		Opened:      cr.ReactionOpened,
 	}
 }
 

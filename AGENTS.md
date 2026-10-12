@@ -155,6 +155,18 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   `speed`, o `moveSpeed` da própria ação e `feint` são aceitos e não mudam o desfecho do turno
   aberto. Condição zerada é "sem condição". Ver `docs/dev/match/combat-engine.md` ("A edição do
   mestre").
+- **A reação padrão é uma reação** (dono do produto, 2026-10-12). Ao abrir o turno, a sessão
+  senta uma `ReactDefault` (esquiva por reflexo + defesa padrão, passivas) para cada personagem
+  que o ataque nomeia (`seatDefaultReactions`); o mestre a edita e pode abri-la, e o que o alvo
+  manda a substitui (`Turn.ReplaceSeated`; declarar `default` herda dados e edições). Não segura
+  o `close_turn` nem aparece em `ownReactions`. **Reação não aberta entra no cálculo**, depois
+  das abertas (`buildChainOrder`); `nothing` não se abre (`ErrNothingToNarrate`) e não vai a
+  `pendingReactions`. **Viés do mestre num teste passivo o torna rolado** (P2: vantagem = melhor
+  entre o dado e o valor base, desvantagem = pior; o dado cai no primeiro viés,
+  `ensureDiceForBias`). **O mestre edita ação na fila** (condições e `damageSkill`; `targetIds`/
+  `skills` recusados — ver o comentário em `ApplyMasterAction`); `speed` editada reordena a fila,
+  e cancelar/consumir descarta as edições (`discardEdits`). Spec
+  `docs/superpowers/specs/2026-10-12-default-reaction-and-queue-edits-design.md`.
 
 **Pendente de configurações de campanha/partida:**
 - `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por

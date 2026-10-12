@@ -41,10 +41,10 @@ var (
 // setEscapeReading decides the escape with the master's own levers, over the real edit_action
 // surface, so each half clears the attacker's hit because the TEST says so, not the dice.
 //
-// The movement is a condition on the reaction's moveSpeed (±5000). The dodge cannot be levered
-// the same way — a condition on the reaction's dodge does not read through to the resolver's
-// Reflex derivation today — so it is decided from the other side: a condition on the attack's
-// own hit, −1000 (the dodge clears it) or +1000 (it cannot). ±5000 stays clear of both hits.
+// The movement is a condition on the reaction's moveSpeed (±5000). The dodge is decided from
+// the other side, which keeps both halves independent of the reaction's own dice: a condition
+// on the attack's own hit, −1000 (the dodge clears it) or +1000 (it cannot). ±5000 stays clear
+// of both hits.
 func (f *combatFixture) setEscapeReading(
 	t *testing.T, master *websocket.Conn, masterMsgs *collector, reactionID uuid.UUID,
 	movePasses, dodgePasses bool,
@@ -131,8 +131,8 @@ func (f *combatFixture) escapeStage(
 		t.Fatalf("the reaction never opened; the master received: %v",
 			messageTypes(masterMsgs.snapshotMessages()))
 	}
-	// The resolution recomputed by the opening is the first one in which the escape is a step
-	// of the chain (an unopened reaction is only named in pendingReactions). It goes out after
+	// The resolution recomputed by the opening is the first one in which the escape collides
+	// first, as an opened reaction. It goes out after
 	// reaction_opened, on the same direct lane and from the same goroutine, but seeing
 	// reaction_opened does not mean the collector already read it — so it is waited for on its own.
 	if !awaitCount(masterMsgs, game.MsgTypeResolutionUpdate, resolved+1, 2*time.Second) {

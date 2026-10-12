@@ -50,6 +50,34 @@ func reconnectFullState(
 	return conn, full, raw
 }
 
+// A target that has not answered yet holds only the default reaction the engine seated for
+// them. That is not an answer they gave, so ownReactions does not list it: a reconnecting
+// client must still offer them the reaction buttons.
+func TestE2E_ReconnectingTargetWithOnlyTheSeatedDefaultHasNoOwnReaction(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	f.openAttackOn(t, player, master, mc)
+
+	res := lastResolutionUpdated(t, mc)
+	var seated bool
+	for _, pr := range res.PendingReactions {
+		if pr.ActorID == f.victimID && pr.Kind == "default" && pr.Seated {
+			seated = true
+		}
+	}
+	if !seated {
+		t.Fatalf("pendingReactions = %+v, want the victim's seated default", res.PendingReactions)
+	}
+
+	conn, full, _ := reconnectFullState(t, "the target", player, f.server.URL, f.playerUUID, f.matchUUID)
+	defer conn.Close() //nolint:errcheck
+	if len(full.OwnReactions) != 0 {
+		t.Fatalf("ownReactions = %+v, want none — the seated default is not the target's answer", full.OwnReactions)
+	}
+}
+
 func TestE2E_ReconnectingReactorGetsOwnReactions(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)
@@ -159,8 +187,9 @@ func TestE2E_ReconnectingTableGetsOpenedReactionsInOpeningOrder(t *testing.T) {
 		ActorID: f.a, ReactToID: actionID, ReactionKind: "repel",
 		Repel: &game.RepelPayload{RollCheck: game.RollCheckPayload{SkillName: "Repel"}},
 	})
+	// B declares the default reaction — a "nothing" has nothing to narrate and is never opened.
 	nothingID := f.attachReaction(t, f.pB, game.ActionPayload{
-		ActorID: f.b, ReactToID: actionID, ReactionKind: "nothing",
+		ActorID: f.b, ReactToID: actionID, ReactionKind: "default", Dodge: &game.DodgePayload{},
 	})
 	// B first, then A: the opposite of arrival order, so opening order is what is checked.
 	f.openReaction(t, nothingID)

@@ -48,6 +48,11 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
   > então o jogador só arrisca quando precisa de sorte acima da média.
 - **Vantagem/desvantagem**: rola o conjunto duas vezes, vale o melhor/pior.
   `RollCondition.Bias` (−1/0/+1, acumula).
+- **Viés do mestre num teste passivo o torna rolado** (dono do produto, 2026-10-12). O valor base
+  vira o outro conjunto: vantagem fica com o melhor entre o dado e o valor base, desvantagem com
+  o pior (`readPassiveBias`, `roll_calculator.go`). O dado — um conjunto, o primário — cai na
+  primeira vez que o viés do mestre o pede (`MatchSession.ensureDiceForBias`) e nunca mais. O
+  viés do sistema e o do ledger continuam sem efeito num teste passivo.
 - **`RollCondition` é a struct do mestre**: `Bias` = dados; `Modifier` = ajuste manual
   (*"+3 porque teve criatividade estratégica"*).
 
@@ -641,10 +646,13 @@ existia porque o escalonador precisa precificar toda action por alguma barra —
 resposta *correta* para uma reação grátis. Nenhum caller quebra: os quatro do
 `RoundScheduler` só veem a fila, e o `recordActed` itera o slice — iterar vazio é no-op.
 
-**As passivas não são `ReactionKind`.** Esquiva por reflexo e defesa padrão não são enviadas
-por ninguém: são o que o motor aplica quando nada chega. Não precisam de tipo porque não têm
-remetente. `ReactNothing` existe justamente porque **recusar as passivas é um envio** — e a
-única forma de distinguir "não mandou" de "mandou nada" é ter recebido alguma coisa.
+**As passivas são `ReactDefault`** (dono do produto, 2026-10-12; até então não tinham tipo:
+eram o que o motor aplicava quando nada chegava). Quando o turno abre, a sessão **senta** uma
+reação `default` para cada personagem que o ataque nomeia — esquiva por reflexo, depois a defesa
+padrão, as duas passivas —, e ela é uma reação de verdade: o mestre a edita, pode dar a palavra
+a ela, o histórico a grava. O que o alvo mandar a substitui. `ReactNothing` continua existindo
+porque **recusar as passivas é um envio**: "não fiz nada" é uma escolha, e não se abre (não tem o
+que narrar). Ver "A reação padrão" mais abaixo.
 
 **`enum.DodgeCategory` é absorvida.** Ela é hoje `{Evasive, Close, Scape}`, sem nenhum
 consumidor além do passthrough em `action_mapper.go`. É o mesmo eixo do `ReactionKind`, só que
@@ -899,8 +907,8 @@ condição que o `edit_action` aceita e que muda um desfecho**. O contrato
 |---|---|---|
 | `hit` | `TurnResolver` | um golpe só, vale para todos os alvos |
 | `damage` | `TurnResolver.rawDamage` | só o `modifier` (soma ao bruto, piso zero); `bias` é recusado na borda |
-| `dodge`, `repel` | `deriveReflex`, `resolveRepel` | rolada |
-| `defense` | `ResolveReaction` | a defesa **padrão**, passiva: só o `modifier` move |
+| `dodge`, `repel` | `deriveReflex`, `resolveRepel` | rolada; passiva na reação `default` |
+| `defense` | `ResolveReaction` | a defesa **padrão**, passiva |
 | `skillName: "Evasion"` | `deriveEvasion` | rolada; entra na esquiva fechada e na reserva |
 | `moveSpeed` de fuga | `deriveSpeeds` | rolada no Dash, passiva no Shift; decide `movePassed` |
 | `speed`, `moveSpeed` da ação, `feint`, outras perícias | — | aceitas e guardadas; **não mudam o desfecho** |
@@ -916,9 +924,11 @@ que **vai ao wire da action** — uma reação que de repente carregasse um `Def
 o mestre mexeu na defesa dela antes de o turno fechar. `Action.DefaultDefense` (`*RollCheck`) é um
 portador **que nenhum wire mapeia**, criado por `resolveRollCheck` na **primeira edição** de
 `field: "defense"` numa reação cujo tipo guarda a defesa padrão (`ReactionKind.KeepsDefault`:
-`dodge`, `closedDodge`, `escapeGuard`). Em qualquer outra ação, `defense` continua nomeando o
-`Defense` declarado. Um alvo que **não reagiu** não tem reação onde pendurar a condição: a
-esquiva e a defesa passivas dele não são editáveis (pendência no documento mestre).
+`default`, `dodge`, `closedDodge`, `escapeGuard`). Em qualquer outra ação, `defense` continua
+nomeando o `Defense` declarado. Um alvo que **não reagiu** tem a reação `default` que a sessão
+sentou para ele — é nela que a condição da esquiva e da defesa passivas mora. Um viés na defesa
+padrão a torna rolada, e o portador guarda o dado que caiu (zerar a condição não apaga um
+portador que já tem dado: o dado tem de sobreviver a um novo viés).
 
 **A perícia do dano.** `Attack.DamageSkill` (`enum.SkillName`; o valor zero lê como `Push`, via
 `EffectiveDamageSkill()`). Mora em `Attack`, e não em `Damage.SkillName`, porque o `Damage` é um
@@ -945,6 +955,47 @@ esquiva e o que ela banca contra quem vem de fora do duelo.
 `turn_conditions.go`) lista as condições em vigor — uma por rolagem, ação e reações — lidas da
 própria action ("a action editada É a action"; não há segunda cópia). Só com o turno aberto, só
 para o mestre (`ProjectResolution` a zera para os demais, e o payload liquidado não a tem).
+
+#### A reação padrão (dono do produto, 2026-10-12)
+
+`MatchSession.seatDefaultReactions` roda quando o turno abre (`OpenNextAction`, `PullAction`) e
+de novo quando o mestre edita os alvos da ação do turno: todo personagem que o ataque nomeia e
+não tem reação ganha uma `default` (`newDefaultReaction`: um `Dodge` em `Reflex` e nada mais);
+uma **sentada** cujo personagem o ataque deixou de nomear sai, com as edições. O `Turn` sabe
+quais são sentadas (`Seat`, `IsSeated`, `SeatedFor`, `ReplaceSeated`, `Unseat`). Nenhum dado cai
+ao sentar: a esquiva da `default` é passiva (`rollActionDice` a pula), e só rola se o mestre
+puser viés.
+
+- **A resposta substitui.** `AttachReaction` não recusa por causa da sentada: a reação que chegou
+  entra, a sentada sai (`ReplaceSeated`), e o lugar dela na ordem de abertura passa para a nova
+  (o personagem continua com a palavra, só respondeu diferente). As edições do mestre na sentada
+  somem — era outra leitura.
+- **Declarar `default` herda.** É a mesma leitura: `inheritSeated` move o `RollCheck` da esquiva
+  (dados e condição), o `DefaultDefense` e as capturas para a reação que chegou. Nada rola de
+  novo.
+- **Não segura o fechamento.** `Turn.AwaitingTheFloor` (o que o `close_turn` pede para confirmar)
+  deixa de fora a sentada e o `nothing`; uma `default` declarada entra.
+- **Não é resposta do dono.** `match_full_state.ownReactions` não lista a sentada: o cliente que
+  reconecta ainda oferece os botões de reação.
+
+#### A edição na fila (dono do produto, 2026-10-12)
+
+`ApplyMasterAction` aceita o ID de uma ação **na fila** (`editTarget`), com ou sem turno aberto.
+A edição pousa na própria ação ("a action editada É a action"); as capturas ficam em
+`s.overrides` pelo ID dela até o fechamento do turno dela (`TakeOverridesFor`), e uma edição de
+`speed`/`moveSpeed` re-deriva a velocidade e **reordena a fila** — o escalonador calcula a chave
+na hora de escolher (a fila não é um heap). `targetIds` e `skills` são recusados
+(`ErrQueuedEditUnsupported`): os dois chegam ao dono antes do fechamento (o `ownQueue` no corte
+`Declaration`, o `turn_opened` no `Opened`). Liberar é projetar a **declaração** (os originais das
+capturas) nessas duas superfícies; a edição em si já funciona.
+
+Uma ação que sai da fila sem abrir — cancelada (`CancelAction`) ou consumida por uma reação
+(`consumePendingFor`) — leva as edições: `discardEdits` escreve de volta o original de cada
+captura (`restoreOriginal`, pelas mesmas chaves de `captureOverride`), descarta as capturas e
+re-deriva a velocidade. O `cancelled_actions` grava a ação como o dono a declarou.
+
+O mestre vê o que editou no `action_queued` (`Conditions`, `DamageSkill`), reenviado a cada
+edição; o dono não vê nada. A ordem é pública como sempre.
 
 ### Os fluxos, e quais confirmações existem de verdade
 
@@ -1384,7 +1435,10 @@ defendido para quem vem depois, porque é a arma de quem aparou que reduz o golp
 trabalho que lhe cabe nessa linha.
 
 `buildChainOrder` é a ordem da caminhada em si: primeiro toda reação **aberta**, na ordem em
-que **o mestre abriu**, depois quem sobrou, na ordem em que o ataque nomeou os alvos.
+que **o mestre abriu**, depois quem sobrou, na ordem em que o ataque nomeou os alvos — **cada um
+com a reação anexada a ele, aberta ou não** (corrigido em 2026-10-12: até então quem sobrava
+entrava sem reação, com as passivas, mesmo que tivesse mandado uma e ela já tivesse cobrado as
+barras — o contrário do que "Encerrar o turno com reactions pendentes" sempre disse).
 `Turn.reactions` é ordenado por **attach**, que não é a ordem de abertura — um alvo pode
 anexar muito antes de o mestre chegar nele — e andar pela ordem de anexação em vez da ordem de
 abertura destruiria a única coisa que esta fase entrega: que a ordem em que o mestre abre muda
@@ -1451,14 +1505,13 @@ colisão (`CharacterResults`, dano projetado) continua só do mestre, em `resolu
 enquanto o turno está aberto. Contrato: `match-combat-ws.md` § `reaction_opened`.
 
 `TurnResolution.PendingReactions` é o que fecha o ciclo: cada reação **anexada e ainda não
-aberta**, com `ReactionID`, `ActorID` e `Kind`. Sem ela, `open_reaction` era inalcançável a
-partir de um cliente de verdade — nenhuma mensagem publicava o ID de uma reação antes de ela
-ser aberta. `CharacterResult.ReactionID` só é preenchido a partir do `chainStep`, e
-`buildChainOrder` só produz `chainStep` para reação já **aberta** — de propósito, porque
-arrastar uma reação não-aberta para a caminhada deixaria o mestre nunca ter dado a palavra a
-ela antes de ela já ter afetado a colisão. `PendingReactions` é o único lugar que nomeia o ID
-de uma reação anexada antes dela ser aberta — sem ele, era um ID que o cliente não tinha como
-aprender, para uma operação que ele não conseguia invocar.
+aberta que tem o que narrar** (`ReactionKind.Narrates`: todas menos `nothing`), com
+`ReactionID`, `ActorID`, `Kind` e `Seated` (a padrão que a sessão sentou e o alvo ainda não
+respondeu). Sem ela, `open_reaction` era inalcançável a partir de um cliente de verdade —
+nenhuma mensagem publicava o ID de uma reação antes de ela ser aberta. Desde 2026-10-12 a
+reação não aberta **está** na caminhada (`CharacterResult.ReactionID`, com `ReactionOpened`
+falso), depois de todas as abertas; esta lista é o que deixa o mestre escolher a **ordem**, que é
+o poder que abrir carrega.
 
 ### Repelir nunca rolava — a reação mais difícil era a pior escolha possível
 

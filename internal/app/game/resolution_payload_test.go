@@ -113,7 +113,7 @@ func TestResolutionPayload_NoReactionOpenedOmitsIt(t *testing.T) {
 		t.Fatalf("Targets = %+v, want one entry", p.Targets)
 	}
 	if p.Targets[0].Reaction != nil {
-		t.Errorf("Reaction = %+v, want nil — nothing was opened, so there is no answer to report", p.Targets[0].Reaction)
+		t.Errorf("Reaction = %+v, want nil — the turn held no reaction for this target", p.Targets[0].Reaction)
 	}
 }
 

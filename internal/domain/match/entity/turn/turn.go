@@ -25,6 +25,13 @@ type Turn struct {
 	// for an escape that FAILED, and an escape that passes goes to its own slot whatever is
 	// stored here. nil until the first choice.
 	escapeLandings map[uuid.UUID][3]int
+	// seated is every reaction the ENGINE attached rather than a player: the default reaction
+	// (action.ReactDefault) MatchSession seats for each character the attack names, the moment
+	// the turn opens. It is the target's answer until the target sends one of its own, which
+	// replaces it (ReplaceSeated) — even when they answer "default" too; MatchSession then moves
+	// the seated one's dice and edits onto theirs, so nothing is rolled again. nil until the
+	// first seat.
+	seated map[uuid.UUID]bool
 }
 
 func NewTurn(action action.Action) *Turn {
@@ -44,6 +51,75 @@ func (t *Turn) AddMasterAction(ma action.MasterAction) {
 
 func (t *Turn) AddReaction(action *action.Action) {
 	t.reactions = append(t.reactions, *action)
+}
+
+// Seat attaches a reaction on the target's behalf — the default one, before the target says
+// anything. See the seated field's own doc.
+func (t *Turn) Seat(r *action.Action) {
+	t.AddReaction(r)
+	if t.seated == nil {
+		t.seated = make(map[uuid.UUID]bool)
+	}
+	t.seated[r.GetID()] = true
+}
+
+// IsSeated reports whether a reaction on this turn is one the engine attached and no player has
+// answered yet.
+func (t *Turn) IsSeated(id uuid.UUID) bool { return t.seated[id] }
+
+// SeatedFor returns the seated reaction of one character, nil when it has none (it answered,
+// or the attack does not name it).
+func (t *Turn) SeatedFor(actorID uuid.UUID) *action.Action {
+	for i := range t.reactions {
+		if t.reactions[i].GetActorID() == actorID && t.seated[t.reactions[i].GetID()] {
+			return &t.reactions[i]
+		}
+	}
+	return nil
+}
+
+// ReplaceSeated swaps a seated reaction for the one its target just sent, which has to be on
+// the turn already (AddReaction). The newcomer takes the seated one's place in the opening
+// order: if the master had already given the default the floor, the character is still the one
+// holding it — they only answered differently. Reports whether seatedID was seated here.
+func (t *Turn) ReplaceSeated(seatedID, newID uuid.UUID) bool {
+	if !t.seated[seatedID] {
+		return false
+	}
+	delete(t.seated, seatedID)
+	t.removeReaction(seatedID)
+	if i := slices.Index(t.openedReactions, seatedID); i >= 0 {
+		if slices.Contains(t.openedReactions, newID) {
+			t.openedReactions = slices.Delete(t.openedReactions, i, i+1)
+		} else {
+			t.openedReactions[i] = newID
+		}
+	}
+	return true
+}
+
+// Unseat takes a seated reaction off the turn — the attack stopped naming its character (the
+// master edited the targets). A reaction a player sent is never unseated.
+func (t *Turn) Unseat(id uuid.UUID) bool {
+	if !t.seated[id] {
+		return false
+	}
+	delete(t.seated, id)
+	t.removeReaction(id)
+	if i := slices.Index(t.openedReactions, id); i >= 0 {
+		t.openedReactions = slices.Delete(t.openedReactions, i, i+1)
+	}
+	delete(t.escapeLandings, id)
+	return true
+}
+
+func (t *Turn) removeReaction(id uuid.UUID) {
+	for i := range t.reactions {
+		if t.reactions[i].GetID() == id {
+			t.reactions = slices.Delete(t.reactions, i, i+1)
+			return
+		}
+	}
 }
 
 func (t *Turn) Close(finishedAt time.Time) {
@@ -116,15 +192,28 @@ func (t *Turn) OpenedReactionIDs() []uuid.UUID {
 
 // UnopenedReactions is every attached reaction the master has not yet given the floor to.
 //
-// These are exactly the ones close_turn warns about: they ARE in the calculation — the chain
-// walks the opened ones first and then everyone left over — so nobody is punished
-// mechanically. What they lose is the moment to narrate, and that is what the master is being
-// asked to confirm away.
+// They ARE in the calculation — the chain walks the opened ones first and then everyone left
+// over, each with the reaction attached for them (service.buildChainOrder) — so nobody is
+// punished mechanically. What they lose is the moment to narrate.
 func (t *Turn) UnopenedReactions() []action.Action {
 	out := make([]action.Action, 0, len(t.reactions))
 	for i := range t.reactions {
 		if !slices.Contains(t.openedReactions, t.reactions[i].GetID()) {
 			out = append(out, t.reactions[i])
+		}
+	}
+	return out
+}
+
+// AwaitingTheFloor is what close_turn asks the master to confirm away: the unopened reactions a
+// PLAYER sent and that have something to narrate. A seated default was never sent — nobody is
+// waiting to tell it — and nothing has nothing to tell (ReactionKind.Narrates). Both stay
+// openable by the master; they just do not hold the close.
+func (t *Turn) AwaitingTheFloor() []action.Action {
+	out := make([]action.Action, 0, len(t.reactions))
+	for _, r := range t.UnopenedReactions() {
+		if r.ReactionKind.Narrates() && !t.seated[r.GetID()] {
+			out = append(out, r)
 		}
 	}
 	return out
