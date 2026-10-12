@@ -2671,6 +2671,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	if r.session != nil {
 		grid = r.session.GetGrid()
 	}
+	boardGrid, boardBg := r.grid, r.bg
 	for _, p := range r.pieces {
 		allPieces = append(allPieces, p)
 		x, y := slotPayloadToLocal(p.Slot, grid)
@@ -2730,7 +2731,14 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	for i, w := range walls {
 		wallPayloads[i] = toWallSegmentPayload(w)
 	}
-	payload := MapFullStatePayload{Pieces: pieces, Walls: wallPayloads, FogMode: string(fogMode)}
+	payload := MapFullStatePayload{
+		Pieces: pieces, Walls: wallPayloads, FogMode: string(fogMode),
+		Bg: toBgImagePayload(boardBg),
+	}
+	if boardGrid.CellSize > 0 {
+		g := toGridShapePayload(boardGrid)
+		payload.Grid = &g
+	}
 	if !isMaster && isLobby {
 		// Disabled until the frontend consumes payload.Walls in lobby mode
 		// (useLobbyWs.ts currently drops it). The masking computation above is intact —

@@ -413,7 +413,9 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
   "visiblePolygons": [
     [ { "x": 0.0, "y": 0.0 }, { "x": 64.0, "y": 0.0 }, { "x": 64.0, "y": 64.0 } ]
   ],
-  "fogMode": "explored"
+  "fogMode": "explored",
+  "grid": { "kind": "square", "cols": 20, "rows": 20, "cellSize": 64, "skewRatio": 1, "rotation": 0, "color": "#000000", "opacity": 0.5, "lineStyle": "solid" },
+  "bg": { "url": "https://...", "x": 0, "y": 0, "width": 1280, "height": 1280, "rotation": 0, "opacity": 1 }
 }
 ```
 
@@ -423,9 +425,18 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 {
   "pieces": [ /* todas as peças, sem filtro */ ],
   "walls": [ /* todas as paredes, sem máscara */ ],
-  "fogMode": "explored"
+  "fogMode": "explored",
+  "grid": { "kind": "square", "cols": 20, "rows": 20, "cellSize": 64, "skewRatio": 1, "rotation": 0, "color": "#000000", "opacity": 0.5, "lineStyle": "solid" },
+  "bg": { "url": "https://...", "x": 0, "y": 0, "width": 1280, "height": 1280, "rotation": 0, "opacity": 1 }
 }
 ```
+
+| Campo | Descrição |
+|---|---|
+| `grid` | A grade do **tabuleiro da partida** (mesmo formato de `grid` no REST). A mesa desenha com esta, não com a do mapa da campanha. Ausente só quando a sala não tem tabuleiro. |
+| `bg` | O fundo do **tabuleiro da partida** (mesmo formato de `bg` no REST: `url, x, y, width, height, rotation, opacity`); `null` quando o tabuleiro não tem fundo. A mesa desenha com este, não com o do mapa da campanha. |
+
+Vale para mestre e jogador (e para o lobby, cujo front ignora os dois).
 
 > O master não recebe `visiblePolygons` — campo omitido.
 
