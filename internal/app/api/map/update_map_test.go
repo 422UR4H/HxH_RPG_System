@@ -263,3 +263,46 @@ func TestUpdateMapHandler_NotMaster_Returns403(t *testing.T) {
 		t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusForbidden, resp.Body.String())
 	}
 }
+
+// TestUpdateMapHandler_BgSemantics: omitir "bg" mantém, "bg": null remove, objeto troca.
+// Só o caso do null precisa de tratamento próprio (UnmarshalJSON), pois *BgImageRequest vira
+// nil nos dois primeiros.
+func TestUpdateMapHandler_BgSemantics(t *testing.T) {
+	bgObj := map[string]any{
+		"url": "https://example.com/new.png", "x": 1.0, "y": 2.0,
+		"width": 3.0, "height": 4.0, "rotation": 5.0, "opacity": 0.5,
+	}
+	tests := []struct {
+		name      string
+		body      map[string]any
+		wantClear bool
+		wantBg    bool
+	}{
+		{"absent keeps", map[string]any{"description": "d"}, false, false},
+		{"null clears", map[string]any{"description": "d", "bg": nil}, true, false},
+		{"object replaces", map[string]any{"description": "d", "bg": bgObj}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockUpdateMap{}
+			api := registerUpdateMapHandler(t, mock)
+			ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+			resp := api.PutCtx(ctx, "/maps/"+uuid.New().String(), tt.body)
+			if resp.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want 204. Body: %s", resp.Code, resp.Body.String())
+			}
+			if mock.received == nil {
+				t.Fatal("UpdateMap was never called")
+			}
+			if mock.received.ClearBg != tt.wantClear {
+				t.Errorf("ClearBg = %v, want %v", mock.received.ClearBg, tt.wantClear)
+			}
+			if (mock.received.Bg != nil) != tt.wantBg {
+				t.Errorf("Bg set = %v, want %v", mock.received.Bg != nil, tt.wantBg)
+			}
+			if tt.wantBg && mock.received.Bg.URL != "https://example.com/new.png" {
+				t.Errorf("Bg.URL = %q", mock.received.Bg.URL)
+			}
+		})
+	}
+}

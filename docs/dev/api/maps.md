@@ -191,7 +191,7 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | `name` | obrigatório, não vazio |
 | `description` | opcional |
 | `grid` | opcional; mantém grid existente se omitido |
-| `bg` | opcional; omitir mantém existente |
+| `bg` | opcional; omitir mantém existente, `null` remove o fundo, objeto troca |
 | `pieces` | opcional; omitir mantém existente; `[]` remove todas as peças |
 | `walls` | opcional; omitir mantém existente; `[]` remove todas as paredes |
 
