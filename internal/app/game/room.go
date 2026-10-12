@@ -149,10 +149,9 @@ type Room struct {
 	// uuid.Nil means "no board loaded yet" (or no map attached at all), and persistBoard is a
 	// no-op in that state: there is nothing to write a match_boards row FOR (spec §4.3).
 	mapUUID uuid.UUID
-	// bg is the board's own background override, loaded from Board.Bg in loadBoard and
-	// preserved on every persistBoard save. nil means "inherit the map's background"
-	// (matchboard.Board.Bg's own doc comment) — nobody writes a non-nil value yet; the
-	// in-match map editor that will is future work.
+	// bg is the board's own background, part of its portrait: loaded from Board.Bg in
+	// loadBoard (LoadMatchBoardUC already resolved any legacy NULL to the map's) and
+	// preserved on every persistBoard save. nil means the board has no background.
 	bg *mapentity.BgImage
 	// persistMu serializes every board snapshot-and-write pair across goroutines — persistBoard's
 	// and persistClosedTurn's (whose PersistTurnClose writes the board in the turn's own

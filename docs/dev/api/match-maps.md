@@ -138,17 +138,19 @@ ganha o próprio **retrato**, gravado em `match_boards` (uma linha por `match_uu
 estrangeira para `matches ON DELETE CASCADE`).
 
 **Estrutura da linha:** `match_uuid`, `map_uuid` (de qual mapa ele partiu), `grid`, `bg`
-(NULL = herda o fundo do mapa), `pieces` (mesmo formato de `maps.pieces`), `walls` (as
+(parte do retrato, como a grade; NULL só em linhas antigas), `pieces` (mesmo formato de `maps.pieces`), `walls` (as
 paredes **inteiras**, com estado — aberta, trancada, HP, destruída, revelada) e
 `updated_at`.
 
 **É um retrato, não um diff.** Por isso:
 - Editar o mapa da campanha com a partida rolando **não muda nada nela** — o retrato já
-  se separou do mapa no instante em que foi salvo.
+  se separou do mapa no instante em que foi salvo. Isso vale para a grade **e** para o
+  fundo: trocar ou realinhar a imagem do mapa não mexe na partida em andamento.
 - Duas partidas no mesmo mapa **nunca se tocam** — cada uma tem sua própria linha.
-- `bg` nulo herda o fundo do mapa **no momento em que é lido**, não uma cópia congelada:
-  o editor de mapa da partida (trabalho futuro) é o único que escreveria um valor aqui,
-  e ninguém o faz ainda.
+- `bg` é parte do retrato: o retrato fresco copia o fundo do mapa por valor. Linhas antigas,
+  gravadas com `bg` NULL, herdam o fundo atual do mapa **na leitura** e congelam no próximo
+  salvamento do tabuleiro (que grava esse valor). Linha com `bg` próprio é devolvida como
+  está, sem ler o mapa. Mapa sem fundo → `bg` nulo.
 
 **Ciclo de vida.** A linha nasce no **primeiro salvamento**. Antes disso, carregar =
 devolver um retrato fresco do mapa anexado, sem gravar nada (`LoadMatchBoardUC`, spec
