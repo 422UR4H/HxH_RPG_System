@@ -204,8 +204,10 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | 401 | Sem JWT |
 | 403 | Usuário não é o master da campanha |
 | 404 | Mapa não encontrado |
-| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]` |
+| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]`; em `walls`: `p1 = p2`, `wallType` inválido, `hp < 0`, ou ponta fora do contorno LOCAL da grade (`wall segment out of grid bounds`; ver nota abaixo) |
 | 500 | Erro interno |
+
+> **Limites das paredes.** O contorno é o `GridLocalBounds` da grade, em coordenadas LOCAL (pré-transform). Na grade quadrada vai de 0 a `cols·cellSize` × `rows·cellSize`; num hex as células são centradas nos pontos da grade, então o contorno **começa antes de 0** (a partir de `-hexW/2` em x) — uma parede na borda esquerda de um hex tem x negativo e é válida. A checagem tem tolerância de `1e-6` (`wallBoundsTolerance`) para absorver ruído de ponto flutuante do cálculo feito no front. Qualquer erro do `PUT` que não seja 403/404 sai como 422, inclusive falha do repositório.
 
 ---
 
