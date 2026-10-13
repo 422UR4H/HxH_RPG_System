@@ -66,6 +66,14 @@ isso custa **Desvantagem**: o sistema rola de novo e fica com o pior dos dois re
 
 Se você **não** tinha ação declarada, a reação simplesmente vira a sua ação. Sem penalidade.
 
+**Fazer antes o que você já tinha declarado não é trocar.** Sem penalidade em dois casos:
+
+- **escapar para a mesma casa** para onde o seu movimento na fila já ia;
+- **repelir quem está te atacando**, quando a sua ação na fila era justamente um ataque contra
+  essa pessoa — o golpe que você ia dar vira a resposta.
+
+O mestre pode impor a Desvantagem mesmo assim, se achar que a cena pede.
+
 **Cancelar uma ação também é trocar.** No regime disputado, até o fim do round em que você
 cancelou, tudo o que você fizer de novo — declarar outra ação ou reagir ativamente — rola a
 velocidade com **Desvantagem**. Só a velocidade piora: o acerto, a esquiva, a defesa e o dano

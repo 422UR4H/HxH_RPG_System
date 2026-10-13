@@ -62,11 +62,13 @@ mas o mestre pode abri-lo para posicioná-lo.
 
 ## 4. Viés numa leitura passiva (D5)
 
-`RollCalculator.Derive`, `readPassiveBias`: com `Passive` e um viés **do mestre**
-(`Condition.Bias`) e um conjunto primário já caído, o `DiceTotal` é `max(base, dados)` na vantagem e
-`min(base, dados)` na desvantagem; `Dice` mostra o dado; o crítico só conta quando o dado é o que
-vale. Sem dado, o valor base fica. O viés do sistema e o do ledger continuam sem efeito numa leitura
-passiva (era assim, e a regra é o poder do mestre de pedir um teste).
+`RollCalculator.Derive`, `readPassiveBias`: com `Passive`, um viés líquido e um conjunto primário já
+caído, o `DiceTotal` é `max(base, dados)` na vantagem e `min(base, dados)` na desvantagem; `Dice`
+mostra o dado; o crítico só conta quando o dado é o que vale. Sem dado, o valor base fica. **O viés
+líquido é o do mestre e o do sistema somados** (dono do produto, 2026-10-13: a Desvantagem da troca
+vale numa leitura passiva como o viés do mestre, e a Vantagem do mestre sobre ela lê o valor base).
+O dado do sistema cai em `deriveSpeeds` (o único lugar onde ele enviesa), pelo mesmo
+`ensureDiceForBias`.
 
 O dado cai em `ApplyMasterAction`, `ensureDiceForBias`: a primeira vez que uma condição com viés
 pousa num `RollCheck` sem dados, rola-se o conjunto primário — uma vez, nunca mais (o mesmo
@@ -92,6 +94,14 @@ valor base vai em `match_full_state.passiveValue` (11 no 2D10), para o editor do
 - **Wire:** `action_queued` ganha `conditions` e `damageSkill` (master-only) e é reenviado ao mestre
   depois de cada edição — um `actionId` conhecido é atualização. `action_edited` vai com `turnId`
   zero, seguido de `bars_updated`.
+
+## 5b. Repelir quem o ataque da fila mirava (2026-10-13)
+
+Uma reação cobrada que consome uma ação da fila custa a Desvantagem da troca — salvo quando ela é o
+que o personagem já tinha na fila, só que antes. `keepsQueuedIntent` reúne os dois casos: a fuga
+para exatamente onde o movimento da fila ia (`sameMoveAsQueued`, 2026-10-11) e, novo, um `repel`
+contra o atacante quando toda ação consumida é um ataque puro (sem movimento nem interação) cujo
+único alvo é esse atacante (`sameBlowAsQueued`). O mestre pode pôr Desvantagem mesmo assim.
 
 ## 6. Limites conhecidos
 

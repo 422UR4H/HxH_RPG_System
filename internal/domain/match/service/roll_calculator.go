@@ -110,7 +110,7 @@ func (rc RollCalculator) Derive(
 		// A passive test takes the average of the set instead of rolling, so rolling has
 		// exactly zero expected gain. No dice means no critical either way.
 		out.DiceTotal = rules.PassiveValue()
-		readPassiveBias(&out, rules, attempts, in.Condition)
+		readPassiveBias(&out, rules, attempts, bias)
 		out.Total = out.DiceTotal + in.SkillValue + modifier
 		return out
 	}
@@ -124,29 +124,29 @@ func (rc RollCalculator) Derive(
 	return out
 }
 
-// readPassiveBias is the master's bias on a passive test (owner decision, 2026-10-12): putting
+// readPassiveBias is a bias on a passive test (owner decisions, 2026-10-12 and 2026-10-13):
 // advantage or disadvantage on a test that takes the base value makes it a ROLLED test, with
 // the base value as the other set — advantage keeps the better of the dice and the base,
 // disadvantage the worse. The passive stays the floor (or the ceiling): a bias adds risk or
 // chance to it, never a free reroll.
 //
-// It reads the primary set, which falls the first time the master biases the test
-// (MatchSession.ensureDiceForBias) and never again. Without dice there is nothing to read and
-// the base value stands.
+// bias is the NET bias, the same one a rolled test reads: the master's condition and the
+// system's own (a swap's disadvantage) count alike, and cancel each other the same way — the
+// master's advantage on a swapped test reads the plain base value.
 //
-// Only the MASTER's bias does this. The system's (a swap's disadvantage) and the ledger's still
-// have no die to choose on a passive test, exactly as before — the rule is the master's power
-// to call for a roll, not a new reading of the engine's own biases.
+// It reads the primary set, which falls the first time a bias asks for it
+// (MatchSession.ensureDiceForBias: the master's edit, or the system's bias when the speeds are
+// derived) and never again. Without dice there is nothing to read and the base value stands.
 //
 // A critical is read on the dice only when the dice are what counts.
-func readPassiveBias(out *RollOutcome, rules match.MatchRules, attempts action.RollAttempts, cond *action.RollCondition) {
-	if cond == nil || cond.Bias == 0 || len(attempts.Primary) == 0 {
+func readPassiveBias(out *RollOutcome, rules match.MatchRules, attempts action.RollAttempts, bias int) {
+	if bias == 0 || len(attempts.Primary) == 0 {
 		return
 	}
 	dice := attempts.Primary
 	out.Dice = append([]int(nil), dice...)
 	sum := sumDice(dice)
-	if (cond.Bias > 0 && sum > out.DiceTotal) || (cond.Bias < 0 && sum < out.DiceTotal) {
+	if (bias > 0 && sum > out.DiceTotal) || (bias < 0 && sum < out.DiceTotal) {
 		out.DiceTotal = sum
 		out.IsCritical = allDiceShow(dice, rules.DiceSet.MaxFace())
 		out.IsCriticalFailure = allDiceShow(dice, 1)

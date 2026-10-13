@@ -63,11 +63,13 @@ open it to place it.
 
 ## 4. Bias on a passive reading (D5)
 
-`RollCalculator.Derive`, `readPassiveBias`: with `Passive`, a bias **from the master**
-(`Condition.Bias`) and a primary set already fallen, `DiceTotal` is `max(base, dice)` on advantage
-and `min(base, dice)` on disadvantage; `Dice` shows the roll; a critical counts only when the dice
-are what counts. With no dice, the base value stands. The system's and the ledger's bias still have
-no effect on a passive reading (as before; the rule is the master's power to call for a roll).
+`RollCalculator.Derive`, `readPassiveBias`: with `Passive`, a net bias and a primary set already
+fallen, `DiceTotal` is `max(base, dice)` on advantage and `min(base, dice)` on disadvantage; `Dice`
+shows the roll; a critical counts only when the dice are what counts. With no dice, the base value
+stands. **The net bias is the master's and the system's together** (owner decision, 2026-10-13: a
+swap's Disadvantage counts on a passive reading the same way the master's bias does, and the
+master's Advantage over it reads the plain base value). The system's dice fall in `deriveSpeeds`
+(the only place it biases), through the same `ensureDiceForBias`.
 
 The dice fall in `ApplyMasterAction`, `ensureDiceForBias`: the first time a condition with a bias
 lands on a `RollCheck` with no dice, its primary set is rolled — once, never again (the same
@@ -94,6 +96,14 @@ master's editor can name it.
 - **Wire:** `action_queued` gains `conditions` and `damageSkill` (master-only) and is re-sent to the
   master after every edit — a known `actionId` is an update. `action_edited` carries a zero
   `turnId`, followed by `bars_updated`.
+
+## 5b. Repelling the one your queued attack was aimed at (2026-10-13)
+
+A charged reaction that consumes a queued action costs the swap's Disadvantage — unless it is what
+the character had queued, only sooner. `keepsQueuedIntent` holds the two cases: an escape to exactly
+where the queued move was going (`sameMoveAsQueued`, 2026-10-11) and, new, a `repel` against the
+attacker when every consumed action is a pure attack (no move, no interaction) whose only target is
+that attacker (`sameBlowAsQueued`). The master can still put a Disadvantage on it.
 
 ## 6. Known limits
 

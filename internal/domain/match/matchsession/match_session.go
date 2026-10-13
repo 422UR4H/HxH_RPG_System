@@ -377,7 +377,7 @@ func (s *MatchSession) ApplyMasterAction(
 			}
 		} else {
 			rc.Context.Condition = &cond
-			s.ensureDiceForBias(rc, cond)
+			s.ensureDiceForBias(rc, cond.Bias)
 		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
@@ -427,16 +427,17 @@ func (s *MatchSession) queuedAction(id uuid.UUID) *action.Action {
 // IsQueued reports whether an action is still waiting in the queue.
 func (s *MatchSession) IsQueued(id uuid.UUID) bool { return s.queuedAction(id) != nil }
 
-// ensureDiceForBias gives a test with no dice its primary set the first time the master's bias
-// asks for one — the moment a passive test becomes a rolled one (RollCalculator.Derive,
-// readPassiveBias): "if you put advantage on it, it is rolled" (owner decision, 2026-10-12).
+// ensureDiceForBias gives a test with no dice its primary set the first time a bias asks for one
+// — the moment a passive test becomes a rolled one (RollCalculator.Derive, readPassiveBias):
+// "if you put advantage on it, it is rolled" (owner decision, 2026-10-12). The master's bias asks
+// in ApplyMasterAction; the system's (a swap's disadvantage) in deriveSpeeds (2026-10-13).
 //
 // It is the FIRST roll of a test that never rolled, not a re-roll: a set that fell stays, so
 // taking the bias off and putting it back reads the same dice. That is the same rule
 // applySkillEdit already follows for a skill that did not exist a moment ago. A test whose dice
 // fell on arrival is left alone.
-func (s *MatchSession) ensureDiceForBias(rc *action.RollCheck, cond action.RollCondition) {
-	if cond.Bias == 0 || !rc.Attempts.IsEmpty() {
+func (s *MatchSession) ensureDiceForBias(rc *action.RollCheck, bias int) {
+	if bias == 0 || !rc.Attempts.IsEmpty() {
 		return
 	}
 	rc.Attempts = action.RollAttempts{
@@ -1321,10 +1322,11 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 		// Amount: RollAttempts already holds both sets and the bias only picks which one.
 		// With nothing queued there was no swap, so there is no penalty.
 		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
-		// never two. Fleeing to where the queued move was already going is NOT a swap
-		// (sameMoveAsQueued — a first, simple version of that rule).
+		// never two. Doing, sooner, what the queue already said is NOT a swap
+		// (keepsQueuedIntent: fleeing to where the queued move was going, repelling whoever
+		// the queued attack was aimed at).
 		systemBias := 0
-		if (len(consumed) > 0 && !sameMoveAsQueued(r, consumed)) || s.swapBias(r.GetActorID()) < 0 {
+		if (len(consumed) > 0 && !keepsQueuedIntent(r, consumed, act.GetActorID())) || s.swapBias(r.GetActorID()) < 0 {
 			systemBias = -1
 		}
 		s.deriveSpeeds(r, systemBias)
@@ -1389,6 +1391,48 @@ func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*acti
 	return ids, victims
 }
 
+// keepsQueuedIntent reports whether a charged reaction is what its character had already queued,
+// only sooner — in which case consuming the queued action is not a swap and costs no
+// Disadvantage. The master can still put one on, as on any roll. Two cases today, one per kind
+// of intent a reaction can carry:
+//
+//   - an escape (any of the three) to exactly where the queued move was going — sameMoveAsQueued
+//     (owner decision, 2026-10-11);
+//   - a repel against the character who is attacking, when the queued action was an attack on
+//     that same character — sameBlowAsQueued (owner decision, 2026-10-13).
+//
+// It is the policy the swap rule asks; each case stays a small, explicit predicate, deliberately
+// simple, to be enriched on its own (partial overlap, combined actions, a destination on the way).
+func keepsQueuedIntent(r *action.Action, consumed []*action.Action, attackerID uuid.UUID) bool {
+	switch {
+	case r.ReactionKind.Displaces():
+		return sameMoveAsQueued(r, consumed)
+	case r.ReactionKind == action.ReactRepel:
+		return sameBlowAsQueued(consumed, attackerID)
+	default:
+		return false
+	}
+}
+
+// sameBlowAsQueued: the character had queued an attack on the very character now attacking
+// them, and repels that attack instead — the blow they meant to throw, thrown as the answer. It
+// still consumes the queued attack (the repel IS that blow now), but it is not a swap.
+//
+// Deliberately simple, like sameMoveAsQueued: every consumed action must be a pure attack (no
+// move, no interaction) whose only target is the attacker. An area attack that also named
+// someone else, or an attack that was going to move first, is a different plan — that is a swap.
+func sameBlowAsQueued(consumed []*action.Action, attackerID uuid.UUID) bool {
+	for _, c := range consumed {
+		if c.Attack == nil || c.Move != nil || c.Interact != nil {
+			return false
+		}
+		if len(c.TargetID) != 1 || c.TargetID[0] != attackerID {
+			return false
+		}
+	}
+	return true
+}
+
 // sameMoveAsQueued: the reaction is a flight to exactly where the character was already going.
 // It still consumes the queued move (the flight IS that move now), but it is not a swap — the
 // character did what they had declared, only sooner — so it costs no Disadvantage (owner
@@ -1397,8 +1441,7 @@ func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*acti
 // Deliberately simple: every consumed action must be a pure move (no attack, no interaction)
 // whose destination is the reaction's own, compared by (col, row) — z is never read by the
 // server. This rule WILL be enriched (partial overlap, a combined move+attack, a destination
-// that merely lies on the way) and will likely need refactoring when that happens: today it is
-// a single yes/no inside AttachReaction, not a policy of its own.
+// that merely lies on the way); keepsQueuedIntent is where the cases meet.
 func sameMoveAsQueued(r *action.Action, consumed []*action.Action) bool {
 	if r.Move == nil {
 		return false
@@ -1691,6 +1734,9 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
 	a.Speed.SkillName = enum.Legerity.String()
 	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
+	// The system's bias makes a passive reading roll against the base value, like the master's
+	// (readPassiveBias): its dice fall here, the first time that bias asks for them.
+	s.ensureDiceForBias(&a.Speed.RollCheck, systemBias)
 	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
 		SkillName:  a.Speed.SkillName,
 		SkillValue: a.Speed.SkillValue,
@@ -1717,6 +1763,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
+	s.ensureDiceForBias(a.Move.Speed, systemBias)
 	a.Move.Speed.Result = calc.Derive(s.rules, a.Move.Speed.Attempts, service.RollInput{
 		SkillName:  a.Move.Speed.SkillName,
 		SkillValue: a.Move.Speed.SkillValue,

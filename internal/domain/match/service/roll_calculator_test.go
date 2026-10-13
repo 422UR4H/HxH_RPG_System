@@ -137,8 +137,8 @@ func TestRollCalculator_Derive_Passive(t *testing.T) {
 	}
 }
 
-// TestRollCalculator_Derive_PassiveWithTheMastersBias pins P2 (owner decision, 2026-10-12): the
-// master's bias makes a passive test a rolled one, with the base value (11 on 2D10) as the
+// TestRollCalculator_Derive_PassiveWithTheMastersBias pins P2 (owner decision, 2026-10-12): a
+// bias — the master's, and since 2026-10-13 the system's too — makes a passive test a rolled one, with the base value (11 on 2D10) as the
 // other set — advantage keeps the better of the dice and the base, disadvantage the worse.
 func TestRollCalculator_Derive_PassiveWithTheMastersBias(t *testing.T) {
 	calc := service.RollCalculator{}
@@ -186,9 +186,15 @@ func TestRollCalculator_Derive_PassiveWithTheMastersBias(t *testing.T) {
 		}
 	})
 
-	t.Run("the system's bias alone still has no die to choose on a passive test", func(t *testing.T) {
-		if out := derive([]int{2, 3}, nil, -1); out.DiceTotal != 11 || len(out.Dice) != 0 {
-			t.Fatalf("got %+v, want the plain base value", out)
+	t.Run("the system's bias reads the same way (2026-10-13): its disadvantage keeps the worse", func(t *testing.T) {
+		if out := derive([]int{2, 3}, nil, -1); out.DiceTotal != 5 {
+			t.Fatalf("got %+v, want the dice 2+3 under the base", out)
+		}
+	})
+
+	t.Run("the master's advantage cancels the system's disadvantage: the plain base value", func(t *testing.T) {
+		if out := derive([]int{2, 3}, &action.RollCondition{Bias: 1}, -1); out.DiceTotal != 11 || len(out.Dice) != 0 {
+			t.Fatalf("got %+v, want the base value — net bias zero", out)
 		}
 	})
 }

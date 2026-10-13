@@ -54,8 +54,12 @@ vira o outro resultado da comparação:
 - **com desvantagem**, vale o **pior** entre os dois.
 
 O passivo continua sendo o piso (ou o teto): a vantagem traz a chance de ir além, a desvantagem
-traz o risco de ficar abaixo. O dado é rolado **uma vez só**, na primeira vez que o mestre pede —
+traz o risco de ficar abaixo. O dado é rolado **uma vez só**, na primeira vez que alguém pede —
 tirar e pôr a vantagem de volta lê o mesmo dado.
+
+A **desvantagem do sistema** (a de quem troca uma ação declarada) vale do mesmo jeito: um teste
+passivo de quem trocou rola contra o valor médio e fica com o pior. Se o mestre der vantagem a esse
+teste, as duas se anulam e o valor médio volta a valer.
 
 ## Ajustar uma ação que ainda está na fila
 

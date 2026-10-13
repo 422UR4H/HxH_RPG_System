@@ -363,8 +363,12 @@ personagem em cada barra que cobra — e, se consumiu algo, a troca custa **Desv
 (`SystemBias = -1`). **Exceção (2026-10-11, versão simples, vai ser enriquecida):** uma fuga para
 **a mesma casa** (col, row) do movimento que estava na fila não é troca — se toda ação consumida é
 um movimento puro (sem ataque nem interação) para aquele destino, ela é consumida mas a reação
-**não** rola com Desvantagem (`sameMoveAsQueued` em `match_session.go`). Cancelar antes na rodada
-continua marcando a Desvantagem. Por barra que cobra, a ação consumida é a de **melhor chave** naquela barra
+**não** rola com Desvantagem (`sameMoveAsQueued` em `match_session.go`). **Segunda exceção
+(2026-10-13, mesma simplicidade):** um `repel` contra quem está atacando, quando toda ação
+consumida é um ataque puro (sem movimento nem interação) cujo **único** alvo é esse atacante —
+o golpe que estava na fila, dado como resposta (`sameBlowAsQueued`). As duas exceções moram em
+`keepsQueuedIntent`. O mestre pode pôr Desvantagem mesmo assim, como em qualquer rolagem. Cancelar
+antes na rodada continua marcando a Desvantagem. Por barra que cobra, a ação consumida é a de **melhor chave** naquela barra
 (`BestPendingFor`, a mesma escolha do escalonador); uma ação combinada, que está nas duas
 barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 [`reaction_attached`](#reaction_attached).
@@ -685,9 +689,11 @@ independente — mande só o que muda.
 > dado e o valor base; desvantagem, com o pior**. O dado cai **na primeira vez** que um viés o
 > pede — um conjunto, o primário — e nunca mais: tirar e repor o viés lê o mesmo dado. Vale para
 > toda leitura passiva: a esquiva e a defesa da reação `default`, a defesa padrão atrás das
-> outras, o `moveSpeed` do `closedEscape` (Shift) e a `speed` fora do Race. O viés do **sistema**
-> (a Desvantagem da troca) continua sem efeito numa leitura passiva. Na resolução, a leitura
-> segue `passive`, e `dice` traz o dado que caiu.
+> outras, o `moveSpeed` do `closedEscape` (Shift) e a `speed` fora do Race. **O viés do sistema
+> (a Desvantagem da troca) vale do mesmo jeito** (2026-10-13): numa leitura passiva ele a faz rolar
+> contra o valor base, e o dado cai quando as velocidades são derivadas. Os dois se somam como
+> numa rolada — a Vantagem do mestre sobre a Desvantagem do sistema volta ao valor base. Na
+> resolução, a leitura segue `passive`, e `dice` traz o dado que caiu.
 
 **`escapeLanding` — a queda da fuga que falha é do mestre.** O motor não tem regra para onde
 uma fuga que falhou vai parar (ver [`open_reaction`](#open_reaction)); o mestre decide, por esta

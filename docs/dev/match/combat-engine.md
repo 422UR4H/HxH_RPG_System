@@ -48,11 +48,12 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
   > então o jogador só arrisca quando precisa de sorte acima da média.
 - **Vantagem/desvantagem**: rola o conjunto duas vezes, vale o melhor/pior.
   `RollCondition.Bias` (−1/0/+1, acumula).
-- **Viés do mestre num teste passivo o torna rolado** (dono do produto, 2026-10-12). O valor base
-  vira o outro conjunto: vantagem fica com o melhor entre o dado e o valor base, desvantagem com
-  o pior (`readPassiveBias`, `roll_calculator.go`). O dado — um conjunto, o primário — cai na
-  primeira vez que o viés do mestre o pede (`MatchSession.ensureDiceForBias`) e nunca mais. O
-  viés do sistema e o do ledger continuam sem efeito num teste passivo.
+- **Viés num teste passivo o torna rolado** (dono do produto, 2026-10-12; o do sistema desde
+  2026-10-13). O valor base vira o outro conjunto: vantagem fica com o melhor entre o dado e o
+  valor base, desvantagem com o pior (`readPassiveBias`, `roll_calculator.go`), lido pelo viés
+  **líquido** — mestre e sistema somados, como numa rolada. O dado — um conjunto, o primário —
+  cai na primeira vez que um viés o pede (`MatchSession.ensureDiceForBias`: no `ApplyMasterAction`
+  para o do mestre, no `deriveSpeeds` para o do sistema) e nunca mais.
 - **`RollCondition` é a struct do mestre**: `Bias` = dados; `Modifier` = ajuste manual
   (*"+3 porque teve criatividade estratégica"*).
 

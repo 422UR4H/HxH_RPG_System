@@ -175,3 +175,70 @@ func TestQueuedEdit_AReactionThatConsumesItTakesTheEditsWithIt(t *testing.T) {
 		t.Fatal("the consumed action must leave as it was declared")
 	}
 }
+
+// ─── Doing sooner what the queue already said is not a swap (2026-10-13) ───
+
+func TestSwap_RepellingTheOneYourQueuedAttackWasAimedAt(t *testing.T) {
+	repelOn := func(t *testing.T, f *queueFixture) *action.Action {
+		t.Helper()
+		opened := mustOpen(t, f.session) // A's attack on B
+		act := opened.GetAction()
+		repel := action.NewAction(f.b, nil, act.GetID(), nil, action.ActionSpeed{},
+			nil, nil, nil, nil, nil, nil, nil)
+		repel.ReactionKind = action.ReactRepel
+		repel.Repel = &action.Repel{RollCheck: action.RollCheck{SkillName: enum.Repel.String()}}
+		if _, err := f.session.AttachReaction(f.playerB, repel); err != nil {
+			t.Fatalf("AttachReaction(repel): %v", err)
+		}
+		if len(repel.ConsumedActionIDs) != 1 {
+			t.Fatalf("consumed = %v, want B's queued action", repel.ConsumedActionIDs)
+		}
+		return repel
+	}
+
+	t.Run("B's queued attack was on A, who attacks them: no Disadvantage", func(t *testing.T) {
+		f := newQueueFixture(t) // second = B's attack on A
+		if r := repelOn(t, f); r.SystemBias != 0 {
+			t.Fatalf("SystemBias = %d, want 0 — the repel is the blow B had queued", r.SystemBias)
+		}
+	})
+
+	t.Run("B's queued attack was on someone else: a swap, Disadvantage", func(t *testing.T) {
+		f := newQueueFixture(t)
+		f.second.TargetID = []uuid.UUID{uuid.New()}
+		if r := repelOn(t, f); r.SystemBias != -1 {
+			t.Fatalf("SystemBias = %d, want -1 — repelling A is not what B had queued", r.SystemBias)
+		}
+	})
+}
+
+// The system's Disadvantage on a passive reading rolls it against the base value, like the
+// master's bias (2026-10-13): a swapped closed escape steps with Shift, whose Brake is passive.
+func TestSwap_TheSystemsDisadvantageRollsAPassiveReading(t *testing.T) {
+	f := newQueueFixture(t) // every die shows 5: a 2D10 set is 10, under the base 11
+	opened := mustOpen(t, f.session)
+	act := opened.GetAction()
+	// A closed escape charges only the move bar, so what it consumes is a queued move: give B a
+	// Shift to somewhere else.
+	shift := action.NewAction(f.b, nil, uuid.Nil, nil, action.ActionSpeed{},
+		nil, &action.Move{Category: enum.Shift, Position: [3]int{5, 5, 0}}, nil, nil, nil, nil, nil)
+	if err := f.session.EnqueueAction(f.playerB, shift); err != nil {
+		t.Fatalf("EnqueueAction(shift): %v", err)
+	}
+	escape := action.NewAction(f.b, nil, act.GetID(), nil, action.ActionSpeed{}, nil,
+		&action.Move{Category: enum.Shift, Position: [3]int{8, 8, 0}}, nil, nil,
+		&action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}}, nil, nil)
+	escape.ReactionKind = action.ReactClosedEscape
+	if _, err := f.session.AttachReaction(f.playerB, escape); err != nil {
+		t.Fatalf("AttachReaction(closedEscape): %v", err)
+	}
+	if escape.SystemBias != -1 {
+		t.Fatalf("SystemBias = %d, want -1 — fleeing elsewhere is a swap", escape.SystemBias)
+	}
+	if escape.Move.Speed == nil || len(escape.Move.Speed.Attempts.Primary) != 2 {
+		t.Fatalf("Move.Speed = %+v, want the Shift's dice rolled by the system's bias", escape.Move.Speed)
+	}
+	if escape.Move.FinalSpeed != 10 {
+		t.Fatalf("FinalSpeed = %d, want 10 — the worse of the dice (5+5) and the base 11", escape.Move.FinalSpeed)
+	}
+}
