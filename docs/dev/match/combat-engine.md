@@ -651,8 +651,9 @@ eram o que o motor aplicava quando nada chegava). Quando o turno abre, a sessão
 reação `default` para cada personagem que o ataque nomeia — esquiva por reflexo, depois a defesa
 padrão, as duas passivas —, e ela é uma reação de verdade: o mestre a edita, pode dar a palavra
 a ela, o histórico a grava. O que o alvo mandar a substitui. `ReactNothing` continua existindo
-porque **recusar as passivas é um envio**: "não fiz nada" é uma escolha, e não se abre (não tem o
-que narrar). Ver "A reação padrão" mais abaixo.
+porque **recusar as passivas é um envio**: "não fiz nada" é uma escolha, que nunca precisa ser
+aberta (não tem o que narrar) — mas pode, para o mestre posicioná-la na cadeia. Ver "A reação
+padrão" mais abaixo.
 
 **`enum.DodgeCategory` é absorvida.** Ela é hoje `{Evasive, Close, Scape}`, sem nenhum
 consumidor além do passthrough em `action_mapper.go`. É o mesmo eixo do `ReactionKind`, só que
@@ -974,7 +975,8 @@ puser viés.
   (dados e condição), o `DefaultDefense` e as capturas para a reação que chegou. Nada rola de
   novo.
 - **Não segura o fechamento.** `Turn.AwaitingTheFloor` (o que o `close_turn` pede para confirmar)
-  deixa de fora a sentada e o `nothing`; uma `default` declarada entra.
+  deixa de fora a sentada e o `nothing` (`ReactionKind.AwaitsNarration`); uma `default` declarada
+  entra. As duas continuam abríveis: abrir também posiciona na cadeia.
 - **Não é resposta do dono.** `match_full_state.ownReactions` não lista a sentada: o cliente que
   reconecta ainda oferece os botões de reação.
 
@@ -1505,7 +1507,7 @@ colisão (`CharacterResults`, dano projetado) continua só do mestre, em `resolu
 enquanto o turno está aberto. Contrato: `match-combat-ws.md` § `reaction_opened`.
 
 `TurnResolution.PendingReactions` é o que fecha o ciclo: cada reação **anexada e ainda não
-aberta que tem o que narrar** (`ReactionKind.Narrates`: todas menos `nothing`), com
+aberta** (a padrão sentada e o `nothing` inclusive), com
 `ReactionID`, `ActorID`, `Kind` e `Seated` (a padrão que a sessão sentou e o alvo ainda não
 respondeu). Sem ela, `open_reaction` era inalcançável a partir de um cliente de verdade —
 nenhuma mensagem publicava o ID de uma reação antes de ela ser aberta. Desde 2026-10-12 a

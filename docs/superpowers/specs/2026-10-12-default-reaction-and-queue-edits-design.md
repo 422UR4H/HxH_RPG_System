@@ -21,7 +21,7 @@
 | # | Decision |
 |---|---|
 | D1 | **The passives are a reaction.** A target that did not answer has the default reaction — reflex dodge, then the default defense. It has a record, it is part of the turn as an answer to the action, the master edits it like any other, and the player sees it in the history after the close. |
-| D2 | **"Do nothing" is an explicit choice** with no default dodge or defense: the blow lands raw. **It never needs to be opened** — there is no narration; the table already sees it in the resolution. |
+| D2 | **"Do nothing" is an explicit choice** with no default dodge or defense: the blow lands raw. **It never needs to be opened** — there is no narration; the table already sees it in the resolution. It stays **openable** (2026-10-13), like the default reaction: placing it in the chain helps the master time the resolution of that choice. |
 | D3 | **The master may give the default reaction the floor** — a character can dodge in many ways. The call is the master's; the possibility stays. |
 | D4 | **The reaction that counts is the one the player sent.** An attached, unopened reaction **is in the calculation** (it was a bug: it charged the bars and was ignored). |
 | D5 | **A bias on a passive test makes it rolled** (P2): advantage keeps the better of the dice and the base value (11 on 2D10), disadvantage the worse. It applies to every passive reading. What already fell is never rolled again. |
@@ -32,8 +32,8 @@
 ## 2. The default reaction
 
 - **`action.ReactDefault` ("default")**: free, keeps the default defense, does not displace,
-  requires a `dodge` (always `Reflex`). `ReactionKind.IsPassive()` tells it apart; `Narrates()` is
-  false only for `nothing`.
+  requires a `dodge` (always `Reflex`). `ReactionKind.IsPassive()` tells it apart;
+  `AwaitsNarration()` is false only for `nothing`.
 - **Seated by the session.** `MatchSession.seatDefaultReactions` runs when the turn opens and when
   the master edits the turn's action targets: it seats one for every character the attack names
   that has no reaction, and removes the seated one of a character no longer named. Only attacks
@@ -53,14 +53,13 @@
 
 `buildChainOrder`: the opened ones, in the order the master opened them; then the other targets,
 in `targetId` order, **each with the reaction attached for it, opened or not**. `CharacterResult`
-gains `ReactionOpened`; the wire, `targets[].reaction.opened`. `pendingReactions` lists the
-unopened ones that narrate (all but `nothing`), with `seated`. `open_reaction` on a `nothing` is
-refused (`ErrNothingToNarrate`).
+gains `ReactionOpened`; the wire, `targets[].reaction.opened`. `pendingReactions` lists every
+unopened reaction (the seated default and `nothing` included), with `seated`.
 
-> **Consequence to decide later:** since `nothing` is never opened, it always collides after every
-> opened reaction. Before, the master could open it ahead of a repel so the blow hit it whole. If
-> that ordering is master power worth keeping, make `nothing` openable (and listed) without holding
-> the close — one line (`Narrates`).
+**`nothing` stays openable** (owner decision, 2026-10-13). A first cut refused `open_reaction` on
+it; that took away a master power the table had: opening it ahead of a repel so the blow hits it
+whole. It never needs the floor and never holds the close (`AwaitsNarration`), but the master may
+open it to place it.
 
 ## 4. Bias on a passive reading (D5)
 
@@ -75,7 +74,8 @@ lands on a `RollCheck` with no dice, its primary set is rolled — once, never a
 principle as an added skill). Passive readings: the default reaction's dodge and defense, the
 default defense behind `dodge`/`closedDodge`/`escapeGuard`, the Shift `moveSpeed` (`closedEscape`)
 and `speed` outside Race. A `DefaultDefense` whose condition is zeroed is not dropped once it holds
-dice.
+dice. The base value itself travels in `match_full_state.passiveValue` (11 on 2D10), so the
+master's editor can name it.
 
 ## 5. Queue edits (D6, D7)
 
@@ -107,7 +107,8 @@ dice.
 - Domain: `TestRollCalculator_Derive_PassiveWithTheMastersBias`, `TestTurn_SeatedReactions`,
   `TestChain_UnopenedReactionsAreInTheCalculation`.
 - Session: `default_reaction_test.go` (seats without rolling; the bias rolls once; the answer
-  replaces; declaring `default` inherits; `nothing` is never opened; follows the targets),
+  replaces; declaring `default` inherits; `nothing` is openable and never holds the close; follows
+  the targets),
   `queued_edit_test.go` (lands and rides into the turn; speed reorders; targets/skills refused;
   cancel and consume discard).
 - E2E: `TestE2E_EditQueuedAction`, `TestE2E_ReconnectingTargetWithOnlyTheSeatedDefaultHasNoOwnReaction`;

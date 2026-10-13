@@ -21,7 +21,7 @@
 | # | Decisão |
 |---|---|
 | D1 | **A passiva é uma reação.** Quem não respondeu tem a reação padrão — esquiva por reflexo, depois a defesa padrão. Ela tem registro, entra no turno como resposta à action, o mestre a edita como qualquer outra e o jogador a vê no histórico depois do fechamento. |
-| D2 | **"Não fazer nada" é escolha explícita** e não tem esquiva nem defesa padrão: recebe o golpe cru. **Nunca precisa ser aberto** — não há narração; a mesa já vê na resolução. |
+| D2 | **"Não fazer nada" é escolha explícita** e não tem esquiva nem defesa padrão: recebe o golpe cru. **Nunca precisa ser aberto** — não há narração; a mesa já vê na resolução. Continua **abrível** (2026-10-13), como a reação padrão: posicioná-lo na cadeia ajuda o mestre a controlar o tempo de resolução dessa escolha. |
 | D3 | **O mestre pode dar a palavra à reação padrão** — um personagem pode esquivar de muitos jeitos. A decisão é dele; a possibilidade não some. |
 | D4 | **A reação que conta é a que o jogador mandou.** Uma reação anexada e não aberta **entra no cálculo** (era um bug: ela cobrava as barras e era ignorada). |
 | D5 | **Viés num teste passivo o torna rolado** (P2): vantagem fica com o melhor entre o dado e o valor base (11 no 2D10), desvantagem com o pior. Vale para todas as leituras passivas. Não rolar de novo o que já caiu. |
@@ -32,8 +32,8 @@
 ## 2. A reação padrão
 
 - **`action.ReactDefault` ("default")**: gratuita, mantém a defesa padrão, não desloca, exige um
-  `dodge` (sempre `Reflex`). `ReactionKind.IsPassive()` a distingue; `Narrates()` é falso só para
-  `nothing`.
+  `dodge` (sempre `Reflex`). `ReactionKind.IsPassive()` a distingue; `AwaitsNarration()` é falso só
+  para `nothing`.
 - **Sentada pela sessão.** `MatchSession.seatDefaultReactions` roda quando o turno abre e quando o
   mestre edita os alvos da ação do turno: senta uma para cada personagem que o ataque nomeia e não
   tem reação; tira a sentada de quem deixou de ser nomeado. Só ataques sentam (só eles colidem).
@@ -52,14 +52,13 @@
 
 `buildChainOrder`: as abertas, na ordem em que o mestre abriu; depois os demais alvos, na ordem
 de `targetId`, **cada um com a reação anexada a ele, aberta ou não**. `CharacterResult` ganha
-`ReactionOpened`; o wire, `targets[].reaction.opened`. `pendingReactions` lista as não abertas
-que narram (todas menos `nothing`), com `seated`. `open_reaction` num `nothing` é recusado
-(`ErrNothingToNarrate`).
+`ReactionOpened`; o wire, `targets[].reaction.opened`. `pendingReactions` lista toda reação não
+aberta (a padrão sentada e o `nothing` inclusive), com `seated`.
 
-> **Consequência para decidir depois:** como o `nothing` não se abre, ele colide sempre depois de
-> toda reação aberta. Antes o mestre podia abri-lo antes de um aparo para que o golpe o pegasse
-> cheio. Se essa ordem for poder de mestre que deve ficar, basta deixar o `nothing` abrível (e
-> listado) sem que ele segure o fechamento — é uma linha (`Narrates`).
+**O `nothing` continua abrível** (dono do produto, 2026-10-13). Um primeiro corte recusava o
+`open_reaction` nele; isso tirava um poder que o mestre tinha: abri-lo antes de um aparo para o
+golpe pegá-lo cheio. Ele nunca precisa da palavra e não segura o fechamento (`AwaitsNarration`),
+mas o mestre pode abri-lo para posicioná-lo.
 
 ## 4. Viés numa leitura passiva (D5)
 
@@ -73,7 +72,8 @@ O dado cai em `ApplyMasterAction`, `ensureDiceForBias`: a primeira vez que uma c
 pousa num `RollCheck` sem dados, rola-se o conjunto primário — uma vez, nunca mais (o mesmo
 princípio da perícia acrescentada). Leituras passivas: a esquiva e a defesa da `default`, a defesa
 padrão atrás de `dodge`/`closedDodge`/`escapeGuard`, o `moveSpeed` do Shift (`closedEscape`) e a
-`speed` fora do Race. Um `DefaultDefense` cuja condição é zerada não é apagado se já tem dado.
+`speed` fora do Race. Um `DefaultDefense` cuja condição é zerada não é apagado se já tem dado. O
+valor base vai em `match_full_state.passiveValue` (11 no 2D10), para o editor do mestre nomeá-lo.
 
 ## 5. Edição na fila (D6, D7)
 
@@ -105,7 +105,7 @@ padrão atrás de `dodge`/`closedDodge`/`escapeGuard`, o `moveSpeed` do Shift (`
 - Domínio: `TestRollCalculator_Derive_PassiveWithTheMastersBias`, `TestTurn_SeatedReactions`,
   `TestChain_UnopenedReactionsAreInTheCalculation`.
 - Sessão: `default_reaction_test.go` (senta sem rolar; o viés rola uma vez; a resposta substitui;
-  declarar `default` herda; `nothing` não se abre; segue os alvos), `queued_edit_test.go` (pousa e
+  declarar `default` herda; `nothing` é abrível e não segura o fechamento; segue os alvos), `queued_edit_test.go` (pousa e
   vai ao turno; velocidade reordena; alvos/perícias recusados; cancelar e consumir descartam).
 - E2E: `TestE2E_EditQueuedAction`, `TestE2E_ReconnectingTargetWithOnlyTheSeatedDefaultHasNoOwnReaction`;
   ajustados `TestE2E_CloseTurn`, `TestE2E_AreaAttackWithThreeTargetsReactingDifferently`,

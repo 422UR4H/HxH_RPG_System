@@ -206,13 +206,13 @@ func (t *Turn) UnopenedReactions() []action.Action {
 }
 
 // AwaitingTheFloor is what close_turn asks the master to confirm away: the unopened reactions a
-// PLAYER sent and that have something to narrate. A seated default was never sent — nobody is
-// waiting to tell it — and nothing has nothing to tell (ReactionKind.Narrates). Both stay
-// openable by the master; they just do not hold the close.
+// PLAYER sent and is waiting to narrate. A seated default was never sent — nobody is waiting to
+// tell it — and a nothing has nothing to tell (ReactionKind.AwaitsNarration). Both stay openable
+// by the master; they just do not hold the close.
 func (t *Turn) AwaitingTheFloor() []action.Action {
 	out := make([]action.Action, 0, len(t.reactions))
 	for _, r := range t.UnopenedReactions() {
-		if r.ReactionKind.Narrates() && !t.seated[r.GetID()] {
+		if r.ReactionKind.AwaitsNarration() && !t.seated[r.GetID()] {
 			out = append(out, r)
 		}
 	}

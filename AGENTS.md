@@ -160,10 +160,10 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   que o ataque nomeia (`seatDefaultReactions`); o mestre a edita e pode abri-la, e o que o alvo
   manda a substitui (`Turn.ReplaceSeated`; declarar `default` herda dados e edições). Não segura
   o `close_turn` nem aparece em `ownReactions`. **Reação não aberta entra no cálculo**, depois
-  das abertas (`buildChainOrder`); `nothing` não se abre (`ErrNothingToNarrate`) e não vai a
-  `pendingReactions`. **Viés do mestre num teste passivo o torna rolado** (P2: vantagem = melhor
-  entre o dado e o valor base, desvantagem = pior; o dado cai no primeiro viés,
-  `ensureDiceForBias`). **O mestre edita ação na fila** (condições e `damageSkill`; `targetIds`/
+  das abertas (`buildChainOrder`); `nothing` nunca precisa ser aberto nem segura o `close_turn`,
+  mas o mestre pode abri-lo para posicioná-lo na cadeia. **Viés do mestre num teste passivo o
+  torna rolado** (P2: vantagem = melhor entre o dado e o valor base, desvantagem = pior; o dado
+  cai no primeiro viés, `ensureDiceForBias`; o valor base vai em `match_full_state.passiveValue`). **O mestre edita ação na fila** (condições e `damageSkill`; `targetIds`/
   `skills` recusados — ver o comentário em `ApplyMasterAction`); `speed` editada reordena a fila,
   e cancelar/consumir descarta as edições (`discardEdits`). Spec
   `docs/superpowers/specs/2026-10-12-default-reaction-and-queue-edits-design.md`.

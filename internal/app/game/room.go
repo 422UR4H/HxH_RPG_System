@@ -2789,6 +2789,7 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
 	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
 	payload.Bars.Seq = r.barsSeq
+	payload.PassiveValue = session.GetRules().PassiveValue()
 
 	if scene := session.GetActiveScene(); scene != nil {
 		// The same struct scene_changed sends, not a second flattened copy of it — see

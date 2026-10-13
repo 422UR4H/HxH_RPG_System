@@ -106,8 +106,8 @@ type chainStep struct {
 // An unopened reaction is in the calculation (owner decision, 2026-10-12). Opening is the
 // table's narration, and the power it carries is the ORDER: an opened reaction collides before
 // every unopened one. What a character sent counts whether or not they got the floor — their
-// bars were already charged at attach — and a "nothing", which is never opened (there is
-// nothing to narrate), still refuses the passives.
+// bars were already charged at attach — and a "nothing", which never needs the floor (there is
+// nothing to narrate), still refuses the passives; the master opens one only to place it.
 //
 // Turn.reactions is append-ordered by ATTACH, which is not the order the master opened them
 // — a target can attach a reaction long before the master gets to it. Walking attach order

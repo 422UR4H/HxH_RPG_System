@@ -578,9 +578,8 @@ type ResolutionUpdatedPayload struct {
 	IsSettled bool                     `json:"isSettled"`
 	Action    RollResultPayload        `json:"action"`
 	Targets   []CharacterResultPayload `json:"targets"`
-	// PendingReactions is every reaction attached and not yet opened that has something to
-	// narrate (every kind but "nothing", the seated default included) — master-only, like the
-	// rest of this payload. An unopened reaction IS in the calculation (Targets[].Reaction,
+	// PendingReactions is every reaction attached and not yet opened (the seated default and a
+	// "nothing" included) — master-only, like the rest of this payload. An unopened reaction IS in the calculation (Targets[].Reaction,
 	// opened false, after every opened one); this list is the master's to-do list of who can
 	// still get the floor, which is how they choose the ORDER — the power opening carries.
 	PendingReactions []PendingReactionPayload `json:"pendingReactions,omitempty"`
@@ -703,7 +702,7 @@ type ReactionResultPayload struct {
 	SystemBias int `json:"systemBias,omitempty"`
 	// Opened is whether the master gave this reaction the floor. An unopened reaction is in
 	// the calculation all the same — it collides after every opened one — and is still listed
-	// in pendingReactions (unless it is a "nothing", which has nothing to narrate).
+	// in pendingReactions.
 	Opened bool `json:"opened"`
 }
 
@@ -923,6 +922,11 @@ type MatchFullStatePayload struct {
 	// scene" expressible, which three flat zero-valued fields could not say.
 	Scene     *SceneChangedPayload `json:"scene,omitempty"`
 	RoundMode string               `json:"roundMode"`
+	// PassiveValue is the dice set's base value — what a passive test reads instead of rolling
+	// (11 on 2D10, 10 on D20; MatchRules.PassiveValue). The master's editor names it when it says
+	// a bias makes a passive test roll against it. A rule of the match, so it travels with the
+	// rest of the match state; absent before the session exists.
+	PassiveValue int `json:"passiveValue,omitempty"`
 	// Bars is the WHOLE bars_updated payload, reused rather than re-shaped: a second bar
 	// format would be a second thing to keep in sync with the first.
 	//

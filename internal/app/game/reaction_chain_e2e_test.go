@@ -185,8 +185,7 @@ func (f *areaFixture) awaitTurnOpened(t *testing.T) (turnID, actionID uuid.UUID)
 
 // attachReaction sends one reaction, waits for the fresh resolution_updated it produces, and
 // returns the reaction's own ID for the later open_reaction — read off the reactor's own
-// reaction_attached ack, which names it over the wire (pendingReactions no longer lists every
-// reaction: a "nothing" never waits for the floor). Earlier revisions of this helper
+// reaction_attached ack, which names it over the wire. Earlier revisions of this helper
 // read the ID straight off the fixture's own session — a workaround for a real gap, now closed
 // upstream, that let an operation a real client could not actually reach look reachable in this
 // test. It is gone: the ID now genuinely comes over the wire, the same way a browser client
@@ -199,8 +198,8 @@ func (f *areaFixture) attachReaction(t *testing.T, c *wsConn, p game.ActionPaylo
 	if !awaitCount(f.master.msgs, game.MsgTypeResolutionUpdate, before+1, 2*time.Second) {
 		t.Fatalf("attach_reaction for actor %v: master never got a fresh resolution_updated", p.ActorID)
 	}
-	// The reactor's own ack names the reaction: pendingReactions no longer lists every one
-	// (a "nothing" has nothing to narrate and never waits for the floor).
+	// The reactor's own ack names the reaction — the one message that names it to them and to
+	// the master the moment it lands.
 	if !awaitCount(c.msgs, game.MsgTypeReactionAttached, acks+1, 2*time.Second) {
 		t.Fatalf("attach_reaction for actor %v: the reactor never got reaction_attached", p.ActorID)
 	}
@@ -301,12 +300,9 @@ func TestE2E_AreaAttackFixtureStandsATurn(t *testing.T) {
 //	target B sends "nothing"        — refusing even the passives
 //	target C sends no answer at all — the default reaction the engine seated for them stands
 //
-// The same three answers and the same scripted faces run twice. The attack names B first, so
-// with nothing opened the chain walks B before A; when the master opens A's repel, A collides
-// before everyone unopened. What each target takes differs between the two runs, and that
-// difference IS the phase's objective: an unopened reaction counts (B's "nothing" takes the
-// blow raw), and the order the master opens in moves it. A "nothing" itself is never opened —
-// it has nothing to narrate.
+// The same three answers and the same scripted faces run twice, with the master opening A→B
+// and then B→A. What each target takes differs between the two runs, and that difference IS
+// the phase's objective.
 //
 // Faces, empirically established by reading rollActionDice/RollCalculator.Roll rather than
 // trusting the brief's count (which predicted 6 and does not account for the fact that a 2D10
@@ -317,9 +313,12 @@ func TestE2E_AreaAttackFixtureStandsATurn(t *testing.T) {
 //	Sword damage (D10+D4, direct) → 2, both used: 7+3+2 flat = 12 raw
 //	A's Repel    (2D10 test)      → primary 2 + secondary 2 = 4 (only primary used: 7+4=11)
 //
-// 10 faces total, not 6. B's "nothing" and C's silence roll nothing at all, confirmed by
-// reading ReactionKind.RequiredComponents (nothing needs no components) and rollActionDice
-// (a step with no reaction attached derives the passive average and never touches the source).
+// 10 faces total, not 6. B's "nothing" and C's seated default roll nothing at all, confirmed by
+// reading ReactionKind.RequiredComponents (nothing needs no components) and rollActionDice (a
+// default reaction's dodge is passive and never touches the source).
+//
+// B's "nothing" is opened here although it never needs the floor: opening is where it collides,
+// and that placement is the master's (owner decision, 2026-10-12).
 // The secondary-set fillers (index 2,3 and 8,9) are never read into any assertion — pickAttempt
 // ignores Secondary whenever SystemBias is 0, which it always is here — so their value does not
 // matter, only their presence: scripting fewer than 10 faces makes the source overrun and every
@@ -331,11 +330,11 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 		7, 4, 1, 1, // A's repel: primary 7,4 (→11); secondary 1,1 (unused filler)
 	}
 
-	// run drives one full pass: attacker attacks all three (B named first), A attaches repel, B
-	// attaches nothing, C stays silent, and the master opens A's repel when repelOpened. It
-	// returns the fixture it built (so callers read target IDs off the SAME fixture the run
-	// used) alongside the projected damage per target.
-	run := func(t *testing.T, repelOpened bool) (*areaFixture, map[uuid.UUID]int) {
+	// run drives one full pass: attacker attacks all three, A attaches repel, B attaches
+	// nothing, C stays silent, and the master opens the two attached reactions in the order
+	// repelFirst dictates. It returns the fixture it built (so callers read target IDs off the
+	// SAME fixture the run used) alongside the projected damage per target.
+	run := func(t *testing.T, repelFirst bool) (*areaFixture, map[uuid.UUID]int) {
 		t.Helper()
 		f := newAreaFixture(t, faces)
 		defer f.server.Close()
@@ -343,7 +342,7 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 		sword := "Sword"
 		f.attacker.send(t, game.MsgTypeEnqueueAction, game.ActionPayload{
 			ActorID:  f.attackerID,
-			TargetID: []uuid.UUID{f.b, f.a, f.c},
+			TargetID: []uuid.UUID{f.a, f.b, f.c},
 			Attack: &game.AttackPayload{
 				Weapon: &sword,
 				Hit:    game.RollCheckPayload{SkillName: "Accuracy"},
@@ -360,14 +359,18 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 			ActorID: f.a, ReactToID: actionID, ReactionKind: "repel",
 			Repel: &game.RepelPayload{RollCheck: game.RollCheckPayload{SkillName: "Repel"}},
 		})
-		f.attachReaction(t, f.pB, game.ActionPayload{
+		nothingID := f.attachReaction(t, f.pB, game.ActionPayload{
 			ActorID: f.b, ReactToID: actionID, ReactionKind: "nothing",
 		})
 		// C sends nothing at all. That silence is the third answer, and it is not the same
 		// thing as B's "nothing".
 
-		if repelOpened {
-			f.openReaction(t, repelID)
+		order := []uuid.UUID{nothingID, repelID}
+		if repelFirst {
+			order = []uuid.UUID{repelID, nothingID}
+		}
+		for _, id := range order {
+			f.openReaction(t, id)
 		}
 
 		got := f.projectedDamage(t, turnID)
@@ -391,7 +394,7 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 		}
 	})
 
-	t.Run("unopened, the repel arrives too late for whoever the attack named first", func(t *testing.T) {
+	t.Run("opened second, the repel arrives too late for whoever was walked first", func(t *testing.T) {
 		f, got := run(t, false)
 		if got[f.b] != 12 {
 			t.Fatalf("B took %d, want 12 — refusing the passives takes the blow raw", got[f.b])
@@ -399,8 +402,8 @@ func TestE2E_AreaAttackWithThreeTargetsReactingDifferently(t *testing.T) {
 	})
 
 	t.Run("C, who answered nothing at all, is covered by the passives either way", func(t *testing.T) {
-		for _, repelOpened := range []bool{true, false} {
-			f, got := run(t, repelOpened)
+		for _, repelFirst := range []bool{true, false} {
+			f, got := run(t, repelFirst)
 			if g := got[f.c]; g != 0 {
 				t.Fatalf("C took %d, want 0 — the reflex dodge is free and automatic", g)
 			}

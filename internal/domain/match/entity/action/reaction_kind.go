@@ -87,12 +87,12 @@ func (k ReactionKind) KeepsDefault() bool {
 	}
 }
 
-// Narrates reports whether this reaction has anything to narrate — whether the master can give
-// it the floor (open_reaction) and lists it among the reactions waiting for it. Only nothing
-// does not: "I did nothing" is a non-narration, and the table already sees it in the
-// resolution (owner decision, 2026-10-12). A default reaction narrates — a character can dodge
-// in many ways, and whether that is worth the floor is the master's call.
-func (k ReactionKind) Narrates() bool { return k != ReactNothing }
+// AwaitsNarration reports whether whoever sent this reaction is waiting to narrate it — what
+// close_turn asks the master to confirm away when it was never opened. A nothing is not: "I did
+// nothing" is a non-narration, and the table already sees it in the resolution (owner decision,
+// 2026-10-12). It can still be OPENED, like every reaction: opening is also where it collides in
+// the chain, and placing it is the master's tool to time that choice.
+func (k ReactionKind) AwaitsNarration() bool { return k != ReactNothing }
 
 // IsPassive reports whether this reaction reads the passives — the reflex dodge taken at the
 // dice set's base value, then the default defense — instead of rolling its own dodge.

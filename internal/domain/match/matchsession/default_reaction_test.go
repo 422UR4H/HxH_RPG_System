@@ -236,22 +236,32 @@ func TestDefaultReaction_TheAnswerReplacesIt(t *testing.T) {
 	})
 }
 
-func TestDefaultReaction_NothingHasNothingToNarrate(t *testing.T) {
+// A nothing never needs the floor and never holds the close, but the master may still open it:
+// opening is where it collides, and placing it is how the master times that choice.
+func TestDefaultReaction_NothingIsOpenableButNeverHoldsTheClose(t *testing.T) {
 	f := newDefaultFixture(t)
 	r, err := f.react(t, f.playerB, f.b, action.ReactNothing)
 	if err != nil {
 		t.Fatalf("AttachReaction(nothing): %v", err)
 	}
-	if _, _, err := f.session.OpenReaction(r.GetID()); !errors.Is(err, matchsession.ErrNothingToNarrate) {
-		t.Fatalf("OpenReaction(nothing): err = %v, want ErrNothingToNarrate", err)
-	}
-	if cr := f.resultOf(t, f.b); cr.ReactionKind != string(action.ReactNothing) || cr.Avoided {
+	if cr := f.resultOf(t, f.b); cr.ReactionKind != string(action.ReactNothing) || cr.Avoided || cr.ReactionOpened {
 		t.Fatalf("B = %+v, want the unopened nothing read — no passives", cr)
 	}
+	var listed bool
 	for _, pr := range f.session.ResolveTurn(f.turn).PendingReactions {
-		if pr.ReactionID == r.GetID() {
-			t.Fatal("a nothing is never listed for the floor")
-		}
+		listed = listed || pr.ReactionID == r.GetID()
+	}
+	if !listed {
+		t.Fatal("an unopened nothing must be listed, so the master can place it")
+	}
+	if got := f.session.ReactionsAwaitingTheFloor(); len(got) != 0 {
+		t.Fatalf("ReactionsAwaitingTheFloor = %d, want 0 — nobody waits to narrate a nothing", len(got))
+	}
+	if _, _, err := f.session.OpenReaction(r.GetID()); err != nil {
+		t.Fatalf("OpenReaction(nothing): %v", err)
+	}
+	if cr := f.resultOf(t, f.b); !cr.ReactionOpened {
+		t.Fatal("the opened nothing must read as opened")
 	}
 }
 

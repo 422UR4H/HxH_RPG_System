@@ -1462,9 +1462,6 @@ func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*action.Action, *serv
 	if t.GetFinishedAt() != nil {
 		return nil, nil, ErrTurnAlreadyClosed
 	}
-	if r := t.ReactionRef(reactionID); r != nil && !r.ReactionKind.Narrates() {
-		return nil, nil, ErrNothingToNarrate
-	}
 	if !t.OpenReaction(reactionID) {
 		return nil, nil, ErrReactionNotFound
 	}

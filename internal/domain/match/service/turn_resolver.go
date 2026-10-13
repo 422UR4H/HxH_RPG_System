@@ -150,9 +150,9 @@ type TurnResolution struct {
 	// second copy in turns.resolution would be one that can diverge. ProjectResolution strips
 	// it for anyone but the master.
 	Conditions []CheckCondition
-	// PendingReactions is every reaction attached and not yet OPENED that has something to
-	// narrate (ReactionKind.Narrates: not "nothing") — the master's own to-do list of who may
-	// still get the floor, the default reactions the engine seated included. An unopened
+	// PendingReactions is every reaction attached and not yet OPENED — the master's own to-do
+	// list of who may still get the floor, the default reactions the engine seated and the
+	// "nothing"s included (a nothing is opened only to place it in the chain). An unopened
 	// reaction IS in the calculation (buildChainOrder), after every opened one; this list is
 	// what lets the master pick the ORDER, which is the power opening carries.
 	PendingReactions []PendingReaction
@@ -418,15 +418,14 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 
 	reactions := in.Turn.GetReactions()
 
-	// Attached, not opened, and with something to narrate: the ones the master can still give
-	// the floor to (see PendingReactions' own comment). A "nothing" is in the chain and never
-	// waits for the floor.
+	// Attached, not opened: the ones the master can still give the floor to (see
+	// PendingReactions' own comment).
 	opened := make(map[uuid.UUID]bool, len(in.Turn.OpenedReactionIDs()))
 	for _, id := range in.Turn.OpenedReactionIDs() {
 		opened[id] = true
 	}
 	for i, r := range reactions {
-		if opened[r.GetID()] || !r.ReactionKind.Narrates() {
+		if opened[r.GetID()] {
 			continue
 		}
 		pr := PendingReaction{

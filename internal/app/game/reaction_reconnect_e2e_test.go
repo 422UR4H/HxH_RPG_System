@@ -75,6 +75,9 @@ func TestE2E_ReconnectingTargetWithOnlyTheSeatedDefaultHasNoOwnReaction(t *testi
 	defer conn.Close() //nolint:errcheck
 	if len(full.OwnReactions) != 0 {
 		t.Fatalf("ownReactions = %+v, want none — the seated default is not the target's answer", full.OwnReactions)
+	}	// The base value a passive test reads travels with the match state (2D10 → 11).
+	if full.PassiveValue != 11 {
+		t.Fatalf("passiveValue = %d, want 11", full.PassiveValue)
 	}
 }
 
@@ -187,9 +190,8 @@ func TestE2E_ReconnectingTableGetsOpenedReactionsInOpeningOrder(t *testing.T) {
 		ActorID: f.a, ReactToID: actionID, ReactionKind: "repel",
 		Repel: &game.RepelPayload{RollCheck: game.RollCheckPayload{SkillName: "Repel"}},
 	})
-	// B declares the default reaction — a "nothing" has nothing to narrate and is never opened.
 	nothingID := f.attachReaction(t, f.pB, game.ActionPayload{
-		ActorID: f.b, ReactToID: actionID, ReactionKind: "default", Dodge: &game.DodgePayload{},
+		ActorID: f.b, ReactToID: actionID, ReactionKind: "nothing",
 	})
 	// B first, then A: the opposite of arrival order, so opening order is what is checked.
 	f.openReaction(t, nothingID)

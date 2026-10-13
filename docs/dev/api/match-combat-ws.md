@@ -372,7 +372,7 @@ barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 **Dispara:** [`reaction_attached`](#reaction_attached) (a quem reagiu e ao mestre; uma cópia só
 quando quem reagiu é o mestre), depois [`resolution_updated`](#resolution_updated) **só para o
 mestre** — o turno está aberto, logo `isSettled: false`. A reação aparece em
-`targets[].reaction` (com `opened: false`) e, salvo um `nothing`, em `pendingReactions`. **Não há
+`targets[].reaction` (com `opened: false`) e em `pendingReactions`. **Não há
 broadcast**: a mesa não é avisada de que alguém reagiu.
 
 **Erros**
@@ -529,9 +529,11 @@ abertas, na ordem em que ele abriu, e depois pelos demais alvos, na ordem de `ta
 um com a reação anexada a ele, aberta ou não** (corrigido em 2026-10-12: até então uma reação
 não aberta era ignorada e o alvo levava as passivas, embora ela já tivesse cobrado as barras).
 
-**`nothing` não se abre.** "Não fiz nada" não tem narração — a mesa já vê na resolução. Ele
-entra na cadeia sem ser aberto, não aparece em `pendingReactions` e um `open_reaction` nele
-devolve `game_error` `a reaction that does nothing has nothing to narrate`.
+**`nothing` nunca precisa ser aberto.** "Não fiz nada" não tem narração — a mesa já vê na
+resolução —, então ele entra na cadeia sem ser aberto e não segura o
+[`close_turn`](#close_turn). Mas **pode** ser aberto, como qualquer reação: abrir é também onde
+ele colide, e posicioná-lo (antes de um aparo, por exemplo, para o golpe pegá-lo cheio) é a
+ferramenta do mestre para controlar o tempo dessa escolha.
 
 ```json
 { "type": "open_reaction", "payload": { "reactionId": "44444444-4444-4444-8444-444444444444" } }
@@ -1697,7 +1699,7 @@ junto é de turno aberto.
 | `targets[].payouts` | O que a reação **deste alvo rendeu**: o bônus ou a penalidade do aparar, a reserva da esquiva fechada. Ausente quando não rendeu nada, que é a maioria. **Sujeito à projeção** — ver §6. |
 | `reaction.stopsAttack` | É a contribuição **deste** aparo, não se alguém antes na corrente já parou o ataque. |
 | `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila (menos a fuga para o mesmo destino do movimento consumido) ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action`: um `+1` do mestre a **anula** (neutro — lê o primeiro conjunto de dados, não o melhor); o viés só decide o sinal, então não há como ir além de neutro com viés — vantagem líquida é o `modifier`. O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
-| `pendingReactions` | Reações **anexadas e ainda não abertas que têm o que narrar** — todas menos o `nothing`, a padrão sentada inclusive. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre (de quem ainda pode ganhar a palavra), não estado de mesa. A reação não aberta **está** no cálculo (em `targets[].reaction`, com `opened: false`); esta lista é o que deixa o mestre escolher a ordem. |
+| `pendingReactions` | Reações **anexadas e ainda não abertas** — a padrão sentada e o `nothing` inclusive. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre (de quem ainda pode ganhar a palavra), não estado de mesa. A reação não aberta **está** no cálculo (em `targets[].reaction`, com `opened: false`); esta lista é o que deixa o mestre escolher a ordem. |
 | `pendingReactions[].seated` | `true` na reação padrão que o servidor sentou para um alvo que ainda não respondeu — "ainda calado" × "escolheu a padrão". Ausente quando o alvo respondeu. |
 | `pendingReactions[].arrival` | A ordem em que a reação foi anexada neste turno (`1` = a primeira), contando as já abertas. |
 | `pendingReactions[].systemBias` | Como `reaction.systemBias`, para a reação ainda não aberta. |
@@ -2197,6 +2199,7 @@ continuam, porque isso o dono já sabia que declarou.
 |---|---|
 | `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. **Ausente** (`omitempty`) quando a partida não tem cena ativa — `Scene *SceneChangedPayload` com `omitempty` **omite a chave inteira**, não emite `null`; em TypeScript o campo é `scene?: SceneChangedPayload`, não `scene: SceneChangedPayload \| null`. Leia `scene === undefined` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e é validada contra o enum — ver `change_scene`. |
 | `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
+| `passiveValue` | O valor base do conjunto de dados — o que um teste passivo lê em vez de rolar (**11** no 2D10, **10** no D20). O editor do mestre o nomeia ao avisar que um viés faz o teste passivo rolar contra ele. Ausente sem sessão. (2026-10-12.) |
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
