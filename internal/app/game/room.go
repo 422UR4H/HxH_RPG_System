@@ -351,9 +351,11 @@ func (r *Room) Run() {
 				r.mu.RLock()
 				loadFailed := r.boardLoadFailed
 				r.mu.RUnlock()
-				// A load that just failed changed nothing: repushing would hand the others an
-				// empty map_full_state (clearing their board_unavailable state with no board) or an
-				// identical copy of the board they already have.
+				// A load that just failed changed nothing on the board: repushing the map would
+				// hand the others an empty map_full_state (clearing their board_unavailable
+				// state with no board) or an identical copy of the board they already have. Only
+				// the map repush is gated; the match_full_state one below does not depend on the
+				// load succeeding.
 				if !loadFailed {
 					// r.pieces/r.walls just changed under whoever else was already at the table —
 					// unlike the registering client, handled below, nobody re-reads the board for
@@ -367,19 +369,19 @@ func (r *Room) Run() {
 						}
 						return r.buildMapFullState(pid, isMaster)
 					})
-					// match_full_state goes along, AFTER the map (the same order as the client's own
-					// register below): the session may have just come alive under whoever was already
-					// at the table — a server restart, with a player faster than the master's
-					// rehydration, registered while r.session was nil and was greeted with no
-					// match_full_state at all. Nothing else would ever send it. buildMatchFullState
-					// is nil without a session, so a lobby sends nothing here.
-					r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-						if pid == client.userUUID {
-							return nil // this client's own is the buildMatchFullState branch below
-						}
-						return r.buildMatchFullState(pid, isMaster)
-					})
 				}
+				// match_full_state goes along, AFTER the map (the same order as the client's own
+				// register below): the session may have just come alive under whoever was already
+				// at the table — a server restart, with a player faster than the master's
+				// rehydration, registered while r.session was nil and was greeted with no
+				// match_full_state at all. Nothing else would ever send it. buildMatchFullState
+				// is nil without a session, so a lobby sends nothing here.
+				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+					if pid == client.userUUID {
+						return nil // this client's own is the buildMatchFullState branch below
+					}
+					return r.buildMatchFullState(pid, isMaster)
+				})
 			}
 
 			r.sendRoomState(client)
