@@ -20,7 +20,7 @@ import (
 // function.
 type ReactionInput struct {
 	Kind       action.ReactionKind
-	Reaction   *action.Action // nil = nothing was sent; the passives apply
+	Reaction   *action.Action // nil = the turn holds no reaction for this target; the passives apply
 	Target     *csSheet.CharacterSheet
 	Ledger     *match.ModifierLedger // the target's; nil = empty
 	AttackerID uuid.UUID
@@ -62,9 +62,11 @@ type EscapeResult struct {
 // in the reaction's RollCheck.Attempts. It derives, it never rolls — which is what lets the
 // master recompute on every new reaction and on every edit without re-rolling a player's die.
 //
-// A nil Reaction means nothing was sent, and the engine applies the defaults: reflex dodge,
-// then — only if that fails — the defense, one ladder step easier. Sending ReactNothing is a
-// different thing entirely: it refuses even those.
+// A default reaction (ReactDefault, the one MatchSession seats for every target) applies the
+// passives: reflex dodge, then — only if that fails — the defense, one ladder step easier,
+// each read at the dice set's base value and carrying the master's condition. A nil Reaction
+// reads the same, with no condition to carry. Sending ReactNothing is a different thing
+// entirely: it refuses even those.
 func ResolveReaction(in ReactionInput) ReactionOutcome {
 	calc := RollCalculator{}
 	out := ReactionOutcome{Kind: in.Kind}
@@ -111,13 +113,14 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		return out
 	}
 	// The master's condition on the default defense lives on the reaction's DefaultDefense
-	// (edit_action, field "defense"). A target that did not react has no reaction to carry it
-	// — that passive is not editable yet (front-combat-phases.md, pendências).
+	// (edit_action, field "defense"), and so do the dice a bias on it rolled.
 	var defenseCond *action.RollCondition
+	var defenseAttempts action.RollAttempts
 	if in.Reaction != nil && in.Reaction.DefaultDefense != nil {
 		defenseCond = in.Reaction.DefaultDefense.Context.Condition
+		defenseAttempts = in.Reaction.DefaultDefense.Attempts
 	}
-	out.Defense = calc.Derive(in.Rules, action.RollAttempts{}, RollInput{
+	out.Defense = calc.Derive(in.Rules, defenseAttempts, RollInput{
 		SkillName:  enum.Defense.String(),
 		SkillValue: skillValueOf(in.Target, enum.Defense.String()),
 		Passive:    true,
@@ -136,8 +139,8 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 // splitting "the dodge" that was compared to the hit from "the dodge" the reserve gap was
 // computed against. Threading one pair of outcomes through both uses removes that seam.
 //
-// A nil Reaction (nothing sent) takes the passive; every kind that arrives with its own dice
-// rolls instead — that is the "gamble the roll" the table describes. For the closed variants
+// A default reaction (and a nil one) takes the passive; every other kind rolls its own dice
+// instead — that is the "gamble the roll" the table describes. For the closed variants
 // the worse of Reflex and Evasion counts as the dodge: Evasion does not add to it, it enters
 // the Disadvantage logic. The reserve banked is |Reflex − Evasion|, for whoever comes at this
 // target next turn, excluding the attacker who was just read; a zero gap banks nothing. Every
@@ -172,17 +175,18 @@ func dodgeAndReserve(in ReactionInput, calc RollCalculator) (dodge, evasion Roll
 	return dodge, evasion, &m
 }
 
-// deriveReflex derives the Reflex test alone: passive when nothing was sent, rolled off the
-// reaction's own Dodge.RollCheck otherwise.
+// deriveReflex derives the Reflex test alone: passive on a default reaction (and when the turn
+// holds none), rolled off the reaction's own Dodge.RollCheck otherwise.
 func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
-	passive := in.Reaction == nil
+	passive := in.Reaction == nil || in.Kind.IsPassive()
 	var attempts action.RollAttempts
 	var cond *action.RollCondition
-	if !passive && in.Reaction.Dodge != nil {
+	if in.Reaction != nil && in.Reaction.Dodge != nil {
+		// A passive dodge has no dice until the master biases it (RollCalculator.Derive reads
+		// a passive with a bias against the dice that fell then).
 		attempts = in.Reaction.Dodge.Attempts
 		// The master's edit on this reaction's dodge (edit_action, field "dodge"). Nil reads
-		// neutral. A passive dodge has no reaction and therefore nowhere to carry one — the
-		// passive of a target that did not react is not editable yet (front-combat-phases.md).
+		// neutral.
 		cond = in.Reaction.Dodge.Context.Condition
 	}
 	return calc.Derive(in.Rules, attempts, RollInput{

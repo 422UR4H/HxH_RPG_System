@@ -184,11 +184,8 @@ func (f *areaFixture) awaitTurnOpened(t *testing.T) (turnID, actionID uuid.UUID)
 }
 
 // attachReaction sends one reaction, waits for the fresh resolution_updated it produces, and
-// returns the reaction's own ID for the later open_reaction — read off that same message's
-// PendingReactions, which is where an attached-but-not-yet-opened reaction's ID lives on the
-// wire (see ResolutionUpdatedPayload.PendingReactions and its own comment for why: an unopened
-// reaction never becomes a chain step, so CharacterResultPayload.Reaction stays nil for it, and
-// PendingReactions is the one place left that still names it). Earlier revisions of this helper
+// returns the reaction's own ID for the later open_reaction — read off the reactor's own
+// reaction_attached ack, which names it over the wire. Earlier revisions of this helper
 // read the ID straight off the fixture's own session — a workaround for a real gap, now closed
 // upstream, that let an operation a real client could not actually reach look reachable in this
 // test. It is gone: the ID now genuinely comes over the wire, the same way a browser client
@@ -196,27 +193,30 @@ func (f *areaFixture) awaitTurnOpened(t *testing.T) (turnID, actionID uuid.UUID)
 func (f *areaFixture) attachReaction(t *testing.T, c *wsConn, p game.ActionPayload) uuid.UUID {
 	t.Helper()
 	before := f.master.msgs.count(game.MsgTypeResolutionUpdate)
+	acks := c.msgs.count(game.MsgTypeReactionAttached)
 	c.send(t, game.MsgTypeAttachReaction, p)
 	if !awaitCount(f.master.msgs, game.MsgTypeResolutionUpdate, before+1, 2*time.Second) {
 		t.Fatalf("attach_reaction for actor %v: master never got a fresh resolution_updated", p.ActorID)
 	}
-	msgs := f.master.msgs.snapshotMessages()
+	// The reactor's own ack names the reaction — the one message that names it to them and to
+	// the master the moment it lands.
+	if !awaitCount(c.msgs, game.MsgTypeReactionAttached, acks+1, 2*time.Second) {
+		t.Fatalf("attach_reaction for actor %v: the reactor never got reaction_attached", p.ActorID)
+	}
+	msgs := c.msgs.snapshotMessages()
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Type != game.MsgTypeResolutionUpdate {
+		if msgs[i].Type != game.MsgTypeReactionAttached {
 			continue
 		}
-		var resolved game.ResolutionUpdatedPayload
-		if err := json.Unmarshal(msgs[i].Payload, &resolved); err != nil {
-			t.Fatalf("unmarshal resolution_updated: %v", err)
+		var attached game.ReactionAttachedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &attached); err != nil {
+			t.Fatalf("unmarshal reaction_attached: %v", err)
 		}
-		for _, pr := range resolved.PendingReactions {
-			if pr.ActorID == p.ActorID {
-				return pr.ReactionID
-			}
+		if attached.ActorID == p.ActorID {
+			return attached.ReactionID
 		}
-		break
 	}
-	t.Fatalf("attach_reaction for actor %v: no pending reaction in the master's resolution_updated", p.ActorID)
+	t.Fatalf("attach_reaction for actor %v: no reaction_attached names it", p.ActorID)
 	return uuid.Nil
 }
 
@@ -298,7 +298,7 @@ func TestE2E_AreaAttackFixtureStandsATurn(t *testing.T) {
 //
 //	target A sends an ACTIVE reaction (repel) and clears the CD
 //	target B sends "nothing"        — refusing even the passives
-//	target C sends no answer at all — the engine applies the defaults
+//	target C sends no answer at all — the default reaction the engine seated for them stands
 //
 // The same three answers and the same scripted faces run twice, with the master opening A→B
 // and then B→A. What each target takes differs between the two runs, and that difference IS
@@ -313,9 +313,12 @@ func TestE2E_AreaAttackFixtureStandsATurn(t *testing.T) {
 //	Sword damage (D10+D4, direct) → 2, both used: 7+3+2 flat = 12 raw
 //	A's Repel    (2D10 test)      → primary 2 + secondary 2 = 4 (only primary used: 7+4=11)
 //
-// 10 faces total, not 6. B's "nothing" and C's silence roll nothing at all, confirmed by
-// reading ReactionKind.RequiredComponents (nothing needs no components) and rollActionDice
-// (a step with no reaction attached derives the passive average and never touches the source).
+// 10 faces total, not 6. B's "nothing" and C's seated default roll nothing at all, confirmed by
+// reading ReactionKind.RequiredComponents (nothing needs no components) and rollActionDice (a
+// default reaction's dodge is passive and never touches the source).
+//
+// B's "nothing" is opened here although it never needs the floor: opening is where it collides,
+// and that placement is the master's (owner decision, 2026-10-12).
 // The secondary-set fillers (index 2,3 and 8,9) are never read into any assertion — pickAttempt
 // ignores Secondary whenever SystemBias is 0, which it always is here — so their value does not
 // matter, only their presence: scripting fewer than 10 faces makes the source overrun and every

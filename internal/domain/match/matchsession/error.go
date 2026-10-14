@@ -63,4 +63,7 @@ var (
 	// ErrNoDamageToMeasure means a damageSkill edit named an action that carries no attack —
 	// there is no damage for a skill to measure.
 	ErrNoDamageToMeasure = errors.New("damageSkill edit targets an action with no attack")
+	// ErrQueuedEditUnsupported means an edit_action on a QUEUED action tried to change its
+	// targets or its skill list. See ApplyMasterAction for what lifting it takes.
+	ErrQueuedEditUnsupported = errors.New("a queued action takes condition and damageSkill edits only")
 )

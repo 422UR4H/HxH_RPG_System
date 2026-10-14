@@ -44,6 +44,30 @@ tinha — senão, tirar e pôr de volta seria uma re-rolagem de graça.
 Quando o turno fecha, esses dados somem: um teste que não aconteceu não deixa rastro no
 histórico da partida.
 
+## Vantagem num teste passivo
+
+Um teste passivo não rola: usa o valor médio dos dados (11 nos 2 D10). Quando o mestre dá
+**vantagem** ou **desvantagem** a um teste passivo, ele passa a ser **rolado** — e o valor médio
+vira o outro resultado da comparação:
+
+- **com vantagem**, vale o **melhor** entre o dado e o valor médio;
+- **com desvantagem**, vale o **pior** entre os dois.
+
+O passivo continua sendo o piso (ou o teto): a vantagem traz a chance de ir além, a desvantagem
+traz o risco de ficar abaixo. O dado é rolado **uma vez só**, na primeira vez que alguém pede —
+tirar e pôr a vantagem de volta lê o mesmo dado.
+
+A **desvantagem do sistema** (a de quem troca uma ação declarada) vale do mesmo jeito: um teste
+passivo de quem trocou rola contra o valor médio e fica com o pior. Se o mestre der vantagem a esse
+teste, as duas se anulam e o valor médio volta a valer.
+
+## Ajustar uma ação que ainda está na fila
+
+O mestre pode ajustar uma ação **antes de ela agir**, enquanto ainda espera na fila: dar ou tirar
+vantagem, somar um ajuste, trocar a perícia que mede o dano. Se ele mexe na **velocidade**, a
+ação muda de lugar na fila. O jogador que declarou a ação não vê o ajuste. Se a ação for
+cancelada, ou trocada por uma reação, o ajuste vai embora com ela.
+
 ## O que os jogadores enxergam
 
 **A ação editada é a ação.** Quando o mestre muda alguma coisa, o que a mesa vê é o resultado

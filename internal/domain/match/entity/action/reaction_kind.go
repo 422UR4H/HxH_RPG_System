@@ -13,14 +13,19 @@ import (
 // different things; no inspection of the shape can tell them apart, because the information
 // that separates them is the player's intent.
 //
-// The reflex dodge and the default defense are NOT kinds. Nobody sends them: they are what
-// the engine applies when nothing arrives. ReactNothing exists precisely because refusing
-// them is a send, and the only way to tell "sent nothing" from "sent nothing on purpose" is
-// to have received something.
+// The reflex dodge and the default defense ARE a kind: ReactDefault. Every character an
+// attack names gets one the moment its turn opens (MatchSession seats it), so the passives the
+// engine applies when the target sends nothing are a real reaction with a real record — the
+// master edits them like any other, and the history shows them like any other (owner decision,
+// 2026-10-12). A target that answers replaces the seated one with what it sent.
+//
+// ReactNothing is the opposite end: refusing even the passives is a send, and the only way to
+// tell "sent nothing" from "sent nothing on purpose" is to have received something.
 type ReactionKind string
 
 const (
 	ReactNothing      ReactionKind = "nothing"      // refuses even the passives — takes the blow raw
+	ReactDefault      ReactionKind = "default"      // the passives: reflex dodge, then the default defense
 	ReactDodge        ReactionKind = "dodge"        // active dodge: gamble the roll instead of the average
 	ReactClosedDodge  ReactionKind = "closedDodge"  // closed dodge, with Evasion folded in
 	ReactEscape       ReactionKind = "escape"       // standard escape: gives up the default defense
@@ -82,6 +87,17 @@ func (k ReactionKind) KeepsDefault() bool {
 	}
 }
 
+// AwaitsNarration reports whether whoever sent this reaction is waiting to narrate it — what
+// close_turn asks the master to confirm away when it was never opened. A nothing is not: "I did
+// nothing" is a non-narration, and the table already sees it in the resolution (owner decision,
+// 2026-10-12). It can still be OPENED, like every reaction: opening is also where it collides in
+// the chain, and placing it is the master's tool to time that choice.
+func (k ReactionKind) AwaitsNarration() bool { return k != ReactNothing }
+
+// IsPassive reports whether this reaction reads the passives — the reflex dodge taken at the
+// dice set's base value, then the default defense — instead of rolling its own dodge.
+func (k ReactionKind) IsPassive() bool { return k == ReactDefault }
+
 // RequiredMoveCategory is which displacement each escape has to use. The second return is
 // whether this kind demands one at all — false for everything that does not displace.
 //
@@ -126,7 +142,7 @@ const (
 // RequiredComponents lists what this kind needs on the Action to be well-formed.
 //
 //	nothing                        → none
-//	dodge, closedDodge              → Dodge
+//	default, dodge, closedDodge     → Dodge
 //	escape, escapeGuard, closedEscape → Dodge AND Move — they force the dodge BY displacing, so
 //	                                    Move alone (Displaces()) is necessary but not sufficient
 //	repel                          → Repel
@@ -138,7 +154,7 @@ func (k ReactionKind) RequiredComponents() []ReactionComponent {
 	switch k {
 	case ReactRepel:
 		return []ReactionComponent{ComponentRepel}
-	case ReactDodge, ReactClosedDodge, ReactEscape, ReactEscapeGuard, ReactClosedEscape:
+	case ReactDefault, ReactDodge, ReactClosedDodge, ReactEscape, ReactEscapeGuard, ReactClosedEscape:
 		out = append(out, ComponentDodge)
 	default:
 		return nil
@@ -164,7 +180,7 @@ func (k ReactionKind) RequiresEvasionSkill() bool {
 
 func (k ReactionKind) IsValid() bool {
 	switch k {
-	case ReactNothing, ReactDodge, ReactClosedDodge,
+	case ReactNothing, ReactDefault, ReactDodge, ReactClosedDodge,
 		ReactEscape, ReactEscapeGuard, ReactClosedEscape, ReactRepel:
 		return true
 	}

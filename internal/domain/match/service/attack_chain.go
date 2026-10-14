@@ -89,16 +89,25 @@ func weaponDefenseBonus(name *enum.WeaponName, cat *item.WeaponsManager) int {
 	return w.GetDefense()
 }
 
-// chainStep is one stop on the walk: a target and, if one was opened, the reaction that
-// answers the attack for them. A nil reaction means nothing was opened for this target, and
-// ResolveReaction applies the passive defaults.
+// chainStep is one stop on the walk: a target and the reaction that answers the attack for
+// them — opened or not. A nil reaction means the turn holds no reaction for this target at all
+// (a turn built outside MatchSession, which seats a default one for every character the attack
+// names), and ResolveReaction applies the passive defaults, exactly as a default reaction does.
 type chainStep struct {
 	targetID uuid.UUID
 	reaction *action.Action
+	opened   bool
 }
 
 // buildChainOrder is the walk order itself: every opened reaction, in the order the master
-// opened it, then whatever targets remain, in the order the attack named them.
+// opened it, then whatever targets remain, in the order the attack named them — each with the
+// reaction attached for it, opened or not.
+//
+// An unopened reaction is in the calculation (owner decision, 2026-10-12). Opening is the
+// table's narration, and the power it carries is the ORDER: an opened reaction collides before
+// every unopened one. What a character sent counts whether or not they got the floor — their
+// bars were already charged at attach — and a "nothing", which never needs the floor (there is
+// nothing to narrate), still refuses the passives; the master opens one only to place it.
 //
 // Turn.reactions is append-ordered by ATTACH, which is not the order the master opened them
 // — a target can attach a reaction long before the master gets to it. Walking attach order
@@ -130,14 +139,29 @@ func buildChainOrder(a action.Action, reactions []action.Action, openedIDs []uui
 			continue
 		}
 		rc := r
-		steps = append(steps, chainStep{targetID: r.GetActorID(), reaction: &rc})
+		steps = append(steps, chainStep{targetID: r.GetActorID(), reaction: &rc, opened: true})
 		covered[r.GetActorID()] = true
+	}
+	// One reaction per character (MatchSession.AttachReaction refuses a second); should a turn
+	// hold more, the first attached is the one read, as the opened loop above reads the first
+	// opened.
+	byActor := make(map[uuid.UUID]*action.Action, len(reactions))
+	for i := range reactions {
+		if _, seen := byActor[reactions[i].GetActorID()]; !seen {
+			byActor[reactions[i].GetActorID()] = &reactions[i]
+		}
 	}
 	for _, targetID := range a.TargetID {
 		if covered[targetID] {
 			continue
 		}
-		steps = append(steps, chainStep{targetID: targetID})
+		covered[targetID] = true
+		var rc *action.Action
+		if r, ok := byActor[targetID]; ok {
+			cp := *r
+			rc = &cp
+		}
+		steps = append(steps, chainStep{targetID: targetID, reaction: rc})
 	}
 	return steps
 }

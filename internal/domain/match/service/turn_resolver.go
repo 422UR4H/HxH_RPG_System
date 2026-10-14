@@ -150,16 +150,11 @@ type TurnResolution struct {
 	// second copy in turns.resolution would be one that can diverge. ProjectResolution strips
 	// it for anyone but the master.
 	Conditions []CheckCondition
-	// PendingReactions is every reaction that has been ATTACHED but not yet OPENED — the
-	// master's own to-do list. An unopened reaction deliberately does not become a chain step
-	// (see buildChainOrder): dragging it into the walk would let it affect the collision before
-	// the master ever gave it the floor, which would break the whole premise of Phase 4 — that
-	// the ORDER the master opens reactions in is the power, not just their existence. That same
-	// omission, though, means CharacterResult.ReactionID stays the zero value for an unopened
-	// reaction (it is only set from the chain step), so this is the one place left that can name
-	// an attached reaction's own ID before it is opened. Without it, a real client has attached
-	// the reaction but has no legitimate way to learn what to send back as open_reaction's
-	// ReactionID — an ID a client cannot learn is an operation a client cannot invoke.
+	// PendingReactions is every reaction attached and not yet OPENED — the master's own to-do
+	// list of who may still get the floor, the default reactions the engine seated and the
+	// "nothing"s included (a nothing is opened only to place it in the chain). An unopened
+	// reaction IS in the calculation (buildChainOrder), after every opened one; this list is
+	// what lets the master pick the ORDER, which is the power opening carries.
 	PendingReactions []PendingReaction
 	// Errors is every engine fault this resolution hit — see ResolutionError. Empty on a
 	// clean resolution, which is the overwhelmingly common case; a non-empty list means part
@@ -186,6 +181,9 @@ type PendingReaction struct {
 	// (action.Action.SystemBias): -1 when it swapped out a queued action. The master reads it
 	// to know what the system already applied before adding a condition of their own.
 	SystemBias int
+	// Seated is true for the default reaction the engine seated for a target that has not
+	// answered yet — the master can tell "still silent" from "chose the default".
+	Seated bool
 }
 
 // reactionKey is the speed a reaction entered the round with — the lowest across the bars it
@@ -237,9 +235,12 @@ type CharacterResult struct {
 	// ResolveReaction.
 	Escape *EscapeResult
 
-	// ReactionKind is what this target answered with — "" when nothing was opened and the
-	// passive defaults applied instead.
+	// ReactionKind is what this target answered with — "default" for the passives the engine
+	// seated, "" only when the turn holds no reaction for them at all.
 	ReactionKind string
+	// ReactionOpened is whether the master gave this reaction the floor. An unopened reaction
+	// is in the calculation all the same; it only collides after every opened one.
+	ReactionOpened bool
 	// Ladder is the zero value outside a repel.
 	Ladder LadderOutcome
 	// AttackStopped is true when a repel earlier in the chain already stopped this attack
@@ -264,8 +265,8 @@ type CharacterResult struct {
 	// roll a given kind reads, so a consumer (the WS payload) does not have to know the
 	// kind-to-roll mapping — or worse, reconstruct the number by algebra off Ladder.Margin.
 	ReactionTotal int
-	// ReactionID is the attached reaction's own Action ID — the zero value when nothing was
-	// opened (or attached) and the passive defaults applied instead. It is the identifier
+	// ReactionID is the attached reaction's own Action ID — the zero value only when the turn
+	// holds no reaction for this target. It is the identifier
 	// MatchSession.OpenReaction expects on a later open_reaction; without projecting it here,
 	// the wire never tells the master what to send back, and open_reaction becomes
 	// unreachable from a real client that only ever sees TargetID and ReactionKind. Read
@@ -417,9 +418,8 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 
 	reactions := in.Turn.GetReactions()
 
-	// Attached, not opened: buildChainOrder deliberately never turns these into a chain step
-	// (see PendingReactions' own comment), so this loop is the only place their ID is named
-	// before the master opens them.
+	// Attached, not opened: the ones the master can still give the floor to (see
+	// PendingReactions' own comment).
 	opened := make(map[uuid.UUID]bool, len(in.Turn.OpenedReactionIDs()))
 	for _, id := range in.Turn.OpenedReactionIDs() {
 		opened[id] = true
@@ -434,6 +434,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 			Kind:       string(r.ReactionKind),
 			Arrival:    i + 1,
 			SystemBias: r.SystemBias,
+			Seated:     in.Turn.IsSeated(r.GetID()),
 		}
 		pr.Speed = reactionKey(r)
 		res.PendingReactions = append(res.PendingReactions, pr)
@@ -593,8 +594,9 @@ func (tr TurnResolver) resolveCharacterStep(
 		AgainstID:  &step.targetID,
 	})
 
-	// 2. The target's answer — an opened reaction if one exists, the passive defaults
-	//    (reflex dodge, then defense) otherwise. This is Task 9's ResolveReaction, reused
+	// 2. The target's answer — the reaction attached for them, opened or not (the default one
+	//    the engine seated, unless they sent their own), the passive defaults when the turn
+	//    holds none. This is Task 9's ResolveReaction, reused
 	//    rather than re-derived: it is the one place that already knows how every kind of
 	//    reaction reads against a hit.
 	kind := action.ReactionKind("")
@@ -634,6 +636,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	if step.reaction != nil {
 		cr.ReactionID = step.reaction.GetID()
 		cr.ReactionSystemBias = step.reaction.SystemBias
+		cr.ReactionOpened = step.opened
 	}
 
 	// 3. What THIS target takes: the chain's current residual, reduced exactly the way a

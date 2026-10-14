@@ -301,3 +301,109 @@ func TestChain_SameActorOpenedTwiceIsVisitedOnce(t *testing.T) {
 			"walk must not visit the same target twice", count)
 	}
 }
+
+// TestChain_UnopenedReactionsAreInTheCalculation pins the bug fix of 2026-10-12: a reaction a
+// target sent and the master never opened used to be skipped — the target got the passives
+// although their reaction had been charged. It counts, after every opened one, in the order the
+// attack named the targets.
+func TestChain_UnopenedReactionsAreInTheCalculation(t *testing.T) {
+	// Same numbers as TestChain_OpeningOrderChangesTheOutcome: hit 10, damage 12 raw, A's repel
+	// 11 stops it, B's "nothing" takes it raw, C's passive dodge of 11 clears it.
+	sword := enum.Sword
+	actorID := uuid.New()
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+
+	resolve := func(t *testing.T, targets []uuid.UUID, open []uuid.UUID, cDefault *action.Action) *service.TurnResolution {
+		t.Helper()
+		atk := &action.Attack{
+			Weapon: &sword,
+			Hit:    action.RollCheck{SkillName: enum.Accuracy.String(), Attempts: action.RollAttempts{Primary: []int{6, 4}}},
+			Damage: action.RollCheck{Attempts: action.RollAttempts{Primary: []int{7, 3}}},
+		}
+		act := action.NewAction(actorID, targets, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, atk, nil, nil, nil, nil)
+		tn := turn.NewTurn(*act)
+		repel := action.NewAction(a, nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		repel.ReactionKind = action.ReactRepel
+		repel.Repel = &action.Repel{RollCheck: action.RollCheck{
+			SkillName: enum.Repel.String(), Attempts: action.RollAttempts{Primary: []int{7, 4}},
+		}}
+		nothing := action.NewAction(b, nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		nothing.ReactionKind = action.ReactNothing
+		tn.AddReaction(repel)
+		tn.AddReaction(nothing)
+		if cDefault != nil {
+			cDefault.ReactToID = act.GetID()
+			tn.Seat(cDefault)
+		}
+		for _, id := range open {
+			if id == a {
+				tn.OpenReaction(repel.GetID())
+			}
+		}
+		return service.TurnResolver{}.Resolve(service.ResolveInput{
+			Turn: tn,
+			Sheets: map[uuid.UUID]*csSheet.CharacterSheet{
+				actorID: plainSheet(t), a: plainSheet(t), b: plainSheet(t), c: plainSheet(t),
+			},
+			Targets: charTargets{chars: map[uuid.UUID]bool{a: true, b: true, c: true}},
+			Rules:   match.NewDefaultMatchRules(),
+			Weapons: item.NewWeaponsManagerFactory().Build(),
+		})
+	}
+	resultOf := func(res *service.TurnResolution, id uuid.UUID) service.CharacterResult {
+		for _, cr := range res.CharacterResults {
+			if cr.TargetID == id {
+				return cr
+			}
+		}
+		t.Fatalf("no result for %v", id)
+		return service.CharacterResult{}
+	}
+
+	t.Run("an unopened repel still stops the attack for whoever is walked after it", func(t *testing.T) {
+		res := resolve(t, []uuid.UUID{a, b, c}, nil, nil)
+		if got := resultOf(res, a); got.ReactionKind != string(action.ReactRepel) || got.ReactionOpened {
+			t.Fatalf("A = %+v, want the unopened repel read", got)
+		}
+		if got := resultOf(res, b).EffectiveDamage; got != 0 {
+			t.Fatalf("B took %d, want 0 — A's unopened repel, walked first, stopped it", got)
+		}
+	})
+
+	t.Run("an unopened nothing still refuses the passives", func(t *testing.T) {
+		res := resolve(t, []uuid.UUID{b, a, c}, nil, nil)
+		if got := resultOf(res, b).EffectiveDamage; got != 12 {
+			t.Fatalf("B took %d, want 12 — walked first, their unopened nothing takes it raw", got)
+		}
+	})
+
+	t.Run("an opened reaction collides before every unopened one", func(t *testing.T) {
+		res := resolve(t, []uuid.UUID{b, a, c}, []uuid.UUID{a}, nil)
+		if res.CharacterResults[0].TargetID != a || !res.CharacterResults[0].ReactionOpened {
+			t.Fatalf("first step = %+v, want A's opened repel", res.CharacterResults[0])
+		}
+		if got := resultOf(res, b).EffectiveDamage; got != 0 {
+			t.Fatalf("B took %d, want 0 — the opened repel stopped it first", got)
+		}
+	})
+
+	t.Run("the default reaction carries the master's condition on its passives", func(t *testing.T) {
+		// A −2 on C's passive dodge: 11 − 2 = 9 misses the hit of 10, and the default defense
+		// (11, one ladder step easier) holds.
+		def := action.NewAction(c, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil,
+			&action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String(),
+				Context: action.RollContext{Condition: &action.RollCondition{Modifier: -2}}}}, nil, nil)
+		def.ReactionKind = action.ReactDefault
+		res := resolve(t, []uuid.UUID{c}, nil, def)
+		got := resultOf(res, c)
+		if got.ReactionKind != string(action.ReactDefault) || got.ReactionID != def.GetID() {
+			t.Fatalf("C = %+v, want the default reaction read", got)
+		}
+		if got.Dodge.Total != 9 || !got.Dodge.Passive || got.Avoided {
+			t.Fatalf("Dodge = %+v, avoided %v; want the passive 11 − 2 = 9, missed", got.Dodge, got.Avoided)
+		}
+		if !got.Defended {
+			t.Fatal("the default defense stands behind the default dodge")
+		}
+	})
+}

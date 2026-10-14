@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -259,16 +260,31 @@ func (s *MatchSession) CurrentTurnID() uuid.UUID {
 // It never touches the economy either. Charged bars, recorded Speeds and the order already
 // played stay as they are — bars_updated has been on the wire since before the edit, and
 // redoing the price would reorder what has already been played.
+//
+// The target is an action of the open turn — its own, or one of its reactions — or an action
+// still waiting in the QUEUE (owner decision, 2026-10-12). A queued action is edited in place
+// the same way, and it carries the edit into its turn: the captures stay keyed by its ID until
+// that turn closes (TakeOverridesFor), and a speed edit moves it in the queue, because the
+// scheduler reads the speed at selection time (RoundScheduler; the queue is not a heap). Its
+// owner sees none of it: the owner's queue travels at actionwire.Declaration, which carries no
+// number and no condition. A queued action that leaves without opening — cancelled, consumed by
+// a reaction — takes the edits with it (discardEdits). On a queued action the result is nil:
+// there is no turn to resolve.
 func (s *MatchSession) ApplyMasterAction(
 	ma *action.MasterAction, masterUUID uuid.UUID,
 ) (*service.TurnResolution, error) {
-	t := s.activeRound.CurrentTurn()
-	if t == nil || t.GetFinishedAt() != nil {
-		return nil, ErrNoActiveTurn
-	}
-	target, err := s.actionOnTurn(t, ma.ActionID)
+	target, t, err := s.editTarget(ma.ActionID)
 	if err != nil {
 		return nil, err
+	}
+	// t == nil is a queued action. Its targets and skills are not editable yet: both reach its
+	// owner before the turn closes — the Declaration cut of ownQueue carries the target list
+	// and the skill names, and turn_opened carries the action at the Opened level — so an edit
+	// there would show. Lifting it means projecting the DECLARATION (the captures' originals)
+	// on those two surfaces instead of the live action; the edit itself already works
+	// (applySkillEdit, the TargetID write below, and seatDefaultReactions when the turn opens).
+	if t == nil && (ma.TargetID != nil || ma.Skills != nil) {
+		return nil, ErrQueuedEditUnsupported
 	}
 	// A damage skill needs an attack to measure; refuse before anything else is looked at.
 	if ma.DamageSkill != nil && target.Attack == nil {
@@ -306,6 +322,11 @@ func (s *MatchSession) ApplyMasterAction(
 		s.captureOverride(target.GetID(), "targetIds", match.OriginPlayer, masterUUID,
 			target.TargetID, ma.TargetID)
 		target.TargetID = append([]uuid.UUID(nil), ma.TargetID...)
+		// The turn's own action names who collides: a character it now names gets the default
+		// reaction, one it stopped naming loses the seated one.
+		if t != nil && target == t.ActionRef() {
+			s.seatDefaultReactions(t)
+		}
 	}
 	if ma.Skills != nil {
 		s.applySkillEdit(target, ma.Skills, masterUUID)
@@ -349,12 +370,14 @@ func (s *MatchSession) ApplyMasterAction(
 		if incoming == nil {
 			rc.Context.Condition = nil
 			// A zeroed default defense is "the master did not edit": drop the carrier
-			// resolveRollCheck created, or the close would store JSON where NULL belongs.
-			if rc == target.DefaultDefense {
+			// resolveRollCheck created, or the close would store JSON where NULL belongs —
+			// unless a bias already rolled dice into it, which have to survive a re-bias.
+			if rc == target.DefaultDefense && rc.Attempts.IsEmpty() {
 				target.DefaultDefense = nil
 			}
 		} else {
 			rc.Context.Condition = &cond
+			s.ensureDiceForBias(rc, cond.Bias)
 		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
@@ -363,9 +386,114 @@ func (s *MatchSession) ApplyMasterAction(
 	// would silently erase a reaction's swap-disadvantage the instant the master edited any
 	// OTHER condition on it (see Action.SystemBias).
 	s.deriveSpeeds(target, target.SystemBias)
+	if t == nil {
+		return nil, nil
+	}
 	ma.SetHappenedAt(time.Now())
 	t.AddMasterAction(*ma)
 	return s.ResolveTurn(t), nil
+}
+
+// editTarget finds what an edit_action names: an action of the open turn (the zero UUID is the
+// turn's own action), or — by its ID, with or without a turn open — an action waiting in the
+// queue, in which case the turn returned is nil.
+func (s *MatchSession) editTarget(id uuid.UUID) (*action.Action, *turn.Turn, error) {
+	if id != uuid.Nil {
+		if a := s.queuedAction(id); a != nil {
+			return a, nil, nil
+		}
+	}
+	t := s.activeRound.CurrentTurn()
+	if t == nil || t.GetFinishedAt() != nil {
+		return nil, nil, ErrNoActiveTurn
+	}
+	a, err := s.actionOnTurn(t, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a, t, nil
+}
+
+// queuedAction is the live pointer of a queued action, nil when the queue does not hold it.
+func (s *MatchSession) queuedAction(id uuid.UUID) *action.Action {
+	for _, a := range s.activeQueue.All() {
+		if a.GetID() == id {
+			return a
+		}
+	}
+	return nil
+}
+
+// IsQueued reports whether an action is still waiting in the queue.
+func (s *MatchSession) IsQueued(id uuid.UUID) bool { return s.queuedAction(id) != nil }
+
+// ensureDiceForBias gives a test with no dice its primary set the first time a bias asks for one
+// — the moment a passive test becomes a rolled one (RollCalculator.Derive, readPassiveBias):
+// "if you put advantage on it, it is rolled" (owner decision, 2026-10-12). The master's bias asks
+// in ApplyMasterAction; the system's (a swap's disadvantage) in deriveSpeeds (2026-10-13).
+//
+// It is the FIRST roll of a test that never rolled, not a re-roll: a set that fell stays, so
+// taking the bias off and putting it back reads the same dice. That is the same rule
+// applySkillEdit already follows for a skill that did not exist a moment ago. A test whose dice
+// fell on arrival is left alone.
+func (s *MatchSession) ensureDiceForBias(rc *action.RollCheck, bias int) {
+	if bias == 0 || !rc.Attempts.IsEmpty() {
+		return
+	}
+	rc.Attempts = action.RollAttempts{
+		Primary: service.RollCalculator{}.RollDice(s.rules.DiceSet.Dice(), s.rollSource),
+	}
+}
+
+// discardEdits undoes everything the master displaced on an action that leaves without reaching
+// a close — a queued action cancelled or consumed by a reaction: "the edits go with it" (owner
+// decision, 2026-10-12). Each capture holds the original of the field it displaced, so writing
+// the originals back leaves the action as its owner declared it, which is what a cancelled
+// action is recorded as. The dice a bias made fall stay — they were never the edit.
+func (s *MatchSession) discardEdits(a *action.Action) {
+	for _, ov := range s.overrides[a.GetID()] {
+		restoreOriginal(a, ov)
+	}
+	s.dropEdits(a.GetID())
+	s.deriveSpeeds(a, a.SystemBias)
+}
+
+// restoreOriginal writes one capture's original back onto the action. The field keys are the
+// ones captureOverride is called with: conditionFieldKey's "<field>.condition" and
+// "skill:<name>.condition", and "damageSkill", "targetIds", "skills".
+func restoreOriginal(a *action.Action, ov match.OverriddenValue) {
+	switch ov.Field {
+	case "damageSkill":
+		if name, ok := ov.Original.(enum.SkillName); ok && a.Attack != nil {
+			a.Attack.DamageSkill = name
+		}
+		return
+	case "targetIds":
+		ids, _ := ov.Original.([]uuid.UUID)
+		a.TargetID = append([]uuid.UUID(nil), ids...)
+		return
+	case "skills":
+		skills, _ := ov.Original.([]action.Skill)
+		a.Skills = skills
+		return
+	}
+	key, ok := strings.CutSuffix(ov.Field, ".condition")
+	if !ok {
+		return
+	}
+	edit := action.ConditionEdit{Field: action.ConditionField(key)}
+	if name, isSkill := strings.CutPrefix(key, "skill:"); isSkill {
+		edit = action.ConditionEdit{SkillName: name}
+	}
+	rc, err := resolveRollCheck(a, edit)
+	if err != nil {
+		return
+	}
+	if c, ok := ov.Original.(action.RollCondition); ok {
+		rc.Context.Condition = &c
+	} else {
+		rc.Context.Condition = nil
+	}
 }
 
 // SetEscapeLanding records where the master decided an escape's piece lands IF the escape
@@ -883,6 +1011,7 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 		if err != nil {
 			return tr, err
 		}
+		s.seatDefaultReactions(opened)
 		tr.Opened = opened
 		tr.OpenedResolution = s.ResolveTurn(opened)
 		return tr, nil
@@ -904,6 +1033,7 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 		return tr, err
 	}
 	s.recordActed(next)
+	s.seatDefaultReactions(opened)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
 	return tr, nil
@@ -946,9 +1076,78 @@ func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 	}
 	act := opened.GetAction()
 	s.recordActed(&act)
+	s.seatDefaultReactions(opened)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
 	return tr, nil
+}
+
+// seatDefaultReactions gives every character the turn's attack names the default reaction —
+// reflex dodge, then the default defense — until they answer with one of their own (owner
+// decision, 2026-10-12). The passives used to be what the engine applied when nothing was
+// there; now they are a real reaction, so the master edits them like any other and the history
+// records them like any other.
+//
+// It is a sync, not a one-shot: it runs when the turn opens and again whenever the master edits
+// the targets. A character the attack names and that has no reaction yet is seated; a SEATED
+// reaction whose character the attack no longer names leaves, with the master's edits on it. A
+// reaction a player sent is never touched here.
+//
+// No die falls: a default reaction reads its tests at the dice set's base value, and rolls only
+// if the master puts a bias on one (ApplyMasterAction, ensureDiceForBias). Only an attack
+// collides with its targets, so an action without one seats nothing.
+func (s *MatchSession) seatDefaultReactions(t *turn.Turn) {
+	if t == nil || t.GetFinishedAt() != nil {
+		return
+	}
+	a := t.GetAction()
+	named := make(map[uuid.UUID]bool, len(a.TargetID))
+	if a.Attack != nil {
+		for _, id := range a.TargetID {
+			if s.CategorizeTarget(id) == service.TargetKindCharacter {
+				named[id] = true
+			}
+		}
+	}
+	for _, r := range t.GetReactions() {
+		if t.IsSeated(r.GetID()) && !named[r.GetActorID()] {
+			t.Unseat(r.GetID())
+			s.dropEdits(r.GetID())
+		}
+	}
+	answered := make(map[uuid.UUID]bool, len(named))
+	for _, r := range t.GetReactions() {
+		answered[r.GetActorID()] = true
+	}
+	for _, id := range a.TargetID {
+		if !named[id] || answered[id] {
+			continue
+		}
+		answered[id] = true
+		t.Seat(newDefaultReaction(id, a.GetID()))
+	}
+}
+
+// newDefaultReaction is the shape of a default reaction: a dodge read on Reflex and nothing
+// else — the default defense needs no component (it stands behind the dodge, and its carrier
+// for the master's condition, Action.DefaultDefense, is created on the first edit).
+func newDefaultReaction(actorID, reactToID uuid.UUID) *action.Action {
+	r := action.NewAction(
+		actorID, nil, reactToID, nil, action.ActionSpeed{},
+		nil, nil, nil, nil,
+		&action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}},
+		nil, nil,
+	)
+	r.ReactionKind = action.ReactDefault
+	return r
+}
+
+// dropEdits forgets everything the master displaced on one action — the captures and the dice
+// a removed skill parked — for an action that leaves without ever reaching a close: a seated
+// reaction replaced or unseated, a queued action cancelled or consumed (discardEdits).
+func (s *MatchSession) dropEdits(id uuid.UUID) {
+	delete(s.overrides, id)
+	delete(s.removedSkillDice, id)
 }
 
 // closeOpenTurn ends the turn currently under the baton, resolves it one last time and
@@ -1092,10 +1291,23 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	// One reaction per character per action, refused before a die falls or a bar is charged —
 	// the same "validate before mutating" rule as the checks above. A second one was accepted,
 	// charged and then silently skipped by the chain (buildChainOrder counts a character once).
+	//
+	// The default reaction the engine seated for this character is NOT an answer: it is what
+	// stands until they give one, and what they send replaces it.
+	seated := t.SeatedFor(r.GetActorID())
+	var seatedID uuid.UUID
+	if seated != nil {
+		seatedID = seated.GetID()
+	}
 	for _, existing := range t.GetReactions() {
-		if existing.GetActorID() == r.GetActorID() {
+		if existing.GetActorID() == r.GetActorID() && existing.GetID() != seatedID {
 			return nil, ErrReactorAlreadyReacted
 		}
+	}
+	// Answering exactly what was seated is the same reading: it keeps the dice that may already
+	// have fallen for it and the master's edits on it — nothing is rolled again.
+	if seated != nil && r.ReactionKind == seated.ReactionKind {
+		s.inheritSeated(seated, r)
 	}
 
 	s.rollActionDice(r)
@@ -1110,10 +1322,11 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 		// Amount: RollAttempts already holds both sets and the bias only picks which one.
 		// With nothing queued there was no swap, so there is no penalty.
 		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
-		// never two. Fleeing to where the queued move was already going is NOT a swap
-		// (sameMoveAsQueued — a first, simple version of that rule).
+		// never two. Doing, sooner, what the queue already said is NOT a swap
+		// (keepsQueuedIntent: fleeing to where the queued move was going, repelling whoever
+		// the queued attack was aimed at).
 		systemBias := 0
-		if (len(consumed) > 0 && !sameMoveAsQueued(r, consumed)) || s.swapBias(r.GetActorID()) < 0 {
+		if (len(consumed) > 0 && !keepsQueuedIntent(r, consumed, act.GetActorID())) || s.swapBias(r.GetActorID()) < 0 {
 			systemBias = -1
 		}
 		s.deriveSpeeds(r, systemBias)
@@ -1123,7 +1336,36 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
 		return nil, err
 	}
+	if seatedID != uuid.Nil {
+		t.ReplaceSeated(seatedID, r.GetID())
+		// Inherited edits were moved to r already; anything left under the seated ID was the
+		// master's edit on a reading the target just replaced with one of their own.
+		s.dropEdits(seatedID)
+	}
 	return s.ResolveTurn(s.activeRound.CurrentTurn()), nil
+}
+
+// inheritSeated moves what a seated default reaction already holds onto the default reaction
+// its target just declared: the dodge's dice and condition, the default defense's carrier, and
+// the master's captures, re-keyed to the new reaction. The declared one replaces the seated one
+// on the turn (Turn.ReplaceSeated), so this is a move, never a copy.
+func (s *MatchSession) inheritSeated(seated, r *action.Action) {
+	if seated.Dodge != nil {
+		if r.Dodge == nil {
+			r.Dodge = &action.Dodge{}
+		}
+		r.Dodge.RollCheck = seated.Dodge.RollCheck
+	}
+	r.DefaultDefense = seated.DefaultDefense
+	if byField, ok := s.overrides[seated.GetID()]; ok {
+		moved := make(map[string]match.OverriddenValue, len(byField))
+		for field, ov := range byField {
+			ov.ActionID = r.GetID()
+			moved[field] = ov
+		}
+		s.overrides[r.GetID()] = moved
+		delete(s.overrides, seated.GetID())
+	}
 }
 
 // consumePendingFor pulls this character's about-to-open action off the queue, once per bar the
@@ -1141,10 +1383,54 @@ func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*acti
 			continue
 		}
 		s.activeQueue.ExtractByID(victim.GetID())
+		// The reaction took its place: whatever the master edited on it goes with it.
+		s.discardEdits(victim)
 		ids = append(ids, victim.GetID())
 		victims = append(victims, victim)
 	}
 	return ids, victims
+}
+
+// keepsQueuedIntent reports whether a charged reaction is what its character had already queued,
+// only sooner — in which case consuming the queued action is not a swap and costs no
+// Disadvantage. The master can still put one on, as on any roll. Two cases today, one per kind
+// of intent a reaction can carry:
+//
+//   - an escape (any of the three) to exactly where the queued move was going — sameMoveAsQueued
+//     (owner decision, 2026-10-11);
+//   - a repel against the character who is attacking, when the queued action was an attack on
+//     that same character — sameBlowAsQueued (owner decision, 2026-10-13).
+//
+// It is the policy the swap rule asks; each case stays a small, explicit predicate, deliberately
+// simple, to be enriched on its own (partial overlap, combined actions, a destination on the way).
+func keepsQueuedIntent(r *action.Action, consumed []*action.Action, attackerID uuid.UUID) bool {
+	switch {
+	case r.ReactionKind.Displaces():
+		return sameMoveAsQueued(r, consumed)
+	case r.ReactionKind == action.ReactRepel:
+		return sameBlowAsQueued(consumed, attackerID)
+	default:
+		return false
+	}
+}
+
+// sameBlowAsQueued: the character had queued an attack on the very character now attacking
+// them, and repels that attack instead — the blow they meant to throw, thrown as the answer. It
+// still consumes the queued attack (the repel IS that blow now), but it is not a swap.
+//
+// Deliberately simple, like sameMoveAsQueued: every consumed action must be a pure attack (no
+// move, no interaction) whose only target is the attacker. An area attack that also named
+// someone else, or an attack that was going to move first, is a different plan — that is a swap.
+func sameBlowAsQueued(consumed []*action.Action, attackerID uuid.UUID) bool {
+	for _, c := range consumed {
+		if c.Attack == nil || c.Move != nil || c.Interact != nil {
+			return false
+		}
+		if len(c.TargetID) != 1 || c.TargetID[0] != attackerID {
+			return false
+		}
+	}
+	return true
 }
 
 // sameMoveAsQueued: the reaction is a flight to exactly where the character was already going.
@@ -1155,8 +1441,7 @@ func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*acti
 // Deliberately simple: every consumed action must be a pure move (no attack, no interaction)
 // whose destination is the reaction's own, compared by (col, row) — z is never read by the
 // server. This rule WILL be enriched (partial overlap, a combined move+attack, a destination
-// that merely lies on the way) and will likely need refactoring when that happens: today it is
-// a single yes/no inside AttachReaction, not a policy of its own.
+// that merely lies on the way); keepsQueuedIntent is where the cases meet.
 func sameMoveAsQueued(r *action.Action, consumed []*action.Action) bool {
 	if r.Move == nil {
 		return false
@@ -1241,15 +1526,23 @@ func (s *MatchSession) CloseOpenTurn() (*TurnTransition, error) {
 	return s.closeOpenTurn(), nil
 }
 
-// UnopenedReactions is the open turn's attached-but-not-opened reactions, for the confirmation
-// gate in CloseTurnUC. Empty when there is no open turn — the caller's error for that case is
-// ErrNoOpenTurn, raised by CloseOpenTurn, not by this reader.
-func (s *MatchSession) UnopenedReactions() []action.Action {
+// ReactionsAwaitingTheFloor is the open turn's unopened reactions that a player sent and that
+// have something to narrate (Turn.AwaitingTheFloor), for the confirmation gate in CloseTurnUC.
+// Empty when there is no open turn — the caller's error for that case is ErrNoOpenTurn, raised
+// by CloseOpenTurn, not by this reader.
+func (s *MatchSession) ReactionsAwaitingTheFloor() []action.Action {
 	t := s.activeRound.CurrentTurn()
 	if t == nil || t.GetFinishedAt() != nil {
 		return nil
 	}
-	return t.UnopenedReactions()
+	return t.AwaitingTheFloor()
+}
+
+// IsSeatedReaction reports whether a reaction of the open turn is the default one the engine
+// seated and its target has not answered yet.
+func (s *MatchSession) IsSeatedReaction(id uuid.UUID) bool {
+	t := s.activeRound.CurrentTurn()
+	return t != nil && t.IsSeated(id)
 }
 
 func (s *MatchSession) CloseRound() (*round.Round, error) {
@@ -1359,6 +1652,7 @@ func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) (*action.Act
 		return nil, ErrActionActorMismatch
 	}
 	s.activeQueue.ExtractByID(actionID)
+	s.discardEdits(target)
 	if s.activeRound.GetMode() == enum.Race {
 		s.swapMarks[target.GetActorID()] = s.activeRound.GetID()
 	}
@@ -1440,6 +1734,9 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
 	a.Speed.SkillName = enum.Legerity.String()
 	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
+	// The system's bias makes a passive reading roll against the base value, like the master's
+	// (readPassiveBias): its dice fall here, the first time that bias asks for them.
+	s.ensureDiceForBias(&a.Speed.RollCheck, systemBias)
 	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
 		SkillName:  a.Speed.SkillName,
 		SkillValue: a.Speed.SkillValue,
@@ -1466,6 +1763,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
+	s.ensureDiceForBias(a.Move.Speed, systemBias)
 	a.Move.Speed.Result = calc.Derive(s.rules, a.Move.Speed.Attempts, service.RollInput{
 		SkillName:  a.Move.Speed.SkillName,
 		SkillValue: a.Move.Speed.SkillValue,
@@ -1536,7 +1834,9 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 	if a.Defense != nil {
 		test(&a.Defense.RollCheck)
 	}
-	if a.Dodge != nil {
+	// A default reaction's dodge is passive: it rolls only if the master biases it
+	// (ensureDiceForBias), the same rule every passive reading follows.
+	if a.Dodge != nil && !a.ReactionKind.IsPassive() {
 		test(&a.Dodge.RollCheck)
 	}
 	if a.Repel != nil {

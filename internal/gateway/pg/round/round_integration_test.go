@@ -2746,6 +2746,68 @@ func TestFindMatchHistory_KeepsTheReactionsTruthUnprojected(t *testing.T) {
 	}
 }
 
+// TestPersistTurnClose_TheDefaultReactionIsARealReaction (owner decision, 2026-10-12): the
+// default reaction the engine seats for a target that never answered is written like any
+// other — kind "default", the dodge the master biased with the dice that bias made fall, and
+// its default defense — and the history reads it back whole.
+func TestPersistTurnClose_TheDefaultReactionIsARealReaction(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	pgtest.TruncateAll(t, pool)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	def := action.NewAction(fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil,
+		&action.Dodge{RollCheck: action.RollCheck{
+			SkillName: enum.Reflex.String(),
+			Attempts:  action.RollAttempts{Primary: []int{8, 7}},
+			Context:   action.RollContext{Condition: &action.RollCondition{Bias: 1, Description: "atento"}},
+		}}, nil, nil)
+	def.ReactionKind = action.ReactDefault
+	def.DefaultDefense = &action.RollCheck{
+		SkillName: enum.Defense.String(),
+		Context:   action.RollContext{Condition: &action.RollCondition{Modifier: -1}},
+	}
+	tn := turnentity.NewTurn(*act)
+	tn.Seat(def)
+	tn.Close(time.Now())
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	reactions := scenes[0].Rounds[0].Turns[0].Reactions
+	if len(reactions) != 1 {
+		t.Fatalf("got %d reactions, want the default one", len(reactions))
+	}
+	got := reactions[0]
+	if got.GetID() != def.GetID() || got.ReactionKind != action.ReactDefault {
+		t.Fatalf("reaction = %s kind %q, want %s kind default", got.GetID(), got.ReactionKind, def.GetID())
+	}
+	if got.Dodge == nil || !reflect.DeepEqual(got.Dodge.Attempts.Primary, []int{8, 7}) ||
+		got.Dodge.Context.Condition == nil || got.Dodge.Context.Condition.Description != "atento" {
+		t.Fatalf("dodge = %+v, want the biased reflex with the dice it rolled", got.Dodge)
+	}
+	// The history's read does not select default_defense (it is off every wire): read the
+	// column itself.
+	var col []byte
+	if err := pool.QueryRow(ctx,
+		`SELECT default_defense FROM actions WHERE uuid = $1`, def.GetID()).Scan(&col); err != nil {
+		t.Fatalf("read default_defense: %v", err)
+	}
+	var stored action.RollCheck
+	if err := json.Unmarshal(col, &stored); err != nil || stored.Context.Condition == nil ||
+		stored.Context.Condition.Modifier != -1 {
+		t.Fatalf("default_defense = %s (%v), want the master's −1", col, err)
+	}
+}
+
 func TestPersistTurnCloseWritesTheDefaultDefense(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.SetupTestDB(t)

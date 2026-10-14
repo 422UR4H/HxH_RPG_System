@@ -50,6 +50,37 @@ func reconnectFullState(
 	return conn, full, raw
 }
 
+// A target that has not answered yet holds only the default reaction the engine seated for
+// them. That is not an answer they gave, so ownReactions does not list it: a reconnecting
+// client must still offer them the reaction buttons.
+func TestE2E_ReconnectingTargetWithOnlyTheSeatedDefaultHasNoOwnReaction(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	f.openAttackOn(t, player, master, mc)
+
+	res := lastResolutionUpdated(t, mc)
+	var seated bool
+	for _, pr := range res.PendingReactions {
+		if pr.ActorID == f.victimID && pr.Kind == "default" && pr.Seated {
+			seated = true
+		}
+	}
+	if !seated {
+		t.Fatalf("pendingReactions = %+v, want the victim's seated default", res.PendingReactions)
+	}
+
+	conn, full, _ := reconnectFullState(t, "the target", player, f.server.URL, f.playerUUID, f.matchUUID)
+	defer conn.Close() //nolint:errcheck
+	if len(full.OwnReactions) != 0 {
+		t.Fatalf("ownReactions = %+v, want none — the seated default is not the target's answer", full.OwnReactions)
+	}	// The base value a passive test reads travels with the match state (2D10 → 11).
+	if full.PassiveValue != 11 {
+		t.Fatalf("passiveValue = %d, want 11", full.PassiveValue)
+	}
+}
+
 func TestE2E_ReconnectingReactorGetsOwnReactions(t *testing.T) {
 	f := newCombatFixture(t)
 	master, player := f.connect(t)

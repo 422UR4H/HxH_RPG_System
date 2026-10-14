@@ -16,7 +16,7 @@ import (
 type RollInput struct {
 	SkillName  string
 	SkillValue int                   // already resolved from the sheet by the caller
-	Passive    bool                  // take the set's average instead of rolling
+	Passive    bool                  // take the set's base value (its average) instead of rolling
 	Condition  *action.RollCondition // master-owned; nil = neutral
 	// Ledger is character-owned; nil = empty. WHAT each entry modifies is now the entry's own
 	// business (match.Modifier.Applies), read against Dimension below — the caller no longer
@@ -40,7 +40,7 @@ type RollInput struct {
 type RollOutcome struct {
 	SkillName         string
 	SkillValue        int
-	Dice              []int // empty on a passive test
+	Dice              []int // empty on a passive test, unless the master's bias rolled it
 	DiceTotal         int
 	Bias              int // net accumulated bias, master + system
 	Modifier          int // net accumulated flat adjustment, master + ledger
@@ -110,6 +110,7 @@ func (rc RollCalculator) Derive(
 		// A passive test takes the average of the set instead of rolling, so rolling has
 		// exactly zero expected gain. No dice means no critical either way.
 		out.DiceTotal = rules.PassiveValue()
+		readPassiveBias(&out, rules, attempts, bias)
 		out.Total = out.DiceTotal + in.SkillValue + modifier
 		return out
 	}
@@ -121,6 +122,35 @@ func (rc RollCalculator) Derive(
 	out.IsCriticalFailure = allDiceShow(dice, 1)
 	out.Total = out.DiceTotal + in.SkillValue + modifier
 	return out
+}
+
+// readPassiveBias is a bias on a passive test (owner decisions, 2026-10-12 and 2026-10-13):
+// advantage or disadvantage on a test that takes the base value makes it a ROLLED test, with
+// the base value as the other set — advantage keeps the better of the dice and the base,
+// disadvantage the worse. The passive stays the floor (or the ceiling): a bias adds risk or
+// chance to it, never a free reroll.
+//
+// bias is the NET bias, the same one a rolled test reads: the master's condition and the
+// system's own (a swap's disadvantage) count alike, and cancel each other the same way — the
+// master's advantage on a swapped test reads the plain base value.
+//
+// It reads the primary set, which falls the first time a bias asks for it
+// (MatchSession.ensureDiceForBias: the master's edit, or the system's bias when the speeds are
+// derived) and never again. Without dice there is nothing to read and the base value stands.
+//
+// A critical is read on the dice only when the dice are what counts.
+func readPassiveBias(out *RollOutcome, rules match.MatchRules, attempts action.RollAttempts, bias int) {
+	if bias == 0 || len(attempts.Primary) == 0 {
+		return
+	}
+	dice := attempts.Primary
+	out.Dice = append([]int(nil), dice...)
+	sum := sumDice(dice)
+	if (bias > 0 && sum > out.DiceTotal) || (bias < 0 && sum < out.DiceTotal) {
+		out.DiceTotal = sum
+		out.IsCritical = allDiceShow(dice, rules.DiceSet.MaxFace())
+		out.IsCriticalFailure = allDiceShow(dice, 1)
+	}
 }
 
 // pickAttempt applies advantage and disadvantage: the better set on a positive bias, the

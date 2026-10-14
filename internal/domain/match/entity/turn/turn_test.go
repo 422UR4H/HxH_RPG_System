@@ -155,3 +155,80 @@ func TestEscapeLandings(t *testing.T) {
 		}
 	})
 }
+
+func TestTurn_SeatedReactions(t *testing.T) {
+	base := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	reaction := func(actor uuid.UUID, kind action.ReactionKind) *action.Action {
+		r := action.NewAction(actor, nil, base.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		r.ReactionKind = kind
+		return r
+	}
+	a, b := uuid.New(), uuid.New()
+
+	t.Run("a seated reaction is the target's until they answer, and holds no close", func(t *testing.T) {
+		tn := turn.NewTurn(*base)
+		seated := reaction(a, action.ReactDefault)
+		tn.Seat(seated)
+		if !tn.IsSeated(seated.GetID()) || tn.SeatedFor(a) == nil || tn.SeatedFor(b) != nil {
+			t.Fatal("the seated reaction must be found by its actor and only by it")
+		}
+		if got := tn.AwaitingTheFloor(); len(got) != 0 {
+			t.Fatalf("AwaitingTheFloor = %d, want 0 — nobody sent the seated one", len(got))
+		}
+		if got := tn.UnopenedReactions(); len(got) != 1 {
+			t.Fatalf("UnopenedReactions = %d, want 1 — it is on the turn, unopened", len(got))
+		}
+	})
+
+	t.Run("the answer replaces the seated one and takes its place in the opening order", func(t *testing.T) {
+		tn := turn.NewTurn(*base)
+		other := reaction(b, action.ReactRepel)
+		seated := reaction(a, action.ReactDefault)
+		tn.Seat(seated)
+		tn.AddReaction(other)
+		tn.OpenReaction(seated.GetID())
+		tn.OpenReaction(other.GetID())
+
+		answer := reaction(a, action.ReactDodge)
+		tn.AddReaction(answer)
+		if !tn.ReplaceSeated(seated.GetID(), answer.GetID()) {
+			t.Fatal("ReplaceSeated must find the seated reaction")
+		}
+		if tn.ReactionRef(seated.GetID()) != nil || tn.IsSeated(seated.GetID()) {
+			t.Fatal("the seated reaction must leave the turn")
+		}
+		got := tn.OpenedReactionIDs()
+		if len(got) != 2 || got[0] != answer.GetID() || got[1] != other.GetID() {
+			t.Fatalf("opened = %v, want [answer, other] — the character still holds the floor first", got)
+		}
+		if tn.ReplaceSeated(answer.GetID(), uuid.New()) {
+			t.Fatal("a reaction a player sent is never replaced as seated")
+		}
+	})
+
+	t.Run("unseat removes only a seated reaction", func(t *testing.T) {
+		tn := turn.NewTurn(*base)
+		seated := reaction(a, action.ReactDefault)
+		sent := reaction(b, action.ReactDodge)
+		tn.Seat(seated)
+		tn.AddReaction(sent)
+		tn.OpenReaction(seated.GetID())
+		if tn.Unseat(sent.GetID()) {
+			t.Fatal("a sent reaction is never unseated")
+		}
+		if !tn.Unseat(seated.GetID()) || len(tn.GetReactions()) != 1 || len(tn.OpenedReactionIDs()) != 0 {
+			t.Fatal("the seated reaction must leave the turn and the opening order")
+		}
+	})
+
+	t.Run("a nothing never awaits the floor; a sent default does", func(t *testing.T) {
+		tn := turn.NewTurn(*base)
+		tn.AddReaction(reaction(a, action.ReactNothing))
+		sentDefault := reaction(b, action.ReactDefault)
+		tn.AddReaction(sentDefault)
+		got := tn.AwaitingTheFloor()
+		if len(got) != 1 || got[0].GetID() != sentDefault.GetID() {
+			t.Fatalf("AwaitingTheFloor = %+v, want only the declared default", got)
+		}
+	})
+}

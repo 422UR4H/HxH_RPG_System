@@ -16,6 +16,11 @@ coisas acontecem automaticamente, nesta ordem:
 
 Essas são passivas. Elas usam o **valor médio do dado** em vez de rolar — seu Reflexo + 11.
 
+Juntas, elas são a sua **reação padrão**: é a resposta que vale enquanto você não escolhe outra,
+e ela conta como uma reação de verdade — o mestre pode pedir que você a narre, pode ajustá-la, e
+ela aparece no histórico da partida. Escolher qualquer outra reação a substitui. **Não fazer
+nada** é a única escolha que abre mão dela.
+
 Enquanto o golpe está no ar, **só o mestre vê os números** — você não sabe se o seu reflexo
 basta, porque saber disso seria saber o quanto o ataque acertou. Então você aposta:
 
@@ -60,6 +65,14 @@ Reagir ativamente **consome a ação que você tinha na fila**. E, assim como tr
 isso custa **Desvantagem**: o sistema rola de novo e fica com o pior dos dois resultados.
 
 Se você **não** tinha ação declarada, a reação simplesmente vira a sua ação. Sem penalidade.
+
+**Fazer antes o que você já tinha declarado não é trocar.** Sem penalidade em dois casos:
+
+- **escapar para a mesma casa** para onde o seu movimento na fila já ia;
+- **repelir quem está te atacando**, quando a sua ação na fila era justamente um ataque contra
+  essa pessoa — o golpe que você ia dar vira a resposta.
+
+O mestre pode impor a Desvantagem mesmo assim, se achar que a cena pede.
 
 **Cancelar uma ação também é trocar.** No regime disputado, até o fim do round em que você
 cancelou, tudo o que você fizer de novo — declarar outra ação ou reagir ativamente — rola a

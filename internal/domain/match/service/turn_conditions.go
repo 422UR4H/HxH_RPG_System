@@ -33,6 +33,12 @@ func turnConditions(t *turn.Turn) []CheckCondition {
 	return out
 }
 
+// ActionConditions lists the master conditions in force on one action, in the same fixed order
+// turnConditions uses — for an action that is not on a turn yet (the queue).
+func ActionConditions(a action.Action) []CheckCondition {
+	return appendActionConditions(nil, a)
+}
+
 func appendActionConditions(out []CheckCondition, a action.Action) []CheckCondition {
 	add := func(field action.ConditionField, rc *action.RollCheck) {
 		if rc == nil || rc.Context.Condition == nil {

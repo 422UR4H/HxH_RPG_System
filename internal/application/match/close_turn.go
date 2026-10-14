@@ -52,7 +52,7 @@ func (uc *CloseTurnUC) Execute(
 		return nil, ErrNotMatchMaster
 	}
 	if !confirm {
-		if pending := session.UnopenedReactions(); len(pending) > 0 {
+		if pending := session.ReactionsAwaitingTheFloor(); len(pending) > 0 {
 			return &CloseTurnResult{Refused: pending}, nil
 		}
 	}

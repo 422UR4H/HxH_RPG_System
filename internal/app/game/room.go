@@ -1267,9 +1267,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		// Write lock across Execute: the edit mutates the action itself and re-derives the
 		// open turn's resolution — the same surface open_next_action and close_turn mutate.
+		//
+		// An edit on a QUEUED action re-describes it to the master in the same critical
+		// section, for the reason the enqueue arm builds its action_queued there: the action
+		// belongs to the session's queue, and reading its pointers after the unlock would race
+		// the next command.
 		r.mu.Lock()
 		result, err := r.deps.EditActionUC.Execute(
 			context.Background(), session, r.masterUUID, client.userUUID, ma, escapeLandingEditOf(payload))
+		var requeued ActionQueuedPayload
+		if err == nil && result.Queued {
+			for _, a := range session.PendingActions() {
+				if a.GetID() == ma.ActionID {
+					requeued = newActionQueuedPayload(a)
+					break
+				}
+			}
+		}
 		r.mu.Unlock()
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
@@ -1278,6 +1292,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		client.SendMessage(NewServerMessage(MsgTypeActionEdited, ActionEditedPayload{
 			TurnID: result.TurnID, ActionID: ma.ActionID,
 		}))
+		if result.Queued {
+			// The master's view of the action is replaced, never appended: action_queued for an
+			// actionId the client already holds is an update. The order moves when the speed
+			// did, so the public bars go out too — they name no action and no condition.
+			r.sendToMaster(NewServerMessage(MsgTypeActionQueued, requeued))
+			r.broadcastBars(session)
+			return
+		}
 		r.publishResolution(result.TurnID, result.Resolution)
 
 	case MsgTypeCloseTurn:
@@ -2767,6 +2789,7 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
 	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
 	payload.Bars.Seq = r.barsSeq
+	payload.PassiveValue = session.GetRules().PassiveValue()
 
 	if scene := session.GetActiveScene(); scene != nil {
 		// The same struct scene_changed sends, not a second flattened copy of it — see
@@ -2833,7 +2856,9 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 			// their own true kind and what it consumed.
 			charToPlayer := session.GetCharToPlayer()
 			for _, re := range reactions {
-				if charToPlayer[re.GetActorID().String()] != playerID {
+				// A seated default is not an answer the owner gave: they can still send one,
+				// and listing it would tell a reconnecting client they had already reacted.
+				if charToPlayer[re.GetActorID().String()] != playerID || t.IsSeated(re.GetID()) {
 					continue
 				}
 				payload.OwnReactions = append(payload.OwnReactions, OwnReactionPayload{
@@ -2922,10 +2947,15 @@ func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
 	for _, b := range a.Bars() {
 		bars = append(bars, string(b))
 	}
-	return ActionQueuedPayload{
+	p := ActionQueuedPayload{
 		ActionID: a.GetID(), ActorID: a.GetActorID(), Bars: bars,
-		Action: actionwire.From(*a, actionwire.Full),
+		Action:     actionwire.From(*a, actionwire.Full),
+		Conditions: conditionPayloadsOf(domainservice.ActionConditions(*a)),
 	}
+	if a.Attack != nil {
+		p.DamageSkill = a.Attack.EffectiveDamageSkill().String()
+	}
+	return p
 }
 
 func polysToPayload(polys []domainservice.VisibilityPolygon) [][]Point2DPayload {

@@ -137,6 +137,68 @@ func TestRollCalculator_Derive_Passive(t *testing.T) {
 	}
 }
 
+// TestRollCalculator_Derive_PassiveWithTheMastersBias pins P2 (owner decision, 2026-10-12): a
+// bias — the master's, and since 2026-10-13 the system's too — makes a passive test a rolled one, with the base value (11 on 2D10) as the
+// other set — advantage keeps the better of the dice and the base, disadvantage the worse.
+func TestRollCalculator_Derive_PassiveWithTheMastersBias(t *testing.T) {
+	calc := service.RollCalculator{}
+	rules := match.NewDefaultMatchRules()
+	derive := func(primary []int, cond *action.RollCondition, systemBias int) service.RollOutcome {
+		return calc.Derive(rules, attempts(primary, nil), service.RollInput{
+			SkillValue: 6, Passive: true, Condition: cond, SystemBias: systemBias,
+		})
+	}
+
+	tests := []struct {
+		name      string
+		primary   []int
+		bias      int
+		wantDice  int // DiceTotal
+		wantShown bool
+	}{
+		{"advantage, the dice beat the base: the dice count", []int{9, 8}, 1, 17, true},
+		{"advantage, the base beats the dice: the base stands", []int{2, 3}, 1, 11, true},
+		{"disadvantage, the dice fall under the base: the dice count", []int{2, 3}, -1, 5, true},
+		{"disadvantage, the base is under the dice: the base stands", []int{9, 8}, -1, 11, true},
+		{"no dice yet: the base stands, nothing to show", nil, 1, 11, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := derive(tt.primary, &action.RollCondition{Bias: tt.bias}, 0)
+			if out.DiceTotal != tt.wantDice || out.Total != tt.wantDice+6 {
+				t.Fatalf("DiceTotal = %d, Total = %d; want %d and %d", out.DiceTotal, out.Total, tt.wantDice, tt.wantDice+6)
+			}
+			if (len(out.Dice) > 0) != tt.wantShown {
+				t.Fatalf("Dice = %v, want shown = %v", out.Dice, tt.wantShown)
+			}
+			if !out.Passive {
+				t.Fatal("still a passive reading — the bias only adds the dice to it")
+			}
+		})
+	}
+
+	t.Run("a critical counts only when the dice are what counts", func(t *testing.T) {
+		if out := derive([]int{10, 10}, &action.RollCondition{Bias: 1}, 0); !out.IsCritical {
+			t.Fatal("advantage on 10+10: the dice count, and they are a critical")
+		}
+		if out := derive([]int{10, 10}, &action.RollCondition{Bias: -1}, 0); out.IsCritical {
+			t.Fatal("disadvantage on 10+10: the base counts, and a base is never a critical")
+		}
+	})
+
+	t.Run("the system's bias reads the same way (2026-10-13): its disadvantage keeps the worse", func(t *testing.T) {
+		if out := derive([]int{2, 3}, nil, -1); out.DiceTotal != 5 {
+			t.Fatalf("got %+v, want the dice 2+3 under the base", out)
+		}
+	})
+
+	t.Run("the master's advantage cancels the system's disadvantage: the plain base value", func(t *testing.T) {
+		if out := derive([]int{2, 3}, &action.RollCondition{Bias: 1}, -1); out.DiceTotal != 11 || len(out.Dice) != 0 {
+			t.Fatalf("got %+v, want the base value — net bias zero", out)
+		}
+	})
+}
+
 func TestRollCalculator_Derive_Bias(t *testing.T) {
 	calc := service.RollCalculator{}
 	rules := match.NewDefaultMatchRules()
