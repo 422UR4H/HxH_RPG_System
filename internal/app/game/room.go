@@ -2740,12 +2740,6 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 		g := toGridShapePayload(grid)
 		payload.Grid = &g
 	}
-	if !isMaster && isLobby {
-		// Disabled until the frontend consumes payload.Walls in lobby mode
-		// (useLobbyWs.ts currently drops it). The masking computation above is intact —
-		// flip this back to `payload.Walls = wallPayloads` to re-enable.
-		payload.Walls = []WallSegmentPayload{}
-	}
 	if !isMaster && !isLobby {
 		payload.VisiblePolygons = polysToPayload(polys)
 	}

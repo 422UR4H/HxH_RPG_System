@@ -443,7 +443,7 @@ Vale para mestre e jogador, na mesa e no lobby: os dois desenham a grade e o fun
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. Cada peça inclui `z` (elevação em metros, 0 = chão, omitido quando 0). |
-| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
+| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. No lobby (sem partida, sem LOS) o jogador recebe todas as paredes do tabuleiro, que o lobby desenha. Portas secretas não reveladas mascaradas como `"wall"`, na partida e no lobby. |
 | `visiblePolygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas LOCAIS da grade (pré-transform, o mesmo espaço de `p1`/`p2` das paredes); o cliente aplica o transform da grade (rotação, achatamento, origem) a cada vértice para desenhar. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
 | `fogMode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
 
