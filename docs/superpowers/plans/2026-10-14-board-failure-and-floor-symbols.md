@@ -220,6 +220,41 @@ ponto a ponto com `applyTransform`, como a própria parede:
 
 ---
 
+## Task 5 (front) — desfazer do editor volta ao estado de ANTES da rajada, não ao penúltimo
+
+**Achado no navegador (2026-10-14), dentro do pedido original do dono** ("se encontrar outros
+bugs de mapa desse tipo, pode corrigir"): no editor, digitar "30" no campo Rotação (que estava
+em 45) e clicar Desfazer volta para **3**, não para 45. Uma predefinição clicada logo antes
+também some do histórico. O mesmo vale para sliders (opacidade, perspectiva).
+
+**Causa:** `src/features/tactical-map/store/editorStore.ts` usa o `temporal` do zundo com
+`handleSet: (handleSet) => debounce(handleSet, 400)`. O debounce de cauda chama `handleSet` com
+os argumentos da **última** chamada da rajada. Por isso o `pastState` gravado é o estado de antes
+da última mudança, e não o de antes da primeira. Tudo o que veio antes na rajada se perde.
+
+**Arquivos:** `src/features/tactical-map/store/editorStore.ts` (o `handleSet`, e um helper
+pequeno se ajudar, ex. no próprio arquivo ou em `utils/`), `useEditorHistory.ts` se o desfazer
+precisar descarregar a rajada pendente, testes em `store/__tests__/`.
+
+**Comportamento:**
+1. Continua agrupando mudanças seguidas (mesmos 400 ms de cauda), mas o passo gravado leva o
+   `pastState` da **primeira** chamada da rajada, com o estado atual da última. A assinatura do
+   `handleSet` do zundo instalado: conferir em `node_modules/zundo`.
+2. Desfazer ou refazer com uma rajada pendente (menos de 400 ms depois da última mudança)
+   primeiro grava a rajada como um passo, depois desfaz. Hoje o passo pendente chegaria depois do
+   desfazer e bagunçaria a pilha. Se isso exigir expor um `flush` do debounce, fazer do jeito
+   mais simples.
+3. O commit de gesto (`useGestureHistory`: pause, um passo no release) não muda. Conferir que
+   uma rajada pendente quando o gesto começa não se mistura com ele: descarregar antes do
+   `pause()` se preciso.
+
+**Testes** (com `vi.useFakeTimers()`): duas mudanças de rotação em < 400 ms → um desfazer
+volta ao valor original; duas mudanças separadas por > 400 ms → dois passos; mudança + desfazer
+imediato (< 400 ms) → volta ao original e o refazer devolve a mudança; um gesto depois de uma
+rajada pendente gera passos separados e corretos.
+
+---
+
 ## Depois das tasks (controlador)
 
 Revisão final do branch, verificação completa nos dois repos, teste no navegador: portas e
