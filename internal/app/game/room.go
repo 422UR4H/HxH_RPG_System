@@ -145,6 +145,12 @@ type Room struct {
 	// reloads regardless of this flag, but once playing, boardLoaded stops a reconnecting
 	// master from silently resetting a live board out from under the session.
 	boardLoaded bool
+	// boardLoadFailed is true while the LAST loadBoard call ended in an error (false after any
+	// call that returned without one, board or no map attached). Together with !boardLoaded it
+	// means "this room never got a board and the table does not know why": every register then
+	// retries the load, a player's included, and tells the registering client with
+	// board_unavailable. Guarded by mu, like boardLoaded.
+	boardLoadFailed bool
 	// mapUUID is the map the room's board belongs to — set from Board.MapUUID in loadBoard.
 	// uuid.Nil means "no board loaded yet" (or no map attached at all), and persistBoard is a
 	// no-op in that state: there is nothing to write a match_boards row FOR (spec §4.3).
@@ -330,7 +336,13 @@ func (r *Room) Run() {
 			// master rehydrating one that has not reached this branch yet); !r.boardLoaded
 			// narrows the OTHER case — session already live, because handler.go rehydrated
 			// it before Register — to a single load, at birth.
-			shouldLoadBoard := isMaster && (r.session == nil || !r.boardLoaded)
+			//
+			// A failed load that never installed a board is retried by ANY connection, a
+			// player's too: otherwise the table waits on the master reconnecting. An installed
+			// board is never reloaded by a player — that would throw away the moves of an open
+			// turn, which are only written at its close.
+			shouldLoadBoard := (isMaster && (r.session == nil || !r.boardLoaded)) ||
+				(r.boardLoadFailed && !r.boardLoaded)
 			r.mu.Unlock()
 
 			var boardCleared bool
@@ -364,6 +376,7 @@ func (r *Room) Run() {
 
 			r.sendRoomState(client)
 			r.mu.RLock()
+			boardUnavailable := r.boardLoadFailed && !r.boardLoaded
 			// The board is the match's map: whenever the room HAS one, every connecting client
 			// gets it — grid and bg included, even with no piece and no wall on it yet (a
 			// bg-only map before anything is placed). Without it the client has nothing to draw
@@ -376,6 +389,14 @@ func (r *Room) Run() {
 			if hasBoard || boardCleared {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
 				client.SendMessage(*msg)
+			}
+			// The load failed and the room has no board to show: say so where the
+			// map_full_state would have gone, instead of leaving the client waiting forever.
+			// The connection stays open; a later map_full_state replaces this state.
+			if boardUnavailable {
+				client.SendMessage(NewErrorMessage(
+					"board_unavailable", "the match board could not be loaded; reconnect to try again",
+				))
 			}
 			// map_full_state above covers the board and nothing else. A client that connects
 			// or reconnects mid-combat still needs the bars, the round regime, the open turn
@@ -473,6 +494,9 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 	board, err := r.deps.LoadBoardUC.Load(ctx, r.matchUUID)
 	if err != nil {
 		log.Printf("load match board for match %s: %v", r.matchUUID, err)
+		r.mu.Lock()
+		r.boardLoadFailed = true
+		r.mu.Unlock()
 		return false
 	}
 
@@ -501,6 +525,7 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.boardLoadFailed = false
 	if board == nil {
 		// No map attached at all — nothing to load. A lobby that attaches a map later is
 		// picked up by the NEXT master connect (or start_match), since boardLoaded only gates
