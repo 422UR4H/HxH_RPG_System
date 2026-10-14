@@ -116,7 +116,7 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 
 **Fechamento da Fase 6 — pacote de back (B1–B16, spec 2026-09-27):**
 - **O tabuleiro é do servidor.** `match_boards` guarda um retrato por partida (peças, paredes,
-  grade, `bg` — `NULL` herda o do mapa); `player_memories` guarda o fog explorado. A `Room`
+  grade, `bg` — `NULL` = sem fundo, congelado como a grade); `player_memories` guarda o fog explorado. A `Room`
   carrega (`loadBoard`) quando nasce e, em lobby, a cada conexão do mestre. Grava em dois
   pontos, os dois serializados por `persistMu`: o fechamento de turno (`persistClosedTurn`, na
   transação do `PersistTurnClose` — ver abaixo) e `persistBoard`, no `start_match` e — entre
