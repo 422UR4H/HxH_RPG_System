@@ -348,30 +348,38 @@ func (r *Room) Run() {
 			var boardCleared bool
 			if shouldLoadBoard {
 				boardCleared = r.loadBoard(context.Background())
-				// r.pieces/r.walls just changed under whoever else was already at the table —
-				// unlike the registering client, handled below, nobody re-reads the board for
-				// them on its own. Re-push a fresh, fog-filtered map_full_state to every OTHER
-				// connected client, the same repush map_state_sync's old arm used to do after
-				// a seed (spec §4.3). dispatchPerPlayer releases r.mu before calling back into
-				// buildMapFullState, so this is safe to call with no lock held here.
-				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-					if pid == client.userUUID {
-						return nil // this client's own map_full_state is the hasBoard branch below
-					}
-					return r.buildMapFullState(pid, isMaster)
-				})
-				// match_full_state goes along, AFTER the map (the same order as the client's own
-				// register below): the session may have just come alive under whoever was already
-				// at the table — a server restart, with a player faster than the master's
-				// rehydration, registered while r.session was nil and was greeted with no
-				// match_full_state at all. Nothing else would ever send it. buildMatchFullState
-				// is nil without a session, so a lobby sends nothing here.
-				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-					if pid == client.userUUID {
-						return nil // this client's own is the buildMatchFullState branch below
-					}
-					return r.buildMatchFullState(pid, isMaster)
-				})
+				r.mu.RLock()
+				loadFailed := r.boardLoadFailed
+				r.mu.RUnlock()
+				// A load that just failed changed nothing: repushing would hand the others an
+				// empty map_full_state (clearing their board_unavailable state with no board) or an
+				// identical copy of the board they already have.
+				if !loadFailed {
+					// r.pieces/r.walls just changed under whoever else was already at the table —
+					// unlike the registering client, handled below, nobody re-reads the board for
+					// them on its own. Re-push a fresh, fog-filtered map_full_state to every OTHER
+					// connected client, the same repush map_state_sync's old arm used to do after
+					// a seed (spec §4.3). dispatchPerPlayer releases r.mu before calling back into
+					// buildMapFullState, so this is safe to call with no lock held here.
+					r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+						if pid == client.userUUID {
+							return nil // this client's own map_full_state is the hasBoard branch below
+						}
+						return r.buildMapFullState(pid, isMaster)
+					})
+					// match_full_state goes along, AFTER the map (the same order as the client's own
+					// register below): the session may have just come alive under whoever was already
+					// at the table — a server restart, with a player faster than the master's
+					// rehydration, registered while r.session was nil and was greeted with no
+					// match_full_state at all. Nothing else would ever send it. buildMatchFullState
+					// is nil without a session, so a lobby sends nothing here.
+					r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+						if pid == client.userUUID {
+							return nil // this client's own is the buildMatchFullState branch below
+						}
+						return r.buildMatchFullState(pid, isMaster)
+					})
+				}
 			}
 
 			r.sendRoomState(client)

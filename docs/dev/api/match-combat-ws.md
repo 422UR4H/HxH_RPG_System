@@ -2375,7 +2375,8 @@ segue com o que tem, e uma conexão de jogador jamais recarrega um tabuleiro ins
 
 **A conexão continua aberta**, e o `match_full_state` segue sendo enviado como sempre. Se uma
 tentativa disparada por outra conexão der certo depois, quem está conectado recebe o
-`map_full_state` normalmente, e ele substitui este estado de falha.
+`map_full_state` normalmente, e ele substitui este estado de falha. Uma tentativa que
+falha de novo não manda nada aos demais conectados: o estado de falha deles continua valendo.
 
 **O que o cliente faz:** mostrar que o carregamento do mapa falhou e sugerir recarregar a
 página. Recarregar = reconectar, e a reconexão tenta carregar de novo.

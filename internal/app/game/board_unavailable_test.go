@@ -108,6 +108,19 @@ func newBoardUnavailableFixture(t *testing.T, started bool, outcomes []bool, wit
 	return f
 }
 
+// waitLoads waits for the master's register to have called Load (Dial returns
+// before Register runs) so the player cannot register first.
+func (f *boardUnavailableFixture) waitLoads(t *testing.T, n int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for f.loader.count() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("Load calls never reached %d (got %d)", n, f.loader.count())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func (f *boardUnavailableFixture) connect(t *testing.T, user uuid.UUID) *websocket.Conn {
 	t.Helper()
 	c := connectWS(t, f.server.URL, user, f.matchUUID)
@@ -167,6 +180,9 @@ func countBoardUnavailable(t *testing.T, msgs []game.Message) int {
 func TestBoardUnavailable_MasterLoadFails_GetsErrorAndNoMap(t *testing.T) {
 	f := newBoardUnavailableFixture(t, true, []bool{true}, true)
 	msgs := drain(f.connect(t, f.masterUUID))
+	if f.loader.count() != 1 {
+		t.Fatalf("Load calls = %d, want 1", f.loader.count())
+	}
 	if got := countBoardUnavailable(t, msgs); got != 1 {
 		t.Fatalf("board_unavailable count = %d, want 1", got)
 	}
@@ -180,6 +196,7 @@ func TestBoardUnavailable_PlayerRetrySucceeds_PlayerGetsMapAndMasterGetsRepush(t
 	// drain ends in a read-deadline error, which is sticky on a gorilla conn: each socket is
 	// drained once, at the end, and sees everything it was sent.
 	master := f.connect(t, f.masterUUID)
+	f.waitLoads(t, 1)
 	player := f.connect(t, f.playerUUID)
 
 	pmsgs := drain(player)
@@ -203,10 +220,23 @@ func TestBoardUnavailable_PlayerRetrySucceeds_PlayerGetsMapAndMasterGetsRepush(t
 
 func TestBoardUnavailable_PlayerRetryFails_PlayerGetsError(t *testing.T) {
 	f := newBoardUnavailableFixture(t, true, []bool{true, true}, true)
-	drain(f.connect(t, f.masterUUID))
+	master := f.connect(t, f.masterUUID)
+	f.waitLoads(t, 1)
 	pmsgs := drain(f.connect(t, f.playerUUID))
+	if f.loader.count() != 2 {
+		t.Fatalf("Load calls = %d, want 2 (retried and failed)", f.loader.count())
+	}
 	if got := countBoardUnavailable(t, pmsgs); got != 1 {
 		t.Fatalf("player board_unavailable count = %d, want 1", got)
+	}
+	// The failed retry changed nothing: the master must not get a (empty) map_full_state that
+	// would clear its failure state while the room still has no board.
+	mmsgs := drain(master)
+	if got := countBoardUnavailable(t, mmsgs); got != 1 {
+		t.Fatalf("master board_unavailable count = %d, want 1", got)
+	}
+	if got := countType(mmsgs, game.MsgTypeMapFullState); got != 0 {
+		t.Fatalf("master map_full_state count = %d, want 0 after a failed retry", got)
 	}
 	if got := countType(pmsgs, game.MsgTypeMapFullState); got != 0 {
 		t.Fatalf("player map_full_state count = %d, want 0", got)
@@ -218,11 +248,13 @@ func TestBoardUnavailable_InstalledBoard_PlayerNeverReloadsNorGetsError(t *testi
 	// board it has. A player connecting afterwards must not trigger a load or see the error.
 	f := newBoardUnavailableFixture(t, false, []bool{false, true}, true)
 	f.connect(t, f.masterUUID)
+	f.waitLoads(t, 1)
 	master2 := f.connect(t, f.masterUUID)
 	m2 := drain(master2)
 	if got := countBoardUnavailable(t, m2); got != 0 {
 		t.Fatalf("master reload failure with board installed sent board_unavailable %d times", got)
 	}
+	f.waitLoads(t, 2)
 	before := f.loader.count()
 	pmsgs := drain(f.connect(t, f.playerUUID))
 	if f.loader.count() != before {
