@@ -138,6 +138,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
 | [`connection_replaced`](#connection_replaced) | a conexão antiga, quando a mesma conta conecta de novo |
+| [`board_unavailable`](#board_unavailable) | quem conecta, quando o tabuleiro da partida não carregou |
 
 ---
 
@@ -2348,6 +2349,36 @@ conexão.** Em particular, **não reconectar por conta própria** — existe uma
 da mesma conta em algum lugar (a outra aba, o F5 que já terminou), e essa é a que vale; a
 antiga reabrir a sua própria só recriaria o mesmo conflito. A sala continua de pé e a conexão
 nova recebe normalmente tudo que se passar dali em diante.
+
+### `board_unavailable`
+
+**Direção:** servidor → cliente. **Destino:** a conexão que está se registrando, logo depois do
+`room_state` — no ponto em que o `map_full_state` iria. Como o `connection_replaced`, é um
+`error` que não responde a nada que o cliente tenha enviado.
+
+```json
+{
+  "type": "error",
+  "payload": {
+    "code": "board_unavailable",
+    "message": "the match board could not be loaded; reconnect to try again"
+  }
+}
+```
+
+**Quando vem:** a sala ainda não instalou nenhum tabuleiro e a última tentativa de carregá-lo
+(leitura do banco) falhou. Qualquer conexão — mestre ou jogador — dispara uma nova tentativa ao
+se registrar; só se ela também falhar a mensagem é enviada. Uma partida sem mapa anexado não é
+falha: o carregamento "volta vazio" e nada é enviado. Uma sala que já tem tabuleiro nunca manda
+isto, mesmo que uma recarga posterior (reconexão do mestre no lobby, `start_match`) falhe: ela
+segue com o que tem, e uma conexão de jogador jamais recarrega um tabuleiro instalado.
+
+**A conexão continua aberta**, e o `match_full_state` segue sendo enviado como sempre. Se uma
+tentativa disparada por outra conexão der certo depois, quem está conectado recebe o
+`map_full_state` normalmente, e ele substitui este estado de falha.
+
+**O que o cliente faz:** mostrar que o carregamento do mapa falhou e sugerir recarregar a
+página. Recarregar = reconectar, e a reconexão tenta carregar de novo.
 
 ---
 
