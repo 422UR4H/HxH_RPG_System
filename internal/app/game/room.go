@@ -146,8 +146,8 @@ type Room struct {
 	// master from silently resetting a live board out from under the session.
 	boardLoaded bool
 	// boardLoadFailed is true while the LAST loadBoard call ended in an error (false after any
-	// call that returned without one, board or no map attached). Together with !boardLoaded it
-	// means "this room never got a board and the table does not know why": every register then
+	// call that returned without one, board or no map attached). Together with !hasBoardLocked it
+	// means "this room has no board now and the table does not know why": every register then
 	// retries the load, a player's included, and tells the registering client with
 	// board_unavailable. Guarded by mu, like boardLoaded.
 	boardLoadFailed bool
@@ -341,16 +341,19 @@ func (r *Room) Run() {
 			// player's too: otherwise the table waits on the master reconnecting. An installed
 			// board is never reloaded by a player — that would throw away the moves of an open
 			// turn, which are only written at its close.
+			//
+			// "No board" is read from the board itself (hasBoardLocked), not from boardLoaded:
+			// boardLoaded stays true after a lobby board is cleared (map detached over REST), and
+			// a load that fails after that would otherwise leave the table waiting forever.
+			noBoard := !r.hasBoardLocked()
 			shouldLoadBoard := (isMaster && (r.session == nil || !r.boardLoaded)) ||
-				(r.boardLoadFailed && !r.boardLoaded)
+				(r.boardLoadFailed && noBoard)
 			r.mu.Unlock()
 
 			var boardCleared bool
 			if shouldLoadBoard {
-				boardCleared = r.loadBoard(context.Background())
-				r.mu.RLock()
-				loadFailed := r.boardLoadFailed
-				r.mu.RUnlock()
+				var loadFailed bool
+				boardCleared, loadFailed = r.loadBoard(context.Background())
 				// A load that just failed changed nothing on the board: repushing the map would
 				// hand the others an empty map_full_state (clearing their board_unavailable
 				// state with no board) or an identical copy of the board they already have. Only
@@ -376,23 +379,30 @@ func (r *Room) Run() {
 				// rehydration, registered while r.session was nil and was greeted with no
 				// match_full_state at all. Nothing else would ever send it. buildMatchFullState
 				// is nil without a session, so a lobby sends nothing here.
-				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-					if pid == client.userUUID {
-						return nil // this client's own is the buildMatchFullState branch below
-					}
-					return r.buildMatchFullState(pid, isMaster)
-				})
+				//
+				// Only on the MASTER's register: that is the one that follows RehydrateSession
+				// (handler.go). A player's retry brings no new session, and the front reads every
+				// match_full_state as a reconnection, so repushing it would reset the armed UI
+				// of everyone at the table.
+				if isMaster {
+					r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+						if pid == client.userUUID {
+							return nil // this client's own is the buildMatchFullState branch below
+						}
+						return r.buildMatchFullState(pid, isMaster)
+					})
+				}
 			}
 
 			r.sendRoomState(client)
 			r.mu.RLock()
-			boardUnavailable := r.boardLoadFailed && !r.boardLoaded
+			boardUnavailable := r.boardLoadFailed && !r.hasBoardLocked()
 			// The board is the match's map: whenever the room HAS one, every connecting client
 			// gets it — grid and bg included, even with no piece and no wall on it yet (a
 			// bg-only map before anything is placed). Without it the client has nothing to draw
 			// but the campaign map, which the match must never show. mapUUID is the guard
 			// loadBoard itself sets; pieces/walls cover a board seeded in memory with no map.
-			hasBoard := r.mapUUID != uuid.Nil || len(r.pieces) > 0 || len(r.walls) > 0
+			hasBoard := r.hasBoardLocked()
 			r.mu.RUnlock()
 			// A lobby board just cleared (its map was detached) is news too: this client may
 			// still be drawing the old one, and a cleared board has no mapUUID any more.
@@ -493,13 +503,15 @@ func (r *Room) Run() {
 // read-outside/write-inside shape StartMatch and RehydrateSession already use for the
 // session's own board sync.
 //
-// Returns true when it CLEARED a lobby's board: the match has no map attached any more (it
+// Returns (cleared, failed). failed is true when the read errored (boardLoadFailed was set);
+// it is returned rather than re-read by the caller because StartMatch can run loadBoard
+// concurrently on the master's read pump. cleared is true when it CLEARED a lobby's board: the match has no map attached any more (it
 // was detached over REST while the lobby was open), so the detached map's board must go — or
 // the lobby keeps showing it, the session is built on its walls, and start_match writes a row
 // for a map the match no longer has. The caller pushes the now-empty board to whoever needs it.
-func (r *Room) loadBoard(ctx context.Context) bool {
+func (r *Room) loadBoard(ctx context.Context) (cleared, failed bool) {
 	if r.deps.LoadBoardUC == nil {
-		return false
+		return false, false
 	}
 	board, err := r.deps.LoadBoardUC.Load(ctx, r.matchUUID)
 	if err != nil {
@@ -507,7 +519,7 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 		r.mu.Lock()
 		r.boardLoadFailed = true
 		r.mu.Unlock()
-		return false
+		return false, true
 	}
 
 	// Whether there is already a live session to seed memories for is read under its OWN
@@ -552,9 +564,9 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 			r.grid = mapentity.GridShape{}
 			r.bg = nil
 			r.mapUUID = uuid.Nil
-			return true
+			return true, false
 		}
-		return false
+		return false, false
 	}
 	r.boardLoaded = true
 
@@ -595,7 +607,13 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 			}
 		}
 	}
-	return false
+	return false, false
+}
+
+// hasBoardLocked reports whether the room holds a board right now: a map's board (mapUUID is
+// always set by loadBoard) or one seeded in memory with pieces/walls only. Caller holds r.mu.
+func (r *Room) hasBoardLocked() bool {
+	return r.mapUUID != uuid.Nil || len(r.pieces) > 0 || len(r.walls) > 0
 }
 
 func (r *Room) StartMatch(userUUID uuid.UUID) error {
@@ -630,7 +648,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	// and saved over the move. Lock order is persistMu, then r.mu (loadBoard and
 	// persistBoardLocked take r.mu themselves).
 	r.persistMu.Lock()
-	r.loadBoard(ctx)
+	_, _ = r.loadBoard(ctx)
 	r.persistBoardLocked("start_match", false)
 	r.persistMu.Unlock()
 

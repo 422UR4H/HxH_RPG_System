@@ -26,7 +26,9 @@ type flakyBoardLoader struct {
 	mu       sync.Mutex
 	calls    int
 	outcomes []bool
-	board    *matchboard.Board
+	// nilAt lists the call indexes that succeed with (nil, nil): "no map attached".
+	nilAt map[int]bool
+	board *matchboard.Board
 }
 
 func (f *flakyBoardLoader) Load(_ context.Context, _ uuid.UUID) (*matchboard.Board, error) {
@@ -36,6 +38,9 @@ func (f *flakyBoardLoader) Load(_ context.Context, _ uuid.UUID) (*matchboard.Boa
 	f.calls++
 	if i < len(f.outcomes) && f.outcomes[i] {
 		return nil, errors.New("db down")
+	}
+	if f.nilAt[i] {
+		return nil, nil
 	}
 	return f.board, nil
 }
@@ -213,6 +218,11 @@ func TestBoardUnavailable_PlayerRetrySucceeds_PlayerGetsMapAndMasterGetsRepush(t
 	if got := countType(mmsgs, game.MsgTypeMapFullState); got != 1 {
 		t.Fatalf("master repush count = %d, want 1", got)
 	}
+	// Only the master's own register repushes match_full_state; the player's retry must not,
+	// or every client's armed UI resets (the front reads each one as a reconnection).
+	if got := countType(mmsgs, game.MsgTypeMatchFullState); got != 1 {
+		t.Fatalf("master match_full_state count = %d, want 1 (its own register only)", got)
+	}
 	if f.loader.count() != 2 {
 		t.Fatalf("Load calls = %d, want 2", f.loader.count())
 	}
@@ -237,6 +247,9 @@ func TestBoardUnavailable_PlayerRetryFails_PlayerGetsError(t *testing.T) {
 	}
 	if got := countType(mmsgs, game.MsgTypeMapFullState); got != 0 {
 		t.Fatalf("master map_full_state count = %d, want 0 after a failed retry", got)
+	}
+	if got := countType(mmsgs, game.MsgTypeMatchFullState); got != 1 {
+		t.Fatalf("master match_full_state count = %d, want 1 (its own register only)", got)
 	}
 	if got := countType(pmsgs, game.MsgTypeMapFullState); got != 0 {
 		t.Fatalf("player map_full_state count = %d, want 0", got)
@@ -278,5 +291,34 @@ func TestBoardUnavailable_NoMapAttached_NoErrorNoPlayerLoad(t *testing.T) {
 	}
 	if got := countBoardUnavailable(t, pmsgs); got != 0 {
 		t.Fatalf("player board_unavailable = %d, want 0", got)
+	}
+}
+
+func TestBoardUnavailable_LobbyBoardClearedThenLoadFails_MasterGetsErrorAndPlayerRetries(t *testing.T) {
+	// Lobby: call 0 installs the board; call 1 finds the map detached (nil, nil) and clears it
+	// (boardLoaded stays true); call 2 (a later master reconnect) FAILS. The room has no board
+	// now, so the master must be told, and a player connecting must retry the load.
+	f := newBoardUnavailableFixture(t, false, []bool{false, false, true}, true)
+	f.loader.nilAt = map[int]bool{1: true}
+	f.connect(t, f.masterUUID)
+	f.waitLoads(t, 1)
+	f.connect(t, f.masterUUID)
+	f.waitLoads(t, 2)
+	master3 := f.connect(t, f.masterUUID)
+	f.waitLoads(t, 3)
+	m3 := drain(master3)
+	if got := countBoardUnavailable(t, m3); got != 1 {
+		t.Fatalf("master board_unavailable count = %d, want 1", got)
+	}
+	before := f.loader.count()
+	pmsgs := drain(f.connect(t, f.playerUUID))
+	if f.loader.count() != before+1 {
+		t.Fatalf("player connect Load calls: %d -> %d, want one retry", before, f.loader.count())
+	}
+	if got := countType(pmsgs, game.MsgTypeMapFullState); got != 1 {
+		t.Fatalf("player map_full_state count = %d, want 1 after a successful retry", got)
+	}
+	if got := countBoardUnavailable(t, pmsgs); got != 0 {
+		t.Fatalf("player board_unavailable count = %d, want 0", got)
 	}
 }
