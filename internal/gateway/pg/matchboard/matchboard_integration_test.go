@@ -109,6 +109,38 @@ func TestMatchBoard(t *testing.T) {
 		}
 	})
 
+	t.Run("save then get round-trips a populated bg", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		matchUUID, mapUUID := setupMatchAndMap(t)
+
+		bg := &mapentity.BgImage{
+			URL: "https://example.com/board.png", X: 12.5, Y: -3.25,
+			Width: 1280, Height: 960, Rotation: 22.5, Opacity: 0.65,
+		}
+		board := &matchboard.Board{
+			MatchUUID: matchUUID,
+			MapUUID:   mapUUID,
+			Grid:      mapentity.DefaultGrid(),
+			Bg:        bg,
+			Pieces:    []mapentity.Piece{},
+			Walls:     []mapentity.WallSegment{},
+		}
+		if err := repo.Save(ctx, board); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		got, err := repo.Get(ctx, matchUUID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if got == nil {
+			t.Fatalf("expected a board after Save, got nil")
+		}
+		if got.Bg == nil || !reflect.DeepEqual(*got.Bg, *bg) {
+			t.Fatalf("Bg: got %+v want %+v", got.Bg, bg)
+		}
+	})
+
 	t.Run("save twice upserts", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		matchUUID, mapUUID := setupMatchAndMap(t)
@@ -332,6 +364,41 @@ func TestMatchBoardCopy(t *testing.T) {
 		}
 		if len(srcMems) != 2 {
 			t.Fatalf("expected src's own 2 memories untouched, got %d", len(srcMems))
+		}
+	})
+
+	t.Run("copy preserves the source board's bg", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		masterUUID := pgtest.InsertTestUser(t, pool, "gm-copy-bg", "gm-copy-bg@test.com", "pass")
+		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Copy Bg Campaign")
+		srcMatch := uuid.MustParse(pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Src Bg Match"))
+		dstMatch := uuid.MustParse(pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Dst Bg Match"))
+		mapUUID := uuid.MustParse(pgtest.InsertTestMap(t, pool, campaignUUID, "Bg Map"))
+
+		bg := &mapentity.BgImage{
+			URL: "https://example.com/src.png", X: 4, Y: 8,
+			Width: 640, Height: 480, Rotation: 90, Opacity: 0.3,
+		}
+		if err := repo.Save(ctx, &matchboard.Board{
+			MatchUUID: srcMatch, MapUUID: mapUUID, Grid: mapentity.DefaultGrid(), Bg: bg,
+			Pieces: []mapentity.Piece{}, Walls: []mapentity.WallSegment{},
+		}); err != nil {
+			t.Fatalf("save src board: %v", err)
+		}
+
+		if err := repo.Copy(ctx, srcMatch, dstMatch); err != nil {
+			t.Fatalf("Copy: %v", err)
+		}
+
+		got, err := repo.Get(ctx, dstMatch)
+		if err != nil {
+			t.Fatalf("Get dst after Copy: %v", err)
+		}
+		if got == nil {
+			t.Fatalf("expected a board on dst after Copy, got nil")
+		}
+		if got.Bg == nil || !reflect.DeepEqual(*got.Bg, *bg) {
+			t.Fatalf("Bg after Copy: got %+v want src's %+v", got.Bg, bg)
 		}
 	})
 
