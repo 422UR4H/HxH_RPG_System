@@ -84,7 +84,12 @@ cliente:
   reconectar (aba nova, F5) recarrega, o que cobre uma edição do mapa antes do primeiro
   movimento;
 - **depois que a partida começa, só no nascimento** — um mestre que reconecta em pleno jogo
-  não reseta o tabuleiro ao vivo por baixo da sessão.
+  não reseta o tabuleiro ao vivo por baixo da sessão;
+- **qualquer conexão tenta de novo enquanto a sala não tem tabuleiro agora e a última
+  carga falhou** — o jogador também. Uma conexão que ainda não encontra tabuleiro recebe
+  `board_unavailable`. A retentativa de um jogador reenvia o `map_full_state` aos demais só
+  quando dá certo, e nunca reenvia `match_full_state` (só o registro do mestre, que segue a
+  reidratação da sessão, faz isso). Um tabuleiro instalado nunca é recarregado por jogador.
 
 O `map_full_state` que cada cliente recebe ao se conectar (ver `piece_moved`/`piece_removed`
 em [`match-combat-ws.md`](match-combat-ws.md)) já reflete esse tabuleiro, filtrado por LOS do

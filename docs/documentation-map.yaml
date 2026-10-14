@@ -952,7 +952,10 @@ mappings:
       §4.3): the Room loads its own board via RoomDeps.LoadBoardUC (nil = no board
       capability) in Run's register branch — at birth, and on every master
       register while still a lobby (boardLoaded gates that to once after the
-      match starts). map_state_sync no longer writes anything (see message.go's
+      match starts). Any connection retries a failed load while the room has no
+      board now (hasBoardLocked false) and a still-empty one gets board_unavailable;
+      a player's retry repushes map_full_state to the others only on success and
+      never match_full_state (master register only). map_state_sync no longer writes anything (see message.go's
       own note); applyWallInteract/revealSecretDoors answer unknown_wall to the
       master for a targetId the server does not know, instead of the old silent
       skip.

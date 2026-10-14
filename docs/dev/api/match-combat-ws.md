@@ -2166,7 +2166,7 @@ logo depois de `room_state` e do `map_full_state` (sempre que a sala tem tabulei
 sem nenhuma peça nem parede, só com grade e fundo: o tabuleiro é o mapa da partida, e sem ele
 o cliente não tem o que desenhar), e antes do `player_joined` que avisa os demais da chegada.
 
-Quem já estava conectado também recebe `match_full_state` (logo depois do `map_full_state` reenviado) quando a sessão é restaurada depois de um reinício do servidor, no registro do mestre — o jogador que chegou antes da reidratação foi recebido sem sessão e, sem isso, ficaria sem ele.
+Quem já estava conectado também recebe `match_full_state` (logo depois do `map_full_state` reenviado) quando a sessão é restaurada depois de um reinício do servidor, e **só no registro do mestre** (é ele que segue a reidratação; a retentativa de carga de um jogador, ver [`board_unavailable`](#board_unavailable), jamais reenvia `match_full_state` aos demais, ou a UI armada de todos seria zerada) — o jogador que chegou antes da reidratação foi recebido sem sessão e, sem isso, ficaria sem ele.
 
 ### `piece_moved` (também servidor → cliente, na ABERTURA do turno)
 
@@ -2366,10 +2366,10 @@ nova recebe normalmente tudo que se passar dali em diante.
 }
 ```
 
-**Quando vem:** a sala ainda não instalou nenhum tabuleiro e a última tentativa de carregá-lo
+**Quando vem:** a sala não tem tabuleiro agora (sem `mapUUID`, peça nem parede — inclui um tabuleiro de lobby limpo por desanexar o mapa) e a última tentativa de carregá-lo
 (leitura do banco) falhou. Qualquer conexão — mestre ou jogador — dispara uma nova tentativa ao
 se registrar; só se ela também falhar a mensagem é enviada. Uma partida sem mapa anexado não é
-falha: o carregamento "volta vazio" e nada é enviado. Uma sala que já tem tabuleiro nunca manda
+falha: o carregamento "volta vazio" e nada é enviado. Uma sala que tem tabuleiro agora nunca manda
 isto, mesmo que uma recarga posterior (reconexão do mestre no lobby, `start_match`) falhe: ela
 segue com o que tem, e uma conexão de jogador jamais recarrega um tabuleiro instalado.
 
