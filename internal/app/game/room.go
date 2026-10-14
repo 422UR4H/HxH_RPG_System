@@ -344,7 +344,7 @@ func (r *Room) Run() {
 				// buildMapFullState, so this is safe to call with no lock held here.
 				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 					if pid == client.userUUID {
-						return nil // this client's own map_full_state is the hasPieces branch below
+						return nil // this client's own map_full_state is the hasBoard branch below
 					}
 					return r.buildMapFullState(pid, isMaster)
 				})
@@ -364,14 +364,16 @@ func (r *Room) Run() {
 
 			r.sendRoomState(client)
 			r.mu.RLock()
-			// A board can now carry walls with no piece on it at all (spec §4.3), so a
-			// wall-only board must still reach a connecting client instead of waiting for the
-			// old pieces-only condition to go true by luck.
-			hasPieces := len(r.pieces) > 0 || len(r.walls) > 0
+			// The board is the match's map: whenever the room HAS one, every connecting client
+			// gets it — grid and bg included, even with no piece and no wall on it yet (a
+			// bg-only map before anything is placed). Without it the client has nothing to draw
+			// but the campaign map, which the match must never show. mapUUID is the guard
+			// loadBoard itself sets; pieces/walls cover a board seeded in memory with no map.
+			hasBoard := r.mapUUID != uuid.Nil || len(r.pieces) > 0 || len(r.walls) > 0
 			r.mu.RUnlock()
 			// A lobby board just cleared (its map was detached) is news too: this client may
-			// still be drawing the old one, and an empty board never passes hasPieces.
-			if hasPieces || boardCleared {
+			// still be drawing the old one, and a cleared board has no mapUUID any more.
+			if hasBoard || boardCleared {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
 				client.SendMessage(*msg)
 			}

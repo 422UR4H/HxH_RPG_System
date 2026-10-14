@@ -2161,9 +2161,9 @@ reação cobrada, não perdida: sai da lista sem o aviso de perda e sem devolver
 vivo, o mesmo fato chega em [`reaction_attached`](#reaction_attached).
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
-logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
-tabuleiro — desde B14 um tabuleiro pode ter paredes sem nenhuma peça), e antes do
-`player_joined` que avisa os demais da chegada.
+logo depois de `room_state` e do `map_full_state` (sempre que a sala tem tabuleiro — mesmo
+sem nenhuma peça nem parede, só com grade e fundo: o tabuleiro é o mapa da partida, e sem ele
+o cliente não tem o que desenhar), e antes do `player_joined` que avisa os demais da chegada.
 
 Quem já estava conectado também recebe `match_full_state` (logo depois do `map_full_state` reenviado) quando a sessão é restaurada depois de um reinício do servidor, no registro do mestre — o jogador que chegou antes da reidratação foi recebido sem sessão e, sem isso, ficaria sem ele.
 

@@ -395,7 +395,7 @@ Todos os payloads usam camelCase. Esses eventos são enviados durante uma partid
 
 #### `map_full_state`
 
-Enviado a cada cliente que se conecta, e re-enviado após operações que alteram o estado do tabuleiro. Cada cliente recebe uma versão filtrada por papel.
+Enviado a cada cliente que se conecta sempre que a sala tem tabuleiro — mesmo um tabuleiro sem peça nem parede, só com grade e fundo — ou quando o tabuleiro do lobby acaba de ser limpo (mapa desanexado); re-enviado após operações que alteram o estado do tabuleiro. Cada cliente recebe uma versão filtrada por papel.
 
 **Payload (jogador não-master):**
 
@@ -434,9 +434,9 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 | Campo | Descrição |
 |---|---|
 | `grid` | A grade do **tabuleiro da partida** (mesmo formato de `grid` no REST). A mesa desenha com esta, não com a do mapa da campanha. Ausente só quando a sala não tem tabuleiro. |
-| `bg` | O fundo do **tabuleiro da partida** (mesmo formato de `bg` no REST: `url, x, y, width, height, rotation, opacity`); `null` quando o tabuleiro não tem fundo. A mesa desenha com este, não com o do mapa da campanha. |
+| `bg` | O fundo do **tabuleiro da partida** (mesmo formato de `bg` no REST: `url, x, y, width, height, rotation, opacity`); `null` quando o tabuleiro não tem fundo. Ausente junto com `grid`, quando a sala não tem tabuleiro. A mesa desenha com este, não com o do mapa da campanha. |
 
-Vale para mestre e jogador (e para o lobby, cujo front ignora os dois).
+Vale para mestre e jogador, na mesa e no lobby: os dois desenham a grade e o fundo daqui, nunca os do mapa da campanha.
 
 > O master não recebe `visiblePolygons` — campo omitido.
 

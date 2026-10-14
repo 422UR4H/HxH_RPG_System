@@ -1204,10 +1204,24 @@ type MapFullStatePayload struct {
 	FogMode         string               `json:"fogMode"`
 	// Grid and Bg are the MATCH BOARD's own grid and background (what the room loaded), the
 	// ones the server measures with: the table draws with these, not with the campaign map's.
-	// Grid is absent only when the room has no board (CellSize 0); Bg is null when the board
-	// has no background.
+	// Grid is absent only when the room has no board (CellSize 0), and Bg goes with it; with a
+	// board, Bg is null when the board has no background (MarshalJSON below).
 	Grid *GridShapePayload `json:"grid,omitempty"`
 	Bg   *BgImagePayload   `json:"bg"`
+}
+
+// MarshalJSON omits bg when there is no grid (no board at all), and keeps the explicit
+// "bg": null when there IS a board with no background — "no board" and "a board with no
+// background" are different things to the client.
+func (p MapFullStatePayload) MarshalJSON() ([]byte, error) {
+	type plain MapFullStatePayload
+	if p.Grid != nil {
+		return json.Marshal(plain(p))
+	}
+	return json.Marshal(struct {
+		plain
+		Bg *BgImagePayload `json:"bg,omitempty"`
+	}{plain: plain(p)})
 }
 
 // BgImagePayload is the WS wire-format mirror of entity.BgImage (and of the REST
