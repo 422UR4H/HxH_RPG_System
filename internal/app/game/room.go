@@ -145,14 +145,18 @@ type Room struct {
 	// reloads regardless of this flag, but once playing, boardLoaded stops a reconnecting
 	// master from silently resetting a live board out from under the session.
 	boardLoaded bool
+	// boardLoadFailed is true while the LAST loadBoard call ended in an error (false after any
+	// call that returned without one, board or no map attached). Together with !hasBoardLocked it
+	// means "this room has no board now and the table does not know why": every register then
+	// retries the load, a player's included, and tells the registering client with
+	// board_unavailable. Guarded by mu, like boardLoaded.
+	boardLoadFailed bool
 	// mapUUID is the map the room's board belongs to — set from Board.MapUUID in loadBoard.
 	// uuid.Nil means "no board loaded yet" (or no map attached at all), and persistBoard is a
 	// no-op in that state: there is nothing to write a match_boards row FOR (spec §4.3).
 	mapUUID uuid.UUID
-	// bg is the board's own background override, loaded from Board.Bg in loadBoard and
-	// preserved on every persistBoard save. nil means "inherit the map's background"
-	// (matchboard.Board.Bg's own doc comment) — nobody writes a non-nil value yet; the
-	// in-match map editor that will is future work.
+	// bg is the board's own background, part of its portrait: loaded from Board.Bg in
+	// loadBoard and preserved on every persistBoard save. nil means the board has no background.
 	bg *mapentity.BgImage
 	// persistMu serializes every board snapshot-and-write pair across goroutines — persistBoard's
 	// and persistClosedTurn's (whose PersistTurnClose writes the board in the turn's own
@@ -332,50 +336,87 @@ func (r *Room) Run() {
 			// master rehydrating one that has not reached this branch yet); !r.boardLoaded
 			// narrows the OTHER case — session already live, because handler.go rehydrated
 			// it before Register — to a single load, at birth.
-			shouldLoadBoard := isMaster && (r.session == nil || !r.boardLoaded)
+			//
+			// A failed load that never installed a board is retried by ANY connection, a
+			// player's too: otherwise the table waits on the master reconnecting. An installed
+			// board is never reloaded by a player — that would throw away the moves of an open
+			// turn, which are only written at its close.
+			//
+			// "No board" is read from the board itself (hasBoardLocked), not from boardLoaded:
+			// boardLoaded stays true after a lobby board is cleared (map detached over REST), and
+			// a load that fails after that would otherwise leave the table waiting forever.
+			noBoard := !r.hasBoardLocked()
+			shouldLoadBoard := (isMaster && (r.session == nil || !r.boardLoaded)) ||
+				(r.boardLoadFailed && noBoard)
 			r.mu.Unlock()
 
 			var boardCleared bool
 			if shouldLoadBoard {
-				boardCleared = r.loadBoard(context.Background())
-				// r.pieces/r.walls just changed under whoever else was already at the table —
-				// unlike the registering client, handled below, nobody re-reads the board for
-				// them on its own. Re-push a fresh, fog-filtered map_full_state to every OTHER
-				// connected client, the same repush map_state_sync's old arm used to do after
-				// a seed (spec §4.3). dispatchPerPlayer releases r.mu before calling back into
-				// buildMapFullState, so this is safe to call with no lock held here.
-				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-					if pid == client.userUUID {
-						return nil // this client's own map_full_state is the hasPieces branch below
-					}
-					return r.buildMapFullState(pid, isMaster)
-				})
+				var loadFailed bool
+				boardCleared, loadFailed = r.loadBoard(context.Background())
+				// A load that just failed changed nothing on the board: repushing the map would
+				// hand the others an empty map_full_state (clearing their board_unavailable
+				// state with no board) or an identical copy of the board they already have. Only
+				// the map repush is gated; the match_full_state one below does not depend on the
+				// load succeeding.
+				if !loadFailed {
+					// r.pieces/r.walls just changed under whoever else was already at the table —
+					// unlike the registering client, handled below, nobody re-reads the board for
+					// them on its own. Re-push a fresh, fog-filtered map_full_state to every OTHER
+					// connected client, the same repush map_state_sync's old arm used to do after
+					// a seed (spec §4.3). dispatchPerPlayer releases r.mu before calling back into
+					// buildMapFullState, so this is safe to call with no lock held here.
+					r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+						if pid == client.userUUID {
+							return nil // this client's own map_full_state is the hasBoard branch below
+						}
+						return r.buildMapFullState(pid, isMaster)
+					})
+				}
 				// match_full_state goes along, AFTER the map (the same order as the client's own
 				// register below): the session may have just come alive under whoever was already
 				// at the table — a server restart, with a player faster than the master's
 				// rehydration, registered while r.session was nil and was greeted with no
 				// match_full_state at all. Nothing else would ever send it. buildMatchFullState
 				// is nil without a session, so a lobby sends nothing here.
-				r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
-					if pid == client.userUUID {
-						return nil // this client's own is the buildMatchFullState branch below
-					}
-					return r.buildMatchFullState(pid, isMaster)
-				})
+				//
+				// Only on the MASTER's register: that is the one that follows RehydrateSession
+				// (handler.go). A player's retry brings no new session, and the front reads every
+				// match_full_state as a reconnection, so repushing it would reset the armed UI
+				// of everyone at the table.
+				if isMaster {
+					r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+						if pid == client.userUUID {
+							return nil // this client's own is the buildMatchFullState branch below
+						}
+						return r.buildMatchFullState(pid, isMaster)
+					})
+				}
 			}
 
 			r.sendRoomState(client)
 			r.mu.RLock()
-			// A board can now carry walls with no piece on it at all (spec §4.3), so a
-			// wall-only board must still reach a connecting client instead of waiting for the
-			// old pieces-only condition to go true by luck.
-			hasPieces := len(r.pieces) > 0 || len(r.walls) > 0
+			boardUnavailable := r.boardLoadFailed && !r.hasBoardLocked()
+			// The board is the match's map: whenever the room HAS one, every connecting client
+			// gets it — grid and bg included, even with no piece and no wall on it yet (a
+			// bg-only map before anything is placed). Without it the client has nothing to draw
+			// but the campaign map, which the match must never show. mapUUID is the guard
+			// loadBoard itself sets; pieces/walls cover a board seeded in memory with no map.
+			hasBoard := r.hasBoardLocked()
 			r.mu.RUnlock()
 			// A lobby board just cleared (its map was detached) is news too: this client may
-			// still be drawing the old one, and an empty board never passes hasPieces.
-			if hasPieces || boardCleared {
+			// still be drawing the old one, and a cleared board has no mapUUID any more.
+			if hasBoard || boardCleared {
 				msg := r.buildMapFullState(client.userUUID, r.IsMaster(client.userUUID))
 				client.SendMessage(*msg)
+			}
+			// The load failed and the room has no board to show: say so where the
+			// map_full_state would have gone, instead of leaving the client waiting forever.
+			// The connection stays open; a later map_full_state replaces this state.
+			if boardUnavailable {
+				client.SendMessage(NewErrorMessage(
+					"board_unavailable", "the match board could not be loaded; reconnect to try again",
+				))
 			}
 			// map_full_state above covers the board and nothing else. A client that connects
 			// or reconnects mid-combat still needs the bars, the round regime, the open turn
@@ -462,18 +503,23 @@ func (r *Room) Run() {
 // read-outside/write-inside shape StartMatch and RehydrateSession already use for the
 // session's own board sync.
 //
-// Returns true when it CLEARED a lobby's board: the match has no map attached any more (it
+// Returns (cleared, failed). failed is true when the read errored (boardLoadFailed was set);
+// it is returned rather than re-read by the caller because StartMatch can run loadBoard
+// concurrently on the master's read pump. cleared is true when it CLEARED a lobby's board: the match has no map attached any more (it
 // was detached over REST while the lobby was open), so the detached map's board must go — or
 // the lobby keeps showing it, the session is built on its walls, and start_match writes a row
 // for a map the match no longer has. The caller pushes the now-empty board to whoever needs it.
-func (r *Room) loadBoard(ctx context.Context) bool {
+func (r *Room) loadBoard(ctx context.Context) (cleared, failed bool) {
 	if r.deps.LoadBoardUC == nil {
-		return false
+		return false, false
 	}
 	board, err := r.deps.LoadBoardUC.Load(ctx, r.matchUUID)
 	if err != nil {
 		log.Printf("load match board for match %s: %v", r.matchUUID, err)
-		return false
+		r.mu.Lock()
+		r.boardLoadFailed = true
+		r.mu.Unlock()
+		return false, true
 	}
 
 	// Whether there is already a live session to seed memories for is read under its OWN
@@ -501,6 +547,7 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.boardLoadFailed = false
 	if board == nil {
 		// No map attached at all — nothing to load. A lobby that attaches a map later is
 		// picked up by the NEXT master connect (or start_match), since boardLoaded only gates
@@ -517,9 +564,9 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 			r.grid = mapentity.GridShape{}
 			r.bg = nil
 			r.mapUUID = uuid.Nil
-			return true
+			return true, false
 		}
-		return false
+		return false, false
 	}
 	r.boardLoaded = true
 
@@ -560,7 +607,13 @@ func (r *Room) loadBoard(ctx context.Context) bool {
 			}
 		}
 	}
-	return false
+	return false, false
+}
+
+// hasBoardLocked reports whether the room holds a board right now: a map's board (mapUUID is
+// always set by loadBoard) or one seeded in memory with pieces/walls only. Caller holds r.mu.
+func (r *Room) hasBoardLocked() bool {
+	return r.mapUUID != uuid.Nil || len(r.pieces) > 0 || len(r.walls) > 0
 }
 
 func (r *Room) StartMatch(userUUID uuid.UUID) error {
@@ -595,7 +648,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	// and saved over the move. Lock order is persistMu, then r.mu (loadBoard and
 	// persistBoardLocked take r.mu themselves).
 	r.persistMu.Lock()
-	r.loadBoard(ctx)
+	_, _ = r.loadBoard(ctx)
 	r.persistBoardLocked("start_match", false)
 	r.persistMu.Unlock()
 
@@ -1947,7 +2000,7 @@ func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from, to *[3]int)
 	polys := r.session.GetVisibility(pid)
 	var oldPt domainservice.Point2D
 	if from != nil {
-		ox, oy := mapservice.SlotCenterToWorld(from[0], from[1], grid)
+		ox, oy := mapservice.SlotCenterToLocal(from[0], from[1], grid)
 		oldPt = domainservice.Point2D{X: ox, Y: oy}
 	}
 	if to == nil {
@@ -1957,7 +2010,7 @@ func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from, to *[3]int)
 		}
 		return "", false
 	}
-	nx, ny := mapservice.SlotCenterToWorld(to[0], to[1], grid)
+	nx, ny := mapservice.SlotCenterToLocal(to[0], to[1], grid)
 	return pieceMoveView(polys, domainservice.Point2D{X: nx, Y: ny}, oldPt, from != nil, false)
 }
 
@@ -2619,8 +2672,8 @@ func (r *Room) gridShape() mapentity.GridShape {
 }
 
 // slotToAB reads a piece's grid position [a, b] out of its SlotPayload — (a, b) is (q, r)
-// axial on a hex slot, (col, row) on a square one. Shared by slotPayloadToWorld (which turns
-// it into a world point) and pieceSlotOf (which reports it as the Move.From a/b pair
+// axial on a hex slot, (col, row) on a square one. Shared by slotPayloadToLocal (which turns
+// it into a LOCAL point) and pieceSlotOf (which reports it as the Move.From a/b pair
 // verbatim), so the two never drift into disagreeing about which field means what.
 func slotToAB(s SlotPayload) (a, b int) {
 	if s.Kind == "hex" {
@@ -2641,12 +2694,14 @@ func slotToAB(s SlotPayload) (a, b int) {
 	return a, b
 }
 
-func slotPayloadToWorld(s SlotPayload, g mapentity.GridShape) (float64, float64) {
+// slotPayloadToLocal returns the center of a piece's slot in the grid's LOCAL (pre-transform)
+// space — the space walls and visibility polygons live in.
+func slotPayloadToLocal(s SlotPayload, g mapentity.GridShape) (float64, float64) {
 	a, b := slotToAB(s)
-	return mapservice.SlotCenterToWorld(a, b, g)
+	return mapservice.SlotCenterToLocal(a, b, g)
 }
 
-// PlayerPiecePositions implements matchsession.PiecePositionSource. It returns the world
+// PlayerPiecePositions implements matchsession.PiecePositionSource. It returns the LOCAL
 // positions of the pieces owned by playerID (resolved via the session's char→player map).
 //
 // LOCKING: the caller MUST already hold r.mu. This method deliberately takes no lock of
@@ -2671,7 +2726,7 @@ func (r *Room) PlayerPiecePositions(playerID uuid.UUID) []domainservice.Point2D 
 		if charToPlayer == nil || charToPlayer[p.CharacterID] != playerID {
 			continue
 		}
-		x, y := slotPayloadToWorld(p.Slot, grid)
+		x, y := slotPayloadToLocal(p.Slot, grid)
 		out = append(out, domainservice.Point2D{X: x, Y: y})
 	}
 	return out
@@ -2692,9 +2747,10 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	if r.session != nil {
 		grid = r.session.GetGrid()
 	}
+	boardBg := r.bg
 	for _, p := range r.pieces {
 		allPieces = append(allPieces, p)
-		x, y := slotPayloadToWorld(p.Slot, grid)
+		x, y := slotPayloadToLocal(p.Slot, grid)
 		visible := true
 		if p.Visible != nil {
 			visible = *p.Visible
@@ -2751,12 +2807,13 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	for i, w := range walls {
 		wallPayloads[i] = toWallSegmentPayload(w)
 	}
-	payload := MapFullStatePayload{Pieces: pieces, Walls: wallPayloads, FogMode: string(fogMode)}
-	if !isMaster && isLobby {
-		// Disabled until the frontend consumes payload.Walls in lobby mode
-		// (useLobbyWs.ts currently drops it). The masking computation above is intact —
-		// flip this back to `payload.Walls = wallPayloads` to re-enable.
-		payload.Walls = []WallSegmentPayload{}
+	payload := MapFullStatePayload{
+		Pieces: pieces, Walls: wallPayloads, FogMode: string(fogMode),
+		Bg: toBgImagePayload(boardBg),
+	}
+	if grid.CellSize > 0 {
+		g := toGridShapePayload(grid)
+		payload.Grid = &g
 	}
 	if !isMaster && !isLobby {
 		payload.VisiblePolygons = polysToPayload(polys)
@@ -3070,10 +3127,10 @@ func (r *Room) applyAndRelayPieceMoveIfOwned(
 // The caller must NOT hold r.mu.
 func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origin uuid.UUID) map[uuid.UUID]masteraction.View {
 	grid := r.gridShape()
-	newX, newY := slotPayloadToWorld(payload.Slot, grid)
+	newX, newY := slotPayloadToLocal(payload.Slot, grid)
 	var oldX, oldY float64
 	if hadOld {
-		oldX, oldY = slotPayloadToWorld(old.Slot, grid)
+		oldX, oldY = slotPayloadToLocal(old.Slot, grid)
 	}
 	hidden := payload.Visible != nil && !*payload.Visible
 
@@ -3552,8 +3609,8 @@ func (r *Room) pieceSlotOf(characterID string) (pos *[3]int, ok bool) {
 }
 
 // slotKeepingKind puts a piece at grid position pos in the slot SHAPE it already had. The
-// board can be hexagonal, and forcing "square" here would put a hex piece at the world position
-// of a square cell. An empty Kind is left empty on purpose: slotPayloadToWorld already reads
+// board can be hexagonal, and forcing "square" here would put a hex piece at the LOCAL position
+// of a square cell. An empty Kind is left empty on purpose: slotPayloadToLocal already reads
 // anything that is not "hex" as square, and rewriting it would change what the client seeded.
 func slotKeepingKind(old SlotPayload, pos [3]int) SlotPayload {
 	if old.Kind == "hex" {
@@ -3624,7 +3681,7 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 	grid := r.gridShape()
 	var oldPt domainservice.Point2D
 	if hadOld {
-		oldPt.X, oldPt.Y = slotPayloadToWorld(old.Slot, grid)
+		oldPt.X, oldPt.Y = slotPayloadToLocal(old.Slot, grid)
 	}
 
 	payload := PieceRemovedPayload{PieceID: old.PieceID}

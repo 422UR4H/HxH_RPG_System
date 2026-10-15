@@ -7,6 +7,12 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 )
 
+// wallBoundsTolerance absorve ruído de ponto flutuante: o front calcula os
+// vértices do hex como centro + cellSize*cos(ângulo) e a borda esquerda sai
+// 1 ulp além de minX. Em unidades LOCAIS: muito acima do ruído de float64
+// (~1e-14) e muito abaixo de um pixel.
+const wallBoundsTolerance = 1e-6
+
 var (
 	ErrNameTooShort      = errors.New("map name must be at least 3 characters")
 	ErrInvalidCellSize   = errors.New("cell_size must be > 0")
@@ -49,8 +55,7 @@ func ValidateFogMode(m fog.FogMode) error {
 }
 
 func ValidateWallSegments(walls []entity.WallSegment, grid entity.GridShape) error {
-	maxX := float64(grid.Cols) * grid.CellSize
-	maxY := float64(grid.Rows) * grid.CellSize
+	minX, minY, maxX, maxY := GridLocalBounds(grid)
 	for _, w := range walls {
 		if w.P1 == w.P2 {
 			return ErrWallSameEndpoints
@@ -65,7 +70,8 @@ func ValidateWallSegments(walls []entity.WallSegment, grid entity.GridShape) err
 			return ErrWallNegativeHP
 		}
 		for _, p := range [][2]float64{w.P1, w.P2} {
-			if p[0] < 0 || p[0] > maxX || p[1] < 0 || p[1] > maxY {
+			if p[0] < minX-wallBoundsTolerance || p[0] > maxX+wallBoundsTolerance ||
+				p[1] < minY-wallBoundsTolerance || p[1] > maxY+wallBoundsTolerance {
 				return ErrWallOutOfBounds
 			}
 		}

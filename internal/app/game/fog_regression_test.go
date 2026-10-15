@@ -357,24 +357,6 @@ func TestBuildMapFullState_PlayerDoesNotSeeWallBehindAnother(t *testing.T) {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-// toGridShapePayload is the test-only mirror of message.go's toWallSegmentPayload:
-// production code never sends a GridShape back out over the wire (map_state_sync is
-// master→server only), so no entity→payload conversion exists there. Tests that need to
-// simulate that inbound sync build the payload directly instead.
-func toGridShapePayload(g mapentity.GridShape) GridShapePayload {
-	return GridShapePayload{
-		Kind:      string(g.Kind),
-		Cols:      g.Cols,
-		Rows:      g.Rows,
-		CellSize:  g.CellSize,
-		SkewRatio: g.SkewRatio,
-		Rotation:  g.Rotation,
-		Color:     g.Color,
-		Opacity:   g.Opacity,
-		LineStyle: string(g.LineStyle),
-	}
-}
-
 func mustSyncMessage(t *testing.T, p MapStateSyncPayload) []byte {
 	t.Helper()
 	payload, err := json.Marshal(p)
@@ -432,7 +414,7 @@ func TestBuildMapFullState_PlayerDoesNotSeePieceBehindWall(t *testing.T) {
 	room, masterUUID, playerUUID, _ := liveMatchRoom(t)
 
 	// liveMatchRoom puts w1 at x=192 spanning y 0..320, and the player's piece at
-	// slot (1,1) → world (96,96). Slot (4,1) → world (288,96) is on the far side.
+	// slot (1,1) → local (96,96). Slot (4,1) → local (288,96) is on the far side.
 	room.pieces["enemy"] = PieceMovedPayload{
 		PieceID: "enemy", CharacterID: uuid.New().String(), Slot: squareSlot(4, 1),
 	}

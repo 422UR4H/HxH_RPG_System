@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	pgmatchmap "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 )
@@ -41,7 +42,8 @@ func NewLoadMatchBoardUC(
 // The attach is checked FIRST, and the saved line is checked before ever reading the map: a
 // saved row is what the match diverged into, and re-reading the map over it would erase that
 // divergence — the map is a fallback for a board that was never saved, not a refresh of one
-// that was.
+// that was. Bg nil on a saved row means "no background", frozen (migration
+// 20261012000000_match_boards_freeze_bg backfilled the legacy "inherit" rows).
 func (uc *LoadMatchBoardUC) Load(ctx context.Context, matchUUID uuid.UUID) (*matchboard.Board, error) {
 	mm, err := uc.matchMapRepo.GetMatchMap(ctx, matchUUID)
 	if err != nil {
@@ -76,10 +78,19 @@ func (uc *LoadMatchBoardUC) Load(ctx context.Context, matchUUID uuid.UUID) (*mat
 		MatchUUID: matchUUID,
 		MapUUID:   mapUUID,
 		Grid:      m.Grid,
-		// Bg nil: a fresh snapshot inherits the map's background rather than copying it —
-		// matchboard.Board.Bg's own doc comment (spec §4.3, "Estrutura").
-		Bg:     nil,
+		// The background is part of the portrait, like the grid: copied by value so editing
+		// the map afterwards does not move it.
+		Bg:     copyBg(m.Bg),
 		Pieces: m.Pieces,
 		Walls:  m.Walls,
 	}, nil
+}
+
+// copyBg returns a value copy of bg (nil stays nil), never sharing the map's pointer.
+func copyBg(bg *mapentity.BgImage) *mapentity.BgImage {
+	if bg == nil {
+		return nil
+	}
+	c := *bg
+	return &c
 }

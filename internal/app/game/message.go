@@ -1227,6 +1227,38 @@ type MapFullStatePayload struct {
 	Walls           []WallSegmentPayload `json:"walls,omitempty"`
 	VisiblePolygons [][]Point2DPayload   `json:"visiblePolygons,omitempty"`
 	FogMode         string               `json:"fogMode"`
+	// Grid and Bg are the MATCH BOARD's own grid and background (what the room loaded), the
+	// ones the server measures with: the table draws with these, not with the campaign map's.
+	// Grid is absent only when the room has no board (CellSize 0), and Bg goes with it; with a
+	// board, Bg is null when the board has no background (MarshalJSON below).
+	Grid *GridShapePayload `json:"grid,omitempty"`
+	Bg   *BgImagePayload   `json:"bg"`
+}
+
+// MarshalJSON omits bg when there is no grid (no board at all), and keeps the explicit
+// "bg": null when there IS a board with no background — "no board" and "a board with no
+// background" are different things to the client.
+func (p MapFullStatePayload) MarshalJSON() ([]byte, error) {
+	type plain MapFullStatePayload
+	if p.Grid != nil {
+		return json.Marshal(plain(p))
+	}
+	return json.Marshal(struct {
+		plain
+		Bg *BgImagePayload `json:"bg,omitempty"`
+	}{plain: plain(p)})
+}
+
+// BgImagePayload is the WS wire-format mirror of entity.BgImage (and of the REST
+// BgImageResponse), camelCase-tagged.
+type BgImagePayload struct {
+	URL      string  `json:"url"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Width    float64 `json:"width"`
+	Height   float64 `json:"height"`
+	Rotation float64 `json:"rotation"`
+	Opacity  float64 `json:"opacity"`
 }
 
 // WallSegmentPayload is the WS wire-format mirror of entity.WallSegment, camelCase-tagged.
@@ -1263,6 +1295,30 @@ type GridShapePayload struct {
 	Color     string  `json:"color"`
 	Opacity   float64 `json:"opacity"`
 	LineStyle string  `json:"lineStyle"`
+}
+
+func toGridShapePayload(g mapentity.GridShape) GridShapePayload {
+	return GridShapePayload{
+		Kind:      string(g.Kind),
+		Cols:      g.Cols,
+		Rows:      g.Rows,
+		CellSize:  g.CellSize,
+		SkewRatio: g.SkewRatio,
+		Rotation:  g.Rotation,
+		Color:     g.Color,
+		Opacity:   g.Opacity,
+		LineStyle: string(g.LineStyle),
+	}
+}
+
+func toBgImagePayload(b *mapentity.BgImage) *BgImagePayload {
+	if b == nil {
+		return nil
+	}
+	return &BgImagePayload{
+		URL: b.URL, X: b.X, Y: b.Y, Width: b.Width, Height: b.Height,
+		Rotation: b.Rotation, Opacity: b.Opacity,
+	}
 }
 
 func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {

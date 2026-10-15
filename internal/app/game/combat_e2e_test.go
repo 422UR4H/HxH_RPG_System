@@ -2741,11 +2741,8 @@ func TestE2E_TheLobbyReloadsTheBoardOnMasterReconnect(t *testing.T) {
 		t.Fatalf("the already-connected player's refreshed board does not carry the reloaded "+
 			"piece %q: %+v", reloadedPieceID, playerFull.Pieces)
 	}
-	// Walls are NOT asserted on the player's own payload here: room.go's buildMapFullState
-	// forces payload.Walls to [] for every non-master client while the room is still a
-	// lobby (disabled until the frontend consumes it in lobby mode), a pre-existing,
-	// deliberate suppression unrelated to this reload. The master's check above is what
-	// actually proves the walls were reloaded.
+	// Walls are not asserted on the player's own payload here: the master's check above is
+	// what proves the walls were reloaded (a player's are the same walls, masked).
 }
 
 // The last defense (spec §4.3, "Última defesa"): interacting with, or revealing, a wall the

@@ -78,6 +78,7 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 			MatchUUID: matchUUID,
 			MapUUID:   mapUUID,
 			Grid:      mapentity.GridShape{Kind: mapentity.GridKindHex, Cols: 5, Rows: 5, CellSize: 32},
+			Bg:        &mapentity.BgImage{URL: "own"},
 			Pieces:    []mapentity.Piece{{ID: "p1"}},
 			Walls:     []mapentity.WallSegment{{ID: "w1"}},
 		}
@@ -108,7 +109,8 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 		m.Grid = mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 10, Rows: 10, CellSize: 64}
 		m.Pieces = []mapentity.Piece{{ID: "p1", CharacterID: "c1"}}
 		m.Walls = []mapentity.WallSegment{{ID: "w1"}}
-		bg := &mapentity.BgImage{}
+		bg := &mapentity.BgImage{URL: "map-bg", X: 1, Y: 2, Width: 3, Height: 4, Rotation: 5, Opacity: 0.5}
+		want := *bg
 		m.Bg = bg
 		mapRepo := &fakeMapRepo{m: m}
 		uc := matchboarduc.NewLoadMatchBoardUC(boardRepo, matchMapRepo, mapRepo)
@@ -135,10 +137,17 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 		if len(got.Walls) != 1 || got.Walls[0].ID != "w1" {
 			t.Fatalf("Walls = %+v, want the map's own", got.Walls)
 		}
-		// Bg nil even though the MAP has one: a fresh snapshot inherits the map's background
-		// rather than copying it (spec §4.3, "Estrutura" — "NULL = herda o fundo do mapa").
-		if got.Bg != nil {
-			t.Fatalf("Bg = %+v, want nil (inherit the map's background)", got.Bg)
+		// The background is part of the portrait: copied by value, so editing the map later
+		// does not move the board's background.
+		if got.Bg == nil || *got.Bg != want {
+			t.Fatalf("Bg = %+v, want a copy of the map's %+v", got.Bg, want)
+		}
+		if got.Bg == bg {
+			t.Fatal("Bg shares the map's pointer, want a value copy")
+		}
+		m.Bg.URL = "changed after"
+		if got.Bg.URL == "changed after" {
+			t.Fatal("changing the map's Bg changed the returned board")
 		}
 	})
 
@@ -178,6 +187,48 @@ func TestLoadMatchBoardUC_Load(t *testing.T) {
 		}
 		if mapRepo.calls != 1 {
 			t.Fatalf("map repo was called %d time(s), want 1", mapRepo.calls)
+		}
+	})
+
+	t.Run("fresh snapshot of a map without background has nil Bg", func(t *testing.T) {
+		matchMapRepo := &fakeMatchMapRepo{
+			mm: &matchmapentity.MatchMap{MatchUUID: matchUUID.String(), MapUUID: mapUUID.String()},
+		}
+		m := mapentity.NewTacticalMap(uuid.New(), "Plain", "")
+		m.ID = mapUUID
+		uc := matchboarduc.NewLoadMatchBoardUC(&fakeBoardRepo{}, matchMapRepo, &fakeMapRepo{m: m})
+
+		got, err := uc.Load(context.Background(), matchUUID)
+		if err != nil {
+			t.Fatalf("Load returned an error: %v", err)
+		}
+		if got.Bg != nil {
+			t.Fatalf("Bg = %+v, want nil", got.Bg)
+		}
+	})
+
+	// bg NULL on a saved row means "no background", frozen: a background the campaign map
+	// gains later must not leak into the match.
+	t.Run("saved row with nil Bg stays nil even if the map now has a background", func(t *testing.T) {
+		matchMapRepo := &fakeMatchMapRepo{
+			mm: &matchmapentity.MatchMap{MatchUUID: matchUUID.String(), MapUUID: mapUUID.String()},
+		}
+		saved := &matchboard.Board{MatchUUID: matchUUID, MapUUID: mapUUID, Pieces: []mapentity.Piece{{ID: "p1"}}}
+		m := mapentity.NewTacticalMap(uuid.New(), "Dungeon", "")
+		m.ID = mapUUID
+		m.Bg = &mapentity.BgImage{URL: "added-later"}
+		mapRepo := &fakeMapRepo{m: m}
+		uc := matchboarduc.NewLoadMatchBoardUC(&fakeBoardRepo{board: saved}, matchMapRepo, mapRepo)
+
+		got, err := uc.Load(context.Background(), matchUUID)
+		if err != nil {
+			t.Fatalf("Load returned an error: %v", err)
+		}
+		if got.Bg != nil {
+			t.Fatalf("Bg = %+v, want nil (frozen, no leak from the map)", got.Bg)
+		}
+		if mapRepo.calls != 0 {
+			t.Fatalf("map repo was called %d time(s), want 0", mapRepo.calls)
 		}
 	})
 

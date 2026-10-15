@@ -22,7 +22,8 @@ type UpdateMapInput struct {
 	Name        *string // nil = keep existing name
 	Description string
 	Grid        *entity.GridShape
-	Bg          *entity.BgImage
+	Bg          *entity.BgImage // nil sem ClearBg = mantém; não nil = troca
+	ClearBg     bool            // true = remove o fundo (o cliente enviou "bg": null)
 	Pieces      *[]entity.Piece
 	Walls       *[]entity.WallSegment // nil = keep existing; empty slice = clear all
 }
@@ -68,7 +69,10 @@ func (uc *UpdateMapUC) UpdateMap(ctx context.Context, input *UpdateMapInput) err
 	m.Name = name
 	m.Description = input.Description
 	m.Grid = grid
-	if input.Bg != nil {
+	switch {
+	case input.ClearBg:
+		m.Bg = nil
+	case input.Bg != nil:
 		m.Bg = input.Bg
 	}
 	if input.Pieces != nil {

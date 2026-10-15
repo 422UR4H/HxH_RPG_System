@@ -14,7 +14,7 @@ import (
 )
 
 // fogTestRoom builds a Room with a live session in which playerUUID owns one piece
-// sitting at the world center of cell (0,0), plus a secret door near that piece so the
+// sitting at the local center of cell (0,0), plus a secret door near that piece so the
 // player has line of sight to it. Returns the room and the secret door's wall ID.
 func fogTestRoom(t *testing.T) (*Room, uuid.UUID, string) {
 	t.Helper()
@@ -199,10 +199,10 @@ func TestBroadcastWallStateChangedGated_UnrevealedSecretDoorIsMasterOnly(t *test
 	}
 }
 
-func TestBuildMapFullState_LobbyHidesWallsFromPlayers(t *testing.T) {
-	// Verify that non-master lobby players do not receive walls in the payload.
-	// The masking computation (computeLobbyMapState) is still performed internally
-	// and verified separately in TestComputeLobbyMapState_MasksSecretDoors.
+func TestBuildMapFullState_LobbySendsMaskedWallsToPlayers(t *testing.T) {
+	// A lobby player gets the board's walls (the lobby draws them), with an unrevealed secret
+	// door masked as a plain wall — no door identity, no open/locked state — and invisible
+	// pieces still hidden.
 	room := newFogRoom(uuid.New(), uuid.New())
 	room.grid = mapentity.GridShape{Kind: mapentity.GridKindSquare, Cols: 20, Rows: 20, CellSize: 64, SkewRatio: 1}
 	// No session set → lobby phase.
@@ -228,9 +228,22 @@ func TestBuildMapFullState_LobbyHidesWallsFromPlayers(t *testing.T) {
 
 	view := decodeMapFull(t, room.buildMapFullState(uuid.New(), false))
 
-	// Non-master lobby players do not receive walls (frontend doesn't consume them yet)
-	if len(view.Walls) != 0 {
-		t.Fatal("lobby: walls must not be sent to non-master players")
+	walls := map[string]WallSegmentPayload{}
+	for _, w := range view.Walls {
+		walls[w.ID] = w
+	}
+	if len(walls) != 2 {
+		t.Fatalf("lobby: player got walls %+v, want the board's 2", view.Walls)
+	}
+	if w := walls["w1"]; w.WallType != string(mapentity.WallTypeWall) {
+		t.Fatalf("lobby: plain wall = %+v, want it unchanged", w)
+	}
+	sd, ok := walls["sd1"]
+	if !ok {
+		t.Fatal("lobby: the secret door must reach the player, masked as a wall")
+	}
+	if sd.WallType != string(mapentity.WallTypeWall) || sd.DoorSubtype != nil || sd.Open || sd.Locked {
+		t.Fatalf("lobby: unrevealed secret door leaked to the player: %+v", sd)
 	}
 
 	ids := map[string]bool{}
@@ -250,8 +263,7 @@ func TestBuildMapFullState_LobbyHidesWallsFromPlayers(t *testing.T) {
 
 func TestComputeLobbyMapState_MasksSecretDoors(t *testing.T) {
 	// Verify that computeLobbyMapState correctly masks unrevealed secret doors
-	// and passes through normal walls. This tests the masking wiring that
-	// buildMapFullState uses but doesn't expose to players (for now).
+	// and passes through normal walls — what buildMapFullState sends to lobby players.
 	sub := mapentity.DoorSubtypeBasic
 	revealedSecret := mapentity.WallSegment{
 		ID: "sd_revealed", P1: [2]float64{10, 10}, P2: [2]float64{20, 10},

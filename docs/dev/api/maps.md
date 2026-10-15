@@ -191,7 +191,7 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | `name` | obrigatório, não vazio |
 | `description` | opcional |
 | `grid` | opcional; mantém grid existente se omitido |
-| `bg` | opcional; omitir mantém existente |
+| `bg` | opcional; omitir mantém existente, `null` remove o fundo, objeto troca |
 | `pieces` | opcional; omitir mantém existente; `[]` remove todas as peças |
 | `walls` | opcional; omitir mantém existente; `[]` remove todas as paredes |
 
@@ -204,8 +204,10 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | 401 | Sem JWT |
 | 403 | Usuário não é o master da campanha |
 | 404 | Mapa não encontrado |
-| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]` |
+| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]`; em `walls`: `p1 = p2`, `wallType` inválido, `hp < 0`, ou ponta fora do contorno LOCAL da grade (`wall segment out of grid bounds`; ver nota abaixo) |
 | 500 | Erro interno |
+
+> **Limites das paredes.** O contorno é o `GridLocalBounds` da grade, em coordenadas LOCAL (pré-transform). Na grade quadrada vai de 0 a `cols·cellSize` × `rows·cellSize`; num hex as células são centradas nos pontos da grade, então o contorno **começa antes de 0** (a partir de `-hexW/2` em x) — uma parede na borda esquerda de um hex tem x negativo e é válida. A checagem tem tolerância de `1e-6` (`wallBoundsTolerance`) para absorver ruído de ponto flutuante do cálculo feito no front. **Bug conhecido do handler (não é contrato):** hoje `update_map.go` mapeia todo erro que não seja 403/404 para 422, inclusive falha do repositório; esta deveria ser 500, como na tabela acima. Não dependa do 422 para erros de infraestrutura.
 
 ---
 
@@ -312,7 +314,7 @@ Sem body.
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `id` | string (UUID) | Identificador único do segmento, gerado pelo frontend via `crypto.randomUUID()` |
-| `p1`, `p2` | `[number, number]` | Endpoints em coordenadas de mundo (pré-transform); `p1 ≠ p2` |
+| `p1`, `p2` | `[number, number]` | Endpoints em coordenadas LOCAIS da grade (pré-transform); `p1 ≠ p2` |
 | `wallType` | enum | Comportamento funcional |
 | `material` | enum | Propriedades físicas (HP, resistência, cor) |
 | `doorSubtype` | enum? | Presente apenas quando `wallType = "door"` |
@@ -327,6 +329,16 @@ Sem body.
 | `resistance` | int | Dano absorvido por ataque |
 | `destroyed` | bool | Segmento destruído (visual alterado) |
 | `revealed` | bool | Porta secreta já revelada pelo master (sempre `false` para paredes que não são `secret_door`) — ver seção Fog of War abaixo |
+
+### Espaço LOCAL da grade
+
+`p1`/`p2`, `visiblePolygons` e toda a geometria de jogo vivem no espaço LOCAL da grade: o da grade antes de rotação, achatamento e origem. `rotation`/`skewRatio` nunca entram nele; o cliente os aplica só para desenhar.
+
+- **Quadrada:** a célula `(col, row)` ocupa `[col·cellSize, (col+1)·cellSize] × [row·cellSize, (row+1)·cellSize]`; o centro fica em `+cellSize/2` nos dois eixos.
+- **Hex:** pointy-top, e `cellSize` é o circunraio (centro → vértice). Os slots são axiais `(q, r)`; o centro é `(cellSize·√3·(q + r/2), 1.5·cellSize·r)`. `cols`/`rows` contam células em offset odd-r, então `col = q + floor(r/2)`.
+- **Contorno (`GridLocalBounds`):** quadrada, `[0, cols·cellSize] × [0, rows·cellSize]`. Hex, com `hexW = cellSize·√3`: x vai de `−hexW/2` a `(cols−1)·hexW + hexW/2`, mais `hexW/2` se `rows ≥ 2` (as linhas ímpares deslocam `hexW/2` à direita); y vai de `−cellSize` a `(rows−1)·1.5·cellSize + cellSize`.
+
+A definição executável é o par de goldens `internal/domain/map/service/testdata/grid_geometry_golden.json` (back) e `src/features/tactical-map/utils/__tests__/fixtures/gridGeometryGolden.json` (front), idênticos byte a byte: mude os dois juntos.
 
 ### Defaults por tipo (aplicados pelo frontend ao criar o segmento)
 
@@ -383,7 +395,7 @@ Todos os payloads usam camelCase. Esses eventos são enviados durante uma partid
 
 #### `map_full_state`
 
-Enviado a cada cliente que se conecta, e re-enviado após operações que alteram o estado do tabuleiro. Cada cliente recebe uma versão filtrada por papel.
+Enviado a cada cliente que se conecta sempre que a sala tem tabuleiro — mesmo um tabuleiro sem peça nem parede, só com grade e fundo — ou quando o tabuleiro do lobby acaba de ser limpo (mapa desanexado); re-enviado após operações que alteram o estado do tabuleiro. Cada cliente recebe uma versão filtrada por papel.
 
 **Payload (jogador não-master):**
 
@@ -401,7 +413,9 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
   "visiblePolygons": [
     [ { "x": 0.0, "y": 0.0 }, { "x": 64.0, "y": 0.0 }, { "x": 64.0, "y": 64.0 } ]
   ],
-  "fogMode": "explored"
+  "fogMode": "explored",
+  "grid": { "kind": "square", "cols": 20, "rows": 20, "cellSize": 64, "skewRatio": 1, "rotation": 0, "color": "#000000", "opacity": 0.5, "lineStyle": "solid" },
+  "bg": { "url": "https://...", "x": 0, "y": 0, "width": 1280, "height": 1280, "rotation": 0, "opacity": 1 }
 }
 ```
 
@@ -411,17 +425,26 @@ Enviado a cada cliente que se conecta, e re-enviado após operações que altera
 {
   "pieces": [ /* todas as peças, sem filtro */ ],
   "walls": [ /* todas as paredes, sem máscara */ ],
-  "fogMode": "explored"
+  "fogMode": "explored",
+  "grid": { "kind": "square", "cols": 20, "rows": 20, "cellSize": 64, "skewRatio": 1, "rotation": 0, "color": "#000000", "opacity": 0.5, "lineStyle": "solid" },
+  "bg": { "url": "https://...", "x": 0, "y": 0, "width": 1280, "height": 1280, "rotation": 0, "opacity": 1 }
 }
 ```
+
+| Campo | Descrição |
+|---|---|
+| `grid` | A grade do **tabuleiro da partida** (mesmo formato de `grid` no REST). A mesa desenha com esta, não com a do mapa da campanha. Ausente só quando a sala não tem tabuleiro. |
+| `bg` | O fundo do **tabuleiro da partida** (mesmo formato de `bg` no REST: `url, x, y, width, height, rotation, opacity`); `null` quando o tabuleiro não tem fundo. Ausente junto com `grid`, quando a sala não tem tabuleiro. A mesa desenha com este, não com o do mapa da campanha. |
+
+Vale para mestre e jogador, na mesa e no lobby: os dois desenham a grade e o fundo daqui, nunca os do mapa da campanha.
 
 > O master não recebe `visiblePolygons` — campo omitido.
 
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `pieces` | `PieceMovedPayload[]` | Peças visíveis pelo receptor. Para o master, todas. Para jogador, apenas as em LOS ou próprias com `visible=true`. Peças nunca entram na memória do jogador — personagens se movem livremente, então a última posição vista informaria mal. Cada peça inclui `z` (elevação em metros, 0 = chão, omitido quando 0). |
-| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. Portas secretas não reveladas mascaradas como `"wall"`. |
-| `visiblePolygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas de mundo. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
+| `walls` | `WallSegment[]` | Paredes visíveis. Para jogador, qualquer parede em LOS agora, mais (em modo `explored`) qualquer parede já vista antes — gravada na memória do jogador por id, não por região do mapa. No lobby (sem partida, sem LOS) o jogador recebe todas as paredes do tabuleiro, que o lobby desenha. Portas secretas não reveladas mascaradas como `"wall"`, na partida e no lobby. |
+| `visiblePolygons` | `[{x,y}][]` | Polígonos de visibilidade atuais do jogador em coordenadas LOCAIS da grade (pré-transform, o mesmo espaço de `p1`/`p2` das paredes); o cliente aplica o transform da grade (rotação, achatamento, origem) a cada vértice para desenhar. Omitido para o master e no lobby (sem partida ativa). O cliente usa este polígono como máscara de stencil: nítido dentro dele, esmaecido fora — não há dado de memória separado no payload. |
 | `fogMode` | `string` | `"live"` ou `"explored"`. Sempre presente. No lobby (sem sessão ativa), o valor enviado é `"live"` como placeholder. |
 
 ##### Máscara de porta secreta não revelada
@@ -458,7 +481,7 @@ Enviado a cada jogador individual quando seu LOS muda (ex.: após movimento de p
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `visiblePolygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador. |
+| `visiblePolygons` | `[{x,y}][]` | Novo conjunto completo de polígonos de visibilidade do jogador, em coordenadas LOCAIS da grade (pré-transform, o mesmo espaço de `p1`/`p2` das paredes); o cliente aplica o transform da grade para desenhar. |
 
 ---
 

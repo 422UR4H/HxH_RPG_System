@@ -614,3 +614,49 @@ func TestE2E_StartMatchWaitsForAnInFlightLobbySave(t *testing.T) {
 			"the lobby move that was still being saved", col, row)
 	}
 }
+
+// F1: a board with a grid and a background but no piece and no wall yet (a bg-only map, before
+// anything is placed) is still the match's map. Every client must get it on register — or the
+// client has nothing to draw but the campaign map, which is exactly what the match must not show.
+func TestE2E_RegisterSendsABoardWithNoPiecesAndNoWalls(t *testing.T) {
+	for _, lobby := range []bool{true, false} {
+		name := "playing"
+		var opts []combatOpt
+		if lobby {
+			name = "lobby"
+			opts = append(opts, inLobby)
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newCombatFixture(t, opts...)
+			bg := &mapentity.BgImage{URL: "https://example.com/board.png", X: 1, Y: 2, Width: 300, Height: 200, Rotation: 10, Opacity: 0.7}
+			f.boards.seed(f.matchUUID, &matchboard.Board{
+				MatchUUID: f.matchUUID,
+				MapUUID:   uuid.New(),
+				Grid:      moveBoardGrid,
+				Bg:        bg,
+			})
+
+			master, player := f.connect(t)
+			defer master.Close() //nolint:errcheck
+			defer player.Close() //nolint:errcheck
+			for who, c := range map[string]*collector{"master": collectFrom(master), "player": collectFrom(player)} {
+				if !c.await(game.MsgTypeMapFullState, 2*time.Second) {
+					t.Fatalf("the %s got no map_full_state for a board with no pieces and no walls; got: %v",
+						who, messageTypes(c.snapshotMessages()))
+				}
+				var got game.MapFullStatePayload
+				if err := json.Unmarshal(
+					findMessage(t, c.snapshotMessages(), game.MsgTypeMapFullState).Payload, &got,
+				); err != nil {
+					t.Fatalf("unmarshal map_full_state: %v", err)
+				}
+				if got.Grid == nil || got.Grid.CellSize != moveBoardGrid.CellSize || got.Grid.Cols != moveBoardGrid.Cols {
+					t.Fatalf("the %s's grid = %+v, want the board's %+v", who, got.Grid, moveBoardGrid)
+				}
+				if got.Bg == nil || got.Bg.URL != bg.URL || got.Bg.Width != bg.Width {
+					t.Fatalf("the %s's bg = %+v, want the board's %+v", who, got.Bg, bg)
+				}
+			}
+		})
+	}
+}

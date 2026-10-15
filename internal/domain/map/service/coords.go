@@ -6,38 +6,14 @@ import (
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 )
 
-// applyTransform applies the grid's iso skew (Y scaling) then rotation, in that order.
-// Mirrors the frontend utils/coords.ts applyTransform.
-func applyTransform(x, y float64, g entity.GridShape) (float64, float64) {
-	ys := y * g.SkewRatio
-	if g.Rotation == 0 {
-		return x, ys
-	}
-	rad := g.Rotation * math.Pi / 180
-	cos, sin := math.Cos(rad), math.Sin(rad)
-	return x*cos - ys*sin, x*sin + ys*cos
-}
-
-// reverseTransform inverts applyTransform.
-func reverseTransform(x, y float64, g entity.GridShape) (float64, float64) {
-	rx, ry := x, y
-	if g.Rotation != 0 {
-		rad := g.Rotation * math.Pi / 180
-		cos, sin := math.Cos(rad), math.Sin(rad)
-		rx = x*cos + y*sin
-		ry = -x*sin + y*cos
-	}
-	if g.SkewRatio != 0 {
-		ry /= g.SkewRatio
-	}
-	return rx, ry
-}
-
-// baseCenter returns the untransformed world center of cell (a,b).
+// baseCenter returns the center of cell (a,b) in LOCAL (pre-transform) space. The server
+// works only in this space: the grid's rotation/skew/origin are applied by the client, and
+// only to draw.
 func baseCenter(a, b int, g entity.GridShape) (float64, float64) {
 	if g.Kind == entity.GridKindHex {
-		// pointy-top axial → pixel (RedBlobGames), size = CellSize/2.
-		size := g.CellSize / 2
+		// pointy-top axial → pixel (RedBlobGames), size = CellSize (center-to-vertex
+		// radius), as the front draws it (hexToPixel(…, grid.cellSize)).
+		size := g.CellSize
 		x := size * math.Sqrt(3) * (float64(a) + float64(b)/2)
 		y := size * 1.5 * float64(b)
 		return x, y
@@ -51,7 +27,7 @@ func baseCenter(a, b int, g entity.GridShape) (float64, float64) {
 // radius above y=0. Derived from the same geometry as baseCenter.
 func GridLocalBounds(g entity.GridShape) (minX, minY, maxX, maxY float64) {
 	if g.Kind == entity.GridKindHex {
-		size := g.CellSize / 2
+		size := g.CellSize
 		hexW := size * math.Sqrt(3)
 		hexH := size * 1.5
 		maxCx := float64(g.Cols-1) * hexW
@@ -63,42 +39,16 @@ func GridLocalBounds(g entity.GridShape) (minX, minY, maxX, maxY float64) {
 	return 0, 0, float64(g.Cols) * g.CellSize, float64(g.Rows) * g.CellSize
 }
 
-// GridWorldCorners returns the grid's bounding quad in world space, wound TL→TR→BR→BL.
-// Under rotation the quad is no longer axis-aligned, which is why it is returned as four
-// points rather than a rectangle.
-func GridWorldCorners(g entity.GridShape) [4][2]float64 {
-	minX, minY, maxX, maxY := GridLocalBounds(g)
-	local := [4][2]float64{{minX, minY}, {maxX, minY}, {maxX, maxY}, {minX, maxY}}
-	var out [4][2]float64
-	for i, p := range local {
-		x, y := applyTransform(p[0], p[1], g)
-		out[i] = [2]float64{x, y}
-	}
-	return out
-}
-
-// SlotCenterToWorld returns the transformed world position of cell (a,b)'s center.
-func SlotCenterToWorld(a, b int, g entity.GridShape) (float64, float64) {
-	bx, by := baseCenter(a, b, g)
-	return applyTransform(bx, by, g)
-}
-
 // SlotCenterToLocal returns cell (a,b)'s center in the grid's LOCAL (pre-transform) space —
 // the space WallSegment.P1/P2 live in. Anything measured against a wall measures here.
 func SlotCenterToLocal(a, b int, g entity.GridShape) (float64, float64) {
 	return baseCenter(a, b, g)
 }
 
-// WorldToSlot returns the cell (a,b) whose region contains world point (x,y).
-func WorldToSlot(x, y float64, g entity.GridShape) (int, int) {
-	bx, by := reverseTransform(x, y, g)
-	return LocalToSlot(bx, by, g)
-}
-
 // LocalToSlot returns the cell (a,b) whose region contains LOCAL point (x,y).
 func LocalToSlot(bx, by float64, g entity.GridShape) (int, int) {
 	if g.Kind == entity.GridKindHex {
-		size := g.CellSize / 2
+		size := g.CellSize
 		q := (math.Sqrt(3)/3*bx - 1.0/3*by) / size
 		r := (2.0 / 3 * by) / size
 		return hexRound(q, r)
@@ -106,17 +56,31 @@ func LocalToSlot(bx, by float64, g entity.GridShape) (int, int) {
 	return int(math.Floor(bx / g.CellSize)), int(math.Floor(by / g.CellSize))
 }
 
-// hexRound rounds fractional axial coords to the nearest hex (cube rounding).
+// hexRound rounds fractional axial coords to the nearest hex (cube rounding). It mirrors
+// hex.ts hexRound exactly, ties included: jsRound for the rounding and the same correction
+// order (q first; then s if ds > dr, else r), so back and front pick the same hex.
 func hexRound(q, r float64) (int, int) {
 	s := -q - r
-	rq, rr, rs := math.Round(q), math.Round(r), math.Round(s)
+	rq, rr, rs := jsRound(q), jsRound(r), jsRound(s)
 	dq, dr, ds := math.Abs(rq-q), math.Abs(rr-r), math.Abs(rs-s)
-	if dq > dr && dq > ds {
-		rq = -rr - rs
-	} else if dr > ds {
+	if dq > ds && dq > dr {
+		rq = -rs - rr
+	} else if ds <= dr {
+		// r absorbs. (When ds > dr, s absorbs instead: it is not returned, so q and r keep
+		// their rounding.)
 		rr = -rq - rs
 	}
 	return int(rq), int(rr)
+}
+
+// jsRound is JS Math.round: halves round toward +Inf (math.Round rounds them away from
+// zero, which differs only on negative ties; the subtraction is exact for such values).
+func jsRound(x float64) float64 {
+	r := math.Round(x)
+	if x-r == 0.5 {
+		r++
+	}
+	return r
 }
 
 // SlotInGrid reports whether (a,b) is a cell of the grid. Hex cells travel axial (q, r) while

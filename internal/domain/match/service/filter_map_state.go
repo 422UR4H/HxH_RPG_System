@@ -12,7 +12,7 @@ import (
 // wall is often only partly in view, and the midpoint may be the occluded part.
 const wallSampleCount = 9
 
-// wallNudge lifts a sample off the wall surface, toward the viewer, in world units.
+// wallNudge lifts a sample off the wall surface, toward the viewer, in LOCAL units.
 // A vision-blocking wall lies exactly ON the boundary of the visibility polygon, where
 // point-in-polygon is ambiguous — which is why testing the wall directly reports "not
 // visible" and hides from the player the very wall that is blocking them. Offsetting

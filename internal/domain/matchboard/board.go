@@ -16,8 +16,8 @@ type Board struct {
 	MatchUUID uuid.UUID
 	MapUUID   uuid.UUID
 	Grid      mapentity.GridShape
-	// Bg nil means "inherit the map's background"; the future in-match map editor writes
-	// here.
+	// Bg is part of the portrait, like Grid: a fresh snapshot copies the map's. nil means
+	// the board has no background, frozen — never "inherit the map's".
 	Bg        *mapentity.BgImage
 	Pieces    []mapentity.Piece
 	Walls     []mapentity.WallSegment

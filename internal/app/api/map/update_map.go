@@ -2,7 +2,9 @@
 package mapapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -20,6 +22,28 @@ type UpdateMapRequestBody struct {
 	Bg          *BgImageRequest       `json:"bg" required:"false" doc:"Background image; omit to keep existing, send null to clear"`
 	Pieces      *[]PieceRequest       `json:"pieces" required:"false" doc:"Pieces on the map; omit to keep existing, send empty array to clear all"`
 	Walls       *[]WallSegmentRequest `json:"walls" required:"false" doc:"Wall segments; omit to keep existing, send [] to clear all"`
+
+	// ClearBg é true quando o cliente enviou "bg": null explicitamente. *BgImageRequest
+	// sozinho não distingue null de campo ausente (ambos viram nil).
+	ClearBg bool `json:"-"`
+}
+
+// UnmarshalJSON decodifica o corpo normalmente e, além disso, marca ClearBg quando a chave
+// "bg" veio com null (diferente de ausente, que mantém o fundo existente).
+func (b *UpdateMapRequestBody) UnmarshalJSON(data []byte) error {
+	type plain UpdateMapRequestBody
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*b = UpdateMapRequestBody(p)
+	bgRaw, present := raw["bg"]
+	b.ClearBg = present && string(bytes.TrimSpace(bgRaw)) == "null"
+	return nil
 }
 
 type UpdateMapRequest struct {
@@ -72,6 +96,7 @@ func UpdateMapHandler(uc mapuc.IUpdateMap) func(context.Context, *UpdateMapReque
 			Description: req.Body.Description,
 			Grid:        grid,
 			Bg:          bg,
+			ClearBg:     req.Body.ClearBg,
 			Pieces:      pieces,
 			Walls:       walls,
 		})

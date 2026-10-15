@@ -48,6 +48,14 @@ keeps whatever seat the account had. Full contract (who receives it, what the cl
 do about it) in [`match-combat-ws.md`](match-combat-ws.md#connection_replaced), since the
 same `register` path is shared by the lobby and a live match.
 
+#### `board_unavailable`
+
+If the match's board could not be loaded (and the room has no board yet), the connecting
+client — master or player — gets `{ "type": "error", "payload": { "code": "board_unavailable",
+"message": "the match board could not be loaded; reconnect to try again" } }` right after
+`room_state`. The connection stays open; reconnecting retries the load. Full contract in
+[`match-combat-ws.md`](match-combat-ws.md#board_unavailable).
+
 ### Client → Server
 
 #### `cancel_lobby`
@@ -76,7 +84,12 @@ cliente:
   reconectar (aba nova, F5) recarrega, o que cobre uma edição do mapa antes do primeiro
   movimento;
 - **depois que a partida começa, só no nascimento** — um mestre que reconecta em pleno jogo
-  não reseta o tabuleiro ao vivo por baixo da sessão.
+  não reseta o tabuleiro ao vivo por baixo da sessão;
+- **qualquer conexão tenta de novo enquanto a sala não tem tabuleiro agora e a última
+  carga falhou** — o jogador também. Uma conexão que ainda não encontra tabuleiro recebe
+  `board_unavailable`. A retentativa de um jogador reenvia o `map_full_state` aos demais só
+  quando dá certo, e nunca reenvia `match_full_state` (só o registro do mestre, que segue a
+  reidratação da sessão, faz isso). Um tabuleiro instalado nunca é recarregado por jogador.
 
 O `map_full_state` que cada cliente recebe ao se conectar (ver `piece_moved`/`piece_removed`
 em [`match-combat-ws.md`](match-combat-ws.md)) já reflete esse tabuleiro, filtrado por LOS do

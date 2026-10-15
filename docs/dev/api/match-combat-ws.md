@@ -138,6 +138,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
 | [`connection_replaced`](#connection_replaced) | a conexão antiga, quando a mesma conta conecta de novo |
+| [`board_unavailable`](#board_unavailable) | quem conecta, quando o tabuleiro da partida não carregou |
 
 ---
 
@@ -2232,11 +2233,11 @@ reação cobrada, não perdida: sai da lista sem o aviso de perda e sem devolver
 vivo, o mesmo fato chega em [`reaction_attached`](#reaction_attached).
 
 **Disparado por:** todo `register` (conexão OU reconexão) enquanto há sessão de partida —
-logo depois de `room_state` e do `map_full_state` (se houver peças **ou paredes** no
-tabuleiro — desde B14 um tabuleiro pode ter paredes sem nenhuma peça), e antes do
-`player_joined` que avisa os demais da chegada.
+logo depois de `room_state` e do `map_full_state` (sempre que a sala tem tabuleiro — mesmo
+sem nenhuma peça nem parede, só com grade e fundo: o tabuleiro é o mapa da partida, e sem ele
+o cliente não tem o que desenhar), e antes do `player_joined` que avisa os demais da chegada.
 
-Quem já estava conectado também recebe `match_full_state` (logo depois do `map_full_state` reenviado) quando a sessão é restaurada depois de um reinício do servidor, no registro do mestre — o jogador que chegou antes da reidratação foi recebido sem sessão e, sem isso, ficaria sem ele.
+Quem já estava conectado também recebe `match_full_state` (logo depois do `map_full_state` reenviado) quando a sessão é restaurada depois de um reinício do servidor, e **só no registro do mestre** (é ele que segue a reidratação; a retentativa de carga de um jogador, ver [`board_unavailable`](#board_unavailable), jamais reenvia `match_full_state` aos demais, ou a UI armada de todos seria zerada) — o jogador que chegou antes da reidratação foi recebido sem sessão e, sem isso, ficaria sem ele.
 
 ### `piece_moved` (também servidor → cliente, na ABERTURA do turno)
 
@@ -2370,8 +2371,8 @@ peça atravessa.** A única checagem existente contra paredes com `move=true` e 
 acontece no **enfileiramento** (`enqueue_action`, quando o ator TEM peça no tabuleiro — ver a
 tabela em `enqueue_action`), não de novo aqui na abertura. A origem do caminho checado é a
 **posição da própria peça** (B6), nunca o `move.from` que o cliente mandou; o destino é
-`move.position`; e os dois pontos são convertidos para o mundo pelos **centros** dos slots
-(`mapservice.SlotCenterToWorld`, com a grade da sessão) — B5, e também o que torna a conversão
+`move.position`; e os dois pontos são convertidos para o espaço LOCAL da grade (o mesmo das paredes `p1`/`p2`)
+pelos **centros** dos slots (`mapservice.SlotCenterToLocal`, com a grade da sessão) — B5, e também o que torna a conversão
 certa numa grade hexagonal (B10), onde a fórmula de uma grade quadrada não vale. O caminho de
 reação **nunca passa por essa checagem, nem uma vez**: quando `reactToId` é não-zero,
 `enqueue_action` roteia para o mesmo tratamento de `attach_reaction` e retorna **antes** de
@@ -2419,6 +2420,37 @@ conexão.** Em particular, **não reconectar por conta própria** — existe uma
 da mesma conta em algum lugar (a outra aba, o F5 que já terminou), e essa é a que vale; a
 antiga reabrir a sua própria só recriaria o mesmo conflito. A sala continua de pé e a conexão
 nova recebe normalmente tudo que se passar dali em diante.
+
+### `board_unavailable`
+
+**Direção:** servidor → cliente. **Destino:** a conexão que está se registrando, logo depois do
+`room_state` — no ponto em que o `map_full_state` iria. Como o `connection_replaced`, é um
+`error` que não responde a nada que o cliente tenha enviado.
+
+```json
+{
+  "type": "error",
+  "payload": {
+    "code": "board_unavailable",
+    "message": "the match board could not be loaded; reconnect to try again"
+  }
+}
+```
+
+**Quando vem:** a sala não tem tabuleiro agora (sem `mapUUID`, peça nem parede — inclui um tabuleiro de lobby limpo por desanexar o mapa) e a última tentativa de carregá-lo
+(leitura do banco) falhou. Qualquer conexão — mestre ou jogador — dispara uma nova tentativa ao
+se registrar; só se ela também falhar a mensagem é enviada. Uma partida sem mapa anexado não é
+falha: o carregamento "volta vazio" e nada é enviado. Uma sala que tem tabuleiro agora nunca manda
+isto, mesmo que uma recarga posterior (reconexão do mestre no lobby, `start_match`) falhe: ela
+segue com o que tem, e uma conexão de jogador jamais recarrega um tabuleiro instalado.
+
+**A conexão continua aberta**, e o `match_full_state` segue sendo enviado como sempre. Se uma
+tentativa disparada por outra conexão der certo depois, quem está conectado recebe o
+`map_full_state` normalmente, e ele substitui este estado de falha. Uma tentativa que
+falha de novo não manda nada aos demais conectados: o estado de falha deles continua valendo.
+
+**O que o cliente faz:** mostrar que o carregamento do mapa falhou e sugerir recarregar a
+página. Recarregar = reconectar, e a reconexão tenta carregar de novo.
 
 ---
 
