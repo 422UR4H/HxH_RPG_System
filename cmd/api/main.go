@@ -59,8 +59,8 @@ type config struct {
 	ServerReadTimeout    time.Duration `conf:"default:30s"`
 	ServerWriteTimeout   time.Duration `conf:"default:30s"`
 	R2AccountID          string        `conf:"env:R2_ACCOUNT_ID"`
-	R2AccessKeyID        string        `conf:"env:R2_ACCESS_KEY_ID"`
-	R2SecretAccessKey    string        `conf:"env:R2_SECRET_ACCESS_KEY"`
+	R2AccessKeyID        string        `conf:"env:R2_ACCESS_KEY_ID,mask"`
+	R2SecretAccessKey    string        `conf:"env:R2_SECRET_ACCESS_KEY,mask"`
 	R2BucketName         string        `conf:"env:R2_BUCKET_NAME"`
 	R2PublicURL          string        `conf:"env:R2_PUBLIC_URL"`
 }
@@ -80,7 +80,11 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error loading config: %w", err))
 	}
-	fmt.Println(cfg)
+	if out, cfgErr := conf.String(&cfg); cfgErr != nil {
+		fmt.Println("could not render config:", cfgErr)
+	} else {
+		fmt.Println(out)
+	}
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
