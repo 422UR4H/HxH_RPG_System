@@ -51,7 +51,9 @@ default do código não muda.
 
 ## Comportamento do free tier
 
-- API e game dormem após 15 min sem tráfego; acordar leva cerca de 1 min.
+- API e game dormem após 15 min sem tráfego. O primeiro pedido acorda o serviço e espera por ele,
+  inclusive um `POST` (medido em 2026-10-22: `POST /auth/login` com a API dormindo → 200 JSON em
+  ~13 s; `/health` do game em ~12 s). A doc do Render fala em até 1 min.
 - As salas em memória do game server se perdem quando ele dorme ou reinicia; elas são reidratadas a
   partir do banco.
 - `JWT_SECRET` ausente = chave de desenvolvimento **insegura** (`pkg/auth/jwt.go`), com um aviso no log
