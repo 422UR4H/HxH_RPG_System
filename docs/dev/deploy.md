@@ -22,7 +22,7 @@ e `migrations/`.
 
 | Variável | Serviço | Valor / nota |
 |---|---|---|
-| `PG_DB_HOST`, `PG_DB_PORT`, `PG_DB_NAME`, `PG_DB_USER`, `PG_DB_PASS` | API + game | credenciais do Neon |
+| `PG_DB_HOST`, `PG_DB_PORT`, `PG_DB_NAME`, `PG_DB_USER`, `PG_DB_PASS` | API + game | credenciais do Neon; host **direto** (sem `-pooler`): o goose e o pgx contam com sessão, que o pooler em modo transação não garante |
 | `PG_DB_SSLMODE` | API + game | `require` (também é o default de `pkg/config.go` e do start script) |
 | `PG_DB_POOL_MIN_SIZE` | API + game | `0` — pool ocioso não mantém o Neon acordado |
 | `JWT_SECRET` | API + game | **idêntico nos dois**: a API emite o token, o game valida |
