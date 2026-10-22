@@ -2,13 +2,14 @@ name: hxh_rpg_system
 
 services:
   db:
-    image: postgres:latest
+    image: postgres:18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
+#     # A partir do Postgres 18 o destino do mount é /var/lib/postgresql (não /data)
 #     volumes:
 #       - ./data:/var/lib/postgresql/data
 
