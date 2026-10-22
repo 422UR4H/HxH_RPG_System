@@ -1,0 +1,15 @@
+.git
+.github
+.worktrees
+.claude
+.superpowers
+.vscode
+.local
+.env
+tmp
+bin
+docs
+*.png
+*.md
+Dockerfile
+.dockerignore
