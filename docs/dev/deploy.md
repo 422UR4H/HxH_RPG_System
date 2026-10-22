@@ -3,16 +3,20 @@
 Hospedagem gratuita do projeto. O repositório é **público**, então nenhum segredo vai para o código:
 tudo entra por variáveis de ambiente configuradas na plataforma.
 
-> TODO: preencher as URLs públicas (front, API, game) quando o deploy estiver no ar.
+| Serviço | URL pública |
+|---|---|
+| Front | https://system-x-system.onrender.com |
+| API | https://system-x-system-api.onrender.com |
+| Game (WS) | `wss://system-x-system-game.onrender.com/ws` |
 
 ## Topologia
 
 | Peça | Onde | Observação |
 |---|---|---|
-| Front (Vite/React) | Render — static site | build com `VITE_*` |
-| `hxh-rpg-api` | Render — web service (Docker) | `CMD` padrão: `scripts/start-api.sh` |
-| `hxh-rpg-game` | Render — web service (Docker) | comando `./game` (sobrescreve o `CMD`) |
-| Postgres | Neon free, AWS `us-east-1` | TLS obrigatório; mesma área do Render (Virginia) para manter a latência baixa |
+| `system-x-system` (front) | Render — static site | `npm ci && npm run build`, publica `dist/`, rewrite `/*` → `/index.html` |
+| `system-x-system-api` | Render — web service (Docker) | `CMD` padrão: `scripts/start-api.sh` |
+| `system-x-system-game` | Render — web service (Docker) | comando `./game` (sobrescreve o `CMD`) |
+| Postgres 18 | Neon free (projeto `system-x-system`), AWS `us-east-1` | TLS obrigatório; mesma área do Render (Virginia) para manter a latência baixa |
 | Imagens | Cloudflare R2 | inalterado |
 
 As duas imagens de serviço são a **mesma** (`Dockerfile` na raiz): contém `api`, `game`, o CLI `goose`
@@ -52,3 +56,12 @@ default do código não muda.
   partir do banco.
 - `JWT_SECRET` ausente = chave de desenvolvimento **insegura** (`pkg/auth/jwt.go`), com um aviso no log
   de ambos os binários. Nunca deixe assim em produção: qualquer um forjaria tokens.
+
+## Configuração fora do código
+
+- **CORS do bucket R2:** o upload é um `PUT` do navegador direto na URL pré-assinada, então a origem
+  do front precisa estar em `AllowedOrigins` da política CORS do bucket (painel da Cloudflare →
+  R2 → bucket → Settings → CORS Policy). Trocar o domínio do front exige atualizar ali **e** em
+  `ALLOWED_ORIGINS` da API.
+- **Horas do workspace:** as 750 h/mês do plano free são do workspace inteiro, somadas entre todos
+  os serviços free dele. Acabou, o Render suspende todos até o mês seguinte.
