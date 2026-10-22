@@ -1612,6 +1612,13 @@ mappings:
     game_docs: []
     notes: JWT_SECRET contract (must match across api and game)
 
+  - code_path: .github/workflows/ci.yml
+    dev_docs:
+      - path: docs/dev/deploy.md
+        confidence: possibly_affected
+    game_docs: []
+    notes: The job id `ci` is the check the main ruleset requires; renaming it blocks every merge
+
 # ─── Excluded Paths (no doc check needed) ───
 excluded_paths:
   - "*.md"             # Documentation changes don't trigger doc-check

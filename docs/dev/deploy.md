@@ -43,7 +43,9 @@ default do código não muda.
 
 ## Como o deploy acontece
 
-1. Push/merge em `main` → Render reconstrói a imagem.
+1. Todo commit novo em `main` (merge de PR ou push direto) → o Render reconstrói a imagem da API e a
+   do game. O front segue a mesma regra no repo dele. Nenhuma outra branch publica. O Render não espera
+   o CI; quem filtra o que chega na `main` é a trava de CI do GitHub (ver abaixo).
 2. `scripts/start-api.sh` monta o DSN (formato `key=value`, evita problemas de URL-encoding na senha) a
    partir das mesmas `PG_DB_*`, roda `goose -dir ./migrations postgres "<dsn>" up` e só então faz
    `exec ./api`.
@@ -68,4 +70,16 @@ default do código não muda.
   então o resto do site parece normal. Trocar o domínio do front exige atualizar ali **e** em
   `ALLOWED_ORIGINS` da API.
 - **Horas do workspace:** as 750 h/mês do plano free são do workspace inteiro, somadas entre todos
-  os serviços free dele. Acabou, o Render suspende todos até o mês seguinte.
+  os serviços free dele. Acabou, o Render suspende todos até o mês seguinte. Por isso só os serviços
+  deste projeto ficam ativos; os de projetos antigos estão suspensos.
+- **Trava de CI na `main`, nos dois repos:** ruleset `main: CI obrigatório` (GitHub → Settings → Rules
+  → Rulesets).
+  - O merge de PR exige o check `ci` verde (o job do `ci.yml`). Não exige a branch atualizada com a
+    `main`. Renomear esse job em qualquer repo trava todo merge até o ruleset ser atualizado.
+  - Push direto na `main` só passa com um commit que já passou no CI em outra branch.
+  - Force-push e deleção da `main` são bloqueados.
+  - Admin pode furar a regra só pelo merge do PR: a tela do PR mostra a opção de bypass. Esse merge
+    publica normalmente. É de propósito: o Render faz deploy por commit e não espera o CI, então o
+    único bypass fica na mão de quem faz o merge. Um Render configurado para esperar o CI exigiria um
+    segundo bypass, o deploy manual no painel.
+- **Branch apagada no merge:** os dois repos têm "Automatically delete head branches" ligado.
