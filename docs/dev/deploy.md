@@ -61,9 +61,11 @@ default do código não muda.
 
 ## Configuração fora do código
 
-- **CORS do bucket R2:** o upload é um `PUT` do navegador direto na URL pré-assinada, então a origem
-  do front precisa estar em `AllowedOrigins` da política CORS do bucket (painel da Cloudflare →
-  R2 → bucket → Settings → CORS Policy). Trocar o domínio do front exige atualizar ali **e** em
+- **CORS do bucket R2:** a origem do front precisa estar em `AllowedOrigins` da política CORS do
+  bucket (painel da Cloudflare → R2 → bucket → Settings → CORS Policy). Sem ela quebram duas coisas:
+  o upload (um `PUT` do navegador direto na URL pré-assinada) e a mesa, porque o Pixi baixa o fundo
+  do mapa e os avatares com `fetch` na URL pública `r2.dev` — uma `<img>` comum carrega sem CORS,
+  então o resto do site parece normal. Trocar o domínio do front exige atualizar ali **e** em
   `ALLOWED_ORIGINS` da API.
 - **Horas do workspace:** as 750 h/mês do plano free são do workspace inteiro, somadas entre todos
   os serviços free dele. Acabou, o Render suspende todos até o mês seguinte.
