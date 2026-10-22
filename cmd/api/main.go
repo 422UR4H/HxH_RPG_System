@@ -49,6 +49,7 @@ import (
 	submissionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/submission"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/user"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
+	jwtauth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/ardanlabs/conf/v3"
 	"github.com/joho/godotenv"
 )
@@ -71,6 +72,9 @@ var sessions sync.Map
 
 func main() {
 	loadEnvFile()
+	if jwtauth.UsingDevSecret() {
+		fmt.Println("WARNING: JWT_SECRET not set — using the insecure development key; never do this outside local dev")
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {

@@ -1590,6 +1590,28 @@ mappings:
     game_docs: []
     notes: Schema changes — check if new entities need docs
 
+  # ─── Deploy ───
+  - code_path: Dockerfile
+    dev_docs:
+      - path: docs/dev/deploy.md
+        confidence: directly_affected
+    game_docs: []
+    notes: Image layout, binaries and CMD used by Render
+
+  - code_path: scripts/start-api.sh
+    dev_docs:
+      - path: docs/dev/deploy.md
+        confidence: directly_affected
+    game_docs: []
+    notes: Migration-on-deploy flow and DSN env vars
+
+  - code_path: pkg/auth/jwt.go
+    dev_docs:
+      - path: docs/dev/deploy.md
+        confidence: directly_affected
+    game_docs: []
+    notes: JWT_SECRET contract (must match across api and game)
+
 # ─── Excluded Paths (no doc check needed) ───
 excluded_paths:
   - "*.md"             # Documentation changes don't trigger doc-check

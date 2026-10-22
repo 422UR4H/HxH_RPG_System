@@ -25,6 +25,7 @@ import (
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
+	"github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/joho/godotenv"
 )
 
@@ -32,6 +33,10 @@ func main() {
 	// TODO: evaluate to action — consider config/env loading
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, using environment variables")
+	}
+
+	if auth.UsingDevSecret() {
+		log.Println("WARNING: JWT_SECRET not set — using the insecure development key; never do this outside local dev")
 	}
 
 	addr := os.Getenv("GAME_SERVER_ADDR")

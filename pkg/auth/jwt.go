@@ -2,13 +2,29 @@ package auth
 
 import (
 	"errors"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-var jwtKey = []byte("your_secret_key") // Replace with a secure key
+const devSecret = "your_secret_key"
+
+// UsingDevSecret reports whether JWT_SECRET is unset, i.e. the insecure
+// development key is in use.
+func UsingDevSecret() bool {
+	return os.Getenv("JWT_SECRET") == ""
+}
+
+// jwtKey reads JWT_SECRET at call time (not init time) because godotenv.Load
+// runs inside main, after package initialization.
+func jwtKey() []byte {
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		return []byte(secret)
+	}
+	return []byte(devSecret)
+}
 
 type Claims struct {
 	UserID uuid.UUID `json:"user_id"`
@@ -24,7 +40,7 @@ func GenerateToken(userID uuid.UUID) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtKey)
+	return token.SignedString(jwtKey())
 }
 
 func ValidateToken(tokenStr string) (*Claims, error) {
@@ -33,7 +49,7 @@ func ValidateToken(tokenStr string) (*Claims, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
-		return jwtKey, nil
+		return jwtKey(), nil
 	})
 	if err != nil || !token.Valid {
 		return nil, err
