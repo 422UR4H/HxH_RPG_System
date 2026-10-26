@@ -20,6 +20,12 @@
 #   - Changes to docs/ files themselves don't trigger this check
 
 mappings:
+  # ─── API: Health (liveness/readiness) ───
+  - code_path: internal/app/api/health.go
+    dev_docs:
+      - path: docs/dev/api/health.md
+        confidence: directly_affected
+    notes: Mudanças em /liveness ou /readiness (prazo, corpos, dependências checadas)
   # ─── Character Sheet: Experience ───
   - code_path: internal/domain/entity/character_sheet/experience/
     dev_docs:

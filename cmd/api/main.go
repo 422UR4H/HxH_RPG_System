@@ -309,7 +309,7 @@ func main() {
 
 	a := api.Api{
 		LivenessHandler:       api.LivenessHandler(),
-		ReadinessHandler:      api.ReadinessHandler(),
+		ReadinessHandler:      api.ReadinessHandler(pgPool),
 		CharacterSheetHandler: &characterSheetsApi,
 		ScenarioHandler:       &scenariosApi,
 		CampaignHandler:       &campaignsApi,
