@@ -31,8 +31,11 @@ requisição. O erro do banco não vaza no corpo.
 
 ```bash
 curl -s -w ' %{http_code}' localhost:5000/readiness
-# {"message": "Service is ready"} 200
+# "{\"message\": \"Service is ready\"}" 200
 ```
+
+> Nota: o corpo hoje é uma *string JSON* contendo o texto acima (o handler
+> devolve `Body` como string), não um objeto. O front deve usar só o status.
 
 ### Uso
 
