@@ -43,7 +43,7 @@ func TestRoutes_AllHandlersRegisterTogether(t *testing.T) {
 
 	a := api.Api{
 		LivenessHandler:       api.LivenessHandler(),
-		ReadinessHandler:      api.ReadinessHandler(),
+		ReadinessHandler:      api.ReadinessHandler(nil),
 		CharacterSheetHandler: &sheetHandler.Api{},
 		ScenarioHandler:       &scenarioHandler.Api{},
 		CampaignHandler:       &campaignHandler.Api{},
