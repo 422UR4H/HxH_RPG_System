@@ -16,7 +16,7 @@ func TestListClassesHandler(t *testing.T) {
 	tests := []struct {
 		name          string
 		listClassesFn func() []cc.CharacterClass
-		listSheetsFn  func() []sheetEntity.HalfSheet
+		listSheetsFn  func() []*sheetEntity.CharacterSheet
 		wantStatus    int
 	}{
 		{
@@ -24,8 +24,8 @@ func TestListClassesHandler(t *testing.T) {
 			listClassesFn: func() []cc.CharacterClass {
 				return []cc.CharacterClass{}
 			},
-			listSheetsFn: func() []sheetEntity.HalfSheet {
-				return []sheetEntity.HalfSheet{}
+			listSheetsFn: func() []*sheetEntity.CharacterSheet {
+				return []*sheetEntity.CharacterSheet{}
 			},
 			wantStatus: http.StatusOK,
 		},
@@ -36,9 +36,9 @@ func TestListClassesHandler(t *testing.T) {
 			listClassesFn: func() []cc.CharacterClass {
 				return []cc.CharacterClass{{}}
 			},
-			listSheetsFn: func() []sheetEntity.HalfSheet {
-				hs := buildTestHalfSheet(t)
-				return []sheetEntity.HalfSheet{hs}
+			listSheetsFn: func() []*sheetEntity.CharacterSheet {
+				hs := buildTestClassSheet(t)
+				return []*sheetEntity.CharacterSheet{hs}
 			},
 			wantStatus: http.StatusOK,
 		},

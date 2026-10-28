@@ -16,7 +16,7 @@ func TestNewCharacterClassResponse_distributionLevels(t *testing.T) {
 	}
 	profile := *cc.NewClassProfile(enum.Mercenary, "", "test mercenary", "")
 	charClass := *cc.NewCharacterClass(profile, dist, nil, nil, nil, nil, nil, nil, nil)
-	hs := buildTestHalfSheet(t)
+	hs := buildTestClassSheet(t)
 
 	resp := sheet.NewCharacterClassResponse(hs, charClass)
 
@@ -48,11 +48,33 @@ func TestNewCharacterClassResponse_distributionLevels(t *testing.T) {
 func TestNewCharacterClassResponse_nilDistribution(t *testing.T) {
 	profile := *cc.NewClassProfile(enum.Samurai, "", "test samurai", "")
 	charClass := *cc.NewCharacterClass(profile, nil, nil, nil, nil, nil, nil, nil, nil)
-	hs := buildTestHalfSheet(t)
+	hs := buildTestClassSheet(t)
 
 	resp := sheet.NewCharacterClassResponse(hs, charClass)
 
 	if resp.Distribution != nil {
 		t.Errorf("expected nil distribution for class without distribution, got %+v", resp.Distribution)
+	}
+}
+
+func TestNewCharacterClassResponse_spiritualEntries(t *testing.T) {
+	profile := *cc.NewClassProfile(enum.Monk, "", "monk", "")
+	charClass := cc.NewCharacterClass(
+		profile, nil,
+		map[enum.SkillName]int{enum.Focus: 210},
+		nil, nil, nil, nil, nil, nil,
+	)
+
+	resp := sheet.NewCharacterClassResponse(buildClassSheetFor(t, charClass), *charClass)
+
+	if s, ok := resp.Skills["Focus"]; !ok || s.Exp != 210 {
+		t.Errorf("Focus skill = %+v (present=%v), want exp 210", s, ok)
+	}
+	flame, ok := resp.Attributes["Flame"]
+	if !ok || flame.Points != 0 || flame.Power <= 0 {
+		t.Errorf("Flame = %+v (present=%v), want points 0 and power > 0", flame, ok)
+	}
+	if _, ok := resp.Skills["Mop"]; ok {
+		t.Error("Mop has no exp and must be omitted")
 	}
 }

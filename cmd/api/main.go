@@ -374,7 +374,7 @@ func initCharacterClasses(sheetFactory *sheet.CharacterSheetFactory) {
 		// 	}
 
 		classRef := &class
-		charClass, err := sheetFactory.BuildHalfSheet(profile, classRef)
+		charClass, err := sheetFactory.BuildClassSheet(profile, classRef)
 		if err != nil {
 			panic(domain.NewDomainError(fmt.Errorf(
 				"error building character class %s: %w", name, err),
