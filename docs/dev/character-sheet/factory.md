@@ -268,7 +268,29 @@ distintos sem interface comum que cubra todos os métodos necessários.
 
 ---
 
+### BuildClassSheet
+
+**Método:** `BuildClassSheet(profile, charClass)` — devolve `*CharacterSheet`.
+
+Monta a ficha-modelo de uma classe de personagem (a que a API serve em
+`GET /classes`). Uma classe é um template **sem dono** (nem jogador, nem mestre,
+nem campanha), então não passa pela validação `playerUUID XOR masterUUID` de
+`NewCharacterSheet`. Para não duplicar as ~70 linhas de montagem, `Build` e
+`BuildClassSheet` compartilham o helper não exportado `assembleParts`
+(habilidades, atributos, perícias, princípios espirituais e status, sem dono e
+sem classe). `Build` continua validando o dono via `NewCharacterSheet`, com os
+mesmos erros de antes; `BuildClassSheet` monta o struct direto. Sem hexágono
+Nen nem categoria (`hexValue`/`category` nulos). A classe é aplicada com o
+mesmo `Wrap` descrito acima — por ser ficha completa, `SkillsExps` pode conter
+perícias espirituais (`Focus`, `Mop`...), o que o `HalfSheet` não suportava.
+
 ## 5. HalfSheet — Ficha Sem Nen
+
+> **Descontinuada.** Desde 2026-10-28 (decisão do dono do produto) as classes
+> **não usam mais** `HalfSheet`: são montadas com `BuildClassSheet` (ficha
+> completa, ver seção 4). `HalfSheet`, `BuildHalfSheet`, `WrapHalf` e
+> `BuildPersonAbilitiesHalf` continuam no código, sem uso pelas classes, e
+> estão marcados para remoção futura. O texto abaixo fica como referência.
 
 **Método:** `BuildHalfSheet(profile, charClass)`
 
@@ -399,7 +421,7 @@ Para detalhes das fórmulas de cada barra, veja [`status.md`](status.md).
 
 | Conceito | Arquivo |
 |----------|---------|
-| Factory principal (Build + BuildHalfSheet) | `sheet/character_sheet_factory.go` |
+| Factory principal (Build + BuildClassSheet + BuildHalfSheet) | `sheet/character_sheet_factory.go` |
 | CharacterSheet (struct + construtor) | `sheet/character_sheet.go` |
 | HalfSheet (struct + construtor) | `sheet/half_sheet.go` |
 | CharacterClass (dados da classe) | `character_class/` (pacote externo) |

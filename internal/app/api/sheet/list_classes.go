@@ -32,7 +32,7 @@ func ListClassesHandler(
 			classes[charClass.GetName()] = charClass
 		}
 		for _, classSheet := range classSheets {
-			charClass := classes[classSheet.GetClass()]
+			charClass := classes[classSheet.GetCharacterClass()]
 			response = append(response, NewCharacterClassResponse(classSheet, charClass))
 		}
 		return &ListCharacterClassesResponse{

@@ -46,8 +46,8 @@ func (r *Repository) GetCharacterSheetByUUID(
 			cs.vitality_exp, cs.energy_exp, cs.defense_exp, cs.push_exp, cs.grab_exp, cs.carry_exp, cs.quickness_exp, cs.accelerate_exp, cs.brake_exp,
 			cs.legerity_exp, cs.repel_exp, cs.feint_exp, cs.acrobatics_exp, cs.evasion_exp, cs.sneak_exp, cs.reflex_exp, cs.accuracy_exp, cs.stealth_exp,
 			cs.vision_exp, cs.hearing_exp, cs.smell_exp, cs.tact_exp, cs.taste_exp, cs.heal_exp, cs.breath_exp, cs.tenacity_exp,
-			cs.nen_exp, cs.focus_exp, cs.will_power_exp,
-			cs.ten_exp, cs.zetsu_exp, cs.ren_exp, cs.gyo_exp, cs.shu_exp, cs.kou_exp, cs.ken_exp, cs.ryu_exp, cs.in_exp, cs.en_exp, cs.aura_control_exp, cs.aop_exp,
+			cs.focus_exp, cs.will_power_exp, cs.self_knowledge_exp, cs.coa_exp, cs.mop_exp, cs.aop_exp,
+			cs.ten_exp, cs.zetsu_exp, cs.ren_exp, cs.gyo_exp, cs.shu_exp, cs.kou_exp, cs.ken_exp, cs.ryu_exp, cs.in_exp, cs.en_exp,
 			cs.reinforcement_exp, cs.transmutation_exp, cs.materialization_exp, cs.specialization_exp, cs.manipulation_exp, cs.emission_exp,
 			cs.created_at, cs.updated_at,
 			cp.uuid, cp.nickname, cp.fullname, COALESCE(cp.alignment, ''), cp.character_class, COALESCE(cp.long_description, ''), COALESCE(cp.brief_description, ''), cp.birthday, cp.age,
@@ -73,8 +73,8 @@ func (r *Repository) GetCharacterSheetByUUID(
 		&m.VitalityExp, &m.EnergyExp, &m.DefenseExp, &m.PushExp, &m.GrabExp, &m.CarryExp, &m.QuicknessExp, &m.AccelerateExp, &m.BrakeExp,
 		&m.LegerityExp, &m.RepelExp, &m.FeintExp, &m.AcrobaticsExp, &m.EvasionExp, &m.SneakExp, &m.ReflexExp, &m.AccuracyExp, &m.StealthExp,
 		&m.VisionExp, &m.HearingExp, &m.SmellExp, &m.TactExp, &m.TasteExp, &m.HealExp, &m.BreathExp, &m.TenacityExp,
-		&m.NenExp, &m.FocusExp, &m.WillPowerExp,
-		&m.TenExp, &m.ZetsuExp, &m.RenExp, &m.GyoExp, &m.ShuExp, &m.KouExp, &m.KenExp, &m.RyuExp, &m.InExp, &m.EnExp, &m.AuraControlExp, &m.AopExp,
+		&m.FocusExp, &m.WillPowerExp, &m.SelfKnowledgeExp, &m.CoaExp, &m.MopExp, &m.AopExp,
+		&m.TenExp, &m.ZetsuExp, &m.RenExp, &m.GyoExp, &m.ShuExp, &m.KouExp, &m.KenExp, &m.RyuExp, &m.InExp, &m.EnExp,
 		&m.ReinforcementExp, &m.TransmutationExp, &m.MaterializationExp, &m.SpecializationExp, &m.ManipulationExp, &m.EmissionExp,
 		&m.CreatedAt, &m.UpdatedAt,
 		&profile.UUID, &profile.NickName, &profile.FullName, &profile.Alignment, &profile.CharacterClass, &profile.Description, &profile.BriefDescription, &profile.Birthday, &profile.Age,
@@ -362,6 +362,23 @@ func wrap(charSheet *sheetEntity.CharacterSheet, m *model.CharacterSheet) (wasCo
 		enum.Tenacity:   m.TenacityExp,
 	}
 	for name, exp := range physicalSkills {
+		if exp == 0 {
+			continue
+		}
+		if err := charSheet.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
+			return false, fmt.Errorf("%w %s: %v", sheetEntity.ErrFailedToIncreaseSkillExp, name, err)
+		}
+	}
+
+	spiritualSkills := map[enum.SkillName]int{
+		enum.Focus:         m.FocusExp,
+		enum.WillPower:     m.WillPowerExp,
+		enum.SelfKnowledge: m.SelfKnowledgeExp,
+		enum.Coa:           m.CoaExp,
+		enum.Mop:           m.MopExp,
+		enum.Aop:           m.AopExp,
+	}
+	for name, exp := range spiritualSkills {
 		if exp == 0 {
 			continue
 		}

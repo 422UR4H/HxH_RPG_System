@@ -38,6 +38,17 @@ func NewCharacterSheetFactory() *CharacterSheetFactory {
 	return &CharacterSheetFactory{}
 }
 
+// sheetParts agrupa os componentes montados de uma ficha, ainda sem dono.
+type sheetParts struct {
+	abilities   *ability.Manager
+	attributes  *attribute.CharacterAttributes
+	principles  *spiritual.Manager
+	skills      *skill.CharacterSkills
+	proficiency *proficiency.Manager
+	status      *status.Manager
+	className   enum.CharacterClassName
+}
+
 func (csf *CharacterSheetFactory) Build(
 	playerUUID *uuid.UUID,
 	masterUUID *uuid.UUID,
@@ -47,6 +58,72 @@ func (csf *CharacterSheetFactory) Build(
 	category *enum.CategoryName,
 	charClass *cc.CharacterClass,
 ) (*CharacterSheet, error) {
+	parts, err := csf.assembleParts(hexValue, category, charClass)
+	if err != nil {
+		return nil, err
+	}
+
+	charSheet, err := NewCharacterSheet(
+		playerUUID,
+		masterUUID,
+		campaignUUID,
+		profile,
+		*parts.abilities,
+		*parts.attributes,
+		*parts.principles,
+		*parts.skills,
+		*parts.proficiency,
+		*parts.status,
+		&parts.className,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if charClass != nil {
+		return csf.Wrap(charSheet, charClass)
+	}
+	return charSheet, nil
+}
+
+// BuildClassSheet monta a ficha-modelo de uma classe de personagem.
+// Uma classe é um template sem dono (nem jogador, nem mestre, nem campanha),
+// por isso não passa pela validação de dono de NewCharacterSheet. Reaproveita a
+// montagem de componentes de Build e aplica a classe com Wrap.
+// Sem hexágono Nen nem categoria (hexValue/category nulos).
+func (csf *CharacterSheetFactory) BuildClassSheet(
+	profile CharacterProfile,
+	charClass *cc.CharacterClass,
+) (*CharacterSheet, error) {
+	parts, err := csf.assembleParts(nil, nil, charClass)
+	if err != nil {
+		return nil, err
+	}
+
+	charSheet := &CharacterSheet{
+		profile:     profile,
+		ability:     *parts.abilities,
+		attribute:   *parts.attributes,
+		principle:   *parts.principles,
+		skill:       *parts.skills,
+		proficiency: *parts.proficiency,
+		status:      *parts.status,
+		charClass:   &parts.className,
+	}
+
+	if charClass != nil {
+		return csf.Wrap(charSheet, charClass)
+	}
+	return charSheet, nil
+}
+
+// assembleParts monta os componentes da ficha (habilidades, atributos,
+// perícias, princípios espirituais, status), sem dono e sem aplicar a classe.
+func (csf *CharacterSheetFactory) assembleParts(
+	hexValue *int,
+	category *enum.CategoryName,
+	charClass *cc.CharacterClass,
+) (*sheetParts, error) {
 
 	characterExp := csf.BuildCharacterExp()
 	abilities := csf.BuildPersonAbilities(characterExp)
@@ -99,27 +176,15 @@ func (csf *CharacterSheetFactory) Build(
 	}
 	status := csf.BuildStatusManager(abilities, charAttrs, charSkills)
 
-	charSheet, err := NewCharacterSheet(
-		playerUUID,
-		masterUUID,
-		campaignUUID,
-		profile,
-		*abilities,
-		*charAttrs,
-		*spiritPrinciples,
-		*charSkills,
-		*proficiency,
-		*status,
-		&className,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if charClass != nil {
-		return csf.Wrap(charSheet, charClass)
-	}
-	return charSheet, nil
+	return &sheetParts{
+		abilities:   abilities,
+		attributes:  charAttrs,
+		principles:  spiritPrinciples,
+		skills:      charSkills,
+		proficiency: proficiency,
+		status:      status,
+		className:   className,
+	}, nil
 }
 
 func (csf *CharacterSheetFactory) BuildCharacterExp() *experience.CharacterExp {

@@ -10,7 +10,7 @@ import (
 
 type IGetCharacterClass interface {
 	GetCharacterClass(name string) (cc.CharacterClass, error)
-	GetClassSheet(name string) (cs.HalfSheet, error)
+	GetClassSheet(name string) (*cs.CharacterSheet, error)
 }
 
 type GetCharacterClassUC struct {
@@ -44,16 +44,16 @@ func (uc *GetCharacterClassUC) GetCharacterClass(
 }
 
 func (uc *GetCharacterClassUC) GetClassSheet(
-	name string) (cs.HalfSheet, error) {
+	name string) (*cs.CharacterSheet, error) {
 
 	className, err := enum.CharacterClassNameFrom(name)
 	if err != nil {
-		return cs.HalfSheet{}, err
+		return nil, err
 	}
 
 	class, exists := uc.classSheets.Load(className)
 	if !exists {
-		return cs.HalfSheet{}, ErrCharacterClassNotFound
+		return nil, ErrCharacterClassNotFound
 	}
-	return class.(cs.HalfSheet), nil
+	return class.(*cs.CharacterSheet), nil
 }

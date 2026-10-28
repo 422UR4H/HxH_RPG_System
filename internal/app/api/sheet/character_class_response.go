@@ -62,7 +62,7 @@ type JointProf struct {
 }
 
 func NewCharacterClassResponse(
-	classSheet cs.HalfSheet, charClass cc.CharacterClass,
+	classSheet *cs.CharacterSheet, charClass cc.CharacterClass,
 ) CharacterClassResponse {
 	abilities := make(map[string]Ability)
 	abilitiesList := classSheet.GetAbilities()
@@ -113,6 +113,23 @@ func NewCharacterClassResponse(
 		}
 	}
 
+	// atributos espirituais não têm pontos distribuíveis (Points = 0)
+	spiritAttrs := classSheet.GetSpiritualAttributes()
+	for attrName, attr := range spiritAttrs {
+		if attr.GetExpPoints() > 0 {
+			attributes[attrName.String()] = Attribute{
+				ExperienceResponse: ExperienceResponse{
+					Level:         attr.GetLevel(),
+					Exp:           attr.GetExpPoints(),
+					CurrentExp:    attr.GetCurrentExp(),
+					NxtLvlBaseExp: attr.GetNextLvlBaseExp(),
+				},
+				Points: 0,
+				Power:  attr.GetPower(),
+			}
+		}
+	}
+
 	// TODO: improve to use more than one "skills"
 	skills := make(map[string]Skill)
 	physSkills := classSheet.GetPhysicalSkills()
@@ -131,6 +148,21 @@ func NewCharacterClassResponse(
 	}
 	mentalSkills := classSheet.GetMentalSkills()
 	for skillName, skill := range mentalSkills {
+		if skill.GetExpPoints() > 0 {
+			skills[skillName.String()] = Skill{
+				ExperienceResponse: ExperienceResponse{
+					Level:         skill.GetLevel(),
+					Exp:           skill.GetExpPoints(),
+					CurrentExp:    skill.GetCurrentExp(),
+					NxtLvlBaseExp: skill.GetNextLvlBaseExp(),
+				},
+				Value: skill.GetValueForTest(),
+			}
+		}
+	}
+
+	spiritSkills := classSheet.GetSpiritualSkills()
+	for skillName, skill := range spiritSkills {
 		if skill.GetExpPoints() > 0 {
 			skills[skillName.String()] = Skill{
 				ExperienceResponse: ExperienceResponse{

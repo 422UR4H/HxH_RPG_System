@@ -9,7 +9,7 @@ import (
 
 type IListCharacterClasses interface {
 	ListCharacterClasses() []cc.CharacterClass
-	ListClassSheets() []cs.HalfSheet
+	ListClassSheets() []*cs.CharacterSheet
 }
 
 type ListCharacterClassesUC struct {
@@ -37,11 +37,10 @@ func (uc *ListCharacterClassesUC) ListCharacterClasses() []cc.CharacterClass {
 	return classes
 }
 
-func (uc *ListCharacterClassesUC) ListClassSheets() []cs.HalfSheet {
-	var classes []cs.HalfSheet
+func (uc *ListCharacterClassesUC) ListClassSheets() []*cs.CharacterSheet {
+	var classes []*cs.CharacterSheet
 	uc.classSheets.Range(func(_, value any) bool {
-		class := value.(*cs.HalfSheet)
-		classes = append(classes, *class)
+		classes = append(classes, value.(*cs.CharacterSheet))
 		return true
 	})
 	return classes

@@ -505,6 +505,98 @@ Ficha deletada com sucesso. Nenhum corpo na resposta.
 
 ---
 
+## GET /classes — Listar classes de personagem
+
+**Auth:** Bearer JWT obrigatório
+
+Lista as classes disponíveis, cada uma com a ficha-modelo (EXP inicial que a
+classe concede) e a distribuição permitida. As classes são montadas na
+inicialização da API com `BuildClassSheet` (ficha completa; ver
+`docs/dev/character-sheet/factory.md`).
+
+### Response 200
+
+```json
+{
+  "characterClasses": [
+    {
+      "profile": {
+        "name": "Monk",
+        "alignment": "Lawful-Good",
+        "description": "...",
+        "briefDescription": "..."
+      },
+      "abilities": {
+        "Physicals": { "level": 2, "exp": 40, "currExp": 10, "nextLvlBaseExp": 60, "bonus": 0.2 }
+      },
+      "attributes": {
+        "Resistance": { "level": 1, "exp": 12, "currExp": 12, "nextLvlBaseExp": 20, "points": 0, "power": 1 },
+        "Flame":      { "level": 1, "exp": 8,  "currExp": 8,  "nextLvlBaseExp": 14, "points": 0, "power": 1 }
+      },
+      "skills": {
+        "Vitality": { "level": 1, "exp": 5, "currExp": 5, "nextLvlBaseExp": 10, "value": 3 },
+        "Focus":    { "level": 1, "exp": 8, "currExp": 8, "nextLvlBaseExp": 10, "value": 2 }
+      },
+      "jointSkills": {},
+      "proficiencies": { "Sword": { "level": 1, "exp": 3, "currExp": 3, "nextLvlBaseExp": 8 } },
+      "jointProficiencies": [
+        { "name": "Weapons", "level": 1, "exp": 3, "currExp": 3, "nextLvlBaseExp": 8 }
+      ],
+      "indicatedCategories": ["Reinforcement", "Emission"],
+      "distribution": {
+        "skillPoints": [210, 127],
+        "proficiencyPoints": [{ "level": 5, "exp": 210 }],
+        "skillsAllowed": ["Vitality"],
+        "proficienciesAllowed": ["Sword"]
+      }
+    }
+  ]
+}
+```
+
+(Os números do exemplo são ilustrativos.)
+
+- As chaves de `abilities`, `attributes` e `skills` são os **nomes do enum Go**
+  (`Physicals`, `Resistance`, `Vitality`...), com a capitalização exata — não camelCase.
+- Uma entrada só aparece quando tem **EXP > 0**; classes sem EXP numa entrada a omitem.
+- Atributos espirituais (`Flame`, `Conscience`) e perícias espirituais
+  (`Focus`, `WillPower`, `SelfKnowledge`, `Coa`, `Mop`, `Aop`) podem aparecer,
+  assim como a ability `Spirituals`, quando a classe concede EXP espiritual.
+  Atributos espirituais não têm pontos distribuíveis: `points` é sempre `0`.
+- `distribution` é omitido quando a classe não tem distribuição.
+- `indicatedCategories` lista todas as categorias Nen quando a classe não indica nenhuma.
+
+### Erros
+
+| Status | Quando |
+|--------|--------|
+| 401 | Sem token / token inválido |
+| 500 | Erro interno |
+
+---
+
+## GET /classes/{name} — Detalhar classe de personagem
+
+**Auth:** Bearer JWT obrigatório
+
+`name` é o nome da classe no enum (ex.: `Hunter`, `Swordsman`, `Monk`).
+
+### Response 200
+
+Mesmo shape de cada item de `characterClasses` acima, **mas envelopado em
+`{ "characterClass": {...} }`** (objeto único, não lista). Tudo é camelCase como
+no `GET /classes` (mesmas regras de chaves do enum, EXP > 0 e atributos/perícias espirituais).
+
+### Erros
+
+| Status | Quando |
+|--------|--------|
+| 401 | Sem token / token inválido |
+| 404 | Nome de classe inválido ou inexistente |
+| 500 | Ficha da classe não encontrada no mapa em memória / erro interno |
+
+---
+
 <a id="shapes-de-summary"></a>
 ## Shapes de summary
 

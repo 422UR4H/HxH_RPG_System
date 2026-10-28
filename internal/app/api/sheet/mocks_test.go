@@ -49,28 +49,28 @@ func (m *mockListCharacterSheets) ListCharacterSheets(
 // mockListCharacterClasses implements charactersheet.IListCharacterClasses
 type mockListCharacterClasses struct {
 	listClassesFn func() []cc.CharacterClass
-	listSheetsFn  func() []sheetEntity.HalfSheet
+	listSheetsFn  func() []*sheetEntity.CharacterSheet
 }
 
 func (m *mockListCharacterClasses) ListCharacterClasses() []cc.CharacterClass {
 	return m.listClassesFn()
 }
 
-func (m *mockListCharacterClasses) ListClassSheets() []sheetEntity.HalfSheet {
+func (m *mockListCharacterClasses) ListClassSheets() []*sheetEntity.CharacterSheet {
 	return m.listSheetsFn()
 }
 
 // mockGetCharacterClass implements charactersheet.IGetCharacterClass
 type mockGetCharacterClass struct {
 	getClassFn func(name string) (cc.CharacterClass, error)
-	getSheetFn func(name string) (sheetEntity.HalfSheet, error)
+	getSheetFn func(name string) (*sheetEntity.CharacterSheet, error)
 }
 
 func (m *mockGetCharacterClass) GetCharacterClass(name string) (cc.CharacterClass, error) {
 	return m.getClassFn(name)
 }
 
-func (m *mockGetCharacterClass) GetClassSheet(name string) (sheetEntity.HalfSheet, error) {
+func (m *mockGetCharacterClass) GetClassSheet(name string) (*sheetEntity.CharacterSheet, error) {
 	return m.getSheetFn(name)
 }
 
@@ -144,7 +144,12 @@ func buildTestCharacterSheetWithHex(t *testing.T) *sheetEntity.CharacterSheet {
 	return cs
 }
 
-func buildTestHalfSheet(t *testing.T) sheetEntity.HalfSheet {
+func buildTestClassSheet(t *testing.T) *sheetEntity.CharacterSheet {
+	t.Helper()
+	return buildClassSheetFor(t, nil)
+}
+
+func buildClassSheetFor(t *testing.T, charClass *cc.CharacterClass) *sheetEntity.CharacterSheet {
 	t.Helper()
 	factory := sheetEntity.NewCharacterSheetFactory()
 	birthday, _ := time.Parse(time.RFC3339, "2005-05-16T00:00:00Z")
@@ -154,9 +159,9 @@ func buildTestHalfSheet(t *testing.T) sheetEntity.HalfSheet {
 		Birthday: birthday,
 		Age:      0,
 	}
-	hs, err := factory.BuildHalfSheet(profile, nil)
+	cs, err := factory.BuildClassSheet(profile, charClass)
 	if err != nil {
-		t.Fatalf("failed to build test half sheet: %v", err)
+		t.Fatalf("failed to build test class sheet: %v", err)
 	}
-	return *hs
+	return cs
 }

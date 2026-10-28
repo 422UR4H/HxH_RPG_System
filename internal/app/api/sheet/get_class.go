@@ -2,9 +2,11 @@ package sheet
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -13,7 +15,7 @@ type GetCharacterClassRequest struct {
 }
 
 type GetCharacterClassBody struct {
-	CharacterClass CharacterClassResponse
+	CharacterClass CharacterClassResponse `json:"characterClass"`
 }
 
 type GetCharacterClassResponse struct {
@@ -28,7 +30,14 @@ func GetClassHandler(
 	return func(_ context.Context, req *GetCharacterClassRequest) (*GetCharacterClassResponse, error) {
 		charClass, err := uc.GetCharacterClass(req.Name)
 		if err != nil {
-			return nil, huma.Error422UnprocessableEntity(err.Error())
+			// nome que não é classe e classe não registrada: ambos "não existe"
+			switch {
+			case errors.Is(err, enum.ErrInvalidNameOf),
+				errors.Is(err, charactersheet.ErrCharacterClassNotFound):
+				return nil, huma.Error404NotFound(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(err.Error())
+			}
 		}
 		classSheet, err := uc.GetClassSheet(req.Name)
 		if err != nil {

@@ -42,8 +42,8 @@ func (r *Repository) CreateCharacterSheet(
 			vitality_exp, energy_exp, defense_exp, push_exp, grab_exp, carry_exp, quickness_exp, accelerate_exp, brake_exp,
 			legerity_exp, repel_exp, feint_exp, acrobatics_exp, evasion_exp, sneak_exp, reflex_exp, accuracy_exp, stealth_exp,
 			vision_exp, hearing_exp, smell_exp, tact_exp, taste_exp, heal_exp, breath_exp, tenacity_exp,
-			nen_exp, focus_exp, will_power_exp,
-			ten_exp, zetsu_exp, ren_exp, gyo_exp, shu_exp, kou_exp, ken_exp, ryu_exp, in_exp, en_exp, aura_control_exp, aop_exp,
+			focus_exp, will_power_exp, self_knowledge_exp, coa_exp, mop_exp, aop_exp,
+			ten_exp, zetsu_exp, ren_exp, gyo_exp, shu_exp, kou_exp, ken_exp, ryu_exp, in_exp, en_exp,
 			reinforcement_exp, transmutation_exp, materialization_exp, specialization_exp, manipulation_exp, emission_exp,
 			char_exp,
 			created_at, updated_at
@@ -58,10 +58,10 @@ func (r *Repository) CreateCharacterSheet(
 			$40, $41, $42, $43, $44, $45, $46, $47, $48,
 			$49, $50, $51, $52, $53, $54, $55, $56, $57,
 			$58, $59, $60, $61, $62, $63, $64, $65,
-			$66, $67, $68,
-			$69, $70, $71, $72, $73, $74, $75, $76, $77, $78, $79,
-			$80, $81, $82, $83, $84, $85,
-			$86, $87, $88, $89
+			$66, $67, $68, $69, $70, $71,
+			$72, $73, $74, $75, $76, $77, $78, $79, $80, $81,
+			$82, $83, $84, $85, $86, $87,
+			$88, $89, $90
 		) RETURNING id
 	`
 	var sheetID int
@@ -76,8 +76,8 @@ func (r *Repository) CreateCharacterSheet(
 		m.VitalityExp, m.EnergyExp, m.DefenseExp, m.PushExp, m.GrabExp, m.CarryExp, m.QuicknessExp, m.AccelerateExp, m.BrakeExp,
 		m.LegerityExp, m.RepelExp, m.FeintExp, m.AcrobaticsExp, m.EvasionExp, m.SneakExp, m.ReflexExp, m.AccuracyExp, m.StealthExp,
 		m.VisionExp, m.HearingExp, m.SmellExp, m.TactExp, m.TasteExp, m.HealExp, m.BreathExp, m.TenacityExp,
-		m.NenExp, m.FocusExp, m.WillPowerExp,
-		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
+		m.FocusExp, m.WillPowerExp, m.SelfKnowledgeExp, m.CoaExp, m.MopExp, m.AopExp,
+		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp,
 		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
 		m.CharExp,
 		m.CreatedAt, m.UpdatedAt,
@@ -151,9 +151,15 @@ func charSheetToModel(sheet *sheetEntity.CharacterSheet) *model.CharacterSheet {
 	physAttrs := sheet.GetPhysicalAttributes()
 	mentalAttrs := sheet.GetMentalAttributes()
 	physSkills := sheet.GetPhysicalSkills()
+	spiritSkills := sheet.GetSpiritualSkills()
 	principles := sheet.GetPrinciples()
 	categories := sheet.GetCategories()
 	statusBars := sheet.GetAllStatusBar()
+	// A barra de Aura só existe se a ficha tem a habilidade espiritual; sem ela, fica zerada.
+	var auraBar model.StatusBar
+	if aura, ok := statusBars[enum.Aura]; ok && aura != nil {
+		auraBar = model.StatusBar{Min: aura.GetMin(), Curr: aura.GetCurrent(), Max: aura.GetMax()}
+	}
 	profs := sheet.GetCommonProficiencies()
 	jointProfs := sheet.GetJointProficiencies()
 
@@ -240,7 +246,7 @@ func charSheetToModel(sheet *sheetEntity.CharacterSheet) *model.CharacterSheet {
 			Curr: statusBars[enum.Stamina].GetCurrent(),
 			Max:  statusBars[enum.Stamina].GetMax(),
 		},
-		// Aura: model.StatusBar{...},
+		Aura:    auraBar,
 
 		ResistancePts:   physAttrs[enum.Resistance].GetPoints(),
 		StrengthPts:     physAttrs[enum.Strength].GetPoints(),
@@ -286,6 +292,13 @@ func charSheetToModel(sheet *sheetEntity.CharacterSheet) *model.CharacterSheet {
 		HealExp:       physSkills[enum.Heal].GetExpPoints(),
 		BreathExp:     physSkills[enum.Breath].GetExpPoints(),
 		TenacityExp:   physSkills[enum.Tenacity].GetExpPoints(),
+
+		FocusExp:         spiritSkills[enum.Focus].GetExpPoints(),
+		WillPowerExp:     spiritSkills[enum.WillPower].GetExpPoints(),
+		SelfKnowledgeExp: spiritSkills[enum.SelfKnowledge].GetExpPoints(),
+		CoaExp:           spiritSkills[enum.Coa].GetExpPoints(),
+		MopExp:           spiritSkills[enum.Mop].GetExpPoints(),
+		AopExp:           spiritSkills[enum.Aop].GetExpPoints(),
 
 		TenExp:   principles[enum.Ten].GetExpPoints(),
 		ZetsuExp: principles[enum.Zetsu].GetExpPoints(),
