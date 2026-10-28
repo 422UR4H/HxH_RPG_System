@@ -116,8 +116,6 @@ type CharacterSheet struct {
 	RyuExp   int
 	InExp    int
 	EnExp    int
-	// TODO: create SpiritualAttribute or similar for:
-
 	// Nen Categories
 	ReinforcementExp   int
 	TransmutationExp   int

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
+	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	sheetEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -35,13 +36,37 @@ func TestGetClassHandler(t *testing.T) {
 		{
 			name: "not_found_invalid_class_name",
 			getClassFn: func(name string) (cc.CharacterClass, error) {
-				return cc.CharacterClass{}, errors.New("invalid class name")
+				// erro real do enum para nome que não é classe
+				_, err := enum.CharacterClassNameFrom("Nope")
+				return cc.CharacterClass{}, err
 			},
 			getSheetFn: func(name string) (*sheetEntity.CharacterSheet, error) {
 				t.Fatal("GetClassSheet should not be called when GetCharacterClass fails")
 				return nil, nil
 			},
-			wantStatus: http.StatusUnprocessableEntity,
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "not_found_class_not_registered",
+			getClassFn: func(name string) (cc.CharacterClass, error) {
+				return cc.CharacterClass{}, charactersheet.ErrCharacterClassNotFound
+			},
+			getSheetFn: func(name string) (*sheetEntity.CharacterSheet, error) {
+				t.Fatal("GetClassSheet should not be called when GetCharacterClass fails")
+				return nil, nil
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "internal_error_class_lookup_failure",
+			getClassFn: func(name string) (cc.CharacterClass, error) {
+				return cc.CharacterClass{}, errors.New("unexpected error")
+			},
+			getSheetFn: func(name string) (*sheetEntity.CharacterSheet, error) {
+				t.Fatal("GetClassSheet should not be called when GetCharacterClass fails")
+				return nil, nil
+			},
+			wantStatus: http.StatusInternalServerError,
 		},
 		{
 			name: "internal_error_class_sheet_failure",

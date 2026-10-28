@@ -592,7 +592,7 @@ no `GET /classes` (mesmas regras de chaves do enum, EXP > 0 e atributos/perícia
 | Status | Quando |
 |--------|--------|
 | 401 | Sem token / token inválido |
-| 422 | Nome de classe inválido ou inexistente (o handler devolve 422, não 404) |
+| 404 | Nome de classe inválido ou inexistente |
 | 500 | Ficha da classe não encontrada no mapa em memória / erro interno |
 
 ---
