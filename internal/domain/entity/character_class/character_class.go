@@ -2,6 +2,7 @@ package characterclass
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	prof "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/proficiency"
@@ -137,24 +138,28 @@ func (cc *CharacterClass) ValidateProficiencies(
 	return nil
 }
 
+// ApplySkills é copy-on-write: a CharacterClass é copiada por valor, mas seus
+// mapas são compartilhados com a cópia global; escrever neles vazaria as
+// escolhas de um jogador para todos os outros.
 func (cc *CharacterClass) ApplySkills(
 	skills map[enum.SkillName]int,
 ) {
-	if cc.SkillsExps == nil {
-		cc.SkillsExps = make(map[enum.SkillName]int)
+	merged := maps.Clone(cc.SkillsExps)
+	if merged == nil {
+		merged = make(map[enum.SkillName]int, len(skills))
 	}
-	for name, exp := range skills {
-		cc.SkillsExps[name] = exp
-	}
+	maps.Copy(merged, skills)
+	cc.SkillsExps = merged
 }
 
+// ApplyProficiencies é copy-on-write; ver ApplySkills.
 func (cc *CharacterClass) ApplyProficiencies(
 	profs map[enum.WeaponName]int,
 ) {
-	if cc.ProficienciesExps == nil {
-		cc.ProficienciesExps = make(map[enum.WeaponName]int)
+	merged := maps.Clone(cc.ProficienciesExps)
+	if merged == nil {
+		merged = make(map[enum.WeaponName]int, len(profs))
 	}
-	for name, exp := range profs {
-		cc.ProficienciesExps[name] = exp
-	}
+	maps.Copy(merged, profs)
+	cc.ProficienciesExps = merged
 }

@@ -8,8 +8,10 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
+	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/google/uuid"
 )
 
@@ -92,4 +94,40 @@ func TestUpdateCharacterSheet(t *testing.T) {
 			t.Fatalf("expected ErrCharacterSheetNotFreeToManage, got: %v", err)
 		}
 	})
+}
+
+func TestUpdateCharacterSheet_DoesNotLeakChoicesIntoClass(t *testing.T) {
+	ctx := context.Background()
+	playerUUID := uuid.New()
+	mockRepo := &testutil.MockCharacterSheetRepo{
+		GetCharacterSheetRelationshipUUIDsFn: func(ctx context.Context, id uuid.UUID) (csEntity.RelationshipUUIDs, error) {
+			return csEntity.RelationshipUUIDs{PlayerUUID: &playerUUID}, nil
+		},
+	}
+	classMap := newTestClassMap()
+	swordsman := cc.BuildSwordsman()
+	swordsman.Distribution = &cc.Distribution{
+		ProficiencyPoints:    []int{127},
+		ProficienciesAllowed: []enum.WeaponName{enum.Dagger, enum.Katana},
+	}
+	swordsman.ProficienciesExps = map[enum.WeaponName]int{enum.ThrowingDagger: 127}
+	classMap.Store(enum.Swordsman, swordsman)
+	uc := charactersheet.NewUpdateCharacterSheetUC(
+		classMap, newTestFactory(), mockRepo, &mockFreeStateChecker{},
+	)
+
+	for _, w := range []enum.WeaponName{enum.Dagger, enum.Katana} {
+		input := newValidCreateInput()
+		input.PlayerUUID = &playerUUID
+		input.ProficienciesExps = map[enum.WeaponName]int{w: 127}
+		if err := uc.UpdateCharacterSheet(ctx, uuid.New(), playerUUID, input); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	stored, _ := classMap.Load(enum.Swordsman)
+	got := stored.(cc.CharacterClass).ProficienciesExps
+	if len(got) != 1 {
+		t.Errorf("class ProficienciesExps changed: %v", got)
+	}
 }

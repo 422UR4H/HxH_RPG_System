@@ -211,3 +211,75 @@ func TestDistribution_AllowProficiency(t *testing.T) {
 		t.Error("AllowProficiency(Rifle) = true, want false")
 	}
 }
+
+func TestCharacterClass_ApplyDoesNotLeakIntoCopies(t *testing.T) {
+	tests := []struct {
+		name      string
+		skills    map[enum.SkillName]int
+		profs     map[enum.WeaponName]int
+		base      func() cc.CharacterClass
+		wantSkill int
+		wantProf  int
+	}{
+		{
+			name: "mapas preenchidos",
+			base: func() cc.CharacterClass {
+				c := cc.BuildNinja()
+				return c
+			},
+			skills:    map[enum.SkillName]int{enum.Smell: 1},
+			profs:     map[enum.WeaponName]int{enum.Katana: 127},
+			wantSkill: 1,
+			wantProf:  127,
+		},
+		{
+			name: "mapas nil",
+			base: func() cc.CharacterClass {
+				return *cc.NewCharacterClass(
+					*cc.NewClassProfile(enum.Hunter, "", "x", ""),
+					nil, nil, nil, nil, nil, nil, nil, nil,
+				)
+			},
+			skills:    map[enum.SkillName]int{enum.Smell: 1},
+			profs:     map[enum.WeaponName]int{enum.Katana: 127},
+			wantSkill: 1,
+			wantProf:  127,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c1 := tt.base()
+			origSkills := len(c1.SkillsExps)
+			origProfs := len(c1.ProficienciesExps)
+
+			c2 := c1
+			c2.ApplySkills(tt.skills)
+			c2.ApplyProficiencies(tt.profs)
+
+			if len(c1.SkillsExps) != origSkills {
+				t.Errorf("c1.SkillsExps mudou: %d -> %d", origSkills, len(c1.SkillsExps))
+			}
+			if _, ok := c1.SkillsExps[enum.Smell]; ok && origSkills == 0 {
+				t.Error("c1.SkillsExps vazou a perícia aplicada")
+			}
+			if len(c1.ProficienciesExps) != origProfs {
+				t.Errorf("c1.ProficienciesExps mudou: %d -> %d", origProfs, len(c1.ProficienciesExps))
+			}
+			if got := c2.SkillsExps[enum.Smell]; got != tt.wantSkill {
+				t.Errorf("c2 Hearing = %d, want %d", got, tt.wantSkill)
+			}
+			if got := c2.ProficienciesExps[enum.Katana]; got != tt.wantProf {
+				t.Errorf("c2 Katana = %d, want %d", got, tt.wantProf)
+			}
+			if len(c2.SkillsExps) != origSkills+1 && origSkills > 0 {
+				// Hearing já existe no Ninja; apenas valida que o original foi mantido
+				if len(c2.SkillsExps) != origSkills {
+					t.Errorf("c2 perdeu entradas originais")
+				}
+			}
+			if len(c2.ProficienciesExps) != origProfs+1 {
+				t.Errorf("c2.ProficienciesExps len = %d, want %d", len(c2.ProficienciesExps), origProfs+1)
+			}
+		})
+	}
+}

@@ -1,6 +1,8 @@
 package charactersheet_test
 
 import (
+	"fmt"
+	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"context"
 	"errors"
 	"testing"
@@ -424,4 +426,52 @@ func TestCreateCharacterSheet(t *testing.T) {
 			t.Errorf("expected Resistance points=1, got %d", pts)
 		}
 	})
+}
+
+func TestCreateCharacterSheet_DoesNotLeakChoicesIntoClass(t *testing.T) {
+	ctx := context.Background()
+	classMap := newTestClassMap()
+	// Swordsman nativo não tem distribuição; cria uma com proficiências livres.
+	swordsman := cc.BuildSwordsman()
+	swordsman.Distribution = &cc.Distribution{
+		ProficiencyPoints:    []int{127},
+		ProficienciesAllowed: []enum.WeaponName{enum.Dagger, enum.Katana, enum.Katar},
+	}
+	// Mapa não-nil, como na API real, onde o map é compartilhado entre cópias.
+	swordsman.ProficienciesExps = map[enum.WeaponName]int{enum.ThrowingDagger: 127}
+	classMap.Store(enum.Swordsman, swordsman)
+	uc := charactersheet.NewCreateCharacterSheetUC(
+		classMap, newTestSheetMap(), newTestFactory(),
+		&testutil.MockCharacterSheetRepo{}, &testutil.MockCampaignRepo{},
+	)
+
+	before, _ := classMap.Load(enum.Swordsman)
+	profsBefore := len(before.(cc.CharacterClass).ProficienciesExps)
+
+	choices := []enum.WeaponName{enum.Katana, enum.Katar}
+	for i, w := range choices {
+		input := newValidCreateInput()
+		input.Profile.NickName = fmt.Sprintf("Sword%d", i)
+		input.ProficienciesExps = map[enum.WeaponName]int{w: 127}
+
+		result, err := uc.CreateCharacterSheet(ctx, input)
+		if err != nil {
+			t.Fatalf("sheet %d: unexpected error: %v", i, err)
+		}
+		profs := result.GetCommonProficiencies()
+		for _, other := range choices {
+			_, has := profs[other]
+			if other == w && !has {
+				t.Errorf("sheet %d: missing chosen %v", i, other)
+			}
+			if other != w && has {
+				t.Errorf("sheet %d: leaked %v from another sheet", i, other)
+			}
+		}
+	}
+
+	after, _ := classMap.Load(enum.Swordsman)
+	if got := len(after.(cc.CharacterClass).ProficienciesExps); got != profsBefore {
+		t.Errorf("class ProficienciesExps changed: %d -> %d", profsBefore, got)
+	}
 }
