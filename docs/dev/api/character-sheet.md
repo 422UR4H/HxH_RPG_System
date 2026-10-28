@@ -584,10 +584,8 @@ inicialização da API com `BuildClassSheet` (ficha completa; ver
 ### Response 200
 
 Mesmo shape de cada item de `characterClasses` acima, **mas envelopado em
-`{ "CharacterClass": {...} }`** — atenção: nesta rota a chave do envelope vem
-com `C` maiúsculo (o campo do body não tem tag `json`), diferente da lista, que
-usa `characterClasses`. Dentro do objeto, tudo é camelCase como no `GET /classes`
-(mesmas regras de chaves do enum, EXP > 0 e atributos/perícias espirituais).
+`{ "characterClass": {...} }`** (objeto único, não lista). Tudo é camelCase como
+no `GET /classes` (mesmas regras de chaves do enum, EXP > 0 e atributos/perícias espirituais).
 
 ### Erros
 

@@ -77,12 +77,15 @@ func TestGetClassHandler(t *testing.T) {
 			}
 
 			if tt.wantStatus == http.StatusOK {
-				var result map[string]any
+				var result map[string]json.RawMessage
 				if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
-				if _, ok := result["CharacterClass"]; !ok {
-					t.Fatal("response missing 'CharacterClass' field")
+				if _, ok := result["characterClass"]; !ok {
+					t.Fatalf("response missing top-level 'characterClass' key. Body: %s", resp.Body.String())
+				}
+				if _, ok := result["CharacterClass"]; ok {
+					t.Fatal("response must not carry PascalCase 'CharacterClass' key")
 				}
 			}
 		})

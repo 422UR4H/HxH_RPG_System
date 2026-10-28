@@ -13,7 +13,7 @@ type GetCharacterClassRequest struct {
 }
 
 type GetCharacterClassBody struct {
-	CharacterClass CharacterClassResponse
+	CharacterClass CharacterClassResponse `json:"characterClass"`
 }
 
 type GetCharacterClassResponse struct {

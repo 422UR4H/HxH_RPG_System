@@ -17,7 +17,11 @@ import (
 )
 
 // expInputs mirrors the exp columns that feed CharacterExp in wrap().
-// Excluded: talent_exp, nen_exp, focus_exp, will_power_exp, aura_control_exp, aop_exp.
+// Excluded: talent_exp; e as perícias espirituais. Na época do backfill
+// (20260529000002_fix_exp_points_backfill.sql) o wrap() não as restaurava e
+// toda linha guardava 0. Desde 20261028000000_spiritual_skills_exp.sql o wrap()
+// as restaura (focus, will_power, self_knowledge, coa, mop, aop), mas a fórmula
+// do backfill permanece como era (congelada com a migration).
 type expInputs struct {
 	// Mental attributes (PrimaryAttribute → MentalsAbility → CharacterExp): ×1
 	Resilience, Adaptability, Weighting, Creativity int
