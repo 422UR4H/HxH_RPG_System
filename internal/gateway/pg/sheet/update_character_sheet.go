@@ -38,12 +38,12 @@ func (r *Repository) UpdateCharacterSheet(
 			vitality_exp = $36, energy_exp = $37, defense_exp = $38, push_exp = $39, grab_exp = $40, carry_exp = $41, quickness_exp = $42, accelerate_exp = $43, brake_exp = $44,
 			legerity_exp = $45, repel_exp = $46, feint_exp = $47, acrobatics_exp = $48, evasion_exp = $49, sneak_exp = $50, reflex_exp = $51, accuracy_exp = $52, stealth_exp = $53,
 			vision_exp = $54, hearing_exp = $55, smell_exp = $56, tact_exp = $57, taste_exp = $58, heal_exp = $59, breath_exp = $60, tenacity_exp = $61,
-			nen_exp = $62, focus_exp = $63, will_power_exp = $64,
-			ten_exp = $65, zetsu_exp = $66, ren_exp = $67, gyo_exp = $68, shu_exp = $69, kou_exp = $70, ken_exp = $71, ryu_exp = $72, in_exp = $73, en_exp = $74, aura_control_exp = $75, aop_exp = $76,
-			reinforcement_exp = $77, transmutation_exp = $78, materialization_exp = $79, specialization_exp = $80, manipulation_exp = $81, emission_exp = $82,
-			char_exp = $83,
-			updated_at = $84
-		WHERE uuid = $85 AND (player_uuid = $86 OR master_uuid = $87)
+			focus_exp = $62, will_power_exp = $63, self_knowledge_exp = $64, coa_exp = $65, mop_exp = $66, aop_exp = $67,
+			ten_exp = $68, zetsu_exp = $69, ren_exp = $70, gyo_exp = $71, shu_exp = $72, kou_exp = $73, ken_exp = $74, ryu_exp = $75, in_exp = $76, en_exp = $77,
+			reinforcement_exp = $78, transmutation_exp = $79, materialization_exp = $80, specialization_exp = $81, manipulation_exp = $82, emission_exp = $83,
+			char_exp = $84,
+			updated_at = $85
+		WHERE uuid = $86 AND (player_uuid = $87 OR master_uuid = $88)
 	`
 
 	result, err := tx.Exec(ctx, sheetQuery,
@@ -57,8 +57,8 @@ func (r *Repository) UpdateCharacterSheet(
 		m.VitalityExp, m.EnergyExp, m.DefenseExp, m.PushExp, m.GrabExp, m.CarryExp, m.QuicknessExp, m.AccelerateExp, m.BrakeExp,
 		m.LegerityExp, m.RepelExp, m.FeintExp, m.AcrobaticsExp, m.EvasionExp, m.SneakExp, m.ReflexExp, m.AccuracyExp, m.StealthExp,
 		m.VisionExp, m.HearingExp, m.SmellExp, m.TactExp, m.TasteExp, m.HealExp, m.BreathExp, m.TenacityExp,
-		m.NenExp, m.FocusExp, m.WillPowerExp,
-		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp, m.AuraControlExp, m.AopExp,
+		m.FocusExp, m.WillPowerExp, m.SelfKnowledgeExp, m.CoaExp, m.MopExp, m.AopExp,
+		m.TenExp, m.ZetsuExp, m.RenExp, m.GyoExp, m.ShuExp, m.KouExp, m.KenExp, m.RyuExp, m.InExp, m.EnExp,
 		m.ReinforcementExp, m.TransmutationExp, m.MaterializationExp, m.SpecializationExp, m.ManipulationExp, m.EmissionExp,
 		m.CharExp,
 		now, m.UUID, m.PlayerUUID, m.MasterUUID,

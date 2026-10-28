@@ -11,6 +11,7 @@ import (
 	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	domainsheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
@@ -832,5 +833,100 @@ func TestExistsMatchParticipantForSheet(t *testing.T) {
 		if !exists {
 			t.Fatal("expected true, got false")
 		}
+	})
+}
+
+// spiritualExp is the exp given to each spiritual skill in the round-trip tests.
+// Distinct values per skill catch columns swapped between create/update/read.
+var spiritualExp = map[enum.SkillName]int{
+	enum.Focus:         100,
+	enum.WillPower:     200,
+	enum.SelfKnowledge: 300,
+	enum.Coa:           400,
+	enum.Mop:           500,
+	enum.Aop:           600,
+}
+
+func addSpiritualExp(t *testing.T, s *domainsheet.CharacterSheet, exps map[enum.SkillName]int) {
+	t.Helper()
+	for name, exp := range exps {
+		if err := s.IncreaseExpForSkill(experience.NewUpgradeCascade(exp), name); err != nil {
+			t.Fatalf("setup: failed to add exp to %s: %v", name, err)
+		}
+	}
+}
+
+func assertSpiritualRoundTrip(t *testing.T, want, got *domainsheet.CharacterSheet) {
+	t.Helper()
+	wantSkills := want.GetSpiritualSkills()
+	gotSkills := got.GetSpiritualSkills()
+	for name := range spiritualExp {
+		if g, w := gotSkills[name].GetExpPoints(), wantSkills[name].GetExpPoints(); g != w {
+			t.Errorf("skill %s exp = %d, want %d", name, g, w)
+		}
+	}
+	for _, attr := range []enum.AttributeName{enum.Flame, enum.Conscience} {
+		g, err := got.GetLevelOfAttribute(attr)
+		if err != nil {
+			t.Fatalf("level of %s: %v", attr, err)
+		}
+		w, _ := want.GetLevelOfAttribute(attr)
+		if g != w {
+			t.Errorf("attribute %s level = %d, want %d", attr, g, w)
+		}
+	}
+	wantAura := want.GetAllStatusBar()[enum.Aura]
+	gotAura := got.GetAllStatusBar()[enum.Aura]
+	if wantAura.GetMax() <= 0 {
+		t.Fatalf("setup: expected aura max > 0 after spiritual exp, got %d", wantAura.GetMax())
+	}
+	if gotAura.GetMax() != wantAura.GetMax() {
+		t.Errorf("aura max = %d, want %d", gotAura.GetMax(), wantAura.GetMax())
+	}
+	if gotAura.GetCurrent() != wantAura.GetCurrent() {
+		t.Errorf("aura curr = %d, want %d", gotAura.GetCurrent(), wantAura.GetCurrent())
+	}
+}
+
+func TestSpiritualSkillsPersistence(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("create round-trips spiritual skills and aura", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		playerUUID := uuid.MustParse(playerStr)
+
+		s := buildTestSheet(&playerUUID)
+		addSpiritualExp(t, s, spiritualExp)
+		if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		assertSpiritualRoundTrip(t, s, got)
+	})
+
+	t.Run("update round-trips spiritual skills and aura", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+		playerUUID := uuid.MustParse(playerStr)
+
+		s := buildTestSheet(&playerUUID)
+		if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		addSpiritualExp(t, s, spiritualExp)
+		if err := repo.UpdateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("update: %v", err)
+		}
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		assertSpiritualRoundTrip(t, s, got)
 	})
 }

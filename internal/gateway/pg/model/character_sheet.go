@@ -94,10 +94,14 @@ type CharacterSheet struct {
 	BreathExp   int
 	TenacityExp int
 	// SPIRITUALS
-	// Spirit
-	NenExp       int
-	FocusExp     int
-	WillPowerExp int
+	// Flame
+	FocusExp         int
+	WillPowerExp     int
+	SelfKnowledgeExp int
+	// Conscience
+	CoaExp int
+	MopExp int
+	AopExp int
 
 	// jointSkills
 
@@ -113,8 +117,6 @@ type CharacterSheet struct {
 	InExp    int
 	EnExp    int
 	// TODO: create SpiritualAttribute or similar for:
-	AuraControlExp int // CoA
-	AopExp         int
 
 	// Nen Categories
 	ReinforcementExp   int
