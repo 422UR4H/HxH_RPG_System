@@ -836,5 +836,61 @@ func TestUpdateCampaign(t *testing.T) {
 	}
 }
 
+func TestUpdateCampaign_EmptyStringClearsAndAbsentKeeps(t *testing.T) {
+	masterUUID := uuid.New()
+	campaignUUID := uuid.New()
+	ctxData := func() *campaignEntity.CampaignUpdateContext {
+		return &campaignEntity.CampaignUpdateContext{
+			MasterUUID:              masterUUID,
+			Name:                    "Valid Name",
+			BriefInitialDescription: "Brief",
+			Description:             "Desc",
+			CallLink:                "https://discord.gg/abc",
+			StoryStartAt:            time.Now(),
+		}
+	}
+	run := func(t *testing.T, input *campaign.UpdateCampaignInput) *campaignEntity.Campaign {
+		t.Helper()
+		var persisted *campaignEntity.Campaign
+		repo := &testutil.MockCampaignRepo{
+			GetCampaignForUpdateFn: func(_ context.Context, _ uuid.UUID) (*campaignEntity.CampaignUpdateContext, error) {
+				return ctxData(), nil
+			},
+			UpdateCampaignFn: func(_ context.Context, c *campaignEntity.Campaign) error {
+				persisted = c
+				return nil
+			},
+		}
+		input.CampaignUUID, input.MasterUUID = campaignUUID, masterUUID
+		if _, err := campaign.NewUpdateCampaignUC(repo).Update(context.Background(), input); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if persisted == nil {
+			t.Fatal("UpdateCampaign should have been called")
+		}
+		return persisted
+	}
+
+	t.Run("empty strings reach the repository as empty", func(t *testing.T) {
+		got := run(t, &campaign.UpdateCampaignInput{
+			BriefInitialDescription: strPtr(""),
+			Description:             strPtr(""),
+			CallLink:                strPtr(""),
+		})
+		if got.BriefInitialDescription != "" || got.Description != "" || got.CallLink != "" {
+			t.Errorf("want all cleared, got brief=%q desc=%q callLink=%q",
+				got.BriefInitialDescription, got.Description, got.CallLink)
+		}
+	})
+
+	t.Run("absent fields keep the current value", func(t *testing.T) {
+		got := run(t, &campaign.UpdateCampaignInput{IsPublic: boolPtr(true)})
+		if got.BriefInitialDescription != "Brief" || got.Description != "Desc" ||
+			got.CallLink != "https://discord.gg/abc" {
+			t.Errorf("text fields changed unexpectedly: %+v", got)
+		}
+	})
+}
+
 func strPtr(s string) *string { return &s }
 func boolPtr(b bool) *bool    { return &b }

@@ -27,6 +27,11 @@ JWT required (`Authorization: Bearer <token>`). Only the campaign's master may c
 
 Empty body is a valid noop (returns current state).
 
+**Absent vs. empty:** an absent field keeps the current value; an empty string
+(`""`) is written as empty, i.e. clears the field. This applies to
+`briefInitialDescription`, `description` and `callLink`. Clients that want to
+clear a text field must send `""` explicitly (omitting it changes nothing).
+
 ## Field Availability by Mode
 
 | Field | Free (no match started) | Restricted (match started) |
