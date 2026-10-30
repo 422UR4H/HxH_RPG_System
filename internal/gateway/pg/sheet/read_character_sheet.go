@@ -457,6 +457,13 @@ func wrap(charSheet *sheetEntity.CharacterSheet, m *model.CharacterSheet) (wasCo
 			return false, fmt.Errorf("%w: %v", sheetEntity.ErrFailedToAddJointProficiency, err)
 		}
 		// TODO: implement for create and add here too
+		if jointProf.Exp > 0 {
+			if err := charSheet.IncreaseExpForJointProficiency(
+				experience.NewUpgradeCascade(jointProf.Exp), jointProf.Name,
+			); err != nil {
+				return false, fmt.Errorf("%w: %v", sheetEntity.ErrFailedToIncreaseJointProfExp, err)
+			}
+		}
 	}
 
 	charSheet.IncreaseExpForTalent(m.TalentExp)

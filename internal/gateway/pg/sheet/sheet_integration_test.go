@@ -11,6 +11,7 @@ import (
 	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
+	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	domainsheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -929,4 +930,71 @@ func TestSpiritualSkillsPersistence(t *testing.T) {
 		}
 		assertSpiritualRoundTrip(t, s, got)
 	})
+}
+
+// Regressão: a exp salva das proficiências conjuntas era ignorada na leitura,
+// zerando a cascata para Physicals (nível 3 na criação, 2 após recarregar).
+func TestJointProficiencyExpPersistence(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	for _, class := range []cc.CharacterClass{cc.BuildWeaponsMaster(), cc.BuildSwordsman()} {
+		t.Run(class.GetName().String(), func(t *testing.T) {
+			pgtest.TruncateAll(t, pool)
+			playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+			playerUUID := uuid.MustParse(playerStr)
+
+			charClass := class
+			profile := domainsheet.CharacterProfile{
+				NickName:         "ClassChar",
+				FullName:         "Class Character",
+				Alignment:        "Neutral",
+				Description:      "A class test character",
+				BriefDescription: "Class",
+				Birthday:         time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+			}
+			s, err := domainsheet.NewCharacterSheetFactory().Build(
+				&playerUUID, nil, nil, profile, nil, nil, &charClass,
+			)
+			if err != nil {
+				t.Fatalf("build: %v", err)
+			}
+			s.UUID = uuid.New()
+			if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+
+			wantJoint := s.GetJointProficiencies()
+			if len(wantJoint) == 0 {
+				t.Fatal("setup: class sheet has no joint proficiencies")
+			}
+			gotJoint := got.GetJointProficiencies()
+			for name, want := range wantJoint {
+				if want.GetExpPoints() <= 0 {
+					t.Fatalf("setup: joint proficiency %s has no exp", name)
+				}
+				g, ok := gotJoint[name]
+				if !ok {
+					t.Fatalf("joint proficiency %s missing after reload", name)
+				}
+				if g.GetExpPoints() != want.GetExpPoints() {
+					t.Errorf("joint proficiency %s exp = %d, want %d", name, g.GetExpPoints(), want.GetExpPoints())
+				}
+			}
+
+			wantLvl, _ := s.GetLevelOfAbility(enum.Physicals)
+			gotLvl, err := got.GetLevelOfAbility(enum.Physicals)
+			if err != nil {
+				t.Fatalf("level of physicals: %v", err)
+			}
+			if gotLvl != wantLvl {
+				t.Errorf("physicals level = %d, want %d", gotLvl, wantLvl)
+			}
+		})
+	}
 }
