@@ -7,6 +7,7 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
+	domainsheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
@@ -42,6 +43,12 @@ func PatchCharacterSheetProfileHandler(
 		sheetUUID, err := uuid.Parse(req.UUID)
 		if err != nil {
 			return nil, huma.Error400BadRequest("invalid uuid")
+		}
+
+		if req.Body.Description != nil {
+			if err := domainsheet.ValidateBriefDescription(*req.Body.Description); err != nil {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
 		}
 
 		err = repo.UpdateCharacterSheetProfile(ctx, sheetUUID, userUUID, req.Body.AvatarURL, req.Body.CoverURL, req.Body.Description)

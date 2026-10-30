@@ -501,6 +501,7 @@ Ficha deletada com sucesso. Nenhum corpo na resposta.
 - `400` - Bad Request (UUID inválido)
 - `401` - Unauthorized
 - `404` - ficha não encontrada ou não pertence ao usuário
+- `422` - `briefDescription` com mais de 255 caracteres (mesmo limite de `profile.briefDescription` no create/update)
 - `500` - Internal Server Error
 
 ---
