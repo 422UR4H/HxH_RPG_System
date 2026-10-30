@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -102,6 +103,48 @@ func TestPatchCharacterSheetProfile(t *testing.T) {
 
 			if resp.Code != tt.wantStatus {
 				t.Errorf("got status %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestPatchCharacterSheetProfileBriefDescriptionLimit(t *testing.T) {
+	userUUID := uuid.New()
+	sheetUUID := uuid.New()
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+
+	tests := []struct {
+		name       string
+		length     int
+		wantStatus int
+		wantCalled bool
+	}{
+		{"at limit is accepted", 255, http.StatusNoContent, true},
+		{"over limit is rejected", 256, http.StatusUnprocessableEntity, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			called := false
+			mock := &mockProfileUpdater{fn: func(ctx context.Context, su, pu uuid.UUID, av, cv, desc *string) error {
+				called = true
+				return nil
+			}}
+			huma.Register(api, huma.Operation{
+				Method:        http.MethodPatch,
+				Path:          "/charactersheets/{uuid}/profile",
+				DefaultStatus: http.StatusNoContent,
+			}, sheet.PatchCharacterSheetProfileHandler(mock))
+
+			body := map[string]any{"briefDescription": strings.Repeat("a", tt.length)}
+			resp := api.PatchCtx(ctx, "/charactersheets/"+sheetUUID.String()+"/profile", body)
+
+			if resp.Code != tt.wantStatus {
+				t.Errorf("got status %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
+			}
+			if called != tt.wantCalled {
+				t.Errorf("repo called = %v, want %v", called, tt.wantCalled)
 			}
 		})
 	}

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -997,4 +999,80 @@ func TestJointProficiencyExpPersistence(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Regressão: a migration 20250325000035 foi editada depois de aplicada (VARCHAR(32) -> 255),
+// então bancos criados antes disso ficaram com 32 e a ficha com descrição longa dava 500.
+// O teste recria o desvio, aplica o Up da migration de correção e salva 50 caracteres.
+func TestBriefDescriptionWidthOnDriftedDatabase(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := sheet.NewRepository(pool)
+	ctx := context.Background()
+
+	raw, err := os.ReadFile("../../../../migrations/20261030000000_brief_description_varchar_255.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	up := strings.SplitN(string(raw), "-- +goose Down", 2)[0]
+
+	// Garante que a coluna volta a 255 ao fim, mesmo se o teste falhar no meio.
+	t.Cleanup(func() {
+		if _, err := pool.Exec(ctx, `ALTER TABLE character_profiles ALTER COLUMN brief_description TYPE VARCHAR(255)`); err != nil {
+			t.Errorf("restore column: %v", err)
+		}
+	})
+
+	if _, err := pool.Exec(ctx, `ALTER TABLE character_profiles ALTER COLUMN brief_description TYPE VARCHAR(32)`); err != nil {
+		t.Fatalf("simulate drift: %v", err)
+	}
+	if _, err := pool.Exec(ctx, up); err != nil {
+		t.Fatalf("apply migration up: %v", err)
+	}
+
+	var width int
+	err = pool.QueryRow(ctx, `
+		SELECT character_maximum_length FROM information_schema.columns
+		WHERE table_name = 'character_profiles' AND column_name = 'brief_description'`).Scan(&width)
+	if err != nil {
+		t.Fatalf("query column width: %v", err)
+	}
+	if width != 255 {
+		t.Fatalf("brief_description width = %d, want 255", width)
+	}
+
+	playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass123")
+	playerUUID := uuid.MustParse(playerStr)
+	s := buildTestSheet(&playerUUID)
+	if err := repo.CreateCharacterSheet(ctx, s); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	long := strings.Repeat("a", 50)
+
+	t.Run("UpdateCharacterSheet saves 50 chars", func(t *testing.T) {
+		profile := s.GetProfile()
+		profile.BriefDescription = long
+		withLong, err := domainsheet.NewCharacterSheetFactory().Build(&playerUUID, nil, nil, profile, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		withLong.UUID = s.UUID
+		if err := repo.UpdateCharacterSheet(ctx, withLong); err != nil {
+			t.Fatalf("update: %v", err)
+		}
+	})
+
+	t.Run("UpdateCharacterSheetProfile saves 50 chars", func(t *testing.T) {
+		long2 := strings.Repeat("b", 50)
+		if err := repo.UpdateCharacterSheetProfile(ctx, s.UUID, playerUUID, nil, nil, &long2); err != nil {
+			t.Fatalf("update profile: %v", err)
+		}
+		got, _, err := repo.GetCharacterSheetByUUID(ctx, s.UUID.String())
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if gp := got.GetProfile(); gp.BriefDescription != long2 {
+			t.Errorf("brief description = %q, want %q", gp.BriefDescription, long2)
+		}
+	})
 }
