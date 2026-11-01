@@ -92,6 +92,16 @@ Context-specific content lives in `.github/instructions/` (loaded only when rele
 - `gateway-conventions.instructions.md` — SQL/repository patterns (when working on `internal/gateway/`)
 - `game-server.instructions.md` — MatchSession, Room/Client/Hub pattern, message routing (when working on `internal/app/game/`)
 
+## Sheet assembly is mirrored in the front
+
+The front (HxH_RPG_Environment_React, `src/features/sheet/engine/`) re-runs the sheet
+assembly in TypeScript for the live preview on create/edit. The back stays the source of
+truth. Any change to formulas, coefficients, cascades, classes or `AssembleCharacterSheet`
+makes `TestSheetParityFixtures` fail until you regenerate
+(`go test ./internal/app/api/sheet/ -run TestSheetParityFixtures -update`); then sync the
+front (`npm run sync:sheet-fixtures`) and fix its engine if its parity test fails. See
+`docs/dev/character-sheet/factory.md` ("Paridade com o front").
+
 ## Known Issues
 
 **Motor de batalha — Fases 1 e 2 implementadas.** Ver

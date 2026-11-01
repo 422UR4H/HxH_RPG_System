@@ -284,6 +284,50 @@ Nen nem categoria (`hexValue`/`category` nulos). A classe é aplicada com o
 mesmo `Wrap` descrito acima — por ser ficha completa, `SkillsExps` pode conter
 perícias espirituais (`Focus`, `Mop`...), o que o `HalfSheet` não suportava.
 
+### AssembleCharacterSheet — um só caminho de montagem
+
+`charactersheet.AssembleCharacterSheet` (`internal/application/character_sheet/assemble_character_sheet.go`)
+é a montagem de uma ficha a partir da classe e do que o jogador distribuiu: valida
+a distribuição (`ValidateSkills`/`ValidateProficiencies`), aplica as escolhas
+sobre a classe (`ApplySkills`/`ApplyProficiencies`, copy-on-write), chama `Build`
+(que aplica a classe com `Wrap`) e, por fim, `ApplyInitialAttributePoints`.
+Criação e edição usam a mesma função (antes cada caso de uso repetia esses passos).
+
+### Paridade com o front
+
+O front repete esta montagem em TypeScript para mostrar a ficha **ao vivo** na
+criação/edição (repo HxH_RPG_Environment_React, `src/features/sheet/engine/`).
+O back continua sendo a fonte da verdade: o front envia só os valores-chave e o
+back recalcula; o motor do front existe só para a prévia.
+
+As duas implementações são mantidas iguais por golden files:
+
+- `internal/app/api/sheet/sheet_parity_test.go` monta, para **cada classe** e
+  alguns cenários (só a classe; proficiências escolhidas; pontos concentrados e
+  espalhados), a ficha por `AssembleCharacterSheet` e grava
+  `internal/app/api/sheet/testdata/sheet_parity.json` com a entrada (o que o front
+  envia), a resposta (`NewCharacterSheetResponse`), as constantes e as tabelas de
+  EXP. Gera 6 vezes e exige o mesmo resultado: prova que a ordem dos mapas não
+  muda a ficha, premissa da qual o motor do front depende.
+- Sem `-update` o teste **compara e falha** se a fixture estiver velha. Mudou uma
+  fórmula, um coeficiente ou uma classe:
+
+  ```bash
+  go test ./internal/app/api/sheet/ -run TestSheetParityFixtures -update
+  ```
+
+  e, no front, `npm run sync:sheet-fixtures` + `npm run test` (ajustando o motor TS
+  se o teste de paridade de lá falhar).
+- Cenários sem proficiência numa classe com distribuição usam a classe sem
+  `Distribution`: é o estado intermediário que o front mostra enquanto o jogador
+  ainda não preencheu os slots (o envio real exige todos).
+
+Detalhes que o motor do front copia à risca (e que, mudando aqui, mudam lá): a
+`UpgradeCascade` é mutável (o atributo intermediário divide o EXP repassado e o
+gerente de perícias recebe o valor dividido); `Proficiency.Manager.Get` procura
+antes nas conjuntas; a tabela da proficiência conjunta da classe tem coeficiente
+1.0 (`character_class_factory.go`).
+
 ## 5. HalfSheet — Ficha Sem Nen
 
 > **Descontinuada.** Desde 2026-10-28 (decisão do dono do produto) as classes

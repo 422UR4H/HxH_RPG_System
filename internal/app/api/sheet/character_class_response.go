@@ -1,6 +1,8 @@
 package sheet
 
 import (
+	"sort"
+
 	cc "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_class"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -19,6 +21,66 @@ type CharacterClassResponse struct {
 	JointProficiencies  []JointProf           `json:"jointProficiencies"`
 	IndicatedCategories []string              `json:"indicatedCategories"`
 	Distribution        *DistributionResponse `json:"distribution,omitempty"`
+	// Definition são os dados brutos com que a classe monta uma ficha. Os campos
+	// acima são a ficha-modelo já calculada; o motor de prévia do front
+	// (src/features/sheet/engine) precisa da entrada, não do resultado, para
+	// repetir a montagem do back (AssembleCharacterSheet) a cada escolha do jogador.
+	Definition ClassDefinitionResponse `json:"definition"`
+}
+
+// ClassDefinitionResponse espelha os campos de montagem de cc.CharacterClass.
+// Chaves são os valores String() dos enums Go ("Vitality", "Sword").
+// JointSkills fica de fora: nenhuma classe usa, e o teste de paridade falha se
+// alguma passar a usar (o motor do front ainda não as implementa).
+type ClassDefinitionResponse struct {
+	SkillsExps         map[string]int             `json:"skillsExps"`
+	AttributesExps     map[string]int             `json:"attributesExps"`
+	ProficienciesExps  map[string]int             `json:"proficienciesExps"`
+	JointProficiencies []ClassJointProfDefinition `json:"jointProficiencies"`
+	JointProfExps      map[string]int             `json:"jointProfExps"`
+}
+
+type ClassJointProfDefinition struct {
+	Name    string   `json:"name"`
+	Weapons []string `json:"weapons"`
+}
+
+func newClassDefinitionResponse(charClass cc.CharacterClass) ClassDefinitionResponse {
+	skills := make(map[string]int, len(charClass.SkillsExps))
+	for name, exp := range charClass.SkillsExps {
+		skills[name.String()] = exp
+	}
+	attrs := make(map[string]int, len(charClass.AttributesExps))
+	for name, exp := range charClass.AttributesExps {
+		attrs[name.String()] = exp
+	}
+	profs := make(map[string]int, len(charClass.ProficienciesExps))
+	for name, exp := range charClass.ProficienciesExps {
+		profs[name.String()] = exp
+	}
+	jointExps := make(map[string]int, len(charClass.JointProfExps))
+	for name, exp := range charClass.JointProfExps {
+		jointExps[name] = exp
+	}
+
+	joints := make([]ClassJointProfDefinition, 0, len(charClass.JointProficiencies))
+	for name, prof := range charClass.JointProficiencies {
+		weapons := []string{}
+		for _, w := range prof.GetWeapons() {
+			weapons = append(weapons, w.String())
+		}
+		joints = append(joints, ClassJointProfDefinition{Name: name, Weapons: weapons})
+	}
+	// ordem estável: o mapa da classe não tem ordem e a resposta vira fixture
+	sort.Slice(joints, func(i, j int) bool { return joints[i].Name < joints[j].Name })
+
+	return ClassDefinitionResponse{
+		SkillsExps:         skills,
+		AttributesExps:     attrs,
+		ProficienciesExps:  profs,
+		JointProficiencies: joints,
+		JointProfExps:      jointExps,
+	}
 }
 
 type ClassProfileResponse struct {
@@ -201,6 +263,11 @@ func NewCharacterClassResponse(
 		})
 	}
 
+	// ordem estável: vem de um mapa, e a resposta entra na fixture de paridade
+	sort.Slice(jointProficiencies, func(i, j int) bool {
+		return jointProficiencies[i].Name < jointProficiencies[j].Name
+	})
+
 	indicatedCategories := make([]string, len(charClass.IndicatedCategories))
 	for i, v := range charClass.IndicatedCategories {
 		indicatedCategories[i] = v.String()
@@ -253,5 +320,6 @@ func NewCharacterClassResponse(
 		Attributes:          attributes,
 		Abilities:           abilities,
 		IndicatedCategories: indicatedCategories,
+		Definition:          newClassDefinitionResponse(charClass),
 	}
 }
