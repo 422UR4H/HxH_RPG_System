@@ -71,23 +71,13 @@ func (uc *UpdateCharacterSheetUC) UpdateCharacterSheet(
 	}
 	charClass := class.(cc.CharacterClass)
 
-	if err := charClass.ValidateSkills(input.SkillsExps); err != nil {
-		return err
-	}
-	if err := charClass.ValidateProficiencies(input.ProficienciesExps); err != nil {
-		return err
-	}
-	charClass.ApplySkills(input.SkillsExps)
-	charClass.ApplyProficiencies(input.ProficienciesExps)
-
-	charSheet, err := uc.factory.Build(rel.PlayerUUID, rel.MasterUUID, rel.CampaignUUID, input.Profile, nil, nil, &charClass)
+	charSheet, err := AssembleCharacterSheet(uc.factory, charClass, SheetOwner{
+		PlayerUUID:   rel.PlayerUUID,
+		MasterUUID:   rel.MasterUUID,
+		CampaignUUID: rel.CampaignUUID,
+	}, input)
 	if err != nil {
 		return err
-	}
-	if len(input.AttributePoints) > 0 {
-		if err := charSheet.ApplyInitialAttributePoints(input.AttributePoints); err != nil {
-			return err
-		}
 	}
 	charSheet.UUID = sheetUUID
 

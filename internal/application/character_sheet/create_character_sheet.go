@@ -67,16 +67,11 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 	}
 	charClass := class.(cc.CharacterClass)
 
-	skillsExps := input.SkillsExps
-	if err := charClass.ValidateSkills(skillsExps); err != nil {
+	// Valida antes das checagens de nickname/limite/campanha para manter a ordem
+	// dos erros; AssembleCharacterSheet valida de novo (barato e idempotente).
+	if err := validateDistribution(charClass, input); err != nil {
 		return nil, err
 	}
-	profExps := input.ProficienciesExps
-	if err := charClass.ValidateProficiencies(profExps); err != nil {
-		return nil, err
-	}
-	charClass.ApplySkills(skillsExps)
-	charClass.ApplyProficiencies(profExps)
 
 	if err := uc.validateNickName(input.Profile.NickName); err != nil {
 		return nil, err
@@ -106,23 +101,13 @@ func (uc *CreateCharacterSheetUC) CreateCharacterSheet(
 		}
 	}
 
-	characterSheet, err := uc.factory.Build(
-		input.PlayerUUID,
-		input.MasterUUID,
-		input.CampaignUUID,
-		input.Profile,
-		nil,
-		nil,
-		&charClass,
-	)
+	characterSheet, err := AssembleCharacterSheet(uc.factory, charClass, SheetOwner{
+		PlayerUUID:   input.PlayerUUID,
+		MasterUUID:   input.MasterUUID,
+		CampaignUUID: input.CampaignUUID,
+	}, input)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(input.AttributePoints) > 0 {
-		if err := characterSheet.ApplyInitialAttributePoints(input.AttributePoints); err != nil {
-			return nil, err
-		}
 	}
 
 	// TODO: move to consolidate (accept submission) flow
