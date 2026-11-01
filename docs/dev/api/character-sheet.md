@@ -549,6 +549,13 @@ inicialização da API com `BuildClassSheet` (ficha completa; ver
         "proficiencyPoints": [{ "level": 5, "exp": 210 }],
         "skillsAllowed": ["Vitality"],
         "proficienciesAllowed": ["Sword"]
+      },
+      "definition": {
+        "skillsExps": { "Vitality": 210, "Focus": 127 },
+        "attributesExps": { "Resilience": 127 },
+        "proficienciesExps": { "Sword": 127 },
+        "jointProficiencies": [{ "name": "Weapons", "weapons": ["Sword", "Katana"] }],
+        "jointProfExps": { "Weapons": 328 }
       }
     }
   ]
@@ -566,6 +573,15 @@ inicialização da API com `BuildClassSheet` (ficha completa; ver
   Atributos espirituais não têm pontos distribuíveis: `points` é sempre `0`.
 - `distribution` é omitido quando a classe não tem distribuição.
 - `indicatedCategories` lista todas as categorias Nen quando a classe não indica nenhuma.
+- `jointProficiencies` (a ficha-modelo calculada) vem ordenado por `name`.
+- `definition` são os **dados brutos** com que a classe monta uma ficha
+  (`ClassDefinitionResponse`, espelho dos campos de `cc.CharacterClass`); os
+  campos acima são o **resultado** dessa montagem. Existe para o motor de prévia
+  do front repetir a montagem a cada escolha do jogador — ver
+  `docs/dev/character-sheet/factory.md` ("Paridade com o front"). Chaves são os
+  nomes do enum Go, sem filtro de EXP > 0; `jointProficiencies` vem ordenado por
+  `name`. `JointSkills` não é exposto: nenhuma classe usa (o teste de paridade
+  falha se alguma passar a usar).
 
 ### Erros
 

@@ -106,7 +106,9 @@ mappings:
     game_docs:
       - path: docs/game/classes.md
         confidence: possibly_affected
-    notes: Sheet factory, class-based initialization
+    notes: >-
+      Sheet factory, class-based initialization. Mirrored by the front's preview
+      engine — regenerate the parity fixture (factory.md, "Paridade com o front").
 
   # ─── API Contracts ───
   - code_path: internal/app/api/sheet/
@@ -1057,7 +1059,11 @@ mappings:
       - path: docs/dev/character-sheet/experience.md
         confidence: possibly_affected
     game_docs: []
-    notes: Character sheet use cases — check if behavior changes visible to players
+    notes: >-
+      Character sheet use cases — check if behavior changes visible to players.
+      AssembleCharacterSheet is mirrored by the front's preview engine: any change
+      to the assembly must regenerate internal/app/api/sheet/testdata/sheet_parity.json
+      (see docs/dev/character-sheet/factory.md, "Paridade com o front").
 
   - code_path: internal/domain/match/
     dev_docs:
