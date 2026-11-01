@@ -638,6 +638,37 @@ func TestUpdateMatch(t *testing.T) {
 		}
 	})
 
+	t.Run("empty strings reach the repository as empty", func(t *testing.T) {
+		empty := ""
+		input := &match.UpdateMatchInput{
+			MatchUUID: matchUUID, MasterUUID: masterUUID,
+			BriefInitialDescription: &empty, Description: &empty,
+		}
+		var persisted *matchEntity.Match
+		matchRepo := &testutil.MockMatchRepo{
+			GetMatchFn: loadMatchFn(baseMatch),
+			UpdateMatchFn: func(_ context.Context, m *matchEntity.Match) error {
+				persisted = m
+				return nil
+			},
+		}
+		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
+
+		if _, err := uc.Update(context.Background(), input); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if persisted == nil {
+			t.Fatal("UpdateMatch should have been called")
+		}
+		if persisted.BriefInitialDescription != "" || persisted.Description != "" {
+			t.Errorf("want cleared, got brief=%q desc=%q",
+				persisted.BriefInitialDescription, persisted.Description)
+		}
+		if persisted.Title != baseMatch.Title {
+			t.Errorf("absent title should be kept, got %q", persisted.Title)
+		}
+	})
+
 	t.Run("no-op when all fields nil", func(t *testing.T) {
 		input := &match.UpdateMatchInput{MatchUUID: matchUUID, MasterUUID: masterUUID}
 		matchRepo := &testutil.MockMatchRepo{

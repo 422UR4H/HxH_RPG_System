@@ -21,7 +21,7 @@
 | Campo | Regra |
 |---|---|
 | `title` | obrigatório, 5–32 chars |
-| `briefInitialDescription` | ≤ 64 chars |
+| `briefInitialDescription` | ≤ 255 chars |
 | `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
 | `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
 | `isPublic` | default `true` |
@@ -108,9 +108,13 @@
 | Campo | Regra (se enviado) |
 |---|---|
 | `title` | 5–32 chars |
-| `briefInitialDescription` | ≤ 64 chars |
+| `briefInitialDescription` | ≤ 255 chars |
 | `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
 | `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
+
+**Ausente × vazio:** campo ausente mantém o valor atual; string vazia (`""`)
+grava vazio, ou seja, limpa o campo. Vale para `briefInitialDescription` e
+`description`. Para limpar, o cliente deve enviar `""` explicitamente.
 
 `campaignUuid` é imutável — não enviar.
 
