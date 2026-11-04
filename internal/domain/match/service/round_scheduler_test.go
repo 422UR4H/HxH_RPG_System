@@ -495,3 +495,104 @@ func TestRoundScheduler_BestPendingFor(t *testing.T) {
 		}
 	})
 }
+
+func TestRoundScheduler_ProjectRoundBeforeTheFirstOpenUsesTheProvisionalPrice(t *testing.T) {
+	sch := service.RoundScheduler{}
+	bars := newFakeBars()
+	p1, p2, p3 := uuid.New(), uuid.New(), uuid.New()
+
+	r := round.NewRound(enum.Race)
+	q := action.NewActionPriorityQueue(nil)
+	q.Insert(attackAt(p2, 23))
+	q.Insert(attackAt(p2, 17))
+	q.Insert(attackAt(p1, 20))
+	q.Insert(attackAt(p3, 11))
+	in := service.ScheduleInput{Queue: &q, Round: r, Bars: bars}
+
+	prov := sch.ProvisionalPrices(in)
+	if len(prov) != 1 || prov[action.BarAction] != 11 {
+		t.Fatalf("ProvisionalPrices = %v, want {action: 11}", prov)
+	}
+
+	proj := sch.ProjectRound(in)
+	wantActors := []uuid.UUID{p2, p1, p3, p2}
+	wantKeys := []float64{23, 20, 11, 9}
+	if len(proj.Order) != len(wantActors) {
+		t.Fatalf("Order = %d slots, want %d", len(proj.Order), len(wantActors))
+	}
+	for i := range wantActors {
+		if proj.Order[i].ActorID != wantActors[i] {
+			t.Errorf("Order[%d] actor = %v, want %v", i, proj.Order[i].ActorID, wantActors[i])
+		}
+		if !closeTo(proj.Order[i].Key, wantKeys[i]) {
+			t.Errorf("Order[%d].Key = %v, want %v", i, proj.Order[i].Key, wantKeys[i])
+		}
+	}
+	if len(proj.Deferred) != 0 {
+		t.Errorf("Deferred = %d, want 0", len(proj.Deferred))
+	}
+	if _, frozen := in.Round.Price(action.BarAction); frozen {
+		t.Error("projecting must not freeze the round's price")
+	}
+}
+
+func TestRoundScheduler_ProjectRoundDefersWhatCannotPay(t *testing.T) {
+	sch := service.RoundScheduler{}
+	bars := newFakeBars()
+	p1, p2 := uuid.New(), uuid.New()
+	bars.setCarry(p1, action.BarAction, -5)
+
+	r := round.NewRound(enum.Race)
+	r.FreezePrice(action.BarAction, 11)
+	q := action.NewActionPriorityQueue(nil)
+	q.Insert(attackAt(p1, 14))
+	q.Insert(attackAt(p2, 15))
+	in := service.ScheduleInput{Queue: &q, Round: r, Bars: bars}
+
+	proj := sch.ProjectRound(in)
+	if len(proj.Order) != 1 || proj.Order[0].ActorID != p2 {
+		t.Fatalf("Order = %+v, want only p2", proj.Order)
+	}
+	if len(proj.Deferred) != 1 || proj.Deferred[0].ActorID != p1 {
+		t.Fatalf("Deferred = %+v, want only p1", proj.Deferred)
+	}
+	if proj.Deferred[0].Speeds[action.BarAction] != 14 {
+		t.Errorf("Deferred speeds = %v, want action: 14", proj.Deferred[0].Speeds)
+	}
+}
+
+func TestRoundScheduler_CombinedActionIsPendingOrDeferredOnBothBars(t *testing.T) {
+	sch := service.RoundScheduler{}
+	bars := newFakeBars()
+	p1 := uuid.New()
+
+	r := round.NewRound(enum.Race)
+	r.FreezePrice(action.BarAction, 11)
+	r.FreezePrice(action.BarMove, 5)
+	q := action.NewActionPriorityQueue(nil)
+	// Clears the move gate (20 >= 5) but not the action gate (8 < 11).
+	q.Insert(chargeAt(p1, 8, 20))
+	in := service.ScheduleInput{Queue: &q, Round: r, Bars: bars}
+
+	proj := sch.ProjectRound(in)
+	if len(proj.Order) != 0 {
+		t.Fatalf("Order = %+v, want empty", proj.Order)
+	}
+	if len(proj.Deferred) != 1 {
+		t.Fatalf("Deferred = %d, want exactly 1", len(proj.Deferred))
+	}
+	sp := proj.Deferred[0].Speeds
+	if len(sp) != 2 || sp[action.BarAction] != 8 || sp[action.BarMove] != 20 {
+		t.Errorf("Speeds = %v, want action: 8 and move: 20", sp)
+	}
+}
+
+func TestRoundScheduler_ProvisionalPricesIsRaceOnly(t *testing.T) {
+	sch := service.RoundScheduler{}
+	q := action.NewActionPriorityQueue(nil)
+	q.Insert(attackAt(uuid.New(), 10))
+	in := service.ScheduleInput{Queue: &q, Round: round.NewRound(enum.Free), Bars: newFakeBars()}
+	if got := sch.ProvisionalPrices(in); got != nil {
+		t.Errorf("ProvisionalPrices in a Free round = %v, want nil", got)
+	}
+}
