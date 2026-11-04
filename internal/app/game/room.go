@@ -172,9 +172,9 @@ type Room struct {
 	// carry (unwritten.go). Guarded by mu.
 	unwrittenSheets    map[uuid.UUID]*csSheet.CharacterSheet
 	unwrittenRoundEnds []appmatch.RoundEnd
-	// masterViewPieceID is the piece the master is watching the board through
-	// (watch_piece_view); "" is no watch. Guarded by mu. It lives as long as the master's
-	// connection: a new master socket starts with no watch, and the front sends it again.
+	// masterViewPieceID é a peça pela qual o mestre está vendo o tabuleiro
+	// (watch_piece_view); "" é sem observação. Protegido por mu. Vive enquanto durar a conexão
+	// do mestre: um socket novo do mestre nasce sem observação, e o front a reenvia.
 	masterViewPieceID string
 
 	session *matchsession.MatchSession
@@ -382,7 +382,7 @@ func (r *Room) Run() {
 						}
 						return r.buildMapFullState(pid, isMaster)
 					})
-					// The board under the master's watched piece may have just changed too.
+					// O tabuleiro sob a peça que o mestre observa também pode ter acabado de mudar.
 					r.pushMasterPieceView()
 				}
 				// match_full_state goes along, AFTER the map (the same order as the client's own
@@ -736,7 +736,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 		return r.buildMapFullState(pid, isMaster)
 	})
-	// After the master's map_full_state, on the same direct lane.
+	// Depois do map_full_state do mestre, na mesma fila direta.
 	r.pushMasterPieceView()
 	return nil
 }
@@ -2701,18 +2701,18 @@ func (r *Room) pushVisibilityUpdates() {
 		msg := NewServerMessage(MsgTypeVisibilityUpdated, payload)
 		return &msg
 	})
-	// Whatever moved every player's sight (a wall, a reveal) moves the watched piece's too.
+	// O que mudou a visão dos jogadores (uma parede, uma revelação) muda a da peça observada também.
 	r.pushMasterPieceView()
 }
 
-// buildPieceView is the piece_view of the piece the master is watching: what it sees right
-// now, from where it stands — no memory, no per-player ownership (FilterPerspective). nil when
-// there is no watch, no session, or the watched piece left the board; in that last case the
-// watch is cleared, so a piece that comes back under the same id is not watched by surprise.
+// buildPieceView é o piece_view da peça que o mestre observa: o que ela vê agora, de onde
+// está — sem memória, sem a regra de peça própria por jogador (FilterPerspective). nil quando
+// não há observação, não há sessão ou a peça observada saiu do tabuleiro; nesse último caso a
+// observação é limpa, para que uma peça que volte com o mesmo id não seja observada de surpresa.
 //
-// Computed on demand, never cached: the master still owns no LOS (see relayPieceMove).
+// Calculado sob demanda, nunca em cache: o mestre continua sem LOS próprio (ver relayPieceMove).
 //
-// The caller must NOT hold r.mu.
+// Quem chama NÃO pode estar segurando r.mu.
 func (r *Room) buildPieceView() *Message {
 	r.mu.RLock()
 	watched := r.masterViewPieceID
@@ -2723,8 +2723,8 @@ func (r *Room) buildPieceView() *Message {
 	viewer, ok := r.pieces[watched]
 	if !ok {
 		r.mu.RUnlock()
-		// A separate write lock, never an upgrade of the read lock above; cleared only if
-		// nobody chose another piece in the gap.
+		// Um lock de escrita separado, nunca um upgrade do de leitura acima; só limpa se
+		// ninguém escolheu outra peça no intervalo.
 		r.mu.Lock()
 		if r.masterViewPieceID == watched {
 			r.masterViewPieceID = ""
@@ -2764,19 +2764,19 @@ func (r *Room) buildPieceView() *Message {
 	return &msg
 }
 
-// pushMasterPieceView sends the master a fresh piece_view, when they are watching a piece. It
-// goes on the master's DIRECT lane (sendToMaster → client.SendMessage), the lane piece_moved
-// and map_full_state take, so it always lands after the news that changed the view.
+// pushMasterPieceView manda ao mestre um piece_view novo, quando ele observa uma peça. Vai pela
+// fila DIRETA do mestre (sendToMaster → client.SendMessage), a mesma do piece_moved e do
+// map_full_state, então chega sempre depois da notícia que mudou a visão.
 //
-// The caller must NOT hold r.mu.
+// Quem chama NÃO pode estar segurando r.mu.
 func (r *Room) pushMasterPieceView() {
 	if msg := r.buildPieceView(); msg != nil {
 		r.sendToMaster(*msg)
 	}
 }
 
-// pieceVisibilityOf is one piece as the fog filters read it: its LOCAL centre and whether it
-// shows. A nil Visible is a visible piece.
+// pieceVisibilityOf é uma peça como os filtros de fog a leem: o centro LOCAL dela e se ela
+// aparece. Visible nil é peça visível.
 func pieceVisibilityOf(p PieceMovedPayload, grid mapentity.GridShape) domainservice.PieceVisibility {
 	x, y := slotPayloadToLocal(p.Slot, grid)
 	visible := true
@@ -3292,8 +3292,8 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 	// are all skipped. The master still hears about the move through the isMaster branch of
 	// the dispatch below — or gets no echo, when the master is the one who dragged it. This
 	// holds for all three paths through here: a client drag, a turn's move, a reaction escape.
-	// Watching the board through a piece (watch_piece_view) does not change this: that view
-	// is computed on demand from the piece's position (buildPieceView), never cached here.
+	// Ver o tabuleiro pelos olhos de uma peça (watch_piece_view) não muda isso: essa visão é
+	// calculada sob demanda a partir da posição da peça (buildPieceView), nunca guardada aqui.
 	if owner == r.masterUUID {
 		owner = uuid.Nil
 	}
@@ -3358,8 +3358,8 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 			return &m
 		}
 	})
-	// Every exit below — the owner == uuid.Nil one included, which is the one an NPC's move
-	// takes — refreshes the master's watched piece, AFTER the piece_moved above.
+	// Toda saída abaixo — inclusive a de owner == uuid.Nil, que é a que o movimento de um NPC
+	// toma — atualiza a peça que o mestre observa, DEPOIS do piece_moved acima.
 	defer r.pushMasterPieceView()
 
 	// The owner's line of sight already changed, so resend them the full state. This stays
@@ -3860,8 +3860,8 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 		m := removed
 		return &m
 	})
-	// Every exit below refreshes the master's watched piece, AFTER the piece_removed above;
-	// when the removed piece IS the watched one, buildPieceView clears the watch instead.
+	// Toda saída abaixo atualiza a peça que o mestre observa, DEPOIS do piece_removed acima;
+	// quando a peça removida É a observada, buildPieceView limpa a observação em vez disso.
 	defer r.pushMasterPieceView()
 
 	if !live || owner == uuid.Nil {

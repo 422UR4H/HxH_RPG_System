@@ -10,16 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// These tests drive the room's real handler (handleClientMessage) with the master's and a
-// player's clients buffered on their send channels — the same harness fog_regression_test.go
-// uses, on liveMatchRoom's board:
+// Estes testes dirigem o handler real da sala (handleClientMessage) com os clientes do mestre
+// e de um jogador acumulando no canal send — o mesmo harness do fog_regression_test.go, no
+// tabuleiro do liveMatchRoom:
 //
-//	p1 (player's piece) at cell (1,1), centre (96,96). w1: vertical wall at x=192, y 0..320.
-//	door: horizontal door at y=192, x 0..192 — closed, it shuts p1 into the box x<192, y<192.
-//	p2 (an NPC's piece) starts at cell (5,1), behind w1, out of p1's sight.
+//	p1 (peça do jogador) na célula (1,1), centro (96,96). w1: parede vertical em x=192, y 0..320.
+//	porta: porta horizontal em y=192, x 0..192 — fechada, prende p1 na caixa x<192, y<192.
+//	p2 (peça de um NPC) começa na célula (5,1), atrás de w1, fora da visão de p1.
 //
-// Every move and wall change below goes through enqueue_master_action, the only way the
-// board changes mid-match.
+// Todo movimento e toda mudança de parede abaixo passam pelo enqueue_master_action, o único
+// jeito de o tabuleiro mudar no meio da partida.
 
 const pieceViewDoorID = "8d3c1f0e-0b7a-4c39-9d7e-0d2c6f1a9b10"
 
@@ -91,7 +91,7 @@ func (f *pieceViewFixture) masterMove(t *testing.T, charID uuid.UUID, col, row i
 	}))
 }
 
-// drainAll returns every message buffered for c, in arrival order.
+// drainAll devolve toda mensagem acumulada para c, na ordem de chegada.
 func drainAll(t *testing.T, c *Client) []Message {
 	t.Helper()
 	var out []Message
@@ -167,7 +167,7 @@ func TestWatchPieceView_MasterGetsPieceView(t *testing.T) {
 	if slices.Contains(v.PieceIDs, "p2") {
 		t.Errorf("pieceIds = %v, p2 is behind w1 and must not be listed", v.PieceIDs)
 	}
-	// The player hears nothing of the master's perspective.
+	// O jogador não fica sabendo nada do ponto de vista do mestre.
 	if got := pieceViewsIn(t, drainAll(t, f.player)); len(got) != 0 {
 		t.Errorf("the player received %d piece_view — it is master-only", len(got))
 	}
@@ -175,8 +175,8 @@ func TestWatchPieceView_MasterGetsPieceView(t *testing.T) {
 
 func TestWatchPieceView_EmptyListsEncodeAsArrays(t *testing.T) {
 	f := newPieceViewFixture(t)
-	// Box p1 in with no wall in sight is not possible here; instead check the raw JSON of a
-	// real view for the two lists, which must never be null.
+	// Prender p1 sem nenhuma parede à vista não dá neste tabuleiro; em vez disso, confere o
+	// JSON cru de uma visão real para as listas, que nunca podem ser null.
 	f.watch(t, f.master, "p1")
 	msgs := drainAll(t, f.master)
 	for _, m := range msgs {
@@ -271,7 +271,7 @@ func TestWatchPieceView_UpdatesWhenAnotherPieceMoves(t *testing.T) {
 	f.watch(t, f.master, "p1")
 	drainAll(t, f.master)
 
-	// p2 (NPC) from behind w1 into p1's box: NPC moves take relayPieceMove's owner == Nil exit.
+	// p2 (NPC) sai de trás de w1 para a caixa de p1: movimento de NPC toma a saída owner == Nil do relayPieceMove.
 	f.masterMove(t, f.npcChar, 2, 2)
 
 	msgs := drainAll(t, f.master)
@@ -302,7 +302,7 @@ func TestWatchPieceView_UpdatesWhenAnotherPieceMoves(t *testing.T) {
 
 func TestWatchPieceView_UpdatesOnWallChange(t *testing.T) {
 	f := newPieceViewFixture(t)
-	// p2 sits just below the closed door: in p1's sight only once it opens.
+	// p2 fica logo abaixo da porta fechada: só entra na visão de p1 quando ela abre.
 	f.masterMove(t, f.npcChar, 1, 4)
 	f.watch(t, f.master, "p1")
 	before := pieceViewsIn(t, drainAll(t, f.master))
