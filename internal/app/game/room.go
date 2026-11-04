@@ -271,6 +271,26 @@ func (r *Room) IsMaster(userUUID uuid.UUID) bool {
 	return r.masterUUID == userUUID
 }
 
+// removeClient tira client da sala se ele ainda é a conexão registrada para o seu usuário, e
+// diz se tirou. Sair o mestre apaga o ponto de vista dele (watch_piece_view): sem ninguém para
+// receber, cada movimento pagaria uma linha de visão à toa. Toma r.mu; não manda nada.
+func (r *Room) removeClient(client *Client) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, ok := r.clients[client.userUUID]
+	if !ok || current != client {
+		return false
+	}
+	delete(r.clients, client.userUUID)
+	if r.IsMaster(client.userUUID) {
+		r.masterViewPieceID = ""
+	}
+	// Signal shutdown via done, never by closing send: a concurrent
+	// SendMessage on a closed channel panics and kills the process.
+	client.Close()
+	return true
+}
+
 func (r *Room) ClientCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -445,18 +465,7 @@ func (r *Room) Run() {
 			// already replaced the map entry before the old goroutine unregisters —
 			// without this check the new connection would be evicted and the room
 			// would close spuriously.
-			r.mu.Lock()
-			removed := false
-			if current, ok := r.clients[client.userUUID]; ok && current == client {
-				delete(r.clients, client.userUUID)
-				// Signal shutdown via done, never by closing send: a concurrent
-				// SendMessage on a closed channel panics and kills the process.
-				client.Close()
-				removed = true
-			}
-			r.mu.Unlock()
-
-			if !removed {
+			if !r.removeClient(client) {
 				continue
 			}
 
@@ -1610,17 +1619,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			r.mu.Unlock()
 			return
 		}
-		if r.session == nil {
+		// Sem partida viva ou sem a peça no tabuleiro, o watch se apaga em silêncio. Depois de
+		// um restart, o watch que o front manda no onopen chega antes de o tabuleiro carregar;
+		// como o front o reenvia a cada match_full_state, um erro aqui só acenderia o banner do
+		// mestre (e roubaria a atribuição do erro do último comando dele).
+		_, known := r.pieces[payload.PieceID]
+		if r.session == nil || !known {
 			r.masterViewPieceID = ""
 			r.mu.Unlock()
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
-			return
-		}
-		if _, ok := r.pieces[payload.PieceID]; !ok {
-			r.masterViewPieceID = ""
-			r.mu.Unlock()
-			client.SendMessage(NewErrorMessage("unknown_piece",
-				fmt.Sprintf("piece %s is not on this match's board", payload.PieceID)))
 			return
 		}
 		r.masterViewPieceID = payload.PieceID

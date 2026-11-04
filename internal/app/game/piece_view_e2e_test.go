@@ -235,26 +235,42 @@ func TestWatchPieceView_NoLiveMatch(t *testing.T) {
 	master := NewClient(masterUUID, nil, "gm")
 	room.clients[masterUUID] = master
 	f := &pieceViewFixture{room: room, master: master}
+	// Uma observação anterior (de antes de a sessão cair) precisa ser apagada pelo watch novo.
+	room.masterViewPieceID = "p1"
 
 	f.watch(t, master, "p1")
 
+	// Silencioso: o front reenvia o watch a cada match_full_state; responder erro só acenderia
+	// o banner do mestre.
 	msgs := drainAll(t, master)
-	if codes := errorCodesIn(t, msgs); !slices.Contains(codes, "match_not_started") {
-		t.Fatalf("master error codes = %v, want match_not_started", codes)
+	if codes := errorCodesIn(t, msgs); len(codes) != 0 {
+		t.Fatalf("master error codes = %v, want none (watch on a lobby is silent)", codes)
 	}
 	if got := pieceViewsIn(t, msgs); len(got) != 0 {
 		t.Fatalf("a lobby answered with a piece_view")
+	}
+	room.mu.RLock()
+	watched := room.masterViewPieceID
+	room.mu.RUnlock()
+	if watched != "" {
+		t.Fatalf("the watch still names %q after a watch with no live match", watched)
 	}
 }
 
 func TestWatchPieceView_UnknownPiece(t *testing.T) {
 	f := newPieceViewFixture(t)
+	f.watch(t, f.master, "p1")
+	if got := pieceViewsIn(t, drainAll(t, f.master)); len(got) != 1 {
+		t.Fatalf("precondition: watching p1 should answer one piece_view, got %d", len(got))
+	}
 
 	f.watch(t, f.master, "ghost")
 
+	// Silencioso: depois de um restart o watch do onopen chega antes de o tabuleiro carregar;
+	// o front reenvia a cada match_full_state, então um erro aqui só acenderia o banner.
 	msgs := drainAll(t, f.master)
-	if codes := errorCodesIn(t, msgs); !slices.Contains(codes, "unknown_piece") {
-		t.Fatalf("master error codes = %v, want unknown_piece", codes)
+	if codes := errorCodesIn(t, msgs); len(codes) != 0 {
+		t.Fatalf("master error codes = %v, want none (unknown piece is silent)", codes)
 	}
 	if got := pieceViewsIn(t, msgs); len(got) != 0 {
 		t.Fatalf("an unknown piece answered with a piece_view")
@@ -262,7 +278,33 @@ func TestWatchPieceView_UnknownPiece(t *testing.T) {
 
 	f.masterMove(t, f.npcChar, 1, 2)
 	if got := pieceViewsIn(t, drainAll(t, f.master)); len(got) != 0 {
-		t.Fatalf("a move after unknown_piece produced %d piece_view — the watch must be cleared", len(got))
+		t.Fatalf("a move after an unknown piece produced %d piece_view — the p1 watch must be cleared", len(got))
+	}
+}
+
+func TestWatchPieceView_MasterUnregisterClearsWatch(t *testing.T) {
+	f := newPieceViewFixture(t)
+	f.watch(t, f.master, "p1")
+	drainAll(t, f.master)
+
+	if !f.room.removeClient(f.player) {
+		t.Fatal("precondition: the player should be removed")
+	}
+	f.room.mu.RLock()
+	watched := f.room.masterViewPieceID
+	f.room.mu.RUnlock()
+	if watched != "p1" {
+		t.Fatalf("a player's unregister changed the master's watch to %q", watched)
+	}
+
+	if !f.room.removeClient(f.master) {
+		t.Fatal("the master should be removed")
+	}
+	f.room.mu.RLock()
+	watched = f.room.masterViewPieceID
+	f.room.mu.RUnlock()
+	if watched != "" {
+		t.Fatalf("the watch still names %q after the master disconnected", watched)
 	}
 }
 
