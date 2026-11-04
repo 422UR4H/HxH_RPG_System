@@ -129,8 +129,9 @@ type Room struct {
 	done chan struct{}
 	mu   sync.RWMutex
 	// barsSeq stamps every bars_updated snapshot. Bumped under mu at the instant the snapshot
-	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
-	// channel off to a goroutine, and two rapid opens can reach it out of order.
+	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars sends after
+	// releasing mu, and two broadcasts from two read pumps can reach a client out of order.
+	// Every recipient's copy of one snapshot carries the same number.
 	//
 	// It starts at the clock (NewRoom), not at 0: the contract promises the counter never
 	// restarts, and clients drop any seq lower than the highest they applied, across
@@ -1318,6 +1319,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return &msg
 		})
 		r.publishResolution(turnID, result.Resolution)
+		// The reactor's speed just turned public: the players' bars show it from here on.
+		r.broadcastBars(session)
 
 	case MsgTypeEditAction:
 		if !r.IsMaster(client.userUUID) {
@@ -2408,6 +2411,9 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	// future change to attach timing cannot silently reintroduce a master-only leak here — but
 	// the guard, not the routing, is what keeps this comment true.
 	r.publishResolution(turnID, result.Resolution)
+	// The reaction's speed was charged on attach: the master's bars changed. A player's do not
+	// (the speed stays secret until the reaction opens), but every snapshot goes to everyone.
+	r.broadcastBars(session)
 }
 
 // applyWallInteract applies the master's hand to a wall in memory (open, close, toggle, lock,
@@ -2467,30 +2473,38 @@ func (r *Room) sendToMaster(msg Message) {
 	}
 }
 
-// newBarsUpdatedPayload snapshots both clocks for the whole table.
+// newBarsUpdatedPayload snapshots both clocks as the master (isMaster) or a player sees them —
+// matchsession.BarsView decides what each may see; this only puts it on the wire.
 //
 // The caller holds r.mu — it reads session state that every open and every enqueue mutates —
 // and stamps Seq from the room counter in that same critical section.
-func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayload {
-	prices := map[string]int{}
-	for bar, price := range session.RoundPrices() {
-		prices[string(bar)] = price
+func newBarsUpdatedPayload(session *matchsession.MatchSession, isMaster bool) BarsUpdatedPayload {
+	view := session.BarsView(isMaster)
+	out := BarsUpdatedPayload{
+		Prices:     barPricesWire(view.Prices),
+		Characters: make([]CharacterBarsPayload, 0, len(view.Characters)),
+		Order:      make([]BarSlotPayload, 0, len(view.Order)),
+		RoundTurns: view.RoundTurns,
 	}
-
-	out := BarsUpdatedPayload{Prices: prices, RoundTurns: session.RoundTurnCount()}
-	for _, charID := range session.CharacterIDs() {
-		actionCarry, actionSpeeds := session.BarState(charID, action.BarAction)
-		moveCarry, moveSpeeds := session.BarState(charID, action.BarMove)
+	if len(view.Provisional) > 0 {
+		out.ProvisionalPrices = barPricesWire(view.Provisional)
+	}
+	for _, c := range view.Characters {
 		out.Characters = append(out.Characters, CharacterBarsPayload{
-			CharacterID:   charID,
-			ActionBalance: actionCarry,
-			MoveBalance:   moveCarry,
-			ActionSpeeds:  append([]int(nil), actionSpeeds...),
-			MoveSpeeds:    append([]int(nil), moveSpeeds...),
+			CharacterID:          c.CharacterID,
+			ActionCarry:          c.Action.Carry,
+			MoveCarry:            c.Move.Carry,
+			ActionBalance:        c.Action.Balance,
+			MoveBalance:          c.Move.Balance,
+			ActionSpeeds:         append([]int{}, c.Action.Acted...),
+			MoveSpeeds:           append([]int{}, c.Move.Acted...),
+			PendingActionSpeeds:  append([]int(nil), c.Action.Pending...),
+			PendingMoveSpeeds:    append([]int(nil), c.Move.Pending...),
+			DeferredActionSpeeds: append([]int(nil), c.Action.Deferred...),
+			DeferredMoveSpeeds:   append([]int(nil), c.Move.Deferred...),
 		})
 	}
-
-	for _, slot := range session.ProjectedOrder() {
+	for _, slot := range view.Order {
 		bars := make([]string, 0, len(slot.Bars))
 		for _, b := range slot.Bars {
 			bars = append(bars, string(b))
@@ -2500,6 +2514,15 @@ func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayloa
 			Bars:    bars,
 			Key:     slot.Key,
 		})
+	}
+	return out
+}
+
+// barPricesWire keys a price map by bar name, as the wire carries it.
+func barPricesWire(prices map[action.Bar]int) map[string]int {
+	out := make(map[string]int, len(prices))
+	for bar, price := range prices {
+		out[string(bar)] = price
 	}
 	return out
 }
@@ -2560,21 +2583,35 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 	})
 }
 
-// broadcastBars publishes the clocks to everyone. Called after anything that moves them:
-// an action enqueued, a turn opened, a round closed, a regime switched.
+// broadcastBars publishes the clocks to everyone, each recipient their own view of them: the
+// master the whole live view, every player only what the master has opened (spec 2026-11-04
+// D1). Called after anything that moves them: an action enqueued, a turn opened, a reaction
+// attached or opened, a round closed, a regime switched.
+//
+// On the direct lane, like turn_opened: sends are synchronous and ordered per client.
 func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 	if session == nil {
 		return
 	}
 	// Write-locked, not read-locked: the sequence counter is bumped in the same critical
-	// section that reads the state, so the number and the snapshot it stamps cannot disagree.
+	// section that reads the state, so the number and the snapshot it stamps cannot disagree —
+	// and both views are built in it, so the master's copy and the players' copy of one seq
+	// describe the same instant.
 	r.mu.Lock()
 	r.barsSeq++
-	payload := newBarsUpdatedPayload(session)
-	payload.Seq = r.barsSeq
+	masterView := newBarsUpdatedPayload(session, true)
+	masterView.Seq = r.barsSeq
+	playerView := newBarsUpdatedPayload(session, false)
+	playerView.Seq = r.barsSeq
+	masterMsg := NewServerMessage(MsgTypeBarsUpdated, masterView)
+	playerMsg := NewServerMessage(MsgTypeBarsUpdated, playerView)
 	r.mu.Unlock()
-	data, _ := json.Marshal(NewServerMessage(MsgTypeBarsUpdated, payload))
-	go func() { r.broadcast <- data }()
+	r.dispatchPerPlayer(func(_ uuid.UUID, isMaster bool) *Message {
+		if isMaster {
+			return &masterMsg
+		}
+		return &playerMsg
+	})
 }
 
 func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
@@ -2978,7 +3015,7 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		return nil
 	}
 
-	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session)}
+	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session, isMaster)}
 	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
 	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
 	payload.Bars.Seq = r.barsSeq

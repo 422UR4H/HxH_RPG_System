@@ -92,11 +92,18 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 	}
 	actionID := actionIDsInOrder(t, playerMsgs)[0]
 	if !awaitCount(bystanderMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
-		t.Fatal("the table never saw the order after the enqueue")
+		t.Fatal("the table never saw the bars after the enqueue")
 	}
-	// Non-vacuous: the actor really was in the public order before the cancel.
-	if !orderHasActor(lastBarsUpdated(t, bystanderMsgs), f.attackerID) {
-		t.Fatal("the attacker is not in the public order before cancelling — the fixture proves nothing")
+	if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the master never saw the order after the enqueue")
+	}
+	// Non-vacuous: the actor really was in the order before the cancel. The order is the
+	// master's (spec D1): a player's copy carries `order: []`.
+	if !orderHasActor(lastBarsUpdated(t, masterMsgs), f.attackerID) {
+		t.Fatal("the attacker is not in the master's order before cancelling — the fixture proves nothing")
+	}
+	if got := lastBarsUpdated(t, bystanderMsgs).Order; len(got) != 0 {
+		t.Errorf("the other player's bars carry order %+v — pending actions are the master's secret", got)
 	}
 	seqBefore := lastBarsUpdated(t, bystanderMsgs).Seq
 
@@ -118,13 +125,16 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 	// The bystander's bars_updated is the barrier: broadcastBars runs after the targeted
 	// sends, so once it lands any leaked action_cancelled would have landed too.
 	if !awaitBarsAfter(t, bystanderMsgs, seqBefore, 2*time.Second) {
-		t.Fatal("the table never saw the order change after the cancel")
+		t.Fatal("the table never saw the bars change after the cancel")
 	}
 	if n := bystanderMsgs.count(game.MsgTypeActionCancelled); n != 0 {
 		t.Errorf("the other player received %d action_cancelled — the queue is secret", n)
 	}
-	if orderHasActor(lastBarsUpdated(t, bystanderMsgs), f.attackerID) {
-		t.Error("the last bars_updated still carries the cancelled actor in order")
+	if !awaitBarsAfter(t, masterMsgs, seqBefore, 2*time.Second) {
+		t.Fatal("the master never saw the order change after the cancel")
+	}
+	if orderHasActor(lastBarsUpdated(t, masterMsgs), f.attackerID) {
+		t.Error("the master's last bars_updated still carries the cancelled actor in order")
 	}
 
 	t.Run("open_next_action finds nothing to open", func(t *testing.T) {

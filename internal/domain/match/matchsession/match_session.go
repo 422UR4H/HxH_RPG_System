@@ -1000,12 +1000,6 @@ func (s *MatchSession) CharacterIDs() []uuid.UUID {
 	return out
 }
 
-// ProjectedOrder is the general bar: the pending actions that can still pay, highest key
-// first. It carries no action identity — the queue is secret, the order is public.
-func (s *MatchSession) ProjectedOrder() []service.OrderSlot {
-	return s.scheduler.ProjectOrder(s.scheduleInput())
-}
-
 // scheduleInput assembles what one scheduling decision reads.
 func (s *MatchSession) scheduleInput() service.ScheduleInput {
 	return service.ScheduleInput{Queue: &s.activeQueue, Round: s.activeRound, Bars: s}

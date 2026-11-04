@@ -2,7 +2,6 @@ package game
 
 import (
 	"encoding/json"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -155,10 +154,10 @@ type topFaceSource struct{}
 
 func (topFaceSource) RollDie(sides enum.DieSides) int { return sides.GetSides() }
 
-// racingSessionWithTwoActors builds a Race session holding two characters, enqueues one
-// action for each, and opens the first — so the bar has a frozen price, one character with a
-// recorded speed and one still pending.
-func racingSessionWithTwoActors(t *testing.T) (*matchsession.MatchSession, uuid.UUID, uuid.UUID) {
+// racingSessionWithTwoQueued builds a Race session holding two characters with one action
+// each in the queue and nothing opened — so no bar has frozen yet, and the master's view has a
+// provisional price to show.
+func racingSessionWithTwoQueued(t *testing.T) (*matchsession.MatchSession, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	matchUUID := uuid.New()
 	playerUUID := uuid.New()
@@ -182,6 +181,14 @@ func racingSessionWithTwoActors(t *testing.T) (*matchsession.MatchSession, uuid.
 			t.Fatalf("EnqueueAction: %v", err)
 		}
 	}
+	return s, char1, char2
+}
+
+// racingSessionWithTwoActors is racingSessionWithTwoQueued with the first action opened — so
+// the bar has a frozen price, one character with a recorded speed and one still pending.
+func racingSessionWithTwoActors(t *testing.T) (*matchsession.MatchSession, uuid.UUID, uuid.UUID) {
+	t.Helper()
+	s, char1, char2 := racingSessionWithTwoQueued(t)
 	if _, err := s.OpenNextAction(); err != nil {
 		t.Fatalf("OpenNextAction: %v", err)
 	}
@@ -189,99 +196,191 @@ func racingSessionWithTwoActors(t *testing.T) (*matchsession.MatchSession, uuid.
 }
 
 func TestNewBarsUpdatedPayload(t *testing.T) {
-	session, p1, p2 := racingSessionWithTwoActors(t)
+	t.Run("master", func(t *testing.T) {
+		session, p1, p2 := racingSessionWithTwoActors(t)
+		payload := newBarsUpdatedPayload(session, true)
 
-	payload := newBarsUpdatedPayload(session)
+		t.Run("carries the frozen price of each bar that priced", func(t *testing.T) {
+			if _, ok := payload.Prices[string(action.BarAction)]; !ok {
+				t.Error("the action bar priced and the table must see it")
+			}
+		})
 
-	t.Run("carries the frozen price of each bar that priced", func(t *testing.T) {
-		if _, ok := payload.Prices[string(action.BarAction)]; !ok {
-			t.Error("the action bar priced and the table must see it")
-		}
+		t.Run("carries one row per character, both bars, sorted by id", func(t *testing.T) {
+			if len(payload.Characters) != 2 {
+				t.Fatalf("characters = %d, want 2", len(payload.Characters))
+			}
+			for _, c := range payload.Characters {
+				if c.CharacterID != p1 && c.CharacterID != p2 {
+					t.Errorf("unexpected character %v", c.CharacterID)
+				}
+			}
+			if payload.Characters[0].CharacterID.String() > payload.Characters[1].CharacterID.String() {
+				t.Error("characters must be sorted by characterId")
+			}
+		})
+
+		t.Run("carries the queued actor's speed as pending, the opened one's as acted", func(t *testing.T) {
+			var acted, pending int
+			for _, c := range payload.Characters {
+				if len(c.ActionSpeeds) == 1 && len(c.PendingActionSpeeds) == 0 {
+					acted++
+				}
+				if len(c.PendingActionSpeeds) == 1 && len(c.ActionSpeeds) == 0 {
+					pending++
+				}
+			}
+			if acted != 1 || pending != 1 {
+				t.Errorf("acted rows = %d, pending rows = %d, want 1 and 1: %+v", acted, pending, payload.Characters)
+			}
+		})
+
+		t.Run("carries provisionalPrices while nothing has frozen", func(t *testing.T) {
+			queued, _, _ := racingSessionWithTwoQueued(t)
+			p := newBarsUpdatedPayload(queued, true)
+			if _, ok := p.ProvisionalPrices[string(action.BarAction)]; !ok {
+				t.Errorf("provisionalPrices = %v, want the action bar's provisional price", p.ProvisionalPrices)
+			}
+			if _, ok := p.Prices[string(action.BarAction)]; ok {
+				t.Error("nothing opened, so nothing froze")
+			}
+		})
+
+		t.Run("carries the projected order, and nothing that identifies an action", func(t *testing.T) {
+			if len(payload.Order) == 0 {
+				t.Fatal("something is pending, so the general bar has an order to show")
+			}
+			// Keys descend: this IS the order the master will open them in.
+			for i := 1; i < len(payload.Order); i++ {
+				if payload.Order[i-1].Key < payload.Order[i].Key {
+					t.Error("the order must be sorted by key, highest first")
+				}
+			}
+			raw, err := json.Marshal(payload.Order[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Whitelist, not a blocklist: a blocklist of forbidden substrings ("actionId",
+			// "attack", ...) only catches leaks under the names someone thought to list — a
+			// field named weaponId or abilityId would sail straight through. Asserting the
+			// exact key set means any new field fails closed by default, and adding one to
+			// BarSlotPayload forces a conscious edit to the allowed set below. Do not revert
+			// this to a substring blocklist.
+			allowed := map[string]bool{"actorId": true, "bars": true, "key": true}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			for key := range fields {
+				if !allowed[key] {
+					t.Errorf("the queue is secret — the order carries no action identity; found undeclared field %q in %s", key, raw)
+				}
+			}
+		})
 	})
 
-	t.Run("carries one row per character, both bars", func(t *testing.T) {
-		if len(payload.Characters) != 2 {
-			t.Fatalf("characters = %d, want 2", len(payload.Characters))
+	t.Run("player", func(t *testing.T) {
+		queued, _, _ := racingSessionWithTwoQueued(t)
+		opened, _, _ := racingSessionWithTwoActors(t)
+		for name, session := range map[string]*matchsession.MatchSession{
+			"nothing opened yet": queued, "one opened, one pending": opened,
+		} {
+			t.Run(name, func(t *testing.T) {
+				raw, err := json.Marshal(newBarsUpdatedPayload(session, false))
+				if err != nil {
+					t.Fatal(err)
+				}
+				js := string(raw)
+				// Pending actions and unopened dice are the master's secret (spec D1): a
+				// player's payload carries none of the keys that would describe them.
+				for _, secret := range []string{
+					`"provisionalPrices"`, `"pendingActionSpeeds"`, `"pendingMoveSpeeds"`,
+					`"deferredActionSpeeds"`, `"deferredMoveSpeeds"`,
+				} {
+					if strings.Contains(js, secret) {
+						t.Errorf("the player view carries %s: %s", secret, js)
+					}
+				}
+				if !strings.Contains(js, `"order":[]`) {
+					t.Errorf("the player view's order must be an empty array, got %s", js)
+				}
+			})
 		}
-		for _, c := range payload.Characters {
-			if c.CharacterID != p1 && c.CharacterID != p2 {
-				t.Errorf("unexpected character %v", c.CharacterID)
-			}
-		}
-	})
 
-	t.Run("carries the projected order, and nothing that identifies an action", func(t *testing.T) {
-		if len(payload.Order) == 0 {
-			t.Fatal("something is pending, so the general bar has an order to show")
-		}
-		// Keys descend: this IS the order the master will open them in.
-		for i := 1; i < len(payload.Order); i++ {
-			if payload.Order[i-1].Key < payload.Order[i].Key {
-				t.Error("the order must be sorted by key, highest first")
+		t.Run("shows the opened speed and hides the pending one", func(t *testing.T) {
+			p := newBarsUpdatedPayload(opened, false)
+			var withSpeed int
+			for _, c := range p.Characters {
+				if len(c.ActionSpeeds) > 0 {
+					withSpeed++
+				}
 			}
-		}
-		raw, err := json.Marshal(payload.Order[0])
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Whitelist, not a blocklist: a blocklist of forbidden substrings ("actionId",
-		// "attack", ...) only catches leaks under the names someone thought to list — a
-		// field named weaponId or abilityId would sail straight through. Asserting the
-		// exact key set means any new field fails closed by default, and adding one to
-		// BarSlotPayload forces a conscious edit to the allowed set below. Do not revert
-		// this to a substring blocklist.
-		allowed := map[string]bool{"actorId": true, "bars": true, "key": true}
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &fields); err != nil {
-			t.Fatal(err)
-		}
-		for key := range fields {
-			if !allowed[key] {
-				t.Errorf("the queue is secret — only the bar and the order are public; found undeclared field %q in %s", key, raw)
+			if withSpeed != 1 {
+				t.Errorf("rows with a public speed = %d, want 1 (the opened action only): %+v", withSpeed, p.Characters)
 			}
-		}
+		})
 	})
+}
+
+// barsRecipient is a registered client with no socket: dispatchPerPlayer writes to its send
+// buffer, which the test drains.
+func barsRecipient(r *Room, id uuid.UUID) *Client {
+	c := &Client{userUUID: id, send: make(chan []byte, 16), done: make(chan struct{})}
+	r.clients[id] = c
+	return c
+}
+
+// readBars pops the next message off a recipient's buffer and decodes it as bars_updated.
+func readBars(t *testing.T, c *Client) BarsUpdatedPayload {
+	t.Helper()
+	select {
+	case data := <-c.send:
+		var msg Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			t.Fatalf("unmarshal message: %v", err)
+		}
+		if msg.Type != MsgTypeBarsUpdated {
+			t.Fatalf("message type = %q, want %q", msg.Type, MsgTypeBarsUpdated)
+		}
+		var p BarsUpdatedPayload
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			t.Fatalf("unmarshal bars_updated: %v", err)
+		}
+		return p
+	default:
+		t.Fatal("no bars_updated reached the recipient")
+		return BarsUpdatedPayload{}
+	}
 }
 
 // TestBroadcastBars_StampsARisingSequence pins the ordering guarantee bars_updated needs.
 //
-// The payload is a FULL STATE snapshot and it reaches the broadcast channel from a detached
-// goroutine, so two opens in quick succession race on that send and the older snapshot can be
-// delivered last. Nothing else corrects it — the snapshot that closes the round is the last one
-// the table gets. Seq is what lets a client throw the stale one away.
+// The payload is a FULL STATE snapshot and every recipient gets their own copy of it. Seq is
+// stamped once per snapshot under r.mu, so the master's copy and the player's copy of one
+// snapshot carry the same number, and a client can throw away anything older than what it
+// already applied.
 func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
 	session, _, _ := racingSessionWithTwoActors(t)
-	r := &Room{broadcast: make(chan []byte, 8)}
+	masterID, playerID := uuid.New(), uuid.New()
+	r := &Room{clients: map[uuid.UUID]*Client{}, masterUUID: masterID}
+	master := barsRecipient(r, masterID)
+	player := barsRecipient(r, playerID)
 
 	r.broadcastBars(session)
 	r.broadcastBars(session)
 
-	seqs := make([]uint64, 0, 2)
-	for i := 0; i < 2; i++ {
-		select {
-		case data := <-r.broadcast:
-			var msg Message
-			if err := json.Unmarshal(data, &msg); err != nil {
-				t.Fatalf("unmarshal message: %v", err)
-			}
-			if msg.Type != MsgTypeBarsUpdated {
-				t.Fatalf("message type = %q, want %q", msg.Type, MsgTypeBarsUpdated)
-			}
-			var p BarsUpdatedPayload
-			if err := json.Unmarshal(msg.Payload, &p); err != nil {
-				t.Fatalf("unmarshal bars_updated: %v", err)
-			}
-			seqs = append(seqs, p.Seq)
-		case <-time.After(2 * time.Second):
-			t.Fatalf("only %d of 2 bars_updated reached the broadcast channel", i)
+	for i, want := range []uint64{1, 2} {
+		m, p := readBars(t, master), readBars(t, player)
+		if m.Seq != want || p.Seq != want {
+			t.Errorf("snapshot %d: master seq %d, player seq %d, want both %d — one stamp per "+
+				"snapshot, shared by every copy", i+1, m.Seq, p.Seq, want)
 		}
-	}
-
-	sort.Slice(seqs, func(i, j int) bool { return seqs[i] < seqs[j] })
-	// Sorted, because the sends race by design — what is pinned is the stamp, which is taken
-	// under r.mu at snapshot time and is exactly what a receiver reorders by.
-	if seqs[0] != 1 || seqs[1] != 2 {
-		t.Errorf("seqs = %v, want [1 2] — the counter is stamped at snapshot time and rises by one", seqs)
+		if len(m.Order) == 0 {
+			t.Error("the master's copy is the full view: something is pending, so it has an order")
+		}
+		if len(p.Order) != 0 {
+			t.Errorf("the player's copy carries order %+v — pending actions are the master's secret", p.Order)
+		}
 	}
 }
 
@@ -295,23 +394,11 @@ func TestNewRoom_BarsSeqOutrunsAnEarlierRoom(t *testing.T) {
 	matchID, masterID := uuid.New(), uuid.New()
 	lastSeq := func(r *Room, n int) uint64 {
 		t.Helper()
+		c := barsRecipient(r, masterID)
 		var seq uint64
-		for i := range n {
+		for range n {
 			r.broadcastBars(session)
-			select {
-			case data := <-r.broadcast:
-				var msg Message
-				if err := json.Unmarshal(data, &msg); err != nil {
-					t.Fatalf("unmarshal message: %v", err)
-				}
-				var p BarsUpdatedPayload
-				if err := json.Unmarshal(msg.Payload, &p); err != nil {
-					t.Fatalf("unmarshal bars_updated: %v", err)
-				}
-				seq = max(seq, p.Seq)
-			case <-time.After(2 * time.Second):
-				t.Fatalf("bars_updated %d of %d never reached the broadcast channel", i+1, n)
-			}
+			seq = max(seq, readBars(t, c).Seq)
 		}
 		return seq
 	}
