@@ -133,3 +133,33 @@ func FilterMapState(
 	}
 	return walls, visiblePieceIDs
 }
+
+// FilterPerspective filtra o tabuleiro pelo olhar de UMA peça (o mestre assistindo por ela):
+// só o que está agora no polígono dela, sem memória e sem regra de "peça própria por
+// jogador" — por isso não passa por FilterMapState. A peça do espectador sempre entra,
+// mesmo com Visible false. Porta secreta não revelada sai mascarada.
+func FilterPerspective(
+	allWalls []mapentity.WallSegment,
+	pieces []PieceVisibility,
+	poly VisibilityPolygon,
+	viewerPieceID string,
+) (walls []mapentity.WallSegment, visiblePieceIDs map[string]bool) {
+	polys := []VisibilityPolygon{poly}
+	visiblePieceIDs = make(map[string]bool, len(pieces))
+	for _, p := range pieces {
+		if p.ID == viewerPieceID || (p.Visible && IsVisible(p.Pos, polys)) {
+			visiblePieceIDs[p.ID] = true
+		}
+	}
+	for _, w := range allWalls {
+		if !wallInLOS(w, polys) {
+			continue
+		}
+		if w.WallType == mapentity.WallTypeSecretDoor && !w.Revealed {
+			walls = append(walls, MaskSecretDoorForPlayer(w))
+		} else {
+			walls = append(walls, w)
+		}
+	}
+	return walls, visiblePieceIDs
+}

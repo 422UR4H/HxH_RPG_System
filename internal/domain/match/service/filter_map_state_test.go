@@ -64,3 +64,66 @@ func TestFilterMapState_MasterSeesEverythingUnmasked(t *testing.T) {
 		t.Fatal("master must see invisible pieces")
 	}
 }
+
+func TestFilterPerspective(t *testing.T) {
+	poly := VisibilityPolygon{Vertices: []Point2D{{0, 0}, {100, 0}, {100, 100}, {0, 100}}}
+	inWall := mapentity.WallSegment{ID: "in", WallType: mapentity.WallTypeWall, P1: [2]float64{10, 20}, P2: [2]float64{20, 20}}
+	outWall := mapentity.WallSegment{ID: "out", WallType: mapentity.WallTypeWall, P1: [2]float64{500, 500}, P2: [2]float64{520, 500}}
+	secret := mapentity.WallSegment{ID: "sd", WallType: mapentity.WallTypeSecretDoor, P1: [2]float64{10, 10}, P2: [2]float64{20, 10}}
+
+	tests := []struct {
+		name       string
+		walls      []mapentity.WallSegment
+		pieces     []PieceVisibility
+		viewer     string
+		wantWalls  []string
+		wantMasked string
+		wantPieces []string
+	}{
+		{name: "wall in polygon returned, wall outside not", walls: []mapentity.WallSegment{inWall, outWall}, wantWalls: []string{"in"}},
+		{name: "unrevealed secret door is masked", walls: []mapentity.WallSegment{secret}, wantWalls: []string{"sd"}, wantMasked: "sd"},
+		{
+			name: "piece inside visible, piece outside not",
+			pieces: []PieceVisibility{
+				{ID: "a", Pos: Point2D{50, 50}, Visible: true},
+				{ID: "b", Pos: Point2D{500, 500}, Visible: true},
+			},
+			wantPieces: []string{"a"},
+		},
+		{
+			name:       "invisible piece inside polygon is hidden",
+			pieces:     []PieceVisibility{{ID: "a", Pos: Point2D{50, 50}, Visible: false}},
+			wantPieces: nil,
+		},
+		{
+			name:       "viewer piece always included even when invisible",
+			pieces:     []PieceVisibility{{ID: "me", Pos: Point2D{500, 500}, Visible: false}},
+			viewer:     "me",
+			wantPieces: []string{"me"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			walls, ids := FilterPerspective(tt.walls, tt.pieces, poly, tt.viewer)
+			if len(walls) != len(tt.wantWalls) {
+				t.Fatalf("walls = %d, want %d", len(walls), len(tt.wantWalls))
+			}
+			for i, w := range walls {
+				if w.ID != tt.wantWalls[i] {
+					t.Errorf("wall[%d] = %s, want %s", i, w.ID, tt.wantWalls[i])
+				}
+				if w.ID == tt.wantMasked && w.WallType != mapentity.WallTypeWall {
+					t.Errorf("wall %s type = %s, want masked as wall", w.ID, w.WallType)
+				}
+			}
+			if len(ids) != len(tt.wantPieces) {
+				t.Fatalf("pieces = %v, want %v", ids, tt.wantPieces)
+			}
+			for _, id := range tt.wantPieces {
+				if !ids[id] {
+					t.Errorf("piece %s missing", id)
+				}
+			}
+		})
+	}
+}
