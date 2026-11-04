@@ -520,6 +520,93 @@ Broadcast para **todos os clientes** quando o master revela uma porta secreta. A
 
 ---
 
+### Ponto de vista do mestre
+
+O tabuleiro do mestre não tem fog. Com este par de mensagens o mestre passa a ver o tabuleiro
+**pelos olhos de uma peça**: o que ela enxerga agora, de onde está. É a visão da peça, não a
+tela de um jogador — sem memória de paredes exploradas e sem a regra de "peça própria por
+jogador". Calculado sob demanda (`MatchSession.VisibilityFrom` + `FilterPerspective`), nunca
+guardado em cache: o mestre continua sem LOS próprio.
+
+**Auth:** só o mestre. **Requer partida em andamento** (sessão viva).
+
+#### `watch_piece_view` (cliente → servidor)
+
+```json
+{ "type": "watch_piece_view", "payload": { "pieceId": "piece-uuid" } }
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `pieceId` | `string` | Peça pela qual o mestre quer ver. `""` encerra a observação (sem resposta). |
+
+Com `pieceId` não vazio e válido, o servidor responde na hora com um `piece_view`.
+
+Erros (mensagem `error`, `payload.code`):
+
+| `code` | Quando |
+|---|---|
+| `forbidden` | Quem enviou não é o mestre (`ErrNotMaster`). A observação do mestre não muda. |
+| `invalid_payload` | JSON do payload inválido. |
+
+Casos **silenciosos** (nenhuma resposta — nem `error`, nem `piece_view`; a observação é limpa,
+então nenhum `piece_view` segue os próximos movimentos):
+
+| Caso | Por quê |
+|---|---|
+| Não há partida em andamento (lobby). | Depois de um restart do servidor, o `watch_piece_view` que o front manda ao abrir o socket chega antes de o tabuleiro carregar. O front reenvia o watch a cada `match_full_state`, então um erro aqui não ajudaria em nada — só acenderia o banner de erro do mestre. |
+| A peça não está no tabuleiro. | Mesmo motivo. |
+
+**Duração:** a observação vive enquanto durar a conexão do mestre. Um socket novo do mestre
+nasce sem observação — o front reenvia `watch_piece_view` ao reconectar, se ainda quiser.
+Se a peça observada sai do tabuleiro, a observação acaba em silêncio (nenhum `piece_view`
+nem erro depois disso).
+
+#### `piece_view` (servidor → mestre)
+
+```json
+{
+  "pieceId": "piece-uuid",
+  "visiblePolygons": [
+    [ { "x": 0.0, "y": 0.0 }, { "x": 192.0, "y": 0.0 }, { "x": 192.0, "y": 192.0 } ]
+  ],
+  "wallIds": ["wall-uuid-1", "wall-uuid-2"],
+  "pieceIds": ["piece-uuid", "other-piece-uuid"]
+}
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `pieceId` | `string` | A peça observada. |
+| `visiblePolygons` | `[{x,y}][]` | Sempre **um** polígono: o campo de visão da peça, em coordenadas LOCAIS da grade (mesmo espaço e formato de `visibility_updated`). |
+| `wallIds` | `string[]` | IDs das paredes à vista da peça agora, pelo mesmo teste do `map_full_state` do jogador (`IsWallInSight` — qualquer trecho da parede). Só IDs: o front já tem as paredes. Uma porta secreta **não revelada** à vista entra pelo ID; quem a mascara é o front, pela mesma tabela de [máscara de porta secreta](#máscara-de-porta-secreta-não-revelada). Nunca `null` (`[]` quando vazio). Ordenado. |
+| `pieceIds` | `string[]` | IDs das peças à vista. Peças com `visible: false` ficam de fora, **exceto a própria peça observada**, que sempre entra. Nunca `null`. Ordenado. |
+
+**Quando o servidor reenvia** (sempre pela fila direta do mestre). A ordem em relação à
+notícia que mudou a visão depende da fila dessa notícia:
+
+- depois de `piece_moved`, `piece_removed` e `map_full_state`, o `piece_view` chega
+  **garantidamente depois** — mesma fila direta, mesma goroutine;
+- já `wall_revealed` e o `wall_state_changed` do fechamento de turno saem pela fila de
+  broadcast, sem ordem garantida em relação à fila direta: o `piece_view` pode chegar antes
+  ou depois deles. O front recalcula a visão nos dois casos.
+
+Momentos do reenvio:
+
+- na resposta ao `watch_piece_view`;
+- depois de cada `piece_moved`/`piece_removed` (qualquer peça — inclusive NPC, movimento do
+  turno, fuga, arrasto do mestre);
+- depois de cada recálculo de visão dos jogadores (`visibility_updated`): porta aberta/fechada,
+  parede derrubada, porta secreta revelada;
+- depois de cada `map_full_state` que reenvia o tabuleiro inteiro (início da partida,
+  recarga do tabuleiro).
+
+Pode chegar repetido sem mudança — o front substitui o anterior.
+
+> `piece_view` é outra mensagem: `visibility_updated` continua nunca indo ao master.
+
+---
+
 ### Comportamento de eventos existentes com fog of war
 
 #### `wall_hp_changed`

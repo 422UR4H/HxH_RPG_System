@@ -1941,17 +1941,28 @@ func (s *MatchSession) memoryFor(playerID uuid.UUID) *fog.PlayerMemory {
 	return m
 }
 
+// losSetup monta o que o cálculo de LOS precisa: as paredes de visão (as reais mais as
+// bordas do tabuleiro, que mantêm o polígono dentro do mapa em vez de vazar até maxRadius
+// em toda direção aberta) e o raio máximo — a diagonal dos limites LOCAIS da grade (+20%),
+// para que um mapa sem paredes ainda gere um polígono finito. Recorre a visRadius com CellSize 0.
+func (s *MatchSession) losSetup(walls []mapentity.WallSegment) ([]service.WallSegmentLOS, float64) {
+	losWalls := append(service.ToLOSWalls(walls), service.BoundaryLOSWalls(s.grid)...)
+	minX, minY, maxX, maxY := mapservice.GridLocalBounds(s.grid)
+	return losWalls, math.Hypot(maxX-minX, maxY-minY) * 1.2
+}
+
+// VisibilityFrom devolve o polígono de visão de um único ponto. É puro: não escreve no
+// cache nem na memória de ninguém. Quem chama segura o lock da sala (leitura basta).
+func (s *MatchSession) VisibilityFrom(pos service.Point2D) service.VisibilityPolygon {
+	losWalls, maxRadius := s.losSetup(s.GetWalls())
+	return service.ComputeVisibilityPolygon(pos, losWalls, maxRadius)
+}
+
 // RecomputeVisibility recomputes a player's LOS, caches the polygons, and (in explored
 // mode) records every wall now in sight into that player's memory.
 func (s *MatchSession) RecomputeVisibility(playerID uuid.UUID) ([]service.VisibilityPolygon, error) {
 	walls := s.GetWalls()
-	// The board edges block vision too, which keeps the polygon inside the map instead
-	// of spilling out to maxRadius in every open direction.
-	losWalls := append(service.ToLOSWalls(walls), service.BoundaryLOSWalls(s.grid)...)
-	// Bound the polygon to the diagonal of the grid's LOCAL bounds (+20% margin) so a
-	// wall-less map still produces a finite polygon. Falls back to visRadius when CellSize is 0.
-	minX, minY, maxX, maxY := mapservice.GridLocalBounds(s.grid)
-	maxRadius := math.Hypot(maxX-minX, maxY-minY) * 1.2
+	losWalls, maxRadius := s.losSetup(walls)
 
 	var positions []service.Point2D
 	if s.pieceSource != nil {
