@@ -174,14 +174,24 @@ sistema não volta atrás para reordenar o que já foi jogado.
 
 ## Enxergando a barra
 
-Você vê **a sua própria barra** — quanto custou sua ação e quanto sobrou — para decidir se já
-manda a próxima.
+**O mestre** vê cada ação assim que ela é enviada — as dos jogadores e as dos NPCs dele — com a
+velocidade de cada uma, a ordem em que vão acontecer e o que fica para o próximo round. Antes de
+a primeira ação do round ser aberta, ele já vê o **preço provisório**: a menor velocidade
+pendente, que é exatamente o preço que vai valer.
 
-E você vê **a barra geral**, com a ordem de todo mundo, incluindo quem vai agir mais de uma
-vez. É ela que te diz quanto tempo você tem para montar a próxima ação enquanto os outros
-narram.
+**O jogador** vê, no que mandou, só o card da própria ação — **sem número**. Ninguém vê as ações
+dos outros, e nem o jogador vê a velocidade que rolou, até o mestre **abrir** aquela ação.
+Quando o mestre abre uma ação, as barras se movem para todos: a velocidade dela passa a contar,
+e o saldo de quem agiu muda de uma vez, às vezes dando um salto. A velocidade de uma reação
+funciona do mesmo jeito: só aparece quando o mestre a abre (ou quando o turno termina).
 
-> Sem enxergar a barra geral, você só descobriria que era a sua vez quando ela já passou.
+O **preço do round** aparece para todos quando o mestre abre a primeira ação do round. Numa
+mesa pequena dá para deduzir algo dele antes — por exemplo, que o preço é a velocidade da sua
+própria ação pendente — e isso é aceito.
+
+> Esconder as ações pendentes impede que alguém cancele uma ação só porque rolou mal.
+
+No round **livre** não há preço nem média, então não há barra para acompanhar.
 
 ---
 

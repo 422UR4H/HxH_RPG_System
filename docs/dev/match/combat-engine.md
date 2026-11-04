@@ -134,6 +134,22 @@ leva **a rolagem cheia** para o round seguinte.
 > ficou de fora rolou **abaixo** dele — o que ele carrega já é menor que o teto por
 > construção.
 
+#### Preço provisório
+
+Antes da primeira abertura a barra ainda não tem preço, mas o preço que vai congelar já é
+conhecido: a menor velocidade pendente por barra não congelada (só disputado). Essa conta é uma
+função só de leitura, usada tanto por `FreezePrices` (que congela) quanto pela projeção (que a
+publica como **preço provisório**). A projeção pontua a barra não congelada contra o provisório
+— chave e portão — então a ordem publicada ao mestre é a que a mesa vai jogar se nada mais
+chegar (F5 do spec `2026-11-04-live-bars`). `SelectNext` não muda: roda depois de `FreezePrices`.
+
+#### Saldo ao vivo
+
+`BarEconomy.Balance(carry, velocidades, preço)` é o saldo sem teto: `carry + média − n × preço`;
+sem preço (nem congelado, nem provisório) é o próprio carry. O teto só vale em `CloseBalance`.
+No wire, `actionBalance`/`moveBalance` é esse saldo ao vivo; o carry vai em
+`actionCarry`/`moveCarry`.
+
 > Decisão do dono do produto, pela simplicidade: *"uma action que chegue depois com valor
 > menor poderia simplesmente não ter custo suficiente pra agir neste turno, então esse valor
 > seria um acúmulo para o próximo. Não teria problema algum nisso."*
@@ -1065,9 +1081,27 @@ privilegiada** — uma finta contra você não te conta que era finta.
 rótulo já contou que havia Evasão embutida. Uma esquiva fechada chega aos terceiros
 **indistinguível de uma esquiva**; um escape fechado, de um escape.
 
-A dedução continua possível, que é o ponto: `bars_updated` é público, e o escape fechado cobra
+A dedução continua possível, que é o ponto: `bars_updated` mostra à mesa o que já abriu, e o escape fechado cobra
 **uma** barra enquanto o padrão cobra duas. Quem olha a barra percebe. **Deduzir da barra é
 legítimo; ser informado não é** — a política inteira cabe nessa frase.
+
+### As barras são por destinatário
+
+`bars_updated` não é mais broadcast: `MatchSession.BarsView(isMaster)` (`matchsession/bars_view.go`)
+monta a visão de cada papel e `Room.broadcastBars` a envia pela pista direta.
+
+- **Mestre:** tudo, ao vivo — preços provisórios, velocidades abertas, pendentes (na ordem
+  projetada) e adiadas por personagem, e a `order`.
+- **Jogador** (todo personagem, o próprio incluso): só preços congelados e velocidades
+  **públicas**; campos do mestre omitidos e `order: []`. Ação pendente é segredo do mestre e
+  nenhum dado rolado chega ao jogador antes de a ação abrir.
+- **Velocidade de reação:** a economia usa toda velocidade, mas a projeção do jogador filtra a
+  da reação até ela ser aberta ou o turno fechar.
+- O jogador só recebe o retrato quando a visão dele mudou; um update vazio contaria que algo
+  secreto aconteceu. O `seq` sobe por retrato e é igual em todas as cópias, então o do jogador
+  pode saltar.
+
+Contrato: [`bars_updated`](../api/match-combat-ws.md#bars_updated).
 
 ## Configuração de partida
 
@@ -1281,15 +1315,15 @@ p2 → p1 → p3 → p2, porque a chave da segunda de p2 cai para `média(23,17)
 primeira abre. Nada real é mutado: a fila entrega cópia e o estado das barras é lido por um
 overlay que morre com a chamada, então `RoundScheduler{}` continua valendo como zero value.
 
-### As barras são públicas
+### A ordem projetada é do mestre; o resto da barra, do que já abriu
 
-`bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é broadcast, não
-projeção por destinatário: carrega `seq`, os preços congelados, o saldo e o histórico de
-velocidades de cada personagem em ambas as barras, e a ordem projetada
+`bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é projetado por
+destinatário (ver "As barras são por destinatário", acima). Carrega `seq`, os preços, o saldo e as
+velocidades de cada personagem em ambas as barras e, para o mestre, a ordem projetada
 (`MatchSession.ProjectedOrder`/`RoundScheduler.ProjectOrder`) — quem age a seguir e em qual
 barra. **Nada que identifique a ação em si** entra no payload: sem ID de ação, arma, alvo ou
-perícia. Isso é o que sustenta "a fila é secreta; a barra e a ordem são públicas" — um jogador
-sem visão da barra geral só descobre que era a vez dele depois que passou.
+perícia. "A fila é secreta" vale também para a ordem e para toda velocidade ainda não aberta: o
+jogador só enxerga o que o mestre já abriu.
 
 ### Um gotcha de teste: `rollActionDice` rola quase tudo, mas não é uniforme
 

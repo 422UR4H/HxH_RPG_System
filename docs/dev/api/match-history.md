@@ -439,7 +439,7 @@ mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, n
 é como a projeção é decidida, não dado de mesa.
 
 **A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8). Quem cancelou é
-público: a barra geral já mostrou a ordem mudar. O que a ação seria, não:
+público. O que a ação seria, não:
 
 | Leitor | Recebe |
 |---|---|

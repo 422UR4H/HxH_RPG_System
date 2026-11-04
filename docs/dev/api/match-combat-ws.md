@@ -119,7 +119,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`action_enqueued`](#action_enqueued) | só quem enviou |
 | [`action_queued`](#action_queued) | **só o mestre** |
 | [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu** |
-| [`bars_updated`](#bars_updated) | mesa inteira |
+| [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo, o jogador só o que o mestre já abriu |
 | [`turn_opened`](#turn_opened) | mesa inteira |
 | [`reaction_attached`](#reaction_attached) | quem reagiu **+ mestre** |
 | [`reaction_opened`](#reaction_opened) | mesa inteira (projetado por destinatário) |
@@ -248,7 +248,8 @@ destruída); numa parede comum ou terreno o turno resolve sem mudar nada. Uma pa
 
 **Dispara:** [`action_enqueued`](#action_enqueued) para quem enviou,
 [`action_queued`](#action_queued) **só para o mestre**, e
-[`bars_updated`](#bars_updated) para a mesa.
+[`bars_updated`](#bars_updated) **por destinatário** — o mestre o recebe na hora; o jogador,
+em geral, nada (a ação pendente é segredo do mestre).
 
 **Erros**
 
@@ -377,8 +378,11 @@ barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 **Dispara:** [`reaction_attached`](#reaction_attached) (a quem reagiu e ao mestre; uma cópia só
 quando quem reagiu é o mestre), depois [`resolution_updated`](#resolution_updated) **só para o
 mestre** — o turno está aberto, logo `isSettled: false`. A reação aparece em
-`targets[].reaction` (com `opened: false`) e em `pendingReactions`. **Não há
-broadcast**: a mesa não é avisada de que alguém reagiu.
+`targets[].reaction` (com `opened: false`) e em `pendingReactions`. Por fim, um
+[`bars_updated`](#bars_updated) **por destinatário**: o anexar cobra as barras, então o mestre
+recebe o retrato novo; o jogador não recebe nada, porque a velocidade da reação **fica fora da
+visão dele** até ela ser aberta (ou o turno fechar). **Não há broadcast**: a mesa não é avisada
+de que alguém reagiu.
 
 **Erros**
 
@@ -410,7 +414,7 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
 
 **Dispara, nesta ordem:**
 
-1. [`bars_updated`](#bars_updated) — mesa.
+1. [`bars_updated`](#bars_updated) — por destinatário.
 2. Se um turno fechou: persistência + [`turn_closed`](#turn_closed) — mesa — +
    [`resolution_updated`](#resolution_updated) **settled e projetado** do turno que acabou
    (é essa a resolução cujo dano foi aplicado de verdade).
@@ -480,7 +484,7 @@ O `actionId` é o que o cliente já conhece: o jogador, pelo [`action_enqueued`]
 `match_full_state.queue`).
 
 **Dispara, nesta ordem:** [`action_cancelled`](#action_cancelled) (o mestre, depois quem pediu)
-→ [`bars_updated`](#bars_updated) (mesa inteira, já sem a ação na ordem pública).
+→ [`bars_updated`](#bars_updated) (por destinatário; o mestre já sem a ação na ordem projetada).
 
 **Só ação ainda na fila.** A ação que já abriu é o turno — não se cancela. Uma ação consumida por
 uma reação já saiu da fila — também não.
@@ -552,8 +556,10 @@ Abrir **não cobra nada**: as barras foram debitadas no *attach*, justamente par
 não mova número.
 
 **Dispara:** [`reaction_opened`](#reaction_opened) à **mesa**, **projetado por destinatário**
-(de quem é a vez de narrar, e com o quê, é público; os números não) e [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
-sendo do mestre — o turno ainda está aberto). **Nunca** um
+(de quem é a vez de narrar, e com o quê, é público; os números não), [`resolution_updated`](#resolution_updated) **master-only** (o cálculo continua
+sendo do mestre — o turno ainda está aberto) e [`bars_updated`](#bars_updated) **por
+destinatário**: abrir torna pública a velocidade da reação, então a barra do jogador passa a
+incluí-la (o saldo dele pode pular — ver o contrato). **Nunca** um
 [`piece_moved`](#piece_moved-servidor): abrir uma fuga mostra a intenção, e a peça dela só anda
 no fechamento do turno — ver abaixo.
 
@@ -738,8 +744,8 @@ os nomes das perícias, e o `turn_opened` leva a ação no corte `Opened`). **Ed
 `moveSpeed`) reordena a fila**: o escalonador lê a velocidade na hora de escolher. Numa rodada
 Race, o preço que já congelou não se mexe — uma velocidade editada abaixo dele fica para a
 próxima rodada, a mesma regra de uma ação lenta que chega depois do congelamento. **O dono não vê
-edição nenhuma**: o `ownQueue` não leva número nem condição. A ordem é pública como sempre —
-`bars_updated` mostra a chave mudando, não o porquê. Se a ação **sair sem abrir** — cancelada
+edição nenhuma**: o `ownQueue` não leva número nem condição. A ordem é do mestre (o jogador recebe `order: []`) —
+`bars_updated` (do mestre) mostra a chave mudando, não o porquê. Se a ação **sair sem abrir** — cancelada
 pelo dono ou consumida por uma reação —, as edições saem com ela: os originais são restaurados
 (o `cancelled_actions` grava a ação como o dono a declarou) e as capturas são descartadas.
 Toda condição é **validada antes de qualquer mutação** — uma edição que falha no meio não
@@ -748,7 +754,7 @@ deixa `targetIds` ou `skills` já alterados.
 **Dispara:** [`action_edited`](#action_edited) **só para o mestre** e
 [`resolution_updated`](#resolution_updated) recomputado. Numa ação **na fila**: `action_edited`
 (com `turnId` zero), o [`action_queued`](#action_queued) que a redescreve ao mestre — com
-`conditions` e `damageSkill` — e [`bars_updated`](#bars_updated) à mesa; nenhum
+`conditions` e `damageSkill` — e [`bars_updated`](#bars_updated) (por destinatário); nenhum
 `resolution_updated`.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid edit_action payload"`) ·
@@ -800,7 +806,7 @@ consegue mais pagar o preço — o que acaba a rodada.
 2. Persistência do turno (ação, reações, overrides, resolução liquidada).
 3. [`turn_closed`](#turn_closed) — mesa.
 4. [`resolution_updated`](#resolution_updated) **settled e projetado por destinatário**.
-5. [`bars_updated`](#bars_updated) — mesa.
+5. [`bars_updated`](#bars_updated) — por destinatário.
 
 #### O fechamento é onde a peça de toda fuga é decidida
 
@@ -839,8 +845,8 @@ turno, e o [`turn_closed`](#turn_closed) sai igual ao do `close_turn` — pela m
 
 O regime que a mesa recebe de volta é **lido da sessão**, não ecoado do pedido.
 
-**Dispara:** [`round_mode_changed`](#round_mode_changed) e [`bars_updated`](#bars_updated),
-ambos para a mesa.
+**Dispara:** [`round_mode_changed`](#round_mode_changed) (mesa) e
+[`bars_updated`](#bars_updated) (por destinatário).
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid change_round_mode payload"`) ·
 `match_not_started` · `game_error` (`round mode must be Free or Race`).
@@ -1015,10 +1021,10 @@ endpoint REST seguida de uma injeção manual que o front poderia esquecer.
 mestre) da `MatchSession` corrente — o mestre pode enfileirar uma ação pelo NPC no mesmo
 segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e emite um `bars_updated`
 NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
-[`npc_added`](#npc_added) em §5). **As duas mensagens saem cada uma da sua própria goroutine**
-(`go func() { r.broadcast <- data }()`, em `room.go`, tanto para `npc_added` quanto dentro de
-`broadcastBars`), então a ORDEM DE CHEGADA **não é garantida** — `bars_updated` pode chegar
-antes de `npc_added`. O front não deve exigir `npc_added` primeiro para aceitar o
+[`npc_added`](#npc_added) em §5). **As duas mensagens saem por pistas diferentes**
+(`npc_added` pelo canal de broadcast, em `room.go`; `bars_updated` pela pista direta por
+destinatário, dentro de `broadcastBars`), então a ORDEM DE CHEGADA **não é garantida** —
+`bars_updated` pode chegar antes de `npc_added`. O front não deve exigir `npc_added` primeiro para aceitar o
 `bars_updated` que já lista o NPC.
 
 **Sem sessão viva (partida ainda no lobby):** só a escrita no banco acontece. `npc_added`
@@ -1131,8 +1137,8 @@ nunca o que o payload de `enqueue_action` mandou em `move.from` — por isso o e
 `[4, 4, 0]` mesmo que o cliente tivesse mandado outra coisa. **Ausente** (nenhuma chave
 `from`) quando o ator não tem peça no tabuleiro.
 
-**É master-only porque a fila é secreta** (`combat-engine.md` § *As barras são públicas*: "a
-fila é secreta; a barra e a ordem são públicas"). Um jogador que aprendesse o que está
+**É master-only porque a fila é secreta** (`combat-engine.md` § *A ordem projetada é do mestre*: "a
+fila é secreta"; o `bars_updated` do jogador não carrega a ordem nem velocidade não aberta). Um jogador que aprendesse o que está
 pendente leria as intenções da mesa no wire.
 
 **E é o jeito de aprender o `actionId` que [`pull_action`](#pull_action) exige, no instante do
@@ -1214,44 +1220,161 @@ nada na fila — nunca `null`, nunca ausente.
 
 ### `bars_updated`
 
-**Direção:** servidor → cliente. **Destino:** **mesa inteira**, em broadcast — *não* é
-projetado por destinatário. Um jogador que não enxergasse a barra geral só descobriria que
-era a vez dele depois que passou.
+**Direção:** servidor → cliente. **Destino:** **por destinatário** — cada cliente recebe a SUA
+visão, montada pelo servidor na pista direta (`dispatchPerPlayer`, a mesma de
+[`turn_opened`](#turn_opened)). Não é broadcast: ação pendente é segredo do mestre, e um número
+rolado que chegasse ao jogador antes de o mestre abrir a ação lhe permitiria cancelar a que
+rolou mal. O **mestre** vê a visão viva inteira (cada envio, na hora); o **jogador** — para todo
+personagem, o próprio incluso — vê só o que o mestre já abriu: preços congelados, velocidades
+públicas, ordem vazia.
+
+**Exemplo — visão do MESTRE** (round disputado, nenhuma ação aberta ainda: preço só provisório;
+duas ações pendentes de `2222…`, uma delas adiada, e uma de `1111…`):
 
 ```json
 {
   "type": "bars_updated",
   "payload": {
     "seq": 7,
-    "prices": { "action": 14, "move": 12 },
+    "prices": {},
+    "provisionalPrices": { "action": 11 },
     "characters": [
       {
         "characterId": "11111111-1111-4111-8111-111111111111",
-        "actionBalance": -2.5,
+        "actionCarry": -1.5,
+        "moveCarry": 0,
+        "actionBalance": -1.5,
         "moveBalance": 0,
-        "actionSpeeds": [16, 14],
-        "moveSpeeds": [12]
+        "actionSpeeds": [],
+        "moveSpeeds": [],
+        "pendingActionSpeeds": [11]
+      },
+      {
+        "characterId": "22222222-2222-4222-8222-222222222222",
+        "actionCarry": 0,
+        "moveCarry": 0,
+        "actionBalance": 12,
+        "moveBalance": 0,
+        "actionSpeeds": [],
+        "moveSpeeds": [],
+        "pendingActionSpeeds": [23],
+        "deferredActionSpeeds": [9]
       }
     ],
     "order": [
-      { "actorId": "22222222-2222-4222-8222-222222222222", "bars": ["action"], "key": 18 }
-    ]
+      { "actorId": "22222222-2222-4222-8222-222222222222", "bars": ["action"], "key": 12 },
+      { "actorId": "11111111-1111-4111-8111-111111111111", "bars": ["action"], "key": -1.5 }
+    ],
+    "roundTurns": 0
   }
 }
 ```
 
-| Campo | Notas |
-|---|---|
-| `seq` | **Ordena os snapshots, e o cliente PRECISA usar.** Isto é estado completo, entregue de uma goroutine destacada: dois opens em sequência rápida disputam o envio e o snapshot mais velho pode chegar por último. **Guarde o maior `seq` aplicado e DESCARTE qualquer coisa menor.** Não há evento posterior de auto-correção — o que fecha a rodada é o último `bars_updated` que a mesa recebe. |
-| `prices` | Preço congelado da rodada por barra. Uma barra que ainda não precificou **está ausente do mapa**. |
-| `characters[].actionBalance` / `moveBalance` | Saldo (crédito ou débito) — **fracionário**, não arredondado. |
-| `characters[].actionSpeeds` / `moveSpeeds` | Velocidades que **já agiram** nesta rodada. Públicas, porque a média que produzem é o que ordena todo mundo. |
-| `order` | Projeção de quem age em seguida, **maior `key` primeiro**. Carrega quem e em qual barra, e **nada que identifique a ação** — nem ID, nem arma, nem alvo, nem perícia. |
-| `roundTurns` | Quantos turnos abriram na rodada atual (abertos ou fechados). `0` = nada aconteceu ainda: `open_next_action` não encerra essa rodada. |
+**Exemplo — visão do JOGADOR no mesmo instante** (nada foi aberto: as pendentes não existem para
+ele; só o carry, que é público):
 
-**Disparado por:** qualquer coisa que mova as barras — `enqueue_action`,
-[`cancel_action`](#cancel_action), `open_next_action`, `pull_action`, `close_turn`,
-`change_round_mode`.
+```json
+{
+  "type": "bars_updated",
+  "payload": {
+    "seq": 7,
+    "prices": {},
+    "characters": [
+      {
+        "characterId": "11111111-1111-4111-8111-111111111111",
+        "actionCarry": -1.5,
+        "moveCarry": 0,
+        "actionBalance": -1.5,
+        "moveBalance": 0,
+        "actionSpeeds": [],
+        "moveSpeeds": []
+      },
+      {
+        "characterId": "22222222-2222-4222-8222-222222222222",
+        "actionCarry": 0,
+        "moveCarry": 0,
+        "actionBalance": 0,
+        "moveBalance": 0,
+        "actionSpeeds": [],
+        "moveSpeeds": []
+      }
+    ],
+    "order": [],
+    "roundTurns": 0
+  }
+}
+```
+
+Na prática o jogador nem receberia este exemplo: a visão dele não mudou com esses envios (ver
+"Entrega ao jogador"). Ele serve para mostrar a forma.
+
+**Campos do nível de cima**
+
+| Campo | Mestre | Jogador | Notas |
+|---|---|---|---|
+| `seq` | sim | sim | **Ordena os snapshots, e o cliente PRECISA usar.** Isto é estado completo: **guarde o maior `seq` aplicado e DESCARTE qualquer coisa menor.** É o mesmo número nas cópias de um mesmo retrato, sobe uma vez por retrato. **O `seq` que o jogador vê pode pular** (ver "Entrega ao jogador"). |
+| `prices` | sim | sim | Preço **congelado** da rodada por barra (`"action"`, `"move"`). Barra que ainda não congelou **está ausente do mapa**. Público (o jogador o vê quando o mestre abre a primeira ação da rodada). |
+| `provisionalPrices` | sim | **omitido** | Preço que cada barra **ainda não congelada** congelaria agora (a menor velocidade pendente naquela barra). Só no regime disputado; **omitido (`omitempty`) quando vazio** — toda barra com trabalho já congelou. |
+| `characters` | sim | sim | Todo personagem em combate (NPCs inclusos), **ordenado por `characterId`** — a ordem é estável entre atualizações. Nunca `null`. |
+| `order` | sim | **sempre `[]`** | Projeção de quem age em seguida, **maior `key` primeiro**. Carrega quem e em qual barra, e **nada que identifique a ação**. Para o jogador a chave seria o canal por onde a velocidade rolada vazaria, por isso ele recebe vazio (nunca `null`, nunca ausente). |
+| `roundTurns` | sim | sim | Quantos turnos abriram na rodada atual. `0` = nada aconteceu ainda: `open_next_action` não encerra essa rodada. |
+
+**Campos de `characters[]`**
+
+| Campo | Mestre | Jogador |
+|---|---|---|
+| `characterId` | sim | sim |
+| `actionCarry` / `moveCarry` | sim | sim |
+| `actionBalance` / `moveBalance` | saldo vivo com as velocidades abertas **e as pendentes que abrem nesta rodada** | saldo vivo só com as velocidades **públicas** |
+| `actionSpeeds` / `moveSpeeds` | todas as que agiram, em ordem | só as públicas, em ordem |
+| `pendingActionSpeeds` / `pendingMoveSpeeds` | na fila e abrem nesta rodada, na ordem projetada | **omitido** |
+| `deferredActionSpeeds` / `deferredMoveSpeeds` | na fila e não cabem nesta rodada | **omitido** |
+
+- `actionCarry` / `moveCarry` (novos): o que atravessou da rodada anterior, crédito ou dívida.
+  **Fracionário**, não arredondado.
+- ⚠️ **`actionBalance` / `moveBalance` MUDARAM de sentido.** Antes eram o carry (congelado a
+  rodada inteira). Agora são o **saldo ao vivo, sem teto**: `carry + média(velocidades) −
+  n × preço`, recalculado a cada alteração. O carry está nos campos novos. Sem preço naquela
+  barra (nem congelado, nem provisório para o mestre), o saldo ao vivo é o próprio carry. Ex.:
+  um personagem sozinho com 23 e preço 11 → `+12`; com a segunda ação em 17 → `−2`. O teto só
+  vale no fechamento da rodada, não aqui. Fracionário.
+- `actionSpeeds` / `moveSpeeds`: velocidades que **já agiram**. Uma ação combinada aparece nas
+  listas das **duas** barras. Nunca `null` (`[]` vazio).
+- `pending*` / `deferred*`: **só do mestre.** São `omitempty` — **ausentes quando vazios**,
+  inclusive para o mestre; para o jogador, sempre ausentes. Leia ausência como lista vazia. Toda
+  ação da fila que a projeção abre neste round é pendente; as que sobram são adiadas. Uma ação
+  combinada passa nos dois portões ou em nenhum: é pendente nas duas barras ou adiada nas duas.
+- **Velocidade de reação.** A velocidade de uma reação **fica fora** de `actionSpeeds` /
+  `moveSpeeds` e do saldo do jogador até a reação ser **aberta** ([`open_reaction`](#open_reaction))
+  ou o turno fechar (a resolução assentada vai à mesa — vale também para a reação nunca aberta,
+  depois do `close_turn_refused` e `confirm: true`). A reação do próprio jogador segue a mesma
+  regra da ação dele. Reação gratuita (`nothing`, a `default` sentada) não grava velocidade. O
+  mestre vê a velocidade da reação já no `attach_reaction`.
+- **O saldo do jogador pode pular.** Velocidade escondida fica fora do número dele até ficar
+  pública; o pulo quando ela fica pública é esperado, não bug.
+- **Chaves de `order` antes da primeira abertura.** Enquanto o preço da barra não congelou, a
+  chave e o portão usam o **preço provisório** — a menor velocidade pendente, exatamente a que vai
+  congelar. Assim a ordem publicada ao mestre é a que será jogada se nada mais chegar. Depois do
+  congelamento vale o preço congelado. `key` é fracionária e **não arredondada** (arredondar é
+  exibição, do cliente).
+
+**Entrega ao jogador**
+
+- O jogador recebe `bars_updated` **só quando a visão dele mudou** (qualquer campo, exceto
+  `seq`); o mestre recebe **todo** retrato. Um `bars_updated` vazio diria ao jogador que algo
+  secreto acabou de acontecer (por exemplo, um envio do mestre ou de outro jogador). Consequência:
+  **o `seq` do jogador pode saltar** — o cliente continua só descartando valores menores que o
+  maior já aplicado, nunca esperando `seq + 1`.
+- `bars_updated` viaja na **pista direta por destinatário**: não há garantia de ordem entre ele e
+  mensagens da pista de broadcast como [`round_mode_changed`](#round_mode_changed) ou
+  [`npc_added`](#npc_added) (também não havia antes). O cliente não pode depender de uma vir antes
+  da outra.
+- [`match_full_state.bars`](#match_full_state) é a mesma visão, montada para quem conecta.
+
+**Disparado por:** qualquer coisa que mova as barras — `start_match` (um `bars_updated` assim
+que a sessão nasce), `enqueue_action`, [`cancel_action`](#cancel_action), `open_next_action`,
+`pull_action`, [`attach_reaction`](#attach_reaction) aceito, [`open_reaction`](#open_reaction),
+[`edit_action`](#edit_action), `close_turn`, `change_round_mode` e [`add_npc`](#add_npc) com sessão viva.
 
 ### `turn_opened`
 
@@ -2038,7 +2161,7 @@ tentar buscá-la (`GET /charactersheets/{uuid}`) cai em `auth.ErrInsufficientPer
 (403), a menos que por acaso seja o mestre da campanha. `npc_added` é broadcast para a mesa
 inteira, mas o (re)fetch por REST que ele sugere só faz sentido para quem tem permissão de
 lê-la: o mestre. **Os demais jogadores aprendem que o NPC existe pelo `bars_updated.characters`
-que segue** (que já traz `characterId`, saldo e velocidades) **e pela peça que aparece no
+que segue** (que já traz `characterId`, carry e saldo) **e pela peça que aparece no
 tabuleiro** — não pela ficha completa, que não é deles para ver. Não é uma lacuna deste
 contrato: é a mesma regra de visibilidade de ficha que já vale fora do combate.
 
@@ -2052,10 +2175,9 @@ contrato (ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), a
 reenviá-lo aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado
 por cima e apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa
 que mexe nas barras", e é o único que incrementa `seq`. ⚠️ **A ordem de chegada entre
-`npc_added` e esse `bars_updated` não é garantida:** cada um sai de uma goroutine própria
-(`go func() { r.broadcast <- data }()`, tanto no braço `add_npc` de `room.go` quanto dentro de
-`broadcastBars`), disparadas em sequência no código mas entregues ao canal de broadcast sem
-ordem relativa assegurada. O front não pode assumir que `npc_added` sempre chega primeiro —
+`npc_added` e esse `bars_updated` não é garantida:** cada um sai por uma pista própria
+(o canal de broadcast no braço `add_npc` de `room.go`; a pista direta por destinatário dentro
+de `broadcastBars`), disparadas em sequência no código mas sem ordem relativa assegurada. O front não pode assumir que `npc_added` sempre chega primeiro —
 `bars_updated.characters` já é suficiente para desenhar o NPC nas barras, com ou sem o
 `npc_added` correspondente já visto.
 
@@ -2207,7 +2329,7 @@ continuam, porque isso o dono já sabia que declarou.
 | `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. **Ausente** (`omitempty`) quando a partida não tem cena ativa — `Scene *SceneChangedPayload` com `omitempty` **omite a chave inteira**, não emite `null`; em TypeScript o campo é `scene?: SceneChangedPayload`, não `scene: SceneChangedPayload \| null`. Leia `scene === undefined` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e é validada contra o enum — ver `change_scene`. |
 | `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
 | `passiveValue` | O valor base do conjunto de dados — o que um teste passivo lê em vez de rolar (**11** no 2D10, **10** no D20). O editor do mestre o nomeia ao avisar que um viés faz o teste passivo rolar contra ele. Ausente sem sessão. (2026-10-12.) |
-| `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. |
+| `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. **Projetado para este destinatário**: o mestre recebe a visão dele, o jogador a de jogador (ver [`bars_updated`](#bars_updated)). |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
@@ -2502,7 +2624,7 @@ possui:
 
    **O rótulo é o vazamento.** Se `closedDodge` chegasse público, ninguém precisaria deduzir
    nada — o nome já disse que havia Evasão embutida. Deduzir da barra pública é legítimo (uma
-   fuga fechada cobra uma barra onde a padrão cobra duas, e `bars_updated` é público); ser
+   fuga fechada cobra uma barra onde a padrão cobra duas, e `bars_updated`, uma vez aberta a ação, é público); ser
    avisado não é.
 
    Para o escape, o rebaixamento `closedEscape`→`escape` é **cosmético**: a categoria do
@@ -2613,7 +2735,7 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │                            │                               │    é aqui que o    │
     │                            │                               │    mestre aprende  │
     │                            │                               │    o actionId)     │
-    │◄─────────────── bars_updated (mesa) ──────────────────────►│◄──────────────────►│
+    │◄─────────────── bars_updated (por destinatário) ──────────►│◄──────────────────►│
     │                            │                               │                    │
     │                            │◄──── open_next_action ────────┤                    │
     │                            │         (ou pull_action {actionId})                │
@@ -2654,7 +2776,7 @@ JOGADOR A                    SERVIDOR                         MESTRE            
     │    PROJETADO p/ A          │     isSettled:TRUE, completo  │                    │
     │                            ├──── resolution_updated ────────────────────────────►
     │                            │     isSettled:TRUE, PROJETADO p/ B (payload ≠ o de A)
-    │◄─────────────── bars_updated (mesa) ──────────────────────►│◄──────────────────►│
+    │◄─────────────── bars_updated (por destinatário) ──────────►│◄──────────────────►│
 ```
 
 **O que muda se o mestre usar `open_next_action` em vez de `close_turn`:** nada no

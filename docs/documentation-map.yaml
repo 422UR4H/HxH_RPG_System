@@ -923,6 +923,9 @@ mappings:
       - path: System_X_System_React/docs/dev/http-boundary-inventory.md
         confidence: possibly_affected
     notes: >
+      bars_updated é projetado por destinatário (BarsUpdatedPayload/CharacterBarsPayload:
+      campos só do mestre omitidos para o jogador, order sempre []) — contrato em
+      match-combat-ws.md § bars_updated.
       WS message type definitions — piece_moved, piece_removed, map_state_sync
       (OBSOLETE since B14 — accepted, ignored, answers only the sender with the
       current map_full_state; removed from the contract once F13 drops the send
@@ -967,7 +970,12 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md
         confidence: directly_affected
+    game_docs:
+      - path: docs/game/combate/barra-de-acao.md
+        confidence: possibly_affected
     notes: >-
+      broadcastBars envia bars_updated por destinatário (mestre: tudo; jogador: só se a visão dele
+      mudou, então o seq dele pode saltar) — ver match-combat-ws.md § bars_updated.
       Lobby lifecycle WS messages (cancel_lobby, lobby_closed, lobby_not_open) +
       piece_moved/piece_removed/map_full_state broadcast; wall_hp_changed +
       wall_state_changed from WallResults. B14 (spec 2026-09-27-combat-closure-back
@@ -1092,6 +1100,8 @@ mappings:
       - path: docs/dev/api/match-combat-ws.md
         confidence: directly_affected
     notes: >-
+      bars_view.go monta a visão das barras por papel (BarsView(isMaster)); contrato em
+      match-combat-ws.md § bars_updated, regra em combat-engine.md.
       MatchSession é o único estado vivo da partida e a fachada sobre os domain
       services. Mudar seus métodos, campos ou as interfaces invertidas
       (TargetReader, PiecePositionSource) invalida os diagramas de módulos e de
