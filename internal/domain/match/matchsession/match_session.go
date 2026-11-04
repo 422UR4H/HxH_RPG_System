@@ -962,6 +962,18 @@ func (s *MatchSession) BarState(charID uuid.UUID, bar action.Bar) (float64, []in
 	return b.Balance, b.Speeds
 }
 
+// PublicBarState is BarState without the speeds that are still secret: a reaction's speed stays
+// hidden until the master opens that reaction or its turn closes. BarState is unchanged, since
+// the economy has to read every speed.
+func (s *MatchSession) PublicBarState(charID uuid.UUID, bar action.Bar) (float64, []int) {
+	status, ok := s.statuses[charID]
+	if !ok {
+		return 0, nil
+	}
+	b := status.BarFor(bar)
+	return b.Balance, b.PublicSpeeds()
+}
+
 // RoundPrices returns the frozen price of each bar that has priced this round. Read by the
 // delivery layer to publish the general bar.
 // RoundTurnCount is how many turns opened in the active round.
@@ -1158,6 +1170,11 @@ func (s *MatchSession) closeOpenTurn() *TurnTransition {
 	tr := &TurnTransition{}
 	if !s.activeRound.HasOpenTurn() {
 		return tr
+	}
+	// Only the open turn's reactions can still be secret, and the turn closing makes them public.
+	for _, status := range s.statuses {
+		status.BarFor(action.BarAction).RevealAll()
+		status.BarFor(action.BarMove).RevealAll()
 	}
 	tr.Closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
 	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
@@ -1481,7 +1498,7 @@ func (s *MatchSession) chargeReactionBars(r *action.Action) {
 		return
 	}
 	for _, bar := range r.ReactionKind.Bars() {
-		status.BarFor(bar).RecordSpeed(r.SpeedOn(bar))
+		status.BarFor(bar).RecordSecretSpeed(r.GetID(), r.SpeedOn(bar))
 	}
 }
 
@@ -1508,6 +1525,12 @@ func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*action.Action, *serv
 	}
 	if !t.OpenReaction(reactionID) {
 		return nil, nil, ErrReactionNotFound
+	}
+	if r := t.ReactionRef(reactionID); r != nil {
+		if status, ok := s.statuses[r.GetActorID()]; ok {
+			status.BarFor(action.BarAction).Reveal(reactionID)
+			status.BarFor(action.BarMove).Reveal(reactionID)
+		}
 	}
 	return t.ReactionRef(reactionID), s.ResolveTurn(t), nil
 }
