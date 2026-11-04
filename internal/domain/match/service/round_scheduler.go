@@ -216,7 +216,7 @@ type simKey struct {
 	bar  action.Bar
 }
 
-// simulatedBars is a read-only overlay on the real bar state, used only while ProjectOrder
+// simulatedBars is a read-only overlay on the real bar state, used only while ProjectRound
 // walks the round forward. It never writes through: extra holds the speeds the simulation has
 // opened, appended to whatever the session actually reports.
 //

@@ -908,9 +908,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// PersistTurnClose and its settled resolution_updated — losing them here would silently
 		// drop a real turn from the table and from the Action History. The master still learns
 		// the open failed, just after the table has the turn that actually ended.
+		//
+		// The bars go out on every exit past Execute, the failed ones included: FreezePrices
+		// runs before anything can fail, so a Race round that ends in ErrRoundHasNoTurns has
+		// frozen a price with nothing opened. Left unsent, the players' copy of that change would
+		// ride out on the next secret send by anyone (spec 2026-11-04 D1). When their view did
+		// not change, the players get nothing (lastPlayerBars).
+		r.broadcastBars(session)
 		if result != nil {
-			r.broadcastBars(session)
-
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
 				// Opening the next action is ALSO a close, so the escapes whose step waited for
@@ -1061,9 +1066,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// resolution_updated — losing them here would silently drop a real turn from the table
 		// and from the Action History. The master still learns the pull failed, just after the
 		// table has the turn that actually ended.
+		//
+		// The bars go out on every exit past Execute, the failed ones included — same reason as
+		// open_next_action: PullAction freezes the prices before it looks the action up, so a
+		// stale id fails with a price already frozen.
+		r.broadcastBars(session)
 		if result != nil {
-			r.broadcastBars(session)
-
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
 				// Opening the next action is ALSO a close, so the escapes whose step waited for
@@ -1401,7 +1409,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if result.Queued {
 			// The master's view of the action is replaced, never appended: action_queued for an
 			// actionId the client already holds is an update. The order moves when the speed
-			// did, so the public bars go out too — they name no action and no condition.
+			// did, so the bars go out too, each recipient their own view of them.
 			r.sendToMaster(NewServerMessage(MsgTypeActionQueued, requeued))
 			r.broadcastBars(session)
 			return
@@ -1587,6 +1595,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+		// The new round has no price and no turn: everyone's bars changed here, and the players
+		// are told now, not at the next secret send by anyone (spec 2026-11-04 D1).
+		r.broadcastBars(session)
 
 	case MsgTypeCancelLobby:
 		if err := r.CloseLobby(client.userUUID); err != nil {
@@ -2613,7 +2624,8 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 // broadcastBars publishes the clocks to everyone, each recipient their own view of them: the
 // master the whole live view, every player only what the master has opened (spec 2026-11-04
 // D1). Called after anything that moves them: an action enqueued, a turn opened, a reaction
-// attached or opened, a round closed, a regime switched.
+// attached or opened, a round closed, a regime switched, a scene changed — and a failed open
+// or pull, which may have frozen a price before it failed.
 //
 // The players get it only when their view CHANGED (see lastPlayerBars): an enqueue or an
 // attach moves only the master's bars, and a player copy with a new seq and nothing new in it

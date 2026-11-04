@@ -561,6 +561,52 @@ func TestRoundScheduler_ProjectRoundDefersWhatCannotPay(t *testing.T) {
 	}
 }
 
+// TestRoundScheduler_ContractBarsExample pins the numbers of the master's bars_updated example
+// in docs/dev/api/match-combat-ws.md, so the contract cannot drift from the rules again.
+// Nothing open yet: 1111 carries −1.5 and queues 11; 2222 carries 0 and queues 15 and 9.
+func TestRoundScheduler_ContractBarsExample(t *testing.T) {
+	sch := service.RoundScheduler{}
+	eco := service.BarEconomy{}
+	bars := newFakeBars()
+	c1, c2 := uuid.New(), uuid.New()
+	bars.setCarry(c1, action.BarAction, -1.5)
+
+	r := round.NewRound(enum.Race)
+	q := action.NewActionPriorityQueue(nil)
+	q.Insert(attackAt(c1, 11))
+	q.Insert(attackAt(c2, 15))
+	q.Insert(attackAt(c2, 9))
+	in := service.ScheduleInput{Queue: &q, Round: r, Bars: bars}
+
+	// The deferred 9 still sets the provisional price: it is the smallest speed in the queue.
+	if prov := sch.ProvisionalPrices(in); len(prov) != 1 || prov[action.BarAction] != 9 {
+		t.Fatalf("ProvisionalPrices = %v, want {action: 9}", prov)
+	}
+	proj := sch.ProjectRound(in)
+	wantActors := []uuid.UUID{c2, c1}
+	wantKeys := []float64{15, 9.5} // first actions: carry + speed
+	if len(proj.Order) != len(wantActors) {
+		t.Fatalf("Order = %+v, want %d slots", proj.Order, len(wantActors))
+	}
+	for i := range wantActors {
+		if proj.Order[i].ActorID != wantActors[i] || !closeTo(proj.Order[i].Key, wantKeys[i]) {
+			t.Errorf("Order[%d] = %v key %v, want %v key %v",
+				i, proj.Order[i].ActorID, proj.Order[i].Key, wantActors[i], wantKeys[i])
+		}
+	}
+	// 2222's 9 gates on what the 15 leaves: 15 − 9 = 6 < 9.
+	if len(proj.Deferred) != 1 || proj.Deferred[0].ActorID != c2 || proj.Deferred[0].Speeds[action.BarAction] != 9 {
+		t.Fatalf("Deferred = %+v, want only 2222's 9", proj.Deferred)
+	}
+	// The master's live balances: carry + mean(pending) − n × provisional price.
+	if b := eco.Balance(-1.5, []int{11}, 9); !closeTo(b, 0.5) {
+		t.Errorf("1111 balance = %v, want 0.5", b)
+	}
+	if b := eco.Balance(0, []int{15}, 9); !closeTo(b, 6) {
+		t.Errorf("2222 balance = %v, want 6", b)
+	}
+}
+
 func TestRoundScheduler_CombinedActionIsPendingOrDeferredOnBothBars(t *testing.T) {
 	sch := service.RoundScheduler{}
 	bars := newFakeBars()

@@ -1476,6 +1476,128 @@ func TestE2E_StartMatchHandsThePlayersTheirBars(t *testing.T) {
 	}
 }
 
+// connectBystander connects the withBystander player and returns their collector. They own
+// no character the test acts with, so every bars_updated they get is one the table caused.
+func (f *combatFixture) connectBystander(t *testing.T) *collector {
+	t.Helper()
+	bystander := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+	t.Cleanup(func() { bystander.Close() }) //nolint:errcheck
+	readMessage(t, bystander)               // room_state
+	return collectFrom(bystander)
+}
+
+// assertNoPlayerBarsAtEnqueue sends one more enqueue and fails if the bystander's count of
+// bars_updated moves from want: an enqueue changes nothing a player may see (spec D1), so it
+// must not be what carries the players' copy of an earlier change.
+func (f *combatFixture) assertNoPlayerBarsAtEnqueue(
+	t *testing.T, player *websocket.Conn, mc, bc *collector, masterBars, want int,
+) {
+	t.Helper()
+	f.enqueueAttackFrom(t, player, f.victimID)
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, masterBars+1, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the enqueue")
+	}
+	time.Sleep(150 * time.Millisecond) // quiet window: nothing reaches the player to be a barrier
+	if n := bc.count(game.MsgTypeBarsUpdated); n != want {
+		t.Errorf("the bystander has %d bars_updated, want still %d — the enqueue changed nothing "+
+			"a player may see; last: %s", n, want, lastBarsRaw(t, bc))
+	}
+}
+
+// TestE2E_ChangeSceneHandsThePlayersTheNewRoundsBars pins the bars_updated a scene change
+// sends. The new round has no price and no turn, so the players' view changed right there —
+// and if they are not told then, the next secret send by anyone carries their copy, telling
+// them that something secret happened (spec 2026-11-04 D1).
+func TestE2E_ChangeSceneHandsThePlayersTheNewRoundsBars(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	bc := f.connectBystander(t)
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("bars_updated never followed the regime switch")
+	}
+	f.openAttackOn(t, player, master, mc)
+	if !awaitCount(bc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the bystander's bars_updated never followed the open")
+	}
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	// Switch, enqueue, open, close.
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 4, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the close")
+	}
+	time.Sleep(150 * time.Millisecond) // let whatever the close sent the players land
+	before := bc.count(game.MsgTypeBarsUpdated)
+	if got := lastBarsUpdated(t, bc).Prices[string(action.BarAction)]; got == 0 {
+		t.Fatal("precondition: the bystander should hold the old round's frozen action price")
+	}
+
+	sendWS(t, master, string(game.MsgTypeChangeScene), game.ChangeScenePayload{
+		Category: string(enum.Battle), BriefInitialDescription: "Ponte",
+	})
+	if !mc.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("the scene change was never announced")
+	}
+	if !awaitCount(bc, game.MsgTypeBarsUpdated, before+1, 2*time.Second) {
+		t.Fatal("the bystander got no bars_updated with the scene change")
+	}
+	assertPlayerBarsView(t, string(lastBarsRaw(t, bc)))
+	bars := lastBarsUpdated(t, bc)
+	if len(bars.Prices) != 0 || bars.RoundTurns != 0 {
+		t.Errorf("prices = %v, roundTurns = %d; want the new round's: no price, no turn",
+			bars.Prices, bars.RoundTurns)
+	}
+
+	f.assertNoPlayerBarsAtEnqueue(t, player, mc, bc, mc.count(game.MsgTypeBarsUpdated), before+1)
+}
+
+// TestE2E_AFailedPullThatFrozeAPriceHandsThePlayersTheirBars pins the bars_updated a failed
+// pull_action sends. The pull freezes the prices before it looks the action up, so a stale id
+// fails with a price already frozen: the players' view changed, and they are told then —
+// not at whoever sends next (spec 2026-11-04 D1).
+func TestE2E_AFailedPullThatFrozeAPriceHandsThePlayersTheirBars(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	bc := f.connectBystander(t)
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("bars_updated never followed the regime switch")
+	}
+	f.enqueueAttack(t, player)
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 2, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the enqueue")
+	}
+	time.Sleep(150 * time.Millisecond) // quiet window: the switch and the enqueue send players nothing
+	if n := bc.count(game.MsgTypeBarsUpdated); n != 0 {
+		t.Fatalf("precondition: the bystander has %d bars_updated before the pull, want 0", n)
+	}
+
+	sendWS(t, master, string(game.MsgTypePullAction), game.PullActionPayload{ActionID: uuid.New()})
+	if !mc.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("pulling an action that does not exist was not refused")
+	}
+	if !awaitCount(bc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the bystander got no bars_updated when the failed pull froze the price")
+	}
+	assertPlayerBarsView(t, string(lastBarsRaw(t, bc)))
+	if got := lastBarsUpdated(t, bc).Prices[string(action.BarAction)]; got == 0 {
+		t.Error("the bystander's bars carry no frozen action price after the pull froze it")
+	}
+
+	f.assertNoPlayerBarsAtEnqueue(t, player, mc, bc, mc.count(game.MsgTypeBarsUpdated), 1)
+}
+
 // assertPlayerBarsView fails if a bars payload, as JSON, carries anything of the master's
 // view: a provisional price, a pending or deferred speed, or a non-empty order.
 func assertPlayerBarsView(t *testing.T, raw string) {

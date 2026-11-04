@@ -424,14 +424,17 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
    comando fechou (ou numa só deles, se nenhum turno fechou) — um comando do mestre, uma
    transação. **Uma rodada em que nenhum turno abriu não acaba**: sem turno aberto, sem turno
    fechando agora e `bars_updated.roundTurns == 0`, o comando é recusado com `game_error`
-   `validation error: no turn opened in this round yet` e nada muda (o mestre não roda o relógio
-   de rodada vazia em rodada vazia).
+   `validation error: no turn opened in this round yet` e nenhum turno abre (o mestre não roda o
+   relógio de rodada vazia em rodada vazia). O preço da barra pode ter congelado antes da recusa,
+   e por isso o `bars_updated` do passo 1 sai mesmo assim.
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
    [`resolution_updated`](#resolution_updated) **master-only** do turno recém-aberto
    (`isSettled: false`).
 
 > O passo 2 acontece **antes** do erro ser reportado, mesmo quando o `open` falha: um turno
-> que já fechou e já aplicou dano precisa chegar à mesa de qualquer jeito.
+> que já fechou e já aplicou dano precisa chegar à mesa de qualquer jeito. O passo 1 também sai
+> em toda falha: o preço congela antes de qualquer coisa poder falhar. Se a visão do jogador não
+> mudou, ele não recebe nada (ver "Entrega ao jogador" em [`bars_updated`](#bars_updated)).
 
 **Erros:** `forbidden` · `match_not_started` · `game_error` (`action queue is empty`,
 `action not found in queue`, `validation error: no turn opened in this round yet`).
@@ -456,8 +459,9 @@ Abre uma ação específica **fora de ordem**. Antecipar é prerrogativa do mest
 > é secreta. Um ID que o cliente não consegue aprender é uma operação que o cliente não
 > consegue invocar; `action_queued` existe exatamente para fechar esse buraco.
 
-**Dispara:** o mesmo conjunto de `open_next_action` (passos 1, 2 e 4). **Nunca** fecha a
-rodada — `round_closed` só sai de `open_next_action`.
+**Dispara:** o mesmo conjunto de `open_next_action` (passos 1, 2 e 4), o passo 1 também quando
+falha — o preço congela antes de a ação ser procurada, então um `actionId` velho falha com o preço
+já congelado. **Nunca** fecha a rodada — `round_closed` só sai de `open_next_action`.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid pull_action payload"`) ·
 `match_not_started` · `game_error` (`action not found in queue`).
@@ -871,7 +875,9 @@ O regime que a mesa recebe de volta é **lido da sessão**, não ecoado do pedid
 
 Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
 
-**Dispara:** [`scene_changed`](#scene_changed) — mesa.
+**Dispara:** [`scene_changed`](#scene_changed) — mesa — e [`bars_updated`](#bars_updated) — por
+destinatário: a rodada nova não tem preço nem turno. Os dois viajam em pistas diferentes, sem
+ordem garantida entre eles.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid change_scene payload"`) ·
 `invalid_action` (`"invalid name of scene category: X"` — `category` fora de
@@ -1228,8 +1234,17 @@ rolou mal. O **mestre** vê a visão viva inteira (cada envio, na hora); o **jog
 personagem, o próprio incluso — vê só o que o mestre já abriu: preços congelados, velocidades
 públicas, ordem vazia.
 
-**Exemplo — visão do MESTRE** (round disputado, nenhuma ação aberta ainda: preço só provisório;
-duas ações pendentes de `2222…`, uma delas adiada, e uma de `1111…`):
+**Exemplo — visão do MESTRE** (round disputado, nenhuma ação aberta ainda: preço só provisório.
+Na fila: `1111…`, com carry −1,5, mandou uma ação em 11; `2222…`, com carry 0, mandou duas, em 15
+e em 9. Cada número segue as regras — o teste `TestRoundScheduler_ContractBarsExample` os fixa):
+
+- **Preço provisório 9:** a menor velocidade na fila, **a adiada inclusa**.
+- **`2222…`:** a de 15 é a primeira dela — portão `0 + 15 = 15 ≥ 9`, chave `15`. A de 9 é a
+  segunda, e o portão dela é o que a primeira deixa: `15 − 9 = 6 < 9` → **adiada**.
+  Saldo ao vivo `0 + 15 − 1 × 9 = 6`.
+- **`1111…`:** portão `−1,5 + 11 = 9,5 ≥ 9` → pendente, chave `9,5` (a chave de uma primeira ação
+  é `carry + velocidade`). Saldo ao vivo `−1,5 + 11 − 1 × 9 = 0,5`.
+- **Ordem:** `2222…` (15), depois `1111…` (9,5).
 
 ```json
 {
@@ -1237,13 +1252,13 @@ duas ações pendentes de `2222…`, uma delas adiada, e uma de `1111…`):
   "payload": {
     "seq": 7,
     "prices": {},
-    "provisionalPrices": { "action": 11 },
+    "provisionalPrices": { "action": 9 },
     "characters": [
       {
         "characterId": "11111111-1111-4111-8111-111111111111",
         "actionCarry": -1.5,
         "moveCarry": 0,
-        "actionBalance": -1.5,
+        "actionBalance": 0.5,
         "moveBalance": 0,
         "actionSpeeds": [],
         "moveSpeeds": [],
@@ -1253,25 +1268,25 @@ duas ações pendentes de `2222…`, uma delas adiada, e uma de `1111…`):
         "characterId": "22222222-2222-4222-8222-222222222222",
         "actionCarry": 0,
         "moveCarry": 0,
-        "actionBalance": 12,
+        "actionBalance": 6,
         "moveBalance": 0,
         "actionSpeeds": [],
         "moveSpeeds": [],
-        "pendingActionSpeeds": [23],
+        "pendingActionSpeeds": [15],
         "deferredActionSpeeds": [9]
       }
     ],
     "order": [
-      { "actorId": "22222222-2222-4222-8222-222222222222", "bars": ["action"], "key": 12 },
-      { "actorId": "11111111-1111-4111-8111-111111111111", "bars": ["action"], "key": -1.5 }
+      { "actorId": "22222222-2222-4222-8222-222222222222", "bars": ["action"], "key": 15 },
+      { "actorId": "11111111-1111-4111-8111-111111111111", "bars": ["action"], "key": 9.5 }
     ],
     "roundTurns": 0
   }
 }
 ```
 
-**Exemplo — visão do JOGADOR no mesmo instante** (nada foi aberto: as pendentes não existem para
-ele; só o carry, que é público):
+**Exemplo — visão do JOGADOR no mesmo instante** (nada foi aberto: nenhum preço congelou, e as
+pendentes e a adiada não existem para ele; o saldo é o próprio carry, que é público):
 
 ```json
 {
@@ -1372,9 +1387,10 @@ Na prática o jogador nem receberia este exemplo: a visão dele não mudou com e
 - [`match_full_state.bars`](#match_full_state) é a mesma visão, montada para quem conecta.
 
 **Disparado por:** qualquer coisa que mova as barras — `start_match` (um `bars_updated` assim
-que a sessão nasce), `enqueue_action`, [`cancel_action`](#cancel_action), `open_next_action`,
-`pull_action`, [`attach_reaction`](#attach_reaction) aceito, [`open_reaction`](#open_reaction),
-[`edit_action`](#edit_action), `close_turn`, `change_round_mode` e [`add_npc`](#add_npc) com sessão viva.
+que a sessão nasce), `enqueue_action`, [`cancel_action`](#cancel_action), `open_next_action` e
+`pull_action` (também quando falham: o preço pode ter congelado antes), [`attach_reaction`](#attach_reaction)
+aceito, [`open_reaction`](#open_reaction), [`edit_action`](#edit_action), `close_turn`,
+`change_round_mode`, [`change_scene`](#change_scene) e [`add_npc`](#add_npc) com sessão viva.
 
 ### `turn_opened`
 
