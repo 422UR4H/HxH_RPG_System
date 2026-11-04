@@ -68,6 +68,25 @@ vantagem, somar um ajuste, trocar a perícia que mede o dano. Se ele mexe na **v
 ação muda de lugar na fila. O jogador que declarou a ação não vê o ajuste. Se a ação for
 cancelada, ou trocada por uma reação, o ajuste vai embora com ela.
 
+## Ver pelos olhos de um personagem
+
+O mestre enxerga o tabuleiro inteiro, sem névoa. Mas às vezes ele precisa saber o que um
+personagem enxerga de onde está — para narrar o que um capanga percebe, ou conferir se o
+herói consegue ver a porta do outro lado da sala.
+
+Quando o mestre escolhe um personagem não jogador para agir por ele, ou toca num personagem
+no tabuleiro, a mesa dele passa a mostrar só o que esse personagem vê, do lugar onde está
+agora: a névoa fora do campo de visão dele, as paredes que estão à vista e as peças que estão
+à vista.
+
+É a visão do personagem **neste momento**, não a tela do jogador. O jogador lembra das paredes
+que já viu; o personagem visto pelo mestre não lembra de nada — só existe o que está à vista
+agora. Se o personagem anda, se uma porta abre ou fecha, ou se outra peça entra no campo de
+visão dele, a visão acompanha.
+
+Sem ninguém escolhido, o mestre volta a ver o tabuleiro inteiro. E enquanto arruma o tabuleiro,
+o mestre vê sempre tudo.
+
 ## O que os jogadores enxergam
 
 **A ação editada é a ação.** Quando o mestre muda alguma coisa, o que a mesa vê é o resultado

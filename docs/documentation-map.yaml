@@ -961,6 +961,8 @@ mappings:
     dev_docs:
       - path: docs/dev/api/match-combat-ws.md
         confidence: directly_affected
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
       - path: docs/dev/api/match-maps.md
         confidence: directly_affected
       - path: docs/dev/api/game-lobby.md

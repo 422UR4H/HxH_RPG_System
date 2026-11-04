@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -171,6 +172,10 @@ type Room struct {
 	// carry (unwritten.go). Guarded by mu.
 	unwrittenSheets    map[uuid.UUID]*csSheet.CharacterSheet
 	unwrittenRoundEnds []appmatch.RoundEnd
+	// masterViewPieceID is the piece the master is watching the board through
+	// (watch_piece_view); "" is no watch. Guarded by mu. It lives as long as the master's
+	// connection: a new master socket starts with no watch, and the front sends it again.
+	masterViewPieceID string
 
 	session *matchsession.MatchSession
 
@@ -330,6 +335,11 @@ func (r *Room) Run() {
 			r.clients[client.userUUID] = client
 			client.SetRoom(r)
 			isMaster := r.IsMaster(client.userUUID)
+			if isMaster {
+				// Um socket novo do mestre nasce sem ponto de vista: o front reenvia o
+				// watch_piece_view se ainda quiser assistir por uma peça.
+				r.masterViewPieceID = ""
+			}
 			// The board loads at the room's birth and, while still a lobby, on every master
 			// reconnect — exactly the moment map_state_sync used to arrive in production
 			// (spec §4.3, "Quem carrega", B14). r.session == nil is "still a lobby" (or a
@@ -372,6 +382,8 @@ func (r *Room) Run() {
 						}
 						return r.buildMapFullState(pid, isMaster)
 					})
+					// The board under the master's watched piece may have just changed too.
+					r.pushMasterPieceView()
 				}
 				// match_full_state goes along, AFTER the map (the same order as the client's own
 				// register below): the session may have just come alive under whoever was already
@@ -724,6 +736,8 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 		return r.buildMapFullState(pid, isMaster)
 	})
+	// After the master's map_full_state, on the same direct lane.
+	r.pushMasterPieceView()
 	return nil
 }
 
@@ -1576,6 +1590,44 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		client.SendMessage(*r.buildMapFullState(client.userUUID, true))
+
+	case MsgTypeWatchPieceView:
+		// O mestre passa a ver o tabuleiro pelos olhos de uma peça (ou deixa de ver, com
+		// pieceId vazio). A partir daqui o servidor reenvia piece_view sempre que a linha de
+		// visão dela pode mudar (pushMasterPieceView).
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+			return
+		}
+		var payload WatchPieceViewPayload
+		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
+			client.SendMessage(NewErrorMessage("invalid_payload", "invalid watch_piece_view payload"))
+			return
+		}
+		r.mu.Lock()
+		if payload.PieceID == "" {
+			r.masterViewPieceID = ""
+			r.mu.Unlock()
+			return
+		}
+		if r.session == nil {
+			r.masterViewPieceID = ""
+			r.mu.Unlock()
+			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			return
+		}
+		if _, ok := r.pieces[payload.PieceID]; !ok {
+			r.masterViewPieceID = ""
+			r.mu.Unlock()
+			client.SendMessage(NewErrorMessage("unknown_piece",
+				fmt.Sprintf("piece %s is not on this match's board", payload.PieceID)))
+			return
+		}
+		r.masterViewPieceID = payload.PieceID
+		r.mu.Unlock()
+		if msg := r.buildPieceView(); msg != nil {
+			client.SendMessage(*msg)
+		}
 
 	case MsgTypeEnqueueMasterAction:
 		if !r.IsMaster(client.userUUID) {
@@ -2649,6 +2701,94 @@ func (r *Room) pushVisibilityUpdates() {
 		msg := NewServerMessage(MsgTypeVisibilityUpdated, payload)
 		return &msg
 	})
+	// Whatever moved every player's sight (a wall, a reveal) moves the watched piece's too.
+	r.pushMasterPieceView()
+}
+
+// buildPieceView is the piece_view of the piece the master is watching: what it sees right
+// now, from where it stands — no memory, no per-player ownership (FilterPerspective). nil when
+// there is no watch, no session, or the watched piece left the board; in that last case the
+// watch is cleared, so a piece that comes back under the same id is not watched by surprise.
+//
+// Computed on demand, never cached: the master still owns no LOS (see relayPieceMove).
+//
+// The caller must NOT hold r.mu.
+func (r *Room) buildPieceView() *Message {
+	r.mu.RLock()
+	watched := r.masterViewPieceID
+	if watched == "" || r.session == nil {
+		r.mu.RUnlock()
+		return nil
+	}
+	viewer, ok := r.pieces[watched]
+	if !ok {
+		r.mu.RUnlock()
+		// A separate write lock, never an upgrade of the read lock above; cleared only if
+		// nobody chose another piece in the gap.
+		r.mu.Lock()
+		if r.masterViewPieceID == watched {
+			r.masterViewPieceID = ""
+		}
+		r.mu.Unlock()
+		return nil
+	}
+	grid := r.session.GetGrid()
+	allWalls := make([]mapentity.WallSegment, 0, len(r.walls))
+	for _, w := range r.walls {
+		allWalls = append(allWalls, w)
+	}
+	pieceProj := make([]domainservice.PieceVisibility, 0, len(r.pieces))
+	for _, p := range r.pieces {
+		pieceProj = append(pieceProj, pieceVisibilityOf(p, grid))
+	}
+	poly := r.session.VisibilityFrom(pieceVisibilityOf(viewer, grid).Pos)
+	r.mu.RUnlock()
+
+	walls, visIDs := domainservice.FilterPerspective(allWalls, pieceProj, poly, watched)
+	wallIDs := make([]string, 0, len(walls))
+	for _, w := range walls {
+		wallIDs = append(wallIDs, w.ID)
+	}
+	pieceIDs := make([]string, 0, len(visIDs))
+	for id := range visIDs {
+		pieceIDs = append(pieceIDs, id)
+	}
+	slices.Sort(wallIDs)
+	slices.Sort(pieceIDs)
+	msg := NewServerMessage(MsgTypePieceView, PieceViewPayload{
+		PieceID:         watched,
+		VisiblePolygons: polysToPayload([]domainservice.VisibilityPolygon{poly}),
+		WallIDs:         wallIDs,
+		PieceIDs:        pieceIDs,
+	})
+	return &msg
+}
+
+// pushMasterPieceView sends the master a fresh piece_view, when they are watching a piece. It
+// goes on the master's DIRECT lane (sendToMaster → client.SendMessage), the lane piece_moved
+// and map_full_state take, so it always lands after the news that changed the view.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) pushMasterPieceView() {
+	if msg := r.buildPieceView(); msg != nil {
+		r.sendToMaster(*msg)
+	}
+}
+
+// pieceVisibilityOf is one piece as the fog filters read it: its LOCAL centre and whether it
+// shows. A nil Visible is a visible piece.
+func pieceVisibilityOf(p PieceMovedPayload, grid mapentity.GridShape) domainservice.PieceVisibility {
+	x, y := slotPayloadToLocal(p.Slot, grid)
+	visible := true
+	if p.Visible != nil {
+		visible = *p.Visible
+	}
+	return domainservice.PieceVisibility{
+		ID:          p.PieceID,
+		CharacterID: p.CharacterID,
+		Pos:         domainservice.Point2D{X: x, Y: y},
+		Visible:     visible,
+	}
 }
 
 // visibilityFor returns the cached visibility polygons for a player (nil if no session).
@@ -2750,17 +2890,7 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	boardBg := r.bg
 	for _, p := range r.pieces {
 		allPieces = append(allPieces, p)
-		x, y := slotPayloadToLocal(p.Slot, grid)
-		visible := true
-		if p.Visible != nil {
-			visible = *p.Visible
-		}
-		pieceProj = append(pieceProj, domainservice.PieceVisibility{
-			ID:          p.PieceID,
-			CharacterID: p.CharacterID,
-			Pos:         domainservice.Point2D{X: x, Y: y},
-			Visible:     visible,
-		})
+		pieceProj = append(pieceProj, pieceVisibilityOf(p, grid))
 	}
 	var polys []domainservice.VisibilityPolygon
 	fogMode := fogentity.FogModeLive
@@ -3162,6 +3292,8 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 	// are all skipped. The master still hears about the move through the isMaster branch of
 	// the dispatch below — or gets no echo, when the master is the one who dragged it. This
 	// holds for all three paths through here: a client drag, a turn's move, a reaction escape.
+	// Watching the board through a piece (watch_piece_view) does not change this: that view
+	// is computed on demand from the piece's position (buildPieceView), never cached here.
 	if owner == r.masterUUID {
 		owner = uuid.Nil
 	}
@@ -3226,6 +3358,9 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 			return &m
 		}
 	})
+	// Every exit below — the owner == uuid.Nil one included, which is the one an NPC's move
+	// takes — refreshes the master's watched piece, AFTER the piece_moved above.
+	defer r.pushMasterPieceView()
 
 	// The owner's line of sight already changed, so resend them the full state. This stays
 	// AFTER the dispatch on purpose: the negative assertions in the move tests use the owner's
@@ -3725,6 +3860,9 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 		m := removed
 		return &m
 	})
+	// Every exit below refreshes the master's watched piece, AFTER the piece_removed above;
+	// when the removed piece IS the watched one, buildPieceView clears the watch instead.
+	defer r.pushMasterPieceView()
 
 	if !live || owner == uuid.Nil {
 		return views

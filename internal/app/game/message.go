@@ -115,6 +115,13 @@ const (
 	MsgTypeVisibilityUpdated MessageType = "visibility_updated"
 	MsgTypeWallRevealed      MessageType = "wall_revealed"
 
+	// Client → Server (master only): o mestre passa a ver o tabuleiro pelos olhos de uma peça.
+	// pieceId vazio encerra.
+	MsgTypeWatchPieceView MessageType = "watch_piece_view"
+	// Server → Client (master only): o que a peça assistida enxerga agora. Reenviado sempre
+	// que a linha de visão dela pode ter mudado.
+	MsgTypePieceView MessageType = "piece_view"
+
 	// Server → Client (combat snapshot)
 	// Sent to every client that registers while a match session is live, so a late joiner — or a
 	// reconnect, and the front's hook reconnects up to five times on its own — does not sit
@@ -1215,6 +1222,23 @@ type Point2DPayload struct {
 
 type VisibilityUpdatedPayload struct {
 	VisiblePolygons [][]Point2DPayload `json:"visiblePolygons"`
+}
+
+// WatchPieceViewPayload is watch_piece_view (client→server, master only). An empty PieceID
+// stops watching.
+type WatchPieceViewPayload struct {
+	PieceID string `json:"pieceId"`
+}
+
+// PieceViewPayload is piece_view (server→master): what the watched piece sees right now.
+// VisiblePolygons are LOCAL grid coords, like visibility_updated, with a single polygon.
+// WallIDs and PieceIDs are always encoded as arrays, never null. WallIDs are ids only: an
+// unrevealed secret door in sight is listed, and the front masks it.
+type PieceViewPayload struct {
+	PieceID         string             `json:"pieceId"`
+	VisiblePolygons [][]Point2DPayload `json:"visiblePolygons"`
+	WallIDs         []string           `json:"wallIds"`
+	PieceIDs        []string           `json:"pieceIds"`
 }
 
 type WallRevealedPayload struct {
