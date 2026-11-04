@@ -246,6 +246,20 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 			}
 		})
 
+		t.Run("drops provisionalPrices once the bar froze", func(t *testing.T) {
+			if payload.ProvisionalPrices != nil {
+				t.Errorf("provisionalPrices = %v, want absent — the action bar froze and the move "+
+					"bar has nothing pending", payload.ProvisionalPrices)
+			}
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(raw), `"provisionalPrices"`) {
+				t.Errorf("provisionalPrices is on the wire after the freeze: %s", raw)
+			}
+		})
+
 		t.Run("carries the projected order, and nothing that identifies an action", func(t *testing.T) {
 			if len(payload.Order) == 0 {
 				t.Fatal("something is pending, so the general bar has an order to show")
@@ -322,6 +336,21 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 	})
 }
 
+// TestNewBarsUpdatedPayload_NoCharactersIsAnEmptyArray pins "characters":[] — never null —
+// for a session nobody has joined yet, in both views, so a client iterates it unconditionally.
+func TestNewBarsUpdatedPayload_NoCharactersIsAnEmptyArray(t *testing.T) {
+	empty := matchsession.NewMatchSession(uuid.New(), map[uuid.UUID]*csSheet.CharacterSheet{}, nil)
+	for _, isMaster := range []bool{true, false} {
+		raw, err := json.Marshal(newBarsUpdatedPayload(empty, isMaster))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"characters":[]`) {
+			t.Errorf("isMaster=%v: want \"characters\":[], got %s", isMaster, raw)
+		}
+	}
+}
+
 // barsRecipient is a registered client with no socket: dispatchPerPlayer writes to its send
 // buffer, which the test drains.
 func barsRecipient(r *Room, id uuid.UUID) *Client {
@@ -360,13 +389,18 @@ func readBars(t *testing.T, c *Client) BarsUpdatedPayload {
 // snapshot carry the same number, and a client can throw away anything older than what it
 // already applied.
 func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
-	session, _, _ := racingSessionWithTwoActors(t)
+	session, _, _ := racingSessionWithTwoQueued(t)
 	masterID, playerID := uuid.New(), uuid.New()
 	r := &Room{clients: map[uuid.UUID]*Client{}, masterUUID: masterID}
 	master := barsRecipient(r, masterID)
 	player := barsRecipient(r, playerID)
 
 	r.broadcastBars(session)
+	// An open between the two: the player view must change, or the second snapshot goes to
+	// the master alone (TestBroadcastBars_SkipsPlayersWhenTheirViewDidNotChange).
+	if _, err := session.OpenNextAction(); err != nil {
+		t.Fatalf("OpenNextAction: %v", err)
+	}
 	r.broadcastBars(session)
 
 	for i, want := range []uint64{1, 2} {
@@ -382,6 +416,72 @@ func TestBroadcastBars_StampsARisingSequence(t *testing.T) {
 			t.Errorf("the player's copy carries order %+v — pending actions are the master's secret", p.Order)
 		}
 	}
+}
+
+// noBars fails if a bars_updated (or anything) is waiting in a recipient's buffer.
+func noBars(t *testing.T, c *Client, why string) {
+	t.Helper()
+	select {
+	case data := <-c.send:
+		t.Errorf("%s, yet the player received %s", why, data)
+	default:
+	}
+}
+
+// TestBroadcastBars_SkipsPlayersWhenTheirViewDidNotChange pins spec D1 at the level of the
+// message itself: a bars_updated that reaches a player with a new seq and nothing new in it
+// still tells them that something secret just happened. So a snapshot whose player view equals
+// the last one the room sent goes to the master only.
+func TestBroadcastBars_SkipsPlayersWhenTheirViewDidNotChange(t *testing.T) {
+	session, _, _ := racingSessionWithTwoQueued(t)
+	masterID, playerID := uuid.New(), uuid.New()
+	r := &Room{clients: map[uuid.UUID]*Client{}, masterUUID: masterID}
+	master := barsRecipient(r, masterID)
+	player := barsRecipient(r, playerID)
+
+	r.broadcastBars(session)
+	readBars(t, master)
+	if got := readBars(t, player).Seq; got != 1 {
+		t.Fatalf("the first snapshot reaches the player with seq %d, want 1", got)
+	}
+
+	t.Run("nothing the player may see changed: the master alone hears of it", func(t *testing.T) {
+		r.broadcastBars(session)
+		if got := readBars(t, master).Seq; got != 2 {
+			t.Errorf("master seq = %d, want 2 — every snapshot still gets its own seq", got)
+		}
+		noBars(t, player, "the player view did not change")
+	})
+
+	t.Run("the master opens: the player hears of it, with a higher seq", func(t *testing.T) {
+		if _, err := session.OpenNextAction(); err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		r.broadcastBars(session)
+		readBars(t, master)
+		if got := readBars(t, player).Seq; got != 3 {
+			t.Errorf("player seq = %d, want 3", got)
+		}
+	})
+
+	t.Run("a reconnecting player's snapshot is not mistaken for what the room sent", func(t *testing.T) {
+		// The room last sent view A; a reconnecting player is handed view B; the state then
+		// comes back to A. Everyone connected already holds A, but the reconnected player holds
+		// B — the next snapshot must reach the players even though it equals the last one sent.
+		r.lastPlayerBars = []byte(`"A — not the current view"`)
+		r.session = session
+		if r.buildMatchFullState(playerID, false) == nil {
+			t.Fatal("match_full_state was not built")
+		}
+		current, err := json.Marshal(newBarsUpdatedPayload(session, false))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.lastPlayerBars = current // the state "came back" to what the room last sent
+		r.broadcastBars(session)
+		readBars(t, master)
+		readBars(t, player)
+	})
 }
 
 // TestNewRoom_BarsSeqOutrunsAnEarlierRoom pins the contract's "the counter never restarts"

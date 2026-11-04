@@ -140,6 +140,10 @@ type RoundProjection struct {
 }
 
 // ProjectOrder returns the projected order alone; see ProjectRound.
+//
+// No production code calls it: the bars (matchsession.BarsView) read ProjectRound, which also
+// reports the deferred actions. It stays as the guard round_scheduler_test.go pins — that the
+// projection equals the order the round is actually played in, slot by slot.
 func (rs RoundScheduler) ProjectOrder(in ScheduleInput) []OrderSlot {
 	return rs.ProjectRound(in).Order
 }

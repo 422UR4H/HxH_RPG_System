@@ -440,13 +440,14 @@ func TestMasterBoard_Remove(t *testing.T) {
 		}
 	}
 
-	// Still a participant: the next bars_updated lists them.
-	bars := pc.count(game.MsgTypeBarsUpdated)
+	// Still a participant: the next bars_updated lists them. The master's: an enqueue changes
+	// nothing a player may see, so only the master gets one (spec 2026-11-04 D1).
+	bars := mc.count(game.MsgTypeBarsUpdated)
 	f.enqueueAttack(t, player)
-	if !awaitCount(pc, game.MsgTypeBarsUpdated, bars+1, 2*time.Second) {
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, bars+1, 2*time.Second) {
 		t.Fatal("no bars_updated after the enqueue")
 	}
-	if !barsCarry(lastBarsUpdated(t, pc), f.attackerID) {
+	if !barsCarry(lastBarsUpdated(t, mc), f.attackerID) {
 		t.Fatal("the character left the bars when their piece was removed — removing is not un-enrolling")
 	}
 }

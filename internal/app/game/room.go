@@ -1,6 +1,7 @@
 package game
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -140,6 +141,24 @@ type Room struct {
 	// every snapshot to the old room's last one. Microseconds keep it below 2^53, exact as a
 	// JavaScript number.
 	barsSeq uint64
+	// barsCacheMu guards lastPlayerBars and playerBarsStale. Its own lock, not mu:
+	// buildMatchFullState writes them while holding only mu's READ lock. Lock order: mu, then
+	// barsCacheMu — never the other way.
+	barsCacheMu sync.Mutex
+	// lastPlayerBars is the player view every connected player holds, as JSON with seq zero
+	// (barsViewKey). broadcastBars compares each new player view against it and skips the
+	// players when nothing they may see changed (spec 2026-11-04 D1): a fresh seq with nothing
+	// new in it would tell them that something secret just happened. The player view is the
+	// same for every player, so one copy covers them all.
+	//
+	// Set by every snapshot sent to the players, and seeded by the first match_full_state a
+	// player is handed while it is nil. A new Room (restart) starts at nil, so what it first
+	// tells anyone is what defines it.
+	lastPlayerBars []byte
+	// playerBarsStale is set when a player was handed (match_full_state) a bars view different
+	// from lastPlayerBars — a change no bars_updated carried. The players then do not all hold
+	// the same view, so the next snapshot goes to them even if it equals lastPlayerBars.
+	playerBarsStale bool
 	// boardLoaded is true once loadBoard has installed a board at least once for this Room (a
 	// load that found no map attached does not count). It is what
 	// narrows the master-reconnect half of "quando carrega" (spec §4.3) to a SINGLE load once
@@ -696,6 +715,11 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 
 	r.mu.Lock()
 	r.session = session
+	// The players at the table hold no bars yet: whatever the cache says, the next snapshot
+	// goes to them (see the broadcastBars at the end of this function).
+	r.barsCacheMu.Lock()
+	r.lastPlayerBars, r.playerBarsStale = nil, true
+	r.barsCacheMu.Unlock()
 	wallSlice := make([]mapentity.WallSegment, 0, len(r.walls))
 	for _, w := range r.walls {
 		wallSlice = append(wallSlice, w)
@@ -748,6 +772,9 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	})
 	// Depois do map_full_state do mestre, na mesma fila direta.
 	r.pushMasterPieceView()
+	// The bars from the first instant: every player holds the base view, so the enqueues
+	// that follow — which change nothing a player may see — reach the master alone.
+	r.broadcastBars(session)
 	return nil
 }
 
@@ -2588,6 +2615,11 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 // D1). Called after anything that moves them: an action enqueued, a turn opened, a reaction
 // attached or opened, a round closed, a regime switched.
 //
+// The players get it only when their view CHANGED (see lastPlayerBars): an enqueue or an
+// attach moves only the master's bars, and a player copy with a new seq and nothing new in it
+// would still announce that something secret happened. A skipped copy simply never arrives —
+// the seq a player sees still only rises.
+//
 // On the direct lane, like turn_opened: sends are synchronous and ordered per client.
 func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 	if session == nil {
@@ -2596,12 +2628,14 @@ func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 	// Write-locked, not read-locked: the sequence counter is bumped in the same critical
 	// section that reads the state, so the number and the snapshot it stamps cannot disagree —
 	// and both views are built in it, so the master's copy and the players' copy of one seq
-	// describe the same instant.
+	// describe the same instant. The comparison with lastPlayerBars is in it too, so two
+	// snapshots cannot both decide against the same stale copy.
 	r.mu.Lock()
 	r.barsSeq++
 	masterView := newBarsUpdatedPayload(session, true)
 	masterView.Seq = r.barsSeq
 	playerView := newBarsUpdatedPayload(session, false)
+	toPlayers := r.notePlayerBarsSentLocked(barsViewKey(playerView))
 	playerView.Seq = r.barsSeq
 	masterMsg := NewServerMessage(MsgTypeBarsUpdated, masterView)
 	playerMsg := NewServerMessage(MsgTypeBarsUpdated, playerView)
@@ -2610,8 +2644,45 @@ func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 		if isMaster {
 			return &masterMsg
 		}
+		if !toPlayers {
+			return nil
+		}
 		return &playerMsg
 	})
+}
+
+// notePlayerBarsSentLocked decides whether a snapshot whose player view is key goes to the
+// players, and if so records it as what they hold. The caller holds mu (write).
+func (r *Room) notePlayerBarsSentLocked(key []byte) bool {
+	r.barsCacheMu.Lock()
+	defer r.barsCacheMu.Unlock()
+	if !r.playerBarsStale && r.lastPlayerBars != nil && bytes.Equal(key, r.lastPlayerBars) {
+		return false
+	}
+	r.lastPlayerBars, r.playerBarsStale = key, false
+	return true
+}
+
+// notePlayerBarsHandedLocked records that a player was just handed the player view key in a
+// match_full_state. The caller holds mu (a read lock is enough).
+func (r *Room) notePlayerBarsHandedLocked(key []byte) {
+	r.barsCacheMu.Lock()
+	defer r.barsCacheMu.Unlock()
+	switch {
+	case r.lastPlayerBars == nil && !r.playerBarsStale:
+		r.lastPlayerBars = key
+	case !bytes.Equal(key, r.lastPlayerBars):
+		r.playerBarsStale = true
+	}
+}
+
+// barsViewKey is a bars view as JSON with seq zero — what two snapshots are compared by. JSON
+// rather than a deep compare: the map keys marshal sorted and the rows come sorted by ID, so
+// equal views give equal bytes, and the wire is exactly what "nothing changed" is about.
+func barsViewKey(p BarsUpdatedPayload) []byte {
+	p.Seq = 0
+	key, _ := json.Marshal(p)
+	return key
 }
 
 func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
@@ -3016,6 +3087,9 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 	}
 
 	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session, isMaster)}
+	if !isMaster {
+		r.notePlayerBarsHandedLocked(barsViewKey(payload.Bars))
+	}
 	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
 	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
 	payload.Bars.Seq = r.barsSeq

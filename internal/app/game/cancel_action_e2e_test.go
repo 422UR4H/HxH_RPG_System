@@ -91,21 +91,15 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 		t.Fatal("the action was never acknowledged as enqueued")
 	}
 	actionID := actionIDsInOrder(t, playerMsgs)[0]
-	if !awaitCount(bystanderMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
-		t.Fatal("the table never saw the bars after the enqueue")
-	}
 	if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
 		t.Fatal("the master never saw the order after the enqueue")
 	}
 	// Non-vacuous: the actor really was in the order before the cancel. The order is the
-	// master's (spec D1): a player's copy carries `order: []`.
+	// master's (spec D1).
 	if !orderHasActor(lastBarsUpdated(t, masterMsgs), f.attackerID) {
 		t.Fatal("the attacker is not in the master's order before cancelling — the fixture proves nothing")
 	}
-	if got := lastBarsUpdated(t, bystanderMsgs).Order; len(got) != 0 {
-		t.Errorf("the other player's bars carry order %+v — pending actions are the master's secret", got)
-	}
-	seqBefore := lastBarsUpdated(t, bystanderMsgs).Seq
+	seqBefore := lastBarsUpdated(t, masterMsgs).Seq
 
 	sendWS(t, player, "cancel_action", map[string]any{"actionId": actionID.String()})
 
@@ -122,19 +116,23 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 		t.Errorf("sender action_cancelled ids = %v, want [%v]", got, actionID)
 	}
 
-	// The bystander's bars_updated is the barrier: broadcastBars runs after the targeted
-	// sends, so once it lands any leaked action_cancelled would have landed too.
-	if !awaitBarsAfter(t, bystanderMsgs, seqBefore, 2*time.Second) {
-		t.Fatal("the table never saw the bars change after the cancel")
-	}
-	if n := bystanderMsgs.count(game.MsgTypeActionCancelled); n != 0 {
-		t.Errorf("the other player received %d action_cancelled — the queue is secret", n)
-	}
 	if !awaitBarsAfter(t, masterMsgs, seqBefore, 2*time.Second) {
 		t.Fatal("the master never saw the order change after the cancel")
 	}
 	if orderHasActor(lastBarsUpdated(t, masterMsgs), f.attackerID) {
 		t.Error("the master's last bars_updated still carries the cancelled actor in order")
+	}
+	// The other player hears NOTHING of the enqueue or the cancel — not the action_cancelled,
+	// and not even a bars_updated: neither changed anything a player may see, and a fresh one
+	// would tell them that something secret happened (spec 2026-11-04 D1). Nothing reaches
+	// them to serve as a barrier, so this waits out a quiet window after the master's copy,
+	// which broadcastBars sends after every targeted send.
+	time.Sleep(150 * time.Millisecond)
+	if n := bystanderMsgs.count(game.MsgTypeActionCancelled); n != 0 {
+		t.Errorf("the other player received %d action_cancelled — the queue is secret", n)
+	}
+	if n := bystanderMsgs.count(game.MsgTypeBarsUpdated); n != 0 {
+		t.Errorf("the other player received %d bars_updated for an enqueue and a cancel", n)
 	}
 
 	t.Run("open_next_action finds nothing to open", func(t *testing.T) {
