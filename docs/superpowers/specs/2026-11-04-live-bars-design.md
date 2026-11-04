@@ -107,10 +107,15 @@ the builder picks one and the contract states it; the front's `normalizeBars` ke
 3. **`CharacterBarsStrip`.** Row appears when the character has any speed (acted, pending or
    deferred) or the bar has a price — frozen, or provisional for the master. The bar uses the
    live `actionBalance`/`moveBalance` against the frozen or provisional price. Speeds grouped
-   per bar (⚔ … / ➜ …): acted in normal style, pending lighter, deferred struck through with a
-   "próximo round" hint. One `x̄` per bar (F7), over the same speeds that compose that bar's
-   balance. Rows sorted by display name (stable — F8).
+   per bar (⚔ … / ➜ …): acted in normal style, pending lighter; deferred ones (master only) come
+   after a "Próximo round" separator, not struck through (owner, 2026-11-04). One `x̄` per bar
+   (F7), over the same speeds that compose that bar's balance. Rows sorted by display name
+   (stable — F8; UX call: a reader tracks a bar by its position, and today's random reorder
+   carries no information — who acts next is already in the order).
 4. **`OwnBars`** shows the live balance (same field, new meaning).
+5. **`QueuePanel`** (master's queue): the per-row "próxima rodada" badge becomes a single
+   "Próximo round" separator before the deferred group — same treatment as the strip — and its
+   "Ordem geral: chave …" line prints the key with `fmt` (F6, same raw number).
 
 ### Docs
 
@@ -148,7 +153,8 @@ the builder picks one and the contract states it; the front's `normalizeBars` ke
 
 - **When a reaction's speed turns public.** When the table learns the reaction: on
   `reaction_opened`, or when the turn closes (the settled resolution goes to the table) for a
-  reaction that was never opened. A free reaction (`nothing`, the seated `default`) records no
+  reaction that was never opened (that happens: the master may close the turn over unopened
+  reactions after `close_turn_refused` and `confirm: true`). A free reaction (`nothing`, the seated `default`) records no
   speed, so it never matters. A player's own reaction follows D2 like their own queued action.
 - **A player's balance can jump.** Hidden speeds are left out of the player's number until they
   turn public; the jump when they do is the expected consequence of D2, not a bug.

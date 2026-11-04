@@ -108,10 +108,16 @@ continua se defendendo).
 3. **`CharacterBarsStrip`.** A linha aparece quando o personagem tem alguma velocidade (aberta,
    pendente ou adiada) ou a barra tem preço — congelado, ou provisório para o mestre. A barra usa o
    `actionBalance`/`moveBalance` ao vivo contra o preço congelado ou provisório. Velocidades
-   agrupadas por barra (⚔ … / ➜ …): abertas no estilo normal, pendentes mais claras, adiadas
-   riscadas com a dica "próximo round". Um `x̄` por barra (F7), sobre as mesmas velocidades que
-   compõem o saldo daquela barra. Linhas ordenadas pelo nome exibido (estável — F8).
+   agrupadas por barra (⚔ … / ➜ …): abertas no estilo normal, pendentes mais claras; as adiadas
+   (só o mestre) vêm depois de um separador "Próximo round", sem risco (dono do produto,
+   2026-11-04). Um `x̄` por barra (F7), sobre as mesmas velocidades que compõem o saldo daquela
+   barra. Linhas ordenadas pelo nome exibido (estável — F8; decisão de UX: quem lê acompanha a
+   barra pela posição, e a troca aleatória de hoje não informa nada — quem age em seguida já
+   está na fila).
 4. **`OwnBars`** mostra o saldo ao vivo (mesmo campo, novo sentido).
+5. **`QueuePanel`** (a fila do mestre): a etiqueta "próxima rodada" de cada linha vira um único
+   separador "Próximo round" antes do grupo adiado — o mesmo tratamento da tira — e a linha
+   "Ordem geral: chave …" imprime a chave com `fmt` (F6, o mesmo número cru).
 
 ### Docs
 
@@ -149,7 +155,8 @@ continua se defendendo).
 
 - **Quando a velocidade de uma reação fica pública.** Quando a mesa conhece a reação: no
   `reaction_opened`, ou no fechamento do turno (a resolução assentada vai à mesa) para uma reação
-  nunca aberta. Reação gratuita (`nothing`, a `default` sentada) não grava velocidade, então não
+  nunca aberta (acontece: o mestre pode fechar o turno com reação não aberta depois do
+  `close_turn_refused` e `confirm: true`). Reação gratuita (`nothing`, a `default` sentada) não grava velocidade, então não
   importa. A reação do próprio jogador segue D2, como a ação dele na fila.
 - **O saldo do jogador pode pular.** Velocidade escondida fica fora do número do jogador até ficar
   pública; o pulo quando fica é consequência esperada de D2, não bug.
