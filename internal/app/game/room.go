@@ -909,11 +909,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// drop a real turn from the table and from the Action History. The master still learns
 		// the open failed, just after the table has the turn that actually ended.
 		//
-		// The bars go out on every exit past Execute, the failed ones included: FreezePrices
-		// runs before anything can fail, so a Race round that ends in ErrRoundHasNoTurns has
-		// frozen a price with nothing opened. Left unsent, the players' copy of that change would
-		// ride out on the next secret send by anyone (spec 2026-11-04 D1). When their view did
-		// not change, the players get nothing (lastPlayerBars).
+		// The bars go out on every exit past Execute, the failed ones included: a failed command
+		// can still have closed the previous turn or changed what the views read. The price
+		// itself freezes only when an action opens, so a failed open/pull leaks none (spec
+		// 2026-11-04 D7). When the players' view did not change, they get nothing
+		// (lastPlayerBars).
 		r.broadcastBars(session)
 		if result != nil {
 			if result.ClosedTurn != nil {

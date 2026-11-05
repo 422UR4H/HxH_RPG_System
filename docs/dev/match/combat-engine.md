@@ -138,10 +138,10 @@ leva **a rolagem cheia** para o round seguinte.
 
 Antes da primeira abertura a barra ainda não tem preço, mas o preço que vai congelar já é
 conhecido: a menor velocidade pendente por barra não congelada (só disputado). Essa conta é uma
-função só de leitura, usada tanto por `FreezePrices` (que congela) quanto pela projeção (que a
+função só de leitura, usada tanto pelo congelamento (`FreezePrices`/`FreezeAt`) quanto pela projeção (que a
 publica como **preço provisório**). A projeção pontua a barra não congelada contra o provisório
 — chave e portão — então a ordem publicada ao mestre é a que a mesa vai jogar se nada mais
-chegar (F5 do spec `2026-11-04-live-bars`). `SelectNext` não muda: roda depois de `FreezePrices`.
+chegar (F5 do spec `2026-11-04-live-bars`). `OpenNextAction` e `PullAction` calculam o provisório antes de abrir e só congelam **depois** que uma ação de fato abre (o provisório entra na seleção por `ScheduleInput.Provisional`); um comando que falha antes não vaza preço.
 
 #### Saldo ao vivo
 

@@ -80,8 +80,16 @@ func (RoundScheduler) ProvisionalPrices(in ScheduleInput) map[action.Bar]int {
 // A Free round is left untouched: it has no price, no average and no carry-over. That economy
 // belongs to Race, and Free's own rule has not been designed yet.
 func (rs RoundScheduler) FreezePrices(in ScheduleInput) {
-	for bar, price := range rs.ProvisionalPrices(in) {
-		in.Round.FreezePrice(bar, price)
+	rs.FreezeAt(in.Round, rs.ProvisionalPrices(in))
+}
+
+// FreezeAt freezes the given prices on the round. The session computes ProvisionalPrices
+// before an action opens (the action about to open still counts in the minimum) and freezes
+// them with this only once something actually opened: the price is public from the first
+// opened action, never from a command that failed.
+func (RoundScheduler) FreezeAt(r *round.Round, prices map[action.Bar]int) {
+	for bar, price := range prices {
+		r.FreezePrice(bar, price)
 	}
 }
 

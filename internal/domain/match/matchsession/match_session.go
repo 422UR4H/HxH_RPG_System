@@ -1006,9 +1006,13 @@ func (s *MatchSession) scheduleInput() service.ScheduleInput {
 }
 
 func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
-	// Prices freeze on the first selection that sees a bar with pending work — before any
-	// gate is evaluated, because the gate is measured against the price.
-	s.scheduler.FreezePrices(s.scheduleInput())
+	// The price a bar WILL freeze at is measured now, before the open turn closes and before
+	// anything is pulled, so the action about to open still counts in the minimum. It is only
+	// FROZEN once an action actually opens (spec 2026-11-04 D7): a command that fails first
+	// must not leak a price. The gate is measured against it through in.Provisional, which
+	// selects exactly as if it had been frozen.
+	in := s.scheduleInput()
+	prov := s.scheduler.ProvisionalPrices(in)
 
 	if s.activeRound.GetMode() != enum.Race {
 		// Free has no price, no average and no carry-over; the rolled speed is the order and
@@ -1024,10 +1028,17 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 		return tr, nil
 	}
 
-	next := s.scheduler.SelectNext(s.scheduleInput())
+	in.Provisional = prov
+	next := s.scheduler.SelectNext(in)
 	tr := s.closeOpenTurn()
 	if next == nil {
 		// No action in the queue can still pay its price. The round is over — the caller closes it.
+		// If turns already opened in it, the round is closing with a price: bars that priced
+		// only through this last look must still settle. With no turn opened there is no public
+		// price to leak, so nothing freezes.
+		if s.activeRound.TurnCount() > 0 {
+			s.scheduler.FreezeAt(s.activeRound, prov)
+		}
 		tr.NoActionCanPay = true
 		return tr, nil
 	}
@@ -1039,6 +1050,7 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 	if err != nil {
 		return tr, err
 	}
+	s.scheduler.FreezeAt(s.activeRound, prov)
 	s.recordActed(next)
 	s.seatDefaultReactions(opened)
 	tr.Opened = opened
@@ -1075,12 +1087,13 @@ func (s *MatchSession) recordActed(a *action.Action) {
 }
 
 func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
+	prov := s.scheduler.ProvisionalPrices(s.scheduleInput())
 	tr := s.closeOpenTurn()
-	s.scheduler.FreezePrices(s.scheduleInput())
 	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, id)
 	if err != nil {
 		return tr, err
 	}
+	s.scheduler.FreezeAt(s.activeRound, prov)
 	act := opened.GetAction()
 	s.recordActed(&act)
 	s.seatDefaultReactions(opened)

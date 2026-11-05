@@ -1556,11 +1556,10 @@ func TestE2E_ChangeSceneHandsThePlayersTheNewRoundsBars(t *testing.T) {
 	f.assertNoPlayerBarsAtEnqueue(t, player, mc, bc, mc.count(game.MsgTypeBarsUpdated), before+1)
 }
 
-// TestE2E_AFailedPullThatFrozeAPriceHandsThePlayersTheirBars pins the bars_updated a failed
-// pull_action sends. The pull freezes the prices before it looks the action up, so a stale id
-// fails with a price already frozen: the players' view changed, and they are told then —
-// not at whoever sends next (spec 2026-11-04 D1).
-func TestE2E_AFailedPullThatFrozeAPriceHandsThePlayersTheirBars(t *testing.T) {
+// TestE2E_AFailedPullFreezesNoPrice pins what a failed pull_action leaks. A stale id opens
+// nothing, so no price freezes (spec 2026-11-04 D7): the players' view does not change and
+// they get no bars_updated, and any bars they do see carry no price.
+func TestE2E_AFailedPullFreezesNoPrice(t *testing.T) {
 	f := newCombatFixture(t, withBystander)
 	master, player := f.connect(t)
 	defer master.Close() //nolint:errcheck
@@ -1587,15 +1586,15 @@ func TestE2E_AFailedPullThatFrozeAPriceHandsThePlayersTheirBars(t *testing.T) {
 	if !mc.await(game.MsgTypeError, 2*time.Second) {
 		t.Fatal("pulling an action that does not exist was not refused")
 	}
-	if !awaitCount(bc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
-		t.Fatal("the bystander got no bars_updated when the failed pull froze the price")
+	time.Sleep(150 * time.Millisecond)
+	if n := bc.count(game.MsgTypeBarsUpdated); n != 0 {
+		t.Errorf("the bystander got %d bars_updated after a failed pull, want 0 — nothing changed for them", n)
 	}
-	assertPlayerBarsView(t, string(lastBarsRaw(t, bc)))
-	if got := lastBarsUpdated(t, bc).Prices[string(action.BarAction)]; got == 0 {
-		t.Error("the bystander's bars carry no frozen action price after the pull froze it")
+	if n := bc.count(game.MsgTypeBarsUpdated); n > 0 {
+		if got := lastBarsUpdated(t, bc).Prices; len(got) != 0 {
+			t.Errorf("the bystander sees prices %v after a failed pull, want none", got)
+		}
 	}
-
-	f.assertNoPlayerBarsAtEnqueue(t, player, mc, bc, mc.count(game.MsgTypeBarsUpdated), 1)
 }
 
 // assertPlayerBarsView fails if a bars payload, as JSON, carries anything of the master's

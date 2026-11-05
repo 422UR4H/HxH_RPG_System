@@ -425,15 +425,16 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
    transação. **Uma rodada em que nenhum turno abriu não acaba**: sem turno aberto, sem turno
    fechando agora e `bars_updated.roundTurns == 0`, o comando é recusado com `game_error`
    `validation error: no turn opened in this round yet` e nenhum turno abre (o mestre não roda o
-   relógio de rodada vazia em rodada vazia). O preço da barra pode ter congelado antes da recusa,
-   e por isso o `bars_updated` do passo 1 sai mesmo assim.
+   relógio de rodada vazia em rodada vazia). O preço da barra **não** congela nessa recusa (ele só congela
+   quando uma ação abre); o `bars_updated` do passo 1 sai mesmo assim, só que sem preço novo.
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
    [`resolution_updated`](#resolution_updated) **master-only** do turno recém-aberto
    (`isSettled: false`).
 
 > O passo 2 acontece **antes** do erro ser reportado, mesmo quando o `open` falha: um turno
 > que já fechou e já aplicou dano precisa chegar à mesa de qualquer jeito. O passo 1 também sai
-> em toda falha: o preço congela antes de qualquer coisa poder falhar. Se a visão do jogador não
+> em toda falha: um comando que falha ainda pode ter fechado o turno anterior. O preço, porém, só
+> congela quando uma ação de fato abre. Se a visão do jogador não
 > mudou, ele não recebe nada (ver "Entrega ao jogador" em [`bars_updated`](#bars_updated)).
 
 **Erros:** `forbidden` · `match_not_started` · `game_error` (`action queue is empty`,
@@ -460,8 +461,8 @@ Abre uma ação específica **fora de ordem**. Antecipar é prerrogativa do mest
 > consegue invocar; `action_queued` existe exatamente para fechar esse buraco.
 
 **Dispara:** o mesmo conjunto de `open_next_action` (passos 1, 2 e 4), o passo 1 também quando
-falha — o preço congela antes de a ação ser procurada, então um `actionId` velho falha com o preço
-já congelado. **Nunca** fecha a rodada — `round_closed` só sai de `open_next_action`.
+falha — mas um `actionId` velho **não** congela o preço (só congela quando a ação abre).
+**Nunca** fecha a rodada — `round_closed` só sai de `open_next_action`.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid pull_action payload"`) ·
 `match_not_started` · `game_error` (`action not found in queue`).

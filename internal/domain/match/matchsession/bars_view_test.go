@@ -171,3 +171,89 @@ func TestMatchSession_BarsView(t *testing.T) {
 		}
 	})
 }
+
+// The price becomes public when an action actually opens (spec 2026-11-04 D7): a command that
+// fails before opening anything must leave the round unpriced.
+func TestMatchSession_PriceFreezesOnlyWhenAnActionOpens(t *testing.T) {
+	t.Run("a pull of an unknown id freezes nothing", func(t *testing.T) {
+		s, _, _, _ := canonicalBars(t)
+		if _, err := s.PullAction(uuid.New()); err == nil {
+			t.Fatal("pulling an action that is not queued must fail")
+		}
+		if got := s.RoundPrices(); len(got) != 0 {
+			t.Errorf("RoundPrices = %v, want empty", got)
+		}
+	})
+
+	t.Run("open_next with nothing able to pay and no turn opened freezes nothing", func(t *testing.T) {
+		// Round 1 leaves p2 at carry -2 (acted 23 and 17 against price 11). In round 2 a
+		// lone p2 action is the price itself, yet the debt keeps it from paying.
+		u1, u2, u3 := uuid.New(), uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(u1, u2, u3)
+		s.GetActiveRound().SetMode(enum.Race)
+		p2 := chars[1]
+		for _, e := range []struct {
+			player, char uuid.UUID
+			speed        int
+		}{{u2, p2, 23}, {u1, chars[0], 20}, {u2, p2, 17}, {u3, chars[2], 11}} {
+			if err := s.EnqueueAction(e.player, makeActionWithSpeed(e.char, e.speed)); err != nil {
+				t.Fatalf("enqueue: %v", err)
+			}
+		}
+		closeRoundWhenNoActionCanPay(t, s)
+		if carry, _ := s.BarState(p2, action.BarAction); carry >= 0 {
+			t.Fatalf("fixture did not leave p2 in debt (carry %v)", carry)
+		}
+		s.GetActiveRound().SetMode(enum.Race)
+		if err := s.EnqueueAction(u2, makeActionWithSpeed(p2, 5)); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if got := s.RoundPrices(); len(got) != 0 {
+			t.Fatalf("precondition: new round already priced: %v", got)
+		}
+		tr, err := s.OpenNextAction()
+		if err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if !tr.NoActionCanPay {
+			t.Skip("fixture: something could pay in the new round")
+		}
+		if got := s.RoundPrices(); len(got) != 0 {
+			t.Errorf("RoundPrices = %v, want empty", got)
+		}
+	})
+
+	t.Run("a successful open freezes the provisional price and opens the fastest", func(t *testing.T) {
+		s, _, _, _ := canonicalBars(t)
+		tr, err := s.OpenNextAction()
+		if err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if tr.Opened == nil {
+			t.Fatal("nothing opened")
+		}
+		opened := tr.Opened.GetAction()
+		if opened.SpeedOn(action.BarAction) != 23 {
+			t.Fatalf("opened speed = %d, want 23", opened.SpeedOn(action.BarAction))
+		}
+		if got := s.RoundPrices()[action.BarAction]; got != 11 {
+			t.Errorf("price = %d, want 11", got)
+		}
+	})
+
+	t.Run("pulling the slowest still counts it in the minimum", func(t *testing.T) {
+		s, _, _, _ := canonicalBars(t)
+		var slowest uuid.UUID
+		for _, a := range s.PendingActions() {
+			if a.SpeedOn(action.BarAction) == 11 {
+				slowest = a.GetID()
+			}
+		}
+		if _, err := s.PullAction(slowest); err != nil {
+			t.Fatalf("PullAction: %v", err)
+		}
+		if got := s.RoundPrices()[action.BarAction]; got != 11 {
+			t.Errorf("price = %d, want 11", got)
+		}
+	})
+}
