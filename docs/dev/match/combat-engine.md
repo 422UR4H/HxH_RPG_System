@@ -138,7 +138,7 @@ leva **a rolagem cheia** para o round seguinte.
 
 Antes da primeira abertura a barra ainda não tem preço, mas o preço que vai congelar já é
 conhecido: a menor velocidade pendente por barra não congelada (só disputado). Essa conta é uma
-função só de leitura, usada tanto pelo congelamento (`FreezePrices`/`FreezeAt`) quanto pela projeção (que a
+função só de leitura, usada tanto pelo congelamento (`RoundScheduler.FreezeAt`) quanto pela projeção (que a
 publica como **preço provisório**). A projeção pontua a barra não congelada contra o provisório
 — chave e portão — então a ordem publicada ao mestre é a que a mesa vai jogar se nada mais
 chegar (F5 do spec `2026-11-04-live-bars`). `OpenNextAction` e `PullAction` calculam o provisório antes de abrir e só congelam **depois** que uma ação de fato abre (o provisório entra na seleção por `ScheduleInput.Provisional`); um comando que falha antes não vaza preço.
@@ -1229,7 +1229,7 @@ chama `Key` para decidir elegibilidade, nem `IsEligible` para decidir ordem.
 ### Onde o preço mora
 
 `Round.prices` (`entity/round/round.go`) substituiu o antigo campo único `coast` por um mapa
-`action.Bar → int`, um preço por barra. `RoundScheduler.FreezePrices` o congela na primeira
+`action.Bar → int`, um preço por barra. `RoundScheduler.FreezeAt` o congela na primeira
 seleção que enxerga trabalho pendente **naquela barra** — não no round inteiro — e
 `Round.FreezePrice` é idempotente: a primeira chamada vence, toda chamada seguinte é
 ignorada. Uma barra ausente do mapa ainda não precificou; é também a leitura constante de um

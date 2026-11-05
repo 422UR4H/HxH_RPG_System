@@ -26,8 +26,8 @@ type ScheduleInput struct {
 	Round *round.Round
 	Bars  BarStateSource
 	// Provisional is the price an UNFROZEN bar is going to freeze at. When set, keyOnBar scores
-	// (key and gate) against it instead of treating the bar as price-less. Only projections set
-	// it; SelectNext and BestPendingFor never do.
+	// (key and gate) against it instead of treating the bar as price-less. Projections set it, and
+	// so does OpenNextAction: it selects against the price it will freeze only once an action opens.
 	Provisional map[action.Bar]int
 }
 
@@ -69,24 +69,15 @@ func (RoundScheduler) ProvisionalPrices(in ScheduleInput) map[action.Bar]int {
 	return lowest
 }
 
-// FreezePrices fixes the price of every bar that has pending work and has not priced yet.
+// FreezeAt freezes the given prices on the round — what the session got from
+// ProvisionalPrices. The price of a bar is the smallest speed among its pending actions when
+// its first action is chosen; it is frozen per bar, not per round, and never moves afterwards:
+// a slower action arriving later simply may not reach it and sits the round out with its roll
+// intact. A Free round has no price (ProvisionalPrices is nil there), so nothing freezes.
 //
-// The price of a bar is the smallest speed among the actions pending on it at the moment its
-// first action is chosen (exactly ProvisionalPrices). It is frozen per bar, not per round: a
-// bar whose first action only shows up mid-round prices then, from what is pending then. Once
-// frozen it never moves — a slower action arriving afterwards does not re-price the round, it
-// simply may not reach the price and sits the round out with its full roll intact.
-//
-// A Free round is left untouched: it has no price, no average and no carry-over. That economy
-// belongs to Race, and Free's own rule has not been designed yet.
-func (rs RoundScheduler) FreezePrices(in ScheduleInput) {
-	rs.FreezeAt(in.Round, rs.ProvisionalPrices(in))
-}
-
-// FreezeAt freezes the given prices on the round. The session computes ProvisionalPrices
-// before an action opens (the action about to open still counts in the minimum) and freezes
-// them with this only once something actually opened: the price is public from the first
-// opened action, never from a command that failed.
+// The session computes ProvisionalPrices before an action opens (the action about to open
+// still counts in the minimum) and freezes them with this only once something actually
+// opened: the price is public from the first opened action, never from a command that failed.
 func (RoundScheduler) FreezeAt(r *round.Round, prices map[action.Bar]int) {
 	for bar, price := range prices {
 		r.FreezePrice(bar, price)
@@ -175,7 +166,7 @@ func (rs RoundScheduler) ProjectOrder(in ScheduleInput) []OrderSlot {
 // read through an overlay.
 //
 // Before a bar's first open it has no frozen price. The projection scores it against the
-// PROVISIONAL price (the one FreezePrices is about to freeze), unless the caller already set
+// PROVISIONAL price (the one the first open will freeze), unless the caller already set
 // in.Provisional, so the preview shows the gate the table will actually face. The round itself
 // is never frozen by projecting.
 func (rs RoundScheduler) ProjectRound(in ScheduleInput) RoundProjection {

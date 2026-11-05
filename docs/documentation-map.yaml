@@ -1361,7 +1361,7 @@ mappings:
       - path: docs/game/combate/barra-de-acao.md
         confidence: directly_affected
     notes: >-
-      FreezePrices congela o preço por barra na primeira seleção que vê trabalho
+      FreezeAt congela o preço por barra na primeira seleção que vê trabalho
       pendente nela. SelectNext escolhe a próxima ação a abrir; AnyEligible é o
       predicado de fechamento do round (sua negação); ProjectOrder é a barra geral
       publicada. keyOf/keyOnBar computam a chave na hora — nunca guardada — e

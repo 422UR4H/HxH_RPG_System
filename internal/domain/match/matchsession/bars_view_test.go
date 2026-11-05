@@ -151,7 +151,8 @@ func TestMatchSession_BarsView(t *testing.T) {
 	})
 
 	t.Run("a secret reaction is in the master's Acted and not in the player's", func(t *testing.T) {
-		s, playerB, b, actID := swapSetup(t, dashAction)
+		// Fixed dice (a low attack roll, then high ones): the balances must not depend on luck.
+		s, playerB, b, actID := swapSetupWithDice(t, dashAction, []int{2, 2, 2, 2, 6})
 		r := escapeTo(b, actID, 3, 2)
 		if _, err := s.AttachReaction(playerB, r); err != nil {
 			t.Fatalf("AttachReaction: %v", err)
@@ -216,7 +217,7 @@ func TestMatchSession_PriceFreezesOnlyWhenAnActionOpens(t *testing.T) {
 			t.Fatalf("OpenNextAction: %v", err)
 		}
 		if !tr.NoActionCanPay {
-			t.Skip("fixture: something could pay in the new round")
+			t.Fatal("fixture: something could pay in the new round")
 		}
 		if got := s.RoundPrices(); len(got) != 0 {
 			t.Errorf("RoundPrices = %v, want empty", got)
@@ -254,6 +255,56 @@ func TestMatchSession_PriceFreezesOnlyWhenAnActionOpens(t *testing.T) {
 		}
 		if got := s.RoundPrices()[action.BarAction]; got != 11 {
 			t.Errorf("price = %d, want 11", got)
+		}
+	})
+
+	t.Run("a round closing after a turn opened still freezes the pending bar", func(t *testing.T) {
+		// Round 1 leaves p2 in debt on the MOVE bar (23 and 17 against price 11). In round 2
+		// p1's attack opens (action bar prices), then p2's move arrives: the move bar is still
+		// unfrozen, p2 cannot pay, and the look that closes the round must freeze it so
+		// settleBars settles that bar like it always did.
+		u1, u2, u3 := uuid.New(), uuid.New(), uuid.New()
+		s, chars := sessionWithParticipants(u1, u2, u3)
+		s.GetActiveRound().SetMode(enum.Race)
+		move := func(char uuid.UUID, speed int) *action.Action {
+			a := dashAction(char)
+			a.Move.FinalSpeed = speed
+			return a
+		}
+		for _, e := range []struct {
+			player, char uuid.UUID
+			speed        int
+		}{{u2, chars[1], 23}, {u1, chars[0], 20}, {u2, chars[1], 17}, {u3, chars[2], 11}} {
+			if err := s.EnqueueAction(e.player, move(e.char, e.speed)); err != nil {
+				t.Fatalf("enqueue: %v", err)
+			}
+		}
+		closeRoundWhenNoActionCanPay(t, s)
+		if carry, _ := s.BarState(chars[1], action.BarMove); carry >= 0 {
+			t.Fatalf("fixture did not leave p2 in move debt (carry %v)", carry)
+		}
+		s.GetActiveRound().SetMode(enum.Race)
+		if err := s.EnqueueAction(u1, makeActionWithSpeed(chars[0], 9)); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if tr, err := s.OpenNextAction(); err != nil || tr.Opened == nil {
+			t.Fatalf("the attack must open: %v", err)
+		}
+		if _, ok := s.RoundPrices()[action.BarMove]; ok {
+			t.Fatal("precondition: the move bar must still be unpriced")
+		}
+		if err := s.EnqueueAction(u2, move(chars[1], 5)); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		tr, err := s.OpenNextAction()
+		if err != nil {
+			t.Fatalf("OpenNextAction: %v", err)
+		}
+		if !tr.NoActionCanPay {
+			t.Fatal("fixture: the indebted move must not be able to pay")
+		}
+		if got := s.RoundPrices()[action.BarMove]; got != 5 {
+			t.Errorf("move price = %d, want 5 — the closing look freezes the bar so it settles", got)
 		}
 	})
 }

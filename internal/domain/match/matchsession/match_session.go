@@ -1067,7 +1067,7 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 // what makes an action which never reached the price roll over to the next round untouched.
 //
 // And only in Race, because Race is the only regime with an economy. Free freezes no price
-// (RoundScheduler.FreezePrices returns immediately) and settleBars skips every bar that never
+// (ProvisionalPrices is nil, so nothing freezes) and settleBars skips every bar that never
 // priced, so a speed recorded under Free would be charged by nothing and reset by nothing. It
 // would survive the moment the master switches the round to Race and make BarEconomy.IsEligible
 // read the character as having already acted, denying their FIRST action of the disputed round.
