@@ -156,6 +156,10 @@ type Move struct {
 	Speed      *RollCheck `json:"speed,omitempty"`
 	Charge     *RollCheck `json:"charge,omitempty"`
 	FinalSpeed *int       `json:"finalSpeed,omitempty"`
+	// StackedOn é o id do movimento anterior da cadeia deste personagem (action.Move.StackedOn,
+	// spec 2026-11-06 D3); nil (fora do wire) num movimento não empilhado. Não é cortado por
+	// Level: quem pode ver já foi decidido por service.ProjectAction, que o zera para terceiros.
+	StackedOn *uuid.UUID `json:"stackedOn,omitempty"`
 }
 
 // Attack is the strike half of an action. Weapon, Spread and RelativeVelocity are declaration

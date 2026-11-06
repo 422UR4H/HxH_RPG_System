@@ -66,9 +66,10 @@ Cada personagem tem **duas barras independentes**: `actionSpeed` (ataque, item, 
 
 **Um movimento puro não tem `actionSpeed`** (2026-11-06, D1): só rola/deriva `Speed` (Legerity) a
 action que cobra a barra de ação (`Action.ChargesActionBar()` — `Bars()` contém `action`): ataque,
-interação, finta, habilidade, defesa, esquiva, repelir ou movimento+ataque. Um movimento puro e um
-escape só de movimento (`closedEscape`) carregam `speed.rollCheck` vazio (sem perícia, sem dado,
-resultado 0); o mapper não carimba Legerity neles, `rollActionDice` não rola e `deriveSpeeds` não
+interação, finta, habilidade, repelir ou movimento+ataque — e defesa/esquiva quando **declaradas
+como ação** na fila. Uma reação de esquiva (`dodge`, `closedDodge`) ou a reação padrão (`default`)
+tem `Bars()` vazio e não carrega Legerity. Um movimento puro e um escape só de movimento
+(`closedEscape`) carregam `speed.rollCheck` vazio (sem perícia, sem dado, resultado 0); o mapper não carimba Legerity neles, `rollActionDice` não rola e `deriveSpeeds` não
 deriva. Editar a condição `speed` de uma action assim dá `ErrConditionTargetMissing`. A reserva do
 duelo (repelir/aparar) é lida na derivação do `actionSpeed` e simplesmente não se aplica.
 
@@ -380,6 +381,42 @@ Consistente com o `pull_action`, que já quebra a ordem por decisão do mestre.
 turno, as do turno atual são movidas para o próximo"*. Isso **nunca chegou ao código** e fica
 descartado — o receio que o motivava foi resolvido aceitando que a ordem do round não é
 garantia forte. **O histórico não necessariamente terá as actionSpeeds em ordem, e tudo bem.**
+
+### Movimentos empilhados (2026-11-06, D3–D6)
+
+Spec `docs/superpowers/specs/2026-11-06-stacked-moves-design.md`. Um personagem pode ter mais de um
+movimento na fila; o segundo **parte de onde o primeiro termina** e **nunca acontece antes dele**.
+
+- **Empilhar (D3).** `MatchSession.EnqueueAction` (`stackOnChainTail`): uma action com `Move`, quando
+  o personagem já tem na fila outra action com `Move`, ganha `Move.StackedOn` = o id da ÚLTIMA delas
+  em ordem de chegada (`MoveChainTail`) e `Move.From` = o `Position` dela (cópia). Sem movimento
+  pendente antes, `From` fica a casa da peça, que a Room pôs. Só movimentos (puros ou combinados);
+  uma action sem `Move` não empilha nem quebra a cadeia; um movimento que já abriu não é mais fim de
+  cadeia. A Room faz a checagem de parede do enqueue a partir do mesmo fim de cadeia, na mesma seção
+  crítica (`enqueueRefusalLocked`, sob `r.mu` de escrita com o `Execute`).
+- **Bloqueado (D4).** `Action.IsBlockedIn(pending)` é a regra num lugar só: `StackedOn` aponta uma
+  action entre os pendentes. `RoundScheduler.best` (logo `SelectNext`, `AnyEligible` e
+  `ProjectRound`) pula os bloqueados — na projeção, "pendente" é o que a simulação ainda não
+  escolheu, então um anterior adiado adia o empilhado e um anterior escolhido o libera; o Free
+  (`PriorityQueue.ExtractMax`/`Peek`) também. `PullAction` de um bloqueado responde
+  `ErrStackedOnPending` antes de fechar turno ou congelar preço. **Sem penalidade nova:** aberto o
+  primeiro, o segundo é chaveado com a velocidade dele já em `acted` (`BarEconomy.Key`) — o atraso é
+  o preço que o primeiro paga. `ProvisionalPrices` conta o bloqueado como qualquer pendente.
+- **Cancelar (D5).** `CancelAction` devolve a pedida e depois `stackedAfter` (as dependentes,
+  transitivas, em ordem de cadeia); cada uma sai por `dropFromQueue` (fila + `discardEdits`); a marca
+  da troca é uma só. A Room grava uma linha de `cancelled_actions` e manda um `action_cancelled` por
+  action (`holdCancelledActionsLocked`/`announceCancelled`), depois um `bars_updated`.
+- **Reação (D6).** `BestPendingFor` só considera os desbloqueados (fallback: qualquer pendente na
+  barra). Em `consumePendingFor`, consumida uma action com dependentes: se a reação vai para o mesmo
+  `Position` (`samePlace`, o teste de `sameMoveAsQueued`), o primeiro dependente passa a apontar para
+  o `StackedOn` do consumido e os dependentes ficam fora dos candidatos da outra barra da mesma
+  reação (ela gasta um movimento da cadeia); senão os dependentes caem pela cascata do D5 e voltam
+  em `AttachReactionWithCancels` — a Room grava e anuncia como no cancelamento (`cancelledBy` = quem
+  reagiu). A cascata não marca a Desvantagem de troca.
+- **Wire.** `move.stackedOn` (actionwire, omitempty) chega ao mestre e ao dono; `ProjectAction` o tira
+  de terceiros. Gravado com a action (`actioncodec`, chave `stackedOn`, `omitzero`).
+- **Limite conhecido.** Se a peça anda por outro motivo (arrasto do mestre, fuga que falhou), o
+  `From` de um empilhado continua a origem declarada da cadeia.
 
 ### Encerrar o turno com reactions pendentes
 
@@ -763,6 +800,9 @@ A lista do que foi consumido fica na própria reação (`Action.ConsumedActionID
 e ao mestre em `reaction_attached`, na reconexão (`ownReactions`) e no histórico
 (`actions.consumed_action_ids`). Um segundo attach do mesmo personagem na mesma ação é recusado
 (`ErrReactorAlreadyReacted`).
+
+Com movimentos empilhados, a consumida é a **cabeça** da cadeia, e o que estava empilhado nela
+sobrevive ou cai conforme o destino da reação — ver *Movimentos empilhados* (D6).
 
 Se não havia pendente, a reação **vira** a sua ação, sem Desvantagem. Se havia, a Desvantagem
 entra pelo `RollInput` (§ *Onde mora o viés de uma rolagem só*) — e note que Desvantagem é

@@ -44,7 +44,7 @@ func (aq *PriorityQueue) All() []*Action {
 	return out
 }
 
-// ExtractMax removes and returns the action with the highest OrderSpeed.
+// ExtractMax removes and returns the unblocked action with the highest OrderSpeed.
 //
 // This is the FREE-round path, where there is no price, no average and no carry-over, so the
 // rolled speed IS the order. A Race round goes through service.RoundScheduler instead, which
@@ -78,9 +78,16 @@ func (aq *PriorityQueue) ExtractByID(id uuid.UUID) *Action {
 
 // indexOfMax returns the index of the highest OrderSpeed, or -1 on an empty queue. Ties go
 // to the earliest insertion.
+//
+// Um movimento empilhado num pendente não é candidato (IsBlockedIn, spec 2026-11-06 D4): no Free
+// ele também sai depois do anterior. A cabeça de uma cadeia nunca está bloqueada, então uma fila
+// não vazia sempre tem candidato.
 func (aq *PriorityQueue) indexOfMax() int {
 	best := -1
 	for i, act := range *aq {
+		if act.IsBlockedIn(*aq) {
+			continue
+		}
 		if best == -1 || act.OrderSpeed() > (*aq)[best].OrderSpeed() {
 			best = i
 		}

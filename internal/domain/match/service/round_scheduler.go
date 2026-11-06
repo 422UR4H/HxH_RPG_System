@@ -109,6 +109,12 @@ func (rs RoundScheduler) SelectNext(in ScheduleInput) *action.Action {
 func (rs RoundScheduler) best(in ScheduleInput, candidates []*action.Action) (int, float64) {
 	bestIdx, bestKey := -1, 0.0
 	for i, a := range candidates {
+		// Um movimento empilhado num pendente não é candidato (D4). "Pendente" é candidates: a
+		// fila em SelectNext, o que a simulação ainda não escolheu em ProjectRound — então um
+		// anterior adiado adia o empilhado junto, e um anterior escolhido o libera na hora.
+		if a.IsBlockedIn(candidates) {
+			continue
+		}
 		key, ok := rs.keyOf(in, a)
 		if !ok {
 			continue
@@ -283,14 +289,30 @@ func (rs RoundScheduler) keyOf(in ScheduleInput, a *action.Action) (float64, boo
 // The gate is deliberately NOT consulted. An action that could not have opened this round is
 // still the one whose moment the reaction takes; refusing to consume it would let a character
 // react AND keep a queued action, which is the trade the Disadvantage is paying for.
+//
+// Só os NÃO bloqueados contam (spec 2026-11-06 D6): a cabeça de uma cadeia de movimentos é "o
+// momento prestes a ser gasto", não o empilhado mais rápido. Quando a barra não tem nenhum
+// candidato desbloqueado, vale qualquer pendente nela, como antes.
 func (rs RoundScheduler) BestPendingFor(in ScheduleInput, actorID uuid.UUID, bar action.Bar) *action.Action {
 	if in.Queue == nil {
 		return nil
 	}
+	pending := in.Queue.All()
+	if best := rs.bestPendingFor(in, pending, actorID, bar, true); best != nil {
+		return best
+	}
+	return rs.bestPendingFor(in, pending, actorID, bar, false)
+}
+
+// bestPendingFor é a passada de BestPendingFor; unblockedOnly pula os bloqueados.
+func (rs RoundScheduler) bestPendingFor(in ScheduleInput, pending []*action.Action, actorID uuid.UUID, bar action.Bar, unblockedOnly bool) *action.Action {
 	var best *action.Action
 	bestKey := math.Inf(-1)
-	for _, a := range in.Queue.All() {
+	for _, a := range pending {
 		if a.GetActorID() != actorID || !slices.Contains(a.Bars(), bar) {
+			continue
+		}
+		if unblockedOnly && a.IsBlockedIn(pending) {
 			continue
 		}
 		// The gate (ok) is deliberately ignored — an action that could not have opened this

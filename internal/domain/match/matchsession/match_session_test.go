@@ -524,8 +524,9 @@ func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cancel: %v", err)
 		}
-		if got == nil || got.GetID() != a.GetID() {
-			t.Errorf("returned %v, want the cancelled action %v", got, a.GetID())
+		// Sem nada empilhado, a cascata é só a própria action (D5, 2026-11-06).
+		if len(got) != 1 || got[0].GetID() != a.GetID() {
+			t.Errorf("returned %v, want only the cancelled action %v", got, a.GetID())
 		}
 	})
 

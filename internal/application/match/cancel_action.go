@@ -9,7 +9,7 @@ import (
 )
 
 type ICancelAction interface {
-	Execute(ctx context.Context, session *matchsession.MatchSession, playerUUID, actionID uuid.UUID) (*action.Action, error)
+	Execute(ctx context.Context, session *matchsession.MatchSession, playerUUID, actionID uuid.UUID) ([]*action.Action, error)
 }
 
 type CancelActionUC struct{}
@@ -20,6 +20,6 @@ func (uc *CancelActionUC) Execute(
 	ctx context.Context,
 	session *matchsession.MatchSession,
 	playerUUID, actionID uuid.UUID,
-) (*action.Action, error) {
+) ([]*action.Action, error) {
 	return session.CancelAction(playerUUID, actionID)
 }

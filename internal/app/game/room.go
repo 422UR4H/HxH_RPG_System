@@ -1153,50 +1153,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
 			return
 		}
-		// Movement blocking: validate path against walls with move=true and !open.
-		//
-		// B6: the origin is never the client's — the server owns the board, so `from` is the
-		// ACTOR'S OWN PIECE POSITION, read off r.pieceSlotOf, not payload.Move.From (already
-		// discarded by buildAction). nil (no piece on the board) means there is nothing to
-		// check: the sentinel-based skip this used to do for [0,0,0] — which made a piece
-		// genuinely standing at (0,0) unblockable — is gone along with the sentinel itself.
-		//
-		// B5/B10: the wall check reads cell CENTERS with the session's own grid, not
-		// `col × cellSize` (that lands on a cell's top-left corner). The centers are LOCAL
-		// (SlotCenterToLocal), because that is the space wall P1/P2 live in: comparing
-		// transformed centers against local walls put the path somewhere else on any rotated
-		// or squashed grid.
-		if a.Move != nil {
-			r.mu.RLock()
-			from, hasPiece := r.pieceSlotOf(a.GetActorID().String())
-			a.Move.From = from
-			grid, walls := r.boardGeometryLocked()
-			r.mu.RUnlock()
-			if hasPiece {
-				to := a.Move.Position
-				fx, fy := mapservice.SlotCenterToLocal(from[0], from[1], grid)
-				tx, ty := mapservice.SlotCenterToLocal(to[0], to[1], grid)
-				if mapservice.IsPathBlocked([2]float64{fx, fy}, [2]float64{tx, ty}, walls) {
-					client.SendMessage(NewErrorMessage("move_blocked", "movement blocked by a wall"))
-					return
-				}
-			}
-		}
 		// A character's hand on a wall: only the kinds a character declares (lock, unlock and
-		// reveal are the master's, through enqueue_master_action), and only within reach.
-		if a.Interact != nil {
-			if !a.Interact.Kind.IsCharacterInteract() {
-				client.SendMessage(NewErrorMessage("invalid_action",
-					fmt.Sprintf("interact kind %q is not a character action", a.Interact.Kind)))
-				return
-			}
-			if refusal := r.interactOutOfReach(a); refusal != "" {
-				client.SendMessage(NewErrorMessage("out_of_reach", refusal))
-				return
-			}
+		// reveal are the master's, through enqueue_master_action). The reach is checked below,
+		// under the lock, after the move.
+		if a.Interact != nil && !a.Interact.Kind.IsCharacterInteract() {
+			client.SendMessage(NewErrorMessage("invalid_action",
+				fmt.Sprintf("interact kind %q is not a character action", a.Interact.Kind)))
+			return
 		}
-		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
-		// action's dice into it, both of which the master's open_next_action reads.
+		// Write lock across the board checks AND Execute: enqueueing pushes onto the priority
+		// queue AND rolls the action's dice into it, both of which the master's open_next_action
+		// reads. O fim da cadeia de movimentos (D3) é lido da fila nesta mesma seção crítica, então
+		// a origem que a checagem de parede usa é a que EnqueueAction grava em From.
 		//
 		// The master's action_queued payload is built in the SAME critical section: once
 		// Execute returns, `a` sits in the session's queue and belongs to the session, and
@@ -1204,13 +1172,21 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// race whatever the master does to the queue next. Sent after the unlock, like
 		// everything that reaches a client.
 		r.mu.Lock()
-		errEnqueue := r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+		refusalCode, refusal := r.enqueueRefusalLocked(session, a)
+		var errEnqueue error
 		var queued ActionQueuedPayload
 		actionID := a.GetID()
-		if errEnqueue == nil {
-			queued = newActionQueuedPayload(a)
+		if refusalCode == "" {
+			errEnqueue = r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+			if errEnqueue == nil {
+				queued = newActionQueuedPayload(a)
+			}
 		}
 		r.mu.Unlock()
+		if refusalCode != "" {
+			client.SendMessage(NewErrorMessage(refusalCode, refusal))
+			return
+		}
 		if errEnqueue != nil {
 			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
@@ -1234,14 +1210,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		session := r.session
 		var err error
-		var write *cancelledWrite
+		var writes []*cancelledWrite
+		var cancelledIDs []uuid.UUID
 		if session != nil && r.deps.CancelActionUC != nil {
-			var act *action.Action
-			act, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
+			var acts []*action.Action
+			acts, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
 			// The record is built in this same critical section, so the turn it names is the one
 			// open at the cancellation; with a turn open it is held for that turn's close.
-			if err == nil && act != nil {
-				write = r.holdCancelledActionLocked(act, client.userUUID)
+			// Um registro por action: a pedida e as empilhadas nela (D5), cada uma como um
+			// cancelamento pedido por quem pediu o primeiro.
+			if err == nil {
+				writes, cancelledIDs = r.holdCancelledActionsLocked(acts, client.userUUID)
 			}
 		}
 		r.mu.Unlock()
@@ -1254,15 +1233,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		// No turn open: written now, before the news goes out.
-		r.writeCancelledAction(write)
+		for _, w := range writes {
+			r.writeCancelledAction(w)
+		}
 		// The master decides what opens next, so they hear it first; the sender gets the same
 		// news as the ack of their own request. A master cancelling an NPC's action is both —
 		// one message, not two. The table only sees the public order change.
-		cancelled := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload(payload))
-		r.sendToMaster(cancelled)
-		if !r.IsMaster(client.userUUID) {
-			client.SendMessage(cancelled)
-		}
+		// Um action_cancelled por action, em ordem de cadeia, e um bars_updated no fim.
+		r.announceCancelled(client, cancelledIDs)
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
@@ -2415,7 +2393,12 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	result, err := r.deps.AttachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
 	var attached ReactionAttachedPayload
+	var cancelWrites []*cancelledWrite
+	var cancelledIDs []uuid.UUID
 	if err == nil {
+		// Os movimentos que caíram em cascata (D6) são gravados como um cancelamento pedido pelo
+		// dono do reator, na mesma seção crítica — com o turno aberto, seguem com o fechamento dele.
+		cancelWrites, cancelledIDs = r.holdCancelledActionsLocked(result.Cancelled, client.userUUID)
 		turnID = session.CurrentTurnID()
 		// Read under the lock: `reaction` is ours, but Execute just wrote ConsumedActionIDs into
 		// it, and the session's copy is the one later readers use — both are written before the
@@ -2438,6 +2421,13 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		// The master reacting through an NPC is reactor AND master: one copy, not two.
 		r.sendToMaster(ack)
 	}
+	// Depois do reaction_attached (que nomeia o consumido): um action_cancelled por movimento
+	// empilhado que caiu com ele, ao mestre e ao dono do reator. Com o turno aberto (sempre, numa
+	// reação) os registros ficaram retidos para o fechamento e cancelWrites vem vazio.
+	for _, w := range cancelWrites {
+		r.writeCancelledAction(w)
+	}
+	r.announceCancelled(client, cancelledIDs)
 	// publishResolution is the single place that decides master-only vs projected, by reading
 	// IsSettled. An attach lands on an open, unsettled turn — and ONLY that, because
 	// MatchSession.AttachReaction now refuses (ErrTurnAlreadyClosed) before rolling a single
@@ -3824,17 +3814,61 @@ func (r *Room) boardGeometryLocked() (mapentity.GridShape, []mapentity.WallSegme
 	return r.grid, walls
 }
 
-// interactOutOfReach checks that a character interacting with walls (open, close, lockpick…)
+// enqueueRefusalLocked faz as checagens de tabuleiro de uma action declarada — a parede no
+// caminho do movimento e o alcance da mão na parede — e devolve o código e a mensagem da recusa,
+// ou "" quando passa. O caller segura r.mu para escrita, na mesma seção crítica do enqueue.
+//
+// Movement blocking: validate path against walls with move=true and !open.
+//
+// B6: the origin is never the client's — the server owns the board, so `from` is the ACTOR'S OWN
+// PIECE POSITION, read off r.pieceSlotOf, not payload.Move.From (already discarded by
+// buildAction). nil (no piece on the board) means there is nothing to check: the sentinel-based
+// skip this used to do for [0,0,0] — which made a piece genuinely standing at (0,0) unblockable —
+// is gone along with the sentinel itself.
+//
+// Movimento empilhado (D3, spec 2026-11-06): com um movimento do personagem ainda na fila, a
+// origem da checagem é o destino do último deles (session.MoveChainTail) — de onde este movimento
+// vai partir —, não a peça. Sem peça no tabuleiro continua sem checagem, empilhado ou não.
+//
+// B5/B10: the wall check reads cell CENTERS with the session's own grid, not `col × cellSize`
+// (that lands on a cell's top-left corner). The centers are LOCAL (SlotCenterToLocal), because
+// that is the space wall P1/P2 live in: comparing transformed centers against local walls put the
+// path somewhere else on any rotated or squashed grid.
+func (r *Room) enqueueRefusalLocked(session *matchsession.MatchSession, a *action.Action) (code, msg string) {
+	if a.Move != nil {
+		from, hasPiece := r.pieceSlotOf(a.GetActorID().String())
+		a.Move.From = from
+		if hasPiece {
+			origin := *from
+			if tail := session.MoveChainTail(a.GetActorID()); tail != nil {
+				origin = tail.Move.Position
+			}
+			grid, walls := r.boardGeometryLocked()
+			to := a.Move.Position
+			fx, fy := mapservice.SlotCenterToLocal(origin[0], origin[1], grid)
+			tx, ty := mapservice.SlotCenterToLocal(to[0], to[1], grid)
+			if mapservice.IsPathBlocked([2]float64{fx, fy}, [2]float64{tx, ty}, walls) {
+				return "move_blocked", "movement blocked by a wall"
+			}
+		}
+	}
+	if a.Interact != nil {
+		if refusal := r.interactOutOfReachLocked(a); refusal != "" {
+			return "out_of_reach", refusal
+		}
+	}
+	return "", ""
+}
+
+// interactOutOfReachLocked checks that a character interacting with walls (open, close, lockpick…)
 // TOUCHES each of them — stands on one of the wall's contact cells (WallContactSlots) — where
 // the action leaves them: the action's own move destination, or where the piece stands now.
 // An attack needs nothing of the sort: a ranged attack is a ranged attack. Something that would
 // let a character act on a wall from afar (an ability) goes through the master's hand.
 //
 // Returns the refusal, or "" when every wall target is within reach. Character targets are
-// not this check's business.
-func (r *Room) interactOutOfReach(a *action.Action) string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+// not this check's business. The caller holds r.mu.
+func (r *Room) interactOutOfReachLocked(a *action.Action) string {
 	grid, walls := r.boardGeometryLocked()
 	byID := make(map[string]mapentity.WallSegment, len(walls))
 	for _, w := range walls {

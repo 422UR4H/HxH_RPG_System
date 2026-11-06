@@ -1091,6 +1091,12 @@ func (s *MatchSession) recordActed(a *action.Action) {
 }
 
 func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
+	// Um movimento empilhado num pendente é recusado antes de qualquer coisa (D4): nenhum turno
+	// fecha e nenhum preço congela. Puxar fora de ordem é prerrogativa do mestre; puxar o segundo
+	// movimento antes do primeiro não é fora de ordem, é impossível.
+	if a := s.queuedAction(id); a != nil && a.IsBlockedIn(s.activeQueue.All()) {
+		return &TurnTransition{}, ErrStackedOnPending
+	}
 	prov := s.scheduler.ProvisionalPrices(s.scheduleInput())
 	tr := s.closeOpenTurn()
 	opened, err := s.roundOrch.PullAction(s.activeRound, &s.activeQueue, id)
@@ -1286,13 +1292,22 @@ func (s *MatchSession) applyDamage(cr service.CharacterResult) (DamagedCharacter
 // per-CHARACTER one, bridged by charToPlayer. On top of that, a reaction has a third
 // constraint an action does not — only someone the attack is AIMED AT may answer it.
 func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*service.TurnResolution, error) {
+	res, _, err := s.AttachReactionWithCancels(playerUUID, r)
+	return res, err
+}
+
+// AttachReactionWithCancels é AttachReaction respondendo também os movimentos que a reação
+// cancelou em cascata (spec 2026-11-06 D6): os empilhados sobre o que ela consumiu, quando ela não
+// vai para onde aquele movimento ia. Em ordem de cadeia; vazio quando nada caiu. A Room grava cada
+// um como um cancelamento pedido e manda um action_cancelled por action.
+func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action.Action) (*service.TurnResolution, []*action.Action, error) {
 	owner, ok := s.charToPlayer[r.GetActorID().String()]
 	if !ok || owner != playerUUID {
-		return nil, ErrReactionActorMismatch
+		return nil, nil, ErrReactionActorMismatch
 	}
 	t := s.activeRound.CurrentTurn()
 	if t == nil {
-		return nil, service.ErrNoCurrentTurn
+		return nil, nil, service.ErrNoCurrentTurn
 	}
 	// Round.CurrentTurn() returns the LAST turn regardless of finishedAt — before Phase 5's
 	// close_turn, a turn only ever closed INSIDE OpenNextAction/PullAction, which opened the
@@ -1302,11 +1317,11 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	// guaranteed — this has to be its own check, and it has to run before anything is charged,
 	// exactly as OpenReaction already refuses it.
 	if t.GetFinishedAt() != nil {
-		return nil, ErrTurnAlreadyClosed
+		return nil, nil, ErrTurnAlreadyClosed
 	}
 	act := t.GetAction()
 	if !slices.Contains(act.TargetID, r.GetActorID()) {
-		return nil, ErrReactorNotTargeted
+		return nil, nil, ErrReactorNotTargeted
 	}
 	// Validate before mutating anything. A stale ReactToID is reachable whenever the master
 	// opens the next turn while a target is still composing, and it must be refused with the
@@ -1315,7 +1330,7 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	// duplicates what roundOrch.AttachReaction checks below (it still owns the actual
 	// attach), but here it runs first, before any of that.
 	if act.GetID() != r.ReactToID {
-		return nil, service.ErrReactionNotCompatible
+		return nil, nil, service.ErrReactionNotCompatible
 	}
 	// One reaction per character per action, refused before a die falls or a bar is charged —
 	// the same "validate before mutating" rule as the checks above. A second one was accepted,
@@ -1330,7 +1345,7 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	}
 	for _, existing := range t.GetReactions() {
 		if existing.GetActorID() == r.GetActorID() && existing.GetID() != seatedID {
-			return nil, ErrReactorAlreadyReacted
+			return nil, nil, ErrReactorAlreadyReacted
 		}
 	}
 	// Answering exactly what was seated is the same reading: it keeps the dice that may already
@@ -1343,9 +1358,10 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 
 	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
 	// discount: done in the exact instant, without opening the guard, it gives the action back.
+	var cancelled []*action.Action
 	if !r.ReactionKind.IsFree() {
 		var consumed []*action.Action
-		r.ConsumedActionIDs, consumed = s.consumePendingFor(r)
+		r.ConsumedActionIDs, consumed, cancelled = s.consumePendingFor(r)
 		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
 		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
 		// Amount: RollAttempts already holds both sets and the bias only picks which one.
@@ -1363,7 +1379,7 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 	}
 
 	if err := s.roundOrch.AttachReaction(s.activeRound, r); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if seatedID != uuid.Nil {
 		t.ReplaceSeated(seatedID, r.GetID())
@@ -1371,7 +1387,7 @@ func (s *MatchSession) AttachReaction(playerUUID uuid.UUID, r *action.Action) (*
 		// master's edit on a reading the target just replaced with one of their own.
 		s.dropEdits(seatedID)
 	}
-	return s.ResolveTurn(s.activeRound.CurrentTurn()), nil
+	return s.ResolveTurn(s.activeRound.CurrentTurn()), cancelled, nil
 }
 
 // inheritSeated moves what a seated default reaction already holds onto the default reaction
@@ -1403,22 +1419,54 @@ func (s *MatchSession) inheritSeated(seated, r *action.Action) {
 //
 // A combined action sits on both bars and is counted once — it leaves on the first bar that
 // finds it and is simply not there for the second.
-func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*action.Action) {
+//
+// Movimentos empilhados (spec 2026-11-06 D6): o consumido é o primeiro da cadeia (BestPendingFor
+// pula os bloqueados). Os empilhados nele sobrevivem quando a reação vai para onde ele ia
+// (samePlace, o teste de sameMoveAsQueued) — o primeiro deles passa a apontar para o StackedOn do
+// consumido, quase sempre uuid.Nil, e vira a cabeça; senão saem pela cascata do D5 e voltam no
+// terceiro retorno, em ordem de cadeia. Os que sobrevivem não são candidatos para a outra barra
+// desta mesma reação: ela gasta UM movimento da cadeia, não a cadeia.
+func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*action.Action, []*action.Action) {
 	var ids []uuid.UUID
-	var victims []*action.Action
+	var victims, cancelled []*action.Action
+	spared := map[uuid.UUID]bool{}
 	for _, bar := range r.ReactionKind.Bars() {
-		victim := s.scheduler.BestPendingFor(s.scheduleInput(), r.GetActorID(), bar)
+		in := s.scheduleInput()
+		if len(spared) > 0 {
+			kept := slices.DeleteFunc(s.activeQueue.All(), func(a *action.Action) bool { return spared[a.GetID()] })
+			q := action.NewActionPriorityQueue(&kept)
+			in.Queue = &q
+		}
+		victim := s.scheduler.BestPendingFor(in, r.GetActorID(), bar)
 		if victim == nil {
 			continue
 		}
-		s.activeQueue.ExtractByID(victim.GetID())
+		// O que está empilhado nele é lido antes de ele sair da fila.
+		stacked := s.stackedAfter(victim)
 		// The reaction took its place: whatever the master edited on it goes with it.
-		s.discardEdits(victim)
+		s.dropFromQueue(victim)
 		ids = append(ids, victim.GetID())
 		victims = append(victims, victim)
+		if len(stacked) == 0 {
+			continue
+		}
+		if r.Move != nil && victim.Move != nil && samePlace(r.Move.Position, victim.Move.Position) {
+			stacked[0].Move.StackedOn = victim.Move.StackedOn
+			for _, a := range stacked {
+				spared[a.GetID()] = true
+			}
+			continue
+		}
+		for _, a := range stacked {
+			s.dropFromQueue(a)
+		}
+		cancelled = append(cancelled, stacked...)
 	}
-	return ids, victims
+	return ids, victims, cancelled
 }
+
+// samePlace compara dois destinos por (col, row) — z nunca é lido pelo servidor.
+func samePlace(a, b [3]int) bool { return a[0] == b[0] && a[1] == b[1] }
 
 // keepsQueuedIntent reports whether a charged reaction is what its character had already queued,
 // only sooner — in which case consuming the queued action is not a swap and costs no
@@ -1479,7 +1527,7 @@ func sameMoveAsQueued(r *action.Action, consumed []*action.Action) bool {
 		if c.Move == nil || c.Attack != nil || c.Interact != nil {
 			return false
 		}
-		if c.Move.Position[0] != r.Move.Position[0] || c.Move.Position[1] != r.Move.Position[1] {
+		if !samePlace(c.Move.Position, r.Move.Position) {
 			return false
 		}
 	}
@@ -1645,10 +1693,64 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 		}
 		return ErrActionActorMismatch
 	}
+	s.stackOnChainTail(a)
 	s.rollActionDice(a)
 	s.deriveSpeeds(a, s.swapBias(a.GetActorID()))
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// stackOnChainTail empilha um movimento no último movimento pendente do mesmo personagem
+// (spec 2026-11-06 D3): StackedOn = o id dele, From = o destino dele (uma cópia). Sem movimento
+// pendente antes, o movimento fica como veio — From é a casa da peça, que a Room pôs. Uma action
+// sem movimento nunca se empilha.
+func (s *MatchSession) stackOnChainTail(a *action.Action) {
+	if a.Move == nil {
+		return
+	}
+	tail := s.MoveChainTail(a.GetActorID())
+	if tail == nil {
+		return
+	}
+	from := tail.Move.Position
+	a.Move.StackedOn = tail.GetID()
+	a.Move.From = &from
+}
+
+// MoveChainTail é o fim da cadeia de movimentos do personagem: a ÚLTIMA action pendente dele, em
+// ordem de chegada, que tem movimento (pura ou combinada); nil quando não há nenhuma. É sobre ela
+// que o próximo movimento se empilha. A Room lê para checar paredes a partir do mesmo ponto que
+// EnqueueAction vai gravar em From — na mesma seção crítica do enqueue.
+func (s *MatchSession) MoveChainTail(actorID uuid.UUID) *action.Action {
+	var tail *action.Action
+	for _, a := range s.activeQueue.All() {
+		if a.GetActorID() == actorID && a.Move != nil {
+			tail = a
+		}
+	}
+	return tail
+}
+
+// stackedAfter são os movimentos pendentes empilhados, direta ou transitivamente, sobre a — em
+// ordem de cadeia, sem o próprio a. A cadeia nasce em ordem de chegada (cada um se empilha no fim
+// dela), então uma passada só pela fila acha todos.
+func (s *MatchSession) stackedAfter(a *action.Action) []*action.Action {
+	chain := map[uuid.UUID]bool{a.GetID(): true}
+	var out []*action.Action
+	for _, p := range s.activeQueue.All() {
+		if p.Move != nil && p.Move.StackedOn != uuid.Nil && chain[p.Move.StackedOn] {
+			chain[p.GetID()] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// dropFromQueue tira da fila e descarta as edições do mestre — o caminho de toda action que sai
+// sem abrir (cancelada ou consumida).
+func (s *MatchSession) dropFromQueue(a *action.Action) {
+	s.activeQueue.ExtractByID(a.GetID())
+	s.discardEdits(a)
 }
 
 // CancelAction takes one of the caller's own actions out of the queue before it opens
@@ -1668,7 +1770,11 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 // recorded when an action opens), and a price already frozen stays frozen — the same rule as a
 // slower action arriving after the freeze. Cancelling never closes the round; only
 // OpenNextAction does.
-func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) (*action.Action, error) {
+//
+// Cancelar um movimento cancela a cadeia empilhada nele (spec 2026-11-06 D5): a resposta é a
+// action pedida primeiro e depois as dependentes, em ordem de cadeia. Cada uma sai pelo mesmo
+// caminho (fila, edições); a marca da troca é uma só, do mesmo personagem.
+func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) ([]*action.Action, error) {
 	var target *action.Action
 	for _, a := range s.activeQueue.All() {
 		if a.GetID() == actionID {
@@ -1686,12 +1792,14 @@ func (s *MatchSession) CancelAction(playerUUID, actionID uuid.UUID) (*action.Act
 		}
 		return nil, ErrActionActorMismatch
 	}
-	s.activeQueue.ExtractByID(actionID)
-	s.discardEdits(target)
+	cancelled := append([]*action.Action{target}, s.stackedAfter(target)...)
+	for _, a := range cancelled {
+		s.dropFromQueue(a)
+	}
 	if s.activeRound.GetMode() == enum.Race {
 		s.swapMarks[target.GetActorID()] = s.activeRound.GetID()
 	}
-	return target, nil
+	return cancelled, nil
 }
 
 // swapBias is the systemBias a character's next derivation starts from: -1 while their cancel
@@ -1784,7 +1892,6 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 			SystemBias: systemBias,
 			AgainstID:  againstID,
 		}).Total
-
 	}
 
 	if a.Move == nil {

@@ -85,6 +85,7 @@ func From(a action.Action, lvl Level) Action {
 			Speed:      rollCheckPtr(a.Move.Speed, speedKeep),
 			Charge:     rollCheckPtr(a.Move.Charge, numbersKeep),
 			FinalSpeed: intPtr(a.Move.FinalSpeed, speedKeep),
+			StackedOn:  stackedOnPtr(a.Move.StackedOn),
 		}
 	}
 	if a.Attack != nil {
@@ -179,4 +180,12 @@ func weaponPtr(w *enum.WeaponName) *string {
 	}
 	s := string(*w)
 	return &s
+}
+
+// stackedOnPtr leva o StackedOn do domínio ao wire: nil quando o movimento não está empilhado.
+func stackedOnPtr(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }

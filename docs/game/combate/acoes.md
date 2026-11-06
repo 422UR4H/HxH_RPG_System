@@ -59,6 +59,26 @@ O sistema usa uma fila de prioridade ordenada por velocidade para resolver as a�
 Detalhes da economia de turno em [Barra de Ação](barra-de-acao.md); catálogo completo de
 respostas em [Reações](reacoes.md).
 
+### Vários movimentos na fila
+
+Um personagem pode declarar mais de um movimento antes de o primeiro acontecer. Eles formam uma
+sequência:
+
+- **O segundo movimento parte de onde o primeiro termina** — não de onde o personagem está agora.
+  Uma parede no caminho é medida a partir desse ponto.
+- **O segundo sempre acontece depois do primeiro**, mesmo que tenha rolado mais rápido. Ele espera
+  o primeiro acontecer; esse atraso é o preço que o primeiro paga, e não há penalidade além dele.
+  Se o primeiro fica para a próxima rodada, o segundo fica junto. O mestre também não pode
+  antecipar o segundo antes do primeiro.
+- **Cancelar o primeiro cancela os que vêm depois dele.** Cancelar um do meio leva só os que vêm
+  depois; os anteriores continuam.
+- **Uma reação de fuga gasta o primeiro movimento da sequência.** Se a fuga vai para o mesmo lugar
+  para onde esse primeiro movimento ia, o resto da sequência continua de pé, agora a partir dali. Se
+  vai para outro lugar, os movimentos que vinham depois são cancelados.
+
+Isso vale só para movimentos (sozinhos ou junto com um ataque). Um ataque ou uma interação
+declarados no meio não entram na sequência nem a interrompem.
+
 ## A corrente de testes
 
 Uma ação pode juntar várias perícias. *"Dou um mortal por cima dele e corto com a espada

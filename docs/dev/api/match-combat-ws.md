@@ -195,13 +195,40 @@ porque uma ação plausível carregue todas.
 | `skills[].difficulty` | CD proposta pelo cliente. A corrente de testes ainda **não é executada** pelo motor (ver §8). |
 | `speed` | **Descartado.** `bar` é derivado do conteúdo por `Action.Bars()`; a perícia é Legerity, e só numa ação que cobra a barra de ação (`bars` contém `action`). Numa ação que **não** a cobra (movimento puro, `closedEscape`) o `speed` sai **vazio** — `rollCheck.skillName` `""`, sem tentativas, `result` 0 — e a velocidade dela é o `move.speed`. No regime Free a fila abre pela velocidade das barras da ação (a menor das duas numa ação combinada). `edit_action` no campo `speed` de uma ação assim dá `ErrConditionTargetMissing`. |
 | `move.category` | Só **`Dash`** e `Shift` são aceitos. `Back`, `Roll`, `Slide`, `Jump`, `FlatJump` são **recusados** — a fatia de movimento é que vai exercê-los. |
-| `move.from` | **Ignorado** (B6, spec §4.3 "B5, B6 e B10"). O servidor é dono do tabuleiro: a origem que ele checa é a **posição da PRÓPRIA peça do ator**, lida do board no instante do enfileiramento — nunca o que o payload manda aqui. Sem peça no tabuleiro, não há origem e não há checagem nenhuma. |
+| `move.from` | **Ignorado** (B6, spec §4.3 "B5, B6 e B10"). O servidor é dono do tabuleiro: a origem que ele checa é a **posição da PRÓPRIA peça do ator**, lida do board no instante do enfileiramento — nunca o que o payload manda aqui. Sem peça no tabuleiro, não há origem e não há checagem nenhuma. **Movimento empilhado** (2026-11-06, D3): se o personagem já tem um movimento na fila, a origem é o **destino do último deles** — ver [Movimentos empilhados](#movimentos-empilhados) logo abaixo. |
 | `move.position` | Convenção de coordenada, igual em `move.from`: `[a, b, z]`, com `(a, b) = (col, row)` numa grade quadrada ou `(q, r)` axial numa hexagonal. `z` **não é lido** pelo servidor (ver a nota de `Z` mais abaixo, em `piece_moved`). |
 | `interact.kind` | `open` · `close` · `toggle` · `lockpick` · `examine`. Qualquer outro valor é `invalid_action` — `reveal`, `lock`, `unlock` e `destroy` são **do mestre**, por [`enqueue_master_action`](#enqueue_master_action). Ver [Interagir com parede](#interagir-com-parede-alcance-e-tranca) logo abaixo. |
 | `dodge.category` | **Descartado pelo mapper** — o campo existe no payload e nada o lê. Só `dodge.rollCheck` importa. |
 | `attack.weapon`, `defense.weapon` | Nome do catálogo (`enum.WeaponName`). Ausente = desarmado. |
 | `attack.hit.skillName` | **Derivado pelo servidor: sempre `Accuracy`.** O que o payload mandar é **validado** (nome desconhecido é recusado na fronteira, como sempre foi) e depois **substituído** — o jogador escolhe arma e alvo, nunca a perícia que lê o acerto. O front **não precisa mandar** nome de perícia aqui; mandar um não muda nada. A arma escolhida entra pela **proficiência**, não pela perícia — ver abaixo. |
 | `attack.damage.skillName` | **Descartado.** O dano soma o **`Push`** do atacante, lido direto da ficha (`TurnResolver.actorDamageSkill`) — nunca a perícia que o payload manda. O campo continua **validado quando não-vazio** (`buildRollCheck` só chama `SkillNameFrom` se a string não for `""`, então `"damage": {}` passa em branco) mas não decide mais nada, o mesmo estado de `speed`. Trocar `Push` por outra perícia é prerrogativa do mestre: [`edit_action`](#edit_action) `damageSkill`. A escolha dele **não** aparece aqui — este campo continua sendo o do jogador, descartado. |
+
+#### Movimentos empilhados
+
+(Spec `2026-11-06-stacked-moves-design.md`, D3–D6.) Quando um personagem enfileira uma ação com
+`move` enquanto já tem, **na fila**, outra ação com `move`, o novo movimento se **empilha** na
+última delas (o fim da cadeia, em ordem de chegada):
+
+- `move.stackedOn` (nas superfícies de saída — `action_queued`, `match_full_state.queue` e
+  `ownQueue`, `turn_opened` do mestre e do dono) = o `actionId` dela. Ausente num movimento não
+  empilhado. **Terceiros nunca o recebem** (`service.ProjectAction` o tira, como
+  `consumedActionIds`).
+- `move.from` = o `move.position` dela, **não** a casa da peça. A checagem de parede do enqueue
+  (`move_blocked`) parte daí: a parede que conta é a entre o fim da cadeia e o novo destino, não a
+  entre a peça e o novo destino. Sem peça no tabuleiro continua sem checagem.
+- Só movimentos se empilham (puros ou combinados com ataque). Uma ação sem `move` nunca se
+  empilha nem recebe empilhamento, e não quebra a cadeia. Um movimento que já **abriu** não é mais
+  fim de cadeia: o próximo parte da peça.
+- **Ordem:** um movimento empilhado num que ainda está na fila **não é candidato** — não abre em
+  `open_next_action` (Race e Free), não entra na ordem projetada do `bars_updated` antes dele e é
+  recusado pelo [`pull_action`](#pull_action) (`action is stacked on a pending move`). Se o anterior
+  fica para a rodada seguinte, o empilhado fica junto. Não há penalidade nova: quando o primeiro
+  abre, o segundo é chaveado com essa velocidade já gasta (a regra de toda segunda ação da rodada).
+- **Cancelar** o anterior cancela os empilhados nele ([`cancel_action`](#cancel_action)).
+- Uma **reação** consome a cabeça da cadeia, não o empilhado — ver
+  [`attach_reaction`](#attach_reaction).
+- `move.from` de um empilhado é a origem **declarada** da cadeia: se a peça andar por outro motivo
+  (arrasto do mestre, fuga que falhou) ele não acompanha. Os destinos são absolutos, como sempre.
 
 **Como o acerto é montado.** A perícia é `Accuracy`, sempre, e a arma entra pela
 **proficiência**: o acerto soma o `proficiencyLevel` que o personagem tem **com a arma que
@@ -375,8 +402,27 @@ antes na rodada continua marcando a Desvantagem. Por barra que cobra, a ação c
 barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 [`reaction_attached`](#reaction_attached).
 
+**A reação gasta o primeiro movimento da cadeia** (2026-11-06, D6). Um
+[movimento empilhado](#movimentos-empilhados) num que ainda está na fila não é candidato: a
+reação consome a cabeça da cadeia, mesmo que o empilhado tenha chave melhor (só quando a barra
+não tem candidato nenhum desbloqueado vale qualquer pendente nela, como antes). Depois de
+consumir uma ação que tem movimentos empilhados:
+
+- se a reação **vai para onde o consumido ia** (`move.position` igual por (col, row) — o teste de
+  `sameMoveAsQueued`), os empilhados **sobrevivem**: o primeiro deles passa a apontar para o
+  `stackedOn` do consumido (quase sempre nenhum — ele vira a cabeça). E a reação gasta **um**
+  movimento da cadeia: um escape, que cobra as duas barras, não consome também o empilhado que
+  sobreviveu;
+- senão os empilhados são **cancelados**, pelo caminho do [`cancel_action`](#cancel_action):
+  saem da fila, perdem as edições, são gravados em `cancelled_actions` (`cancelledBy` = quem
+  reagiu; com o turno aberto, gravados no fechamento dele) e cada um ganha o seu
+  [`action_cancelled`](#action_cancelled), ao mestre e a quem reagiu. Nenhuma penalidade além da
+  Desvantagem da troca de hoje — a cascata não marca o personagem.
+
 **Dispara:** [`reaction_attached`](#reaction_attached) (a quem reagiu e ao mestre; uma cópia só
-quando quem reagiu é o mestre), depois [`resolution_updated`](#resolution_updated) **só para o
+quando quem reagiu é o mestre), então um [`action_cancelled`](#action_cancelled) por movimento
+empilhado que caiu em cascata (D6, acima; nenhum na maioria das reações), depois
+[`resolution_updated`](#resolution_updated) **só para o
 mestre** — o turno está aberto, logo `isSettled: false`. A reação aparece em
 `targets[].reaction` (com `opened: false`) e em `pendingReactions`. Por fim, um
 [`bars_updated`](#bars_updated) **por destinatário**: o anexar cobra as barras, então o mestre
@@ -465,7 +511,14 @@ falha — mas um `actionId` velho **não** congela o preço (só congela quando 
 **Nunca** fecha a rodada — `round_closed` só sai de `open_next_action`.
 
 **Erros:** `forbidden` · `invalid_payload` (`"invalid pull_action payload"`) ·
-`match_not_started` · `game_error` (`action not found in queue`).
+`match_not_started` · `game_error` (`action not found in queue`) · `game_error`
+(`action is stacked on a pending move`).
+
+> **`action is stacked on a pending move`** (2026-11-06, D4): a ação é um
+> [movimento empilhado](#movimentos-empilhados) num movimento do mesmo personagem que ainda está
+> na fila. O segundo movimento nunca acontece antes do primeiro — puxe o primeiro. A recusa vem
+> **antes de tudo**: o turno aberto não fecha, nenhum preço congela, a fila não muda (o
+> `bars_updated` que sai em toda saída do `pull_action` repete o estado de antes).
 
 > O `game_error` `action not found in queue` também ocorre quando o dono da ação a
 > [cancelou](#cancel_action) no meio-tempo; o mestre fica sabendo por
@@ -490,6 +543,14 @@ O `actionId` é o que o cliente já conhece: o jogador, pelo [`action_enqueued`]
 
 **Dispara, nesta ordem:** [`action_cancelled`](#action_cancelled) (o mestre, depois quem pediu)
 → [`bars_updated`](#bars_updated) (por destinatário; o mestre já sem a ação na ordem projetada).
+
+**Cancelar um movimento cancela o que está empilhado nele** (2026-11-06, D5): os
+[movimentos empilhados](#movimentos-empilhados) depois dele saem junto, transitivamente. Cancelar o
+do meio de três leva o terceiro e deixa o primeiro. Cada um passa pelo caminho de sempre — sai da
+fila, perde as edições do mestre, é gravado em `cancelled_actions` (`cancelledBy` = quem pediu o
+primeiro) — e ganha o **seu** `action_cancelled`, ao mestre e a quem pediu, **em ordem de cadeia**
+(o pedido primeiro); depois **um** `bars_updated`. A Desvantagem de troca é uma marca só, do mesmo
+personagem. O front avisa antes de confirmar quais movimentos vão junto.
 
 **Só ação ainda na fila.** A ação que já abriu é o turno — não se cancela. Uma ação consumida por
 uma reação já saiu da fila — também não.
@@ -1144,6 +1205,12 @@ nunca o que o payload de `enqueue_action` mandou em `move.from` — por isso o e
 `[4, 4, 0]` mesmo que o cliente tivesse mandado outra coisa. **Ausente** (nenhuma chave
 `from`) quando o ator não tem peça no tabuleiro.
 
+**`action.move.stackedOn`** (uuid, opcional, 2026-11-06 D3): num
+[movimento empilhado](#movimentos-empilhados), o `actionId` do movimento anterior da cadeia — e
+então `move.from` é o destino dele, não a peça. Ausente num movimento não empilhado. O mesmo campo
+vai em `match_full_state.queue`/`ownQueue` e no `turn_opened` do mestre e do dono; terceiros nunca
+o recebem.
+
 **É master-only porque a fila é secreta** (`combat-engine.md` § *A ordem projetada é do mestre*: "a
 fila é secreta"; o `bars_updated` do jogador não carrega a ordem nem velocidade não aberta). Um jogador que aprendesse o que está
 pendente leria as intenções da mesa no wire.
@@ -1191,8 +1258,12 @@ ação de um NPC recebe **uma só**.
 [`bars_updated`](#bars_updated) que vem logo depois. O mestre é avisado na hora porque é ele quem
 decide o que abre a seguir.
 
-**Disparado por:** `cancel_action` aceito. Dispara **uma vez**; quem reconecta depois acha a fila
-já sem a ação em `match_full_state.queue` (mestre) e `.ownQueue` (jogador).
+**Disparado por:** `cancel_action` aceito — **um por ação** cancelada: a pedida e cada
+[movimento empilhado](#movimentos-empilhados) que caiu com ela, em ordem de cadeia, todos antes do
+`bars_updated`. E por [`attach_reaction`](#attach_reaction), um por movimento empilhado que a
+reação cancelou em cascata (ao mestre e a quem reagiu), depois do `reaction_attached`. Cada um
+dispara **uma vez**; quem reconecta depois acha a fila já sem a ação em `match_full_state.queue`
+(mestre) e `.ownQueue` (jogador).
 
 ### `reaction_attached`
 
@@ -1531,6 +1602,7 @@ esta mensagem, e nenhum deles é "alguém que só viu a própria declaração se
 |---|---|---|
 | Alvos, arma, `move.category`, nomes das perícias, `reactionKind`, `interact`, `spread`, `relativeVelocity`, `systemBias` | ✔ | ✔ |
 | `move.from` (origem) e `move.position` (destino) | ✔ | ✔ para o **dono**; para os outros, **só o que a fog da peça deixa ver** — ver [abaixo](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog) |
+| `move.stackedOn` ([movimento empilhado](#movimentos-empilhados)) | ✔ | ✔ para o **dono**; **nunca** para os outros (`service.ProjectAction`) |
 | `speed.rollCheck` (actionSpeed) e `move.speed`/`move.finalSpeed` (moveSpeed) — as duas linhas de "velocidade" do spec | ✔ números | ✔ números — **não** são cortados neste nível |
 | Dados, `skillValue` e `result` de `attack.hit`, `attack.damage`, `attack.charge`, `move.charge`, `skills[]`, `defense`, `dodge`, `repel` | ✔ | corta — só `skillName` sobrevive |
 
@@ -2727,7 +2799,7 @@ vale para o REST.
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
-| `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6). Centros medidos no espaço local da grade. |
+| `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6; num [movimento empilhado](#movimentos-empilhados), o destino do anterior da cadeia). Centros medidos no espaço local da grade. |
 | `out_of_reach` | A parede-alvo de um `interact` não encosta na casa onde a ação deixa o ator (ou ele não tem peça). | `enqueue_action` com `interact`. |
 | `not_found` | Partida ou ficha de personagem não encontrada — mapeia `ErrMatchNotFound`/`ErrCharacterSheetNotFound` de `AddMatchNPCUC`. | `add_npc`, `enqueue_master_action` (pôr NPC). |
 | `invalid_npc` | Ficha não é NPC, não pertence ao mestre nem à campanha, ou a partida já encerrou — mapeia `ErrSheetNotNPC`/`ErrSheetNotOwnedByMaster`/`ErrMatchAlreadyFinished`. | `add_npc`, `enqueue_master_action` (pôr NPC). |

@@ -378,13 +378,17 @@ func TestE2E_TheOpenedMoveOfAnActorWithNoPieceTellsTheTableNowhere(t *testing.T)
 }
 
 // The piece can move between the enqueue (which reads move.from off the board, B6) and the
-// opening — here by a SECOND queued move of the same character opened first. The live gate has
-// to judge the move from where the piece actually stood when it opened (the slot the relay
-// judged), not from the stale enqueue-time move.from, or a bystander is told an origin the relay
-// never showed them.
+// opening — here by the master dragging it. The live gate has to judge the move from where the
+// piece actually stood when it opened (the slot the relay judged), not from the stale
+// enqueue-time move.from, or a bystander is told an origin the relay never showed them.
 //
-// Both dashes are enqueued with the piece at A, so both carry move.from = A. The first one
-// opened walks it A→B; the second then walks it B→C, but still says from: A.
+// The dash is enqueued with the piece at A, so it carries move.from = A. The master's drag walks
+// it A→B; the dash then walks it B→C, but still says from: A.
+//
+// Antes (até 2026-11-06) a origem velha vinha de um SEGUNDO movimento do mesmo personagem
+// enfileirado com a peça em A. Esse caso deixou de existir: o segundo movimento agora se empilha
+// no primeiro e parte do destino dele (D3), então o from dele é a origem real — o subteste
+// "stacked" abaixo fixa isso. O arrasto do mestre é o caso que sobra (spec, "Out of scope").
 func TestE2E_TheLiveGateJudgesTheMoveFromWhereThePieceStoodAtTheOpening(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -394,20 +398,20 @@ func TestE2E_TheLiveGateJudgesTheMoveFromWhereThePieceStoodAtTheOpening(t *testi
 		removed, moved int
 	}{
 		{
-			// A in sight, B and C behind originOnlyWall. Judged from the stale A, the second move
+			// A in sight, B and C behind originOnlyWall. Judged from the stale A, the dash
 			// would look like "only the origin" and hand out from: A; judged from B (where the
 			// piece really left from) it is neither end — the relay sent nothing for it.
 			name: "the stale origin is in sight, the real one is not: nothing",
 			a:    [2]int{14, 4}, b: [2]int{14, 8}, c: [2]int{14, 9},
-			removed: 1, moved: 0, // the first move: A in sight, B not → piece_removed
+			removed: 1, moved: 0, // the drag: A in sight, B not → piece_removed
 		},
 		{
 			// A behind the wall, B in sight, C behind the wall. The real origin B is in sight, so
-			// the second move is "only the origin" — but move.from still says A, which this
+			// the dash is "only the origin" — but move.from still says A, which this
 			// bystander never saw the piece on: from is dropped too.
 			name: "the real origin is in sight, the stale one is not: no from of a slot never shown",
 			a:    [2]int{14, 8}, b: [2]int{14, 4}, c: [2]int{14, 9},
-			removed: 1, moved: 1, // first: A hidden, B in sight → piece_moved; second: B in sight, C not → piece_removed
+			removed: 1, moved: 1, // the drag: A hidden, B in sight → piece_moved; the dash: B in sight, C not → piece_removed
 		},
 	}
 	for _, tt := range tests {
@@ -430,32 +434,17 @@ func TestE2E_TheLiveGateJudgesTheMoveFromWhereThePieceStoodAtTheOpening(t *testi
 				t.Fatal("the bystander never got a board — they are not really at the table")
 			}
 
-			var ids []uuid.UUID
-			for i, to := range [][3]int{toB, toC} {
-				f.enqueueDash(t, player, from, to)
-				if !awaitCount(playerMsgs, game.MsgTypeActionEnqueued, i+1, 2*time.Second) {
-					t.Fatalf("dash %d was never enqueued; the player received: %v",
-						i+1, messageTypes(playerMsgs.snapshotMessages()))
-				}
+			f.enqueueDash(t, player, from, toC)
+			if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+				t.Fatalf("the dash was never enqueued; the player received: %v",
+					messageTypes(playerMsgs.snapshotMessages()))
 			}
-			for _, m := range playerMsgs.snapshotMessages() {
-				if m.Type != game.MsgTypeActionEnqueued {
-					continue
-				}
-				var p game.ActionEnqueuedPayload
-				if err := json.Unmarshal(m.Payload, &p); err != nil {
-					t.Fatalf("unmarshal action_enqueued: %v", err)
-				}
-				ids = append(ids, p.ActionID)
-			}
-
-			// pull_action fixes the order: A→B first, then the one that still says from: A.
-			for i, id := range ids {
-				sendWS(t, master, string(game.MsgTypePullAction), game.PullActionPayload{ActionID: id})
-				if !awaitCount(bystanderMsgs, game.MsgTypeTurnOpened, i+1, 2*time.Second) {
-					t.Fatalf("turn %d never opened for the bystander; the master received: %v",
-						i+1, messageTypes(masterMsgs.snapshotMessages()))
-				}
+			// O mestre arrasta a peça A→B com o dash na fila: o from dele fica em A.
+			sendMasterMove(t, master, f.attackerID, toB)
+			sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+			if !bystanderMsgs.await(game.MsgTypeTurnOpened, 2*time.Second) {
+				t.Fatalf("the turn never opened for the bystander; the master received: %v",
+					messageTypes(masterMsgs.snapshotMessages()))
 			}
 
 			if n := bystanderMsgs.count(game.MsgTypePieceRemoved); n != tt.removed {
@@ -474,5 +463,54 @@ func TestE2E_TheLiveGateJudgesTheMoveFromWhereThePieceStoodAtTheOpening(t *testi
 			move := rawMoveAt(t, second, "action", "move")
 			assertMoveShape(t, "bystander, second opening", move, moveShape{}, from, toC)
 		})
+	}
+}
+
+// D3 (2026-11-06): o segundo movimento enfileirado com a peça ainda em A se empilha no primeiro e
+// parte de B, o destino dele — a origem real quando abre. Com A atrás da parede, B à vista e C
+// atrás dela, o terceiro vê "só a origem" do segundo, e o from que recebe é B, uma casa onde a
+// peça de fato esteve à vista dele.
+func TestE2E_AStackedMoveCarriesTheRealOriginToTheTable(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+	a, toB, toC := [2]int{14, 8}, [3]int{14, 4, 0}, [3]int{14, 9, 0}
+	f.seedMoverBoard(t, a, true, originOnlyWall)
+	from := [3]int{a[0], a[1], 0}
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	bystander := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+	defer bystander.Close()   //nolint:errcheck
+	readMessage(t, bystander) // room_state
+	masterMsgs := collectFrom(master)
+	playerMsgs := collectFrom(player)
+	bystanderMsgs := collectFrom(bystander)
+	if !bystanderMsgs.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the bystander never got a board — they are not really at the table")
+	}
+
+	for i, to := range [][3]int{toB, toC} {
+		f.enqueueDash(t, player, from, to)
+		if !awaitCount(playerMsgs, game.MsgTypeActionEnqueued, i+1, 2*time.Second) {
+			t.Fatalf("dash %d was never enqueued; the player received: %v", i+1, messageTypes(playerMsgs.snapshotMessages()))
+		}
+	}
+	for i := range 2 {
+		sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+		if !awaitCount(bystanderMsgs, game.MsgTypeTurnOpened, i+1, 2*time.Second) {
+			t.Fatalf("turn %d never opened for the bystander; the master received: %v",
+				i+1, messageTypes(masterMsgs.snapshotMessages()))
+		}
+	}
+	var second json.RawMessage
+	for _, m := range bystanderMsgs.snapshotMessages() {
+		if m.Type == game.MsgTypeTurnOpened {
+			second = m.Payload
+		}
+	}
+	move := rawMoveAt(t, second, "action", "move")
+	assertMoveShape(t, "bystander, second opening", move, moveShape{from: true}, toB, toC)
+	if _, ok := move["stackedOn"]; ok {
+		t.Errorf("bystander: move.stackedOn on the wire — the chain is the queue's secret (move: %s)", mustJSON(move))
 	}
 }

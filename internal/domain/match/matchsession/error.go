@@ -66,4 +66,8 @@ var (
 	// ErrQueuedEditUnsupported means an edit_action on a QUEUED action tried to change its
 	// targets or its skill list. See ApplyMasterAction for what lifting it takes.
 	ErrQueuedEditUnsupported = errors.New("a queued action takes condition and damageSkill edits only")
+	// ErrStackedOnPending: o pull_action nomeou um movimento empilhado num movimento do mesmo
+	// personagem que ainda está na fila (spec 2026-11-06 D4). Um empilhado nunca abre antes do
+	// anterior; puxe a cabeça primeiro. Nada muda: nenhum turno fecha, nenhum preço congela.
+	ErrStackedOnPending = errors.New("action is stacked on a pending move")
 )

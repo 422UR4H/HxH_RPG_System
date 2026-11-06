@@ -130,6 +130,13 @@ func ProjectAction(a action.Action, v Viewer, isSettled bool) action.Action {
 	// What the reaction took off the queue is the queue's secret (the queue is the master's;
 	// the owner knows their own) — see action.Action.ConsumedActionIDs.
 	out.ConsumedActionIDs = nil
+	// Sobre qual movimento este se empilhou também é segredo da fila (spec 2026-11-06 D3): só o
+	// mestre e o dono. Cópia do Move — o ponteiro é o da action viva.
+	if a.Move != nil && a.Move.StackedOn != uuid.Nil {
+		mv := *a.Move
+		mv.StackedOn = uuid.Nil
+		out.Move = &mv
+	}
 	// For the escape the demotion closedEscape->escape is cosmetic: the movement category is
 	// fixed per kind (closedEscape moves with Shift, escape/escapeGuard with Dash) and
 	// move.category/move.speed.skillName travel to everyone, and the public bar shows a closed

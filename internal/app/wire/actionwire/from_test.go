@@ -101,3 +101,30 @@ func TestFromCarriesConsumedActionIDs(t *testing.T) {
 		}
 	})
 }
+
+// D3 (2026-11-06): move.stackedOn leva o movimento anterior da cadeia, em todo nível; fora do
+// wire quando o movimento não está empilhado.
+func TestFromCarriesStackedOn(t *testing.T) {
+	id := uuid.New()
+	a := fixtureAction()
+	a.Move.StackedOn = id
+	for name, lvl := range map[string]actionwire.Level{
+		"full": actionwire.Full, "opened": actionwire.Opened, "declaration": actionwire.Declaration,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := actionwire.From(a, lvl).Move.StackedOn
+			if got == nil || *got != id {
+				t.Fatalf("Move.StackedOn = %v, want %v", got, id)
+			}
+		})
+	}
+	t.Run("an unstacked move is off the wire", func(t *testing.T) {
+		raw, err := json.Marshal(actionwire.From(fixtureAction(), actionwire.Full))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "stackedOn") {
+			t.Fatalf("stackedOn present on an unstacked move: %s", raw)
+		}
+	})
+}
