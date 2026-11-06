@@ -7,7 +7,6 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
 
@@ -69,18 +68,16 @@ func TestMatchSession_BarsView(t *testing.T) {
 
 	t.Run("master balance counts acted plus only the next pending", func(t *testing.T) {
 		s, _, p2, _ := canonicalBars(t)
-		v := s.BarsView(true)
-		c := charView(t, v, p2).Action
-		want := service.BarEconomy{}.Balance(c.Carry, append(slices.Clone(c.Acted), c.Pending[:1]...), v.Provisional[action.BarAction])
-		if len(c.Pending) != 2 || c.Balance != want {
-			t.Errorf("Balance = %v (pending %v), want %v", c.Balance, c.Pending, want)
+		c := charView(t, s.BarsView(true), p2).Action
+		// Pending [23 17], provisional price 11: only the 23 counts — 0 + 23 − 1×11 = 12.
+		if !slices.Equal(c.Pending, []int{23, 17}) || c.Balance != 12 {
+			t.Errorf("before open = %+v, want Pending [23 17], Balance 12", c)
 		}
 		mustOpen(t, s)
-		// after opening 23: acted [23] ++ next pending [17] = -2
+		// O 23 abriu: agiram [23] ++ a próxima [17] → (23+17)/2 − 2×11 = −2.
 		c = charView(t, s.BarsView(true), p2).Action
-		want = service.BarEconomy{}.Balance(c.Carry, append(slices.Clone(c.Acted), c.Pending[:1]...), 11)
-		if c.Balance != want {
-			t.Errorf("after open Balance = %v, want %v", c.Balance, want)
+		if !slices.Equal(c.Acted, []int{23}) || !slices.Equal(c.Pending, []int{17}) || c.Balance != -2 {
+			t.Errorf("after open = %+v, want Acted [23], Pending [17], Balance -2", c)
 		}
 	})
 

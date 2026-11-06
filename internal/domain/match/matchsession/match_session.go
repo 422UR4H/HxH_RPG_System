@@ -1420,7 +1420,7 @@ func (s *MatchSession) inheritSeated(seated, r *action.Action) {
 // A combined action sits on both bars and is counted once — the first bar that finds it takes it
 // and the second skips it.
 //
-// Movimentos empilhados (spec 2026-11-06 D6, e a regra do autor do spec na rodada de correção 1):
+// Movimentos empilhados (spec 2026-11-06 D6; a reação gasta um só movimento da pilha):
 //
 //  1. primeiro, em cada barra que a reação cobra, o melhor pendente DESBLOQUEADO (a cabeça da
 //     cadeia, não o empilhado mais rápido);
