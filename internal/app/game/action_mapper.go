@@ -23,14 +23,6 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		return nil, err
 	}
 
-	// actionSpeed is ALWAYS Legerity. Whatever the payload carried is discarded: the
-	// player picks a move type or an attack, never the skill behind its speed.
-	// ActionSpeedPayload.Bar is likewise ignored — which bar an action pays from is derived
-	// from its content by Action.Bars(), never trusted from the client.
-	speed := action.ActionSpeed{
-		RollCheck: action.RollCheck{SkillName: enum.Legerity.String()},
-	}
-
 	feint, err := buildRollCheck(p.Feint)
 	if err != nil {
 		return nil, err
@@ -220,11 +212,20 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 
 	a := action.NewAction(
 		actorCharID, p.TargetID, p.ReactToID,
-		skills, speed,
+		skills, action.ActionSpeed{},
 		feint, move, attack, defense, dodge, nil, interact,
 	)
 	a.Repel = repel
 	a.ReactionKind = kind
+	// actionSpeed is Legerity, and only an action that charges the action bar has one: a pure
+	// move (and a move-only escape) is ordered by its moveSpeed alone. Whatever the payload
+	// carried is discarded: the player picks a move type or an attack, never the skill behind
+	// its speed. ActionSpeedPayload.Bar is likewise ignored — which bar an action pays from is
+	// derived from its content by Action.Bars(), never trusted from the client. This runs after
+	// Repel and ReactionKind are set because Bars() reads both.
+	if a.ChargesActionBar() {
+		a.Speed = action.ActionSpeed{RollCheck: action.RollCheck{SkillName: enum.Legerity.String()}}
+	}
 	return a, nil
 }
 

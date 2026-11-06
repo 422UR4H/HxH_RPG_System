@@ -67,7 +67,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
     `*[3]int`, e `omitempty` funciona normalmente em ponteiro. Ausente = o ator não tinha
     peça no tabuleiro — não "zero não enviado".
 - **O servidor nunca confia no cliente para** qual barra a ação paga (`speed.bar` é
-  descartado), qual perícia mede a velocidade (é sempre Legerity), a perícia de velocidade
+  descartado), qual perícia mede a velocidade (é Legerity, e só numa ação que cobra a barra de ação), a perícia de velocidade
   de um movimento (vem da categoria), **qual perícia mede o acerto de um ataque (é sempre
   `Accuracy`)** ou os dados. **Os dados caem no servidor**, no instante em que a ação é
   aceita, e nunca são rolados de novo.
@@ -193,7 +193,7 @@ porque uma ação plausível carregue todas.
 | `actorId` | **Obrigatório.** UUID da **ficha**, não do jogador. |
 | `targetId` | Lista, apesar do nome no singular. Alvos podem ser personagens **ou paredes** (`wall_segment`). |
 | `skills[].difficulty` | CD proposta pelo cliente. A corrente de testes ainda **não é executada** pelo motor (ver §8). |
-| `speed` | **Descartado.** `bar` é derivado do conteúdo por `Action.Bars()`; a perícia é sempre Legerity. |
+| `speed` | **Descartado.** `bar` é derivado do conteúdo por `Action.Bars()`; a perícia é Legerity, e só numa ação que cobra a barra de ação (`bars` contém `action`). Numa ação que **não** a cobra (movimento puro, `closedEscape`) o `speed` sai **vazio** — `rollCheck.skillName` `""`, sem tentativas, `result` 0 — e a velocidade dela é o `move.speed`. No regime Free a fila abre pela velocidade das barras da ação (a menor das duas numa ação combinada). `edit_action` no campo `speed` de uma ação assim dá `ErrConditionTargetMissing`. |
 | `move.category` | Só **`Dash`** e `Shift` são aceitos. `Back`, `Roll`, `Slide`, `Jump`, `FlatJump` são **recusados** — a fatia de movimento é que vai exercê-los. |
 | `move.from` | **Ignorado** (B6, spec §4.3 "B5, B6 e B10"). O servidor é dono do tabuleiro: a origem que ele checa é a **posição da PRÓPRIA peça do ator**, lida do board no instante do enfileiramento — nunca o que o payload manda aqui. Sem peça no tabuleiro, não há origem e não há checagem nenhuma. |
 | `move.position` | Convenção de coordenada, igual em `move.from`: `[a, b, z]`, com `(a, b) = (col, row)` numa grade quadrada ou `(q, r)` axial numa hexagonal. `z` **não é lido** pelo servidor (ver a nota de `Z` mais abaixo, em `piece_moved`). |
@@ -511,7 +511,7 @@ meio do turno a perde com o turno, de propósito. Nada disso vai ao wire agora.
 `Race`; em `Free` ninguém é marcado e uma marca feita em `Race` é ignorada enquanto o regime for `Free`, voltando a valer se o mestre retornar a `Race` na mesma rodada). Cancelar é trocar de ação: dali em
 diante, na mesma rodada, tudo que ele declarar ([`enqueue_action`](#enqueue_action)) e toda reação
 dele que cobra barra (repelir, os três escapes) deriva a velocidade com Desvantagem
-(`systemBias: -1`, o mesmo campo que a troca de uma reação já grava): o `actionSpeed` sempre, o
+(`systemBias: -1`, o mesmo campo que a troca de uma reação já grava): o `actionSpeed` (quando a ação o tem), o
 `moveSpeed` quando a ação ou a reação move. **Não piora** o acerto, a esquiva, a defesa nem o
 dano. Não acumula: marca e consumo numa mesma reação são uma Desvantagem só; esquiva, esquiva
 fechada e "não fazer nada" não rolam velocidade e seguem sem custo. As ações que ele já tinha na

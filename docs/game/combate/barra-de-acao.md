@@ -57,6 +57,11 @@ castigo — às vezes é a jogada certa. Mas é uma escolha.
 Cada ação que você envia rola a sua própria **velocidade de ação**. É ela que define sua
 posição na fila.
 
+**Um movimento puro não rola velocidade de ação**: ele vale pela sua própria velocidade de
+movimento. Uma ação que ataca, usa uma habilidade, defende ou esquiva rola a velocidade de ação
+normalmente, e uma ação que move e ataca ao mesmo tempo vale pela **menor** das duas. O turno
+livre segue a mesma regra: abre primeiro quem tem a maior velocidade.
+
 **Seu personagem só tem uma velocidade por round.** Se ele agir mais de uma vez, a velocidade
 do round é a **média** de todas as ações que ele fez.
 

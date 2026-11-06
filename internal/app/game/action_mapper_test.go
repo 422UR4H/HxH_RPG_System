@@ -221,6 +221,30 @@ func TestBuildAction_SpeedSkills(t *testing.T) {
 		}
 	})
 
+	t.Run("a pure move carries no actionSpeed skill; a combined action keeps Legerity", func(t *testing.T) {
+		pure, err := buildAction(actor, ActionPayload{
+			ActorID: actor,
+			Move:    &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if pure.Speed.SkillName != "" {
+			t.Errorf("pure move actionSpeed skill = %q, want empty", pure.Speed.SkillName)
+		}
+		comb, err := buildAction(actor, ActionPayload{
+			ActorID: actor,
+			Move:    &MovePayload{Category: string(enum.Dash), Position: [3]int{1, 1, 0}},
+			Attack:  &AttackPayload{},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if comb.Speed.SkillName != enum.Legerity.String() {
+			t.Errorf("combined actionSpeed skill = %q, want Legerity", comb.Speed.SkillName)
+		}
+	})
+
 	t.Run("a Dash rolls Accelerate", func(t *testing.T) {
 		a, err := buildAction(actor, ActionPayload{
 			ActorID: actor,

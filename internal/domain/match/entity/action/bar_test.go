@@ -102,3 +102,37 @@ func TestAction_SpeedOn(t *testing.T) {
 		}
 	})
 }
+
+func TestAction_ChargesActionBar(t *testing.T) {
+	if moveOnly(5).ChargesActionBar() {
+		t.Error("a pure move must not charge the action bar")
+	}
+	if !attackOnly(5).ChargesActionBar() || !combined(5, 5).ChargesActionBar() {
+		t.Error("an attack and a combined action charge the action bar")
+	}
+	closed := moveOnly(5)
+	closed.ReactionKind = action.ReactClosedEscape
+	if closed.ChargesActionBar() {
+		t.Error("a closed escape is move-only")
+	}
+}
+
+func TestAction_OrderSpeed(t *testing.T) {
+	if got := moveOnly(20).OrderSpeed(); got != 20 {
+		t.Errorf("pure move = %d, want its moveSpeed 20", got)
+	}
+	if got := attackOnly(15).OrderSpeed(); got != 15 {
+		t.Errorf("attack = %d, want 15", got)
+	}
+	if got := combined(15, 20).OrderSpeed(); got != 15 {
+		t.Errorf("combined = %d, want the lower, 15", got)
+	}
+	if got := combined(30, 20).OrderSpeed(); got != 20 {
+		t.Errorf("combined = %d, want the lower, 20", got)
+	}
+	none := attackOnly(9)
+	none.ReactionKind = action.ReactNothing
+	if got := none.OrderSpeed(); got != 0 {
+		t.Errorf("no bars = %d, want 0", got)
+	}
+}

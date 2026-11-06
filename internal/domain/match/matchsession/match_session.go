@@ -602,6 +602,10 @@ func resolveRollCheck(a *action.Action, e action.ConditionEdit) (*action.RollChe
 	}
 	switch e.Field {
 	case action.FieldSpeed:
+		// A pure move has no actionSpeed to edit; its speed is the moveSpeed.
+		if !a.ChargesActionBar() {
+			return nil, ErrConditionTargetMissing
+		}
 		return &a.Speed.RollCheck, nil
 	case action.FieldFeint:
 		if a.Feint == nil {
@@ -1757,27 +1761,31 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		againstID = &a.TargetID[0]
 	}
 
-	// actionSpeed: always Legerity. Passive in Free, rolled in Race.
-	//
-	// The duel reserve (repel/parry) lives on this dimension and is read here — it is what
-	// makes the repel ladder produce a duel, two characters facing each other speed up
-	// against each other, without anyone programming duels. The closed dodge's reserve is a
-	// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
-	a.Speed.SkillName = enum.Legerity.String()
-	a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
-	// The system's bias makes a passive reading roll against the base value, like the master's
-	// (readPassiveBias): its dice fall here, the first time that bias asks for them.
-	s.ensureDiceForBias(&a.Speed.RollCheck, systemBias)
-	a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
-		SkillName:  a.Speed.SkillName,
-		SkillValue: a.Speed.SkillValue,
-		Passive:    s.activeRound.GetMode() != enum.Race,
-		Condition:  a.Speed.Context.Condition,
-		Ledger:     ledger,
-		Dimension:  match.DimActionSpeed,
-		SystemBias: systemBias,
-		AgainstID:  againstID,
-	}).Total
+	if a.ChargesActionBar() {
+		// actionSpeed: Legerity, only for an action that charges the action bar. Passive in Free,
+		// rolled in Race. A pure move has none (it is ordered by its moveSpeed).
+		//
+		// The duel reserve (repel/parry) lives on this dimension and is read here — it is what
+		// makes the repel ladder produce a duel, two characters facing each other speed up
+		// against each other, without anyone programming duels. The closed dodge's reserve is a
+		// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
+		a.Speed.SkillName = enum.Legerity.String()
+		a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
+		// The system's bias makes a passive reading roll against the base value, like the master's
+		// (readPassiveBias): its dice fall here, the first time that bias asks for them.
+		s.ensureDiceForBias(&a.Speed.RollCheck, systemBias)
+		a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
+			SkillName:  a.Speed.SkillName,
+			SkillValue: a.Speed.SkillValue,
+			Passive:    s.activeRound.GetMode() != enum.Race,
+			Condition:  a.Speed.Context.Condition,
+			Ledger:     ledger,
+			Dimension:  match.DimActionSpeed,
+			SystemBias: systemBias,
+			AgainstID:  againstID,
+		}).Total
+
+	}
 
 	if a.Move == nil {
 		return
@@ -1840,7 +1848,8 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 
 	// A Free round takes the passive value for actionSpeed — there is no dispute over who
 	// acts first, so there is nothing to roll for.
-	if s.activeRound.GetMode() == enum.Race {
+	// A move that does not charge the action bar has no actionSpeed at all: no dice.
+	if s.activeRound.GetMode() == enum.Race && a.ChargesActionBar() {
 		test(&a.Speed.RollCheck)
 	}
 	test(a.Feint)

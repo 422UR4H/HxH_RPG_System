@@ -30,7 +30,7 @@
 | **Turno** | 1 action + suas reactions | `entity/turn.Turn` |
 | **Round** | sequência de turnos | `entity/round.Round` |
 | **Cena** | sequência de rounds | `entity/scene.Scene` |
-| **Fila** | actions declaradas, ordenadas por actionSpeed; atravessa turnos | `action.PriorityQueue` |
+| **Fila** | actions declaradas, ordenadas pela velocidade das suas barras (Free) ou pelo `RoundScheduler` (Race); atravessa turnos | `action.PriorityQueue` |
 
 `SceneCategory` (`Roleplay`/`Battle`) é organização **narrativa**. `RoundMode`
 (`Free`/`Race`) é **regime de motor**. São eixos independentes: um round `Race` pode ficar
@@ -42,7 +42,7 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
 - **Crítico** = ambos os dados 10. **Erro crítico** = ambos 1. Não é a soma — é a combinação.
   **O motor precisa guardar os dados individuais**, não só o total. `RollContext.Dice` já faz.
 - **Passivo vs. ativo.** Testes passivos usam o **valor médio do conjunto de dados** em vez de
-  rolar: **11** para 2 D10, **10** para D20. Usado em: actionSpeed com `RoundMode == Free`,
+  rolar: **11** para 2 D10, **10** para D20. Usado em: actionSpeed (de quem a tem) com `RoundMode == Free`,
   esquiva por reflexo (`Reflexo + 11`), defesa à mão livre, deslocamento Shift.
   > O passivo ser exatamente a média é intencional: rolar tem expectativa **zero** de ganho,
   > então o jogador só arrisca quando precisa de sorte acima da média.
@@ -63,6 +63,18 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
 
 Cada personagem tem **duas barras independentes**: `actionSpeed` (ataque, item, habilidade) e
 `moveSpeed` (shift, dash, salto, rolamento).
+
+**Um movimento puro não tem `actionSpeed`** (2026-11-06, D1): só rola/deriva `Speed` (Legerity) a
+action que cobra a barra de ação (`Action.ChargesActionBar()` — `Bars()` contém `action`): ataque,
+interação, finta, habilidade, defesa, esquiva, repelir ou movimento+ataque. Um movimento puro e um
+escape só de movimento (`closedEscape`) carregam `speed.rollCheck` vazio (sem perícia, sem dado,
+resultado 0); o mapper não carimba Legerity neles, `rollActionDice` não rola e `deriveSpeeds` não
+deriva. Editar a condição `speed` de uma action assim dá `ErrConditionTargetMissing`. A reserva do
+duelo (repelir/aparar) é lida na derivação do `actionSpeed` e simplesmente não se aplica.
+
+**Free ordena pela mesma velocidade do combate** (D2): `Action.OrderSpeed()` = menor `SpeedOn(bar)`
+sobre `Bars()` (0 sem barras) — o mesmo critério de `reactionKey`. `PriorityQueue.ExtractMax` usa
+essa chave; empate, quem entrou primeiro.
 
 ### A chave de prioridade
 
@@ -1331,7 +1343,7 @@ jogador só enxerga o que o mestre já abriu.
 **quantos dados caem depende do regime do round e da categoria de movimento**, não é "tudo,
 sempre":
 
-- **`Speed` (actionSpeed) só rola em `Race`.** Em `Free` ela é passiva — não há disputa sobre
+- **`Speed` (actionSpeed) só rola em `Race`, e só numa action que cobra a barra de ação.** Em `Free` ela é passiva — não há disputa sobre
   quem age primeiro, então não há o que rolar — e nenhum dado cai para ela
   (`match_session.go:590-594`). Um teste em `Free` que reserva uma face para a velocidade
   sorteia uma a mais do que o código consome, e todo número depois dela sai deslocado.

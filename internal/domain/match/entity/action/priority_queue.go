@@ -44,7 +44,7 @@ func (aq *PriorityQueue) All() []*Action {
 	return out
 }
 
-// ExtractMax removes and returns the action with the highest Speed.Result.
+// ExtractMax removes and returns the action with the highest OrderSpeed.
 //
 // This is the FREE-round path, where there is no price, no average and no carry-over, so the
 // rolled speed IS the order. A Race round goes through service.RoundScheduler instead, which
@@ -57,7 +57,7 @@ func (aq *PriorityQueue) ExtractMax() *Action {
 	return aq.removeAt(idx)
 }
 
-// Peek returns the action with the highest Speed.Result without removing it.
+// Peek returns the action with the highest OrderSpeed without removing it.
 func (aq *PriorityQueue) Peek() *Action {
 	idx := aq.indexOfMax()
 	if idx < 0 {
@@ -76,12 +76,12 @@ func (aq *PriorityQueue) ExtractByID(id uuid.UUID) *Action {
 	return nil
 }
 
-// indexOfMax returns the index of the highest Speed.Result, or -1 on an empty queue. Ties go
+// indexOfMax returns the index of the highest OrderSpeed, or -1 on an empty queue. Ties go
 // to the earliest insertion.
 func (aq *PriorityQueue) indexOfMax() int {
 	best := -1
 	for i, act := range *aq {
-		if best == -1 || act.Speed.Result > (*aq)[best].Speed.Result {
+		if best == -1 || act.OrderSpeed() > (*aq)[best].OrderSpeed() {
 			best = i
 		}
 	}
