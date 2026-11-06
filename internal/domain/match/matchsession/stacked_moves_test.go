@@ -328,3 +328,121 @@ func TestStackedMoves_AReactionSpendsTheHead(t *testing.T) {
 		}
 	})
 }
+
+// Rodada de correção 1 (regra do autor do spec): a reação escolhe primeiro o melhor desbloqueado
+// em cada barra que cobra; só depois cai no fallback nas barras vazias, e o fallback nunca pega o
+// que está empilhado (direta ou transitivamente) num consumido pela mesma reação — esses seguem só a
+// regra do D6. Um sobrevivente nunca entra numa cascata.
+func TestStackedMoves_AReactionNeverSpendsTheChainThroughTheFallback(t *testing.T) {
+	sword := enum.Sword
+	pureTo := func(actor uuid.UUID, col, row int) *action.Action {
+		return action.NewAction(actor, nil, uuid.Nil, nil, action.ActionSpeed{},
+			nil, &action.Move{Category: enum.Dash, Position: [3]int{col, row, 0}}, nil, nil, nil, nil, nil)
+	}
+	combinedTo := func(actor uuid.UUID, col, row int) *action.Action {
+		a := pureTo(actor, col, row)
+		a.Attack = &action.Attack{Weapon: &sword}
+		a.TargetID = []uuid.UUID{uuid.New()}
+		return a
+	}
+	// swapSetup enfileira a cabeça H: um Dash puro para (2,2).
+	chainOf := func(t *testing.T, tail ...func(uuid.UUID) *action.Action) (*matchsession.MatchSession, uuid.UUID, uuid.UUID, uuid.UUID, []*action.Action) {
+		t.Helper()
+		s, playerB, b, actID := swapSetup(t, dashAction)
+		pending := s.PendingActions()
+		chain := []*action.Action{pending[len(pending)-1]}
+		for _, build := range tail {
+			chain = append(chain, mustEnqueue(t, s, playerB, build(b)))
+		}
+		for i := 1; i < len(chain); i++ {
+			if chain[i].Move.StackedOn != chain[i-1].GetID() {
+				t.Fatalf("setup: chain[%d] not stacked on chain[%d]", i, i-1)
+			}
+		}
+		return s, playerB, b, actID, chain
+	}
+
+	t.Run("case A, escape to the head's destination: only the head, the combined one survives as the head", func(t *testing.T) {
+		s, playerB, b, actID, chain := chainOf(t, func(b uuid.UUID) *action.Action { return combinedTo(b, 3, 3) })
+		h, sc := chain[0], chain[1]
+		r := escapeTo(b, actID, 2, 2)
+		_, cancelled, err := s.AttachReactionWithCancels(playerB, r)
+		if err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if !slices.Equal(r.ConsumedActionIDs, []uuid.UUID{h.GetID()}) {
+			t.Errorf("ConsumedActionIDs = %v, want only the head %v (the fallback must not take the combined one)", r.ConsumedActionIDs, h.GetID())
+		}
+		if len(cancelled) != 0 || sc.Move.StackedOn != uuid.Nil || !slices.Contains(pendingIDsOf(s), sc.GetID()) {
+			t.Errorf("the combined move must survive as the head (cancelled %v, StackedOn %v)", idsOf(cancelled), sc.Move.StackedOn)
+		}
+		// Só a regra de hoje: fugir para onde o movimento puro consumido ia não é troca.
+		if r.SystemBias != 0 {
+			t.Errorf("SystemBias = %d, want 0 — the only consumed action is the queued move to the same square", r.SystemBias)
+		}
+	})
+
+	t.Run("case A, escape elsewhere: the head consumed, the combined one cancelled", func(t *testing.T) {
+		s, playerB, b, actID, chain := chainOf(t, func(b uuid.UUID) *action.Action { return combinedTo(b, 3, 3) })
+		h, sc := chain[0], chain[1]
+		r := escapeTo(b, actID, 5, 5)
+		_, cancelled, err := s.AttachReactionWithCancels(playerB, r)
+		if err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if !slices.Equal(r.ConsumedActionIDs, []uuid.UUID{h.GetID()}) {
+			t.Errorf("ConsumedActionIDs = %v, want only the head", r.ConsumedActionIDs)
+		}
+		if !slices.Equal(idsOf(cancelled), []uuid.UUID{sc.GetID()}) {
+			t.Errorf("cancelled = %v, want the combined move", idsOf(cancelled))
+		}
+	})
+
+	t.Run("case B, escape to the combined one's destination: the head consumed, the rest of the chain cancelled", func(t *testing.T) {
+		// H (2,2) → S1 combinado (3,3) → S2 (4,4). A fuga vai a (3,3): a reação gasta H (a única
+		// desbloqueada) e não vai para onde H ia, então S1 e S2 caem — S1 não pode ser consumido
+		// pelo fallback, porque está empilhado em H, consumido por esta mesma reação.
+		s, playerB, b, actID, chain := chainOf(t,
+			func(b uuid.UUID) *action.Action { return combinedTo(b, 3, 3) },
+			func(b uuid.UUID) *action.Action { return pureTo(b, 4, 4) })
+		r := escapeTo(b, actID, 3, 3)
+		_, cancelled, err := s.AttachReactionWithCancels(playerB, r)
+		if err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if !slices.Equal(r.ConsumedActionIDs, []uuid.UUID{chain[0].GetID()}) {
+			t.Errorf("ConsumedActionIDs = %v, want only the head", r.ConsumedActionIDs)
+		}
+		if !slices.Equal(idsOf(cancelled), idsOf(chain[1:])) {
+			t.Errorf("cancelled = %v, want %v (each cancelled once)", idsOf(cancelled), idsOf(chain[1:]))
+		}
+		if len(s.PendingActions()) != 0 {
+			t.Errorf("pending = %v, want nothing of the chain left", pendingIDsOf(s))
+		}
+	})
+
+	t.Run("a repel still falls back to a blocked combined move whose head it did not consume", func(t *testing.T) {
+		// H (2,2) → S combinado (3,3) → S2 (4,4). O repelir só cobra a barra de ação: lá não há
+		// desbloqueado, H não é consumido por ele, então o fallback consome S; S2, empilhado em S,
+		// segue o D6 — o repelir não tem destino, então cai. H fica.
+		s, playerB, b, actID, chain := chainOf(t,
+			func(b uuid.UUID) *action.Action { return combinedTo(b, 3, 3) },
+			func(b uuid.UUID) *action.Action { return pureTo(b, 4, 4) })
+		r := action.NewAction(b, nil, actID, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		r.Repel = &action.Repel{}
+		r.ReactionKind = action.ReactRepel
+		_, cancelled, err := s.AttachReactionWithCancels(playerB, r)
+		if err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		if !slices.Equal(r.ConsumedActionIDs, []uuid.UUID{chain[1].GetID()}) {
+			t.Errorf("ConsumedActionIDs = %v, want the combined move %v", r.ConsumedActionIDs, chain[1].GetID())
+		}
+		if !slices.Equal(idsOf(cancelled), []uuid.UUID{chain[2].GetID()}) {
+			t.Errorf("cancelled = %v, want the move stacked on the combined one", idsOf(cancelled))
+		}
+		if got := pendingIDsOf(s); !slices.Equal(got, []uuid.UUID{chain[0].GetID()}) {
+			t.Errorf("pending = %v, want only the head", got)
+		}
+	})
+}

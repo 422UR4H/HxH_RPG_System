@@ -1417,32 +1417,66 @@ func (s *MatchSession) inheritSeated(seated, r *action.Action) {
 // reaction charges, and returns what it took — in the order of ReactionKind.Bars(), nil when
 // nothing was there.
 //
-// A combined action sits on both bars and is counted once — it leaves on the first bar that
-// finds it and is simply not there for the second.
+// A combined action sits on both bars and is counted once — the first bar that finds it takes it
+// and the second skips it.
 //
-// Movimentos empilhados (spec 2026-11-06 D6): o consumido é o primeiro da cadeia (BestPendingFor
-// pula os bloqueados). Os empilhados nele sobrevivem quando a reação vai para onde ele ia
-// (samePlace, o teste de sameMoveAsQueued) — o primeiro deles passa a apontar para o StackedOn do
-// consumido, quase sempre uuid.Nil, e vira a cabeça; senão saem pela cascata do D5 e voltam no
-// terceiro retorno, em ordem de cadeia. Os que sobrevivem não são candidatos para a outra barra
-// desta mesma reação: ela gasta UM movimento da cadeia, não a cadeia.
+// Movimentos empilhados (spec 2026-11-06 D6, e a regra do autor do spec na rodada de correção 1):
+//
+//  1. primeiro, em cada barra que a reação cobra, o melhor pendente DESBLOQUEADO (a cabeça da
+//     cadeia, não o empilhado mais rápido);
+//  2. só então, nas barras que ficaram vazias, o fallback — qualquer pendente na barra —, que
+//     nunca pega o que está empilhado (direta ou transitivamente) num consumido por esta mesma
+//     reação: esses seguem só a regra abaixo. Um bloqueado cujo anterior NÃO foi consumido por ela
+//     continua valendo (um repelir sobre um combinado empilhado num movimento puro o consome);
+//  3. por fim, cada consumido com empilhados: se a reação vai para onde ele ia (samePlace, o teste
+//     de sameMoveAsQueued), o primeiro deles passa a apontar para o StackedOn do consumido —
+//     quase sempre uuid.Nil — e vira a cabeça; senão eles saem pela cascata do D5 e voltam no
+//     terceiro retorno, em ordem de cadeia. Um sobrevivente nunca entra numa cascata.
+//
+// A reação gasta UM movimento da cadeia: tudo é escolhido antes de qualquer coisa sair da fila,
+// então um sobrevivente nunca vira candidato da outra barra da mesma reação.
 func (s *MatchSession) consumePendingFor(r *action.Action) ([]uuid.UUID, []*action.Action, []*action.Action) {
+	in := s.scheduleInput()
+	bars := r.ReactionKind.Bars()
+	picks := make([]*action.Action, len(bars))
+	chosen := map[uuid.UUID]bool{}
+	// downstream: o que está empilhado num já escolhido — fora do fallback (regra 2).
+	downstream := map[uuid.UUID]bool{}
+	choose := func(i int, a *action.Action) {
+		picks[i] = a
+		chosen[a.GetID()] = true
+		for _, d := range s.stackedAfter(a) {
+			downstream[d.GetID()] = true
+		}
+	}
+	skipChosen := func(a *action.Action) bool { return chosen[a.GetID()] }
+	for i, bar := range bars {
+		if a := s.scheduler.BestPendingWhere(in, r.GetActorID(), bar, true, skipChosen); a != nil {
+			choose(i, a)
+		}
+	}
+	skipChain := func(a *action.Action) bool { return chosen[a.GetID()] || downstream[a.GetID()] }
+	for i, bar := range bars {
+		if picks[i] != nil {
+			continue
+		}
+		if a := s.scheduler.BestPendingWhere(in, r.GetActorID(), bar, false, skipChain); a != nil {
+			choose(i, a)
+		}
+	}
+
 	var ids []uuid.UUID
 	var victims, cancelled []*action.Action
 	spared := map[uuid.UUID]bool{}
-	for _, bar := range r.ReactionKind.Bars() {
-		in := s.scheduleInput()
-		if len(spared) > 0 {
-			kept := slices.DeleteFunc(s.activeQueue.All(), func(a *action.Action) bool { return spared[a.GetID()] })
-			q := action.NewActionPriorityQueue(&kept)
-			in.Queue = &q
-		}
-		victim := s.scheduler.BestPendingFor(in, r.GetActorID(), bar)
+	for _, victim := range picks {
 		if victim == nil {
 			continue
 		}
-		// O que está empilhado nele é lido antes de ele sair da fila.
-		stacked := s.stackedAfter(victim)
+		// O que está empilhado nele é lido antes de ele sair da fila; sobrevivente ou consumido
+		// por esta reação nunca entra na cascata (regra 4).
+		stacked := slices.DeleteFunc(s.stackedAfter(victim), func(a *action.Action) bool {
+			return spared[a.GetID()] || chosen[a.GetID()]
+		})
 		// The reaction took its place: whatever the master edited on it goes with it.
 		s.dropFromQueue(victim)
 		ids = append(ids, victim.GetID())

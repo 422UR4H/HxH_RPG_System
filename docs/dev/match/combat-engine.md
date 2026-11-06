@@ -69,9 +69,10 @@ action que cobra a barra de ação (`Action.ChargesActionBar()` — `Bars()` con
 interação, finta, habilidade, repelir ou movimento+ataque — e defesa/esquiva quando **declaradas
 como ação** na fila. Uma reação de esquiva (`dodge`, `closedDodge`) ou a reação padrão (`default`)
 tem `Bars()` vazio e não carrega Legerity. Um movimento puro e um escape só de movimento
-(`closedEscape`) carregam `speed.rollCheck` vazio (sem perícia, sem dado, resultado 0); o mapper não carimba Legerity neles, `rollActionDice` não rola e `deriveSpeeds` não
-deriva. Editar a condição `speed` de uma action assim dá `ErrConditionTargetMissing`. A reserva do
-duelo (repelir/aparar) é lida na derivação do `actionSpeed` e simplesmente não se aplica.
+(`closedEscape`) carregam `speed.rollCheck` vazio (sem perícia, sem dado, resultado 0); o mapper
+não carimba Legerity neles, `rollActionDice` não rola e `deriveSpeeds` não deriva. Editar a
+condição `speed` de uma action assim dá `ErrConditionTargetMissing`. A reserva do duelo
+(repelir/aparar) é lida na derivação do `actionSpeed` e simplesmente não se aplica.
 
 **Free ordena pela mesma velocidade do combate** (D2): `Action.OrderSpeed()` = menor `SpeedOn(bar)`
 sobre `Bars()` (0 sem barras) — o mesmo critério de `reactionKey`. `PriorityQueue.ExtractMax` usa
@@ -407,12 +408,18 @@ movimento na fila; o segundo **parte de onde o primeiro termina** e **nunca acon
   da troca é uma só. A Room grava uma linha de `cancelled_actions` e manda um `action_cancelled` por
   action (`holdCancelledActionsLocked`/`announceCancelled`), depois um `bars_updated`.
 - **Reação (D6).** `BestPendingFor` só considera os desbloqueados (fallback: qualquer pendente na
-  barra). Em `consumePendingFor`, consumida uma action com dependentes: se a reação vai para o mesmo
-  `Position` (`samePlace`, o teste de `sameMoveAsQueued`), o primeiro dependente passa a apontar para
-  o `StackedOn` do consumido e os dependentes ficam fora dos candidatos da outra barra da mesma
-  reação (ela gasta um movimento da cadeia); senão os dependentes caem pela cascata do D5 e voltam
-  em `AttachReactionWithCancels` — a Room grava e anuncia como no cancelamento (`cancelledBy` = quem
-  reagiu). A cascata não marca a Desvantagem de troca.
+  barra). `consumePendingFor` escolhe tudo antes de tirar qualquer coisa da fila, em duas passadas
+  de `RoundScheduler.BestPendingWhere` (bloqueado sempre medido contra a fila inteira): primeiro o
+  melhor desbloqueado em cada barra que a reação cobra; depois, só nas barras vazias, o fallback,
+  que pula o que está empilhado (transitivamente) num já escolhido por ela — um bloqueado cujo
+  anterior ela não consumiu ainda vale (repelir sobre puro → combinado consome o combinado). Então,
+  para cada consumido com dependentes: se a reação vai para o mesmo `Position` (`samePlace`, o
+  teste de `sameMoveAsQueued`), o primeiro dependente passa a apontar para o `StackedOn` do
+  consumido e todos ficam poupados; senão caem pela cascata do D5 (nunca um poupado nem um
+  consumido) e voltam em `AttachReactionWithCancels` — a Room grava e anuncia como no cancelamento
+  (`cancelledBy` = quem reagiu). A reação gasta um movimento da cadeia; a cascata não marca a
+  Desvantagem de troca. O re-apontamento não é anunciado: o cliente lê um `stackedOn` cujo alvo
+  não está pendente como "não empilhado".
 - **Wire.** `move.stackedOn` (actionwire, omitempty) chega ao mestre e ao dono; `ProjectAction` o tira
   de terceiros. Gravado com a action (`actioncodec`, chave `stackedOn`, `omitzero`).
 - **Limite conhecido.** Se a peça anda por outro motivo (arrasto do mestre, fuga que falhou), o

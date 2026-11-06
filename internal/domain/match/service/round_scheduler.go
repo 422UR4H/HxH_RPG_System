@@ -297,15 +297,22 @@ func (rs RoundScheduler) BestPendingFor(in ScheduleInput, actorID uuid.UUID, bar
 	if in.Queue == nil {
 		return nil
 	}
-	pending := in.Queue.All()
-	if best := rs.bestPendingFor(in, pending, actorID, bar, true); best != nil {
+	if best := rs.BestPendingWhere(in, actorID, bar, true, nil); best != nil {
 		return best
 	}
-	return rs.bestPendingFor(in, pending, actorID, bar, false)
+	return rs.BestPendingWhere(in, actorID, bar, false, nil)
 }
 
-// bestPendingFor é a passada de BestPendingFor; unblockedOnly pula os bloqueados.
-func (rs RoundScheduler) bestPendingFor(in ScheduleInput, pending []*action.Action, actorID uuid.UUID, bar action.Bar, unblockedOnly bool) *action.Action {
+// BestPendingWhere é uma passada de BestPendingFor: o pendente de melhor chave do personagem na
+// barra, pulando os bloqueados quando unblockedOnly e o que skip recusar (nil = nada). Bloqueado é
+// sempre medido contra a fila inteira de in.Queue — tirar um candidato da conta nunca desbloqueia
+// quem está empilhado nele. MatchSession.consumePendingFor usa as duas passadas separadas para que
+// uma reação de duas barras escolha os desbloqueados de todas antes de cair no fallback.
+func (rs RoundScheduler) BestPendingWhere(in ScheduleInput, actorID uuid.UUID, bar action.Bar, unblockedOnly bool, skip func(*action.Action) bool) *action.Action {
+	if in.Queue == nil {
+		return nil
+	}
+	pending := in.Queue.All()
 	var best *action.Action
 	bestKey := math.Inf(-1)
 	for _, a := range pending {
@@ -313,6 +320,9 @@ func (rs RoundScheduler) bestPendingFor(in ScheduleInput, pending []*action.Acti
 			continue
 		}
 		if unblockedOnly && a.IsBlockedIn(pending) {
+			continue
+		}
+		if skip != nil && skip(a) {
 			continue
 		}
 		// The gate (ok) is deliberately ignored — an action that could not have opened this

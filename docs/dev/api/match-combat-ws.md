@@ -229,6 +229,11 @@ porque uma ação plausível carregue todas.
   [`attach_reaction`](#attach_reaction).
 - `move.from` de um empilhado é a origem **declarada** da cadeia: se a peça andar por outro motivo
   (arrasto do mestre, fuga que falhou) ele não acompanha. Os destinos são absolutos, como sempre.
+- **`stackedOn` pode ficar velho no cliente.** Nenhuma mensagem avisa quando o anterior sai da fila
+  (abriu, foi consumido, ou a reação o re-apontou — D6): `action_queued`/`ownQueue` já entregues
+  guardam o `stackedOn` de quando chegaram. **Um `stackedOn` cujo alvo não está mais pendente vale
+  "não empilhado"** — o movimento é a cabeça da cadeia. O cliente decide pela fila que tem, não pelo
+  campo sozinho; não há evento novo para isso.
 
 **Como o acerto é montado.** A perícia é `Accuracy`, sempre, e a arma entra pela
 **proficiência**: o acerto soma o `proficiencyLevel` que o personagem tem **com a arma que
@@ -288,9 +293,14 @@ em geral, nada (a ação pendente é segredo do mestre).
 | `invalid_action` | Erro do mapper: perícia desconhecida, arma desconhecida, `move category "X" is not supported yet`. |
 | `invalid_action` | `interact kind "X" is not a character action` — `lock`, `unlock`, `reveal` ou um valor desconhecido. |
 | `match_not_started` | `"match session not initialized"` — sessão ainda não existe. |
-| `move_blocked` | `"movement blocked by a wall"` — o caminho em linha reta entre os **centros** da casa da peça e de `move.position`, medido no espaço **local** da grade (o das paredes), cruza uma parede com `move` e fechada. |
+| `move_blocked` | `"movement blocked by a wall"` — o caminho em linha reta entre os **centros** da casa da peça (num [movimento empilhado](#movimentos-empilhados), do destino do anterior da cadeia) e de `move.position`, medido no espaço **local** da grade (o das paredes), cruza uma parede com `move` e fechada. |
 | `out_of_reach` | `"wall <id> is out of reach: the actor must stand next to it"` · `"the actor has no piece on the board to reach the wall from"` — `interact` numa parede que a casa final do ator não toca (ver acima). |
 | `game_error` | `participant not found in match session` · `action actor does not match player`. |
+
+A tabela está na ordem em que as checagens rodam: o primeiro erro encontrado é o que volta. Desde
+2026-11-06 o `interact kind` recusado (`invalid_action`) vem **antes** do `move_blocked`; parede e
+alcance (`move_blocked` → `out_of_reach`) são checados juntos com o enfileiramento, na mesma seção
+crítica, e só então a posse (`game_error`).
 
 ### `attach_reaction`
 
@@ -404,15 +414,24 @@ barras, sai uma vez só. Os IDs consumidos vão ao dono e ao mestre em
 
 **A reação gasta o primeiro movimento da cadeia** (2026-11-06, D6). Um
 [movimento empilhado](#movimentos-empilhados) num que ainda está na fila não é candidato: a
-reação consome a cabeça da cadeia, mesmo que o empilhado tenha chave melhor (só quando a barra
-não tem candidato nenhum desbloqueado vale qualquer pendente nela, como antes). Depois de
-consumir uma ação que tem movimentos empilhados:
+reação consome a cabeça da cadeia, mesmo que o empilhado tenha chave melhor. A escolha é feita
+**inteira antes** de qualquer coisa sair da fila:
+
+1. em cada barra que a reação cobra, o melhor pendente **desbloqueado**;
+2. só nas barras que ficaram vazias, o fallback de sempre (qualquer pendente na barra) — que
+   **nunca** pega um movimento empilhado, direta ou transitivamente, numa ação consumida por esta
+   mesma reação. Um bloqueado cujo anterior a reação **não** consumiu ainda vale: um `repel` (só
+   barra de ação) sobre uma cadeia movimento puro → movimento+ataque consome o combinado, e o que
+   estiver empilhado nele segue a regra abaixo; o movimento puro fica.
+
+Depois de consumir uma ação que tem movimentos empilhados:
 
 - se a reação **vai para onde o consumido ia** (`move.position` igual por (col, row) — o teste de
   `sameMoveAsQueued`), os empilhados **sobrevivem**: o primeiro deles passa a apontar para o
   `stackedOn` do consumido (quase sempre nenhum — ele vira a cabeça). E a reação gasta **um**
   movimento da cadeia: um escape, que cobra as duas barras, não consome também o empilhado que
-  sobreviveu;
+  sobreviveu, nem um combinado empilhado na cabeça pela barra de ação. Um sobrevivente nunca é
+  cancelado;
 - senão os empilhados são **cancelados**, pelo caminho do [`cancel_action`](#cancel_action):
   saem da fila, perdem as edições, são gravados em `cancelled_actions` (`cancelledBy` = quem
   reagiu; com o turno aberto, gravados no fechamento dele) e cada um ganha o seu
