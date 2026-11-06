@@ -1332,10 +1332,13 @@ e em 9. Cada número segue as regras — o teste `TestRoundScheduler_ContractBar
 - **Preço provisório 9:** a menor velocidade na fila, **a adiada inclusa**.
 - **`2222…`:** a de 15 é a primeira dela — portão `0 + 15 = 15 ≥ 9`, chave `15`. A de 9 é a
   segunda, e o portão dela é o que a primeira deixa: `15 − 9 = 6 < 9` → **adiada**.
-  Saldo ao vivo `0 + 15 − 1 × 9 = 6`.
+  Saldo ao vivo `0 + 15 − 1 × 9 = 6` (a adiada não conta).
 - **`1111…`:** portão `−1,5 + 11 = 9,5 ≥ 9` → pendente, chave `9,5` (a chave de uma primeira ação
   é `carry + velocidade`). Saldo ao vivo `−1,5 + 11 − 1 × 9 = 0,5`.
 - **Ordem:** `2222…` (15), depois `1111…` (9,5).
+- **Só a próxima pendente conta no saldo.** Se `2222…` tivesse duas pendentes que cabem, `[15, 14]`
+  (preço 11), o saldo seria `0 + 15 − 1 × 11 = 4`, com a de 15 apenas; a de 14 só pesa quando
+  for a próxima (depois que a de 15 abrir, ela passa a `acted`).
 
 ```json
 {
@@ -1431,7 +1434,7 @@ Na prática o jogador nem receberia este exemplo: a visão dele não mudou com e
 |---|---|---|
 | `characterId` | sim | sim |
 | `actionCarry` / `moveCarry` | sim | sim |
-| `actionBalance` / `moveBalance` | saldo vivo com as velocidades abertas **e as pendentes que abrem nesta rodada** | saldo vivo só com as velocidades **públicas** |
+| `actionBalance` / `moveBalance` | saldo vivo com as velocidades abertas **e só a próxima pendente** (a primeira da ordem projetada) | saldo vivo só com as velocidades **públicas** |
 | `actionSpeeds` / `moveSpeeds` | todas as que agiram, em ordem | só as públicas, em ordem |
 | `pendingActionSpeeds` / `pendingMoveSpeeds` | na fila e abrem nesta rodada, na ordem projetada | **omitido** |
 | `deferredActionSpeeds` / `deferredMoveSpeeds` | na fila e não cabem nesta rodada | **omitido** |
@@ -1443,7 +1446,10 @@ Na prática o jogador nem receberia este exemplo: a visão dele não mudou com e
   n × preço`, recalculado a cada alteração. O carry está nos campos novos. Sem preço naquela
   barra (nem congelado, nem provisório para o mestre), o saldo ao vivo é o próprio carry. Ex.:
   um personagem sozinho com 23 e preço 11 → `+12`; com a segunda ação em 17 → `−2`. O teto só
-  vale no fechamento da rodada, não aqui. Fracionário.
+  vale no fechamento da rodada, não aqui. Fracionário. Para o **mestre**, o saldo é o da barra
+  depois que a PRÓXIMA ação pagar: `acted ++ pending[0]`, nunca todas as pendentes (as de trás
+  só entram quando forem a próxima). No exemplo acima, `[23, 17]` pendentes e preço 11 dão
+  `+12`, não `−2`. O jogador não tem pendentes: o dele segue só com as públicas.
 - `actionSpeeds` / `moveSpeeds`: velocidades que **já agiram**. Uma ação combinada aparece nas
   listas das **duas** barras. Nunca `null` (`[]` vazio).
 - `pending*` / `deferred*`: **só do mestre.** São `omitempty` — **ausentes quando vazios**,

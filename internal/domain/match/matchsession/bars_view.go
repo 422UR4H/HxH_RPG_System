@@ -1,6 +1,7 @@
 package matchsession
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -11,8 +12,10 @@ import (
 // BarView is one character's one bar as a given recipient may see it.
 type BarView struct {
 	Carry float64
-	// Balance is live, with no ceiling: BarEconomy.Balance(carry, acted ++ pending, price).
-	// It is just Carry when there is no price to charge against.
+	// Balance is live, with no ceiling: BarEconomy.Balance(carry, acted ++ pending[:1], price).
+	// Only the NEXT pending action counts (the first in projected order): what the bar will
+	// read once it opens. The ones behind it weigh nothing until they are the next. A player
+	// has no pending, so theirs is acted only. It is just Carry when there is no price.
 	Balance float64
 	// Acted is every speed for the master, only the public ones for a player.
 	Acted []int
@@ -79,7 +82,10 @@ func (s *MatchSession) BarsView(isMaster bool) BarsView {
 				price, hasPrice = provisional[bar]
 			}
 			if hasPrice {
-				counted := append(append([]int{}, bv.Acted...), bv.Pending...)
+				counted := slices.Clone(bv.Acted)
+				if len(bv.Pending) > 0 {
+					counted = append(counted, bv.Pending[0])
+				}
 				bv.Balance = service.BarEconomy{}.Balance(carry, counted, price)
 			}
 		}

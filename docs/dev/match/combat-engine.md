@@ -161,7 +161,8 @@ chegar (F5 do spec `2026-11-04-live-bars`). `OpenNextAction` e `PullAction` calc
 
 `BarEconomy.Balance(carry, velocidades, preço)` é o saldo sem teto: `carry + média − n × preço`;
 sem preço (nem congelado, nem provisório) é o próprio carry. O teto só vale em `CloseBalance`.
-No wire, `actionBalance`/`moveBalance` é esse saldo ao vivo; o carry vai em
+No wire, `actionBalance`/`moveBalance` é esse saldo ao vivo (para o mestre, as velocidades
+contadas são as que agiram **mais só a próxima pendente**; para o jogador, só as públicas); o carry vai em
 `actionCarry`/`moveCarry`.
 
 > Decisão do dono do produto, pela simplicidade: *"uma action que chegue depois com valor

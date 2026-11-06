@@ -182,7 +182,8 @@ sistema não volta atrás para reordenar o que já foi jogado.
 **O mestre** vê cada ação assim que ela é enviada — as dos jogadores e as dos NPCs dele — com a
 velocidade de cada uma, a ordem em que vão acontecer e o que fica para o próximo round. Antes de
 a primeira ação do round ser aberta, ele já vê o **preço provisório**: a menor velocidade
-pendente, que é exatamente o preço que vai valer.
+pendente, que é exatamente o preço que vai valer. O saldo que ele vê em cada barra já considera
+só a **próxima** ação a abrir; as que vêm depois só pesam quando chegar a vez delas.
 
 **O jogador** vê, no que mandou, só o card da própria ação — **sem número**. Ninguém vê as ações
 dos outros, e nem o jogador vê a velocidade que rolou, até o mestre **abrir** aquela ação.

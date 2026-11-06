@@ -7,6 +7,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/google/uuid"
 )
 
@@ -53,14 +54,33 @@ func TestMatchSession_BarsView(t *testing.T) {
 			t.Errorf("Order has %d slots, want 4", len(v.Order))
 		}
 		c2 := charView(t, v, p2)
-		if !slices.Equal(c2.Action.Pending, []int{23, 17}) || c2.Action.Balance != -2 {
-			t.Errorf("p2 = %+v, want Pending [23 17], Balance -2", c2.Action)
+		// Only the next pending (23) counts: 0 + 23 - 1*11 = 12. The 17 behind it does not
+		// weigh on the bar until it is the next one.
+		if !slices.Equal(c2.Action.Pending, []int{23, 17}) || c2.Action.Balance != 12 {
+			t.Errorf("p2 = %+v, want Pending [23 17], Balance 12", c2.Action)
 		}
 		if b := charView(t, v, p1).Action.Balance; b != 9 {
 			t.Errorf("p1 Balance = %v, want 9", b)
 		}
 		if b := charView(t, v, p3).Action.Balance; b != 0 {
 			t.Errorf("p3 Balance = %v, want 0", b)
+		}
+	})
+
+	t.Run("master balance counts acted plus only the next pending", func(t *testing.T) {
+		s, _, p2, _ := canonicalBars(t)
+		v := s.BarsView(true)
+		c := charView(t, v, p2).Action
+		want := service.BarEconomy{}.Balance(c.Carry, append(slices.Clone(c.Acted), c.Pending[:1]...), v.Provisional[action.BarAction])
+		if len(c.Pending) != 2 || c.Balance != want {
+			t.Errorf("Balance = %v (pending %v), want %v", c.Balance, c.Pending, want)
+		}
+		mustOpen(t, s)
+		// after opening 23: acted [23] ++ next pending [17] = -2
+		c = charView(t, s.BarsView(true), p2).Action
+		want = service.BarEconomy{}.Balance(c.Carry, append(slices.Clone(c.Acted), c.Pending[:1]...), 11)
+		if c.Balance != want {
+			t.Errorf("after open Balance = %v, want %v", c.Balance, want)
 		}
 	})
 
