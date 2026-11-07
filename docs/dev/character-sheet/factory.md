@@ -130,7 +130,7 @@ Os 13 coeficientes definem a velocidade de progressão de cada componente via
 | Constante | Valor | Anterior | ExpTable alimenta |
 |-----------|-------|----------|-------------------|
 | `PHYSICAL_ATTRIBUTE_COEFF` | `5.0` | — | Atributos físicos (Res, Agi, Flx, Sen + intermediários) |
-| `MENTAL_ATTRIBUTE_COEFF` | `1.0` | `3.0` | Atributos mentais (Resilience, Adaptability, Weighting, Creativity) |
+| `MENTAL_ATTRIBUTE_COEFF` | `1.0` | `3.0` | Atributos mentais (Resilience, Adaptability, Judgment, Creativity) |
 | `SPIRITUAL_ATTRIBUTE_COEFF` | `1.0` | — | Atributos espirituais (Flame, Conscience) |
 
 **Perícias:**
@@ -198,7 +198,7 @@ Resistance ──→ Agility ──→ Flexibility ──→ Sense ──→ (vo
 
 ### Atributos mentais — sem intermediários (por enquanto)
 
-`BuildMentalAttrs` cria apenas 4 primários (Resilience, Adaptability, Weighting,
+`BuildMentalAttrs` cria apenas 4 primários (Resilience, Adaptability, Judgment,
 Creativity) sem intermediários:
 
 ```go

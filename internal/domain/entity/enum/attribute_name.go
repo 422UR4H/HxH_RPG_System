@@ -16,7 +16,7 @@ const (
 	// Mentals
 	Resilience   AttributeName = "Resilience"
 	Adaptability AttributeName = "Adaptability"
-	Weighting    AttributeName = "Weighting"
+	Judgment     AttributeName = "Judgment"
 	Creativity   AttributeName = "Creativity"
 
 	// Spirituals
@@ -31,7 +31,7 @@ func (an AttributeName) String() string {
 func AllAttributeNames() []AttributeName {
 	return []AttributeName{
 		Resistance, Strength, Agility, Celerity, Flexibility, Dexterity, Sense, Constitution,
-		Resilience, Adaptability, Weighting, Creativity,
+		Resilience, Adaptability, Judgment, Creativity,
 		Flame, Conscience,
 	}
 }

@@ -588,7 +588,7 @@ func (cs *CharacterSheet) ToString() string {
 	mentalsCurrExp := cs.attribute.GetMentalsCurrentExp()
 	mentalsNextLvlExp := cs.attribute.GetMentalsNextLvlBaseExp()
 	sortedAttrNames = []enum.AttributeName{
-		enum.Resilience, enum.Adaptability, enum.Weighting, enum.Creativity,
+		enum.Resilience, enum.Adaptability, enum.Judgment, enum.Creativity,
 	}
 	for _, name := range sortedAttrNames {
 		lvl := mentalsLvl[name]

@@ -39,7 +39,7 @@ Atributos primários são a base da ficha. Cada um possui:
 |---|---|
 | Resiliência | Resistência mental e foco |
 | Adaptabilidade | Capacidade de se ajustar a situações |
-| Ponderação | Análise e tomada de decisão |
+| Julgamento (ou Ponderação) | Análise e tomada de decisão |
 | Criatividade | Inovação e pensamento lateral |
 
 ### Atributos Médios

@@ -24,20 +24,20 @@ import (
 // do backfill permanece como era (congelada com a migration).
 type expInputs struct {
 	// Mental attributes (PrimaryAttribute → MentalsAbility → CharacterExp): ×1
-	Resilience, Adaptability, Weighting, Creativity int
+	Resilience, Adaptability, Judgment, Creativity int
 
 	// Physical skills via PrimaryAttribute (attr→physAbility + physSkills→skillsAbility): ×2
-	Vitality, Energy, Defense     int // Resistance-based
-	Quickness, Accelerate, Brake   int // Agility-based
-	Acrobatics, Evasion, Sneak    int // Flexibility-based
-	Vision, Hearing, Smell        int // Sense-based
-	Tact, Taste                   int // Sense-based (continued)
+	Vitality, Energy, Defense    int // Resistance-based
+	Quickness, Accelerate, Brake int // Agility-based
+	Acrobatics, Evasion, Sneak   int // Flexibility-based
+	Vision, Hearing, Smell       int // Sense-based
+	Tact, Taste                  int // Sense-based (continued)
 
 	// Physical skills via MiddleAttribute (lenAttrs=2): floor(groupSum/2)*3
-	Push, Grab, Carry          int // Strength = Resistance+Agility
-	Legerity, Repel, Feint     int // Celerity  = Agility+Flexibility
-	Reflex, Accuracy, Stealth  int // Dexterity = Flexibility+Sense
-	Heal, Breath, Tenacity     int // Constitution = Sense+Resistance
+	Push, Grab, Carry         int // Strength = Resistance+Agility
+	Legerity, Repel, Feint    int // Celerity  = Agility+Flexibility
+	Reflex, Accuracy, Stealth int // Dexterity = Flexibility+Sense
+	Heal, Breath, Tenacity    int // Constitution = Sense+Resistance
 
 	// Spiritual principles (conscienceNen→spiritualsAbility→CharacterExp): ×1
 	Ten, Zetsu, Ren, Gyo, Shu, Kou, Ken, Ryu, In, En int
@@ -54,7 +54,7 @@ type expInputs struct {
 // 20260529000002_fix_exp_points_backfill.sql.
 // Keep this function and that migration in sync — if one changes, so must the other.
 func expPointsFormula(e expInputs) int {
-	return e.Resilience + e.Adaptability + e.Weighting + e.Creativity +
+	return e.Resilience + e.Adaptability + e.Judgment + e.Creativity +
 		(e.Vitality+e.Energy+e.Defense)*2 +
 		(e.Quickness+e.Accelerate+e.Brake)*2 +
 		(e.Acrobatics+e.Evasion+e.Sneak)*2 +
@@ -76,7 +76,7 @@ func applyExpToSheet(t *testing.T, cs *sheet.CharacterSheet, e expInputs) {
 	for name, exp := range map[enum.AttributeName]int{
 		enum.Resilience:   e.Resilience,
 		enum.Adaptability: e.Adaptability,
-		enum.Weighting:    e.Weighting,
+		enum.Judgment:     e.Judgment,
 		enum.Creativity:   e.Creativity,
 	} {
 		if exp == 0 {
@@ -165,7 +165,7 @@ func assertExpPoints(t *testing.T, cs *sheet.CharacterSheet, e expInputs) {
 
 func TestExpPointsFormula_MentalAttr_FactorOne(t *testing.T) {
 	cs := buildTestSheet(t)
-	e := expInputs{Resilience: 100, Adaptability: 80, Weighting: 60, Creativity: 40}
+	e := expInputs{Resilience: 100, Adaptability: 80, Judgment: 60, Creativity: 40}
 	applyExpToSheet(t, cs, e)
 	assertExpPoints(t, cs, e) // want: 280 (100+80+60+40 × 1)
 }
@@ -249,7 +249,7 @@ func TestExpPointsFormula_Proficiency_FactorOne(t *testing.T) {
 func TestExpPointsFormula_AllTypes_MatchesDomainCascade(t *testing.T) {
 	cs := buildTestSheet(t)
 	e := expInputs{
-		Resilience: 100, Adaptability: 80, Weighting: 60, Creativity: 40,
+		Resilience: 100, Adaptability: 80, Judgment: 60, Creativity: 40,
 
 		Vitality: 200, Energy: 150, Defense: 100,
 		Quickness: 120, Accelerate: 90, Brake: 70,

@@ -22,11 +22,11 @@ type CharacterSheet struct {
 	TalentExp    int
 
 	// Levels
-	Level         int
-	Points        int
+	Level  int
+	Points int
 	// CharExp is a denormalized copy of CharacterExp.GetExpPoints(), persisted for fast summary
 	// queries. Authoritative value is always the domain entity after full sheet reconstruction.
-	CharExp int
+	CharExp       int
 	TalentLvl     int
 	PhysicalsLvl  int
 	MentalsLvl    int
@@ -51,11 +51,11 @@ type CharacterSheet struct {
 	// Mental Attributes
 	ResiliencePts   int
 	AdaptabilityPts int
-	WeightingPts    int
+	JudgmentPts     int
 	CreativityPts   int
 	ResilienceExp   int
 	AdaptabilityExp int
-	WeightingExp    int
+	JudgmentExp     int
 	CreativityExp   int
 
 	// Physical Skills
@@ -68,7 +68,7 @@ type CharacterSheet struct {
 	GrabExp  int
 	CarryExp int
 	// Agility
-	QuicknessExp   int
+	QuicknessExp  int
 	AccelerateExp int
 	BrakeExp      int
 	// Celerity

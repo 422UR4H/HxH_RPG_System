@@ -42,7 +42,7 @@ func TestAttributeNameFrom(t *testing.T) {
 		}{
 			{"Resilience", enum.Resilience},
 			{"Adaptability", enum.Adaptability},
-			{"Weighting", enum.Weighting},
+			{"Judgment", enum.Judgment},
 			{"Creativity", enum.Creativity},
 		}
 		for _, tt := range tests {

@@ -56,7 +56,7 @@ type parityFile struct {
 
 var (
 	physPrimaries   = []enum.AttributeName{enum.Resistance, enum.Agility, enum.Flexibility, enum.Sense}
-	mentalPrimaries = []enum.AttributeName{enum.Resilience, enum.Adaptability, enum.Weighting, enum.Creativity}
+	mentalPrimaries = []enum.AttributeName{enum.Resilience, enum.Adaptability, enum.Judgment, enum.Creativity}
 	parityOwner     = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 )
 
