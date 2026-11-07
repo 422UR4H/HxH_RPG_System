@@ -1113,14 +1113,15 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 		t.Fatal("the regime switch was never announced")
 	}
 
-	// bars_updated is re-broadcast after EVERY mutation (regime switch, each enqueue, each
-	// open) and both connections see every broadcast, so by the time the regime-switch ack
-	// landed there is already one bars_updated in flight. Plain `collector.await` only checks
-	// "has at least one arrived, ever" — it would trivially re-pass on that first, stale one
-	// instead of waiting for the fresh one each step below actually depends on. awaitCount
-	// pins a specific, growing count instead, which is what makes each wait mean "the event
-	// this step caused", not "some event of this type, at some point".
-	if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+	// bars_updated goes to the master after EVERY mutation (regime switch, each enqueue, each
+	// open), so by the time the regime-switch ack landed there is already one in flight. Plain
+	// `collector.await` only checks "has at least one arrived, ever" — it would trivially
+	// re-pass on that first, stale one instead of waiting for the fresh one each step below
+	// actually depends on. awaitCount pins a specific, growing count instead, which is what
+	// makes each wait mean "the event this step caused", not "some event of this type, at some
+	// point". The PLAYER only gets one when their view changes (spec 2026-11-04 D1) — here,
+	// at each open and at the round's close, never at the switch or an enqueue.
+	if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
 		t.Fatal("bars_updated never followed the regime switch")
 	}
 
@@ -1136,8 +1137,8 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 		if !awaitCount(playerMsgs, game.MsgTypeActionEnqueued, wantAcks, 2*time.Second) {
 			t.Fatalf("actor %v: enqueue ack #%d never arrived", actor, wantAcks)
 		}
-		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, wantBars, 2*time.Second) {
-			t.Fatalf("actor %v: bars_updated #%d never followed the enqueue", actor, wantBars)
+		if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, wantBars, 2*time.Second) {
+			t.Fatalf("actor %v: the master's bars_updated #%d never followed the enqueue", actor, wantBars)
 		}
 	}
 	enqueue(f.attackerID, 1, 2) // 6
@@ -1151,8 +1152,9 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 		t.Fatal("the scripted dice ran out — a roll consumed more faces than this test accounted for")
 	}
 
-	t.Run("bars_updated announces the order before anything opens", func(t *testing.T) {
-		bars := lastBarsUpdated(t, playerMsgs)
+	t.Run("bars_updated announces the order to the master before anything opens", func(t *testing.T) {
+		// The order is the master's (spec D1) — a player's copy carries `order: []`.
+		bars := lastBarsUpdated(t, masterMsgs)
 		if len(bars.Order) != 2 {
 			t.Fatalf("order = %d slots, want 2", len(bars.Order))
 		}
@@ -1168,8 +1170,8 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 		}
 		// Pins the bars_updated this open produced before "the price froze" reads it —
 		// that subtest sends nothing itself, so it depends entirely on this wait.
-		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 4, 2*time.Second) {
-			t.Fatal("bars_updated never followed the first open")
+		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+			t.Fatal("the player's bars_updated never followed the first open")
 		}
 		opened := lastTurnOpened(t, masterMsgs)
 		if opened.ActorID != f.victimID {
@@ -1207,10 +1209,11 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 	t.Run("the carry crossed over, ceiling applied", func(t *testing.T) {
 		// The closing bars_updated (broadcastBars runs unconditionally on every
 		// open_next_action, before it decides whether a turn or the round closed) and
-		// round_closed are two independent broadcasts; nothing pins their relative arrival
-		// order at this connection. Waiting for the 6th bars_updated directly — count pinning
-		// again — is what guarantees the carry-over numbers below are the post-close ones.
-		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 6, 2*time.Second) {
+		// round_closed are two independent sends; nothing pins their relative arrival order at
+		// this connection. Waiting for the player's 3rd bars_updated (one per open, one for the
+		// close) directly — count pinning again — is what guarantees the carry-over numbers
+		// below are the post-close ones.
+		if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 3, 2*time.Second) {
 			t.Fatal("bars_updated never followed the round closing")
 		}
 		bars := lastBarsUpdated(t, playerMsgs)
@@ -1230,6 +1233,408 @@ func TestE2E_ARacingRoundRunsOnTheBars(t *testing.T) {
 			t.Error("the round's speed history is cleared; only the balance crosses over")
 		}
 	})
+}
+
+// TestE2E_PlayerBarsShowOnlyWhatTheMasterOpened pins spec D1 over real WebSockets: pending
+// actions and every unopened die are the master's secret. The player's bars_updated — and the
+// bars in their match_full_state after a reconnect — carry only what the master has opened;
+// the master's carry the whole live view.
+//
+// Same scripted dice as TestE2E_ARacingRoundRunsOnTheBars: the attacker rolls 6, the victim 16.
+func TestE2E_PlayerBarsShowOnlyWhatTheMasterOpened(t *testing.T) {
+	f := newCombatFixture(t)
+	src := &scriptedFaces{faces: []int{
+		3, 3, 3, 3, // attacker speed: 6
+		5, 5, 5, 5, // attacker hit
+		2, 2, 2, // attacker damage
+		8, 8, 8, 8, // victim speed: 16
+		5, 5, 5, 5, // victim hit
+		2, 2, 2, // victim damage
+	}}
+	f.setRollSource(src)
+
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	masterMsgs := newCollector(master)
+	playerMsgs := newCollector(player)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	// The master gets every snapshot; wait on a growing count (see awaitCount) so a stale copy
+	// never stands in for a fresh one.
+	awaitMaster := func(n int, what string) {
+		t.Helper()
+		if !awaitCount(masterMsgs, game.MsgTypeBarsUpdated, n, 2*time.Second) {
+			t.Fatalf("the master's bars_updated #%d never followed %s", n, what)
+		}
+	}
+	awaitMaster(1, "the regime switch")
+	for i, actor := range []uuid.UUID{f.attackerID, f.victimID} {
+		sendWS(t, player, string(game.MsgTypeEnqueueAction), game.ActionPayload{
+			ActorID: actor,
+			Attack:  &game.AttackPayload{Hit: game.RollCheckPayload{SkillName: enum.Accuracy.String()}},
+		})
+		awaitMaster(i+2, "an enqueue")
+	}
+	if src.overran {
+		t.Fatal("the scripted dice ran out — a roll consumed more faces than this test accounted for")
+	}
+
+	t.Run("the player hears nothing of the enqueues — not even a bars_updated", func(t *testing.T) {
+		// Neither the switch nor an enqueue changes anything a player may see, and a fresh
+		// snapshot with nothing new in it would still tell them that something secret
+		// happened. Nothing reaches the player to serve as a barrier, so this waits out a
+		// quiet window after the master's copy of the last snapshot.
+		time.Sleep(150 * time.Millisecond)
+		if n := playerMsgs.count(game.MsgTypeBarsUpdated); n != 0 {
+			t.Errorf("the player received %d bars_updated, want 0; last: %s", n, lastBarsRaw(t, playerMsgs))
+		}
+	})
+
+	t.Run("the master's bars carry the queued speeds and the provisional price", func(t *testing.T) {
+		bars := lastBarsUpdated(t, masterMsgs)
+		if got := bars.ProvisionalPrices[string(action.BarAction)]; got != 6 {
+			t.Errorf("provisionalPrices.action = %d, want 6 (the slowest pending speed)", got)
+		}
+		byChar := barsByChar(bars)
+		if got := byChar[f.attackerID].PendingActionSpeeds; len(got) != 1 || got[0] != 6 {
+			t.Errorf("attacker pendingActionSpeeds = %v, want [6]", got)
+		}
+		if got := byChar[f.victimID].PendingActionSpeeds; len(got) != 1 || got[0] != 16 {
+			t.Errorf("victim pendingActionSpeeds = %v, want [16]", got)
+		}
+		if len(bars.Order) != 2 {
+			t.Errorf("order = %d slots, want 2", len(bars.Order))
+		}
+	})
+
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	awaitMaster(4, "the open")
+	if !awaitCount(playerMsgs, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the player's bars_updated never followed the open")
+	}
+
+	t.Run("once the master opens, the player sees the price and the opened speed only", func(t *testing.T) {
+		if n := playerMsgs.count(game.MsgTypeBarsUpdated); n != 1 {
+			t.Errorf("the player received %d bars_updated for one open, want 1", n)
+		}
+		assertPlayerBarsView(t, string(lastBarsRaw(t, playerMsgs)))
+		bars := lastBarsUpdated(t, playerMsgs)
+		if got := bars.Prices[string(action.BarAction)]; got != 6 {
+			t.Errorf("prices.action = %d, want the frozen 6", got)
+		}
+		byChar := barsByChar(bars)
+		if got := byChar[f.victimID].ActionSpeeds; len(got) != 1 || got[0] != 16 {
+			t.Errorf("victim actionSpeeds = %v, want the opened [16]", got)
+		}
+		if got := byChar[f.attackerID].ActionSpeeds; len(got) != 0 {
+			t.Errorf("attacker actionSpeeds = %v, want none — their action is still queued", got)
+		}
+	})
+
+	t.Run("the master still sees the attacker pending", func(t *testing.T) {
+		byChar := barsByChar(lastBarsUpdated(t, masterMsgs))
+		if got := byChar[f.attackerID].PendingActionSpeeds; len(got) != 1 || got[0] != 6 {
+			t.Errorf("attacker pendingActionSpeeds = %v, want [6]", got)
+		}
+	})
+
+	t.Run("a reconnecting player's match_full_state carries the player view", func(t *testing.T) {
+		player.Close() //nolint:errcheck
+		late := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
+		defer late.Close()   //nolint:errcheck
+		readMessage(t, late) // room_state
+		lateMsgs := collectFrom(late)
+		if !lateMsgs.await(game.MsgTypeMatchFullState, 2*time.Second) {
+			t.Fatal("the reconnecting player never received match_full_state")
+		}
+		var full struct {
+			Bars json.RawMessage `json:"bars"`
+		}
+		if err := json.Unmarshal(
+			findMessage(t, lateMsgs.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &full,
+		); err != nil {
+			t.Fatalf("unmarshal match_full_state: %v", err)
+		}
+		assertPlayerBarsView(t, string(full.Bars))
+		var bars game.BarsUpdatedPayload
+		if err := json.Unmarshal(full.Bars, &bars); err != nil {
+			t.Fatalf("unmarshal match_full_state.bars: %v", err)
+		}
+		byChar := barsByChar(bars)
+		if got := byChar[f.victimID].ActionSpeeds; len(got) != 1 || got[0] != 16 {
+			t.Errorf("victim actionSpeeds = %v, want the opened [16]", got)
+		}
+		if got := byChar[f.attackerID].ActionSpeeds; len(got) != 0 {
+			t.Errorf("attacker actionSpeeds = %v, want none — their action is still queued", got)
+		}
+	})
+}
+
+// TestE2E_ReactionBarsReachEachRecipientAsTheyMaySeeThem pins the two bars_updated a reaction
+// sends: attach_reaction changes the master's bars only (the repel's speed is charged,
+// secretly — the players hear nothing of it) and open_reaction the players' (the speed turns
+// public).
+func TestE2E_ReactionBarsReachEachRecipientAsTheyMaySeeThem(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+	actionID := f.openAttackOn(t, player, master, mc)
+	// The open's own bars_updated is the baseline: what follows must come from the reaction.
+	// The master's 3rd (switch, enqueue, open); the player's 1st (only the open changed what
+	// a player may see).
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 3, 2*time.Second) ||
+		!awaitCount(pc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("bars_updated never followed the open")
+	}
+	seq := lastBarsUpdated(t, mc).Seq
+
+	sword := "Sword"
+	sendWS(t, player, string(game.MsgTypeAttachReaction), game.ActionPayload{
+		ActorID: f.victimID, ReactToID: actionID, ReactionKind: "repel",
+		Repel: &game.RepelPayload{Weapon: &sword},
+	})
+	if !pc.await(game.MsgTypeReactionAttached, 2*time.Second) {
+		t.Fatalf("the reactor never got reaction_attached; got %v", messageTypes(pc.snapshotMessages()))
+	}
+	reactionID := lastReactionAttached(t, pc).ReactionID
+
+	t.Run("attach: the master's bars carry the reaction's speed, the player hears nothing", func(t *testing.T) {
+		if !awaitBarsAfter(t, mc, seq, 2*time.Second) {
+			t.Fatal("no bars_updated reached the master after the attach")
+		}
+		if got := barsByChar(lastBarsUpdated(t, mc))[f.victimID].ActionSpeeds; len(got) != 1 {
+			t.Errorf("master: victim actionSpeeds = %v, want the repel's one speed", got)
+		}
+		// Quiet window after the master's copy: nothing reaches the player to be a barrier.
+		time.Sleep(150 * time.Millisecond)
+		if n := pc.count(game.MsgTypeBarsUpdated); n != 1 {
+			t.Errorf("the player has %d bars_updated, want still 1 — the attach changed nothing "+
+				"a player may see", n)
+		}
+		if got := barsByChar(lastBarsUpdated(t, pc))[f.victimID].ActionSpeeds; len(got) != 0 {
+			t.Errorf("player: victim actionSpeeds = %v, want none — the reaction is not open yet", got)
+		}
+	})
+	seq = lastBarsUpdated(t, pc).Seq
+
+	t.Run("open: the player's bars now carry it", func(t *testing.T) {
+		sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+		if !awaitBarsAfter(t, pc, seq, 2*time.Second) {
+			t.Fatal("no bars_updated followed the open_reaction")
+		}
+		if got := barsByChar(lastBarsUpdated(t, pc))[f.victimID].ActionSpeeds; len(got) != 1 {
+			t.Errorf("player: victim actionSpeeds = %v, want the opened repel's one speed", got)
+		}
+	})
+}
+
+// TestE2E_StartMatchHandsThePlayersTheirBars pins the snapshot start_match sends. The players
+// at the lobby table hold no bars yet; this is where they get the base view, so that the
+// enqueues that follow — which change nothing a player may see — can reach the master alone.
+func TestE2E_StartMatchHandsThePlayersTheirBars(t *testing.T) {
+	f := newCombatFixture(t, inLobby)
+	f.seedBoard(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+	if !mc.await(game.MsgTypeMapFullState, 2*time.Second) {
+		t.Fatal("the master never got the lobby board")
+	}
+
+	sendWS(t, master, string(game.MsgTypeStartMatch), map[string]any{})
+	if !pc.await(game.MsgTypeMatchStarted, 2*time.Second) {
+		t.Fatalf("the player never got match_started; got: %v", messageTypes(pc.snapshotMessages()))
+	}
+	if !awaitCount(pc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatalf("the player got no bars_updated with the start; got: %v", messageTypes(pc.snapshotMessages()))
+	}
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the master got no bars_updated with the start")
+	}
+	assertPlayerBarsView(t, string(lastBarsRaw(t, pc)))
+
+	f.enqueueAttack(t, player)
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 2, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the enqueue")
+	}
+	time.Sleep(150 * time.Millisecond) // quiet window: nothing reaches the player to be a barrier
+	if n := pc.count(game.MsgTypeBarsUpdated); n != 1 {
+		t.Errorf("the player has %d bars_updated, want still 1 — the enqueue changed nothing a "+
+			"player may see", n)
+	}
+}
+
+// connectBystander connects the withBystander player and returns their collector. They own
+// no character the test acts with, so every bars_updated they get is one the table caused.
+func (f *combatFixture) connectBystander(t *testing.T) *collector {
+	t.Helper()
+	bystander := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
+	t.Cleanup(func() { bystander.Close() }) //nolint:errcheck
+	readMessage(t, bystander)               // room_state
+	return collectFrom(bystander)
+}
+
+// assertNoPlayerBarsAtEnqueue sends one more enqueue and fails if the bystander's count of
+// bars_updated moves from want: an enqueue changes nothing a player may see (spec D1), so it
+// must not be what carries the players' copy of an earlier change.
+func (f *combatFixture) assertNoPlayerBarsAtEnqueue(
+	t *testing.T, player *websocket.Conn, mc, bc *collector, masterBars, want int,
+) {
+	t.Helper()
+	f.enqueueAttackFrom(t, player, f.victimID)
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, masterBars+1, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the enqueue")
+	}
+	time.Sleep(150 * time.Millisecond) // quiet window: nothing reaches the player to be a barrier
+	if n := bc.count(game.MsgTypeBarsUpdated); n != want {
+		t.Errorf("the bystander has %d bars_updated, want still %d — the enqueue changed nothing "+
+			"a player may see; last: %s", n, want, lastBarsRaw(t, bc))
+	}
+}
+
+// TestE2E_ChangeSceneHandsThePlayersTheNewRoundsBars pins the bars_updated a scene change
+// sends. The new round has no price and no turn, so the players' view changed right there —
+// and if they are not told then, the next secret send by anyone carries their copy, telling
+// them that something secret happened (spec 2026-11-04 D1).
+func TestE2E_ChangeSceneHandsThePlayersTheNewRoundsBars(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	bc := f.connectBystander(t)
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("bars_updated never followed the regime switch")
+	}
+	f.openAttackOn(t, player, master, mc)
+	if !awaitCount(bc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("the bystander's bars_updated never followed the open")
+	}
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	// Switch, enqueue, open, close.
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 4, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the close")
+	}
+	time.Sleep(150 * time.Millisecond) // let whatever the close sent the players land
+	before := bc.count(game.MsgTypeBarsUpdated)
+	if got := lastBarsUpdated(t, bc).Prices[string(action.BarAction)]; got == 0 {
+		t.Fatal("precondition: the bystander should hold the old round's frozen action price")
+	}
+
+	sendWS(t, master, string(game.MsgTypeChangeScene), game.ChangeScenePayload{
+		Category: string(enum.Battle), BriefInitialDescription: "Ponte",
+	})
+	if !mc.await(game.MsgTypeSceneChanged, 2*time.Second) {
+		t.Fatal("the scene change was never announced")
+	}
+	if !awaitCount(bc, game.MsgTypeBarsUpdated, before+1, 2*time.Second) {
+		t.Fatal("the bystander got no bars_updated with the scene change")
+	}
+	assertPlayerBarsView(t, string(lastBarsRaw(t, bc)))
+	bars := lastBarsUpdated(t, bc)
+	if len(bars.Prices) != 0 || bars.RoundTurns != 0 {
+		t.Errorf("prices = %v, roundTurns = %d; want the new round's: no price, no turn",
+			bars.Prices, bars.RoundTurns)
+	}
+
+	f.assertNoPlayerBarsAtEnqueue(t, player, mc, bc, mc.count(game.MsgTypeBarsUpdated), before+1)
+}
+
+// TestE2E_AFailedPullFreezesNoPrice pins what a failed pull_action leaks. A stale id opens
+// nothing, so no price freezes (spec 2026-11-04 D7): the players' view does not change and
+// they get no bars_updated, and any bars they do see carry no price.
+func TestE2E_AFailedPullFreezesNoPrice(t *testing.T) {
+	f := newCombatFixture(t, withBystander)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	bc := f.connectBystander(t)
+	mc := collectFrom(master)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
+		Mode: string(enum.Race),
+	})
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 1, 2*time.Second) {
+		t.Fatal("bars_updated never followed the regime switch")
+	}
+	f.enqueueAttack(t, player)
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 2, 2*time.Second) {
+		t.Fatal("the master's bars_updated never followed the enqueue")
+	}
+	time.Sleep(150 * time.Millisecond) // quiet window: the switch and the enqueue send players nothing
+	if n := bc.count(game.MsgTypeBarsUpdated); n != 0 {
+		t.Fatalf("precondition: the bystander has %d bars_updated before the pull, want 0", n)
+	}
+
+	sendWS(t, master, string(game.MsgTypePullAction), game.PullActionPayload{ActionID: uuid.New()})
+	if !mc.await(game.MsgTypeError, 2*time.Second) {
+		t.Fatal("pulling an action that does not exist was not refused")
+	}
+	time.Sleep(150 * time.Millisecond)
+	if n := bc.count(game.MsgTypeBarsUpdated); n != 0 {
+		t.Errorf("the bystander got %d bars_updated after a failed pull, want 0 — nothing changed for them", n)
+	}
+	if n := bc.count(game.MsgTypeBarsUpdated); n > 0 {
+		if got := lastBarsUpdated(t, bc).Prices; len(got) != 0 {
+			t.Errorf("the bystander sees prices %v after a failed pull, want none", got)
+		}
+	}
+}
+
+// assertPlayerBarsView fails if a bars payload, as JSON, carries anything of the master's
+// view: a provisional price, a pending or deferred speed, or a non-empty order.
+func assertPlayerBarsView(t *testing.T, raw string) {
+	t.Helper()
+	for _, secret := range []string{
+		`"provisionalPrices"`, `"pendingActionSpeeds"`, `"pendingMoveSpeeds"`,
+		`"deferredActionSpeeds"`, `"deferredMoveSpeeds"`,
+	} {
+		if strings.Contains(raw, secret) {
+			t.Errorf("the player's bars carry %s: %s", secret, raw)
+		}
+	}
+	if !strings.Contains(raw, `"order":[]`) {
+		t.Errorf("the player's order must be an empty array: %s", raw)
+	}
+}
+
+// lastBarsRaw is lastBarsUpdated without the decode: the raw JSON, for asserting which keys
+// are on the wire at all.
+func lastBarsRaw(t *testing.T, c *collector) json.RawMessage {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type == game.MsgTypeBarsUpdated {
+			return msgs[i].Payload
+		}
+	}
+	t.Fatal("no bars_updated in the collected messages")
+	return nil
+}
+
+// barsByChar indexes a bars payload's rows by character.
+func barsByChar(p game.BarsUpdatedPayload) map[uuid.UUID]game.CharacterBarsPayload {
+	out := make(map[uuid.UUID]game.CharacterBarsPayload, len(p.Characters))
+	for _, c := range p.Characters {
+		out[c.CharacterID] = c
+	}
+	return out
 }
 
 // awaitRoundClosed pulls the round_closed payload out of what the collector already has.
@@ -1596,9 +2001,15 @@ func TestMatchFullStateCarriesTheQueueToTheMasterOnly(t *testing.T) {
 		}
 	}
 
+	// The master's bars carry the projected order of what is waiting — the order is theirs.
+	if len(m.Bars.Order) != 2 {
+		t.Fatalf("the reconnecting master's bars carry %d order slots, want the 2 pending: %+v",
+			len(m.Bars.Order), m.Bars.Order)
+	}
+
 	// And the other half: a PLAYER reconnecting into the same queue learns nothing about it.
-	// The queue is secret — the public half of the same fact is Bars.Order, which carries the
-	// projected order with no action identity in it.
+	// The queue is secret, and so is its projected order (spec 2026-11-04 D1): Bars.Order is
+	// empty for a player.
 	player.Close() //nolint:errcheck
 	latePlayer := connectWS(t, f.server.URL, f.playerUUID, f.matchUUID)
 	defer latePlayer.Close() //nolint:errcheck
@@ -1616,11 +2027,15 @@ func TestMatchFullStateCarriesTheQueueToTheMasterOnly(t *testing.T) {
 		t.Fatalf("a player was handed %d pending actions: %+v — the queue is secret, and this "+
 			"one reads the table's intentions straight off the wire", len(p.Queue), p.Queue)
 	}
-	// The public order still reached them, so the assertion above is about secrecy and not
-	// about an empty payload.
-	if len(p.Bars.Order) == 0 {
-		t.Fatal("the late player got no projected order either: the snapshot is empty, so the " +
-			"secrecy assertion above proves nothing")
+	if len(p.Bars.Order) != 0 {
+		t.Fatalf("a player was handed the projected order %+v — pending actions are the master's "+
+			"secret", p.Bars.Order)
+	}
+	// The bars themselves still reached them, so the assertions above are about secrecy and
+	// not about an empty payload.
+	if len(p.Bars.Characters) == 0 {
+		t.Fatal("the late player got no bars either: the snapshot is empty, so the secrecy " +
+			"assertions above prove nothing")
 	}
 }
 

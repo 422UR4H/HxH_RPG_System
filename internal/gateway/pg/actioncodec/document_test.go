@@ -3,6 +3,7 @@ package actioncodec_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -67,6 +68,34 @@ func TestMarshalUnmarshalRoundTripsAReaction(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip differs:\n got  %+v\n want %+v", got, want)
+	}
+}
+
+// D3 (2026-11-06): o StackedOn de um movimento empilhado volta da linha gravada; um movimento
+// não empilhado não grava a chave.
+func TestMarshalUnmarshalRoundTripsAStackedMove(t *testing.T) {
+	from := [3]int{4, 4, 0}
+	want := action.NewAction(uuid.New(), []uuid.UUID{}, uuid.Nil, nil, action.ActionSpeed{}, nil,
+		&action.Move{Category: enum.Dash, From: &from, Position: [3]int{6, 4, 0}, FinalSpeed: 12, StackedOn: uuid.New()},
+		nil, nil, nil, nil, nil)
+	raw, err := actioncodec.Marshal(want)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	got, err := actioncodec.Unmarshal(want.GetID(), want.GetActorID(), raw)
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("round trip differs:\n got  %+v\n want %+v", got, want)
+	}
+
+	plain, err := actioncodec.Marshal(fullAction())
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(plain), "stackedOn") {
+		t.Fatalf("an unstacked move wrote stackedOn: %s", plain)
 	}
 }
 

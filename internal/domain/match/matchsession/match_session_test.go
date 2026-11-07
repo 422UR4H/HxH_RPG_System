@@ -524,8 +524,9 @@ func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cancel: %v", err)
 		}
-		if got == nil || got.GetID() != a.GetID() {
-			t.Errorf("returned %v, want the cancelled action %v", got, a.GetID())
+		// Sem nada empilhado, a cascata é só a própria action (D5, 2026-11-06).
+		if len(got) != 1 || got[0].GetID() != a.GetID() {
+			t.Errorf("returned %v, want only the cancelled action %v", got, a.GetID())
 		}
 	})
 
@@ -1998,7 +1999,7 @@ func TestMatchSession_CloseRound_SettlesTheBars(t *testing.T) {
 // the economy from that moment, and "nobody has acted" as far as the bars are concerned.
 //
 // It used to be false. PullAction is the one way an action opens in Free, and it recorded the
-// speed into ResourceBar.Speeds unconditionally — while FreezePrices no-ops in Free and
+// speed into ResourceBar.Speeds unconditionally — while nothing freezes in Free and
 // settleBars skips any bar that never priced. The number was therefore never charged and never
 // reset. On the switch to Race it read as "this character already acted", so IsEligible took
 // its second-action branch — Balance(0, [20], 20) = 0, which is not >= 20 — and the character's

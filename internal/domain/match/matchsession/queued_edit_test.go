@@ -140,10 +140,12 @@ func TestQueuedEdit_CancellingTakesTheEditsWithIt(t *testing.T) {
 	}
 	speed := f.first.Speed.Result
 
-	cancelled, err := f.session.CancelAction(f.playerA, f.first.GetID())
+	chain, err := f.session.CancelAction(f.playerA, f.first.GetID())
 	if err != nil {
 		t.Fatalf("CancelAction: %v", err)
 	}
+	// A cascata (D5) começa pela action pedida.
+	cancelled := chain[0]
 	if cancelled.Speed.Context.Condition != nil || cancelled.Speed.Result != speed-7 {
 		t.Fatalf("speed = %d with condition %+v, want the declared %d and none", cancelled.Speed.Result,
 			cancelled.Speed.Context.Condition, speed-7)

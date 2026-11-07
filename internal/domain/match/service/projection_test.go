@@ -283,6 +283,34 @@ func TestProjectAction_ConsumedActionIDsAreTheOwnersAndTheMasters(t *testing.T) 
 	}
 }
 
+// D3 (2026-11-06): a cadeia é segredo da fila — só o mestre e o dono veem move.stackedOn.
+func TestProjectAction_StackedOnIsTheOwnersAndTheMasters(t *testing.T) {
+	actor, prev := uuid.New(), uuid.New()
+	a := action.NewAction(actor, nil, uuid.Nil, nil, action.ActionSpeed{}, nil,
+		&action.Move{Category: enum.Dash, Position: [3]int{2, 2, 0}, StackedOn: prev}, nil, nil, nil, nil, nil)
+
+	tests := []struct {
+		name   string
+		viewer service.Viewer
+		want   uuid.UUID
+	}{
+		{"master", service.Viewer{IsMaster: true}, prev},
+		{"owner", service.Viewer{Owns: map[uuid.UUID]bool{actor: true}}, prev},
+		{"third party", service.Viewer{Owns: map[uuid.UUID]bool{}}, uuid.Nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := service.ProjectAction(*a, tt.viewer, false)
+			if got.Move.StackedOn != tt.want {
+				t.Fatalf("Move.StackedOn = %v, want %v", got.Move.StackedOn, tt.want)
+			}
+		})
+	}
+	if a.Move.StackedOn != prev {
+		t.Fatal("projecting for a third party wrote through to the live action's Move")
+	}
+}
+
 func TestProjectResolution_TheConditionsAreTheMasters(t *testing.T) {
 	res := &service.TurnResolution{
 		DamageSkill: "Grab",

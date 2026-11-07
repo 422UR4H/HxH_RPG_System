@@ -89,7 +89,7 @@ Erro adicional: `ErrCloseRoundTriggeredCantBeNil`.
 ### Preço por barra
 
 `Round.prices` substitui o antigo campo único `coast` mencionado nas tabelas acima: é um preço
-por `action.Bar` (`action`/`move`), congelado por `RoundScheduler.FreezePrices` na primeira
+por `action.Bar` (`action`/`move`), congelado por `RoundScheduler.FreezeAt` na primeira
 seleção que vê trabalho pendente naquela barra, e nunca mais alterado no round corrente.
 
 ### Fechamento automático

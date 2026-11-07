@@ -108,13 +108,11 @@ func TestE2E_AddNPCPutsTheNPCIntoTheLiveSession(t *testing.T) {
 	masterMsgs := collectFrom(master)
 	playerMsgs := collectFrom(player)
 
-	// A bars_updated the table has already seen, so "newer" below has something to beat.
+	// A bars_updated already sent, so "newer" below has something to beat. Only the master
+	// gets this one: an enqueue changes nothing a player may see (spec 2026-11-04 D1).
 	f.enqueueAttack(t, player)
-	if !playerMsgs.await(game.MsgTypeBarsUpdated, 2*time.Second) {
-		t.Fatal("no bars_updated after the enqueue — the fixture never started")
-	}
 	if !masterMsgs.await(game.MsgTypeBarsUpdated, 2*time.Second) {
-		t.Fatal("the master never received the baseline bars_updated")
+		t.Fatal("no bars_updated after the enqueue — the fixture never started")
 	}
 	baseline := lastBarsUpdated(t, masterMsgs).Seq
 	masterBars := masterMsgs.count(game.MsgTypeBarsUpdated)

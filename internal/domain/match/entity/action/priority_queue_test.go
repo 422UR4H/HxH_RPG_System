@@ -190,3 +190,18 @@ func TestPriorityQueue_All(t *testing.T) {
 		}
 	})
 }
+
+func TestPriorityQueue_ExtractMax_OrdersByTheSpeedOfTheBars(t *testing.T) {
+	pq := action.NewActionPriorityQueue(nil)
+	attack := attackOnly(15)
+	move := moveOnly(20)
+	comb := combined(30, 12) // keys on its slower half, 12
+	pq.Insert(attack)
+	pq.Insert(comb)
+	pq.Insert(move)
+	for i, want := range []*action.Action{move, attack, comb} {
+		if got := pq.ExtractMax(); got != want {
+			t.Fatalf("extract #%d: wrong action (OrderSpeed %d)", i, got.OrderSpeed())
+		}
+	}
+}

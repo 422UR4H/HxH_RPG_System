@@ -30,7 +30,7 @@
 | **Turno** | 1 action + suas reactions | `entity/turn.Turn` |
 | **Round** | sequência de turnos | `entity/round.Round` |
 | **Cena** | sequência de rounds | `entity/scene.Scene` |
-| **Fila** | actions declaradas, ordenadas por actionSpeed; atravessa turnos | `action.PriorityQueue` |
+| **Fila** | actions declaradas, ordenadas pela velocidade das suas barras (Free) ou pelo `RoundScheduler` (Race); atravessa turnos | `action.PriorityQueue` |
 
 `SceneCategory` (`Roleplay`/`Battle`) é organização **narrativa**. `RoundMode`
 (`Free`/`Race`) é **regime de motor**. São eixos independentes: um round `Race` pode ficar
@@ -42,7 +42,7 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
 - **Crítico** = ambos os dados 10. **Erro crítico** = ambos 1. Não é a soma — é a combinação.
   **O motor precisa guardar os dados individuais**, não só o total. `RollContext.Dice` já faz.
 - **Passivo vs. ativo.** Testes passivos usam o **valor médio do conjunto de dados** em vez de
-  rolar: **11** para 2 D10, **10** para D20. Usado em: actionSpeed com `RoundMode == Free`,
+  rolar: **11** para 2 D10, **10** para D20. Usado em: actionSpeed (de quem a tem) com `RoundMode == Free`,
   esquiva por reflexo (`Reflexo + 11`), defesa à mão livre, deslocamento Shift.
   > O passivo ser exatamente a média é intencional: rolar tem expectativa **zero** de ganho,
   > então o jogador só arrisca quando precisa de sorte acima da média.
@@ -63,6 +63,20 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
 
 Cada personagem tem **duas barras independentes**: `actionSpeed` (ataque, item, habilidade) e
 `moveSpeed` (shift, dash, salto, rolamento).
+
+**Um movimento puro não tem `actionSpeed`** (2026-11-06, D1): só rola/deriva `Speed` (Legerity) a
+action que cobra a barra de ação (`Action.ChargesActionBar()` — `Bars()` contém `action`): ataque,
+interação, finta, habilidade, repelir ou movimento+ataque — e defesa/esquiva quando **declaradas
+como ação** na fila. Uma reação de esquiva (`dodge`, `closedDodge`) ou a reação padrão (`default`)
+tem `Bars()` vazio e não carrega Legerity. Um movimento puro e um escape só de movimento
+(`closedEscape`) carregam `speed.rollCheck` vazio (sem perícia, sem dado, resultado 0); o mapper
+não carimba Legerity neles, `rollActionDice` não rola e `deriveSpeeds` não deriva. Editar a
+condição `speed` de uma action assim dá `ErrConditionTargetMissing`. A reserva do duelo
+(repelir/aparar) é lida na derivação do `actionSpeed` e simplesmente não se aplica.
+
+**Free ordena pela mesma velocidade do combate** (D2): `Action.OrderSpeed()` = menor `SpeedOn(bar)`
+sobre `Bars()` (0 sem barras) — o mesmo critério de `reactionKey`. `PriorityQueue.ExtractMax` usa
+essa chave; empate, quem entrou primeiro.
 
 ### A chave de prioridade
 
@@ -133,6 +147,23 @@ leva **a rolagem cheia** para o round seguinte.
 > O teto não é violado nisso. Como o preço é a menor velocidade da mesa no congelamento, quem
 > ficou de fora rolou **abaixo** dele — o que ele carrega já é menor que o teto por
 > construção.
+
+#### Preço provisório
+
+Antes da primeira abertura a barra ainda não tem preço, mas o preço que vai congelar já é
+conhecido: a menor velocidade pendente por barra não congelada (só disputado). Essa conta é uma
+função só de leitura, usada tanto pelo congelamento (`RoundScheduler.FreezeAt`) quanto pela projeção (que a
+publica como **preço provisório**). A projeção pontua a barra não congelada contra o provisório
+— chave e portão — então a ordem publicada ao mestre é a que a mesa vai jogar se nada mais
+chegar (F5 do spec `2026-11-04-live-bars`). `OpenNextAction` e `PullAction` calculam o provisório antes de abrir e só congelam **depois** que uma ação de fato abre (o provisório entra na seleção por `ScheduleInput.Provisional`); um comando que falha antes não vaza preço.
+
+#### Saldo ao vivo
+
+`BarEconomy.Balance(carry, velocidades, preço)` é o saldo sem teto: `carry + média − n × preço`;
+sem preço (nem congelado, nem provisório) é o próprio carry. O teto só vale em `CloseBalance`.
+No wire, `actionBalance`/`moveBalance` é esse saldo ao vivo (para o mestre, as velocidades
+contadas são as que agiram **mais só a próxima pendente**; para o jogador, só as públicas); o carry vai em
+`actionCarry`/`moveCarry`.
 
 > Decisão do dono do produto, pela simplicidade: *"uma action que chegue depois com valor
 > menor poderia simplesmente não ter custo suficiente pra agir neste turno, então esse valor
@@ -352,6 +383,48 @@ Consistente com o `pull_action`, que já quebra a ordem por decisão do mestre.
 turno, as do turno atual são movidas para o próximo"*. Isso **nunca chegou ao código** e fica
 descartado — o receio que o motivava foi resolvido aceitando que a ordem do round não é
 garantia forte. **O histórico não necessariamente terá as actionSpeeds em ordem, e tudo bem.**
+
+### Movimentos empilhados (2026-11-06, D3–D6)
+
+Spec `docs/superpowers/specs/2026-11-06-stacked-moves-design.md`. Um personagem pode ter mais de um
+movimento na fila; o segundo **parte de onde o primeiro termina** e **nunca acontece antes dele**.
+
+- **Empilhar (D3).** `MatchSession.EnqueueAction` (`stackOnChainTail`): uma action com `Move`, quando
+  o personagem já tem na fila outra action com `Move`, ganha `Move.StackedOn` = o id da ÚLTIMA delas
+  em ordem de chegada (`MoveChainTail`) e `Move.From` = o `Position` dela (cópia). Sem movimento
+  pendente antes, `From` fica a casa da peça, que a Room pôs. Só movimentos (puros ou combinados);
+  uma action sem `Move` não empilha nem quebra a cadeia; um movimento que já abriu não é mais fim de
+  cadeia. A Room faz a checagem de parede do enqueue a partir do mesmo fim de cadeia, na mesma seção
+  crítica (`enqueueRefusalLocked`, sob `r.mu` de escrita com o `Execute`).
+- **Bloqueado (D4).** `Action.IsBlockedIn(pending)` é a regra num lugar só: `StackedOn` aponta uma
+  action entre os pendentes. `RoundScheduler.best` (logo `SelectNext`, `AnyEligible` e
+  `ProjectRound`) pula os bloqueados — na projeção, "pendente" é o que a simulação ainda não
+  escolheu, então um anterior adiado adia o empilhado e um anterior escolhido o libera; o Free
+  (`PriorityQueue.ExtractMax`/`Peek`) também. `PullAction` de um bloqueado responde
+  `ErrStackedOnPending` antes de fechar turno ou congelar preço. **Sem penalidade nova:** aberto o
+  primeiro, o segundo é chaveado com a velocidade dele já em `acted` (`BarEconomy.Key`) — o atraso é
+  o preço que o primeiro paga. `ProvisionalPrices` conta o bloqueado como qualquer pendente.
+- **Cancelar (D5).** `CancelAction` devolve a pedida e depois `stackedAfter` (as dependentes,
+  transitivas, em ordem de cadeia); cada uma sai por `dropFromQueue` (fila + `discardEdits`); a marca
+  da troca é uma só. A Room grava uma linha de `cancelled_actions` e manda um `action_cancelled` por
+  action (`holdCancelledActionsLocked`/`announceCancelled`), depois um `bars_updated`.
+- **Reação (D6).** `BestPendingFor` só considera os desbloqueados (fallback: qualquer pendente na
+  barra). `consumePendingFor` escolhe tudo antes de tirar qualquer coisa da fila, em duas passadas
+  de `RoundScheduler.BestPendingWhere` (bloqueado sempre medido contra a fila inteira): primeiro o
+  melhor desbloqueado em cada barra que a reação cobra; depois, só nas barras vazias, o fallback,
+  que pula o que está empilhado (transitivamente) num já escolhido por ela — um bloqueado cujo
+  anterior ela não consumiu ainda vale (repelir sobre puro → combinado consome o combinado). Então,
+  para cada consumido com dependentes: se a reação vai para o mesmo `Position` (`samePlace`, o
+  teste de `sameMoveAsQueued`), o primeiro dependente passa a apontar para o `StackedOn` do
+  consumido e todos ficam poupados; senão caem pela cascata do D5 (nunca um poupado nem um
+  consumido) e voltam em `AttachReactionWithCancels` — a Room grava e anuncia como no cancelamento
+  (`cancelledBy` = quem reagiu). A reação gasta um movimento da cadeia; a cascata não marca a
+  Desvantagem de troca. O re-apontamento não é anunciado: o cliente lê um `stackedOn` cujo alvo
+  não está pendente como "não empilhado".
+- **Wire.** `move.stackedOn` (actionwire, omitempty) chega ao mestre e ao dono; `ProjectAction` o tira
+  de terceiros. Gravado com a action (`actioncodec`, chave `stackedOn`, `omitzero`).
+- **Limite conhecido.** Se a peça anda por outro motivo (arrasto do mestre, fuga que falhou), o
+  `From` de um empilhado continua a origem declarada da cadeia.
 
 ### Encerrar o turno com reactions pendentes
 
@@ -736,6 +809,9 @@ e ao mestre em `reaction_attached`, na reconexão (`ownReactions`) e no históri
 (`actions.consumed_action_ids`). Um segundo attach do mesmo personagem na mesma ação é recusado
 (`ErrReactorAlreadyReacted`).
 
+Com movimentos empilhados, a consumida é a **cabeça** da cadeia, e o que estava empilhado nela
+sobrevive ou cai conforme o destino da reação — ver *Movimentos empilhados* (D6).
+
 Se não havia pendente, a reação **vira** a sua ação, sem Desvantagem. Se havia, a Desvantagem
 entra pelo `RollInput` (§ *Onde mora o viés de uma rolagem só*) — e note que Desvantagem é
 **modo de rolagem**, não `Amount`: `RollAttempts` já rola os dois conjuntos, e a Desvantagem só
@@ -1065,9 +1141,27 @@ privilegiada** — uma finta contra você não te conta que era finta.
 rótulo já contou que havia Evasão embutida. Uma esquiva fechada chega aos terceiros
 **indistinguível de uma esquiva**; um escape fechado, de um escape.
 
-A dedução continua possível, que é o ponto: `bars_updated` é público, e o escape fechado cobra
+A dedução continua possível, que é o ponto: `bars_updated` mostra à mesa o que já abriu, e o escape fechado cobra
 **uma** barra enquanto o padrão cobra duas. Quem olha a barra percebe. **Deduzir da barra é
 legítimo; ser informado não é** — a política inteira cabe nessa frase.
+
+### As barras são por destinatário
+
+`bars_updated` não é mais broadcast: `MatchSession.BarsView(isMaster)` (`matchsession/bars_view.go`)
+monta a visão de cada papel e `Room.broadcastBars` a envia pela pista direta.
+
+- **Mestre:** tudo, ao vivo — preços provisórios, velocidades abertas, pendentes (na ordem
+  projetada) e adiadas por personagem, e a `order`.
+- **Jogador** (todo personagem, o próprio incluso): só preços congelados e velocidades
+  **públicas**; campos do mestre omitidos e `order: []`. Ação pendente é segredo do mestre e
+  nenhum dado rolado chega ao jogador antes de a ação abrir.
+- **Velocidade de reação:** a economia usa toda velocidade, mas a projeção do jogador filtra a
+  da reação até ela ser aberta ou o turno fechar.
+- O jogador só recebe o retrato quando a visão dele mudou; um update vazio contaria que algo
+  secreto aconteceu. O `seq` sobe por retrato e é igual em todas as cópias, então o do jogador
+  pode saltar.
+
+Contrato: [`bars_updated`](../api/match-combat-ws.md#bars_updated).
 
 ## Configuração de partida
 
@@ -1195,7 +1289,7 @@ chama `Key` para decidir elegibilidade, nem `IsEligible` para decidir ordem.
 ### Onde o preço mora
 
 `Round.prices` (`entity/round/round.go`) substituiu o antigo campo único `coast` por um mapa
-`action.Bar → int`, um preço por barra. `RoundScheduler.FreezePrices` o congela na primeira
+`action.Bar → int`, um preço por barra. `RoundScheduler.FreezeAt` o congela na primeira
 seleção que enxerga trabalho pendente **naquela barra** — não no round inteiro — e
 `Round.FreezePrice` é idempotente: a primeira chamada vence, toda chamada seguinte é
 ignorada. Uma barra ausente do mapa ainda não precificou; é também a leitura constante de um
@@ -1281,15 +1375,15 @@ p2 → p1 → p3 → p2, porque a chave da segunda de p2 cai para `média(23,17)
 primeira abre. Nada real é mutado: a fila entrega cópia e o estado das barras é lido por um
 overlay que morre com a chamada, então `RoundScheduler{}` continua valendo como zero value.
 
-### As barras são públicas
+### A ordem projetada é do mestre; o resto da barra, do que já abriu
 
-`bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é broadcast, não
-projeção por destinatário: carrega `seq`, os preços congelados, o saldo e o histórico de
-velocidades de cada personagem em ambas as barras, e a ordem projetada
+`bars_updated` (`BarsUpdatedPayload`, `internal/app/game/message.go`) é projetado por
+destinatário (ver "As barras são por destinatário", acima). Carrega `seq`, os preços, o saldo e as
+velocidades de cada personagem em ambas as barras e, para o mestre, a ordem projetada
 (`MatchSession.ProjectedOrder`/`RoundScheduler.ProjectOrder`) — quem age a seguir e em qual
 barra. **Nada que identifique a ação em si** entra no payload: sem ID de ação, arma, alvo ou
-perícia. Isso é o que sustenta "a fila é secreta; a barra e a ordem são públicas" — um jogador
-sem visão da barra geral só descobre que era a vez dele depois que passou.
+perícia. "A fila é secreta" vale também para a ordem e para toda velocidade ainda não aberta: o
+jogador só enxerga o que o mestre já abriu.
 
 ### Um gotcha de teste: `rollActionDice` rola quase tudo, mas não é uniforme
 
@@ -1297,7 +1391,7 @@ sem visão da barra geral só descobre que era a vez dele depois que passou.
 **quantos dados caem depende do regime do round e da categoria de movimento**, não é "tudo,
 sempre":
 
-- **`Speed` (actionSpeed) só rola em `Race`.** Em `Free` ela é passiva — não há disputa sobre
+- **`Speed` (actionSpeed) só rola em `Race`, e só numa action que cobra a barra de ação.** Em `Free` ela é passiva — não há disputa sobre
   quem age primeiro, então não há o que rolar — e nenhum dado cai para ela
   (`match_session.go:590-594`). Um teste em `Free` que reserva uma face para a velocidade
   sorteia uma a mais do que o código consome, e todo número depois dela sai deslocado.

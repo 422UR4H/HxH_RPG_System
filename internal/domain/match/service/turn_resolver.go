@@ -190,16 +190,10 @@ type PendingReaction struct {
 // charges, like a combined action, which happens at the time of its slower half. Nil when it
 // charges none.
 func reactionKey(r action.Action) *int {
-	bars := r.Bars()
-	if len(bars) == 0 {
+	if len(r.Bars()) == 0 {
 		return nil
 	}
-	key := r.SpeedOn(bars[0])
-	for _, b := range bars[1:] {
-		if v := r.SpeedOn(b); v < key {
-			key = v
-		}
-	}
+	key := r.OrderSpeed()
 	return &key
 }
 

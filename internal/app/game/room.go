@@ -1,6 +1,7 @@
 package game
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -129,8 +130,9 @@ type Room struct {
 	done chan struct{}
 	mu   sync.RWMutex
 	// barsSeq stamps every bars_updated snapshot. Bumped under mu at the instant the snapshot
-	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars hands the
-	// channel off to a goroutine, and two rapid opens can reach it out of order.
+	// is taken, so the number orders the SNAPSHOTS, not the sends — broadcastBars sends after
+	// releasing mu, and two broadcasts from two read pumps can reach a client out of order.
+	// Every recipient's copy of one snapshot carries the same number.
 	//
 	// It starts at the clock (NewRoom), not at 0: the contract promises the counter never
 	// restarts, and clients drop any seq lower than the highest they applied, across
@@ -139,6 +141,24 @@ type Room struct {
 	// every snapshot to the old room's last one. Microseconds keep it below 2^53, exact as a
 	// JavaScript number.
 	barsSeq uint64
+	// barsCacheMu guards lastPlayerBars and playerBarsStale. Its own lock, not mu:
+	// buildMatchFullState writes them while holding only mu's READ lock. Lock order: mu, then
+	// barsCacheMu — never the other way.
+	barsCacheMu sync.Mutex
+	// lastPlayerBars is the player view every connected player holds, as JSON with seq zero
+	// (barsViewKey). broadcastBars compares each new player view against it and skips the
+	// players when nothing they may see changed (spec 2026-11-04 D1): a fresh seq with nothing
+	// new in it would tell them that something secret just happened. The player view is the
+	// same for every player, so one copy covers them all.
+	//
+	// Set by every snapshot sent to the players, and seeded by the first match_full_state a
+	// player is handed while it is nil. A new Room (restart) starts at nil, so what it first
+	// tells anyone is what defines it.
+	lastPlayerBars []byte
+	// playerBarsStale is set when a player was handed (match_full_state) a bars view different
+	// from lastPlayerBars — a change no bars_updated carried. The players then do not all hold
+	// the same view, so the next snapshot goes to them even if it equals lastPlayerBars.
+	playerBarsStale bool
 	// boardLoaded is true once loadBoard has installed a board at least once for this Room (a
 	// load that found no map attached does not count). It is what
 	// narrows the master-reconnect half of "quando carrega" (spec §4.3) to a SINGLE load once
@@ -695,6 +715,11 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 
 	r.mu.Lock()
 	r.session = session
+	// The players at the table hold no bars yet: whatever the cache says, the next snapshot
+	// goes to them (see the broadcastBars at the end of this function).
+	r.barsCacheMu.Lock()
+	r.lastPlayerBars, r.playerBarsStale = nil, true
+	r.barsCacheMu.Unlock()
 	wallSlice := make([]mapentity.WallSegment, 0, len(r.walls))
 	for _, w := range r.walls {
 		wallSlice = append(wallSlice, w)
@@ -747,6 +772,9 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	})
 	// Depois do map_full_state do mestre, na mesma fila direta.
 	r.pushMasterPieceView()
+	// The bars from the first instant: every player holds the base view, so the enqueues
+	// that follow — which change nothing a player may see — reach the master alone.
+	r.broadcastBars(session)
 	return nil
 }
 
@@ -880,9 +908,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// PersistTurnClose and its settled resolution_updated — losing them here would silently
 		// drop a real turn from the table and from the Action History. The master still learns
 		// the open failed, just after the table has the turn that actually ended.
+		//
+		// The bars go out on every exit past Execute, the failed ones included: a failed command
+		// can still have closed the previous turn or changed what the views read. The price
+		// itself freezes only when an action opens, so a failed open/pull leaks none (spec
+		// 2026-11-04 D7). When the players' view did not change, they get nothing
+		// (lastPlayerBars).
+		r.broadcastBars(session)
 		if result != nil {
-			r.broadcastBars(session)
-
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
 				// Opening the next action is ALSO a close, so the escapes whose step waited for
@@ -1033,9 +1066,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// resolution_updated — losing them here would silently drop a real turn from the table
 		// and from the Action History. The master still learns the pull failed, just after the
 		// table has the turn that actually ended.
+		//
+		// The bars go out on every exit past Execute, the failed ones included — same reason as
+		// open_next_action: PullAction freezes the prices before it looks the action up, so a
+		// stale id fails with a price already frozen.
+		r.broadcastBars(session)
 		if result != nil {
-			r.broadcastBars(session)
-
 			if result.ClosedTurn != nil {
 				closedTurn := result.ClosedTurn
 				// Opening the next action is ALSO a close, so the escapes whose step waited for
@@ -1117,50 +1153,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
 			return
 		}
-		// Movement blocking: validate path against walls with move=true and !open.
-		//
-		// B6: the origin is never the client's — the server owns the board, so `from` is the
-		// ACTOR'S OWN PIECE POSITION, read off r.pieceSlotOf, not payload.Move.From (already
-		// discarded by buildAction). nil (no piece on the board) means there is nothing to
-		// check: the sentinel-based skip this used to do for [0,0,0] — which made a piece
-		// genuinely standing at (0,0) unblockable — is gone along with the sentinel itself.
-		//
-		// B5/B10: the wall check reads cell CENTERS with the session's own grid, not
-		// `col × cellSize` (that lands on a cell's top-left corner). The centers are LOCAL
-		// (SlotCenterToLocal), because that is the space wall P1/P2 live in: comparing
-		// transformed centers against local walls put the path somewhere else on any rotated
-		// or squashed grid.
-		if a.Move != nil {
-			r.mu.RLock()
-			from, hasPiece := r.pieceSlotOf(a.GetActorID().String())
-			a.Move.From = from
-			grid, walls := r.boardGeometryLocked()
-			r.mu.RUnlock()
-			if hasPiece {
-				to := a.Move.Position
-				fx, fy := mapservice.SlotCenterToLocal(from[0], from[1], grid)
-				tx, ty := mapservice.SlotCenterToLocal(to[0], to[1], grid)
-				if mapservice.IsPathBlocked([2]float64{fx, fy}, [2]float64{tx, ty}, walls) {
-					client.SendMessage(NewErrorMessage("move_blocked", "movement blocked by a wall"))
-					return
-				}
-			}
-		}
 		// A character's hand on a wall: only the kinds a character declares (lock, unlock and
-		// reveal are the master's, through enqueue_master_action), and only within reach.
-		if a.Interact != nil {
-			if !a.Interact.Kind.IsCharacterInteract() {
-				client.SendMessage(NewErrorMessage("invalid_action",
-					fmt.Sprintf("interact kind %q is not a character action", a.Interact.Kind)))
-				return
-			}
-			if refusal := r.interactOutOfReach(a); refusal != "" {
-				client.SendMessage(NewErrorMessage("out_of_reach", refusal))
-				return
-			}
+		// reveal are the master's, through enqueue_master_action). The reach is checked below,
+		// under the lock, after the move.
+		if a.Interact != nil && !a.Interact.Kind.IsCharacterInteract() {
+			client.SendMessage(NewErrorMessage("invalid_action",
+				fmt.Sprintf("interact kind %q is not a character action", a.Interact.Kind)))
+			return
 		}
-		// Write lock across Execute: enqueueing pushes onto the priority queue AND rolls the
-		// action's dice into it, both of which the master's open_next_action reads.
+		// Write lock across the board checks AND Execute: enqueueing pushes onto the priority
+		// queue AND rolls the action's dice into it, both of which the master's open_next_action
+		// reads. O fim da cadeia de movimentos (D3) é lido da fila nesta mesma seção crítica, então
+		// a origem que a checagem de parede usa é a que EnqueueAction grava em From.
 		//
 		// The master's action_queued payload is built in the SAME critical section: once
 		// Execute returns, `a` sits in the session's queue and belongs to the session, and
@@ -1168,13 +1172,21 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// race whatever the master does to the queue next. Sent after the unlock, like
 		// everything that reaches a client.
 		r.mu.Lock()
-		errEnqueue := r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+		refusalCode, refusal := r.enqueueRefusalLocked(session, a)
+		var errEnqueue error
 		var queued ActionQueuedPayload
 		actionID := a.GetID()
-		if errEnqueue == nil {
-			queued = newActionQueuedPayload(a)
+		if refusalCode == "" {
+			errEnqueue = r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
+			if errEnqueue == nil {
+				queued = newActionQueuedPayload(a)
+			}
 		}
 		r.mu.Unlock()
+		if refusalCode != "" {
+			client.SendMessage(NewErrorMessage(refusalCode, refusal))
+			return
+		}
 		if errEnqueue != nil {
 			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
 			return
@@ -1198,14 +1210,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		session := r.session
 		var err error
-		var write *cancelledWrite
+		var writes []*cancelledWrite
+		var cancelledIDs []uuid.UUID
 		if session != nil && r.deps.CancelActionUC != nil {
-			var act *action.Action
-			act, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
+			var acts []*action.Action
+			acts, err = r.deps.CancelActionUC.Execute(context.Background(), session, client.userUUID, payload.ActionID)
 			// The record is built in this same critical section, so the turn it names is the one
 			// open at the cancellation; with a turn open it is held for that turn's close.
-			if err == nil && act != nil {
-				write = r.holdCancelledActionLocked(act, client.userUUID)
+			// Um registro por action: a pedida e as empilhadas nela (D5), cada uma como um
+			// cancelamento pedido por quem pediu o primeiro.
+			if err == nil {
+				writes, cancelledIDs = r.holdCancelledActionsLocked(acts, client.userUUID)
 			}
 		}
 		r.mu.Unlock()
@@ -1218,15 +1233,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		// No turn open: written now, before the news goes out.
-		r.writeCancelledAction(write)
+		for _, w := range writes {
+			r.writeCancelledAction(w)
+		}
 		// The master decides what opens next, so they hear it first; the sender gets the same
 		// news as the ack of their own request. A master cancelling an NPC's action is both —
 		// one message, not two. The table only sees the public order change.
-		cancelled := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload(payload))
-		r.sendToMaster(cancelled)
-		if !r.IsMaster(client.userUUID) {
-			client.SendMessage(cancelled)
-		}
+		// Um action_cancelled por action, em ordem de cadeia, e um bars_updated no fim.
+		r.announceCancelled(client, cancelledIDs)
 		r.broadcastBars(session)
 
 	case MsgTypeAttachReaction:
@@ -1318,6 +1332,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return &msg
 		})
 		r.publishResolution(turnID, result.Resolution)
+		// The reactor's speed just turned public: the players' bars show it from here on.
+		r.broadcastBars(session)
 
 	case MsgTypeEditAction:
 		if !r.IsMaster(client.userUUID) {
@@ -1371,7 +1387,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if result.Queued {
 			// The master's view of the action is replaced, never appended: action_queued for an
 			// actionId the client already holds is an update. The order moves when the speed
-			// did, so the public bars go out too — they name no action and no condition.
+			// did, so the bars go out too, each recipient their own view of them.
 			r.sendToMaster(NewServerMessage(MsgTypeActionQueued, requeued))
 			r.broadcastBars(session)
 			return
@@ -1557,6 +1573,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
+		// The new round has no price and no turn: everyone's bars changed here, and the players
+		// are told now, not at the next secret send by anyone (spec 2026-11-04 D1).
+		r.broadcastBars(session)
 
 	case MsgTypeCancelLobby:
 		if err := r.CloseLobby(client.userUUID); err != nil {
@@ -2374,7 +2393,12 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	result, err := r.deps.AttachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
 	var turnID uuid.UUID
 	var attached ReactionAttachedPayload
+	var cancelWrites []*cancelledWrite
+	var cancelledIDs []uuid.UUID
 	if err == nil {
+		// Os movimentos que caíram em cascata (D6) são gravados como um cancelamento pedido pelo
+		// dono do reator, na mesma seção crítica — com o turno aberto, seguem com o fechamento dele.
+		cancelWrites, cancelledIDs = r.holdCancelledActionsLocked(result.Cancelled, client.userUUID)
 		turnID = session.CurrentTurnID()
 		// Read under the lock: `reaction` is ours, but Execute just wrote ConsumedActionIDs into
 		// it, and the session's copy is the one later readers use — both are written before the
@@ -2397,6 +2421,13 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 		// The master reacting through an NPC is reactor AND master: one copy, not two.
 		r.sendToMaster(ack)
 	}
+	// Depois do reaction_attached (que nomeia o consumido): um action_cancelled por movimento
+	// empilhado que caiu com ele, ao mestre e ao dono do reator. Com o turno aberto (sempre, numa
+	// reação) os registros ficaram retidos para o fechamento e cancelWrites vem vazio.
+	for _, w := range cancelWrites {
+		r.writeCancelledAction(w)
+	}
+	r.announceCancelled(client, cancelledIDs)
 	// publishResolution is the single place that decides master-only vs projected, by reading
 	// IsSettled. An attach lands on an open, unsettled turn — and ONLY that, because
 	// MatchSession.AttachReaction now refuses (ErrTurnAlreadyClosed) before rolling a single
@@ -2408,6 +2439,9 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	// future change to attach timing cannot silently reintroduce a master-only leak here — but
 	// the guard, not the routing, is what keeps this comment true.
 	r.publishResolution(turnID, result.Resolution)
+	// The reaction's speed was charged on attach: the master's bars changed. A player's do not
+	// (the speed stays secret until the reaction opens), but every snapshot goes to everyone.
+	r.broadcastBars(session)
 }
 
 // applyWallInteract applies the master's hand to a wall in memory (open, close, toggle, lock,
@@ -2467,30 +2501,38 @@ func (r *Room) sendToMaster(msg Message) {
 	}
 }
 
-// newBarsUpdatedPayload snapshots both clocks for the whole table.
+// newBarsUpdatedPayload snapshots both clocks as the master (isMaster) or a player sees them —
+// matchsession.BarsView decides what each may see; this only puts it on the wire.
 //
 // The caller holds r.mu — it reads session state that every open and every enqueue mutates —
 // and stamps Seq from the room counter in that same critical section.
-func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayload {
-	prices := map[string]int{}
-	for bar, price := range session.RoundPrices() {
-		prices[string(bar)] = price
+func newBarsUpdatedPayload(session *matchsession.MatchSession, isMaster bool) BarsUpdatedPayload {
+	view := session.BarsView(isMaster)
+	out := BarsUpdatedPayload{
+		Prices:     barPricesWire(view.Prices),
+		Characters: make([]CharacterBarsPayload, 0, len(view.Characters)),
+		Order:      make([]BarSlotPayload, 0, len(view.Order)),
+		RoundTurns: view.RoundTurns,
 	}
-
-	out := BarsUpdatedPayload{Prices: prices, RoundTurns: session.RoundTurnCount()}
-	for _, charID := range session.CharacterIDs() {
-		actionCarry, actionSpeeds := session.BarState(charID, action.BarAction)
-		moveCarry, moveSpeeds := session.BarState(charID, action.BarMove)
+	if len(view.Provisional) > 0 {
+		out.ProvisionalPrices = barPricesWire(view.Provisional)
+	}
+	for _, c := range view.Characters {
 		out.Characters = append(out.Characters, CharacterBarsPayload{
-			CharacterID:   charID,
-			ActionBalance: actionCarry,
-			MoveBalance:   moveCarry,
-			ActionSpeeds:  append([]int(nil), actionSpeeds...),
-			MoveSpeeds:    append([]int(nil), moveSpeeds...),
+			CharacterID:          c.CharacterID,
+			ActionCarry:          c.Action.Carry,
+			MoveCarry:            c.Move.Carry,
+			ActionBalance:        c.Action.Balance,
+			MoveBalance:          c.Move.Balance,
+			ActionSpeeds:         append([]int{}, c.Action.Acted...),
+			MoveSpeeds:           append([]int{}, c.Move.Acted...),
+			PendingActionSpeeds:  append([]int(nil), c.Action.Pending...),
+			PendingMoveSpeeds:    append([]int(nil), c.Move.Pending...),
+			DeferredActionSpeeds: append([]int(nil), c.Action.Deferred...),
+			DeferredMoveSpeeds:   append([]int(nil), c.Move.Deferred...),
 		})
 	}
-
-	for _, slot := range session.ProjectedOrder() {
+	for _, slot := range view.Order {
 		bars := make([]string, 0, len(slot.Bars))
 		for _, b := range slot.Bars {
 			bars = append(bars, string(b))
@@ -2500,6 +2542,15 @@ func newBarsUpdatedPayload(session *matchsession.MatchSession) BarsUpdatedPayloa
 			Bars:    bars,
 			Key:     slot.Key,
 		})
+	}
+	return out
+}
+
+// barPricesWire keys a price map by bar name, as the wire carries it.
+func barPricesWire(prices map[action.Bar]int) map[string]int {
+	out := make(map[string]int, len(prices))
+	for bar, price := range prices {
+		out[string(bar)] = price
 	}
 	return out
 }
@@ -2560,21 +2611,80 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 	})
 }
 
-// broadcastBars publishes the clocks to everyone. Called after anything that moves them:
-// an action enqueued, a turn opened, a round closed, a regime switched.
+// broadcastBars publishes the clocks to everyone, each recipient their own view of them: the
+// master the whole live view, every player only what the master has opened (spec 2026-11-04
+// D1). Called after anything that moves them: an action enqueued, a turn opened, a reaction
+// attached or opened, a round closed, a regime switched, a scene changed — and a failed open
+// or pull, which may have frozen a price before it failed.
+//
+// The players get it only when their view CHANGED (see lastPlayerBars): an enqueue or an
+// attach moves only the master's bars, and a player copy with a new seq and nothing new in it
+// would still announce that something secret happened. A skipped copy simply never arrives —
+// the seq a player sees still only rises.
+//
+// On the direct lane, like turn_opened: sends are synchronous and ordered per client.
 func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 	if session == nil {
 		return
 	}
 	// Write-locked, not read-locked: the sequence counter is bumped in the same critical
-	// section that reads the state, so the number and the snapshot it stamps cannot disagree.
+	// section that reads the state, so the number and the snapshot it stamps cannot disagree —
+	// and both views are built in it, so the master's copy and the players' copy of one seq
+	// describe the same instant. The comparison with lastPlayerBars is in it too, so two
+	// snapshots cannot both decide against the same stale copy.
 	r.mu.Lock()
 	r.barsSeq++
-	payload := newBarsUpdatedPayload(session)
-	payload.Seq = r.barsSeq
+	masterView := newBarsUpdatedPayload(session, true)
+	masterView.Seq = r.barsSeq
+	playerView := newBarsUpdatedPayload(session, false)
+	toPlayers := r.notePlayerBarsSentLocked(barsViewKey(playerView))
+	playerView.Seq = r.barsSeq
+	masterMsg := NewServerMessage(MsgTypeBarsUpdated, masterView)
+	playerMsg := NewServerMessage(MsgTypeBarsUpdated, playerView)
 	r.mu.Unlock()
-	data, _ := json.Marshal(NewServerMessage(MsgTypeBarsUpdated, payload))
-	go func() { r.broadcast <- data }()
+	r.dispatchPerPlayer(func(_ uuid.UUID, isMaster bool) *Message {
+		if isMaster {
+			return &masterMsg
+		}
+		if !toPlayers {
+			return nil
+		}
+		return &playerMsg
+	})
+}
+
+// notePlayerBarsSentLocked decides whether a snapshot whose player view is key goes to the
+// players, and if so records it as what they hold. The caller holds mu (write).
+func (r *Room) notePlayerBarsSentLocked(key []byte) bool {
+	r.barsCacheMu.Lock()
+	defer r.barsCacheMu.Unlock()
+	if !r.playerBarsStale && r.lastPlayerBars != nil && bytes.Equal(key, r.lastPlayerBars) {
+		return false
+	}
+	r.lastPlayerBars, r.playerBarsStale = key, false
+	return true
+}
+
+// notePlayerBarsHandedLocked records that a player was just handed the player view key in a
+// match_full_state. The caller holds mu (a read lock is enough).
+func (r *Room) notePlayerBarsHandedLocked(key []byte) {
+	r.barsCacheMu.Lock()
+	defer r.barsCacheMu.Unlock()
+	switch {
+	case r.lastPlayerBars == nil && !r.playerBarsStale:
+		r.lastPlayerBars = key
+	case !bytes.Equal(key, r.lastPlayerBars):
+		r.playerBarsStale = true
+	}
+}
+
+// barsViewKey is a bars view as JSON with seq zero — what two snapshots are compared by. JSON
+// rather than a deep compare: the map keys marshal sorted and the rows come sorted by ID, so
+// equal views give equal bytes, and the wire is exactly what "nothing changed" is about.
+func barsViewKey(p BarsUpdatedPayload) []byte {
+	p.Seq = 0
+	key, _ := json.Marshal(p)
+	return key
 }
 
 func (r *Room) broadcastWallStateChanged(wallID string, open, locked bool) {
@@ -2978,7 +3088,10 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		return nil
 	}
 
-	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session)}
+	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session, isMaster)}
+	if !isMaster {
+		r.notePlayerBarsHandedLocked(barsViewKey(payload.Bars))
+	}
 	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
 	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
 	payload.Bars.Seq = r.barsSeq
@@ -3701,17 +3814,61 @@ func (r *Room) boardGeometryLocked() (mapentity.GridShape, []mapentity.WallSegme
 	return r.grid, walls
 }
 
-// interactOutOfReach checks that a character interacting with walls (open, close, lockpick…)
+// enqueueRefusalLocked faz as checagens de tabuleiro de uma action declarada — a parede no
+// caminho do movimento e o alcance da mão na parede — e devolve o código e a mensagem da recusa,
+// ou "" quando passa. O caller segura r.mu para escrita, na mesma seção crítica do enqueue.
+//
+// Movement blocking: validate path against walls with move=true and !open.
+//
+// B6: the origin is never the client's — the server owns the board, so `from` is the ACTOR'S OWN
+// PIECE POSITION, read off r.pieceSlotOf, not payload.Move.From (already discarded by
+// buildAction). nil (no piece on the board) means there is nothing to check: the sentinel-based
+// skip this used to do for [0,0,0] — which made a piece genuinely standing at (0,0) unblockable —
+// is gone along with the sentinel itself.
+//
+// Movimento empilhado (D3, spec 2026-11-06): com um movimento do personagem ainda na fila, a
+// origem da checagem é o destino do último deles (session.MoveChainTail) — de onde este movimento
+// vai partir —, não a peça. Sem peça no tabuleiro continua sem checagem, empilhado ou não.
+//
+// B5/B10: the wall check reads cell CENTERS with the session's own grid, not `col × cellSize`
+// (that lands on a cell's top-left corner). The centers are LOCAL (SlotCenterToLocal), because
+// that is the space wall P1/P2 live in: comparing transformed centers against local walls put the
+// path somewhere else on any rotated or squashed grid.
+func (r *Room) enqueueRefusalLocked(session *matchsession.MatchSession, a *action.Action) (code, msg string) {
+	if a.Move != nil {
+		from, hasPiece := r.pieceSlotOf(a.GetActorID().String())
+		a.Move.From = from
+		if hasPiece {
+			origin := *from
+			if tail := session.MoveChainTail(a.GetActorID()); tail != nil {
+				origin = tail.Move.Position
+			}
+			grid, walls := r.boardGeometryLocked()
+			to := a.Move.Position
+			fx, fy := mapservice.SlotCenterToLocal(origin[0], origin[1], grid)
+			tx, ty := mapservice.SlotCenterToLocal(to[0], to[1], grid)
+			if mapservice.IsPathBlocked([2]float64{fx, fy}, [2]float64{tx, ty}, walls) {
+				return "move_blocked", "movement blocked by a wall"
+			}
+		}
+	}
+	if a.Interact != nil {
+		if refusal := r.interactOutOfReachLocked(a); refusal != "" {
+			return "out_of_reach", refusal
+		}
+	}
+	return "", ""
+}
+
+// interactOutOfReachLocked checks that a character interacting with walls (open, close, lockpick…)
 // TOUCHES each of them — stands on one of the wall's contact cells (WallContactSlots) — where
 // the action leaves them: the action's own move destination, or where the piece stands now.
 // An attack needs nothing of the sort: a ranged attack is a ranged attack. Something that would
 // let a character act on a wall from afar (an ability) goes through the master's hand.
 //
 // Returns the refusal, or "" when every wall target is within reach. Character targets are
-// not this check's business.
-func (r *Room) interactOutOfReach(a *action.Action) string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+// not this check's business. The caller holds r.mu.
+func (r *Room) interactOutOfReachLocked(a *action.Action) string {
 	grid, walls := r.boardGeometryLocked()
 	byID := make(map[string]mapentity.WallSegment, len(walls))
 	for _, w := range walls {

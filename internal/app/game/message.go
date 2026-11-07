@@ -517,31 +517,35 @@ type CloseTurnRefusedPayload struct {
 	PendingReactions []PendingReactionPayload `json:"pendingReactions"`
 }
 
-// BarsUpdatedPayload is the two clocks as the whole table sees them.
+// BarsUpdatedPayload is the two clocks as ONE recipient may see them.
 //
-// It is BROADCAST, not projected per recipient, and that is deliberate: combat-engine.md says
-// "A fila é secreta; a barra e a ordem são públicas". A player who cannot see the general bar
-// only finds out it was their turn after it passed.
+// It is PROJECTED per recipient (spec 2026-11-04 D1): pending actions and every unopened die
+// are the master's secret. The master gets the whole live view — provisional prices, the
+// projected order, every character's pending and deferred speeds. A player — for every
+// character, their own included — gets only what the master has already opened: the frozen
+// prices, the public speeds, an empty order. The master-only fields are OMITTED for a player
+// (Order, which every client reads, is the exception: always present, `[]` for a player).
 //
-// Order therefore carries who acts next and on which bar — and NOTHING that identifies the
-// action itself. No action ID, no weapon, no target, no skill. Those belong to the master
-// until the turn opens.
+// Order carries who acts next and on which bar — and NOTHING that identifies the action
+// itself. No action ID, no weapon, no target, no skill.
 type BarsUpdatedPayload struct {
-	// Seq orders the snapshots, and exists because they can arrive out of order.
+	// Seq orders the snapshots. A client keeps the highest it has applied and DISCARDS
+	// anything lower — through reconnects too, because match_full_state.bars carries the
+	// current value.
 	//
-	// This is a FULL STATE snapshot, and it is handed to the broadcast channel from a detached
-	// goroutine: two opens in quick succession race on that send, and the older snapshot can be
-	// delivered last. There is no later event to self-correct from either — the one that closes
-	// the round is the last bars_updated the table gets.
-	//
-	// It is assigned at the instant the snapshot is taken, not when it is sent, and it rises by
-	// one every time. A client keeps the highest it has applied and DISCARDS anything lower.
+	// It is assigned under r.mu at the instant the snapshot is taken, rises by one per
+	// snapshot, and is the SAME on the master's copy and on every player's copy of one
+	// snapshot.
 	Seq uint64 `json:"seq"`
 	// Prices maps a bar name to its frozen round price. A bar that has not priced is absent.
 	Prices map[string]int `json:"prices"`
-	// Characters is every character's standing balance on both bars.
+	// ProvisionalPrices (master only) maps a bar that has NOT frozen yet to the price it would
+	// freeze at now. Race only; absent when every bar with work has frozen.
+	ProvisionalPrices map[string]int `json:"provisionalPrices,omitempty"`
+	// Characters is every character's standing on both bars, sorted by characterId.
 	Characters []CharacterBarsPayload `json:"characters"`
-	// Order is the projection of who acts next, highest key first.
+	// Order (master only — always `[]` for a player) is the projection of who acts next,
+	// highest key first.
 	Order []BarSlotPayload `json:"order"`
 	// RoundTurns is how many turns opened in the current round. Zero = nothing happened yet,
 	// and the round cannot be ended (open_next_action refuses: no turn opened in this round yet).
@@ -550,15 +554,27 @@ type BarsUpdatedPayload struct {
 
 type CharacterBarsPayload struct {
 	CharacterID uuid.UUID `json:"characterId"`
-	// ActionBalance and MoveBalance are the standing credit or debt on each clock. They are
-	// fractional: the average behind them rarely divides evenly, and the fraction is kept
-	// rather than rounded away.
+	// ActionCarry and MoveCarry are what crossed from the previous round, credit or debt.
+	ActionCarry float64 `json:"actionCarry"`
+	MoveCarry   float64 `json:"moveCarry"`
+	// ActionBalance and MoveBalance are the LIVE balance on each clock: the carry charged with
+	// the speeds this recipient may see (acted + pending for the master, public only for a
+	// player) against the price (frozen, or provisional for the master). No price → the
+	// carry. Fractional: the average behind them rarely divides evenly.
 	ActionBalance float64 `json:"actionBalance"`
 	MoveBalance   float64 `json:"moveBalance"`
-	// ActionSpeeds and MoveSpeeds are the speeds that have already acted this round. They
-	// are public because the average they produce is what everyone is being ordered by.
+	// ActionSpeeds and MoveSpeeds are the speeds that acted this round, in order — every one
+	// for the master, only the public ones (their action or reaction opened) for a player.
+	// Never null.
 	ActionSpeeds []int `json:"actionSpeeds"`
 	MoveSpeeds   []int `json:"moveSpeeds"`
+	// PendingActionSpeeds/PendingMoveSpeeds (master only) are the queued speeds that open this
+	// round, in projected order; DeferredActionSpeeds/DeferredMoveSpeeds (master only) the
+	// queued ones that do not fit it. Omitted when empty — always, for a player.
+	PendingActionSpeeds  []int `json:"pendingActionSpeeds,omitempty"`
+	PendingMoveSpeeds    []int `json:"pendingMoveSpeeds,omitempty"`
+	DeferredActionSpeeds []int `json:"deferredActionSpeeds,omitempty"`
+	DeferredMoveSpeeds   []int `json:"deferredMoveSpeeds,omitempty"`
 }
 
 // BarSlotPayload is one slot of the general bar: who acts, which clocks it charges, and where
@@ -935,7 +951,8 @@ type MatchFullStatePayload struct {
 	// rest of the match state; absent before the session exists.
 	PassiveValue int `json:"passiveValue,omitempty"`
 	// Bars is the WHOLE bars_updated payload, reused rather than re-shaped: a second bar
-	// format would be a second thing to keep in sync with the first.
+	// format would be a second thing to keep in sync with the first. Projected like it, too —
+	// the master's view for the master, the player view for everyone else.
 	//
 	// ⚠️ Its Seq is the CURRENT counter, NOT a new one. The client keeps the highest seq it
 	// applied and discards anything lower; stamping a fresh number here would reset that guard

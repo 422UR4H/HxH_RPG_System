@@ -44,6 +44,34 @@ func (a *Action) chargesActionBar() bool {
 		a.Interact != nil || a.Feint != nil || len(a.Skills) > 0
 }
 
+// ChargesActionBar reports whether the action is paid from the action bar. Only such an
+// action carries an actionSpeed (Legerity); a pure move and a move-only escape carry none.
+func (a *Action) ChargesActionBar() bool {
+	for _, b := range a.Bars() {
+		if b == BarAction {
+			return true
+		}
+	}
+	return false
+}
+
+// OrderSpeed is the speed this action is ordered by: the lowest SpeedOn across the bars it
+// charges, as a combined action happens at the time of its slower half. 0 when it charges no
+// bar. It is the one rule shared by combat (reactionKey) and the Free queue.
+func (a *Action) OrderSpeed() int {
+	bars := a.Bars()
+	if len(bars) == 0 {
+		return 0
+	}
+	key := a.SpeedOn(bars[0])
+	for _, b := range bars[1:] {
+		if v := a.SpeedOn(b); v < key {
+			key = v
+		}
+	}
+	return key
+}
+
 // SpeedOn is the speed this action entered the round with on one bar. Both speeds are derived
 // once, when the action arrives, and neither is ever re-rolled — a combined action keeps its
 // actionSpeed AND its moveSpeed; what the combination changes is only when it happens.

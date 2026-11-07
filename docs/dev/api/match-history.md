@@ -219,6 +219,9 @@ Notas sobre os campos de `action`/`reactions`:
   Convenção de coordenada, igual em `move.position`: `[a, b, z]`, `(a, b) = (col, row)` numa
   grade quadrada ou `(q, r)` axial numa hexagonal; `z` não é lido pelo servidor. Uma reação
   (em `reactions[]`) nunca tem `move.from` — o campo não é derivado para o lado da reação.
+- `move.stackedOn` (uuid, opcional, 2026-11-06) — a action em que este movimento estava
+  [empilhado](match-combat-ws.md#movimentos-empilhados) quando foi enfileirado; ausente quando não
+  estava. **Só para o mestre e o dono do ator** (`service.ProjectAction` corta para os outros).
 - `consumedActionIds` — só numa reação cobrada que consumiu algo (uma action pendente por barra
   que o tipo cobra). **Só para o mestre e o dono do reator**; o resto recebe a reação sem a
   chave. O front reconcilia as actions declaradas por ele: uma action nomeada ali foi
@@ -439,7 +442,7 @@ mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, n
 é como a projeção é decidida, não dado de mesa.
 
 **A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8). Quem cancelou é
-público: a barra geral já mostrou a ordem mudar. O que a ação seria, não:
+público. O que a ação seria, não:
 
 | Leitor | Recebe |
 |---|---|

@@ -74,6 +74,10 @@ Se você **não** tinha ação declarada, a reação simplesmente vira a sua aç
 
 O mestre pode impor a Desvantagem mesmo assim, se achar que a cena pede.
 
+**Com vários movimentos na fila, a reação gasta o primeiro deles.** Uma fuga para onde esse
+primeiro ia mantém o resto da sequência; uma fuga para outro lugar cancela os movimentos que vinham
+depois. Ver [Vários movimentos na fila](acoes.md#vários-movimentos-na-fila).
+
 **Cancelar uma ação também é trocar.** No regime disputado, até o fim do round em que você
 cancelou, tudo o que você fizer de novo — declarar outra ação ou reagir ativamente — rola a
 velocidade com **Desvantagem**. Só a velocidade piora: o acerto, a esquiva, a defesa e o dano

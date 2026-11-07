@@ -15,8 +15,18 @@ import (
 // more than move, the swap Disadvantage stays.
 func swapSetup(t *testing.T, queuedFor func(actor uuid.UUID) *action.Action) (*matchsession.MatchSession, uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
+	return swapSetupWithDice(t, queuedFor, nil)
+}
+
+// swapSetupWithDice is swapSetup with the dice scripted from the start; nil faces keep the
+// session's own source (real rolls).
+func swapSetupWithDice(t *testing.T, queuedFor func(actor uuid.UUID) *action.Action, faces []int) (*matchsession.MatchSession, uuid.UUID, uuid.UUID, uuid.UUID) {
+	t.Helper()
 	playerA, playerB := uuid.New(), uuid.New()
 	s, chars := raceSessionWithSheets(t, enum.Race, playerA, playerB)
+	if faces != nil {
+		s.SetRollSource(&scriptedFaces{faces: faces})
+	}
 	a := makeActionWithSpeed(chars[0], 10)
 	a.TargetID = []uuid.UUID{chars[1]}
 	if err := s.EnqueueAction(playerA, a); err != nil {

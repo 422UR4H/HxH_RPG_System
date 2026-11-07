@@ -80,3 +80,30 @@ func (r *Room) writeCancelledAction(w *cancelledWrite) {
 		log.Printf("cancel_action FAILED — cancelled action %s of match %s was NOT recorded: %v", w.rec.UUID, r.matchUUID, err)
 	}
 }
+
+// holdCancelledActionsLocked é holdCancelledActionLocked para cada action de uma cascata (spec
+// 2026-11-06 D5/D6), em ordem: devolve o que gravar agora (sem turno aberto) e os ids, na ordem
+// em que os action_cancelled saem. Mesmas regras: r.mu travado para escrita, r.session não nil.
+func (r *Room) holdCancelledActionsLocked(acts []*action.Action, by uuid.UUID) ([]*cancelledWrite, []uuid.UUID) {
+	var writes []*cancelledWrite
+	ids := make([]uuid.UUID, 0, len(acts))
+	for _, a := range acts {
+		if w := r.holdCancelledActionLocked(a, by); w != nil {
+			writes = append(writes, w)
+		}
+		ids = append(ids, a.GetID())
+	}
+	return writes, ids
+}
+
+// announceCancelled manda um action_cancelled por action, em ordem, ao mestre e a quem a ação
+// pertence pelo pedido (client) — uma cópia só quando client é o mestre. Fora do lock.
+func (r *Room) announceCancelled(client *Client, ids []uuid.UUID) {
+	for _, id := range ids {
+		msg := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload{ActionID: id})
+		r.sendToMaster(msg)
+		if !r.IsMaster(client.userUUID) {
+			client.SendMessage(msg)
+		}
+	}
+}

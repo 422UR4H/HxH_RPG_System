@@ -58,22 +58,20 @@ ActionSpeed { Bar int; RollCheck }
 
 ## PriorityQueue
 
-Fila de prioridade baseada em max-heap (`container/heap`). Ações com maior `Speed.Result` são processadas primeiro.
+Lista simples em ordem de chegada (não é mais heap): no regime Race a ordem é calculada na hora
+por `service.RoundScheduler` (chave por personagem, que muda a cada ação dele); a ordem de chegada
+desempata. No Free, `ExtractMax`/`Peek` escolhem pela `Action.OrderSpeed()` (a menor velocidade
+entre as barras que a ação cobra). Nos dois, um movimento empilhado num pendente
+(`Action.IsBlockedIn`, `action/stack.go`) não é candidato — ver `combat-engine.md`,
+*Movimentos empilhados*.
 
-```go
-func (aq PriorityQueue) Less(i, j int) bool {
-    return aq[i].Speed.Result > aq[j].Speed.Result // invertido: max-heap
-}
-```
-
-Operações:
-
-| Método           | Complexidade | Descrição                              |
-|------------------|--------------|----------------------------------------|
-| `Insert`         | O(log n)     | Insere ação na fila                    |
-| `ExtractMax`     | O(log n)     | Remove e retorna a ação mais rápida    |
-| `Peek`           | O(1)         | Consulta a ação mais rápida sem remover|
-| `ExtractByID`    | O(n)         | Busca linear por UUID e remove         |
+| Método           | Descrição                                                    |
+|------------------|--------------------------------------------------------------|
+| `Insert`         | Põe a ação no fim da fila                                    |
+| `ExtractMax`     | Remove e retorna a desbloqueada de maior `OrderSpeed` (Free) |
+| `Peek`           | Consulta essa mesma ação sem remover                         |
+| `ExtractByID`    | Busca linear por UUID e remove                               |
+| `All`            | Cópia da fila, em ordem de chegada                           |
 
 ## Componentes de Combate
 
@@ -90,8 +88,11 @@ Operações:
   mesmo eixo de forma menos expressiva e foi removido.
 
 **Move** — movimentação no espaço 3D:
-- `Category enum.MoveCategory`, `Position [3]int` (coordenada 3D)
+- `Category enum.MoveCategory`, `From *[3]int` (origem: a casa da peça no enfileiramento, ou o
+  destino do movimento anterior quando empilhado), `Position [3]int` (destino)
 - `Speed *RollCheck`, `Charge *RollCheck`, `FinalSpeed int`
+- `StackedOn uuid.UUID` — o movimento pendente do mesmo personagem sobre o qual este se empilhou
+  (`uuid.Nil` = não empilhado; spec 2026-11-06 D3)
 
 **Velocity** — vetor de velocidade:
 - `Speed float64`, `DirectionPlan float64`, `DirectionAlt float64`
@@ -108,7 +109,8 @@ Operações:
 | `action/roll_check.go`    | `RollCheck`                                     |
 | `action/roll_context.go`  | `RollContext` (Dice, Condition, Result)          |
 | `action/roll_condition.go`| `RollCondition` (Bias, Modifier)                |
-| `action/priority_queue.go`| `PriorityQueue` (max-heap por Speed.Result)     |
+| `action/priority_queue.go`| `PriorityQueue` (lista em ordem de chegada)     |
+| `action/stack.go`         | `IsBlockedIn` (movimento empilhado bloqueado)   |
 | `action/attack.go`        | `Attack`                                        |
 | `action/defense.go`       | `Defense`                                       |
 | `action/dodge.go`         | `Dodge`                                         |

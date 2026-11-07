@@ -117,7 +117,7 @@ sequenceDiagram
     Note over R: r.mu.Lock() ATRAVESSA o Execute
     R->>UC: Execute(session, masterUUID, userUUID)
     UC->>S: OpenNextAction()
-    S->>SCH: FreezePrices — o preço congela na 1ª seleção
+    S->>SCH: FreezeAt — o preço congela quando a 1ª ação abre
     alt modo Free
         S->>S: closeOpenTurn() → NextAction(fila)
     else modo Race

@@ -19,9 +19,10 @@ func moveOnly(speed int) *action.Action {
 		nil, &action.Move{Category: enum.Dash, FinalSpeed: speed}, nil, nil, nil, nil, nil)
 }
 
-// moveWithActionSpeed is a PURE movement that nonetheless carries a rolled actionSpeed.
-// That is not contrived: MatchSession.deriveSpeeds fills Speed.Result on every action it sees,
-// movement included, because actionSpeed is always Legerity and always lands.
+// moveWithActionSpeed é um movimento PURO que ainda assim carrega um resultado de actionSpeed.
+// MatchSession.deriveSpeeds não preenche mais esse resultado num movimento puro (D1, 2026-11-06),
+// mas uma action ainda pode trazê-lo por construção (um teste, uma linha gravada antes) — e
+// SpeedOn não pode deixá-lo vazar para a barra de ação, que essa action não cobra.
 func moveWithActionSpeed(moveSpeed, actionSpeed int) *action.Action {
 	return action.NewAction(uuid.New(), nil, uuid.Nil, nil,
 		action.ActionSpeed{RollCheck: action.RollCheck{Result: actionSpeed}},
@@ -90,8 +91,8 @@ func TestAction_SpeedOn(t *testing.T) {
 	})
 
 	t.Run("a pure movement reads zero on the action bar even carrying an actionSpeed", func(t *testing.T) {
-		// The rolled actionSpeed is there — deriveSpeeds always fills it — and it must not
-		// leak onto a clock this action never charges. Letting 19 through would put a number
+		// The actionSpeed result is there (built in, not derived — see moveWithActionSpeed) and
+		// it must not leak onto a clock this action never charges. Letting 19 through would put a number
 		// into the action bar's price and average for a character who did not act on it.
 		a := moveWithActionSpeed(7, 19)
 		if got := a.SpeedOn(action.BarAction); got != 0 {
@@ -101,4 +102,38 @@ func TestAction_SpeedOn(t *testing.T) {
 			t.Errorf("SpeedOn(move) = %d, want 7", got)
 		}
 	})
+}
+
+func TestAction_ChargesActionBar(t *testing.T) {
+	if moveOnly(5).ChargesActionBar() {
+		t.Error("a pure move must not charge the action bar")
+	}
+	if !attackOnly(5).ChargesActionBar() || !combined(5, 5).ChargesActionBar() {
+		t.Error("an attack and a combined action charge the action bar")
+	}
+	closed := moveOnly(5)
+	closed.ReactionKind = action.ReactClosedEscape
+	if closed.ChargesActionBar() {
+		t.Error("a closed escape is move-only")
+	}
+}
+
+func TestAction_OrderSpeed(t *testing.T) {
+	if got := moveOnly(20).OrderSpeed(); got != 20 {
+		t.Errorf("pure move = %d, want its moveSpeed 20", got)
+	}
+	if got := attackOnly(15).OrderSpeed(); got != 15 {
+		t.Errorf("attack = %d, want 15", got)
+	}
+	if got := combined(15, 20).OrderSpeed(); got != 15 {
+		t.Errorf("combined = %d, want the lower, 15", got)
+	}
+	if got := combined(30, 20).OrderSpeed(); got != 20 {
+		t.Errorf("combined = %d, want the lower, 20", got)
+	}
+	none := attackOnly(9)
+	none.ReactionKind = action.ReactNothing
+	if got := none.OrderSpeed(); got != 0 {
+		t.Errorf("no bars = %d, want 0", got)
+	}
 }
