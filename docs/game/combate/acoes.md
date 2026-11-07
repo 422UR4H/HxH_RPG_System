@@ -67,7 +67,8 @@ sequência:
 - **O segundo movimento parte de onde o primeiro termina** — não de onde o personagem está agora.
   Uma parede no caminho é medida a partir desse ponto.
 - **O segundo sempre acontece depois do primeiro**, mesmo que tenha rolado mais rápido. Ele espera
-  o primeiro acontecer; esse atraso é o preço que o primeiro paga, e não há penalidade além dele.
+  o primeiro acontecer e só então entra na vez, já com o custo do primeiro contado na barra; não
+  há penalidade além disso.
   Se o primeiro fica para a próxima rodada, o segundo fica junto. O mestre também não pode
   antecipar o segundo antes do primeiro.
 - **Cancelar o primeiro cancela os que vêm depois dele.** Cancelar um do meio leva só os que vêm
