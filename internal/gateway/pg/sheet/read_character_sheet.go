@@ -42,7 +42,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 			cs.stamina_min_pts, cs.stamina_curr_pts, cs.stamina_max_pts,
 			cs.aura_min_pts, cs.aura_curr_pts, cs.aura_max_pts,
 			cs.resistance_pts, cs.strength_pts, cs.agility_pts, cs.celerity_pts, cs.flexibility_pts, cs.dexterity_pts, cs.sense_pts, cs.constitution_pts,
-			cs.resilience_pts, cs.adaptability_pts, cs.weighting_pts, cs.creativity_pts, cs.resilience_exp, cs.adaptability_exp, cs.weighting_exp, cs.creativity_exp,
+			cs.resilience_pts, cs.adaptability_pts, cs.judgment_pts, cs.creativity_pts, cs.resilience_exp, cs.adaptability_exp, cs.judgment_exp, cs.creativity_exp,
 			cs.vitality_exp, cs.energy_exp, cs.defense_exp, cs.push_exp, cs.grab_exp, cs.carry_exp, cs.quickness_exp, cs.accelerate_exp, cs.brake_exp,
 			cs.legerity_exp, cs.repel_exp, cs.feint_exp, cs.acrobatics_exp, cs.evasion_exp, cs.sneak_exp, cs.reflex_exp, cs.accuracy_exp, cs.stealth_exp,
 			cs.vision_exp, cs.hearing_exp, cs.smell_exp, cs.tact_exp, cs.taste_exp, cs.heal_exp, cs.breath_exp, cs.tenacity_exp,
@@ -69,7 +69,7 @@ func (r *Repository) GetCharacterSheetByUUID(
 		&m.Stamina.Min, &m.Stamina.Curr, &m.Stamina.Max,
 		&m.Aura.Min, &m.Aura.Curr, &m.Aura.Max,
 		&m.ResistancePts, &m.StrengthPts, &m.AgilityPts, &m.CelerityPts, &m.FlexibilityPts, &m.DexterityPts, &m.SensePts, &m.ConstitutionPts,
-		&m.ResiliencePts, &m.AdaptabilityPts, &m.WeightingPts, &m.CreativityPts, &m.ResilienceExp, &m.AdaptabilityExp, &m.WeightingExp, &m.CreativityExp,
+		&m.ResiliencePts, &m.AdaptabilityPts, &m.JudgmentPts, &m.CreativityPts, &m.ResilienceExp, &m.AdaptabilityExp, &m.JudgmentExp, &m.CreativityExp,
 		&m.VitalityExp, &m.EnergyExp, &m.DefenseExp, &m.PushExp, &m.GrabExp, &m.CarryExp, &m.QuicknessExp, &m.AccelerateExp, &m.BrakeExp,
 		&m.LegerityExp, &m.RepelExp, &m.FeintExp, &m.AcrobaticsExp, &m.EvasionExp, &m.SneakExp, &m.ReflexExp, &m.AccuracyExp, &m.StealthExp,
 		&m.VisionExp, &m.HearingExp, &m.SmellExp, &m.TactExp, &m.TasteExp, &m.HealExp, &m.BreathExp, &m.TenacityExp,
@@ -306,7 +306,7 @@ func wrap(charSheet *sheetEntity.CharacterSheet, m *model.CharacterSheet) (wasCo
 	mentalPrimaryAttrs := map[enum.AttributeName]int{
 		enum.Resilience:   m.ResiliencePts,
 		enum.Adaptability: m.AdaptabilityPts,
-		enum.Weighting:    m.WeightingPts,
+		enum.Judgment:     m.JudgmentPts,
 		enum.Creativity:   m.CreativityPts,
 	}
 	for name, points := range mentalPrimaryAttrs {
@@ -321,7 +321,7 @@ func wrap(charSheet *sheetEntity.CharacterSheet, m *model.CharacterSheet) (wasCo
 	mentalExps := map[enum.AttributeName]int{
 		enum.Resilience:   m.ResilienceExp,
 		enum.Adaptability: m.AdaptabilityExp,
-		enum.Weighting:    m.WeightingExp,
+		enum.Judgment:     m.JudgmentExp,
 		enum.Creativity:   m.CreativityExp,
 	}
 	for name, exp := range mentalExps {

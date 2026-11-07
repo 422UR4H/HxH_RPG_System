@@ -642,10 +642,10 @@ não entra no recorte agora.
 O alvo só é **notificado** de que o ataque vai acertá-lo se **perceber** — teste de percepção
 mental nos bastidores. Mas os **subatributos mentais ainda não existem** no sistema: hoje só
 há os atributos mentais, que não abarcam percepção mental (descrita como um atributo
-intermediário entre **ponderação** e **adaptabilidade**). Bloqueado; destrinchar depois.
+intermediário entre **julgamento** e **adaptabilidade**). Bloqueado; destrinchar depois.
 
-> O diagrama tem `REL (resilience) / CRE (creativity) / ADP (adaptability) / WEG (weighting)`
-> — ADP e WEG parecem ser adaptabilidade e ponderação. Confirmar quando chegarmos aqui.
+> O diagrama tem `REL (resilience) / CRE (creativity) / ADP (adaptability) / JUD (judgment)`
+> — ADP e JUD parecem ser adaptabilidade e julgamento. Confirmar quando chegarmos aqui.
 
 ## Flexibilidade exigida
 

@@ -1,6 +1,5 @@
 package enum
 
-
 type SkillName string
 
 const (
@@ -54,7 +53,7 @@ const (
 	// MENTALS
 	// Resilience
 	// Adaptability
-	// Weighting
+	// Judgment
 	// Creativity
 
 	// SPIRITUALS

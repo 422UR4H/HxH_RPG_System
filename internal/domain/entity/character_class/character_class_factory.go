@@ -82,7 +82,7 @@ func BuildSwordsman() CharacterClass {
 	mentals := map[enum.AttributeName]int{
 		enum.Resilience:   210,
 		enum.Adaptability: 210,
-		enum.Weighting:    127,
+		enum.Judgment:     127,
 	}
 	swordsman := *NewCharacterClass(
 		profile,
@@ -131,7 +131,7 @@ func BuildSamurai() CharacterClass {
 	}
 	mentals := map[enum.AttributeName]int{
 		enum.Resilience: 210,
-		enum.Weighting:  127,
+		enum.Judgment:   127,
 	}
 
 	samurai := *NewCharacterClass(
@@ -192,7 +192,7 @@ func BuildNinja() CharacterClass {
 	mentals := map[enum.AttributeName]int{
 		enum.Resilience:   210,
 		enum.Adaptability: 210,
-		enum.Weighting:    127,
+		enum.Judgment:     127,
 	}
 	categories := []enum.CategoryName{
 		enum.Reinforcement, enum.Transmutation, enum.Materialization, enum.Emission,
@@ -242,7 +242,7 @@ func BuildRogue() CharacterClass {
 	mentals := map[enum.AttributeName]int{
 		enum.Adaptability: 210,
 		enum.Creativity:   328,
-		enum.Weighting:    127,
+		enum.Judgment:     127,
 	}
 	proficiencies := map[enum.WeaponName]int{
 		enum.Dagger: 127, enum.ThrowingDagger: 127,
@@ -297,7 +297,7 @@ func BuildNetrunner() CharacterClass {
 		enum.Resilience:   69,
 		enum.Adaptability: 210,
 		enum.Creativity:   494,
-		enum.Weighting:    210,
+		enum.Judgment:     210,
 	}
 	proficiencies := map[enum.WeaponName]int{
 		enum.Pistol38: 210,
@@ -360,7 +360,7 @@ func BuildPirate() CharacterClass {
 	mentals := map[enum.AttributeName]int{
 		enum.Resilience:   127,
 		enum.Adaptability: 127,
-		enum.Weighting:    69,
+		enum.Judgment:     69,
 	}
 	proficiencies := map[enum.WeaponName]int{
 		enum.Pistol38: 210,
@@ -419,7 +419,7 @@ func BuildMercenary() CharacterClass {
 	mentals := map[enum.AttributeName]int{
 		enum.Resilience:   69,
 		enum.Adaptability: 69,
-		enum.Weighting:    69,
+		enum.Judgment:     69,
 	}
 	profsAllowed := []enum.WeaponName{
 		enum.Dagger,
@@ -492,7 +492,7 @@ func BuildTerrorist() CharacterClass {
 		enum.Resilience:   69,
 		enum.Adaptability: 69,
 		enum.Creativity:   210,
-		enum.Weighting:    69,
+		enum.Judgment:     69,
 	}
 	proficiencies := map[enum.WeaponName]int{
 		enum.Pistol38: 210, enum.Bomb: 328,
@@ -554,7 +554,7 @@ func BuildMonk() CharacterClass {
 		enum.Resilience:   210,
 		enum.Adaptability: 210,
 		enum.Creativity:   69,
-		enum.Weighting:    210,
+		enum.Judgment:     210,
 	}
 	proficiencies := map[enum.WeaponName]int{
 		enum.Staff: 210, enum.Fist: 210,
@@ -675,7 +675,7 @@ func BuildHunter() CharacterClass {
 		enum.Resilience:   127,
 		enum.Adaptability: 210,
 		enum.Creativity:   210,
-		enum.Weighting:    210,
+		enum.Judgment:     210,
 	}
 	proficiencies := map[enum.WeaponName]int{
 		enum.Dagger: 127,
@@ -749,7 +749,7 @@ func BuildWeaponsMaster() CharacterClass {
 		enum.Resilience:   69,
 		enum.Adaptability: 210,
 		enum.Creativity:   69,
-		enum.Weighting:    127,
+		enum.Judgment:     127,
 	}
 
 	weapons := []enum.WeaponName{ // x5?

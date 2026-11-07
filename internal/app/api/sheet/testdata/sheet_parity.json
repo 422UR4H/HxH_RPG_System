@@ -723,6 +723,14 @@
      "points": 0,
      "power": 9
     },
+    "Judgment": {
+     "level": 4,
+     "exp": 210,
+     "currExp": 0,
+     "nextLvlBaseExp": 118,
+     "points": 0,
+     "power": 8
+    },
     "Resilience": {
      "level": 3,
      "exp": 127,
@@ -754,14 +762,6 @@
      "nextLvlBaseExp": 142,
      "points": 0,
      "power": 5
-    },
-    "Weighting": {
-     "level": 4,
-     "exp": 210,
-     "currExp": 0,
-     "nextLvlBaseExp": 118,
-     "points": 0,
-     "power": 8
     }
    },
    "skills": {
@@ -967,8 +967,8 @@
     "attributesExps": {
      "Adaptability": 210,
      "Creativity": 210,
-     "Resilience": 127,
-     "Weighting": 210
+     "Judgment": 210,
+     "Resilience": 127
     },
     "proficienciesExps": {
      "Dagger": 127
@@ -1056,6 +1056,14 @@
      "points": 0,
      "power": 5
     },
+    "Judgment": {
+     "level": 2,
+     "exp": 69,
+     "currExp": 0,
+     "nextLvlBaseExp": 58,
+     "points": 0,
+     "power": 4
+    },
     "Resilience": {
      "level": 2,
      "exp": 69,
@@ -1085,14 +1093,6 @@
      "exp": 265,
      "currExp": 123,
      "nextLvlBaseExp": 205,
-     "points": 0,
-     "power": 4
-    },
-    "Weighting": {
-     "level": 2,
-     "exp": 69,
-     "currExp": 0,
-     "nextLvlBaseExp": 58,
      "points": 0,
      "power": 4
     }
@@ -1306,8 +1306,8 @@
     },
     "attributesExps": {
      "Adaptability": 69,
-     "Resilience": 69,
-     "Weighting": 69
+     "Judgment": 69,
+     "Resilience": 69
     },
     "proficienciesExps": {},
     "jointProficiencies": [],
@@ -1671,6 +1671,14 @@
      "points": 0,
      "power": 6
     },
+    "Judgment": {
+     "level": 4,
+     "exp": 210,
+     "currExp": 0,
+     "nextLvlBaseExp": 118,
+     "points": 0,
+     "power": 7
+    },
     "Resilience": {
      "level": 4,
      "exp": 210,
@@ -1702,14 +1710,6 @@
      "nextLvlBaseExp": 293,
      "points": 0,
      "power": 6
-    },
-    "Weighting": {
-     "level": 4,
-     "exp": 210,
-     "currExp": 0,
-     "nextLvlBaseExp": 118,
-     "points": 0,
-     "power": 7
     }
    },
    "skills": {
@@ -1933,8 +1933,8 @@
     "attributesExps": {
      "Adaptability": 210,
      "Creativity": 69,
-     "Resilience": 210,
-     "Weighting": 210
+     "Judgment": 210,
+     "Resilience": 210
     },
     "proficienciesExps": {
      "Fist": 210,
@@ -2023,6 +2023,14 @@
      "points": 0,
      "power": 8
     },
+    "Judgment": {
+     "level": 4,
+     "exp": 210,
+     "currExp": 0,
+     "nextLvlBaseExp": 118,
+     "points": 0,
+     "power": 7
+    },
     "Resilience": {
      "level": 2,
      "exp": 69,
@@ -2044,14 +2052,6 @@
      "exp": 795,
      "currExp": 155,
      "nextLvlBaseExp": 418,
-     "points": 0,
-     "power": 7
-    },
-    "Weighting": {
-     "level": 4,
-     "exp": 210,
-     "currExp": 0,
-     "nextLvlBaseExp": 118,
      "points": 0,
      "power": 7
     }
@@ -2193,8 +2193,8 @@
     "attributesExps": {
      "Adaptability": 210,
      "Creativity": 494,
-     "Resilience": 69,
-     "Weighting": 210
+     "Judgment": 210,
+     "Resilience": 69
     },
     "proficienciesExps": {
      "Pistol38": 210
@@ -2282,6 +2282,14 @@
      "points": 0,
      "power": 10
     },
+    "Judgment": {
+     "level": 3,
+     "exp": 127,
+     "currExp": 0,
+     "nextLvlBaseExp": 83,
+     "points": 0,
+     "power": 6
+    },
     "Resilience": {
      "level": 4,
      "exp": 210,
@@ -2311,14 +2319,6 @@
      "exp": 210,
      "currExp": 68,
      "nextLvlBaseExp": 205,
-     "points": 0,
-     "power": 6
-    },
-    "Weighting": {
-     "level": 3,
-     "exp": 127,
-     "currExp": 0,
-     "nextLvlBaseExp": 83,
      "points": 0,
      "power": 6
     }
@@ -2521,8 +2521,8 @@
     },
     "attributesExps": {
      "Adaptability": 210,
-     "Resilience": 210,
-     "Weighting": 127
+     "Judgment": 127,
+     "Resilience": 210
     },
     "proficienciesExps": {
      "ThrowingDagger": 127
@@ -2610,6 +2610,14 @@
      "points": 0,
      "power": 7
     },
+    "Judgment": {
+     "level": 2,
+     "exp": 69,
+     "currExp": 0,
+     "nextLvlBaseExp": 58,
+     "points": 0,
+     "power": 4
+    },
     "Resilience": {
      "level": 3,
      "exp": 127,
@@ -2641,14 +2649,6 @@
      "nextLvlBaseExp": 293,
      "points": 0,
      "power": 6
-    },
-    "Weighting": {
-     "level": 2,
-     "exp": 69,
-     "currExp": 0,
-     "nextLvlBaseExp": 58,
-     "points": 0,
-     "power": 4
     }
    },
    "skills": {
@@ -2820,8 +2820,8 @@
     },
     "attributesExps": {
      "Adaptability": 127,
-     "Resilience": 127,
-     "Weighting": 69
+     "Judgment": 69,
+     "Resilience": 127
     },
     "proficienciesExps": {
      "Pistol38": 210
@@ -2909,6 +2909,14 @@
      "points": 0,
      "power": 11
     },
+    "Judgment": {
+     "level": 3,
+     "exp": 127,
+     "currExp": 0,
+     "nextLvlBaseExp": 83,
+     "points": 0,
+     "power": 7
+    },
     "Resistance": {
      "level": 0,
      "exp": 69,
@@ -2924,14 +2932,6 @@
      "nextLvlBaseExp": 593,
      "points": 0,
      "power": 10
-    },
-    "Weighting": {
-     "level": 3,
-     "exp": 127,
-     "currExp": 0,
-     "nextLvlBaseExp": 83,
-     "points": 0,
-     "power": 7
     }
    },
    "skills": {
@@ -3092,7 +3092,7 @@
     "attributesExps": {
      "Adaptability": 210,
      "Creativity": 328,
-     "Weighting": 127
+     "Judgment": 127
     },
     "proficienciesExps": {
      "Dagger": 127,
@@ -3173,6 +3173,14 @@
      "points": 0,
      "power": 9
     },
+    "Judgment": {
+     "level": 3,
+     "exp": 127,
+     "currExp": 0,
+     "nextLvlBaseExp": 83,
+     "points": 0,
+     "power": 6
+    },
     "Resilience": {
      "level": 4,
      "exp": 210,
@@ -3196,14 +3204,6 @@
      "nextLvlBaseExp": 418,
      "points": 0,
      "power": 8
-    },
-    "Weighting": {
-     "level": 3,
-     "exp": 127,
-     "currExp": 0,
-     "nextLvlBaseExp": 83,
-     "points": 0,
-     "power": 6
     }
    },
    "skills": {
@@ -3350,8 +3350,8 @@
      "Vision": 494
     },
     "attributesExps": {
-     "Resilience": 210,
-     "Weighting": 127
+     "Judgment": 127,
+     "Resilience": 210
     },
     "proficienciesExps": {
      "Katana": 1040
@@ -3439,6 +3439,14 @@
      "points": 0,
      "power": 8
     },
+    "Judgment": {
+     "level": 3,
+     "exp": 127,
+     "currExp": 0,
+     "nextLvlBaseExp": 83,
+     "points": 0,
+     "power": 6
+    },
     "Resilience": {
      "level": 4,
      "exp": 210,
@@ -3462,14 +3470,6 @@
      "nextLvlBaseExp": 418,
      "points": 0,
      "power": 7
-    },
-    "Weighting": {
-     "level": 3,
-     "exp": 127,
-     "currExp": 0,
-     "nextLvlBaseExp": 83,
-     "points": 0,
-     "power": 6
     }
    },
    "skills": {
@@ -3618,8 +3618,8 @@
     },
     "attributesExps": {
      "Adaptability": 210,
-     "Resilience": 210,
-     "Weighting": 127
+     "Judgment": 127,
+     "Resilience": 210
     },
     "proficienciesExps": {},
     "jointProficiencies": [
@@ -3726,6 +3726,14 @@
      "points": 0,
      "power": 6
     },
+    "Judgment": {
+     "level": 2,
+     "exp": 69,
+     "currExp": 0,
+     "nextLvlBaseExp": 58,
+     "points": 0,
+     "power": 4
+    },
     "Resilience": {
      "level": 2,
      "exp": 69,
@@ -3757,14 +3765,6 @@
      "nextLvlBaseExp": 293,
      "points": 0,
      "power": 6
-    },
-    "Weighting": {
-     "level": 2,
-     "exp": 69,
-     "currExp": 0,
-     "nextLvlBaseExp": 58,
-     "points": 0,
-     "power": 4
     }
    },
    "skills": {
@@ -3927,8 +3927,8 @@
     "attributesExps": {
      "Adaptability": 69,
      "Creativity": 210,
-     "Resilience": 69,
-     "Weighting": 69
+     "Judgment": 69,
+     "Resilience": 69
     },
     "proficienciesExps": {
      "Bomb": 328,
@@ -4025,6 +4025,14 @@
      "points": 0,
      "power": 6
     },
+    "Judgment": {
+     "level": 3,
+     "exp": 127,
+     "currExp": 0,
+     "nextLvlBaseExp": 83,
+     "points": 0,
+     "power": 5
+    },
     "Resilience": {
      "level": 2,
      "exp": 69,
@@ -4056,14 +4064,6 @@
      "nextLvlBaseExp": 293,
      "points": 0,
      "power": 6
-    },
-    "Weighting": {
-     "level": 3,
-     "exp": 127,
-     "currExp": 0,
-     "nextLvlBaseExp": 83,
-     "points": 0,
-     "power": 5
     }
    },
    "skills": {
@@ -4269,8 +4269,8 @@
     "attributesExps": {
      "Adaptability": 210,
      "Creativity": 69,
-     "Resilience": 69,
-     "Weighting": 127
+     "Judgment": 127,
+     "Resilience": 69
     },
     "proficienciesExps": {},
     "jointProficiencies": [
@@ -4445,6 +4445,15 @@
       "power": 8,
       "value": 4
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 8,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
@@ -4453,15 +4462,6 @@
       "points": 0,
       "power": 7,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 8,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -5011,21 +5011,21 @@
       "power": 8,
       "value": 4
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 8,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
       "level": 3,
       "nextLvlBaseExp": 83,
       "points": 1,
-      "power": 8,
-      "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
       "power": 8,
       "value": 4
      }
@@ -5587,6 +5587,15 @@
       "power": 8,
       "value": 4
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 8,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
@@ -5595,15 +5604,6 @@
       "points": 0,
       "power": 7,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 8,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -6166,21 +6166,21 @@
       "power": 8,
       "value": 4
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 8,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
       "level": 3,
       "nextLvlBaseExp": 83,
       "points": 1,
-      "power": 8,
-      "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
       "power": 8,
       "value": 4
      }
@@ -6747,21 +6747,21 @@
       "power": 8,
       "value": 4
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 8,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
       "level": 3,
       "nextLvlBaseExp": 83,
       "points": 1,
-      "power": 8,
-      "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
       "power": 8,
       "value": 4
      }
@@ -7301,7 +7301,7 @@
       "power": 2,
       "value": 0
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -7310,7 +7310,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -7858,7 +7858,7 @@
       "power": 2,
       "value": 0
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -7867,7 +7867,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -8428,7 +8428,7 @@
       "power": 2,
       "value": 0
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -8437,7 +8437,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -9000,7 +9000,7 @@
       "power": 2,
       "value": 0
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -9009,7 +9009,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -9573,7 +9573,7 @@
       "power": 2,
       "value": 0
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -9582,7 +9582,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -10146,6 +10146,15 @@
       "power": 2,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 0,
+      "level": 0,
+      "nextLvlBaseExp": 28,
+      "points": 0,
+      "power": 2,
+      "value": 0
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -10154,15 +10163,6 @@
       "points": 0,
       "power": 6,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 0,
-      "level": 0,
-      "nextLvlBaseExp": 28,
-      "points": 0,
-      "power": 2,
-      "value": 0
      }
     },
     "mentalSkills": {},
@@ -10723,6 +10723,15 @@
       "power": 2,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 0,
+      "level": 0,
+      "nextLvlBaseExp": 28,
+      "points": 0,
+      "power": 2,
+      "value": 0
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -10731,15 +10740,6 @@
       "points": 0,
       "power": 6,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 0,
-      "level": 0,
-      "nextLvlBaseExp": 28,
-      "points": 0,
-      "power": 2,
-      "value": 0
      }
     },
     "mentalSkills": {},
@@ -11298,6 +11298,15 @@
       "power": 2,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 0,
+      "level": 0,
+      "nextLvlBaseExp": 28,
+      "points": 0,
+      "power": 2,
+      "value": 0
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -11306,15 +11315,6 @@
       "points": 0,
       "power": 6,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 0,
-      "level": 0,
-      "nextLvlBaseExp": 28,
-      "points": 0,
-      "power": 2,
-      "value": 0
      }
     },
     "mentalSkills": {},
@@ -11865,7 +11865,7 @@
       "power": 5,
       "value": 2
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 210,
       "level": 4,
@@ -11874,7 +11874,7 @@
       "power": 7,
       "value": 4
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 210,
       "level": 4,
@@ -12437,6 +12437,15 @@
       "power": 5,
       "value": 2
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 7,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -12445,15 +12454,6 @@
       "points": 1,
       "power": 8,
       "value": 5
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 7,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -13007,6 +13007,15 @@
       "power": 5,
       "value": 2
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 7,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -13015,15 +13024,6 @@
       "points": 1,
       "power": 8,
       "value": 5
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 7,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -13568,6 +13568,15 @@
       "power": 9,
       "value": 6
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 7,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 69,
@@ -13576,15 +13585,6 @@
       "points": 0,
       "power": 5,
       "value": 2
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 7,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -14134,6 +14134,15 @@
       "power": 9,
       "value": 6
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 7,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 69,
@@ -14142,15 +14151,6 @@
       "points": 1,
       "power": 6,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 7,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -14698,6 +14698,15 @@
       "power": 9,
       "value": 6
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 210,
+      "level": 4,
+      "nextLvlBaseExp": 118,
+      "points": 0,
+      "power": 7,
+      "value": 4
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 69,
@@ -14706,15 +14715,6 @@
       "points": 1,
       "power": 6,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 210,
-      "level": 4,
-      "nextLvlBaseExp": 118,
-      "points": 0,
-      "power": 7,
-      "value": 4
      }
     },
     "mentalSkills": {},
@@ -15259,6 +15259,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -15267,15 +15276,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -15825,6 +15825,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -15833,15 +15842,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -16394,6 +16394,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -16402,15 +16411,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -16965,6 +16965,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -16973,15 +16982,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -17539,6 +17539,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -17547,15 +17556,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -18100,6 +18100,15 @@
       "power": 2,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 69,
+      "level": 2,
+      "nextLvlBaseExp": 58,
+      "points": 0,
+      "power": 4,
+      "value": 2
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
@@ -18108,15 +18117,6 @@
       "points": 0,
       "power": 5,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 69,
-      "level": 2,
-      "nextLvlBaseExp": 58,
-      "points": 0,
-      "power": 4,
-      "value": 2
      }
     },
     "mentalSkills": {},
@@ -18665,6 +18665,15 @@
       "power": 2,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 69,
+      "level": 2,
+      "nextLvlBaseExp": 58,
+      "points": 0,
+      "power": 4,
+      "value": 2
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
@@ -18673,15 +18682,6 @@
       "points": 0,
       "power": 5,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 69,
-      "level": 2,
-      "nextLvlBaseExp": 58,
-      "points": 0,
-      "power": 4,
-      "value": 2
      }
     },
     "mentalSkills": {},
@@ -19228,6 +19228,15 @@
       "power": 2,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 69,
+      "level": 2,
+      "nextLvlBaseExp": 58,
+      "points": 0,
+      "power": 4,
+      "value": 2
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 127,
@@ -19236,15 +19245,6 @@
       "points": 0,
       "power": 5,
       "value": 3
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 69,
-      "level": 2,
-      "nextLvlBaseExp": 58,
-      "points": 0,
-      "power": 4,
-      "value": 2
      }
     },
     "mentalSkills": {},
@@ -19795,6 +19795,15 @@
       "power": 9,
       "value": 5
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 7,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 0,
@@ -19803,15 +19812,6 @@
       "points": 0,
       "power": 4,
       "value": 0
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 7,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -20368,6 +20368,15 @@
       "power": 9,
       "value": 5
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 7,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 0,
@@ -20376,15 +20385,6 @@
       "points": 1,
       "power": 5,
       "value": 1
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 7,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -20938,6 +20938,15 @@
       "power": 9,
       "value": 5
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 7,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 0,
@@ -20946,15 +20955,6 @@
       "points": 1,
       "power": 5,
       "value": 1
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 7,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -21499,6 +21499,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -21507,15 +21516,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -22065,6 +22065,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -22073,15 +22082,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -22628,6 +22628,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -22636,15 +22645,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -23196,6 +23196,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -23204,15 +23213,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -23768,6 +23768,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -23776,15 +23785,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -24338,6 +24338,15 @@
       "power": 3,
       "value": 0
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 6,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 210,
@@ -24346,15 +24355,6 @@
       "points": 0,
       "power": 7,
       "value": 4
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 6,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -24905,7 +24905,7 @@
       "power": 6,
       "value": 4
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -24914,7 +24914,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -25476,7 +25476,7 @@
       "power": 6,
       "value": 4
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -25485,7 +25485,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -26045,7 +26045,7 @@
       "power": 6,
       "value": 4
      },
-     "Resilience": {
+     "Judgment": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -26054,7 +26054,7 @@
       "power": 4,
       "value": 2
      },
-     "Weighting": {
+     "Resilience": {
       "currExp": 0,
       "exp": 69,
       "level": 2,
@@ -26640,6 +26640,15 @@
       "power": 4,
       "value": 2
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 5,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 69,
@@ -26648,15 +26657,6 @@
       "points": 0,
       "power": 4,
       "value": 2
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 5,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -27239,6 +27239,15 @@
       "power": 4,
       "value": 2
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 5,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 69,
@@ -27247,15 +27256,6 @@
       "points": 0,
       "power": 4,
       "value": 2
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 5,
-      "value": 3
      }
     },
     "mentalSkills": {},
@@ -27836,6 +27836,15 @@
       "power": 4,
       "value": 2
      },
+     "Judgment": {
+      "currExp": 0,
+      "exp": 127,
+      "level": 3,
+      "nextLvlBaseExp": 83,
+      "points": 0,
+      "power": 5,
+      "value": 3
+     },
      "Resilience": {
       "currExp": 0,
       "exp": 69,
@@ -27844,15 +27853,6 @@
       "points": 0,
       "power": 4,
       "value": 2
-     },
-     "Weighting": {
-      "currExp": 0,
-      "exp": 127,
-      "level": 3,
-      "nextLvlBaseExp": 83,
-      "points": 0,
-      "power": 5,
-      "value": 3
      }
     },
     "mentalSkills": {},

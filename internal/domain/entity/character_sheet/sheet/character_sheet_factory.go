@@ -275,7 +275,7 @@ func (csf *CharacterSheetFactory) BuildMentalAttrs(
 
 	attrs[enum.Resilience] = attr
 	attrs[enum.Adaptability] = attr.Clone(enum.Adaptability, buffs[enum.Adaptability])
-	attrs[enum.Weighting] = attr.Clone(enum.Weighting, buffs[enum.Weighting])
+	attrs[enum.Judgment] = attr.Clone(enum.Judgment, buffs[enum.Judgment])
 	attrs[enum.Creativity] = attr.Clone(enum.Creativity, buffs[enum.Creativity])
 
 	// TODO: add middle attributes which primary attributes above
@@ -526,7 +526,7 @@ func (csf *CharacterSheetFactory) BuildMentalAttrBuffs() map[enum.AttributeName]
 
 	buffs[enum.Resilience] = new(int)
 	buffs[enum.Adaptability] = new(int)
-	buffs[enum.Weighting] = new(int)
+	buffs[enum.Judgment] = new(int)
 	buffs[enum.Creativity] = new(int)
 
 	return buffs

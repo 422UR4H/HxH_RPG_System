@@ -100,7 +100,7 @@ Create `docs/game/glossario.md`:
 |---|---|---|---|
 | Resiliência | Resilience | Primário | Capacidade de se recuperar mentalmente |
 | Adaptabilidade | Adaptability | Primário | Capacidade de se ajustar a novas situações |
-| Ponderação | Weighting | Primário | Capacidade de análise e raciocínio |
+| Julgamento (ou Ponderação) | Judgment | Primário | Capacidade de análise e raciocínio |
 | Criatividade | Creativity | Primário | Capacidade de inovação e improvisação |
 
 ## Atributos Espirituais (Spiritual Attributes)
@@ -2603,7 +2603,7 @@ poder = nível + bônus_habilidade + buff
 
 ## Atributos Mentais
 
-Todos primários: Resiliência, Adaptabilidade, Ponderação, Criatividade.
+Todos primários: Resiliência, Adaptabilidade, Julgamento, Criatividade.
 
 ## Atributos Espirituais
 
