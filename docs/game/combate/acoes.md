@@ -76,6 +76,9 @@ sequência:
 - **Uma reação de fuga gasta o primeiro movimento da sequência.** Se a fuga vai para o mesmo lugar
   para onde esse primeiro movimento ia, o resto da sequência continua de pé, agora a partir dali. Se
   vai para outro lugar, os movimentos que vinham depois são cancelados.
+- **Repelir também cancela os empilhados na ação que gasta.** O repelir gasta uma ação sua; se ela
+  é uma ação com movimento junto (ataque + movimento), os movimentos que vinham depois dela são
+  cancelados, porque o repelir não vai a lugar nenhum. A mesa avisa antes de você confirmar.
 
 Isso vale só para movimentos (sozinhos ou junto com um ataque). Um ataque ou uma interação
 declarados no meio não entram na sequência nem a interrompem.
