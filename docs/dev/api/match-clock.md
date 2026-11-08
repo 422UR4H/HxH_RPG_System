@@ -323,10 +323,14 @@ atualize o estado".
 | `end` | fim da partida (só no histórico, `clockRealTime`; não há `clock_changed`) |
 | `restart` | servidor reiniciou com o relógio rodando — só log e estado; **nunca** chega como mensagem ([§7](#7-reconexão-reinício-queda)) |
 
-**Ordens garantidas** (mesma pista, nesta sequência): `round_closed` → `clock_changed(round)`;
-`scene_changed` → `clock_changed(pause)` → `clock_changed(scene)`; `round_mode_changed` →
-`clock_changed(pause|limit)` (depois `bars_updated`); `turn_opened` → `clock_changed(limit)`.
-O `seq` ordena os retratos mesmo assim: descarte `seq` menor que o maior aplicado.
+**Ordens garantidas** (mesma pista, mesma goroutine, nesta sequência — só estas):
+`round_closed` → `clock_changed(round)`; `scene_changed` → `clock_changed(pause)` →
+`clock_changed(scene)`; `round_mode_changed` → `clock_changed(pause|limit)`.
+
+**Sem ordem garantida** (pistas diferentes — a direta por cliente e a `broadcast` da sala): o
+`clock_changed(limit)` em relação a `turn_opened`/`turn_closed`, e o `bars_updated` em relação a
+qualquer `clock_changed`. Não dependa da ordem de chegada entre eles: o `seq` ordena os
+**retratos do relógio** — descarte `clock_changed` com `seq` menor que o maior aplicado.
 
 **A mensagem de `masterLeft`:** quando a última (única — uma conta tem uma conexão só) conexão do
 mestre sai, o relógio **pausa na hora**, sem carência, e os clientes que restam recebem
