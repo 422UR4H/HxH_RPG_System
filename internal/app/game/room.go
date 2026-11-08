@@ -1028,6 +1028,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 
 		if err != nil {
+			// O turno fechado subiu o limite: o painel do mestre fica sabendo mesmo sem abertura.
+			if result != nil && result.ClosedTurn != nil {
+				r.announceClockLimit(session)
+			}
 			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
 			return
 		}
@@ -1059,18 +1063,26 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					Kind: "round", From: storyPtr(to.Add(-time.Second)), To: storyPtr(to), DeltaSeconds: 1,
 				})
 			}
+			if clockData == nil && result.ClosedTurn != nil {
+				// Round não contado: o turno que fechou subiu o limite, e só ele.
+				clockData = r.clockChangedData(session, ClockChangePayload{Kind: "limit"})
+			}
 			r.broadcastInOrder(data, clockData)
 			return
 		}
 
 		// Belt and braces: a successful call that opened nothing has nothing to announce.
 		if result.OpenedTurn == nil {
+			if result.ClosedTurn != nil {
+				r.announceClockLimit(session)
+			}
 			return
 		}
 
 		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
-		// Abrir o turno subiu o limite (só em memória): o painel do mestre precisa saber.
-		r.broadcastInOrder(r.clockChangedData(session, ClockChangePayload{Kind: "limit"}))
+		// Fechar e abrir o turno subiram o limite (só em memória): o painel do mestre precisa
+		// saber. Um anúncio só cobre os dois.
+		r.announceClockLimit(session)
 
 	case MsgTypeChangeRoundMode:
 		if !r.IsMaster(client.userUUID) {
@@ -1207,17 +1219,24 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 
 		if err != nil {
+			// O turno fechado subiu o limite: o painel do mestre fica sabendo mesmo sem abertura.
+			if result != nil && result.ClosedTurn != nil {
+				r.announceClockLimit(session)
+			}
 			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
 			return
 		}
 
 		// Belt and braces: a successful call that opened nothing has nothing to announce.
 		if result.OpenedTurn == nil {
+			if result.ClosedTurn != nil {
+				r.announceClockLimit(session)
+			}
 			return
 		}
 
 		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
-		r.broadcastInOrder(r.clockChangedData(session, ClockChangePayload{Kind: "limit"}))
+		r.announceClockLimit(session)
 
 	case MsgTypeEnqueueAction:
 		var payload ActionPayload
@@ -1564,6 +1583,9 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.broadcastTurnClosed(closedTurn.GetID())
 		r.publishResolution(closedTurn.GetID(), result.Resolution)
 		r.broadcastBars(session)
+		// O fechamento subiu o limite (RaiseLimit(turn), só em memória): anunciado como nas
+		// aberturas, sem evento.
+		r.announceClockLimit(session)
 
 	case MsgTypeChangeScene:
 		if !r.IsMaster(client.userUUID) {

@@ -306,7 +306,7 @@ recusas · `game_error` (`"match end unavailable"`, `"could not end the match"`)
 | `pause` | `pause_clock`, troca de regime, troca de cena, saída do mestre | `from`, `to`, `reason`, `elapsedSeconds` |
 | `round` | um round **contado** fechou pelo `open_next_action` (+1 s); chega **depois** do `round_closed`, mesma pista. **Jogadores não devem mostrar aviso** (só atualizar o número). | `from` = `to − 1 s`, `to`, `deltaSeconds: 1` |
 | `scene` | `change_scene` | `from`, `to`, `deltaSeconds` |
-| `limit` | só o **limite** subiu (turno abriu — `open_next_action`/`pull_action` — ou troca de regime sem tempo real ligado). Sem `from`/`to`. Útil ao painel do mestre; não é aviso. | — |
+| `limit` | só o **limite** subiu: um turno abriu ou fechou (`open_next_action`/`pull_action`/`close_turn` — fechar e abrir no mesmo comando é **um** anúncio; um `open_next_action` que fecha o turno e falha ao abrir outro também anuncia) ou troca de regime sem tempo real ligado. Sem `from`/`to`, sem evento no histórico. Útil ao painel do mestre; não é aviso. | — |
 
 `kind: "end"` **existe no vocabulário da struct mas o servidor não o emite** nesta versão: o fim
 da partida é anunciado por [`match_ended`](#match_ended). Trate `kind` desconhecido como "só

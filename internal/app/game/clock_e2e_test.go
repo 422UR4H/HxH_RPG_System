@@ -88,6 +88,12 @@ func (r *fakeClockRepo) eventsOf(kind matchevent.Kind) []matchevent.Event {
 	return out
 }
 
+func (r *fakeClockRepo) eventCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.events)
+}
+
 func (r *fakeClockRepo) runningSaves() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -535,5 +541,48 @@ func TestRunningClockCheckpoints(t *testing.T) {
 	}
 	if n := pc.count(game.MsgTypeClockChanged); n != 1 {
 		t.Errorf("player got %d clock_changed, want 1 (a checkpoint announces nothing)", n)
+	}
+}
+
+// Fechar um turno sobe o limite (RaiseLimit(turn)): os três verbos o anunciam como as
+// aberturas, clock_changed kind limit, sem evento.
+func TestTurnCloseAnnouncesLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		close func(t *testing.T, cf *clockFixture)
+	}{
+		{"close_turn", func(t *testing.T, cf *clockFixture) {
+			sendWS(t, cf.masterConn, "close_turn", map[string]any{"confirm": true})
+		}},
+		// fila vazia: o open_next_action fecha o turno e falha ao abrir outro
+		{"open_next_action that opens nothing", func(t *testing.T, cf *clockFixture) {
+			sendWS(t, cf.masterConn, "open_next_action", map[string]any{})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := newClockFixture(t, false, 0)
+			mc, pc := cf.connectCollectors(t)
+			sendWS(t, cf.masterConn, "play_clock", map[string]any{})
+			awaitClockChanged(t, pc, 1)
+			cf.enqueueAttack(t, cf.playerConn)
+			if !mc.await(game.MsgTypeActionQueued, 2*time.Second) {
+				t.Fatal("the master was never told an action was queued")
+			}
+			sendWS(t, cf.masterConn, "open_next_action", map[string]any{})
+			if got := awaitClockChanged(t, pc, 2); got.Change.Kind != "limit" {
+				t.Fatalf("clock_changed after the open = %+v, want limit", got.Change)
+			}
+			cf.now.advance(30 * time.Second)
+
+			tc.close(t, cf)
+			got := awaitClockChanged(t, pc, 3)
+			if got.Change.Kind != "limit" || got.Clock.LimitReason != "turn" ||
+				strOf(got.Clock.LimitAt) != "2000-01-01T00:00:30" {
+				t.Errorf("clock_changed after the close = %+v / %+v, want limit turn at 00:00:30", got.Change, got.Clock)
+			}
+			if n := cf.repo.eventCount(); n != 0 {
+				t.Errorf("clock events = %d, want none (a limit announces, records nothing)", n)
+			}
+		})
 	}
 }

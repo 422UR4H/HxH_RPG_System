@@ -139,6 +139,13 @@ func (r *Room) broadcastInOrder(msgs ...[]byte) {
 	}()
 }
 
+// announceClockLimit anuncia só o limite novo (clock_changed kind limit, sem evento no
+// histórico): abrir ou fechar um turno o sobe em memória, e o painel do mestre o mostra. O
+// chamador NÃO segura r.mu.
+func (r *Room) announceClockLimit(sess *matchsession.MatchSession) {
+	r.broadcastInOrder(r.clockChangedData(sess, ClockChangePayload{Kind: "limit"}))
+}
+
 // clearClockMergeLocked fecha a janela de fusão dos ajustes. Chamado sob r.mu por todo
 // evento de relógio que não é ajuste e por turno, cena e regime.
 // mergeGen conta os fechamentos, para um ajuste cuja gravação terminou depois de um deles
