@@ -3,7 +3,6 @@ package match
 import (
 	"context"
 	"time"
-	"unicode/utf8"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
@@ -30,10 +29,16 @@ func (uc *EndMatchUC) Execute(
 	if callerUUID != masterUUID {
 		return nil, ErrNotMatchMaster
 	}
-	if briefFinal != nil && utf8.RuneCountInString(*briefFinal) > 255 {
-		return nil, matchsession.ErrBriefFinalTooLong
+	brief, err := matchsession.NormalizeBriefFinal(briefFinal)
+	if err != nil {
+		return nil, err
 	}
-	return session.EndMatch(storyAt, confirmLongSkip)
+	end, err := session.EndMatch(storyAt, confirmLongSkip)
+	if err != nil {
+		return nil, err
+	}
+	end.BriefFinalDescription = brief
+	return end, nil
 }
 
 var _ IEndMatch = (*EndMatchUC)(nil)

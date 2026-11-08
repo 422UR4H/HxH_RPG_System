@@ -43,6 +43,8 @@ type MatchSession struct {
 	activeScene *scene.Scene
 	activeRound *round.Round
 	activeQueue action.PriorityQueue
+	// ended: EndMatch já rodou; uma segunda chamada é recusada.
+	ended bool
 	// charSheets and statuses are keyed by sheetUUID — the same ID the board pieces
 	// carry as CharacterID. The combat entity is the character, not the player: the
 	// master drives several characters at once, and NPCs have no player at all.
@@ -260,6 +262,8 @@ type MatchEnd struct {
 	Round   *round.Round
 	Pause   *clock.Pause
 	StoryAt time.Time
+	// BriefFinalDescription é o resumo final da PARTIDA (não da cena); o UC o preenche.
+	BriefFinalDescription *string
 }
 
 // activeRoundExtra é o segundo que o round ativo vai somar ao fechar (1 round = 1 s), se contado.
@@ -279,6 +283,9 @@ func (s *MatchSession) SceneCloseMinimum() time.Time {
 func (s *MatchSession) EndMatchMinimum() time.Time { return s.SceneCloseMinimum() }
 
 // normalizeBriefFinal apara o resumo; vazio vira nil; acima de 255 runas é erro.
+// NormalizeBriefFinal é o tratamento do resumo final (apara, vazio vira nil, máx. 255 runas).
+func NormalizeBriefFinal(in *string) (*string, error) { return normalizeBriefFinal(in) }
+
 func normalizeBriefFinal(in *string) (*string, error) {
 	if in == nil {
 		return nil, nil
@@ -364,12 +371,18 @@ func (s *MatchSession) ChangeScene(
 	return oldScene, oldRound, pause, nil
 }
 
+// IsEnded diz se a partida já foi encerrada nesta sessão.
+func (s *MatchSession) IsEnded() bool { return s.ended }
+
 // CheckEndMatch valida o fim da partida (mesmas precondições de EndMatch) sem mutar nada.
 func (s *MatchSession) CheckEndMatch(storyAt time.Time, confirmLong bool) error {
 	return s.checkEnd(storyAt, confirmLong, s.now())
 }
 
 func (s *MatchSession) checkEnd(storyAt time.Time, confirmLong bool, real time.Time) error {
+	if s.ended {
+		return ErrMatchEnded
+	}
 	if !s.clock.IsSet() {
 		return clock.ErrNotSet
 	}
@@ -390,6 +403,7 @@ func (s *MatchSession) EndMatch(storyAt time.Time, confirmLong bool) (*MatchEnd,
 	s.clock.RaiseLimit(clock.LimitScene, real)
 	s.activeScene.SetStoryFinishedAt(s.clock.Now(real))
 	s.activeQueue = action.NewActionPriorityQueue(nil)
+	s.ended = true
 	return &MatchEnd{
 		Scene: s.activeScene, Round: s.activeRound, Pause: pause,
 		StoryAt: s.clock.Now(real),

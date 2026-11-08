@@ -451,3 +451,39 @@ func TestEndMatchSceneCloseMinimum(t *testing.T) {
 		t.Errorf("minimum = %v, want start+1s", got)
 	}
 }
+
+func TestSecondEndMatchRefused(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted()
+	at := storyStart.Add(time.Hour)
+	if _, err := s.EndMatch(at, false); err != nil {
+		t.Fatal(err)
+	}
+	if !s.IsEnded() {
+		t.Error("IsEnded must be true")
+	}
+	if _, err := s.EndMatch(at.Add(time.Hour), false); !errors.Is(err, matchsession.ErrMatchEnded) {
+		t.Fatalf("err = %v, want ErrMatchEnded", err)
+	}
+	if err := s.CheckEndMatch(at.Add(time.Hour), false); !errors.Is(err, matchsession.ErrMatchEnded) {
+		t.Fatalf("check err = %v", err)
+	}
+	if got := s.Clock().Now(real); !got.Equal(at) {
+		t.Errorf("Now = %v, want unchanged %v", got, at)
+	}
+}
+
+func TestEndMatchAtMinimumAddsRoundSecondOnce(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted()
+	real = real.Add(10 * time.Second)
+	min := s.EndMatchMinimum()
+	if _, err := s.EndMatch(min, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Clock().Now(real); !got.Equal(min) {
+		t.Errorf("Now = %v, want %v", got, min)
+	}
+}
