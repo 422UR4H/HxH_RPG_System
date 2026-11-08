@@ -87,6 +87,10 @@ func (r *Room) writeCancelledAction(w *cancelledWrite) {
 func (r *Room) holdCancelledActionsLocked(acts []*action.Action, by uuid.UUID) ([]*cancelledWrite, []uuid.UUID) {
 	var writes []*cancelledWrite
 	ids := make([]uuid.UUID, 0, len(acts))
+	if len(acts) > 0 {
+		// Um cancelamento é um evento entre dois ajustes do relógio: fecha a janela de fusão.
+		r.clearClockMergeLocked()
+	}
 	for _, a := range acts {
 		if w := r.holdCancelledActionLocked(a, by); w != nil {
 			writes = append(writes, w)

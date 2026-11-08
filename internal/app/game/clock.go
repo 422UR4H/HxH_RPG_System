@@ -20,7 +20,7 @@ import (
 )
 
 // clockMergeWindow: ajustes seguidos dentro desta janela, sem outro evento de relógio nem
-// turno/cena/regime no meio, viram uma linha só do histórico (spec §6).
+// turno/cena/regime/master action/cancelamento no meio, viram uma linha só do histórico (spec §6).
 const clockMergeWindow = 10 * time.Second
 
 // defaultClockCheckpointEvery é o intervalo do checkpoint do relógio rodando (spec §3.4).
@@ -147,7 +147,7 @@ func (r *Room) announceClockLimit(sess *matchsession.MatchSession) {
 }
 
 // clearClockMergeLocked fecha a janela de fusão dos ajustes. Chamado sob r.mu por todo
-// evento de relógio que não é ajuste e por turno, cena e regime.
+// evento de relógio que não é ajuste e por turno, cena, regime, master action e cancelamento.
 // mergeGen conta os fechamentos, para um ajuste cuja gravação terminou depois de um deles
 // não reabrir a janela.
 func (r *Room) clearClockMergeLocked() {

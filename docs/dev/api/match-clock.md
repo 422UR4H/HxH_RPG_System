@@ -346,7 +346,8 @@ fundido), sem outro evento no meio, **atualiza a linha anterior**: o `from` do i
 fica, `to` é o novo e `deltaSeconds` é a **soma dos deltas pedidos** (o tempo real que correu entre
 os cliques não entra). O `uuid` do evento não muda, nem o `createdAt` (o do primeiro clique).
 Fecham a janela: `play_clock`/`pause_clock`/`set_clock_start`, abrir/fechar turno
-(`open_next_action`, `pull_action`, `close_turn`), troca de regime, troca de cena, fim da partida,
+(`open_next_action`, `pull_action`, `close_turn`), troca de regime, troca de cena, master action
+aceita (`enqueue_master_action`), cancelamento (`cancel_action`, e os em cascata), fim da partida,
 reinício da sala e uma gravação que falhou. **A mensagem ao vivo não é fundida**: cada ajuste gera
 o seu `clock_changed` com o próprio `from`/`to`/`deltaSeconds`. Quem relê `GET /history` vê a
 linha única atualizada no lugar ([§8](#8-histórico-e-campos-rest)).

@@ -59,7 +59,8 @@ aberto é gravado antes do fechamento dele.
 gravado (uuid do evento, instante real, `from` da sequência, soma dos deltas). Um ajuste até
 `clockMergeWindow` (10 s) depois do anterior atualiza o **payload** da mesma linha de
 `match_events` (`ClockEvent.MergeInto`) em vez de inserir; `deltaSeconds` soma os deltas **pedidos**
-(o tempo real entre os cliques não entra). Qualquer outro evento de relógio, turno, cena ou regime
+(o tempo real entre os cliques não entra). Qualquer outro evento de relógio, turno, cena, regime,
+master action registrada (`recordMasterAction`) ou cancelamento (`holdCancelledActionsLocked`)
 chama `clearClockMergeLocked`, que também incrementa `mergeGen`: um ajuste cuja gravação terminou
 depois de um fechamento não reabre a janela. Gravação que falhou também zera a marca (não se funde
 em linha inexistente).
@@ -71,6 +72,19 @@ chama `checkpointClock` — gravação assíncrona, sem evento nem mensagem. Se 
 que renasce (`loadOrCreateClock`) encontra `running_since` no banco e **pausa em `running_since`**
 (o instante do checkpoint, cujo `story_at` já é o valor naquele momento) com motivo `restart`;
 perde no máximo um intervalo, nunca soma o tempo parado.
+
+O checkpoint tira retrato e geração (`clockWriteGen`) na goroutine do `Run` e grava em outra
+(`writeClockCheckpoint`, sob `clockPersistMu`). Todo retrato entregue a uma gravação passa por
+`clockSnapshotForWriteLocked`, que incrementa a geração — inclusive os de `PersistTurnClose`,
+`PersistRoundClose`, `CloseSceneAndRound` e `PersistMatchEnd`, que gravam `match_clocks` sem
+`persistClock`. Se a geração mudou enquanto o checkpoint esperava, ele desiste: não sobrescreve um
+relógio mais novo (ex.: o pausado de uma troca de cena) com o rodando dele. Sobra a janela entre a
+comparação e o fim do `Save`.
+
+**Primeira cena.** Ela nasce antes de o relógio ter horário; `MatchSession.StampSceneStartIfUnset`
+carimba o `story_started_at` da cena ativa quando o relógio fica definido — na criação da sessão
+(`InitMatchSessionUC`, cena nova ou reidratada sem início) e no `set_clock_start`, cujo
+`clockStarted` garante o par (o upsert com `COALESCE` preenche a linha).
 
 ## Mestre sai
 

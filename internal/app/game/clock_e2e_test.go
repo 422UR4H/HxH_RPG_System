@@ -586,3 +586,45 @@ func TestTurnCloseAnnouncesLimit(t *testing.T) {
 		})
 	}
 }
+
+// Uma master action ou um cancelamento entre dois ajustes fecha a janela de fusão (spec §6:
+// "sem outro evento no meio"): duas linhas de clockAdjusted.
+func TestMasterActionOrCancelClosesAdjustMergeWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		do   func(t *testing.T, cf *clockFixture, mc, pc *collector)
+	}{
+		{"master action", func(t *testing.T, cf *clockFixture, mc, _ *collector) {
+			sendWS(t, cf.masterConn, "enqueue_master_action", map[string]any{})
+			if !mc.await(game.MsgTypeMasterActionEnqueued, 2*time.Second) {
+				t.Fatal("no master_action_enqueued")
+			}
+		}},
+		{"cancel_action", func(t *testing.T, cf *clockFixture, mc, pc *collector) {
+			cf.enqueueAttack(t, cf.playerConn)
+			if !mc.await(game.MsgTypeActionQueued, 2*time.Second) {
+				t.Fatal("the master was never told an action was queued")
+			}
+			var queued game.ActionQueuedPayload
+			_ = json.Unmarshal(findMessage(t, mc.snapshotMessages(), game.MsgTypeActionQueued).Payload, &queued)
+			sendWS(t, cf.playerConn, "cancel_action", map[string]any{"actionId": queued.ActionID})
+			if !pc.await(game.MsgTypeActionCancelled, 2*time.Second) {
+				t.Fatal("no action_cancelled")
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cf := newClockFixture(t, false, 0)
+			mc, pc := cf.connectCollectors(t)
+			sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+			awaitClockChanged(t, pc, 1)
+			tc.do(t, cf, mc, pc)
+			cf.now.advance(time.Second)
+			sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 30})
+			awaitClockChanged(t, pc, 2)
+			if n := len(cf.repo.eventsOf(matchevent.KindClockAdjusted)); n != 2 {
+				t.Errorf("clockAdjusted events = %d, want 2 (the %s closed the window)", n, tc.name)
+			}
+		})
+	}
+}
