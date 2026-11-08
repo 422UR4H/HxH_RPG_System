@@ -1,8 +1,8 @@
 package match_test
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"context"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"testing"
 	"time"
 

@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"encoding/json"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"log"
 	"time"
 
@@ -74,7 +75,10 @@ func (r *Room) ensureSceneAndRoundRows(
 	}
 	r.mu.RLock()
 	ends := r.unwrittenRoundEndsLocked()
-	snap := sess.ClockSnapshot(time.Now())
+	// O relógio é copiado aqui, junto dos fins de round não gravados; a cópia de sc/rd feita
+	// pelo chamador é de outra seção crítica, mas nada move o relógio entre as duas sem que
+	// o mestre mande outra mensagem, que passa pelo mesmo laço de leitura que esta gravação.
+	snap := sess.ClockSnapshotNow()
 	r.mu.RUnlock()
 	var err error
 	if len(ends) == 0 {
@@ -131,8 +135,9 @@ func (r *Room) persistRoundClose(sess *matchsession.MatchSession, closed *rounde
 	r.mu.RLock()
 	sc, closedCopy := snapshotSceneAndRound(sess.GetActiveScene(), closed)
 	_, next := snapshotSceneAndRound(nil, sess.GetActiveRound())
+	snap := sess.ClockSnapshotNow() // mesma seção crítica das demais cópias
 	r.mu.RUnlock()
-	r.writeRoundClose(sess, sc, closedCopy, next, "round_closed")
+	r.writeRoundClose(sess, sc, closedCopy, next, snap, "round_closed")
 }
 
 // writeRoundClose writes a round's end and its successor's birth together
@@ -144,7 +149,8 @@ func (r *Room) persistRoundClose(sess *matchsession.MatchSession, closed *rounde
 // persistClosedTurn policy — and the end is remembered (unwritten.go), so the successor's next
 // write carries it. The caller must NOT hold r.mu.
 func (r *Room) writeRoundClose(
-	sess *matchsession.MatchSession, sc *sceneentity.Scene, closed, next *roundentity.Round, why string,
+	sess *matchsession.MatchSession, sc *sceneentity.Scene, closed, next *roundentity.Round,
+	snap clock.Snapshot, why string,
 ) {
 	if sc == nil || closed == nil || next == nil {
 		return
@@ -157,7 +163,6 @@ func (r *Room) writeRoundClose(
 	end := appmatch.RoundEnd{Scene: sc, Round: closed}
 	r.mu.RLock()
 	ends := append(r.unwrittenRoundEndsLocked(), end)
-	snap := sess.ClockSnapshot(time.Now())
 	r.mu.RUnlock()
 	if err := r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, next, &snap); err != nil {
 		log.Printf("%s FAILED — the end of round %s and the birth of round %s (scene %s, match %s) were NOT written "+

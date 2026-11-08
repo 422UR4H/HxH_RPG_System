@@ -1,9 +1,9 @@
 package game_test
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"context"
 	"encoding/json"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"testing"
 	"time"
 

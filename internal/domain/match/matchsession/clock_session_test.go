@@ -137,3 +137,26 @@ func TestOpenRefusedWhenClockUnset(t *testing.T) {
 		t.Errorf("PullAction err = %v, want ErrNotSet", err)
 	}
 }
+
+// Com o relógio rodando, fechar o turno sobe o limite até o horário do fechamento.
+func TestTurnCloseRaisesLimitWhileRunning(t *testing.T) {
+	u := uuid.New()
+	s, chars := sessionWithParticipants(u)
+	if err := s.EnqueueAction(u, makeActionWithSpeed(chars[0], 5)); err != nil {
+		t.Fatal(err)
+	}
+	real := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	s.SetNowFunc(func() time.Time { return real })
+	if err := s.Clock().Play(real); err != nil {
+		t.Fatal(err)
+	}
+	mustOpenNext(t, s)
+	real = real.Add(30 * time.Second)
+	if _, err := s.CloseOpenTurn(); err != nil {
+		t.Fatal(err)
+	}
+	want := storyStart.Add(30 * time.Second)
+	if at, reason := s.Clock().Limit(); !at.Equal(want) || reason != clock.LimitTurn {
+		t.Errorf("limit = %v/%v, want %v/turn", at, reason, want)
+	}
+}

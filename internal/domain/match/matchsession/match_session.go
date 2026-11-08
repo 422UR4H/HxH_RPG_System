@@ -209,6 +209,10 @@ func (s *MatchSession) SetNowFunc(f func() time.Time) { s.now = f }
 // ClockSnapshot é o checkpoint do relógio em `real`, para gravar no banco.
 func (s *MatchSession) ClockSnapshot(real time.Time) clock.Snapshot { return s.clock.Snapshot(real) }
 
+// ClockSnapshotNow é o checkpoint do relógio no instante da fonte de tempo da sessão (a mesma
+// que move o relógio), para quem grava não misturar duas fontes de tempo.
+func (s *MatchSession) ClockSnapshotNow() clock.Snapshot { return s.clock.Snapshot(s.now()) }
+
 // stampOpened registra no turno recém-aberto o horário da história, conta o round se ele
 // está em Race e sobe o limite do relógio até esse horário.
 func (s *MatchSession) stampOpened(t *turn.Turn) {

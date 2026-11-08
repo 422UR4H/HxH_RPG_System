@@ -268,6 +268,11 @@ func TestE2E_TheRoundEndGoesInTheLastTurnsTransaction(t *testing.T) {
 	if contains(f.roundRepo.ensuredRoundIDs(), d.NextRound.GetID()) {
 		t.Fatal("the successor was also written on its own, outside the turn's transaction")
 	}
+	// Round disputado (turno abriu em Race): o fechamento soma 1 s, no mesmo retrato do relógio.
+	wantStory := time.Date(2000, 1, 1, 0, 0, 1, 0, time.UTC)
+	if d.Clock == nil || d.Clock.StoryAt == nil || !d.Clock.StoryAt.Equal(wantStory) {
+		t.Fatalf("TurnCloseData.Clock = %+v, want story time %v", d.Clock, wantStory)
+	}
 }
 
 // Um round que acaba sem turno fechado no mesmo comando (o último turno já fechou por
@@ -293,6 +298,10 @@ func TestE2E_ARoundThatEndsWithNoTurnWritesItsEndAndSuccessorTogether(t *testing
 		t.Fatalf("PersistRoundClose calls = %d, want exactly 1", len(calls))
 	}
 	c := calls[0]
+	wantStory := time.Date(2000, 1, 1, 0, 0, 1, 0, time.UTC)
+	if c.clock == nil || c.clock.StoryAt == nil || !c.clock.StoryAt.Equal(wantStory) {
+		t.Fatalf("PersistRoundClose clock = %+v, want story time %v", c.clock, wantStory)
+	}
 	if c.closed.GetID() != round1 || c.closed.GetFinishedAt() == nil {
 		t.Fatalf("closed = %s finished %v, want %s with its finish", c.closed.GetID(), c.closed.GetFinishedAt(), round1)
 	}
@@ -592,5 +601,56 @@ func TestE2E_TheRoundRepositoryGetsACopyOfTheSceneAndRound(t *testing.T) {
 	if !sawRaceCopy {
 		t.Error("no copy of the starting round carried the regime it was switched to — the copy " +
 			"must be taken AFTER the switch, under the same lock")
+	}
+}
+
+// Abrir um turno não grava nada (nem o relógio): o horário da história fica no turno, em
+// memória, e vai ao banco junto com o fechamento dele.
+func TestTurnOpenWritesNothingAndCloseCarriesClock(t *testing.T) {
+	f := newCombatFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+
+	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{Mode: string(enum.Race)})
+	if !mc.await(game.MsgTypeRoundModeChanged, 2*time.Second) {
+		t.Fatal("the regime switch was never announced")
+	}
+	f.enqueueAttack(t, player)
+	if !pc.await(game.MsgTypeActionEnqueued, 2*time.Second) {
+		t.Fatal("the action was never acknowledged as enqueued")
+	}
+	ensuredBefore := len(f.roundRepo.ensuredRoundIDs())
+
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("the first action never opened")
+	}
+	if n := len(f.roundRepo.closeData()); n != 0 {
+		t.Errorf("PersistTurnClose calls after open = %d, want 0", n)
+	}
+	if n := len(f.roundRepo.roundCloseCalls()); n != 0 {
+		t.Errorf("PersistRoundClose calls after open = %d, want 0", n)
+	}
+	if n := len(f.roundRepo.ensuredRoundIDs()); n != ensuredBefore {
+		t.Errorf("EnsureSceneAndRound calls grew from %d to %d on open", ensuredBefore, n)
+	}
+
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 2*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+	closes := f.roundRepo.closeData()
+	if len(closes) != 1 {
+		t.Fatalf("PersistTurnClose calls = %d, want exactly 1", len(closes))
+	}
+	d := closes[0]
+	storyAt := d.Turn.GetStoryAt()
+	if storyAt == nil {
+		t.Fatal("the closed turn has no story time")
+	}
+	if d.Clock == nil || d.Clock.LimitAt == nil || d.Clock.LimitAt.Before(*storyAt) {
+		t.Fatalf("Clock = %+v, want a snapshot whose limit is >= the turn's story time %v", d.Clock, *storyAt)
 	}
 }

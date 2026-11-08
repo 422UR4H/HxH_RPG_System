@@ -2330,7 +2330,7 @@ func (r *Room) persistClosedTurn(
 	roundEnds := r.unwrittenRoundEndsLocked()
 	// O relógio da história como este fechamento o deixou (um round que acabou junto com o
 	// turno já somou o seu segundo), copiado na mesma seção crítica das demais cópias.
-	clockSnap := session.ClockSnapshot(time.Now())
+	clockSnap := session.ClockSnapshotNow()
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
@@ -2366,7 +2366,7 @@ func (r *Room) persistClosedTurn(
 		// with no turn closing writes. If that fails too, writeRoundClose remembers the end, and
 		// the successor's next write carries it.
 		if nextRound != nil {
-			r.writeRoundClose(session, activeScene, activeRound, nextRound, "round end after its last turn's failed close")
+			r.writeRoundClose(session, activeScene, activeRound, nextRound, clockSnap, "round end after its last turn's failed close")
 		}
 		return
 	}
