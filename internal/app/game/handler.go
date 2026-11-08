@@ -119,7 +119,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if !isMaster {
 		room, ok := h.hub.GetRoom(matchUUID)
 		if !ok {
-			rejectLobbyNotOpen(conn)
+			h.rejectClosedRoom(r.Context(), conn, matchUUID)
 			return
 		}
 		client := NewClient(userUUID, conn, nickname)
@@ -128,7 +128,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		// ErrRoomClosed instead of hanging. A player gets the same refusal as "never opened":
 		// there is nothing to retry into, a lobby only reopens when the master reconnects.
 		if err := room.Register(client); err != nil {
-			rejectLobbyNotOpen(conn)
+			h.rejectClosedRoom(r.Context(), conn, matchUUID)
 			return
 		}
 		go client.WritePump()
@@ -175,11 +175,41 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			_ = conn.Close()
 			return
 		}
+		// A sala pode ter fechado porque a partida acabou de ser encerrada (o fim gravou depois da
+		// conferência lá em cima): então não há sala nova para ela.
+		if end := h.readMatchEnd(r.Context(), matchUUID); end != nil {
+			rejectMatchEnded(conn, matchUUID, end)
+			return
+		}
 		room = h.hub.GetOrCreateRoom(matchUUID, masterUUID, h.deps)
 	}
 
 	go client.WritePump()
 	go client.ReadPump()
+}
+
+// readMatchEnd relê o fim da partida (nil sem MatchEndRepo, sem fim, ou com erro de leitura —
+// logado: quem já passou pela primeira conferência segue o caminho de sempre).
+func (h *Handler) readMatchEnd(ctx context.Context, matchUUID uuid.UUID) *appmatch.MatchEndState {
+	if h.deps.MatchEndRepo == nil {
+		return nil
+	}
+	end, err := h.deps.MatchEndRepo.ReadMatchEnd(ctx, matchUUID)
+	if err != nil {
+		log.Printf("re-read match end of %s: %v", matchUUID, err)
+		return nil
+	}
+	return end
+}
+
+// rejectClosedRoom recusa um jogador sem sala aberta: match_ended + 4002 se a partida acabou de
+// ser encerrada (a sala fechou com o fim, depois da primeira conferência), senão o 4001 do lobby.
+func (h *Handler) rejectClosedRoom(ctx context.Context, conn *websocket.Conn, matchUUID uuid.UUID) {
+	if end := h.readMatchEnd(ctx, matchUUID); end != nil {
+		rejectMatchEnded(conn, matchUUID, end)
+		return
+	}
+	rejectLobbyNotOpen(conn)
 }
 
 // rejectLobbyNotOpen tells a connecting player there is no lobby to join — either it never

@@ -200,6 +200,11 @@ type Room struct {
 
 	session *matchsession.MatchSession
 
+	// endedMsg é o match_ended desta sala, gravado por handleEndMatch junto do fim; não-nil =
+	// partida encerrada: nenhum comando roda mais e quem ainda entrar recebe ele e o 4002.
+	// Protegido por mu.
+	endedMsg []byte
+
 	// lastAdjust é a janela de fusão dos ajustes do relógio (clock.go); nil = fechada.
 	// Protegido por mu.
 	lastAdjust *clockAdjustMark
@@ -391,8 +396,15 @@ func (r *Room) Run() {
 
 		case client := <-r.register:
 			r.mu.Lock()
+			endedMsg := r.endedMsg
 			old, hadOld := r.clients[client.userUUID]
 			r.mu.Unlock()
+			// Entrou depois do fim (a sala ainda não parou): o mesmo match_ended e o 4002 de quem
+			// estava à mesa, sem entrar nela.
+			if endedMsg != nil {
+				sendMatchEnded(client, endedMsg)
+				continue
+			}
 
 			// B4 (spec §4.6): the same account connecting again — a second tab, a reload that
 			// raced its own close — means the LAST connection wins. The old one is told and
@@ -895,6 +907,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	var incoming Message
 	if err := json.Unmarshal(rawMsg, &incoming); err != nil {
 		client.SendMessage(NewErrorMessage("invalid_message", "malformed JSON"))
+		return
+	}
+	// Partida encerrada: o que ainda chegar pelas leituras abertas (o próximo quadro do próprio
+	// mestre incluído) não roda.
+	if r.isMatchEnded() {
+		client.SendMessage(NewErrorMessage("match_already_ended", matchsession.ErrMatchEnded.Error()))
 		return
 	}
 

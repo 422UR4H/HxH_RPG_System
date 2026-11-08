@@ -377,10 +377,10 @@ func TestEndMatchRefusedInBattle(t *testing.T) {
 	}
 	before := stateOf(s, real)
 	at := storyStart.Add(time.Hour)
-	if _, err := s.EndMatch(at, false); !errors.Is(err, matchsession.ErrMatchInBattle) {
+	if _, err := s.EndMatchAt(at, false, real); !errors.Is(err, matchsession.ErrMatchInBattle) {
 		t.Fatalf("err = %v, want ErrMatchInBattle", err)
 	}
-	if err := s.CheckEndMatch(at, false); !errors.Is(err, matchsession.ErrMatchInBattle) {
+	if _, err := s.PlanEndMatch(at, false, real); !errors.Is(err, matchsession.ErrMatchInBattle) {
 		t.Fatalf("check err = %v", err)
 	}
 	if stateOf(s, real) != before {
@@ -395,7 +395,7 @@ func TestEndMatchRefusedWithOpenTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustOpenNext(t, s)
-	if _, err := s.EndMatch(storyStart.Add(time.Hour), false); !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
+	if _, err := s.EndMatchAt(storyStart.Add(time.Hour), false, time.Now()); !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
 		t.Fatalf("err = %v, want ErrRoundHasOpenTurn", err)
 	}
 }
@@ -410,15 +410,15 @@ func TestEndMatchClosesAndFreezes(t *testing.T) {
 	if want := storyStart.Add(11 * time.Second); !min.Equal(want) {
 		t.Fatalf("EndMatchMinimum = %v, want %v", min, want)
 	}
-	if err := s.CheckEndMatch(min.Add(-time.Second), false); !errors.Is(err, clock.ErrBelowLimit) {
+	if _, err := s.PlanEndMatch(min.Add(-time.Second), false, real); !errors.Is(err, clock.ErrBelowLimit) {
 		t.Fatalf("below minimum: %v", err)
 	}
-	if err := s.CheckEndMatch(min, false); err != nil {
+	if _, err := s.PlanEndMatch(min, false, real); err != nil {
 		t.Fatalf("check at minimum: %v", err)
 	}
 
 	at := storyStart.Add(3 * time.Hour)
-	end, err := s.EndMatch(at, false)
+	end, err := s.EndMatchAt(at, false, real)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,16 +457,16 @@ func TestSecondEndMatchRefused(t *testing.T) {
 	s := runningSession(t, &real)
 	s.GetActiveRound().MarkCounted()
 	at := storyStart.Add(time.Hour)
-	if _, err := s.EndMatch(at, false); err != nil {
+	if _, err := s.EndMatchAt(at, false, real); err != nil {
 		t.Fatal(err)
 	}
 	if !s.IsEnded() {
 		t.Error("IsEnded must be true")
 	}
-	if _, err := s.EndMatch(at.Add(time.Hour), false); !errors.Is(err, matchsession.ErrMatchEnded) {
+	if _, err := s.EndMatchAt(at.Add(time.Hour), false, real); !errors.Is(err, matchsession.ErrMatchEnded) {
 		t.Fatalf("err = %v, want ErrMatchEnded", err)
 	}
-	if err := s.CheckEndMatch(at.Add(time.Hour), false); !errors.Is(err, matchsession.ErrMatchEnded) {
+	if _, err := s.PlanEndMatch(at.Add(time.Hour), false, real); !errors.Is(err, matchsession.ErrMatchEnded) {
 		t.Fatalf("check err = %v", err)
 	}
 	if got := s.Clock().Now(real); !got.Equal(at) {
@@ -480,7 +480,7 @@ func TestEndMatchAtMinimumAddsRoundSecondOnce(t *testing.T) {
 	s.GetActiveRound().MarkCounted()
 	real = real.Add(10 * time.Second)
 	min := s.EndMatchMinimum()
-	if _, err := s.EndMatch(min, false); err != nil {
+	if _, err := s.EndMatchAt(min, false, real); err != nil {
 		t.Fatal(err)
 	}
 	if got := s.Clock().Now(real); !got.Equal(min) {

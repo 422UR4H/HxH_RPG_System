@@ -9,6 +9,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	pgmatchevent "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
+	pgsheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -24,7 +25,7 @@ func naiveStory(t time.Time) time.Time {
 
 // PersistMatchEnd grava o fim da partida numa transação (spec 2026-11-08 §5): fins de round ainda
 // não gravados e o par ativo, fechados; o relógio parado no instante final; o clockRealTime da
-// pausa; matches.game_end_at/story_end_at/brief_final_description (recusa partida já encerrada);
+// pausa; as barras das fichas que um fechamento não gravou; matches.game_end_at/story_end_at/brief_final_description (recusa partida já encerrada);
 // campaigns.story_current_at e o story_current_at de toda ficha participante avançam ao
 // instante final (a data, nas fichas), sem nunca regredir.
 //
@@ -79,6 +80,16 @@ func (r *Repository) PersistMatchEnd(ctx context.Context, d appmatch.MatchEndDat
 	if d.RealTimeEvent != nil {
 		if err := pgmatchevent.NewRepository(tx).Insert(ctx, *d.RealTimeEvent); err != nil {
 			return fmt.Errorf("PersistMatchEnd clock event: %w", err)
+		}
+	}
+
+	// O HP que um fechamento de turno não gravou: o fim é a última escrita da partida.
+	if len(d.StatusBars) > 0 {
+		sheets := pgsheet.NewRepository(tx)
+		for _, sb := range d.StatusBars {
+			if err := sheets.UpdateStatusBars(ctx, sb.CharacterID.String(), sb.Health, sb.Stamina, sb.Aura); err != nil {
+				return fmt.Errorf("PersistMatchEnd status bars of %s: %w", sb.CharacterID, err)
+			}
 		}
 	}
 

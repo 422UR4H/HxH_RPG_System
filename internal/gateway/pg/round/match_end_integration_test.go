@@ -9,6 +9,7 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
@@ -288,5 +289,34 @@ func TestReadMatchEnd(t *testing.T) {
 	}
 	if !got.GameEndAt.Equal(fx.data.GameEndAt) || got.StoryAt == nil || !got.StoryAt.Equal(fx.data.StoryAt) {
 		t.Errorf("ReadMatchEnd = %+v, want gameEndAt %v, storyAt %v", got, fx.data.GameEndAt, fx.data.StoryAt)
+	}
+}
+
+// O HP que um fechamento de turno não gravou vai na transação do fim.
+func TestPersistMatchEndWritesUnwrittenStatusBars(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	ctx := context.Background()
+	pgtest.TruncateAll(t, pool)
+	fx := newMatchEndFixture(t, pool, repo, false)
+	fx.data.StatusBars = []appmatch.SheetStatusBars{{
+		CharacterID: fx.victimSheet,
+		Health:      status.ReconstructBar(0, 7, 20),
+		Stamina:     status.ReconstructBar(0, 9, 10),
+		Aura:        status.ReconstructBar(0, 4, 5),
+	}}
+
+	if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+		t.Fatalf("PersistMatchEnd: %v", err)
+	}
+
+	var curr, max int
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(health_curr_pts, -1), COALESCE(health_max_pts, -1) FROM character_sheets WHERE uuid = $1`,
+		fx.victimSheet).Scan(&curr, &max); err != nil {
+		t.Fatalf("read bars: %v", err)
+	}
+	if curr != 7 || max != 20 {
+		t.Errorf("health = %d/%d, want 7/20", curr, max)
 	}
 }

@@ -43,7 +43,7 @@ type MatchSession struct {
 	activeScene *scene.Scene
 	activeRound *round.Round
 	activeQueue action.PriorityQueue
-	// ended: EndMatch já rodou; uma segunda chamada é recusada.
+	// ended: EndMatchAt já rodou; uma segunda chamada é recusada.
 	ended bool
 	// charSheets and statuses are keyed by sheetUUID — the same ID the board pieces
 	// carry as CharacterID. The combat entity is the character, not the player: the
@@ -256,14 +256,12 @@ type SceneClose struct {
 	ConfirmLongSkip       bool
 }
 
-// MatchEnd é o resultado de EndMatch: a cena e o round fechados e a pausa do relógio.
+// MatchEnd é o resultado de EndMatchAt: a cena e o round fechados e a pausa do relógio.
 type MatchEnd struct {
 	Scene   *scene.Scene
 	Round   *round.Round
 	Pause   *clock.Pause
 	StoryAt time.Time
-	// BriefFinalDescription é o resumo final da PARTIDA (não da cena); o UC o preenche.
-	BriefFinalDescription *string
 }
 
 // activeRoundExtra é o segundo que o round ativo vai somar ao fechar (1 round = 1 s), se contado.
@@ -381,11 +379,6 @@ func (s *MatchSession) ChangeScene(
 // IsEnded diz se a partida já foi encerrada nesta sessão.
 func (s *MatchSession) IsEnded() bool { return s.ended }
 
-// CheckEndMatch valida o fim da partida (mesmas precondições de EndMatch) sem mutar nada.
-func (s *MatchSession) CheckEndMatch(storyAt time.Time, confirmLong bool) error {
-	return s.checkEnd(storyAt, confirmLong, s.now())
-}
-
 func (s *MatchSession) checkEnd(storyAt time.Time, confirmLong bool, real time.Time) error {
 	if s.ended {
 		return ErrMatchEnded
@@ -424,11 +417,6 @@ func (s *MatchSession) PlanEndMatch(storyAt time.Time, confirmLong bool, real ti
 		Pause: pause, Clock: c.Snapshot(real), StoryAt: c.Now(real),
 		Drained: s.activeQueue.IsEmpty(), ClosedAt: real,
 	}, nil
-}
-
-// EndMatch encerra a partida na memória no instante da fonte de tempo da sessão (EndMatchAt).
-func (s *MatchSession) EndMatch(storyAt time.Time, confirmLong bool) (*MatchEnd, error) {
-	return s.EndMatchAt(storyAt, confirmLong, s.now())
 }
 
 // EndMatchAt encerra a partida na memória no instante real `real`: pausa o relógio (motivo end),

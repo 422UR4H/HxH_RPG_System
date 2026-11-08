@@ -84,28 +84,42 @@ func (r *Room) handleEndMatch(client *Client, raw json.RawMessage) {
 		log.Printf("end_match: match %s written as ended but the session refused the end: %v", r.matchUUID, err)
 	}
 	r.forgetRoundEndsWrittenLocked(data.UnwrittenRoundEnds)
+	r.unwrittenSheets = nil
 	r.clearClockMergeLocked()
 	r.state = RoomStateClosed
+	msg, _ := json.Marshal(NewServerMessage(MsgTypeMatchEnded, MatchEndedPayload{
+		MatchID: r.matchUUID, StoryAt: storyPtr(plan.StoryAt), GameEndAt: plan.ClosedAt.UTC().Format(time.RFC3339),
+	}))
+	r.endedMsg = msg
 	clients := make([]*Client, 0, len(r.clients))
 	for _, c := range r.clients {
 		clients = append(clients, c)
 	}
 	r.mu.Unlock()
 
-	msg, _ := json.Marshal(NewServerMessage(MsgTypeMatchEnded, MatchEndedPayload{
-		MatchID: r.matchUUID, StoryAt: storyPtr(plan.StoryAt), GameEndAt: plan.ClosedAt.UTC().Format(time.RFC3339),
-	}))
-	// Pela faixa direta, não pelo canal broadcast: a sala para logo abaixo e o Run pode sair
-	// antes de drená-lo. A WritePump esvazia a fila (match_ended) e só então escreve o 4002.
 	for _, c := range clients {
-		select {
-		case c.send <- msg:
-		default:
-			log.Printf("dropping match_ended for slow client %s", c.userUUID)
-		}
-		c.CloseWith(closeCodeMatchEnded, closeTextMatchEnded)
+		sendMatchEnded(c, msg)
 	}
 	r.Stop()
+}
+
+// isMatchEnded diz se esta sala já encerrou a partida. Toma r.mu.
+func (r *Room) isMatchEnded() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.endedMsg != nil || (r.session != nil && r.session.IsEnded())
+}
+
+// sendMatchEnded põe o match_ended na fila do cliente e o fecha com 4002. Pela faixa direta, não
+// pelo canal broadcast: a sala para logo depois e o Run pode sair antes de drená-lo. A WritePump
+// esvazia a fila (match_ended) e só então escreve o 4002.
+func sendMatchEnded(c *Client, msg []byte) {
+	select {
+	case c.send <- msg:
+	default:
+		log.Printf("dropping match_ended for slow client %s", c.userUUID)
+	}
+	c.CloseWith(closeCodeMatchEnded, closeTextMatchEnded)
 }
 
 // matchEndDataLocked monta a escrita do fim a partir do plano: o par ativo fechado (cópias), os
@@ -125,6 +139,8 @@ func (r *Room) matchEndDataLocked(
 		End:                   appmatch.RoundEnd{Scene: sc, Round: rd},
 		UnwrittenRoundEnds:    r.unwrittenRoundEndsLocked(),
 		Clock:                 plan.Clock,
+		// O HP que um fechamento não gravou: o fim é a última escrita da partida.
+		StatusBars: statusBarsLocked(r.unwrittenSheets),
 	}
 	if plan.Pause != nil {
 		payload, err := json.Marshal(pauseEvent(plan.Pause).payload)

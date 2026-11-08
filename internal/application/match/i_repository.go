@@ -352,6 +352,9 @@ type MatchEndData struct {
 	Clock clock.Snapshot
 	// RealTimeEvent é o clockRealTime da pausa do fim; nil quando o tempo real não corria.
 	RealTimeEvent *matchevent.Event
+	// StatusBars são as fichas cujo HP um fechamento de turno não conseguiu gravar (unwritten.go):
+	// o fim é a última escrita da partida, então elas vão nesta transação ou se perdem.
+	StatusBars []SheetStatusBars
 }
 
 // MatchEndState é o fim de uma partida encerrada, lido do banco (reconexão a uma partida

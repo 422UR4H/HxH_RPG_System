@@ -23,6 +23,9 @@ type fakeMatchEndRepo struct {
 	written []appmatch.MatchEndData
 	state   *appmatch.MatchEndState
 	fail    bool
+	// hideReads faz as primeiras leituras dizerem "não encerrada" — o fim que chega entre a
+	// primeira conferência do handler e a entrada na sala.
+	hideReads int
 }
 
 func (f *fakeMatchEndRepo) setFail(v bool) {
@@ -55,6 +58,10 @@ func (f *fakeMatchEndRepo) PersistMatchEnd(_ context.Context, d appmatch.MatchEn
 func (f *fakeMatchEndRepo) ReadMatchEnd(context.Context, uuid.UUID) (*appmatch.MatchEndState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.hideReads > 0 {
+		f.hideReads--
+		return nil, nil
+	}
 	if f.state == nil {
 		return nil, nil
 	}
@@ -264,5 +271,99 @@ func TestReconnectToFinishedMatchGets4002(t *testing.T) {
 			t.Errorf("%s close = %v, want 4002 \"match ended\"", name, err)
 		}
 		conn.Close() //nolint:errcheck
+	}
+}
+
+// Depois do end_match, o que ainda chegar pela mesma conexão do mestre não roda: nada grava o
+// relógio nem uma cena nova.
+func TestCommandsAfterEndMatchAreRefused(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	_, pc := cf.connectCollectors(t)
+	cf.repo.mu.Lock()
+	savesBefore := len(cf.repo.saves)
+	cf.repo.mu.Unlock()
+	handedBefore := len(cf.roundRepo.handedPointers())
+
+	sendWS(t, cf.masterConn, "end_match", map[string]any{"storyAt": "2000-01-01T05:00:00"})
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+	sendWS(t, cf.masterConn, "change_scene", map[string]any{"category": "battle"})
+	awaitMatchEnded(t, pc)
+	time.Sleep(200 * time.Millisecond)
+
+	cf.repo.mu.Lock()
+	saves := len(cf.repo.saves)
+	cf.repo.mu.Unlock()
+	if saves != savesBefore {
+		t.Errorf("clock saves = %d after end_match, want %d — a command ran on an ended match", saves, savesBefore)
+	}
+	if n := len(cf.roundRepo.handedPointers()); n != handedBefore {
+		t.Errorf("scene/round writes = %d after end_match, want %d", n, handedBefore)
+	}
+	if n := len(cf.roundRepo.sceneCloseCalls()); n != 0 {
+		t.Errorf("CloseSceneAndRound calls = %d after end_match, want 0", n)
+	}
+}
+
+// Um jogador que conecta enquanto o fim está sendo gravado (a primeira leitura ainda não o vê, a
+// sala já fechou) recebe match_ended e 4002, não lobby_not_open.
+func TestPlayerConnectDuringEndGets4002(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	story := time.Date(2000, 1, 1, 5, 0, 0, 0, time.UTC)
+	cf.ends.finish(appmatch.MatchEndState{StoryAt: &story, GameEndAt: time.Date(2026, 11, 8, 15, 4, 5, 0, time.UTC)})
+	cf.ends.mu.Lock()
+	cf.ends.hideReads = 1
+	cf.ends.mu.Unlock()
+
+	conn := connectWS(t, cf.server.URL, cf.playerUUID, cf.matchUUID)
+	defer conn.Close() //nolint:errcheck
+	if got := readMessage(t, conn); got.Type != game.MsgTypeMatchEnded {
+		t.Fatalf("first message = %s, want match_ended", got.Type)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err := conn.ReadMessage()
+	var ce *websocket.CloseError
+	if !errors.As(err, &ce) || ce.Code != 4002 {
+		t.Errorf("close = %v, want 4002", err)
+	}
+}
+
+// As fichas cujo HP um fechamento de turno não conseguiu gravar vão na transação do fim: é a
+// última escrita da partida.
+func TestEndMatchCarriesUnwrittenSheets(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	mc, _ := cf.connectCollectors(t)
+	cf.roundRepo.setFailPersist(errors.New("turn write failed"))
+	cf.enqueueAttack(t, cf.playerConn)
+	if !mc.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the master was never told an action was queued")
+	}
+	sendWS(t, cf.masterConn, "open_next_action", map[string]any{})
+	if !mc.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("no turn_opened")
+	}
+	sendWS(t, cf.masterConn, "close_turn", map[string]any{"confirm": true})
+	if !mc.await(game.MsgTypeTurnClosed, 2*time.Second) {
+		t.Fatal("no turn_closed")
+	}
+	hp := cf.victimHP(t)
+
+	sendWS(t, cf.masterConn, "end_match", map[string]any{"storyAt": "2000-01-01T05:00:00"})
+	awaitMatchEnded(t, mc)
+
+	ws := cf.ends.writes()
+	if len(ws) != 1 {
+		t.Fatalf("PersistMatchEnd calls = %d, want 1", len(ws))
+	}
+	var found bool
+	for _, sb := range ws[0].StatusBars {
+		if sb.CharacterID == cf.victimID {
+			found = true
+			if sb.Health.GetCurrent() != hp {
+				t.Errorf("victim health written = %d, want %d", sb.Health.GetCurrent(), hp)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("StatusBars = %+v, want the victim's unwritten bars", ws[0].StatusBars)
 	}
 }
