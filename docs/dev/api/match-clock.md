@@ -217,6 +217,10 @@ O servidor, nesta ordem: recusa se o relógio não tem hora ou há turno aberto;
 (**+1 s** se contado); valida `storyAt`; **pausa o tempo real** (se estava ligado); move o relógio;
 grava tudo; limite = o novo relógio com `limitReason: "scene"`.
 
+A cena nova começa com o round no regime **`Free`** (sempre — `round.NewRound(enum.Free)`), sem
+`round_mode_changed`: o cliente volta o regime para `Free` ao receber `scene_changed`. Por isso, depois
+de um combate, o tempo real (`play_clock`) volta a estar disponível na cena nova.
+
 **Dispara, nesta ordem (mesma pista):** [`scene_changed`](match-combat-ws.md#scene_changed) →
 `clock_changed` `kind: "pause"`, `reason: "scene"` (**só se o tempo real corria**) →
 `clock_changed` `kind: "scene"` (`from`, `to`, `deltaSeconds`; `deltaSeconds` é omitido se `0`).

@@ -956,7 +956,11 @@ O regime que a mesa recebe de volta é **lido da sessão**, não ecoado do pedid
 `invalid_action` em vez de criar uma cena cuja categoria não bate com nenhum dos dois valores.
 (`roundMode`, ao contrário, é capitalizado: `"Free"`/`"Race"`.)
 
-Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
+Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro. **A primeira
+rodada da cena nova nasce sempre no regime `Free`** (`MatchSession.ChangeScene` →
+`round.NewRound(enum.Free)`), qualquer que fosse o regime da anterior, e **nenhum
+`round_mode_changed` é enviado** por isso: ao receber `scene_changed`, o cliente volta o regime
+para `Free` por conta própria.
 
 **Dispara:** [`scene_changed`](#scene_changed) — mesa — e [`bars_updated`](#bars_updated) — por
 destinatário: a rodada nova não tem preço nem turno. Os dois viajam em pistas diferentes, sem
@@ -2202,6 +2206,9 @@ traz.
   }
 }
 ```
+
+**O regime volta a `Free`.** O round que nasce com a cena nova é sempre `Free`, e o servidor não
+manda `round_mode_changed` para isso: ao aplicar `scene_changed`, zere o regime local para `Free`.
 
 **Gravado antes de emitido.** O par antigo (cena e round) já foi fechado e o novo já existe no
 banco quando esta mensagem sai (`change_scene` recusa turno aberto). Um `GET /history` que comece
