@@ -332,3 +332,39 @@ type IClockRepository interface {
 	// Save grava o checkpoint e, se ev != nil, o evento — na mesma transação.
 	Save(ctx context.Context, matchUUID uuid.UUID, snap clock.Snapshot, ev *ClockEvent) error
 }
+
+// MatchEndData é tudo o que o end_match grava, numa transação (spec 2026-11-08 §5).
+type MatchEndData struct {
+	MatchUUID uuid.UUID
+	// GameEndAt é o instante REAL do fim (matches.game_end_at).
+	GameEndAt time.Time
+	// StoryAt é o instante final da história (ingênuo): a data vira matches.story_end_at, avança
+	// campaigns.story_current_at e o story_current_at (DATE) de toda ficha participante.
+	StoryAt time.Time
+	// BriefFinalDescription é o resumo final da partida (matches.brief_final_description); nil sem.
+	BriefFinalDescription *string
+	// End é a cena e o round ativos, já fechados (finished_at e story_finished_at).
+	End RoundEnd
+	// UnwrittenRoundEnds são fins de round de comandos anteriores cuja escrita falhou; entram
+	// fechados na mesma transação (unwritten.go).
+	UnwrittenRoundEnds []RoundEnd
+	// Clock é o relógio parado no instante final.
+	Clock clock.Snapshot
+	// RealTimeEvent é o clockRealTime da pausa do fim; nil quando o tempo real não corria.
+	RealTimeEvent *matchevent.Event
+}
+
+// MatchEndState é o fim de uma partida encerrada, lido do banco (reconexão a uma partida
+// encerrada): StoryAt é o relógio da história gravado (nil sem relógio).
+type MatchEndState struct {
+	StoryAt   *time.Time
+	GameEndAt time.Time
+}
+
+// IMatchEndRepository grava e lê o fim da partida.
+type IMatchEndRepository interface {
+	// PersistMatchEnd grava o fim numa transação; recusa uma partida já encerrada.
+	PersistMatchEnd(ctx context.Context, d MatchEndData) error
+	// ReadMatchEnd devolve o fim, ou (nil, nil) quando a partida não foi encerrada.
+	ReadMatchEnd(ctx context.Context, matchUUID uuid.UUID) (*MatchEndState, error)
+}

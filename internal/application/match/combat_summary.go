@@ -60,7 +60,8 @@ type ICombatSummaryRepository interface {
 // BuildCombatSummary monta o resumo a partir dos rounds fechados da cena (na ordem da cena), do
 // round ativo (com os turnos em memória) e do mínimo do relógio. Sem I/O.
 //
-// Hiato = round Race fechado com drained cujo PRÓXIMO round da cena com turno existe; o round
+// Hiato = round disputado (Counted: abriu turno em Race, mesmo que o regime tenha mudado depois)
+// fechado com drained cujo PRÓXIMO round da cena com turno existe; o round
 // ativo entra nessa busca com os turnos que já tem. Um round drenado sem sucessor com turno não é
 // hiato: o combate acabou ali. Rounds sem turno são pulados na busca do "próximo" (round vazio
 // não fecha, mas a leitura não depende disso).
@@ -75,7 +76,7 @@ func BuildCombatSummary(rounds []SummaryRound, active SummaryRound, minimum time
 		if r.Counted {
 			out.CountedRounds++
 		}
-		if r.Mode != enum.Race || !r.Drained || r.Last == nil {
+		if !r.Counted || !r.Drained || r.Last == nil {
 			continue
 		}
 		for j := i + 1; j < len(all); j++ {

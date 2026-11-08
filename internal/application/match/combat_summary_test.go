@@ -68,7 +68,7 @@ func TestDrainedLastRoundIsNotHiatus(t *testing.T) {
 	}
 }
 
-func TestFreeDrainedRoundIsNotHiatus(t *testing.T) {
+func TestUncountedDrainedRoundIsNotHiatus(t *testing.T) {
 	a, b := summaryTurn("move"), summaryTurn("move")
 	rounds := []match.SummaryRound{
 		summaryRound(enum.Free, false, true, a, a),
@@ -78,11 +78,29 @@ func TestFreeDrainedRoundIsNotHiatus(t *testing.T) {
 	got := match.BuildCombatSummary(rounds, summaryRound(enum.Free, false, false, nil, nil), time.Time{})
 
 	if len(got.Hiatuses) != 0 {
-		t.Errorf("hiatuses = %+v, want none — only a contested (Race) round makes a hiatus", got.Hiatuses)
+		t.Errorf("hiatuses = %+v, want none — only a contested (counted) round makes a hiatus", got.Hiatuses)
 	}
 	if got.CountedRounds != 0 || got.CountedSeconds != 0 {
 		t.Errorf("counted = %d / %d, want 0 / 0", got.CountedRounds, got.CountedSeconds)
 	}
+}
+
+// Um round disputado (contado) que o mestre passou para Free antes de drenar continua hiato:
+// o que vale é ter sido disputado, não o regime em que fechou (Ruling R9).
+func TestCountedRoundSwitchedToFreeIsHiatus(t *testing.T) {
+	a, b := summaryTurn("attack"), summaryTurn("move")
+	rounds := []match.SummaryRound{
+		summaryRound(enum.Free, true, true, a, a),
+		summaryRound(enum.Free, false, false, b, b),
+	}
+
+	got := match.BuildCombatSummary(rounds, summaryRound(enum.Free, false, false, nil, nil), time.Time{})
+
+	if len(got.Hiatuses) != 1 {
+		t.Fatalf("hiatuses = %+v, want one — a counted, drained round is a hiatus whatever its last mode", got.Hiatuses)
+	}
+	assertHiatusTurn(t, "before", got.Hiatuses[0].Before, 1, a)
+	assertHiatusTurn(t, "after", got.Hiatuses[0].After, 2, b)
 }
 
 func TestActiveRoundJoinsSummary(t *testing.T) {

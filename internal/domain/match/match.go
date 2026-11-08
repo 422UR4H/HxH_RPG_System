@@ -28,8 +28,11 @@ type Match struct {
 	// GameEndAt marca a partida encerrada (instante real). StoryEndAt é outro conceito
 	// (fim da história na linha do tempo) e não indica encerramento.
 	GameEndAt *time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// StoryEndTime é o horário da história em que a partida terminou (o relógio gravado), como
+	// deslocamento desde a meia-noite; só é lido para partida encerrada.
+	StoryEndTime *time.Duration
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 func NewMatch(

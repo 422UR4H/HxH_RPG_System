@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	pkgAuth "github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -86,9 +87,27 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Partida encerrada (spec 2026-11-08 §5): mestre ou jogador, lobby ou mesa, recebe
+	// match_ended e o fechamento 4002 logo depois do upgrade — nenhuma sala nasce para ela.
+	// Lido antes do upgrade para uma falha de leitura ainda poder responder em HTTP.
+	var ended *appmatch.MatchEndState
+	if h.deps.MatchEndRepo != nil {
+		ended, err = h.deps.MatchEndRepo.ReadMatchEnd(r.Context(), matchUUID)
+		if err != nil {
+			log.Printf("read match end of %s: %v", matchUUID, err)
+			http.Error(w, `{"error":"could not read the match"}`, http.StatusInternalServerError)
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("websocket upgrade failed: %v", err)
+		return
+	}
+
+	if ended != nil {
+		rejectMatchEnded(conn, matchUUID, ended)
 		return
 	}
 
@@ -168,18 +187,23 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 // §4.6); both look the same from a player's side, since a closed lobby only reopens when the
 // master reconnects.
 func rejectLobbyNotOpen(conn *websocket.Conn) {
-	msg := NewServerMessage(MsgTypeLobbyNotOpen, struct{}{})
+	rejectWithClose(conn, NewServerMessage(MsgTypeLobbyNotOpen, struct{}{}), 4001, "lobby not open")
+}
+
+// rejectWithClose escreve msg e o quadro de fechamento (code, text) numa conexão que nunca entra
+// numa sala, e a drena até o cliente fechar.
+func rejectWithClose(conn *websocket.Conn, msg Message, code int, text string) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("failed to marshal lobby_not_open: %v", err)
+		log.Printf("failed to marshal %s: %v", msg.Type, err)
 	} else if wErr := conn.WriteMessage(websocket.TextMessage, data); wErr != nil {
-		log.Printf("lobby_not_open write failed: %v", wErr)
+		log.Printf("%s write failed: %v", msg.Type, wErr)
 	}
-	_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4001, "lobby not open"))
+	_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, text))
 	// Drain in a separate goroutine so the HTTP handler returns immediately
 	// while the close handshake completes. Without this, conn.Close() may
 	// send a TCP RST before the browser receives the text frame above,
-	// causing onclose to fire with code 1006 instead of 4001.
+	// causing onclose to fire with code 1006 instead of the close code (4001, 4002).
 	go func() {
 		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		for {

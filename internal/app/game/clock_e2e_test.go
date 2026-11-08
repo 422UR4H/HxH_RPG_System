@@ -114,6 +114,8 @@ type clockFixture struct {
 	clock *clock.Clock
 	// summaries é o banco do get_combat_summary (combat_close_e2e_test.go).
 	summaries *fakeSummaryRepo
+	// ends é o banco do fim da partida (end_match_e2e_test.go).
+	ends *fakeMatchEndRepo
 
 	masterConn, playerConn *websocket.Conn
 }
@@ -126,6 +128,7 @@ func newClockFixture(t *testing.T, unset bool, checkpointEvery time.Duration) *c
 		now:       &fakeNow{t: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)},
 		repo:      &fakeClockRepo{},
 		summaries: &fakeSummaryRepo{},
+		ends:      &fakeMatchEndRepo{},
 	}
 	cf.combatFixture = newCombatFixture(t, withRoomDeps(func(d *game.RoomDeps) {
 		d.ClockUC = appmatch.NewClockCommandsUC(fakeMatchGetter{storyStart: time.Date(1999, 4, 1, 0, 0, 0, 0, time.UTC)})
@@ -133,6 +136,7 @@ func newClockFixture(t *testing.T, unset bool, checkpointEvery time.Duration) *c
 		d.Now = cf.now.Now
 		d.ClockCheckpointEvery = checkpointEvery
 		d.CombatSummaryRepo = cf.summaries
+		d.MatchEndRepo = cf.ends
 	}))
 	if unset {
 		cf.clock = clock.NewUnset()

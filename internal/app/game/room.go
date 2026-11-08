@@ -1097,7 +1097,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// mestre são serializados pela leitura única dele.
 		// A troca de regime pausa o relógio (clockRealTime) e sobe o limite; sem pausa, o
 		// limite novo é gravado e anunciado sozinho (kind limit).
-		clockData := r.announceClockPause(session, modePause, "change_round_mode")
+		clockData := r.announceClockPause(session, modePause, nil, "change_round_mode")
 		if clockData == nil {
 			r.persistClock(session, nil, "change_round_mode")
 			clockData = r.clockChangedData(session, ClockChangePayload{Kind: "limit"})
@@ -1675,7 +1675,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// A troca de cena pausa o relógio (pause, com o clockRealTime, só se o tempo real
 		// corria) e o move (scene: o segundo do round contado e o horário de fim que o mestre
 		// deu): os dois vão depois do scene_changed, nessa ordem, na mesma goroutine.
-		pauseData := r.announceClockPause(session, scenePause, "change_scene")
+		// O clockRealTime é do par que estava rodando (o antigo), não do que acabou de nascer.
+		pauseData := r.announceClockPause(session, scenePause, oldEnd, "change_scene")
+		if scenePause != nil {
+			// A troca começa onde a pausa parou: o relógio lido antes do comando pode estar um
+			// segundo atrás do to da pausa (virada de segundo entre as duas leituras).
+			clockFrom = scenePause.To
+		}
 		sceneData := r.clockChangedData(session, ClockChangePayload{
 			Kind: "scene", From: storyPtr(clockFrom), To: storyPtr(clockTo),
 			DeltaSeconds: int64(clockTo.Sub(clockFrom) / time.Second),
@@ -1700,6 +1706,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.handlePauseClock(client)
 	case MsgTypeGetCombatSummary:
 		r.handleGetCombatSummary(client)
+	case MsgTypeEndMatch:
+		r.handleEndMatch(client, incoming.Payload)
 
 	case MsgTypeCancelLobby:
 		if err := r.CloseLobby(client.userUUID); err != nil {

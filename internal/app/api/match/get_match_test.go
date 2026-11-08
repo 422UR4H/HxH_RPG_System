@@ -108,3 +108,45 @@ func TestGetMatchHandler(t *testing.T) {
 		})
 	}
 }
+
+func getMatchBody(t *testing.T, m *matchEntity.Match) map[string]any {
+	t.Helper()
+	_, api := humatest.New(t)
+	mock := &mockGetMatch{fn: func(context.Context, uuid.UUID, uuid.UUID) (*matchEntity.Match, error) { return m, nil }}
+	huma.Register(api, huma.Operation{Method: http.MethodGet, Path: "/matches/{uuid}"}, match.GetMatchHandler(mock))
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	resp := api.GetCtx(ctx, "/matches/"+uuid.NewString())
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.Code, resp.Body.String())
+	}
+	var result map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return result["match"].(map[string]any)
+}
+
+func TestGetMatchFinishedHasStoryEndTime(t *testing.T) {
+	now := time.Now()
+	end := time.Date(2026, 11, 8, 15, 4, 5, 0, time.UTC)
+	storyEnd := 21*time.Hour + 15*time.Minute + 30*time.Second
+	base := matchEntity.Match{UUID: uuid.New(), GameScheduledAt: now, StoryStartAt: now, CreatedAt: now, UpdatedAt: now}
+
+	finished := base
+	finished.GameEndAt = &end
+	finished.StoryEndTime = &storyEnd
+	got := getMatchBody(t, &finished)
+	if got["storyEndTime"] != "21:15:30" {
+		t.Errorf("storyEndTime = %v, want 21:15:30", got["storyEndTime"])
+	}
+	if got["gameEndAt"] != "2026-11-08T15:04:05Z" {
+		t.Errorf("gameEndAt = %v, want RFC 3339", got["gameEndAt"])
+	}
+
+	// Sem encerramento não há horário de fim, mesmo que algo o traga.
+	open := base
+	open.StoryEndTime = &storyEnd
+	if v, ok := getMatchBody(t, &open)["storyEndTime"]; ok {
+		t.Errorf("storyEndTime = %v on a match not finished, want absent", v)
+	}
+}

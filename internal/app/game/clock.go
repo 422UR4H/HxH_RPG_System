@@ -12,6 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
@@ -42,6 +43,9 @@ type pendingClockEvent struct {
 	kind      matchevent.Kind
 	payload   any
 	mergeInto uuid.UUID
+	// pair, quando dado, é o par (cópias) a que o evento pertence em vez do par ativo — a pausa
+	// da troca de cena é do par que estava rodando, já fechado.
+	pair *appmatch.RoundEnd
 }
 
 // clockErrorCode traduz os erros do relógio para o código do fio; o resto é game_error.
@@ -63,6 +67,12 @@ func clockErrorCode(err error) string {
 		return "clock_play_in_race"
 	case errors.Is(err, appmatch.ErrNotMatchMaster):
 		return "forbidden"
+	case errors.Is(err, matchsession.ErrMatchInBattle):
+		return "match_in_battle"
+	case errors.Is(err, matchsession.ErrMatchEnded):
+		return "match_already_ended"
+	case errors.Is(err, matchsession.ErrBriefFinalTooLong):
+		return "invalid_payload"
 	default:
 		return "game_error"
 	}
@@ -152,7 +162,10 @@ func pauseEvent(p *clock.Pause) *pendingClockEvent {
 }
 
 func pauseChange(p *clock.Pause) ClockChangePayload {
-	return ClockChangePayload{Kind: "pause", From: storyPtr(p.From), To: storyPtr(p.To), Reason: string(p.Reason)}
+	return ClockChangePayload{
+		Kind: "pause", From: storyPtr(p.From), To: storyPtr(p.To), Reason: string(p.Reason),
+		ElapsedSeconds: int64(p.Elapsed / time.Second),
+	}
 }
 
 // persistClock grava o checkpoint do relógio e, se ev != nil, o evento — numa transação
@@ -180,10 +193,16 @@ func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEve
 	var clockEv *appmatch.ClockEvent
 	if ev != nil {
 		payload, err := json.Marshal(ev.payload)
+		pairRows := r.ensureClockEventPair
+		if ev.pair != nil {
+			sc, rd = ev.pair.Scene, ev.pair.Round
+		} else {
+			pairRows = r.ensureSceneAndRoundRows
+		}
 		switch {
 		case err != nil:
 			log.Printf("%s: clock event %s of match %s NOT recorded (payload): %v", why, ev.kind, r.matchUUID, err)
-		case !r.ensureSceneAndRoundRows(sess, sc, rd, why):
+		case !pairRows(sess, sc, rd, why):
 			log.Printf("%s: clock event %s of match %s NOT recorded (no scene/round rows)", why, ev.kind, r.matchUUID)
 		default:
 			clockEv = &appmatch.ClockEvent{
@@ -200,6 +219,22 @@ func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEve
 		return false
 	}
 	return clockEv != nil
+}
+
+// ensureClockEventPair garante as linhas de um par que já não é o ativo (o evento é dele): o
+// mesmo upsert idempotente, direto, sem tocar as marcas da sessão nem os fins não gravados —
+// um par fechado entra fechado. O chamador NÃO pode segurar r.mu.
+func (r *Room) ensureClockEventPair(
+	_ *matchsession.MatchSession, sc *sceneentity.Scene, rd *roundentity.Round, why string,
+) bool {
+	if r.deps.RoundRepo == nil || sc == nil || rd == nil {
+		return false
+	}
+	if err := r.deps.RoundRepo.EnsureSceneAndRound(context.Background(), r.matchUUID, sc, rd); err != nil {
+		log.Printf("%s FAILED — scene %s / round %s of match %s NOT written: %v", why, sc.GetID(), rd.GetID(), r.matchUUID, err)
+		return false
+	}
+	return true
 }
 
 // sessionForClock devolve a sessão, ou responde ao cliente e devolve nil.
@@ -424,12 +459,15 @@ func (r *Room) handlePauseClock(client *Client) {
 }
 
 // announceClockPause grava e prepara o anúncio de uma pausa automática (regime, cena). Devolve
-// a mensagem para o chamador mandar na ordem dele; nil sem pausa. O chamador NÃO segura r.mu.
-func (r *Room) announceClockPause(sess *matchsession.MatchSession, p *clock.Pause, why string) []byte {
+// a mensagem para o chamador mandar na ordem dele; nil sem pausa. pair != nil atribui o
+// clockRealTime a esse par (o que estava rodando) em vez do ativo. O chamador NÃO segura r.mu.
+func (r *Room) announceClockPause(sess *matchsession.MatchSession, p *clock.Pause, pair *appmatch.RoundEnd, why string) []byte {
 	if p == nil {
 		return nil
 	}
-	r.persistClock(sess, pauseEvent(p), why)
+	ev := pauseEvent(p)
+	ev.pair = pair
+	r.persistClock(sess, ev, why)
 	return r.clockChangedData(sess, pauseChange(p))
 }
 

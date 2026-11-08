@@ -170,7 +170,7 @@ func (r *Repository) GetCampaign(
             uuid, campaign_uuid,
 						title, COALESCE(brief_initial_description, ''), brief_final_description,
 						is_public, game_scheduled_at, game_start_at,
-            story_start_at, story_end_at,
+            story_start_at, story_end_at, game_end_at,
             created_at, updated_at
         FROM matches
         WHERE campaign_uuid = $1
@@ -196,6 +196,7 @@ func (r *Repository) GetCampaign(
 			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,
+			&m.GameEndAt,
 			&m.CreatedAt,
 			&m.UpdatedAt,
 		)

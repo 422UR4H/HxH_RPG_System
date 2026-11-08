@@ -590,6 +590,8 @@ func sendWS(t *testing.T, conn *websocket.Conn, msgType string, payload any) {
 type collector struct {
 	mu   sync.Mutex
 	msgs []game.Message
+	// readErr é o erro que encerrou a leitura (o fechamento da conexão, com o código).
+	readErr error
 }
 
 func newCollector(conn *websocket.Conn) *collector {
@@ -598,6 +600,9 @@ func newCollector(conn *websocket.Conn) *collector {
 		for {
 			_, data, err := conn.ReadMessage()
 			if err != nil {
+				c.mu.Lock()
+				c.readErr = err
+				c.mu.Unlock()
 				return
 			}
 			var msg game.Message

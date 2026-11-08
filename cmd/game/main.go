@@ -123,6 +123,7 @@ func main() {
 			ChangeSceneUC:         changeSceneUC,
 			RoundRepo:             roundRepository,
 			CombatSummaryRepo:     roundRepository,
+			MatchEndRepo:          roundRepository,
 			EnqueueMasterActionUC: enqueueMasterActionUC,
 			ChangeRoundModeUC:     changeRoundModeUC,
 			EditActionUC:          editActionUC,

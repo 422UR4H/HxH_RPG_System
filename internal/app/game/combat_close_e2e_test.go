@@ -12,6 +12,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 	"github.com/google/uuid"
 )
 
@@ -117,7 +118,7 @@ func TestChangeSceneClosesCombatWithStoryAt(t *testing.T) {
 	_, pc := cf.connectCollectors(t)
 
 	sendWS(t, cf.masterConn, "change_scene", map[string]any{"category": "battle"})
-	awaitSceneChanged(t, pc, 1)
+	battle := awaitSceneChanged(t, pc, 1)
 	// Sem pausa (o relógio estava parado): só o clock_changed scene, sem mover.
 	if got := awaitClockChanged(t, pc, 1); got.Change.Kind != "scene" ||
 		strOf(got.Change.From) != "2000-01-01T00:00:00" || strOf(got.Change.To) != "2000-01-01T00:00:00" {
@@ -137,6 +138,7 @@ func TestChangeSceneClosesCombatWithStoryAt(t *testing.T) {
 
 	// Ordem: scene_changed, pause (tempo real corria), scene.
 	var kinds []string
+	var pause game.ClockChangePayload
 	seenScene := 0
 	for _, m := range pc.snapshotMessages() {
 		if m.Type == game.MsgTypeSceneChanged {
@@ -146,10 +148,26 @@ func TestChangeSceneClosesCombatWithStoryAt(t *testing.T) {
 			var p game.ClockChangedPayload
 			_ = json.Unmarshal(m.Payload, &p)
 			kinds = append(kinds, p.Change.Kind+":"+p.Change.Reason)
+			if p.Change.Kind == "pause" {
+				pause = p.Change
+			}
 		}
 	}
 	if strings.Join(kinds, ",") != "pause:scene,scene:" {
 		t.Fatalf("clock_changed after the 2nd scene_changed = %v, want [pause:scene scene:]", kinds)
+	}
+	// R8: a pausa diz o tempo real que correu.
+	if pause.ElapsedSeconds != 30 {
+		t.Errorf("pause elapsedSeconds = %d, want 30", pause.ElapsedSeconds)
+	}
+	// O from da troca é o to da pausa (sem sobrepor um segundo).
+	if strOf(scene2.Change.From) != strOf(pause.To) {
+		t.Errorf("scene change from = %s, want the pause's to %s", strOf(scene2.Change.From), strOf(pause.To))
+	}
+	// O clockRealTime é do par que estava rodando (a cena de combate), não do novo.
+	evs := cf.repo.eventsOf(matchevent.KindClockRealTime)
+	if len(evs) != 1 || evs[0].SceneUUID != battle.SceneID || evs[0].SceneUUID == next.SceneID {
+		t.Errorf("clockRealTime events = %+v, want one in the battle scene %s", evs, battle.SceneID)
 	}
 	if scene2.Change.Kind != "scene" || strOf(scene2.Change.From) != "2000-01-01T00:00:30" ||
 		strOf(scene2.Change.To) != "2000-01-01T00:10:00" || scene2.Change.DeltaSeconds != 570 {

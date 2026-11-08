@@ -318,21 +318,28 @@ func (s *MatchSession) checkClose(storyAt *time.Time, confirmLong bool, real tim
 
 // closeRoundAndClock pausa o relógio, soma o segundo do round contado, fecha round e cena e
 // leva o relógio a storyAt (quando informado). Só roda depois de checkClose.
-func (s *MatchSession) closeRoundAndClock(reason clock.PauseReason, storyAt *time.Time, real time.Time) *clock.Pause {
-	pause := s.clock.Pause(reason, real)
+func (s *MatchSession) closeRoundAndClock(reason clock.PauseReason, storyAt *time.Time, real, closedAt time.Time) *clock.Pause {
+	pause := s.moveClockToClose(s.clock, reason, storyAt, real)
 	s.activeRound.SetDrained(s.activeQueue.IsEmpty())
-	if s.activeRound.IsCounted() {
-		s.clock.AddRoundSecond(real)
-	}
-	if storyAt != nil {
-		if to := clockNorm(*storyAt); !to.Equal(s.clock.Now(real)) {
-			// já validado: o destino respeita o mínimo e o pulo foi confirmado
-			_, _ = s.clock.Set(to, true, real)
-		}
-	}
-	closedAt := time.Now()
 	s.activeRound.Close(closedAt)
 	s.activeScene.Close(closedAt)
+	return pause
+}
+
+// moveClockToClose é o que o fechamento faz com o relógio c: pausa, soma o segundo do round
+// contado e vai a storyAt (quando informado). Roda no relógio da sessão ou numa cópia dele
+// (PlanEndMatch). Só depois de checkClose.
+func (s *MatchSession) moveClockToClose(c *clock.Clock, reason clock.PauseReason, storyAt *time.Time, real time.Time) *clock.Pause {
+	pause := c.Pause(reason, real)
+	if s.activeRound.IsCounted() {
+		c.AddRoundSecond(real)
+	}
+	if storyAt != nil {
+		if to := clockNorm(*storyAt); !to.Equal(c.Now(real)) {
+			// já validado: o destino respeita o mínimo e o pulo foi confirmado
+			_, _ = c.Set(to, true, real)
+		}
+	}
 	return pause
 }
 
@@ -353,7 +360,7 @@ func (s *MatchSession) ChangeScene(
 		return nil, nil, nil, err
 	}
 
-	pause := s.closeRoundAndClock(clock.PauseScene, sc.StoryAt, real)
+	pause := s.closeRoundAndClock(clock.PauseScene, sc.StoryAt, real, time.Now())
 	s.clock.RaiseLimit(clock.LimitScene, real)
 	storyNow := s.clock.Now(real)
 
@@ -392,14 +399,46 @@ func (s *MatchSession) checkEnd(storyAt time.Time, confirmLong bool, real time.T
 	return s.checkClose(&storyAt, confirmLong, real)
 }
 
-// EndMatch encerra a partida na memória: pausa o relógio (motivo end), soma o segundo do round
-// contado, leva o relógio a storyAt, fecha round e cena e descarta a fila. Não persiste nada.
-func (s *MatchSession) EndMatch(storyAt time.Time, confirmLong bool) (*MatchEnd, error) {
-	real := s.now()
+// EndMatchPlan é o que EndMatchAt fará no mesmo instante real, calculado sem mutar a sessão: a
+// sala grava o fim antes de aplicá-lo (spec 2026-11-08 §5, Ruling R2).
+type EndMatchPlan struct {
+	// Pause é a pausa do relógio (motivo end); nil quando o tempo real não corria.
+	Pause *clock.Pause
+	// Clock é o relógio parado no instante final; StoryAt, esse instante.
+	Clock   clock.Snapshot
+	StoryAt time.Time
+	// Drained: o round ativo fecha com a fila vazia. ClosedAt: o finished_at de round e cena.
+	Drained  bool
+	ClosedAt time.Time
+}
+
+// PlanEndMatch valida o fim como EndMatchAt e devolve o que ele fará em `real`, sem mutar nada.
+func (s *MatchSession) PlanEndMatch(storyAt time.Time, confirmLong bool, real time.Time) (*EndMatchPlan, error) {
 	if err := s.checkEnd(storyAt, confirmLong, real); err != nil {
 		return nil, err
 	}
-	pause := s.closeRoundAndClock(clock.PauseEnd, &storyAt, real)
+	c := *s.clock // cópia: o plano não toca o relógio da sessão
+	pause := s.moveClockToClose(&c, clock.PauseEnd, &storyAt, real)
+	c.RaiseLimit(clock.LimitScene, real)
+	return &EndMatchPlan{
+		Pause: pause, Clock: c.Snapshot(real), StoryAt: c.Now(real),
+		Drained: s.activeQueue.IsEmpty(), ClosedAt: real,
+	}, nil
+}
+
+// EndMatch encerra a partida na memória no instante da fonte de tempo da sessão (EndMatchAt).
+func (s *MatchSession) EndMatch(storyAt time.Time, confirmLong bool) (*MatchEnd, error) {
+	return s.EndMatchAt(storyAt, confirmLong, s.now())
+}
+
+// EndMatchAt encerra a partida na memória no instante real `real`: pausa o relógio (motivo end),
+// soma o segundo do round contado, leva o relógio a storyAt, fecha round e cena (finished_at =
+// real) e descarta a fila. Não persiste nada.
+func (s *MatchSession) EndMatchAt(storyAt time.Time, confirmLong bool, real time.Time) (*MatchEnd, error) {
+	if err := s.checkEnd(storyAt, confirmLong, real); err != nil {
+		return nil, err
+	}
+	pause := s.closeRoundAndClock(clock.PauseEnd, &storyAt, real, real)
 	s.clock.RaiseLimit(clock.LimitScene, real)
 	s.activeScene.SetStoryFinishedAt(s.clock.Now(real))
 	s.activeQueue = action.NewActionPriorityQueue(nil)

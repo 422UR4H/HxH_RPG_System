@@ -74,6 +74,7 @@ func GetMatchHandler(
 			StoryEndAt:              storyEndAtStr,
 			StoryStartTime:          formatStoryStartTime(match.StoryStartTime),
 			GameEndAt:               formatGameEndAt(match.GameEndAt),
+			StoryEndTime:            formatStoryEndTime(match),
 			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
 		}

@@ -53,8 +53,10 @@ type MatchResponse struct {
 	StoryEndAt              *string   `json:"storyEndAt,omitempty"`
 	StoryStartTime          *string   `json:"storyStartTime,omitempty"`
 	GameEndAt               *string   `json:"gameEndAt,omitempty"`
-	CreatedAt               string    `json:"createdAt"`
-	UpdatedAt               string    `json:"updatedAt"`
+	// StoryEndTime é o horário da história em que a partida terminou ("HH:MM:SS"); só encerrada.
+	StoryEndTime *string `json:"storyEndTime,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
+	UpdatedAt    string  `json:"updatedAt"`
 }
 
 func CreateMatchHandler(

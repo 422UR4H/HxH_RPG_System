@@ -130,6 +130,11 @@ const (
 	MsgTypeGetCombatSummary MessageType = "get_combat_summary"
 	MsgTypeCombatSummary    MessageType = "combat_summary"
 
+	// Cliente → servidor (só o mestre): encerra a partida (spec 2026-11-08 §5). A mesa inteira
+	// recebe match_ended e toda conexão fecha com o código 4002 "match ended".
+	MsgTypeEndMatch   MessageType = "end_match"
+	MsgTypeMatchEnded MessageType = "match_ended"
+
 	// Cliente → servidor (só o mestre): o mestre passa a ver o tabuleiro pelos olhos de uma
 	// peça. pieceId vazio encerra.
 	MsgTypeWatchPieceView MessageType = "watch_piece_view"
@@ -1436,6 +1441,22 @@ type SetClockPayload struct {
 	ConfirmLongSkip bool   `json:"confirmLongSkip,omitempty"`
 }
 
+// EndMatchPayload é o end_match: o instante final da história (obrigatório, ingênuo) e o resumo
+// final da partida (opcional, até 255 caracteres).
+type EndMatchPayload struct {
+	StoryAt               string  `json:"storyAt"`
+	BriefFinalDescription *string `json:"briefFinalDescription,omitempty"`
+	ConfirmLongSkip       bool    `json:"confirmLongSkip,omitempty"`
+}
+
+// MatchEndedPayload é o match_ended: storyAt é o instante final da história (ingênuo; null se a
+// partida não tem relógio gravado) e gameEndAt o instante real do fim, RFC 3339 em UTC.
+type MatchEndedPayload struct {
+	MatchID   uuid.UUID `json:"matchId"`
+	StoryAt   *string   `json:"storyAt"`
+	GameEndAt string    `json:"gameEndAt"`
+}
+
 // ClockPayload é o estado do relógio: em match_full_state.clock e em todo clock_changed.
 // Tempos no formato ingênuo "2006-01-02T15:04:05"; storyAt/limitAt nil = não definido. Com
 // running, o cliente conta a partir do instante em que recebeu a mensagem.
@@ -1457,6 +1478,8 @@ type ClockChangePayload struct {
 	To           *string `json:"to,omitempty"`
 	DeltaSeconds int64   `json:"deltaSeconds,omitempty"`
 	Reason       string  `json:"reason,omitempty"`
+	// ElapsedSeconds é o tempo real que o relógio correu (kind pause); to − from inclui os ajustes.
+	ElapsedSeconds int64 `json:"elapsedSeconds,omitempty"`
 }
 
 type ClockChangedPayload struct {

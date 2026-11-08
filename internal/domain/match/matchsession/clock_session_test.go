@@ -487,3 +487,46 @@ func TestEndMatchAtMinimumAddsRoundSecondOnce(t *testing.T) {
 		t.Errorf("Now = %v, want %v", got, min)
 	}
 }
+
+// O plano do fim é o que EndMatchAt fará, sem mutar nada: a sala grava o plano antes de aplicar.
+func TestPlanEndMatchMatchesEndMatchAt(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted()
+	real = real.Add(10 * time.Second)
+	at := storyStart.Add(2 * time.Hour)
+
+	if _, err := s.PlanEndMatch(storyStart, false, real); !errors.Is(err, clock.ErrBelowLimit) {
+		t.Fatalf("plan below minimum: %v", err)
+	}
+	before := stateOf(s, real)
+	plan, err := s.PlanEndMatch(at, false, real)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := stateOf(s, real); after != before || s.IsEnded() {
+		t.Fatalf("PlanEndMatch mutated the session: %+v → %+v", before, after)
+	}
+	if plan.Pause == nil || plan.Pause.Reason != clock.PauseEnd || plan.Pause.Elapsed != 10*time.Second {
+		t.Errorf("plan pause = %+v, want end with 10 s elapsed", plan.Pause)
+	}
+	if !plan.StoryAt.Equal(at) || plan.Clock.Running || plan.Clock.StoryAt == nil || !plan.Clock.StoryAt.Equal(at) ||
+		plan.Clock.LimitReason != clock.LimitScene || !plan.Drained || !plan.ClosedAt.Equal(real) {
+		t.Errorf("plan = %+v (clock %+v)", plan, plan.Clock)
+	}
+
+	real = real.Add(5 * time.Second) // o fim é aplicado depois da escrita, com o MESMO instante
+	end, err := s.EndMatchAt(at, false, plan.ClosedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *end.Pause != *plan.Pause || !end.StoryAt.Equal(plan.StoryAt) {
+		t.Errorf("end pause %+v / story %v, want the plan's %+v / %v", end.Pause, end.StoryAt, plan.Pause, plan.StoryAt)
+	}
+	if f := end.Round.GetFinishedAt(); f == nil || !f.Equal(plan.ClosedAt) {
+		t.Errorf("round finishedAt = %v, want %v", f, plan.ClosedAt)
+	}
+	if got := s.Clock().Snapshot(real); *got.StoryAt != *plan.Clock.StoryAt || got.Running {
+		t.Errorf("clock after = %+v, want the plan's", got)
+	}
+}

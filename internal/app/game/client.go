@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,12 @@ type Client struct {
 	send     chan []byte
 	room     *Room
 	done     chan struct{}
+	// closeMu protege done e closeFrame: o quadro de fechamento é fixado junto do fechamento,
+	// para a WritePump ler o mesmo que CloseWith gravou.
+	closeMu sync.Mutex
+	// closeFrame é o quadro de fechamento que a WritePump escreve ao sair (CloseWith); nil é o
+	// fechamento sem código de sempre.
+	closeFrame []byte
 }
 
 func NewClient(userUUID uuid.UUID, conn *websocket.Conn, nickname string) *Client {
@@ -80,11 +87,36 @@ func (c *Client) SendMessage(msg Message) {
 }
 
 func (c *Client) Close() {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
 	select {
 	case <-c.done:
 	default:
 		close(c.done)
 	}
+}
+
+// CloseWith fecha como Close, mas a WritePump, depois de esvaziar o que já está na fila, escreve
+// o quadro de fechamento com esse código e texto (ex.: 4002 "match ended"). Um cliente já
+// fechado fica como estava.
+func (c *Client) CloseWith(code int, text string) {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	select {
+	case <-c.done:
+	default:
+		c.closeFrame = websocket.FormatCloseMessage(code, text)
+		close(c.done)
+	}
+}
+
+func (c *Client) closeMessage() []byte {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closeFrame == nil {
+		return []byte{}
+	}
+	return c.closeFrame
 }
 
 func (c *Client) ReadPump() {
@@ -169,7 +201,7 @@ func (c *Client) WritePump() {
 			// as lobby_closed. Flush the backlog first, then close.
 			c.flushSend()
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			_ = c.conn.WriteMessage(websocket.CloseMessage, c.closeMessage())
 			return
 		}
 	}

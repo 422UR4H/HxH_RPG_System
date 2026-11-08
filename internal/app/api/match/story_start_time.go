@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 )
 
 const errInvalidStoryStartTime = "storyStartTime must be HH:MM or HH:MM:SS"
@@ -42,6 +44,15 @@ func formatStoryStartTime(d *time.Duration) *string {
 	total := int(d.Seconds())
 	s := fmt.Sprintf("%02d:%02d:%02d", total/3600, total%3600/60, total%60)
 	return &s
+}
+
+// formatStoryEndTime devolve o horário de fim na história ("HH:MM:SS") de uma partida encerrada;
+// nil (omitido) enquanto ela não terminou.
+func formatStoryEndTime(m *matchEntity.Match) *string {
+	if !m.IsFinished() {
+		return nil
+	}
+	return formatStoryStartTime(m.StoryEndTime)
 }
 
 func formatGameEndAt(t *time.Time) *string {
