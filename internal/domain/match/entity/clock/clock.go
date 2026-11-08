@@ -54,8 +54,8 @@ type Clock struct {
 	// checkpoints não mexem, para Pause reportar a corrida inteira.
 	playStoryAt time.Time
 	playRealAt  time.Time
-	limitAt      time.Time
-	limitReason  LimitReason
+	limitAt     time.Time
+	limitReason LimitReason
 }
 
 func norm(t time.Time) time.Time { return t.UTC().Truncate(time.Second) }
