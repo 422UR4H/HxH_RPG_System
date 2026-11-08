@@ -183,6 +183,10 @@ func TestCreateMatchStoryStartTime(t *testing.T) {
 		{"absent is nil", map[string]any{}, nil, http.StatusCreated, ""},
 		{"hour out of range", map[string]any{"storyStartTime": "25:00"}, nil, http.StatusUnprocessableEntity, ""},
 		{"wrong format", map[string]any{"storyStartTime": "8h"}, nil, http.StatusUnprocessableEntity, ""},
+		{"leading plus", map[string]any{"storyStartTime": "+8:30"}, nil, http.StatusUnprocessableEntity, ""},
+		{"leading space", map[string]any{"storyStartTime": " 8:30"}, nil, http.StatusUnprocessableEntity, ""},
+		{"one-digit hour", map[string]any{"storyStartTime": "8:30"}, nil, http.StatusUnprocessableEntity, ""},
+		{"trailing garbage", map[string]any{"storyStartTime": "08:30:1x"}, nil, http.StatusUnprocessableEntity, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

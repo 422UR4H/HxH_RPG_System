@@ -175,7 +175,7 @@ func (uc *InitMatchSessionUC) loadOrCreateClock(ctx context.Context, matchUUID u
 			if err := uc.clocks.Save(ctx, matchUUID, c.Snapshot(time.Now()), nil); err != nil {
 				return nil, err
 			}
-			log.Printf("clock of match %s was running at restart: paused at %s", matchUUID, p.To.Format(time.RFC3339))
+			log.Printf("clock of match %s was running at restart: paused at %s", matchUUID, p.To.Format(clock.WireLayout))
 		}
 	}
 	return c, nil

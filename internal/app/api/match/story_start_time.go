@@ -3,6 +3,8 @@ package match
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"time"
 
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -10,27 +12,24 @@ import (
 
 const errInvalidStoryStartTime = "storyStartTime must be HH:MM or HH:MM:SS"
 
+// storyStartTimeRe é o formato estrito: dois dígitos por campo, hora 00–23, sem sinal nem espaço.
+var storyStartTimeRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$`)
+
 // parseStoryStartTime lê "HH:MM" ou "HH:MM:SS" como deslocamento desde a meia-noite.
 // Vazio significa "sem horário" (nil).
 func parseStoryStartTime(s string) (*time.Duration, error) {
 	if s == "" {
 		return nil, nil
 	}
-	var h, m, sec int
-	switch len(s) {
-	case 5:
-		if _, err := fmt.Sscanf(s, "%02d:%02d", &h, &m); err != nil {
-			return nil, err
-		}
-	case 8:
-		if _, err := fmt.Sscanf(s, "%02d:%02d:%02d", &h, &m, &sec); err != nil {
-			return nil, err
-		}
-	default:
+	if !storyStartTimeRe.MatchString(s) {
 		return nil, errors.New(errInvalidStoryStartTime)
 	}
-	if h < 0 || h > 23 || m < 0 || m > 59 || sec < 0 || sec > 59 || s[2] != ':' {
-		return nil, errors.New(errInvalidStoryStartTime)
+	// o regexp garante os dígitos: as conversões não falham
+	h, _ := strconv.Atoi(s[0:2])
+	m, _ := strconv.Atoi(s[3:5])
+	sec := 0
+	if len(s) == 8 {
+		sec, _ = strconv.Atoi(s[6:8])
 	}
 	d := time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(sec)*time.Second
 	return &d, nil
@@ -55,10 +54,11 @@ func formatStoryEndTime(m *matchEntity.Match) *string {
 	return formatStoryStartTime(m.StoryEndTime)
 }
 
+// formatGameEndAt devolve o instante real do fim em RFC 3339, sempre em UTC (Z); nil sem fim.
 func formatGameEndAt(t *time.Time) *string {
 	if t == nil {
 		return nil
 	}
-	s := t.Format(time.RFC3339)
+	s := t.UTC().Format(time.RFC3339)
 	return &s
 }

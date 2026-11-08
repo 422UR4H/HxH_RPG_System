@@ -143,6 +143,14 @@ func TestGetMatchFinishedHasStoryEndTime(t *testing.T) {
 		t.Errorf("gameEndAt = %v, want RFC 3339", got["gameEndAt"])
 	}
 
+	// Um instante fora de UTC sai em UTC (Z), não com o offset de quem o leu.
+	local := finished
+	brt := end.In(time.FixedZone("BRT", -3*60*60))
+	local.GameEndAt = &brt
+	if got := getMatchBody(t, &local); got["gameEndAt"] != "2026-11-08T15:04:05Z" {
+		t.Errorf("gameEndAt from a non-UTC instant = %v, want 2026-11-08T15:04:05Z", got["gameEndAt"])
+	}
+
 	// Sem encerramento não há horário de fim, mesmo que algo o traga.
 	open := base
 	open.StoryEndTime = &storyEnd
