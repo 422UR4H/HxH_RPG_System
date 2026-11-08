@@ -23,6 +23,10 @@ import (
 // turno/cena/regime/master action/cancelamento no meio, viram uma linha só do histórico (spec §6).
 const clockMergeWindow = 10 * time.Second
 
+// maxAdjustSeconds é o maior |deltaSeconds| do adjust_clock: 100 anos julianos. Recusado antes
+// de virar time.Duration, que estoura perto de 292 anos.
+const maxAdjustSeconds = 3_155_760_000
+
 // defaultClockCheckpointEvery é o intervalo do checkpoint do relógio rodando (spec §3.4).
 const defaultClockCheckpointEvery = 60 * time.Second
 
@@ -338,6 +342,10 @@ func (r *Room) handleAdjustClock(client *Client, raw json.RawMessage) {
 	var payload AdjustClockPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		client.SendMessage(NewErrorMessage("invalid_payload", "invalid adjust_clock payload"))
+		return
+	}
+	if payload.DeltaSeconds > maxAdjustSeconds || payload.DeltaSeconds < -maxAdjustSeconds {
+		client.SendMessage(NewErrorMessage("invalid_payload", "deltaSeconds out of range"))
 		return
 	}
 	sess := r.sessionForClock(client)

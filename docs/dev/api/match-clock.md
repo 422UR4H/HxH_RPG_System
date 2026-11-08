@@ -123,7 +123,7 @@ valor de agora; ele continua rodando).
 
 | Campo | Regra |
 |---|---|
-| `deltaSeconds` | inteiro, positivo ou negativo, **≠ 0** |
+| `deltaSeconds` | inteiro, positivo ou negativo, **≠ 0**, no máximo **±3 155 760 000** (100 anos); fora disso `invalid_payload` `"deltaSeconds out of range"` |
 | `confirmLongSkip` | opcional (`false` por padrão). Avanço **maior que 172 800 s (2 dias)** a partir do relógio corrente exige `true`. Estritamente maior: exatamente 172 800 passa sem confirmar. Recuos nunca pedem. |
 
 **Dispara:** `clock_changed` `kind: "adjust"` (`from`, `to`, `deltaSeconds` = `to − from`).
@@ -147,7 +147,7 @@ Mesmos limite e confirmação do `adjust_clock` (o salto é medido de `to` contr
 **Dispara:** `clock_changed` `kind: "set"`. Grava `clockAdjusted` (mesma fusão).
 
 **Erros:** os do `adjust_clock`; `invalid_payload` também para `storyAt` fora do formato naïve
-(`"storyAt must be 2006-01-02T15:04:05"`) e para `storyAt` **igual** ao relógio corrente
+ou fora dos anos 1..9999 (`"storyAt must be 2006-01-02T15:04:05"`) e para `storyAt` **igual** ao relógio corrente
 (sem efeito).
 
 ### `play_clock`

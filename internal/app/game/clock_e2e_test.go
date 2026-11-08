@@ -628,3 +628,45 @@ func TestMasterActionOrCancelClosesAdjustMergeWindow(t *testing.T) {
 		})
 	}
 }
+
+// deltaSeconds fora de ±100 anos (3 155 760 000 s) é recusado antes de virar Duration (que
+// estoura perto de 292 anos); set_clock fora dos anos 1..9999, idem.
+func TestClockCommandsRejectOutOfRange(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	mc, pc := cf.connectCollectors(t)
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": int64(3_155_760_001), "confirmLongSkip": true})
+	awaitClockErrorMessage(t, mc, "invalid_payload", "deltaSeconds out of range")
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": int64(-9_223_372_036), "confirmLongSkip": true})
+	if !awaitCount(mc, game.MsgTypeError, 2, 2*time.Second) {
+		t.Fatal("a huge negative delta was not refused")
+	}
+	sendWS(t, cf.masterConn, "set_clock", map[string]any{"storyAt": "0000-01-01T00:00:00"})
+	if !awaitCount(mc, game.MsgTypeError, 3, 2*time.Second) {
+		t.Fatal("year 0 was not refused")
+	}
+	// no limite: aceito
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": int64(3_155_760_000), "confirmLongSkip": true})
+	if got := awaitClockChanged(t, pc, 1); got.Change.DeltaSeconds != 3_155_760_000 {
+		t.Errorf("deltaSeconds = %d, want 3155760000", got.Change.DeltaSeconds)
+	}
+}
+
+// awaitClockErrorMessage espera um error com esse código e essa mensagem.
+func awaitClockErrorMessage(t *testing.T, c *collector, code, message string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, m := range c.snapshotMessages() {
+			if m.Type != game.MsgTypeError {
+				continue
+			}
+			var p game.ErrorPayload
+			_ = json.Unmarshal(m.Payload, &p)
+			if p.Code == code && p.Message == message {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("error %q %q never arrived", code, message)
+}

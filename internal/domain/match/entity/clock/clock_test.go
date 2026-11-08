@@ -223,9 +223,17 @@ func TestStoryWireRoundTrip(t *testing.T) {
 	if out := clock.FormatStory(got); out != in {
 		t.Errorf("got %q", out)
 	}
-	for _, bad := range []string{"2000-01-01T23:59:59Z", "2000-01-01T23:59:59-03:00", "2000-01-01T23:59:59+00:00", "2000-01-01T23:59:59.5", "garbage"} {
+	for _, bad := range []string{"2000-01-01T23:59:59Z", "2000-01-01T23:59:59-03:00", "2000-01-01T23:59:59+00:00", "2000-01-01T23:59:59.5", "garbage", "0000-01-01T00:00:00", "10000-01-01T00:00:00"} {
 		if _, err := clock.ParseStory(bad); err == nil {
 			t.Errorf("%q must be rejected", bad)
+		}
+	}
+}
+
+func TestStoryWireYearBounds(t *testing.T) {
+	for _, ok := range []string{"0001-01-01T00:00:00", "9999-12-31T23:59:59"} {
+		if _, err := clock.ParseStory(ok); err != nil {
+			t.Errorf("%q must be accepted: %v", ok, err)
 		}
 	}
 }
