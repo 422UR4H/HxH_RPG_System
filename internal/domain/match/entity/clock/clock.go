@@ -50,6 +50,10 @@ type Clock struct {
 	storyAt      time.Time
 	running      bool
 	runningSince time.Time
+	// baseline do Play atual: só Play (e Reconstruct) escrevem; ajustes e
+	// checkpoints não mexem, para Pause reportar a corrida inteira.
+	playStoryAt time.Time
+	playRealAt  time.Time
 	limitAt      time.Time
 	limitReason  LimitReason
 }
@@ -80,6 +84,11 @@ func Reconstruct(s Snapshot) *Clock {
 	if s.Running && s.RunningSince != nil {
 		c.running = true
 		c.runningSince = s.RunningSince.UTC()
+		// o baseline do Play de um relógio reconstruído é o checkpoint
+		// (StoryAt, RunningSince): um restart perde no máximo o intervalo
+		// desde o último checkpoint, o que o spec aceita.
+		c.playStoryAt = c.storyAt
+		c.playRealAt = c.runningSince
 	}
 	return c
 }
@@ -121,6 +130,7 @@ func (c *Clock) CheckMove(to, minimum time.Time, confirmLong bool, real time.Tim
 	if !c.set {
 		return ErrNotSet
 	}
+	to = norm(to)
 	if to.Before(minimum) {
 		return ErrBelowLimit
 	}
@@ -174,6 +184,8 @@ func (c *Clock) Play(real time.Time) error {
 	}
 	c.running = true
 	c.runningSince = real
+	c.playStoryAt = c.storyAt
+	c.playRealAt = real
 	return nil
 }
 
@@ -182,11 +194,15 @@ func (c *Clock) Pause(reason PauseReason, real time.Time) *Pause {
 	if !c.set || !c.running {
 		return nil
 	}
-	from := c.storyAt
+	from := c.playStoryAt
 	to := c.Now(real)
+	elapsed := real.Sub(c.playRealAt)
+	if elapsed < 0 {
+		elapsed = 0
+	}
 	c.storyAt = to
 	c.running = false
-	return &Pause{From: from, To: to, Elapsed: to.Sub(from), Reason: reason}
+	return &Pause{From: from, To: to, Elapsed: elapsed.Truncate(time.Second), Reason: reason}
 }
 
 // RaiseLimit fixa o limite no tempo atual da história.

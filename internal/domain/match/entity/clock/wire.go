@@ -1,6 +1,9 @@
 package clock
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // WireLayout é o formato do tempo da história no fio: relógio de parede
 // ingênuo, sem Z e sem offset.
@@ -13,5 +16,13 @@ func FormatStory(t time.Time) string {
 // ParseStory rejeita qualquer valor com offset ou Z, pois o layout exige
 // que a string termine nos segundos.
 func ParseStory(s string) (time.Time, error) {
-	return time.ParseInLocation(WireLayout, s, time.UTC)
+	t, err := time.ParseInLocation(WireLayout, s, time.UTC)
+	if err != nil {
+		return time.Time{}, err
+	}
+	// o parser aceita fração de segundo após os segundos; o fio não
+	if t.Format(WireLayout) != s {
+		return time.Time{}, errors.New("story time must have whole seconds")
+	}
+	return t, nil
 }

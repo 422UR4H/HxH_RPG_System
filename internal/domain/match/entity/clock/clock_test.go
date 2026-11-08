@@ -223,7 +223,7 @@ func TestStoryWireRoundTrip(t *testing.T) {
 	if out := clock.FormatStory(got); out != in {
 		t.Errorf("got %q", out)
 	}
-	for _, bad := range []string{"2000-01-01T23:59:59Z", "2000-01-01T23:59:59-03:00", "2000-01-01T23:59:59+00:00", "garbage"} {
+	for _, bad := range []string{"2000-01-01T23:59:59Z", "2000-01-01T23:59:59-03:00", "2000-01-01T23:59:59+00:00", "2000-01-01T23:59:59.5", "garbage"} {
 		if _, err := clock.ParseStory(bad); err == nil {
 			t.Errorf("%q must be rejected", bad)
 		}
@@ -237,3 +237,35 @@ func TestRoundEquivalents(t *testing.T) {
 }
 
 func ptr(t time.Time) *time.Time { return &t }
+
+func TestPauseAfterAdjustWhileRunningReportsWholeRun(t *testing.T) {
+	c := clock.NewAt(story)
+	_ = c.Play(realStart)
+	if _, _, err := c.Adjust(sec(3600), false, realStart.Add(sec(100))); err != nil {
+		t.Fatal(err)
+	}
+	p := c.Pause(clock.PauseManual, realStart.Add(sec(192)))
+	if !p.From.Equal(story) || p.Elapsed != sec(192) || !p.To.Equal(story.Add(sec(3600+192))) {
+		t.Errorf("got %+v", p)
+	}
+}
+
+func TestPauseAfterRoundSecondWhileRunning(t *testing.T) {
+	c := clock.NewAt(story)
+	_ = c.Play(realStart)
+	c.AddRoundSecond(realStart.Add(sec(10)))
+	p := c.Pause(clock.PauseManual, realStart.Add(sec(20)))
+	if !p.From.Equal(story) || p.Elapsed != sec(20) || !p.To.Equal(story.Add(sec(21))) {
+		t.Errorf("got %+v", p)
+	}
+}
+
+func TestSnapshotDoesNotDisturbPause(t *testing.T) {
+	c := clock.NewAt(story)
+	_ = c.Play(realStart)
+	_ = c.Snapshot(realStart.Add(sec(50)))
+	p := c.Pause(clock.PauseManual, realStart.Add(sec(192)))
+	if !p.From.Equal(story) || p.Elapsed != sec(192) || !p.To.Equal(story.Add(sec(192))) {
+		t.Errorf("got %+v", p)
+	}
+}
