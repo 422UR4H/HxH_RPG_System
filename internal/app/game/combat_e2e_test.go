@@ -2738,9 +2738,16 @@ func (f *combatFixture) openAttackOn(t *testing.T, player *websocket.Conn, maste
 	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
 		t.Fatal("the attack never reached the queue")
 	}
+	resolved := masterMsgs.count(game.MsgTypeResolutionUpdate)
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 	if !masterMsgs.await(game.MsgTypeTurnOpened, 3*time.Second) {
 		t.Fatal("the attack never opened: there is no turn for a reaction to attach to")
+	}
+	// A resolução da abertura também é esperada: chegando depois, ela seria lida por
+	// attachEscape como a "nova" — e a reação pendente do alvo nela é a padrão sentada na
+	// abertura, que o escape substitui (o id some e a edição seguinte falha).
+	if !awaitCount(masterMsgs, game.MsgTypeResolutionUpdate, resolved+1, 3*time.Second) {
+		t.Fatal("the open's resolution_updated never arrived")
 	}
 	turn := f.session.GetActiveRound().CurrentTurn()
 	if turn == nil {
