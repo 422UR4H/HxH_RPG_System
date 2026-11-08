@@ -17,10 +17,12 @@ import (
 // Repository persiste o relógio da história (match_clocks, uma linha por partida).
 type Repository struct {
 	pool *pgxpool.Pool
+	// now é a fonte do updated_at (tempo do Go, não now() do SQL — gateway-conventions).
+	now func() time.Time
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool}
+	return &Repository{pool: pool, now: time.Now}
 }
 
 // naive entrega o horário como relógio de parede UTC. As colunas story_at e limit_at são
@@ -35,8 +37,9 @@ func naive(t *time.Time) *time.Time {
 }
 
 // UpsertTx grava o checkpoint do relógio dentro da transação de quem chama (turno, round,
-// cena...): o relógio e o que o moveu ficam duráveis juntos ou não ficam.
-func UpsertTx(ctx context.Context, tx pgx.Tx, matchUUID uuid.UUID, snap clock.Snapshot) error {
+// cena...): o relógio e o que o moveu ficam duráveis juntos ou não ficam. updatedAt vem do Go
+// (gateway-conventions: nada de now() no SQL).
+func UpsertTx(ctx context.Context, tx pgx.Tx, matchUUID uuid.UUID, snap clock.Snapshot, updatedAt time.Time) error {
 	var runningSince *time.Time
 	if snap.Running && snap.RunningSince != nil {
 		r := snap.RunningSince.UTC()
@@ -44,14 +47,14 @@ func UpsertTx(ctx context.Context, tx pgx.Tx, matchUUID uuid.UUID, snap clock.Sn
 	}
 	_, err := tx.Exec(ctx,
 		`INSERT INTO match_clocks (match_uuid, story_at, limit_at, limit_reason, running_since, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, now())
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (match_uuid) DO UPDATE SET
 		   story_at = EXCLUDED.story_at,
 		   limit_at = EXCLUDED.limit_at,
 		   limit_reason = EXCLUDED.limit_reason,
 		   running_since = EXCLUDED.running_since,
-		   updated_at = now()`,
-		matchUUID, naive(snap.StoryAt), naive(snap.LimitAt), string(snap.LimitReason), runningSince,
+		   updated_at = EXCLUDED.updated_at`,
+		matchUUID, naive(snap.StoryAt), naive(snap.LimitAt), string(snap.LimitReason), runningSince, updatedAt.UTC(),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert match clock: %w", err)
@@ -103,9 +106,15 @@ func (r *Repository) Save(
 	if err != nil {
 		return fmt.Errorf("begin clock save: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(ctx)
+			panic(p)
+		}
+		_ = tx.Rollback(ctx) // no-op after Commit
+	}()
 
-	if err := UpsertTx(ctx, tx, matchUUID, snap); err != nil {
+	if err := UpsertTx(ctx, tx, matchUUID, snap, r.now()); err != nil {
 		return err
 	}
 	if ev != nil {

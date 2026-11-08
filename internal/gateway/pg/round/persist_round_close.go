@@ -3,6 +3,7 @@ package round
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
@@ -58,7 +59,7 @@ func (r *Repository) PersistRoundClose(
 
 	// O round fechado pode ter movido o relógio (+1 s): vai na mesma transação (nil: não grava).
 	if clk != nil {
-		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *clk); err != nil {
+		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *clk, time.Now()); err != nil {
 			return fmt.Errorf("PersistRoundClose clock: %w", err)
 		}
 	}

@@ -74,7 +74,7 @@ func (r *Repository) PersistMatchEnd(ctx context.Context, d appmatch.MatchEndDat
 	if err := ensureSceneAndRound(ctx, tx, d.MatchUUID, d.End.Scene, d.End.Round); err != nil {
 		return fmt.Errorf("PersistMatchEnd: %w", err)
 	}
-	if err := pgclock.UpsertTx(ctx, tx, d.MatchUUID, d.Clock); err != nil {
+	if err := pgclock.UpsertTx(ctx, tx, d.MatchUUID, d.Clock, time.Now()); err != nil {
 		return fmt.Errorf("PersistMatchEnd clock: %w", err)
 	}
 	if d.RealTimeEvent != nil {

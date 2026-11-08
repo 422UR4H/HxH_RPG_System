@@ -3,6 +3,7 @@ package round
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
@@ -42,7 +43,7 @@ func (r *Repository) CloseSceneAndRound(
 		return fmt.Errorf("CloseSceneAndRound: %w", err)
 	}
 	if clk != nil {
-		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *clk); err != nil {
+		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *clk, time.Now()); err != nil {
 			return fmt.Errorf("CloseSceneAndRound clock: %w", err)
 		}
 	}

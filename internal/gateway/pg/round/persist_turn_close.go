@@ -192,7 +192,7 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 
 	// O relógio da história vai na mesma transação do turno que o moveu (nil: não grava).
 	if d.Clock != nil {
-		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *d.Clock); err != nil {
+		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *d.Clock, time.Now()); err != nil {
 			return fmt.Errorf("PersistTurnClose clock: %w", err)
 		}
 	}
