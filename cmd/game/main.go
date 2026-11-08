@@ -122,6 +122,7 @@ func main() {
 			CloseTurnUC:           closeTurnUC,
 			ChangeSceneUC:         changeSceneUC,
 			RoundRepo:             roundRepository,
+			CombatSummaryRepo:     roundRepository,
 			EnqueueMasterActionUC: enqueueMasterActionUC,
 			ChangeRoundModeUC:     changeRoundModeUC,
 			EditActionUC:          editActionUC,

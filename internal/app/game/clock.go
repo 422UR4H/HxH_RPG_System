@@ -9,7 +9,10 @@ import (
 	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 	"github.com/google/uuid"
@@ -475,4 +478,95 @@ func (r *Room) checkpointClock() {
 		// gravações pelos retratos.
 		go r.persistClock(sess, nil, "clock checkpoint")
 	}
+}
+
+// handleGetCombatSummary responde ao mestre, só a ele, o resumo do combate da cena ativa (spec
+// §4): os rounds fechados vêm do banco (lidos fora do r.mu), o round ativo da memória, com os
+// turnos que já tem.
+func (r *Room) handleGetCombatSummary(client *Client) {
+	if !r.IsMaster(client.userUUID) {
+		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		return
+	}
+	r.mu.RLock()
+	sess := r.session
+	var sceneID uuid.UUID
+	battle := false
+	if sess != nil {
+		sc := sess.GetActiveScene()
+		sceneID, battle = sc.GetID(), sc.GetCategory() == enum.Battle
+	}
+	r.mu.RUnlock()
+	switch {
+	case sess == nil:
+		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		return
+	case !battle:
+		client.SendMessage(NewErrorMessage("not_battle_scene", "the active scene is not a battle"))
+		return
+	case r.deps.CombatSummaryRepo == nil:
+		client.SendMessage(NewErrorMessage("game_error", "combat summary unavailable"))
+		return
+	}
+
+	rounds, err := r.deps.CombatSummaryRepo.ListSceneRoundsForSummary(context.Background(), sceneID)
+	if err != nil {
+		log.Printf("get_combat_summary: read rounds of scene %s (match %s): %v", sceneID, r.matchUUID, err)
+		client.SendMessage(NewErrorMessage("game_error", "could not read the combat rounds"))
+		return
+	}
+
+	r.mu.RLock()
+	sc := sess.GetActiveScene()
+	if sc.GetID() != sceneID {
+		// a cena mudou durante a leitura: o resumo pedido não existe mais
+		r.mu.RUnlock()
+		client.SendMessage(NewErrorMessage("not_battle_scene", "the active scene changed"))
+		return
+	}
+	active := summaryRoundOf(sess.GetActiveRound())
+	minimum := sess.SceneCloseMinimum()
+	r.mu.RUnlock()
+
+	// O round ativo já é linha desde que nasceu, mas aberto: a consulta só traz fechados. Um
+	// round que fechou em memória e cuja gravação falhou ainda aparece aberto no banco e falta.
+	closed := rounds[:0:0]
+	for _, rd := range rounds {
+		if rd.UUID != active.UUID {
+			closed = append(closed, rd)
+		}
+	}
+	sum := appmatch.BuildCombatSummary(closed, active, minimum)
+	out := CombatSummaryPayload{
+		SceneID:           sceneID,
+		CountedRounds:     sum.CountedRounds,
+		CountedSeconds:    sum.CountedSeconds,
+		ActiveRoundCounts: sum.ActiveRoundCounts,
+		MinimumStoryAt:    clock.FormatStory(sum.MinimumStoryAt),
+		Hiatuses:          make([]HiatusPayload, 0, len(sum.Hiatuses)),
+	}
+	for _, h := range sum.Hiatuses {
+		out.Hiatuses = append(out.Hiatuses, HiatusPayload{Before: hiatusTurnOf(h.Before), After: hiatusTurnOf(h.After)})
+	}
+	client.SendMessage(NewServerMessage(MsgTypeCombatSummary, out))
+}
+
+// summaryRoundOf lê o round ativo para o resumo. O chamador segura r.mu.
+func summaryRoundOf(rd *roundentity.Round) appmatch.SummaryRound {
+	out := appmatch.SummaryRound{UUID: rd.GetID(), Mode: rd.GetMode(), Counted: rd.IsCounted(), Drained: rd.IsDrained()}
+	turns := rd.Turns()
+	if len(turns) == 0 {
+		return out
+	}
+	out.First, out.Last = summaryTurnOfTurn(turns[0]), summaryTurnOfTurn(turns[len(turns)-1])
+	return out
+}
+
+func summaryTurnOfTurn(t *turnentity.Turn) *appmatch.SummaryTurn {
+	act := t.ActionRef()
+	return &appmatch.SummaryTurn{TurnUUID: t.GetID(), ActorUUID: act.GetActorID(), ActionKind: act.TypeName()}
+}
+
+func hiatusTurnOf(h appmatch.HiatusTurn) HiatusTurn {
+	return HiatusTurn{RoundNumber: h.RoundNumber, TurnID: h.TurnUUID, ActorID: h.ActorUUID, ActionKind: h.ActionKind}
 }

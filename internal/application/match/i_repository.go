@@ -135,7 +135,10 @@ type IRoundRepository interface {
 	// action recorded the instant it happens, spec §4.8) calls this first.
 	EnsureSceneAndRound(ctx context.Context, matchUUID uuid.UUID, sc *sceneentity.Scene, rd *roundentity.Round) error
 	FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error)
-	CloseSceneAndRound(ctx context.Context, sceneUUID, roundUUID uuid.UUID, at time.Time) error
+	// CloseSceneAndRound fecha o par que o change_scene encerrou (end, os dois já fechados, com
+	// o resumo final e o fim na história da cena) e grava o relógio (clk != nil), numa transação.
+	// Mesmo upsert idempotente de EnsureSceneAndRound: um par que nunca virou linha entra fechado.
+	CloseSceneAndRound(ctx context.Context, matchUUID uuid.UUID, end RoundEnd, clk *clock.Snapshot) error
 	// PersistRoundClose writes round ends and the round the session is in now in one transaction:
 	// every end in ends closed (each carries its finished_at and its own scene), then sc/next. It is
 	// what a round that ends with no turn closing in the same command writes (open_next_action with
@@ -165,7 +168,12 @@ type HistoryScene struct {
 	BriefDesc  string
 	CreatedAt  time.Time
 	FinishedAt *time.Time
-	Rounds     []HistoryRound
+	// BriefFinalDescription é o resumo final da cena (change_scene); nil sem resumo.
+	BriefFinalDescription *string
+	// StoryStartedAt/StoryFinishedAt: início e fim da cena na história (ingênuos); nil sem.
+	StoryStartedAt  *time.Time
+	StoryFinishedAt *time.Time
+	Rounds          []HistoryRound
 }
 
 // HistoryRound is one round of a scene's history, with the turns closed inside it and what
@@ -175,7 +183,10 @@ type HistoryRound struct {
 	Mode       string
 	CreatedAt  time.Time
 	FinishedAt *time.Time
-	Turns      []HistoryTurn
+	// Counted: o round foi disputado (valeu 1 s no relógio). Drained: fechou com a fila vazia.
+	Counted bool
+	Drained bool
+	Turns   []HistoryTurn
 	// Events is what happened inside this round outside any turn the tree holds — the regime
 	// changes, the master actions with no turn (or whose turn was never written) and the
 	// cancelled actions, already projected for the reader, in the order they happened (spec
@@ -190,15 +201,21 @@ const (
 	HistoryEventRoundModeChanged HistoryEventKind = "roundModeChanged"
 	HistoryEventMasterAction     HistoryEventKind = "masterAction"
 	HistoryEventActionCancelled  HistoryEventKind = "actionCancelled"
+	// Eventos do relógio da história (spec 2026-11-08 §7), com o payload como foi gravado.
+	HistoryEventClockStarted  HistoryEventKind = HistoryEventKind(matchevent.KindClockStarted)
+	HistoryEventClockAdjusted HistoryEventKind = HistoryEventKind(matchevent.KindClockAdjusted)
+	HistoryEventClockRealTime HistoryEventKind = HistoryEventKind(matchevent.KindClockRealTime)
 )
 
-// HistoryEvent is one entry of HistoryRound.Events: exactly one of RoundModeChange,
+// HistoryEvent is one entry of HistoryRound.Events: exactly one of RoundModeChange, ClockChange,
 // MasterAction and CancelledAction is set, the one Kind names. At is when it happened — what
 // Events is ordered by.
 type HistoryEvent struct {
 	Kind            HistoryEventKind
 	At              time.Time
 	RoundModeChange *matchevent.Event
+	// ClockChange é o evento de relógio (clockStarted/clockAdjusted/clockRealTime).
+	ClockChange     *matchevent.Event
 	MasterAction    *masteraction.Record
 	CancelledAction *HistoryCancelledAction
 }
@@ -241,6 +258,8 @@ type HistoryTurn struct {
 	UUID       uuid.UUID
 	CreatedAt  time.Time
 	FinishedAt time.Time
+	// StoryAt é o horário da história quando o turno abriu; nil num turno de antes do relógio.
+	StoryAt    *time.Time
 	Action     action.Action
 	Reactions  []action.Action
 	Resolution *service.TurnResolution // nil for a turn that resolved nothing

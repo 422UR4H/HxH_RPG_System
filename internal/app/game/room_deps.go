@@ -93,6 +93,9 @@ type RoomDeps struct {
 	// ClockRepo grava o relógio (checkpoint + evento). nil: sem persistência — o relógio vive
 	// só em memória, a sala funciona igual.
 	ClockRepo appmatch.IClockRepository
+	// CombatSummaryRepo lê os rounds fechados da cena para o get_combat_summary. nil: a sala
+	// recusa o pedido (game_error).
+	CombatSummaryRepo appmatch.ICombatSummaryRepository
 	// Now é a fonte do tempo real do relógio; nil = time.Now. Testes injetam um relógio falso
 	// (a sala o repassa à sessão).
 	Now func() time.Time

@@ -1562,6 +1562,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
 			return
 		}
+		sceneClose := matchsession.SceneClose{
+			BriefFinalDescription: payload.BriefFinalDescription,
+			ConfirmLongSkip:       payload.ConfirmLongSkip,
+		}
+		if payload.StoryAt != nil {
+			at, perr := clock.ParseStory(*payload.StoryAt)
+			if perr != nil {
+				client.SendMessage(NewErrorMessage("invalid_payload", "storyAt must be 2006-01-02T15:04:05"))
+				return
+			}
+			sceneClose.StoryAt = &at
+		}
 
 		// The write lock is held ACROSS Execute, the same way open_next_action holds it and
 		// for the same reason: ChangeScene closes the active scene and round and installs new
@@ -1581,17 +1593,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var newRound *roundentity.Round
 		var oldEnd *appmatch.RoundEnd
 		var scenePause *clock.Pause
+		// O relógio antes do comando (o from do clock_changed kind scene) e o retrato depois
+		// dele — gravado junto do fechamento do par antigo, na mesma transação.
+		var clockFrom, clockTo time.Time
+		var clockSnap clock.Snapshot
 		if session != nil {
 			// Captured BEFORE ChangeScene resets it.
 			sceneWasPersisted = session.IsScenePersisted()
-			// o payload de fechamento é ligado na Tarefa 7
+			clockFrom = session.Clock().Now(r.now())
 			oldScene, oldRound, scenePause, err = r.deps.ChangeSceneUC.Execute(
 				context.Background(), session,
 				r.masterUUID, client.userUUID,
-				category, payload.BriefInitialDescription, matchsession.SceneClose{},
+				category, payload.BriefInitialDescription, sceneClose,
 			)
 			if err == nil {
 				r.clearClockMergeLocked()
+				clockTo = session.Clock().Now(r.now())
+				clockSnap = session.ClockSnapshotNow()
 				// Copies: they are written after the unlock (ensureSceneAndRoundRows).
 				newScene, newRound = snapshotSceneAndRound(session.GetActiveScene(), session.GetActiveRound())
 				if oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
@@ -1620,6 +1638,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 			return
 		}
+		if errors.Is(err, matchsession.ErrBriefFinalTooLong) {
+			client.SendMessage(NewErrorMessage("invalid_payload", "briefFinalDescription is too long"))
+			return
+		}
 		if err != nil {
 			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
 			return
@@ -1630,10 +1652,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// was never written would be an UPDATE of nothing, and the flag is what says which case
 		// this is. The old pair is closed BEFORE the new one is written, so the database never
 		// holds two open scenes for the match — FindActiveSession reads the open one on a restart.
+		// The close carries the old scene's final description and story end, and the clock, in
+		// one transaction (spec §4); on the unwritten path the new pair's ensure carries them
+		// (the end's scene snapshot, and PersistRoundClose's clock).
 		if sceneWasPersisted && oldEnd != nil {
 			if dbErr := r.deps.RoundRepo.CloseSceneAndRound(
-				context.Background(),
-				oldEnd.Scene.GetID(), oldEnd.Round.GetID(), *oldEnd.Round.GetFinishedAt(),
+				context.Background(), r.matchUUID, *oldEnd, &clockSnap,
 			); dbErr != nil {
 				// Left open on disk, the old pair would sit next to the new one. Not just logged:
 				// it becomes an unwritten round end, and the new pair's write right below closes it
@@ -1648,12 +1672,18 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// The new scene and its round are rows from this moment (B15, spec §4.5) — with any
 		// round end still unwritten, the old pair's included, in the same transaction.
 		r.ensureSceneAndRoundRows(session, newScene, newRound, "change_scene")
-		// A troca de cena pausa o relógio: anunciada depois do scene_changed, na mesma goroutine.
-		clockData := r.announceClockPause(session, scenePause, "change_scene")
+		// A troca de cena pausa o relógio (pause, com o clockRealTime, só se o tempo real
+		// corria) e o move (scene: o segundo do round contado e o horário de fim que o mestre
+		// deu): os dois vão depois do scene_changed, nessa ordem, na mesma goroutine.
+		pauseData := r.announceClockPause(session, scenePause, "change_scene")
+		sceneData := r.clockChangedData(session, ClockChangePayload{
+			Kind: "scene", From: storyPtr(clockFrom), To: storyPtr(clockTo),
+			DeltaSeconds: int64(clockTo.Sub(clockFrom) / time.Second),
+		})
 
 		out := NewServerMessage(MsgTypeSceneChanged, scenePayload)
 		data, _ := json.Marshal(out)
-		r.broadcastInOrder(data, clockData)
+		r.broadcastInOrder(data, pauseData, sceneData)
 		// The new round has no price and no turn: everyone's bars changed here, and the players
 		// are told now, not at the next secret send by anyone (spec 2026-11-04 D1).
 		r.broadcastBars(session)
@@ -1668,6 +1698,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.handlePlayClock(client)
 	case MsgTypePauseClock:
 		r.handlePauseClock(client)
+	case MsgTypeGetCombatSummary:
+		r.handleGetCombatSummary(client)
 
 	case MsgTypeCancelLobby:
 		if err := r.CloseLobby(client.userUUID); err != nil {

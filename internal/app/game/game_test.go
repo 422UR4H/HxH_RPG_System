@@ -90,7 +90,7 @@ func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ appmatch.TurnC
 func (m *mockRoundRepoGame) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _ uuid.UUID, _ appmatch.RoundEnd, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockRoundRepoGame) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *scene.Scene, _ *roundentity.Round) error {

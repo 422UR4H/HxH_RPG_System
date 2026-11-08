@@ -48,8 +48,9 @@ func (r *Repository) FindMatchHistory(
 ) ([]appmatch.HistoryScene, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT s.uuid, s.category, s.brief_initial_description, s.created_at, s.finished_at,
-		        ro.uuid, ro.mode, ro.created_at, ro.finished_at,
-		        t.uuid, t.created_at, t.finished_at, t.resolution,
+		        s.brief_final_description, s.story_started_at, s.story_finished_at,
+		        ro.uuid, ro.mode, ro.created_at, ro.finished_at, ro.counted, ro.drained,
+		        t.uuid, t.created_at, t.finished_at, t.resolution, t.story_at,
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
 		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
 		        a.trigger, a.interact, a.system_bias, a.move_views, a.consumed_action_ids
@@ -90,16 +91,22 @@ func (r *Repository) FindMatchHistory(
 			briefDesc       string
 			sceneCreatedAt  time.Time
 			sceneFinishedAt *time.Time
+			briefFinal      *string
+			storyStartedAt  *time.Time
+			storyFinishedAt *time.Time
 
 			roundUUID       *uuid.UUID
 			mode            *string
 			roundCreatedAt  *time.Time
 			roundFinishedAt *time.Time
+			counted         *bool
+			drained         *bool
 
 			turnUUID       *uuid.UUID
 			turnCreatedAt  *time.Time
 			turnFinishedAt *time.Time
 			resolutionRaw  []byte
+			turnStoryAt    *time.Time
 
 			actionUUID  *uuid.UUID
 			actorUUID   *uuid.UUID
@@ -107,7 +114,7 @@ func (r *Repository) FindMatchHistory(
 			targetIDs   []uuid.UUID
 			// actionType is scanned only for symmetry with insertAction's INSERT column list
 			// (persist_turn_close.go) and to keep this query's column list self-documenting
-			// against the table — deriveActionType is a write-time classification with no
+			// against the table — Action.TypeName is a write-time classification with no
 			// field on the domain Action to land in, so it is read and discarded here.
 			actionType   *string
 			reactionKind *string
@@ -124,8 +131,9 @@ func (r *Repository) FindMatchHistory(
 
 		if err := rows.Scan(
 			&sceneUUID, &category, &briefDesc, &sceneCreatedAt, &sceneFinishedAt,
-			&roundUUID, &mode, &roundCreatedAt, &roundFinishedAt,
-			&turnUUID, &turnCreatedAt, &turnFinishedAt, &resolutionRaw,
+			&briefFinal, &storyStartedAt, &storyFinishedAt,
+			&roundUUID, &mode, &roundCreatedAt, &roundFinishedAt, &counted, &drained,
+			&turnUUID, &turnCreatedAt, &turnFinishedAt, &resolutionRaw, &turnStoryAt,
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
 			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw, &consumed,
@@ -137,6 +145,7 @@ func (r *Repository) FindMatchHistory(
 			scenes = append(scenes, appmatch.HistoryScene{
 				UUID: sceneUUID, Category: category, BriefDesc: briefDesc,
 				CreatedAt: sceneCreatedAt, FinishedAt: sceneFinishedAt,
+				BriefFinalDescription: briefFinal, StoryStartedAt: storyStartedAt, StoryFinishedAt: storyFinishedAt,
 				Rounds: make([]appmatch.HistoryRound, 0),
 			})
 			curScene = &scenes[len(scenes)-1]
@@ -154,6 +163,7 @@ func (r *Repository) FindMatchHistory(
 			curScene.Rounds = append(curScene.Rounds, appmatch.HistoryRound{
 				UUID: *roundUUID, Mode: *mode,
 				CreatedAt: *roundCreatedAt, FinishedAt: roundFinishedAt,
+				Counted: derefBool(counted), Drained: derefBool(drained),
 				Turns: make([]appmatch.HistoryTurn, 0),
 			})
 			curRound = &curScene.Rounds[len(curScene.Rounds)-1]
@@ -261,6 +271,7 @@ func (r *Repository) FindMatchHistory(
 				UUID: *turnUUID, CreatedAt: derefTime(turnCreatedAt), FinishedAt: derefTime(turnFinishedAt),
 				Action:       *act,
 				Resolution:   DecodeResolution(resolutionRaw),
+				StoryAt:      turnStoryAt,
 				MoveViews:    moveViews,
 				LandingViews: decodeLandingViews(resolutionRaw),
 			})
@@ -330,3 +341,5 @@ func derefTime(p *time.Time) time.Time {
 	}
 	return *p
 }
+
+func derefBool(p *bool) bool { return p != nil && *p }

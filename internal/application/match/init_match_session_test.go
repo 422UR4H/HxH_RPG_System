@@ -31,7 +31,7 @@ func (m *noopRoundRepo) FindActiveSession(_ context.Context, _ uuid.UUID) (*matc
 func (m *noopRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseData) error {
 	return nil
 }
-func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _ uuid.UUID, _ match.RoundEnd, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *noopRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
@@ -58,7 +58,7 @@ func (m *mockRoundRepo) FindActiveSession(ctx context.Context, matchUUID uuid.UU
 func (m *mockRoundRepo) PersistTurnClose(_ context.Context, _ match.TurnCloseData) error {
 	return nil
 }
-func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _ uuid.UUID, _ match.RoundEnd, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {

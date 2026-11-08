@@ -338,9 +338,19 @@ func (uc *GetMatchHistoryUC) stitch(
 			continue
 		}
 		ev := e
-		ro.Events = append(ro.Events, HistoryEvent{
-			Kind: HistoryEventRoundModeChanged, At: e.CreatedAt, RoundModeChange: &ev,
-		})
+		switch e.Kind {
+		case matchevent.KindRoundModeChanged:
+			ro.Events = append(ro.Events, HistoryEvent{
+				Kind: HistoryEventRoundModeChanged, At: e.CreatedAt, RoundModeChange: &ev,
+			})
+		case matchevent.KindClockStarted, matchevent.KindClockAdjusted, matchevent.KindClockRealTime:
+			// o relógio é público: todo leitor vê o evento, com o payload como foi gravado
+			ro.Events = append(ro.Events, HistoryEvent{
+				Kind: HistoryEventKind(e.Kind), At: e.CreatedAt, ClockChange: &ev,
+			})
+		default:
+			log.Printf("GetMatchHistory: match %s — event %s has unknown kind %q; dropped", matchUUID, e.UUID, e.Kind)
+		}
 	}
 
 	for _, r := range records {

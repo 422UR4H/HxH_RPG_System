@@ -31,7 +31,7 @@ func (m *mockHistoryRoundRepo) FindMatchHistory(
 ) ([]match.HistoryScene, error) {
 	return m.fn(ctx, matchUUID)
 }
-func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _ uuid.UUID, _ match.RoundEnd, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockHistoryRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {

@@ -125,6 +125,11 @@ const (
 	// Servidor → cliente (mesa inteira): o relógio mudou.
 	MsgTypeClockChanged MessageType = "clock_changed"
 
+	// Cliente → servidor (só o mestre): o resumo do combate da cena ativa (spec 2026-11-08 §4);
+	// a resposta, combat_summary, vai só a quem pediu.
+	MsgTypeGetCombatSummary MessageType = "get_combat_summary"
+	MsgTypeCombatSummary    MessageType = "combat_summary"
+
 	// Cliente → servidor (só o mestre): o mestre passa a ver o tabuleiro pelos olhos de uma
 	// peça. pieceId vazio encerra.
 	MsgTypeWatchPieceView MessageType = "watch_piece_view"
@@ -1142,6 +1147,12 @@ func NewErrorMessage(code, message string) Message {
 type ChangeScenePayload struct {
 	Category                string `json:"category"`
 	BriefInitialDescription string `json:"briefInitialDescription"`
+	// BriefFinalDescription é o resumo final (opcional, 255) da cena que fecha.
+	BriefFinalDescription *string `json:"briefFinalDescription,omitempty"`
+	// StoryAt é o horário exato do fim da cena (ingênuo); nil mantém o relógio (+1 s do round
+	// contado). Não pode ficar abaixo do mínimo (clock_below_limit).
+	StoryAt         *string `json:"storyAt,omitempty"`
+	ConfirmLongSkip bool    `json:"confirmLongSkip,omitempty"`
 }
 
 type SceneChangedPayload struct {
@@ -1451,4 +1462,31 @@ type ClockChangePayload struct {
 type ClockChangedPayload struct {
 	Clock  ClockPayload       `json:"clock"`
 	Change ClockChangePayload `json:"change"`
+}
+
+// CombatSummaryPayload é o resumo do combate (combat_summary). CountedRounds/CountedSeconds são
+// os rounds fechados contados da cena, já no relógio; ActiveRoundCounts diz que o round em
+// andamento vai somar 1 s ao fechar; MinimumStoryAt (ingênuo) é o início do editor do relógio.
+type CombatSummaryPayload struct {
+	SceneID           uuid.UUID       `json:"sceneId"`
+	CountedRounds     int             `json:"countedRounds"`
+	CountedSeconds    int             `json:"countedSeconds"`
+	ActiveRoundCounts bool            `json:"activeRoundCounts"`
+	MinimumStoryAt    string          `json:"minimumStoryAt"`
+	Hiatuses          []HiatusPayload `json:"hiatuses"`
+}
+
+// HiatusPayload é um intervalo sem disputa (spec §3.6): o último turno antes e o primeiro depois.
+type HiatusPayload struct {
+	Before HiatusTurn `json:"before"`
+	After  HiatusTurn `json:"after"`
+}
+
+// HiatusTurn é uma ponta do hiato. RoundNumber é a posição (1-based) do round na cena;
+// ActionKind é o tipo da ação (o mesmo de actions.type).
+type HiatusTurn struct {
+	RoundNumber int       `json:"roundNumber"`
+	TurnID      uuid.UUID `json:"turnId"`
+	ActorID     uuid.UUID `json:"actorId"`
+	ActionKind  string    `json:"actionKind"`
 }

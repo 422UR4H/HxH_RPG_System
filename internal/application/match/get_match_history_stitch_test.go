@@ -295,3 +295,68 @@ func assertTo(t *testing.T, content json.RawMessage, wantTo bool) {
 		t.Fatalf("content %s lost its origin", content)
 	}
 }
+
+// Os eventos do relógio entram nos eventos do round com o próprio kind (não como
+// roundModeChanged) e o payload como foi gravado.
+func TestGetMatchHistoryStitchesClockEvents(t *testing.T) {
+	masterUUID, matchUUID, sceneUUID, roundUUID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	ev := func(kind matchevent.Kind, sec int, payload string) matchevent.Event {
+		return matchevent.Event{
+			UUID: uuid.New(), MatchUUID: matchUUID, SceneUUID: sceneUUID, RoundUUID: roundUUID,
+			Kind: kind, Payload: json.RawMessage(payload), CreatedAt: base.Add(time.Duration(sec) * time.Second),
+		}
+	}
+	started := ev(matchevent.KindClockStarted, 1, `{"at":"2000-01-01T08:30:00"}`)
+	adjusted := ev(matchevent.KindClockAdjusted, 2, `{"from":"2000-01-01T08:30:00","to":"2000-01-01T08:31:00","deltaSeconds":60}`)
+	realTime := ev(matchevent.KindClockRealTime, 3, `{"from":"2000-01-01T08:31:00","to":"2000-01-01T08:31:30","elapsedSeconds":30,"reason":"manual"}`)
+	mode := ev(matchevent.KindRoundModeChanged, 4, `{"from":"Free","to":"Race"}`)
+
+	uc := match.NewGetMatchHistoryUC(
+		&testutil.MockMatchRepo{
+			GetMatchFn: func(_ context.Context, _ uuid.UUID) (*matchEntity.Match, error) {
+				return &matchEntity.Match{UUID: matchUUID, MasterUUID: masterUUID, IsPublic: true}, nil
+			},
+			ListParticipantsByMatchUUIDFn: func(_ context.Context, _ uuid.UUID) ([]*matchEntity.Participant, error) {
+				return nil, nil
+			},
+		},
+		&mockHistoryRoundRepo{fn: func(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
+			return []match.HistoryScene{{UUID: sceneUUID, Rounds: []match.HistoryRound{{UUID: roundUUID, Turns: []match.HistoryTurn{}}}}}, nil
+		}},
+		&mockParticipationChecker{},
+		&fakeEventLister{events: []matchevent.Event{mode, realTime, started, adjusted}},
+		nil, nil,
+	)
+	res, err := uc.Get(context.Background(), matchUUID, masterUUID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	got := res.Scenes[0].Rounds[0].Events
+	want := []struct {
+		kind match.HistoryEventKind
+		ev   matchevent.Event
+	}{
+		{match.HistoryEventClockStarted, started},
+		{match.HistoryEventClockAdjusted, adjusted},
+		{match.HistoryEventClockRealTime, realTime},
+		{match.HistoryEventRoundModeChanged, mode},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("events = %+v, want %d", got, len(want))
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.Kind != w.kind {
+			t.Errorf("events[%d].Kind = %q, want %q", i, g.Kind, w.kind)
+			continue
+		}
+		src := g.ClockChange
+		if w.kind == match.HistoryEventRoundModeChanged {
+			src = g.RoundModeChange
+		}
+		if src == nil || src.UUID != w.ev.UUID || string(src.Payload) != string(w.ev.Payload) {
+			t.Errorf("events[%d] = %+v, want event %s with its payload", i, g, w.ev.UUID)
+		}
+	}
+}

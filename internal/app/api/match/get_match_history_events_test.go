@@ -169,3 +169,80 @@ func stringify(m map[string]json.RawMessage) map[string]string {
 	}
 	return out
 }
+
+// O fio do histórico leva os campos do relógio: tempos da história ingênuos (sem Z), omitidos
+// quando nulos; counted/drained no round; os eventos do relógio com o payload repassado.
+func TestGetMatchHistoryCarriesClockFields(t *testing.T) {
+	now := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	start := time.Date(2000, 1, 1, 23, 59, 0, 0, time.UTC)
+	end := time.Date(2000, 1, 1, 23, 59, 59, 0, time.UTC)
+	turnAt := time.Date(2000, 1, 1, 23, 59, 30, 0, time.UTC)
+	final := "Fim da luta"
+	adjusted := matchevent.Event{
+		UUID: uuid.New(), Kind: matchevent.KindClockAdjusted, CreatedAt: now,
+		Payload: json.RawMessage(`{"from":"2000-01-01T23:59:00","to":"2000-01-01T23:59:30","deltaSeconds":30}`),
+	}
+	act := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+
+	body := getHistory(t, []match.HistoryScene{
+		{
+			UUID: uuid.New(), Category: "battle", CreatedAt: now,
+			BriefFinalDescription: &final, StoryStartedAt: &start, StoryFinishedAt: &end,
+			Rounds: []match.HistoryRound{{
+				UUID: uuid.New(), Mode: "Race", CreatedAt: now, Counted: true, Drained: true,
+				Turns: []match.HistoryTurn{{
+					UUID: uuid.New(), CreatedAt: now, FinishedAt: now, StoryAt: &turnAt,
+					Action: *act, Reactions: []action.Action{},
+				}},
+				Events: []match.HistoryEvent{{Kind: match.HistoryEventClockAdjusted, At: now, ClockChange: &adjusted}},
+			}},
+		},
+		// sem relógio: nada de campo nulo no fio
+		{UUID: uuid.New(), Category: "roleplay", CreatedAt: now, Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "Free", CreatedAt: now,
+			Turns: []match.HistoryTurn{{UUID: uuid.New(), CreatedAt: now, FinishedAt: now, Action: *act, Reactions: []action.Action{}}},
+		}}},
+	})
+
+	var got struct {
+		Scenes []struct {
+			BriefFinalDescription *string `json:"briefFinalDescription"`
+			StoryStartedAt        *string `json:"storyStartedAt"`
+			StoryFinishedAt       *string `json:"storyFinishedAt"`
+			Rounds                []struct {
+				Counted bool `json:"counted"`
+				Drained bool `json:"drained"`
+				Turns   []struct {
+					StoryAt *string `json:"storyAt"`
+				} `json:"turns"`
+				Events []map[string]json.RawMessage `json:"events"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal: %v — %s", err, body)
+	}
+	s0 := got.Scenes[0]
+	if s0.BriefFinalDescription == nil || *s0.BriefFinalDescription != final ||
+		s0.StoryStartedAt == nil || *s0.StoryStartedAt != "2000-01-01T23:59:00" ||
+		s0.StoryFinishedAt == nil || *s0.StoryFinishedAt != "2000-01-01T23:59:59" {
+		t.Errorf("scene clock fields = %v / %v / %v", s0.BriefFinalDescription, s0.StoryStartedAt, s0.StoryFinishedAt)
+	}
+	r0 := s0.Rounds[0]
+	if !r0.Counted || !r0.Drained {
+		t.Errorf("round counted=%v drained=%v, want both true", r0.Counted, r0.Drained)
+	}
+	if at := r0.Turns[0].StoryAt; at == nil || *at != "2000-01-01T23:59:30" {
+		t.Errorf("turn storyAt = %v, want 2000-01-01T23:59:30", at)
+	}
+	if len(r0.Events) != 1 || string(r0.Events[0]["kind"]) != `"clockAdjusted"` ||
+		string(r0.Events[0]["payload"]) != string(adjusted.Payload) ||
+		string(r0.Events[0]["uuid"]) != `"`+adjusted.UUID.String()+`"` {
+		t.Errorf("events = %v, want the clockAdjusted with its payload", r0.Events)
+	}
+	for _, k := range []string{`"briefFinalDescription":null`, `"storyStartedAt":null`, `"storyFinishedAt":null`, `"storyAt":null`} {
+		if strings.Contains(string(body), k) {
+			t.Errorf("a null story field reached the wire: %s", k)
+		}
+	}
+}

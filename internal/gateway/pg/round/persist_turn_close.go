@@ -258,7 +258,7 @@ func insertAction(
 		  default_defense)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
-		targetIDs, deriveActionType(act),
+		targetIDs, act.TypeName(),
 		cols.Speed, cols.Skills, cols.Move, cols.Attack,
 		cols.Defense, cols.Dodge, cols.Repel, cols.Feint, cols.Trigger,
 		cols.Interact, act.SystemBias,
@@ -275,37 +275,6 @@ func consumedOrNil(ids []uuid.UUID) []uuid.UUID {
 		return nil
 	}
 	return ids
-}
-
-// deriveActionType returns a string action type based on which payload field is set.
-//
-// A reaction is never classified this way: its kind is declared, not inferred, and inferring
-// it from the shape is exactly what ReactionKind exists to stop — the three escapes carry the
-// same fields. The row says "reaction" and reaction_kind says which one.
-func deriveActionType(act *action.Action) string {
-	if act.ReactToID != uuid.Nil {
-		return "reaction"
-	}
-	switch {
-	case act.Attack != nil:
-		return "attack"
-	case act.Move != nil:
-		return "move"
-	case act.Defense != nil:
-		return "defense"
-	case act.Dodge != nil:
-		return "dodge"
-	case act.Feint != nil:
-		return "feint"
-	case act.Interact != nil:
-		// Ahead of the skills row on purpose: a lockpick carries BOTH an Interact and a
-		// Skills entry, and what it is is an interaction — the skill is how it is attempted.
-		return "interact"
-	case len(act.Skills) > 0:
-		return "skill"
-	default:
-		return "unspecified"
-	}
 }
 
 // marshalNullableAny returns nil (SQL NULL) for a nil value. NULL says "there was no value"

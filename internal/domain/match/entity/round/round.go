@@ -81,6 +81,11 @@ func (r *Round) CurrentTurn() *turn.Turn {
 	return r.turns[len(r.turns)-1]
 }
 
+// Turns são os turnos abertos neste round, na ordem, fechados ou não (cópia da lista).
+func (r *Round) Turns() []*turn.Turn {
+	return append([]*turn.Turn(nil), r.turns...)
+}
+
 // TurnCount is how many turns opened in this round, closed or not.
 func (r *Round) TurnCount() int {
 	return len(r.turns)

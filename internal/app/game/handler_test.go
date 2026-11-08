@@ -359,6 +359,7 @@ type mockRoundRepoHandler struct {
 	// closedScenes records every CloseSceneAndRound call as a {scene, round} pair — what
 	// change_scene writes back.
 	closedScenes [][2]uuid.UUID
+	sceneCloses  []sceneCloseCall
 	// turnRounds maps each persisted turn to the round PersistTurnClose was told it closed in.
 	turnRounds map[uuid.UUID]uuid.UUID
 	// handed keeps every *Scene/*Round pointer the room handed EnsureSceneAndRound and
@@ -560,14 +561,29 @@ func (m *mockRoundRepoHandler) overridesFor(turnID uuid.UUID) []matchDomain.Over
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, sceneID, roundID uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _ uuid.UUID, end appmatch.RoundEnd, clk *clock.Snapshot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failCloseScene != nil {
 		return m.failCloseScene
 	}
-	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{sceneID, roundID})
+	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{end.Scene.GetID(), end.Round.GetID()})
+	m.sceneCloses = append(m.sceneCloses, sceneCloseCall{end: end, clock: clk})
+	m.handed = append(m.handed, end.Scene, end.Round)
 	return nil
+}
+
+// sceneCloseCall is one successful CloseSceneAndRound: the closed pair and the clock written with it.
+type sceneCloseCall struct {
+	end   appmatch.RoundEnd
+	clock *clock.Snapshot
+}
+
+// sceneCloseCalls returns a snapshot of every successful CloseSceneAndRound.
+func (m *mockRoundRepoHandler) sceneCloseCalls() []sceneCloseCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]sceneCloseCall(nil), m.sceneCloses...)
 }
 
 // closedScenePairs returns a snapshot of every {scene, round} CloseSceneAndRound was called with.
