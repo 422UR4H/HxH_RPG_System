@@ -19,6 +19,9 @@ type Turn struct {
 	openedReactions []uuid.UUID
 	masterActions   []action.MasterAction
 	finishedAt      *time.Time
+	// storyAt é o horário da história em que o turno abriu: fixado na abertura, em memória, e
+	// só gravado quando o turno fecha (nada dentro de um turno aberto vai ao banco).
+	storyAt *time.Time
 	// escapeLandings is where the MASTER put the piece of an escape, keyed by the reaction's
 	// own ID — chosen over edit_action while the turn is open (front-combat-phases.md §6A.5,
 	// B13). It is only a standing choice: the resolver copies it into the resolution only
@@ -40,6 +43,10 @@ func NewTurn(action action.Action) *Turn {
 		action: action,
 	}
 }
+
+func (t *Turn) SetStoryAt(at time.Time) { t.storyAt = &at }
+
+func (t *Turn) GetStoryAt() *time.Time { return t.storyAt }
 
 func (t *Turn) GetID() uuid.UUID {
 	return t.id

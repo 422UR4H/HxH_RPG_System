@@ -2328,6 +2328,9 @@ func (r *Room) persistClosedTurn(
 	// Round ends an earlier command could not write: closed in this same transaction, before the
 	// round this turn belongs to (or its successor) can be born next to them still open.
 	roundEnds := r.unwrittenRoundEndsLocked()
+	// O relógio da história como este fechamento o deixou (um round que acabou junto com o
+	// turno já somou o seu segundo), copiado na mesma seção crítica das demais cópias.
+	clockSnap := session.ClockSnapshot(time.Now())
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{
@@ -2335,7 +2338,7 @@ func (r *Room) persistClosedTurn(
 		MatchUUID: matchUUID, Resolution: res, Overrides: overrides,
 		MasterActions: inTurn.masterActions, CancelledActions: inTurn.cancelledActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
-		NextRound: nextRound, UnwrittenRoundEnds: roundEnds,
+		NextRound: nextRound, UnwrittenRoundEnds: roundEnds, Clock: &clockSnap,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied and the %d action(s) cancelled inside it, "+

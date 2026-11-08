@@ -28,10 +28,17 @@ func snapshotSceneAndRound(sc *sceneentity.Scene, rd *roundentity.Round) (*scene
 		if f := sc.GetFinishedAt(); f != nil {
 			scCopy.Close(*f)
 		}
+		scCopy.BriefFinalDescription = sc.BriefFinalDescription
+		if t := sc.GetStoryStartedAt(); t != nil {
+			scCopy.SetStoryStartedAt(*t)
+		}
+		if t := sc.GetStoryFinishedAt(); t != nil {
+			scCopy.SetStoryFinishedAt(*t)
+		}
 	}
 	var rdCopy *roundentity.Round
 	if rd != nil {
-		rdCopy = roundentity.ReconstructRound(rd.GetID(), rd.GetMode(), rd.GetCreatedAt())
+		rdCopy = roundentity.ReconstructRound(rd.GetID(), rd.GetMode(), rd.GetCreatedAt(), rd.IsCounted(), rd.IsDrained())
 		if f := rd.GetFinishedAt(); f != nil {
 			rdCopy.Close(*f)
 		}
@@ -67,12 +74,13 @@ func (r *Room) ensureSceneAndRoundRows(
 	}
 	r.mu.RLock()
 	ends := r.unwrittenRoundEndsLocked()
+	snap := sess.ClockSnapshot(time.Now())
 	r.mu.RUnlock()
 	var err error
 	if len(ends) == 0 {
 		err = r.deps.RoundRepo.EnsureSceneAndRound(context.Background(), r.matchUUID, sc, rd)
 	} else {
-		err = r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, rd)
+		err = r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, rd, &snap)
 	}
 	if err != nil {
 		log.Printf("%s FAILED — scene %s / round %s of match %s NOT written, nor the %d round end(s) still waiting: %v",
@@ -149,8 +157,9 @@ func (r *Room) writeRoundClose(
 	end := appmatch.RoundEnd{Scene: sc, Round: closed}
 	r.mu.RLock()
 	ends := append(r.unwrittenRoundEndsLocked(), end)
+	snap := sess.ClockSnapshot(time.Now())
 	r.mu.RUnlock()
-	if err := r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, next); err != nil {
+	if err := r.deps.RoundRepo.PersistRoundClose(context.Background(), r.matchUUID, ends, sc, next, &snap); err != nil {
 		log.Printf("%s FAILED — the end of round %s and the birth of round %s (scene %s, match %s) were NOT written "+
 			"(kept for the next write of round %s): %v",
 			why, closed.GetID(), next.GetID(), sc.GetID(), r.matchUUID, next.GetID(), err)

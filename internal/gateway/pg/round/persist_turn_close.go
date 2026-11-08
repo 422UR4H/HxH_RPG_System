@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
 	pgcancelledaction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/cancelledaction"
+	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
@@ -91,9 +92,9 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		return fmt.Errorf("PersistTurnClose marshal resolution: %w", err)
 	}
 	_, err = tx.Exec(ctx,
-		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at, resolution)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		t.GetID(), rnd.GetID(), *finishedAt, finishedAt, resolutionJSON,
+		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at, resolution, story_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		t.GetID(), rnd.GetID(), *finishedAt, finishedAt, resolutionJSON, t.GetStoryAt(),
 	)
 	if err != nil {
 		return fmt.Errorf("PersistTurnClose insert turn: %w", err)
@@ -186,6 +187,13 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 			if err := mems.Upsert(ctx, d.Memories[i]); err != nil {
 				return fmt.Errorf("PersistTurnClose player memory %s: %w", d.Memories[i].PlayerID, err)
 			}
+		}
+	}
+
+	// O relógio da história vai na mesma transação do turno que o moveu (nil: não grava).
+	if d.Clock != nil {
+		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *d.Clock); err != nil {
+			return fmt.Errorf("PersistTurnClose clock: %w", err)
 		}
 	}
 

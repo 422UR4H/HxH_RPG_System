@@ -99,7 +99,10 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 	}
 	if data != nil {
 		sc := sceneentity.ReconstructScene(data.SceneID, enum.SceneCategory(data.Category), data.BriefInitDesc, data.SceneCreatedAt)
-		r := roundentity.ReconstructRound(data.RoundID, enum.RoundMode(data.Mode), data.RoundCreatedAt)
+		r := roundentity.ReconstructRound(data.RoundID, enum.RoundMode(data.Mode), data.RoundCreatedAt, data.RoundCounted, data.RoundDrained)
+		if data.SceneStoryStartedAt != nil {
+			sc.SetStoryStartedAt(*data.SceneStoryStartedAt)
+		}
 		return matchsession.NewMatchSessionWithState(matchUUID, charSheets, participants, sc, r), nil
 	}
 	return matchsession.NewMatchSession(matchUUID, charSheets, participants), nil

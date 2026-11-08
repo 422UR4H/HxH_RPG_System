@@ -18,6 +18,9 @@ type Scene struct {
 
 	createdAt  time.Time
 	finishedAt *time.Time
+	// horários da história em que a cena começou e terminou (naive, UTC como relógio de parede)
+	storyStartedAt  *time.Time
+	storyFinishedAt *time.Time
 }
 
 func NewScene(category enum.SceneCategory, briefInitialDescription string) *Scene {
@@ -81,3 +84,9 @@ func (s *Scene) GetCreatedAt() time.Time {
 func (s *Scene) GetFinishedAt() *time.Time {
 	return s.finishedAt
 }
+
+func (s *Scene) GetStoryStartedAt() *time.Time  { return s.storyStartedAt }
+func (s *Scene) GetStoryFinishedAt() *time.Time { return s.storyFinishedAt }
+
+func (s *Scene) SetStoryStartedAt(at time.Time)  { s.storyStartedAt = &at }
+func (s *Scene) SetStoryFinishedAt(at time.Time) { s.storyFinishedAt = &at }

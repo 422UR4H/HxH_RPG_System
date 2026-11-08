@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -425,6 +426,7 @@ type roundCloseCall struct {
 	scene  *scene.Scene
 	closed *roundentity.Round
 	next   *roundentity.Round
+	clock  *clock.Snapshot
 }
 
 // setFailRoundClose makes every later PersistRoundClose fail with err (nil restores success).
@@ -593,14 +595,14 @@ func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUI
 
 // PersistRoundClose records round ends and the round written after them, written together.
 func (m *mockRoundRepoHandler) PersistRoundClose(
-	_ context.Context, _ uuid.UUID, ends []appmatch.RoundEnd, sc *scene.Scene, next *roundentity.Round,
+	_ context.Context, _ uuid.UUID, ends []appmatch.RoundEnd, sc *scene.Scene, next *roundentity.Round, clk *clock.Snapshot,
 ) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failRoundClose != nil {
 		return m.failRoundClose
 	}
-	call := roundCloseCall{ends: append([]appmatch.RoundEnd(nil), ends...), scene: sc, next: next}
+	call := roundCloseCall{ends: append([]appmatch.RoundEnd(nil), ends...), scene: sc, next: next, clock: clk}
 	if len(ends) > 0 {
 		call.closed = ends[len(ends)-1].Round
 	}

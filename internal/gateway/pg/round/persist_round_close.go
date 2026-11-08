@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
+	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	"github.com/google/uuid"
 )
 
@@ -26,6 +28,7 @@ import (
 // predecessors' ends: the scene never holds two open rounds.
 func (r *Repository) PersistRoundClose(
 	ctx context.Context, matchUUID uuid.UUID, ends []appmatch.RoundEnd, sc *sceneentity.Scene, next *roundentity.Round,
+	clk *clock.Snapshot,
 ) error {
 	if next == nil {
 		return fmt.Errorf("PersistRoundClose: the round being written is required")
@@ -51,6 +54,13 @@ func (r *Repository) PersistRoundClose(
 	}
 	if err := ensureSceneAndRound(ctx, tx, matchUUID, sc, next); err != nil {
 		return fmt.Errorf("PersistRoundClose next round: %w", err)
+	}
+
+	// O round fechado pode ter movido o relógio (+1 s): vai na mesma transação (nil: não grava).
+	if clk != nil {
+		if err := pgclock.UpsertTx(ctx, tx, matchUUID, *clk); err != nil {
+			return fmt.Errorf("PersistRoundClose clock: %w", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

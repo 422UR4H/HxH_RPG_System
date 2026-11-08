@@ -1,6 +1,7 @@
 package game_test
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"context"
 	"encoding/json"
 	"testing"
@@ -95,7 +96,7 @@ func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID
 func (m *mockRoundRepoGame) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *scene.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *mockRoundRepoGame) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []appmatch.RoundEnd, _ *scene.Scene, _ *roundentity.Round) error {
+func (m *mockRoundRepoGame) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []appmatch.RoundEnd, _ *scene.Scene, _ *roundentity.Round, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockRoundRepoGame) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {

@@ -15,6 +15,7 @@ import (
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -84,7 +85,17 @@ type MatchSession struct {
 	// round id is the whole expiry — the next round has another id, so no reset hook exists.
 	// In memory only: a restart is a fresh round anyway.
 	swapMarks map[uuid.UUID]uuid.UUID
+	// clock é o relógio da história da partida. Mexido sempre sob o r.mu de quem chama.
+	clock *clock.Clock
+	// now é a fonte do tempo real do relógio; time.Now em produção, injetável nos testes.
+	now func() time.Time
 }
+
+// defaultStoryStart é o horário da história com que as sessões nascem nos construtores.
+// Em produção quem decide é o InitMatchSessionUC, que chama SetClock (possivelmente com um
+// relógio não definido); o valor fixo aqui só mantém válidos os testes de sessão que não
+// se importam com o relógio.
+var defaultStoryStart = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func NewMatchSession(
 	matchUUID uuid.UUID,
@@ -109,6 +120,8 @@ func NewMatchSession(
 		memories:     make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:     make(map[uuid.UUID][]service.VisibilityPolygon),
 		swapMarks:    make(map[uuid.UUID]uuid.UUID),
+		clock:        clock.NewAt(defaultStoryStart),
+		now:          time.Now,
 	}
 }
 
@@ -139,6 +152,8 @@ func NewMatchSessionWithState(
 		memories:       make(map[uuid.UUID]*fog.PlayerMemory),
 		visCache:       make(map[uuid.UUID][]service.VisibilityPolygon),
 		swapMarks:      make(map[uuid.UUID]uuid.UUID),
+		clock:          clock.NewAt(defaultStoryStart),
+		now:            time.Now,
 	}
 }
 
@@ -182,6 +197,29 @@ func indexParticipants(participants []*match.Participant) (
 // RehydrateSession and loadBoard, right after SyncMapState — BEFORE any RecomputeVisibility
 // that could lazily create a PlayerMemory (memoryFor), so that memory is stamped with the
 // real map from the moment it exists rather than uuid.Nil and drifting later.
+// Clock devolve o relógio da história (nunca nil).
+func (s *MatchSession) Clock() *clock.Clock { return s.clock }
+
+// SetClock troca o relógio (usado na criação da sessão, com o que veio do banco).
+func (s *MatchSession) SetClock(c *clock.Clock) { s.clock = c }
+
+// SetNowFunc injeta a fonte de tempo real (testes).
+func (s *MatchSession) SetNowFunc(f func() time.Time) { s.now = f }
+
+// ClockSnapshot é o checkpoint do relógio em `real`, para gravar no banco.
+func (s *MatchSession) ClockSnapshot(real time.Time) clock.Snapshot { return s.clock.Snapshot(real) }
+
+// stampOpened registra no turno recém-aberto o horário da história, conta o round se ele
+// está em Race e sobe o limite do relógio até esse horário.
+func (s *MatchSession) stampOpened(t *turn.Turn) {
+	real := s.now()
+	t.SetStoryAt(s.clock.Now(real))
+	if s.activeRound.GetMode() == enum.Race {
+		s.activeRound.MarkCounted()
+	}
+	s.clock.RaiseLimit(clock.LimitTurn, real)
+}
+
 func (s *MatchSession) SetMapUUID(mapUUID uuid.UUID) { s.mapUUID = mapUUID }
 
 func (s *MatchSession) GetMatchUUID() uuid.UUID      { return s.matchUUID }
@@ -1010,6 +1048,10 @@ func (s *MatchSession) scheduleInput() service.ScheduleInput {
 }
 
 func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
+	// Sem relógio definido nada abre: recusa antes de qualquer mutação.
+	if !s.clock.IsSet() {
+		return &TurnTransition{}, clock.ErrNotSet
+	}
 	// The price a bar WILL freeze at is measured now, before the open turn closes and before
 	// anything is pulled, so the action about to open still counts in the minimum. It is only
 	// FROZEN once an action actually opens (spec 2026-11-04 D7): a command that fails first
@@ -1026,6 +1068,7 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 		if err != nil {
 			return tr, err
 		}
+		s.stampOpened(opened)
 		s.seatDefaultReactions(opened)
 		tr.Opened = opened
 		tr.OpenedResolution = s.ResolveTurn(opened)
@@ -1056,6 +1099,7 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 	}
 	s.scheduler.FreezeAt(s.activeRound, prov)
 	s.recordActed(next)
+	s.stampOpened(opened)
 	s.seatDefaultReactions(opened)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
@@ -1091,6 +1135,9 @@ func (s *MatchSession) recordActed(a *action.Action) {
 }
 
 func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
+	if !s.clock.IsSet() {
+		return &TurnTransition{}, clock.ErrNotSet
+	}
 	// Um movimento empilhado num pendente é recusado antes de qualquer coisa (D4): nenhum turno
 	// fecha e nenhum preço congela. Puxar fora de ordem é prerrogativa do mestre; puxar o segundo
 	// movimento antes do primeiro não é fora de ordem, é impossível.
@@ -1106,6 +1153,7 @@ func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 	s.scheduler.FreezeAt(s.activeRound, prov)
 	act := opened.GetAction()
 	s.recordActed(&act)
+	s.stampOpened(opened)
 	s.seatDefaultReactions(opened)
 	tr.Opened = opened
 	tr.OpenedResolution = s.ResolveTurn(opened)
@@ -1194,6 +1242,7 @@ func (s *MatchSession) closeOpenTurn() *TurnTransition {
 		status.BarFor(action.BarMove).RevealAll()
 	}
 	tr.Closed = s.roundOrch.CloseTurn(s.activeRound, time.Now())
+	s.clock.RaiseLimit(clock.LimitTurn, s.now())
 	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
 	tr.Damaged = s.applyResolution(tr.ClosedResolution)
 	// The ledger moves one turn forward with the turn: what was scoped to this turn dies, and
@@ -1671,6 +1720,12 @@ func (s *MatchSession) CloseRound() (*round.Round, error) {
 		status.ExpireModifiers(match.LifetimeEndOfRound)
 	}
 	mode := s.activeRound.GetMode()
+	// drained: a fila ativa estava vazia no instante do fechamento. Round disputado (counted)
+	// avança 1 s da história (1 round = 1 s); o novo round nasce sem contar.
+	s.activeRound.SetDrained(s.activeQueue.IsEmpty())
+	if s.activeRound.IsCounted() {
+		s.clock.AddRoundSecond(s.now())
+	}
 	closed := s.roundOrch.CloseRound(s.activeRound, time.Now())
 	s.activeRound = round.NewRound(mode)
 	s.roundPersisted = false

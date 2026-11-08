@@ -1,6 +1,7 @@
 package match_test
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"context"
 	"reflect"
 	"sync"
@@ -36,7 +37,7 @@ func (m *noopRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ 
 func (m *noopRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *noopRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round) error {
+func (m *noopRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *noopRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {
@@ -63,7 +64,7 @@ func (m *mockRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ 
 func (m *mockRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *mockRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round) error {
+func (m *mockRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockRoundRepo) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]match.HistoryScene, error) {

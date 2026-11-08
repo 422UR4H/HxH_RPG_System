@@ -1,6 +1,7 @@
 package match_test
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"context"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func (m *mockHistoryRoundRepo) CloseSceneAndRound(_ context.Context, _, _ uuid.U
 func (m *mockHistoryRoundRepo) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *sceneentity.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *mockHistoryRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round) error {
+func (m *mockHistoryRoundRepo) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []match.RoundEnd, _ *sceneentity.Scene, _ *roundentity.Round, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockHistoryRoundRepo) FindActiveSession(

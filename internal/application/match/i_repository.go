@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -25,6 +26,9 @@ import (
 // and is about to grow again (Task 9's Overrides) — a struct absorbs that growth without
 // reshuffling every call site again.
 type TurnCloseData struct {
+	// Clock é o relógio da história como este fechamento o deixou, gravado na mesma
+	// transação. nil: não grava o relógio.
+	Clock     *clock.Snapshot
 	Scene     *sceneentity.Scene
 	Round     *roundentity.Round
 	Turn      *turnentity.Turn
@@ -141,7 +145,7 @@ type IRoundRepository interface {
 	// to a predecessor still open on disk. All rows go through the same idempotent upsert as
 	// EnsureSceneAndRound. When a turn closes in the same command, PersistTurnClose writes them
 	// instead (TurnCloseData.NextRound, UnwrittenRoundEnds).
-	PersistRoundClose(ctx context.Context, matchUUID uuid.UUID, ends []RoundEnd, sc *sceneentity.Scene, next *roundentity.Round) error
+	PersistRoundClose(ctx context.Context, matchUUID uuid.UUID, ends []RoundEnd, sc *sceneentity.Scene, next *roundentity.Round, clk *clock.Snapshot) error
 	// FindMatchHistory returns the match's scenes, rounds and closed turns as the TREE the
 	// domain already is — Scene -> Round -> Turn -> Action — not a flat list. See
 	// HistoryScene's own doc for why flattening here would be the wrong call. A scene or round

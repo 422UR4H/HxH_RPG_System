@@ -51,23 +51,30 @@ func ensureSceneAndRound(
 		return fmt.Errorf("EnsureSceneAndRound: scene and round are required")
 	}
 	_, err := q.Exec(ctx,
-		`INSERT INTO scenes (uuid, match_uuid, category, brief_initial_description, created_at, finished_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (uuid) DO UPDATE SET finished_at = COALESCE(scenes.finished_at, EXCLUDED.finished_at)`,
+		`INSERT INTO scenes (uuid, match_uuid, category, brief_initial_description, created_at, finished_at,
+		                     story_started_at, story_finished_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 ON CONFLICT (uuid) DO UPDATE SET
+		   finished_at = COALESCE(scenes.finished_at, EXCLUDED.finished_at),
+		   story_started_at = COALESCE(scenes.story_started_at, EXCLUDED.story_started_at),
+		   story_finished_at = COALESCE(scenes.story_finished_at, EXCLUDED.story_finished_at)`,
 		sc.GetID(), matchUUID, string(sc.GetCategory()), sc.BriefInitialDescription, sc.GetCreatedAt(),
-		sc.GetFinishedAt(),
+		sc.GetFinishedAt(), sc.GetStoryStartedAt(), sc.GetStoryFinishedAt(),
 	)
 	if err != nil {
 		return fmt.Errorf("insert scene: %w", err)
 	}
 
 	_, err = q.Exec(ctx,
-		`INSERT INTO rounds (uuid, scene_uuid, mode, created_at, finished_at)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO rounds (uuid, scene_uuid, mode, created_at, finished_at, counted, drained)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (uuid) DO UPDATE SET
 		   mode = EXCLUDED.mode,
-		   finished_at = COALESCE(rounds.finished_at, EXCLUDED.finished_at)`,
+		   finished_at = COALESCE(rounds.finished_at, EXCLUDED.finished_at),
+		   counted = rounds.counted OR EXCLUDED.counted,
+		   drained = rounds.drained OR EXCLUDED.drained`,
 		rd.GetID(), sc.GetID(), string(rd.GetMode()), rd.GetCreatedAt(), rd.GetFinishedAt(),
+		rd.IsCounted(), rd.IsDrained(),
 	)
 	if err != nil {
 		return fmt.Errorf("insert round: %w", err)
