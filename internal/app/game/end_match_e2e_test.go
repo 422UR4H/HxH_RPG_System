@@ -285,8 +285,10 @@ func TestCommandsAfterEndMatchAreRefused(t *testing.T) {
 	handedBefore := len(cf.roundRepo.handedPointers())
 
 	sendWS(t, cf.masterConn, "end_match", map[string]any{"storyAt": "2000-01-01T05:00:00"})
-	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
-	sendWS(t, cf.masterConn, "change_scene", map[string]any{"category": "battle"})
+	// Os dois em voo na corrida: se o fim já fechou a conexão (4002), o envio falha — o que
+	// também prova que nada mais roda; o teste não trata isso como erro.
+	sendWSMaybeClosed(cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+	sendWSMaybeClosed(cf.masterConn, "change_scene", map[string]any{"category": "battle"})
 	awaitMatchEnded(t, pc)
 	time.Sleep(200 * time.Millisecond)
 
@@ -366,4 +368,12 @@ func TestEndMatchCarriesUnwrittenSheets(t *testing.T) {
 	if !found {
 		t.Errorf("StatusBars = %+v, want the victim's unwritten bars", ws[0].StatusBars)
 	}
+}
+
+// sendWSMaybeClosed é sendWS para uma conexão que o servidor pode já ter fechado: o erro de
+// escrita é ignorado.
+func sendWSMaybeClosed(conn *websocket.Conn, msgType string, payload any) {
+	data, _ := json.Marshal(payload)
+	raw, _ := json.Marshal(map[string]any{"type": msgType, "payload": json.RawMessage(data)})
+	_ = conn.WriteMessage(websocket.TextMessage, raw)
 }
