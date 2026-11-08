@@ -408,9 +408,9 @@ func TestEndMatchClosesAndFreezes(t *testing.T) {
 	s.GetActiveRound().MarkCounted()
 	real = real.Add(10 * time.Second)
 
-	min := s.EndMatchMinimum()
+	min := s.SceneCloseMinimum()
 	if want := storyStart.Add(11 * time.Second); !min.Equal(want) {
-		t.Fatalf("EndMatchMinimum = %v, want %v", min, want)
+		t.Fatalf("SceneCloseMinimum = %v, want %v", min, want)
 	}
 	if _, err := s.PlanEndMatch(min.Add(-time.Second), false, real); !errors.Is(err, clock.ErrBelowLimit) {
 		t.Fatalf("below minimum: %v", err)
@@ -481,7 +481,7 @@ func TestEndMatchAtMinimumAddsRoundSecondOnce(t *testing.T) {
 	s := runningSession(t, &real)
 	s.GetActiveRound().MarkCounted()
 	real = real.Add(10 * time.Second)
-	min := s.EndMatchMinimum()
+	min := s.SceneCloseMinimum()
 	if _, err := s.EndMatchAt(min, false, real); err != nil {
 		t.Fatal(err)
 	}
@@ -530,5 +530,34 @@ func TestPlanEndMatchMatchesEndMatchAt(t *testing.T) {
 	}
 	if got := s.Clock().Snapshot(real); *got.StoryAt != *plan.Clock.StoryAt || got.Running {
 		t.Errorf("clock after = %+v, want the plan's", got)
+	}
+}
+
+// A primeira cena nasce sem início na história; ela é carimbada quando o relógio fica definido,
+// uma vez só.
+func TestStampSceneStartIfUnset(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	s.SetClock(clock.NewUnset())
+	if s.StampSceneStartIfUnset() || s.GetActiveScene().GetStoryStartedAt() != nil {
+		t.Fatal("an unset clock must not stamp the scene")
+	}
+	at := time.Date(1999, 4, 1, 8, 30, 0, 0, time.UTC)
+	if err := s.Clock().Start(at); err != nil {
+		t.Fatal(err)
+	}
+	if !s.StampSceneStartIfUnset() {
+		t.Fatal("a set clock must stamp an unstamped scene")
+	}
+	if got := s.GetActiveScene().GetStoryStartedAt(); got == nil || !got.Equal(at) {
+		t.Fatalf("story_started_at = %v, want %v", got, at)
+	}
+	if _, _, err := s.Clock().Adjust(time.Hour, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if s.StampSceneStartIfUnset() {
+		t.Error("an already stamped scene must keep its start")
+	}
+	if got := s.GetActiveScene().GetStoryStartedAt(); !got.Equal(at) {
+		t.Errorf("story_started_at moved to %v", got)
 	}
 }

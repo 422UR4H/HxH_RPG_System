@@ -12,6 +12,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -237,6 +238,30 @@ func TestClockStartSetsTimeOnce(t *testing.T) {
 
 	sendWS(t, cf.masterConn, "set_clock_start", map[string]any{"time": "09:00:00"})
 	awaitClockError(t, mc, "clock_already_set")
+}
+
+// A primeira cena nasce antes do horário: o set_clock_start a carimba, e o clockStarted (que
+// garante o par) leva o story_started_at à linha da cena (o upsert com COALESCE o preenche).
+func TestClockStartStampsActiveSceneRow(t *testing.T) {
+	cf := newClockFixture(t, true, 0)
+	_, pc := cf.connectCollectors(t)
+
+	sendWS(t, cf.masterConn, "set_clock_start", map[string]any{"time": "08:30"})
+	awaitClockChanged(t, pc, 1)
+
+	want := time.Date(1999, 4, 1, 8, 30, 0, 0, time.UTC)
+	sceneID := cf.session.GetActiveScene().GetID()
+	var stamped bool
+	for _, p := range cf.roundRepo.handedPointers() {
+		if sc, ok := p.(*scene.Scene); ok && sc.GetID() == sceneID {
+			if at := sc.GetStoryStartedAt(); at != nil && at.Equal(want) {
+				stamped = true
+			}
+		}
+	}
+	if !stamped {
+		t.Errorf("no write of scene %s carried story_started_at = %v", sceneID, want)
+	}
 }
 
 func TestAdjustClockBroadcastsToTable(t *testing.T) {

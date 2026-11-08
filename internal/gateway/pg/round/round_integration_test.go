@@ -3183,3 +3183,35 @@ func TestHistoryCarriesClockFields(t *testing.T) {
 		t.Errorf("turn story_at = %v, want %v", got, storyTurn)
 	}
 }
+
+// A primeira cena vira linha sem início na história (nasceu antes do relógio ter horário); a
+// gravação seguinte do par, já carimbado, preenche o story_started_at, e o histórico o mostra.
+func TestEnsureFillsSceneStoryStartLater(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	start := time.Date(1999, 4, 1, 8, 30, 0, 0, time.UTC)
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Roleplay, "Início", base)
+	rd := roundentity.ReconstructRound(uuid.New(), enum.Free, base, false, false)
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+		t.Fatalf("EnsureSceneAndRound (unstamped): %v", err)
+	}
+	sc.SetStoryStartedAt(start)
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+		t.Fatalf("EnsureSceneAndRound (stamped): %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 {
+		t.Fatalf("history = %+v, want one scene", scenes)
+	}
+	if got := scenes[0].StoryStartedAt; got == nil || !got.Equal(start) {
+		t.Errorf("scene story_started_at = %v, want %v", got, start)
+	}
+}

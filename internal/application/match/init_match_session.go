@@ -114,16 +114,24 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 			sc.SetStoryStartedAt(*data.SceneStoryStartedAt)
 		}
 		session := matchsession.NewMatchSessionWithState(matchUUID, charSheets, participants, sc, r)
-		if storyClock != nil {
-			session.SetClock(storyClock)
-		}
+		adoptClock(session, storyClock)
 		return session, nil
 	}
 	session := matchsession.NewMatchSession(matchUUID, charSheets, participants)
-	if storyClock != nil {
-		session.SetClock(storyClock)
-	}
+	adoptClock(session, storyClock)
 	return session, nil
+}
+
+// adoptClock instala o relógio carregado (nil: fica o provisório) e, se ele já tem horário,
+// carimba o início da cena ativa que ainda não tem — a primeira cena da partida, ou uma
+// reidratada de antes do relógio. Uma cena reidratada já é linha: o upsert com COALESCE da
+// próxima gravação do par preenche o story_started_at dela.
+func adoptClock(session *matchsession.MatchSession, c *clock.Clock) {
+	if c == nil {
+		return
+	}
+	session.SetClock(c)
+	session.StampSceneStartIfUnset()
 }
 
 // loadOrCreateClock devolve o relógio da história da partida, ou nil quando não há

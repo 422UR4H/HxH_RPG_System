@@ -745,3 +745,53 @@ func TestInitKeepsExistingClock(t *testing.T) {
 		t.Errorf("an intact paused clock must not be re-saved, got %d saves", len(clocks.saved))
 	}
 }
+
+// A primeira cena nasce com o início na história quando o relógio já tem horário na criação
+// da sessão; sem horário, fica sem início (o set_clock_start carimba depois).
+func TestInitStampsFirstSceneStart(t *testing.T) {
+	off := 8*time.Hour + 30*time.Minute
+	repo := &clockMatchRepo{startAt: time.Date(1999, 5, 3, 0, 0, 0, 0, time.UTC), startTime: &off}
+	s := initWithClock(t, repo, &fakeClockRepo{})
+	want := time.Date(1999, 5, 3, 8, 30, 0, 0, time.UTC)
+	if got := s.GetActiveScene().GetStoryStartedAt(); got == nil || !got.Equal(want) {
+		t.Errorf("first scene story_started_at = %v, want %v", got, want)
+	}
+
+	unset := initWithClock(t, &clockMatchRepo{startAt: repo.startAt}, &fakeClockRepo{})
+	if got := unset.GetActiveScene().GetStoryStartedAt(); got != nil {
+		t.Errorf("unset clock: story_started_at = %v, want nil", got)
+	}
+}
+
+// Uma cena reidratada sem início (a partida começou antes do relógio) é carimbada; uma que já
+// tem início o mantém.
+func TestInitStampsRehydratedSceneOnlyWhenUnstamped(t *testing.T) {
+	story := time.Date(2000, 1, 1, 8, 0, 0, 0, time.UTC)
+	earlier := time.Date(2000, 1, 1, 7, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name  string
+		start *time.Time
+		want  time.Time
+	}{
+		{"unstamped", nil, story},
+		{"stamped", &earlier, earlier},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rounds := &mockRoundRepo{findActiveFn: func(context.Context, uuid.UUID) (*matchsession.ActiveSessionData, error) {
+				return &matchsession.ActiveSessionData{
+					SceneID: uuid.New(), RoundID: uuid.New(), Category: "roleplay", Mode: "Free",
+					SceneCreatedAt: time.Now(), RoundCreatedAt: time.Now(), SceneStoryStartedAt: tc.start,
+				}, nil
+			}}
+			clocks := &fakeClockRepo{row: &clock.Snapshot{StoryAt: &story, LimitReason: clock.LimitStart}}
+			uc := match.NewInitMatchSessionUC(&clockMatchRepo{}, &mockSheetLoader{}, rounds, nil, nil, clocks)
+			s, err := uc.Init(context.Background(), uuid.New())
+			if err != nil {
+				t.Fatalf("Init: %v", err)
+			}
+			if got := s.GetActiveScene().GetStoryStartedAt(); got == nil || !got.Equal(tc.want) {
+				t.Errorf("story_started_at = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

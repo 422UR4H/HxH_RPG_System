@@ -196,12 +196,20 @@ func indexParticipants(participants []*match.Participant) (
 	return pMap, charToPlayer, statuses
 }
 
-// SetMapUUID tells the session which map its board belongs to. Room calls it in StartMatch,
-// RehydrateSession and loadBoard, right after SyncMapState — BEFORE any RecomputeVisibility
-// that could lazily create a PlayerMemory (memoryFor), so that memory is stamped with the
-// real map from the moment it exists rather than uuid.Nil and drifting later.
 // Clock devolve o relógio da história (nunca nil).
 func (s *MatchSession) Clock() *clock.Clock { return s.clock }
+
+// StampSceneStartIfUnset carimba na cena ativa o horário da história em que ela começa, quando
+// o relógio está definido e a cena ainda não tem início. A primeira cena da partida nasce antes
+// de o relógio ter horário (só ChangeScene carimba as seguintes): é carimbada quando o relógio
+// fica definido — na criação da sessão ou no set_clock_start. Devolve true se carimbou.
+func (s *MatchSession) StampSceneStartIfUnset() bool {
+	if !s.clock.IsSet() || s.activeScene == nil || s.activeScene.GetStoryStartedAt() != nil {
+		return false
+	}
+	s.activeScene.SetStoryStartedAt(s.clock.Now(s.now()))
+	return true
+}
 
 // SetClock troca o relógio (usado na criação da sessão, com o que veio do banco).
 func (s *MatchSession) SetClock(c *clock.Clock) { s.clock = c }
@@ -227,6 +235,10 @@ func (s *MatchSession) stampOpened(t *turn.Turn) {
 	s.clock.RaiseLimit(clock.LimitTurn, real)
 }
 
+// SetMapUUID tells the session which map its board belongs to. Room calls it in StartMatch,
+// RehydrateSession and loadBoard, right after SyncMapState — BEFORE any RecomputeVisibility
+// that could lazily create a PlayerMemory (memoryFor), so that memory is stamped with the
+// real map from the moment it exists rather than uuid.Nil and drifting later.
 func (s *MatchSession) SetMapUUID(mapUUID uuid.UUID) { s.mapUUID = mapUUID }
 
 func (s *MatchSession) GetMatchUUID() uuid.UUID      { return s.matchUUID }
@@ -277,13 +289,10 @@ func (s *MatchSession) SceneCloseMinimum() time.Time {
 	return s.clock.Minimum(s.activeRoundExtra(), s.now())
 }
 
-// EndMatchMinimum é o menor horário em que a partida pode terminar agora.
-func (s *MatchSession) EndMatchMinimum() time.Time { return s.SceneCloseMinimum() }
-
-// normalizeBriefFinal apara o resumo; vazio vira nil; acima de 255 runas é erro.
 // NormalizeBriefFinal é o tratamento do resumo final (apara, vazio vira nil, máx. 255 runas).
 func NormalizeBriefFinal(in *string) (*string, error) { return normalizeBriefFinal(in) }
 
+// normalizeBriefFinal apara o resumo; vazio vira nil; acima de 255 runas é erro.
 func normalizeBriefFinal(in *string) (*string, error) {
 	if in == nil {
 		return nil, nil
@@ -383,9 +392,7 @@ func (s *MatchSession) checkEnd(storyAt time.Time, confirmLong bool, real time.T
 	if s.ended {
 		return ErrMatchEnded
 	}
-	if !s.clock.IsSet() {
-		return clock.ErrNotSet
-	}
+	// relógio não definido: checkClose recusa (depois da cena de batalha)
 	if s.activeScene.GetCategory() == enum.Battle {
 		return ErrMatchInBattle
 	}

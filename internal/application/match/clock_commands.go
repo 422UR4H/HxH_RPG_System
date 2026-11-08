@@ -59,7 +59,12 @@ func (uc *ClockCommandsUC) Start(session *matchsession.MatchSession, masterUUID,
 	if callerUUID != masterUUID {
 		return ErrNotMatchMaster
 	}
-	return session.Clock().Start(at)
+	if err := session.Clock().Start(at); err != nil {
+		return err
+	}
+	// A cena ativa (a primeira da partida, que nasceu sem horário) começa neste instante.
+	session.StampSceneStartIfUnset()
+	return nil
 }
 
 func (uc *ClockCommandsUC) Adjust(
