@@ -106,16 +106,14 @@ func clockPayloadOf(s clock.Snapshot) ClockPayload {
 	return p
 }
 
-// clockPayloadLocked é o estado do relógio agora. O chamador segura r.mu (leitura ou escrita).
+// clockPayloadLocked é o estado do relógio agora, com o seq corrente (sem avançá-lo).
+// O chamador segura r.mu (leitura ou escrita).
 func (r *Room) clockPayloadLocked(sess *matchsession.MatchSession) ClockPayload {
 	p := clockPayloadOf(sess.ClockSnapshot(r.now()))
 	p.Seq = r.clockSeq
 	return p
 }
 
-// clockPayloadLocked é o estado do relógio agora, com o seq corrente (sem avançá-lo).
-// O chamador segura r.mu (leitura ou escrita).
-//
 // clockChangedData monta o clock_changed com o estado de agora e um seq novo: o retrato e o
 // número saem da mesma seção crítica, então o seq ordena os RETRATOS — o cliente descarta um
 // seq menor que o maior que aplicou (as duas faixas de envio não têm ordem entre si). Toma
