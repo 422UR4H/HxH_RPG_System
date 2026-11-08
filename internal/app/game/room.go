@@ -9,6 +9,7 @@ import (
 	"log"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
@@ -216,6 +217,12 @@ type Room struct {
 	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem:
 	// clockPersistMu, depois mu.
 	clockPersistMu sync.Mutex
+	// clockWriteGen conta os retratos do relógio entregues a uma gravação — persistClock e as
+	// transações que também gravam match_clocks sem clockPersistMu (fechamento de turno, de
+	// round, troca de cena, fim). O checkpoint assíncrono compara o seu com o corrente antes de
+	// gravar e desiste se outro retrato saiu depois do dele (clockSnapshotForWriteLocked).
+	// Atômico: alguns retratos saem sob r.mu.RLock.
+	clockWriteGen atomic.Uint64
 	// nowFn é a fonte do tempo real do relógio (RoomDeps.Now; nil = time.Now); a sessão recebe a
 	// mesma quando RoomDeps.Now é dado, para haver uma fonte só.
 	nowFn func() time.Time
@@ -1627,7 +1634,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			if err == nil {
 				r.clearClockMergeLocked()
 				clockTo = session.Clock().Now(r.now())
-				clockSnap = session.ClockSnapshotNow()
+				clockSnap = r.clockSnapshotForWriteLocked(session)
 				// Copies: they are written after the unlock (ensureSceneAndRoundRows).
 				newScene, newRound = snapshotSceneAndRound(session.GetActiveScene(), session.GetActiveRound())
 				if oldScene != nil && oldRound != nil && oldRound.GetFinishedAt() != nil {
@@ -2480,7 +2487,7 @@ func (r *Room) persistClosedTurn(
 	roundEnds := r.unwrittenRoundEndsLocked()
 	// O relógio da história como este fechamento o deixou (um round que acabou junto com o
 	// turno já somou o seu segundo), copiado na mesma seção crítica das demais cópias.
-	clockSnap := session.ClockSnapshotNow()
+	clockSnap := r.clockSnapshotForWriteLocked(session)
 	r.mu.Unlock()
 
 	err := r.deps.RoundRepo.PersistTurnClose(context.Background(), appmatch.TurnCloseData{

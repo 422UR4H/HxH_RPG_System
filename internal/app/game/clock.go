@@ -168,12 +168,27 @@ func pauseChange(p *clock.Pause) ClockChangePayload {
 	}
 }
 
-// persistClock grava o checkpoint do relógio e, se ev != nil, o evento — numa transação
-// (ClockRepo.Save). O evento precisa das linhas da cena e do round ativos: elas são
-// garantidas antes; sem elas o evento é perdido (logado) e só o checkpoint vai. clockPersistMu
-// envolve retrato e escrita, para dois Saves de goroutines diferentes (comando do mestre,
-// checkpoint, saída do mestre) chegarem na ordem dos retratos. Falha é logada e engolida: o
-// relógio em memória manda e o próximo Save cura. O chamador NÃO pode segurar r.mu.
+// clockSnapshotForWriteLocked é o retrato do relógio que vai a uma gravação de match_clocks, e
+// conta essa gravação em clockWriteGen: um checkpoint tirado antes dele não grava mais
+// (writeClockCheckpoint). Todo caminho que entrega o relógio a uma escrita passa por aqui. O
+// chamador segura r.mu (leitura ou escrita).
+func (r *Room) clockSnapshotForWriteLocked(sess *matchsession.MatchSession) clock.Snapshot {
+	r.clockWriteGen.Add(1)
+	return sess.ClockSnapshot(r.now())
+}
+
+// persistClock grava o relógio e, se ev != nil, o evento — numa transação (ClockRepo.Save). O
+// evento precisa das linhas da cena e do round ativos: elas são garantidas antes; sem elas o
+// evento é perdido (logado) e só o relógio vai. Falha é logada e engolida: o relógio em memória
+// manda e o próximo Save cura. O chamador NÃO pode segurar r.mu.
+//
+// O que é ordenado: clockPersistMu envolve retrato e escrita, então os Saves desta função (comando
+// do mestre, saída do mestre) e o checkpoint (writeClockCheckpoint) chegam ao banco na ordem dos
+// retratos. As transações que gravam o relógio junto de outra coisa (PersistTurnClose,
+// PersistRoundClose, CloseSceneAndRound) não tomam clockPersistMu — vêm do laço de leitura do
+// mestre, como os comandos do relógio, e entre si já são serializadas por ele; contra o checkpoint
+// valem pelo clockWriteGen (o checkpoint mais velho que elas desiste). PersistMatchEnd segura
+// clockPersistMu (end_match.go).
 //
 // Devolve true quando o evento (ev != nil) foi gravado — a fusão só aponta para linha que existe.
 // O retrato é tirado aqui, numa seção crítica posterior à da mudança: seguro pelo mesmo motivo
@@ -186,7 +201,7 @@ func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEve
 	defer r.clockPersistMu.Unlock()
 
 	r.mu.RLock()
-	snap := sess.ClockSnapshot(r.now())
+	snap := r.clockSnapshotForWriteLocked(sess)
 	sc, rd := snapshotSceneAndRound(sess.GetActiveScene(), sess.GetActiveRound())
 	r.mu.RUnlock()
 
@@ -502,7 +517,8 @@ func (r *Room) pauseClockMasterLeft() {
 }
 
 // checkpointClock grava o relógio rodando (sem evento, sem anúncio): um restart o pausa no
-// último checkpoint e perde no máximo um intervalo (spec §3.4).
+// último checkpoint e perde no máximo um intervalo (spec §3.4). O retrato e a geração saem aqui,
+// na goroutine do Run; a escrita vai para outra goroutine (não segura a sala).
 func (r *Room) checkpointClock() {
 	if r.deps.ClockRepo == nil {
 		return
@@ -510,12 +526,36 @@ func (r *Room) checkpointClock() {
 	r.mu.RLock()
 	sess := r.session
 	running := sess != nil && sess.Clock().Running()
+	var snap clock.Snapshot
+	gen := r.clockWriteGen.Load()
+	if running {
+		snap = sess.ClockSnapshot(r.now())
+	}
 	r.mu.RUnlock()
 	if running {
-		// Fora da goroutine do Run (a escrita não segura a sala); clockPersistMu ordena as
-		// gravações pelos retratos.
-		go r.persistClock(sess, nil, "clock checkpoint")
+		go r.writeClockCheckpoint(snap, gen)
 	}
+}
+
+// writeClockCheckpoint grava o retrato snap, tirado na geração gen — a menos que outro retrato
+// tenha ido a uma gravação depois dele (clockWriteGen mudou): um fechamento de turno, uma troca
+// de cena ou uma pausa já levou um relógio mais novo, e o checkpoint mais velho o sobrescreveria.
+// Devolve true se gravou. O chamador NÃO pode segurar r.mu.
+//
+// Sobra uma janela: um fechamento cujo retrato sai depois da comparação e cuja transação termina
+// antes deste Save. Fechá-la exigiria clockPersistMu em PersistTurnClose/PersistRoundClose/
+// CloseSceneAndRound; a próxima gravação do relógio cura.
+func (r *Room) writeClockCheckpoint(snap clock.Snapshot, gen uint64) bool {
+	r.clockPersistMu.Lock()
+	defer r.clockPersistMu.Unlock()
+	if r.clockWriteGen.Load() != gen {
+		return false
+	}
+	if err := r.deps.ClockRepo.Save(context.Background(), r.matchUUID, snap, nil); err != nil {
+		log.Printf("clock checkpoint FAILED — clock of match %s NOT written (kept in memory for the next save): %v", r.matchUUID, err)
+		return false
+	}
+	return true
 }
 
 // handleGetCombatSummary responde ao mestre, só a ele, o resumo do combate da cena ativa (spec

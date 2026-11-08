@@ -78,7 +78,7 @@ func (r *Room) ensureSceneAndRoundRows(
 	// O relógio é copiado aqui, junto dos fins de round não gravados; a cópia de sc/rd feita
 	// pelo chamador é de outra seção crítica, mas nada move o relógio entre as duas sem que
 	// o mestre mande outra mensagem, que passa pelo mesmo laço de leitura que esta gravação.
-	snap := sess.ClockSnapshotNow()
+	snap := r.clockSnapshotForWriteLocked(sess)
 	r.mu.RUnlock()
 	var err error
 	if len(ends) == 0 {
@@ -135,7 +135,7 @@ func (r *Room) persistRoundClose(sess *matchsession.MatchSession, closed *rounde
 	r.mu.RLock()
 	sc, closedCopy := snapshotSceneAndRound(sess.GetActiveScene(), closed)
 	_, next := snapshotSceneAndRound(nil, sess.GetActiveRound())
-	snap := sess.ClockSnapshotNow() // mesma seção crítica das demais cópias
+	snap := r.clockSnapshotForWriteLocked(sess) // mesma seção crítica das demais cópias
 	r.mu.RUnlock()
 	r.writeRoundClose(sess, sc, closedCopy, next, snap, "round_closed")
 }

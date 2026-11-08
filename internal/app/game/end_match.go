@@ -133,6 +133,8 @@ func (r *Room) matchEndDataLocked(
 	rd.Close(plan.ClosedAt)
 	sc.Close(plan.ClosedAt)
 	sc.SetStoryFinishedAt(plan.StoryAt)
+	// O relógio do fim é um retrato que vai a uma gravação: um checkpoint anterior não o sobrescreve.
+	r.clockWriteGen.Add(1)
 	d := appmatch.MatchEndData{
 		MatchUUID: r.matchUUID, GameEndAt: plan.ClosedAt.UTC(), StoryAt: plan.StoryAt,
 		BriefFinalDescription: brief,
