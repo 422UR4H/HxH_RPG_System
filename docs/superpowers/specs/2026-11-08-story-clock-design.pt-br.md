@@ -162,6 +162,9 @@ Combate = **cena de categoria `battle`**. O combate termina trocando de cena.
   A coluna é `TIMESTAMP` e já tem a regra "não regride" (`ErrCannotRegressStoryCurrentAt`): grava
   `GREATEST(COALESCE(story_current_at, instante), instante)` — uma partida jogada fora de ordem não
   puxa a campanha para trás (minha).
+- **Todas as fichas participantes** (jogadores e NPCs, `match_participants`) avançam
+  `character_sheets.story_current_at` (`DATE`) para a data do instante final (dono, 08/11: "as
+  fichas participantes também! todas!!"), pela mesma regra de nunca regredir, na mesma transação.
   A fila e as reações em memória são descartadas. Depois: `match_ended` para a mesa inteira, a
   sala fecha as conexões com o **código 4002 `match ended`** e para.
 - **O que marca "encerrada":** `game_end_at != nil` (minha, hipótese do handoff confirmada pelo

@@ -162,7 +162,9 @@ Combat = **scene of category `battle`**. Combat ends by changing scene.
   and **`campaigns.story_current_at` advances to the final instant** (owner, 08/11: "this is the idea"). The column is
   `TIMESTAMP` and already has the "does not regress" rule (`ErrCannotRegressStoryCurrentAt`): it writes
   `GREATEST(COALESCE(story_current_at, instant), instant)` — a match played out of order does not pull the campaign
-  backwards (mine).
+  backwards (mine). **Every participating sheet** (players and NPCs, `match_participants`) advances
+  `character_sheets.story_current_at` (`DATE`) to the final instant's date (owner, 08/11: "the
+  participating sheets too! all of them!!"), by the same never-regress rule, in the same transaction.
   The queue and the in-memory reactions are discarded. Afterwards: `match_ended` to the whole table, and the room closes
   the connections with **code 4002 `match ended`** and stops.
 - **What marks "ended":** `game_end_at != nil` (mine, hypothesis from the handoff confirmed by the model: `story_end_at`
