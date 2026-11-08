@@ -133,6 +133,9 @@ Mesmo formato de `GET /matches/{uuid}` — partida com campos atualizados.
 `storyStartTime` e `gameEndAt` (RFC 3339, `null`/omitido enquanto a partida não
 foi encerrada) também aparecem nas respostas de criação, edição e `GET /matches/{uuid}`.
 `storyStartTime` sai sempre como `"HH:MM:SS"` e é omitido quando não há horário.
+`storyEndTime` (`"HH:MM:SS"`, hora do fim **na história**) sai só em partida encerrada (`GET` e `PATCH`).
+Os resumos de partida (`GET /matches`, públicas, inscrições, participantes) trazem `gameEndAt`.
+O relógio da história e o fim da partida: [`match-clock.md`](match-clock.md).
 Partida encerrada = `gameEndAt` preenchido (`Match.IsFinished()`); `storyEndAt` é outro conceito.
 
 ### Erros

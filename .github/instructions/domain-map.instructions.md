@@ -34,7 +34,8 @@ applyTo: "internal/**"
 - ✅ `domain/match/entity/scene/` — Scene entity with UUID id, Close(), GetID(); ReconstructScene for DB hydration
 - ✅ `domain/match/matchsession/` — In-memory match state: MatchSession, persistence flags, NewMatchSessionWithState; rolls an action's dice on arrival, resolves turns and applies damage on turn close (`TurnTransition`)
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented)
-- ✅ `gateway/pg/round/` — PersistTurnClose (atomic: turn, HP, master actions, board, and a round's end + successor), PersistRoundClose (a round's end + successor, atomic), EnsureSceneAndRound, FindActiveSession, CloseSceneAndRound
+- ✅ `gateway/pg/round/` — PersistTurnClose (atomic: turn, HP, master actions, board, and a round's end + successor), PersistRoundClose (a round's end + successor, atomic), EnsureSceneAndRound, FindActiveSession, CloseSceneAndRound, **PersistMatchEnd** (`persist_match_end.go`, in `round` to avoid an import cycle; ONE transaction: match end fields, scene/round close, clock, `clockRealTime` event, campaign and participant sheets' `story_current_at`, unwritten sheet bars) and ReadMatchEnd
+- ✅ `domain/match/entity/clock/` + `gateway/pg/clock/` — Story clock (naive story time, limit, pause reasons, 1 round = 1 s); `match_clocks` retrato + evento numa transação. Ver `docs/dev/match/clock.md`, contrato em `docs/dev/api/match-clock.md`
 - ✅ `app/api/` — HTTP handlers (unit tested with humatest)
 - ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern); ChangeScene and EnqueueMasterAction messages; PersistTurnClose on turn close
 - ✅ `application/` — Use cases migrated from domain/ (all features); ChangeSceneUC, EnqueueMasterActionUC added

@@ -26,6 +26,8 @@ Sent to a participant who tries to connect before the master has opened the lobb
 
 The server immediately follows with a WebSocket close frame (code 4001, reason: "lobby not open") and closes the connection.
 
+**Partida encerrada (`match_ended` + 4002).** Quem conecta (lobby ou mesa, mestre ou jogador inscrito) a uma partida já encerrada recebe `match_ended` e o close frame com código **4002**, motivo `"match ended"`, logo depois do upgrade — nenhuma sala é criada. O cliente não deve reconectar. Ver [`match-clock.md`](match-clock.md#match_ended).
+
 A player gets the exact same message if the room closed in the narrow gap between the
 server checking it exists and actually registering the connection (B7, spec §4.6,
 `Room.Register` returning `ErrRoomClosed` instead of hanging on a dead room) — from the

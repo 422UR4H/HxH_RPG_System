@@ -111,6 +111,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`change_scene`](#change_scene) | mestre |
 | [`enqueue_master_action`](#enqueue_master_action) | mestre |
 | [`add_npc`](#add_npc) | mestre |
+| `set_clock_start`, `adjust_clock`, `set_clock`, `play_clock`, `pause_clock`, `get_combat_summary`, `end_match` | mestre — ver [`match-clock.md`](match-clock.md) |
 
 **Servidor → cliente**
 
@@ -134,6 +135,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`master_action_enqueued`](#master_action_enqueued) | mesa inteira; **só o mestre** nas ações de peça |
 | [`master_action_recorded`](#master_action_recorded) | o mestre + quem pode ler o registro no histórico |
 | [`npc_added`](#npc_added) | mesa inteira |
+| `clock_changed` · `combat_summary` · `match_ended` | relógio da história, resumo do combate e fim da partida — ver [`match-clock.md`](match-clock.md) |
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
 | [`error`](#error) | só quem enviou |
@@ -960,9 +962,15 @@ Fecha cena e rodada correntes e abre uma cena nova com a primeira rodada dentro.
 destinatário: a rodada nova não tem preço nem turno. Os dois viajam em pistas diferentes, sem
 ordem garantida entre eles.
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid change_scene payload"`) ·
+**Campos novos (relógio da história):** `briefFinalDescription?`, `storyAt?` (naïve) e
+`confirmLongSkip?` — semântica, ordem das mensagens (`scene_changed` → `clock_changed` pause →
+`clock_changed` scene) e erros em [`match-clock.md`](match-clock.md#change_scene-campos-novos).
+
+**Erros:** `forbidden` · `invalid_payload` (`"invalid change_scene payload"`; também
+`briefFinalDescription` > 255 e `storyAt` malformado) ·
 `invalid_action` (`"invalid name of scene category: X"` — `category` fora de
-`"battle"`/`"roleplay"`) · `match_not_started` ·
+`"battle"`/`"roleplay"`) · `match_not_started` · `clock_not_set` · `clock_below_limit` ·
+`clock_long_skip_unconfirmed` ·
 `game_error` (`cannot close round: current turn is still open`).
 
 ### `enqueue_master_action`
@@ -2442,6 +2450,7 @@ continuam, porque isso o dono já sabia que declarou.
 |---|---|
 | `scene` | O payload de [`scene_changed`](#scene_changed) **inteiro** — `sceneId`/`category`/`briefInitialDescription`, os mesmos nomes, a mesma struct. Não é uma segunda forma para os mesmos três valores. **Ausente** (`omitempty`) quando a partida não tem cena ativa — `Scene *SceneChangedPayload` com `omitempty` **omite a chave inteira**, não emite `null`; em TypeScript o campo é `scene?: SceneChangedPayload`, não `scene: SceneChangedPayload \| null`. Leia `scene === undefined` como "sem cena", não como "cena sem nome". `category` é minúscula (`"battle"`/`"roleplay"`) e é validada contra o enum — ver `change_scene`. |
 | `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
+| `clock` | O estado do relógio da história (`seq`, `storyAt`, `running`, `limitAt`, `limitReason`), o mesmo de `clock_changed.clock`, com o `seq` corrente. **`storyAt: null` = hora não definida** (o mestre recebe o diálogo obrigatório). Tempos naïve, sem fuso — nunca passe por `Date`. Ver [`match-clock.md`](match-clock.md#3-o-estado-do-relógio). Ausente sem sessão. |
 | `passiveValue` | O valor base do conjunto de dados — o que um teste passivo lê em vez de rolar (**11** no 2D10, **10** no D20). O editor do mestre o nomeia ao avisar que um viés faz o teste passivo rolar contra ele. Ausente sem sessão. (2026-10-12.) |
 | `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. **Projetado para este destinatário**: o mestre recebe a visão dele, o jogador a de jogador (ver [`bars_updated`](#bars_updated)). |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
@@ -2831,6 +2840,7 @@ vale para o REST.
 | `npc_already_in_match` | O NPC já está na SESSÃO viva (`ErrCharacterAlreadyInSession`) — **não confundir com a duplicata do banco**, que este verbo tolera de propósito (ver [`add_npc`](#add_npc)). | `add_npc`. |
 | `unknown_wall` | `"wall <id> is not on this match's board"` — um `targetId` de parede que o servidor não conhece (B14, spec §4.3, "Última defesa"). O resto do lote em `targetIds` ainda é processado. | `enqueue_master_action` (`interact.kind == "reveal"` e qualquer outro `interact`). |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
+| `clock_not_set` · `clock_already_set` · `clock_below_limit` · `clock_long_skip_unconfirmed` · `clock_play_in_race` · `clock_already_running` · `match_in_battle` · `match_already_ended` · `not_battle_scene` | Relógio da história, resumo do combate e fim da partida. Gatilho de cada um em [`match-clock.md` §6](match-clock.md#6-catálogo-de-erros). | `open_next_action`, `pull_action`, `change_round_mode`, `change_scene` e os comandos de relógio/`end_match`. |
 | `connection_replaced` | `"this account connected again elsewhere"` — a mesma conta abriu outra conexão; esta é a antiga, e o servidor a fecha a seguir (B4, spec §4.6). Ver [`connection_replaced`](#connection_replaced). | Não é resposta a mensagem nenhuma — dispara no `register`. |
 
 **`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou — **exceto
@@ -2913,6 +2923,7 @@ linhas que este contrato — o tabuleiro, a fila e o turno aberto — precisa di
 | Tabuleiro (posições, paredes, fog) | `map_full_state` do servidor (ver [`maps.md`](maps.md#map_full_state)) | **volta** de `match_boards` + `player_memories` (B3) |
 | Fila | mestre: `queue`; dono: `ownQueue` (B12) — ambos em [`match_full_state`](#match_full_state) | **perdida** — `ownQueue` volta `[]`; o cliente descarta o rascunho com aviso e devolve para quem declarou. **Ninguém reenvia sozinho** |
 | Turno aberto, reações anexadas, master actions feitas dentro dele | `openTurn` em [`match_full_state`](#match_full_state) com `action` e `reactions` (abertas); `ownReactions` com as suas; mestre recebe `resolution` | **perdido inteiro** — o turno só persiste ao FECHAR, e tudo o que aconteceu dentro dele vai junto: a peça da action volta para onde o último fechamento a deixou, as master actions do mestre feitas com o turno aberto (peça, parede, nota) não chegam a ser gravadas (ver abaixo), e as reações e o que elas consumiram vão junto |
+| Relógio da história | `match_full_state.clock`; rodando, o cliente conta a partir do recebimento | **volta pausado** no último checkpoint (grava a cada 60 s rodando); perde ≤ 1 min, nunca soma o tempo parado. Ver [`match-clock.md` §7](match-clock.md#7-reconexão-reinício-queda) |
 | Duas abas (mesma conta conecta de novo) | a última vence — a antiga recebe [`connection_replaced`](#connection_replaced) e é fechada pelo servidor (B4) | — |
 | `Register` numa sala que já fechou (`Run` retornou) | não trava — `ErrRoomClosed`; o mestre tenta uma vez mais contra uma sala nova (`GetOrCreateRoom`), o jogador recebe `lobby_not_open` (B7) | — |
 
