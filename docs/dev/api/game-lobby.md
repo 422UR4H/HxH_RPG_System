@@ -26,6 +26,8 @@ Sent to a participant who tries to connect before the master has opened the lobb
 
 The server immediately follows with a WebSocket close frame (code 4001, reason: "lobby not open") and closes the connection.
 
+> **4001 e 4002 são terminais.** O cliente não reconecta em nenhum dos dois. 4001 = lobby não aberto; **4002 = partida encerrada** (ver abaixo).
+
 **Partida encerrada (`match_ended` + 4002).** Quem conecta (lobby ou mesa, mestre ou jogador inscrito) a uma partida já encerrada recebe `match_ended` e o close frame com código **4002**, motivo `"match ended"`, logo depois do upgrade — nenhuma sala é criada. O cliente não deve reconectar. Ver [`match-clock.md`](match-clock.md#match_ended).
 
 A player gets the exact same message if the room closed in the narrow gap between the
@@ -34,6 +36,12 @@ server checking it exists and actually registering the connection (B7, spec §4.
 player's side there is no way to tell a room that never opened from one that just closed;
 either way the lobby only reopens when the master reconnects. The master never sees this:
 on the same race it transparently retries against a freshly (re)created room.
+
+**Exceção — a partida acabou nessa janela.** Se o motivo de a sala ter fechado é um `end_match` que
+gravou depois da primeira conferência do handler, o `ErrRoomClosed` não vira 4001 nem retry:
+**jogador e mestre** recebem `match_ended` + close **4002** (`rejectClosedRoom` /
+`rejectMatchEnded` em `handler.go`; o mestre relê o fim antes de criar sala nova). Quem registra
+em uma sala que já encerrou mas ainda não parou recebe o mesmo `match_ended` + 4002.
 
 #### `connection_replaced`
 

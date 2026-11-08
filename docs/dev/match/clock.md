@@ -46,7 +46,7 @@ aberto é gravado antes do fechamento dele.
 - **`end_match`** (`PersistMatchEnd`, uma transação): campos de fim da partida
   (`game_end_at`, `story_end_at`, `brief_final_description`; recusa partida já encerrada), fins de
   round ainda não gravados + cena/round ativos fechados, relógio parado no instante final,
-  `clockRealTime` da pausa, `campaigns.story_current_at` e `story_current_at` das fichas
+  `clockRealTime` da pausa, as barras de HP ainda não gravadas (`MatchEndData.StatusBars`: o fim é a última escrita da partida), `campaigns.story_current_at` e `story_current_at` das fichas
   participantes (ambos com `GREATEST`, nunca regridem). A sala **grava antes de aplicar** o fim na
   sessão (`PlanEndMatch` calcula sem mutar; `EndMatchAt` aplica no mesmo instante real): se a
   gravação falha, a sessão fica intacta. Depois: `match_ended` → toda conexão fecha com 4002

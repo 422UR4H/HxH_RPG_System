@@ -443,7 +443,7 @@ Formato `error` de `match-combat-ws.md` §5. Vão **só** a quem enviou. Código
 | `clock_play_in_race` | `play_clock` com o round no regime `Race` | `play_clock` |
 | `clock_already_running` | `play_clock` com o tempo real já ligado | `play_clock` |
 | `match_in_battle` | `end_match` com a cena ativa de combate | `end_match` |
-| `match_already_ended` | a partida já foi encerrada e o comando chegou depois do fim (a sala fecha as conexões logo em seguida; só uma mensagem em voo na corrida vê isso) | `end_match` e demais comandos do mestre |
+| `match_already_ended` | a partida já foi encerrada e **qualquer mensagem de qualquer cliente** chegou depois do fim (o guarda roda no topo de `handleClientMessage`: mestre, jogadores, chat, tudo) — só uma mensagem em voo na corrida o vê, pois a sala fecha as conexões em seguida. **Terminal para o front**: trate como `match_ended` (parar, não reenviar, não reconectar). | qualquer mensagem |
 | `not_battle_scene` | a cena ativa não é combate | `get_combat_summary` |
 
 Reaproveitados: `forbidden` (não é o mestre) · `invalid_payload` (JSON inválido; `deltaSeconds` 0 ou
@@ -478,7 +478,7 @@ chegam também em `open_next_action`, `pull_action`, `change_round_mode` e `chan
 | `play_clock`, checkpoint | só o estado do relógio |
 | fechamento de turno / fim de round | a do turno: `turns.story_at` (instante da **abertura**), `rounds.counted`/`drained` e o relógio, juntos (regra "um comando do mestre, uma transação"). **Abrir** um turno sobe o limite só em memória; um reinício com turno aberto o perde junto e o limite volta ao último gravado. |
 | `change_scene` | fechamento do par antigo (cena com `briefFinalDescription` e `storyFinishedAt`, round com `counted`/`drained`) + relógio, numa transação; depois o par novo (com `storyStartedAt`) e o `clockRealTime` da pausa |
-| `end_match` | **uma** transação: `matches.game_end_at` (real) / `story_end_at` (data) / `brief_final_description`; cena e round fechados; relógio parado no instante final; `clockRealTime` da pausa `end`; `campaigns.story_current_at` = `GREATEST(atual, instante final)`; `character_sheets.story_current_at` (data) de **todas** as fichas de `match_participants` (jogadores e NPCs), mesma regra de nunca regredir. Recusa partida já encerrada. |
+| `end_match` | **uma** transação: `matches.game_end_at` (real) / `story_end_at` (data) / `brief_final_description`; cena e round fechados; relógio parado no instante final; `clockRealTime` da pausa `end`; as barras de HP ainda não gravadas (`MatchEndData.StatusBars`, fichas de um fechamento de turno que falhou); `campaigns.story_current_at` = `GREATEST(atual, instante final)`; `character_sheets.story_current_at` (data) de **todas** as fichas de `match_participants` (jogadores e NPCs), mesma regra de nunca regredir. Recusa partida já encerrada. |
 
 ## 8. Histórico e campos REST
 
