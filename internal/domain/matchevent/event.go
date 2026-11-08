@@ -15,6 +15,12 @@ type Kind string
 
 const (
 	KindRoundModeChanged Kind = "roundModeChanged"
+	// Relógio da história (spec 2026-11-08 §7). Payloads, tempos como clock.FormatStory:
+	// clockStarted {"at"}; clockAdjusted {"from","to","deltaSeconds"};
+	// clockRealTime {"from","to","elapsedSeconds","reason"} (gravado a cada pausa).
+	KindClockStarted  Kind = "clockStarted"
+	KindClockAdjusted Kind = "clockAdjusted"
+	KindClockRealTime Kind = "clockRealTime"
 )
 
 // Event is something that happened inside a round that is not a turn and is nobody's

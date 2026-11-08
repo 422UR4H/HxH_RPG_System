@@ -159,6 +159,14 @@ type combatFixture struct {
 	// cancelled with no turn open lands here at once; one cancelled inside a turn reaches
 	// PersistTurnClose instead (roundRepo.closeData).
 	cancelled *fakeCancelledActionStore
+	// depsHook ajusta as RoomDeps no fim de roomDeps (withRoomDeps); nil sem a opção.
+	depsHook func(*game.RoomDeps)
+}
+
+// withRoomDeps acrescenta dependências à sala (o relógio da história, por exemplo) sem mudar
+// a mesa que os demais testes usam.
+func withRoomDeps(hook func(*game.RoomDeps)) combatOpt {
+	return func(f *combatFixture) { f.depsHook = hook }
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -380,6 +388,9 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 	}
 	if f.noMasterActionRepo {
 		deps.MasterActionRepo = nil
+	}
+	if f.depsHook != nil {
+		f.depsHook(&deps)
 	}
 	return deps
 }

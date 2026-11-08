@@ -136,6 +136,8 @@ func main() {
 			MasterActionRepo:    masterActionRepository,
 			EventRepo:           matchEventRepository,
 			CancelledActionRepo: cancelledActionRepository,
+			ClockUC:             match.NewClockCommandsUC(matchRepository),
+			ClockRepo:           clockRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

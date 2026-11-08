@@ -115,6 +115,16 @@ const (
 	MsgTypeVisibilityUpdated MessageType = "visibility_updated"
 	MsgTypeWallRevealed      MessageType = "wall_revealed"
 
+	// Cliente → servidor (só o mestre): o relógio da história (spec 2026-11-08 §7).
+	MsgTypeSetClockStart MessageType = "set_clock_start"
+	MsgTypeAdjustClock   MessageType = "adjust_clock"
+	MsgTypeSetClock      MessageType = "set_clock"
+	MsgTypePlayClock     MessageType = "play_clock"
+	MsgTypePauseClock    MessageType = "pause_clock"
+
+	// Servidor → cliente (mesa inteira): o relógio mudou.
+	MsgTypeClockChanged MessageType = "clock_changed"
+
 	// Cliente → servidor (só o mestre): o mestre passa a ver o tabuleiro pelos olhos de uma
 	// peça. pieceId vazio encerra.
 	MsgTypeWatchPieceView MessageType = "watch_piece_view"
@@ -945,6 +955,9 @@ type MatchFullStatePayload struct {
 	// scene" expressible, which three flat zero-valued fields could not say.
 	Scene     *SceneChangedPayload `json:"scene,omitempty"`
 	RoundMode string               `json:"roundMode"`
+	// Clock é o relógio da história, no mesmo formato do clock_changed; ausente só antes de
+	// existir sessão. storyAt null = horário não definido (o mestre recebe o diálogo).
+	Clock *ClockPayload `json:"clock,omitempty"`
 	// PassiveValue is the dice set's base value — what a passive test reads instead of rolling
 	// (11 on 2D10, 10 on D20; MatchRules.PassiveValue). The master's editor names it when it says
 	// a bias makes a passive test roll against it. A rule of the match, so it travels with the
@@ -1396,3 +1409,43 @@ func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {
 // nothing decodes a WallSegmentPayload/GridShapePayload back into the domain shape any more.
 // toWallSegmentPayload above (entity → payload) is still very much alive — it is how the
 // server's OWN board goes out over the wire.
+
+// SetClockStartPayload: time é "HH:MM" ou "HH:MM:SS"; a data é a da história da partida.
+type SetClockStartPayload struct {
+	Time string `json:"time"`
+}
+
+type AdjustClockPayload struct {
+	DeltaSeconds    int64 `json:"deltaSeconds"`
+	ConfirmLongSkip bool  `json:"confirmLongSkip,omitempty"`
+}
+
+type SetClockPayload struct {
+	StoryAt         string `json:"storyAt"`
+	ConfirmLongSkip bool   `json:"confirmLongSkip,omitempty"`
+}
+
+// ClockPayload é o estado do relógio: em match_full_state.clock e em todo clock_changed.
+// Tempos no formato ingênuo "2006-01-02T15:04:05"; storyAt/limitAt nil = não definido. Com
+// running, o cliente conta a partir do instante em que recebeu a mensagem.
+type ClockPayload struct {
+	StoryAt     *string `json:"storyAt"`
+	Running     bool    `json:"running"`
+	LimitAt     *string `json:"limitAt"`
+	LimitReason string  `json:"limitReason"`
+}
+
+// ClockChangePayload diz o que mudou. Kind ∈ start|adjust|set|play|pause|round|scene|end|limit;
+// Reason só em pause (manual|roundMode|scene|masterLeft|end|restart).
+type ClockChangePayload struct {
+	Kind         string  `json:"kind"`
+	From         *string `json:"from,omitempty"`
+	To           *string `json:"to,omitempty"`
+	DeltaSeconds int64   `json:"deltaSeconds,omitempty"`
+	Reason       string  `json:"reason,omitempty"`
+}
+
+type ClockChangedPayload struct {
+	Clock  ClockPayload       `json:"clock"`
+	Change ClockChangePayload `json:"change"`
+}
