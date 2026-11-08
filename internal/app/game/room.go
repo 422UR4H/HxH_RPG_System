@@ -203,6 +203,11 @@ type Room struct {
 	// lastAdjust é a janela de fusão dos ajustes do relógio (clock.go); nil = fechada.
 	// Protegido por mu.
 	lastAdjust *clockAdjustMark
+	// mergeGen conta os fechamentos da janela de fusão; clockSeq numera os retratos do relógio
+	// anunciados (começa no relógio, como barsSeq, para não recomeçar numa sala nova).
+	// Protegidos por mu.
+	mergeGen uint64
+	clockSeq uint64
 	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem:
 	// clockPersistMu, depois mu.
 	clockPersistMu sync.Mutex
@@ -236,6 +241,7 @@ func NewRoom(
 		barsSeq:    uint64(time.Now().UnixMicro()),
 
 		nowFn:                deps.Now,
+		clockSeq:             uint64(time.Now().UnixMicro()),
 		clockCheckpointEvery: defaultClockCheckpointEvery,
 	}
 	if deps.ClockCheckpointEvery > 0 {
@@ -1019,6 +1025,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// round_closed, pela mesma goroutine, para chegar nessa ordem.
 			var clockData []byte
 			if result.ClosedRound.IsCounted() {
+				// Lido numa seção crítica depois da do Execute: seguro, os comandos do mestre são
+				// serializados pela leitura única dele — nenhum outro mexe no relógio no meio.
 				r.mu.RLock()
 				to := session.Clock().Now(r.now())
 				r.mu.RUnlock()
@@ -1085,6 +1093,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		// Recorded before the table is told, so the history never lags what the table saw.
 		r.recordRoundModeChanged(session, modeScene, modeRound, oldMode, newMode)
+		// O retrato do relógio sai de seção crítica posterior à da troca: seguro, os comandos do
+		// mestre são serializados pela leitura única dele.
 		// A troca de regime pausa o relógio (clockRealTime) e sobe o limite; sem pausa, o
 		// limite novo é gravado e anunciado sozinho (kind limit).
 		clockData := r.announceClockPause(session, modePause, "change_round_mode")

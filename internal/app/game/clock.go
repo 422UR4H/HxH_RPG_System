@@ -23,11 +23,13 @@ const clockMergeWindow = 10 * time.Second
 const defaultClockCheckpointEvery = 60 * time.Second
 
 // clockAdjustMark é o último clockAdjusted gravado, para a fusão: eventUUID é a linha que o
-// próximo ajuste atualiza, at o instante real dele, from o início da sequência fundida.
+// próximo ajuste atualiza, at o instante real dele, from o início da sequência fundida e
+// deltaSum a soma dos deltas que o mestre pediu (o tempo real que correu entre eles não entra).
 type clockAdjustMark struct {
 	eventUUID uuid.UUID
 	at        time.Time
 	from      time.Time
+	deltaSum  int64
 }
 
 // pendingClockEvent é o evento que acompanha um Save do relógio. mergeInto != uuid.Nil
@@ -89,14 +91,25 @@ func clockPayloadOf(s clock.Snapshot) ClockPayload {
 
 // clockPayloadLocked é o estado do relógio agora. O chamador segura r.mu (leitura ou escrita).
 func (r *Room) clockPayloadLocked(sess *matchsession.MatchSession) ClockPayload {
-	return clockPayloadOf(sess.ClockSnapshot(r.now()))
+	p := clockPayloadOf(sess.ClockSnapshot(r.now()))
+	p.Seq = r.clockSeq
+	return p
 }
 
-// clockChangedData monta o clock_changed com o estado de agora. Toma r.mu.RLock.
+// clockPayloadLocked é o estado do relógio agora, com o seq corrente (sem avançá-lo).
+// O chamador segura r.mu (leitura ou escrita).
+//
+// clockChangedData monta o clock_changed com o estado de agora e um seq novo: o retrato e o
+// número saem da mesma seção crítica, então o seq ordena os RETRATOS — o cliente descarta um
+// seq menor que o maior que aplicou (as duas faixas de envio não têm ordem entre si). Toma
+// r.mu. O retrato é de uma seção crítica posterior à da mudança; é seguro porque os comandos
+// do mestre são serializados pela única leitura dele, e o que corre em paralelo (checkpoint,
+// saída do mestre) só pode deixar o retrato mais novo, nunca mais velho.
 func (r *Room) clockChangedData(sess *matchsession.MatchSession, change ClockChangePayload) []byte {
-	r.mu.RLock()
+	r.mu.Lock()
+	r.clockSeq++
 	state := r.clockPayloadLocked(sess)
-	r.mu.RUnlock()
+	r.mu.Unlock()
 	data, _ := json.Marshal(NewServerMessage(MsgTypeClockChanged, ClockChangedPayload{Clock: state, Change: change}))
 	return data
 }
@@ -115,7 +128,12 @@ func (r *Room) broadcastInOrder(msgs ...[]byte) {
 
 // clearClockMergeLocked fecha a janela de fusão dos ajustes. Chamado sob r.mu por todo
 // evento de relógio que não é ajuste e por turno, cena e regime.
-func (r *Room) clearClockMergeLocked() { r.lastAdjust = nil }
+// mergeGen conta os fechamentos, para um ajuste cuja gravação terminou depois de um deles
+// não reabrir a janela.
+func (r *Room) clearClockMergeLocked() {
+	r.lastAdjust = nil
+	r.mergeGen++
+}
 
 func pauseEvent(p *clock.Pause) *pendingClockEvent {
 	return &pendingClockEvent{
@@ -140,9 +158,13 @@ func pauseChange(p *clock.Pause) ClockChangePayload {
 // envolve retrato e escrita, para dois Saves de goroutines diferentes (comando do mestre,
 // checkpoint, saída do mestre) chegarem na ordem dos retratos. Falha é logada e engolida: o
 // relógio em memória manda e o próximo Save cura. O chamador NÃO pode segurar r.mu.
-func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEvent, why string) {
+//
+// Devolve true quando o evento (ev != nil) foi gravado — a fusão só aponta para linha que existe.
+// O retrato é tirado aqui, numa seção crítica posterior à da mudança: seguro pelo mesmo motivo
+// de clockChangedData (comandos do mestre serializados pela leitura única dele).
+func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEvent, why string) bool {
 	if r.deps.ClockRepo == nil || sess == nil {
-		return
+		return false
 	}
 	r.clockPersistMu.Lock()
 	defer r.clockPersistMu.Unlock()
@@ -164,7 +186,7 @@ func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEve
 			clockEv = &appmatch.ClockEvent{
 				Event: matchevent.Event{
 					UUID: ev.uuid, MatchUUID: r.matchUUID, SceneUUID: sc.GetID(), RoundUUID: rd.GetID(),
-					Kind: ev.kind, Payload: payload, CreatedAt: time.Now().UTC(),
+					Kind: ev.kind, Payload: payload, CreatedAt: r.now().UTC(),
 				},
 				MergeInto: ev.mergeInto,
 			}
@@ -172,7 +194,9 @@ func (r *Room) persistClock(sess *matchsession.MatchSession, ev *pendingClockEve
 	}
 	if err := r.deps.ClockRepo.Save(context.Background(), r.matchUUID, snap, clockEv); err != nil {
 		log.Printf("%s FAILED — clock of match %s NOT written (kept in memory for the next save): %v", why, r.matchUUID, err)
+		return false
 	}
+	return clockEv != nil
 }
 
 // sessionForClock devolve a sessão, ou responde ao cliente e devolve nil.
@@ -227,7 +251,8 @@ func (r *Room) handleSetClockStart(client *Client, raw json.RawMessage) {
 	// A data da história vem do banco: lida fora do r.mu.
 	date, err := r.deps.ClockUC.StoryDate(context.Background(), r.matchUUID)
 	if err != nil {
-		client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		log.Printf("set_clock_start: read story start date of match %s: %v", r.matchUUID, err)
+		client.SendMessage(NewErrorMessage("game_error", "could not read the match start date"))
 		return
 	}
 	at := date.Add(tod)
@@ -263,12 +288,12 @@ func (r *Room) handleAdjustClock(client *Client, raw json.RawMessage) {
 	real := r.now()
 	from, to, err := r.deps.ClockUC.Adjust(sess, r.masterUUID, client.userUUID,
 		time.Duration(payload.DeltaSeconds)*time.Second, payload.ConfirmLongSkip, real)
-	var ev *pendingClockEvent
+	var mv clockMove
 	if err == nil {
-		ev = r.noteClockMoveLocked(from, to, real)
+		mv = r.noteClockMoveLocked(from, to, real)
 	}
 	r.mu.Unlock()
-	r.finishClockMove(client, sess, "adjust", from, to, ev, err)
+	r.finishClockMove(client, sess, "adjust", from, to, mv, err)
 }
 
 func (r *Room) handleSetClock(client *Client, raw json.RawMessage) {
@@ -289,41 +314,64 @@ func (r *Room) handleSetClock(client *Client, raw json.RawMessage) {
 	r.mu.Lock()
 	real := r.now()
 	from, err := r.deps.ClockUC.Set(sess, r.masterUUID, client.userUUID, to, payload.ConfirmLongSkip, real)
-	var ev *pendingClockEvent
+	var mv clockMove
 	if err == nil {
-		ev = r.noteClockMoveLocked(from, to, real)
+		mv = r.noteClockMoveLocked(from, to, real)
 	}
 	r.mu.Unlock()
-	r.finishClockMove(client, sess, "set", from, to, ev, err)
+	r.finishClockMove(client, sess, "set", from, to, mv, err)
 }
 
-// noteClockMoveLocked decide a fusão de um ajuste (adjust_clock ou set_clock) e devolve o
-// clockAdjusted a gravar: dentro da janela, a mesma linha, com o from da sequência e o
-// delta acumulado. O chamador segura r.mu.
-func (r *Room) noteClockMoveLocked(from, to, real time.Time) *pendingClockEvent {
+// clockMove é o clockAdjusted a gravar e a marca de fusão que ele deixa se for gravado. gen é
+// o mergeGen do instante da mudança.
+type clockMove struct {
+	ev   *pendingClockEvent
+	mark clockAdjustMark
+	gen  uint64
+}
+
+// noteClockMoveLocked decide a fusão de um ajuste (adjust_clock ou set_clock): dentro da janela,
+// a mesma linha, com o from da sequência e a soma dos deltas pedidos (set_clock entra com
+// to − from no próprio instante). Não abre a janela: isso é de finishClockMove, depois que o
+// evento foi gravado. O chamador segura r.mu.
+func (r *Room) noteClockMoveLocked(from, to, real time.Time) clockMove {
 	ev := &pendingClockEvent{uuid: uuid.New(), kind: matchevent.KindClockAdjusted}
-	seqFrom := from
+	delta := int64(to.Sub(from) / time.Second)
+	seqFrom, sum := from, delta
 	if last := r.lastAdjust; last != nil && real.Sub(last.at) <= clockMergeWindow {
-		ev.uuid, ev.mergeInto, seqFrom = last.eventUUID, last.eventUUID, last.from
+		ev.uuid, ev.mergeInto, seqFrom, sum = last.eventUUID, last.eventUUID, last.from, last.deltaSum+delta
 	}
-	r.lastAdjust = &clockAdjustMark{eventUUID: ev.uuid, at: real, from: seqFrom}
 	ev.payload = map[string]any{
 		"from":         clock.FormatStory(seqFrom),
 		"to":           clock.FormatStory(to),
-		"deltaSeconds": int64(to.Sub(seqFrom) / time.Second),
+		"deltaSeconds": sum,
 	}
-	return ev
+	return clockMove{
+		ev:   ev,
+		mark: clockAdjustMark{eventUUID: ev.uuid, at: real, from: seqFrom, deltaSum: sum},
+		gen:  r.mergeGen,
+	}
 }
 
 func (r *Room) finishClockMove(
 	client *Client, sess *matchsession.MatchSession, kind string, from, to time.Time,
-	ev *pendingClockEvent, err error,
+	mv clockMove, err error,
 ) {
 	if err != nil {
 		client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
 		return
 	}
-	r.persistClock(sess, ev, "clock "+kind)
+	recorded := r.persistClock(sess, mv.ev, "clock "+kind)
+	r.mu.Lock()
+	switch {
+	case !recorded:
+		// Evento não gravado: o próximo ajuste não pode fundir numa linha que não existe.
+		r.lastAdjust = nil
+	case mv.gen == r.mergeGen:
+		mark := mv.mark
+		r.lastAdjust = &mark
+	}
+	r.mu.Unlock()
 	r.broadcastInOrder(r.clockChangedData(sess, ClockChangePayload{
 		Kind: kind, From: storyPtr(from), To: storyPtr(to),
 		DeltaSeconds: int64(to.Sub(from) / time.Second),
@@ -423,6 +471,8 @@ func (r *Room) checkpointClock() {
 	running := sess != nil && sess.Clock().Running()
 	r.mu.RUnlock()
 	if running {
-		r.persistClock(sess, nil, "clock checkpoint")
+		// Fora da goroutine do Run (a escrita não segura a sala); clockPersistMu ordena as
+		// gravações pelos retratos.
+		go r.persistClock(sess, nil, "clock checkpoint")
 	}
 }

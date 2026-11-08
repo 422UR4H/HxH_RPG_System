@@ -1429,6 +1429,9 @@ type SetClockPayload struct {
 // Tempos no formato ingênuo "2006-01-02T15:04:05"; storyAt/limitAt nil = não definido. Com
 // running, o cliente conta a partir do instante em que recebeu a mensagem.
 type ClockPayload struct {
+	// Seq ordena os retratos do relógio, entre faixas de envio e reconexões: o cliente descarta
+	// um seq menor que o maior que aplicou. match_full_state leva o corrente, sem avançá-lo.
+	Seq         uint64  `json:"seq"`
 	StoryAt     *string `json:"storyAt"`
 	Running     bool    `json:"running"`
 	LimitAt     *string `json:"limitAt"`

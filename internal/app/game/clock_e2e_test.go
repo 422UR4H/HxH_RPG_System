@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -41,6 +42,13 @@ type fakeClockRepo struct {
 	mu     sync.Mutex
 	saves  []clock.Snapshot
 	events []matchevent.Event
+	fail   bool
+}
+
+func (r *fakeClockRepo) setFail(v bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fail = v
 }
 
 func (r *fakeClockRepo) Load(context.Context, uuid.UUID) (*clock.Snapshot, error) { return nil, nil }
@@ -48,6 +56,9 @@ func (r *fakeClockRepo) Load(context.Context, uuid.UUID) (*clock.Snapshot, error
 func (r *fakeClockRepo) Save(_ context.Context, _ uuid.UUID, snap clock.Snapshot, ev *appmatch.ClockEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.fail {
+		return errors.New("save failed")
+	}
 	r.saves = append(r.saves, snap)
 	if ev == nil {
 		return nil
@@ -403,6 +414,72 @@ func TestConsecutiveAdjustsMergeInHistory(t *testing.T) {
 	awaitClockChanged(t, pc, 3)
 	if n := len(cf.repo.eventsOf(matchevent.KindClockAdjusted)); n != 2 {
 		t.Errorf("clockAdjusted events = %d, want 2 after the window closed", n)
+	}
+}
+
+// O tempo real que corre entre dois ajustes fundidos não entra no deltaSeconds: é a soma do
+// que o mestre pediu.
+func TestConsecutiveAdjustsMergeWhileRunning(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	_, pc := cf.connectCollectors(t)
+	sendWS(t, cf.masterConn, "play_clock", map[string]any{})
+	awaitClockChanged(t, pc, 1)
+
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+	awaitClockChanged(t, pc, 2)
+	cf.now.advance(3 * time.Second)
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 30})
+	awaitClockChanged(t, pc, 3)
+
+	evs := cf.repo.eventsOf(matchevent.KindClockAdjusted)
+	if len(evs) != 1 {
+		t.Fatalf("clockAdjusted events = %d, want 1 (merged)", len(evs))
+	}
+	if m := payloadMap(t, evs[0]); m["from"] != "2000-01-01T00:00:00" || m["to"] != "2000-01-01T00:01:33" ||
+		m["deltaSeconds"] != float64(90) {
+		t.Errorf("merged payload = %v, want 00:00:00 → 00:01:33 with deltaSeconds 90", m)
+	}
+}
+
+// Sem gravação do evento, a janela não abre: o próximo ajuste é uma linha nova.
+func TestAdjustNotRecordedDoesNotOpenMergeWindow(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	_, pc := cf.connectCollectors(t)
+	cf.repo.setFail(true)
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+	awaitClockChanged(t, pc, 1)
+	cf.repo.setFail(false)
+	cf.now.advance(time.Second)
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 30})
+	awaitClockChanged(t, pc, 2)
+
+	evs := cf.repo.eventsOf(matchevent.KindClockAdjusted)
+	if len(evs) != 1 {
+		t.Fatalf("clockAdjusted events = %d, want 1", len(evs))
+	}
+	if m := payloadMap(t, evs[0]); m["from"] != "2000-01-01T00:01:00" || m["deltaSeconds"] != float64(30) {
+		t.Errorf("payload = %v, want a fresh row from 00:01:00 (+30)", m)
+	}
+}
+
+func TestClockChangedCarriesIncreasingSeq(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	mc, pc := cf.connectCollectors(t)
+	if !mc.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("no match_full_state")
+	}
+	var full game.MatchFullStatePayload
+	_ = json.Unmarshal(findMessage(t, mc.snapshotMessages(), game.MsgTypeMatchFullState).Payload, &full)
+	if full.Clock == nil || full.Clock.Seq == 0 {
+		t.Fatalf("match_full_state.clock.seq missing: %+v", full.Clock)
+	}
+
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+	first := awaitClockChanged(t, pc, 1)
+	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
+	second := awaitClockChanged(t, pc, 2)
+	if !(full.Clock.Seq < first.Clock.Seq && first.Clock.Seq < second.Clock.Seq) {
+		t.Errorf("seq = %d (full) → %d → %d, want strictly increasing", full.Clock.Seq, first.Clock.Seq, second.Clock.Seq)
 	}
 }
 
