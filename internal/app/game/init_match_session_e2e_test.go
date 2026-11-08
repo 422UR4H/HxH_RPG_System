@@ -130,7 +130,7 @@ func TestE2E_StartingTheMatchEnrollsTheNPCsOnTheBoard(t *testing.T) {
 	// The REAL InitMatchSessionUC — this is the whole point of the test — wired exactly as
 	// cmd/game/main.go wires it: boards.Load satisfies IBoardReader, repo.Add satisfies
 	// INPCEnroller.
-	initUC := appmatch.NewInitMatchSessionUC(repo, sheetLoader, roundRepo, boards, repo)
+	initUC := appmatch.NewInitMatchSessionUC(repo, sheetLoader, roundRepo, boards, repo, nil)
 
 	hub := game.NewHub()
 	go hub.Run()

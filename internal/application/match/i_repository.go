@@ -297,3 +297,19 @@ const (
 	// reader who saw the destination, an action with no move.
 	MoveSightWhole MoveSight = "whole"
 )
+
+// ClockEvent é o evento que acompanha um checkpoint do relógio (mudança de ritmo, pausa...).
+// MergeInto != uuid.Nil: em vez de inserir Event, atualiza o payload dessa linha de
+// match_events (só se ela for da mesma partida) — a regra de fusão do spec §6.
+type ClockEvent struct {
+	Event     matchevent.Event
+	MergeInto uuid.UUID
+}
+
+// IClockRepository persiste o relógio da história (match_clocks, uma linha por partida).
+type IClockRepository interface {
+	// Load devolve o checkpoint, ou (nil, nil) quando a partida ainda não tem relógio.
+	Load(ctx context.Context, matchUUID uuid.UUID) (*clock.Snapshot, error)
+	// Save grava o checkpoint e, se ev != nil, o evento — na mesma transação.
+	Save(ctx context.Context, matchUUID uuid.UUID, snap clock.Snapshot, ev *ClockEvent) error
+}

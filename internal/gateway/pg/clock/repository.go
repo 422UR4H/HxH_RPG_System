@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
+	pgmatchevent "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -90,3 +92,46 @@ func LoadFrom(ctx context.Context, q rowQuerier, matchUUID uuid.UUID) (*clock.Sn
 func (r *Repository) Load(ctx context.Context, matchUUID uuid.UUID) (*clock.Snapshot, error) {
 	return LoadFrom(ctx, r.pool, matchUUID)
 }
+
+// Save grava o checkpoint e, se ev != nil, o evento, numa transação só: o relógio e o que o
+// moveu ficam duráveis juntos ou não ficam. Com ev.MergeInto, atualiza o payload dessa linha
+// de match_events (só se for da mesma partida) em vez de inserir ev.Event.
+func (r *Repository) Save(
+	ctx context.Context, matchUUID uuid.UUID, snap clock.Snapshot, ev *appmatch.ClockEvent,
+) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin clock save: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if err := UpsertTx(ctx, tx, matchUUID, snap); err != nil {
+		return err
+	}
+	if ev != nil {
+		if ev.MergeInto != uuid.Nil {
+			payload := ev.Event.Payload
+			if payload == nil {
+				payload = []byte("{}")
+			}
+			tag, err := tx.Exec(ctx,
+				`UPDATE match_events SET payload = $1 WHERE uuid = $2 AND match_uuid = $3`,
+				[]byte(payload), ev.MergeInto, matchUUID,
+			)
+			if err != nil {
+				return fmt.Errorf("merge match event: %w", err)
+			}
+			if tag.RowsAffected() == 0 {
+				return fmt.Errorf("merge match event %s: not found in match %s", ev.MergeInto, matchUUID)
+			}
+		} else if err := pgmatchevent.NewRepository(tx).Insert(ctx, ev.Event); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit clock save: %w", err)
+	}
+	return nil
+}
+
+var _ appmatch.IClockRepository = (*Repository)(nil)

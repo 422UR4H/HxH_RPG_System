@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -42,16 +44,19 @@ type InitMatchSessionUC struct {
 	roundRepo   IRoundRepository
 	board       IBoardReader
 	npcs        INPCEnroller
+	clocks      IClockRepository
 }
 
 // NewInitMatchSessionUC wires the session loader. board and npcs are optional — nil for
 // either (or both) keeps the pre-B11 behaviour: no board is read and no piece is enrolled.
+// clocks é opcional: nil deixa o relógio provisório da sessão (testes e fiação antiga).
 func NewInitMatchSessionUC(
 	matchRepo IRepository, sheetLoader ICharSheetLoader, roundRepo IRoundRepository,
-	board IBoardReader, npcs INPCEnroller,
+	board IBoardReader, npcs INPCEnroller, clocks IClockRepository,
 ) *InitMatchSessionUC {
 	return &InitMatchSessionUC{
 		matchRepo: matchRepo, sheetLoader: sheetLoader, roundRepo: roundRepo, board: board, npcs: npcs,
+		clocks: clocks,
 	}
 }
 
@@ -93,6 +98,11 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 		charSheets[p.Sheet.UUID] = sheet
 	}
 
+	storyClock, err := uc.loadOrCreateClock(ctx, matchUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	data, err := uc.roundRepo.FindActiveSession(ctx, matchUUID)
 	if err != nil {
 		return nil, err
@@ -103,9 +113,64 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 		if data.SceneStoryStartedAt != nil {
 			sc.SetStoryStartedAt(*data.SceneStoryStartedAt)
 		}
-		return matchsession.NewMatchSessionWithState(matchUUID, charSheets, participants, sc, r), nil
+		session := matchsession.NewMatchSessionWithState(matchUUID, charSheets, participants, sc, r)
+		if storyClock != nil {
+			session.SetClock(storyClock)
+		}
+		return session, nil
 	}
-	return matchsession.NewMatchSession(matchUUID, charSheets, participants), nil
+	session := matchsession.NewMatchSession(matchUUID, charSheets, participants)
+	if storyClock != nil {
+		session.SetClock(storyClock)
+	}
+	return session, nil
+}
+
+// loadOrCreateClock devolve o relógio da história da partida, ou nil quando não há
+// repositório de relógio (a sessão fica com o relógio provisório).
+//
+// Sem linha: nasce do início configurado na partida (data + horário) ou, sem horário, não
+// definido; o checkpoint é gravado já. Linha rodando (a sala caiu com o relógio correndo):
+// pausa em StoryAt, o último checkpoint — o tempo parado não conta (spec §3.4). Nenhum evento
+// é gravado: a linha de match_events exige cena/round, que uma sala renascida pode ainda
+// não ter escrito; só log.
+func (uc *InitMatchSessionUC) loadOrCreateClock(ctx context.Context, matchUUID uuid.UUID) (*clock.Clock, error) {
+	if uc.clocks == nil {
+		return nil, nil
+	}
+	row, err := uc.clocks.Load(ctx, matchUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if row == nil {
+		mt, err := uc.matchRepo.GetMatch(ctx, matchUUID)
+		if err != nil {
+			return nil, err
+		}
+		c := clock.NewUnset()
+		if mt.StoryStartTime != nil {
+			d := mt.StoryStartAt.UTC()
+			midnight := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+			c = clock.NewAt(midnight.Add(*mt.StoryStartTime))
+		}
+		if err := uc.clocks.Save(ctx, matchUUID, c.Snapshot(time.Now()), nil); err != nil {
+			return nil, err
+		}
+		return c, nil
+	}
+
+	c := clock.Reconstruct(*row)
+	if row.Running && row.RunningSince != nil {
+		// Pausar no instante do checkpoint dá exatamente StoryAt, sem o tempo parado.
+		if p := c.Pause(clock.PauseRestart, *row.RunningSince); p != nil {
+			if err := uc.clocks.Save(ctx, matchUUID, c.Snapshot(time.Now()), nil); err != nil {
+				return nil, err
+			}
+			log.Printf("clock of match %s was running at restart: paused at %s", matchUUID, p.To.Format(time.RFC3339))
+		}
+	}
+	return c, nil
 }
 
 // enrollBoardNPCs is B11 (spec §4.3): every piece on the match's board whose character is

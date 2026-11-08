@@ -96,7 +96,7 @@ func TestInitMatchSession(t *testing.T) {
 		// case, and it must still land in the session.
 		loader := &mockSheetLoader{sheet: sheet, wasCorrected: false}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -127,7 +127,7 @@ func TestInitMatchSession(t *testing.T) {
 		}
 		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, wasCorrected: false}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -151,7 +151,7 @@ func TestInitMatchSession(t *testing.T) {
 		}
 		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, wasCorrected: true}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -177,7 +177,7 @@ func TestInitMatchSession(t *testing.T) {
 		// A missing sheet is an error from the gateway, not a false.
 		loader := &mockSheetLoader{err: charactersheet.ErrCharacterSheetNotFound}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -212,7 +212,7 @@ func TestInitMatchSessionUC_Recovery(t *testing.T) {
 			},
 		}
 
-		uc := match.NewInitMatchSessionUC(emptyMatchRepo, emptyLoader, rr, nil, nil)
+		uc := match.NewInitMatchSessionUC(emptyMatchRepo, emptyLoader, rr, nil, nil, nil)
 		session, err := uc.Init(context.Background(), uuid.New())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -231,7 +231,7 @@ func TestInitMatchSessionUC_Recovery(t *testing.T) {
 	t.Run("uses NewMatchSession when no active session found", func(t *testing.T) {
 		rr := &mockRoundRepo{}
 
-		uc := match.NewInitMatchSessionUC(emptyMatchRepo, emptyLoader, rr, nil, nil)
+		uc := match.NewInitMatchSessionUC(emptyMatchRepo, emptyLoader, rr, nil, nil, nil)
 		session, err := uc.Init(context.Background(), uuid.New())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -354,7 +354,7 @@ func TestInitMatchSessionUC_NPCRosterSurvivesRestart(t *testing.T) {
 	}
 	loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}, wasCorrected: false}
 
-	uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil)
+	uc := match.NewInitMatchSessionUC(repo, loader, noop, nil, nil, nil)
 	session, err := uc.Init(context.Background(), matchUUID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -425,7 +425,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		}}
 		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -464,7 +464,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		}}
 		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -491,7 +491,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		}}
 		loader := &mockSheetLoader{} // never reached for this character
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("Init must not fail when a piece cannot be enrolled: %v", err)
@@ -520,7 +520,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 				}}
 				loader := &mockSheetLoader{}
 
-				uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+				uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 				session, err := uc.Init(context.Background(), matchUUID)
 				if err != nil {
 					t.Fatalf("Init must not fail: %v", err)
@@ -553,7 +553,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		enroller := &fakeNPCEnroller{}
 		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 		if _, err := uc.Init(context.Background(), matchUUID); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -571,7 +571,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		enroller := &fakeNPCEnroller{}
 		loader := &mockSheetLoader{}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 		session, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -591,7 +591,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		enroller := &fakeNPCEnroller{}
 		loader := &mockSheetLoader{}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 		if _, err := uc.Init(context.Background(), matchUUID); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -619,7 +619,7 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 		}}
 		loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}}
 
-		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller)
+		uc := match.NewInitMatchSessionUC(repo, loader, noop, board, enroller, nil)
 
 		first, err := uc.Init(context.Background(), matchUUID)
 		if err != nil {
@@ -644,4 +644,104 @@ func TestInitMatchSessionUC_BoardNPCEnrollment(t *testing.T) {
 				"already a participant by then", len(calls))
 		}
 	})
+}
+
+// fakeClockRepo stands in for match.IClockRepository.
+type fakeClockRepo struct {
+	row     *clock.Snapshot
+	saved   []clock.Snapshot
+	events  []*match.ClockEvent
+	loadErr error
+}
+
+func (f *fakeClockRepo) Load(_ context.Context, _ uuid.UUID) (*clock.Snapshot, error) {
+	return f.row, f.loadErr
+}
+
+func (f *fakeClockRepo) Save(_ context.Context, _ uuid.UUID, snap clock.Snapshot, ev *match.ClockEvent) error {
+	f.saved = append(f.saved, snap)
+	f.events = append(f.events, ev)
+	return nil
+}
+
+// clockMatchRepo devolve uma partida com o início da história configurável.
+type clockMatchRepo struct {
+	mockMatchRepo
+	startAt   time.Time
+	startTime *time.Duration
+}
+
+func (m *clockMatchRepo) GetMatch(_ context.Context, _ uuid.UUID) (*matchDomain.Match, error) {
+	return &matchDomain.Match{StoryStartAt: m.startAt, StoryStartTime: m.startTime}, nil
+}
+
+func initWithClock(t *testing.T, repo match.IRepository, clocks match.IClockRepository) *matchsession.MatchSession {
+	t.Helper()
+	uc := match.NewInitMatchSessionUC(repo, &mockSheetLoader{}, &noopRoundRepo{}, nil, nil, clocks)
+	s, err := uc.Init(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	return s
+}
+
+func TestInitCreatesClockFromStartTime(t *testing.T) {
+	off := 8*time.Hour + 30*time.Minute
+	repo := &clockMatchRepo{startAt: time.Date(1999, 5, 3, 0, 0, 0, 0, time.UTC), startTime: &off}
+	clocks := &fakeClockRepo{}
+	s := initWithClock(t, repo, clocks)
+
+	want := time.Date(1999, 5, 3, 8, 30, 0, 0, time.UTC)
+	got := s.ClockSnapshotNow()
+	if got.StoryAt == nil || !got.StoryAt.Equal(want) || got.Running {
+		t.Errorf("session clock = %+v, want paused at %v", got, want)
+	}
+	if len(clocks.saved) != 1 || clocks.events[0] != nil {
+		t.Fatalf("want one snapshot save without event, got %d saves", len(clocks.saved))
+	}
+}
+
+func TestInitCreatesUnsetClockWithoutTime(t *testing.T) {
+	repo := &clockMatchRepo{startAt: time.Date(1999, 5, 3, 0, 0, 0, 0, time.UTC)}
+	clocks := &fakeClockRepo{}
+	s := initWithClock(t, repo, clocks)
+
+	if got := s.ClockSnapshotNow(); got.StoryAt != nil {
+		t.Errorf("clock should be unset, got %+v", got)
+	}
+	if len(clocks.saved) != 1 || clocks.saved[0].StoryAt != nil {
+		t.Errorf("want one unset snapshot saved, got %+v", clocks.saved)
+	}
+}
+
+func TestInitPausesRunningClockAtCheckpoint(t *testing.T) {
+	story := time.Date(2000, 1, 1, 8, 0, 0, 0, time.UTC)
+	since := time.Now().Add(-3 * time.Hour)
+	clocks := &fakeClockRepo{row: &clock.Snapshot{
+		StoryAt: &story, Running: true, RunningSince: &since, LimitReason: clock.LimitStart,
+	}}
+	s := initWithClock(t, &clockMatchRepo{}, clocks)
+
+	got := s.ClockSnapshotNow()
+	if got.StoryAt == nil || !got.StoryAt.Equal(story) || got.Running {
+		t.Errorf("session clock = %+v, want paused at %v", got, story)
+	}
+	if len(clocks.saved) != 1 || clocks.saved[0].Running || clocks.events[0] != nil {
+		t.Errorf("want the paused snapshot saved without event, got %+v", clocks.saved)
+	}
+}
+
+func TestInitKeepsExistingClock(t *testing.T) {
+	story := time.Date(2000, 1, 1, 8, 0, 0, 0, time.UTC)
+	limit := time.Date(2000, 1, 1, 7, 0, 0, 0, time.UTC)
+	clocks := &fakeClockRepo{row: &clock.Snapshot{StoryAt: &story, LimitAt: &limit, LimitReason: clock.LimitTurn}}
+	s := initWithClock(t, &clockMatchRepo{}, clocks)
+
+	got := s.ClockSnapshotNow()
+	if !got.StoryAt.Equal(story) || got.LimitReason != clock.LimitTurn {
+		t.Errorf("session clock = %+v", got)
+	}
+	if len(clocks.saved) != 0 {
+		t.Errorf("an intact paused clock must not be re-saved, got %d saves", len(clocks.saved))
+	}
 }
