@@ -85,13 +85,13 @@ func TestRemoveMatchNPC(t *testing.T) {
 		}
 	})
 
-	t.Run("removes the npc on a finished match (no StoryEndAt guard, D5)", func(t *testing.T) {
+	t.Run("removes the npc on a finished match (no IsFinished guard, D5)", func(t *testing.T) {
 		finishedAt := time.Now().Add(-time.Hour)
 		matchReader := &mockMatchReader{
 			GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
 				return &matchEntity.Match{
 					UUID: matchUUID, MasterUUID: masterUUID, CampaignUUID: campaignUUID,
-					StoryEndAt: &finishedAt,
+					GameEndAt: &finishedAt,
 				}, nil
 			},
 		}

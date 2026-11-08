@@ -235,7 +235,7 @@ func TestEnrollCharacterSheet(t *testing.T) {
 					return &matchEntity.Match{
 						CampaignUUID:    campaignUUID,
 						GameScheduledAt: time.Now(),
-						StoryEndAt:      &storyEndAt,
+						GameEndAt:      &storyEndAt,
 					}, nil
 				},
 			},
@@ -505,7 +505,7 @@ func TestAcceptEnrollment(t *testing.T) {
 					return &matchEntity.Match{
 						CampaignUUID:    campaignUUID,
 						GameScheduledAt: time.Now(),
-						StoryEndAt:      &storyEndAt,
+						GameEndAt:      &storyEndAt,
 					}, nil
 				},
 			},
@@ -754,7 +754,7 @@ storyEndAt := time.Now()
 return &matchEntity.Match{
 CampaignUUID:    campaignUUID,
 GameScheduledAt: time.Now(),
-StoryEndAt:      &storyEndAt,
+GameEndAt:      &storyEndAt,
 }, nil
 },
 },

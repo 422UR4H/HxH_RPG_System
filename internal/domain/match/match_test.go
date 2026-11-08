@@ -80,3 +80,23 @@ func TestMatch_AddScene_GetScenes(t *testing.T) {
 		t.Errorf("second scene category = %v, want Battle", scenes[1].GetCategory())
 	}
 }
+
+func TestMatchIsFinished(t *testing.T) {
+	end := time.Now()
+	tests := []struct {
+		name string
+		m    match.Match
+		want bool
+	}{
+		{"nil game end is not finished", match.Match{}, false},
+		{"game end set is finished", match.Match{GameEndAt: &end}, true},
+		{"story end set but game end nil is not finished", match.Match{StoryEndAt: &end}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.IsFinished(); got != tt.want {
+				t.Errorf("IsFinished() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

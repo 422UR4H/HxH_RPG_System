@@ -184,3 +184,60 @@ func TestUpdateMatchHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateMatchStoryStartTime(t *testing.T) {
+	userUUID := uuid.New()
+	matchUUID := uuid.New()
+	now := time.Now()
+	h30 := 8*time.Hour + 30*time.Minute
+
+	tests := []struct {
+		name       string
+		body       map[string]any
+		ucErr      error
+		check      func(t *testing.T, in *matchUC.UpdateMatchInput)
+		wantStatus int
+	}{
+		{"sets", map[string]any{"storyStartTime": "08:30"}, nil, func(t *testing.T, in *matchUC.UpdateMatchInput) {
+			if in.StoryStartTime == nil || *in.StoryStartTime != h30 || in.ClearStoryStartTime {
+				t.Errorf("got %v clear=%v", in.StoryStartTime, in.ClearStoryStartTime)
+			}
+		}, http.StatusOK},
+		{"empty string clears", map[string]any{"storyStartTime": ""}, nil, func(t *testing.T, in *matchUC.UpdateMatchInput) {
+			if in.StoryStartTime != nil || !in.ClearStoryStartTime {
+				t.Errorf("got %v clear=%v", in.StoryStartTime, in.ClearStoryStartTime)
+			}
+		}, http.StatusOK},
+		{"absent leaves untouched", map[string]any{"title": "Some Title"}, nil, func(t *testing.T, in *matchUC.UpdateMatchInput) {
+			if in.StoryStartTime != nil || in.ClearStoryStartTime {
+				t.Errorf("got %v clear=%v", in.StoryStartTime, in.ClearStoryStartTime)
+			}
+		}, http.StatusOK},
+		{"invalid", map[string]any{"storyStartTime": "8h"}, nil, nil, http.StatusUnprocessableEntity},
+		{"refused after start", map[string]any{"storyStartTime": "08:30"}, matchUC.ErrMatchAlreadyStarted, nil, http.StatusUnprocessableEntity},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			mock := &mockUpdateMatch{fn: func(_ context.Context, in *matchUC.UpdateMatchInput) (*matchEntity.Match, error) {
+				if tt.check != nil {
+					tt.check(t, in)
+				}
+				if tt.ucErr != nil {
+					return nil, tt.ucErr
+				}
+				return &matchEntity.Match{
+					UUID: matchUUID, MasterUUID: userUUID, StoryStartTime: in.StoryStartTime,
+					GameScheduledAt: now, StoryStartAt: now, CreatedAt: now, UpdatedAt: now,
+				}, nil
+			}}
+			huma.Register(api, huma.Operation{Method: http.MethodPatch, Path: "/matches/{uuid}"},
+				match.UpdateMatchHandler(mock))
+			ctx := context.WithValue(context.Background(), auth.UserIDKey, userUUID)
+			resp := api.PatchCtx(ctx, "/matches/"+matchUUID.String(), tt.body)
+			if resp.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
+			}
+		})
+	}
+}

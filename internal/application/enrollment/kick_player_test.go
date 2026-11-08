@@ -113,7 +113,7 @@ func TestKickPlayer(t *testing.T) {
 						MasterUUID:      masterUUID,
 						CampaignUUID:    campaignUUID,
 						GameScheduledAt: now,
-						StoryEndAt:      &finishedAt,
+						GameEndAt:      &finishedAt,
 					}, nil
 				},
 			},

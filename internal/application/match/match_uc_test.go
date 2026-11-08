@@ -727,7 +727,7 @@ func TestUpdateMatch(t *testing.T) {
 	t.Run("match already finished", func(t *testing.T) {
 		finished := *baseMatch
 		end := time.Now()
-		finished.StoryEndAt = &end
+		finished.GameEndAt = &end
 		matchRepo := &testutil.MockMatchRepo{GetMatchFn: loadMatchFn(&finished)}
 		uc := match.NewUpdateMatchUC(matchRepo, &testutil.MockCampaignRepo{})
 		_, err := uc.Update(context.Background(), validUpdateMatchInput(matchUUID, masterUUID))

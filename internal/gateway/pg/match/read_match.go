@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (r *Repository) GetMatch(
@@ -33,11 +34,13 @@ func (r *Repository) GetMatch(
 						COALESCE(description, ''),
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
+						story_start_time, game_end_at,
 						created_at, updated_at
         FROM matches
         WHERE uuid = $1
     `
 	var m match.Match
+	var startTime pgtype.Time
 	err = tx.QueryRow(ctx, query, uuid).Scan(
 		&m.UUID,
 		&m.MasterUUID,
@@ -51,6 +54,8 @@ func (r *Repository) GetMatch(
 		&m.GameStartAt,
 		&m.StoryStartAt,
 		&m.StoryEndAt,
+		&startTime,
+		&m.GameEndAt,
 		&m.CreatedAt,
 		&m.UpdatedAt,
 	)
@@ -60,6 +65,7 @@ func (r *Repository) GetMatch(
 		}
 		return nil, fmt.Errorf("failed to fetch match: %w", err)
 	}
+	m.StoryStartTime = fromPgTime(startTime)
 	if err = tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}

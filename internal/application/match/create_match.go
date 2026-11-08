@@ -24,6 +24,7 @@ type CreateMatchInput struct {
 	IsPublic                bool
 	GameScheduledAt         time.Time
 	StoryStartAt            time.Time
+	StoryStartTime          *time.Duration
 }
 
 type CreateMatchUC struct {
@@ -94,6 +95,7 @@ func (uc *CreateMatchUC) CreateMatch(
 	if err != nil {
 		return nil, err
 	}
+	newMatch.StoryStartTime = input.StoryStartTime
 
 	err = uc.matchRepo.CreateMatch(ctx, newMatch)
 	if err != nil {

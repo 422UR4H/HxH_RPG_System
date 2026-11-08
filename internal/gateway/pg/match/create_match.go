@@ -25,17 +25,17 @@ func (r *Repository) CreateMatch(ctx context.Context, match *match.Match) error 
             uuid, master_uuid, campaign_uuid,
 						title, brief_initial_description, description,
 						is_public, game_scheduled_at,
-            story_start_at, story_end_at,
+            story_start_at, story_end_at, story_start_time,
 						created_at, updated_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
         )
     `
 	_, err = tx.Exec(ctx, query,
 		match.UUID, match.MasterUUID, match.CampaignUUID,
 		match.Title, match.BriefInitialDescription, match.Description,
 		match.IsPublic, match.GameScheduledAt,
-		match.StoryStartAt, match.StoryEndAt,
+		match.StoryStartAt, match.StoryEndAt, toPgTime(match.StoryStartTime),
 		match.CreatedAt, match.UpdatedAt,
 	)
 	if err != nil {

@@ -22,8 +22,14 @@ type Match struct {
 	GameStartAt             *time.Time
 	StoryStartAt            time.Time
 	StoryEndAt              *time.Time
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	// StoryStartTime é o horário da história em que a partida começa: deslocamento desde a
+	// meia-noite, em segundos inteiros. nil = partida sem horário.
+	StoryStartTime *time.Duration
+	// GameEndAt marca a partida encerrada (instante real). StoryEndAt é outro conceito
+	// (fim da história na linha do tempo) e não indica encerramento.
+	GameEndAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func NewMatch(
@@ -50,6 +56,11 @@ func NewMatch(
 		CreatedAt:               now,
 		UpdatedAt:               now,
 	}, nil
+}
+
+// IsFinished informa se a partida foi encerrada (GameEndAt gravado).
+func (m *Match) IsFinished() bool {
+	return m.GameEndAt != nil
 }
 
 func (m *Match) AddScene(scene *scene.Scene) {

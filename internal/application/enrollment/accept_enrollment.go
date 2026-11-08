@@ -59,7 +59,7 @@ func (uc *AcceptEnrollmentUC) Accept(
 	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
-	if match.StoryEndAt != nil {
+	if match.IsFinished() {
 		return ErrMatchAlreadyFinished
 	}
 

@@ -75,7 +75,7 @@ func (uc *EnrollCharacterInMatchUC) Enroll(
 	if match.GameStartAt != nil {
 		return ErrMatchAlreadyStarted
 	}
-	if match.StoryEndAt != nil {
+	if match.IsFinished() {
 		return ErrMatchAlreadyFinished
 	}
 	if sheetRelationship.CampaignUUID == nil ||

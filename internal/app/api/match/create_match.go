@@ -22,6 +22,7 @@ type CreateMatchRequestBody struct {
 	IsPublic                bool      `json:"isPublic" default:"true" doc:"If the match is public or private"`
 	GameScheduledAt         string    `json:"gameScheduledAt" required:"true" doc:"Date and time when the game is scheduled (ISO 8601)"`
 	StoryStartAt            string    `json:"storyStartAt" required:"true" doc:"Date when the match story starts (YYYY-MM-DD)"`
+	StoryStartTime          string    `json:"storyStartTime,omitempty" doc:"Time of day the story starts (HH:MM or HH:MM:SS); empty or absent = no time"`
 }
 
 type CreateMatchRequest struct {
@@ -50,6 +51,8 @@ type MatchResponse struct {
 	GameStartAt             *string   `json:"gameStartAt,omitempty"`
 	StoryStartAt            string    `json:"storyStartAt"`
 	StoryEndAt              *string   `json:"storyEndAt,omitempty"`
+	StoryStartTime          *string   `json:"storyStartTime,omitempty"`
+	GameEndAt               *string   `json:"gameEndAt,omitempty"`
 	CreatedAt               string    `json:"createdAt"`
 	UpdatedAt               string    `json:"updatedAt"`
 }
@@ -76,6 +79,11 @@ func CreateMatchHandler(
 				"invalid game_scheduled_at date format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
 		}
 
+		storyStartTime, err := parseStoryStartTime(req.Body.StoryStartTime)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity(errInvalidStoryStartTime)
+		}
+
 		input := &matchUC.CreateMatchInput{
 			MasterUUID:              userUUID,
 			CampaignUUID:            req.Body.CampaignUUID,
@@ -85,6 +93,7 @@ func CreateMatchHandler(
 			IsPublic:                req.Body.IsPublic,
 			GameScheduledAt:         gameScheduledAt,
 			StoryStartAt:            storyStartAt,
+			StoryStartTime:          storyStartTime,
 		}
 		match, err := uc.CreateMatch(ctx, input)
 		if err != nil {
@@ -118,6 +127,8 @@ func CreateMatchHandler(
 			GameScheduledAt:         match.GameScheduledAt.Format(time.RFC3339),
 			GameStartAt:             gameStartAtStr,
 			StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
+			StoryStartTime:          formatStoryStartTime(match.StoryStartTime),
+			GameEndAt:               formatGameEndAt(match.GameEndAt),
 			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
 		}
