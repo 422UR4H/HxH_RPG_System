@@ -99,7 +99,7 @@ func TestStartMatch(t *testing.T) {
 						MasterUUID:      masterUUID,
 						CampaignUUID:    campaignUUID,
 						GameScheduledAt: now,
-						GameEndAt:      &finishedAt,
+						GameEndAt:       &finishedAt,
 					}, nil
 				},
 			},

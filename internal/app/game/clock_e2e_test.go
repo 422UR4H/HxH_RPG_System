@@ -486,7 +486,7 @@ func TestClockChangedCarriesIncreasingSeq(t *testing.T) {
 	first := awaitClockChanged(t, pc, 1)
 	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": 60})
 	second := awaitClockChanged(t, pc, 2)
-	if !(full.Clock.Seq < first.Clock.Seq && first.Clock.Seq < second.Clock.Seq) {
+	if full.Clock.Seq >= first.Clock.Seq || first.Clock.Seq >= second.Clock.Seq {
 		t.Errorf("seq = %d (full) → %d → %d, want strictly increasing", full.Clock.Seq, first.Clock.Seq, second.Clock.Seq)
 	}
 }

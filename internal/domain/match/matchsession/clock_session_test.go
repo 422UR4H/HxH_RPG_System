@@ -112,7 +112,9 @@ func TestFreeRoundDoesNotCount(t *testing.T) {
 func TestModeSwitchMidRoundStillCounts(t *testing.T) {
 	s := raceSingle(t)
 	mustOpenNext(t, s)
-	s.SetRoundMode(enum.Free)
+	if _, err := s.SetRoundMode(enum.Free); err != nil {
+		t.Fatalf("SetRoundMode: %v", err)
+	}
 	if _, err := s.CloseOpenTurn(); err != nil {
 		t.Fatal(err)
 	}
