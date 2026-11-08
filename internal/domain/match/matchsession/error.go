@@ -70,4 +70,8 @@ var (
 	// personagem que ainda está na fila (spec 2026-11-06 D4). Um empilhado nunca abre antes do
 	// anterior; puxe a cabeça primeiro. Nada muda: nenhum turno fecha, nenhum preço congela.
 	ErrStackedOnPending = errors.New("action is stacked on a pending move")
+	// ErrMatchInBattle: encerrar a partida com a cena atual em combate. Troque de cena antes.
+	ErrMatchInBattle = errors.New("cannot end the match during a battle scene")
+	// ErrBriefFinalTooLong: o resumo final passa de 255 caracteres.
+	ErrBriefFinalTooLong = errors.New("final description cannot exceed 255 characters")
 )

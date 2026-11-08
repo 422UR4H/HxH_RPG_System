@@ -2,6 +2,7 @@ package matchsession_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,5 +159,295 @@ func TestTurnCloseRaisesLimitWhileRunning(t *testing.T) {
 	want := storyStart.Add(30 * time.Second)
 	if at, reason := s.Clock().Limit(); !at.Equal(want) || reason != clock.LimitTurn {
 		t.Errorf("limit = %v/%v, want %v/turn", at, reason, want)
+	}
+}
+
+// --- Tarefa 4: troca de cena, de regime e fim da partida movem o relógio ---
+
+var realT0 = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+
+// runningSession devolve uma sessão com o relógio rodando desde realT0 e a fonte de tempo
+// controlada por `*real`.
+func runningSession(t *testing.T, real *time.Time) *matchsession.MatchSession {
+	t.Helper()
+	*real = realT0
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	s.SetNowFunc(func() time.Time { return *real })
+	if err := s.Clock().Play(*real); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+type clockState struct {
+	sceneID, roundID uuid.UUID
+	now, limit       time.Time
+	running          bool
+	queue            int
+}
+
+func stateOf(s *matchsession.MatchSession, real time.Time) clockState {
+	lim, _ := s.Clock().Limit()
+	return clockState{
+		sceneID: s.GetActiveScene().GetID(), roundID: s.GetActiveRound().GetID(),
+		now: s.Clock().Now(real), limit: lim, running: s.Clock().Running(),
+		queue: len(s.PendingActions()),
+	}
+}
+
+func TestChangeSceneRejectsBelowMinimumWithoutMutating(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted()
+	real = real.Add(10 * time.Second)
+	before := stateOf(s, real)
+
+	at := storyStart.Add(5 * time.Second) // abaixo de agora + 1 s
+	_, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{StoryAt: &at})
+	if !errors.Is(err, clock.ErrBelowLimit) {
+		t.Fatalf("err = %v, want ErrBelowLimit", err)
+	}
+	if after := stateOf(s, real); after != before {
+		t.Errorf("state changed on refusal: before %+v after %+v", before, after)
+	}
+}
+
+func TestChangeSceneAddsActiveRoundSecond(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted()
+	if _, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Clock().Now(real); !got.Equal(storyStart.Add(time.Second)) {
+		t.Errorf("Now = %v, want start+1s", got)
+	}
+	if s.Clock().Running() {
+		t.Error("the clock must be paused by the scene change")
+	}
+	if _, reason := s.Clock().Limit(); reason != clock.LimitScene {
+		t.Errorf("limit reason = %v, want scene", reason)
+	}
+}
+
+func TestChangeScenePausesRealTime(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	real = real.Add(30 * time.Second)
+	_, _, p, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil || p.Reason != clock.PauseScene || p.Elapsed != 30*time.Second {
+		t.Fatalf("pause = %+v, want scene/30s", p)
+	}
+	real = real.Add(time.Hour)
+	if got := s.Clock().Now(real); !got.Equal(storyStart.Add(30 * time.Second)) {
+		t.Errorf("Now = %v, want frozen at start+30s", got)
+	}
+}
+
+func TestChangeSceneMovesClockToStoryAtAndStampsScenes(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	at := storyStart.Add(2 * time.Hour)
+	desc := "  fim  "
+	old, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{StoryAt: &at, BriefFinalDescription: &desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Clock().Now(real); !got.Equal(at) {
+		t.Errorf("Now = %v, want %v", got, at)
+	}
+	if old.BriefFinalDescription == nil || *old.BriefFinalDescription != "fim" {
+		t.Errorf("final description = %v, want trimmed", old.BriefFinalDescription)
+	}
+	if f := old.GetStoryFinishedAt(); f == nil || !f.Equal(at) {
+		t.Errorf("old storyFinishedAt = %v", f)
+	}
+	if st := s.GetActiveScene().GetStoryStartedAt(); st == nil || !st.Equal(at) {
+		t.Errorf("new storyStartedAt = %v", st)
+	}
+}
+
+func TestChangeSceneBriefFinal(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	long := strings.Repeat("é", 256)
+	before := stateOf(s, real)
+	if _, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{BriefFinalDescription: &long}); !errors.Is(err, matchsession.ErrBriefFinalTooLong) {
+		t.Fatalf("err = %v, want ErrBriefFinalTooLong", err)
+	}
+	if stateOf(s, real) != before {
+		t.Error("state changed on refusal")
+	}
+	blank := "   "
+	old, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{BriefFinalDescription: &blank})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.BriefFinalDescription != nil {
+		t.Error("blank description must be nil")
+	}
+}
+
+func TestChangeSceneLongSkipNeedsConfirm(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted() // a baseline não inclui o segundo automático
+	at := storyStart.Add(48*time.Hour + time.Second)
+	before := stateOf(s, real)
+	if _, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{StoryAt: &at}); !errors.Is(err, clock.ErrLongSkipUnconfirmed) {
+		t.Fatalf("err = %v, want ErrLongSkipUnconfirmed", err)
+	}
+	if stateOf(s, real) != before {
+		t.Error("state changed on refusal")
+	}
+	if _, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{StoryAt: &at, ConfirmLongSkip: true}); err != nil {
+		t.Fatalf("confirmed skip: %v", err)
+	}
+	if got := s.Clock().Now(real); !got.Equal(at) {
+		t.Errorf("Now = %v, want %v", got, at)
+	}
+}
+
+func TestChangeSceneRefusedWhenClockUnset(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	s.SetClock(clock.NewUnset())
+	id := s.GetActiveScene().GetID()
+	if _, _, _, err := s.ChangeScene(enum.Roleplay, "x", matchsession.SceneClose{}); !errors.Is(err, clock.ErrNotSet) {
+		t.Fatalf("err = %v, want ErrNotSet", err)
+	}
+	if s.GetActiveScene().GetID() != id {
+		t.Error("scene changed on refusal")
+	}
+}
+
+func TestSetRoundModePausesAndRaisesLimit(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	real = real.Add(20 * time.Second)
+	p, err := s.SetRoundMode(enum.Race)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil || p.Reason != clock.PauseRoundMode {
+		t.Fatalf("pause = %+v, want roundMode", p)
+	}
+	if at, reason := s.Clock().Limit(); reason != clock.LimitRoundMode || !at.Equal(storyStart.Add(20*time.Second)) {
+		t.Errorf("limit = %v/%v", at, reason)
+	}
+	if s.GetActiveRound().GetMode() != enum.Race {
+		t.Error("mode not applied")
+	}
+}
+
+func TestSetRoundModeSameModeNoPause(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	real = real.Add(20 * time.Second)
+	p, err := s.SetRoundMode(enum.Free)
+	if err != nil || p != nil {
+		t.Fatalf("pause=%v err=%v, want nil/nil", p, err)
+	}
+	if !s.Clock().Running() {
+		t.Error("same mode must not pause")
+	}
+	if _, reason := s.Clock().Limit(); reason != clock.LimitStart {
+		t.Errorf("limit reason = %v, want untouched", reason)
+	}
+}
+
+func TestSetRoundModeRefusedWhenClockUnset(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	s.SetClock(clock.NewUnset())
+	if _, err := s.SetRoundMode(enum.Race); !errors.Is(err, clock.ErrNotSet) {
+		t.Fatalf("err = %v, want ErrNotSet", err)
+	}
+	if s.GetActiveRound().GetMode() != enum.Free {
+		t.Error("mode changed on refusal")
+	}
+}
+
+func TestEndMatchRefusedInBattle(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	if _, _, _, err := s.ChangeScene(enum.Battle, "b", matchsession.SceneClose{}); err != nil {
+		t.Fatal(err)
+	}
+	before := stateOf(s, real)
+	at := storyStart.Add(time.Hour)
+	if _, err := s.EndMatch(at, false); !errors.Is(err, matchsession.ErrMatchInBattle) {
+		t.Fatalf("err = %v, want ErrMatchInBattle", err)
+	}
+	if err := s.CheckEndMatch(at, false); !errors.Is(err, matchsession.ErrMatchInBattle) {
+		t.Fatalf("check err = %v", err)
+	}
+	if stateOf(s, real) != before {
+		t.Error("state changed on refusal")
+	}
+}
+
+func TestEndMatchRefusedWithOpenTurn(t *testing.T) {
+	u := uuid.New()
+	s, chars := sessionWithParticipants(u)
+	if err := s.EnqueueAction(u, makeActionWithSpeed(chars[0], 5)); err != nil {
+		t.Fatal(err)
+	}
+	mustOpenNext(t, s)
+	if _, err := s.EndMatch(storyStart.Add(time.Hour), false); !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
+		t.Fatalf("err = %v, want ErrRoundHasOpenTurn", err)
+	}
+}
+
+func TestEndMatchClosesAndFreezes(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	s.GetActiveRound().MarkCounted()
+	real = real.Add(10 * time.Second)
+
+	min := s.EndMatchMinimum()
+	if want := storyStart.Add(11 * time.Second); !min.Equal(want) {
+		t.Fatalf("EndMatchMinimum = %v, want %v", min, want)
+	}
+	if err := s.CheckEndMatch(min.Add(-time.Second), false); !errors.Is(err, clock.ErrBelowLimit) {
+		t.Fatalf("below minimum: %v", err)
+	}
+	if err := s.CheckEndMatch(min, false); err != nil {
+		t.Fatalf("check at minimum: %v", err)
+	}
+
+	at := storyStart.Add(3 * time.Hour)
+	end, err := s.EndMatch(at, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !end.StoryAt.Equal(at) || end.Scene.GetFinishedAt() == nil || end.Round.GetFinishedAt() == nil {
+		t.Errorf("end = %+v", end)
+	}
+	if end.Pause == nil || end.Pause.Reason != clock.PauseEnd {
+		t.Errorf("pause = %+v, want end", end.Pause)
+	}
+	if f := end.Scene.GetStoryFinishedAt(); f == nil || !f.Equal(at) {
+		t.Errorf("scene storyFinishedAt = %v", f)
+	}
+	real = real.Add(time.Hour)
+	if s.Clock().Running() || !s.Clock().Now(real).Equal(at) {
+		t.Errorf("clock must be frozen at %v, got %v running=%v", at, s.Clock().Now(real), s.Clock().Running())
+	}
+	if len(s.PendingActions()) != 0 {
+		t.Error("queue must be discarded")
+	}
+}
+
+func TestEndMatchSceneCloseMinimum(t *testing.T) {
+	var real time.Time
+	s := runningSession(t, &real)
+	if got := s.SceneCloseMinimum(); !got.Equal(storyStart) {
+		t.Errorf("minimum = %v, want start", got)
+	}
+	s.GetActiveRound().MarkCounted()
+	if got := s.SceneCloseMinimum(); !got.Equal(storyStart.Add(time.Second)) {
+		t.Errorf("minimum = %v, want start+1s", got)
 	}
 }

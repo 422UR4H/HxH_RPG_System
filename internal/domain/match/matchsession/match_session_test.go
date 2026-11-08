@@ -1139,7 +1139,7 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 		originalScene := s.GetActiveScene()
 		originalRound := s.GetActiveRound()
 
-		oldScene, oldRound, err := s.ChangeScene(enum.Battle, "Arena fight")
+		oldScene, oldRound, _, err := s.ChangeScene(enum.Battle, "Arena fight", matchsession.SceneClose{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1172,7 +1172,7 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		s.OpenNextAction()                                         //nolint:errcheck
 
-		_, _, err := s.ChangeScene(enum.Battle, "desc")
+		_, _, _, err := s.ChangeScene(enum.Battle, "desc", matchsession.SceneClose{})
 		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
 			t.Errorf("expected ErrRoundHasOpenTurn, got %v", err)
 		}
@@ -1252,7 +1252,7 @@ func TestMatchSession_PersistenceFlags(t *testing.T) {
 		sc := scene.NewScene(enum.Battle, "Arena")
 		r := round.NewRound(enum.Free)
 		s := matchsession.NewMatchSessionWithState(uuid.New(), nil, nil, sc, r)
-		_, _, err := s.ChangeScene(enum.Roleplay, "Town")
+		_, _, _, err := s.ChangeScene(enum.Roleplay, "Town", matchsession.SceneClose{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

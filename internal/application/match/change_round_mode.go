@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/google/uuid"
 )
 
 type IChangeRoundMode interface {
-	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, mode enum.RoundMode) error
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, mode enum.RoundMode) (*clock.Pause, error)
 }
 
 // ChangeRoundModeUC switches the round between the free regime and the disputed one.
@@ -31,13 +32,12 @@ func (uc *ChangeRoundModeUC) Execute(
 	session *matchsession.MatchSession,
 	masterUUID, callerUUID uuid.UUID,
 	mode enum.RoundMode,
-) error {
+) (*clock.Pause, error) {
 	if callerUUID != masterUUID {
-		return ErrNotMatchMaster
+		return nil, ErrNotMatchMaster
 	}
 	if mode != enum.Free && mode != enum.Race {
-		return ErrInvalidRoundMode
+		return nil, ErrInvalidRoundMode
 	}
-	session.SetRoundMode(mode)
-	return nil
+	return session.SetRoundMode(mode)
 }

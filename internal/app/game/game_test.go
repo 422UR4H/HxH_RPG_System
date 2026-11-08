@@ -78,8 +78,8 @@ func (m *mockKickPlayerUCLocal) Kick(_ context.Context, _, _, _ uuid.UUID) error
 
 type mockChangeSceneUC struct{}
 
-func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSession, _, _ uuid.UUID, category enum.SceneCategory, briefDesc string) (*scene.Scene, *roundentity.Round, error) {
-	return scene.NewScene(category, briefDesc), roundentity.NewRound(enum.Free), nil
+func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSession, _, _ uuid.UUID, category enum.SceneCategory, briefDesc string, _ matchsession.SceneClose) (*scene.Scene, *roundentity.Round, *clock.Pause, error) {
+	return scene.NewScene(category, briefDesc), roundentity.NewRound(enum.Free), nil, nil
 }
 
 type mockRoundRepoGame struct{}
@@ -111,8 +111,8 @@ func (m *mockEnqueueMasterActionUC) Execute(_ context.Context, _ *matchsession.M
 
 type mockChangeRoundModeUC struct{}
 
-func (m *mockChangeRoundModeUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) error {
-	return nil
+func (m *mockChangeRoundModeUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) (*clock.Pause, error) {
+	return nil, nil
 }
 
 type mockEditActionUC struct{}

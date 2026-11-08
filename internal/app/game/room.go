@@ -19,6 +19,7 @@ import (
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -97,7 +98,7 @@ type IOpenReaction interface {
 type ICloseTurn = appmatch.ICloseTurn
 
 type IChangeScene interface {
-	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string) (*sceneentity.Scene, *roundentity.Round, error)
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string, sceneClose matchsession.SceneClose) (*sceneentity.Scene, *roundentity.Round, *clock.Pause, error)
 }
 
 type IEnqueueMasterAction interface {
@@ -1010,7 +1011,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if session != nil {
 			modeScene, modeRound = session.GetActiveScene(), session.GetActiveRound()
 			oldMode = modeRound.GetMode()
-			err = r.deps.ChangeRoundModeUC.Execute(
+			// a pausa do relógio é anunciada na Tarefa 6
+			_, err = r.deps.ChangeRoundModeUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID,
 				enum.RoundMode(payload.Mode),
 			)
@@ -1507,10 +1509,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if session != nil {
 			// Captured BEFORE ChangeScene resets it.
 			sceneWasPersisted = session.IsScenePersisted()
-			oldScene, oldRound, err = r.deps.ChangeSceneUC.Execute(
+			// a pausa do relógio é anunciada na Tarefa 6; o payload de fechamento, ligado na Tarefa 7
+			oldScene, oldRound, _, err = r.deps.ChangeSceneUC.Execute(
 				context.Background(), session,
 				r.masterUUID, client.userUUID,
-				category, payload.BriefInitialDescription,
+				category, payload.BriefInitialDescription, matchsession.SceneClose{},
 			)
 			if err == nil {
 				// Copies: they are written after the unlock (ensureSceneAndRoundRows).

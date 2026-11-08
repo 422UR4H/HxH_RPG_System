@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -242,29 +243,174 @@ func (s *MatchSession) MarkRoundPersisted() {
 	s.roundPersisted = true
 }
 
-func (s *MatchSession) ChangeScene(category enum.SceneCategory, briefDesc string) (*scene.Scene, *round.Round, error) {
-	if s.activeRound.HasOpenTurn() {
-		return nil, nil, ErrRoundHasOpenTurn
+// briefFinalMax é o limite (em runas) do resumo final de uma cena ou da partida.
+const briefFinalMax = 255
+
+// SceneClose é o que o mestre informa ao fechar a cena: resumo final opcional e, opcionalmente,
+// o horário da história em que ela termina.
+type SceneClose struct {
+	BriefFinalDescription *string
+	StoryAt               *time.Time
+	ConfirmLongSkip       bool
+}
+
+// MatchEnd é o resultado de EndMatch: a cena e o round fechados e a pausa do relógio.
+type MatchEnd struct {
+	Scene   *scene.Scene
+	Round   *round.Round
+	Pause   *clock.Pause
+	StoryAt time.Time
+}
+
+// activeRoundExtra é o segundo que o round ativo vai somar ao fechar (1 round = 1 s), se contado.
+func (s *MatchSession) activeRoundExtra() time.Duration {
+	if s.activeRound.IsCounted() {
+		return time.Second
 	}
-	now := time.Now()
-	s.activeRound.Close(now)
-	s.activeScene.Close(now)
+	return 0
+}
+
+// SceneCloseMinimum é o menor horário em que a cena (ou a partida) pode terminar agora.
+func (s *MatchSession) SceneCloseMinimum() time.Time {
+	return s.clock.Minimum(s.activeRoundExtra(), s.now())
+}
+
+// EndMatchMinimum é o menor horário em que a partida pode terminar agora.
+func (s *MatchSession) EndMatchMinimum() time.Time { return s.SceneCloseMinimum() }
+
+// normalizeBriefFinal apara o resumo; vazio vira nil; acima de 255 runas é erro.
+func normalizeBriefFinal(in *string) (*string, error) {
+	if in == nil {
+		return nil, nil
+	}
+	v := strings.TrimSpace(*in)
+	if utf8.RuneCountInString(v) > briefFinalMax {
+		return nil, ErrBriefFinalTooLong
+	}
+	if v == "" {
+		return nil, nil
+	}
+	return &v, nil
+}
+
+// checkClose valida o fechamento (cena ou partida) sem mutar nada. `storyAt` nil só vale para
+// a troca de cena em roleplay.
+func (s *MatchSession) checkClose(storyAt *time.Time, confirmLong bool, real time.Time) error {
+	if !s.clock.IsSet() {
+		return clock.ErrNotSet
+	}
+	if s.activeRound.HasOpenTurn() {
+		return ErrRoundHasOpenTurn
+	}
+	if storyAt == nil {
+		return nil
+	}
+	// a base do pulo longo é o relógio antes do comando, sem o segundo automático do round
+	return s.clock.CheckMove(*storyAt, s.clock.Minimum(s.activeRoundExtra(), real), confirmLong, real)
+}
+
+// closeRoundAndClock pausa o relógio, soma o segundo do round contado, fecha round e cena e
+// leva o relógio a storyAt (quando informado). Só roda depois de checkClose.
+func (s *MatchSession) closeRoundAndClock(reason clock.PauseReason, storyAt *time.Time, real time.Time) *clock.Pause {
+	pause := s.clock.Pause(reason, real)
+	s.activeRound.SetDrained(s.activeQueue.IsEmpty())
+	if s.activeRound.IsCounted() {
+		s.clock.AddRoundSecond(real)
+	}
+	if storyAt != nil {
+		if to := clockNorm(*storyAt); !to.Equal(s.clock.Now(real)) {
+			// já validado: o destino respeita o mínimo e o pulo foi confirmado
+			_, _ = s.clock.Set(to, true, real)
+		}
+	}
+	closedAt := time.Now()
+	s.activeRound.Close(closedAt)
+	s.activeScene.Close(closedAt)
+	return pause
+}
+
+func clockNorm(t time.Time) time.Time { return t.UTC().Truncate(time.Second) }
+
+// ChangeScene fecha a cena e o round ativos (o relógio da história pausa, soma o segundo do
+// round contado e, se o mestre informou, vai ao horário de fim da cena) e abre os novos.
+// Valida tudo antes de mutar: uma recusa deixa a sessão como estava.
+func (s *MatchSession) ChangeScene(
+	category enum.SceneCategory, briefDesc string, sc SceneClose,
+) (*scene.Scene, *round.Round, *clock.Pause, error) {
+	real := s.now()
+	if err := s.checkClose(sc.StoryAt, sc.ConfirmLongSkip, real); err != nil {
+		return nil, nil, nil, err
+	}
+	final, err := normalizeBriefFinal(sc.BriefFinalDescription)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	pause := s.closeRoundAndClock(clock.PauseScene, sc.StoryAt, real)
+	s.clock.RaiseLimit(clock.LimitScene, real)
+	storyNow := s.clock.Now(real)
 
 	oldScene := s.activeScene
 	oldRound := s.activeRound
+	oldScene.BriefFinalDescription = final
+	oldScene.SetStoryFinishedAt(storyNow)
 
 	s.activeScene = scene.NewScene(category, briefDesc)
+	s.activeScene.SetStoryStartedAt(storyNow)
 	s.activeRound = round.NewRound(enum.Free)
 	s.scenePersisted = false
 	s.roundPersisted = false
 
-	return oldScene, oldRound, nil
+	return oldScene, oldRound, pause, nil
+}
+
+// CheckEndMatch valida o fim da partida (mesmas precondições de EndMatch) sem mutar nada.
+func (s *MatchSession) CheckEndMatch(storyAt time.Time, confirmLong bool) error {
+	return s.checkEnd(storyAt, confirmLong, s.now())
+}
+
+func (s *MatchSession) checkEnd(storyAt time.Time, confirmLong bool, real time.Time) error {
+	if !s.clock.IsSet() {
+		return clock.ErrNotSet
+	}
+	if s.activeScene.GetCategory() == enum.Battle {
+		return ErrMatchInBattle
+	}
+	return s.checkClose(&storyAt, confirmLong, real)
+}
+
+// EndMatch encerra a partida na memória: pausa o relógio (motivo end), soma o segundo do round
+// contado, leva o relógio a storyAt, fecha round e cena e descarta a fila. Não persiste nada.
+func (s *MatchSession) EndMatch(storyAt time.Time, confirmLong bool) (*MatchEnd, error) {
+	real := s.now()
+	if err := s.checkEnd(storyAt, confirmLong, real); err != nil {
+		return nil, err
+	}
+	pause := s.closeRoundAndClock(clock.PauseEnd, &storyAt, real)
+	s.clock.RaiseLimit(clock.LimitScene, real)
+	s.activeScene.SetStoryFinishedAt(s.clock.Now(real))
+	s.activeQueue = action.NewActionPriorityQueue(nil)
+	return &MatchEnd{
+		Scene: s.activeScene, Round: s.activeRound, Pause: pause,
+		StoryAt: s.clock.Now(real),
+	}, nil
 }
 
 // SetRoundMode puts the active round into a regime. Callers hold room.mu for writing: this
-// changes how every later selection is scored.
-func (s *MatchSession) SetRoundMode(mode enum.RoundMode) {
+// changes how every later selection is scored. Trocar de regime pausa o relógio e sobe o
+// limite; pedir o regime em que já está não faz nada.
+func (s *MatchSession) SetRoundMode(mode enum.RoundMode) (*clock.Pause, error) {
+	if !s.clock.IsSet() {
+		return nil, clock.ErrNotSet
+	}
+	if s.activeRound.GetMode() == mode {
+		return nil, nil
+	}
+	real := s.now()
+	pause := s.clock.Pause(clock.PauseRoundMode, real)
+	s.clock.RaiseLimit(clock.LimitRoundMode, real)
 	s.roundOrch.SetMode(s.activeRound, mode)
+	return pause, nil
 }
 
 func (s *MatchSession) EnqueueMasterAction(ma *action.MasterAction) error {

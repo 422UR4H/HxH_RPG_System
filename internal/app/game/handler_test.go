@@ -339,8 +339,8 @@ func (m *mockCloseTurnUCHandler) Execute(
 
 type mockChangeSceneUCHandler struct{}
 
-func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string) (*scene.Scene, *roundentity.Round, error) {
-	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil
+func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string, _ matchsession.SceneClose) (*scene.Scene, *roundentity.Round, *clock.Pause, error) {
+	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil, nil
 }
 
 // mockRoundRepoHandler is a no-op round repository, except it records every closed turn
@@ -681,8 +681,8 @@ func (m *mockEnqueueMasterActionUCHandler) Execute(_ context.Context, _ *matchse
 
 type mockChangeRoundModeUCHandler struct{}
 
-func (m *mockChangeRoundModeUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) error {
-	return nil
+func (m *mockChangeRoundModeUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) (*clock.Pause, error) {
+	return nil, nil
 }
 
 type mockEditActionUCHandler struct{}
