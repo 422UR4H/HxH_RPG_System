@@ -107,7 +107,7 @@ de relógio) grava o limite em memória daquele momento — inclusive o que o tu
 - Os jogadores **não** recebem aviso por round: só veem o número mudar (dono).
 
 ### 3.6 Hiato (dono, definição confirmada)
-Um **hiato** é um round **disputado** que terminou pelo `open_next_action` com a **fila vazia** —
+Um **hiato** é um round **disputado** — um round que **contou** (abriu turno no disputado, §3.5; decisão R9 da implementação) — que terminou pelo `open_next_action` com a **fila vazia** —
 todos já agiram e ninguém declarou a próxima ação —, seguido de um round com turno na mesma cena.
 Um round que termina com ações ainda na fila (sem barra para pagar) **não** é hiato. Para cada
 hiato, o resumo do combate dá: o **último turno antes** (do round que esvaziou) e o **primeiro

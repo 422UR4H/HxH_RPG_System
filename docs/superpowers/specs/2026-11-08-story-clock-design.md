@@ -108,7 +108,7 @@ records the limit in memory at that moment — including what the open turn rais
 - Players **do not** receive a warning per round: they only see the number change (owner).
 
 ### 3.6 Gap (owner, confirmed definition)
-A **gap** is a **contested** round that ended through `open_next_action` with an **empty queue** — everyone has
+A **gap** is a **contested** round — a round that **counted** (it opened a turn in Race, §3.5; implementation ruling R9) — that ended through `open_next_action` with an **empty queue** — everyone has
 already acted and no one has declared the next action — followed by a round with a turn in the same scene.
 A round that ends with actions still in the queue (with no bar to pay) is **not** a gap. For each gap, the combat
 summary gives: the **last turn before** (of the round that emptied the queue) and the **first turn after** (of the
