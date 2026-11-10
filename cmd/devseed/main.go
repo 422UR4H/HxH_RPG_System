@@ -51,6 +51,11 @@ type seed struct {
 }
 
 func main() {
+	// As colunas de data/hora são TIMESTAMP (sem fuso): o pgx grava o relógio de
+	// parede na zona do time.Time e lê de volta como UTC. Fixar UTC evita que
+	// o dev local (ex.: America/Sao_Paulo) grave horas deslocadas.
+	time.Local = time.UTC
+
 	apiURL := flag.String("api", envOr("DEVSEED_API", "http://localhost:5000"), "REST base URL")
 	wsURL := flag.String("ws", envOr("DEVSEED_WS", "ws://localhost:8081"), "game WebSocket base URL")
 	suffix := flag.String("suffix", "", "appended to every nick/e-mail/name — a second independent table")

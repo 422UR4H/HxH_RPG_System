@@ -31,3 +31,14 @@ Sem body.
 - A deleção é atômica: se qualquer partida associada tiver `game_start_at != null`, a query não deleta e retorna 422.
 - Partidas não-iniciadas e suas submissions são removidas via `ON DELETE CASCADE`.
 - O check de `game_start_at IS NOT NULL` é feito diretamente no SQL (`NOT EXISTS` subquery), garantindo atomicidade contra race conditions onde uma partida pode iniciar entre a verificação de ownership e a deleção.
+
+## Limites de texto (POST e PATCH /campaigns)
+
+Os limites contam **caracteres** (code points Unicode), não bytes — "Missão" vale 6, não 7 —
+porque as colunas são `VARCHAR(n)`, que o Postgres também conta em caracteres.
+
+| Campo | Regra |
+|---|---|
+| `name` | 5–32 caracteres |
+| `briefInitialDescription` | ≤ 255 caracteres |
+| `callLink` | ≤ 255 caracteres |

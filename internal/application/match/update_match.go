@@ -3,6 +3,7 @@ package match
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -70,14 +71,14 @@ func (uc *UpdateMatchUC) Update(
 	}
 
 	if input.Title != nil {
-		if len(*input.Title) < 5 {
+		if utf8.RuneCountInString(*input.Title) < 5 {
 			return nil, ErrMinTitleLength
 		}
-		if len(*input.Title) > 32 {
+		if utf8.RuneCountInString(*input.Title) > 32 {
 			return nil, ErrMaxTitleLength
 		}
 	}
-	if input.BriefInitialDescription != nil && len(*input.BriefInitialDescription) > 255 {
+	if input.BriefInitialDescription != nil && utf8.RuneCountInString(*input.BriefInitialDescription) > 255 {
 		return nil, ErrMaxBriefDescLength
 	}
 	if input.GameScheduledAt != nil {

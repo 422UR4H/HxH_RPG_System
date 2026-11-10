@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"context"
+	"unicode/utf8"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/scenario"
 	"github.com/google/uuid"
@@ -33,15 +34,15 @@ func NewCreateScenarioUC(repo IRepository) *CreateScenarioUC {
 func (uc *CreateScenarioUC) CreateScenario(
 	ctx context.Context, input *CreateScenarioInput,
 ) (*scenario.Scenario, error) {
-	if len(input.Name) < 5 {
+	if utf8.RuneCountInString(input.Name) < 5 {
 		return nil, ErrMinNameLength
 	}
 
-	if len(input.Name) > 32 {
+	if utf8.RuneCountInString(input.Name) > 32 {
 		return nil, ErrMaxNameLength
 	}
 
-	if len(input.BriefDescription) > 64 {
+	if utf8.RuneCountInString(input.BriefDescription) > 64 {
 		return nil, ErrMaxBriefDescLength
 	}
 

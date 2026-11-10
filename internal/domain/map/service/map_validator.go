@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"unicode/utf8"
 
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
@@ -27,7 +28,7 @@ var (
 )
 
 func ValidateMap(name string, grid entity.GridShape) error {
-	if len(name) < 3 {
+	if utf8.RuneCountInString(name) < 3 {
 		return ErrNameTooShort
 	}
 	if grid.CellSize <= 0 {

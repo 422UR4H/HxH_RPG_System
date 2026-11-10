@@ -10,7 +10,7 @@
 {
   "campaignUuid": "uuid-v4",
   "title": "Greed Island - Session 1",
-  "briefInitialDescription": "Os heróis chegam à ilha (máx 64 chars)",
+  "briefInitialDescription": "Os heróis chegam à ilha (máx 255 caracteres)",
   "description": "Descrição completa apenas para o mestre",
   "isPublic": true,
   "gameScheduledAt": "2026-06-15T19:30:00Z",
@@ -21,9 +21,9 @@
 
 | Campo | Regra |
 |---|---|
-| `title` | obrigatório, 5–32 chars |
-| `briefInitialDescription` | ≤ 255 chars |
-| `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
+| `title` | obrigatório, 5–32 caracteres (não bytes) |
+| `briefInitialDescription` | ≤ 255 caracteres (não bytes) |
+| `gameScheduledAt` | instante real em RFC 3339 (o front envia em UTC, com `Z`), futuro, ≤ +1 ano |
 | `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
 | `storyStartTime` | opcional; `"HH:MM"` ou `"HH:MM:SS"` (horário da história em que a partida começa). Ausente ou `""` = sem horário |
 | `isPublic` | default `true` |
@@ -112,9 +112,9 @@
 
 | Campo | Regra (se enviado) |
 |---|---|
-| `title` | 5–32 chars |
-| `briefInitialDescription` | ≤ 255 chars |
-| `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
+| `title` | 5–32 caracteres (não bytes) |
+| `briefInitialDescription` | ≤ 255 caracteres (não bytes) |
+| `gameScheduledAt` | instante real em RFC 3339 (o front envia em UTC, com `Z`), futuro, ≤ +1 ano |
 | `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
 | `storyStartTime` | `"HH:MM"` ou `"HH:MM:SS"`; `""` limpa o horário; recusado após a partida iniciada (como `storyStartAt`) |
 
@@ -333,3 +333,10 @@ jogador olhando a ficha de um NPC — vem `null`.
 | 403 | Acesso negado |
 | 404 | Partida não encontrada |
 | 500 | Erro interno |
+
+## Fuso horário
+
+`gameScheduledAt` e `gameStartAt` são instantes reais em RFC 3339. O front envia
+`gameScheduledAt` em UTC com `Z`; as respostas voltam sempre em UTC (`Z`). Os processos
+`cmd/api`, `cmd/game` e `cmd/devseed` fixam `time.Local = time.UTC` na partida, porque as
+colunas são `TIMESTAMP` (sem fuso) e o relógio de parede gravado precisa ser o UTC.

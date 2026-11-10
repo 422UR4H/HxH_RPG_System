@@ -31,6 +31,11 @@ import (
 )
 
 func main() {
+	// As colunas de data/hora são TIMESTAMP (sem fuso): o pgx grava o relógio de
+	// parede na zona do time.Time e lê de volta como UTC. Fixar UTC evita que
+	// o dev local (ex.: America/Sao_Paulo) grave horas deslocadas.
+	time.Local = time.UTC
+
 	// TODO: evaluate to action — consider config/env loading
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, using environment variables")
