@@ -26,7 +26,8 @@ type execer interface {
 // change_scene, a round closing and the next one opening) — master_actions and match_events
 // reference both.
 //
-// On conflict the scene only gains a finished_at it did not have yet; the round refreshes its
+// On conflict the scene only gains a finished_at (and the story times and final description of
+// its close) it did not have yet; the round refreshes its
 // mode (and likewise gains a missing finished_at — see below). Being a row from birth
 // means a round is written in the regime it was born in, and the master may switch it after
 // that: the change_round_mode arm calls this again, and a turn closing does too, so the row
@@ -51,23 +52,31 @@ func ensureSceneAndRound(
 		return fmt.Errorf("EnsureSceneAndRound: scene and round are required")
 	}
 	_, err := q.Exec(ctx,
-		`INSERT INTO scenes (uuid, match_uuid, category, brief_initial_description, created_at, finished_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (uuid) DO UPDATE SET finished_at = COALESCE(scenes.finished_at, EXCLUDED.finished_at)`,
+		`INSERT INTO scenes (uuid, match_uuid, category, brief_initial_description, created_at, finished_at,
+		                     story_started_at, story_finished_at, brief_final_description)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT (uuid) DO UPDATE SET
+		   finished_at = COALESCE(scenes.finished_at, EXCLUDED.finished_at),
+		   story_started_at = COALESCE(scenes.story_started_at, EXCLUDED.story_started_at),
+		   story_finished_at = COALESCE(scenes.story_finished_at, EXCLUDED.story_finished_at),
+		   brief_final_description = COALESCE(scenes.brief_final_description, EXCLUDED.brief_final_description)`,
 		sc.GetID(), matchUUID, string(sc.GetCategory()), sc.BriefInitialDescription, sc.GetCreatedAt(),
-		sc.GetFinishedAt(),
+		sc.GetFinishedAt(), sc.GetStoryStartedAt(), sc.GetStoryFinishedAt(), sc.BriefFinalDescription,
 	)
 	if err != nil {
 		return fmt.Errorf("insert scene: %w", err)
 	}
 
 	_, err = q.Exec(ctx,
-		`INSERT INTO rounds (uuid, scene_uuid, mode, created_at, finished_at)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO rounds (uuid, scene_uuid, mode, created_at, finished_at, counted, drained)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (uuid) DO UPDATE SET
 		   mode = EXCLUDED.mode,
-		   finished_at = COALESCE(rounds.finished_at, EXCLUDED.finished_at)`,
+		   finished_at = COALESCE(rounds.finished_at, EXCLUDED.finished_at),
+		   counted = rounds.counted OR EXCLUDED.counted,
+		   drained = rounds.drained OR EXCLUDED.drained`,
 		rd.GetID(), sc.GetID(), string(rd.GetMode()), rd.GetCreatedAt(), rd.GetFinishedAt(),
+		rd.IsCounted(), rd.IsDrained(),
 	)
 	if err != nil {
 		return fmt.Errorf("insert round: %w", err)

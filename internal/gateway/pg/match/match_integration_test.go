@@ -554,3 +554,107 @@ func TestDeleteMatch(t *testing.T) {
 		}
 	})
 }
+
+func TestMatchStoryStartTimeAndGameEndAt(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+
+	masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gmst", "gmst@hunter.com", "pass"))
+	campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Clock Campaign"))
+
+	m := newTestMatch(masterUUID, campaignUUID, "Clock Session", true, time.Now().Add(24*time.Hour))
+	startTime := 8*time.Hour + 30*time.Minute + 15*time.Second
+	m.StoryStartTime = &startTime
+
+	if err := repo.CreateMatch(ctx, m); err != nil {
+		t.Fatalf("CreateMatch() unexpected error: %v", err)
+	}
+	got, err := repo.GetMatch(ctx, m.UUID)
+	if err != nil {
+		t.Fatalf("GetMatch() unexpected error: %v", err)
+	}
+	if got.StoryStartTime == nil || *got.StoryStartTime != startTime {
+		t.Errorf("StoryStartTime = %v, want %v", got.StoryStartTime, startTime)
+	}
+	if got.GameEndAt != nil || got.IsFinished() {
+		t.Errorf("GameEndAt = %v, want nil", got.GameEndAt)
+	}
+
+	t.Run("update changes and clears the time", func(t *testing.T) {
+		newTime := 22 * time.Hour
+		got.StoryStartTime = &newTime
+		if err := repo.UpdateMatch(ctx, got); err != nil {
+			t.Fatalf("UpdateMatch() unexpected error: %v", err)
+		}
+		after, _ := repo.GetMatch(ctx, m.UUID)
+		if after.StoryStartTime == nil || *after.StoryStartTime != newTime {
+			t.Errorf("StoryStartTime = %v, want %v", after.StoryStartTime, newTime)
+		}
+		after.StoryStartTime = nil
+		if err := repo.UpdateMatch(ctx, after); err != nil {
+			t.Fatalf("UpdateMatch() unexpected error: %v", err)
+		}
+		cleared, _ := repo.GetMatch(ctx, m.UUID)
+		if cleared.StoryStartTime != nil {
+			t.Errorf("StoryStartTime = %v, want nil", cleared.StoryStartTime)
+		}
+	})
+
+	t.Run("game_end_at is read", func(t *testing.T) {
+		end := time.Now().Truncate(time.Microsecond)
+		if _, err := pool.Exec(ctx, `UPDATE matches SET game_end_at = $1 WHERE uuid = $2`, end, m.UUID); err != nil {
+			t.Fatalf("setting game_end_at: %v", err)
+		}
+		fin, err := repo.GetMatch(ctx, m.UUID)
+		if err != nil {
+			t.Fatalf("GetMatch() unexpected error: %v", err)
+		}
+		if !fin.IsFinished() {
+			t.Error("IsFinished() = false, want true")
+		}
+		if fin.StoryEndTime != nil {
+			t.Errorf("StoryEndTime = %v with no clock row, want nil", fin.StoryEndTime)
+		}
+	})
+
+	t.Run("a finished match reads its story end time from the clock and summaries carry game_end_at", func(t *testing.T) {
+		storyAt := time.Date(2000, 1, 3, 21, 15, 30, 0, time.UTC)
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO match_clocks (match_uuid, story_at, limit_at, limit_reason, updated_at) VALUES ($1, $2, $2, 'scene', $3)`,
+			m.UUID, storyAt, time.Now()); err != nil {
+			t.Fatalf("insert clock: %v", err)
+		}
+		fin, err := repo.GetMatch(ctx, m.UUID)
+		if err != nil {
+			t.Fatalf("GetMatch() unexpected error: %v", err)
+		}
+		want := 21*time.Hour + 15*time.Minute + 30*time.Second
+		if fin.StoryEndTime == nil || *fin.StoryEndTime != want {
+			t.Errorf("StoryEndTime = %v, want %v", fin.StoryEndTime, want)
+		}
+		list, err := repo.ListMatchesByMasterUUID(ctx, masterUUID)
+		if err != nil || len(list) != 1 || list[0].GameEndAt == nil {
+			t.Errorf("ListMatchesByMasterUUID = %+v (%v), want one summary with GameEndAt", list, err)
+		}
+	})
+
+	t.Run("a match not finished has no story end time even with a clock", func(t *testing.T) {
+		other := newTestMatch(masterUUID, campaignUUID, "Open Session", true, time.Now().Add(48*time.Hour))
+		if err := repo.CreateMatch(ctx, other); err != nil {
+			t.Fatalf("CreateMatch() unexpected error: %v", err)
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO match_clocks (match_uuid, story_at, limit_at, limit_reason, updated_at) VALUES ($1, $2, $2, 'start', $3)`,
+			other.UUID, time.Date(2000, 1, 1, 8, 0, 0, 0, time.UTC), time.Now()); err != nil {
+			t.Fatalf("insert clock: %v", err)
+		}
+		got, err := repo.GetMatch(ctx, other.UUID)
+		if err != nil {
+			t.Fatalf("GetMatch() unexpected error: %v", err)
+		}
+		if got.StoryEndTime != nil {
+			t.Errorf("StoryEndTime = %v, want nil while not finished", got.StoryEndTime)
+		}
+	})
+}

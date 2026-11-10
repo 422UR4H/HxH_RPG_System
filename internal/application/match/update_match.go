@@ -25,6 +25,9 @@ type UpdateMatchInput struct {
 	IsPublic                *bool
 	GameScheduledAt         *time.Time
 	StoryStartAt            *time.Time
+	// StoryStartTime define o horário; ClearStoryStartTime o apaga (prevalece sobre StoryStartTime).
+	StoryStartTime      *time.Duration
+	ClearStoryStartTime bool
 }
 
 type UpdateMatchUC struct {
@@ -55,13 +58,14 @@ func (uc *UpdateMatchUC) Update(
 	if m.GameStartAt != nil {
 		return nil, ErrMatchAlreadyStarted
 	}
-	if m.StoryEndAt != nil {
+	if m.IsFinished() {
 		return nil, ErrMatchAlreadyFinished
 	}
 
 	if input.Title == nil && input.BriefInitialDescription == nil &&
 		input.Description == nil && input.IsPublic == nil &&
-		input.GameScheduledAt == nil && input.StoryStartAt == nil {
+		input.GameScheduledAt == nil && input.StoryStartAt == nil &&
+		input.StoryStartTime == nil && !input.ClearStoryStartTime {
 		return m, nil
 	}
 
@@ -118,6 +122,11 @@ func (uc *UpdateMatchUC) Update(
 	}
 	if input.StoryStartAt != nil {
 		m.StoryStartAt = *input.StoryStartAt
+	}
+	if input.ClearStoryStartTime {
+		m.StoryStartTime = nil
+	} else if input.StoryStartTime != nil {
+		m.StoryStartTime = input.StoryStartTime
 	}
 	m.UpdatedAt = time.Now()
 

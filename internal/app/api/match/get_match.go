@@ -72,6 +72,9 @@ func GetMatchHandler(
 			GameStartAt:             gameStartAtStr,
 			StoryStartAt:            match.StoryStartAt.Format("2006-01-02"),
 			StoryEndAt:              storyEndAtStr,
+			StoryStartTime:          formatStoryStartTime(match.StoryStartTime),
+			GameEndAt:               formatGameEndAt(match.GameEndAt),
+			StoryEndTime:            formatStoryEndTime(match),
 			CreatedAt:               match.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               match.UpdatedAt.Format(http.TimeFormat),
 		}

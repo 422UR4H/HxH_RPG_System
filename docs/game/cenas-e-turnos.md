@@ -114,6 +114,11 @@ mortes, notícias, ações desfeitas, etc.
 Esses eventos complementam o histórico de ações para fornecer uma leitura
 completa do que aconteceu em cada partida.
 
+## O Tempo na História
+
+Cada partida tem um relógio da história: cada rodada disputada vale 1 segundo, e o mestre acerta
+o horário ao trocar de cena e ao encerrar a partida. Ver [`tempo.md`](tempo.md).
+
 ## Comunicação em Tempo Real
 
 Quando uma partida está em execução, a comunicação acontece em tempo real.

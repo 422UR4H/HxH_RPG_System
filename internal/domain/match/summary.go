@@ -17,6 +17,8 @@ type Summary struct {
 	GameStartAt             *time.Time
 	StoryStartAt            time.Time
 	StoryEndAt              *time.Time
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	// GameEndAt marca a partida encerrada (instante real).
+	GameEndAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

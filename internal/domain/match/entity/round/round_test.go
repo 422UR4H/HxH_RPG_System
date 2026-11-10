@@ -82,7 +82,7 @@ func TestRound_GetCreatedAt(t *testing.T) {
 func TestReconstructRound(t *testing.T) {
 	id := uuid.New()
 	now := time.Now()
-	r := round.ReconstructRound(id, enum.Race, now)
+	r := round.ReconstructRound(id, enum.Race, now, false, false)
 	if r.GetID() != id {
 		t.Errorf("expected ID %v, got %v", id, r.GetID())
 	}

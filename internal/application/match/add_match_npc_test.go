@@ -111,7 +111,7 @@ func TestAddMatchNPC(t *testing.T) {
 			GetMatchFn: func(ctx context.Context, id uuid.UUID) (*matchEntity.Match, error) {
 				return &matchEntity.Match{
 					UUID: matchUUID, MasterUUID: masterUUID, CampaignUUID: campaignUUID,
-					StoryEndAt: &finishedAt,
+					GameEndAt: &finishedAt,
 				}, nil
 			},
 		}

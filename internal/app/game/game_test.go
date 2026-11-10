@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"testing"
 	"time"
 
@@ -77,8 +78,8 @@ func (m *mockKickPlayerUCLocal) Kick(_ context.Context, _, _, _ uuid.UUID) error
 
 type mockChangeSceneUC struct{}
 
-func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSession, _, _ uuid.UUID, category enum.SceneCategory, briefDesc string) (*scene.Scene, *roundentity.Round, error) {
-	return scene.NewScene(category, briefDesc), roundentity.NewRound(enum.Free), nil
+func (m *mockChangeSceneUC) Execute(_ context.Context, s *matchsession.MatchSession, _, _ uuid.UUID, category enum.SceneCategory, briefDesc string, _ matchsession.SceneClose) (*scene.Scene, *roundentity.Round, *clock.Pause, error) {
+	return scene.NewScene(category, briefDesc), roundentity.NewRound(enum.Free), nil, nil
 }
 
 type mockRoundRepoGame struct{}
@@ -89,13 +90,13 @@ func (m *mockRoundRepoGame) PersistTurnClose(_ context.Context, _ appmatch.TurnC
 func (m *mockRoundRepoGame) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _, _ uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoGame) CloseSceneAndRound(_ context.Context, _ uuid.UUID, _ appmatch.RoundEnd, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockRoundRepoGame) EnsureSceneAndRound(_ context.Context, _ uuid.UUID, _ *scene.Scene, _ *roundentity.Round) error {
 	return nil
 }
-func (m *mockRoundRepoGame) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []appmatch.RoundEnd, _ *scene.Scene, _ *roundentity.Round) error {
+func (m *mockRoundRepoGame) PersistRoundClose(_ context.Context, _ uuid.UUID, _ []appmatch.RoundEnd, _ *scene.Scene, _ *roundentity.Round, _ *clock.Snapshot) error {
 	return nil
 }
 func (m *mockRoundRepoGame) FindMatchHistory(_ context.Context, _ uuid.UUID) ([]appmatch.HistoryScene, error) {
@@ -110,8 +111,8 @@ func (m *mockEnqueueMasterActionUC) Execute(_ context.Context, _ *matchsession.M
 
 type mockChangeRoundModeUC struct{}
 
-func (m *mockChangeRoundModeUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) error {
-	return nil
+func (m *mockChangeRoundModeUC) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) (*clock.Pause, error) {
+	return nil, nil
 }
 
 type mockEditActionUC struct{}

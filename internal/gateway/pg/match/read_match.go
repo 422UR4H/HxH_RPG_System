@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (r *Repository) GetMatch(
@@ -33,11 +34,15 @@ func (r *Repository) GetMatch(
 						COALESCE(description, ''),
 						is_public, game_scheduled_at, game_start_at,
             story_start_at, story_end_at,
-						created_at, updated_at
+						story_start_time, game_end_at,
+						created_at, updated_at,
+						(SELECT c.story_at FROM match_clocks c WHERE c.match_uuid = matches.uuid)
         FROM matches
         WHERE uuid = $1
     `
 	var m match.Match
+	var startTime pgtype.Time
+	var clockAt *time.Time
 	err = tx.QueryRow(ctx, query, uuid).Scan(
 		&m.UUID,
 		&m.MasterUUID,
@@ -51,14 +56,25 @@ func (r *Repository) GetMatch(
 		&m.GameStartAt,
 		&m.StoryStartAt,
 		&m.StoryEndAt,
+		&startTime,
+		&m.GameEndAt,
 		&m.CreatedAt,
 		&m.UpdatedAt,
+		&clockAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrMatchNotFound
 		}
 		return nil, fmt.Errorf("failed to fetch match: %w", err)
+	}
+	m.StoryStartTime = fromPgTime(startTime)
+	// O horário de fim na história é o relógio gravado, e só vale para partida encerrada.
+	if m.IsFinished() && clockAt != nil {
+		u := clockAt.UTC()
+		d := time.Duration(u.Hour())*time.Hour + time.Duration(u.Minute())*time.Minute +
+			time.Duration(u.Second())*time.Second
+		m.StoryEndTime = &d
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
@@ -105,7 +121,7 @@ func (r *Repository) ListMatchesByMasterUUID(
             uuid, campaign_uuid, title,
 						COALESCE(brief_initial_description, ''), brief_final_description,
 						is_public, game_scheduled_at, game_start_at,
-            story_start_at, story_end_at,
+            story_start_at, story_end_at, game_end_at,
             created_at, updated_at
         FROM matches
         WHERE master_uuid = $1
@@ -132,6 +148,7 @@ func (r *Repository) ListMatchesByMasterUUID(
 			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,
+			&m.GameEndAt,
 			&m.CreatedAt,
 			&m.UpdatedAt,
 		)
@@ -169,7 +186,7 @@ func (r *Repository) ListPublicUpcomingMatches(
             uuid, campaign_uuid, title,
             COALESCE(brief_initial_description, ''), brief_final_description,
             is_public, game_scheduled_at, game_start_at,
-            story_start_at, story_end_at,
+            story_start_at, story_end_at, game_end_at,
             created_at, updated_at
         FROM matches
         WHERE is_public = true
@@ -197,6 +214,7 @@ func (r *Repository) ListPublicUpcomingMatches(
 			&m.GameStartAt,
 			&m.StoryStartAt,
 			&m.StoryEndAt,
+			&m.GameEndAt,
 			&m.CreatedAt,
 			&m.UpdatedAt,
 		)

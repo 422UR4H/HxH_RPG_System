@@ -157,6 +157,8 @@ func (r *Room) recordMasterAction(kind masteraction.Kind, content any, views map
 		r.mu.Unlock()
 		return
 	}
+	// Uma master action é um evento entre dois ajustes do relógio: fecha a janela de fusão.
+	r.clearClockMergeLocked()
 	// Copies: the writes below run after the unlock, and the live pair is the session's.
 	sc, rd := snapshotSceneAndRound(sess.GetActiveScene(), sess.GetActiveRound())
 	rec := masteraction.Record{

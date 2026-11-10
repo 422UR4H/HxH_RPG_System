@@ -21,6 +21,11 @@ type Round struct {
 	prices     map[action.Bar]int
 	createdAt  time.Time
 	finishedAt *time.Time
+	// counted marca que algum turno abriu neste round com ele em Race: só round disputado
+	// avança o relógio da história (1 round = 1 s). Uma troca de regime depois não desfaz.
+	counted bool
+	// drained marca que a fila ativa estava vazia quando o round fechou (spec §3.6).
+	drained bool
 }
 
 func NewRound(mode enum.RoundMode) *Round {
@@ -34,8 +39,10 @@ func NewRound(mode enum.RoundMode) *Round {
 	}
 }
 
-func ReconstructRound(id uuid.UUID, mode enum.RoundMode, createdAt time.Time) *Round {
+func ReconstructRound(id uuid.UUID, mode enum.RoundMode, createdAt time.Time, counted, drained bool) *Round {
 	return &Round{
+		counted:   counted,
+		drained:   drained,
 		id:        id,
 		mode:      mode,
 		turns:     []*turn.Turn{},
@@ -44,6 +51,16 @@ func ReconstructRound(id uuid.UUID, mode enum.RoundMode, createdAt time.Time) *R
 		createdAt: createdAt,
 	}
 }
+
+// MarkCounted registra que o round foi disputado (um turno abriu nele em Race).
+func (r *Round) MarkCounted() { r.counted = true }
+
+func (r *Round) IsCounted() bool { return r.counted }
+
+// SetDrained grava se a fila estava vazia no fechamento do round.
+func (r *Round) SetDrained(v bool) { r.drained = v }
+
+func (r *Round) IsDrained() bool { return r.drained }
 
 func (r *Round) GetID() uuid.UUID {
 	return r.id
@@ -62,6 +79,11 @@ func (r *Round) CurrentTurn() *turn.Turn {
 		return nil
 	}
 	return r.turns[len(r.turns)-1]
+}
+
+// Turns são os turnos abertos neste round, na ordem, fechados ou não (cópia da lista).
+func (r *Round) Turns() []*turn.Turn {
+	return append([]*turn.Turn(nil), r.turns...)
 }
 
 // TurnCount is how many turns opened in this round, closed or not.

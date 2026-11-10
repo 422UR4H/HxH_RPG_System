@@ -38,6 +38,12 @@ Nothing that happens inside an open turn becomes durable before that turn closes
 
 Two lanes carry server → client messages, and they do **not** have a guaranteed order relative to each other: `r.broadcast` (a channel, delivered by `Run`'s own goroutine) and the direct per-client lane (`client.SendMessage`, used by `dispatchPerPlayer`). Since B2, `turn_opened` is projected per recipient (master gets the full action, everyone else — including the action's own owner — gets it through `ProjectAction` then cut to the `Opened` level), which means it cannot go out as a single broadcast anymore. Moving it to the direct lane risked it arriving BEFORE the previous turn's `turn_closed`, which still went out on `r.broadcast`. The fix: both `turn_closed` and `turn_opened` moved to the direct lane, keeping today's order — `piece_moved` → `turn_closed` → `resolution_updated` → `turn_opened` — because within one lane, on one goroutine, send order is arrival order. The contract now promises that order explicitly (see `match-combat-ws.md`).
 
+## Story clock and end of match
+
+The clock lives in `MatchSession` (`Clock()`); the room (`clock.go`) mutates it under `r.mu`, **writes outside it** (`persistClock`, serialized by `clockPersistMu`, order `clockPersistMu` → `r.mu`) and announces with `clockChangedData` (a fresh `seq` per snapshot) through `broadcastInOrder`. Master-left pauses at once (`pauseClockMasterLeft`, not on tab replacement); a 60 s ticker in `Run` checkpoints a running clock. Contract: `docs/dev/api/match-clock.md`; design: `docs/dev/match/clock.md`.
+
+`end_match` (`end_match.go`): `PlanEndMatch` computes without mutating, `PersistMatchEnd` writes ONE transaction (match end fields, scene/round close, clock, `clockRealTime`, campaign and participant sheets' `story_current_at`, unwritten sheet bars), only then `EndMatchAt` applies it to the session. Then `match_ended` → every connection closed with **4002 "match ended"** → `RoomStateClosed`. A finished match refuses any new connection (`match_ended` + 4002, before a room exists), and a command arriving after the end gets `match_already_ended`. A failed write leaves the session intact (`game_error`).
+
 ## WS Event Design
 
 **Prefer fewer event types with richer payloads** over many event types with minimal data. The client derives state transitions (e.g., "damaged" vs "destroyed") from payload fields (`hp`, `destroyed`, etc.), not from the event type name. Add a new event type only when the domain transition is meaningfully distinct and cannot be inferred from existing payload fields.

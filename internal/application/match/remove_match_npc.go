@@ -32,7 +32,7 @@ func NewRemoveMatchNPCUC(matchReader IMatchReader, roster INPCRoster) *RemoveMat
 
 // Remove takes an NPC's character sheet off a match's roster.
 //
-// Unlike Add, there is no StoryEndAt guard: taking an NPC out of a finished match is
+// Unlike Add, there is no IsFinished guard: taking an NPC out of a finished match is
 // harmless, and refusing it would only get in the way of cleanup. There is also no sheet
 // re-read — the NPC eligibility guard already lives in the SQL (Task 1).
 func (uc *RemoveMatchNPCUC) Remove(ctx context.Context, input *RemoveMatchNPCInput) error {

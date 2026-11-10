@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -11,7 +12,7 @@ import (
 )
 
 type IChangeScene interface {
-	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string) (*sceneentity.Scene, *roundentity.Round, error)
+	Execute(ctx context.Context, session *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, category enum.SceneCategory, briefDesc string, sceneClose matchsession.SceneClose) (*sceneentity.Scene, *roundentity.Round, *clock.Pause, error)
 }
 
 type ChangeSceneUC struct{}
@@ -26,11 +27,12 @@ func (uc *ChangeSceneUC) Execute(
 	masterUUID, callerUUID uuid.UUID,
 	category enum.SceneCategory,
 	briefDesc string,
-) (*sceneentity.Scene, *roundentity.Round, error) {
+	sceneClose matchsession.SceneClose,
+) (*sceneentity.Scene, *roundentity.Round, *clock.Pause, error) {
 	if callerUUID != masterUUID {
-		return nil, nil, ErrNotMatchMaster
+		return nil, nil, nil, ErrNotMatchMaster
 	}
-	return session.ChangeScene(category, briefDesc)
+	return session.ChangeScene(category, briefDesc, sceneClose)
 }
 
 var _ IChangeScene = (*ChangeSceneUC)(nil)

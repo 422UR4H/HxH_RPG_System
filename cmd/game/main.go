@@ -14,6 +14,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	cancelledactionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/cancelledaction"
+	clockPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	fogPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/fog"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
@@ -88,7 +89,8 @@ func main() {
 	// board for a piece whose character is not yet a participant and enroll it as an NPC
 	// through the SAME AddMatchNPCUC add_npc and POST /npcs already use — on start_match and on
 	// rehydration alike, idempotently.
-	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository, loadBoardUC, addMatchNPCUC)
+	clockRepository := clockPg.NewRepository(pgPool)
+	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository, loadBoardUC, addMatchNPCUC, clockRepository)
 	// The write side (spec §4.3, "Quando persiste", B3): the board row and every player's fog
 	// memory, saved together by Room.persistBoard. playerMemoryRepository doubles as
 	// RoomDeps.MemoryLoader — its FindByMatchMap is what seeds a rehydrated/started session.
@@ -120,6 +122,8 @@ func main() {
 			CloseTurnUC:           closeTurnUC,
 			ChangeSceneUC:         changeSceneUC,
 			RoundRepo:             roundRepository,
+			CombatSummaryRepo:     roundRepository,
+			MatchEndRepo:          roundRepository,
 			EnqueueMasterActionUC: enqueueMasterActionUC,
 			ChangeRoundModeUC:     changeRoundModeUC,
 			EditActionUC:          editActionUC,
@@ -134,6 +138,8 @@ func main() {
 			MasterActionRepo:    masterActionRepository,
 			EventRepo:           matchEventRepository,
 			CancelledActionRepo: cancelledActionRepository,
+			ClockUC:             match.NewClockCommandsUC(matchRepository),
+			ClockRepo:           clockRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

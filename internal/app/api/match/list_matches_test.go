@@ -101,3 +101,30 @@ func TestListMatchesHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestListMatchesCarriesGameEndAt(t *testing.T) {
+	now := time.Now()
+	end := time.Date(2026, 11, 8, 15, 4, 5, 0, time.UTC)
+	_, api := humatest.New(t)
+	mock := &mockListMatches{fn: func(context.Context, uuid.UUID) ([]*matchEntity.Summary, error) {
+		return []*matchEntity.Summary{
+			{UUID: uuid.New(), GameScheduledAt: now, StoryStartAt: now, CreatedAt: now, UpdatedAt: now, GameEndAt: &end},
+			{UUID: uuid.New(), GameScheduledAt: now, StoryStartAt: now, CreatedAt: now, UpdatedAt: now},
+		}, nil
+	}}
+	huma.Register(api, huma.Operation{Method: http.MethodGet, Path: "/matches"}, match.ListMatchesHandler(mock))
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	resp := api.GetCtx(ctx, "/matches")
+	var body struct {
+		Matches []map[string]any `json:"matches"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil || len(body.Matches) != 2 {
+		t.Fatalf("body = %s (%v)", resp.Body.String(), err)
+	}
+	if body.Matches[0]["gameEndAt"] != "2026-11-08T15:04:05Z" {
+		t.Errorf("finished summary gameEndAt = %v, want RFC 3339", body.Matches[0]["gameEndAt"])
+	}
+	if v, ok := body.Matches[1]["gameEndAt"]; ok {
+		t.Errorf("open summary gameEndAt = %v, want absent", v)
+	}
+}

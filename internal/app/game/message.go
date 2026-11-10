@@ -115,6 +115,26 @@ const (
 	MsgTypeVisibilityUpdated MessageType = "visibility_updated"
 	MsgTypeWallRevealed      MessageType = "wall_revealed"
 
+	// Cliente → servidor (só o mestre): o relógio da história (spec 2026-11-08 §7).
+	MsgTypeSetClockStart MessageType = "set_clock_start"
+	MsgTypeAdjustClock   MessageType = "adjust_clock"
+	MsgTypeSetClock      MessageType = "set_clock"
+	MsgTypePlayClock     MessageType = "play_clock"
+	MsgTypePauseClock    MessageType = "pause_clock"
+
+	// Servidor → cliente (mesa inteira): o relógio mudou.
+	MsgTypeClockChanged MessageType = "clock_changed"
+
+	// Cliente → servidor (só o mestre): o resumo do combate da cena ativa (spec 2026-11-08 §4);
+	// a resposta, combat_summary, vai só a quem pediu.
+	MsgTypeGetCombatSummary MessageType = "get_combat_summary"
+	MsgTypeCombatSummary    MessageType = "combat_summary"
+
+	// Cliente → servidor (só o mestre): encerra a partida (spec 2026-11-08 §5). A mesa inteira
+	// recebe match_ended e toda conexão fecha com o código 4002 "match ended".
+	MsgTypeEndMatch   MessageType = "end_match"
+	MsgTypeMatchEnded MessageType = "match_ended"
+
 	// Cliente → servidor (só o mestre): o mestre passa a ver o tabuleiro pelos olhos de uma
 	// peça. pieceId vazio encerra.
 	MsgTypeWatchPieceView MessageType = "watch_piece_view"
@@ -945,6 +965,9 @@ type MatchFullStatePayload struct {
 	// scene" expressible, which three flat zero-valued fields could not say.
 	Scene     *SceneChangedPayload `json:"scene,omitempty"`
 	RoundMode string               `json:"roundMode"`
+	// Clock é o relógio da história, no mesmo formato do clock_changed; ausente só antes de
+	// existir sessão. storyAt null = horário não definido (o mestre recebe o diálogo).
+	Clock *ClockPayload `json:"clock,omitempty"`
 	// PassiveValue is the dice set's base value — what a passive test reads instead of rolling
 	// (11 on 2D10, 10 on D20; MatchRules.PassiveValue). The master's editor names it when it says
 	// a bias makes a passive test roll against it. A rule of the match, so it travels with the
@@ -1129,6 +1152,12 @@ func NewErrorMessage(code, message string) Message {
 type ChangeScenePayload struct {
 	Category                string `json:"category"`
 	BriefInitialDescription string `json:"briefInitialDescription"`
+	// BriefFinalDescription é o resumo final (opcional, 255) da cena que fecha.
+	BriefFinalDescription *string `json:"briefFinalDescription,omitempty"`
+	// StoryAt é o horário exato do fim da cena (ingênuo); nil mantém o relógio (+1 s do round
+	// contado). Não pode ficar abaixo do mínimo (clock_below_limit).
+	StoryAt         *string `json:"storyAt,omitempty"`
+	ConfirmLongSkip bool    `json:"confirmLongSkip,omitempty"`
 }
 
 type SceneChangedPayload struct {
@@ -1396,3 +1425,91 @@ func toWallSegmentPayload(w mapentity.WallSegment) WallSegmentPayload {
 // nothing decodes a WallSegmentPayload/GridShapePayload back into the domain shape any more.
 // toWallSegmentPayload above (entity → payload) is still very much alive — it is how the
 // server's OWN board goes out over the wire.
+
+// SetClockStartPayload: time é "HH:MM" ou "HH:MM:SS"; a data é a da história da partida.
+type SetClockStartPayload struct {
+	Time string `json:"time"`
+}
+
+type AdjustClockPayload struct {
+	DeltaSeconds    int64 `json:"deltaSeconds"`
+	ConfirmLongSkip bool  `json:"confirmLongSkip,omitempty"`
+}
+
+type SetClockPayload struct {
+	StoryAt         string `json:"storyAt"`
+	ConfirmLongSkip bool   `json:"confirmLongSkip,omitempty"`
+}
+
+// EndMatchPayload é o end_match: o instante final da história (obrigatório, ingênuo) e o resumo
+// final da partida (opcional, até 255 caracteres).
+type EndMatchPayload struct {
+	StoryAt               string  `json:"storyAt"`
+	BriefFinalDescription *string `json:"briefFinalDescription,omitempty"`
+	ConfirmLongSkip       bool    `json:"confirmLongSkip,omitempty"`
+}
+
+// MatchEndedPayload é o match_ended: storyAt é o instante final da história (ingênuo; null se a
+// partida não tem relógio gravado) e gameEndAt o instante real do fim, RFC 3339 em UTC.
+type MatchEndedPayload struct {
+	MatchID   uuid.UUID `json:"matchId"`
+	StoryAt   *string   `json:"storyAt"`
+	GameEndAt string    `json:"gameEndAt"`
+}
+
+// ClockPayload é o estado do relógio: em match_full_state.clock e em todo clock_changed.
+// Tempos no formato ingênuo "2006-01-02T15:04:05"; storyAt/limitAt nil = não definido. Com
+// running, o cliente conta a partir do instante em que recebeu a mensagem.
+type ClockPayload struct {
+	// Seq ordena os retratos do relógio, entre faixas de envio e reconexões: o cliente descarta
+	// um seq menor que o maior que aplicou. match_full_state leva o corrente, sem avançá-lo.
+	Seq         uint64  `json:"seq"`
+	StoryAt     *string `json:"storyAt"`
+	Running     bool    `json:"running"`
+	LimitAt     *string `json:"limitAt"`
+	LimitReason string  `json:"limitReason"`
+}
+
+// ClockChangePayload diz o que mudou. Kind ∈ start|adjust|set|play|pause|round|scene|end|limit;
+// Reason só em pause (manual|roundMode|scene|masterLeft|end|restart).
+type ClockChangePayload struct {
+	Kind         string  `json:"kind"`
+	From         *string `json:"from,omitempty"`
+	To           *string `json:"to,omitempty"`
+	DeltaSeconds int64   `json:"deltaSeconds,omitempty"`
+	Reason       string  `json:"reason,omitempty"`
+	// ElapsedSeconds é o tempo real que o relógio correu (kind pause); to − from inclui os ajustes.
+	ElapsedSeconds int64 `json:"elapsedSeconds,omitempty"`
+}
+
+type ClockChangedPayload struct {
+	Clock  ClockPayload       `json:"clock"`
+	Change ClockChangePayload `json:"change"`
+}
+
+// CombatSummaryPayload é o resumo do combate (combat_summary). CountedRounds/CountedSeconds são
+// os rounds fechados contados da cena, já no relógio; ActiveRoundCounts diz que o round em
+// andamento vai somar 1 s ao fechar; MinimumStoryAt (ingênuo) é o início do editor do relógio.
+type CombatSummaryPayload struct {
+	SceneID           uuid.UUID       `json:"sceneId"`
+	CountedRounds     int             `json:"countedRounds"`
+	CountedSeconds    int             `json:"countedSeconds"`
+	ActiveRoundCounts bool            `json:"activeRoundCounts"`
+	MinimumStoryAt    string          `json:"minimumStoryAt"`
+	Hiatuses          []HiatusPayload `json:"hiatuses"`
+}
+
+// HiatusPayload é um intervalo sem disputa (spec §3.6): o último turno antes e o primeiro depois.
+type HiatusPayload struct {
+	Before HiatusTurn `json:"before"`
+	After  HiatusTurn `json:"after"`
+}
+
+// HiatusTurn é uma ponta do hiato. RoundNumber é a posição (1-based) do round na cena;
+// ActionKind é o tipo da ação (o mesmo de actions.type).
+type HiatusTurn struct {
+	RoundNumber int       `json:"roundNumber"`
+	TurnID      uuid.UUID `json:"turnId"`
+	ActorID     uuid.UUID `json:"actorId"`
+	ActionKind  string    `json:"actionKind"`
+}

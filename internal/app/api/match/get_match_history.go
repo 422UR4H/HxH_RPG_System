@@ -12,6 +12,7 @@ import (
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	domainMatch "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -38,22 +39,30 @@ type GetMatchHistoryResponse struct {
 // renders action cards inside the scope of each scene, so flattening here would push the
 // regrouping onto every consumer.
 type HistorySceneResponse struct {
-	UUID       uuid.UUID              `json:"uuid"`
-	Category   string                 `json:"category"`
-	BriefDesc  string                 `json:"briefDesc"`
-	CreatedAt  string                 `json:"createdAt"`
-	FinishedAt *string                `json:"finishedAt,omitempty"`
-	Rounds     []HistoryRoundResponse `json:"rounds"`
+	UUID       uuid.UUID `json:"uuid"`
+	Category   string    `json:"category"`
+	BriefDesc  string    `json:"briefDesc"`
+	CreatedAt  string    `json:"createdAt"`
+	FinishedAt *string   `json:"finishedAt,omitempty"`
+	// BriefFinalDescription é o resumo final da cena; StoryStartedAt/StoryFinishedAt, o início e o
+	// fim dela na história — ingênuos ("2006-01-02T15:04:05", sem Z). Omitidos quando nulos.
+	BriefFinalDescription *string                `json:"briefFinalDescription,omitempty"`
+	StoryStartedAt        *string                `json:"storyStartedAt,omitempty"`
+	StoryFinishedAt       *string                `json:"storyFinishedAt,omitempty"`
+	Rounds                []HistoryRoundResponse `json:"rounds"`
 }
 
 // HistoryRoundResponse is one round of a scene's history, with the turns closed inside it and
 // what happened inside it that is not a turn.
 type HistoryRoundResponse struct {
-	UUID       uuid.UUID             `json:"uuid"`
-	Mode       string                `json:"mode"`
-	CreatedAt  string                `json:"createdAt"`
-	FinishedAt *string               `json:"finishedAt,omitempty"`
-	Turns      []HistoryTurnResponse `json:"turns"`
+	UUID       uuid.UUID `json:"uuid"`
+	Mode       string    `json:"mode"`
+	CreatedAt  string    `json:"createdAt"`
+	FinishedAt *string   `json:"finishedAt,omitempty"`
+	// Counted: o round foi disputado (valeu 1 s). Drained: fechou com a fila vazia.
+	Counted bool                  `json:"counted"`
+	Drained bool                  `json:"drained"`
+	Turns   []HistoryTurnResponse `json:"turns"`
 	// Events is the round's regime changes, the master actions outside any turn the history
 	// holds and the cancelled actions, in the order they happened (B15, spec §4.5, §4.8; spec
 	// 2026-10-10 §8.1 P8). Always a list — [] when nothing happened — never null.
@@ -61,7 +70,8 @@ type HistoryRoundResponse struct {
 }
 
 // HistoryEventResponse is one entry of a round's events. Kind is the discriminator:
-// "roundModeChanged" carries Payload ({"from", "to"}); "masterAction" carries MasterAction;
+// "roundModeChanged" carries Payload ({"from", "to"}); "clockStarted", "clockAdjusted" and
+// "clockRealTime" carry Payload as recorded (spec 2026-11-08 §7); "masterAction" carries MasterAction;
 // "actionCancelled" carries ActorID always and Action only for the master (Full cut) and the
 // actor's owner (Declaration cut) — the use case decided which (matchUC.HistoryCancelledAction).
 // UUID is the event's own, the master action's, or the cancelled action's; CreatedAt is when it
@@ -97,9 +107,11 @@ type HistoryMasterActionResponse struct {
 // — this is where the doc comments that used to live on ActionResponse and its neighbours
 // moved to) and for Opened/Declaration, the two narrower cuts the WebSocket surfaces use.
 type HistoryTurnResponse struct {
-	UUID       uuid.UUID               `json:"uuid"`
-	CreatedAt  string                  `json:"createdAt"`
-	FinishedAt string                  `json:"finishedAt"`
+	UUID       uuid.UUID `json:"uuid"`
+	CreatedAt  string    `json:"createdAt"`
+	FinishedAt string    `json:"finishedAt"`
+	// StoryAt é o horário da história quando o turno abriu (ingênuo); omitido quando nulo.
+	StoryAt    *string                 `json:"storyAt,omitempty"`
 	Action     actionwire.Action       `json:"action"`
 	Reactions  []actionwire.Action     `json:"reactions"`
 	Resolution *TurnResolutionResponse `json:"resolution,omitempty"`
@@ -288,9 +300,12 @@ func toHistorySceneResponse(s matchUC.HistoryScene) HistorySceneResponse {
 	}
 	return HistorySceneResponse{
 		UUID: s.UUID, Category: s.Category, BriefDesc: s.BriefDesc,
-		CreatedAt:  s.CreatedAt.Format(time.RFC3339),
-		FinishedAt: formatTimePtr(s.FinishedAt),
-		Rounds:     rounds,
+		CreatedAt:             s.CreatedAt.Format(time.RFC3339),
+		FinishedAt:            formatTimePtr(s.FinishedAt),
+		BriefFinalDescription: s.BriefFinalDescription,
+		StoryStartedAt:        formatStoryPtr(s.StoryStartedAt),
+		StoryFinishedAt:       formatStoryPtr(s.StoryFinishedAt),
+		Rounds:                rounds,
 	}
 }
 
@@ -309,6 +324,8 @@ func toHistoryRoundResponse(r matchUC.HistoryRound) HistoryRoundResponse {
 		UUID: r.UUID, Mode: r.Mode,
 		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
 		FinishedAt: formatTimePtr(r.FinishedAt),
+		Counted:    r.Counted,
+		Drained:    r.Drained,
 		Turns:      turns,
 		Events:     events,
 	}
@@ -323,6 +340,13 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 			UUID: e.RoundModeChange.UUID, Kind: string(e.Kind),
 			CreatedAt: e.At.Format(time.RFC3339),
 			Payload:   e.RoundModeChange.Payload,
+		}, true
+	case (e.Kind == matchUC.HistoryEventClockStarted || e.Kind == matchUC.HistoryEventClockAdjusted ||
+		e.Kind == matchUC.HistoryEventClockRealTime) && e.ClockChange != nil:
+		return HistoryEventResponse{
+			UUID: e.ClockChange.UUID, Kind: string(e.Kind),
+			CreatedAt: e.At.Format(time.RFC3339),
+			Payload:   e.ClockChange.Payload,
 		}, true
 	case e.Kind == matchUC.HistoryEventMasterAction && e.MasterAction != nil:
 		ma := toHistoryMasterActionResponse(*e.MasterAction)
@@ -411,6 +435,7 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 		UUID:          t.UUID,
 		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
 		FinishedAt:    t.FinishedAt.Format(time.RFC3339),
+		StoryAt:       formatStoryPtr(t.StoryAt),
 		Action:        act,
 		Reactions:     reactions,
 		Resolution:    res,
@@ -525,4 +550,13 @@ func formatTimePtr(t *time.Time) *string {
 	}
 	s := t.Format(time.RFC3339)
 	return &s
+}
+
+// formatStoryPtr formata um tempo da história (ingênuo, sem Z); nil fica nil (omitido).
+func formatStoryPtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	v := clock.FormatStory(*t)
+	return &v
 }

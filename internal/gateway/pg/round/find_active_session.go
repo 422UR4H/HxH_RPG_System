@@ -17,7 +17,7 @@ import (
 func (r *Repository) FindActiveSession(ctx context.Context, matchUUID uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT s.uuid, s.category, s.brief_initial_description, s.created_at,
-		        ro.uuid, ro.mode, ro.created_at
+		        ro.uuid, ro.mode, ro.created_at, ro.counted, ro.drained, s.story_started_at
 		 FROM scenes s
 		 JOIN rounds ro ON ro.scene_uuid = s.uuid
 		 WHERE s.match_uuid = $1
@@ -31,7 +31,8 @@ func (r *Repository) FindActiveSession(ctx context.Context, matchUUID uuid.UUID)
 	data := &matchsession.ActiveSessionData{}
 	err := row.Scan(
 		&data.SceneID, &data.Category, &data.BriefInitDesc, &data.SceneCreatedAt,
-		&data.RoundID, &data.Mode, &data.RoundCreatedAt,
+		&data.RoundID, &data.Mode, &data.RoundCreatedAt, &data.RoundCounted, &data.RoundDrained,
+		&data.SceneStoryStartedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

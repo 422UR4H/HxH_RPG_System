@@ -21,6 +21,7 @@ type UpdateMatchRequestBody struct {
 	IsPublic                *bool   `json:"isPublic,omitempty" doc:"New public/private flag"`
 	GameScheduledAt         *string `json:"gameScheduledAt,omitempty" doc:"ISO 8601 date-time"`
 	StoryStartAt            *string `json:"storyStartAt,omitempty" doc:"YYYY-MM-DD"`
+	StoryStartTime          *string `json:"storyStartTime,omitempty" doc:"HH:MM or HH:MM:SS; empty string clears the time"`
 }
 
 type UpdateMatchRequest struct {
@@ -72,6 +73,15 @@ func UpdateMatchHandler(
 			input.StoryStartAt = &t
 		}
 
+		if req.Body.StoryStartTime != nil {
+			d, err := parseStoryStartTime(*req.Body.StoryStartTime)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity(errInvalidStoryStartTime)
+			}
+			input.StoryStartTime = d
+			input.ClearStoryStartTime = d == nil
+		}
+
 		m, err := uc.Update(ctx, input)
 		if err != nil {
 			switch {
@@ -115,6 +125,8 @@ func UpdateMatchHandler(
 			GameStartAt:             gameStartAtStr,
 			StoryStartAt:            m.StoryStartAt.Format("2006-01-02"),
 			StoryEndAt:              storyEndAtStr,
+			StoryStartTime:          formatStoryStartTime(m.StoryStartTime),
+			GameEndAt:               formatGameEndAt(m.GameEndAt),
 			CreatedAt:               m.CreatedAt.Format(http.TimeFormat),
 			UpdatedAt:               m.UpdatedAt.Format(http.TimeFormat),
 		}

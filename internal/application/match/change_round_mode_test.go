@@ -32,7 +32,7 @@ func TestChangeRoundMode(t *testing.T) {
 
 	t.Run("the master turns the disputed turn on", func(t *testing.T) {
 		s := freeSession(t)
-		if err := uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Race); err != nil {
+		if _, err := uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Race); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if s.GetActiveRound().GetMode() != enum.Race {
@@ -42,8 +42,8 @@ func TestChangeRoundMode(t *testing.T) {
 
 	t.Run("and back off again", func(t *testing.T) {
 		s := freeSession(t)
-		_ = uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Race)
-		if err := uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Free); err != nil {
+		_, _ = uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Race)
+		if _, err := uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Free); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if s.GetActiveRound().GetMode() != enum.Free {
@@ -53,7 +53,7 @@ func TestChangeRoundMode(t *testing.T) {
 
 	t.Run("only the master", func(t *testing.T) {
 		s := freeSession(t)
-		err := uc.Execute(context.Background(), s, masterUUID, uuid.New(), enum.Race)
+		_, err := uc.Execute(context.Background(), s, masterUUID, uuid.New(), enum.Race)
 		if err == nil {
 			t.Error("a player must not switch the regime")
 		}
@@ -61,7 +61,7 @@ func TestChangeRoundMode(t *testing.T) {
 
 	t.Run("an unknown mode is refused", func(t *testing.T) {
 		s := freeSession(t)
-		if err := uc.Execute(context.Background(), s, masterUUID, masterUUID, "Sprint"); err == nil {
+		if _, err := uc.Execute(context.Background(), s, masterUUID, masterUUID, "Sprint"); err == nil {
 			t.Error("only Free and Race exist")
 		}
 	})

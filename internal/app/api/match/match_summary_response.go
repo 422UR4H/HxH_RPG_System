@@ -19,6 +19,7 @@ type MatchSummaryResponse struct {
 	GameStartAt             *string   `json:"gameStartAt,omitempty"`
 	StoryStartAt            string    `json:"storyStartAt"`
 	StoryEndAt              *string   `json:"storyEndAt,omitempty"`
+	GameEndAt               *string   `json:"gameEndAt,omitempty"`
 	MyEnrollmentStatus      *string   `json:"myEnrollmentStatus,omitempty"`
 	CreatedAt               string    `json:"createdAt"`
 	UpdatedAt               string    `json:"updatedAt"`
@@ -48,6 +49,7 @@ func ToSummaryResponse(m *matchEntity.Summary) MatchSummaryResponse {
 		GameStartAt:             gameStartAtStr,
 		StoryStartAt:            m.StoryStartAt.Format("2006-01-02"),
 		StoryEndAt:              storyEndAtStr,
+		GameEndAt:               formatGameEndAt(m.GameEndAt),
 		CreatedAt:               m.CreatedAt.Format(http.TimeFormat),
 		UpdatedAt:               m.UpdatedAt.Format(http.TimeFormat),
 	}

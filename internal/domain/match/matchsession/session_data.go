@@ -17,4 +17,9 @@ type ActiveSessionData struct {
 	RoundID        uuid.UUID
 	Mode           string
 	RoundCreatedAt time.Time
+	// RoundCounted/RoundDrained são o que o round carrega do relógio da história.
+	RoundCounted bool
+	RoundDrained bool
+	// SceneStoryStartedAt é o horário da história em que a cena começou (nil: não registrado).
+	SceneStoryStartedAt *time.Time
 }

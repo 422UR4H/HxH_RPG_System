@@ -19,7 +19,7 @@ func TestChangeSceneUC(t *testing.T) {
 		uc := appmatch.NewChangeSceneUC()
 		caller := uuid.New()
 
-		_, _, err := uc.Execute(context.Background(), s, masterUUID, caller, enum.Battle, "Arena")
+		_, _, _, err := uc.Execute(context.Background(), s, masterUUID, caller, enum.Battle, "Arena", matchsession.SceneClose{})
 		if !errors.Is(err, appmatch.ErrNotMatchMaster) {
 			t.Errorf("expected ErrNotMatchMaster, got %v", err)
 		}
@@ -29,7 +29,7 @@ func TestChangeSceneUC(t *testing.T) {
 		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
 		uc := appmatch.NewChangeSceneUC()
 
-		oldScene, oldRound, err := uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Battle, "Arena fight")
+		oldScene, oldRound, _, err := uc.Execute(context.Background(), s, masterUUID, masterUUID, enum.Battle, "Arena fight", matchsession.SceneClose{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

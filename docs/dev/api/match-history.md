@@ -398,14 +398,26 @@ gravadas antes dessa decisão podem ter um `turnId` cujo turno nunca foi gravado
 no instante, com turno aberto ou não); o histórico as mostra em `rounds[].events`, com o
 `turnId`, apontando um turno que não existe na árvore.
 
-**Formato de `events[]`** — em ordem de tempo, os três `kind` intercalados:
+**Eventos de relógio** (relógio da história, [`match-clock.md`](match-clock.md)) também vão em
+`rounds[].events`, públicos: `clockStarted` (`payload: {"at"}`), `clockAdjusted`
+(`payload: {"from","to","deltaSeconds"}` — ajustes seguidos até 10 s entre si são **uma linha só**,
+atualizada no lugar: `from` do início, `to` e `deltaSeconds` acumulados, `uuid` e `createdAt` do primeiro)
+e `clockRealTime` (`payload: {"from","to","elapsedSeconds","reason"}`, gravado ao pausar; `reason` ∈
+`manual` · `roundMode` · `scene` · `masterLeft` · `end`). Instantes dentro do `payload` são **naïve**
+(`"2006-01-02T15:04:05"`, sem fuso — nunca `new Date`). `createdAt` do evento é instante real.
+
+Campos novos fora dos eventos: `scenes[].briefFinalDescription`, `scenes[].storyStartedAt`,
+`scenes[].storyFinishedAt` (naïve), `rounds[].counted` e `rounds[].drained` (bool, sempre presentes) e
+`rounds[].turns[].storyAt` (naïve, o relógio quando o turno abriu; omitido se nulo).
+
+**Formato de `events[]`** — em ordem de tempo, os `kind` intercalados:
 
 | Campo | |
 |---|---|
 | `uuid` | do evento (`roundModeChanged`), da master action (`masterAction`) ou da ação cancelada (`actionCancelled` — o id que a ação tinha na fila) |
-| `kind` | `"roundModeChanged"` \| `"masterAction"` \| `"actionCancelled"` |
+| `kind` | `"roundModeChanged"` \| `"masterAction"` \| `"actionCancelled"` \| `"clockStarted"` \| `"clockAdjusted"` \| `"clockRealTime"` |
 | `createdAt` | quando aconteceu (em `actionCancelled`, quando foi cancelada) |
-| `payload` | só em `roundModeChanged`: `{ "from": "Free", "to": "Race" }` |
+| `payload` | em `roundModeChanged`: `{ "from": "Free", "to": "Race" }`; nos três de relógio, como acima |
 | `masterAction` | só em `masterAction`: o mesmo objeto de `turns[].masterActions[]` |
 | `actorId` | só em `actionCancelled`, **sempre**: a ficha do personagem que agiria |
 | `action` | só em `actionCancelled`, e só para o mestre e o dono do personagem: a ação como estava na fila, no formato de `turns[].action` cortado por leitor (tabela abaixo); **ausente** para os outros |

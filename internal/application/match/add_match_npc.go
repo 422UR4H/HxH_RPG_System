@@ -76,7 +76,7 @@ func (uc *AddMatchNPCUC) Add(
 	if mt.MasterUUID != input.RequesterUUID {
 		return nil, ErrNotMatchMaster
 	}
-	if mt.StoryEndAt != nil {
+	if mt.IsFinished() {
 		return nil, ErrMatchAlreadyFinished
 	}
 

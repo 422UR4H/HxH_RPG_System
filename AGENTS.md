@@ -181,6 +181,10 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   descarta as edições (`discardEdits`). Spec
   `docs/superpowers/specs/2026-10-12-default-reaction-and-queue-edits-design.md`.
 
+**Relógio da história existe** (spec 2026-11-08): `clock_changed`/`set_clock`/`end_match` etc. Coisas que parecem lacuna e são deliberadas: tempo da história é **ingênuo** (string sem fuso; o front nunca usa `Date`); `clock_changed.kind: "end"` existe na struct mas o servidor não o emite (o fim vai em `match_ended` + fechamento 4002); `pause_clock` com o relógio já parado não responde nada; `get_combat_summary` não exige hora definida. Partida encerrada = `gameEndAt` (`Match.IsFinished()`), não `storyEndAt`. Ver `docs/dev/api/match-clock.md` e `docs/dev/match/clock.md`.
+
+**Envios pendentes travam quando a sala para (não corrigido):** os `go func(){ r.broadcast <- … }()` (e `broadcastInOrder`) ainda sem leitor quando o `Run` sai ficam bloqueados para sempre — padrão anterior ao relógio, mais frequente com ele (`clock_changed` em quase todo comando do mestre).
+
 **Pendente de configurações de campanha/partida:**
 - `fog_mode` (`live` | `explored`) é persistido em `maps.fog_mode` e honrado por
   `FilterMapState`, mas nenhum endpoint REST o expõe e `room.go` hardcoda `explored`.

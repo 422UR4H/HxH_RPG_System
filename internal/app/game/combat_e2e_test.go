@@ -159,6 +159,14 @@ type combatFixture struct {
 	// cancelled with no turn open lands here at once; one cancelled inside a turn reaches
 	// PersistTurnClose instead (roundRepo.closeData).
 	cancelled *fakeCancelledActionStore
+	// depsHook ajusta as RoomDeps no fim de roomDeps (withRoomDeps); nil sem a opção.
+	depsHook func(*game.RoomDeps)
+}
+
+// withRoomDeps acrescenta dependências à sala (o relógio da história, por exemplo) sem mudar
+// a mesa que os demais testes usam.
+func withRoomDeps(hook func(*game.RoomDeps)) combatOpt {
+	return func(f *combatFixture) { f.depsHook = hook }
 }
 
 // combatOpt tweaks the fixture before the session is built. Without one, newCombatFixture
@@ -381,6 +389,9 @@ func (f *combatFixture) roomDeps(session *matchsession.MatchSession, roundRepo *
 	if f.noMasterActionRepo {
 		deps.MasterActionRepo = nil
 	}
+	if f.depsHook != nil {
+		f.depsHook(&deps)
+	}
 	return deps
 }
 
@@ -579,6 +590,8 @@ func sendWS(t *testing.T, conn *websocket.Conn, msgType string, payload any) {
 type collector struct {
 	mu   sync.Mutex
 	msgs []game.Message
+	// readErr é o erro que encerrou a leitura (o fechamento da conexão, com o código).
+	readErr error
 }
 
 func newCollector(conn *websocket.Conn) *collector {
@@ -587,6 +600,9 @@ func newCollector(conn *websocket.Conn) *collector {
 		for {
 			_, data, err := conn.ReadMessage()
 			if err != nil {
+				c.mu.Lock()
+				c.readErr = err
+				c.mu.Unlock()
 				return
 			}
 			var msg game.Message
@@ -2722,9 +2738,16 @@ func (f *combatFixture) openAttackOn(t *testing.T, player *websocket.Conn, maste
 	if !masterMsgs.await(game.MsgTypeActionQueued, 2*time.Second) {
 		t.Fatal("the attack never reached the queue")
 	}
+	resolved := masterMsgs.count(game.MsgTypeResolutionUpdate)
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 	if !masterMsgs.await(game.MsgTypeTurnOpened, 3*time.Second) {
 		t.Fatal("the attack never opened: there is no turn for a reaction to attach to")
+	}
+	// A resolução da abertura também é esperada: chegando depois, ela seria lida por
+	// attachEscape como a "nova" — e a reação pendente do alvo nela é a padrão sentada na
+	// abertura, que o escape substitui (o id some e a edição seguinte falha).
+	if !awaitCount(masterMsgs, game.MsgTypeResolutionUpdate, resolved+1, 3*time.Second) {
+		t.Fatal("the open's resolution_updated never arrived")
 	}
 	turn := f.session.GetActiveRound().CurrentTurn()
 	if turn == nil {

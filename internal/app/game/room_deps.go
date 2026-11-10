@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"time"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
@@ -86,4 +87,22 @@ type RoomDeps struct {
 	EventRepo interface {
 		Insert(ctx context.Context, e matchevent.Event) error
 	}
+	// ClockUC são os comandos do mestre sobre o relógio da história (set_clock_start,
+	// adjust_clock, set_clock, play_clock, pause_clock). nil: a sala recusa esses comandos.
+	ClockUC appmatch.IClockCommands
+	// ClockRepo grava o relógio (checkpoint + evento). nil: sem persistência — o relógio vive
+	// só em memória, a sala funciona igual.
+	ClockRepo appmatch.IClockRepository
+	// CombatSummaryRepo lê os rounds fechados da cena para o get_combat_summary. nil: a sala
+	// recusa o pedido (game_error).
+	CombatSummaryRepo appmatch.ICombatSummaryRepository
+	// MatchEndRepo grava o fim da partida (end_match, uma transação) e o lê na conexão: a uma
+	// partida encerrada o handler responde match_ended e fecha com 4002. nil: a sala recusa o
+	// end_match (game_error) e o handler não confere o encerramento.
+	MatchEndRepo appmatch.IMatchEndRepository
+	// Now é a fonte do tempo real do relógio; nil = time.Now. Testes injetam um relógio falso
+	// (a sala o repassa à sessão).
+	Now func() time.Time
+	// ClockCheckpointEvery é o intervalo do checkpoint do relógio rodando; 0 = 60 s.
+	ClockCheckpointEvery time.Duration
 }

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/testutil"
+	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )
@@ -113,7 +113,7 @@ func TestKickPlayer(t *testing.T) {
 						MasterUUID:      masterUUID,
 						CampaignUUID:    campaignUUID,
 						GameScheduledAt: now,
-						StoryEndAt:      &finishedAt,
+						GameEndAt:       &finishedAt,
 					}, nil
 				},
 			},

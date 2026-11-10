@@ -18,6 +18,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	fogentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -25,6 +26,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
+	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
@@ -310,38 +312,87 @@ func TestFindActiveSession(t *testing.T) {
 	})
 }
 
+// O fechamento da cena antiga leva, numa transação, o finished_at da cena e do round, o
+// resumo final e o fim na história da cena, e o relógio.
 func TestCloseSceneAndRound(t *testing.T) {
 	pool := pgtest.SetupTestDB(t)
 	repo := roundrepo.NewRepository(pool)
 	ctx := context.Background()
 
-	t.Run("happy path — sets finished_at on both scene and round", func(t *testing.T) {
+	t.Run("happy path — closes the pair with the final description, story end and clock", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
-		masterUUID := pgtest.InsertTestUser(t, pool, "gm1", "gm1@test.com", "pass")
-		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterUUID, "Camp1")
-		matchUUID := pgtest.InsertTestMatch(t, pool, masterUUID, campaignUUID, "Match1")
+		fx := seedMatchAndSheets(t, pool)
+		base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", base)
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, base, true, false)
+		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+			t.Fatalf("EnsureSceneAndRound: %v", err)
+		}
 
-		sceneUUID := pgtest.InsertTestScene(t, pool, matchUUID, "Battle")
-		roundUUID := pgtest.InsertTestRound(t, pool, sceneUUID, "Free")
+		at := base.Add(time.Hour)
+		storyEnd := time.Date(2000, 1, 1, 23, 59, 59, 0, time.UTC)
+		final := "Os bandidos fugiram"
+		sc.Close(at)
+		sc.BriefFinalDescription = &final
+		sc.SetStoryFinishedAt(storyEnd)
+		rd.SetDrained(true)
+		rd.Close(at)
 
-		sceneUUIDParsed, _ := uuid.Parse(sceneUUID)
-		roundUUIDParsed, _ := uuid.Parse(roundUUID)
-		at := time.Now().UTC().Truncate(time.Microsecond)
-
-		err := repo.CloseSceneAndRound(ctx, sceneUUIDParsed, roundUUIDParsed, at)
+		err := repo.CloseSceneAndRound(ctx, fx.matchUUID, appmatch.RoundEnd{Scene: sc, Round: rd}, clockSnap(storyEnd, storyEnd))
 		if err != nil {
 			t.Fatalf("CloseSceneAndRound error: %v", err)
 		}
 
-		var sceneFinishedAt, roundFinishedAt time.Time
-		pool.QueryRow(ctx, `SELECT finished_at FROM scenes WHERE uuid = $1`, sceneUUID).Scan(&sceneFinishedAt) //nolint:errcheck
-		pool.QueryRow(ctx, `SELECT finished_at FROM rounds WHERE uuid = $1`, roundUUID).Scan(&roundFinishedAt) //nolint:errcheck
+		var sceneFinishedAt, roundFinishedAt, storyFinished time.Time
+		var gotFinal *string
+		var drained bool
+		pool.QueryRow(ctx, `SELECT finished_at, brief_final_description, story_finished_at FROM scenes WHERE uuid = $1`, sc.GetID()).Scan(&sceneFinishedAt, &gotFinal, &storyFinished) //nolint:errcheck
+		pool.QueryRow(ctx, `SELECT finished_at, drained FROM rounds WHERE uuid = $1`, rd.GetID()).Scan(&roundFinishedAt, &drained)                                                     //nolint:errcheck
 
-		if !sceneFinishedAt.Truncate(time.Microsecond).Equal(at) {
-			t.Errorf("scene finished_at: got %v, want %v", sceneFinishedAt, at)
+		if !sceneFinishedAt.Equal(at) || !roundFinishedAt.Equal(at) {
+			t.Errorf("finished_at scene %v / round %v, want %v", sceneFinishedAt, roundFinishedAt, at)
 		}
-		if !roundFinishedAt.Truncate(time.Microsecond).Equal(at) {
-			t.Errorf("round finished_at: got %v, want %v", roundFinishedAt, at)
+		if gotFinal == nil || *gotFinal != final {
+			t.Errorf("brief_final_description = %v, want %q", gotFinal, final)
+		}
+		if !storyFinished.Equal(storyEnd) {
+			t.Errorf("story_finished_at = %v, want %v (naive, no zone shift)", storyFinished, storyEnd)
+		}
+		if !drained {
+			t.Error("rounds.drained = false, want true")
+		}
+		snap, err := pgclock.NewRepository(pool).Load(ctx, fx.matchUUID)
+		if err != nil || snap == nil || !snap.StoryAt.Equal(storyEnd) {
+			t.Errorf("clock = %+v (%v), want story_at %v", snap, err, storyEnd)
+		}
+	})
+
+	t.Run("a pair that was never a row lands closed", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		at := time.Date(2026, 11, 8, 11, 0, 0, 0, time.UTC)
+		sc := sceneentity.ReconstructScene(uuid.New(), enum.Roleplay, "", at)
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Free, at, false, false)
+		sc.Close(at)
+		rd.Close(at)
+		if err := repo.CloseSceneAndRound(ctx, fx.matchUUID, appmatch.RoundEnd{Scene: sc, Round: rd}, nil); err != nil {
+			t.Fatalf("CloseSceneAndRound error: %v", err)
+		}
+		if finished, exists, open := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !exists || finished == nil || open != 0 {
+			t.Errorf("round row exists=%v finished=%v open=%d, want a closed row", exists, finished, open)
+		}
+		if snap, _ := pgclock.NewRepository(pool).Load(ctx, fx.matchUUID); snap != nil {
+			t.Errorf("a nil clock wrote %+v", snap)
+		}
+	})
+
+	t.Run("an end that is not closed is refused", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		sc := sceneentity.NewScene(enum.Roleplay, "")
+		rd := roundentity.NewRound(enum.Free)
+		if err := repo.CloseSceneAndRound(ctx, fx.matchUUID, appmatch.RoundEnd{Scene: sc, Round: rd}, nil); err == nil {
+			t.Error("CloseSceneAndRound accepted a round with no finished_at")
 		}
 	})
 }
@@ -1289,8 +1340,8 @@ func TestFindMatchHistoryDoesNotInterleaveScenesOrRoundsThatTieOnCreatedAt(t *te
 
 	sceneA := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Scene A", sharedCreated)
 	sceneB := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Scene B", sharedCreated)
-	roundA := roundentity.ReconstructRound(uuid.New(), enum.Free, sharedCreated)
-	roundB := roundentity.ReconstructRound(uuid.New(), enum.Free, sharedCreated)
+	roundA := roundentity.ReconstructRound(uuid.New(), enum.Free, sharedCreated, false, false)
+	roundB := roundentity.ReconstructRound(uuid.New(), enum.Free, sharedCreated, false, false)
 
 	// Scene A's first turn.
 	actA1 := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
@@ -1858,25 +1909,27 @@ func TestFindMatchHistoryKeepsWhatIsNotATurn(t *testing.T) {
 
 	// Scene A — born, and ended, with no turn: one round, no turn.
 	sceneA := sceneentity.ReconstructScene(uuid.New(), enum.Roleplay, "Taverna", at(0))
-	roundA := roundentity.ReconstructRound(uuid.New(), enum.Free, at(0))
+	roundA := roundentity.ReconstructRound(uuid.New(), enum.Free, at(0), false, false)
 	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneA, roundA); err != nil {
 		t.Fatalf("EnsureSceneAndRound A: %v", err)
 	}
-	if err := repo.CloseSceneAndRound(ctx, sceneA.GetID(), roundA.GetID(), at(5)); err != nil {
+	sceneA.Close(at(5))
+	roundA.Close(at(5))
+	if err := repo.CloseSceneAndRound(ctx, fx.matchUUID, appmatch.RoundEnd{Scene: sceneA, Round: roundA}, nil); err != nil {
 		t.Fatalf("CloseSceneAndRound A: %v", err)
 	}
 
 	// Scene B — a round closed with no turn, a round with a turn, and a round whose only turn
 	// lost its action row.
 	sceneB := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(10))
-	roundB1 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(10))
+	roundB1 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(10), false, false)
 	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneB, roundB1); err != nil {
 		t.Fatalf("EnsureSceneAndRound B1: %v", err)
 	}
 	// B1 ends with no turn: its end and B2's birth go together.
 	roundB1.Close(at(11))
-	roundB2 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(12))
-	if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sceneB, Round: roundB1}}, sceneB, roundB2); err != nil {
+	roundB2 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(12), false, false)
+	if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sceneB, Round: roundB1}}, sceneB, roundB2, nil); err != nil {
 		t.Fatalf("PersistRoundClose B1 -> B2: %v", err)
 	}
 	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
@@ -1888,7 +1941,7 @@ func TestFindMatchHistoryKeepsWhatIsNotATurn(t *testing.T) {
 		t.Fatalf("PersistTurnClose B2: %v", err)
 	}
 
-	roundB3 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(14))
+	roundB3 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(14), false, false)
 	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sceneB, roundB3); err != nil {
 		t.Fatalf("EnsureSceneAndRound B3: %v", err)
 	}
@@ -1994,7 +2047,7 @@ func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		stray := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		stray := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
 		// The birth write of `stray` failed: no row. No action could still pay: it closes in memory.
 		stray.Close(at(3))
 
@@ -2010,7 +2063,7 @@ func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 			t.Fatalf("stray round finished_at = %v, want %v — it was written open", f, at(3))
 		}
 
-		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3), false, false)
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, next); err != nil {
 			t.Fatalf("EnsureSceneAndRound next: %v", err)
 		}
@@ -2029,7 +2082,7 @@ func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		rd := roundentity.ReconstructRound(uuid.New(), enum.Free, at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Free, at(0), false, false)
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
 			t.Fatalf("EnsureSceneAndRound (open): %v", err)
 		}
@@ -2050,7 +2103,7 @@ func TestEnsureSceneAndRoundCarriesFinishedAt(t *testing.T) {
 		}
 
 		// A later ensure carrying a DIFFERENT finish (or none) never moves the recorded one.
-		later := roundentity.ReconstructRound(rd.GetID(), enum.Free, at(0))
+		later := roundentity.ReconstructRound(rd.GetID(), enum.Free, at(0), false, false)
 		later.Close(at(9))
 		laterScene := sceneentity.ReconstructScene(sc.GetID(), enum.Battle, "Arena", at(0))
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, laterScene, later); err != nil {
@@ -2103,7 +2156,7 @@ func TestPersistTurnCloseWritesTheRoundEndWithTheTurn(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
 		// Born a row (B15), open.
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
 			t.Fatalf("EnsureSceneAndRound: %v", err)
@@ -2112,7 +2165,7 @@ func TestPersistTurnCloseWritesTheRoundEndWithTheTurn(t *testing.T) {
 		tn := turnentity.NewTurn(*act)
 		tn.Close(at(2))
 		rd.Close(at(2))
-		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(2))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(2), false, false)
 		return fx, sc, rd, next, tn, act
 	}
 
@@ -2160,7 +2213,7 @@ func TestPersistTurnCloseWritesTheRoundEndWithTheTurn(t *testing.T) {
 
 	t.Run("a successor with an open round refuses to write two open rounds", func(t *testing.T) {
 		fx, sc, rd, next, tn, act := setup(t)
-		stillOpen := roundentity.ReconstructRound(rd.GetID(), enum.Race, at(0))
+		stillOpen := roundentity.ReconstructRound(rd.GetID(), enum.Race, at(0), false, false)
 		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
 			Scene: sc, Round: stillOpen, NextRound: next, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
 		})
@@ -2188,14 +2241,14 @@ func TestPersistRoundClose(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
 			t.Fatalf("EnsureSceneAndRound: %v", err)
 		}
 		rd.Close(at(3))
-		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3), false, false)
 
-		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next); err != nil {
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next, nil); err != nil {
 			t.Fatalf("PersistRoundClose: %v", err)
 		}
 		if f, ok, _ := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f == nil || !f.Equal(at(3)) {
@@ -2214,11 +2267,11 @@ func TestPersistRoundClose(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
 		rd.Close(at(3))
-		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3), false, false)
 
-		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next); err != nil {
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next, nil); err != nil {
 			t.Fatalf("PersistRoundClose: %v", err)
 		}
 		if f, ok, open := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f == nil || open != 1 {
@@ -2230,15 +2283,15 @@ func TestPersistRoundClose(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
 			t.Fatalf("EnsureSceneAndRound: %v", err)
 		}
 		rd.Close(at(3))
 		// rounds.mode is VARCHAR(16): a longer regime is refused by the database.
-		next := roundentity.ReconstructRound(uuid.New(), enum.RoundMode("a-regime-too-long-for-the-column"), at(3))
+		next := roundentity.ReconstructRound(uuid.New(), enum.RoundMode("a-regime-too-long-for-the-column"), at(3), false, false)
 
-		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next); err == nil {
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next, nil); err == nil {
 			t.Fatal("PersistRoundClose succeeded with a successor the database refuses")
 		}
 		if f, ok, open := roundRowsOf(t, pool, rd.GetID(), sc.GetID()); !ok || f != nil || open != 1 {
@@ -2250,9 +2303,9 @@ func TestPersistRoundClose(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
-		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
-		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next); err == nil {
+		rd := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
+		next := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3), false, false)
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next, nil); err == nil {
 			t.Fatal("PersistRoundClose accepted a round with no finished_at")
 		}
 	})
@@ -2275,12 +2328,12 @@ func TestRoundEndsAnEarlierCommandCouldNotWrite(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)
 		sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
-		r1 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0))
+		r1 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, r1); err != nil {
 			t.Fatalf("EnsureSceneAndRound r1: %v", err)
 		}
 		r1.Close(at(3))
-		r2 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3))
+		r2 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(3), false, false)
 		return fx, sc, r1, r2
 	}
 
@@ -2331,7 +2384,7 @@ func TestRoundEndsAnEarlierCommandCouldNotWrite(t *testing.T) {
 
 	t.Run("an ensure of the successor goes through PersistRoundClose with the earlier end", func(t *testing.T) {
 		fx, sc, r1, r2 := setup(t)
-		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: r1}}, sc, r2); err != nil {
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: r1}}, sc, r2, nil); err != nil {
 			t.Fatalf("PersistRoundClose: %v", err)
 		}
 		if f, ok, open := roundRowsOf(t, pool, r2.GetID(), sc.GetID()); !ok || f != nil || open != 1 {
@@ -2343,9 +2396,9 @@ func TestRoundEndsAnEarlierCommandCouldNotWrite(t *testing.T) {
 		fx, sc, r1, r2 := setup(t)
 		r2.Close(at(6)) // r2 also ended and its write failed — never a row
 		sc2 := sceneentity.ReconstructScene(uuid.New(), enum.Roleplay, "Taverna", at(7))
-		r3 := roundentity.ReconstructRound(uuid.New(), enum.Free, at(7))
+		r3 := roundentity.ReconstructRound(uuid.New(), enum.Free, at(7), false, false)
 		if err := repo.PersistRoundClose(ctx, fx.matchUUID,
-			[]appmatch.RoundEnd{{Scene: sc, Round: r1}, {Scene: sc, Round: r2}}, sc2, r3); err != nil {
+			[]appmatch.RoundEnd{{Scene: sc, Round: r1}, {Scene: sc, Round: r2}}, sc2, r3, nil); err != nil {
 			t.Fatalf("PersistRoundClose: %v", err)
 		}
 		if f, ok, open := roundRowsOf(t, pool, r2.GetID(), sc.GetID()); !ok || f == nil || open != 0 {
@@ -2358,8 +2411,8 @@ func TestRoundEndsAnEarlierCommandCouldNotWrite(t *testing.T) {
 
 	t.Run("an end that did not end is refused", func(t *testing.T) {
 		fx, sc, _, r2 := setup(t)
-		open := roundentity.ReconstructRound(uuid.New(), enum.Race, at(1))
-		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: open}}, sc, r2); err == nil {
+		open := roundentity.ReconstructRound(uuid.New(), enum.Race, at(1), false, false)
+		if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: open}}, sc, r2, nil); err == nil {
 			t.Fatal("PersistRoundClose accepted an end with no finished_at")
 		}
 		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
@@ -2386,8 +2439,8 @@ func TestFindActiveSessionIsDeterministic(t *testing.T) {
 
 	base := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
 	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", base)
-	older := roundentity.ReconstructRound(uuid.New(), enum.Race, base)
-	newer := roundentity.ReconstructRound(uuid.New(), enum.Race, base.Add(time.Minute))
+	older := roundentity.ReconstructRound(uuid.New(), enum.Race, base, false, false)
+	newer := roundentity.ReconstructRound(uuid.New(), enum.Race, base.Add(time.Minute), false, false)
 	// The older one is written first, so it is also first on disk.
 	for _, rd := range []*roundentity.Round{older, newer} {
 		if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
@@ -2559,7 +2612,7 @@ func TestFindMatchHistoryReturnsTheRealInstant(t *testing.T) {
 	closedAt := time.Date(2026, 10, 1, 11, 57, 33, 0, loc)
 
 	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", closedAt)
-	rd := roundentity.ReconstructRound(uuid.New(), enum.Free, closedAt)
+	rd := roundentity.ReconstructRound(uuid.New(), enum.Free, closedAt, false, false)
 
 	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
 	tn := turnentity.NewTurn(*act)
@@ -2903,5 +2956,262 @@ func TestPersistTurnCloseWritesTheDamageSkill(t *testing.T) {
 	got := scenes[0].Rounds[0].Turns[0]
 	if got.Action.Attack == nil || got.Action.Attack.DamageSkill != enum.Grab {
 		t.Errorf("the attack read back without the damage skill: %+v", got.Action.Attack)
+	}
+}
+
+func clockSnap(storyAt, limitAt time.Time) *clock.Snapshot {
+	return &clock.Snapshot{StoryAt: &storyAt, LimitAt: &limitAt, LimitReason: clock.LimitTurn}
+}
+
+// O turno carrega o horário da história que recebeu na abertura (story_at) e o relógio que o
+// fechamento deixou; os dois vão na transação do fechamento.
+func TestPersistTurnCloseWritesClockAndStoryAt(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	sc := sceneentity.NewScene(enum.Battle, "Arena")
+	rd := roundentity.NewRound(enum.Race)
+	rd.MarkCounted()
+	act := action.NewAction(fx.attackerSheet, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	tn := turnentity.NewTurn(*act)
+	opened := time.Date(2000, 1, 1, 8, 30, 15, 0, time.UTC)
+	tn.SetStoryAt(opened)
+	tn.Close(time.Now())
+
+	now := time.Date(2000, 1, 1, 8, 30, 20, 0, time.UTC)
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sc, Round: rd, Turn: tn, Action: act, MatchUUID: fx.matchUUID, Clock: clockSnap(now, now),
+	}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+
+	var storyAt time.Time
+	if err := pool.QueryRow(ctx, `SELECT story_at FROM turns WHERE uuid=$1`, tn.GetID()).Scan(&storyAt); err != nil || !storyAt.Equal(opened) {
+		t.Errorf("turns.story_at = %v (%v), want %v", storyAt, err, opened)
+	}
+	var counted bool
+	if err := pool.QueryRow(ctx, `SELECT counted FROM rounds WHERE uuid=$1`, rd.GetID()).Scan(&counted); err != nil || !counted {
+		t.Errorf("rounds.counted = %v (%v), want true", counted, err)
+	}
+	snap, err := pgclock.NewRepository(pool).Load(ctx, fx.matchUUID)
+	if err != nil || snap == nil || !snap.StoryAt.Equal(now) || snap.LimitReason != clock.LimitTurn {
+		t.Errorf("clock = %+v (%v), want story_at %v / turn", snap, err, now)
+	}
+
+	t.Run("a nil clock leaves match_clocks alone", func(t *testing.T) {
+		act2 := action.NewAction(fx.attackerSheet, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+		t2 := turnentity.NewTurn(*act2)
+		t2.Close(time.Now())
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: sc, Round: rd, Turn: t2, Action: act2, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		snap, _ := pgclock.NewRepository(pool).Load(ctx, fx.matchUUID)
+		if snap == nil || !snap.StoryAt.Equal(now) {
+			t.Errorf("clock changed to %+v", snap)
+		}
+		var null bool
+		pool.QueryRow(ctx, `SELECT story_at IS NULL FROM turns WHERE uuid=$1`, t2.GetID()).Scan(&null) //nolint:errcheck
+		if !null {
+			t.Error("a turn with no story time must keep story_at NULL")
+		}
+	})
+}
+
+// counted/drained do round que acabou, e o +1 s do relógio, saem na transação do fim do round.
+func TestPersistRoundCloseWritesCountedDrained(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", base)
+	rd := roundentity.ReconstructRound(uuid.New(), enum.Race, base, false, false)
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+		t.Fatal(err)
+	}
+	rd.MarkCounted()
+	rd.SetDrained(true)
+	rd.Close(base.Add(time.Minute))
+	next := roundentity.ReconstructRound(uuid.New(), enum.Race, base.Add(time.Minute), false, false)
+	at := time.Date(2000, 1, 1, 0, 0, 1, 0, time.UTC)
+
+	if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: rd}}, sc, next, clockSnap(at, at)); err != nil {
+		t.Fatalf("PersistRoundClose: %v", err)
+	}
+	var counted, drained bool
+	if err := pool.QueryRow(ctx, `SELECT counted, drained FROM rounds WHERE uuid=$1`, rd.GetID()).Scan(&counted, &drained); err != nil || !counted || !drained {
+		t.Errorf("closed round counted=%v drained=%v (%v), want both true", counted, drained, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT counted, drained FROM rounds WHERE uuid=$1`, next.GetID()).Scan(&counted, &drained); err != nil || counted || drained {
+		t.Errorf("successor counted=%v drained=%v (%v), want both false", counted, drained, err)
+	}
+	snap, err := pgclock.NewRepository(pool).Load(ctx, fx.matchUUID)
+	if err != nil || snap == nil || !snap.StoryAt.Equal(at) {
+		t.Errorf("clock = %+v (%v), want story_at %v", snap, err, at)
+	}
+	data, err := repo.FindActiveSession(ctx, fx.matchUUID)
+	if err != nil || data == nil || data.RoundCounted || data.RoundDrained {
+		t.Errorf("FindActiveSession = %+v (%v)", data, err)
+	}
+}
+
+// O resumo do combate lê os rounds FECHADOS da cena, na ordem dela, com o primeiro e o último
+// turno (ator e tipo da ação). O round aberto e os rounds de outra cena ficam de fora.
+func TestListSceneRoundsForSummary(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	at := func(min int) time.Time { return base.Add(time.Duration(min) * time.Minute) }
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", at(0))
+
+	// R1: Race, contado, drenado, dois turnos (ataque, depois uma ação sem tipo).
+	r1 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(0), false, false)
+	r1.MarkCounted()
+	first := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	t1 := turnentity.NewTurn(*first)
+	t1.Close(at(1))
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{Scene: sc, Round: r1, Turn: t1, Action: first, MatchUUID: fx.matchUUID}); err != nil {
+		t.Fatalf("PersistTurnClose t1: %v", err)
+	}
+	second := action.NewAction(fx.victimSheet, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	t2 := turnentity.NewTurn(*second)
+	t2.Close(at(2))
+	r1.SetDrained(true)
+	r1.Close(at(3))
+	r2 := roundentity.ReconstructRound(uuid.New(), enum.Free, at(3), false, false)
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+		Scene: sc, Round: r1, Turn: t2, Action: second, MatchUUID: fx.matchUUID, NextRound: r2,
+	}); err != nil {
+		t.Fatalf("PersistTurnClose t2: %v", err)
+	}
+	// R2: Free, fechado sem turno. R3: aberto (o ativo) — fora.
+	r2.Close(at(4))
+	r3 := roundentity.ReconstructRound(uuid.New(), enum.Race, at(4), false, false)
+	if err := repo.PersistRoundClose(ctx, fx.matchUUID, []appmatch.RoundEnd{{Scene: sc, Round: r2}}, sc, r3, nil); err != nil {
+		t.Fatalf("PersistRoundClose: %v", err)
+	}
+	// Outra cena, com um round fechado: fora.
+	other := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "", at(5))
+	otherRound := roundentity.ReconstructRound(uuid.New(), enum.Race, at(5), false, false)
+	otherRound.Close(at(6))
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, other, otherRound); err != nil {
+		t.Fatalf("EnsureSceneAndRound other: %v", err)
+	}
+
+	got, err := repo.ListSceneRoundsForSummary(ctx, sc.GetID())
+	if err != nil {
+		t.Fatalf("ListSceneRoundsForSummary: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("rounds = %+v, want R1 and R2 only", got)
+	}
+	g1, g2 := got[0], got[1]
+	if g1.UUID != r1.GetID() || g1.Mode != enum.Race || !g1.Counted || !g1.Drained {
+		t.Errorf("R1 = %+v, want Race counted drained", g1)
+	}
+	if g1.First == nil || g1.First.TurnUUID != t1.GetID() || g1.First.ActorUUID != fx.attackerSheet || g1.First.ActionKind != "attack" {
+		t.Errorf("R1 first = %+v, want t1 by the attacker, attack", g1.First)
+	}
+	if g1.Last == nil || g1.Last.TurnUUID != t2.GetID() || g1.Last.ActorUUID != fx.victimSheet || g1.Last.ActionKind != "unspecified" {
+		t.Errorf("R1 last = %+v, want t2 by the victim, unspecified", g1.Last)
+	}
+	if g2.UUID != r2.GetID() || g2.Mode != enum.Free || g2.Counted || g2.Drained || g2.First != nil || g2.Last != nil {
+		t.Errorf("R2 = %+v, want Free with no turn", g2)
+	}
+}
+
+// O histórico carrega os campos do relógio: a cena (resumo final, início e fim na história), o
+// round (contado, drenado) e o turno (story_at) — tempos ingênuos, sem deslocar pelo fuso.
+func TestHistoryCarriesClockFields(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	storyStart := time.Date(2000, 1, 1, 23, 59, 0, 0, time.UTC)
+	storyTurn := time.Date(2000, 1, 1, 23, 59, 30, 0, time.UTC)
+	storyEnd := time.Date(2000, 1, 1, 23, 59, 59, 0, time.UTC)
+
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Battle, "Arena", base)
+	sc.SetStoryStartedAt(storyStart)
+	rd := roundentity.ReconstructRound(uuid.New(), enum.Race, base, false, false)
+	rd.MarkCounted()
+	act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+	tn := turnentity.NewTurn(*act)
+	tn.SetStoryAt(storyTurn)
+	tn.Close(base.Add(time.Minute))
+	if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{Scene: sc, Round: rd, Turn: tn, Action: act, MatchUUID: fx.matchUUID}); err != nil {
+		t.Fatalf("PersistTurnClose: %v", err)
+	}
+	final := "Fim da luta"
+	sc.BriefFinalDescription = &final
+	sc.SetStoryFinishedAt(storyEnd)
+	sc.Close(base.Add(2 * time.Minute))
+	rd.SetDrained(true)
+	rd.Close(base.Add(2 * time.Minute))
+	if err := repo.CloseSceneAndRound(ctx, fx.matchUUID, appmatch.RoundEnd{Scene: sc, Round: rd}, nil); err != nil {
+		t.Fatalf("CloseSceneAndRound: %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 || len(scenes[0].Rounds) != 1 || len(scenes[0].Rounds[0].Turns) != 1 {
+		t.Fatalf("history = %+v, want one scene / round / turn", scenes)
+	}
+	s := scenes[0]
+	if s.BriefFinalDescription == nil || *s.BriefFinalDescription != final {
+		t.Errorf("scene final description = %v, want %q", s.BriefFinalDescription, final)
+	}
+	if s.StoryStartedAt == nil || !s.StoryStartedAt.Equal(storyStart) || s.StoryFinishedAt == nil || !s.StoryFinishedAt.Equal(storyEnd) {
+		t.Errorf("scene story times = %v → %v, want %v → %v", s.StoryStartedAt, s.StoryFinishedAt, storyStart, storyEnd)
+	}
+	if r := s.Rounds[0]; !r.Counted || !r.Drained {
+		t.Errorf("round counted=%v drained=%v, want both true", r.Counted, r.Drained)
+	}
+	if got := s.Rounds[0].Turns[0].StoryAt; got == nil || !got.Equal(storyTurn) {
+		t.Errorf("turn story_at = %v, want %v", got, storyTurn)
+	}
+}
+
+// A primeira cena vira linha sem início na história (nasceu antes do relógio ter horário); a
+// gravação seguinte do par, já carimbado, preenche o story_started_at, e o histórico o mostra.
+func TestEnsureFillsSceneStoryStartLater(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	fx := seedMatchAndSheets(t, pool)
+
+	base := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+	start := time.Date(1999, 4, 1, 8, 30, 0, 0, time.UTC)
+	sc := sceneentity.ReconstructScene(uuid.New(), enum.Roleplay, "Início", base)
+	rd := roundentity.ReconstructRound(uuid.New(), enum.Free, base, false, false)
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+		t.Fatalf("EnsureSceneAndRound (unstamped): %v", err)
+	}
+	sc.SetStoryStartedAt(start)
+	if err := repo.EnsureSceneAndRound(ctx, fx.matchUUID, sc, rd); err != nil {
+		t.Fatalf("EnsureSceneAndRound (stamped): %v", err)
+	}
+
+	scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+	if err != nil {
+		t.Fatalf("FindMatchHistory: %v", err)
+	}
+	if len(scenes) != 1 {
+		t.Fatalf("history = %+v, want one scene", scenes)
+	}
+	if got := scenes[0].StoryStartedAt; got == nil || !got.Equal(start) {
+		t.Errorf("scene story_started_at = %v, want %v", got, start)
 	}
 }

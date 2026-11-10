@@ -210,6 +210,47 @@ mappings:
         confidence: directly_affected
     notes: Round lifecycle, action/reaction flow
 
+  # ─── Match: Story clock ───
+  - code_path: internal/domain/match/entity/clock/
+    dev_docs:
+      - path: docs/dev/api/match-clock.md
+        confidence: directly_affected
+      - path: docs/dev/match/clock.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/tempo.md
+        confidence: directly_affected
+    notes: Limites, motivos de pausa, salto longo, formato ingênuo do tempo da história
+  - code_path: internal/gateway/pg/clock/
+    dev_docs:
+      - path: docs/dev/match/clock.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-clock.md
+        confidence: possibly_affected
+    notes: match_clocks (retrato + evento numa transação), fusão de ajustes
+  - code_path: internal/gateway/pg/round/persist_match_end.go
+    dev_docs:
+      - path: docs/dev/match/clock.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-clock.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/tempo.md
+        confidence: possibly_affected
+    notes: Transação do end_match (partida, relógio, story_current_at de campanha e fichas)
+  - code_path: internal/app/game/clock.go
+    dev_docs:
+      - path: docs/dev/api/match-clock.md
+        confidence: directly_affected
+    notes: Comandos de relógio, clock_changed, combat_summary, seq, checkpoint
+  - code_path: internal/app/game/end_match.go
+    dev_docs:
+      - path: docs/dev/api/match-clock.md
+        confidence: directly_affected
+      - path: docs/dev/api/game-lobby.md
+        confidence: possibly_affected
+    notes: end_match, match_ended, fechamento 4002
+
   # ─── Match: Actions ───
   - code_path: internal/domain/match/entity/action/
     dev_docs:

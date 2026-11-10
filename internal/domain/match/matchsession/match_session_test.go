@@ -560,7 +560,9 @@ func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
 			t.Fatalf("cancel: %v", err)
 		}
 		// The master turns Race on after the fact; the Free cancel must not come back.
-		s.SetRoundMode(enum.Race)
+		if _, err := s.SetRoundMode(enum.Race); err != nil {
+			t.Fatalf("SetRoundMode: %v", err)
+		}
 		next := makeAction(chars[0])
 		if err := s.EnqueueAction(playerA, next); err != nil {
 			t.Fatalf("enqueue: %v", err)
@@ -582,7 +584,9 @@ func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
 		}
 		// SetRoundMode keeps the round id, so the mark is still this round's. Dash's moveSpeed
 		// is rolled in any regime — the gate has to be the regime, not the speed being passive.
-		s.SetRoundMode(enum.Free)
+		if _, err := s.SetRoundMode(enum.Free); err != nil {
+			t.Fatalf("SetRoundMode: %v", err)
+		}
 		inFree := dashAction(chars[0])
 		if err := s.EnqueueAction(playerA, inFree); err != nil {
 			t.Fatalf("enqueue: %v", err)
@@ -590,7 +594,9 @@ func TestMatchSession_CancelAction_MarksSwapDisadvantage(t *testing.T) {
 		if inFree.SystemBias != 0 {
 			t.Errorf("Dash in Free: SystemBias = %d, want 0 — the mark only biases in Race", inFree.SystemBias)
 		}
-		s.SetRoundMode(enum.Race)
+		if _, err := s.SetRoundMode(enum.Race); err != nil {
+			t.Fatalf("SetRoundMode: %v", err)
+		}
 		backInRace := dashAction(chars[0])
 		if err := s.EnqueueAction(playerA, backInRace); err != nil {
 			t.Fatalf("enqueue: %v", err)
@@ -692,7 +698,9 @@ func TestMatchSession_CancelAction_MarksReactions(t *testing.T) {
 	t.Run("an escape in Free ignores the mark", func(t *testing.T) {
 		s, chars, playerB, targetID, _ := setup(t)
 		cancelOne(t, s, playerB, chars[1])
-		s.SetRoundMode(enum.Free)
+		if _, err := s.SetRoundMode(enum.Free); err != nil {
+			t.Fatalf("SetRoundMode: %v", err)
+		}
 		r := makeReactionTo(chars[1], targetID)
 		r.ReactionKind = action.ReactEscape
 		if _, err := s.AttachReaction(playerB, r); err != nil {
@@ -957,7 +965,9 @@ func TestMatchSession_AttachReaction(t *testing.T) {
 	t.Run("a second reaction by the same character is refused, charging nothing", func(t *testing.T) {
 		playerA, playerB, playerC := uuid.New(), uuid.New(), uuid.New()
 		s, chars := sessionWithParticipants(playerA, playerB, playerC)
-		s.SetRoundMode(enum.Race)
+		if _, err := s.SetRoundMode(enum.Race); err != nil {
+			t.Fatalf("SetRoundMode: %v", err)
+		}
 		a := makeActionWithSpeed(chars[0], 10)
 		a.TargetID = []uuid.UUID{chars[1], chars[2]}
 		if err := s.EnqueueAction(playerA, a); err != nil {
@@ -1139,7 +1149,7 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 		originalScene := s.GetActiveScene()
 		originalRound := s.GetActiveRound()
 
-		oldScene, oldRound, err := s.ChangeScene(enum.Battle, "Arena fight")
+		oldScene, oldRound, _, err := s.ChangeScene(enum.Battle, "Arena fight", matchsession.SceneClose{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1172,7 +1182,7 @@ func TestMatchSession_ChangeScene(t *testing.T) {
 		s.EnqueueAction(playerA, makeActionWithSpeed(chars[0], 5)) //nolint:errcheck
 		s.OpenNextAction()                                         //nolint:errcheck
 
-		_, _, err := s.ChangeScene(enum.Battle, "desc")
+		_, _, _, err := s.ChangeScene(enum.Battle, "desc", matchsession.SceneClose{})
 		if !errors.Is(err, matchsession.ErrRoundHasOpenTurn) {
 			t.Errorf("expected ErrRoundHasOpenTurn, got %v", err)
 		}
@@ -1252,7 +1262,7 @@ func TestMatchSession_PersistenceFlags(t *testing.T) {
 		sc := scene.NewScene(enum.Battle, "Arena")
 		r := round.NewRound(enum.Free)
 		s := matchsession.NewMatchSessionWithState(uuid.New(), nil, nil, sc, r)
-		_, _, err := s.ChangeScene(enum.Roleplay, "Town")
+		_, _, _, err := s.ChangeScene(enum.Roleplay, "Town", matchsession.SceneClose{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2024,7 +2034,9 @@ func TestMatchSession_FreeRoundLeavesNoResidueForRace(t *testing.T) {
 	}
 
 	// The master turns the disputed regime on, mid-round.
-	s.SetRoundMode(enum.Race)
+	if _, err := s.SetRoundMode(enum.Race); err != nil {
+		t.Fatalf("SetRoundMode: %v", err)
+	}
 
 	second := makeActionWithSpeed(chars[0], 20)
 	if err := s.EnqueueAction(playerA, second); err != nil {
@@ -2109,7 +2121,9 @@ func TestMatchSession_ReactionCost(t *testing.T) {
 		t.Helper()
 		playerA, playerB := uuid.New(), uuid.New()
 		s, chars := sessionWithParticipants(playerA, playerB)
-		s.SetRoundMode(enum.Race)
+		if _, err := s.SetRoundMode(enum.Race); err != nil {
+			t.Fatalf("SetRoundMode: %v", err)
+		}
 		a := makeActionWithSpeed(chars[0], 10)
 		a.TargetID = []uuid.UUID{chars[1]}
 		s.EnqueueAction(playerA, a) //nolint:errcheck

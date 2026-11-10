@@ -14,7 +14,8 @@
   "description": "Descrição completa apenas para o mestre",
   "isPublic": true,
   "gameScheduledAt": "2026-06-15T19:30:00Z",
-  "storyStartAt": "2026-06-15"
+  "storyStartAt": "2026-06-15",
+  "storyStartTime": "08:30"
 }
 ```
 
@@ -24,6 +25,7 @@
 | `briefInitialDescription` | ≤ 255 chars |
 | `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
 | `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
+| `storyStartTime` | opcional; `"HH:MM"` ou `"HH:MM:SS"` (horário da história em que a partida começa). Ausente ou `""` = sem horário |
 | `isPublic` | default `true` |
 
 ### Respostas
@@ -35,7 +37,7 @@
 | 401 | Sem JWT |
 | 403 | Usuário não é o mestre da campanha |
 | 404 | Campanha não encontrada |
-| 422 | Validação (título fora do tamanho, datas fora da janela, etc.) |
+| 422 | Validação (título fora do tamanho, datas fora da janela, `storyStartTime` inválido: detail `"storyStartTime must be HH:MM or HH:MM:SS"`, etc.) |
 | 500 | Erro interno |
 
 ---
@@ -67,6 +69,8 @@
     "gameStartAt": null,
     "storyStartAt": "2026-06-15",
     "storyEndAt": null,
+    "storyStartTime": "08:30:00",
+    "gameEndAt": null,
     "createdAt": "...",
     "updatedAt": "..."
   }
@@ -101,7 +105,8 @@
   "description": "Nova descrição",
   "isPublic": false,
   "gameScheduledAt": "2026-07-20T19:30:00Z",
-  "storyStartAt": "2026-07-20"
+  "storyStartAt": "2026-07-20",
+  "storyStartTime": "22:00"
 }
 ```
 
@@ -111,6 +116,7 @@
 | `briefInitialDescription` | ≤ 255 chars |
 | `gameScheduledAt` | ISO 8601, futuro, ≤ +1 ano |
 | `storyStartAt` | YYYY-MM-DD, dentro da janela da campanha |
+| `storyStartTime` | `"HH:MM"` ou `"HH:MM:SS"`; `""` limpa o horário; recusado após a partida iniciada (como `storyStartAt`) |
 
 **Ausente × vazio:** campo ausente mantém o valor atual; string vazia (`""`)
 grava vazio, ou seja, limpa o campo. Vale para `briefInitialDescription` e
@@ -123,6 +129,14 @@ Body vazio (`{}`) é no-op idempotente, retorna 200 com a partida atual.
 ### Response 200
 
 Mesmo formato de `GET /matches/{uuid}` — partida com campos atualizados.
+
+`storyStartTime` e `gameEndAt` (RFC 3339, `null`/omitido enquanto a partida não
+foi encerrada) também aparecem nas respostas de criação, edição e `GET /matches/{uuid}`.
+`storyStartTime` sai sempre como `"HH:MM:SS"` e é omitido quando não há horário.
+`storyEndTime` (`"HH:MM:SS"`, hora do fim **na história**) sai só em partida encerrada (`GET` e `PATCH`).
+Os resumos de partida (`GET /matches`, públicas, inscrições, participantes) trazem `gameEndAt`.
+O relógio da história e o fim da partida: [`match-clock.md`](match-clock.md).
+Partida encerrada = `gameEndAt` preenchido (`Match.IsFinished()`); `storyEndAt` é outro conceito.
 
 ### Erros
 

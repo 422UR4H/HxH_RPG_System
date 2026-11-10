@@ -3,6 +3,7 @@ package game_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -338,8 +339,8 @@ func (m *mockCloseTurnUCHandler) Execute(
 
 type mockChangeSceneUCHandler struct{}
 
-func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string) (*scene.Scene, *roundentity.Round, error) {
-	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil
+func (m *mockChangeSceneUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.SceneCategory, _ string, _ matchsession.SceneClose) (*scene.Scene, *roundentity.Round, *clock.Pause, error) {
+	return scene.NewScene(enum.Roleplay, ""), roundentity.NewRound(enum.Free), nil, nil
 }
 
 // mockRoundRepoHandler is a no-op round repository, except it records every closed turn
@@ -358,6 +359,7 @@ type mockRoundRepoHandler struct {
 	// closedScenes records every CloseSceneAndRound call as a {scene, round} pair — what
 	// change_scene writes back.
 	closedScenes [][2]uuid.UUID
+	sceneCloses  []sceneCloseCall
 	// turnRounds maps each persisted turn to the round PersistTurnClose was told it closed in.
 	turnRounds map[uuid.UUID]uuid.UUID
 	// handed keeps every *Scene/*Round pointer the room handed EnsureSceneAndRound and
@@ -425,6 +427,7 @@ type roundCloseCall struct {
 	scene  *scene.Scene
 	closed *roundentity.Round
 	next   *roundentity.Round
+	clock  *clock.Snapshot
 }
 
 // setFailRoundClose makes every later PersistRoundClose fail with err (nil restores success).
@@ -558,14 +561,29 @@ func (m *mockRoundRepoHandler) overridesFor(turnID uuid.UUID) []matchDomain.Over
 func (m *mockRoundRepoHandler) FindActiveSession(_ context.Context, _ uuid.UUID) (*matchsession.ActiveSessionData, error) {
 	return nil, nil
 }
-func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, sceneID, roundID uuid.UUID, _ time.Time) error {
+func (m *mockRoundRepoHandler) CloseSceneAndRound(_ context.Context, _ uuid.UUID, end appmatch.RoundEnd, clk *clock.Snapshot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failCloseScene != nil {
 		return m.failCloseScene
 	}
-	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{sceneID, roundID})
+	m.closedScenes = append(m.closedScenes, [2]uuid.UUID{end.Scene.GetID(), end.Round.GetID()})
+	m.sceneCloses = append(m.sceneCloses, sceneCloseCall{end: end, clock: clk})
+	m.handed = append(m.handed, end.Scene, end.Round)
 	return nil
+}
+
+// sceneCloseCall is one successful CloseSceneAndRound: the closed pair and the clock written with it.
+type sceneCloseCall struct {
+	end   appmatch.RoundEnd
+	clock *clock.Snapshot
+}
+
+// sceneCloseCalls returns a snapshot of every successful CloseSceneAndRound.
+func (m *mockRoundRepoHandler) sceneCloseCalls() []sceneCloseCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]sceneCloseCall(nil), m.sceneCloses...)
 }
 
 // closedScenePairs returns a snapshot of every {scene, round} CloseSceneAndRound was called with.
@@ -593,14 +611,14 @@ func (m *mockRoundRepoHandler) EnsureSceneAndRound(_ context.Context, _ uuid.UUI
 
 // PersistRoundClose records round ends and the round written after them, written together.
 func (m *mockRoundRepoHandler) PersistRoundClose(
-	_ context.Context, _ uuid.UUID, ends []appmatch.RoundEnd, sc *scene.Scene, next *roundentity.Round,
+	_ context.Context, _ uuid.UUID, ends []appmatch.RoundEnd, sc *scene.Scene, next *roundentity.Round, clk *clock.Snapshot,
 ) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failRoundClose != nil {
 		return m.failRoundClose
 	}
-	call := roundCloseCall{ends: append([]appmatch.RoundEnd(nil), ends...), scene: sc, next: next}
+	call := roundCloseCall{ends: append([]appmatch.RoundEnd(nil), ends...), scene: sc, next: next, clock: clk}
 	if len(ends) > 0 {
 		call.closed = ends[len(ends)-1].Round
 	}
@@ -679,8 +697,8 @@ func (m *mockEnqueueMasterActionUCHandler) Execute(_ context.Context, _ *matchse
 
 type mockChangeRoundModeUCHandler struct{}
 
-func (m *mockChangeRoundModeUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) error {
-	return nil
+func (m *mockChangeRoundModeUCHandler) Execute(_ context.Context, _ *matchsession.MatchSession, _, _ uuid.UUID, _ enum.RoundMode) (*clock.Pause, error) {
+	return nil, nil
 }
 
 type mockEditActionUCHandler struct{}
