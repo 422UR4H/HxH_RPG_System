@@ -74,3 +74,38 @@ func TestCharacterProfile_RejectsEmoji(t *testing.T) {
 		t.Errorf("plain profile must pass: %v", err)
 	}
 }
+
+func TestCharacterProfile_EmojiAtAnyPositionAndLimits(t *testing.T) {
+	base := func() sheet.CharacterProfile {
+		return sheet.CharacterProfile{
+			NickName:  "Gon",
+			FullName:  "Gon Freecss",
+			Alignment: "Chaotic-Good",
+			Age:       12,
+			Birthday:  time.Date(0, 5, 15, 0, 0, 0, 0, time.UTC),
+		}
+	}
+	for _, v := range []string{"😀Gon", "Go😀n", "Gon😀"} {
+		p := base()
+		p.NickName = v
+		if err := p.Validate(); !errors.Is(err, sheet.ErrNicknameHasEmoji) {
+			t.Errorf("nickname %q: got %v", v, err)
+		}
+	}
+	for _, v := range []string{"😀Gon Freecss", "Gon 😀 Freecss", "Gon Freecss😀"} {
+		p := base()
+		p.FullName = v
+		if err := p.Validate(); !errors.Is(err, sheet.ErrFullNameHasEmoji) {
+			t.Errorf("fullname %q: got %v", v, err)
+		}
+	}
+	p := base()
+	p.BriefDescription = strings.Repeat("😀", 255)
+	if err := p.Validate(); err != nil {
+		t.Errorf("255 emoji brief must pass: %v", err)
+	}
+	p.BriefDescription = strings.Repeat("😀", 256)
+	if err := p.Validate(); !errors.Is(err, sheet.ErrInvalidBriefDescription) {
+		t.Errorf("256 emoji brief: got %v", err)
+	}
+}

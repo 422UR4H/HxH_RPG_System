@@ -5,6 +5,7 @@ package campaign_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -618,4 +619,27 @@ func TestListPublicUpcomingCampaigns(t *testing.T) {
 			t.Errorf("expected empty list, got %d campaigns", len(list))
 		}
 	})
+}
+
+// 32 emojis simples cabem no VARCHAR(32): o limite conta code points, não bytes.
+func TestCreateCampaign_EmojiNameFitsVarchar(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgCampaign.NewRepository(pool)
+	ctx := context.Background()
+	masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "emojimaster", "emojimaster@hunter.com", "pass"))
+
+	name := strings.Repeat("😀", 32)
+	c := newTestCampaign(masterUUID, nil, name)
+	c.CallLink = "https://meet.example.com/x"
+	c.BriefInitialDescription = strings.Repeat("😀", 255)
+	if err := repo.CreateCampaign(ctx, c); err != nil {
+		t.Fatalf("CreateCampaign() with 32 emoji name: %v", err)
+	}
+	got, err := repo.GetCampaign(ctx, c.UUID)
+	if err != nil {
+		t.Fatalf("GetCampaign(): %v", err)
+	}
+	if got.Name != name {
+		t.Errorf("Name = %q, want %q", got.Name, name)
+	}
 }

@@ -51,3 +51,24 @@ func TestRegister_RejectsEmoji(t *testing.T) {
 		t.Fatalf("accented nick must pass: %v", err)
 	}
 }
+
+func TestRegister_EmojiAtAnyPosition(t *testing.T) {
+	run := func(mutate func(in *auth.RegisterInput)) error {
+		in := validRegisterInput()
+		mutate(in)
+		return auth.NewRegisterUC(&testutil.MockAuthRepo{}).Register(context.Background(), in)
+	}
+	for _, nick := range []string{"😀Gon", "Go😀n", "Gon😀"} {
+		if err := run(func(in *auth.RegisterInput) { in.Nick = nick }); !errors.Is(err, user.ErrNickHasEmoji) {
+			t.Errorf("nick %q: got %v", nick, err)
+		}
+	}
+	for _, email := range []string{"😀gon@mail.com", "gon😀x@mail.com", "gonzales@mail.com😀"} {
+		if err := run(func(in *auth.RegisterInput) { in.Email = email }); !errors.Is(err, user.ErrEmailHasEmoji) {
+			t.Errorf("email %q: got %v", email, err)
+		}
+	}
+	if err := run(func(in *auth.RegisterInput) { in.Nick = "Gon"; in.Email = "gonzales@mail.com" }); err != nil {
+		t.Errorf("same texts without emoji must pass: %v", err)
+	}
+}

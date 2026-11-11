@@ -217,3 +217,11 @@ func TestValidateMap_NameRejectsEmoji(t *testing.T) {
 		t.Errorf("plain name must pass: %v", err)
 	}
 }
+
+func TestValidateMap_NameEmojiAtAnyPosition(t *testing.T) {
+	for _, n := range []string{"😀Floresta", "Flo😀resta", "Floresta😀"} {
+		if err := service.ValidateMap(n, validGrid()); !errors.Is(err, service.ErrNameHasEmoji) {
+			t.Errorf("name %q: got %v", n, err)
+		}
+	}
+}
