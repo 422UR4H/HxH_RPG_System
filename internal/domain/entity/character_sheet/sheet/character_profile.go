@@ -4,15 +4,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
-// MaxBriefDescriptionLength é o limite (em bytes) da descrição breve; a coluna
+// MaxBriefDescriptionLength é o limite (em caracteres) da descrição breve; a coluna
 // character_profiles.brief_description é VARCHAR(255).
 const MaxBriefDescriptionLength = 255
 
 // ValidateBriefDescription é compartilhada pelo perfil completo e pelo PATCH só do perfil.
 func ValidateBriefDescription(desc string) error {
-	if len(desc) > MaxBriefDescriptionLength {
+	if utf8.RuneCountInString(desc) > MaxBriefDescriptionLength {
 		return NewInvalidBriefDescriptionError(desc)
 	}
 	return nil
@@ -31,10 +32,10 @@ type CharacterProfile struct {
 }
 
 func (cp *CharacterProfile) Validate() error {
-	if len(cp.NickName) < 3 || len(cp.NickName) > 10 {
+	if utf8.RuneCountInString(cp.NickName) < 3 || utf8.RuneCountInString(cp.NickName) > 10 {
 		return NewInvalidNicknameLengthError(cp.NickName)
 	}
-	if len(cp.FullName) < 6 || len(cp.FullName) > 32 {
+	if utf8.RuneCountInString(cp.FullName) < 6 || utf8.RuneCountInString(cp.FullName) > 32 {
 		return NewInvalidFullNameLengthError(cp.FullName)
 	}
 	if err := ValidateBriefDescription(cp.BriefDescription); err != nil {

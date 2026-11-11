@@ -20,7 +20,7 @@
     "fullname": "Gon Freecss",
     "alignment": "Chaotic-Good",
     "description": "Descrição longa opcional",
-    "briefDescription": "Máx 255 chars",
+    "briefDescription": "Máx 255 caracteres",
     "birthday": "0000-05-15T00:00:00Z",
     "age": 12
   },
@@ -49,9 +49,9 @@
 - O ano de nascimento definitivo é calculado e preenchido na consolidação da ficha (ver `POST /submissions/{sheet_uuid}/accept`).
 
 **Outras validações de `profile` (`CharacterProfile.Validate()`):**
-- `nickname`: 3–10 caracteres.
-- `fullname`: 6–32 caracteres.
-- `briefDescription`: máx. 255 caracteres.
+- `nickname`: 3–10 caracteres (não bytes).
+- `fullname`: 6–32 caracteres (não bytes).
+- `briefDescription`: máx. 255 caracteres (não bytes).
 - `age`: `>= 0`.
 - `alignment`: opcional; se enviado, deve seguir o formato `"<Eixo1>-<Eixo2>"` com `Eixo1 ∈ {Lawful, Neutral, Chaotic}` e `Eixo2 ∈ {Good, Neutral, Evil}` (ex.: `"Chaotic-Good"`).
 
@@ -200,7 +200,7 @@ Envelope `{ "characterSheet": {...} }`.
     "fullname": "Gon Freecss",
     "alignment": "Chaotic-Good",
     "description": "Descrição longa opcional",
-    "briefDescription": "Máx 255 chars",
+    "briefDescription": "Máx 255 caracteres",
     "avatarUrl": "https://pub.r2.dev/avatar/uuid.webp",
     "coverUrl": "https://pub.r2.dev/cover/uuid.webp",
     "birthday": "0000-05-15T00:00:00Z",
@@ -414,7 +414,7 @@ Retorna as fichas do jogador autenticado, no shape de summary privado (ver [Shap
     "fullname": "Gon Freecss",
     "alignment": "Chaotic-Good",
     "description": "Descrição longa opcional",
-    "briefDescription": "Máx 255 chars",
+    "briefDescription": "Máx 255 caracteres",
     "birthday": "0000-05-15T00:00:00Z",
     "age": 12
   },
@@ -474,7 +474,7 @@ Ficha deletada com sucesso. Nenhum corpo na resposta.
 {
   "avatarUrl": "https://...",
   "coverUrl": "https://...",
-  "briefDescription": "Máx 255 chars"
+  "briefDescription": "Máx 255 caracteres"
 }
 ```
 

@@ -285,6 +285,8 @@ mappings:
 
   - code_path: internal/application/campaign/
     dev_docs:
+      - path: docs/dev/api/campaign.md
+        confidence: directly_affected
       - path: docs/dev/campaigns-scenarios.md
         confidence: directly_affected
     game_docs:
@@ -468,6 +470,18 @@ mappings:
     notes: GET /maps/:id handler — role filter is shell-only (grid/background/name, pieces/walls empty) for non-master viewers; REST cannot apply LOS because the visibility polygons live in the game server process's memory (cmd/game), separate from the REST process (cmd/api)
 
   # ─── Match: REST API ───
+  - code_path: internal/application/match/create_match.go
+    dev_docs:
+      - path: docs/dev/api/match.md
+        confidence: directly_affected
+    notes: title/brief limits count characters (utf8.RuneCountInString), not bytes; gameScheduledAt is an RFC 3339 instant, responses in UTC (main of cmd/api, cmd/game and cmd/devseed sets time.Local = time.UTC)
+
+  - code_path: internal/application/match/update_match.go
+    dev_docs:
+      - path: docs/dev/api/match.md
+        confidence: directly_affected
+    notes: same character-count limits as create_match.go
+
   - code_path: internal/app/api/match/
     dev_docs:
       - path: docs/dev/api/match.md

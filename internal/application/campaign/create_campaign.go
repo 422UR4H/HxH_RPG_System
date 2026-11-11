@@ -3,9 +3,10 @@ package campaign
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	"github.com/google/uuid"
 )
 
@@ -45,10 +46,10 @@ func NewCreateCampaignUC(
 func (uc *CreateCampaignUC) CreateCampaign(
 	ctx context.Context, input *CreateCampaignInput,
 ) (*campaign.Campaign, error) {
-	if len(input.Name) < 5 {
+	if utf8.RuneCountInString(input.Name) < 5 {
 		return nil, ErrMinNameLength
 	}
-	if len(input.Name) > 32 {
+	if utf8.RuneCountInString(input.Name) > 32 {
 		return nil, ErrMaxNameLength
 	}
 
@@ -56,10 +57,10 @@ func (uc *CreateCampaignUC) CreateCampaign(
 		return nil, ErrInvalidStartDate
 	}
 
-	if len(input.BriefInitialDescription) > 255 {
+	if utf8.RuneCountInString(input.BriefInitialDescription) > 255 {
 		return nil, ErrMaxBriefDescLength
 	}
-	if len(input.CallLink) > 255 {
+	if utf8.RuneCountInString(input.CallLink) > 255 {
 		return nil, ErrMaxCallLinkLength
 	}
 

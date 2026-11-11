@@ -199,3 +199,12 @@ func TestValidateWallSegments_HexBorderVertexAsTheFrontComputesIt(t *testing.T) 
 		}
 	})
 }
+
+func TestValidateMap_NameCountsCharacters(t *testing.T) {
+	if err := service.ValidateMap("ããã", validGrid()); err != nil {
+		t.Errorf("3 accented characters must pass the minimum, got %v", err)
+	}
+	if err := service.ValidateMap("ãã", validGrid()); !errors.Is(err, service.ErrNameTooShort) {
+		t.Errorf("2 characters must be too short, got %v", err)
+	}
+}

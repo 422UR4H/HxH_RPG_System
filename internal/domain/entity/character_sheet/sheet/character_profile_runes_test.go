@@ -1,0 +1,45 @@
+package sheet_test
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+)
+
+// Os limites contam caracteres (como o VARCHAR do Postgres), não bytes.
+func TestCharacterProfile_LimitsCountCharacters(t *testing.T) {
+	profile := func() sheet.CharacterProfile {
+		return sheet.CharacterProfile{
+			NickName:  "Gon",
+			FullName:  "Gon Freecss",
+			Alignment: "Chaotic-Good",
+			Age:       12,
+			Birthday:  time.Date(0, 5, 15, 0, 0, 0, 0, time.UTC),
+		}
+	}
+	tests := []struct {
+		name    string
+		mutate  func(p *sheet.CharacterProfile)
+		wantErr bool
+	}{
+		{"nickname 10 accented", func(p *sheet.CharacterProfile) { p.NickName = strings.Repeat("ã", 10) }, false},
+		{"nickname 11 accented", func(p *sheet.CharacterProfile) { p.NickName = strings.Repeat("ã", 11) }, true},
+		{"nickname 3 accented", func(p *sheet.CharacterProfile) { p.NickName = "ããã" }, false},
+		{"fullname 32 accented", func(p *sheet.CharacterProfile) { p.FullName = strings.Repeat("ã", 32) }, false},
+		{"fullname 33 accented", func(p *sheet.CharacterProfile) { p.FullName = strings.Repeat("ã", 33) }, true},
+		{"fullname 6 accented", func(p *sheet.CharacterProfile) { p.FullName = strings.Repeat("ã", 6) }, false},
+		{"brief 255 accented", func(p *sheet.CharacterProfile) { p.BriefDescription = strings.Repeat("ã", 255) }, false},
+		{"brief 256 accented", func(p *sheet.CharacterProfile) { p.BriefDescription = strings.Repeat("ã", 256) }, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := profile()
+			tt.mutate(&p)
+			if err := p.Validate(); (err != nil) != tt.wantErr {
+				t.Fatalf("wantErr=%v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

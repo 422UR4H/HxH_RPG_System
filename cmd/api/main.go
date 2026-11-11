@@ -71,6 +71,11 @@ var characterSheets sync.Map
 var sessions sync.Map
 
 func main() {
+	// As colunas de data/hora são TIMESTAMP (sem fuso): o pgx grava o relógio de
+	// parede na zona do time.Time e lê de volta como UTC. Fixar UTC evita que
+	// o dev local (ex.: America/Sao_Paulo) grave horas deslocadas.
+	time.Local = time.UTC
+
 	loadEnvFile()
 	if jwtauth.UsingDevSecret() {
 		fmt.Println("WARNING: JWT_SECRET not set — using the insecure development key; never do this outside local dev")

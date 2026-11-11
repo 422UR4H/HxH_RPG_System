@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/google/uuid"
@@ -33,7 +34,7 @@ func (uc *RegisterUC) Register(ctx context.Context, input *RegisterInput) error 
 	if input.Nick == "" {
 		return user.ErrMissingNick
 	}
-	nickLength := len(input.Nick)
+	nickLength := utf8.RuneCountInString(input.Nick)
 	if nickLength < 3 || nickLength > 20 {
 		return user.ErrInvalidNickLength
 	}

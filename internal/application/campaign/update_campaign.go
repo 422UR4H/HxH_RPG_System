@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	campaignEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/campaign"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
@@ -73,16 +74,16 @@ func (uc *UpdateCampaignUC) Update(
 	}
 
 	if input.Name != nil {
-		if len(*input.Name) < 5 {
+		if utf8.RuneCountInString(*input.Name) < 5 {
 			return nil, ErrMinNameLength
 		}
-		if len(*input.Name) > 32 {
+		if utf8.RuneCountInString(*input.Name) > 32 {
 			return nil, ErrMaxNameLength
 		}
 		c.Name = *input.Name
 	}
 	if input.BriefInitialDescription != nil {
-		if len(*input.BriefInitialDescription) > 255 {
+		if utf8.RuneCountInString(*input.BriefInitialDescription) > 255 {
 			return nil, ErrMaxBriefDescLength
 		}
 		c.BriefInitialDescription = *input.BriefInitialDescription
@@ -94,7 +95,7 @@ func (uc *UpdateCampaignUC) Update(
 		c.IsPublic = *input.IsPublic
 	}
 	if input.CallLink != nil {
-		if len(*input.CallLink) > 255 {
+		if utf8.RuneCountInString(*input.CallLink) > 255 {
 			return nil, ErrMaxCallLinkLength
 		}
 		c.CallLink = *input.CallLink
