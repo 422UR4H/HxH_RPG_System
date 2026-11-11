@@ -39,11 +39,13 @@ Perícias conjuntas são compostas por duas ou mais perícias comuns. Quando o j
 
 > **Experiência propagada** = experiência recebida × quantidade de perícias comuns
 
-## Lista Completa de Perícias (31)
+## Lista Completa de Perícias (32)
+
+Cada perícia física pertence a um atributo físico — primário ou médio. As perícias espirituais pertencem aos atributos espirituais e só existem para quem despertou o Nen. Ainda não há perícias mentais.
 
 ### Atributos Físicos
 
-#### Resistência — Coef. XP: 5.0
+#### Resistência (primário)
 
 | Perícia | Descrição |
 |---|---|
@@ -51,47 +53,47 @@ Perícias conjuntas são compostas por duas ou mais perícias comuns. Quando o j
 | Energia | Reserva energética para ações prolongadas |
 | Defesa | Capacidade de bloquear ou absorver impactos |
 
-#### Força — Coef. XP: 5.0
+#### Força (médio)
 
 | Perícia | Descrição |
 |---|---|
-| Empurrar | Força para empurrar objetos ou oponentes |
+| Empurrão | Força para empurrar objetos ou oponentes |
 | Agarrar | Capacidade de segurar e imobilizar |
 | Carregar | Peso máximo que pode ser transportado |
 
-#### Agilidade — Coef. XP: 5.0
+#### Agilidade (primário)
 
 | Perícia | Descrição |
 |---|---|
 | Velocidade | Velocidade máxima de movimento |
 | Aceleração | Rapidez para atingir velocidade máxima |
-| Frenagem | Capacidade de parar ou reduzir velocidade rapidamente |
+| Freio | Capacidade de parar ou reduzir velocidade rapidamente |
 
-#### Celeridade — Coef. XP: 5.0
+#### Celeridade (médio)
 
 | Perícia | Descrição |
 |---|---|
-| Destreza | Agilidade fina e controle de movimentos rápidos |
+| Ligeireza | Agilidade fina e controle de movimentos rápidos |
 | Repelir | Capacidade de desviar ataques ou objetos com velocidade |
 | Finta | Habilidade de enganar o oponente com movimentos falsos |
 
-#### Flexibilidade — Coef. XP: 5.0
+#### Flexibilidade (primário)
 
 | Perícia | Descrição |
 |---|---|
 | Acrobacia | Movimentos acrobáticos, saltos e piruetas |
 | Evasão | Esquiva sem necessidade de grande deslocamento |
-| Furtividade | Movimentação silenciosa e discreta |
+| Esgueirar | Movimentação silenciosa e discreta |
 
-#### Destreza — Coef. XP: 5.0
+#### Destreza (médio)
 
 | Perícia | Descrição |
 |---|---|
 | Reflexo | Tempo de reação a estímulos |
 | Precisão | Pontaria e precisão em ataques (crítico) |
-| Ocultação | Capacidade de se esconder e passar despercebido |
+| Furtividade | Capacidade de se esconder e passar despercebido |
 
-#### Sentido — Coef. XP: 5.0
+#### Sentido (primário)
 
 | Perícia | Descrição |
 |---|---|
@@ -101,17 +103,17 @@ Perícias conjuntas são compostas por duas ou mais perícias comuns. Quando o j
 | Tato | Sensibilidade tátil e percepção por toque |
 | Paladar | Identificação de substâncias pelo sabor |
 
-#### Constituição — Coef. XP: 5.0
+#### Constituição (médio)
 
 | Perícia | Descrição |
 |---|---|
-| Cura | Recuperação natural de ferimentos |
-| Fôlego | Resistência respiratória e capacidade pulmonar |
+| Curar | Recuperação natural de ferimentos |
+| Respiração | Resistência respiratória e capacidade pulmonar |
 | Tenacidade | Resistência à fadiga e perseverança física |
 
 ### Atributos Espirituais
 
-#### Chama Nen
+#### Chama
 
 | Perícia | Descrição |
 |---|---|
@@ -119,7 +121,7 @@ Perícias conjuntas são compostas por duas ou mais perícias comuns. Quando o j
 | Força de Vontade | Determinação e resistência mental/espiritual |
 | Autoconhecimento | Compreensão de si mesmo e do próprio Nen |
 
-#### Consciência Nen
+#### Consciência
 
 | Perícia | Descrição |
 |---|---|

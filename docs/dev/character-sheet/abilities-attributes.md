@@ -32,7 +32,7 @@ ICascadeUpgrade (interface da cascata)
 │   ├── SpiritualAttribute    — atributo espiritual (sem pontos distribuíveis)
 │   └── ...
 ├── IDistributableAttribute   (superset estrutural de IGameAttribute + GetPoints/GetValue)
-│   ├── PrimaryAttribute      — atributo primário (ex: Força, Agilidade)
+│   ├── PrimaryAttribute      — atributo primário (ex: Resistência, Agilidade)
 │   └── MiddleAttribute       — atributo derivado de 2+ primários (ex: Constituição)
 ```
 
@@ -95,7 +95,7 @@ Os atributos são organizados em três managers, agrupados na struct `CharacterA
 ```
 CharacterAttributes
 ├── physicals:  *Manager            (PrimaryAttribute + MiddleAttribute)
-├── mentals:    *Manager            (PrimaryAttribute + MiddleAttribute)
+├── mentals:    *Manager            (PrimaryAttribute apenas; middleAttributes = nil, TODO na factory)
 └── spirituals: *SpiritualManager   (SpiritualAttribute apenas)
 ```
 
@@ -390,26 +390,48 @@ O `SpiritualManager` usa exatamente o mesmo padrão de ponteiros. A consistênci
 
 ## 7. Distribuição de Pontos
 
-A distribuição manual de pontos segue regras restritivas no design atual:
-
 ### Quem aceita pontos?
 
 | Tipo | Aceita distribuição? | Método |
 |------|---------------------|--------|
-| `PrimaryAttribute` (físico) | ✅ Sim | `IncreasePoints(value)` |
-| `PrimaryAttribute` (mental) | ❌ Não* | — |
+| `PrimaryAttribute` (físico) | ✅ Sim | `CharacterAttributes.IncreasePrimaryPhysicalPts` |
+| `PrimaryAttribute` (mental) | ✅ Sim | `CharacterAttributes.IncreasePrimaryMentalPts` |
 | `MiddleAttribute` | ❌ Não | Points é calculado (média dos primários) |
 | `SpiritualAttribute` | ❌ Não | Não possui campo `points` |
 
-*\* Nota: embora `PrimaryAttribute` mental tenha o método `IncreasePoints()`, o
-`CharacterAttributes` só expõe `IncreasePrimaryPhysicalPts()` — que delega
-exclusivamente para `ca.physicals`. Não existe um método equivalente para
-mentais na API pública de `CharacterAttributes`.*
+Primários físicos: Resistance, Agility, Flexibility, Sense. Médios físicos:
+Strength (Resistance+Agility), Celerity (Agility+Flexibility), Dexterity
+(Flexibility+Sense), Constitution (Sense+Resistance) — ver `factory.md`, "cadeia
+circular". Mentais: Resilience, Adaptability, Judgment, Creativity, todos primários.
 
-### Fluxo de distribuição
+### Na criação e na edição: `ApplyInitialAttributePoints`
+
+`CharacterSheet.ApplyInitialAttributePoints(map[AttributeName]int)`
+(`sheet/character_sheet.go`) é a única porta da distribuição na montagem da ficha.
+`AssembleCharacterSheet` a chama por último, e **só quando o mapa não está vazio**
+(`len(input.AttributePoints) > 0`): sem pontos, a ficha nasce com os primários em 0.
+
+Com pontos, as regras são:
+
+1. Valores `<= 0` são ignorados.
+2. Cada chave tem de ser um primário físico (`GetPhysicalsPrimaryPoints`) ou mental
+   (`GetMentalsPrimaryPoints`); médio, espiritual ou nome desconhecido →
+   `ErrInvalidDistributionPoints`.
+3. A soma dos físicos tem de ser **igual** ao nível de `Physicals`, e a dos mentais
+   **igual** ao nível de `Mentals` (níveis já com a experiência da classe aplicada).
+   Diferença para mais ou para menos em qualquer grupo → `ErrInvalidDistributionPoints`.
+4. Só então aplica (`IncreasePrimaryPhysicalPts` / `IncreasePrimaryMentalPts`).
+
+`ErrInvalidDistributionPoints` é `domain.NewValidationError` → `422` no handler.
+
+### Ponto a ponto: `IncreasePtsForPhysPrimaryAttr`
+
+`CharacterSheet.IncreasePtsForPhysPrimaryAttr(name, points)` soma pontos a um primário
+físico de uma ficha já montada, recusando (`ErrInvalidDistributionPoints`) o que passar
+do nível de `Physicals`, e recalcula os status. Não há equivalente mental.
 
 ```
-CharacterAttributes.IncreasePrimaryPhysicalPts(name, points)
+CharacterAttributes.IncreasePrimary{Physical,Mental}Pts(name, points)
 └── Manager.IncreasePointsForPrimary(name, value)
     ├── valida: nome existe em primaryAttributes? (não aceita middle)
     ├── attr.IncreasePoints(value)
