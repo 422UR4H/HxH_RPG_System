@@ -79,12 +79,7 @@ func CreateCharacterSheetHandler(
 
 		input, err := castRequest(&req.Body)
 		if err != nil {
-			// erro de validação do perfil (tamanho, emoji, etc.) é 422, como no contrato
-			var pe *profileError
-			if errors.As(err, &pe) && errors.Is(err, domain.ErrValidation) {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
-			}
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, castRequestError(err)
 		}
 
 		if input.CampaignUUID == nil {
@@ -125,6 +120,16 @@ type profileError struct{ err error }
 
 func (e *profileError) Error() string { return "character profile error: " + e.err.Error() }
 func (e *profileError) Unwrap() error { return e.err }
+
+// castRequestError traduz um erro de castRequest: falha de validação do perfil
+// (tamanho, emoji etc.) é 422, como no contrato; os demais (enums) são 400.
+func castRequestError(err error) error {
+	var pe *profileError
+	if errors.As(err, &pe) {
+		return huma.Error422UnprocessableEntity(err.Error())
+	}
+	return huma.Error400BadRequest(err.Error())
+}
 
 func castRequest(
 	body *CreateCharacterSheetRequestBody,

@@ -46,7 +46,7 @@ func UpdateCharacterSheetHandler(
 
 		input, err := castRequest(&req.Body)
 		if err != nil {
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, castRequestError(err)
 		}
 
 		if err := uc.UpdateCharacterSheet(ctx, sheetUUID, userUUID, input); err != nil {
