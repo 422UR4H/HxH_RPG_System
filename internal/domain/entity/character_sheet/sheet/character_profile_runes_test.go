@@ -1,6 +1,7 @@
 package sheet_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -41,5 +42,35 @@ func TestCharacterProfile_LimitsCountCharacters(t *testing.T) {
 				t.Fatalf("wantErr=%v, got %v", tt.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestCharacterProfile_RejectsEmoji(t *testing.T) {
+	base := func() sheet.CharacterProfile {
+		return sheet.CharacterProfile{
+			NickName:  "Gon",
+			FullName:  "Gon Freecss",
+			Alignment: "Chaotic-Good",
+			Age:       12,
+			Birthday:  time.Date(0, 5, 15, 0, 0, 0, 0, time.UTC),
+		}
+	}
+	p := base()
+	p.NickName = "Gon😀"
+	if err := p.Validate(); !errors.Is(err, sheet.ErrNicknameHasEmoji) {
+		t.Errorf("nickname with emoji: got %v", err)
+	}
+	p = base()
+	p.FullName = "Gon Freecss ❤"
+	if err := p.Validate(); !errors.Is(err, sheet.ErrFullNameHasEmoji) {
+		t.Errorf("fullname with emoji: got %v", err)
+	}
+	p = base()
+	p.BriefDescription = "Gosta de 😀"
+	if err := p.Validate(); err != nil {
+		t.Errorf("emoji in brief description must pass: %v", err)
+	}
+	if err := (func() *sheet.CharacterProfile { q := base(); return &q })().Validate(); err != nil {
+		t.Errorf("plain profile must pass: %v", err)
 	}
 }

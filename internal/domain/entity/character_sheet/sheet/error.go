@@ -17,6 +17,8 @@ var (
 	ErrInvalidActiveCategoryCount = domain.NewValidationError(errors.New("at least one category must be active"))
 	ErrInvalidNicknameLength      = domain.NewValidationError(errors.New("nickname must be 3-10 characters long"))
 	ErrInvalidFullNameLength      = domain.NewValidationError(errors.New("fullname must be 6-32 characters long"))
+	ErrNicknameHasEmoji           = domain.NewValidationError(errors.New("nickname must not contain emoji"))
+	ErrFullNameHasEmoji           = domain.NewValidationError(errors.New("fullname must not contain emoji"))
 	ErrInvalidBriefDescription    = domain.NewValidationError(errors.New("brief description must be at most 255 characters long"))
 	ErrInvalidBirthday            = domain.NewValidationError(errors.New("invalid birthday"))
 	ErrInvalidAge                 = domain.NewValidationError(errors.New("age must be positive"))
@@ -51,6 +53,14 @@ func NewInvalidNicknameLengthError(nick string) error {
 
 func NewInvalidFullNameLengthError(name string) error {
 	return fmt.Errorf("%w: %s", ErrInvalidFullNameLength, name)
+}
+
+func NewNicknameHasEmojiError(nick string) error {
+	return fmt.Errorf("%w: %s", ErrNicknameHasEmoji, nick)
+}
+
+func NewFullNameHasEmojiError(name string) error {
+	return fmt.Errorf("%w: %s", ErrFullNameHasEmoji, name)
 }
 
 func NewInvalidAlignmentError(alignment string) error {

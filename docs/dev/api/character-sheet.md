@@ -49,9 +49,10 @@
 - O ano de nascimento definitivo é calculado e preenchido na consolidação da ficha (ver `POST /submissions/{sheet_uuid}/accept`).
 
 **Outras validações de `profile` (`CharacterProfile.Validate()`):**
-- `nickname`: 3–10 caracteres (não bytes).
-- `fullname`: 6–32 caracteres (não bytes).
-- `briefDescription`: máx. 255 caracteres (não bytes).
+- `nickname`: 3–10 caracteres (não bytes); **não aceita emoji** (`ErrNicknameHasEmoji`, 422).
+- `fullname`: 6–32 caracteres (não bytes); **não aceita emoji** (`ErrFullNameHasEmoji`, 422).
+- `briefDescription`: máx. 255 caracteres (não bytes); emoji é aceito.
+- Os limites contam code points (como o `VARCHAR` do Postgres). Emoji simples (😀) conta 1; compostos contam mais (bandeira = 2, tom de pele = 2, família com ZWJ = 5).
 - `age`: `>= 0`.
 - `alignment`: opcional; se enviado, deve seguir o formato `"<Eixo1>-<Eixo2>"` com `Eixo1 ∈ {Lawful, Neutral, Chaotic}` e `Eixo2 ∈ {Good, Neutral, Evil}` (ex.: `"Chaotic-Good"`).
 
@@ -68,7 +69,7 @@ Envelope `{ "characterSheet": {...} }` — ver shape completo em [Shape de `char
 | 409 | Nickname já existe |
 | 404 | Classe de personagem não encontrada |
 | 403 | Limite de fichas atingido (jogador) |
-| 422 | Perfil inválido (birthday ausente, nickname/fullname fora do tamanho, alignment mal formatado, etc.) / usuário não é o mestre da campanha informada (`campaign.ErrNotCampaignOwner`) / campanha não encontrada (`campaign.ErrCampaignNotFound`) — ambos caem no fallback `domain.ErrValidation` do handler |
+| 422 | Perfil inválido (birthday ausente, nickname/fullname fora do tamanho ou com emoji, alignment mal formatado, etc.) / usuário não é o mestre da campanha informada (`campaign.ErrNotCampaignOwner`) / campanha não encontrada (`campaign.ErrCampaignNotFound`) — ambos caem no fallback `domain.ErrValidation` do handler |
 
 ---
 

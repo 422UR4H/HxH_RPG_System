@@ -12,6 +12,7 @@ import (
 	mapapi "github.com/422UR4H/HxH_RPG_System/internal/app/api/map"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -257,5 +258,21 @@ func TestCreateMapHandler_NotMaster_Returns403(t *testing.T) {
 
 	if resp.Code != http.StatusForbidden {
 		t.Errorf("got status %d, want %d. Body: %s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+}
+
+func TestCreateMapHandler_NameHasEmoji_Returns422(t *testing.T) {
+	_, api := humatest.New(t)
+	mock := &mockCreateMap{err: service.ErrNameHasEmoji}
+	huma.Register(api, huma.Operation{
+		Method:        http.MethodPost,
+		Path:          "/campaigns/{campaign_id}/maps",
+		DefaultStatus: http.StatusCreated,
+	}, mapapi.CreateMapHandler(mock))
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	resp := api.PostCtx(ctx, "/campaigns/"+uuid.New().String()+"/maps", map[string]any{"name": "Floresta😀"})
+	if resp.Code != http.StatusUnprocessableEntity {
+		t.Errorf("got status %d, want 422. Body: %s", resp.Code, resp.Body.String())
 	}
 }

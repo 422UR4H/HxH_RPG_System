@@ -85,6 +85,14 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
+			name: "nickname with emoji returns 422",
+			body: validBody,
+			mockFn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
+				return nil, sheetEntity.NewNicknameHasEmojiError("Gon😀")
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
 			name: "invalid attribute name returns 400",
 			body: func() map[string]any {
 				b := map[string]any{}

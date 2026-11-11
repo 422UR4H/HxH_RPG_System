@@ -9,11 +9,13 @@ import (
 var (
 	ErrMissingNick       = domain.NewValidationError(errors.New("nickname is required"))
 	ErrInvalidNickLength = domain.NewValidationError(errors.New("nickname must be between 3 and 20 characters"))
+	ErrNickHasEmoji      = domain.NewValidationError(errors.New("nickname must not contain emoji"))
 	ErrNickAlreadyExists = domain.NewValidationError(errors.New("nickname already exists"))
 
 	ErrInvalidEmailFormat = domain.NewValidationError(errors.New("invalid email format"))
 	ErrMissingEmail       = domain.NewValidationError(errors.New("email is required"))
 	ErrInvalidEmailLength = domain.NewValidationError(errors.New("email must be between 12 and 64 characters"))
+	ErrEmailHasEmoji      = domain.NewValidationError(errors.New("email must not contain emoji"))
 	ErrEmailAlreadyExists = domain.NewValidationError(errors.New("email already exists"))
 
 	ErrMissingPassword   = domain.NewValidationError(errors.New("password is required"))

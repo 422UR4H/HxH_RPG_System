@@ -13,8 +13,10 @@ O registro de usuário segue uma **ordem estrita de validação** antes de qualq
 ```
 1. Nick vazio?         → ErrMissingNick
 2. Nick length [3,20]? → ErrInvalidNickLength
+2b. Nick com emoji?    → ErrNickHasEmoji
 3. Email vazio?        → ErrMissingEmail
 4. Email length [12,64]? → ErrInvalidEmailLength
+4b. Email com emoji?   → ErrEmailHasEmoji
 5. Password vazio?     → ErrMissingPassword
 6. ConfirmPass vazio?  → ErrMissingConfirmPass
 7. Password length ≥ 8? → ErrPasswordMinLenght
@@ -31,6 +33,8 @@ O registro de usuário segue uma **ordem estrita de validação** antes de qualq
 | Nick | 3 | 20 |
 | Email | 12 | 64 |
 | Password | 8 | 64 |
+
+O nick conta caracteres (code points, `utf8.RuneCountInString`); um emoji simples conta 1. **Nick e e-mail não aceitam emoji** (`domain.ContainsEmoji`, faixas em `internal/domain/emoji.go`): `ErrNickHasEmoji` / `ErrEmailHasEmoji`, ambos **422**.
 
 ### Verificações de unicidade (banco de dados)
 
@@ -186,7 +190,7 @@ O handler na camada `app/api/auth/` traduz erros de domínio para códigos HTTP 
 |--------|-------------------|---------|
 | **400** | `ErrMissingNick`, `ErrMissingEmail`, `ErrMissingPassword`, `ErrMissingConfirmPass` | Campo obrigatório ausente |
 | **409** | `ErrNickAlreadyExists`, `ErrEmailAlreadyExists` | Conflito de unicidade |
-| **422** | `ErrInvalidNickLength`, `ErrInvalidEmailLength`, `ErrPasswordMinLenght`, `ErrPasswordMaxLenght`, `ErrMismatchPassword` | Validação de formato/comprimento |
+| **422** | `ErrInvalidNickLength`, `ErrNickHasEmoji`, `ErrInvalidEmailLength`, `ErrEmailHasEmoji`, `ErrPasswordMinLenght`, `ErrPasswordMaxLenght`, `ErrMismatchPassword` | Validação de formato/comprimento |
 | **500** | Qualquer outro erro | Erro interno inesperado |
 
 ### POST /auth/login

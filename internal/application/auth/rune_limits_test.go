@@ -34,3 +34,20 @@ func TestRegister_NickCountsCharacters(t *testing.T) {
 		}
 	})
 }
+
+func TestRegister_RejectsEmoji(t *testing.T) {
+	run := func(mutate func(in *auth.RegisterInput)) error {
+		in := validRegisterInput()
+		mutate(in)
+		return auth.NewRegisterUC(&testutil.MockAuthRepo{}).Register(context.Background(), in)
+	}
+	if err := run(func(in *auth.RegisterInput) { in.Nick = "Gon😀" }); !errors.Is(err, user.ErrNickHasEmoji) {
+		t.Fatalf("nick with emoji: got %v", err)
+	}
+	if err := run(func(in *auth.RegisterInput) { in.Email = "gon😀@mail.com" }); !errors.Is(err, user.ErrEmailHasEmoji) {
+		t.Fatalf("email with emoji: got %v", err)
+	}
+	if err := run(func(in *auth.RegisterInput) { in.Nick = "José Ção" }); err != nil {
+		t.Fatalf("accented nick must pass: %v", err)
+	}
+}

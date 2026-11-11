@@ -4,6 +4,7 @@ import (
 	"errors"
 	"unicode/utf8"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/fog"
 )
@@ -16,6 +17,7 @@ const wallBoundsTolerance = 1e-6
 
 var (
 	ErrNameTooShort      = errors.New("map name must be at least 3 characters")
+	ErrNameHasEmoji      = errors.New("map name must not contain emoji")
 	ErrInvalidCellSize   = errors.New("cell_size must be > 0")
 	ErrInvalidCols       = errors.New("cols must be > 0")
 	ErrInvalidRows       = errors.New("rows must be > 0")
@@ -30,6 +32,9 @@ var (
 func ValidateMap(name string, grid entity.GridShape) error {
 	if utf8.RuneCountInString(name) < 3 {
 		return ErrNameTooShort
+	}
+	if domain.ContainsEmoji(name) {
+		return ErrNameHasEmoji
 	}
 	if grid.CellSize <= 0 {
 		return ErrInvalidCellSize
