@@ -208,3 +208,20 @@ func TestValidateMap_NameCountsCharacters(t *testing.T) {
 		t.Errorf("2 characters must be too short, got %v", err)
 	}
 }
+
+func TestValidateMap_NameRejectsEmoji(t *testing.T) {
+	if err := service.ValidateMap("Floresta😀", validGrid()); !errors.Is(err, service.ErrNameHasEmoji) {
+		t.Errorf("expected ErrNameHasEmoji, got %v", err)
+	}
+	if err := service.ValidateMap("Floresta do Norte", validGrid()); err != nil {
+		t.Errorf("plain name must pass: %v", err)
+	}
+}
+
+func TestValidateMap_NameEmojiAtAnyPosition(t *testing.T) {
+	for _, n := range []string{"😀Floresta", "Flo😀resta", "Floresta😀"} {
+		if err := service.ValidateMap(n, validGrid()); !errors.Is(err, service.ErrNameHasEmoji) {
+			t.Errorf("name %q: got %v", n, err)
+		}
+	}
+}

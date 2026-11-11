@@ -20,6 +20,16 @@
 #   - Changes to docs/ files themselves don't trigger this check
 
 mappings:
+  # ─── Regra de emoji (campos de identidade) ───
+  - code_path: internal/domain/emoji.go
+    dev_docs:
+      - path: docs/dev/api/character-sheet.md
+        confidence: directly_affected
+      - path: docs/dev/api/maps.md
+        confidence: directly_affected
+      - path: docs/dev/auth.md
+        confidence: directly_affected
+    notes: Faixas de emoji (espelhadas em System_X_System_React/src/constants/fieldLimits.ts); mudar aqui exige mudar lá
   # ─── API: Health (liveness/readiness) ───
   - code_path: internal/app/api/health.go
     dev_docs:

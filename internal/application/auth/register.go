@@ -5,6 +5,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/google/uuid"
 )
@@ -38,12 +39,18 @@ func (uc *RegisterUC) Register(ctx context.Context, input *RegisterInput) error 
 	if nickLength < 3 || nickLength > 20 {
 		return user.ErrInvalidNickLength
 	}
+	if domain.ContainsEmoji(input.Nick) {
+		return user.ErrNickHasEmoji
+	}
 	if input.Email == "" {
 		return user.ErrMissingEmail
 	}
 	emailLength := len(input.Email)
 	if emailLength < 12 || emailLength > 64 {
 		return user.ErrInvalidEmailLength
+	}
+	if domain.ContainsEmoji(input.Email) {
+		return user.ErrEmailHasEmoji
 	}
 	if input.Password == "" {
 		return user.ErrMissingPassword

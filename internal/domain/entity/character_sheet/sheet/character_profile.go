@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 // MaxBriefDescriptionLength é o limite (em caracteres) da descrição breve; a coluna
@@ -35,8 +37,14 @@ func (cp *CharacterProfile) Validate() error {
 	if utf8.RuneCountInString(cp.NickName) < 3 || utf8.RuneCountInString(cp.NickName) > 10 {
 		return NewInvalidNicknameLengthError(cp.NickName)
 	}
+	if domain.ContainsEmoji(cp.NickName) {
+		return NewNicknameHasEmojiError(cp.NickName)
+	}
 	if utf8.RuneCountInString(cp.FullName) < 6 || utf8.RuneCountInString(cp.FullName) > 32 {
 		return NewInvalidFullNameLengthError(cp.FullName)
+	}
+	if domain.ContainsEmoji(cp.FullName) {
+		return NewFullNameHasEmojiError(cp.FullName)
 	}
 	if err := ValidateBriefDescription(cp.BriefDescription); err != nil {
 		return err

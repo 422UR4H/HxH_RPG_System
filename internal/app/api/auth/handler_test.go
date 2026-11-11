@@ -71,6 +71,22 @@ func TestRegisterHandler(t *testing.T) {
 			wantStatus: http.StatusUnprocessableEntity,
 		},
 		{
+			name: "unprocessable_entity_nick_has_emoji",
+			body: validRegisterBody(),
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
+				return user.ErrNickHasEmoji
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name: "unprocessable_entity_email_has_emoji",
+			body: validRegisterBody(),
+			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {
+				return user.ErrEmailHasEmoji
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
 			name: "internal_server_error",
 			body: validRegisterBody(),
 			mockFn: func(ctx context.Context, input *auth.RegisterInput) error {

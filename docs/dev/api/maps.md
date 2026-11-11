@@ -18,7 +18,7 @@
 
 | Campo | Regra |
 |---|---|
-| `name` | obrigatório, não vazio |
+| `name` | obrigatório, mín. 3 caracteres (code points; emoji simples conta 1), **não aceita emoji** |
 | `description` | opcional |
 | `grid` | opcional; usa grid padrão 25×25 64px se omitido |
 | `bg` | opcional |
@@ -33,7 +33,7 @@
 | 401 | Sem JWT |
 | 403 | Usuário não é o master da campanha |
 | 404 | Campanha não encontrada |
-| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]` |
+| 422 | `name` vazio ou com emoji (`map name must not contain emoji`), `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]` |
 | 500 | Erro interno |
 
 ---
@@ -188,7 +188,7 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 
 | Campo | Regra (se enviado) |
 |---|---|
-| `name` | obrigatório, não vazio |
+| `name` | obrigatório, mín. 3 caracteres (code points; emoji simples conta 1), **não aceita emoji** |
 | `description` | opcional |
 | `grid` | opcional; mantém grid existente se omitido |
 | `bg` | opcional; omitir mantém existente, `null` remove o fundo, objeto troca |
@@ -204,7 +204,7 @@ no lobby quanto em partida. Ver a seção de eventos WS abaixo.
 | 401 | Sem JWT |
 | 403 | Usuário não é o master da campanha |
 | 404 | Mapa não encontrado |
-| 422 | `name` vazio, `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]`; em `walls`: `p1 = p2`, `wallType` inválido, `hp < 0`, ou ponta fora do contorno LOCAL da grade (`wall segment out of grid bounds`; ver nota abaixo) |
+| 422 | `name` vazio ou com emoji (`map name must not contain emoji`), `cellSize ≤ 0`, `cols/rows ≤ 0`, `skewRatio ∉ [0,1]`; em `walls`: `p1 = p2`, `wallType` inválido, `hp < 0`, ou ponta fora do contorno LOCAL da grade (`wall segment out of grid bounds`; ver nota abaixo) |
 | 500 | Erro interno |
 
 > **Limites das paredes.** O contorno é o `GridLocalBounds` da grade, em coordenadas LOCAL (pré-transform). Na grade quadrada vai de 0 a `cols·cellSize` × `rows·cellSize`; num hex as células são centradas nos pontos da grade, então o contorno **começa antes de 0** (a partir de `-hexW/2` em x) — uma parede na borda esquerda de um hex tem x negativo e é válida. A checagem tem tolerância de `1e-6` (`wallBoundsTolerance`) para absorver ruído de ponto flutuante do cálculo feito no front. **Bug conhecido do handler (não é contrato):** hoje `update_map.go` mapeia todo erro que não seja 403/404 para 422, inclusive falha do repositório; esta deveria ser 500, como na tabela acima. Não dependa do 422 para erros de infraestrutura.

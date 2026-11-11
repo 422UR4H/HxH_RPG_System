@@ -5,6 +5,7 @@ package match_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -657,4 +658,27 @@ func TestMatchStoryStartTimeAndGameEndAt(t *testing.T) {
 			t.Errorf("StoryEndTime = %v, want nil while not finished", got.StoryEndTime)
 		}
 	})
+}
+
+// 32 emojis simples cabem no VARCHAR(32): o limite conta code points, não bytes.
+func TestCreateMatch_EmojiTitleFitsVarchar(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgMatch.NewRepository(pool)
+	ctx := context.Background()
+	masterUUID := mustParseUUID(t, pgtest.InsertTestUser(t, pool, "gmemoji", "gmemoji@hunter.com", "pass"))
+	campaignUUID := mustParseUUID(t, pgtest.InsertTestCampaign(t, pool, masterUUID.String(), "Emoji Campaign"))
+
+	title := strings.Repeat("😀", 32)
+	m := newTestMatch(masterUUID, campaignUUID, title, true, time.Now().Add(24*time.Hour))
+	m.BriefInitialDescription = strings.Repeat("😀", 255)
+	if err := repo.CreateMatch(ctx, m); err != nil {
+		t.Fatalf("CreateMatch() with 32 emoji title: %v", err)
+	}
+	got, err := repo.GetMatch(ctx, m.UUID)
+	if err != nil {
+		t.Fatalf("GetMatch(): %v", err)
+	}
+	if got.Title != title {
+		t.Errorf("Title = %q, want %q", got.Title, title)
+	}
 }

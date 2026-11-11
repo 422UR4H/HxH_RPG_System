@@ -3,7 +3,6 @@ package sheet
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -80,7 +79,7 @@ func CreateCharacterSheetHandler(
 
 		input, err := castRequest(&req.Body)
 		if err != nil {
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, castRequestError(err)
 		}
 
 		if input.CampaignUUID == nil {
@@ -115,6 +114,23 @@ func CreateCharacterSheetHandler(
 	}
 }
 
+// profileError marca falhas de CharacterProfile.Validate(), para o handler
+// devolver 422 nelas sem mudar o 400 dos demais erros de castRequest (enums).
+type profileError struct{ err error }
+
+func (e *profileError) Error() string { return "character profile error: " + e.err.Error() }
+func (e *profileError) Unwrap() error { return e.err }
+
+// castRequestError traduz um erro de castRequest: falha de validação do perfil
+// (tamanho, emoji etc.) é 422, como no contrato; os demais (enums) são 400.
+func castRequestError(err error) error {
+	var pe *profileError
+	if errors.As(err, &pe) {
+		return huma.Error422UnprocessableEntity(err.Error())
+	}
+	return huma.Error400BadRequest(err.Error())
+}
+
 func castRequest(
 	body *CreateCharacterSheetRequestBody,
 ) (*charactersheet.CreateCharacterSheetInput, error) {
@@ -127,7 +143,7 @@ func castRequest(
 	}
 
 	if err := profile.Validate(); err != nil {
-		return nil, fmt.Errorf("character profile error: %w", err)
+		return nil, &profileError{err: err}
 	}
 
 	skillsExps := make(map[enum.SkillName]int)

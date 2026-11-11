@@ -39,7 +39,9 @@ func (h *AuthHandler) Register(
 			return nil, huma.Error400BadRequest(err.Error())
 
 		case du.ErrInvalidNickLength,
+			du.ErrNickHasEmoji,
 			du.ErrInvalidEmailLength,
+			du.ErrEmailHasEmoji,
 			du.ErrPasswordMinLenght,
 			du.ErrPasswordMaxLenght,
 			du.ErrMismatchPassword:

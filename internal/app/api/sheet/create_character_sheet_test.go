@@ -84,6 +84,7 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 			},
 			wantStatus: http.StatusUnprocessableEntity,
 		},
+
 		{
 			name: "invalid attribute name returns 400",
 			body: func() map[string]any {
@@ -119,6 +120,61 @@ func TestCreateCharacterSheetHandler(t *testing.T) {
 
 			if resp.Code != tt.wantStatus {
 				t.Errorf("got status %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
+			}
+		})
+	}
+}
+
+// Erros de validação do perfil nascem no handler (castRequest), antes do use case:
+// o corpo é real e o use case não pode ser chamado.
+func TestCreateCharacterSheetHandler_ProfileValidationReturns422(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+		value string
+	}{
+		{"emoji in nickname", "nickname", "Gon😀"},
+		{"emoji in fullname", "fullname", "Gon Freecss 😀"},
+		{"nickname too short", "nickname", "G"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			called := false
+			mock := &mockCreateCharacterSheet{fn: func(ctx context.Context, input *charactersheet.CreateCharacterSheetInput) (*sheetEntity.CharacterSheet, error) {
+				called = true
+				return nil, nil
+			}}
+			huma.Register(api, huma.Operation{
+				Method:        http.MethodPost,
+				Path:          "/charactersheets",
+				DefaultStatus: http.StatusCreated,
+			}, sheet.CreateCharacterSheetHandler(mock))
+
+			profile := map[string]any{
+				"nickname":         "Gon",
+				"fullname":         "Gon Freecss",
+				"alignment":        "Chaotic-Good",
+				"description":      "A young hunter",
+				"briefDescription": "Hunter boy",
+				"age":              12,
+				"birthday":         "0000-05-15T00:00:00Z",
+			}
+			profile[tt.field] = tt.value
+			body := map[string]any{
+				"profile":           profile,
+				"characterClass":    "Hunter",
+				"skillsExps":        map[string]any{},
+				"proficienciesExps": map[string]any{},
+				"attributePoints":   map[string]any{"Resistance": 1, "Agility": 1, "Flexibility": 1},
+			}
+			ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+			resp := api.PostCtx(ctx, "/charactersheets", body)
+			if resp.Code != http.StatusUnprocessableEntity {
+				t.Errorf("got status %d, want 422. Body: %s", resp.Code, resp.Body.String())
+			}
+			if called {
+				t.Error("use case must not be called when the profile is invalid")
 			}
 		})
 	}
