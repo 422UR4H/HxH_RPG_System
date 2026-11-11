@@ -60,7 +60,7 @@
 | Evasão | Evasion | Flexibilidade | Esquivar de ataques |
 | Esgueirar | Sneak | Flexibilidade | Mover-se silenciosamente |
 | Reflexo | Reflex | Destreza | Tempo de reação |
-| Precisão | Accuracy | Destreza | Acurácia em ataques à distância |
+| Precisão | Accuracy | Destreza | Acerto em geral e acertos críticos |
 | Furtividade | Stealth | Destreza | Permanecer oculto |
 | Visão | Vision | Sentido | Acuidade visual |
 | Audição | Hearing | Sentido | Acuidade auditiva |

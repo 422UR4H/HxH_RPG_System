@@ -90,7 +90,7 @@ Cada perícia física pertence a um atributo físico — primário ou médio. As
 | Perícia | Descrição |
 |---|---|
 | Reflexo | Tempo de reação a estímulos |
-| Precisão | Pontaria e precisão em ataques (crítico) |
+| Precisão | Pontaria e acerto em geral, incluindo acertos críticos |
 | Furtividade | Capacidade de se esconder e passar despercebido |
 
 #### Sentido (primário)
