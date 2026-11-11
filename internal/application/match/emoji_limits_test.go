@@ -32,13 +32,13 @@ func TestCreateMatch_EmojiCountsAsOneCharacter(t *testing.T) {
 	brief := func(n int) func(*match.CreateMatchInput) {
 		return func(i *match.CreateMatchInput) { i.BriefInitialDescription = strings.Repeat("😀", n) }
 	}
-	if err := run(title(32)); errors.Is(err, match.ErrMaxTitleLength) {
+	if err := run(title(32)); err != nil {
 		t.Errorf("32 emoji title must be accepted: %v", err)
 	}
 	if err := run(title(33)); !errors.Is(err, match.ErrMaxTitleLength) {
 		t.Errorf("33 emoji title: got %v", err)
 	}
-	if err := run(brief(255)); errors.Is(err, match.ErrMaxBriefDescLength) {
+	if err := run(brief(255)); err != nil {
 		t.Errorf("255 emoji brief must be accepted: %v", err)
 	}
 	if err := run(brief(256)); !errors.Is(err, match.ErrMaxBriefDescLength) {

@@ -10,6 +10,7 @@ import (
 	mapapi "github.com/422UR4H/HxH_RPG_System/internal/app/api/map"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -304,5 +305,16 @@ func TestUpdateMapHandler_BgSemantics(t *testing.T) {
 				t.Errorf("Bg.URL = %q", mock.received.Bg.URL)
 			}
 		})
+	}
+}
+
+func TestUpdateMapHandler_NameHasEmoji_Returns422(t *testing.T) {
+	mock := &mockUpdateMap{err: service.ErrNameHasEmoji}
+	api := registerUpdateMapHandler(t, mock)
+
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	resp := api.PutCtx(ctx, "/maps/"+uuid.New().String(), map[string]any{"name": "Floresta😀"})
+	if resp.Code != http.StatusUnprocessableEntity {
+		t.Errorf("got status %d, want 422. Body: %s", resp.Code, resp.Body.String())
 	}
 }

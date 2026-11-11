@@ -2,6 +2,7 @@ package campaign_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -29,12 +30,12 @@ func TestCreateCampaign_EmojiCountsAsOneCharacter(t *testing.T) {
 			return err
 		}
 		t.Run(c.name+" max emojis is accepted", func(t *testing.T) {
-			if err := run(c.limit); err != nil && err.Error() == c.maxErr.Error() {
-				t.Fatalf("unexpected length error: %v", err)
+			if err := run(c.limit); err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 		t.Run(c.name+" max+1 emojis fails", func(t *testing.T) {
-			if err := run(c.limit + 1); err == nil || err.Error() != c.maxErr.Error() {
+			if err := run(c.limit + 1); !errors.Is(err, c.maxErr) {
 				t.Fatalf("got %v, want %v", err, c.maxErr)
 			}
 		})
