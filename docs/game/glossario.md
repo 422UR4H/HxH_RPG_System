@@ -13,25 +13,25 @@
 
 ## Atributos Físicos (Physical Attributes)
 
-| PT-BR | EN | Tipo | Descrição |
-|---|---|---|---|
-| Resistência | Resistance | Primário | Base de defesa e vitalidade |
-| Agilidade | Agility | Primário | Velocidade de movimento |
-| Flexibilidade | Flexibility | Primário | Amplitude de movimentos |
-| Sentido | Sense | Primário | Percepção sensorial |
-| Força | Strength | Médio | Média de Resistência + Agilidade |
-| Celeridade | Celerity | Médio | Média de Agilidade + Flexibilidade |
-| Destreza | Dexterity | Médio | Média de Flexibilidade + Sentido |
-| Constituição | Constitution | Médio | Média de Sentido + Resistência |
+| PT-BR | Sigla | EN | Tipo | Descrição |
+|---|---|---|---|---|
+| Resistência | RES | Resistance | Primário | Base de defesa e vitalidade |
+| Agilidade | AGI | Agility | Primário | Velocidade de movimento |
+| Flexibilidade | FLX | Flexibility | Primário | Amplitude de movimentos |
+| Sentido | SEN | Sense | Primário | Percepção sensorial |
+| Força | Str | Strength | Médio | Média de Resistência + Agilidade |
+| Celeridade | Cel | Celerity | Médio | Média de Agilidade + Flexibilidade |
+| Destreza | Dex | Dexterity | Médio | Média de Flexibilidade + Sentido |
+| Constituição | Con | Constitution | Médio | Média de Sentido + Resistência |
 
 ## Atributos Mentais (Mental Attributes)
 
-| PT-BR | EN | Tipo | Descrição |
-|---|---|---|---|
-| Resiliência | Resilience | Primário | Capacidade de se recuperar mentalmente |
-| Adaptabilidade | Adaptability | Primário | Capacidade de se ajustar a novas situações |
-| Julgamento (ou Ponderação) | Judgment | Primário | Capacidade de análise e raciocínio |
-| Criatividade | Creativity | Primário | Capacidade de inovação e improvisação |
+| PT-BR | Sigla | EN | Tipo | Descrição |
+|---|---|---|---|---|
+| Resiliência | RSL | Resilience | Primário | Capacidade de se recuperar mentalmente |
+| Adaptabilidade | ADP | Adaptability | Primário | Capacidade de se ajustar a novas situações |
+| Julgamento (ou Ponderação) | JUD | Judgment | Primário | Capacidade de análise e raciocínio |
+| Criatividade | CRE | Creativity | Primário | Capacidade de inovação e improvisação |
 
 ## Atributos Espirituais (Spiritual Attributes)
 
@@ -156,10 +156,10 @@
 | Militar | Military | Soldado treinado |
 | Hunter | Hunter | Licenciado pela Associação Hunter |
 | Mestre de Armas | WeaponsMaster | Proficiente em múltiplas armas |
-| Atleta | Athlete | Especialista em perícias físicas |
-| Tribal | Tribal | Guerreiro de cultura tradicional |
-| Experimento | Experiment | Sujeito de experimentos |
-| Circo | Circus | Acrobata e artista |
+| Atleta (em breve) | Athlete | Especialista em perícias físicas |
+| Tribal (em breve) | Tribal | Guerreiro de cultura tradicional |
+| Experimento (em breve) | Experiment | Sujeito de experimentos |
+| Circo (em breve) | Circus | Acrobata e artista |
 
 ## Dados (Dice)
 

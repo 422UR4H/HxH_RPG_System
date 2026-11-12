@@ -1,0 +1,9 @@
+# Criando seu personagem
+
+Criar uma ficha leva cinco passos, na ordem em que aparecem na tela.
+
+1. **Preencha o perfil**: apelido, nome, data de nascimento e o restante dos dados do personagem.
+2. **Escolha uma classe**: ela define o que o personagem dedicou anos da vida a ser. Veja [Classes](../classes.md).
+3. **Distribua os pontos de atributo** físicos e mentais até que **Pontos para Distribuir** chegue a zero. Veja [Atributos](./atributos.md).
+4. **Se a sua classe oferecer, escolha as perícias e armas** que recebem experiência extra. Veja [Perícias](./pericias.md) e [Proficiências](./proficiencias.md).
+5. **Aperte Criar Ficha** para concluir.

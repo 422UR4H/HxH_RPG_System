@@ -4,7 +4,7 @@
 
 ## Visão Geral
 
-A classe de personagem define a **especialização inicial** e determina:
+A classe é aquilo a que o personagem dedicou anos da própria vida para se tornar, até o momento em que a ficha é criada. Ela define a **especialização inicial** e determina:
 - Experiência (XP) inicial em perícias específicas
 - Experiência inicial em proficiências de armas
 - Experiência inicial em atributos
@@ -42,31 +42,24 @@ O sistema valida rigorosamente:
 - Os valores de experiência atribuídos não correspondem aos pontos disponíveis
 - As mesmas regras valem tanto para perícias quanto para proficiências
 
-## Classes Disponíveis (12 ativas)
+## Classes disponíveis
 
-| Classe | Categorias Nen Indicadas |
-|--------|--------------------------|
-| Espadachim | — |
-| Samurai | — |
-| Ninja | — |
-| Ladino | — |
-| Netrunner | — |
-| Pirata | — |
-| Mercenário | — |
-| Terrorista | — |
-| Monge | — |
-| Militar | — |
-| Hunter | — |
-| Mestre de Armas | — |
+Hoje você pode escolher entre 12 classes:
 
-### Classes Futuras (4 planejadas)
+- Espadachim
+- Samurai
+- Ninja
+- Ladino
+- Netrunner
+- Pirata
+- Mercenário
+- Terrorista
+- Monge
+- Militar
+- Hunter
+- Mestre de Armas
 
-| Classe | Status |
-|--------|--------|
-| Atleta | Planejada |
-| Tribal | Planejada |
-| Experimento | Planejada |
-| Circo | Planejada |
+Novas classes estão a caminho, e você as verá aqui assim que chegarem.
 
 ## Perfil da Classe
 

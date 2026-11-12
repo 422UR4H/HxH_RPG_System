@@ -28,6 +28,8 @@ O XP base para cada nível é calculado como **velocidade de progressão × cust
 | Perícias Espirituais | 3.0 | Cada perícia espiritual |
 | Princípios Nen | 1.0 | Cada princípio e categoria |
 
+Quanto maior o número, mais XP é preciso para subir de nível.
+
 > **🔍 Curiosidade — A Fórmula por trás da Progressão**
 >
 > A curva de progressão é gerada por uma função sigmoidal tripla:

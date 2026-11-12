@@ -14,7 +14,7 @@ Existem três tipos de atributo:
 
 Os atributos físicos formam um losango. Os quatro **primários** ficam nos vértices e os quatro **médios** no meio das arestas, cada um entre os dois primários que o formam:
 
-```
+```diagram physical paint=all
             Resistência
    Força                Constituição
 Agilidade                     Sentido
@@ -35,9 +35,23 @@ Agilidade                     Sentido
 
 Por isso, um ponto em um primário fortalece também os dois médios vizinhos. Um ponto em Agilidade, por exemplo, sobe Força e Celeridade.
 
+```diagram physical paint=AGI,Str,Cel,AGI-Str,Cel-AGI
+            Resistência
+   Força                Constituição
+Agilidade                     Sentido
+   Celeridade             Destreza
+           Flexibilidade
+```
+
 ## Atributos Mentais (Velocidade de Progressão: 1.0)
 
 Os quatro atributos mentais são todos **primários**: não há médios entre eles.
+
+```diagram mental paint=all
+          Resiliência
+Criatividade     Adaptabilidade
+         Julgamento
+```
 
 | Atributo | Descrição |
 |---|---|
@@ -56,6 +70,14 @@ Atributos espirituais representam o poder Nen do personagem. Diferem dos demais 
 | Consciência | 1.0 | Controle e percepção da aura |
 
 > **Nota:** Atributos espirituais só existem para personagens que despertaram o Nen.
+
+## Como ler um atributo
+
+Na ficha, cada atributo mostra três números sob a sigla: o **nível**, os **pontos** e o **poder**.
+
+```diagram attribute-node
+RES  nível · pontos · poder
+```
 
 ## Fórmulas
 
@@ -78,6 +100,14 @@ O **poder** é o número usado nos testes.
 > *valor = pontos + nível*
 >
 > *poder = valor + bônus de habilidade (arredondado) + buff*
+
+```diagram physical paint=RES,AGI,Str,AGI-Str,Str-RES
+            Resistência
+   Força                Constituição
+Agilidade                     Sentido
+   Celeridade             Destreza
+           Flexibilidade
+```
 
 O arredondamento utilizado é o padrão: metade arredonda para longe do zero. Exemplo: a média de 3 e 4 é 3,5, que arredonda para 4.
 

@@ -13,6 +13,8 @@ Habilidades representam as quatro grandes áreas de competência de um personage
 | Espirituais | 5.0 | Atributos espirituais, princípios Nen, AP |
 | Perícias | 20.0 | Experiência geral de todas as perícias |
 
+Quanto maior o número, mais XP é preciso para subir de nível.
+
 ## Bônus de Habilidade
 
 O bônus é calculado pela média entre os pontos de personagem e o nível da habilidade:

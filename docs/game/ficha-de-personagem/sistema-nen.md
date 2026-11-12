@@ -20,6 +20,10 @@ Os princípios são as técnicas fundamentais de Nen. Existem **11 princípios**
 | **In** | Esconder a aura de detecção |
 | **En** | Expandir a aura para detectar presença |
 
+```diagram nen-principles paint=all
+Ten · Zetsu · Ren · Gyo · Hatsu · Shu · Kou · Ken · Ryu · In · En
+```
+
 ### Valor de Teste dos Princípios
 
 Cada princípio possui um **valor de teste** calculado pela fórmula:
