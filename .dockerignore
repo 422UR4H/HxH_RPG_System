@@ -13,3 +13,5 @@ docs
 *.md
 Dockerfile
 .dockerignore
+!docs/embed.go
+!docs/game
