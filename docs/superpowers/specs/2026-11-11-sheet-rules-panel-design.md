@@ -247,7 +247,7 @@ red close X used by match/campaign panels, and the chevron.
 
 - **Opening:** pushes a history entry with a query param, e.g. `?regras=atributos`, the slug of the
   chapter it opened at. Scrolling between chapters **never rewrites the URL**; it only updates the
-  remembered chapter.
+  in-memory last chapter.
   - The **browser back button closes the panel** and keeps the player on the sheet.
   - Closing with X/Esc/"?" while the entry is ours calls `history.back()`, so no dead entry is left.
   - A URL that arrives with `?regras=<slug>` opens the panel at that chapter, which makes links
@@ -255,11 +255,20 @@ red close X used by match/campaign panels, and the chevron.
     there is no entry of ours to go back to.
 - **Must hold:** changing that query param must not remount the sheet or reset its form state.
   Verify on all four screens, including create with points already distributed.
-- **Where it opens:** the **first time ever**, at **Criação**. Afterwards, at the **last chapter the
-  player was reading**.
-  - Store it in `localStorage`, every access wrapped in `try/catch`; without storage, always open
-    at Criação.
-  - The deep link `?regras=<slug>` wins over the stored chapter.
+- **Opening by itself for a first character.**
+  - On `/charactersheet/new`, the panel opens automatically at **Criação** when the player's sheet
+    list (`useCharacterSheets`) has **settled successfully and is empty**. This is the case the
+    home already redirects to (`CharacterSheetsPage`).
+  - It happens once per page mount. It is an ordinary open: it pushes the history entry, and the
+    back button closes it.
+  - **Trap:** never treat "not loaded yet" as empty. While the list is pending or fetching, or if it
+    errored, the panel does not auto-open.
+  - The NPC page never auto-opens.
+- **Where the "?" opens:**
+  - At **Atributos**, where the button is.
+  - Within the same page visit, reopening returns to the last chapter shown. That state lives only
+    in memory; **nothing is stored in the browser**.
+  - The deep link `?regras=<slug>` wins over both.
 
 ### 7.4 Data loading
 
@@ -304,7 +313,7 @@ red close X used by match/campaign panels, and the chevron.
 
 Approved reference, open it in a browser:
 `System_X_System_React/docs/audits/2026-11-11-briefing-regras-da-ficha/brilho-referencia.html`
-(spike v6). The implementation must look like it. The rules that define it:
+(spike v7). The implementation must look like it. The rules that define it:
 
 1. **One light.** Each glow layer is **one** blurred SVG group holding *all* pieces of the diagram
    (lines, beads, arcs, arrows). Opacity is applied to the group, never per piece, so beads and
@@ -334,9 +343,14 @@ Approved reference, open it in a browser:
    | Physical | `red600` |
    | Mental | `purple500` (the magic-wall purple) |
    | Nen principles | `blue400` ("mana") |
-   | Light | `neutral0` (white) |
+   | Light: line cores and bead centres | `neutral0` (white) |
+   | Light: unpainted halos | `neutral300` |
 
-   `red500` may appear inside the red bead gradient. Add semantic aliases in `colors` if needed;
+   - With the same layer values, a white halo reads much brighter than a coloured one. So the
+     unpainted halos use `neutral300`, and the white bead body fades
+     `neutral0` → `neutral100` → `neutral200` → transparent. Line cores and bead centres stay pure
+     white. The reference (v7) shows the balance to match.
+   - `red500` may appear inside the red bead gradient. Add semantic aliases in `colors` if needed;
    no new palette entries.
 7. **Motion:**
    - On first appearance the diagram "ignites": lines draw in (~0.7s) and beads pop in sequence.
@@ -368,7 +382,12 @@ Approved reference, open it in a browser:
 - **Markers:** fenced `diagram` blocks with ASCII fallback; numbers hidden in the panel diagrams.
 - **Nen colour:** `blue400`.
 - **Chapters:** the ten of §5, in that order; the whole glossary is shown.
-- **Remembered chapter:** stored in `localStorage`.
+- **Where the panel opens:**
+  - It opens by itself at Criação for a player with no sheets, on the create page, and only once the
+    list is known to be empty.
+  - The "?" opens at Atributos.
+  - The last chapter is remembered only during the page visit, with no browser storage. This is
+    the owner's suggestion, refined to avoid the "list not loaded yet" trap.
 - **From the builder check:**
   - the footer is optional;
   - the `label` field;
@@ -398,8 +417,11 @@ Approved reference, open it in a browser:
   - `curl` the endpoint locally;
   - local `docker build` proving the docs are embedded.
 - **Front:**
-  - tests for open/close, back button, focus return, the remembered chapter, paint resolution and
-    Markdown mapping;
+  - tests for:
+    - open/close, back button, focus return;
+    - the auto-open rule: empty list settled → opens; pending, fetching, error or non-empty → does
+      not;
+    - paint resolution and Markdown mapping;
   - then the browser at 1440 and 390 on all four screens, including create with points already
     distributed (open, read, close, back button: nothing lost);
   - the background Markdown now shows headings and bold;

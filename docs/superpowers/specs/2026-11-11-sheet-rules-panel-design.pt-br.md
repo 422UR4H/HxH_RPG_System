@@ -248,7 +248,7 @@ verdes do `canvas.json`. As imagens `/_blob/…` correspondem a assets que o fro
 
 - **Ao abrir,** entra um item no histórico com um parâmetro na URL, ex.: `?regras=atributos`, o
   slug do capítulo em que abriu. Rolar entre capítulos **nunca reescreve a URL**; só atualiza o
-  capítulo lembrado.
+  último capítulo, guardado na memória.
   - O **"voltar" do navegador fecha o painel** e mantém o jogador na ficha.
   - Fechar pelo X, `Esc` ou "?", quando o item do histórico é nosso, chama `history.back()`, para não
     deixar item morto.
@@ -257,11 +257,20 @@ verdes do `canvas.json`. As imagens `/_blob/…` correspondem a assets que o fro
     nosso para voltar.
 - **Obrigatório:** mudar esse parâmetro não pode remontar a ficha nem zerar o formulário. Conferir
   nas quatro telas, inclusive em criar com pontos já distribuídos.
-- **Onde abre:** na **primeira vez de todas**, em **Criação**. Depois, no **último capítulo que o
-  jogador estava lendo**.
-  - Guardado em `localStorage`, todo acesso dentro de `try/catch`; sem armazenamento, abre sempre em
-    Criação.
-  - O link direto `?regras=<slug>` vence o capítulo guardado.
+- **Abre sozinho no primeiro personagem.**
+  - Em `/charactersheet/new`, o painel abre automaticamente em **Criação** quando a lista de fichas
+    do jogador (`useCharacterSheets`) **terminou de carregar com sucesso e está vazia**. É o caso
+    para onde a home já redireciona (`CharacterSheetsPage`).
+  - Acontece uma vez por montagem da página. É uma abertura comum: entra o item no histórico, e o
+    "voltar" fecha.
+  - **Armadilha:** nunca tratar "ainda não carregou" como vazia. Com a lista carregando,
+    recarregando ou com erro, o painel não abre sozinho.
+  - A página de NPC nunca abre sozinha.
+- **Onde o "?" abre:**
+  - Em **Atributos**, onde o botão fica.
+  - Na mesma visita à página, reabrir volta ao último capítulo mostrado. Esse estado fica só na
+    memória; **nada é guardado no navegador**.
+  - O link direto `?regras=<slug>` vence os dois.
 
 ### 7.4 Carregamento
 
@@ -305,7 +314,7 @@ verdes do `canvas.json`. As imagens `/_blob/…` correspondem a assets que o fro
 
 Referência aprovada, para abrir no navegador:
 `System_X_System_React/docs/audits/2026-11-11-briefing-regras-da-ficha/brilho-referencia.html`
-(protótipo v6). A implementação tem que ficar igual a ela. As regras que a definem:
+(protótipo v7). A implementação tem que ficar igual a ela. As regras que a definem:
 
 1. **A luz é uma só.** Cada camada de brilho é **um** grupo SVG desfocado com *todas* as peças do
    diagrama (linhas, bolinhas, arcos, setas). A opacidade vai no grupo, nunca em cada peça, para
@@ -337,9 +346,14 @@ Referência aprovada, para abrir no navegador:
    | Físico | `red600` |
    | Mental | `purple500` (o roxo da parede mágica) |
    | Princípios Nen | `blue400` ("mana") |
-   | Luz | `neutral0` (branco) |
+   | Luz: fios das linhas e miolo das bolinhas | `neutral0` (branco) |
+   | Luz: halos não pintados | `neutral300` |
 
-   O `red500` pode aparecer dentro do degradê da bolinha vermelha. Criar apelidos semânticos em
+   - Com os mesmos valores de camada, um halo branco parece brilhar muito mais que um colorido.
+     Por isso os halos não pintados usam `neutral300`, e o corpo da bolinha branca vai
+     `neutral0` → `neutral100` → `neutral200` → transparente. Fios e miolos continuam branco puro.
+     A referência (v7) mostra o equilíbrio a seguir.
+   - O `red500` pode aparecer dentro do degradê da bolinha vermelha. Criar apelidos semânticos em
    `colors` se precisar; nada novo em `palette`.
 7. **Movimento:**
    - Ao aparecer, o diagrama "liga": as linhas se desenham (~0,7s) e as bolinhas acendem em
@@ -374,7 +388,12 @@ Referência aprovada, para abrir no navegador:
   nos diagramas do painel.
 - **Cor do Nen:** `blue400`.
 - **Capítulos:** os dez do §5, nessa ordem; o glossário aparece inteiro.
-- **Capítulo lembrado:** guardado em `localStorage`.
+- **Onde o painel abre:**
+  - Abre sozinho em Criação para quem não tem ficha, na página de criar, e só depois que se sabe
+    que a lista está vazia.
+  - O "?" abre em Atributos.
+  - O último capítulo é lembrado só durante a visita à página, sem guardar nada no navegador. É a
+    sugestão do dono, refinada para evitar a armadilha da lista ainda não carregada.
 - **Da revisão de quem implementa:**
   - rodapé opcional;
   - campo `label`;
@@ -404,8 +423,11 @@ Referência aprovada, para abrir no navegador:
   - `curl` no endpoint local;
   - `docker build` local provando que as docs foram embutidas.
 - **Front:**
-  - testes de abrir/fechar, "voltar", retorno do foco, capítulo lembrado, resolução da pintura e
-    mapeamento do Markdown;
+  - testes de:
+    - abrir/fechar, "voltar", retorno do foco;
+    - regra de abrir sozinho: lista vazia carregada → abre; carregando, recarregando, com erro ou
+      com fichas → não abre;
+    - resolução da pintura e mapeamento do Markdown;
   - depois, o navegador em 1440 e 390 nas quatro telas, inclusive criar com pontos já distribuídos
     (abrir, ler, fechar, "voltar": nada se perde);
   - o Markdown do background mostrando títulos e negrito;
