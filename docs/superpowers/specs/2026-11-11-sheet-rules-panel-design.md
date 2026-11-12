@@ -27,14 +27,17 @@ illustrations appear on the site, and the same Markdown still reads well on GitH
 4. Opening the rules never loses what the player typed in the sheet.
 5. Fix the existing Markdown bug in the character background (`DescriptionMarkdown`): headings,
    bold and the like render as plain text.
+6. **The sheet's own diagrams get the glow too** (owner's request after approving the design):
+   physical, mental and Nen principles, on all four screens, fully painted in their colour. See
+   §8.11.
 
 ## 3. Non-goals
 
 - Variant A of the design (a full rules page) is **not** built. It is kept for a future site-wide
   rules page.
 - Nothing about the class the player picked shows in the panel. The text is the same for everyone.
-- The glow does **not** go onto the sheet's own diagrams yet. It is built reusable, but only the
-  panel uses it now.
+- Painting **progress** on the sheet's diagrams (partially painted states driven by data). On the
+  sheet they are fully painted for now; the module is built so the owner can add progress later.
 - No other "?" buttons (on PERÍCIAS, on the class field…). The one in ATRIBUTOS opens everything.
 - No editing of rules on the site. No search.
 
@@ -374,13 +377,34 @@ Approved reference, open it in a browser:
      example numbers.
 10. **Reusable:** a self-contained module, roughly a `GlowDiagram` that takes geometry, paint and
     colour, plus a pure `resolvePaint(spec)` with unit tests. The owner will extend it later
-    (painting on the sheet, progress).
+    (painting progress).
+11. **On the sheet.**
+    - `PhysicalsDiagram`, `MentalsDiagram` and `NenPrinciplesDiagram` replace their `<img>`
+      background with the glow module, **fully painted**: physical red, mental purple, Nen blue.
+    - Labels, numbers, +/− buttons, the ability centre and every position stay exactly as today.
+      That includes the y shifts in the distribute modes, and the pixel-tuned zone rules of
+      `src/components/CLAUDE.md` apply.
+    - The same motion as in the panel: ignition on mount, subtle breathing, `prefers-reduced-motion`
+      honoured.
+    - The motion must not make the sheet sluggish while the player types or clicks +/−. Prefer
+      CSS/compositor-friendly animation, and pause animations of diagrams that are off-screen.
+    - Check in the browser on a mid-range laptop profile (CPU throttling in devtools).
+12. **Mental geometry.**
+    - Today `MentalsDiagram` uses `physical_lozange.svg`, edge beads included, although mental
+      attributes have no médios.
+    - The mental diagram, on the sheet and in the panel, uses the **physical lozenge geometry
+      without the four edge beads**. Its labels keep their current positions.
+    - `mental_lozenge.svg` (different proportions) is not used.
+    - The spike's mental diagram used that other asset; follow this rule, not the spike, for the
+      mental shape.
 
 ## 9. Decisions made by me (the brainstorm owner), open to the owner's review
 
 - **Endpoint:** public; path `/rules/character-sheet`; the response shape of §6.
 - **Markers:** fenced `diagram` blocks with ASCII fallback; numbers hidden in the panel diagrams.
 - **Nen colour:** `blue400`.
+- **Mental shape:** the physical lozenge without edge beads (§8.12).
+- **Sheet diagrams:** fully painted, with the same motion as the panel.
 - **Chapters:** the ten of §5, in that order; the whole glossary is shown.
 - **Where the panel opens:**
   - It opens by itself at Criação for a player with no sheets, on the create page, and only once the
@@ -425,5 +449,7 @@ Approved reference, open it in a browser:
   - then the browser at 1440 and 390 on all four screens, including create with points already
     distributed (open, read, close, back button: nothing lost);
   - the background Markdown now shows headings and bold;
+  - the sheet diagrams are lit on all four screens, with labels, numbers and +/− exactly where they
+    were (compare before/after screenshots at 1440 and 390), and typing stays smooth;
   - `prefers-reduced-motion` honoured.
 - **PRs:** one per repo, cross-linked; back first.

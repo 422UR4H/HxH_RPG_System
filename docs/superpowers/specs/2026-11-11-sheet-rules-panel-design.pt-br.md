@@ -28,14 +28,17 @@ livro: as ilustrações ricas aparecem no site, e o mesmo Markdown segue legíve
 4. Abrir as regras nunca perde o que o jogador preencheu na ficha.
 5. Corrigir o bug do Markdown no background do personagem (`DescriptionMarkdown`): títulos, negrito
    etc. aparecem como texto comum.
+6. **Os diagramas da própria ficha também ganham a luz** (pedido do dono depois de aprovar o
+   design): físico, mental e princípios Nen, nas quatro telas, todo pintados na sua cor. Ver §8.11.
 
 ## 3. Fora do escopo
 
 - A variante A do design (página de regras inteira) **não** é construída. Ela fica guardada para
   uma futura página de regras do site.
 - Nada da classe escolhida aparece no painel. O texto é o mesmo para todos.
-- A luz **não** vai ainda para os diagramas da própria ficha. Ela nasce reutilizável, mas por
-  enquanto só o painel a usa.
+- Pintar **progresso** nos diagramas da ficha (estados parcialmente pintados a partir de dados).
+  Na ficha, por enquanto, eles ficam todo pintados; o módulo nasce pronto para o dono acrescentar
+  progresso depois.
 - Nenhum outro botão "?" (em PERÍCIAS, no campo Classe…). O de ATRIBUTOS abre tudo.
 - Não se editam regras pelo site. Não há busca.
 
@@ -379,7 +382,26 @@ Referência aprovada, para abrir no navegador:
      promover em vez de duplicar). Ela recebe números de exemplo fixos.
 10. **Reutilizável:** um módulo independente, algo como um `GlowDiagram` que recebe geometria,
     pintura e cor, mais uma função pura `resolvePaint(spec)` com testes de unidade. O dono vai
-    ampliá-lo depois (pintura na ficha, progresso).
+    ampliá-lo depois (pintura de progresso).
+11. **Na ficha.**
+    - `PhysicalsDiagram`, `MentalsDiagram` e `NenPrinciplesDiagram` trocam a imagem de fundo
+      (`<img>`) pelo módulo de luz, **todo pintado**: físico vermelho, mental roxo, Nen azul.
+    - Siglas, números, botões +/−, o centro da habilidade e todas as posições ficam exatamente como
+      hoje. Isso inclui os deslocamentos verticais dos modos de distribuir, e valem as regras da
+      zona ajustada no pixel de `src/components/CLAUDE.md`.
+    - O mesmo movimento do painel: ignição ao montar, respiração sutil, `prefers-reduced-motion`
+      respeitado.
+    - O movimento não pode deixar a ficha lenta enquanto o jogador digita ou clica em +/−. Preferir
+      animação que a GPU faça bem, e pausar a animação dos diagramas fora da tela.
+    - Conferir no navegador com perfil de notebook médio (CPU limitada no devtools).
+12. **Forma do mental.**
+    - Hoje o `MentalsDiagram` usa o `physical_lozange.svg`, com as bolinhas das arestas, embora os
+      atributos mentais não tenham médios.
+    - O diagrama mental, na ficha e no painel, usa a **geometria do losango físico sem as quatro
+      bolinhas das arestas**. As siglas ficam nas posições de hoje.
+    - O `mental_lozenge.svg` (proporções diferentes) não é usado.
+    - O mental do protótipo usou esse outro asset; para a forma do mental, vale esta regra, não o
+      protótipo.
 
 ## 9. Decisões minhas, abertas à revisão do dono
 
@@ -387,6 +409,8 @@ Referência aprovada, para abrir no navegador:
 - **Marcadores:** blocos de código `diagram` com desenho em texto de reserva; números escondidos
   nos diagramas do painel.
 - **Cor do Nen:** `blue400`.
+- **Forma do mental:** o losango físico sem as bolinhas das arestas (§8.12).
+- **Diagramas da ficha:** todo pintados, com o mesmo movimento do painel.
 - **Capítulos:** os dez do §5, nessa ordem; o glossário aparece inteiro.
 - **Onde o painel abre:**
   - Abre sozinho em Criação para quem não tem ficha, na página de criar, e só depois que se sabe
@@ -431,5 +455,7 @@ Referência aprovada, para abrir no navegador:
   - depois, o navegador em 1440 e 390 nas quatro telas, inclusive criar com pontos já distribuídos
     (abrir, ler, fechar, "voltar": nada se perde);
   - o Markdown do background mostrando títulos e negrito;
+  - os diagramas da ficha acesos nas quatro telas, com siglas, números e +/− exatamente onde
+    estavam (comparar prints de antes e depois em 1440 e 390), e a digitação continua fluida;
   - `prefers-reduced-motion` respeitado.
 - **PRs:** um por repo, com link cruzado; back primeiro.
