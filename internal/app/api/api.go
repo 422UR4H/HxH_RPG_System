@@ -29,6 +29,7 @@ type Api struct {
 	MapHandler            IApi
 	MatchMapHandler       IApi
 	UploadHandler         IApi
+	RulesHandler          IApi
 	AuthHandler           *auth.AuthHandler
 	Logger                *zap.Logger
 }
@@ -41,6 +42,8 @@ func (a *Api) Routes(r *chi.Mux, authMiddleware func(ctx huma.Context, next func
 
 	a.registerHealthRoutes(api)
 	a.AuthHandler.RegisterRoutes(r, api)
+	// regras são públicas: registradas antes do middleware de auth
+	a.RulesHandler.RegisterRoutes(r, api, a.Logger)
 
 	api.UseMiddleware(authMiddleware)
 	a.CharacterSheetHandler.RegisterRoutes(r, api, a.Logger)

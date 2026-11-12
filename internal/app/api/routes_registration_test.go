@@ -1,6 +1,9 @@
 package api_test
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api"
@@ -10,10 +13,12 @@ import (
 	mapHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/map"
 	matchHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/match"
 	matchmapHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/matchmap"
+	rulesHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/rules"
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	submissionHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
 	uploadHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/upload"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/rules"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 )
@@ -53,9 +58,49 @@ func TestRoutes_AllHandlersRegisterTogether(t *testing.T) {
 		MapHandler:            &mapHandler.Api{},
 		MatchMapHandler:       &matchmapHandler.Api{},
 		UploadHandler:         &uploadHandler.Api{},
+		RulesHandler:          &rulesHandler.Api{},
 		AuthHandler:           auth.NewAuthHandler(nil, nil),
 	}
 
 	noopMiddleware := func(ctx huma.Context, next func(huma.Context)) { next(ctx) }
 	a.Routes(chi.NewRouter(), noopMiddleware)
+}
+
+// TestRoutes_SheetRulesArePublic garante que /rules/character-sheet é registrada
+// antes do middleware de auth: o middleware aqui recusa tudo com 401.
+func TestRoutes_SheetRulesArePublic(t *testing.T) {
+	chapters := []rules.Chapter{{Slug: "um", Label: "Um", Title: "Um", Markdown: "x\n"}}
+	a := api.Api{
+		LivenessHandler:  api.LivenessHandler(),
+		ReadinessHandler: api.ReadinessHandler(nil),
+		CharacterSheetHandler: &sheetHandler.Api{
+			ListClassesHandler: func(context.Context, *struct{}) (*sheetHandler.ListCharacterClassesResponse, error) {
+				return &sheetHandler.ListCharacterClassesResponse{}, nil
+			},
+		},
+		ScenarioHandler:   &scenarioHandler.Api{},
+		CampaignHandler:   &campaignHandler.Api{},
+		MatchHandler:      &matchHandler.Api{},
+		SubmissionHandler: &submissionHandler.Api{},
+		EnrollmentHandler: &enrollmentHandler.Api{},
+		MapHandler:        &mapHandler.Api{},
+		MatchMapHandler:   &matchmapHandler.Api{},
+		UploadHandler:     &uploadHandler.Api{},
+		RulesHandler:      &rulesHandler.Api{GetSheetRulesHandler: rulesHandler.GetSheetRulesHandler(chapters)},
+		AuthHandler:       auth.NewAuthHandler(nil, nil),
+	}
+	deny := func(ctx huma.Context, next func(huma.Context)) { ctx.SetStatus(http.StatusUnauthorized) }
+	r := chi.NewRouter()
+	a.Routes(r, deny)
+
+	for path, want := range map[string]int{
+		"/rules/character-sheet": http.StatusOK,
+		"/classes":               http.StatusUnauthorized,
+	} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != want {
+			t.Errorf("GET %s = %d, want %d", path, rec.Code, want)
+		}
+	}
 }
