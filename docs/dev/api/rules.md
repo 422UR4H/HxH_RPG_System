@@ -53,6 +53,10 @@ A **ordem do array é significativa** (é a ordem de exibição). Hoje:
 - **Links entre docs** são relativos aos arquivos de origem (ex.: `../classes.md`,
   `./atributos.md#distribuicao-de-pontos`). O front os converte em navegação entre
   capítulos.
+  Os links entre capítulos podem vir com `./`, `../` ou sem prefixo nenhum (ex.:
+  `pericias.md` em `proficiencias.md`). O front resolve pelo nome do arquivo sem
+  `.md`: se esse nome for um dos 10 slugs de capítulo, o link vira navegação entre
+  capítulos; se não for, é um link comum e abre em nova aba.
 - **Diagramas**: blocos de código cuja info string começa com `diagram`:
 
   ````markdown

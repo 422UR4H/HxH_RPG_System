@@ -8,8 +8,6 @@ O sistema de experiência (XP) é a base de toda a progressão no HxH RPG System
 
 Cada componente da ficha possui uma **tabela de progressão** com uma velocidade de progressão própria. A tabela suporta até **100 níveis** (0–100), e a quantidade de XP necessária para cada nível cresce de forma não-linear: os primeiros níveis são rápidos, os intermediários exigem mais dedicação, e os últimos níveis são os mais desafiadores.
 
-O XP base para cada nível é calculado como **velocidade de progressão × custo do nível**, e o XP total acumulado é a soma de todos os níveis anteriores.
-
 ### Velocidade de Progressão por Componente
 
 | Componente | Velocidade de Progressão | Descrição |
