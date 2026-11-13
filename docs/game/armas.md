@@ -11,20 +11,10 @@ Toda arma possui as seguintes características:
 | Dados | Dados rolados no ataque (ex: D10 + D4) |
 | Dano Base | Bônus fixo de dano adicionado ao resultado dos dados |
 | Defesa | Bônus defensivo ao bloquear com a arma |
-| Peso | Determina o custo de Energia/Stamina |
+| Peso | Quanto a arma pesa |
 | Altura | Tamanho da arma em metros |
 | Volume | Espaço que a arma ocupa no inventário |
 | Arma de Fogo | Indica se é uma arma à distância moderna |
-
-## Custo de Stamina
-
-O custo em Pontos de Stamina (SP) por ataque realizado.
-
-### Cálculo:
-- **Corpo a corpo:** custo = peso da arma
-- **Arma de fogo:** custo = sempre 1,0 (independente do peso)
-
-> Armas de fogo consomem pouca energia física do usuário comparadas ao seu peso.
 
 ## Lista de Armas
 
@@ -32,7 +22,7 @@ O **dano** junta os dados e o dano base: **2 D12 +3** quer dizer dois dados de 1
 
 O sistema rola esses dados sozinho. Uma configuração de campanha e de partida vai permitir que jogadores e mestres rolem dados físicos e informem o resultado, em todas as rolagens ou só nas que escolherem (em breve).
 
-São armas de fogo, para o custo de Stamina: Besta, Pistola .38, Uzi, AK-47, AR-15, Rifle e Metralhadora.
+São armas de fogo: Besta, Pistola .38, Uzi, AK-47, AR-15, Rifle e Metralhadora.
 
 ### Corpo a Corpo
 
@@ -103,7 +93,7 @@ Cada personagem possui um inventário que permite gerenciar suas armas durante o
 - **Consultar** — verificar os detalhes de uma arma específica
 - **Listar todas** — ver o inventário completo de armas
 
-A arma atualmente equipada é a que determina os dados de dano e o custo de Stamina nos ataques do personagem.
+A arma atualmente equipada é a que determina os dados de dano nos ataques do personagem.
 
 ---
 
@@ -113,3 +103,5 @@ A arma atualmente equipada é a que determina os dados de dano e o custo de Stam
 > Código-fonte: `internal/domain/entity/item/`
 >
 > - TODO (penalidade): fora do texto do jogador até as armas estarem completas. `Weapon.GetPenality()` já calcula — corpo a corpo = peso da arma; arma de fogo = 1,0 se o peso ≥ 1,0, senão 0,0 — mas nada aplica o valor. O texto antigo dizia que a penalidade sai de Agilidade, "Ataque" e Flexibilidade; "Ataque" não é atributo, e o dono vai definir os atributos quando a penalidade existir.
+>
+> - TODO (custo de Stamina): fora do texto do jogador até as armas estarem completas. `Weapon.GetStaminaCost()` já calcula — corpo a corpo = peso da arma; arma de fogo = sempre 1,0 — mas nada desconta a Stamina no ataque.
