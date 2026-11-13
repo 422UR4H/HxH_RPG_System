@@ -1,6 +1,6 @@
 # Armas
 
-> Sistema de armas do HxH RPG.
+> Armas do System X System.
 
 ## Propriedades de uma Arma
 
@@ -36,53 +36,71 @@ O custo em Pontos de Stamina (SP) por ataque realizado.
 
 > Armas de fogo consomem pouca energia física do usuário comparadas ao seu peso.
 
-## Armas Corpo a Corpo
+## Lista de Armas
 
-| Nome | Dados | Dano | Peso | Altura |
-|------|-------|------|------|--------|
-| Adaga | D8 | 5 | 0,4 | 0,3 |
-| Adaga de Arremesso | D8 | 2 | 0,3 | 0,2 |
-| Espada | D10, D4 | 2 | 1,5 | 0,8 |
-| Espada Longa | D12, D10, D4 | 2 | 2,5 | 1,2 |
-| Katana | D4, D12 | 7 | 1,3 | 1,0 |
-| Cimitarra | D6, D4 | 4 | 1,2 | 0,9 |
-| Rapieira | D4, D4 | 5 | 1,2 | 1,0 |
-| Katar | D6 | 6 | 0,8 | 0,4 |
-| Lança | D8, D4 | 3 | 2,5 | 2,0 |
-| Lança Longa | D12, D8, D4 | 3 | 4,5 | 3,0 |
-| Alabarda | D12, D10, D6 | 1 | 7,0 | 2,2 |
-| Tridente | D8, D8, D8 | 3 | 2,5 | 1,5 |
-| Machado | D10, D6 | 1 | 2,5 | 0,7 |
-| Machado Longo | D10, D6, D12 | 1 | 4,5 | 1,2 |
-| Machado de Arremesso | D10 | 1 | 1,5 | 0,4 |
-| Picareta | D8, D6 | 2 | 3,5 | 0,9 |
-| Martelo | D12, D6 | 0 | 2,5 | 0,6 |
-| Martelo de Guerra | D12, D12, D6 | 0 | 6,0 | 1,2 |
-| Martelo de Arremesso | D12 | 0 | 1,5 | 0,4 |
-| Massa | D12, D4 | 1 | 3,5 | 0,7 |
-| Massa Longa | D12, D12, D4 | 1 | 6,0 | 1,2 |
-| Mangual | D12, D4 | 1 | 4,0 | 0,8 |
-| Cajado | D10, D8 | 0 | 2,5 | 1,7 |
-| Chicote | D4, D4, D8 | 0 | 1,3 | 2,5 |
-| Foice | D4, D4, D6 | 2 | 3,0 | 1,6 |
-| Foice Longa | D4, D4, D6, D12 | 2 | 6,0 | 2,4 |
-| Clava | D8, D8 | 1 | 2,0 | 0,6 |
-| Clava Longa | D8, D8, D12 | 1 | 4,0 | 1,2 |
-| Tchaco | D10 | 4 | 2,0 | 0,7 |
-| Punho | D6, D6, D4 | 0 | 0,8 | 0,2 |
-| Bomba | D12, D12, D12 | 0 | 2,0 | 0,2 |
+O **dano** junta os dados e o dano base: **2 D12 + 3** quer dizer role dois dados de 12 lados e some 3. A altura é em metros.
 
-## Armas de Fogo
+São armas de fogo, para penalidade e custo de stamina: Besta, Pistola .38, Uzi, AK-47, AR-15, Rifle e Metralhadora.
 
-| Nome | Dados | Dano | Peso | Altura |
-|------|-------|------|------|--------|
-| Besta | D12, D12, D12 | 2 | 4,0 | 0,9 |
-| AK-47 | D10, D10, D10 | 1 | 4,5 | 0,8 |
-| AR-15 | D10, D10 | 6 | 3,5 | 0,9 |
-| Metralhadora | D12, D10 | 3 | 3,0 | 6,0 |
-| Pistola .38 | D12 | 4 | 0,9 | 1,3 |
-| Rifle | D12, D10 | 8 | 6,0 | 1,2 |
-| Uzi | D12, D8 | 1 | 3,0 | 0,4 |
+### Corpo a Corpo
+
+| Nome | Dano | Peso | Altura |
+|---|---|---|---|
+| Punho | 2 D6 + D4 | 0,8 | 0,2 |
+| Adaga | D8 + 5 | 0,4 | 0,3 |
+| Katar | D6 + 6 | 0,8 | 0,4 |
+| Espada | D10 + D4 + 2 | 1,5 | 0,8 |
+| Katana | D12 + D4 + 7 | 1,3 | 1,0 |
+| Cimitarra | D6 + D4 + 4 | 1,2 | 0,9 |
+| Rapieira | 2 D4 + 5 | 1,2 | 1,0 |
+| Lança | D8 + D4 + 3 | 2,5 | 2,0 |
+| Tridente | 3 D8 + 3 | 2,5 | 1,5 |
+| Machado | D10 + D6 + 1 | 2,5 | 0,7 |
+| Picareta | D8 + D6 + 2 | 3,5 | 0,9 |
+| Martelo | D12 + D6 | 2,5 | 0,6 |
+| Maça | D12 + D4 + 1 | 3,5 | 0,7 |
+| Mangual | D12 + D4 + 1 | 4,0 | 0,8 |
+| Clava | 2 D8 + 1 | 2,0 | 0,6 |
+| Cajado | D10 + D8 | 2,5 | 1,7 |
+| Chicote | D8 + 2 D4 | 1,3 | 2,5 |
+| Foice | D6 + 2 D4 + 2 | 3,0 | 1,6 |
+| Tchaco | D10 + 4 | 2,0 | 0,7 |
+
+### Corpo a Corpo — Longas
+
+| Nome | Dano | Peso | Altura |
+|---|---|---|---|
+| Espada Longa | D12 + D10 + D4 + 2 | 2,5 | 1,2 |
+| Lança Longa | D12 + D8 + D4 + 3 | 4,5 | 3,0 |
+| Alabarda | D12 + D10 + D6 + 1 | 7,0 | 2,2 |
+| Machado Longo | D12 + D10 + D6 + 1 | 4,5 | 1,2 |
+| Martelo de Guerra | 2 D12 + D6 | 6,0 | 1,2 |
+| Maça Longa | 2 D12 + D4 + 1 | 6,0 | 1,2 |
+| Clava Longa | D12 + 2 D8 + 1 | 4,0 | 1,2 |
+| Foice Longa | D12 + D6 + 2 D4 + 2 | 6,0 | 2,4 |
+
+### Arremesso
+
+| Nome | Dano | Peso | Altura |
+|---|---|---|---|
+| Adaga de Arremesso | D8 + 2 | 0,3 | 0,2 |
+| Machado de Arremesso | D10 + 1 | 1,5 | 0,4 |
+| Martelo de Arremesso | D12 | 1,5 | 0,4 |
+
+### Projéteis, Armas de Fogo e Explosivos
+
+| Nome | Dano | Peso | Altura |
+|---|---|---|---|
+| Arco | D12 + 3 | 1,0 | 1,5 |
+| Arco Longo | 2 D12 + 3 | 2,0 | 2,0 |
+| Besta | 3 D12 + 2 | 4,0 | 0,9 |
+| Pistola .38 | D12 + 4 | 0,9 | 1,3 |
+| Uzi | D12 + D8 + 1 | 3,0 | 0,4 |
+| AK-47 | 3 D10 + 1 | 4,5 | 0,8 |
+| AR-15 | 2 D10 + 6 | 3,5 | 0,9 |
+| Rifle | D12 + D10 + 8 | 6,0 | 1,2 |
+| Metralhadora | D12 + D10 + 3 | 3,0 | 6,0 |
+| Bomba | 3 D12 | 2,0 | 0,2 |
 
 ## Inventário de Armas
 
