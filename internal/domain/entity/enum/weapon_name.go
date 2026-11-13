@@ -1,6 +1,5 @@
 package enum
 
-
 type WeaponName string
 
 const (
@@ -29,9 +28,9 @@ const (
 	Hammer         WeaponName = "Hammer"
 	Warhammer      WeaponName = "Warhammer" // long
 	ThrowingHammer WeaponName = "ThrowingHammer"
-	Massa          WeaponName = "Massa"
-	Mangual        WeaponName = "Mangual"
-	Longmass       WeaponName = "Longmass"
+	Mace           WeaponName = "Mace"
+	Flail          WeaponName = "Flail"
+	Longmace       WeaponName = "Longmace"
 	Pickaxe        WeaponName = "Pickaxe"
 	Fist           WeaponName = "Fist"
 	Trident        WeaponName = "Trident"
@@ -78,9 +77,9 @@ func GetAllWeaponNames() []WeaponName {
 		Hammer,
 		Warhammer,
 		ThrowingHammer,
-		Massa,
-		Mangual,
-		Longmass,
+		Mace,
+		Flail,
+		Longmace,
 		Pickaxe,
 		Fist,
 		Trident,

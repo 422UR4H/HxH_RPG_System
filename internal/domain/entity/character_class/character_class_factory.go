@@ -760,7 +760,7 @@ func BuildWeaponsMaster() CharacterClass {
 		enum.Katana, enum.Katar, enum.Spear, enum.Longspear,
 		enum.Axe, enum.Longaxe, enum.ThrowingAxe,
 		enum.Hammer, enum.Warhammer, enum.ThrowingHammer,
-		enum.Massa, enum.Mangual, enum.Longmass,
+		enum.Mace, enum.Flail, enum.Longmace,
 		enum.Pickaxe, enum.Fist, enum.Trident, enum.Tchaco,
 	}
 	// TODO: receipt 1.0 with constructor, initialized in main

@@ -48,8 +48,8 @@ O dano de cada arma é a soma dos dados com o bônus fixo. **2 D12 + 3**, por ex
 | Machado | Axe | D10 + D6 + 1 |
 | Picareta | Pickaxe | D8 + D6 + 2 |
 | Martelo | Hammer | D12 + D6 |
-| Maça | Massa | D12 + D4 + 1 |
-| Mangual | Mangual | D12 + D4 + 1 |
+| Maça | Mace | D12 + D4 + 1 |
+| Mangual | Flail | D12 + D4 + 1 |
 | Clava | Club | 2 D8 + 1 |
 | Cajado | Staff | D10 + D8 |
 | Chicote | Whip | D8 + 2 D4 |
@@ -65,7 +65,7 @@ O dano de cada arma é a soma dos dados com o bônus fixo. **2 D12 + 3**, por ex
 | Alabarda | Halberd | D12 + D10 + D6 + 1 |
 | Machado Longo | Longaxe | D12 + D10 + D6 + 1 |
 | Martelo de Guerra | Warhammer | 2 D12 + D6 |
-| Maça Longa | Longmass | 2 D12 + D4 + 1 |
+| Maça Longa | Longmace | 2 D12 + D4 + 1 |
 | Clava Longa | Longclub | D12 + 2 D8 + 1 |
 | Foice Longa | Longscythe | D12 + D6 + 2 D4 + 2 |
 
