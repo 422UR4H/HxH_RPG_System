@@ -11,7 +11,9 @@ Os físicos e os mentais ainda podem ser de dois tipos:
 
 Os espirituais não são primários nem secundários, e também não recebem pontos.
 
-Todos os atributos evoluem com treino, como no mangá e no anime: os físicos treinam pelas suas perícias, os mentais treinam diretamente e os espirituais também podem ser treinados. Só os primários físicos e mentais recebem pontos para distribuir.
+Todos os atributos evoluem com treino, como no mangá e no anime: os físicos treinam pelas suas perícias, os mentais treinam diretamente e os espirituais também podem ser treinados.
+
+**Qualquer atributo pode ser treinado individualmente, seja primário ou secundário.** A média entre dois primários só define os **pontos** de um secundário; a experiência que ele ganha treinando é só dele. A única coisa que não se pode fazer é distribuir pontos nos secundários (nem nos espirituais): os pontos para distribuir vão só para os primários físicos e mentais.
 
 ## Atributos Físicos
 
@@ -36,7 +38,9 @@ Agilidade                     Sentido
 | Destreza | Dexterity (Dex) | Secundário | Média de Flexibilidade e Sentido. Precisão e controle fino: reflexo, pontaria, furtividade |
 | Constituição | Constitution (Con) | Secundário | Média de Sentido e Resistência. Fôlego e recuperação: cura, respiração, tenacidade |
 
-Por isso, um ponto em um primário fortalece também os dois secundários vizinhos. Um ponto em Agilidade, por exemplo, sobe Força e Celeridade.
+Por isso, os pontos de um primário também fortalecem os dois secundários vizinhos. Mas um único ponto ainda não aparece no secundário, porque a média é arredondada para baixo: com 1 ponto em Agilidade e nenhum em Resistência, a Força fica com (0 + 1) / 2 = 0,5, ou seja, 0.
+
+A mudança aparece quando a média chega a 1: com 1 ponto em cada um de dois primários vizinhos (Resistência e Agilidade sobem a Força) ou com 2 pontos num primário só. Com 2 pontos em Agilidade, por exemplo, Força e Celeridade sobem juntas.
 
 ```diagram physical paint=AGI,Str,Cel,AGI-Str,Cel-AGI
             Resistência
@@ -94,17 +98,17 @@ Cada atributo primário possui:
 
 > *valor = pontos + nível*
 >
-> *poder = valor + bônus de aptidão (arredondado para baixo)*
+> *poder = valor + bônus de aptidão*
 
 O **poder** é o número usado nos testes.
 
 ### Atributos secundários
 
-> *pontos = média dos pontos dos dois primários que o formam (arredondada para baixo)*
+> *pontos = média dos pontos dos dois primários que o formam*
 >
 > *valor = pontos + nível*
 >
-> *poder = valor + bônus de aptidão (arredondado para baixo)*
+> *poder = valor + bônus de aptidão*
 
 ```diagram physical paint=RES,AGI,Str,AGI-Str,Str-RES
             Resistência
@@ -120,7 +124,7 @@ O bônus de aptidão de um atributo secundário é a média dos bônus dos seus 
 
 ### Atributos espirituais
 
-> *poder = nível + bônus de aptidão (arredondado para baixo)*
+> *poder = nível + bônus de aptidão*
 
 ## Distribuição de Pontos
 
@@ -139,7 +143,7 @@ A experiência que o personagem ganha treinando sobe em cascata pela ficha:
 
 1. A **perícia** treinada recebe a experiência.
 2. O **atributo** da perícia recebe a mesma experiência. Se for um atributo secundário, ele a reparte entre os seus dois primários.
-3. A **aptidão** do atributo recebe a experiência, e a Aptidão de Perícias também.
+3. A **aptidão** do atributo recebe a experiência, e a Aptidão de Perícias e Habilidades também.
 4. Por fim, a experiência chega ao **nível do personagem**.
 
 Os atributos mentais treinam direto: a experiência entra no atributo e segue dele para a Aptidão Mental e para o nível do personagem.

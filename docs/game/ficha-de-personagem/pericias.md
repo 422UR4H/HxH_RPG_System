@@ -120,7 +120,7 @@ Quando uma perícia recebe experiência, ela sobe para o atributo da perícia, p
 > Código-fonte: `internal/domain/entity/character_sheet/skill/`
 >
 > - Cascata da perícia comum (`CommonSkill.CascadeUpgradeTrigger`): perícia → atributo →
->   aptidão do atributo → personagem, e também → Aptidão de Perícias (`Skills`).
+>   aptidão do atributo → personagem, e também → Aptidão de Perícias e Habilidades (`Skills`).
 > - Buffs por perícia: `skill.Manager` guarda um buff por `SkillName`, somado ao valor de teste
 >   na leitura, sem alterar experiência nem nível.
 > - Perícias Conjuntas (`JointSkill`) existem no domínio, mas nenhuma classe as concede

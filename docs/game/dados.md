@@ -73,9 +73,9 @@ Armas e ações utilizam múltiplos dados combinados. O resultado final é a **s
 Cada arma possui um conjunto específico de dados que representa seu potencial de dano variável. Armas mais pesadas e complexas tendem a usar mais dados e/ou dados maiores.
 
 Exemplos:
-- **Adaga:** 1×D8 — ataque rápido, dano consistente
+- **Adaga:** D8 — ataque rápido, dano consistente
 - **Espada Longa:** D12 + D10 + D4 — alto potencial, variável
-- **Martelo de Guerra:** D12 + D12 + D6 — devastador
+- **Martelo de Guerra:** 2 D12 + D6 — devastador
 
 Consulte o documento de [Armas](armas.md) para a lista completa.
 

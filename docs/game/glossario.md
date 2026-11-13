@@ -9,17 +9,17 @@
 | System X System | SxS |
 | Experiência | XP |
 | Vida | HP |
-| Estamina | SP |
+| Energia/Stamina | SP |
 | Aura | AP |
 
 ## Aptidões (Abilities)
 
 | PT-BR | EN | Descrição |
 |---|---|---|
-| Aptidão Física | Physicals | Reúne atributos e perícias físicas, Vida e Estamina |
+| Aptidão Física | Physicals | Reúne atributos e perícias físicas, Vida e Stamina |
 | Aptidão Mental | Mentals | Reúne os atributos mentais |
 | Aptidão Espiritual | Spirituals | Reúne atributos e perícias espirituais (Nen) e Aura |
-| Aptidão de Perícias | Skills | Reúne o treino de todas as perícias |
+| Aptidão de Perícias e Habilidades | Skills | Reúne o treino de todas as perícias e as Habilidades (em breve) |
 
 ## Atributos Físicos (Physical Attributes)
 
@@ -124,8 +124,8 @@
 | PT-BR | EN | Fórmula Base |
 |---|---|---|
 | Vida | Health Points (HP) | 20 + (nível da Vitalidade + valor da Resistência) × bônus da Aptidão Física |
-| Estamina | Stamina Points (SP) | 10 × (nível da Energia + valor da Resistência) × bônus da Aptidão Física |
-| Aura | Aura Points (AP) | 10 × (nível do MOP + nível do Nen da Consciência) × bônus da Aptidão Espiritual |
+| Stamina | Stamina Points (SP) | 10 × [(nível da perícia Energia + valor da Resistência) × bônus da Aptidão Física] |
+| Aura | Aura Points (AP) | 10 × (nível do MOP + nível do Nen da Consciência) × bônus da Aptidão Espiritual arredondado para baixo |
 
 ## Armas (Weapons)
 

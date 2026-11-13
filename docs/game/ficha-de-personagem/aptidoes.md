@@ -6,14 +6,14 @@ As aptidões são as quatro grandes áreas em que um personagem evolui. Cada uma
 
 | Aptidão | Na ficha | Reúne |
 |---|---|---|
-| Aptidão Física | Physicals | Atributos e perícias físicas, Vida (HP) e Estamina (SP) |
+| Aptidão Física | Physicals | Atributos e perícias físicas, Vida (HP) e Energia/Stamina (SP) |
 | Aptidão Mental | Mentals | Atributos mentais |
 | Aptidão Espiritual | Spirituals | Atributos espirituais, princípios Nen e Aura (AP) |
-| Aptidão de Perícias | Skills | O treino de todas as perícias juntas |
+| Aptidão de Perícias e Habilidades | Skills | O treino de todas as perícias juntas e as Habilidades do personagem (em breve) |
 
-**Vida (HP)**, **Estamina (SP)** e **Aura (AP)** são as três barras do personagem. Veja [Vida e estamina](./status.md).
+**Vida (HP)**, **Stamina (SP)** e **Aura (AP)** são as três barras do personagem. Veja [Vida e Stamina](./status.md).
 
-Cada aptidão tem um nível, que sobe com a experiência que chega até ela.
+Cada aptidão tem seu nível.
 
 ## Pontos de Personagem
 
@@ -36,7 +36,7 @@ Os **pontos para distribuir** são outra coisa. Eles vêm de duas aptidões só:
 - Cada nível da **Aptidão Física** dá **1 ponto** para distribuir nos atributos físicos primários.
 - Cada nível da **Aptidão Mental** dá **1 ponto** para distribuir nos atributos mentais primários.
 
-A Aptidão Espiritual e a Aptidão de Perícias não dão pontos para distribuir. Veja como distribuir em [Atributos](./atributos.md#distribuicao-de-pontos).
+A Aptidão Espiritual e a Aptidão de Perícias e Habilidades não dão pontos para distribuir. Veja como distribuir em [Atributos](./atributos.md#distribuicao-de-pontos).
 
 ## Bônus de Aptidão
 
@@ -44,11 +44,13 @@ Cada aptidão tem um bônus, que mistura a força geral do personagem com o nív
 
 > *bônus de aptidão = (pontos de personagem + nível da aptidão) / 2*
 
-Esse bônus entra no **poder dos atributos** (veja [Atributos](./atributos.md#formulas)) e no máximo de **Vida, Estamina e Aura** (veja [Vida e estamina](./status.md)).
+> **Arredondamento:** em todas as regras, quando uma fórmula dá um número quebrado, o resultado é arredondado para baixo: 3,5 vira 3. O arredondamento acontece no fim da conta; quando uma fórmula arredonda antes disso, ela avisa. A exceção é o próprio bônus de aptidão: ele guarda o meio ponto (pode valer 3,5) para entrar inteiro nas fórmulas que o usam.
+
+Esse bônus entra no **poder dos atributos** (veja [Atributos](./atributos.md#formulas)) e no máximo de **Vida, Stamina e Aura** (veja [Vida e Stamina](./status.md)).
 
 ## Talento
 
-O talento é o **potencial** do personagem: ele dita a velocidade com que o personagem evolui, porque multiplica a experiência que ele recebe. Quanto maior o talento, mais cada treino rende.
+O talento é o **potencial** do personagem: ele dita a velocidade com que o personagem evolui, porque multiplica a experiência que ele recebe. Quanto maior o talento, mais rende cada ganho de experiência, seja em treinos, em combates, em missões concluídas ou em qualquer outra situação que dê experiência ao personagem.
 
 O talento tem nível, e esse nível pode **subir ou cair** ao longo do jogo, conforme a interpretação do personagem, as boas jogadas e as ações estratégicas, heroicas ou importantes para a história e para o cenário.
 
@@ -74,3 +76,6 @@ A experiência que o personagem ganha treinando sobe em cascata pela ficha até 
 > - Talento: o multiplicador de XP ainda **não** é aplicado no código, e o nível inicial
 >   (`BASE_TALENT_LVL` = 20 + bônus por categorias, `TalentByCategorySet`) está comentado em
 >   `create_character_sheet.go` (TODO: mover para o fluxo de aceite). A regra acima é a de jogo.
+> - Arredondamento: `Ability.GetBonus` devolve float (`(pts + lvl) / 2.0`). Poder = `valor +
+>   int(bônus)`; HP = `20 + int(coef × bônus)`; SP = `10 × int(coef × bônus)`; AP = `10 × coef ×
+>   int(bônus)`. Por isso o texto do jogador mantém a menção ao arredondamento só em SP e AP.

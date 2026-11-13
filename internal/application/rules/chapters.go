@@ -33,7 +33,7 @@ var SheetChapterSources = []ChapterSource{
 	{Slug: "pericias", Label: "Perícias", Path: "game/ficha-de-personagem/pericias.md"},
 	{Slug: "proficiencias", Label: "Proficiências", Path: "game/ficha-de-personagem/proficiencias.md"},
 	{Slug: "experiencia", Label: "Experiência", Path: "game/ficha-de-personagem/experiencia.md"},
-	{Slug: "status", Label: "Vida e estamina", Path: "game/ficha-de-personagem/status.md"},
+	{Slug: "status", Label: "Vida e Stamina", Path: "game/ficha-de-personagem/status.md"},
 	{Slug: "sistema-nen", Label: "Nen", Path: "game/ficha-de-personagem/sistema-nen.md", ComingSoon: true},
 	{Slug: "glossario", Label: "Glossário", Path: "game/glossario.md"},
 }

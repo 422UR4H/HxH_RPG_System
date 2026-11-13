@@ -17,7 +17,7 @@ Cada parte da ficha tem uma **velocidade de progressão** própria. São até **
 | Aptidão Física | 20.0 | Aptidão física |
 | Aptidão Mental | 20.0 | Aptidão mental |
 | Aptidão Espiritual | 5.0 | Aptidão espiritual (Nen) |
-| Aptidão de Perícias | 20.0 | Treino de todas as perícias juntas |
+| Aptidão de Perícias e Habilidades | 20.0 | Treino de todas as perícias juntas |
 | Atributos Físicos | 5.0 | Cada atributo físico |
 | Atributos Mentais | 1.0 | Cada atributo mental |
 | Atributos Espirituais | 1.0 | Cada atributo espiritual |

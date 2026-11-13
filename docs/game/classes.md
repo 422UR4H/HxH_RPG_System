@@ -6,31 +6,26 @@
 
 A classe é aquilo a que o personagem dedicou anos da própria vida para se tornar, até o momento em que a ficha é criada e a aventura começa. Ela define a **especialização inicial** e determina:
 - Experiência (XP) inicial em perícias específicas
-- Experiência inicial em proficiências de armas
+- Experiência inicial em proficiências de armas (em algumas classes, você escolhe as armas)
 - Experiência inicial em atributos
 - [Proficiências Conjuntas](./ficha-de-personagem/proficiencias.md#proficiencia-conjunta) exclusivas
-- Armas que você pode escolher para receber experiência extra
 - Categorias Nen indicadas (em breve)
 
 Hoje há 12 classes, e novas estão a caminho.
 
 ## Escolha de Armas
 
-Algumas classes deixam você escolher armas para receber experiência extra na criação. A classe oferece uma lista de armas e um ou mais lotes de experiência; você escolhe qual arma recebe cada lote.
+Em algumas classes, parte da experiência inicial é de armas. A classe traz uma lista de armas e um ou mais lotes de experiência, e você escolhe qual arma da lista fica com cada lote.
 
-**Exemplo:** uma classe com dois lotes, de 210 e 127 XP, pede que você escolha duas armas da lista dela. Uma recebe 210 XP e a outra, 127.
+**Exemplo:** uma classe com dois lotes, de 210 e 127 XP, pede que você escolha duas armas da lista dela. Uma fica com 210 XP e a outra, com 127.
 
-### O que pode dar errado
-
-- **Faltou escolher arma.** A ficha só é criada quando todos os lotes da classe têm uma arma.
-- **Os pontos para distribuir mudaram.** A experiência de uma arma também conta para a Aptidão Física (veja [Aptidões](./ficha-de-personagem/aptidoes.md)). Por isso, trocar a arma ou a classe pode mudar quantos pontos físicos você tem para distribuir. Confira o contador antes de criar a ficha.
+Essa experiência já entra na ficha assim que você escolhe a classe. Por isso, a arma escolhida não muda os seus pontos para distribuir nem o resto da ficha: ela só decide em qual arma a experiência aparece. Só não deixe de escolher, porque a ficha só é criada quando cada lote tem a sua arma.
 
 ## Como a Classe Aplica Experiência Inicial
 
-É automático, e a ficha mostra o resultado em tempo real enquanto você escolhe a classe e as armas. A experiência inicial de cada perícia, proficiência e atributo é a soma de duas partes:
+Você não precisa fazer conta nenhuma. Assim que você escolhe a classe, a ficha já mostra toda a experiência inicial que ela dá: nas perícias, nos atributos e nas armas, contando os lotes de armas.
 
-1. **A base da classe**: a experiência que a classe já dá, sem depender das suas escolhas.
-2. **As armas que você escolheu**: os lotes de experiência extra, quando a classe oferece.
+Escolher as armas não soma nada de novo, só diz para onde vai a experiência de armas que a classe já deu. Trocar de classe, por outro lado, troca toda a experiência inicial, e por isso pode mudar os pontos para distribuir.
 
 ---
 
@@ -38,6 +33,10 @@ Algumas classes deixam você escolher armas para receber experiência extra na c
 >
 > Implementação técnica: [`docs/dev/character-sheet/factory.md`](../dev/character-sheet/factory.md)
 > Código-fonte: `internal/domain/entity/character_class/`
+>
+> Lotes de armas: o preview de criação aplica a cascata de todos os lotes assim que a classe é
+> escolhida, porque o caminho (`Proficiency.CascadeUpgradeTrigger` → `Physicals`) não depende da
+> arma. A ficha criada recebe as armas escolhidas e fica igual ao preview.
 >
 > TODO(dono): voltar para a parte do jogador quando existir classe que distribui perícias.
 > Hoje nenhuma classe define `SkillPoints`; só Ninja, Mercenário e Hunter definem
