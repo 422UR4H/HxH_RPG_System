@@ -1,15 +1,25 @@
-# Glossário do Sistema HxH RPG
+# Glossário do System X System
 
-> Mapeamento de termos do jogo entre Português (PT-BR) e Inglês (EN).
+> Mapeamento de termos do jogo entre Português (PT-BR) e Inglês (EN). O inglês é o que aparece na ficha.
 
-## Habilidades (Abilities)
+## Siglas
+
+| Nome | Sigla |
+|---|---|
+| System X System | SxS |
+| Experiência | XP |
+| Vida | HP |
+| Estamina | SP |
+| Aura | AP |
+
+## Aptidões (Abilities)
 
 | PT-BR | EN | Descrição |
 |---|---|---|
-| Físicos | Physicals | Habilidade que governa atributos e perícias físicas |
-| Mentais | Mentals | Habilidade que governa atributos e perícias mentais |
-| Espirituais | Spirituals | Habilidade que governa atributos e perícias espirituais (Nen) |
-| Perícias (habilidade) | Skills | Habilidade que governa a experiência geral de todas as perícias |
+| Aptidão Física | Physicals | Reúne atributos e perícias físicas, Vida e Estamina |
+| Aptidão Mental | Mentals | Reúne os atributos mentais |
+| Aptidão Espiritual | Spirituals | Reúne atributos e perícias espirituais (Nen) e Aura |
+| Aptidão de Perícias | Skills | Reúne o treino de todas as perícias |
 
 ## Atributos Físicos (Physical Attributes)
 
@@ -19,10 +29,10 @@
 | Agilidade | AGI | Agility | Primário | Velocidade de movimento |
 | Flexibilidade | FLX | Flexibility | Primário | Amplitude de movimentos |
 | Sentido | SEN | Sense | Primário | Percepção sensorial |
-| Força | Str | Strength | Médio | Média de Resistência + Agilidade |
-| Celeridade | Cel | Celerity | Médio | Média de Agilidade + Flexibilidade |
-| Destreza | Dex | Dexterity | Médio | Média de Flexibilidade + Sentido |
-| Constituição | Con | Constitution | Médio | Média de Sentido + Resistência |
+| Força | Str | Strength | Secundário | Média de Resistência + Agilidade |
+| Celeridade | Cel | Celerity | Secundário | Média de Agilidade + Flexibilidade |
+| Destreza | Dex | Dexterity | Secundário | Média de Flexibilidade + Sentido |
+| Constituição | Con | Constitution | Secundário | Média de Sentido + Resistência |
 
 ## Atributos Mentais (Mental Attributes)
 
@@ -37,8 +47,8 @@
 
 | PT-BR | EN | Tipo | Descrição |
 |---|---|---|---|
-| Chama | Flame | Espiritual | Força interior, determinação espiritual |
-| Consciência | Conscience | Espiritual | Consciência e controle do fluxo de Nen |
+| Nen da Chama | Flame | Espiritual | A chama do espírito: força de vontade e decisão |
+| Nen da Consciência | Conscience | Espiritual | O verdadeiro Nen: controle livre da aura |
 
 ## Perícias Físicas (Physical Skills)
 
@@ -50,37 +60,37 @@
 | Empurrão | Push | Força | Empurrar objetos e oponentes |
 | Agarrar | Grab | Força | Prender oponentes |
 | Carregar | Carry | Força | Capacidade de carga |
-| Velocidade | Quickness | Agilidade | Velocidade máxima de deslocamento |
+| Rapidez | Quickness | Agilidade | Velocidade corporal, como em ajustes de postura |
 | Aceleração | Accelerate | Agilidade | Rapidez para ganhar velocidade |
 | Freio | Brake | Agilidade | Capacidade de parar rapidamente |
-| Ligeireza | Legerity | Celeridade | Movimentos rápidos e precisos |
-| Repelir | Repel | Celeridade | Desviar ataques com velocidade |
+| Ligeireza | Legerity | Celeridade | Movimentos rápidos e velocidade de ataque |
+| Repelir | Repel | Celeridade | Repelir ou aparar ataques, armados ou desarmados |
 | Finta | Feint | Celeridade | Enganar oponentes com movimentos rápidos |
-| Acrobacia | Acrobatics | Flexibilidade | Manobras acrobáticas |
-| Evasão | Evasion | Flexibilidade | Esquivar de ataques |
-| Esgueirar | Sneak | Flexibilidade | Mover-se silenciosamente |
+| Acrobacia | Acrobatics | Flexibilidade | Movimentos acrobáticos e piruetas em saltos |
+| Evasão | Evasion | Flexibilidade | Esquiva, inclusive aérea, e evitar golpes críticos |
+| Deslizar | Sneak | Flexibilidade | Passar por frestas e deslizar rente ao chão |
 | Reflexo | Reflex | Destreza | Tempo de reação |
 | Precisão | Accuracy | Destreza | Acerto em geral e acertos críticos |
-| Furtividade | Stealth | Destreza | Permanecer oculto |
+| Furtividade | Stealth | Destreza | Permanecer oculto e se mover silenciosamente |
 | Visão | Vision | Sentido | Acuidade visual |
 | Audição | Hearing | Sentido | Acuidade auditiva |
 | Olfato | Smell | Sentido | Acuidade olfativa |
-| Tato | Tact | Sentido | Acuidade tátil |
+| Tato | Tact | Sentido | Acuidade tátil, equilíbrio e preempção |
 | Paladar | Taste | Sentido | Acuidade gustativa |
 | Curar | Heal | Constituição | Regeneração natural |
 | Respiração | Breath | Constituição | Controle respiratório |
-| Tenacidade | Tenacity | Constituição | Perseverança física |
+| Tenacidade | Tenacity | Constituição | Perseverança física e resistência a danos elementais |
 
 ## Perícias Espirituais (Spiritual Skills)
 
 | PT-BR | EN | Atributo | Descrição |
 |---|---|---|---|
-| Foco | Focus | Chama | Concentração espiritual |
-| Força de Vontade | WillPower | Chama | Determinação interior |
-| Autoconhecimento | SelfKnowledge | Chama | Compreensão de si mesmo |
-| Coa | Coa | Consciência | Cociente de Abertura da Aura |
-| Mop | Mop | Consciência | Montante Operacional de Produção |
-| Aop | Aop | Consciência | Abertura Operacional de Produção |
+| Foco | Focus | Nen da Chama | Atenção sustentada em qualquer tarefa |
+| Força de Vontade | WillPower | Nen da Chama | Perseverança e determinação |
+| Autoconhecimento | SelfKnowledge | Nen da Chama | Compreensão de si mesmo |
+| Controle de Aura (CoA) | Coa | Nen da Consciência | Controle fino da aura |
+| MOP | Mop | Nen da Consciência | Aura máxima armazenada no corpo |
+| AOP | Aop | Nen da Consciência | Aura mantida fora do corpo com o Ren |
 
 ## Princípios Nen (Nen Principles)
 
@@ -90,7 +100,7 @@
 | Zetsu | Zetsu | Fechar completamente os nós de aura |
 | Ren | Ren | Amplificar o fluxo de aura |
 | Gyo | Gyo | Concentrar aura em uma parte do corpo |
-| Hatsu | Hatsu | Liberar a aura com habilidade pessoal |
+| Hatsu | Hatsu | Manifestar a categoria Nen pessoal |
 | Shu | Shu | Envolver um objeto com aura |
 | Kou | Kou | Concentrar toda a aura em um ponto |
 | Ken | Ken | Manter Ren uniformemente ao redor do corpo |
@@ -113,9 +123,9 @@
 
 | PT-BR | EN | Fórmula Base |
 |---|---|---|
-| Pontos de Vida | Health Points (HP) | 20 + (nívVitalidade + valorResistência) × bônusFísicos |
-| Pontos de Stamina | Stamina Points (SP) | 10 × (nívEnergia + valorResistência) × bônusFísicos |
-| Pontos de Aura | Aura Points (AP) | 10 × (nívMop + nívConsciência) × bônusEspirituais |
+| Vida | Health Points (HP) | 20 + (nívVitalidade + valorResistência) × bônusAptidãoFísica |
+| Estamina | Stamina Points (SP) | 10 × (nívEnergia + valorResistência) × bônusAptidãoFísica |
+| Aura | Aura Points (AP) | 10 × (nívMOP + nívNenDaConsciência) × bônusAptidãoEspiritual |
 
 ## Armas (Weapons)
 
