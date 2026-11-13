@@ -52,7 +52,7 @@ mappings:
       - path: docs/dev/character-sheet/abilities-attributes.md
         confidence: directly_affected
     game_docs:
-      - path: docs/game/ficha-de-personagem/habilidades.md
+      - path: docs/game/ficha-de-personagem/aptidoes.md
         confidence: directly_affected
     notes: Ability categories (Physicals, Mentals, Spirituals, Skills), talents, power
 

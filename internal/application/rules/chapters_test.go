@@ -93,7 +93,7 @@ func TestSheetChapters_RealDocs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	slugs := []string{"criacao", "classes", "habilidades", "atributos", "pericias",
+	slugs := []string{"criacao", "classes", "aptidoes", "atributos", "pericias",
 		"proficiencias", "experiencia", "status", "sistema-nen", "glossario"}
 	if len(chapters) != len(slugs) {
 		t.Fatalf("len = %d, want %d", len(chapters), len(slugs))

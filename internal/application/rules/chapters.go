@@ -28,7 +28,7 @@ var ErrMissingTitle = errors.New("rules: chapter has no H1 title")
 var SheetChapterSources = []ChapterSource{
 	{Slug: "criacao", Label: "Criação", Path: "game/ficha-de-personagem/criacao.md"},
 	{Slug: "classes", Label: "Classes", Path: "game/classes.md"},
-	{Slug: "habilidades", Label: "Habilidades", Path: "game/ficha-de-personagem/habilidades.md"},
+	{Slug: "aptidoes", Label: "Aptidões", Path: "game/ficha-de-personagem/aptidoes.md"},
 	{Slug: "atributos", Label: "Atributos", Path: "game/ficha-de-personagem/atributos.md"},
 	{Slug: "pericias", Label: "Perícias", Path: "game/ficha-de-personagem/pericias.md"},
 	{Slug: "proficiencias", Label: "Proficiências", Path: "game/ficha-de-personagem/proficiencias.md"},

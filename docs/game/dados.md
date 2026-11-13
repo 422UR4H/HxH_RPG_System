@@ -1,6 +1,6 @@
 # Dados
 
-> Sistema de rolagem de dados do HxH RPG.
+> Dados do System X System.
 
 ## Tipos de Dados
 
@@ -81,7 +81,7 @@ Consulte o documento de [Armas](armas.md) para a lista completa.
 
 ## 🎲 Curiosidade: Aleatoriedade Verdadeira
 
-O sistema de dados do HxH RPG utiliza um gerador de números aleatórios **criptograficamente seguro** — o mesmo tipo de tecnologia usada em sistemas bancários e de segurança digital. Isso significa que cada rolagem produz resultados **verdadeiramente aleatórios**: sem padrões, sem sequências previsíveis, sem possibilidade de manipulação.
+O System X System utiliza um gerador de números aleatórios **criptograficamente seguro** — o mesmo tipo de tecnologia usada em sistemas bancários e de segurança digital. Isso significa que cada rolagem produz resultados **verdadeiramente aleatórios**: sem padrões, sem sequências previsíveis, sem possibilidade de manipulação.
 
 Em cenários extremamente raros (praticamente impossíveis em condições normais), o sistema possui uma camada de segurança que recorre a um gerador pseudo-aleatório como alternativa. Na prática, isso quase nunca acontece.
 

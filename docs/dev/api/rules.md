@@ -45,7 +45,7 @@ Header: `Cache-Control: public, max-age=300`.
 ### Ordem e slugs
 
 A **ordem do array é significativa** (é a ordem de exibição). Hoje:
-`criacao`, `classes`, `habilidades`, `atributos`, `pericias`, `proficiencias`,
+`criacao`, `classes`, `aptidoes`, `atributos`, `pericias`, `proficiencias`,
 `experiencia`, `status`, `sistema-nen`, `glossario`.
 
 ### Notas sobre o Markdown
@@ -57,6 +57,13 @@ A **ordem do array é significativa** (é a ordem de exibição). Hoje:
   `pericias.md` em `proficiencias.md`). O front resolve pelo nome do arquivo sem
   `.md`: se esse nome for um dos 10 slugs de capítulo, o link vira navegação entre
   capítulos; se não for, é um link comum e abre em nova aba.
+- **Âncoras** (`#progressao-em-cascata`) são o texto do título sem acento, em minúsculas,
+  com hífens (o `slugify` do front). Link para outra seção do mesmo capítulo também usa o
+  nome do arquivo (`./atributos.md#formulas`), nunca só `#âncora`.
+- **`(em breve)`**: o texto literal `(em breve)` marca algo que existe no back mas ainda não
+  aparece para os jogadores; o front o troca por um selo.
+- **Fórmulas**: blocos ` ```math ` trazem LaTeX (ex.: a curva de XP em `experiencia`, dentro
+  de uma citação `>`); o front os desenha como fórmula.
 - **Diagramas**: blocos de código cuja info string começa com `diagram`:
 
   ````markdown

@@ -1,6 +1,6 @@
 # Dados & Armas — Guia de Desenvolvimento
 
-> Documentação técnica dos pacotes `die/` e `item/` do sistema de RPG HxH.
+> Documentação técnica dos pacotes `die/` e `item/` do System X System.
 
 ---
 

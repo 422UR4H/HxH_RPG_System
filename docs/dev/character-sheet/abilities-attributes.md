@@ -164,7 +164,7 @@ Documentado em [`experience.md`](experience.md) §2 ("MiddleAttribute — divis�
 Resumo: durante `CascadeUpgrade`, o XP é dividido igualmente entre os primários
 subjacentes, com acumulação de resto para evitar perda por truncamento inteiro.
 
-### 3.2. Cálculo de Points (média com arredondamento)
+### 3.2. Cálculo de Points (média arredondada para baixo)
 
 **Este é o mecanismo que NÃO está documentado em `experience.md`.**
 
@@ -176,7 +176,7 @@ func (ma *MiddleAttribute) GetPoints() int {
     for _, primaryAttr := range ma.primaryAttrs {
         points += primaryAttr.points  // acessa campo não-exportado (mesmo pacote)
     }
-    return int(math.Round(float64(points) / float64(len(ma.primaryAttrs))))
+    return points / len(ma.primaryAttrs)
 }
 ```
 
@@ -184,9 +184,9 @@ Detalhes importantes:
 
 - **Acessa `primaryAttr.points` diretamente** — possível porque `MiddleAttribute`
   está no mesmo pacote. Diferente de `GetPoints()` que retornaria o valor público.
-- **Usa `math.Round`** — arredondamento half away from zero. Para 2
-  primários com points {3, 4}, o resultado é `Round(3.5) = 4`. Note que
-  `Round(2.5) = 3` (arredonda para longe de zero, diferente de banker's rounding).
+- **Divisão inteira** — arredonda para baixo (os pontos nunca são negativos). Para 2
+  primários com points {3, 4}, o resultado é `7 / 2 = 3`. O front espelha com
+  `Math.floor`/`Math.trunc`, e o doc de jogo diz "arredondada para baixo".
 - **Points é somente leitura** para `MiddleAttribute` — ele não aceita
   `IncreasePoints()`. Os pontos são distribuídos apenas nos primários.
 
@@ -399,7 +399,7 @@ O `SpiritualManager` usa exatamente o mesmo padrão de ponteiros. A consistênci
 | `MiddleAttribute` | ❌ Não | Points é calculado (média dos primários) |
 | `SpiritualAttribute` | ❌ Não | Não possui campo `points` |
 
-Primários físicos: Resistance, Agility, Flexibility, Sense. Médios físicos:
+Primários físicos: Resistance, Agility, Flexibility, Sense. Secundários físicos:
 Strength (Resistance+Agility), Celerity (Agility+Flexibility), Dexterity
 (Flexibility+Sense), Constitution (Sense+Resistance) — ver `factory.md`, "cadeia
 circular". Mentais: Resilience, Adaptability, Judgment, Creativity, todos primários.
@@ -415,7 +415,7 @@ Com pontos, as regras são:
 
 1. Valores `<= 0` são ignorados.
 2. Cada chave tem de ser um primário físico (`GetPhysicalsPrimaryPoints`) ou mental
-   (`GetMentalsPrimaryPoints`); médio, espiritual ou nome desconhecido →
+   (`GetMentalsPrimaryPoints`); secundário, espiritual ou nome desconhecido →
    `ErrInvalidDistributionPoints`.
 3. A soma dos físicos tem de ser **igual** ao nível de `Physicals`, e a dos mentais
    **igual** ao nível de `Mentals` (níveis já com a experiência da classe aplicada).

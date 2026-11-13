@@ -1,4 +1,4 @@
-# HxH RPG System — Agent Guide
+# System X System — Agent Guide
 
 ## Project Overview
 

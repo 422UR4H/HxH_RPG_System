@@ -37,7 +37,7 @@ type Api struct {
 func (a *Api) Routes(r *chi.Mux, authMiddleware func(ctx huma.Context, next func(huma.Context))) huma.API {
 	huma.NewError = NewErrorWithType
 
-	config := newConfig("HxH RPG API", "1.0.0", "API for Hunter x Hunter RPG System")
+	config := newConfig("System X System API", "1.0.0", "API for System X System")
 	api := humachi.New(r, config)
 
 	a.registerHealthRoutes(api)

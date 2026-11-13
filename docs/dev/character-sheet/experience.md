@@ -5,7 +5,7 @@
 
 ## Visão Geral
 
-O sistema de experiência é a espinha dorsal de toda a progressão no HxH RPG System.
+O sistema de experiência é a espinha dorsal de toda a progressão no System X System.
 Cada entidade na ficha de personagem (perícia, atributo, habilidade) possui sua própria
 instância de `Exp` com uma `ExpTable` configurável por coeficiente. Quando XP é
 inserido em uma perícia, ele **se propaga automaticamente** por 4 pacotes em uma
