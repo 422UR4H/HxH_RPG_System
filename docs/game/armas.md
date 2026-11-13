@@ -11,20 +11,10 @@ Toda arma possui as seguintes características:
 | Dados | Dados rolados no ataque (ex: D10 + D4) |
 | Dano Base | Bônus fixo de dano adicionado ao resultado dos dados |
 | Defesa | Bônus defensivo ao bloquear com a arma |
-| Peso | Determina penalidade e custo de Energia/Stamina |
+| Peso | Determina o custo de Energia/Stamina |
 | Altura | Tamanho da arma em metros |
 | Volume | Espaço que a arma ocupa no inventário |
 | Arma de Fogo | Indica se é uma arma à distância moderna |
-
-## Penalidade
-
-A penalidade de uma arma é subtraída dos atributos **Agilidade**, **Ataque** e **Flexibilidade** do personagem enquanto equipada.
-
-### Cálculo:
-- **Corpo a corpo:** penalidade = peso da arma
-- **Arma de fogo:** penalidade = 1,0 se o peso for maior ou igual a 1,0; caso contrário, 0,0
-
-> Armas de fogo leves (peso menor que 1,0) não impõem penalidade de mobilidade.
 
 ## Custo de Stamina
 
@@ -42,7 +32,7 @@ O **dano** junta os dados e o dano base: **2 D12 +3** quer dizer dois dados de 1
 
 O sistema rola esses dados sozinho. Uma configuração de campanha e de partida vai permitir que jogadores e mestres rolem dados físicos e informem o resultado, em todas as rolagens ou só nas que escolherem (em breve).
 
-São armas de fogo, para penalidade e custo de Stamina: Besta, Pistola .38, Uzi, AK-47, AR-15, Rifle e Metralhadora.
+São armas de fogo, para o custo de Stamina: Besta, Pistola .38, Uzi, AK-47, AR-15, Rifle e Metralhadora.
 
 ### Corpo a Corpo
 
@@ -113,7 +103,7 @@ Cada personagem possui um inventário que permite gerenciar suas armas durante o
 - **Consultar** — verificar os detalhes de uma arma específica
 - **Listar todas** — ver o inventário completo de armas
 
-A arma atualmente equipada é a que determina os dados de dano, a penalidade de mobilidade e o custo de Stamina nos ataques do personagem.
+A arma atualmente equipada é a que determina os dados de dano e o custo de Stamina nos ataques do personagem.
 
 ---
 
@@ -121,3 +111,5 @@ A arma atualmente equipada é a que determina os dados de dano, a penalidade de 
 >
 > Implementação técnica: [`docs/dev/weapons-dice.md`](../dev/weapons-dice.md)
 > Código-fonte: `internal/domain/entity/item/`
+>
+> - TODO (penalidade): fora do texto do jogador até as armas estarem completas. `Weapon.GetPenality()` já calcula — corpo a corpo = peso da arma; arma de fogo = 1,0 se o peso ≥ 1,0, senão 0,0 — mas nada aplica o valor. O texto antigo dizia que a penalidade sai de Agilidade, "Ataque" e Flexibilidade; "Ataque" não é atributo, e o dono vai definir os atributos quando a penalidade existir.
