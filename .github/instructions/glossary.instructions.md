@@ -11,8 +11,17 @@ Use this glossary for consistent terminology in game documentation.
 | Character Sheet | Ficha de Personagem |
 | Experience / XP | Experiência / XP |
 | Level | Nível |
-| Ability | Habilidade Geral (Physicals, Mentals, Spirituals, Skills) |
+| System X System | System X System (sigla SxS) — nunca "HxH RPG" |
+| Ability | Aptidão (Physicals → Aptidão Física, Mentals → Aptidão Mental, Spirituals → Aptidão Espiritual, Skills → Aptidão de Perícias e Habilidades). "Habilidade Nen" é outra coisa |
+| Ability Bonus | Bônus de Aptidão |
+| Character Points | Pontos de Personagem (força geral; não são pontos para distribuir) |
 | Attribute | Atributo |
+| Primary Attribute | Atributo Primário (canônico) |
+| Middle Attribute | Atributo Secundário (mecânico) — nunca "médio" |
+| Flame / Conscience | Nen da Chama / Nen da Consciência |
+| Quickness | Rapidez (perícia) |
+| Sneak | Deslizar (perícia) |
+| Coa / Mop / Aop | Controle de Aura (CoA) / MOP / AOP |
 | Skill | Perícia |
 | Proficiency | Proficiência (armas) |
 | Status Bar | Barra de Status (HP, SP, AP) |

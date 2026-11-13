@@ -27,7 +27,7 @@
   "characterClass": "Hunter",
   "skillsExps": { "Vitality": 3 },
   "proficienciesExps": { "Sword": 2 },
-  "attributePoints": { "Strength": 10 }
+  "attributePoints": { "Resistance": 2, "Agility": 1, "Judgment": 1 }
 }
 ```
 
@@ -38,7 +38,9 @@
 - `characterClass`: nome de uma classe válida (ex.: `Hunter`, `Swordsman`, `Ninja`...).
 - `skillsExps`: `map[string]int`. Chave deve bater **exatamente** (case-sensitive) com um `SkillName` conhecido (ex.: `Vitality`, `Accuracy`, `Focus`). Valor é EXP a aplicar na skill na criação.
 - `proficienciesExps`: `map[string]int`. Chave é um nome de arma (`WeaponName`, ex.: `Sword`, `Dagger`, `Bow`). **Quirk verificado no código:** o back-end força a primeira letra da chave para maiúscula antes de resolver o enum (`strings.ToUpper(k[:1]) + k[1:]`) — então `"sword"` e `"Sword"` funcionam igual, mas `skillsExps` **não** tem esse tratamento (precisa vir exatamente como o enum).
-- `attributePoints`: opcional, `map[string]int`. Chave é um `AttributeName` (ex.: `Strength`, `Agility`, `Flame`). Valores `<= 0` são silenciosamente ignorados.
+- `attributePoints`: opcional, `map[string]int`. Chave é um `AttributeName`; nome que não existe no enum → `400`. Valores `<= 0` são silenciosamente ignorados. Mapa ausente ou vazio: nada é validado e os primários ficam em 0. Com pontos (`ApplyInitialAttributePoints`, ver `docs/dev/character-sheet/abilities-attributes.md` §7):
+  - só **primários** físicos (`Resistance`, `Agility`, `Flexibility`, `Sense`) e mentais (`Resilience`, `Adaptability`, `Judgment`, `Creativity`). Secundário (`Strength`, `Celerity`, `Dexterity`, `Constitution`) ou espiritual (`Flame`, `Conscience`) → `422`;
+  - a soma dos físicos tem de ser **igual** ao nível de `Physicals`, e a dos mentais **igual** ao de `Mentals` (níveis já com a experiência da classe; o front os lê do preview). Qualquer diferença → `422` (`invalid distribution points`).
 - **Campos que existiam no doc antigo e não existem mais no request:** `categories` (booleano) e `initialHexValue`. Estão comentados no código-fonte (`castRequest` em `create_character_sheet.go`, marcados `// TODO: move to consolidate (accept submission) flow`) — a definição da categoria de Nen (talento) acontece hoje no fluxo de consolidação da submissão, não na criação da ficha.
 
 **Sobre `profile.birthday`:**
@@ -69,7 +71,7 @@ Envelope `{ "characterSheet": {...} }` — ver shape completo em [Shape de `char
 | 409 | Nickname já existe |
 | 404 | Classe de personagem não encontrada |
 | 403 | Limite de fichas atingido (jogador) |
-| 422 | Perfil inválido (birthday ausente, nickname/fullname fora do tamanho ou com emoji, alignment mal formatado, etc.) / usuário não é o mestre da campanha informada (`campaign.ErrNotCampaignOwner`) / campanha não encontrada (`campaign.ErrCampaignNotFound`) — ambos caem no fallback `domain.ErrValidation` do handler |
+| 422 | Perfil inválido (birthday ausente, nickname/fullname fora do tamanho ou com emoji, alignment mal formatado, etc.) / `attributePoints` inválido (atributo não primário, ou soma ≠ nível de `Physicals`/`Mentals`) / usuário não é o mestre da campanha informada (`campaign.ErrNotCampaignOwner`) / campanha não encontrada (`campaign.ErrCampaignNotFound`) — ambos caem no fallback `domain.ErrValidation` do handler |
 
 ---
 

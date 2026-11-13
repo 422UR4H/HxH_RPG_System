@@ -1,86 +1,96 @@
-# Glossário do Sistema HxH RPG
+# Glossário do System X System
 
-> Mapeamento de termos do jogo entre Português (PT-BR) e Inglês (EN).
+> Mapeamento de termos do jogo entre Português (PT-BR) e Inglês (EN). O inglês é o que aparece na ficha.
 
-## Habilidades (Abilities)
+## Siglas
+
+| Nome | Sigla |
+|---|---|
+| System X System | SxS |
+| Experiência | XP |
+| Vida | HP |
+| Energia/Stamina (a barra) | SP |
+| Aura | AP |
+
+## Aptidões (Abilities)
 
 | PT-BR | EN | Descrição |
 |---|---|---|
-| Físicos | Physicals | Habilidade que governa atributos e perícias físicas |
-| Mentais | Mentals | Habilidade que governa atributos e perícias mentais |
-| Espirituais | Spirituals | Habilidade que governa atributos e perícias espirituais (Nen) |
-| Perícias (habilidade) | Skills | Habilidade que governa a experiência geral de todas as perícias |
+| Aptidão Física | Physicals | Reúne atributos e perícias físicas, Vida e Stamina |
+| Aptidão Mental | Mentals | Reúne os atributos mentais |
+| Aptidão Espiritual | Spirituals | Reúne atributos e perícias espirituais, princípios Nen e Aura |
+| Aptidão de Perícias e Habilidades | Skills | Reúne o treino de todas as perícias e as Habilidades (em breve) |
 
 ## Atributos Físicos (Physical Attributes)
 
-| PT-BR | EN | Tipo | Descrição |
-|---|---|---|---|
-| Resistência | Resistance | Primário | Base de defesa e vitalidade |
-| Agilidade | Agility | Primário | Velocidade de movimento |
-| Flexibilidade | Flexibility | Primário | Amplitude de movimentos |
-| Sentido | Sense | Primário | Percepção sensorial |
-| Força | Strength | Médio | Média de Resistência + Agilidade |
-| Celeridade | Celerity | Médio | Média de Agilidade + Flexibilidade |
-| Destreza | Dexterity | Médio | Média de Flexibilidade + Sentido |
-| Constituição | Constitution | Médio | Média de Sentido + Resistência |
+| PT-BR | Sigla | EN | Tipo | Descrição |
+|---|---|---|---|---|
+| Resistência | RES | Resistance | Primário | Base de defesa e vitalidade |
+| Agilidade | AGI | Agility | Primário | Velocidade de movimento |
+| Flexibilidade | FLX | Flexibility | Primário | Amplitude de movimentos |
+| Sentido | SEN | Sense | Primário | Percepção sensorial |
+| Força | Str | Strength | Secundário | Média de Resistência + Agilidade |
+| Celeridade | Cel | Celerity | Secundário | Média de Agilidade + Flexibilidade |
+| Destreza | Dex | Dexterity | Secundário | Média de Flexibilidade + Sentido |
+| Constituição | Con | Constitution | Secundário | Média de Sentido + Resistência |
 
 ## Atributos Mentais (Mental Attributes)
 
-| PT-BR | EN | Tipo | Descrição |
-|---|---|---|---|
-| Resiliência | Resilience | Primário | Capacidade de se recuperar mentalmente |
-| Adaptabilidade | Adaptability | Primário | Capacidade de se ajustar a novas situações |
-| Julgamento (ou Ponderação) | Judgment | Primário | Capacidade de análise e raciocínio |
-| Criatividade | Creativity | Primário | Capacidade de inovação e improvisação |
+| PT-BR | Sigla | EN | Tipo | Descrição |
+|---|---|---|---|---|
+| Resiliência | RSL | Resilience | Primário | Capacidade de se recuperar mentalmente |
+| Adaptabilidade | ADP | Adaptability | Primário | Capacidade de se ajustar a novas situações |
+| Julgamento (ou Ponderação) | JUD | Judgment | Primário | Capacidade de análise e raciocínio |
+| Criatividade | CRE | Creativity | Primário | Capacidade de inovação e improvisação |
 
 ## Atributos Espirituais (Spiritual Attributes)
 
 | PT-BR | EN | Tipo | Descrição |
 |---|---|---|---|
-| Chama | Flame | Espiritual | Força interior, determinação espiritual |
-| Consciência | Conscience | Espiritual | Consciência e controle do fluxo de Nen |
+| Nen da Chama | Flame | Espiritual | A chama do espírito: força de vontade e decisão |
+| Nen da Consciência | Conscience | Espiritual | O verdadeiro Nen: controle livre da aura |
 
 ## Perícias Físicas (Physical Skills)
 
 | PT-BR | EN | Atributo | Descrição |
 |---|---|---|---|
 | Vitalidade | Vitality | Resistência | Influencia HP, vigor geral |
-| Energia | Energy | Resistência | Influencia SP, resistência física |
+| Energia | Energy | Resistência | Perícia que influencia a barra de Stamina (SP) e a resistência física |
 | Defesa | Defense | Resistência | Capacidade de resistir a dano |
 | Empurrão | Push | Força | Empurrar objetos e oponentes |
 | Agarrar | Grab | Força | Prender oponentes |
 | Carregar | Carry | Força | Capacidade de carga |
-| Velocidade | Quickness | Agilidade | Velocidade máxima de deslocamento |
+| Rapidez | Quickness | Agilidade | Velocidade corporal, como em ajustes de postura |
 | Aceleração | Accelerate | Agilidade | Rapidez para ganhar velocidade |
 | Freio | Brake | Agilidade | Capacidade de parar rapidamente |
-| Ligeireza | Legerity | Celeridade | Movimentos rápidos e precisos |
-| Repelir | Repel | Celeridade | Desviar ataques com velocidade |
+| Ligeireza | Legerity | Celeridade | Movimentos rápidos e velocidade de ataque |
+| Repelir | Repel | Celeridade | Repelir ou aparar ataques, armados ou desarmados |
 | Finta | Feint | Celeridade | Enganar oponentes com movimentos rápidos |
-| Acrobacia | Acrobatics | Flexibilidade | Manobras acrobáticas |
-| Evasão | Evasion | Flexibilidade | Esquivar de ataques |
-| Esgueirar | Sneak | Flexibilidade | Mover-se silenciosamente |
+| Acrobacia | Acrobatics | Flexibilidade | Movimentos acrobáticos e piruetas em saltos |
+| Evasão | Evasion | Flexibilidade | Esquiva, inclusive aérea, e evitar golpes críticos |
+| Deslizar | Sneak | Flexibilidade | Passar por frestas e deslizar rente ao chão |
 | Reflexo | Reflex | Destreza | Tempo de reação |
-| Precisão | Accuracy | Destreza | Acurácia em ataques à distância |
-| Furtividade | Stealth | Destreza | Permanecer oculto |
+| Precisão | Accuracy | Destreza | Acerto em geral e acertos críticos |
+| Furtividade | Stealth | Destreza | Permanecer oculto e se mover silenciosamente |
 | Visão | Vision | Sentido | Acuidade visual |
 | Audição | Hearing | Sentido | Acuidade auditiva |
 | Olfato | Smell | Sentido | Acuidade olfativa |
-| Tato | Tact | Sentido | Acuidade tátil |
+| Tato | Tact | Sentido | Acuidade tátil, equilíbrio e preempção |
 | Paladar | Taste | Sentido | Acuidade gustativa |
 | Curar | Heal | Constituição | Regeneração natural |
 | Respiração | Breath | Constituição | Controle respiratório |
-| Tenacidade | Tenacity | Constituição | Perseverança física |
+| Tenacidade | Tenacity | Constituição | Perseverança física e resistência a danos elementais |
 
 ## Perícias Espirituais (Spiritual Skills)
 
 | PT-BR | EN | Atributo | Descrição |
 |---|---|---|---|
-| Foco | Focus | Chama | Concentração espiritual |
-| Força de Vontade | WillPower | Chama | Determinação interior |
-| Autoconhecimento | SelfKnowledge | Chama | Compreensão de si mesmo |
-| Coa | Coa | Consciência | Cociente de Abertura da Aura |
-| Mop | Mop | Consciência | Montante Operacional de Produção |
-| Aop | Aop | Consciência | Abertura Operacional de Produção |
+| Foco | Focus | Nen da Chama | Atenção sustentada em qualquer tarefa |
+| Força de Vontade | WillPower | Nen da Chama | Perseverança e determinação |
+| Autoconhecimento | SelfKnowledge | Nen da Chama | Compreensão de si mesmo |
+| Controle de Aura (CoA) | Coa | Nen da Consciência | Controle fino da aura |
+| MOP | Mop | Nen da Consciência | Aura máxima armazenada no corpo |
+| AOP | Aop | Nen da Consciência | Aura mantida fora do corpo com o Ren |
 
 ## Princípios Nen (Nen Principles)
 
@@ -90,7 +100,7 @@
 | Zetsu | Zetsu | Fechar completamente os nós de aura |
 | Ren | Ren | Amplificar o fluxo de aura |
 | Gyo | Gyo | Concentrar aura em uma parte do corpo |
-| Hatsu | Hatsu | Liberar a aura com habilidade pessoal |
+| Hatsu | Hatsu | Manifestar a categoria Nen pessoal |
 | Shu | Shu | Envolver um objeto com aura |
 | Kou | Kou | Concentrar toda a aura em um ponto |
 | Ken | Ken | Manter Ren uniformemente ao redor do corpo |
@@ -113,32 +123,13 @@
 
 | PT-BR | EN | Fórmula Base |
 |---|---|---|
-| Pontos de Vida | Health Points (HP) | 20 + (nívVitalidade + valorResistência) × bônusFísicos |
-| Pontos de Stamina | Stamina Points (SP) | 10 × (nívEnergia + valorResistência) × bônusFísicos |
-| Pontos de Aura | Aura Points (AP) | 10 × (nívMop + nívConsciência) × bônusEspirituais |
+| Vida | Health Points (HP) | 20 + (nível da Vitalidade + valor da Resistência) × bônus da Aptidão Física |
+| Stamina | Stamina Points (SP) | 10 × [(nível da perícia Energia + valor da Resistência) × bônus da Aptidão Física], com os colchetes arredondados para baixo antes de multiplicar por 10 |
+| Aura | Aura Points (AP) | 10 × (nível do MOP + nível do Nen da Consciência) × bônus da Aptidão Espiritual arredondado para baixo |
 
 ## Armas (Weapons)
 
-| PT-BR | EN | Tipo |
-|---|---|---|
-| Adaga | Dagger | Corpo a corpo |
-| Espada | Sword | Corpo a corpo |
-| Espada Longa | Longsword | Corpo a corpo |
-| Katana | Katana | Corpo a corpo |
-| Cimitarra | Scimitar | Corpo a corpo |
-| Rapieira | Rapier | Corpo a corpo |
-| Lança | Spear | Corpo a corpo |
-| Alabarda | Halberd | Corpo a corpo |
-| Machado | Axe | Corpo a corpo |
-| Martelo | Hammer | Corpo a corpo |
-| Martelo de Guerra | Warhammer | Corpo a corpo |
-| Cajado | Staff | Corpo a corpo |
-| Chicote | Whip | Corpo a corpo |
-| Foice | Scythe | Corpo a corpo |
-| Arco | Bow | À distância |
-| Arco Longo | Longbow | À distância |
-| Besta | Crossbow | À distância |
-| Punho | Fist | Corpo a corpo |
+Os nomes em português e na ficha, com o dano de cada arma, estão em [Proficiências → Lista de Armas](./ficha-de-personagem/proficiencias.md#lista-de-armas).
 
 ## Classes de Personagem (Character Classes)
 
@@ -156,10 +147,10 @@
 | Militar | Military | Soldado treinado |
 | Hunter | Hunter | Licenciado pela Associação Hunter |
 | Mestre de Armas | WeaponsMaster | Proficiente em múltiplas armas |
-| Atleta | Athlete | Especialista em perícias físicas |
-| Tribal | Tribal | Guerreiro de cultura tradicional |
-| Experimento | Experiment | Sujeito de experimentos |
-| Circo | Circus | Acrobata e artista |
+| Atleta (em breve) | Athlete | Especialista em perícias físicas |
+| Tribal (em breve) | Tribal | Guerreiro de cultura tradicional |
+| Experimento (em breve) | Experiment | Sujeito de experimentos |
+| Circo (em breve) | Circus | Acrobata e artista |
 
 ## Dados (Dice)
 

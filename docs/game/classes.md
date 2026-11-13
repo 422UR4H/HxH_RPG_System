@@ -1,87 +1,29 @@
 # Classes de Personagem
 
-> Sistema de classes do HxH RPG.
+> Classes do System X System.
 
 ## Visão Geral
 
-A classe de personagem define a **especialização inicial** e determina:
+A classe é aquilo a que o personagem dedicou anos da própria vida para se tornar, até o momento em que a ficha é criada e a aventura começa. Ela define a **especialização inicial** e determina:
 - Experiência (XP) inicial em perícias específicas
-- Experiência inicial em proficiências de armas
+- Experiência inicial em proficiências de armas (em algumas classes, você escolhe as armas)
 - Experiência inicial em atributos
-- Categorias Nen indicadas
-- Distribuição de pontos na criação
-- Perícias Conjuntas exclusivas
-- Proficiências Conjuntas exclusivas
+- [Proficiências Conjuntas](./ficha-de-personagem/proficiencias.md#proficiencia-conjunta) exclusivas
+- Categorias Nen indicadas (em breve)
 
-## Distribuição de Pontos
+Hoje há 12 classes, e novas estão a caminho.
 
-Na criação do personagem, o jogador distribui pontos conforme as regras da classe:
+## Escolha de Armas
 
-### Perícias
-- A classe define quantos pontos distribuir e os valores disponíveis
-- O jogador escolhe **quais perícias** receberão esses pontos
-- Apenas perícias permitidas pela classe podem ser escolhidas
+Em algumas classes, parte da experiência inicial é de armas. A classe traz uma lista de armas e um ou mais lotes de experiência, e você escolhe qual arma da lista fica com cada lote.
 
-**Exemplo:** Uma classe que oferece três lotes de experiência — 80, 40 e 40 pontos — permite que o jogador escolha 3 perícias da lista permitida, atribuindo 80 XP a uma, 40 a outra, e 40 à terceira.
+**Exemplo:** uma classe com dois lotes, de 210 e 127 XP, pede que você escolha duas armas da lista dela. Uma fica com 210 XP e a outra, com 127.
 
-### Proficiências
-- Mesma mecânica: valores pré-definidos distribuídos entre armas permitidas
-- Apenas armas da lista de proficiências permitidas pela classe são válidas
-
-### Validação
-
-O sistema valida rigorosamente:
-1. **Quantidade correta** — número de escolhas deve bater com o número de pontos
-2. **Perícias/armas permitidas** — apenas opções da lista da classe
-3. **Pontos corretos** — cada valor atribuído deve corresponder a um valor disponível (sem repetição)
-
-**O que pode dar errado:**
-- A classe não possui distribuição de pontos, mas o jogador tentou enviar escolhas
-- O número de escolhas é diferente do esperado pela classe
-- Uma perícia ou proficiência escolhida não está na lista permitida da classe
-- Os valores de experiência atribuídos não correspondem aos pontos disponíveis
-- As mesmas regras valem tanto para perícias quanto para proficiências
-
-## Classes Disponíveis (12 ativas)
-
-| Classe | Categorias Nen Indicadas |
-|--------|--------------------------|
-| Espadachim | — |
-| Samurai | — |
-| Ninja | — |
-| Ladino | — |
-| Netrunner | — |
-| Pirata | — |
-| Mercenário | — |
-| Terrorista | — |
-| Monge | — |
-| Militar | — |
-| Hunter | — |
-| Mestre de Armas | — |
-
-### Classes Futuras (4 planejadas)
-
-| Classe | Status |
-|--------|--------|
-| Atleta | Planejada |
-| Tribal | Planejada |
-| Experimento | Planejada |
-| Circo | Planejada |
-
-## Perfil da Classe
-
-Cada classe possui um perfil com informações próprias:
-- **Nome** — identificador único da classe
-- Dados adicionais para exibição e história
+Escolha uma arma para cada lote: sem isso, a ficha não pode ser criada.
 
 ## Como a Classe Aplica Experiência Inicial
 
-Após a validação da distribuição de pontos, o sistema aplica automaticamente toda a experiência inicial do personagem. Isso inclui:
-
-1. **Experiência distribuída** — os pontos de XP que o jogador escolheu atribuir a perícias e proficiências específicas durante a criação.
-2. **Experiência base da classe** — cada classe já fornece uma quantidade fixa de XP em determinadas perícias, proficiências e atributos, independente das escolhas do jogador.
-
-A experiência final de cada perícia, proficiência e atributo é a soma desses dois componentes: a base da classe mais a distribuição feita pelo jogador.
+Você não precisa fazer conta nenhuma. Assim que você escolhe a classe, toda a experiência inicial dela, incluindo os lotes de armas, já conta na ficha inteira: nos níveis e nos pontos para distribuir. Escolher a arma apenas decide em qual arma cada lote aparece, e por isso não muda mais nada na ficha.
 
 ---
 
@@ -89,3 +31,23 @@ A experiência final de cada perícia, proficiência e atributo é a soma desses
 >
 > Implementação técnica: [`docs/dev/character-sheet/factory.md`](../dev/character-sheet/factory.md)
 > Código-fonte: `internal/domain/entity/character_class/`
+>
+> Lotes de armas: o preview de criação aplica a cascata de todos os lotes assim que a classe é
+> escolhida, porque o caminho (`Proficiency.CascadeUpgradeTrigger` → `Physicals`) não depende da
+> arma. A ficha criada recebe as armas escolhidas e fica igual ao preview.
+>
+> TODO(dono): voltar para a parte do jogador quando existir classe que distribui perícias.
+> Hoje nenhuma classe define `SkillPoints`; só Ninja, Mercenário e Hunter definem
+> `ProficiencyPoints`. A regra (correta, só adiantada em relação ao produto):
+>
+> **Perícias** — a classe define quantos lotes de XP distribuir e os valores disponíveis; o
+> jogador escolhe **quais perícias** recebem esses lotes, só entre as permitidas pela classe.
+> Exemplo: uma classe que oferece três lotes — 80, 40 e 40 — permite escolher 3 perícias da lista
+> permitida, atribuindo 80 XP a uma, 40 a outra e 40 à terceira. Proficiências seguem a mesma
+> mecânica com a lista de armas permitidas.
+>
+> Validação no back (`CharacterClass.ValidateSkills`/`ValidateProficiencies`): quantidade de
+> escolhas = número de lotes; só opções da lista da classe; cada valor corresponde a um lote
+> disponível, sem repetição; classe sem distribuição rejeita escolhas.
+>
+> Perícias Conjuntas de classe: `NewJointSkill` não é chamado fora de testes — nenhuma classe tem.

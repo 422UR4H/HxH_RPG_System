@@ -18,7 +18,10 @@ import (
 	scenarioHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/scenario"
 	sheetHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	submissionHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
+	rulesHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/rules"
 	uploadHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/upload"
+	"github.com/422UR4H/HxH_RPG_System/docs"
+	"github.com/422UR4H/HxH_RPG_System/internal/application/rules"
 	r2gw "github.com/422UR4H/HxH_RPG_System/internal/gateway/r2"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
@@ -310,6 +313,14 @@ func main() {
 		DetachMatchMapHandler: matchmapHandler.DetachMatchMapHandler(detachMatchMapUC),
 	}
 
+	sheetRulesChapters, err := rules.LoadChapters(docs.GameFS, rules.SheetChapterSources)
+	if err != nil {
+		panic(fmt.Errorf("error loading sheet rules chapters: %w", err))
+	}
+	rulesApi := rulesHandler.Api{
+		GetSheetRulesHandler: rulesHandler.GetSheetRulesHandler(sheetRulesChapters),
+	}
+
 	chiServer := api.NewServer()
 
 	a := api.Api{
@@ -324,6 +335,7 @@ func main() {
 		MapHandler:            &mapsApi,
 		MatchMapHandler:       &matchMapsApi,
 		UploadHandler:         uploadApi,
+		RulesHandler:          &rulesApi,
 		AuthHandler:           authHandler,
 		// Logger:                chiServer.Logger,
 	}

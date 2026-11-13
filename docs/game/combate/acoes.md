@@ -1,6 +1,6 @@
 # Ações em Combate
 
-> Sistema de ações e prioridade em combate do HxH RPG.
+> Ações e prioridade em combate do System X System.
 
 ## Visão Geral
 

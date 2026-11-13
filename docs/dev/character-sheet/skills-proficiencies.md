@@ -405,7 +405,7 @@ func (pa *PrimaryAttribute) GetPower() int {
 }
 ```
 
-Ou seja, o Power do atributo já embute o bônus de habilidade e buff de atributo.
+Ou seja, o Power do atributo já embute o bônus de aptidão e buff de atributo.
 
 ### JointSkill
 

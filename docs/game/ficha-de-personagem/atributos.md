@@ -2,87 +2,155 @@
 
 ## Visão Geral
 
-Atributos representam as características fundamentais de um personagem no HxH RPG System. Eles são divididos em três categorias — **Físicos**, **Mentais** e **Espirituais** — e determinam diretamente o poder, valor e capacidades do personagem em diversas situações de jogo.
+Atributos são as características fundamentais do personagem. O poder de cada um é o número que você usa nos testes. Eles se dividem em três grupos: **Físicos**, **Mentais** e **Espirituais** (o poder Nen).
 
-## Tipos de Atributo
+Os físicos e os mentais ainda podem ser de dois tipos:
 
-### Atributos Primários
+- **Primários** — os canônicos. Foram ditos pelo próprio Netero, assim como o [Talento](./aptidoes.md#talento). São a base da ficha e recebem os pontos que você distribui.
+- **Secundários** — os mecânicos. Foram criados para o jogo, porque várias mecânicas de RPG dependiam deles, como Força e Destreza. Cada um é a média de dois primários e não recebe pontos.
 
-Atributos primários são a base da ficha. Cada um possui:
-- **Pontos distribuídos** — adicionados manualmente pelo jogador
-- **Experiência própria** — recebida via progressão em cascata
-- **Nível** — determinado pela tabela de progressão
-- **Bônus de habilidade** — influência da habilidade governante
+Os espirituais não são primários nem secundários, e também não recebem pontos.
 
-**Fórmulas:**
+Todos os atributos evoluem com treino, como no mangá e no anime: os físicos treinam pelas suas perícias, os mentais treinam diretamente e os espirituais também podem ser treinados.
 
-> *valor = pontos + nível*
->
-> *poder = valor + bônus de habilidade (arredondado) + buff*
+**Qualquer atributo pode ser treinado individualmente, seja primário ou secundário.** A média entre dois primários só define os **pontos** de um secundário: a experiência e o nível dele são próprios, e o treino de um secundário ainda fortalece os seus dois primários (veja [Progressão em Cascata](./atributos.md#progressao-em-cascata)). A única coisa que não se pode fazer é distribuir pontos nos secundários (nem nos espirituais): os pontos para distribuir vão só para os primários físicos e mentais.
 
-#### Atributos Físicos (Velocidade de Progressão: 5.0)
+## Atributos Físicos
 
-| Atributo | Descrição |
-|---|---|
-| Resistência | Defesa e resistência a dano |
-| Força | Potência física e dano corpo a corpo |
-| Agilidade | Velocidade de reação e esquiva |
-| Celeridade | Velocidade de movimento |
-| Flexibilidade | Amplitude de movimentos |
-| Destreza | Precisão e controle motor fino |
-| Sentido | Percepção sensorial |
-| Constituição | Atributo médio de Resistência e Força |
+Os atributos físicos formam um losango. Os quatro **primários** ficam nos vértices e os quatro **secundários** no meio das arestas, cada um entre os dois primários que o formam:
 
-#### Atributos Mentais (Velocidade de Progressão: 1.0)
+```diagram physical paint=all
+            Resistência
+   Força                Constituição
+Agilidade                     Sentido
+   Celeridade             Destreza
+           Flexibilidade
+```
 
-| Atributo | Descrição |
-|---|---|
-| Resiliência | Resistência mental e foco |
-| Adaptabilidade | Capacidade de se ajustar a situações |
-| Julgamento (ou Ponderação) | Análise e tomada de decisão |
-| Criatividade | Inovação e pensamento lateral |
+| Atributo | Na ficha | Tipo | O que representa |
+|---|---|---|---|
+| Resistência | Resistance (RES) | Primário | Defesa, vitalidade e energia física |
+| Agilidade | Agility (AGI) | Primário | Deslocamento: rapidez, aceleração e frenagem |
+| Flexibilidade | Flexibility (FLX) | Primário | Amplitude de movimentos: acrobacia, evasão, deslizar |
+| Sentido | Sense (SEN) | Primário | Percepção pelos cinco sentidos |
+| Força | Strength (Str) | Secundário | Média de Resistência e Agilidade. Potência física: empurrar, agarrar, carregar |
+| Celeridade | Celerity (Cel) | Secundário | Média de Agilidade e Flexibilidade. Golpes e movimentos rápidos: ligeireza, repelir, finta |
+| Destreza | Dexterity (Dex) | Secundário | Média de Flexibilidade e Sentido. Precisão e controle fino: reflexo, pontaria, furtividade |
+| Constituição | Constitution (Con) | Secundário | Média de Sentido e Resistência. Fôlego e recuperação: cura, respiração, tenacidade |
 
-### Atributos Médios
+Por isso, os pontos de um primário também fortalecem os dois secundários vizinhos. Mas um único ponto ainda não aparece no secundário, porque a média é arredondada para baixo: com 1 ponto em Agilidade e nenhum em Resistência, a Força fica com (0 + 1) / 2 = 0,5, ou seja, 0.
 
-Atributos médios são calculados automaticamente como a **média arredondada** dos seus atributos primários componentes. Não possuem pontos distribuíveis próprios.
+A mudança aparece quando a média chega a 1: com 1 ponto em cada um de dois primários vizinhos (Resistência e Agilidade sobem a Força) ou com 2 pontos num primário só. Com 2 pontos em Agilidade, por exemplo, Força e Celeridade sobem juntas.
 
-**Fórmulas:**
+```diagram physical paint=AGI,Str,Cel,AGI-Str,Cel-AGI
+            Resistência
+   Força                Constituição
+Agilidade                     Sentido
+   Celeridade             Destreza
+           Flexibilidade
+```
 
-> *pontos = média arredondada dos pontos dos atributos primários componentes*
->
-> *valor = pontos + nível*
->
-> *poder = valor + bônus de habilidade (arredondado) + buff*
+## Atributos Mentais
 
-O arredondamento utilizado é o padrão: metade arredonda para longe do zero. Exemplo: a média de 3 e 4 é 3,5, que arredonda para 4.
+Os quatro atributos mentais são primários. Ainda não existem secundários entre eles.
 
-O bônus de habilidade de um atributo médio é a média dos bônus dos seus atributos primários componentes.
+São atributos canônicos, citados pelo Netero, e usados para avaliar os candidatos no Exame Hunter.
 
-### Atributos Espirituais
+```diagram mental paint=all
+          Resiliência
+Criatividade     Adaptabilidade
+         Julgamento
+```
 
-Atributos espirituais representam o poder Nen do personagem. Diferem dos primários por **não possuírem pontos distribuíveis** — seu poder vem exclusivamente do nível, bônus de habilidade e buffs.
-
-**Fórmula:**
-
-> *poder = nível + bônus de habilidade (arredondado) + buff*
-
-| Atributo | Velocidade de Progressão | Descrição |
+| Atributo | Na ficha | Descrição |
 |---|---|---|
-| Chama | 1.0 | Intensidade e força da aura |
-| Consciência | 1.0 | Controle e percepção da aura |
+| Resiliência | Resilience (RSL) | Capacidade de aguentar a pressão, se recuperar dos golpes da vida e não se quebrar. Exemplo: no fim da luta contra o Hisoka, Kastro falhou num teste de Resiliência, o que o impediu de materializar seu clone e o levou à morte |
+| Adaptabilidade | Adaptability (ADP) | Capacidade de se ajustar a situações |
+| Julgamento (ou Ponderação) | Judgment (JUD) | Análise e tomada de decisão. É o atributo usado, por exemplo, ao ponderar sobre o nível e as capacidades de um oponente |
+| Criatividade | Creativity (CRE) | Inovação e pensamento lateral. Muito importante para materializadores: impacta diretamente as habilidades de materialização |
 
-> **Nota:** Atributos espirituais só existem para personagens que despertaram o Nen.
+## Atributos Espirituais
+
+Os atributos espirituais representam o poder Nen do personagem e só existem para quem despertou o Nen. Eles não recebem pontos para distribuir: o poder deles vem do nível e do bônus de aptidão.
+
+| Atributo | Na ficha | Descrição |
+|---|---|---|
+| Nen da Chama | Flame | A chama que se acende no espírito: a força de vontade, a decisão. Determina a maturidade do espírito |
+| Nen da Consciência | Conscience | O verdadeiro Nen: o poder de controlar livremente a energia vital (aura). Desperta naturalmente quando o espírito atinge certa maturidade (Nen da Chama) |
+
+> **Nota:** As mecânicas canônicas de Nen estão sendo migradas do sistema antigo para este novo (System X System).
+
+## Como ler um atributo
+
+Na ficha, cada atributo mostra três números sob a sigla: o **nível**, os **pontos** e o **poder**.
+
+```diagram attribute-node
+RES  nível · pontos · poder
+```
+
+## Fórmulas
+
+Cada atributo primário possui:
+- **Pontos distribuídos** — os que você coloca nele
+- **Experiência própria** — recebida em cascata pelo treino e pela progressão em combate, a partir da evolução das perícias, ou direto nos atributos mentais (veja [Progressão em Cascata](./atributos.md#progressao-em-cascata))
+- **Nível** — vem da experiência acumulada
+- **Bônus de aptidão** — o da aptidão a que ele pertence: Física ou Mental (veja [Aptidões](./aptidoes.md#bonus-de-aptidao))
+
+> *valor = pontos + nível*
+>
+> *poder = valor + bônus de aptidão*
+
+O **poder** é o número usado nos testes.
+
+### Atributos secundários
+
+> *pontos = média dos pontos dos dois primários que o formam*
+>
+> *valor = pontos + nível*
+>
+> *poder = valor + bônus de aptidão*
+
+```diagram physical paint=RES,AGI,Str,AGI-Str,Str-RES
+            Resistência
+   Força                Constituição
+Agilidade                     Sentido
+   Celeridade             Destreza
+           Flexibilidade
+```
+
+Exemplo: com 3 pontos em Resistência e 4 em Agilidade, a média é 3,5, e a Força fica com **3** pontos.
+
+O bônus de aptidão de um atributo secundário é a média dos bônus dos seus dois primários.
+
+### Atributos espirituais
+
+> *poder = nível + bônus de aptidão*
+
+## Distribuição de Pontos
+
+Na criação do personagem, você distribui pontos nos **atributos primários físicos e mentais**:
+
+- Você tem tantos pontos físicos quanto o nível da **Aptidão Física**, e tantos pontos mentais quanto o nível da **Aptidão Mental**. Esses níveis vêm da experiência inicial que a classe dá (veja [Aptidões](./aptidoes.md#pontos-para-distribuir)).
+- Pontos físicos só vão para Resistência, Agilidade, Flexibilidade e Sentido; pontos mentais, para Resiliência, Adaptabilidade, Julgamento e Criatividade.
+- Todos os pontos de cada grupo precisam ser usados — nem mais, nem menos.
+- Atributos secundários e espirituais não recebem pontos. Os secundários acompanham os primários sozinhos.
+
+Depois da criação, os atributos evoluem pela experiência que chega em cascata (veja abaixo).
 
 ## Progressão em Cascata
 
-Quando experiência é inserida em uma perícia, ela se propaga pela cadeia:
+A experiência que o personagem ganha treinando sobe em cascata pela ficha:
 
-1. A **perícia** recebe o XP
-2. O **atributo** recebe o XP (para atributos médios, o XP é dividido entre os primários)
-3. A **habilidade** recebe o XP
-4. A **experiência do personagem** recebe o XP
+1. A **perícia** treinada recebe a experiência.
+2. O **atributo** da perícia recebe a mesma experiência. Se for um atributo secundário, ele a reparte entre os seus dois primários.
+3. A **aptidão** do atributo recebe a experiência, e a Aptidão de Perícias e Habilidades também.
+4. Por fim, a experiência chega ao **nível do personagem**.
 
-Para atributos médios, a divisão de XP entre os primários é feita de forma precisa, levando em conta o resto de divisões anteriores. Isso garante que nenhum ponto de experiência é perdido ao longo do tempo.
+Os atributos mentais treinam direto: a experiência entra no atributo e segue dele para a Aptidão Mental e para o nível do personagem.
+
+**Exemplo:** imagine que seu personagem treina *Acrobacia*. Esse treino não melhora apenas a Acrobacia: ele também fortalece a *Flexibilidade*, que faz crescer a *Aptidão Física*, e por fim soma ao nível do personagem. É como treinar um movimento específico que acaba fortalecendo o corpo inteiro.
+
+Hoje, na ficha, você não precisa fazer nada com isso. A cascata vai fazer diferença de verdade quando o treino chegar ao SxS, e aí ela ganha mais explicações.
 
 ## Buffs Temporários
 
@@ -91,11 +159,13 @@ Buffs são bônus (ou penalidades) temporários que alteram o poder de um atribu
 - **Habilidades Nen** — técnicas que ampliam temporariamente um atributo
 - **Condições de combate** — efeitos de terreno, poções, estados alterados
 
-Os buffs são aplicados e removidos automaticamente pelo sistema conforme as circunstâncias do jogo. Quando um buff está ativo, seu valor é somado diretamente ao poder do atributo afetado, refletindo imediatamente em todas as mecânicas que dependem daquele atributo.
+O buff soma direto no poder do atributo, e tudo o que depende daquele atributo sente a diferença na hora:
 
-## Distribuição de Pontos
+> *poder = valor + bônus de aptidão + buff*
 
-Apenas **atributos primários físicos** podem receber pontos distribuídos pelo jogador. Atributos mentais, médios e espirituais não possuem distribuição manual de pontos — seu progresso depende exclusivamente da experiência obtida por treinamento (progressão em cascata) e buffs temporários.
+## Velocidade de Progressão
+
+Cada parte da ficha tem uma **velocidade de progressão**: um número que diz quanta experiência ela pede para subir de nível. Quanto maior o número, mais XP cada nível pede. Os atributos físicos têm velocidade 5; os mentais e os espirituais, 1. Veja todas na [Tabela de Progressão](./experiencia.md#tabela-de-progressao).
 
 ---
 
@@ -103,3 +173,9 @@ Apenas **atributos primários físicos** podem receber pontos distribuídos pelo
 >
 > Implementação técnica: [`docs/dev/character-sheet/abilities-attributes.md`](../../dev/character-sheet/abilities-attributes.md)
 > Código-fonte: `internal/domain/entity/character_sheet/attribute/`
+>
+> - Arredondamento: `int()` sobre o bônus (`GetPower`) e divisão inteira nos pontos do
+>   secundário (`MiddleAttribute.GetPoints`); o front espelha com `Math.trunc`/`Math.floor`.
+> - Repartição do secundário: `MiddleAttribute.CascadeUpgrade` soma o resto da divisão anterior
+>   (`exp % len(primaryAttrs)`) antes de dividir, para nenhum ponto de XP se perder com o tempo.
+> - Buffs: mapa por atributo, somado em `GetPower` de primários, secundários e espirituais.

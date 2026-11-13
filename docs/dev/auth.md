@@ -1,6 +1,6 @@
 # Autenticação & Sessões — Guia de Desenvolvimento
 
-> Documentação técnica do fluxo de autenticação, gerenciamento de sessões e middleware do sistema de RPG HxH.
+> Documentação técnica do fluxo de autenticação, gerenciamento de sessões e middleware do System X System.
 
 ---
 

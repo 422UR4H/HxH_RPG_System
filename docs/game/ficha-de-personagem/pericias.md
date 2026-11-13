@@ -2,154 +2,115 @@
 
 ## Visão Geral
 
-Perícias representam as habilidades específicas de um personagem, derivadas dos seus atributos. Cada perícia está vinculada a um atributo pai e determina a competência do personagem em ações concretas — desde combate até percepção sensorial e controle de Nen.
+Perícias são as capacidades específicas do personagem. Cada perícia pertence a um atributo e mede o quanto o personagem é bom numa ação concreta — de empurrar um oponente a sentir um cheiro ou controlar a própria aura.
 
 ## Fórmula: Valor de Teste
 
-Quando um personagem realiza um teste de perícia, o **valor de teste** é calculado como:
+Quando o personagem faz um teste de perícia, o **valor de teste** é:
 
-> **Valor de Teste** = nível da perícia + poder do atributo (+ buff)
+> **Valor de Teste** = nível da perícia + poder do atributo
 
 Onde:
-- **nível da perícia** — determinado pela experiência acumulada na perícia
-- **poder do atributo** — o poder do atributo pai (valor + bônus de habilidade + buff do atributo)
-- **buff** — bônus temporário aplicado diretamente na perícia pelo sistema (opcional)
+- **nível da perícia** — vem da experiência acumulada na perícia
+- **poder do atributo** — o poder do atributo a que a perícia pertence (veja [Atributos](./atributos.md#formulas))
 
-## Tipos de Perícia
+Os [buffs temporários](./atributos.md#buffs-temporarios) também somam no valor de teste enquanto duram.
 
-### Perícias Comuns
+## Lista Completa de Perícias (32)
 
-São as perícias padrão, cada uma vinculada a um único atributo. Ao receber experiência, a perícia propaga a progressão em cascata para o atributo pai e, em seguida, para a experiência de habilidade.
-
-> **Progressão em cascata:** Perícia → Atributo → Habilidade → Personagem (experiência)
-
-### Perícias Conjuntas
-
-Perícias conjuntas são compostas por duas ou mais perícias comuns. Quando o jogador usa uma perícia que pertence a uma conjunta, o sistema redireciona para a perícia conjunta automaticamente. Ao buscar uma perícia pelo nome, o sistema sempre prioriza as perícias conjuntas antes de verificar as comuns.
-
-**Características:**
-- Possuem **buff próprio** que é somado ao valor de teste
-- Na cascata, a experiência é **multiplicada** pelo número de perícias comuns que compõem a conjunta antes de propagar para a habilidade
-
-**Fórmula do valor de teste da perícia conjunta:**
-
-> **Valor de Teste** = nível da conjunta + poder do atributo + buff da conjunta
-
-**Multiplicação de experiência na cascata:**
-
-> **Experiência propagada** = experiência recebida × quantidade de perícias comuns
-
-## Lista Completa de Perícias (31)
+Cada perícia física pertence a um atributo físico, primário ou secundário. As perícias espirituais pertencem aos atributos espirituais e só existem para quem despertou o Nen. Não há perícias mentais.
 
 ### Atributos Físicos
 
-#### Resistência — Coef. XP: 5.0
+#### Resistência (primário)
 
-| Perícia | Descrição |
-|---|---|
-| Vitalidade | Capacidade de resistir a dano e manter-se consciente |
-| Energia | Reserva energética para ações prolongadas |
-| Defesa | Capacidade de bloquear ou absorver impactos |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Vitalidade | Vitality | Capacidade de resistir a dano e manter-se consciente |
+| Energia | Energy | Reserva energética para ações prolongadas |
+| Defesa | Defense | Capacidade de bloquear ou absorver impactos |
 
-#### Força — Coef. XP: 5.0
+#### Força (secundário)
 
-| Perícia | Descrição |
-|---|---|
-| Empurrar | Força para empurrar objetos ou oponentes |
-| Agarrar | Capacidade de segurar e imobilizar |
-| Carregar | Peso máximo que pode ser transportado |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Empurrão | Push | Força para empurrar objetos ou oponentes |
+| Agarrar | Grab | Capacidade de segurar e imobilizar |
+| Carregar | Carry | Peso máximo que pode ser transportado |
 
-#### Agilidade — Coef. XP: 5.0
+#### Agilidade (primário)
 
-| Perícia | Descrição |
-|---|---|
-| Velocidade | Velocidade máxima de movimento |
-| Aceleração | Rapidez para atingir velocidade máxima |
-| Frenagem | Capacidade de parar ou reduzir velocidade rapidamente |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Rapidez | Quickness | Velocidade corporal, usada em ajustes de postura, por exemplo |
+| Aceleração | Accelerate | Rapidez para atingir a velocidade máxima |
+| Freio | Brake | Capacidade de parar ou reduzir a velocidade rapidamente |
 
-#### Celeridade — Coef. XP: 5.0
+#### Celeridade (secundário)
 
-| Perícia | Descrição |
-|---|---|
-| Destreza | Agilidade fina e controle de movimentos rápidos |
-| Repelir | Capacidade de desviar ataques ou objetos com velocidade |
-| Finta | Habilidade de enganar o oponente com movimentos falsos |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Ligeireza | Legerity | Agilidade fina e controle de movimentos rápidos. Responde pela velocidade de ataque, por exemplo |
+| Repelir | Repel | Repelir ou aparar ataques, armados ou desarmados |
+| Finta | Feint | Enganar o oponente com movimentos falsos |
 
-#### Flexibilidade — Coef. XP: 5.0
+#### Flexibilidade (primário)
 
-| Perícia | Descrição |
-|---|---|
-| Acrobacia | Movimentos acrobáticos, saltos e piruetas |
-| Evasão | Esquiva sem necessidade de grande deslocamento |
-| Furtividade | Movimentação silenciosa e discreta |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Acrobacia | Acrobatics | Movimentos acrobáticos e piruetas em saltos |
+| Evasão | Evasion | Esquiva sem grande deslocamento, inclusive a esquiva aérea. Também evita golpes críticos que podem matar, mutilar, cegar etc. |
+| Deslizar | Sneak | Passar por frestas e buracos e se mover deslizando rente ao chão |
 
-#### Destreza — Coef. XP: 5.0
+#### Destreza (secundário)
 
-| Perícia | Descrição |
-|---|---|
-| Reflexo | Tempo de reação a estímulos |
-| Precisão | Pontaria e precisão em ataques (crítico) |
-| Ocultação | Capacidade de se esconder e passar despercebido |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Reflexo | Reflex | Tempo de reação a estímulos |
+| Precisão | Accuracy | Pontaria e acerto em geral, incluindo acertos críticos |
+| Furtividade | Stealth | Se esconder, passar despercebido e se mover silenciosamente |
 
-#### Sentido — Coef. XP: 5.0
+#### Sentido (primário)
 
-| Perícia | Descrição |
-|---|---|
-| Visão | Acuidade visual e capacidade de detectar detalhes |
-| Audição | Percepção sonora e localização por som |
-| Olfato | Detecção e identificação de odores |
-| Tato | Sensibilidade tátil e percepção por toque |
-| Paladar | Identificação de substâncias pelo sabor |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Visão | Vision | Acuidade visual e capacidade de notar detalhes |
+| Audição | Hearing | Percepção sonora e localização pelo som |
+| Olfato | Smell | Detecção e identificação de odores |
+| Tato | Tact | Sensibilidade ao toque, equilíbrio e preempção (sentir uma presença física) |
+| Paladar | Taste | Identificação de substâncias pelo sabor |
 
-#### Constituição — Coef. XP: 5.0
+#### Constituição (secundário)
 
-| Perícia | Descrição |
-|---|---|
-| Cura | Recuperação natural de ferimentos |
-| Fôlego | Resistência respiratória e capacidade pulmonar |
-| Tenacidade | Resistência à fadiga e perseverança física |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Curar | Heal | Recuperação natural de ferimentos |
+| Respiração | Breath | Resistência respiratória e capacidade pulmonar |
+| Tenacidade | Tenacity | Resistência à fadiga e perseverança física. Ajuda a resistir a danos elementais, como eletricidade, queimaduras e veneno |
 
 ### Atributos Espirituais
 
-#### Chama Nen
+#### Nen da Chama
 
-| Perícia | Descrição |
-|---|---|
-| Foco | Concentração para canalizar Nen |
-| Força de Vontade | Determinação e resistência mental/espiritual |
-| Autoconhecimento | Compreensão de si mesmo e do próprio Nen |
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Foco | Focus | Atenção sustentada em qualquer tarefa: numa luta, num estudo ou ao canalizar o Nen |
+| Força de Vontade | WillPower | Perseverança e determinação para seguir em frente quando tudo pede para parar |
+| Autoconhecimento | SelfKnowledge | Compreensão de si mesmo e do próprio Nen |
 
-#### Consciência Nen
+#### Nen da Consciência
 
-| Perícia | Descrição |
-|---|---|
-| Coa | Controle e ocultação da aura (Cocooning Aura) |
-| Mop | Manutenção e fluxo da aura pelo corpo (Mora of Pores) |
-| Aop | Projeção e liberação da aura (Aura Output Power) |
+As siglas AOP e MOP aparecem no anime, na luta de Gon contra Knuckle, no arco das Formigas Quimera.
 
-## Sistema de Buffs
-
-O sistema mantém buffs temporários por perícia. Buffs são bônus que se somam ao valor de teste no momento da consulta, sem alterar a experiência ou nível da perícia.
-
-> **Valor de teste final** = valor de teste da perícia + buff temporário
-
-Um buff pode ser aplicado, removido ou consultado a qualquer momento durante o jogo. Eles representam efeitos temporários como magias, itens ou condições especiais.
+| Perícia | Na ficha | Descrição |
+|---|---|---|
+| Controle de Aura (CoA) | Coa | Controle fino da aura, como a Destreza é para os movimentos |
+| MOP | Mop | Quantidade máxima de aura armazenada dentro do corpo, como uma bateria |
+| AOP | Aop | Volume de aura que o usuário consegue manter fora do corpo com o Ren |
 
 ## Progressão em Cascata
 
-Quando experiência é inserida em uma perícia, o sistema propaga automaticamente a progressão por toda a ficha:
-
-1. A **perícia** recebe experiência, incrementa seus pontos e possivelmente sobe de nível
-2. O **atributo pai** recebe a experiência em cascata e incrementa sua própria progressão
-3. A **habilidade governante** recebe a experiência e avança sua progressão
-4. A **experiência geral do personagem** é atualizada
-
-Para **perícias conjuntas**, há um passo adicional:
-
-1. A **perícia conjunta** recebe experiência e incrementa seus pontos
-2. O **atributo pai** recebe a experiência em cascata
-3. A experiência é **multiplicada** pelo número de perícias comuns que compõem a conjunta
-4. A **habilidade governante** recebe a experiência multiplicada
+Quando uma perícia recebe experiência, ela sobe para o atributo da perícia, para a aptidão e para o nível do personagem. A explicação completa está no fim de [Atributos](./atributos.md#progressao-em-cascata).
 
 ---
 
@@ -157,3 +118,14 @@ Para **perícias conjuntas**, há um passo adicional:
 >
 > Implementação técnica: [`docs/dev/character-sheet/skills-proficiencies.md`](../../dev/character-sheet/skills-proficiencies.md)
 > Código-fonte: `internal/domain/entity/character_sheet/skill/`
+>
+> - Cascata da perícia comum (`CommonSkill.CascadeUpgradeTrigger`): perícia → atributo →
+>   aptidão do atributo → personagem, e também → Aptidão de Perícias e Habilidades (`Skills`).
+> - Buffs por perícia: `skill.Manager` guarda um buff por `SkillName`, somado ao valor de teste
+>   na leitura, sem alterar experiência nem nível.
+> - Perícias Conjuntas (`JointSkill`) existem no domínio, mas nenhuma classe as concede
+>   (`NewJointSkill` só é chamado em testes), então saíram do texto do jogador. Resumo: agrupam
+>   duas ou mais perícias comuns; o `Manager` busca a conjunta antes da comum; têm buff próprio
+>   somado ao valor de teste (`nível da conjunta + poder do atributo + buff da conjunta`); na
+>   cascata, a experiência é multiplicada pelo número de perícias comuns da conjunta antes de
+>   seguir para a aptidão.

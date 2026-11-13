@@ -1,6 +1,6 @@
 # Cenas e Turnos
 
-> Estrutura de execução em tempo real de uma partida no HxH RPG.
+> Estrutura de execução em tempo real de uma partida no System X System.
 
 ## Visão Geral
 

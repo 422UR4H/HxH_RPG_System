@@ -52,7 +52,7 @@ mappings:
       - path: docs/dev/character-sheet/abilities-attributes.md
         confidence: directly_affected
     game_docs:
-      - path: docs/game/ficha-de-personagem/habilidades.md
+      - path: docs/game/ficha-de-personagem/aptidoes.md
         confidence: directly_affected
     notes: Ability categories (Physicals, Mentals, Spirituals, Skills), talents, power
 
@@ -127,6 +127,35 @@ mappings:
         confidence: directly_affected
     notes: Character sheet creation and consolidation endpoints (birthday day/month + birth year calculation)
 
+  # ─── API: Rules (painel de regras da ficha) ───
+  - code_path: internal/application/rules
+    dev_docs:
+      - path: docs/dev/api/rules.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/criacao.md
+        confidence: possibly_affected
+    notes: >-
+      Carrega os capítulos de docs/game/ exibidos no painel de regras da ficha
+      (GET /rules/character-sheet). Mudar a ordem, o slug ou a lista em
+      SheetChapterSources muda o contrato.
+
+  - code_path: internal/app/api/rules/
+    dev_docs:
+      - path: docs/dev/api/rules.md
+        confidence: directly_affected
+    notes: GET /rules/character-sheet (público, Cache-Control 5 min)
+
+  - code_path: docs/game
+    dev_docs:
+      - path: docs/dev/api/rules.md
+        confidence: possibly_affected
+    notes: >-
+      SheetChapterSources (internal/application/rules/chapters.go) lista os arquivos
+      de docs/game/ que o painel de regras mostra aos jogadores; editar esses docs
+      muda o que o jogador lê. Nenhum .go dentro de docs/game/ (exceto docs/embed.go,
+      que fica em docs/).
+
   # ─── API: Combat Catalogue (backend-prep-front-combat) ───
   - code_path: internal/app/api/sheet/get_combat_catalogue.go
     dev_docs:
@@ -150,6 +179,8 @@ mappings:
     game_docs:
       - path: docs/game/classes.md
         confidence: directly_affected
+      - path: docs/game/ficha-de-personagem/criacao.md
+        confidence: possibly_affected
     notes: Class definitions, initial stats, class-specific rules
 
   # ─── Dice ───

@@ -32,7 +32,7 @@ ICascadeUpgrade (interface da cascata)
 │   ├── SpiritualAttribute    — atributo espiritual (sem pontos distribuíveis)
 │   └── ...
 ├── IDistributableAttribute   (superset estrutural de IGameAttribute + GetPoints/GetValue)
-│   ├── PrimaryAttribute      — atributo primário (ex: Força, Agilidade)
+│   ├── PrimaryAttribute      — atributo primário (ex: Resistência, Agilidade)
 │   └── MiddleAttribute       — atributo derivado de 2+ primários (ex: Constituição)
 ```
 
@@ -48,7 +48,7 @@ ICascadeUpgrade (interface da cascata)
 | `SpiritualAttribute` | — (não existe) | — | `level + abilityBonus + buff` | Recebe XP, delega à `Ability` |
 
 **Diferença-chave:** `SpiritualAttribute` não tem campo `points` nem `GetValue()`.
-Seu Power depende apenas do nível, do bônus da habilidade e do buff. Isso reflete
+Seu Power depende apenas do nível, do bônus da aptidão e do buff. Isso reflete
 a natureza do Nen no RPG: atributos espirituais não aceitam distribuição manual.
 
 ### A Ability
@@ -95,7 +95,7 @@ Os atributos são organizados em três managers, agrupados na struct `CharacterA
 ```
 CharacterAttributes
 ├── physicals:  *Manager            (PrimaryAttribute + MiddleAttribute)
-├── mentals:    *Manager            (PrimaryAttribute + MiddleAttribute)
+├── mentals:    *Manager            (PrimaryAttribute apenas; middleAttributes = nil, TODO na factory)
 └── spirituals: *SpiritualManager   (SpiritualAttribute apenas)
 ```
 
@@ -164,7 +164,7 @@ Documentado em [`experience.md`](experience.md) §2 ("MiddleAttribute — divis�
 Resumo: durante `CascadeUpgrade`, o XP é dividido igualmente entre os primários
 subjacentes, com acumulação de resto para evitar perda por truncamento inteiro.
 
-### 3.2. Cálculo de Points (média com arredondamento)
+### 3.2. Cálculo de Points (média arredondada para baixo)
 
 **Este é o mecanismo que NÃO está documentado em `experience.md`.**
 
@@ -176,7 +176,7 @@ func (ma *MiddleAttribute) GetPoints() int {
     for _, primaryAttr := range ma.primaryAttrs {
         points += primaryAttr.points  // acessa campo não-exportado (mesmo pacote)
     }
-    return int(math.Round(float64(points) / float64(len(ma.primaryAttrs))))
+    return points / len(ma.primaryAttrs)
 }
 ```
 
@@ -184,9 +184,9 @@ Detalhes importantes:
 
 - **Acessa `primaryAttr.points` diretamente** — possível porque `MiddleAttribute`
   está no mesmo pacote. Diferente de `GetPoints()` que retornaria o valor público.
-- **Usa `math.Round`** — arredondamento half away from zero. Para 2
-  primários com points {3, 4}, o resultado é `Round(3.5) = 4`. Note que
-  `Round(2.5) = 3` (arredonda para longe de zero, diferente de banker's rounding).
+- **Divisão inteira** — arredonda para baixo (os pontos nunca são negativos). Para 2
+  primários com points {3, 4}, o resultado é `7 / 2 = 3`. O front espelha com
+  `Math.floor`/`Math.trunc`, e o doc de jogo diz "arredondada para baixo".
 - **Points é somente leitura** para `MiddleAttribute` — ele não aceita
   `IncreasePoints()`. Os pontos são distribuídos apenas nos primários.
 
@@ -206,7 +206,7 @@ um intermediário compartilhem a mesma ability).
 
 ---
 
-## 4. Fórmula do Bônus de Habilidade
+## 4. Fórmula do Bônus de Aptidão
 
 **Arquivo:** `ability/ability.go` — `GetBonus()`
 
@@ -390,26 +390,48 @@ O `SpiritualManager` usa exatamente o mesmo padrão de ponteiros. A consistênci
 
 ## 7. Distribuição de Pontos
 
-A distribuição manual de pontos segue regras restritivas no design atual:
-
 ### Quem aceita pontos?
 
 | Tipo | Aceita distribuição? | Método |
 |------|---------------------|--------|
-| `PrimaryAttribute` (físico) | ✅ Sim | `IncreasePoints(value)` |
-| `PrimaryAttribute` (mental) | ❌ Não* | — |
+| `PrimaryAttribute` (físico) | ✅ Sim | `CharacterAttributes.IncreasePrimaryPhysicalPts` |
+| `PrimaryAttribute` (mental) | ✅ Sim | `CharacterAttributes.IncreasePrimaryMentalPts` |
 | `MiddleAttribute` | ❌ Não | Points é calculado (média dos primários) |
 | `SpiritualAttribute` | ❌ Não | Não possui campo `points` |
 
-*\* Nota: embora `PrimaryAttribute` mental tenha o método `IncreasePoints()`, o
-`CharacterAttributes` só expõe `IncreasePrimaryPhysicalPts()` — que delega
-exclusivamente para `ca.physicals`. Não existe um método equivalente para
-mentais na API pública de `CharacterAttributes`.*
+Primários físicos: Resistance, Agility, Flexibility, Sense. Secundários físicos:
+Strength (Resistance+Agility), Celerity (Agility+Flexibility), Dexterity
+(Flexibility+Sense), Constitution (Sense+Resistance) — ver `factory.md`, "cadeia
+circular". Mentais: Resilience, Adaptability, Judgment, Creativity, todos primários.
 
-### Fluxo de distribuição
+### Na criação e na edição: `ApplyInitialAttributePoints`
+
+`CharacterSheet.ApplyInitialAttributePoints(map[AttributeName]int)`
+(`sheet/character_sheet.go`) é a única porta da distribuição na montagem da ficha.
+`AssembleCharacterSheet` a chama por último, e **só quando o mapa não está vazio**
+(`len(input.AttributePoints) > 0`): sem pontos, a ficha nasce com os primários em 0.
+
+Com pontos, as regras são:
+
+1. Valores `<= 0` são ignorados.
+2. Cada chave tem de ser um primário físico (`GetPhysicalsPrimaryPoints`) ou mental
+   (`GetMentalsPrimaryPoints`); secundário, espiritual ou nome desconhecido →
+   `ErrInvalidDistributionPoints`.
+3. A soma dos físicos tem de ser **igual** ao nível de `Physicals`, e a dos mentais
+   **igual** ao nível de `Mentals` (níveis já com a experiência da classe aplicada).
+   Diferença para mais ou para menos em qualquer grupo → `ErrInvalidDistributionPoints`.
+4. Só então aplica (`IncreasePrimaryPhysicalPts` / `IncreasePrimaryMentalPts`).
+
+`ErrInvalidDistributionPoints` é `domain.NewValidationError` → `422` no handler.
+
+### Ponto a ponto: `IncreasePtsForPhysPrimaryAttr`
+
+`CharacterSheet.IncreasePtsForPhysPrimaryAttr(name, points)` soma pontos a um primário
+físico de uma ficha já montada, recusando (`ErrInvalidDistributionPoints`) o que passar
+do nível de `Physicals`, e recalcula os status. Não há equivalente mental.
 
 ```
-CharacterAttributes.IncreasePrimaryPhysicalPts(name, points)
+CharacterAttributes.IncreasePrimary{Physical,Mental}Pts(name, points)
 └── Manager.IncreasePointsForPrimary(name, value)
     ├── valida: nome existe em primaryAttributes? (não aceita middle)
     ├── attr.IncreasePoints(value)
