@@ -92,13 +92,15 @@ O Hatsu é a manifestação da categoria Nen pessoal do personagem e liga os pri
 
 ### Progressão em Cascata
 
-O Nen tem uma cascata própria. Quando uma categoria ou um princípio recebe experiência, ela sobe assim:
+O Nen tem uma cascata própria. Quando uma categoria recebe experiência, a experiência sobe assim:
 
-1. A **categoria** (ou o princípio) recebe a experiência.
+1. A **categoria** recebe a experiência.
 2. O **Hatsu** recebe a experiência.
 3. O **Nen da Consciência** recebe a experiência.
 4. A **Aptidão Espiritual** recebe a experiência.
 5. Por fim, ela chega ao **nível do personagem**.
+
+Com um princípio é igual, mas sem passar pelo Hatsu: do princípio, a experiência vai direto para o Nen da Consciência.
 
 A ideia geral da cascata está no fim de [Atributos](./atributos.md#progressao-em-cascata).
 

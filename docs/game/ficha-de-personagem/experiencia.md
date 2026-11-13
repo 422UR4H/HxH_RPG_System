@@ -8,7 +8,7 @@ A experiência (XP) é a base de toda a progressão no System X System. Cada par
 
 Cada parte da ficha tem uma **velocidade de progressão** própria. São até **100 níveis**, e a experiência pedida por nível cresce de forma não linear: os primeiros níveis são rápidos, os intermediários exigem mais dedicação e os últimos são os mais desafiadores.
 
-### Velocidade de Progressão por Componente
+### Por parte da ficha
 
 | Componente | Velocidade de Progressão | Descrição |
 |---|---|---|
@@ -33,7 +33,7 @@ Quanto maior o número, mais XP é preciso para subir de nível.
 > A experiência pedida em cada nível *n* vem de uma soma de três curvas em "S":
 >
 > ```math
-> f(n) = \frac{1700}{1 + e^{0{,}37\,(12 - n)}} + \frac{1800}{1 + e^{0{,}37\,(38 - n)}} + \frac{2000}{1 + e^{0{,}28\,(74 - n)}}
+> \begin{aligned} f(n) &= \frac{1700}{1 + e^{0{,}37\,(12 - n)}} \\ &+ \frac{1800}{1 + e^{0{,}37\,(38 - n)}} \\ &+ \frac{2000}{1 + e^{0{,}28\,(74 - n)}} \end{aligned}
 > ```
 >
 > Depois, o resultado é multiplicado pela velocidade de progressão do componente. Na prática, a progressão começa suave, acelera nos níveis intermediários e desacelera nos mais altos. Você não precisa fazer essa conta: a ficha faz por você.

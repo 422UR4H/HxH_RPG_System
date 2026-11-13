@@ -48,7 +48,7 @@ ICascadeUpgrade (interface da cascata)
 | `SpiritualAttribute` | — (não existe) | — | `level + abilityBonus + buff` | Recebe XP, delega à `Ability` |
 
 **Diferença-chave:** `SpiritualAttribute` não tem campo `points` nem `GetValue()`.
-Seu Power depende apenas do nível, do bônus da habilidade e do buff. Isso reflete
+Seu Power depende apenas do nível, do bônus da aptidão e do buff. Isso reflete
 a natureza do Nen no RPG: atributos espirituais não aceitam distribuição manual.
 
 ### A Ability
@@ -206,7 +206,7 @@ um intermediário compartilhem a mesma ability).
 
 ---
 
-## 4. Fórmula do Bônus de Habilidade
+## 4. Fórmula do Bônus de Aptidão
 
 **Arquivo:** `ability/ability.go` — `GetBonus()`
 

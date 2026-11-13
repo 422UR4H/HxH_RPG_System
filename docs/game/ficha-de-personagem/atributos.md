@@ -2,13 +2,14 @@
 
 ## Visão Geral
 
-Atributos são as características fundamentais do personagem. Eles se dividem em **Físicos**, **Mentais** e **Espirituais**, e o poder de cada um é o número que você usa nos testes.
+Atributos são as características fundamentais do personagem. O poder de cada um é o número que você usa nos testes. Eles se dividem em três grupos: **Físicos**, **Mentais** e **Espirituais** (o poder Nen).
 
-Existem três tipos de atributo:
+Os físicos e os mentais ainda podem ser de dois tipos:
 
 - **Primários** — os canônicos. Foram ditos pelo próprio Netero, assim como o [Talento](./aptidoes.md#talento). São a base da ficha e recebem os pontos que você distribui.
 - **Secundários** — os mecânicos. Foram criados para o jogo, porque várias mecânicas de RPG dependiam deles, como Força e Destreza. Cada um é a média de dois primários e não recebe pontos.
-- **Espirituais** — o poder Nen. Não recebem pontos.
+
+Os espirituais não são primários nem secundários, e também não recebem pontos.
 
 Todos os atributos evoluem com treino, como no mangá e no anime: os físicos treinam pelas suas perícias, os mentais treinam diretamente e os espirituais também podem ser treinados. Só os primários físicos e mentais recebem pontos para distribuir.
 

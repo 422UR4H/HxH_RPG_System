@@ -192,7 +192,7 @@ Isso reflete que uma JointSkill representa múltiplas perícias treinadas de uma
 - **`exp Exp`** — a experiência do personagem (com `ExpTable` de coeficiente `10.0`)
 - **`points int`** — pontos de personagem (character points), ganhos quando abilities sobem de nível
 
-### Pontos de personagem e o bônus de habilidade
+### Pontos de personagem e o bônus de aptidão
 
 Toda vez que uma `Ability` sobe de nível durante a cascata, ela chama:
 
@@ -202,7 +202,7 @@ if diff > 0 {
 }
 ```
 
-Esses pontos alimentam a **fórmula do bônus de habilidade** em `Ability.GetBonus()`:
+Esses pontos alimentam a **fórmula do bônus de aptidão** em `Ability.GetBonus()`:
 
 ```go
 func (a *Ability) GetBonus() float64 {
@@ -222,7 +222,7 @@ func (pa *PrimaryAttribute) GetPower() int {
 ```
 
 Isso cria um **loop de feedback positivo**: treinar perícias → abilities sobem de
-nível → mais character points → bônus de habilidade maior → Power dos atributos
+nível → mais character points → bônus de aptidão maior → Power dos atributos
 cresce → perícias ficam mais fortes nos testes.
 
 ### EndCascadeUpgrade vs CascadeUpgrade

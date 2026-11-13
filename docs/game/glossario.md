@@ -123,32 +123,13 @@
 
 | PT-BR | EN | Fórmula Base |
 |---|---|---|
-| Vida | Health Points (HP) | 20 + (nívVitalidade + valorResistência) × bônusAptidãoFísica |
-| Estamina | Stamina Points (SP) | 10 × (nívEnergia + valorResistência) × bônusAptidãoFísica |
-| Aura | Aura Points (AP) | 10 × (nívMOP + nívNenDaConsciência) × bônusAptidãoEspiritual |
+| Vida | Health Points (HP) | 20 + (nível da Vitalidade + valor da Resistência) × bônus da Aptidão Física |
+| Estamina | Stamina Points (SP) | 10 × (nível da Energia + valor da Resistência) × bônus da Aptidão Física |
+| Aura | Aura Points (AP) | 10 × (nível do MOP + nível do Nen da Consciência) × bônus da Aptidão Espiritual |
 
 ## Armas (Weapons)
 
-| PT-BR | EN | Tipo |
-|---|---|---|
-| Adaga | Dagger | Corpo a corpo |
-| Espada | Sword | Corpo a corpo |
-| Espada Longa | Longsword | Corpo a corpo |
-| Katana | Katana | Corpo a corpo |
-| Cimitarra | Scimitar | Corpo a corpo |
-| Rapieira | Rapier | Corpo a corpo |
-| Lança | Spear | Corpo a corpo |
-| Alabarda | Halberd | Corpo a corpo |
-| Machado | Axe | Corpo a corpo |
-| Martelo | Hammer | Corpo a corpo |
-| Martelo de Guerra | Warhammer | Corpo a corpo |
-| Cajado | Staff | Corpo a corpo |
-| Chicote | Whip | Corpo a corpo |
-| Foice | Scythe | Corpo a corpo |
-| Arco | Bow | À distância |
-| Arco Longo | Longbow | À distância |
-| Besta | Crossbow | À distância |
-| Punho | Fist | Corpo a corpo |
+Os nomes em português e na ficha, com o dano de cada arma, estão em [Proficiências → Lista de Armas](./ficha-de-personagem/proficiencias.md#lista-de-armas).
 
 ## Classes de Personagem (Character Classes)
 

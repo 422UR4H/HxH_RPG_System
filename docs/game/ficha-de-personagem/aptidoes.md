@@ -27,7 +27,7 @@ Cada nível que **qualquer** aptidão ganha soma 1 ponto de personagem. Ou seja:
 
 ### Por que não usar o nível do personagem?
 
-O **nível do personagem** vem de toda a experiência que ele já ganhou (veja [Experiência](./experiencia.md)). Já os pontos de personagem contam níveis de aptidão, e a Aptidão Espiritual sobe de nível bem mais rápido que as outras. Por isso, despertar e treinar o Nen pesa mais na força geral do personagem do que treinar só o corpo. É de propósito: o Nen deve contar mais para a força de um personagem do que os atributos físicos.
+O **nível do personagem** vem de toda a experiência que ele já ganhou (veja [Experiência](./experiencia.md)). Já os pontos de personagem contam níveis de aptidão, e a Aptidão Espiritual sobe de nível bem mais rápido que as outras. Por isso, de propósito, despertar e treinar o Nen pesa mais na força geral do personagem do que treinar só o corpo.
 
 ### Pontos para distribuir
 

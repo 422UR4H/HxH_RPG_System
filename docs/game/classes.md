@@ -8,7 +8,7 @@ A classe é aquilo a que o personagem dedicou anos da própria vida para se torn
 - Experiência (XP) inicial em perícias específicas
 - Experiência inicial em proficiências de armas
 - Experiência inicial em atributos
-- Proficiências Conjuntas exclusivas
+- [Proficiências Conjuntas](./ficha-de-personagem/proficiencias.md#proficiencia-conjunta) exclusivas
 - Armas que você pode escolher para receber experiência extra
 - Categorias Nen indicadas (em breve)
 
