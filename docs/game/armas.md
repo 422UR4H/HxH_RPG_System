@@ -11,7 +11,7 @@ Toda arma possui as seguintes características:
 | Dados | Dados rolados no ataque (ex: D10 + D4) |
 | Dano Base | Bônus fixo de dano adicionado ao resultado dos dados |
 | Defesa | Bônus defensivo ao bloquear com a arma |
-| Peso | Determina penalidade e custo de Stamina |
+| Peso | Determina penalidade e custo de Energia/Stamina |
 | Altura | Tamanho da arma em metros |
 | Volume | Espaço que a arma ocupa no inventário |
 | Arma de Fogo | Indica se é uma arma à distância moderna |

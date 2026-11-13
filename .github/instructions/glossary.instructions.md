@@ -12,7 +12,7 @@ Use this glossary for consistent terminology in game documentation.
 | Experience / XP | Experiência / XP |
 | Level | Nível |
 | System X System | System X System (sigla SxS) — nunca "HxH RPG" |
-| Ability | Aptidão (Physicals → Aptidão Física, Mentals → Aptidão Mental, Spirituals → Aptidão Espiritual, Skills → Aptidão de Perícias). "Habilidade Nen" é outra coisa |
+| Ability | Aptidão (Physicals → Aptidão Física, Mentals → Aptidão Mental, Spirituals → Aptidão Espiritual, Skills → Aptidão de Perícias e Habilidades). "Habilidade Nen" é outra coisa |
 | Ability Bonus | Bônus de Aptidão |
 | Character Points | Pontos de Personagem (força geral; não são pontos para distribuir) |
 | Attribute | Atributo |

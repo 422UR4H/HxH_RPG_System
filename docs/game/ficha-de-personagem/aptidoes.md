@@ -8,7 +8,7 @@ As aptidões são as quatro grandes áreas em que um personagem evolui. Cada uma
 |---|---|---|
 | Aptidão Física | Physicals | Atributos e perícias físicas, Vida (HP) e Energia/Stamina (SP) |
 | Aptidão Mental | Mentals | Atributos mentais |
-| Aptidão Espiritual | Spirituals | Atributos espirituais, princípios Nen e Aura (AP) |
+| Aptidão Espiritual | Spirituals | Atributos e perícias espirituais, princípios Nen e Aura (AP) |
 | Aptidão de Perícias e Habilidades | Skills | O treino de todas as perícias juntas e as Habilidades do personagem (em breve) |
 
 **Vida (HP)**, **Stamina (SP)** e **Aura (AP)** são as três barras do personagem. Veja [Vida e Stamina](./status.md).
@@ -44,7 +44,7 @@ Cada aptidão tem um bônus, que mistura a força geral do personagem com o nív
 
 > *bônus de aptidão = (pontos de personagem + nível da aptidão) / 2*
 
-> **Arredondamento:** em todas as regras, quando uma fórmula dá um número quebrado, o resultado é arredondado para baixo: 3,5 vira 3. O arredondamento acontece no fim da conta; quando uma fórmula arredonda antes disso, ela avisa. A exceção é o próprio bônus de aptidão: ele guarda o meio ponto (pode valer 3,5) para entrar inteiro nas fórmulas que o usam.
+> **Arredondamento:** em todas as regras, quando uma fórmula dá um número quebrado, o resultado é arredondado para baixo: 3,5 vira 3. O arredondamento acontece no fim da conta; quando uma fórmula arredonda antes disso, ela avisa. A exceção é o próprio bônus de aptidão: ele guarda o meio ponto (pode valer 3,5) para entrar com o meio ponto nas fórmulas que o usam.
 
 Esse bônus entra no **poder dos atributos** (veja [Atributos](./atributos.md#formulas)) e no máximo de **Vida, Stamina e Aura** (veja [Vida e Stamina](./status.md)).
 

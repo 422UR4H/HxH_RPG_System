@@ -13,7 +13,7 @@ Os espirituais não são primários nem secundários, e também não recebem pon
 
 Todos os atributos evoluem com treino, como no mangá e no anime: os físicos treinam pelas suas perícias, os mentais treinam diretamente e os espirituais também podem ser treinados.
 
-**Qualquer atributo pode ser treinado individualmente, seja primário ou secundário.** A média entre dois primários só define os **pontos** de um secundário; a experiência que ele ganha treinando é só dele. A única coisa que não se pode fazer é distribuir pontos nos secundários (nem nos espirituais): os pontos para distribuir vão só para os primários físicos e mentais.
+**Qualquer atributo pode ser treinado individualmente, seja primário ou secundário.** A média entre dois primários só define os **pontos** de um secundário: a experiência e o nível dele são próprios, e o treino de um secundário ainda fortalece os seus dois primários (veja [Progressão em Cascata](./atributos.md#progressao-em-cascata)). A única coisa que não se pode fazer é distribuir pontos nos secundários (nem nos espirituais): os pontos para distribuir vão só para os primários físicos e mentais.
 
 ## Atributos Físicos
 

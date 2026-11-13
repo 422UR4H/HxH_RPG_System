@@ -19,13 +19,11 @@ Em algumas classes, parte da experiência inicial é de armas. A classe traz uma
 
 **Exemplo:** uma classe com dois lotes, de 210 e 127 XP, pede que você escolha duas armas da lista dela. Uma fica com 210 XP e a outra, com 127.
 
-Essa experiência já entra na ficha assim que você escolhe a classe. Por isso, a arma escolhida não muda os seus pontos para distribuir nem o resto da ficha: ela só decide em qual arma a experiência aparece. Só não deixe de escolher, porque a ficha só é criada quando cada lote tem a sua arma.
+Escolha uma arma para cada lote: sem isso, a ficha não pode ser criada.
 
 ## Como a Classe Aplica Experiência Inicial
 
-Você não precisa fazer conta nenhuma. Assim que você escolhe a classe, a ficha já mostra toda a experiência inicial que ela dá: nas perícias, nos atributos e nas armas, contando os lotes de armas.
-
-Escolher as armas não soma nada de novo, só diz para onde vai a experiência de armas que a classe já deu. Trocar de classe, por outro lado, troca toda a experiência inicial, e por isso pode mudar os pontos para distribuir.
+Você não precisa fazer conta nenhuma. Assim que você escolhe a classe, toda a experiência inicial dela, incluindo os lotes de armas, já conta na ficha inteira: nos níveis e nos pontos para distribuir. Escolher a arma apenas decide em qual arma cada lote aparece, e por isso não muda mais nada na ficha.
 
 ---
 

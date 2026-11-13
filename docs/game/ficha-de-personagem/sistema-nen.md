@@ -80,6 +80,8 @@ São **6 categorias**, cada uma com o seu centro no hexágono:
 
 > **Valor de Teste da Categoria** = (nível da categoria + valor de teste do Hatsu) × porcentagem ÷ 100
 
+A porcentagem entra na conta com vírgula, sem arredondar; só o valor final da categoria é arredondado.
+
 A **porcentagem** é a afinidade com a categoria, vinda do [Hexágono Nen](./sistema-nen.md#hexagono-nen).
 
 ## Hatsu

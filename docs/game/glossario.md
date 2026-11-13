@@ -9,7 +9,7 @@
 | System X System | SxS |
 | Experiência | XP |
 | Vida | HP |
-| Energia/Stamina | SP |
+| Energia/Stamina (a barra) | SP |
 | Aura | AP |
 
 ## Aptidões (Abilities)
@@ -18,7 +18,7 @@
 |---|---|---|
 | Aptidão Física | Physicals | Reúne atributos e perícias físicas, Vida e Stamina |
 | Aptidão Mental | Mentals | Reúne os atributos mentais |
-| Aptidão Espiritual | Spirituals | Reúne atributos e perícias espirituais (Nen) e Aura |
+| Aptidão Espiritual | Spirituals | Reúne atributos e perícias espirituais, princípios Nen e Aura |
 | Aptidão de Perícias e Habilidades | Skills | Reúne o treino de todas as perícias e as Habilidades (em breve) |
 
 ## Atributos Físicos (Physical Attributes)
@@ -55,7 +55,7 @@
 | PT-BR | EN | Atributo | Descrição |
 |---|---|---|---|
 | Vitalidade | Vitality | Resistência | Influencia HP, vigor geral |
-| Energia | Energy | Resistência | Influencia SP, resistência física |
+| Energia | Energy | Resistência | Perícia que influencia a barra de Stamina (SP) e a resistência física |
 | Defesa | Defense | Resistência | Capacidade de resistir a dano |
 | Empurrão | Push | Força | Empurrar objetos e oponentes |
 | Agarrar | Grab | Força | Prender oponentes |
@@ -124,7 +124,7 @@
 | PT-BR | EN | Fórmula Base |
 |---|---|---|
 | Vida | Health Points (HP) | 20 + (nível da Vitalidade + valor da Resistência) × bônus da Aptidão Física |
-| Stamina | Stamina Points (SP) | 10 × [(nível da perícia Energia + valor da Resistência) × bônus da Aptidão Física] |
+| Stamina | Stamina Points (SP) | 10 × [(nível da perícia Energia + valor da Resistência) × bônus da Aptidão Física], com os colchetes arredondados para baixo antes de multiplicar por 10 |
 | Aura | Aura Points (AP) | 10 × (nível do MOP + nível do Nen da Consciência) × bônus da Aptidão Espiritual arredondado para baixo |
 
 ## Armas (Weapons)
