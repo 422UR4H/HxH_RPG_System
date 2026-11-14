@@ -144,7 +144,8 @@ mappings:
     dev_docs:
       - path: docs/dev/api/rules.md
         confidence: directly_affected
-    notes: GET /rules/character-sheet (público, Cache-Control 5 min)
+    notes: >-
+      GET /rules/character-sheet e GET /rules/weapons (públicos, Cache-Control 5 min)
 
   - code_path: docs/game
     dev_docs:
@@ -198,10 +199,14 @@ mappings:
     dev_docs:
       - path: docs/dev/weapons-dice.md
         confidence: directly_affected
+      - path: docs/dev/api/rules.md
+        confidence: directly_affected
     game_docs:
       - path: docs/game/armas.md
         confidence: directly_affected
-    notes: Weapon stats, damage calculations, weight
+    notes: >-
+      Weapon stats, damage calculations, weight. A tabela de armas é servida por
+      GET /rules/weapons: mudar dados ou nomes muda essa resposta.
 
   # ─── Match: Core ───
   - code_path: internal/domain/match/entity/
