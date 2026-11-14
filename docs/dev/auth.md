@@ -69,7 +69,7 @@ O login autentica o usuário e estabelece uma sessão dual (memória + banco).
    └─ Se ErrEmailNotFound → retorna ErrUnauthorized (não revela se email existe)
 3. Comparar senha: bcrypt.CompareHashAndPassword(hash, plaintext)
    └─ Se erro → retorna ErrUnauthorized (mesmo erro para email/senha incorretos)
-4. Gerar JWT: auth.GenerateToken(userUUID)
+4. Gerar JWT: auth.GenerateToken(userUUID) — vale `auth.TokenTTL` (7 dias; era 24 h até 2026-11-13)
 5. Armazenar sessão em memória: sessions.Store(userUUID, token)
 6. Persistir sessão no banco: sessionRepo.CreateSession(userUUID, token)
    └─ Se falha → log de erro via fmt.Println (não bloqueia o login!)
