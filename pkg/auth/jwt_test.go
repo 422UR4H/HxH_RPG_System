@@ -52,8 +52,8 @@ func TestValidateToken_Success(t *testing.T) {
 	}
 
 	expiresIn := time.Until(claims.ExpiresAt.Time)
-	if expiresIn < 23*time.Hour || expiresIn > 25*time.Hour {
-		t.Errorf("expected expiration ~24h from now, got %v", expiresIn)
+	if expiresIn < 7*24*time.Hour-time.Hour || expiresIn > 7*24*time.Hour+time.Hour {
+		t.Errorf("expected expiration ~7 days from now, got %v", expiresIn)
 	}
 }
 

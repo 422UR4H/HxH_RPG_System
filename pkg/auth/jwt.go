@@ -26,13 +26,17 @@ func jwtKey() []byte {
 	return []byte(devSecret)
 }
 
+// TokenTTL é quanto um login vale. Uma semana: com 24 h o mestre e os jogadores
+// relogavam quase todo dia de sessão (pedido do dono do produto, 2026-11-13).
+const TokenTTL = 7 * 24 * time.Hour
+
 type Claims struct {
 	UserID uuid.UUID `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
 func GenerateToken(userID uuid.UUID) (string, error) {
-	expirationTime := time.Now().Add(24 * time.Hour)
+	expirationTime := time.Now().Add(TokenTTL)
 	claims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
