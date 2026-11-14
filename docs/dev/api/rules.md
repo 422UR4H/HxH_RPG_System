@@ -1,7 +1,7 @@
 # Rules API
 
 > Corpo em **camelCase**. Rota registrada em `internal/app/api/rules/routes.go`;
-> handler em `internal/app/api/rules/get_sheet_rules.go`. Os capítulos vêm de
+> handlers em `internal/app/api/rules/get_sheet_rules.go` e `get_weapons.go`. Os capítulos vêm de
 > `docs/game/` (embutidos no binário por `docs/embed.go`) e são carregados **uma
 > vez no boot** por `internal/application/rules` (`SheetChapterSources`).
 
@@ -91,4 +91,51 @@ A **ordem do array é significativa** (é a ordem de exibição). Hoje:
 
 ```bash
 curl -s localhost:5000/rules/character-sheet | jq '.chapters | map(.slug)'
+```
+
+## GET /rules/weapons — Catálogo de armas
+
+Devolve o catálogo de armas **do sistema**: dados e dano fixo de cada arma, para o front
+mostrar o dano na ficha. Conteúdo estático: só muda com um novo deploy. Para a lista de
+armas **de um personagem** (com nível de proficiência), use
+`GET /charactersheets/{uuid}/combat-catalogue`; esta aqui é a do sistema.
+
+**Auth:** nenhuma (rota pública). Sem body de request nem parâmetros.
+
+### Response 200
+
+Header: `Cache-Control: public, max-age=300`.
+
+```json
+{
+  "weapons": [
+    { "name": "Katana", "dice": [4, 12], "flatDamage": 7 },
+    { "name": "Fist", "dice": [6, 6, 4], "flatDamage": 0 },
+    { "name": "Bomb", "dice": [12, 12, 12], "flatDamage": 0 }
+  ]
+}
+```
+
+(Trecho: a resposta real traz todas as armas, na ordem de `enum.GetAllWeaponNames()`.)
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `name` | string | Nome da arma, igual ao do enum (`Katana`, `Fist`...) |
+| `dice` | int[] | Faces de cada dado de dano, **na ordem do catálogo** |
+| `flatDamage` | int | Dano fixo somado à rolagem (`+N`) |
+
+O servidor não ordena `dice`: quem exibe formata. Convenção do front (`2 D12 +3`): maior
+dado primeiro, dados iguais agrupados, `+N` = `flatDamage` (omitido quando 0).
+
+### Respostas
+
+| Status | Situação |
+|---|---|
+| 200 | Catálogo devolvido |
+| 500 | Falha interna (a tabela é montada no boot, então na prática não ocorre) |
+
+### Exemplo
+
+```bash
+curl -s localhost:5000/rules/weapons | jq '.weapons[] | select(.name == "Katana")'
 ```
