@@ -2,7 +2,6 @@ package rules
 
 import (
 	"context"
-	"slices"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/item"
@@ -39,18 +38,24 @@ func GetWeaponsHandler(
 		}
 		flat, _ := catalogue.GetDamage(name)
 		weapons = append(weapons, WeaponResponse{
-			Name: string(name), Dice: slices.Clone(dice), FlatDamage: flat,
+			Name: string(name), Dice: cloneDice(dice), FlatDamage: flat,
 		})
 	}
 	return func(_ context.Context, _ *struct{}) (*GetWeaponsResponse, error) {
 		// Cópia por resposta: quem recebe pode mexer em Dice sem afetar a próxima.
 		out := make([]WeaponResponse, len(weapons))
 		for i, w := range weapons {
-			out[i] = WeaponResponse{Name: w.Name, Dice: slices.Clone(w.Dice), FlatDamage: w.FlatDamage}
+			out[i] = WeaponResponse{Name: w.Name, Dice: cloneDice(w.Dice), FlatDamage: w.FlatDamage}
 		}
 		return &GetWeaponsResponse{
 			CacheControl: "public, max-age=300",
 			Body:         GetWeaponsBody{Weapons: out},
 		}, nil
 	}
+}
+
+// cloneDice copia a lista e nunca devolve nil: o contrato diz que dice é um array, então uma
+// arma sem dados sai como [] e não como null.
+func cloneDice(dice []int) []int {
+	return append([]int{}, dice...)
 }

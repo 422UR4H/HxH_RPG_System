@@ -121,7 +121,7 @@ Header: `Cache-Control: public, max-age=300`.
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `name` | string | Nome da arma, igual ao do enum (`Katana`, `Fist`...) |
-| `dice` | int[] | Faces de cada dado de dano, **na ordem do catálogo** |
+| `dice` | int[] | Faces de cada dado de dano, **na ordem do catálogo**. Nunca `null`: arma sem dados vem com lista vazia |
 | `flatDamage` | int | Dano fixo somado à rolagem (`+N`) |
 
 O servidor não ordena `dice`: quem exibe formata. Convenção do front (`2 D12 +3`): maior

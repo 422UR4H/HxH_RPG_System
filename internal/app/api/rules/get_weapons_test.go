@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	rulesHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/rules"
@@ -107,6 +108,30 @@ func TestGetWeaponsHandler(t *testing.T) {
 		body, _ := getWeapons(t, partial)
 		if len(body.Weapons) != 1 || body.Weapons[0].Name != "Katana" {
 			t.Errorf("weapons = %+v, want only Katana", body.Weapons)
+		}
+	})
+
+	t.Run("a weapon without dice serializes dice as [] and never null", func(t *testing.T) {
+		bare := item.NewWeaponsManager(map[enum.WeaponName]item.Weapon{
+			enum.Katana: *item.NewWeapon(nil, 3, 0, 1, 1.3, 14, false),
+		})
+		first, err := rulesHandler.GetWeaponsHandler(bare)(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(first.Body.Weapons) != 1 {
+			t.Fatalf("weapons = %+v, want 1", first.Body.Weapons)
+		}
+		if first.Body.Weapons[0].Dice == nil || len(first.Body.Weapons[0].Dice) != 0 {
+			t.Errorf("Dice = %#v, want non-nil empty", first.Body.Weapons[0].Dice)
+		}
+
+		_, api := humatest.New(t)
+		huma.Register(api, huma.Operation{Method: http.MethodGet, Path: "/rules/weapons"},
+			rulesHandler.GetWeaponsHandler(bare))
+		resp := api.GetCtx(context.Background(), "/rules/weapons")
+		if !strings.Contains(resp.Body.String(), `"dice":[]`) {
+			t.Errorf("body = %s, want \"dice\":[]", resp.Body.String())
 		}
 	})
 
