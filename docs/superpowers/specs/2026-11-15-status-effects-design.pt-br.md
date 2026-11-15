@@ -198,6 +198,7 @@ conjunto universo.
 │ │ └────────────────────────────────┘  │     └────────┘└───────┘└────────┘ │
 │ └─────────────────────────────────────┘                                   │
 │                                                                           │
+│ PRESENÇA: Escondido (quem não o percebeu não o vê em lugar nenhum)        │
 │ EM ESPERA: Fadiga                                                         │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
@@ -224,7 +225,7 @@ Colunas: o que faz (a frase do mestre) · como entra · como acaba.
 | **Paralisado** | Os domínios marcados não obedecem; a mente está inteira. | fonte elemental (choque, veneno) ou mestre; marca domínios (padrão: os quatro) | Recuperação com **Tenacidade** a cada round |
 | **Atônito** | A mente trava: não age, não reage, não usa habilidades. | fonte mental (a insanidade do Hisoka sobre o Kastro, pavor) | Recuperação com **Resiliência** a cada round |
 | **Atordoado** | Fora de ação: não age, não reage, não usa habilidades nem os sentidos; consciência abalada. | dano recebido: **Tenacidade** contra o **dano final** (§6.2) | Recuperação com **Tenacidade** a cada round |
-| **Inconsciente** | Tudo do Atordoado, sem consciência. | HP abaixo de 0: **Vitalidade** (§7); afogamento | recobra quando a causa cessa — HP de volta a ≥ 0, reanimação, ou o mestre [Claude] |
+| **Inconsciente** | Além de estar Atordoado, está inconsciente. | HP abaixo de 0: **Vitalidade** (§7); afogamento | recobra quando a causa cessa — HP de volta a ≥ 0, reanimação, ou o mestre [Claude] |
 | **Preso** | Não se desloca; age e reage normalmente (desvantagem a critério do mestre). | agarrão, rede, fios, escombros, gelo | ação declarada (ver abaixo) |
 
 - **Recuperação (Atordoado, Paralisado, Atônito)** [dono]: o que faltou no teste de entrada
@@ -283,7 +284,7 @@ Colunas: o que faz (a frase do mestre) · como entra · como acaba.
 
 | Status | A frase | Entra | Acaba |
 |---|---|---|---|
-| **Debilitado** (Física, Mental, Espiritual) | Desvantagem nos testes da Aptidão marcada. | mestre ou fonte | pela causa (as três saídas dos sentidos) [Claude] |
+| **Debilitado** — na mesa: **Corpo debilitado**, **Mente debilitada**, **Aura debilitada** [nomes: Claude, a pedido do dono] | Desvantagem nos testes da Aptidão marcada (Física, Mental ou Espiritual). | mestre ou fonte | pela causa (as três saídas dos sentidos) [Claude] |
 
 - Um nível só; o número é opcional (o mestre troca a desvantagem por −N, ou soma). Não existe
   "Debilitado anulado". [Claude, após "complexo demais" do dono]
@@ -365,6 +366,25 @@ Tudo [dono], perícias [Claude]:
   chega com as habilidades.
 - Confuso e Alucinando não são status: são combinações. [dono]
 
+**Presença** [dono, 2026-11-15]
+
+| Status | A frase | Entra | Acaba |
+|---|---|---|---|
+| **Escondido** | Quem não o percebeu não o vê em lugar nenhum da mesa. | **Furtividade** contra a percepção dos outros; ou o mestre | é percebido, revela-se ao agir às claras, ou o mestre |
+
+- Vale para NPC (o inimigo na moita desenhada no fundo do mapa — o sistema não precisa saber que há
+  uma moita) e para personagem de jogador.
+- Para quem **não** o vê, ele some de tudo: **peça no mapa, barras de ação e de movimento do
+  round/turno, lista de personagens, e as ações que fizer enquanto escondido** (histórico
+  escondido, com a mesma regra de §9: aparece quando for revelado).
+- **Quem vê** é uma lista, como nos outros status: **será granular** (um jogador percebe e os
+  outros não). **Nesta entrega usa o padrão dos demais:** vê o mestre e o dono do personagem; ao
+  ser revelado, todos veem. Modelar já como lista.
+- O teste de Furtividade contra a percepção (Visão, Audição… de cada observador) é disputa entre
+  personagens: vem com o spec dos testes. **Até lá o mestre esconde e revela na mão.**
+- Diferente dos outros status, a visibilidade aqui é o próprio efeito: o que se esconde é o
+  **personagem**, não só o status.
+
 ### 5.4 O que cada status deixa fazer na guarda
 
 | | Agir | Mover | Esquiva por reflexo | Evasão | Defesa | Repelir | Escapar |
@@ -420,7 +440,7 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
 | Aparar o golpe (reduzir dano; a queda) | Defesa |
 | Aguentar o que passou: atordoamento, choque, fogo, frio, veneno, clarão | Tenacidade |
 | Sangue: não começar a sangrar, estancar | Cura |
-| Ficar consciente | Vitalidade |
+| Ficar consciente (HP abaixo de 0, afogamento) | Vitalidade — o corpo; a Força de Vontade fica com a exaustão (Fadiga) e o medo [Claude; o dono perguntou, ver notas] |
 | Fôlego | Respiração |
 | A mente: pavor, nojo, choque | Resiliência |
 | Medo e conduta imposta | Resiliência ou Força de Vontade (o mestre lê a cena) |
@@ -452,7 +472,11 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
     regras das camadas acima.
 - **Morte** [dono]: é **permanente**; o **mestre pode desfazer**; a **peça fica no mapa como
   corpo**, pode ser carregada, e pode ser reanimada ou controlada por habilidade (ex.: manipulação
-  de cadáveres) — TODO Nen. **Todos veem** que ele morreu. "Morto" é um efeito de status público
+  de cadáveres) — TODO Nen. **Todos veem** que ele morreu. Aparece como o NPC morto já aparece
+  na campanha: **tag de morto e card escurecido**. (Hoje um NPC "forçado como morto" fica com o HP
+  no máximo, o que não faz sentido: o morto pela regra fica com o HP onde morreu.)
+- **O mestre sempre vê a morte antes da mesa** [dono]: dentro do turno ela aparece no cálculo, que
+  é só dele até fechar, e ele pode intervir. Fora do turno, ver §10. "Morto" é um efeito de status público
   que contém o Inconsciente e não tem saída própria. [a forma como status é de Claude]
 - Isto muda fórmulas da ficha (mínimo da barra de HP): regenerar a paridade back/front.
 
@@ -468,10 +492,11 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
 6. O mestre libera manualmente quem está bloqueado (Atordoado etc.), se quiser.
 
 **Apelidos sugeridos** [Claude, enxuto]: Visão — Cego, Ofuscado · Audição — Surdo, Zumbido · Tato
-(equilíbrio) — Tonto, Vertigem · Tato (toque) — Dormente · Debilitado físico — Enjoado, Febril,
-Fraco · mental — Abalado, Confuso · espiritual — Aura abalada, Desanimado · Paralisado — Em choque,
+(equilíbrio) — Tonto, Vertigem · Tato (toque) — Dormente · Corpo debilitado — Enjoado, Febril,
+Fraco · Mente debilitada — Abalado, Confuso · Aura debilitada — Aura abalada, Desanimado · Paralisado — Em choque,
 Travado · Atônito — Em pânico, Horrorizado · Preso — Agarrado, Enredado, Soterrado, Pendurado ·
-Compelido — Amedrontado, Enfeitiçado, Em fúria · Guarda aberta — Desprevenido, Surpreso ·
+Compelido — Amedrontado, Hipnotizado, Em fúria (sem "Enfeitiçado": não há feitiço no mundo
+hunter) · Escondido — Furtivo, Emboscado · Guarda aberta — Desprevenido, Surpreso ·
 Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado — livre ("braço quebrado").
 
 ## 9. Quem vê [dono]
@@ -480,7 +505,7 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
   - **públicos:** Caído, No ar, Preso, Queimando, Inconsciente, Atordoado, Asfixiando e Guarda
     aberta [os dois últimos: Claude];
   - **escondidos:** Envenenado, Congelando, Debilitado, sentido afetado, Lesionado, Lento,
-    Paralisado, Atônito, Compelido, Controlado, Sangrando [Congelando, Lento, Paralisado, Atônito:
+    Paralisado, Atônito, Compelido, Controlado, Sangrando, Escondido [Congelando, Lento, Paralisado, Atônito:
     Claude — o dono revisa].
 - **Escondido** = só o mestre, no NPC; **o dono do personagem e o mestre**, no PJ. O mestre pode pôr
   "só o mestre" (o efeito age sem o jogador saber — a agulha do Illumi).
@@ -500,7 +525,7 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
   partida. O HP negativo é o próprio HP da ficha.
 - Efeitos de status existem **fora da batalha e entre sessões**. **Tabela própria referenciando a
   ficha**; não engordar a ficha. Substitui a nota antiga em `character_status.go` ("não será
-  persistido"; o comentário não se apaga).
+  persistido").
 - **Sair do combate para a roleplay não muda nada:** cada status segue até a própria saída. O fim
   da batalha só remove a Guarda aberta (provisório).
 - Gravação segue a regra da casa: dentro de turno aberto nada é gravado antes do fechamento; o
@@ -519,6 +544,10 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
     sangrando, envenenado, queimando ou se afogando, o sistema **mostra ao mestre** quanto cada um
     perderia e quem morreria ou cairia inconsciente, e ele confirma, ajusta ou trata antes. Nada de
     matar alguém em silêncio num salto de dez minutos.
+  - **Mesmo com o relógio correndo segundo a segundo** [dono]: o relógio **pausa 1 ou 2 segundos
+    (rounds) antes de o personagem morrer** e mostra ao mestre uma mensagem de que ele está
+    morrendo. A mensagem tem um botão para **torná-la pública**, se o mestre quiser. Regra simples;
+    a forma exata é de quem implementar.
 - Dentro do turno disputado vale o round a round descrito em §5.3.
 
 ## 11. Onde aparece [dono]
@@ -589,6 +618,11 @@ lesionado; ponderação para estimar a própria condição; configuração com d
 automática custa caro nela — por isso poucas rolagens por round).
 
 ## 14. O que fica com quem constrói
+
+- **Comentários e TODOs** [dono]: o que esta implementação tornar **contraditório** deve ser
+  apagado ou corrigido (ex.: "não será persistido" em `character_status.go`). **Não** apagar
+  comentário ou TODO fora deste escopo — a regra "NEVER remove TODO comments" existe porque sessões
+  apagavam TODOs alheios. Logo no início, **reescrever essa regra no `AGENTS.md`** nesse sentido.
 
 - A forma técnica das peças, da tabela e da lista de visibilidade; nomes em inglês no código
   (identificadores e títulos de teste em inglês; comentários e UI em português).
