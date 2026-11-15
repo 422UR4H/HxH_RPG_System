@@ -284,7 +284,7 @@ Colunas: o que faz (a frase do mestre) · como entra · como acaba.
 
 | Status | A frase | Entra | Acaba |
 |---|---|---|---|
-| **Debilitado** — na mesa: **Corpo debilitado**, **Mente debilitada**, **Aura debilitada** [nomes: Claude, a pedido do dono] | Desvantagem nos testes da Aptidão marcada (Física, Mental ou Espiritual). | mestre ou fonte | pela causa (as três saídas dos sentidos) [Claude] |
+| **Debilitado** — na mesa: **Corpo debilitado**, **Mente debilitada**, **Espírito debilitado** [dono] | Desvantagem nos testes da Aptidão marcada (Física, Mental ou Espiritual). | mestre ou fonte | pela causa (as três saídas dos sentidos) [Claude] |
 
 - Um nível só; o número é opcional (o mestre troca a desvantagem por −N, ou soma). Não existe
   "Debilitado anulado". [Claude, após "complexo demais" do dono]
@@ -440,7 +440,7 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
 | Aparar o golpe (reduzir dano; a queda) | Defesa |
 | Aguentar o que passou: atordoamento, choque, fogo, frio, veneno, clarão | Tenacidade |
 | Sangue: não começar a sangrar, estancar | Cura |
-| Ficar consciente (HP abaixo de 0, afogamento) | Vitalidade — o corpo; a Força de Vontade fica com a exaustão (Fadiga) e o medo [Claude; o dono perguntou, ver notas] |
+| Ficar consciente (HP abaixo de 0, afogamento) | Vitalidade — o corpo; a Força de Vontade fica com a exaustão (Fadiga) e o medo. O mestre pode trocar a perícia do teste. [dono concordou] |
 | Fôlego | Respiração |
 | A mente: pavor, nojo, choque | Resiliência |
 | Medo e conduta imposta | Resiliência ou Força de Vontade (o mestre lê a cena) |
@@ -493,7 +493,7 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
 
 **Apelidos sugeridos** [Claude, enxuto]: Visão — Cego, Ofuscado · Audição — Surdo, Zumbido · Tato
 (equilíbrio) — Tonto, Vertigem · Tato (toque) — Dormente · Corpo debilitado — Enjoado, Febril,
-Fraco · Mente debilitada — Abalado, Confuso · Aura debilitada — Aura abalada, Desanimado · Paralisado — Em choque,
+Fraco · Mente debilitada — Abalado, Confuso · Espírito debilitado — Aura abalada, Desanimado · Paralisado — Em choque,
 Travado · Atônito — Em pânico, Horrorizado · Preso — Agarrado, Enredado, Soterrado, Pendurado ·
 Compelido — Amedrontado, Hipnotizado, Em fúria (sem "Enfeitiçado": não há feitiço no mundo
 hunter) · Escondido — Furtivo, Emboscado · Guarda aberta — Desprevenido, Surpreso ·
@@ -603,6 +603,11 @@ repetiria. Nos exemplos, "excedente 40" é o soco de 20 numa defesa de 60 (dono 
 **Direção preferida pelo dono (sugestão de Claude; fechar no spec dos testes):** tratar o que volta
 como um golpe no atacante — **Defesa reduz, Tenacidade decide o atordoamento** —, a mesma ordem de
 §6.2, sem repetir perícia.
+
+**Para o spec dos testes — empilhar testes** [dono, 2026-11-15]: o mestre deve poder **empilhar**
+testes na mesma pilha (corrente) de um teste, inclusive nos automáticos daqui. Não entra agora; o
+dono tem um rascunho e prefere incrementar depois de status e testes fechados. O desenho dos
+testes automáticos (§6) não deve impedir isso: cada teste é um item da pilha da action.
 
 **TODO para a migração do Nen:** efeito do Atordoado/Inconsciente na aura (a aura ainda pode
 protegê-lo); "fluxo quebrado" (técnicas ativas caem); o que continua sem o usuário é regra de cada
