@@ -114,12 +114,14 @@ que os status deste documento usam; não criar peça para o futuro.
   desvantagem.
 - **Os números somam** (−2 e −3 = −5).
 - Vale a regra que já existe: viés num teste passivo o torna rolado.
-- **Como cada nível rola — EM ABERTO, o dono escolhe** (ver a tabela abaixo; o padrão do sistema é
-  2 D10 somados, escolhido pela estabilidade: 1% de crítico contra 5% do D20):
-  - **A. Um D10 a mais por nível:** rola 2 + N dados; na vantagem ficam os 2 melhores, na
-    desvantagem os 2 piores. (Preferência inicial do dono.)
-  - **B. Outra rolagem inteira:** rola 2 D10 duas vezes e fica com a melhor (ou a pior) soma, sem
-    misturar os dados; no nível 2, em vez de mais rolagens, rola-se **1 D20**.
+- **Como cada nível rola — um D10 a mais por nível** [dono, 2026-11-15: "é a cara desse sistema";
+  "por enquanto"]: o teste rola 2 + N dados; na vantagem ficam os **2 melhores**, na desvantagem os
+  **2 piores**. Crítico = os dois dados que ficam são 10; erro crítico = os dois são 1. Mantém a
+  estabilidade que fez o sistema preferir 2 D10 ao D20, e com vantagem dupla a chance de crítico
+  (5,2%) já alcança a do D20, sem os 5% de erro crítico — o caso do Gon roubando a plaqueta do
+  Hisoka sai daqui, sem rolagem especial.
+- Recusado: segunda rolagem inteira de 2 D10 com 1 D20 no nível 2 (linhas B e D20 da tabela, que
+  ficam como registro da comparação).
 
   | Esquema | Média | Desvio | Crítico | Erro crítico | ≥ 8 | ≥ 11 | ≥ 14 | ≥ 17 |
   |---|---|---|---|---|---|---|---|---|
@@ -443,9 +445,8 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
   - **Em qualquer teste** (acerto, esquiva, defesa, resistências): crítico → (dados + valor de
     teste) × 2; erro crítico → ÷ 2, para baixo.
   - **No acerto**, além disso: crítico **dobra o dano FINAL** — o que sai do HP, depois de todas as
-    reduções. Dano final 0 continua 0. Vale também para paredes e (futuros) objetos. [Leitura de
-    Claude: as duas coisas valem juntas no acerto crítico — o total do teste dobra e o dano final
-    dobra. Confirmar.]
+    reduções. Dano final 0 continua 0. Vale também para paredes e (futuros) objetos. No acerto crítico valem as duas coisas juntas: o total do teste
+    dobra e o dano final dobra. [dono confirmou]
   - Hoje o código só marca as flags. **A regra mora em `MatchRules`** (camada de domínio da
     partida), **nunca** na entidade `die` nem nas rolagens de dado: essas entidades não conhecem
     regras das camadas acima.
@@ -569,8 +570,10 @@ de 20 (valor 10 + dados 10): excedente 30 → recebe 10; excedente 40 → recebe
 atordoamento sobre o que recebeu, e o membro que golpeou pode ganhar status (Lesionado, dormente).
 **Erro crítico no acerto dobra o dano que volta** (10 → 20; 20 → 40); **acerto crítico o reduz à
 metade** (10 → 5; 20 → 10). O dono sugeriu Tenacidade para reduzir, notando que algum teste se
-repetiria. **Sugestão de Claude, a discutir lá:** tratar o que volta como um golpe no atacante —
-**Defesa reduz, Tenacidade decide o atordoamento** —, a mesma ordem de §6.2, sem repetir perícia.
+repetiria. Nos exemplos, "excedente 40" é o soco de 20 numa defesa de 60 (dono confirmou a leitura).
+**Direção preferida pelo dono (sugestão de Claude; fechar no spec dos testes):** tratar o que volta
+como um golpe no atacante — **Defesa reduz, Tenacidade decide o atordoamento** —, a mesma ordem de
+§6.2, sem repetir perícia.
 
 **TODO para a migração do Nen:** efeito do Atordoado/Inconsciente na aura (a aura ainda pode
 protegê-lo); "fluxo quebrado" (técnicas ativas caem); o que continua sem o usuário é regra de cada
@@ -612,10 +615,8 @@ automática custa caro nela — por isso poucas rolagens por round).
 5. Combinações automáticas limitadas às de §5.5.
 6. Lista de apelidos sugeridos (§8).
 7. Reanimar e pressionar a ferida usam **Forçar** (o novo nome do Empurrão).
-9. Penalidades (§4): vantagem e desvantagem se cancelam uma a uma; **falta você escolher o
-   esquema de rolagem** (A ou B).
+9. Penalidades (§4): vantagem e desvantagem se cancelam uma a uma.
 11. Morto como efeito de status público que contém o Inconsciente (§7).
-12. No acerto crítico valem as duas coisas: o total do teste dobra e o dano final dobra (§7).
 10. Tempo fora do round (§10): resolução em lote e aviso ao mestre antes de um salto de tempo com
    alguém perdendo HP.
 8. Nomes: Inconsciente (não Desmaiado); status de sentido se chama "Visão anulada", e "Cego" é
