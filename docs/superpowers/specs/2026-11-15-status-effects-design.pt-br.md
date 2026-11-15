@@ -57,6 +57,12 @@ As duas linhas devem ser escritas nas regras do jogo (seção de princípios em 
 - **Fadiga** — em standby; o dono volta com a ideia (§13). A Stamina continua sem efeito.
 - **Testes que o mestre pede** (em lote, individuais, corrente de testes) — brainstorm e spec
   seguintes. Este desenho precisa servir a eles.
+- **Saídas e entradas que dependem de uma ação com teste** [dono concordou, 2026-11-15]: soltar-se
+  do Preso, primeiros socorros, reanimar, apagar o fogo, levantar-se, e o teste de resistência
+  quando a fonte é o mestre (ele teria de dar a dificuldade). Vêm com o spec dos testes. **Até lá o
+  mestre tira esses status na mão** e digita o número de um Paralisado ou Atônito que aplicar. As
+  regras ficam descritas aqui (§5.3) para aquele spec implementar. Os testes **automáticos** (§6)
+  entram agora.
 - **Movimento** (salto, rolar, deslizar, distância) — o dono vai redesenhar. O que depende dele
   está marcado como provisório.
 - **Habilidades Nen e itens** — só o básico e TODOs para a migração do Nen (§13).
@@ -100,14 +106,35 @@ que os status deste documento usam; não criar peça para o futuro.
 - **As três faces do Tato rolam com o mesmo valor** (a perícia Tato); a face só decide se o status
   pesa naquele teste. [Claude]
 
-### Como as penalidades se somam [Claude — revisar]
+### Como as penalidades se somam
 
-- **Desvantagem não acumula:** uma ou cinco fontes dão uma desvantagem só.
-- **Vantagem e desvantagem se anulam:** havendo as duas (de qualquer origem, inclusive a condição
-  do mestre), o teste rola normal.
-- **Os números somam** (−2 do Debilitado e −3 de um sentido prejudicado = −5).
-- Vale a regra que já existe: viés num teste passivo o torna rolado. Logo, um status que dá
-  desvantagem na defesa ou na esquiva faz a passiva correspondente ser rolada.
+- **Vantagens e desvantagens ACUMULAM** [dono, 2026-11-15 — corrige a proposta de Claude]. Cada
+  fonte conta: Debilitado + Visão anulada = duas desvantagens.
+- **Vantagem e desvantagem se cancelam uma a uma** [Claude]: duas desvantagens e uma vantagem = uma
+  desvantagem.
+- **Os números somam** (−2 e −3 = −5).
+- Vale a regra que já existe: viés num teste passivo o torna rolado.
+- **Como cada nível rola — EM ABERTO, o dono escolhe** (ver a tabela abaixo; o padrão do sistema é
+  2 D10 somados, escolhido pela estabilidade: 1% de crítico contra 5% do D20):
+  - **A. Um D10 a mais por nível:** rola 2 + N dados; na vantagem ficam os 2 melhores, na
+    desvantagem os 2 piores. (Preferência inicial do dono.)
+  - **B. Outra rolagem inteira:** rola 2 D10 duas vezes e fica com a melhor (ou a pior) soma, sem
+    misturar os dados; no nível 2, em vez de mais rolagens, rola-se **1 D20**.
+
+  | Esquema | Média | Desvio | Crítico | Erro crítico | ≥ 8 | ≥ 11 | ≥ 14 | ≥ 17 |
+  |---|---|---|---|---|---|---|---|---|
+  | 2 D10 normal | 11,0 | 4,1 | 1,0% | 1,0% | 79% | 55% | 28% | 10% |
+  | A — vantagem 1 (3 D10) | 13,5 | 3,7 | 2,8% | 0,1% | 93% | 79% | 53% | 23% |
+  | A — vantagem 2 (4 D10) | 15,0 | 3,3 | 5,2% | 0,01% | 98% | 90% | 70% | 37% |
+  | A — vantagem 3 (5 D10) | 16,0 | 2,9 | 8,2% | ~0% | 99% | 95% | 81% | 49% |
+  | A — desvantagem 1 | 8,5 | 3,7 | 0,1% | 2,8% | 57% | 29% | 11% | 2% |
+  | A — desvantagem 2 | 7,0 | 3,3 | 0,01% | 5,2% | 40% | 15% | 4% | 0,5% |
+  | A — desvantagem 3 | 6,0 | 2,9 | ~0% | 8,2% | 28% | 8% | 1,5% | 0,1% |
+  | B — vantagem 1 (melhor de duas) | 13,3 | 3,3 | 2,0% | 0,01% | 96% | 80% | 48% | 19% |
+  | B — desvantagem 1 (pior de duas) | 8,7 | 3,3 | 0,01% | 2,0% | 62% | 30% | 8% | 1% |
+  | 1 D20 | 10,5 | 5,8 | 5,0% | 5,0% | 65% | 50% | 35% | 20% |
+
+  (Crítico = os dois dados que ficam são 10; erro crítico = os dois são 1.)
 
 ## 5. O catálogo
 
@@ -410,9 +437,22 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
   e ficou em −5 → 13). Falhou → Sangrando 1 por round. Quem já sangrava faz um teste **mais fácil**
   (quanto: do builder, parâmetro); falhou, soma 1.
 - Fora do round, a perda de HP e os testes do inconsciente correm pelo relógio da história.
-- **Crítico** (dois dados 10): (dados + valor de teste) × 2. **Erro crítico** (dois dados 1):
-  (dados + valor de teste) ÷ 2, para baixo. Hoje o código só marca as flags. A regra mora em
-  `MatchRules`, não na entidade `die`. [dono]
+- **Crítico e erro crítico** [dono]:
+  - **O que gera crítico é o teste**, nunca o dado de dano: os dois dados do teste em 10 = crítico;
+    os dois em 1 = erro crítico. Uma arma 2 D12 que tira 12 e 12 dá 24 de dano e pronto.
+  - **Em qualquer teste** (acerto, esquiva, defesa, resistências): crítico → (dados + valor de
+    teste) × 2; erro crítico → ÷ 2, para baixo.
+  - **No acerto**, além disso: crítico **dobra o dano FINAL** — o que sai do HP, depois de todas as
+    reduções. Dano final 0 continua 0. Vale também para paredes e (futuros) objetos. [Leitura de
+    Claude: as duas coisas valem juntas no acerto crítico — o total do teste dobra e o dano final
+    dobra. Confirmar.]
+  - Hoje o código só marca as flags. **A regra mora em `MatchRules`** (camada de domínio da
+    partida), **nunca** na entidade `die` nem nas rolagens de dado: essas entidades não conhecem
+    regras das camadas acima.
+- **Morte** [dono]: é **permanente**; o **mestre pode desfazer**; a **peça fica no mapa como
+  corpo**, pode ser carregada, e pode ser reanimada ou controlada por habilidade (ex.: manipulação
+  de cadáveres) — TODO Nen. **Todos veem** que ele morreu. "Morto" é um efeito de status público
+  que contém o Inconsciente e não tem saída própria. [a forma como status é de Claude]
 - Isto muda fórmulas da ficha (mínimo da barra de HP): regenerar a paridade back/front.
 
 ## 8. O mestre aplica na mão [dono]
@@ -454,6 +494,9 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
 
 ## 10. Persistência e continuidade [dono]
 
+- **Qualquer status, barra ou efeito vale para a ficha em qualquer campanha e partida** [dono]: o
+  Lesionado ganho numa campanha aparece se a ficha jogar em outra. A tabela é da ficha, não da
+  partida. O HP negativo é o próprio HP da ficha.
 - Efeitos de status existem **fora da batalha e entre sessões**. **Tabela própria referenciando a
   ficha**; não engordar a ficha. Substitui a nota antiga em `character_status.go` ("não será
   persistido"; o comentário não se apaga).
@@ -519,6 +562,16 @@ pouso (ou − o que sobrou) − Defesa; ≤ 0 não machuca. Pouso: **Acrobacia**
 altura − Defesa. **Fator de altura é parâmetro** (valor inicial 3 por metro), nunca tabela; a
 resistência receberá a parcela do Nen (saltos de 30 m sem dano).
 
+**Para o spec dos testes e colisões — dano negativo volta para o atacante** [dono, 2026-11-15;
+regra obrigatória, não implementar aqui]: se a defesa supera o dano (soco de 20 numa defesa de 50 →
+−30), o excedente **volta para quem bateu**, que o reduz com um teste. Exemplos do dono, com teste
+de 20 (valor 10 + dados 10): excedente 30 → recebe 10; excedente 40 → recebe 20. Depois, teste de
+atordoamento sobre o que recebeu, e o membro que golpeou pode ganhar status (Lesionado, dormente).
+**Erro crítico no acerto dobra o dano que volta** (10 → 20; 20 → 40); **acerto crítico o reduz à
+metade** (10 → 5; 20 → 10). O dono sugeriu Tenacidade para reduzir, notando que algum teste se
+repetiria. **Sugestão de Claude, a discutir lá:** tratar o que volta como um golpe no atacante —
+**Defesa reduz, Tenacidade decide o atordoamento** —, a mesma ordem de §6.2, sem repetir perícia.
+
 **TODO para a migração do Nen:** efeito do Atordoado/Inconsciente na aura (a aura ainda pode
 protegê-lo); "fluxo quebrado" (técnicas ativas caem); o que continua sem o usuário é regra de cada
 habilidade (materialização); Paralisado usando habilidade; Debilitado espiritual nos testes de Nen;
@@ -559,8 +612,10 @@ automática custa caro nela — por isso poucas rolagens por round).
 5. Combinações automáticas limitadas às de §5.5.
 6. Lista de apelidos sugeridos (§8).
 7. Reanimar e pressionar a ferida usam **Forçar** (o novo nome do Empurrão).
-9. Como as penalidades se somam (§4): desvantagem não acumula, anula-se com vantagem, números
-   somam.
+9. Penalidades (§4): vantagem e desvantagem se cancelam uma a uma; **falta você escolher o
+   esquema de rolagem** (A ou B).
+11. Morto como efeito de status público que contém o Inconsciente (§7).
+12. No acerto crítico valem as duas coisas: o total do teste dobra e o dano final dobra (§7).
 10. Tempo fora do round (§10): resolução em lote e aviso ao mestre antes de um salto de tempo com
    alguém perdendo HP.
 8. Nomes: Inconsciente (não Desmaiado); status de sentido se chama "Visão anulada", e "Cego" é
