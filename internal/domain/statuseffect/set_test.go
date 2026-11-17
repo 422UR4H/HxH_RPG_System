@@ -263,3 +263,29 @@ func TestRemove(t *testing.T) {
 		}
 	})
 }
+
+func TestInvalidAudienceRefused(t *testing.T) {
+	char := uuid.New()
+	bad := &statuseffect.Audience{Everyone: true, Players: []uuid.UUID{uuid.New()}}
+
+	t.Run("invalid audience refused on apply", func(t *testing.T) {
+		next, added, err := statuseffect.Apply(nil, char, statuseffect.Draft{Kind: statuseffect.KindProne, Audience: bad}, counterID(), fixedNow)
+		if !errors.Is(err, statuseffect.ErrInvalidAudience) || next != nil || added != nil {
+			t.Fatalf("err=%v next=%v added=%v", err, next, added)
+		}
+	})
+	t.Run("invalid audience refused on edit", func(t *testing.T) {
+		cur := mustApply(t, nil, char, statuseffect.Draft{Kind: statuseffect.KindProne}, counterID())
+		next, _, err := statuseffect.Edit(cur, cur[0].ID, statuseffect.Patch{SetAudience: true, Audience: bad}, fixedNow)
+		if !errors.Is(err, statuseffect.ErrInvalidAudience) || next != nil {
+			t.Fatalf("err=%v next=%v", err, next)
+		}
+	})
+	t.Run("nil audience on edit resets to default", func(t *testing.T) {
+		cur := mustApply(t, nil, char, statuseffect.Draft{Kind: statuseffect.KindProne, Audience: &statuseffect.Audience{Everyone: true}}, counterID())
+		next, _, err := statuseffect.Edit(cur, cur[0].ID, statuseffect.Patch{SetAudience: true}, fixedNow)
+		if err != nil || next[0].Audience != nil {
+			t.Fatalf("err=%v", err)
+		}
+	})
+}

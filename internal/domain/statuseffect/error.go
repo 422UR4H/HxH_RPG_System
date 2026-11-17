@@ -12,6 +12,8 @@ var (
 	ErrInvalidParams = errors.New("invalid status effect params")
 	// ErrAlreadyApplied: o personagem já tem um efeito com a mesma identidade.
 	ErrAlreadyApplied = errors.New("status effect already applied")
+	// ErrInvalidAudience: lista de quem vê malformada (todos + jogadores, repetido ou uuid nulo).
+	ErrInvalidAudience = errors.New("invalid status effect audience")
 	// ErrNotFound: nenhum efeito com esse id.
 	ErrNotFound = errors.New("status effect not found")
 )

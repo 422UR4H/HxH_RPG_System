@@ -38,6 +38,11 @@ func Apply(current []Effect, characterID uuid.UUID, d Draft, newID func() uuid.U
 	if err != nil {
 		return nil, nil, err
 	}
+	if d.Audience != nil {
+		if err := d.Audience.Validate(); err != nil {
+			return nil, nil, err
+		}
+	}
 	e := Effect{
 		ID: newID(), CharacterID: characterID,
 		Kind: d.Kind, Sense: d.Sense, Aptitude: d.Aptitude,
@@ -92,6 +97,11 @@ func Edit(current []Effect, id uuid.UUID, p Patch, now time.Time) (next []Effect
 		e.Alias = alias
 	}
 	if p.SetAudience {
+		if p.Audience != nil {
+			if err := p.Audience.Validate(); err != nil {
+				return nil, Effect{}, err
+			}
+		}
 		e.Audience = cloneAudience(p.Audience)
 	}
 	e.UpdatedAt = now
