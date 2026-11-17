@@ -25,6 +25,7 @@ import (
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
 	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
@@ -893,6 +894,74 @@ func TestPersistTurnCloseWritesTheTurnsCancelledActions(t *testing.T) {
 // TestPersistTurnCloseWritesTheBoardWithTheTurn: the board the close left, and every player's
 // fog memory, are written in the turn's own transaction — a failure anywhere in it (here, a
 // master action the database refuses) leaves the board row and the memories as they were.
+func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	countOf := func(t *testing.T, q string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, q, args...).Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+	proneOn := func(sheet uuid.UUID) statuseffect.Effect {
+		at := time.Now().UTC().Truncate(time.Microsecond)
+		return statuseffect.Effect{
+			ID: uuid.New(), CharacterID: sheet, Kind: statuseffect.KindProne,
+			AppliedAt: at, UpdatedAt: at,
+		}
+	}
+
+	t.Run("writes status effects in the turn transaction", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		e := proneOn(fx.victimSheet)
+
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusEffects: []statuseffect.Write{{Effect: e}},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM turns WHERE uuid = $1`, tn.GetID()); n != 1 {
+			t.Fatalf("turns rows = %d, want 1", n)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM character_status_effects WHERE uuid = $1`, e.ID); n != 1 {
+			t.Fatalf("status rows = %d, want 1", n)
+		}
+	})
+
+	t.Run("a failing close writes no status effect", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		good := proneOn(fx.victimSheet)
+		bad := proneOn(uuid.New()) // not a sheet: the FK refuses it
+
+		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusEffects: []statuseffect.Write{{Effect: good}, {Effect: bad}},
+		})
+		if err == nil {
+			t.Fatal("PersistTurnClose succeeded with a status effect the database refuses")
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM turns WHERE uuid = $1`, tn.GetID()); n != 0 {
+			t.Fatalf("turns rows = %d, want 0", n)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM character_status_effects`); n != 0 {
+			t.Fatalf("status rows = %d, want 0", n)
+		}
+	})
+}
+
 func TestPersistTurnCloseWritesTheBoardWithTheTurn(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.SetupTestDB(t)
