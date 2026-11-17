@@ -891,9 +891,9 @@ func TestPersistTurnCloseWritesTheTurnsCancelledActions(t *testing.T) {
 	})
 }
 
-// TestPersistTurnCloseWritesTheBoardWithTheTurn: the board the close left, and every player's
-// fog memory, are written in the turn's own transaction — a failure anywhere in it (here, a
-// master action the database refuses) leaves the board row and the memories as they were.
+// TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn: os efeitos de status que o mestre
+// mudou com o turno aberto são gravados na transação do próprio fechamento — se qualquer parte
+// falha (aqui, um efeito numa ficha que não existe), nenhum efeito nem o turno ficam.
 func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.SetupTestDB(t)
@@ -953,6 +953,9 @@ func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
 		if err == nil {
 			t.Fatal("PersistTurnClose succeeded with a status effect the database refuses")
 		}
+		if !strings.Contains(err.Error(), "PersistTurnClose status effects") {
+			t.Fatalf("error = %q, want it wrapped as PersistTurnClose status effects", err)
+		}
 		if n := countOf(t, `SELECT COUNT(*) FROM turns WHERE uuid = $1`, tn.GetID()); n != 0 {
 			t.Fatalf("turns rows = %d, want 0", n)
 		}
@@ -962,6 +965,9 @@ func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
 	})
 }
 
+// TestPersistTurnCloseWritesTheBoardWithTheTurn: the board the close left, and every player's
+// fog memory, are written in the turn's own transaction — a failure anywhere in it (here, a
+// master action the database refuses) leaves the board row and the memories as they were.
 func TestPersistTurnCloseWritesTheBoardWithTheTurn(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.SetupTestDB(t)
