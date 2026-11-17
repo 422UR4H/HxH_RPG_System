@@ -1,0 +1,463 @@
+package game
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
+	"github.com/google/uuid"
+)
+
+// errStatusPayload marca o que o fio trouxe malformado (enum desconhecido, ids vazios ou
+// repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
+// passa por aqui — é status_effect_invalid, como o domínio o diz.
+var errStatusPayload = errors.New("invalid status effect payload")
+
+func statusPayloadErr(format string, a ...any) error {
+	return fmt.Errorf("%w: %s", errStatusPayload, fmt.Sprintf(format, a...))
+}
+
+// statusEffectErrorCode traduz os erros dos três comandos para o código do fio.
+func statusEffectErrorCode(err error) string {
+	switch {
+	case errors.Is(err, errStatusPayload):
+		return "invalid_payload"
+	case errors.Is(err, statuseffect.ErrUnknownKind),
+		errors.Is(err, statuseffect.ErrInvalidParams),
+		errors.Is(err, statuseffect.ErrInvalidAudience):
+		return "status_effect_invalid"
+	case errors.Is(err, statuseffect.ErrAlreadyApplied):
+		return "status_effect_exists"
+	case errors.Is(err, statuseffect.ErrNotFound):
+		return "status_effect_not_found"
+	case errors.Is(err, matchsession.ErrCharSheetNotFound):
+		return "unknown_character"
+	case errors.Is(err, appmatch.ErrNotMatchMaster):
+		return "forbidden"
+	case errors.Is(err, matchsession.ErrMatchEnded):
+		return "match_already_ended"
+	default:
+		return "game_error"
+	}
+}
+
+// ─── fio → domínio ──────────────────────────────────────────────────────────
+
+func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error) {
+	in := statuseffect.ParamsInput{
+		Points: p.Points, HPPerRound: p.HPPerRound, Penalty: p.Penalty,
+		Disadvantage: p.Disadvantage, Conduct: p.Conduct, Irresistible: p.Irresistible,
+		ControllerID: p.ControllerID,
+	}
+	for _, s := range p.Domains {
+		d, err := statuseffect.ParseDomain(s)
+		if err != nil {
+			return in, statusPayloadErr("domains: %q", s)
+		}
+		in.Domains = append(in.Domains, d)
+	}
+	if p.Injuries != nil {
+		in.Injuries = make(map[statuseffect.Domain]statuseffect.InjuryLevel, len(p.Injuries))
+		for ds, ls := range p.Injuries {
+			d, err := statuseffect.ParseDomain(ds)
+			if err != nil {
+				return in, statusPayloadErr("injuries: %q", ds)
+			}
+			l, err := statuseffect.ParseInjuryLevel(ls)
+			if err != nil {
+				return in, statusPayloadErr("injuries.%s: %q", ds, ls)
+			}
+			in.Injuries[d] = l
+		}
+	}
+	if p.Level != "" {
+		l, err := statuseffect.ParseSenseLevel(p.Level)
+		if err != nil {
+			return in, statusPayloadErr("level: %q", p.Level)
+		}
+		in.Level = l
+	}
+	for _, s := range p.Faces {
+		f, err := statuseffect.ParseTouchFace(s)
+		if err != nil {
+			return in, statusPayloadErr("faces: %q", s)
+		}
+		in.Faces = append(in.Faces, f)
+	}
+	return in, nil
+}
+
+// audienceOf traduz a visibilidade do fio: "default" = nil (padrão do tipo).
+func audienceOf(v StatusEffectVisibilityPayload) (*statuseffect.Audience, error) {
+	if v.Mode != "players" && len(v.PlayerIDs) > 0 {
+		return nil, statusPayloadErr("playerIds só com mode players")
+	}
+	switch v.Mode {
+	case "default":
+		return nil, nil
+	case "public":
+		return &statuseffect.Audience{Everyone: true}, nil
+	case "players":
+		return &statuseffect.Audience{Players: append([]uuid.UUID{}, v.PlayerIDs...)}, nil
+	}
+	return nil, statusPayloadErr("visibility.mode: %q", v.Mode)
+}
+
+func draftOf(p ApplyStatusEffectPayload) (statuseffect.Draft, error) {
+	var d statuseffect.Draft
+	k, err := statuseffect.ParseKind(p.Kind)
+	if err != nil {
+		return d, err
+	}
+	d.Kind, d.Alias = k, p.Alias
+	if p.Sense != "" {
+		if d.Sense, err = statuseffect.ParseSense(p.Sense); err != nil {
+			return d, statusPayloadErr("sense: %q", p.Sense)
+		}
+	}
+	if p.Aptitude != "" {
+		if d.Aptitude, err = statuseffect.ParseAptitude(p.Aptitude); err != nil {
+			return d, statusPayloadErr("aptitude: %q", p.Aptitude)
+		}
+	}
+	if d.Params, err = paramsInputOf(p.Params); err != nil {
+		return d, err
+	}
+	if p.Visibility != nil {
+		if d.Audience, err = audienceOf(*p.Visibility); err != nil {
+			return d, err
+		}
+	}
+	return d, nil
+}
+
+func checkCharacterIDs(ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return statusPayloadErr("characterIds vazio")
+	}
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	for _, id := range ids {
+		if id == uuid.Nil {
+			return statusPayloadErr("characterIds com id nulo")
+		}
+		if _, dup := seen[id]; dup {
+			return statusPayloadErr("characterIds repetido")
+		}
+		seen[id] = struct{}{}
+	}
+	return nil
+}
+
+func patchOf(p EditStatusEffectPayload) (statuseffect.Patch, error) {
+	patch := statuseffect.Patch{Alias: p.Alias}
+	if p.Params != nil {
+		in, err := paramsInputOf(*p.Params)
+		if err != nil {
+			return patch, err
+		}
+		patch.Params = &in
+	}
+	if p.Visibility != nil {
+		a, err := audienceOf(*p.Visibility)
+		if err != nil {
+			return patch, err
+		}
+		patch.SetAudience, patch.Audience = true, a
+	}
+	return patch, nil
+}
+
+// ─── os três braços ─────────────────────────────────────────────────────────
+
+func (r *Room) refuseStatusEffect(client *Client, err error) {
+	client.SendMessage(NewErrorMessage(statusEffectErrorCode(err), err.Error()))
+}
+
+func (r *Room) handleApplyStatusEffect(client *Client, raw json.RawMessage) {
+	if !r.IsMaster(client.userUUID) {
+		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		return
+	}
+	var p ApplyStatusEffectPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		client.SendMessage(NewErrorMessage("invalid_payload", "invalid apply_status_effect payload"))
+		return
+	}
+	if err := checkCharacterIDs(p.CharacterIDs); err != nil {
+		r.refuseStatusEffect(client, err)
+		return
+	}
+	draft, err := draftOf(p)
+	if err != nil {
+		r.refuseStatusEffect(client, err)
+		return
+	}
+	in := appmatch.ApplyStatusEffectInput{CharacterIDs: p.CharacterIDs, Draft: draft}
+	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Apply(s, r.masterUUID, client.userUUID, in, r.now())
+	})
+}
+
+func (r *Room) handleEditStatusEffect(client *Client, raw json.RawMessage) {
+	if !r.IsMaster(client.userUUID) {
+		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		return
+	}
+	var p EditStatusEffectPayload
+	if err := json.Unmarshal(raw, &p); err != nil || p.StatusEffectID == uuid.Nil {
+		client.SendMessage(NewErrorMessage("invalid_payload", "invalid edit_status_effect payload"))
+		return
+	}
+	patch, err := patchOf(p)
+	if err != nil {
+		r.refuseStatusEffect(client, err)
+		return
+	}
+	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Edit(s, r.masterUUID, client.userUUID, p.StatusEffectID, patch, r.now())
+	})
+}
+
+func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
+	if !r.IsMaster(client.userUUID) {
+		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		return
+	}
+	var p RemoveStatusEffectPayload
+	if err := json.Unmarshal(raw, &p); err != nil || p.StatusEffectID == uuid.Nil {
+		client.SendMessage(NewErrorMessage("invalid_payload", "invalid remove_status_effect payload"))
+		return
+	}
+	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Remove(s, r.masterUUID, client.userUUID, p.StatusEffectID)
+	})
+}
+
+// runStatusEffectChange roda o caso de uso sob r.mu (a sessão não tem trava própria), segura
+// as gravações e, já sem a trava, manda a cada um a lista nova que ele vê.
+func (r *Room) runStatusEffectChange(
+	client *Client, op func(*matchsession.MatchSession) (appmatch.StatusEffectChange, error),
+) {
+	if r.deps.StatusEffectsUC == nil {
+		client.SendMessage(NewErrorMessage("game_error", "status effects are not available"))
+		return
+	}
+	r.mu.Lock()
+	session := r.session
+	if session == nil {
+		r.mu.Unlock()
+		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		return
+	}
+	change, err := op(session)
+	if err != nil {
+		r.mu.Unlock()
+		r.refuseStatusEffect(client, err)
+		return
+	}
+	r.holdStatusEffectWritesLocked(change.Writes)
+	r.mu.Unlock()
+	r.syncStatusViews(change.Characters)
+}
+
+// holdStatusEffectWritesLocked guarda as gravações de uma mudança e diz se elas devem ser
+// escritas já. STUB: nesta etapa nada é gravado nem acumulado — a Task 9 preenche o corpo
+// (com turno aberto, vão com o fechamento; fora dele, gravação imediata e cura de falhas).
+// O chamador segura r.mu.
+func (r *Room) holdStatusEffectWritesLocked(ops []statuseffect.Write) (flushNow bool) {
+	_ = ops
+	return false
+}
+
+// ─── projeção ───────────────────────────────────────────────────────────────
+
+// projectStatusEffectsLocked é a lista de efeitos de charID que pid vê. O mestre vê tudo, com
+// a lista de quem vê; os demais, só o que a lista (ou o padrão do tipo) lhes dá, e só enquanto
+// enxergam o personagem (seesCharacterLocked — o dono sempre enxerga o seu). known=false: este
+// jogador não vê o personagem agora — não se manda nada nem se guarda nada (decisão do dono 4:
+// ele fica com o último estado que viu).
+//
+// O chamador segura r.mu (leitura basta).
+func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMaster bool) (list []StatusEffectPayload, known bool) {
+	session := r.session
+	if session == nil {
+		return nil, false
+	}
+	if !isMaster && !r.seesCharacterLocked(pid, charID) {
+		return nil, false
+	}
+	owner := session.GetCharToPlayer()[charID.String()]
+	subject := statuseffect.Subject{OwnerID: owner, IsNPC: owner == r.masterUUID}
+	pcPublic := session.GetRules().PlayerStatusEffectsPublic
+	viewer := statuseffect.Viewer{UserID: pid, IsMaster: isMaster}
+	list = []StatusEffectPayload{}
+	for _, e := range session.StatusEffectsOf(charID) {
+		if !statuseffect.Listed(e, viewer, subject, pcPublic) {
+			continue
+		}
+		w := statusEffectWire(e)
+		if isMaster {
+			vis := visibilityWire(e.Audience)
+			// Público = está na lista de um jogador qualquer, que não é o dono (a visão à parte).
+			public := statuseffect.Listed(e, statuseffect.Viewer{UserID: uuid.Nil}, subject, pcPublic)
+			w.Visibility, w.Public = &vis, &public
+		}
+		list = append(list, w)
+	}
+	return list, true
+}
+
+func statusEffectWire(e statuseffect.Effect) StatusEffectPayload {
+	return StatusEffectPayload{
+		ID:        e.ID,
+		Kind:      string(e.Kind),
+		Sense:     string(e.Sense),
+		Aptitude:  string(e.Aptitude),
+		Params:    statusParamsWire(e),
+		Alias:     e.Alias,
+		AppliedAt: e.AppliedAt,
+	}
+}
+
+func visibilityWire(a *statuseffect.Audience) StatusEffectVisibilityPayload {
+	switch {
+	case a == nil:
+		return StatusEffectVisibilityPayload{Mode: "default"}
+	case a.Everyone:
+		return StatusEffectVisibilityPayload{Mode: "public"}
+	}
+	return StatusEffectVisibilityPayload{Mode: "players", PlayerIDs: append([]uuid.UUID(nil), a.Players...)}
+}
+
+// statusParamsWire põe no fio todo campo que o tipo possui, e só esses (tabela da Task 2). Um
+// sentido anulado não leva desvantagem nem penalidade.
+func statusParamsWire(e statuseffect.Effect) StatusEffectParamsPayload {
+	p := e.Params
+	intp := func(v int) *int { return &v }
+	boolp := func(v bool) *bool { return &v }
+	var out StatusEffectParamsPayload
+	switch e.Kind {
+	case statuseffect.KindParalyzed:
+		out.Domains = domainsWire(p.Domains)
+		out.Points = intp(p.Points)
+	case statuseffect.KindStupefied, statuseffect.KindStunned:
+		out.Points = intp(p.Points)
+	case statuseffect.KindInjured:
+		out.Injuries = make(map[string]string, len(p.Injuries))
+		for d, l := range p.Injuries {
+			out.Injuries[string(d)] = string(l)
+		}
+	case statuseffect.KindSlowed:
+		out.Penalty = intp(p.Penalty)
+	case statuseffect.KindSense:
+		out.Level = string(p.Level)
+		if p.Level == statuseffect.SenseImpaired {
+			out.Disadvantage = boolp(p.Disadvantage)
+			out.Penalty = intp(p.Penalty)
+		}
+		if e.Sense == statuseffect.SenseTact {
+			for _, f := range p.Faces {
+				out.Faces = append(out.Faces, string(f))
+			}
+		}
+	case statuseffect.KindWeakened:
+		out.Disadvantage = boolp(p.Disadvantage)
+		out.Penalty = intp(p.Penalty)
+	case statuseffect.KindBleeding, statuseffect.KindBurning, statuseffect.KindFreezing, statuseffect.KindPoisoned:
+		out.HPPerRound = intp(p.HPPerRound)
+	case statuseffect.KindCompelled:
+		out.Conduct = p.Conduct
+		out.Irresistible = boolp(p.Irresistible)
+	case statuseffect.KindControlled:
+		if p.ControllerID != nil {
+			id := *p.ControllerID
+			out.ControllerID = &id
+		}
+	}
+	return out
+}
+
+func domainsWire(ds []statuseffect.Domain) []string {
+	out := make([]string, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, string(d))
+	}
+	return out
+}
+
+// ─── envio ──────────────────────────────────────────────────────────────────
+
+// emptyStatusList é como uma lista vazia sai no fio; um personagem sem entrada no cache vale
+// por ela (o jogador nunca recebeu nada dele, então não há o que apagar).
+var emptyStatusList = []byte("[]")
+
+// syncStatusViews manda, a cada conectado (o mestre incluído), a lista nova de cada personagem
+// em chars — só quando ela difere da última que ele recebeu (statusViews) e só se ele vê o
+// personagem. Um status_effects_updated por (destinatário, personagem) que mudou. O chamador
+// NÃO segura r.mu: dispatchPerPlayer a toma, e a projeção de cada um a toma de novo.
+func (r *Room) syncStatusViews(chars []uuid.UUID) {
+	for _, charID := range chars {
+		r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			list, known := r.projectStatusEffectsLocked(charID, pid, isMaster)
+			if !known {
+				return nil
+			}
+			data, _ := json.Marshal(list)
+			prev := r.statusViews[pid][charID]
+			if prev == nil {
+				prev = emptyStatusList
+			}
+			if bytes.Equal(prev, data) {
+				return nil
+			}
+			r.noteStatusViewLocked(pid, charID, data)
+			msg := NewServerMessage(MsgTypeStatusEffectsUpdated, StatusEffectsUpdatedPayload{
+				CharacterID: charID, StatusEffects: list,
+			})
+			return &msg
+		})
+	}
+}
+
+// noteStatusViewLocked registra a lista que pid acabou de receber de charID. O chamador segura
+// r.mu (escrita).
+func (r *Room) noteStatusViewLocked(pid, charID uuid.UUID, data []byte) {
+	if r.statusViews == nil {
+		r.statusViews = make(map[uuid.UUID]map[uuid.UUID][]byte)
+	}
+	views := r.statusViews[pid]
+	if views == nil {
+		views = make(map[uuid.UUID][]byte)
+		r.statusViews[pid] = views
+	}
+	views[charID] = data
+}
+
+// statusEffectsForLocked monta o match_full_state.statusEffects de pid: cada personagem com
+// efeitos que ele vê agora e que tem algo visível para ele. Devolve também o cache exato do
+// que vai (statusViews[pid] é trocado por ele). O chamador segura r.mu (leitura basta).
+func (r *Room) statusEffectsForLocked(pid uuid.UUID, isMaster bool) (map[uuid.UUID][]StatusEffectPayload, map[uuid.UUID][]byte) {
+	views := make(map[uuid.UUID][]byte)
+	if r.session == nil {
+		return nil, views
+	}
+	var out map[uuid.UUID][]StatusEffectPayload
+	for _, charID := range r.session.CharactersWithStatusEffects() {
+		list, known := r.projectStatusEffectsLocked(charID, pid, isMaster)
+		if !known || len(list) == 0 {
+			continue
+		}
+		if out == nil {
+			out = make(map[uuid.UUID][]StatusEffectPayload)
+		}
+		out[charID] = list
+		views[charID], _ = json.Marshal(list)
+	}
+	return out, views
+}

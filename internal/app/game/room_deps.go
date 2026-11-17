@@ -100,6 +100,9 @@ type RoomDeps struct {
 	// partida encerrada o handler responde match_ended e fecha com 4002. nil: a sala recusa o
 	// end_match (game_error) e o handler não confere o encerramento.
 	MatchEndRepo appmatch.IMatchEndRepository
+	// StatusEffectsUC são os comandos do mestre sobre efeitos de status (apply/edit/remove).
+	// nil: a sala recusa esses comandos (game_error).
+	StatusEffectsUC appmatch.IStatusEffects
 	// Now é a fonte do tempo real do relógio; nil = time.Now. Testes injetam um relógio falso
 	// (a sala o repassa à sessão).
 	Now func() time.Time

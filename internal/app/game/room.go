@@ -198,6 +198,10 @@ type Room struct {
 	// (watch_piece_view); "" é sem observação. Protegido por mu. Vive enquanto durar a conexão
 	// do mestre: um socket novo do mestre nasce sem observação, e o front a reenvia.
 	masterViewPieceID string
+	// statusViews é, por jogador e por personagem, o JSON da última lista de efeitos de status
+	// que ele recebeu (status_effects.go): syncStatusViews só manda o que difere dela, e o
+	// match_full_state a troca pelo que entregou. Protegido por mu.
+	statusViews map[uuid.UUID]map[uuid.UUID][]byte
 
 	session *matchsession.MatchSession
 
@@ -262,6 +266,8 @@ func NewRoom(
 		done:       make(chan struct{}),
 		deps:       deps,
 		barsSeq:    uint64(time.Now().UnixMicro()),
+
+		statusViews: make(map[uuid.UUID]map[uuid.UUID][]byte),
 
 		nowFn:                deps.Now,
 		clockSeq:             uint64(time.Now().UnixMicro()),
@@ -363,6 +369,9 @@ func (r *Room) removeClient(client *Client) bool {
 	if r.IsMaster(client.userUUID) {
 		r.masterViewPieceID = ""
 	}
+	// O que esta conexão recebeu de efeitos de status morre com ela; a próxima recomeça do
+	// match_full_state.
+	delete(r.statusViews, client.userUUID)
 	// Signal shutdown via done, never by closing send: a concurrent
 	// SendMessage on a closed channel panics and kills the process.
 	client.Close()
@@ -1975,6 +1984,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 
+	case MsgTypeApplyStatusEffect:
+		r.handleApplyStatusEffect(client, incoming.Payload)
+	case MsgTypeEditStatusEffect:
+		r.handleEditStatusEffect(client, incoming.Payload)
+	case MsgTypeRemoveStatusEffect:
+		r.handleRemoveStatusEffect(client, incoming.Payload)
+
 	case MsgTypeAddNPC:
 		// Puts an NPC into the match mid-game. It lives ALONGSIDE the REST POST /npcs, it does
 		// not replace it: REST builds the roster before there is a room, this verb is for the
@@ -3317,13 +3333,34 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 // its own single RLock/RUnlock pair. There is no reason to split it into two critical
 // sections here: nothing in between needs the lock released, and ResolveTurn is a pure
 // recompute (no I/O, no sheet writes), so it is safe to run under RLock.
+//
+// The one write — statusViews[playerID], reset to exactly the statusEffects this snapshot
+// carries — happens in its own short write-locked section after the read, so the snapshot
+// itself keeps its read lock. Uma sincronização que caia entre as duas seções no máximo
+// reenvia uma lista que o cliente já tem.
 func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
+	msg, views := r.snapshotMatchFullState(playerID, isMaster)
+	if msg == nil {
+		return nil
+	}
+	r.mu.Lock()
+	if r.statusViews == nil {
+		r.statusViews = make(map[uuid.UUID]map[uuid.UUID][]byte)
+	}
+	r.statusViews[playerID] = views
+	r.mu.Unlock()
+	return msg
+}
+
+// snapshotMatchFullState is buildMatchFullState's read half, under r.mu.RLock: the message,
+// and the statusViews entry that matches the statusEffects it carries.
+func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) (*Message, map[uuid.UUID][]byte) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	session := r.session
 	if session == nil {
-		return nil
+		return nil, nil
 	}
 
 	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session, isMaster)}
@@ -3476,8 +3513,12 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		payload.OwnQueue = &own
 	}
 
+	// Os efeitos de status que este destinatário vê agora (status_effects.go).
+	var views map[uuid.UUID][]byte
+	payload.StatusEffects, views = r.statusEffectsForLocked(playerID, isMaster)
+
 	msg := NewServerMessage(MsgTypeMatchFullState, payload)
-	return &msg
+	return &msg, views
 }
 
 // newActionQueuedPayload is one pending action as the MASTER reads it: the ID pull_action

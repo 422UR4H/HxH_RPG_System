@@ -147,6 +147,14 @@ const (
 	// reconnect, and the front's hook reconnects up to five times on its own — does not sit
 	// without bars, regime, scene, open turn or pending reactions until something changes by luck.
 	MsgTypeMatchFullState MessageType = "match_full_state"
+
+	// Cliente → servidor (só o mestre): aplica, edita e remove efeitos de status.
+	MsgTypeApplyStatusEffect  MessageType = "apply_status_effect"
+	MsgTypeEditStatusEffect   MessageType = "edit_status_effect"
+	MsgTypeRemoveStatusEffect MessageType = "remove_status_effect"
+	// Servidor → cliente, projetado por destinatário: a lista INTEIRA que ele vê de um
+	// personagem (quem vê + visão).
+	MsgTypeStatusEffectsUpdated MessageType = "status_effects_updated"
 )
 
 type Message struct {
@@ -1046,6 +1054,10 @@ type MatchFullStatePayload struct {
 	// recipient has none, or no turn is open — absent and empty mean the same here, unlike
 	// OwnQueue: no reconciliation hinges on telling them apart.
 	OwnReactions []OwnReactionPayload `json:"ownReactions,omitempty"`
+	// StatusEffects são os efeitos de status que este destinatário vê, por personagem — só os
+	// personagens que ele enxerga agora e que têm algo visível para ele (a mesma projeção do
+	// status_effects_updated). Ausente quando não há nenhum.
+	StatusEffects map[uuid.UUID][]StatusEffectPayload `json:"statusEffects,omitempty"`
 }
 
 // OwnReactionPayload is one entry of MatchFullStatePayload.OwnReactions — see its doc.
@@ -1512,4 +1524,74 @@ type HiatusTurn struct {
 	TurnID      uuid.UUID `json:"turnId"`
 	ActorID     uuid.UUID `json:"actorId"`
 	ActionKind  string    `json:"actionKind"`
+}
+
+// StatusEffectParamsPayload são os parâmetros de um efeito no fio. Na entrada, ponteiro nil =
+// não informado; na saída, só os campos que o tipo possui, com os padrões já aplicados.
+type StatusEffectParamsPayload struct {
+	Domains      []string          `json:"domains,omitempty"`
+	Injuries     map[string]string `json:"injuries,omitempty"`
+	Level        string            `json:"level,omitempty"`
+	Faces        []string          `json:"faces,omitempty"`
+	Points       *int              `json:"points,omitempty"`
+	HPPerRound   *int              `json:"hpPerRound,omitempty"`
+	Penalty      *int              `json:"penalty,omitempty"`
+	Disadvantage *bool             `json:"disadvantage,omitempty"`
+	Conduct      string            `json:"conduct,omitempty"`
+	Irresistible *bool             `json:"irresistible,omitempty"`
+	ControllerID *uuid.UUID        `json:"controllerId,omitempty"`
+}
+
+// StatusEffectVisibilityPayload é a lista de quem vê um efeito. Mode: "default" (padrão do
+// tipo), "public" (todos) ou "players" (PlayerIDs; vazio = só o mestre).
+type StatusEffectVisibilityPayload struct {
+	Mode      string      `json:"mode"`
+	PlayerIDs []uuid.UUID `json:"playerIds,omitempty"`
+}
+
+// ApplyStatusEffectPayload aplica um efeito a um ou mais personagens (tudo ou nada).
+// Visibility ausente = padrão do tipo.
+type ApplyStatusEffectPayload struct {
+	CharacterIDs []uuid.UUID                    `json:"characterIds"`
+	Kind         string                         `json:"kind"`
+	Sense        string                         `json:"sense,omitempty"`
+	Aptitude     string                         `json:"aptitude,omitempty"`
+	Params       StatusEffectParamsPayload      `json:"params"`
+	Alias        string                         `json:"alias,omitempty"`
+	Visibility   *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+}
+
+// EditStatusEffectPayload edita um efeito. Params ausente = intocado, presente = substitui
+// todos; Alias ausente = intocado, "" limpa; Visibility ausente = intocada, "default" volta ao
+// padrão do tipo.
+type EditStatusEffectPayload struct {
+	StatusEffectID uuid.UUID                      `json:"statusEffectId"`
+	Params         *StatusEffectParamsPayload     `json:"params,omitempty"`
+	Alias          *string                        `json:"alias,omitempty"`
+	Visibility     *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+}
+
+type RemoveStatusEffectPayload struct {
+	StatusEffectID uuid.UUID `json:"statusEffectId"`
+}
+
+// StatusEffectPayload é um efeito como o destinatário o vê. Visibility e Public só vão ao
+// mestre; Public diz se todo jogador está na lista (a visão à parte).
+type StatusEffectPayload struct {
+	ID         uuid.UUID                      `json:"id"`
+	Kind       string                         `json:"kind"`
+	Sense      string                         `json:"sense,omitempty"`
+	Aptitude   string                         `json:"aptitude,omitempty"`
+	Params     StatusEffectParamsPayload      `json:"params"`
+	Alias      string                         `json:"alias,omitempty"`
+	AppliedAt  time.Time                      `json:"appliedAt"`
+	Visibility *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+	Public     *bool                          `json:"public,omitempty"`
+}
+
+// StatusEffectsUpdatedPayload é a lista INTEIRA que o destinatário vê do personagem; nunca
+// null (vazia = não vê mais nenhum).
+type StatusEffectsUpdatedPayload struct {
+	CharacterID   uuid.UUID             `json:"characterId"`
+	StatusEffects []StatusEffectPayload `json:"statusEffects"`
 }
