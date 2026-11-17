@@ -1,0 +1,250 @@
+package statuseffect
+
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+)
+
+const maxConductRunes = 255
+
+func invalid(field string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidParams, field)
+}
+
+// allowed declara quais campos de ParamsInput um tipo aceita.
+type allowed struct {
+	domains, injuries, level, faces, points, hp, penalty, disadvantage, conduct, irresistible, controller bool
+}
+
+// Normalize valida os parâmetros de acordo com o tipo e aplica os padrões.
+// O que não pertence ao tipo deve vir vazio.
+func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error) {
+	if _, err := ParseKind(string(k)); err != nil {
+		return Params{}, err
+	}
+	if k == KindSense {
+		if _, err := ParseSense(string(s)); err != nil {
+			return Params{}, err
+		}
+	} else if s != "" {
+		return Params{}, invalid("sense")
+	}
+	if k == KindWeakened {
+		if _, err := ParseAptitude(string(a)); err != nil {
+			return Params{}, err
+		}
+	} else if a != "" {
+		return Params{}, invalid("aptitude")
+	}
+
+	var al allowed
+	switch k {
+	case KindParalyzed:
+		al = allowed{domains: true, points: true}
+	case KindStupefied, KindStunned:
+		al = allowed{points: true}
+	case KindInjured:
+		al = allowed{injuries: true}
+	case KindSlowed:
+		al = allowed{penalty: true}
+	case KindSense:
+		al = allowed{level: true, faces: s == SenseTact, penalty: true, disadvantage: true}
+	case KindWeakened:
+		al = allowed{penalty: true, disadvantage: true}
+	case KindBleeding, KindBurning, KindFreezing, KindPoisoned:
+		al = allowed{hp: true}
+	case KindCompelled:
+		al = allowed{conduct: true, irresistible: true}
+	case KindControlled:
+		al = allowed{controller: true}
+	}
+	if err := rejectForeign(al, in); err != nil {
+		return Params{}, err
+	}
+
+	var p Params
+	switch k {
+	case KindParalyzed:
+		doms, err := normDomains(in.Domains)
+		if err != nil {
+			return Params{}, err
+		}
+		p.Domains = doms
+		pts, err := requirePositive(in.Points, "points")
+		if err != nil {
+			return Params{}, err
+		}
+		p.Points = pts
+	case KindStupefied, KindStunned:
+		pts, err := requirePositive(in.Points, "points")
+		if err != nil {
+			return Params{}, err
+		}
+		p.Points = pts
+	case KindInjured:
+		if len(in.Injuries) == 0 {
+			return Params{}, invalid("injuries")
+		}
+		p.Injuries = make(map[Domain]InjuryLevel, len(in.Injuries))
+		for d, l := range in.Injuries {
+			if _, err := ParseDomain(string(d)); err != nil {
+				return Params{}, err
+			}
+			if _, err := ParseInjuryLevel(string(l)); err != nil {
+				return Params{}, err
+			}
+			p.Injuries[d] = l
+		}
+	case KindSlowed:
+		pen, err := requirePositive(in.Penalty, "penalty")
+		if err != nil {
+			return Params{}, err
+		}
+		p.Penalty = pen
+	case KindSense:
+		if _, err := ParseSenseLevel(string(in.Level)); err != nil {
+			return Params{}, err
+		}
+		p.Level = in.Level
+		if in.Level == SenseNullified {
+			if in.Disadvantage != nil {
+				return Params{}, invalid("disadvantage")
+			}
+			if in.Penalty != nil {
+				return Params{}, invalid("penalty")
+			}
+		} else if err := disadvantageOrPenalty(&p, in); err != nil {
+			return Params{}, err
+		}
+		if s == SenseTact {
+			faces, err := normFaces(in.Faces)
+			if err != nil {
+				return Params{}, err
+			}
+			p.Faces = faces
+		}
+	case KindWeakened:
+		if err := disadvantageOrPenalty(&p, in); err != nil {
+			return Params{}, err
+		}
+	case KindBleeding, KindBurning, KindFreezing, KindPoisoned:
+		p.HPPerRound = 1
+		if in.HPPerRound != nil {
+			hp, err := requirePositive(in.HPPerRound, "hpPerRound")
+			if err != nil {
+				return Params{}, err
+			}
+			p.HPPerRound = hp
+		}
+	case KindCompelled:
+		c := strings.TrimSpace(in.Conduct)
+		if n := utf8.RuneCountInString(c); n < 1 || n > maxConductRunes {
+			return Params{}, invalid("conduct")
+		}
+		p.Conduct = c
+		p.Irresistible = in.Irresistible != nil && *in.Irresistible
+	case KindControlled:
+		if in.ControllerID != nil {
+			id := *in.ControllerID
+			p.ControllerID = &id
+		}
+	}
+	return p, nil
+}
+
+func rejectForeign(al allowed, in ParamsInput) error {
+	switch {
+	case !al.domains && len(in.Domains) > 0:
+		return invalid("domains")
+	case !al.injuries && len(in.Injuries) > 0:
+		return invalid("injuries")
+	case !al.level && in.Level != "":
+		return invalid("level")
+	case !al.faces && len(in.Faces) > 0:
+		return invalid("faces")
+	case !al.points && in.Points != nil:
+		return invalid("points")
+	case !al.hp && in.HPPerRound != nil:
+		return invalid("hpPerRound")
+	case !al.penalty && in.Penalty != nil:
+		return invalid("penalty")
+	case !al.disadvantage && in.Disadvantage != nil:
+		return invalid("disadvantage")
+	case !al.conduct && in.Conduct != "":
+		return invalid("conduct")
+	case !al.irresistible && in.Irresistible != nil:
+		return invalid("irresistible")
+	case !al.controller && in.ControllerID != nil:
+		return invalid("controllerId")
+	}
+	return nil
+}
+
+func requirePositive(v *int, field string) (int, error) {
+	if v == nil || *v < 1 {
+		return 0, invalid(field)
+	}
+	return *v, nil
+}
+
+// disadvantageOrPenalty: desvantagem (padrão true), penalidade >= 0, ao menos um dos dois.
+func disadvantageOrPenalty(p *Params, in ParamsInput) error {
+	p.Disadvantage = in.Disadvantage == nil || *in.Disadvantage
+	if in.Penalty != nil {
+		if *in.Penalty < 0 {
+			return invalid("penalty")
+		}
+		p.Penalty = *in.Penalty
+	}
+	if !p.Disadvantage && p.Penalty == 0 {
+		return invalid("disadvantage or penalty")
+	}
+	return nil
+}
+
+func normDomains(in []Domain) ([]Domain, error) {
+	if len(in) == 0 {
+		return AllDomains(), nil
+	}
+	seen := map[Domain]bool{}
+	for _, d := range in {
+		if _, err := ParseDomain(string(d)); err != nil {
+			return nil, err
+		}
+		if seen[d] {
+			return nil, invalid("domains")
+		}
+		seen[d] = true
+	}
+	out := make([]Domain, 0, len(seen))
+	for _, d := range AllDomains() {
+		if seen[d] {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func normFaces(in []TouchFace) ([]TouchFace, error) {
+	if len(in) == 0 {
+		return nil, invalid("faces")
+	}
+	seen := map[TouchFace]bool{}
+	for _, f := range in {
+		if _, err := ParseTouchFace(string(f)); err != nil {
+			return nil, err
+		}
+		if seen[f] {
+			return nil, invalid("faces")
+		}
+		seen[f] = true
+	}
+	var out []TouchFace
+	for _, f := range allFaces {
+		if seen[f] {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
