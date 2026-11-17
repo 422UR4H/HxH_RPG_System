@@ -43,6 +43,19 @@ func sameSet(got, want []se.Piece) bool {
 	return true
 }
 
+// stunnedBase lista, por extenso, o que Atordoado faz sem a recuperação.
+func stunnedBase() []se.Piece {
+	ps := []se.Piece{
+		{Kind: se.PieceDomainLocked, Domain: se.DomainAttack}, {Kind: se.PieceDomainLocked, Domain: se.DomainDefense},
+		{Kind: se.PieceDomainLocked, Domain: se.DomainMovement}, {Kind: se.PieceDomainLocked, Domain: se.DomainDodge},
+		{Kind: se.PieceNoDisplacement}, {Kind: se.PieceNoAct}, {Kind: se.PieceNoReact},
+	}
+	for _, s := range []se.Sense{se.SenseVision, se.SenseHearing, se.SenseSmell, se.SenseTact, se.SenseTaste} {
+		ps = append(ps, se.Piece{Kind: se.PieceAutoFail, Scope: se.Scope{Sense: s}})
+	}
+	return ps
+}
+
 func TestPieces_Composition(t *testing.T) {
 	ctrl := uuid.UUID{1}
 	tenacity := se.TestRef{Skill: enum.Tenacity}
@@ -74,6 +87,8 @@ func TestPieces_Composition(t *testing.T) {
 		{"paralyzed attack only has no noDisplacement", se.Effect{Kind: se.KindParalyzed, Params: se.Params{Domains: []se.Domain{se.DomainAttack}, Points: 2}}, []se.Piece{
 			{Kind: se.PieceDomainLocked, Domain: se.DomainAttack}, {Kind: se.PieceRecovery, Test: tenacity, Points: 2},
 		}},
+		{"stunned", se.Effect{Kind: se.KindStunned, Params: se.Params{Points: 5}}, append(stunnedBase(), se.Piece{Kind: se.PieceRecovery, Test: tenacity, Points: 5})},
+		{"unconscious", se.Effect{Kind: se.KindUnconscious}, stunnedBase()},
 		{"stupefied", se.Effect{Kind: se.KindStupefied, Params: se.Params{Points: 4}}, []se.Piece{
 			{Kind: se.PieceNoAct}, {Kind: se.PieceNoReact}, {Kind: se.PieceRecovery, Test: resilience, Points: 4},
 		}},
