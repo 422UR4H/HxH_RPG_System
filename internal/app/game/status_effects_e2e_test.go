@@ -1,13 +1,17 @@
 package game_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -516,4 +520,320 @@ func TestStatusEffects_Reconnect(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ─── quando a gravação acontece (Task 9) ────────────────────────────────────
+
+// fakeStatusEffectStore é o character_status_effects do teste: guarda cada Write que deu
+// certo (writes), conta toda tentativa (attempts), falha enquanto fail estiver posto e serve
+// ListBySheets a partir de effects (ou falha com listErr).
+type fakeStatusEffectStore struct {
+	mu       sync.Mutex
+	writes   [][]statuseffect.Write
+	attempts int
+	fail     error
+	effects  map[uuid.UUID][]statuseffect.Effect
+	listErr  error
+	lists    [][]uuid.UUID
+}
+
+func (s *fakeStatusEffectStore) Write(_ context.Context, ops []statuseffect.Write) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attempts++
+	if s.fail != nil {
+		return s.fail
+	}
+	s.writes = append(s.writes, append([]statuseffect.Write(nil), ops...))
+	return nil
+}
+
+func (s *fakeStatusEffectStore) ListBySheets(_ context.Context, ids []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lists = append(s.lists, append([]uuid.UUID(nil), ids...))
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	out := map[uuid.UUID][]statuseffect.Effect{}
+	for _, id := range ids {
+		if es, ok := s.effects[id]; ok {
+			out[id] = append([]statuseffect.Effect(nil), es...)
+		}
+	}
+	return out, nil
+}
+
+func (s *fakeStatusEffectStore) setFail(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fail = err
+}
+
+func (s *fakeStatusEffectStore) snapshot() (writes [][]statuseffect.Write, attempts int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]statuseffect.Write(nil), s.writes...), s.attempts
+}
+
+func (s *fakeStatusEffectStore) listCalls() [][]uuid.UUID {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]uuid.UUID(nil), s.lists...)
+}
+
+// withStatusEffectStore dá à sala o caso de uso real e store como repositório.
+func withStatusEffectStore(store *fakeStatusEffectStore) combatOpt {
+	return withRoomDeps(func(d *game.RoomDeps) {
+		d.StatusEffectsUC = appmatch.NewStatusEffectsUC()
+		d.StatusEffectRepo = store
+	})
+}
+
+// opsOn resume as gravações como "personagem:tipo" (ou "-personagem:tipo" numa remoção), em ordem.
+func opsOn(ops []statuseffect.Write) []string {
+	out := make([]string, 0, len(ops))
+	for _, op := range ops {
+		s := op.Effect.CharacterID.String() + ":" + string(op.Effect.Kind)
+		if op.Delete {
+			s = "-" + s
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func assertOps(t *testing.T, who string, got []statuseffect.Write, want ...string) {
+	t.Helper()
+	g := opsOn(got)
+	if len(g) != len(want) {
+		t.Fatalf("%s: ops = %v, want %v", who, g, want)
+	}
+	for i := range want {
+		if g[i] != want[i] {
+			t.Fatalf("%s: ops = %v, want %v", who, g, want)
+		}
+	}
+}
+
+func op(char uuid.UUID, kind string) string { return char.String() + ":" + kind }
+
+// applyProneAndWait aplica prone em char e espera o status_effects_updated do mestre — a
+// gravação fora de turno acontece antes dele, então ele serve de barreira.
+func applyProneAndWait(t *testing.T, master *websocket.Conn, mc *collector, char uuid.UUID) game.StatusEffectsUpdatedPayload {
+	t.Helper()
+	before := mc.count(game.MsgTypeStatusEffectsUpdated)
+	sendApplyStatus(t, master, map[string]any{"characterIds": []string{char.String()}, "kind": "prone"})
+	awaitStatusCount(t, "master", mc, before+1)
+	return lastStatusUpdate(t, mc)
+}
+
+// closeTurnAndWait fecha o turno aberto; o PersistTurnClose roda antes do turn_closed.
+func closeTurnAndWait(t *testing.T, master *websocket.Conn, mc *collector) {
+	t.Helper()
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !mc.await(game.MsgTypeTurnClosed, 3*time.Second) {
+		t.Fatal("the turn never closed")
+	}
+}
+
+func lastCloseStatusOps(t *testing.T, f *combatFixture) []statuseffect.Write {
+	t.Helper()
+	closes := f.roundRepo.closeData()
+	if len(closes) == 0 {
+		t.Fatal("no PersistTurnClose succeeded")
+	}
+	return closes[len(closes)-1].StatusEffects
+}
+
+func TestStatusEffects_WritesOutsideATurnAtOnce(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newCombatFixture(t, withBystander, withNPCTarget, withStatusEffectStore(store))
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	applyProneAndWait(t, master, mc, f.victimID)
+	writes, _ := store.snapshot()
+	if len(writes) != 1 {
+		t.Fatalf("store got %d write(s), want 1 — outside a turn the change is written at once", len(writes))
+	}
+	assertOps(t, "write", writes[0], op(f.victimID, "prone"))
+}
+
+func TestStatusEffects_InsideATurnWaitsForTheClose(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newCombatFixture(t, withBystander, withNPCTarget, withStatusEffectStore(store))
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+	turnID := f.openAttackTurn(t, master, player, mc)
+
+	applied := applyProneAndWait(t, master, mc, f.bystanderID)
+	applyProneAndWait(t, master, mc, f.npcID)
+	before := mc.count(game.MsgTypeStatusEffectsUpdated)
+	sendWS(t, master, string(game.MsgTypeRemoveStatusEffect), map[string]any{"statusEffectId": applied.StatusEffects[0].ID})
+	awaitStatusCount(t, "master", mc, before+1)
+	if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
+		t.Fatalf("store got %d write(s) (%d attempt(s)) with the turn open, want none", len(writes), attempts)
+	}
+
+	closeTurnAndWait(t, master, mc)
+	f.awaitPersistedTurn(t, turnID)
+	assertOps(t, "close", lastCloseStatusOps(t, f),
+		op(f.bystanderID, "prone"), op(f.npcID, "prone"), "-"+op(f.bystanderID, "prone"))
+	if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
+		t.Fatalf("store got %d write(s) (%d attempt(s)), want none — the turn's changes ride its close", len(writes), attempts)
+	}
+}
+
+func TestStatusEffects_AFailedOutOfTurnWriteIsRetriedWithTheNextOne(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newCombatFixture(t, withBystander, withNPCTarget, withStatusEffectStore(store))
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	store.setFail(errors.New("connection reset"))
+	applyProneAndWait(t, master, mc, f.victimID)
+	if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 1 {
+		t.Fatalf("writes=%d attempts=%d, want one failed attempt", len(writes), attempts)
+	}
+	store.setFail(nil)
+	applyProneAndWait(t, master, mc, f.bystanderID)
+	applyProneAndWait(t, master, mc, f.npcID)
+
+	writes, _ := store.snapshot()
+	if len(writes) != 2 {
+		t.Fatalf("store got %d write(s), want 2", len(writes))
+	}
+	assertOps(t, "retry", writes[0], op(f.victimID, "prone"), op(f.bystanderID, "prone"))
+	assertOps(t, "after the retry", writes[1], op(f.npcID, "prone"))
+}
+
+func TestStatusEffects_AFailedCloseKeepsTheTurnsStatusWritesForTheNextWrite(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newCombatFixture(t, withBystander, withNPCTarget, withStatusEffectStore(store))
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+	f.openAttackTurn(t, master, player, mc)
+	f.roundRepo.setFailPersist(errors.New("transaction rolled back"))
+
+	applyProneAndWait(t, master, mc, f.bystanderID)
+	closeTurnAndWait(t, master, mc)
+	f.roundRepo.setFailPersist(nil)
+	if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
+		t.Fatalf("store got %d write(s) (%d attempt(s)) before the next write, want none", len(writes), attempts)
+	}
+
+	applyProneAndWait(t, master, mc, f.npcID)
+	writes, _ := store.snapshot()
+	if len(writes) != 1 {
+		t.Fatalf("store got %d write(s), want 1", len(writes))
+	}
+	assertOps(t, "next write", writes[0], op(f.bystanderID, "prone"), op(f.npcID, "prone"))
+}
+
+func TestStatusEffects_UnwrittenWritesRideTheNextCloseFirst(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newCombatFixture(t, withBystander, withNPCTarget, withStatusEffectStore(store))
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	store.setFail(errors.New("connection reset"))
+	applyProneAndWait(t, master, mc, f.victimID)
+	store.setFail(nil)
+
+	turnID := f.openAttackTurn(t, master, player, mc)
+	applyProneAndWait(t, master, mc, f.bystanderID)
+	closeTurnAndWait(t, master, mc)
+	f.awaitPersistedTurn(t, turnID)
+	assertOps(t, "close", lastCloseStatusOps(t, f), op(f.victimID, "prone"), op(f.bystanderID, "prone"))
+
+	applyProneAndWait(t, master, mc, f.npcID)
+	writes, attempts := store.snapshot()
+	if len(writes) != 1 || attempts != 2 {
+		t.Fatalf("writes=%d attempts=%d, want 1 write after the failed attempt", len(writes), attempts)
+	}
+	assertOps(t, "after the close", writes[0], op(f.npcID, "prone"))
+}
+
+func TestStatusEffects_LiveNPCArrivesWithItsEffects(t *testing.T) {
+	npcID := uuid.New()
+	stored := statuseffect.Effect{
+		ID: uuid.New(), CharacterID: npcID, Kind: statuseffect.KindProne,
+		AppliedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
+	}
+
+	t.Run("its stored effects reach the master", func(t *testing.T) {
+		store := &fakeStatusEffectStore{effects: map[uuid.UUID][]statuseffect.Effect{npcID: {stored}}}
+		uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
+		f := newCombatFixture(t, withAddLiveNPC(uc), withStatusEffectStore(store))
+		master, player := f.connect(t)
+		defer master.Close() //nolint:errcheck
+		defer player.Close() //nolint:errcheck
+		mc := collectFrom(master)
+
+		sendAddNPC(t, master, npcID)
+		awaitStatusCount(t, "master", mc, 1)
+		got := lastStatusUpdate(t, mc)
+		if got.CharacterID != npcID {
+			t.Fatalf("status_effects_updated for %s, want the NPC %s", got.CharacterID, npcID)
+		}
+		assertKinds(t, "master", got.StatusEffects, "prone")
+		if got.StatusEffects[0].ID != stored.ID {
+			t.Fatalf("effect id = %s, want the stored %s", got.StatusEffects[0].ID, stored.ID)
+		}
+		calls := store.listCalls()
+		if len(calls) != 1 || len(calls[0]) != 1 || calls[0][0] != npcID {
+			t.Fatalf("ListBySheets calls = %v, want one for [%s]", calls, npcID)
+		}
+		if ids := npcAddedIDs(t, mc); len(ids) != 1 || ids[0] != npcID {
+			t.Fatalf("npc_added = %v, want [%s]", ids, npcID)
+		}
+	})
+
+	t.Run("a failed read leaves the NPC playing without statuses", func(t *testing.T) {
+		store := &fakeStatusEffectStore{listErr: errors.New("connection reset")}
+		uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
+		f := newCombatFixture(t, withAddLiveNPC(uc), withStatusEffectStore(store))
+		master, player := f.connect(t)
+		defer master.Close() //nolint:errcheck
+		defer player.Close() //nolint:errcheck
+		mc := collectFrom(master)
+		pc := collectFrom(player)
+
+		sendAddNPC(t, master, npcID)
+		if !mc.await(game.MsgTypeNPCAdded, 2*time.Second) {
+			t.Fatal("npc_added never arrived")
+		}
+		chatBarrier(t, master, mc, pc)
+		assertStatusCount(t, "master", mc, 0)
+		if codes := errorCodes(t, mc); len(codes) != 0 {
+			t.Fatalf("master got errors %v, want none — the NPC is in", codes)
+		}
+		applyProneAndWait(t, master, mc, npcID)
+	})
+}
+
+func TestStatusEffects_NoRepoNoAccumulation(t *testing.T) {
+	f := newCombatFixture(t, withBystander, withNPCTarget, withStatusEffects)
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	applyProneAndWait(t, master, mc, f.victimID)
+	turnID := f.openAttackTurn(t, master, player, mc)
+	applyProneAndWait(t, master, mc, f.bystanderID)
+	closeTurnAndWait(t, master, mc)
+	f.awaitPersistedTurn(t, turnID)
+	assertOps(t, "close", lastCloseStatusOps(t, f), op(f.bystanderID, "prone"))
 }

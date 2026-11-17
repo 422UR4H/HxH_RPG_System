@@ -296,6 +296,34 @@ func (r *Room) enrollLiveNPC(client *Client, sheetUUID uuid.UUID) bool {
 	go func() { r.broadcast <- data }()
 	if session != nil {
 		r.broadcastBars(session)
+		r.loadLiveNPCStatusEffects(session, sheetUUID)
 	}
 	return true
+}
+
+// loadLiveNPCStatusEffects lê os efeitos de status guardados na ficha de um NPC que acabou de
+// entrar na sessão viva (o InitMatchSessionUC só lê os de quem já estava na partida) e manda a
+// cada um o que ele vê. Roda depois de a sessão ter o NPC e de o npc_added estar na fila. A
+// leitura é I/O, sem r.mu; uma falha fica no log e o NPC joga sem status. A sessão pode ter
+// sido trocada enquanto a leitura corria: então nada é aplicado.
+//
+// O chamador NÃO segura r.mu.
+func (r *Room) loadLiveNPCStatusEffects(session *matchsession.MatchSession, sheetUUID uuid.UUID) {
+	if r.deps.StatusEffectRepo == nil {
+		return
+	}
+	byChar, err := r.deps.StatusEffectRepo.ListBySheets(context.Background(), []uuid.UUID{sheetUUID})
+	if err != nil {
+		log.Printf("leitura dos efeitos de status do NPC %s FALHOU na partida %s — ele joga sem status: %v",
+			sheetUUID, r.matchUUID, err)
+		return
+	}
+	r.mu.Lock()
+	if r.session != session {
+		r.mu.Unlock()
+		return
+	}
+	session.ReplaceStatusEffects(sheetUUID, byChar[sheetUUID])
+	r.mu.Unlock()
+	r.syncStatusViews([]uuid.UUID{sheetUUID})
 }

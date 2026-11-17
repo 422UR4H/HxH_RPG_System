@@ -2,9 +2,11 @@ package game
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -259,18 +261,97 @@ func (r *Room) runStatusEffectChange(
 		r.refuseStatusEffect(client, err)
 		return
 	}
-	r.holdStatusEffectWritesLocked(change.Writes)
+	flushNow := r.holdStatusEffectWritesLocked(change.Writes)
 	r.mu.Unlock()
+	// Grava antes de avisar, como as master actions: o aviso é a barreira de quem espera a
+	// gravação.
+	if flushNow {
+		r.flushStatusEffects()
+	}
 	r.syncStatusViews(change.Characters)
 }
 
 // holdStatusEffectWritesLocked guarda as gravações de uma mudança e diz se elas devem ser
-// escritas já. STUB: nesta etapa nada é gravado nem acumulado — a Task 9 preenche o corpo
-// (com turno aberto, vão com o fechamento; fora dele, gravação imediata e cura de falhas).
-// O chamador segura r.mu.
+// escritas já (regra da casa: o que acontece dentro de um turno aberto só dura com o fechamento
+// dele, spec §10).
+//
+//   - Turno aberto: vão para turnWrites.statusEffects e o persistClosedTurn as leva no
+//     PersistTurnClose, na transação do turno — com ou sem StatusEffectRepo.
+//   - Fora de turno, sem repositório: nada é gravado nem acumulado.
+//   - Fora de turno: entram no fim de unwrittenStatusEffects (atrás do que uma gravação
+//     anterior não gravou) e o chamador, já sem r.mu, chama flushStatusEffects.
+//
+// O chamador segura r.mu (escrita).
 func (r *Room) holdStatusEffectWritesLocked(ops []statuseffect.Write) (flushNow bool) {
-	_ = ops
-	return false
+	if len(ops) == 0 {
+		return false
+	}
+	if turnID := r.openTurnIDLocked(); turnID != uuid.Nil {
+		w := r.turnWritesLocked(turnID)
+		w.statusEffects = append(w.statusEffects, ops...)
+		return false
+	}
+	if r.deps.StatusEffectRepo == nil {
+		return false
+	}
+	r.unwrittenStatusEffects = append(r.unwrittenStatusEffects, ops...)
+	return true
+}
+
+// flushStatusEffects grava, fora de turno, tudo o que está em unwrittenStatusEffects, numa
+// chamada só e em ordem. persistMu é segurado da cópia até o descarte, o mesmo que o
+// persistClosedTurn faz com a sua: os dois nunca correm juntos, e cada um descarta exatamente
+// o prefixo que copiou (o que chegou depois da cópia fica para a próxima gravação). Uma falha
+// é registrada no log e as gravações continuam pendentes: vão na próxima gravação fora de
+// turno ou no próximo fechamento de turno (unwritten.go).
+//
+// O chamador NÃO segura nenhuma trava.
+func (r *Room) flushStatusEffects() {
+	if r.deps.StatusEffectRepo == nil {
+		return
+	}
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
+	r.mu.Lock()
+	pending := append([]statuseffect.Write(nil), r.unwrittenStatusEffects...)
+	r.mu.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+	if err := r.deps.StatusEffectRepo.Write(context.Background(), pending); err != nil {
+		log.Printf("gravação de efeitos de status FALHOU na partida %s — %d gravação(ões) continuam pendentes "+
+			"e vão na próxima gravação ou no próximo fechamento de turno: %v", r.matchUUID, len(pending), err)
+		return
+	}
+	r.mu.Lock()
+	r.dropWrittenStatusEffectsLocked(len(pending))
+	r.mu.Unlock()
+}
+
+// dropWrittenStatusEffectsLocked descarta as n primeiras gravações pendentes, que uma gravação
+// acabou de levar. O chamador segura persistMu e r.mu (escrita).
+func (r *Room) dropWrittenStatusEffectsLocked(n int) {
+	rest := r.unwrittenStatusEffects[n:]
+	if len(rest) == 0 {
+		r.unwrittenStatusEffects = nil
+		return
+	}
+	r.unwrittenStatusEffects = append([]statuseffect.Write(nil), rest...)
+}
+
+// keepFailedTurnStatusEffectsLocked guarda as gravações de um turno cujo fechamento falhou,
+// logo depois das n pendentes que aquele fechamento copiou e antes de qualquer uma que tenha
+// chegado depois da cópia: a ordem em que aconteceram. O chamador segura persistMu e r.mu
+// (escrita).
+func (r *Room) keepFailedTurnStatusEffectsLocked(n int, inTurn []statuseffect.Write) {
+	if len(inTurn) == 0 {
+		return
+	}
+	out := make([]statuseffect.Write, 0, len(r.unwrittenStatusEffects)+len(inTurn))
+	out = append(out, r.unwrittenStatusEffects[:n]...)
+	out = append(out, inTurn...)
+	out = append(out, r.unwrittenStatusEffects[n:]...)
+	r.unwrittenStatusEffects = out
 }
 
 // ─── projeção ───────────────────────────────────────────────────────────────
