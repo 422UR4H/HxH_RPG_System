@@ -90,6 +90,9 @@ type droppedTurn struct {
 	masterActions    int
 	cancelledActions int
 	statusEffects    int
+	// unwrittenStatusEffects são as mudanças de status de fora de turno (ou de um fechamento que
+	// falhou) que ainda esperavam uma gravação: morrem com a sala.
+	unwrittenStatusEffects int
 }
 
 // describeDroppedTurnLocked reads what is lost when the room itself goes away — its last client
@@ -100,7 +103,7 @@ type droppedTurn struct {
 // here would hand the next room an opened move whose turn does not exist. The result is only for
 // logDroppedTurn, after the unlock. The caller must hold r.mu.
 func (r *Room) describeDroppedTurnLocked() droppedTurn {
-	d := droppedTurn{turnID: r.openTurnIDLocked()}
+	d := droppedTurn{turnID: r.openTurnIDLocked(), unwrittenStatusEffects: len(r.unwrittenStatusEffects)}
 	for _, w := range r.pendingTurns {
 		d.masterActions += len(w.masterActions)
 		d.cancelledActions += len(w.cancelledActions)
@@ -111,6 +114,10 @@ func (r *Room) describeDroppedTurnLocked() droppedTurn {
 
 // logDroppedTurn says what a room that went away mid-turn did not write — never silently.
 func logDroppedTurn(matchUUID uuid.UUID, d droppedTurn) {
+	if d.unwrittenStatusEffects > 0 {
+		log.Printf("room of match %s closed with %d status effect write(s) still pending from a failed write — they were NOT persisted",
+			matchUUID, d.unwrittenStatusEffects)
+	}
 	if d.turnID == uuid.Nil && d.masterActions == 0 && d.cancelledActions == 0 && d.statusEffects == 0 {
 		return
 	}

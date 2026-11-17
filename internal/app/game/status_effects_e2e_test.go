@@ -11,6 +11,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -836,4 +837,42 @@ func TestStatusEffects_NoRepoNoAccumulation(t *testing.T) {
 	closeTurnAndWait(t, master, mc)
 	f.awaitPersistedTurn(t, turnID)
 	assertOps(t, "close", lastCloseStatusOps(t, f), op(f.bystanderID, "prone"))
+}
+
+// Uma gravação fora de turno que falhou vai na transação do fim da partida: o fim é a última
+// escrita da partida.
+func TestStatusEffects_AFailedOutOfTurnWriteRidesTheMatchEnd(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	now := &fakeNow{t: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
+	ends := &fakeMatchEndRepo{}
+	f := newCombatFixture(t, withRoomDeps(func(d *game.RoomDeps) {
+		d.StatusEffectsUC = appmatch.NewStatusEffectsUC()
+		d.StatusEffectRepo = store
+		d.ClockUC = appmatch.NewClockCommandsUC(fakeMatchGetter{storyStart: time.Date(1999, 4, 1, 0, 0, 0, 0, time.UTC)})
+		d.ClockRepo = &fakeClockRepo{}
+		d.Now = now.Now
+		d.MatchEndRepo = ends
+	}))
+	f.session.SetClock(clock.NewAt(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)))
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc := collectFrom(master)
+	if !mc.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatal("the master never got match_full_state")
+	}
+
+	store.setFail(errors.New("connection reset"))
+	applyProneAndWait(t, master, mc, f.victimID)
+
+	sendWS(t, master, string(game.MsgTypeEndMatch), map[string]any{"storyAt": "2000-01-01T05:00:00"})
+	awaitMatchEnded(t, mc)
+	ws := ends.writes()
+	if len(ws) != 1 {
+		t.Fatalf("PersistMatchEnd calls = %d, want 1", len(ws))
+	}
+	assertOps(t, "match end", ws[0].StatusEffects, op(f.victimID, "prone"))
+	if writes, _ := store.snapshot(); len(writes) != 0 {
+		t.Fatalf("store got %d write(s), want none — the pending write rides the match end", len(writes))
+	}
 }
