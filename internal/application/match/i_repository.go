@@ -56,6 +56,10 @@ type TurnCloseData struct {
 	// only now, in this same transaction, by the same rule as MasterActions. Drained from the
 	// room with them.
 	CancelledActions []cancelledaction.Record
+	// StatusEffects é o que o mestre mudou nos efeitos de status com o turno aberto, precedido
+	// do que uma gravação anterior não gravou; em ordem, nesta transação (spec §10): dura com o
+	// turno ou não dura. Esvaziado da sala junto com MasterActions.
+	StatusEffects []statuseffect.Write
 	// Board is the match's board as this close left it — the turn's move, its escapes and the
 	// master's changes inside it — and Memories every player's fog memory with it, written in
 	// this same transaction: the board on disk and the turns on disk never disagree. Board nil
