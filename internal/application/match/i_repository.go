@@ -18,6 +18,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -370,4 +371,10 @@ type IMatchEndRepository interface {
 	PersistMatchEnd(ctx context.Context, d MatchEndData) error
 	// ReadMatchEnd devolve o fim, ou (nil, nil) quando a partida não foi encerrada.
 	ReadMatchEnd(ctx context.Context, matchUUID uuid.UUID) (*MatchEndState, error)
+}
+
+// IStatusEffectReader lê os efeitos de status das fichas.
+type IStatusEffectReader interface {
+	// ListBySheets agrupa por ficha, em ordem applied_at, uuid. Nunca devolve nil.
+	ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error)
 }
