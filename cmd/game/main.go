@@ -25,6 +25,7 @@ import (
 	matchmapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchmap"
 	roundPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
 	sheetPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	pgstatuseffect "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/statuseffect"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/422UR4H/HxH_RPG_System/pkg/auth"
 	"github.com/joho/godotenv"
@@ -95,7 +96,11 @@ func main() {
 	// through the SAME AddMatchNPCUC add_npc and POST /npcs already use — on start_match and on
 	// rehydration alike, idempotently.
 	clockRepository := clockPg.NewRepository(pgPool)
-	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository, loadBoardUC, addMatchNPCUC, clockRepository)
+	// Os efeitos de status das fichas: lidos quando a sessão nasce (e quando um NPC entra ao
+	// vivo) e gravados fora de turno pela sala; com o turno aberto, vão no PersistTurnClose.
+	statusEffectRepository := pgstatuseffect.NewRepository(pgPool)
+	initSessionUC := match.NewInitMatchSessionUC(matchRepository, sheetRepository, roundRepository, loadBoardUC, addMatchNPCUC, clockRepository).
+		WithStatusEffects(statusEffectRepository)
 	// The write side (spec §4.3, "Quando persiste", B3): the board row and every player's fog
 	// memory, saved together by Room.persistBoard. playerMemoryRepository doubles as
 	// RoomDeps.MemoryLoader — its FindByMatchMap is what seeds a rehydrated/started session.
@@ -145,6 +150,8 @@ func main() {
 			CancelledActionRepo: cancelledActionRepository,
 			ClockUC:             match.NewClockCommandsUC(matchRepository),
 			ClockRepo:           clockRepository,
+			StatusEffectsUC:     match.NewStatusEffectsUC(),
+			StatusEffectRepo:    statusEffectRepository,
 		},
 	)
 	server := game.NewServer(addr, hub, handler)

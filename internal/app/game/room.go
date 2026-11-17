@@ -27,6 +27,7 @@ import (
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -194,6 +195,11 @@ type Room struct {
 	// carry (unwritten.go). Guarded by mu.
 	unwrittenSheets    map[uuid.UUID]*csSheet.CharacterSheet
 	unwrittenRoundEnds []appmatch.RoundEnd
+	// unwrittenStatusEffects são as mudanças de efeitos de status ainda não gravadas, em ordem:
+	// as de fora de turno à espera do flushStatusEffects e as que uma gravação falha deixou
+	// (unwritten.go). A próxima gravação — fora de turno ou o fechamento de um turno — leva
+	// todas na frente das suas. Protegido por mu; só é descartado com persistMu.
+	unwrittenStatusEffects []statuseffect.Write
 	// masterViewPieceID é a peça pela qual o mestre está vendo o tabuleiro
 	// (watch_piece_view); "" é sem observação. Protegido por mu. Vive enquanto durar a conexão
 	// do mestre: um socket novo do mestre nasce sem observação, e o front a reenvia.
@@ -2523,6 +2529,11 @@ func (r *Room) persistClosedTurn(
 	// Round ends an earlier command could not write: closed in this same transaction, before the
 	// round this turn belongs to (or its successor) can be born next to them still open.
 	roundEnds := r.unwrittenRoundEndsLocked()
+	// Os efeitos de status que uma gravação anterior não gravou vão na frente dos do turno, na
+	// mesma transação; persistMu (segurado acima) impede um flushStatusEffects de descartá-los
+	// no meio.
+	pendingStatus := append([]statuseffect.Write(nil), r.unwrittenStatusEffects...)
+	statusOps := append(append([]statuseffect.Write(nil), pendingStatus...), inTurn.statusEffects...)
 	// O relógio da história como este fechamento o deixou (um round que acabou junto com o
 	// turno já somou o seu segundo), copiado na mesma seção crítica das demais cópias.
 	clockSnap := r.clockSnapshotForWriteLocked(session)
@@ -2534,12 +2545,14 @@ func (r *Room) persistClosedTurn(
 		MasterActions: inTurn.masterActions, CancelledActions: inTurn.cancelledActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
 		NextRound: nextRound, UnwrittenRoundEnds: roundEnds, Clock: &clockSnap,
+		StatusEffects: statusOps,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied and the %d action(s) cancelled inside it, "+
 			"nor the HP it applied to %d sheet(s) (character_sheets keep the last close), "+
-			"nor the board it left (match_boards and player_memories keep the last close): %v",
-			t.GetID(), matchUUID, len(inTurn.masterActions), len(inTurn.cancelledActions), len(statusBars), err)
+			"nor the board it left (match_boards and player_memories keep the last close), "+
+			"nor %d status effect write(s) (kept for the next write): %v",
+			t.GetID(), matchUUID, len(inTurn.masterActions), len(inTurn.cancelledActions), len(statusBars), len(statusOps), err)
 		// The overrides, the turn's master actions and its cancellations were already drained
 		// above and are lost with the turn. That is correct, not a leak to plug:
 		// overridden_action_values.action_uuid references actions(uuid), so the override rows
@@ -2551,8 +2564,12 @@ func (r *Room) persistClosedTurn(
 		// The HP is not lost either: the sheets keep it in memory, and they are remembered as
 		// unwritten (the ones of earlier failed closes stay remembered), so the NEXT close writes
 		// them with its own, whichever character it damages (unwritten.go).
+		//
+		// Os efeitos de status do turno também não se perdem: ficam pendentes logo atrás dos que
+		// já estavam (a ordem em que aconteceram), e a próxima gravação os leva.
 		r.mu.Lock()
 		r.markSheetsUnwrittenLocked(damaged)
+		r.keepFailedTurnStatusEffectsLocked(len(pendingStatus), inTurn.statusEffects)
 		r.mu.Unlock()
 		// The round's end is salvaged at once. The round DID end at the table, and leaving
 		// its row open while the successor is not one would have the successor's first write (a
@@ -2575,6 +2592,7 @@ func (r *Room) persistClosedTurn(
 	r.mu.Lock()
 	r.forgetSheetsWrittenLocked(sheets)
 	r.forgetRoundEndsWrittenLocked(roundEnds)
+	r.dropWrittenStatusEffectsLocked(len(pendingStatus))
 	markRoundPersistedIfActiveLocked(session, written.GetID())
 	r.mu.Unlock()
 }
@@ -3278,33 +3296,41 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 // sections here: nothing in between needs the lock released, and ResolveTurn is a pure
 // recompute (no I/O, no sheet writes), so it is safe to run under RLock.
 //
-// The one write — statusViews[playerID], reset to exactly the statusEffects this snapshot
-// carries — happens in its own short write-locked section after the read, so the snapshot
-// itself keeps its read lock. Uma sincronização que caia entre as duas seções no máximo
-// reenvia uma lista que o cliente já tem.
+// Os efeitos de status ficam de fora dessa leitura: a projeção deles e a troca de
+// statusViews[playerID] pelo exato que esta mensagem leva acontecem juntas, numa seção curta
+// com a trava de escrita, logo depois do retrato. Assim o cache é sempre a lista que esta
+// mensagem carrega: um syncStatusViews que rode antes da seção já mudou a sessão que ela lê, e
+// um que rode depois compara com o que esta mensagem leva e só manda uma diferença de verdade.
+// O que continua sem garantia é a ordem entre as duas faixas de envio: o
+// status_effects_updated sai pela faixa direta, este match_full_state pela do Run — um sync
+// montado depois da seção pode chegar ao cliente antes desta mensagem, e então a lista mais
+// velha do match_full_state fica na tela até a próxima mudança.
 func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
-	msg, views := r.snapshotMatchFullState(playerID, isMaster)
-	if msg == nil {
+	payload := r.snapshotMatchFullState(playerID, isMaster)
+	if payload == nil {
 		return nil
 	}
 	r.mu.Lock()
+	var views map[uuid.UUID][]byte
+	payload.StatusEffects, views = r.statusEffectsForLocked(playerID, isMaster)
 	if r.statusViews == nil {
 		r.statusViews = make(map[uuid.UUID]map[uuid.UUID][]byte)
 	}
 	r.statusViews[playerID] = views
 	r.mu.Unlock()
-	return msg
+	msg := NewServerMessage(MsgTypeMatchFullState, *payload)
+	return &msg
 }
 
-// snapshotMatchFullState is buildMatchFullState's read half, under r.mu.RLock: the message,
-// and the statusViews entry that matches the statusEffects it carries.
-func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) (*Message, map[uuid.UUID][]byte) {
+// snapshotMatchFullState is buildMatchFullState's read half, under r.mu.RLock: everything in
+// the payload but the status effects, which buildMatchFullState adds with the cache reset.
+func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchFullStatePayload {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	session := r.session
 	if session == nil {
-		return nil, nil
+		return nil
 	}
 
 	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session, isMaster)}
@@ -3457,12 +3483,7 @@ func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) (*Messa
 		payload.OwnQueue = &own
 	}
 
-	// Os efeitos de status que este destinatário vê agora (status_effects.go).
-	var views map[uuid.UUID][]byte
-	payload.StatusEffects, views = r.statusEffectsForLocked(playerID, isMaster)
-
-	msg := NewServerMessage(MsgTypeMatchFullState, payload)
-	return &msg, views
+	return &payload
 }
 
 // newActionQueuedPayload is one pending action as the MASTER reads it: the ID pull_action
