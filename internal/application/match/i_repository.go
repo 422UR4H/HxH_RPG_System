@@ -360,6 +360,9 @@ type MatchEndData struct {
 	// StatusBars são as fichas cujo HP um fechamento de turno não conseguiu gravar (unwritten.go):
 	// o fim é a última escrita da partida, então elas vão nesta transação ou se perdem.
 	StatusBars []SheetStatusBars
+	// StatusEffects são as mudanças de efeitos de status que uma gravação anterior (fora de turno
+	// ou um fechamento de turno) não gravou, em ordem: pelo mesmo motivo, vão nesta transação.
+	StatusEffects []statuseffect.Write
 }
 
 // MatchEndState é o fim de uma partida encerrada, lido do banco (reconexão a uma partida

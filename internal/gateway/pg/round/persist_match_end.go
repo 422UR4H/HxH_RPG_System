@@ -10,6 +10,7 @@ import (
 	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	pgmatchevent "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchevent"
 	pgsheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	pgstatuseffect "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/statuseffect"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -25,7 +26,8 @@ func naiveStory(t time.Time) time.Time {
 
 // PersistMatchEnd grava o fim da partida numa transação (spec 2026-11-08 §5): fins de round ainda
 // não gravados e o par ativo, fechados; o relógio parado no instante final; o clockRealTime da
-// pausa; as barras das fichas que um fechamento não gravou; matches.game_end_at/story_end_at/brief_final_description (recusa partida já encerrada);
+// pausa; as barras das fichas que um fechamento não gravou; as mudanças de efeitos de status
+// ainda não gravadas; matches.game_end_at/story_end_at/brief_final_description (recusa partida já encerrada);
 // campaigns.story_current_at e o story_current_at de toda ficha participante avançam ao
 // instante final (a data, nas fichas), sem nunca regredir.
 //
@@ -90,6 +92,13 @@ func (r *Repository) PersistMatchEnd(ctx context.Context, d appmatch.MatchEndDat
 			if err := sheets.UpdateStatusBars(ctx, sb.CharacterID.String(), sb.Health, sb.Stamina, sb.Aura); err != nil {
 				return fmt.Errorf("PersistMatchEnd status bars of %s: %w", sb.CharacterID, err)
 			}
+		}
+	}
+
+	// As mudanças de efeitos de status que uma gravação anterior não gravou, pelo mesmo motivo.
+	if len(d.StatusEffects) > 0 {
+		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects); err != nil {
+			return fmt.Errorf("PersistMatchEnd status effects: %w", err)
 		}
 	}
 
