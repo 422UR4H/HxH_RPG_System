@@ -21,7 +21,10 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 
 ## Code Conventions
 
-- **NEVER remove TODO comments** — intentional markers by the owner
+- **Comments and TODOs are the owner's markers.** Never delete one outside the scope of your task —
+  sessions used to wipe other people's TODOs. What your change makes contradictory (a comment that
+  now describes the code wrongly) must be corrected or removed in the same change, saying why in
+  the commit.
 - Go idiomatic: implicit interfaces, short var names, error wrapping `%w`
 - **User vs Player vs Master:** `User` = generic auth entity. Use `Player`/`Master` for role-specific contexts.
 - **Domain Services:** stateless structs in `domain/match/service/` — receive entities, apply RPG rules, return results. No I/O, no state.
