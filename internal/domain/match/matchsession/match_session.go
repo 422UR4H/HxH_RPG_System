@@ -22,6 +22,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -92,6 +93,9 @@ type MatchSession struct {
 	clock *clock.Clock
 	// now é a fonte do tempo real do relógio; time.Now em produção, injetável nos testes.
 	now func() time.Time
+	// statusEffects são os efeitos de status por ficha (a mesma chave de charSheets), em ordem.
+	// Mexido sempre sob o r.mu de quem chama; ver status_effects.go.
+	statusEffects map[uuid.UUID][]statuseffect.Effect
 }
 
 // defaultStoryStart é o horário da história com que as sessões nascem nos construtores.
@@ -107,24 +111,25 @@ func NewMatchSession(
 ) *MatchSession {
 	pMap, charToPlayer, statuses := indexParticipants(participants)
 	return &MatchSession{
-		matchUUID:    matchUUID,
-		activeScene:  scene.NewScene(enum.Roleplay, ""),
-		activeRound:  round.NewRound(enum.Free),
-		activeQueue:  action.NewActionPriorityQueue(nil),
-		charSheets:   charSheets,
-		statuses:     statuses,
-		participants: pMap,
-		roundOrch:    service.RoundOrchestrator{},
-		scheduler:    service.RoundScheduler{},
-		rules:        match.NewDefaultMatchRules(),
-		weapons:      item.NewWeaponsManagerFactory().Build(),
-		turnResolver: service.TurnResolver{},
-		charToPlayer: charToPlayer,
-		memories:     make(map[uuid.UUID]*fog.PlayerMemory),
-		visCache:     make(map[uuid.UUID][]service.VisibilityPolygon),
-		swapMarks:    make(map[uuid.UUID]uuid.UUID),
-		clock:        clock.NewAt(defaultStoryStart),
-		now:          time.Now,
+		matchUUID:     matchUUID,
+		activeScene:   scene.NewScene(enum.Roleplay, ""),
+		activeRound:   round.NewRound(enum.Free),
+		activeQueue:   action.NewActionPriorityQueue(nil),
+		charSheets:    charSheets,
+		statuses:      statuses,
+		participants:  pMap,
+		roundOrch:     service.RoundOrchestrator{},
+		scheduler:     service.RoundScheduler{},
+		rules:         match.NewDefaultMatchRules(),
+		weapons:       item.NewWeaponsManagerFactory().Build(),
+		turnResolver:  service.TurnResolver{},
+		charToPlayer:  charToPlayer,
+		memories:      make(map[uuid.UUID]*fog.PlayerMemory),
+		visCache:      make(map[uuid.UUID][]service.VisibilityPolygon),
+		swapMarks:     make(map[uuid.UUID]uuid.UUID),
+		clock:         clock.NewAt(defaultStoryStart),
+		now:           time.Now,
+		statusEffects: make(map[uuid.UUID][]statuseffect.Effect),
 	}
 }
 
@@ -157,6 +162,7 @@ func NewMatchSessionWithState(
 		swapMarks:      make(map[uuid.UUID]uuid.UUID),
 		clock:          clock.NewAt(defaultStoryStart),
 		now:            time.Now,
+		statusEffects:  make(map[uuid.UUID][]statuseffect.Effect),
 	}
 }
 
