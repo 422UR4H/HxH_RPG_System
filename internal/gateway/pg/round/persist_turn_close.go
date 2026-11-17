@@ -25,7 +25,7 @@ import (
 // finished_at when this close also ended it, and then the round born in its place, NextRound),
 // turn, action, the action's reactions, the turn's settled resolution (nullable), the values
 // the master's edits displaced, the bars of every sheet the close damaged, the master actions
-// applied and the actions cancelled while the turn was open, and the board (with every player's fog memory) as the close
+// applied, the actions cancelled and the status effects changed while the turn was open, and the board (with every player's fog memory) as the close
 // left it, within a single database transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
