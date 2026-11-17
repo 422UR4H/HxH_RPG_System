@@ -1,52 +1,67 @@
-# Status Effects — Phase 1 (back-end base) Implementation Plan
+# Status Effects — Phase 1 (back-end) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Status effects exist as data bound to the character sheet (any campaign, any match), declared as combinations of effect pieces in one catalog, and the master applies, edits and removes them by hand over the match WebSocket, each one visible to a list of viewers (no record = the kind's default).
+**Goal:** Status effects exist as data bound to the character sheet (any campaign, any match), declared as combinations of effect pieces in one catalog; the master applies, edits and removes them by hand over the match WebSocket; each one reaches only who may see it (a viewer list, no record = the kind's default) AND who sees the character (fog); Hidden takes the character off the map and bars of who did not perceive it; and every piece that needs no new dice rule already works (cannot act, cannot react, locked domain, no displacement, forbidden reactions, master warnings). A second PR records status changes and a hidden character's actions in the history.
 
-**Architecture:** A pure domain package `internal/domain/statuseffect` holds the catalog (kinds, params, defaults, pieces), the effect entity, the set operations (apply/edit/remove) and the visibility rule. A new table `character_status_effects` (FK → `character_sheets`) is read when the match session is born and written by a gateway that runs on a pool or inside `PersistTurnClose`'s transaction. The `MatchSession` holds the effects in memory; `appmatch.StatusEffectsUC` mutates them (no I/O); the `Room` projects each change per recipient and decides WHEN the write happens: at once outside a turn, with the turn's close inside one, retried on the next write if it failed.
+**Architecture:** A pure domain package `internal/domain/statuseffect` holds the catalog (kinds, params, defaults, pieces, a `Summary` of what a set forbids), the effect entity, the set operations and the viewer-list rule. A new table `character_status_effects` (FK → `character_sheets`) is read when the match session is born and written by a gateway that runs on a pool or inside `PersistTurnClose`'s transaction. The `MatchSession` holds the effects and enforces the blocking pieces at the points where actions and reactions enter; `appmatch.StatusEffectsUC` changes them (no I/O); the `Room` owns sight (fog + Hidden) and projection per recipient, and decides WHEN a write happens: at once outside a turn, with the turn's close inside one, retried on the next write if it failed.
 
 **Tech Stack:** Go 1.23, PostgreSQL + goose, pgx, gorilla/websocket (existing), standard `testing`.
 
-**Spec:** `docs/superpowers/specs/2026-11-15-status-effects-design.pt-br.md` (owner-approved, PR #110). Read §4, §5, §8, §9, §10, §14 before any task. Decision history and examples: `/home/azzurah/Documentos/HxH_RPG_Environment_Project/System_X_System_Project/System_X_System/docs/superpowers/specs/2026-11-07-status-brainstorm-notas.md` (untracked, main checkout only — the spec wins on conflict).
+**Spec:** `docs/superpowers/specs/2026-11-15-status-effects-design.pt-br.md` (owner-approved, PR #110). Read §1, §4, §5, §8, §9, §10, §14 before any task. Decision history: `/home/azzurah/Documentos/HxH_RPG_Environment_Project/System_X_System_Project/System_X_System/docs/superpowers/specs/2026-11-07-status-brainstorm-notas.md` (untracked, main checkout; the spec wins on conflict). **This plan's "Owner decisions" section overrides the spec's suggested phase cut (§14) and is final.**
 
 ## Global Constraints
 
-- **Branch** `feat/status-effects-base`, worktree `System_X_System/.worktrees/status-effects`, cut from `origin/docs/status-effects-spec` (the spec travels with it). PR is stacked: base `docs/status-effects-spec`. Never touch the main checkout (`System_X_System/`, another session's branch).
-- **Language:** identifiers, file names and test titles (`TestXxx`, `t.Run("...")`) in **English**. Comments, docs (`docs/dev/`) and log/error *prose* in **Portuguese**. Wire values in English camelCase.
+- **Two PRs, stacked.** PR 1 (Tasks 1–13): branch `feat/status-effects-base`, worktree `System_X_System/.worktrees/status-effects`, cut from `origin/docs/status-effects-spec`; PR base `docs/status-effects-spec`. PR 2 (Tasks 14–16): branch `feat/status-effects-history` cut from `feat/status-effects-base` after PR 1 is open; PR base `feat/status-effects-base`. Never touch the main checkout (`System_X_System/`, another session's branch).
+- **Language:** identifiers, file names and test titles (`TestXxx`, `t.Run("...")`) in **English**. Comments, `docs/dev/` and log prose in **Portuguese**. Wire values in English camelCase.
 - **Wire format is camelCase** (CLAUDE.md invariant). New payloads follow `message.go` style (explicit json tags).
-- **"Testes automáticos" in the scope line means the game's automatic resistance tests (spec §6) — out of scope. Go tests are mandatory (TDD, every layer per `integration-tests.instructions.md`).**
-- **Out of scope (do NOT build):** front; automatic resistance tests (§6); negative HP, critical, death/"Morto" (§7 — phase 2); Fatigue; enforcing any piece in the engine (blocking `enqueue_action`, refusing reactions, penalties in rolls, the Hidden status hiding the piece/bars/list — consumer phases); damage over time and recovery over rounds/clock (phase 4); history rows for status changes (§9 history — later phase; note it in the dev doc); a catalog REST endpoint (labels and alias suggestions are front copy, listed in the contract); renaming Push/Carry (§12).
-- **Inside an open turn nothing is written before its close** (house rule, spec §10): status writes made while a turn is open ride `TurnCloseData` in `PersistTurnClose`'s transaction.
-- **Comments/TODOs:** never delete a comment or TODO outside this scope; what this work makes contradictory is corrected (Task 1 rewrites the AGENTS.md rule to say exactly this).
-- **Gateway rules** (`gateway-conventions.instructions.md`): timestamps from Go (`time.Now()` passed as `$N`), unconditional `Rollback` in defer, an index for every `WHERE`/`JOIN` column. New migration file only — never edit an applied one (memory: edited migrations diverged dev/Neon).
-- **Per-task verification:** `go vet ./... && go vet -tags=integration ./internal/gateway/pg/...`; gateway tasks also run their package's integration tests. Local DB: `set -a && . ./.env && set +a && export TEST_DATABASE_URL="postgres://$PG_DB_USER:$PG_DB_PASS@localhost:5432/hxh_rpg_test?sslmode=disable"`. Full integration suite only with `-p 1`.
-- **Before the PR:** `golangci-lint cache clean && ~/go/bin/golangci-lint run --max-same-issues 0 --max-issues-per-linter 0` (CI runs the lint; vet/test do not catch staticcheck).
+- **Out of scope (do NOT build):** front; anything that changes a roll (see "Deferred"); automatic resistance tests (§6); negative HP, critical, death (§7); damage over time and recovery per round/clock; asphyxia mechanics; Fatigue; a catalog REST endpoint (labels and alias suggestions are front copy, listed in the contract); hiding NPCs from the players' participants REST (the front needs it until its own phase); Push/Carry rename (§12).
+- **Inside an open turn nothing is written before its close** (house rule, spec §10).
+- **Comments/TODOs:** never delete one outside this scope; what this work makes contradictory is corrected (Task 1 rewrites the AGENTS.md rule to say this).
+- **Gateway rules** (`gateway-conventions.instructions.md`): timestamps from Go, unconditional `Rollback` in defer, an index for every `WHERE`/`JOIN` column. New migration files only — never edit an applied one.
+- **Room locking:** `r.mu` guards session and board state; the session has no lock of its own; `persistMu` → `r.mu` is the only allowed nesting; never hold `r.mu` across I/O or while calling `dispatchPerPlayer` (it takes `r.mu` itself).
+- **Per-task verification:** `go vet ./... && go vet -tags=integration ./internal/gateway/pg/...`; `go test` of the touched packages; gateway tasks run their package's integration tests. Local DB: `set -a && . ./.env && set +a && export TEST_DATABASE_URL="postgres://$PG_DB_USER:$PG_DB_PASS@localhost:5432/hxh_rpg_test?sslmode=disable"`. Full integration suite only with `-p 1`.
+- **Before each PR:** `golangci-lint cache clean && ~/go/bin/golangci-lint run --max-same-issues 0 --max-issues-per-linter 0`.
 - **Do not poll CI.**
 
-## Decisions this plan makes (not in the spec; builder's call per §14)
+## Owner decisions (2026-11-17, in this session — final)
 
-1. **Re-applying a status the character already has is refused** (`status_effect_exists`); the master edits the existing one. With several characters, the command is all-or-nothing. This decides no game rule: how *sources* merge (§1 "fontes somam") belongs to the automatic sources of later phases.
-2. **Numbers without a default in the spec are required** on apply: recovery points of Stunned/Paralyzed/Stupefied (§2 says the master types it), HP per round of Burning/Freezing/Poisoned, Slowed's penalty, the sense level, Tact's faces, Injured's domains, Compelled's conduct. Bleeding defaults to 1 (§5.3: "1 por round"); Paralyzed's domains default to all four (§5.3); Weakened and impaired senses default to disadvantage (§5.3).
-3. **Visibility storage:** a nullable JSONB `audience` on the row. `NULL` = the kind's default (no record, §9). Otherwise `{"everyone":true}` or `{"players":[uuid…]}`; `{"players":[]}` = master only. The master always sees. The owner sees only if listed (so "só o mestre" is expressible).
-4. **Default visibility** (no record): public kinds → everyone; hidden kinds → master + owner on a PC, master only on an NPC (§9); `MatchRules.PlayerStatusEffectsPublic` (default `false`, §14) makes a PC's hidden-by-default kinds public.
-5. **Public statuses are not fog-gated**: the table already learns every NPC's existence (`npc_added` is broadcast); hiding a character is the Hidden status's job (consumer phase).
-6. **Unconscious brings Prone** on apply (§5.5) when Prone is absent; removing Unconscious leaves Prone.
-7. **Recovery is not inherited** through containment: §5.2's "contains every piece" covers what the status *does*; how it *ends* is per status (§5.3 "Acaba" column — Unconscious has no Tenacity recovery).
-8. **Players never see an effect's visibility**; only the master gets `visibility`/`public`. No `updatedAt` on the wire (an edit to master-only fields must not reach a player as a change).
-9. Text limits: alias ≤ 60 runes, conduct 1–255 runes (trimmed).
+1. Damage per round starts at **1** for Bleeding, Burning, Freezing and Poisoned.
+2. Recovery points of Stunned/Paralyzed/Stupefied: when the **master** applies by hand there is no failed test, so he types the points. (When the automatic test exists, the points come from the failure — later phase.)
+3. **`npc_added` goes to the master only.** An NPC on the board reaches players through the fog, like any piece.
+4. **Public statuses depend on the fog.** A player gets a character's statuses only while seeing it. The owner and the master always see. When the character leaves a player's sight the server sends nothing (the player keeps the last state seen); when it comes back, the player gets the current list. A match without a board has no fog: everyone sees. With a board, a character with no piece on it is not seen by others.
+5. **Bars follow the same sight**: a player's `bars_updated`/`match_full_state.bars` list only the characters he owns or sees.
+6. **Hidden takes the piece off the map**, the bars and the statuses of whoever is not in its viewer list (the ones who perceived it). Its actions while hidden and the history: PR 2.
+7. **Unconscious brings Prone**; the master may remove Prone and keep only Unconscious.
+8. **G1 (Tact, balance face):** impaired → attack, defense, dodge and movement get the status's own disadvantage/number; nullified → one disadvantage on those four. Declared now as pieces; applied in the rolls phase.
+9. Everything that does not depend on another implementation is applied now (see "Blocking pieces" in Task 11).
 
-## Gap for the owner (stop point — do not decide)
+## Decisions this plan makes (builder's call per §14; already reported to the owner)
 
-- **G1 — Tact, balance face, effect on attack/defense/dodge/movement.** §5.3: "Só o equilíbrio afetado pesa sozinho em ataque, defesa, esquiva e movimento". Not said: *how much* (the status's own disadvantage/number when impaired?) and *what* when the sense is nullified. Phase 1 declares only the balance test trigger (→ Prone) and leaves `// TODO(G1, dono)` where that penalty piece goes. No phase-1 behavior depends on the answer; the consumer phase does.
+1. Re-applying a status the character already has is refused (`status_effect_exists`); the master edits the existing one. Several characters: all-or-nothing.
+2. Required on manual apply (no spec default): recovery points (Stunned/Paralyzed/Stupefied), Slowed's penalty, the sense level, Tact's faces, Injured's domains, Compelled's conduct. Defaults: Paralyzed = four domains; Weakened and impaired senses = disadvantage; damage per round = 1.
+3. Viewer list storage: nullable JSONB `audience`. `NULL` = kind default; `{"everyone":true}`; `{"players":[…]}`; `{"players":[]}` = master only. The master always sees; the owner only if listed.
+4. Kind default (no record): public kinds → everyone; hidden kinds → master + owner on a PC, master only on an NPC; `MatchRules.PlayerStatusEffectsPublic` (default `false`) opens a PC's hidden kinds. Sight (owner decision 4) applies on top, except for the owner and the master.
+5. Containment inherits what a status **does**, not how it **ends** (Unconscious has no Tenacity recovery). Injured "disabled" also carries the "hurt" disadvantage (§5.2 diagram).
+6. Players never see an effect's viewer list; no `updatedAt` on the wire.
+7. Alias ≤ 60 runes; conduct 1–255 runes (trimmed).
+8. Applying a status removes from the queue every pending action of that character the new set would refuse; each is recorded as cancelled by the master (`cancelled_actions`, same rule as `cancel_action`). An unopened reaction of a character who can no longer give it is replaced by the seated default (or by `nothing` when he cannot react at all); what was already opened stays.
+9. Reaction ↔ piece mapping (for restrictions and locks): `default` = reflex dodge + default defense; `dodge` = reflex dodge; `closedDodge` = reflex dodge + evasion; `escape`/`escapeGuard` = escape; `closedEscape` = escape + evasion; `repel` = repel; `nothing` always allowed. Domains: dodge → reflex dodge, evasion; defense → default defense, repel; escape needs movement **and** dodge (§5.4). Action components: attack, feint → attack; defense → defense; dodge → dodge; move → movement; interact and skill-only actions are blocked only by "cannot act".
+10. "Não usa habilidades" waits for the Nen migration (TODO).
+
+## Deferred, with the reason (reported to the owner)
+
+- **Everything that changes a roll** — test penalties, "defense only rolled", disadvantage on a reaction, auto-fail, Slowed, G1's application: §4 replaces how every advantage/disadvantage rolls (2 + N D10, keep 2), with open points the owner answered (passive with N levels: roll 2+N and compare with the base value as today; D20 set: one more D20 per level). Applying penalties on today's scheme would make the owner validate twice. Next phase.
+- **Automatic tests (§6)** — the test shape (stack/chain) is being designed in the paused tests brainstorm.
+- **Damage over time, recovery per round** — depend on negative HP and death (phase 2).
 
 ## Review Focus
 
-1. **A turn close that fails after the master changed statuses inside it** → memory keeps the change and the next successful write (another close or an out-of-turn change) writes it; nothing is written mid-turn. (Task 9 tests.)
-2. **Changing who sees a status** → only recipients whose projected list actually changed get `status_effects_updated`; a player losing sight gets the list without it; a hidden change never reaches anyone else, not even as an empty message. (Task 8 tests.)
-3. **Apply to several characters where one already has the status** → nothing changes for anyone and the master gets `status_effect_exists`. (Task 7 test.)
-4. **Unconscious on a character already Prone; removing Unconscious** → no duplicate Prone, Prone stays. (Task 2 test.)
-5. **Reconnect** → `match_full_state.statusEffects` carries, per viewer, exactly what that viewer may see; an NPC's hidden statuses never reach a player. (Task 8 test.)
+1. **A character the player cannot see** gets a public status, then walks into sight → the player gets the list only when it enters sight; nothing while out of sight; nothing when it leaves. (Task 10 tests.)
+2. **A turn close that fails after the master changed statuses inside it** → memory keeps the change; the next successful write carries it; nothing is written mid-turn. (Task 9.)
+3. **Changing who sees a status** → only recipients whose projected list changed get `status_effects_updated`; nobody gets an empty "something changed". (Task 8.)
+4. **Hidden applied/removed** → the piece leaves/returns for exactly the players outside the viewer list, the master and owner keep it, and a later move of the hidden piece reaches none of them. (Task 10.)
+5. **Status applied while the character has queued actions or an unopened reaction** → refused-by-the-new-set ones leave and are recorded as cancelled; opened ones stay; the turn still closes. (Task 11.)
 
 ---
 
@@ -54,42 +69,36 @@
 
 | File | Responsibility |
 |---|---|
-| `AGENTS.md` | Task 1: TODO/comment rule rewritten; Task 10: Known Issues entry |
-| `internal/domain/match/character_status.go` | Task 1: correction note under "não será persistido" |
-| `internal/domain/statuseffect/kind.go` | Kind, Sense, Aptitude, Domain, levels, faces; parsing; default visibility per kind |
-| `internal/domain/statuseffect/effect.go` | `Effect`, `Params`, `ParamsInput`, `Identity`, `Clone`, `Write` |
-| `internal/domain/statuseffect/normalize.go` | `Normalize`: per-kind defaults and validation |
-| `internal/domain/statuseffect/set.go` | `Apply` / `Edit` / `Remove` on one character's set |
-| `internal/domain/statuseffect/piece.go` | Piece vocabulary (§5.1) and `Effect.Pieces()` (the catalog's composition) |
-| `internal/domain/statuseffect/audience.go` | `Audience`, `Viewer`, `Subject`, `Visible` |
-| `internal/domain/statuseffect/error.go` | domain errors |
+| `AGENTS.md` | Task 1 rule; Task 12 Known Issues |
+| `internal/domain/match/character_status.go` | Task 1 correction note |
+| `internal/domain/statuseffect/kind.go` | kinds and value types, parsing, default visibility |
+| `internal/domain/statuseffect/effect.go` | `Effect`, `Params`, `ParamsInput`, `Identity`, `Clone`, `Write`, `Draft`, `Patch` |
+| `internal/domain/statuseffect/normalize.go` | per-kind defaults and validation |
+| `internal/domain/statuseffect/set.go` | `Apply` / `Edit` / `Remove` |
+| `internal/domain/statuseffect/piece.go` | pieces (§5.1) and `Effect.Pieces()` |
+| `internal/domain/statuseffect/summary.go` | `Summarize`: what a set forbids/warns (consumed by the session) |
+| `internal/domain/statuseffect/audience.go` | `Audience`, `Viewer`, `Subject`, `Listed` |
+| `internal/domain/statuseffect/error.go` | errors |
 | `internal/domain/match/match_rules.go` | `PlayerStatusEffectsPublic` |
-| `migrations/20261117000000_character_status_effects.sql` | the table |
+| `migrations/20261117000000_character_status_effects.sql` | table |
 | `internal/gateway/pg/statuseffect/repository.go` | `ListBySheets`, `Write` |
-| `internal/gateway/pg/round/persist_turn_close.go` | writes `TurnCloseData.StatusEffects` |
-| `internal/application/match/i_repository.go` | `TurnCloseData.StatusEffects`, `IStatusEffectReader` |
-| `internal/domain/match/matchsession/status_effects.go` | session storage + accessors |
-| `internal/application/match/init_match_session.go` | `WithStatusEffects` + load at birth |
-| `internal/application/match/status_effects.go` | `StatusEffectsUC` (Apply/Edit/Remove, no I/O) |
-| `internal/app/game/message.go` | message types + payloads; `MatchFullStatePayload.StatusEffects` |
-| `internal/app/game/status_effects.go` | WS arms, projection, announce, persistence timing |
-| `internal/app/game/room_deps.go`, `room.go`, `turn_writes.go`, `master_board.go` | wiring points |
+| `internal/gateway/pg/round/persist_turn_close.go` | `TurnCloseData.StatusEffects` |
+| `internal/domain/match/matchsession/status_effects.go` | storage, accessors, blocking checks |
+| `internal/application/match/{init_match_session.go,status_effects.go}` | load at birth; the use case |
+| `internal/app/game/message.go` | messages and payloads |
+| `internal/app/game/status_effects.go` | WS arms, projection, write timing |
+| `internal/app/game/sight.go` | `seesCharacterLocked`, Hidden in the fog gates, sight sync |
+| `internal/app/game/{room.go,room_deps.go,turn_writes.go,master_board.go}` | wiring points |
 | `cmd/game/main.go` | wiring |
-| `docs/dev/api/match-status-effects.md` | WS contract (new) |
-| `docs/dev/match/status-effects.md` | design doc (new) |
-| `docs/dev/api/match-combat-ws.md`, `docs/documentation-map.yaml`, `.github/instructions/*.md` | doc updates |
+| `docs/dev/api/match-status-effects.md`, `docs/dev/match/status-effects.md` | contract, design |
 
 ---
 
+## PR 1
+
 ### Task 1: Rewrite the TODO rule and correct the persistence note
 
-Spec §14, "logo no início". Docs/comments only.
-
-**Files:**
-- Modify: `AGENTS.md` (line `- **NEVER remove TODO comments** — intentional markers by the owner`)
-- Modify: `internal/domain/match/character_status.go` (the block starting `// O CharacterStatus não será persistido`)
-
-- [ ] **Step 1: Replace the AGENTS.md bullet** with (English, AGENTS.md is English):
+- [ ] **Step 1:** In `AGENTS.md`, replace `- **NEVER remove TODO comments** — intentional markers by the owner` with:
 
 ```markdown
 - **Comments and TODOs are the owner's markers.** Never delete one outside the scope of your task —
@@ -98,7 +107,7 @@ Spec §14, "logo no início". Docs/comments only.
   the commit.
 ```
 
-- [ ] **Step 2: Correct the note without trimming the owner's block** (the header says "Kept verbatim… Do not trim it"). Insert right after the line `// - considerar statusEngine, ou algo assim`:
+- [ ] **Step 2:** In `internal/domain/match/character_status.go`, the owner's block says "Kept verbatim… Do not trim it": do not delete anything. Insert after `// - considerar statusEngine, ou algo assim`:
 
 ```go
 //
@@ -108,70 +117,62 @@ Spec §14, "logo no início". Docs/comments only.
 // CharacterStatus: barras de ação/movimento, ledger, postura e velocidade.
 ```
 
-- [ ] **Step 3: Verify** `go vet ./internal/domain/match/` → no output.
-- [ ] **Step 4: Commit** `docs: rewrite the TODO rule and correct the status persistence note`
+- [ ] **Step 3:** `go vet ./internal/domain/match/` → clean. **Commit** `docs: rewrite the TODO rule and correct the status persistence note`
 
 ---
 
 ### Task 2: Domain — kinds, params, effect and set operations
 
-**Files:**
-- Create: `internal/domain/statuseffect/{kind.go,effect.go,normalize.go,set.go,error.go}`
-- Test: `internal/domain/statuseffect/{normalize_test.go,set_test.go}` (`package statuseffect_test`)
+**Files:** Create `internal/domain/statuseffect/{kind.go,effect.go,normalize.go,set.go,error.go,audience.go}`; tests `normalize_test.go`, `set_test.go` (`package statuseffect_test`).
 
 **Interfaces — Produces:**
 
 ```go
 package statuseffect
 
-type Kind string // wire values below
+type Kind string
 const (
-	KindParalyzed Kind = "paralyzed"      // Paralisado
-	KindStupefied Kind = "stupefied"      // Atônito
-	KindStunned Kind = "stunned"          // Atordoado
-	KindUnconscious Kind = "unconscious"  // Inconsciente
-	KindRestrained Kind = "restrained"    // Preso
-	KindInjured Kind = "injured"          // Lesionado
-	KindSlowed Kind = "slowed"            // Lento
-	KindSense Kind = "sense"              // Sentido afetado (Visão anulada…)
-	KindWeakened Kind = "weakened"        // Debilitado (Corpo/Mente/Espírito debilitado)
-	KindBleeding Kind = "bleeding"; KindBurning Kind = "burning"
-	KindFreezing Kind = "freezing"; KindPoisoned Kind = "poisoned"
+	KindParalyzed Kind = "paralyzed"; KindStupefied Kind = "stupefied"; KindStunned Kind = "stunned"
+	KindUnconscious Kind = "unconscious"; KindRestrained Kind = "restrained"
+	KindInjured Kind = "injured"; KindSlowed Kind = "slowed"
+	KindSense Kind = "sense"; KindWeakened Kind = "weakened"
+	KindBleeding Kind = "bleeding"; KindBurning Kind = "burning"; KindFreezing Kind = "freezing"; KindPoisoned Kind = "poisoned"
 	KindAsphyxiating Kind = "asphyxiating"
 	KindProne Kind = "prone"; KindAirborne Kind = "airborne"; KindOpenGuard Kind = "openGuard"
-	KindCompelled Kind = "compelled"; KindControlled Kind = "controlled"
-	KindHidden Kind = "hidden"            // Escondido
+	KindCompelled Kind = "compelled"; KindControlled Kind = "controlled"; KindHidden Kind = "hidden"
 )
-type Sense string      // "vision" "hearing" "smell" "tact" "taste"; Sense.Skill() enum.SkillName (Vision…Taste)
-type Aptitude string   // "physical" "mental" "spiritual"; Aptitude.Ability() enum.AbilityName (Physicals…)
-type Domain string     // "attack" "defense" "movement" "dodge"; AllDomains() []Domain in that order
-type SenseLevel string // "impaired" "nullified"
+// PT names for comments/docs: Paralisado, Atônito, Atordoado, Inconsciente, Preso, Lesionado, Lento,
+// Sentido afetado, Debilitado, Sangrando, Queimando, Congelando, Envenenado, Asfixiando, Caído,
+// No ar, Guarda aberta, Compelido, Controlado, Escondido.
+type Sense string       // "vision" "hearing" "smell" "tact" "taste"; (Sense) Skill() enum.SkillName
+type Aptitude string    // "physical" "mental" "spiritual"; (Aptitude) Ability() enum.AbilityName
+type Domain string      // "attack" "defense" "movement" "dodge"; AllDomains() in this order
+type SenseLevel string  // "impaired" "nullified"
 type InjuryLevel string // "hurt" "disabled"
-type TouchFace string  // "touch" "balance" "preemption"
-func ParseKind(s string) (Kind, error) // ErrUnknownKind; same Parse* for each type above
-func (k Kind) PublicByDefault() bool   // §9 list; see Step 3
+type TouchFace string   // "touch" "balance" "preemption"
+func ParseKind(string) (Kind, error) // + ParseSense, ParseAptitude, ParseDomain, ParseSenseLevel, ParseInjuryLevel, ParseTouchFace
+func (k Kind) PublicByDefault() bool
 
-type Params struct { // normalized: only the fields the kind owns are non-zero
+type Params struct {
 	Domains []Domain; Injuries map[Domain]InjuryLevel; Level SenseLevel; Faces []TouchFace
 	Points, HPPerRound, Penalty int; Disadvantage bool
 	Conduct string; Irresistible bool; ControllerID *uuid.UUID
 }
-type ParamsInput struct { // what the master sent; nil/empty = "use the default"
+type ParamsInput struct {
 	Domains []Domain; Injuries map[Domain]InjuryLevel; Level SenseLevel; Faces []TouchFace
 	Points, HPPerRound, Penalty *int; Disadvantage *bool
 	Conduct string; Irresistible *bool; ControllerID *uuid.UUID
 }
-type Identity struct{ Kind Kind; Variant string } // Variant = string(Sense) | string(Aptitude) | ""
+type Identity struct{ Kind Kind; Variant string } // Variant = Sense | Aptitude | ""
+type Audience struct{ Everyone bool; Players []uuid.UUID } // behavior in Task 4
 type Effect struct {
 	ID, CharacterID uuid.UUID; Kind Kind; Sense Sense; Aptitude Aptitude
-	Params Params; Alias string
-	Audience *Audience // Task 4; nil = default visibility (no record)
+	Params Params; Alias string; Audience *Audience // nil = kind default
 	AppliedAt, UpdatedAt time.Time
 }
 func (e Effect) Identity() Identity
-func (e Effect) Clone() Effect // deep copy of slices, map, pointers, Audience
-type Write struct{ Delete bool; Effect Effect } // Delete: only Effect.ID matters
-
+func (e Effect) Clone() Effect
+type Write struct{ Delete bool; Effect Effect }
 type Draft struct { Kind Kind; Sense Sense; Aptitude Aptitude; Params ParamsInput; Alias string; Audience *Audience }
 type Patch struct { Params *ParamsInput; Alias *string; SetAudience bool; Audience *Audience }
 
@@ -179,194 +180,125 @@ func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error)
 func Apply(current []Effect, characterID uuid.UUID, d Draft, newID func() uuid.UUID, now time.Time) (next, added []Effect, err error)
 func Edit(current []Effect, id uuid.UUID, p Patch, now time.Time) (next []Effect, edited Effect, err error)
 func Remove(current []Effect, id uuid.UUID) (next []Effect, removed Effect, err error)
-
-var ErrUnknownKind, ErrInvalidParams, ErrAlreadyApplied, ErrNotFound error // error.go; ErrInvalidAudience added in Task 4
+var ErrUnknownKind, ErrInvalidParams, ErrAlreadyApplied, ErrNotFound error
 ```
 
-`Audience` is defined in Task 4; for this task declare `type Audience struct{ Everyone bool; Players []uuid.UUID }` in `audience.go` already (Task 4 adds behavior and validation).
+Per-kind table (anything not listed for a kind must be empty in the input → `fmt.Errorf("%w: <field>", ErrInvalidParams)`):
 
-- [ ] **Step 1: Write `normalize_test.go`** — table-driven `TestNormalize`, one row per rule below. Each row: kind, sense, aptitude, input, want params or `errors.Is(err, ErrInvalidParams)`. Rows (all from the table in Step 3):
-  - `"paralyzed defaults to the four domains"`: input `{Points:&5}` → `Domains: [attack defense movement dodge], Points: 5`.
-  - `"paralyzed requires points"`: `{}` → ErrInvalidParams. Same row for stupefied and stunned.
-  - `"bleeding defaults to one hp per round"`: `{}` → `HPPerRound: 1`.
-  - `"burning requires hp per round"`: `{}` → ErrInvalidParams (also freezing, poisoned).
-  - `"sense requires a level"`; `"impaired sense defaults to disadvantage"` (`{Level: impaired}` on vision → `Disadvantage: true`); `"impaired sense with only a penalty"` (`Disadvantage:&false, Penalty:&2` → `Disadvantage:false, Penalty:2`); `"impaired sense needs disadvantage or penalty"` (`&false`, no penalty → error); `"nullified sense refuses disadvantage and penalty"`.
-  - `"tact requires at least one face"`; `"faces only on tact"` (vision + faces → error); `"duplicate faces refused"`.
-  - `"weakened defaults to disadvantage"`; `"weakened needs disadvantage or penalty"`; `"weakened requires an aptitude"`; `"aptitude only on weakened"`; `"sense only on sense kind"`.
-  - `"injured requires at least one domain"`; `"injured keeps per-domain levels"` (`{attack: disabled, movement: hurt}` preserved).
-  - `"slowed requires a penalty"`.
-  - `"compelled requires a conduct"`; `"conduct is trimmed and capped at 255 runes"` (256 runes → error); `"irresistible defaults to false"`.
-  - `"controlled accepts no controller"` and `"controlled keeps the controller"`.
-  - `"param foreign to the kind is refused"` (prone + `Points:&1` → error; restrained + domains → error).
-  - `"negative or zero numbers refused"` (points 0, hpPerRound 0, penalty −1 where required ≥1; penalty 0 allowed where optional).
-- [ ] **Step 2: Run** `go test ./internal/domain/statuseffect/ -run TestNormalize` → FAIL (package does not compile).
-- [ ] **Step 3: Implement `kind.go`, `effect.go`, `normalize.go`, `error.go`.** Per-kind table (anything not listed for a kind must be zero/empty in the input, else `ErrInvalidParams`, wrapped with `fmt.Errorf("%w: <campo>", ErrInvalidParams)` naming the field):
+| Kind | Variant | Params (default) |
+|---|---|---|
+| paralyzed | — | domains (all four), points ≥1 required |
+| stupefied, stunned | — | points ≥1 required |
+| unconscious, restrained, asphyxiating, prone, airborne, openGuard, hidden | — | none |
+| injured | — | injuries ≥1 entry |
+| slowed | — | penalty ≥1 required |
+| sense | sense required | level required; impaired: disadvantage (default true), penalty ≥0, at least one of them; nullified: neither; tact → faces ≥1 distinct required; other senses → no faces |
+| weakened | aptitude required | disadvantage (default true), penalty ≥0, at least one |
+| bleeding, burning, freezing, poisoned | — | hpPerRound ≥1 (default 1) |
+| compelled | — | conduct 1–255 runes (trimmed) required; irresistible (default false) |
+| controlled | — | controllerId optional |
 
-  | Kind | Identity variant | Params owned (default) |
-  |---|---|---|
-  | paralyzed | — | domains (all four, distinct), points ≥1 required |
-  | stupefied, stunned | — | points ≥1 required |
-  | unconscious, restrained, asphyxiating, prone, airborne, openGuard, hidden | — | none |
-  | injured | — | injuries ≥1 entry, valid domain → valid level |
-  | slowed | — | penalty ≥1 required |
-  | sense | sense required | level required; impaired: disadvantage (default true), penalty ≥0, at least one; nullified: neither; faces: tact → ≥1 distinct required, other senses → none |
-  | weakened | aptitude required | disadvantage (default true), penalty ≥0, at least one |
-  | bleeding | — | hpPerRound ≥1 (default 1) |
-  | burning, freezing, poisoned | — | hpPerRound ≥1 required |
-  | compelled | — | conduct (trimmed, 1–255 runes) required; irresistible (default false) |
-  | controlled | — | controllerId optional |
+`PublicByDefault()` = prone, airborne, restrained, burning, unconscious, stunned, asphyxiating, openGuard (§9). Sort `Domains`/`Faces` in declaration order.
 
-  `PublicByDefault()` true for: prone, airborne, restrained, burning, unconscious, stunned, asphyxiating, openGuard. Everything else false (§9). Sort `Domains` and `Faces` in declaration order so equal inputs normalize equal.
-- [ ] **Step 4: Run** `go test ./internal/domain/statuseffect/ -run TestNormalize -v` → PASS.
-- [ ] **Step 5: Write `set_test.go`** with a fixed `now` and a counter `newID`:
-  - `TestApply/"adds a normalized effect"`: empty set, `Draft{Kind: prone}` → `len(next)==1`, `added[0].CharacterID==charID`, `AppliedAt==UpdatedAt==now`, `Audience==nil`.
-  - `TestApply/"refuses the same identity"`: set with prone → apply prone → `ErrAlreadyApplied`, `next` nil.
-  - `TestApply/"different senses coexist"`: vision then hearing → both kept. `"same sense refused"`: vision impaired then vision nullified → `ErrAlreadyApplied`.
-  - `TestApply/"one weakened per aptitude"`: physical + mental coexist; second physical refused.
-  - `TestApply/"unconscious brings prone"`: empty set → added = [unconscious, prone].
-  - `TestApply/"unconscious keeps an existing prone"` (Review Focus 4): set with prone → added = [unconscious] only; one prone in `next`.
-  - `TestApply/"alias over 60 runes refused"` → `ErrInvalidParams`; alias is trimmed.
-  - `TestApply/"does not mutate the input slice"`.
-  - `TestEdit/"replaces params whole"`: paralyzed{points 5, all domains} edited with `Params:{Points:&3, Domains:[attack]}` → points 3, domains [attack]; `UpdatedAt==now2`, `AppliedAt` unchanged.
-  - `TestEdit/"nil params keep params"`; `"alias empty clears"`; `"set audience nil returns to default"`; `"invalid params leave the set untouched"` (error, `current[i]` unchanged); `"unknown id"` → `ErrNotFound`.
-  - `TestRemove/"removes by id"`; `"removing unconscious keeps prone"` (Review Focus 4); `"unknown id"` → `ErrNotFound`.
-- [ ] **Step 6: Run** → FAIL. **Step 7: Implement `set.go`** (all functions return fresh slices of `Clone()`d effects; Edit re-runs `Normalize` with the effect's own identity; Apply validates `Draft.Audience` only via Task 4 later — for now store it as given). **Step 8: Run** `go test ./internal/domain/statuseffect/ -v` → PASS; `go vet ./...`.
+- [ ] **Step 1: `normalize_test.go`** — table `TestNormalize`, one row per table line, including: `"paralyzed defaults to the four domains"`, `"paralyzed requires points"` (+stupefied, stunned), `"damage per round defaults to one"` (bleeding, burning, freezing, poisoned — each row), `"sense requires a level"`, `"impaired sense defaults to disadvantage"`, `"impaired sense with only a penalty"`, `"impaired sense needs disadvantage or penalty"`, `"nullified sense refuses disadvantage and penalty"`, `"tact requires at least one face"`, `"faces only on tact"`, `"duplicate faces refused"`, `"weakened defaults to disadvantage"`, `"weakened needs disadvantage or penalty"`, `"weakened requires an aptitude"`, `"aptitude only on weakened"`, `"sense only on sense kind"`, `"injured requires at least one domain"`, `"injured keeps per-domain levels"`, `"slowed requires a penalty"`, `"compelled requires a conduct"`, `"conduct is trimmed and capped at 255 runes"`, `"controlled with and without controller"`, `"param foreign to the kind is refused"`, `"zero or negative numbers refused"`.
+- [ ] **Step 2:** `go test ./internal/domain/statuseffect/` → FAIL. **Step 3:** implement kind/effect/normalize/error (+ empty `Audience` type). **Step 4:** PASS.
+- [ ] **Step 5: `set_test.go`** (fixed `now`, counter `newID`): `TestApply` — `"adds a normalized effect"`, `"refuses the same identity"` (`ErrAlreadyApplied`, nil next), `"different senses coexist"`, `"same sense refused"`, `"one weakened per aptitude"`, `"unconscious brings prone"` (added = [unconscious, prone]), `"unconscious keeps an existing prone"`, `"alias over 60 runes refused"`, `"alias is trimmed"`, `"does not mutate the input slice"`. `TestEdit` — `"replaces params whole"` (UpdatedAt moves, AppliedAt stays), `"nil params keep params"`, `"empty alias clears"`, `"set audience nil returns to default"`, `"invalid params leave the set untouched"`, `"unknown id"`. `TestRemove` — `"removes by id"`, `"removing prone keeps unconscious"` (owner decision 7), `"removing unconscious keeps prone"`, `"unknown id"`.
+- [ ] **Step 6:** FAIL → **Step 7:** implement `set.go` (fresh cloned slices; Edit re-normalizes with the effect's identity; Prone added by Apply carries default params, no alias, default audience) → **Step 8:** PASS, `go vet ./...`.
 - [ ] **Step 9: Commit** `feat(statuseffect): catalog kinds, params and set operations`
 
 ---
 
-### Task 3: Domain — effect pieces and the catalog's composition
+### Task 3: Domain — pieces, composition and the blocking summary
 
-Spec §5.1 (pieces), §5.2 (containment), §5.3/§5.4 (what each status does). Data only; nothing consumes it in this phase.
-
-**Files:**
-- Create: `internal/domain/statuseffect/piece.go`
-- Test: `internal/domain/statuseffect/piece_test.go`
+**Files:** Create `piece.go`, `summary.go`; tests `piece_test.go`, `summary_test.go`.
 
 **Interfaces — Produces:**
 
 ```go
-type PieceKind string
-const (
-	PieceNoAct PieceKind = "noAct"; PieceNoReact = "noReact"
-	PieceDomainLocked = "domainLocked"; PieceDomainWarning = "domainWarning"
-	PieceReactionRestricted = "reactionRestricted"; PieceTestPenalty = "testPenalty"
-	PieceAutoFail = "autoFail"; PieceNoDisplacement = "noDisplacement"; PieceLosesHP = "losesHp"
-	PieceRecovery = "recovery"; PieceTriggeredTest = "triggeredTest"
-	PieceConduct = "conduct"; PieceControl = "control"; PieceCounter = "counter"
-)
+type PieceKind string // noAct noReact domainLocked domainWarning reactionRestricted testPenalty autoFail
+                      // noDisplacement losesHp recovery triggeredTest conduct control counter
 type Reaction string    // "reflexDodge" "evasion" "defense" "repel" "escape"
 type Restriction string // "forbidden" "disadvantage" "rolledOnly"
 type Trigger string     // "onHit" "onMove"
-type Scope struct { Domain Domain; Aptitude Aptitude; Sense Sense; Face TouchFace; MoveSpeed bool } // exactly one set
-type TestRef struct { Skill enum.SkillName; Attribute enum.AttributeName } // exactly one set
+type Scope struct { Domain Domain; Aptitude Aptitude; Sense Sense; Face TouchFace; MoveSpeed bool } // one set
+type TestRef struct { Skill enum.SkillName; Attribute enum.AttributeName }                    // one set
 type Piece struct {
-	Kind PieceKind
-	Domain Domain                   // domainLocked, domainWarning (one piece per domain)
-	Reaction Reaction; Restriction Restriction // reactionRestricted
-	Scope Scope                      // testPenalty, autoFail
-	Disadvantage int; Penalty int    // testPenalty (levels of disadvantage; −N)
-	HPPerRound int                   // losesHp
-	Test TestRef; Points int         // recovery; triggeredTest uses Test
-	Triggers []Trigger; OnFail Kind  // triggeredTest
-	Conduct string; Irresistible bool // conduct
-	ControllerID *uuid.UUID          // control
+	Kind PieceKind; Domain Domain; Reaction Reaction; Restriction Restriction
+	Scope Scope; Disadvantage, Penalty int; HPPerRound int; Test TestRef; Points int
+	Triggers []Trigger; OnFail Kind; Conduct string; Irresistible bool; ControllerID *uuid.UUID
 }
 func (e Effect) Pieces() []Piece
+
+type Note struct { Kind Kind; Domain Domain; Conduct string; Irresistible bool } // master-only notes
+type Summary struct {
+	CannotAct, CannotReact, NoDisplacement bool
+	CannotActBy, CannotReactBy, NoDisplacementBy []Kind // which statuses cause it (error messages)
+	LockedDomains map[Domain][]Kind
+	ForbiddenReactions map[Reaction][]Kind
+	Notes []Note // domainWarning → {Kind, Domain}; conduct → {Kind, Conduct, Irresistible}
+}
+func Summarize(effects []Effect) Summary // reads ONLY these pieces; penalties/autoFail/etc. are ignored here
 ```
 
-- [ ] **Step 1: Write `piece_test.go`.** Helper `has(pieces, want Piece) bool` (compare by value; slices by content). Tests:
-  - `TestPieces_Composition` table — each row: effect → the exact pieces (order-insensitive):
-    - paralyzed{domains [attack, movement], points 4} → domainLocked attack, domainLocked movement, noDisplacement (movement marked), recovery{Tenacity, 4}. With domains [attack] only → no noDisplacement.
-    - stupefied{points 3} → noAct, noReact, recovery{Attribute: Resilience, 3}.
-    - stunned{points 8} → domainLocked ×4, noDisplacement, noAct, noReact, autoFail{Sense} ×5, recovery{Tenacity, 8}.
-    - unconscious → same as stunned **without** recovery.
-    - restrained → noDisplacement, reactionRestricted{escape, forbidden}.
-    - injured{attack: hurt, movement: disabled} → testPenalty{Domain attack, Disadvantage 1}; testPenalty{Domain movement, Disadvantage 1} + domainWarning movement (disabled contains hurt, §5.2).
-    - slowed{penalty 2} → testPenalty{MoveSpeed, Penalty 2}.
-    - sense vision impaired{disadvantage, penalty 1} → testPenalty{Sense vision, 1, 1}. Vision nullified → autoFail{Sense vision} + testPenalty{Domain attack, Disadvantage 1} + testPenalty{Domain defense, Disadvantage 1}. Hearing nullified → autoFail{Sense hearing} only.
-    - sense tact impaired faces [touch, balance] → testPenalty{Face touch} + testPenalty{Face balance} (each with the status's disadvantage/penalty) + triggeredTest{[onHit, onMove], Tact, OnFail prone}. Tact nullified [balance] → autoFail{Face balance} + the same triggeredTest. Tact [touch] → no triggeredTest.
-    - weakened mental{penalty 2, no disadvantage} → testPenalty{Aptitude mental, 0, 2}.
-    - bleeding{3} → losesHp 3 (same for burning, freezing, poisoned).
-    - asphyxiating → counter.
-    - prone → reactionRestricted{reflexDodge, disadvantage}, {repel, disadvantage}.
-    - airborne → {reflexDodge, forbidden}, {escape, forbidden}.
-    - openGuard → {reflexDodge, forbidden}, {repel, forbidden}, {defense, rolledOnly}, {escape, disadvantage}.
-    - compelled{conduct "fugir", irresistible} → conduct piece with both. controlled{controller X} → control X.
-    - hidden → no pieces.
-  - `TestPieces_Containment` (§5.2 as an invariant): pieces of `paralyzed{all four}` minus recovery ⊆ stunned; stupefied minus recovery ⊆ stunned; stunned minus recovery ⊆ unconscious; restrained's noDisplacement ⊆ paralyzed{movement}.
-- [ ] **Step 2: Run** `go test ./internal/domain/statuseffect/ -run TestPieces` → FAIL.
-- [ ] **Step 3: Implement `piece.go`.** Build unconscious from stunned's builder minus recovery, stunned from paralyzed(all)+stupefied minus their recoveries plus the five autoFails — the containment lives in the code, not in copy-pasted lists. Leave these markers as comments (Portuguese) where the piece would go, without inventing it:
-  - stupefied/stunned: `// TODO Nen: "não usa habilidades" — peça a criar com a migração do Nen (spec §13).`
-  - tact balance face: `// TODO(G1, dono): o equilíbrio afetado pesa em ataque, defesa, esquiva e movimento (spec §5.3), mas o spec não diz quanto nem o que o anulado faz — lacuna levada ao dono; peça não declarada até a resposta.`
-  - prone and airborne movement: `// Provisório até o movimento (spec §13): só rolar/deslizar (Caído) e só a trajetória (No ar).`
-  - asphyxiating: `// Fôlego, barra de afogamento e testes: fase 4 (spec §5.3 Ar).`
-- [ ] **Step 4: Run** → PASS. `go vet ./...`.
-- [ ] **Step 5: Commit** `feat(statuseffect): declare effect pieces and the catalog composition`
+Composition (§5.1–§5.4; containment built in code — unconscious = stunned's builder minus recovery; stunned = paralyzed(all four) + stupefied, minus their recoveries, + autoFail for each of the five senses):
+
+- paralyzed{domains, points}: domainLocked per domain; noDisplacement if movement marked; recovery{Tenacity, points}.
+- stupefied{points}: noAct, noReact, recovery{Attribute Resilience, points}.
+- stunned{points}: as above + recovery{Tenacity, points}. unconscious: stunned without recovery.
+- restrained: noDisplacement; reactionRestricted{escape, forbidden}.
+- injured: hurt d → testPenalty{Domain d, Disadvantage 1}; disabled d → same + domainWarning d.
+- slowed{penalty}: testPenalty{MoveSpeed, Penalty}.
+- sense impaired: testPenalty{Sense s} (tact: one per face) with the status's disadvantage/penalty. nullified: autoFail{Sense s} (tact: per face). Vision nullified also testPenalty{attack, Disadvantage 1}, testPenalty{defense, Disadvantage 1}. Tact with balance face: triggeredTest{[onHit,onMove], Skill Tact, OnFail prone}; **G1:** impaired → testPenalty on attack, defense, dodge, movement with the status's own disadvantage/penalty; nullified → testPenalty{Disadvantage 1} on those four.
+- weakened{aptitude}: testPenalty{Aptitude a} with its disadvantage/penalty.
+- bleeding/burning/freezing/poisoned: losesHp{n}. asphyxiating: counter.
+- prone: reactionRestricted{reflexDodge, disadvantage}, {repel, disadvantage}. airborne: {reflexDodge, forbidden}, {escape, forbidden}. openGuard: {reflexDodge, forbidden}, {repel, forbidden}, {defense, rolledOnly}, {escape, disadvantage}.
+- compelled: conduct{text, irresistible}. controlled: control{controller}. hidden: none.
+
+Markers (Portuguese comments, no invented piece): stupefied/stunned `// TODO Nen: "não usa habilidades" (spec §13).`; prone/airborne `// Provisório até o movimento (spec §13): só rolar/deslizar (Caído), só a trajetória (No ar).`; asphyxiating `// Fôlego e afogamento: fase posterior (spec §5.3 Ar).`
+
+- [ ] **Step 1: `piece_test.go`** — `TestPieces_Composition` (one row per bullet above, order-insensitive compare; include: paralyzed [attack] has no noDisplacement; hearing nullified has no domain penalty; tact [touch] has no triggeredTest; G1 impaired and nullified rows) and `TestPieces_Containment` (paralyzed(all) − recovery ⊆ stunned; stupefied − recovery ⊆ stunned; stunned − recovery ⊆ unconscious; restrained's noDisplacement ⊆ paralyzed{movement}).
+- [ ] **Step 2: `summary_test.go`** — `TestSummarize`: empty → zero Summary; stunned → CannotAct, CannotReact, NoDisplacement, all four LockedDomains, `CannotActBy == [stunned]`; paralyzed{[attack]} + restrained → LockedDomains{attack:[paralyzed]}, NoDisplacement by [restrained], ForbiddenReactions{escape:[restrained]}; openGuard + airborne → ForbiddenReactions reflexDodge:[airborne, openGuard], repel:[openGuard], escape:[airborne] (disadvantage/rolledOnly NOT in Summary); injured{movement: disabled} → Notes [{injured, movement}]; compelled → Notes [{compelled, conduct, irresistible}].
+- [ ] **Step 3:** FAIL → implement → PASS; `go vet ./...`. **Commit** `feat(statuseffect): declare effect pieces, composition and blocking summary`
 
 ---
 
-### Task 4: Domain — audience and visibility rule; match rule flag
+### Task 4: Domain — viewer list and match rule flag
 
-Spec §9, §14 ("Configuração da mesa… parâmetro em MatchRules").
-
-**Files:**
-- Modify: `internal/domain/statuseffect/audience.go`, `set.go` (validate audience in Apply/Edit), `error.go`
-- Modify: `internal/domain/match/match_rules.go` (+ `match_rules_test.go`)
-- Test: `internal/domain/statuseffect/audience_test.go`
+**Files:** `audience.go`, `set.go` (validate), `error.go`; `internal/domain/match/match_rules.go` (+test); test `audience_test.go`.
 
 **Interfaces — Produces:**
 
 ```go
-type Audience struct{ Everyone bool; Players []uuid.UUID } // Everyone ⇒ Players empty; Players: distinct
 type Viewer struct{ UserID uuid.UUID; IsMaster bool }
-type Subject struct{ OwnerID uuid.UUID; IsNPC bool } // the character the effect is on
-func (a Audience) Validate() error // ErrInvalidAudience: Everyone with players, duplicates, uuid.Nil
-func Visible(e Effect, v Viewer, s Subject, pcPublicByDefault bool) bool
+type Subject struct{ OwnerID uuid.UUID; IsNPC bool }
+func (a Audience) Validate() error // ErrInvalidAudience: everyone+players, duplicates, uuid.Nil
+// Listed: does the viewer list (or the kind default) include this viewer? Sight is NOT here — the room adds it.
+func Listed(e Effect, v Viewer, s Subject, pcPublicByDefault bool) bool
 var ErrInvalidAudience error
 ```
-`MatchRules.PlayerStatusEffectsPublic bool` — default `false` in `NewDefaultMatchRules()` (doc comment PT: configuração da mesa do spec §9; sem tela ainda).
+`MatchRules.PlayerStatusEffectsPublic bool`, default `false` (PT doc comment: configuração da mesa, spec §9/§14, sem tela).
 
-- [ ] **Step 1: Write `audience_test.go`** — `TestVisible` table over (kind public/hidden, audience, subject NPC/PC, viewer master/owner/other, flag):
-  - master sees everything, always (incl. `{Players: []}`).
-  - no record, public kind (prone) → owner and other see.
-  - no record, hidden kind (poisoned), PC → owner sees, other does not.
-  - no record, hidden kind, NPC (owner = master) → other player does not.
-  - no record, hidden kind, PC, `pcPublicByDefault=true` → other sees; same on NPC → other does NOT (flag is for PCs only).
-  - `{Everyone: true}` on hidden kind → other sees.
-  - `{Players: []}` on a PC → owner does NOT see ("só o mestre").
-  - `{Players: [other]}` → other sees, owner does not.
-  - `{Players: [owner]}` on public kind → other does not (explicit list overrides the default).
-  - `TestAudienceValidate`: everyone+players, duplicate player, `uuid.Nil` → `ErrInvalidAudience`.
-  - In `set_test.go`: `TestApply/"invalid audience refused"`, `TestEdit/"invalid audience refused"` → `ErrInvalidAudience`, set untouched.
-  - `match_rules_test.go`: defaults have `PlayerStatusEffectsPublic == false`.
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `go test ./internal/domain/statuseffect/ ./internal/domain/match/ -v` → PASS.
-- [ ] **Step 5: Commit** `feat(statuseffect): who sees each effect — audience list with kind defaults`
+- [ ] **Step 1: tests** — `TestListed`: master always (incl. `{Players: []}`); default public kind → owner and other; default hidden kind on PC → owner only; on NPC → nobody but the master; flag on → other sees PC's hidden kinds, not an NPC's; `{Everyone:true}` → other; `{Players: []}` → not the owner; `{Players:[other]}` → other, not owner; `{Players:[owner]}` on a public kind → other does not. `TestAudienceValidate`. In `set_test.go`: `"invalid audience refused"` for Apply and Edit. `match_rules_test.go`: default false.
+- [ ] **Step 2:** FAIL → implement → PASS. **Commit** `feat(statuseffect): viewer list with kind defaults`
 
 ---
 
 ### Task 5: Migration and gateway
 
-**Files:**
-- Create: `migrations/20261117000000_character_status_effects.sql`
-- Create: `internal/gateway/pg/statuseffect/repository.go` (package `pgstatuseffect`)
-- Test: `internal/gateway/pg/statuseffect/statuseffect_integration_test.go`
-- Modify: `internal/application/match/i_repository.go` (reader interface)
+**Files:** `migrations/20261117000000_character_status_effects.sql`; `internal/gateway/pg/statuseffect/repository.go` (`pgstatuseffect`); `statuseffect_integration_test.go`; `internal/application/match/i_repository.go`.
 
 **Interfaces — Produces:**
 
 ```go
-// i_repository.go
-type IStatusEffectReader interface {
+type IStatusEffectReader interface { // application/match
 	ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error)
 }
-// pgstatuseffect
 func NewRepository(q pgfs.IQuerier) *Repository
-func (r *Repository) ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error) // never nil map; each slice ordered by applied_at, uuid
-func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error // in order, atomically
+func (r *Repository) ListBySheets(ctx, sheetUUIDs) (map[uuid.UUID][]statuseffect.Effect, error) // never nil; ordered applied_at, uuid
+func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error                 // in order, atomic
 ```
 
-- [ ] **Step 1: Write the migration** (same goose layout as `20261010000000_cancelled_actions.sql`, with a PT comment block explaining: tabela da ficha, vale em qualquer campanha (§10); `variant` = sentido ou Aptidão, '' nos demais, parte da identidade; `params` só os campos do tipo; `audience NULL` = visibilidade padrão do tipo (§9, sem registro = padrão)):
+- [ ] **Step 1: migration** (goose layout of `20261010000000_cancelled_actions.sql`, PT comment: tabela da ficha, vale em qualquer campanha (§10); `variant` = sentido ou Aptidão, parte da identidade; `audience NULL` = padrão do tipo (§9)):
 
 ```sql
 CREATE TABLE IF NOT EXISTS character_status_effects (
@@ -383,99 +315,76 @@ CREATE TABLE IF NOT EXISTS character_status_effects (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_character_status_effects_identity
   ON character_status_effects(character_sheet_uuid, kind, variant);
 ```
-Down: drop index, drop table.
 
-- [ ] **Step 2: Write the integration tests** (`//go:build integration`, pattern of `cancelledaction_integration_test.go`; `pgtest.TruncateAll` per sub-test; sheets via `pgtest.InsertTestCharacterSheet`):
-  - `TestWrite/"upsert inserts then updates"`: write upsert of a sense effect (vision, impaired, alias, `Audience{Players:[p]}`), list → equal (times truncated to µs); upsert again with new params/alias/`Audience nil`/UpdatedAt → list shows the update, `AppliedAt` unchanged, `Audience == nil`.
-  - `"delete removes and is idempotent"`: delete twice → no error, list empty.
-  - `"ops apply in order"`: [upsert A(prone), delete A, upsert B(prone, new uuid)] in one call → only B (the unique identity index would reject B before A's delete).
-  - `"atomic"`: [upsert valid, upsert with a sheet UUID that does not exist] → error, list empty.
-  - `"runs inside an outer transaction"`: `tx := pool.Begin`; `NewRepository(tx).Write`; rollback → list empty.
-  - `TestListBySheets/"groups by sheet and orders"`: two sheets, three effects → map with two keys, order by applied_at; a sheet with none is absent; empty input → empty map, no query error.
-  - `"round-trips every params field"`: injured map, faces, controllerId, conduct, irresistible, disadvantage false + penalty.
-- [ ] **Step 3: Run** `go test -tags=integration ./internal/gateway/pg/statuseffect/...` → FAIL.
-- [ ] **Step 4: Implement `repository.go`.** `Write`: `tx, err := r.q.Begin(ctx)` (a pool begins a transaction; a `pgx.Tx` opens a savepoint — the same code serves both callers), unconditional rollback defer, commit. Upsert: `INSERT … ON CONFLICT (uuid) DO UPDATE SET params, alias, audience, updated_at` (sheet, kind, variant, applied_at are immutable). Params/audience JSON via gateway-local row structs with camelCase tags (`domains, injuries, level, faces, points, hpPerRound, penalty, disadvantage, conduct, irresistible, controllerId`; audience `{"everyone":true}` / `{"players":[…]}`) — the domain stays tag-free. `variant` = `string(Sense)` or `string(Aptitude)`. `ListBySheets`: `WHERE character_sheet_uuid = ANY($1) ORDER BY applied_at, uuid`.
-- [ ] **Step 5: Run** the package's integration tests → PASS; `go vet -tags=integration ./internal/gateway/pg/...`.
-- [ ] **Step 6: Commit** `feat(statuseffect): character_status_effects table and repository`
+- [ ] **Step 2: integration tests** — `TestWrite`: `"upsert inserts then updates"` (AppliedAt unchanged, audience back to nil), `"delete removes and is idempotent"`, `"ops apply in order"` ([upsert A prone, delete A, upsert B prone] → only B), `"atomic"` (second op on a missing sheet → error, nothing written), `"runs inside an outer transaction"` (rollback leaves nothing). `TestListBySheets`: `"groups by sheet and orders"`, `"empty input"`, `"round-trips every params field"`.
+- [ ] **Step 3:** FAIL → **Step 4:** implement. `Write` begins on `r.q` (pool → transaction; `pgx.Tx` → savepoint). Upsert `ON CONFLICT (uuid) DO UPDATE SET params, alias, audience, updated_at`. JSON via gateway-local row structs with camelCase tags (`domains, injuries, level, faces, points, hpPerRound, penalty, disadvantage, conduct, irresistible, controllerId`; audience `{"everyone":true}` / `{"players":[…]}`). → PASS; vet with tags.
+- [ ] **Step 5: Commit** `feat(statuseffect): character_status_effects table and repository`
 
 ---
 
 ### Task 6: Status writes in the turn's transaction
 
-**Files:**
-- Modify: `internal/application/match/i_repository.go` (`TurnCloseData`)
-- Modify: `internal/gateway/pg/round/persist_turn_close.go`
-- Test: `internal/gateway/pg/round/round_integration_test.go`
+**Files:** `internal/application/match/i_repository.go`; `internal/gateway/pg/round/persist_turn_close.go`; `round_integration_test.go`.
 
-**Interfaces — Produces:** `TurnCloseData.StatusEffects []statuseffect.Write` — doc comment (PT): o que o mestre mudou em efeitos de status enquanto o turno estava aberto, mais o que uma gravação anterior não conseguiu gravar (primeiro), aplicado em ordem nesta transação (§10).
+**Produces:** `TurnCloseData.StatusEffects []statuseffect.Write` (PT doc: o que o mestre mudou com o turno aberto, precedido do que uma gravação anterior não gravou; em ordem, nesta transação, §10).
 
-- [ ] **Step 1: Test** (in the existing `PersistTurnClose` test function, reuse its fixture builder): `"writes status effects in the turn transaction"` — close with `StatusEffects: [upsert prone on the victim sheet]` → `pgstatuseffect.NewRepository(pool).ListBySheets` has it. `"a failing close writes no status effect"` — make the close fail the way an existing failure sub-test does (or an upsert on a non-existent sheet) → nothing listed and no turn row.
-- [ ] **Step 2: Run** `go test -tags=integration ./internal/gateway/pg/round/...` → FAIL.
-- [ ] **Step 3: Implement**: after the cancelled actions block, `if len(d.StatusEffects) > 0 { if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects); err != nil { return fmt.Errorf("PersistTurnClose status effects: %w", err) } }`.
-- [ ] **Step 4: Run** → PASS; vet.
-- [ ] **Step 5: Commit** `feat(round): write status effect changes with the turn close`
+- [ ] **Step 1:** tests in the existing `PersistTurnClose` test: `"writes status effects in the turn transaction"`; `"a failing close writes no status effect"`.
+- [ ] **Step 2:** FAIL → **Step 3:** after the cancelled-actions block: `pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects)` when non-empty, error wrapped `PersistTurnClose status effects: %w` → PASS.
+- [ ] **Step 4: Commit** `feat(round): write status effect changes with the turn close`
 
 ---
 
 ### Task 7: Session storage, loading at birth, and the use case
 
-**Files:**
-- Create: `internal/domain/match/matchsession/status_effects.go` (+ `status_effects_test.go`)
-- Modify: `internal/application/match/init_match_session.go` (+ test)
-- Create: `internal/application/match/status_effects.go` (+ `status_effects_test.go`)
-- Modify: `internal/application/match/error.go` (`ErrUnknownCharacter` if no equivalent exists — check first)
+**Files:** Create `internal/domain/match/matchsession/status_effects.go` (+test); modify `internal/application/match/init_match_session.go` (+test); create `internal/application/match/status_effects.go` (+test); `error.go` (`ErrUnknownCharacter` unless an equivalent exists).
 
-**Interfaces — Consumes:** Task 2/4 domain API. **Produces:**
+**Interfaces — Produces:**
 
 ```go
-// matchsession — the caller holds the room's r.mu (session has no lock of its own)
-func (s *MatchSession) SetStatusEffects(byChar map[uuid.UUID][]statuseffect.Effect) // at birth
-func (s *MatchSession) StatusEffectsOf(charID uuid.UUID) []statuseffect.Effect      // clones, ordered by AppliedAt, ID; never nil
-func (s *MatchSession) ReplaceStatusEffects(charID uuid.UUID, effects []statuseffect.Effect) // empty ⇒ entry deleted
+// matchsession (caller holds r.mu)
+func (s *MatchSession) SetStatusEffects(byChar map[uuid.UUID][]statuseffect.Effect)
+func (s *MatchSession) StatusEffectsOf(charID uuid.UUID) []statuseffect.Effect // clones, ordered; never nil
+func (s *MatchSession) ReplaceStatusEffects(charID uuid.UUID, effects []statuseffect.Effect) // empty ⇒ delete
 func (s *MatchSession) FindStatusEffect(id uuid.UUID) (statuseffect.Effect, bool)
 func (s *MatchSession) CharactersWithStatusEffects() []uuid.UUID
-// (reuse an existing "is this user a player participant" accessor if there is one; else add IsPlayerParticipant(userID) bool)
+func (s *MatchSession) StatusSummaryOf(charID uuid.UUID) statuseffect.Summary
+// (+ IsPlayerParticipant(userID) bool unless an accessor already answers it)
 
-// application/match
-func (uc *InitMatchSessionUC) WithStatusEffects(r IStatusEffectReader) *InitMatchSessionUC // optional; nil = none loaded
+func (uc *InitMatchSessionUC) WithStatusEffects(r IStatusEffectReader) *InitMatchSessionUC // nil = none
 
 type IStatusEffects interface {
-	Apply(s *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, in ApplyStatusEffectInput, now time.Time) ([]statuseffect.Write, error)
-	Edit(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID, p statuseffect.Patch, now time.Time) (charID uuid.UUID, w []statuseffect.Write, err error)
-	Remove(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID) (charID uuid.UUID, w []statuseffect.Write, err error)
+	Apply(s *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, in ApplyStatusEffectInput, now time.Time) (StatusEffectChange, error)
+	Edit(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID, p statuseffect.Patch, now time.Time) (StatusEffectChange, error)
+	Remove(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID) (StatusEffectChange, error)
 }
 type ApplyStatusEffectInput struct{ CharacterIDs []uuid.UUID; Draft statuseffect.Draft }
-type StatusEffectsUC struct{}; func NewStatusEffectsUC() *StatusEffectsUC
+type StatusEffectChange struct {
+	Characters []uuid.UUID          // whose set changed
+	Writes     []statuseffect.Write // in order
+	HiddenChanged bool              // a hidden-kind effect was added, removed or had its audience changed (Task 10 reads it)
+}
+func NewStatusEffectsUC() *StatusEffectsUC
 ```
 
-- [ ] **Step 1: Session tests** (`status_effects_test.go`, session built with `NewMatchSession` + two participants): set/get round-trip returns clones (mutating the returned slice does not change the session); `ReplaceStatusEffects(id, nil)` removes the entry; `FindStatusEffect` across characters.
-- [ ] **Step 2: Init tests**: with a fake reader returning effects for one participant sheet → `session.StatusEffectsOf(sheet)` has them; the reader receives exactly the participants' sheet UUIDs; reader error → `Init` returns it (a session must not be born without its statuses — same policy as the clock); without `WithStatusEffects` → no reader call, empty.
-- [ ] **Step 3: UC tests** (`TestStatusEffectsUC`): 
-  - `"applies to several characters"` → each gets one effect; writes = one upsert per added effect (unconscious → 2 per character).
-  - `"all or nothing when one already has it"` (Review Focus 3): A has prone, apply prone to [A, B] → `statuseffect.ErrAlreadyApplied`, B still has none, no writes.
-  - `"refuses a non-master"` → `ErrNotMatchMaster`; `"refuses an ended match"` → `matchsession.ErrMatchEnded`; `"refuses an unknown character"` → `ErrUnknownCharacter`; `"refuses empty or repeated character ids"` → `ErrInvalidParams` (wrapped); `"refuses a controller outside the match or equal to the target"`; `"refuses an audience player who is not a player of the match"` → `ErrInvalidAudience`.
-  - `"edit returns the character and an upsert"`; `"remove returns a delete"`; unknown id → `statuseffect.ErrNotFound`.
-- [ ] **Step 4: Run** `go test ./internal/domain/match/matchsession/ ./internal/application/match/ -run 'StatusEffect|Init'` → FAIL. **Step 5: Implement.** The UC computes every character's next set first and only then calls `ReplaceStatusEffects` for all. **Step 6: Run** → PASS; `go vet ./...`.
-- [ ] **Step 7: Commit** `feat(match): status effects in the session, loaded at birth, changed by the master`
+- [ ] **Step 1: session tests** — clones on read; `ReplaceStatusEffects(id, nil)` deletes; `FindStatusEffect` across characters; `StatusSummaryOf` = `Summarize(StatusEffectsOf)`.
+- [ ] **Step 2: init tests** — fake reader: effects land in the session; reader receives exactly the participants' sheet UUIDs; reader error → `Init` returns it (same policy as the clock); no reader → none.
+- [ ] **Step 3: UC tests** `TestStatusEffectsUC`: `"applies to several characters"` (writes = upserts, unconscious → 2 per character); `"all or nothing when one already has it"`; `"refuses a non-master"` (`ErrNotMatchMaster`); `"refuses an ended match"` (`matchsession.ErrMatchEnded`); `"refuses an unknown character"`; `"refuses empty or repeated character ids"`; `"refuses a controller outside the match or equal to the target"`; `"refuses an audience player who is not a player of the match"` (`ErrInvalidAudience`); `"edit returns an upsert"`; `"remove returns a delete"`; `"unknown id"`; `"hidden changes are flagged"` (apply/remove hidden, edit hidden's audience → `HiddenChanged`; edit hidden's alias → false).
+- [ ] **Step 4:** FAIL → **Step 5:** implement (compute every character's next set first, then replace all) → PASS; vet.
+- [ ] **Step 6: Commit** `feat(match): status effects in the session, loaded at birth, changed by the master`
 
 ---
 
-### Task 8: WS commands, per-recipient projection and reconnect
+### Task 8: WS commands, per-recipient projection, reconnect
 
-Contract shapes below are final — Task 10 documents them as they are.
-
-**Files:**
-- Modify: `internal/app/game/message.go`, `room.go` (three `case` arms delegating; `buildMatchFullState`), `room_deps.go`
-- Create: `internal/app/game/status_effects.go`
-- Test: `internal/app/game/status_effects_e2e_test.go` (on `combatFixture`: `connectTable`, `withNPCTarget`, `withBystander`, `openAttackTurn`, `collector`)
+**Files:** `internal/app/game/message.go`, `room.go` (three `case` arms; `buildMatchFullState`), `room_deps.go`; create `status_effects.go`, `sight.go`; test `status_effects_e2e_test.go` (on `combatFixture`: `connectTable`, `withNPCTarget`, `withBystander`, `openAttackTurn`, `seedMoverBoard`/`seedHiddenMoveBoard` for positions and walls, `collector`).
 
 **Interfaces — Produces (message.go):**
 
 ```go
-MsgTypeApplyStatusEffect    MessageType = "apply_status_effect"    // client → server, master only
+MsgTypeApplyStatusEffect    MessageType = "apply_status_effect"    // c→s, master
 MsgTypeEditStatusEffect     MessageType = "edit_status_effect"
 MsgTypeRemoveStatusEffect   MessageType = "remove_status_effect"
-MsgTypeStatusEffectsUpdated MessageType = "status_effects_updated" // server → client, projected
+MsgTypeStatusEffectsUpdated MessageType = "status_effects_updated" // s→c, projected
 
 type StatusEffectParamsPayload struct {
 	Domains []string `json:"domains,omitempty"`; Injuries map[string]string `json:"injuries,omitempty"`
@@ -486,8 +395,8 @@ type StatusEffectParamsPayload struct {
 	ControllerID *uuid.UUID `json:"controllerId,omitempty"`
 }
 type StatusEffectVisibilityPayload struct {
-	Mode string `json:"mode"` // "default" | "public" | "players"
-	PlayerIDs []uuid.UUID `json:"playerIds,omitempty"` // mode "players"; [] = só o mestre
+	Mode string `json:"mode"`                        // "default" | "public" | "players"
+	PlayerIDs []uuid.UUID `json:"playerIds,omitempty"` // mode "players"; [] = master only
 }
 type ApplyStatusEffectPayload struct {
 	CharacterIDs []uuid.UUID `json:"characterIds"`; Kind string `json:"kind"`
@@ -499,104 +408,198 @@ type EditStatusEffectPayload struct {
 	StatusEffectID uuid.UUID `json:"statusEffectId"`
 	Params *StatusEffectParamsPayload `json:"params,omitempty"`       // absent = untouched; present = replaces all
 	Alias *string `json:"alias,omitempty"`                            // absent = untouched; "" clears
-	Visibility *StatusEffectVisibilityPayload `json:"visibility,omitempty"` // absent = untouched; mode "default" = back to default
+	Visibility *StatusEffectVisibilityPayload `json:"visibility,omitempty"` // absent = untouched; "default" = back to default
 }
 type RemoveStatusEffectPayload struct{ StatusEffectID uuid.UUID `json:"statusEffectId"` }
 type StatusEffectPayload struct {
 	ID uuid.UUID `json:"id"`; Kind string `json:"kind"`
 	Sense string `json:"sense,omitempty"`; Aptitude string `json:"aptitude,omitempty"`
-	Params StatusEffectParamsPayload `json:"params"` // every field the kind owns, defaults applied; the rest omitted
+	Params StatusEffectParamsPayload `json:"params"` // fields the kind owns, defaults applied
 	Alias string `json:"alias,omitempty"`; AppliedAt time.Time `json:"appliedAt"`
 	Visibility *StatusEffectVisibilityPayload `json:"visibility,omitempty"` // master only
-	Public *bool `json:"public,omitempty"`                               // master only: every player sees it now
+	Public *bool `json:"public,omitempty"`                               // master only: listed for every player
 }
 type StatusEffectsUpdatedPayload struct {
 	CharacterID uuid.UUID `json:"characterId"`
-	StatusEffects []StatusEffectPayload `json:"statusEffects"` // the recipient's WHOLE visible list for the character; never null
+	StatusEffects []StatusEffectPayload `json:"statusEffects"` // the recipient's WHOLE visible list; never null
 }
 // MatchFullStatePayload gains:
-StatusEffects map[uuid.UUID][]StatusEffectPayload `json:"statusEffects,omitempty"` // projected; characters with nothing visible absent
+StatusEffects map[uuid.UUID][]StatusEffectPayload `json:"statusEffects,omitempty"`
 ```
-`RoomDeps.StatusEffectsUC appmatch.IStatusEffects` — nil ⇒ the three commands answer `game_error` (the usual "no capability").
 
-Error codes (`error` message): `forbidden` (not master), `invalid_payload` (bad JSON, unknown enum string, empty/duplicate `characterIds`, `statusEffectId` nil), `match_not_started` (no session — lobby), `match_already_ended`, `unknown_character`, `status_effect_invalid` (`ErrUnknownKind`/`ErrInvalidParams`/`ErrInvalidAudience`; message carries the field), `status_effect_exists`, `status_effect_not_found`, `game_error` (anything else).
+```go
+// sight.go — the ONE answer to "does this player see this character now" (Task 10 adds Hidden)
+func (r *Room) seesCharacterLocked(pid uuid.UUID, charID uuid.UUID) bool
+// true when: pid owns charID (charToPlayer); OR the room has no board (!hasBoardLocked()); OR the
+// character's piece exists, its Visible flag is not false, and its center is inside GetVisibility(pid).
+// status_effects.go
+func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMaster bool) (list []StatusEffectPayload, known bool)
+// known=false when a non-master, non-owner does not see the character → "send nothing, keep nothing".
+```
+Room field `statusViews map[uuid.UUID]map[uuid.UUID][]byte` (player → character → JSON of the last list sent; guarded by `r.mu`). `RoomDeps.StatusEffectsUC appmatch.IStatusEffects` (nil ⇒ `game_error`).
 
-- [ ] **Step 1: Write the e2e tests** (fixture with a PC owned by the fixture player, a bystander player, and an NPC):
-  - `TestStatusEffects_ApplyPublic`: master applies prone to the victim → master, owner and bystander each get exactly one `status_effects_updated{characterId: victim}` with one effect `kind: "prone"`; only the master's carries `visibility {mode:"default"}` and `public: true`.
-  - `TestStatusEffects_ApplyHiddenOnPC`: poisoned{hpPerRound 2} → master and owner get it; bystander gets **no message at all**.
-  - `TestStatusEffects_ApplyHiddenOnNPC`: poisoned on the NPC → only the master.
-  - `TestStatusEffects_VisibilityChange` (Review Focus 2): hidden on PC; edit `visibility {mode:"public"}` → bystander gets a list with it, owner gets nothing (their list did not change), master gets it; then edit `{mode:"players", playerIds: []}` → owner and bystander each get an empty list; then edit only `alias` → only the master gets a message.
-  - `TestStatusEffects_Remove`: remove a public effect → everyone gets `statusEffects: []`.
-  - `TestStatusEffects_MultiTargetAllOrNothing`: one target already prone → master gets `error status_effect_exists`, nobody gets `status_effects_updated`.
-  - `TestStatusEffects_Refusals`: player sends apply → `forbidden`; unknown kind → `status_effect_invalid`; prone + points → `status_effect_invalid`; unknown character → `unknown_character`; edit unknown id → `status_effect_not_found`; lobby fixture (`inLobby`) → `match_not_started`.
-  - `TestStatusEffects_Reconnect` (Review Focus 5): public effect on the NPC, hidden on the NPC, hidden on the PC; bystander reconnects → `match_full_state.statusEffects` has only the NPC's public one; owner reconnects → the NPC's public one and their PC's hidden one; master → all three, with `visibility`.
-- [ ] **Step 2: Run** `go test ./internal/app/game/ -run TestStatusEffects` → FAIL.
-- [ ] **Step 3: Implement** `status_effects.go`:
-  - `handleApplyStatusEffect/handleEditStatusEffect/handleRemoveStatusEffect(client *Client, raw json.RawMessage)`: master check, decode + parse wire strings into domain types (wire → `statuseffect.Draft`/`Patch`; `mode "default"` ⇒ `Audience nil`), `session == nil` ⇒ `match_not_started`.
-  - Under `r.mu.Lock()`: snapshot **before** = per connected client, per affected character, the JSON of the projected list; call the UC with `r.now()`; on error unlock and answer `statusEffectErrorCode(err)`; on success hand the writes to `r.holdStatusEffectWritesLocked(writes)` (Task 9 — in this task a stub that does nothing, so Task 8 stays testable alone); snapshot **after**; unlock. Then `dispatchPerPlayer` sends `status_effects_updated` to each recipient whose before ≠ after for that character (a client that connected in between has no before entry and is skipped — its `match_full_state` was built after the change).
-  - `projectStatusEffectsLocked(charID uuid.UUID, viewer statuseffect.Viewer) []StatusEffectPayload`: owner = `session.GetCharToPlayer()[charID.String()]`; `IsNPC = owner == r.masterUUID`; filter with `statuseffect.Visible(…, session.GetRules().PlayerStatusEffectsPublic)`; master gets `visibility` and `public` (computed as `Visible` for a hypothetical non-owner, non-master viewer, i.e. `uuid.Nil` user).
-  - `buildMatchFullState`: fill `StatusEffects` for the viewer from `CharactersWithStatusEffects()`.
-- [ ] **Step 4: Run** → PASS; then the whole package `go test ./internal/app/game/` (no regression) and `go vet ./...`.
-- [ ] **Step 5: Commit** `feat(game): master applies, edits and removes status effects over WS, projected per viewer`
+Error codes: `forbidden`, `invalid_payload` (bad JSON, unknown enum string, empty/duplicate `characterIds`, nil id), `match_not_started`, `match_already_ended`, `unknown_character`, `status_effect_invalid` (`ErrUnknownKind`/`ErrInvalidParams`/`ErrInvalidAudience`; message names the field), `status_effect_exists`, `status_effect_not_found`, `game_error`.
+
+- [ ] **Step 1: e2e tests** (PC owned by the fixture player, a bystander player, an NPC; a board where everyone sees everyone unless a test moves pieces apart behind a wall):
+  - `TestStatusEffects_ApplyPublic`: prone on the victim → master, owner, bystander each get one `status_effects_updated`; only the master's has `visibility{mode:"default"}`, `public:true`.
+  - `TestStatusEffects_ApplyHiddenOnPC` / `OnNPC`: poisoned → master + owner / master only; bystander gets **no message**.
+  - `TestStatusEffects_VisibilityChange`: hidden → `public` (bystander gets it, owner nothing, master gets it) → `players:[]` (owner and bystander get `[]`) → alias only (master only).
+  - `TestStatusEffects_PublicNeedsSight`: NPC behind a wall from the bystander → prone on the NPC → bystander gets nothing; master and (NPC owner = master) get it.
+  - `TestStatusEffects_NoBoardEveryoneSees`: room without board → bystander gets the public one.
+  - `TestStatusEffects_Remove`: everyone who saw it gets `[]`.
+  - `TestStatusEffects_MultiTargetAllOrNothing`; `TestStatusEffects_Refusals` (player → `forbidden`; unknown kind / prone+points → `status_effect_invalid`; unknown character; edit unknown id; `inLobby` → `match_not_started`).
+  - `TestStatusEffects_Reconnect`: public + hidden on the NPC, hidden on the PC; bystander reconnects in sight → only the NPC's public; out of sight → none; owner → NPC public (if in sight) + own hidden; master → all, with `visibility`.
+- [ ] **Step 2:** FAIL → **Step 3: implement** `status_effects.go` + `sight.go`:
+  - Arms: master check, decode, wire → domain (`mode "default"` ⇒ nil audience), `session == nil` ⇒ `match_not_started`.
+  - Under `r.mu.Lock()`: UC call with `r.now()`; on error unlock + `error`; on success `r.holdStatusEffectWritesLocked(change.Writes)` (stub returning false in this task — Task 9 fills it); unlock; then `r.syncStatusViews(change.Characters)`.
+  - `syncStatusViews(chars []uuid.UUID)` (no lock held by caller): for each connected client (same set `dispatchPerPlayer` iterates) and each char, under `r.mu` build `projectStatusEffectsLocked`; `known=false` ⇒ skip; JSON ≠ `statusViews[pid][char]` ⇒ store and queue; then send via `dispatchPerPlayer` (one message per changed (pid, char)). The master's lists go through the same cache.
+  - `buildMatchFullState`: `StatusEffects` for the viewer from `CharactersWithStatusEffects()` (known ones only) and **reset** `statusViews[pid]` to exactly what was sent.
+  - `removeClient`: drop `statusViews[pid]`.
+- [ ] **Step 4:** PASS; whole package `go test ./internal/app/game/`; vet.
+- [ ] **Step 5: Commit** `feat(game): master applies, edits and removes status effects; projected by list and sight`
 
 ---
 
-### Task 9: When the write happens — outside a turn, with the turn, and healing
+### Task 9: When the write happens — outside a turn, with the turn, healing; live NPC; wiring
 
-**Files:**
-- Modify: `internal/app/game/status_effects.go`, `turn_writes.go` (field `statusEffects []statuseffect.Write`), `room.go` (`persistClosedTurn`; Room field `unwrittenStatusEffects []statuseffect.Write`), `room_deps.go`, `master_board.go` (live NPC), `cmd/game/main.go`
-- Test: `internal/app/game/status_effects_e2e_test.go` (fake store `fakeStatusEffectStore` recording each `Write` call and able to fail on demand)
+**Files:** `status_effects.go`, `turn_writes.go` (`statusEffects []statuseffect.Write`), `room.go` (`persistClosedTurn`; field `unwrittenStatusEffects`), `room_deps.go`, `master_board.go` (live NPC), `cmd/game/main.go`; tests in `status_effects_e2e_test.go` with `fakeStatusEffectStore` (records each `Write`, fails on demand, serves `ListBySheets`).
 
-**Interfaces — Produces:**
+**Produces:**
 
 ```go
-// room_deps.go
 type IStatusEffectRepo interface {
 	ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error)
 	Write(ctx context.Context, ops []statuseffect.Write) error
 }
-RoomDeps.StatusEffectRepo IStatusEffectRepo // nil: nothing is written (and nothing accumulates)
-// status_effects.go
-func (r *Room) holdStatusEffectWritesLocked(ops []statuseffect.Write) (flushNow bool) // caller holds r.mu (write)
-func (r *Room) flushStatusEffects()                                                   // caller holds NO lock
+RoomDeps.StatusEffectRepo IStatusEffectRepo // nil: nothing written, nothing accumulated
+func (r *Room) holdStatusEffectWritesLocked(ops []statuseffect.Write) (flushNow bool)
+func (r *Room) flushStatusEffects() // caller holds no lock
 ```
 
-- [ ] **Step 1: Tests:**
-  - `"outside a turn writes at once"`: apply → the store got exactly one `Write` with one upsert, before the master's `status_effects_updated` assertion completes (await with the fixture's polling helper pattern).
-  - `"inside a turn waits for the close"` (house rule): `openAttackTurn`; apply + edit → store got nothing; close the turn → `mockRoundRepoHandler`'s recorded `TurnCloseData.StatusEffects` == [upsert, upsert] in order; store still got nothing.
-  - `"a failed out-of-turn write is retried with the next one"` (Review Focus 1): store fails once; apply A → no error to the master, memory has A; apply B → the store's next call carries [A upsert, B upsert].
-  - `"a failed close keeps the turn's status writes for the next write"` (Review Focus 1): round repo fails the close; inside the turn apply A; close → fails; next out-of-turn apply B → store gets [A, B].
-  - `"unwritten writes ride the next close first"`: store fails on apply A (outside turn); open turn; apply B; close → `TurnCloseData.StatusEffects == [A, B]`; then a later out-of-turn write does not resend A.
-  - `"live NPC arrives with its effects"`: store `ListBySheets` returns a public prone for the NPC sheet; `add_npc` → the table gets `status_effects_updated` for the NPC (after `npc_added`), master included.
-  - `"no repo, no accumulation"`: `StatusEffectRepo` nil → apply works in memory; nothing panics; close's `StatusEffects` empty.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement:**
-  - `holdStatusEffectWritesLocked`: open turn (`openTurnIDLocked() != uuid.Nil`) ⇒ append to `turnWritesLocked(id).statusEffects`, return false; else if `StatusEffectRepo == nil` ⇒ drop, return false; else append to `r.unwrittenStatusEffects`, return true. The arms call `r.flushStatusEffects()` after unlocking when it returned true.
-  - `flushStatusEffects`: `r.persistMu.Lock()` (same serializer as board saves and closes; lock order `persistMu` → `r.mu`); copy `r.unwrittenStatusEffects` under `r.mu`; `Write` outside it; success ⇒ under `r.mu` drop exactly that prefix; failure ⇒ `log.Printf` (PT) saying how many writes stay pending and that the next write retries them.
-  - `persistClosedTurn`: in its existing critical section, `pending := clone(r.unwrittenStatusEffects)`; `StatusEffects: append(pending, inTurn.statusEffects...)`; success ⇒ drop `len(pending)` from the front of `r.unwrittenStatusEffects`; failure ⇒ append `inTurn.statusEffects` to `r.unwrittenStatusEffects` (memory still holds the change; the next write carries it — same healing as the HP in `unwritten.go`). Mention status effects in the existing failure log line.
-  - Live NPC (`enrollLiveNPC` in `master_board.go`): after the session has the NPC and `npc_added` is queued, `ListBySheets([npc])` with no lock held; under `r.mu`, `ReplaceStatusEffects` + before/after diff (before = empty); announce via the Task 8 path. A read error is logged and the NPC plays without statuses (enrolment already happened; same "log and go on" as the board load).
+- [ ] **Step 1: tests** — `"outside a turn writes at once"`; `"inside a turn waits for the close"` (`TurnCloseData.StatusEffects` = the ops in order; store untouched); `"a failed out-of-turn write is retried with the next one"`; `"a failed close keeps the turn's status writes for the next write"`; `"unwritten writes ride the next close first"` (and are not resent after); `"live NPC arrives with its effects"`; `"no repo, no accumulation"`.
+- [ ] **Step 2:** FAIL → **Step 3: implement:**
+  - hold: open turn ⇒ `turnWritesLocked(id).statusEffects`; else repo nil ⇒ drop; else append to `unwrittenStatusEffects`, return true (arm calls `flushStatusEffects` after unlocking).
+  - flush: `persistMu.Lock()`; copy pending under `r.mu`; `Write` outside it; success ⇒ drop that prefix under `r.mu`; failure ⇒ PT log with how many stay pending.
+  - `persistClosedTurn`: in its critical section `pending := clone(unwrittenStatusEffects)`; pass `append(pending, inTurn.statusEffects...)`; success ⇒ drop `len(pending)`; failure ⇒ append `inTurn.statusEffects` to `unwrittenStatusEffects`; mention status effects in the failure log.
+  - live NPC (`enrollLiveNPC`): after enrolment, `ListBySheets([npc])` with no lock; under `r.mu` `ReplaceStatusEffects`; then `syncStatusViews([npc])`. Read error ⇒ PT log, NPC plays without statuses.
   - `cmd/game/main.go`: `statusEffectRepository := pgstatuseffect.NewRepository(pool)`; `initSessionUC.WithStatusEffects(statusEffectRepository)`; `RoomDeps{… StatusEffectsUC: match.NewStatusEffectsUC(), StatusEffectRepo: statusEffectRepository}`.
-- [ ] **Step 4: Run** `go test ./internal/app/game/ -race` → PASS; `go build ./... && go vet ./... && go vet -tags=integration ./...`.
+- [ ] **Step 4:** `go test ./internal/app/game/ -race` PASS; `go build ./... && go vet ./... && go vet -tags=integration ./...`.
 - [ ] **Step 5: Commit** `feat(game): status effect writes follow the turn rule and heal after a failure`
 
 ---
 
-### Task 10: Contract and docs
+### Task 10: Sight — Hidden in the fog, bars per player, `npc_added` to the master, sync on sight change
 
-**Files:**
-- Create: `docs/dev/api/match-status-effects.md`, `docs/dev/match/status-effects.md`
-- Modify: `docs/dev/api/match-combat-ws.md` (§3 index: link the new contract; `match_full_state`: the `statusEffects` field), `docs/documentation-map.yaml`, `AGENTS.md` (Known Issues), `.github/instructions/domain-map.instructions.md`, `.github/instructions/game-server.instructions.md`
+Owner decisions 3–6.
 
-- [ ] **Step 1: Contract** `match-status-effects.md` (PT, same structure as `match-clock.md`): who may send what; the three commands and `status_effects_updated` with JSON examples taken from the Task 8 tests; the per-kind params table (Task 2 Step 3) with wire names, identity variant and defaults; enum values; visibility modes and the default rule (decision 3–5 above); who receives what and that only changed views are sent; `match_full_state.statusEffects`; error codes; inside a turn the change is live at once but durable only with the close. Front-only material: PT display names (§5.3 names, "Corpo/Mente/Espírito debilitado", sense statuses as "Visão prejudicada/anulada") and alias suggestions per kind (copy §8's list verbatim). State plainly what is NOT there yet (no effect on actions/rolls, Hidden does not hide the piece, no history entry, no death).
-- [ ] **Step 2: Design doc** `docs/dev/match/status-effects.md` (PT): package map; pieces and `Effect.Pieces()` (containment built in code; decision 7; G1 pending); visibility model; persistence timing and healing; known limitation: a sheet live in two rooms at once keeps two memories (the last write wins on disk); history rows for status changes still to come.
-- [ ] **Step 3: Index updates:** `documentation-map.yaml` entries for `internal/domain/statuseffect/`, `internal/gateway/pg/statuseffect/`, `internal/app/game/status_effects.go`, `internal/application/match/status_effects.go` → both new docs; `AGENTS.md` Known Issues: one paragraph "Efeitos de status — fase 1" (what exists, what is deliberately missing, pointer to the docs); domain-map row + current-state line; game-server: a short "Status effects" section (session holds them; room decides the write moment; `persistMu`).
-- [ ] **Step 4: Commit** `docs: status effects phase 1 contract and design`
+**Files:** `sight.go`, `room.go` (fog gates, `broadcastBars`, `buildMatchFullState` bars), `master_board.go` (`npc_added`), `master_action_record.go` (views), `internal/domain/match/matchsession/bars_view.go`; tests `sight_e2e_test.go` + adjust existing tests that asserted `npc_added` reaching players (they now assert it does not).
+
+**Produces:**
+
+```go
+// sight.go
+func (r *Room) hiddenFromLocked(pid uuid.UUID, charID uuid.UUID) bool // charID has a Hidden effect not Listed for pid (master/owner never)
+func (r *Room) syncSight()                                           // caller holds no lock: broadcastBars + syncStatusViews(all characters with effects)
+// matchsession
+func (s *MatchSession) BarsViewFor(isMaster bool, sees func(charID uuid.UUID) bool) BarsView // BarsView(isMaster) = BarsViewFor(isMaster, all)
+```
+
+- [ ] **Step 1: tests** (`sight_e2e_test.go`):
+  - `TestSight_HiddenRemovesPiece`: NPC in everyone's sight; master applies hidden to the NPC with `visibility{players:[owner]}` → bystander gets `piece_removed` for the NPC piece, owner nothing; NPC moves → bystander gets nothing, owner gets `piece_moved`; bystander reconnects → `map_full_state` has no NPC piece, `match_full_state.bars` has no NPC; master removes hidden → bystander gets the piece back (`piece_moved` with its slot) and its bars.
+  - `TestSight_StatusOnEnteringSight` (Review Focus 1): NPC behind a wall from the bystander with a public prone → nothing; the NPC moves into sight → bystander gets `piece_moved` then `status_effects_updated` with prone; moves out → `piece_removed`, no status message; master edits prone's alias while out of sight → nothing; back in sight → the new list.
+  - `TestSight_BarsFollowSight`: bystander's `bars_updated` omits the NPC while out of sight and includes it in sight; master always has it; a PC owned by the bystander always included.
+  - `TestSight_NpcAddedMasterOnly`: `add_npc` → only the master gets `npc_added`.
+- [ ] **Step 2:** FAIL → **Step 3: implement:**
+  - `seesCharacterLocked` gains `&& !hiddenFromLocked(pid, charID)`.
+  - Route every per-player piece gate through it: `gatePieceMoveLocked`, `buildMapFullState` (the `pieceProj` handed to the filters marks a hidden-from-pid piece `Visible:false`), `relayPieceMove`/`relayPieceRemoved`, `gateEscapeLandingsLocked`, the views in `master_action_record.go`, and `buildPieceView` (the watched piece's owner as pid). Find any other reader of `PieceMovedPayload.Visible` per player with `grep -n "\.Visible" internal/app/game/*.go` and route it too.
+  - When `StatusEffectChange.HiddenChanged`, after the write hold and before `syncStatusViews`: for each connected non-master player, compare "sees the piece" before/after; lost ⇒ `piece_removed`; gained ⇒ `piece_moved` with the current slot (server message). Then `syncSight()`.
+  - `broadcastBars`: per player `BarsViewFor(false, func(c) bool { return seesCharacterLocked(pid, c) })`; the dedupe cache becomes per player (`map[uuid.UUID][]byte`, same "stale" rule); `match_full_state.bars` uses the same per-player view and records it in that player's cache.
+  - Call `syncSight()` after: `relayPieceMove`, `relayPieceRemoved`, `pushVisibilityUpdates`, the opened move (`announceOpenedTurn` path) and closed escapes, wall interact/reveal, live NPC enrolment, and status changes.
+  - `npc_added`: master only (`sendToMaster`). Update its comment and `message.go`'s comment ("mesa inteira" → "só o mestre").
+- [ ] **Step 4:** whole `go test ./internal/app/game/ -race` PASS (fix tests that relied on the old broadcast deliberately, explaining each in the commit); vet.
+- [ ] **Step 5: Commit** `feat(game): Hidden leaves the map; bars and statuses follow sight; npc_added to the master`
 
 ---
 
-### Task 11: Prove it for real, then PR and handoff
+### Task 11: Blocking pieces in the engine
 
-- [ ] **Step 1: Full local suite:** `go test ./... -race`; `go test -tags=integration -p 1 ./internal/gateway/pg/...` (with `TEST_DATABASE_URL`); `go vet -tags=integration ./... && go vet -tags=smoke ./...`; `golangci-lint cache clean && ~/go/bin/golangci-lint run --max-same-issues 0 --max-issues-per-linter 0`. All clean — paste the tails in the PR.
-- [ ] **Step 2: Real run** (CLAUDE.md "Entrega" step 1; `docs/dev/seed.md`): `make migrate-up` on the dev DB; `go run ./cmd/devseed`; start API and game server from this worktree. With a throwaway WS script outside the repo (scratchpad; Node `ws` or Go `gorilla/websocket`), as master: apply `prone` (public) and `poisoned` (hidden) to the seed player's character; as the seed player and a third account: confirm who received what; `psql` shows two rows in `character_status_effects` (`audience` NULL). **Restart the game server**, reconnect: `match_full_state.statusEffects` still has both, projected. Open a turn, apply one more, check no row before closing, row after. Never use the owner's own logged-in tabs (memory: verification never kicks the owner's tabs).
-- [ ] **Step 3: PR** (base `docs/status-effects-spec`, stacked on #110): what was verified and how (Step 1 tails, Step 2 transcript summary); what was not (no front, so nothing visual); the decisions list above; G1 for the owner; out-of-scope list. End with the attribution line.
-- [ ] **Step 4: Handoff:** if Step 2 covered everything, say so in the PR and do not run `dev-checkout.sh`; otherwise run `./dev-checkout.sh feat/status-effects-base` from `System_X_System_Project/` and say in the PR what to look at.
+Decisions 8–9. Uses `StatusSummaryOf` (Task 7).
+
+**Files:** `internal/domain/match/matchsession/status_effects.go` (checks), `match_session.go` (`EnqueueAction`, `AttachReaction`, `seatDefaultReactions`/`newDefaultReaction`), `internal/app/game/status_effects.go` (queue cleanup after apply), `message.go` + `room.go` (`ActionQueuedPayload.StatusNotes`); tests `matchsession/status_block_test.go`, `internal/app/game/status_block_e2e_test.go`.
+
+**Produces:**
+
+```go
+// matchsession
+var ErrBlockedByStatus error // wraps: "<character> não pode <agir|reagir|usar o domínio X|se deslocar|…>: <kinds>"
+func (s *MatchSession) StatusRefusal(a *action.Action) error   // nil = allowed; checks actor's Summary against the action (or reaction) shape
+func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) (removed []*action.Action) // queue + unopened reactions; caller records them
+// message.go
+type StatusNotePayload struct {
+	Kind string `json:"kind"` // the status kind
+	Domain string `json:"domain,omitempty"`
+	Conduct string `json:"conduct,omitempty"`; Irresistible bool `json:"irresistible,omitempty"`
+}
+ActionQueuedPayload.StatusNotes []StatusNotePayload `json:"statusNotes,omitempty"` // master-only surface already
+```
+Wire error code for a refusal: `blocked_by_status` (message = the PT text).
+
+Rules (`StatusRefusal`):
+- CannotAct ⇒ any non-reaction action refused.
+- CannotReact ⇒ any reaction refused except `nothing`.
+- A component in a locked domain (decision 9 mapping) ⇒ refused. Escape kinds need movement and dodge free.
+- NoDisplacement ⇒ a move component or an escape kind refused.
+- A reaction kind using a forbidden reaction (decision 9) ⇒ refused.
+- `seatDefaultReactions`: CannotReact ⇒ seat a `nothing` reaction; reflex dodge forbidden or dodge locked ⇒ the default carries no reflex dodge; default defense locked ⇒ no default defense; both gone ⇒ `nothing`. **First check** (read the resolver) that a `ReactDefault` with only one of its two passives resolves; if it does not, make the resolver accept it, with tests.
+- Notes: domain warnings for the action's domains (Injured disabled) and every conduct note go on `action_queued.statusNotes` and on `match_full_state.queue` entries.
+
+- [ ] **Step 1: session tests** `TestStatusRefusal` (stunned refuses an attack and a reaction, allows `nothing`; paralyzed{attack} refuses attack, allows a move; restrained refuses a move and an escape, allows a dodge; openGuard refuses `dodge`, `closedDodge`, `repel`, allows `escape`; airborne refuses `escape`, `closedEscape`; paralyzed{dodge} refuses `escape` (needs dodge)); `TestDropRefusedByStatus` (queued attack and move of a character who becomes stunned leave; another character's stay; an unopened reaction is replaced by the seated default/nothing; an opened one stays); `TestSeatDefaultReactionUnderStatus` (openGuard → defense only; stunned → nothing; paralyzed{defense} → reflex only; the turn resolves and closes in each case).
+- [ ] **Step 2: e2e tests** — `TestStatusBlock_EnqueueRefused` (`blocked_by_status`); `TestStatusBlock_ApplyDropsQueue` (Review Focus 5: removed actions recorded as cancelled — in `CancelledActionRepo` outside a turn, in `TurnCloseData.CancelledActions` inside one — `cancelledBy` = master; the table gets the same `action_cancelled` message `cancel_action` sends); `TestStatusBlock_NotesToMaster` (injured{attack: disabled} + compelled → master's `action_queued.statusNotes` has both; player's own messages carry none); `TestStatusBlock_RemoveUnblocks`.
+- [ ] **Step 3:** FAIL → **Step 4: implement**; queue cleanup runs in the apply/edit arm under `r.mu` right after the UC, recording each removed action through the same path `cancel_action` uses (`holdCancelledActionLocked` / `writeCancelledAction`) and sending the same messages, then `broadcastBars` → **Step 5:** PASS; whole package `-race`; vet.
+- [ ] **Step 6: Commit** `feat(match): statuses block acting, reacting, locked domains and displacement`
+
+---
+
+### Task 12: Contract and docs (PR 1)
+
+**Files:** create `docs/dev/api/match-status-effects.md`, `docs/dev/match/status-effects.md`; modify `docs/dev/api/match-combat-ws.md` (§3 index link; `match_full_state` gains `statusEffects`, bars per player; `npc_added` → master only; `action_queued.statusNotes`; `blocked_by_status`), `docs/documentation-map.yaml`, `AGENTS.md` (Known Issues paragraph "Efeitos de status — fase 1"), `.github/instructions/domain-map.instructions.md`, `.github/instructions/game-server.instructions.md` (sight + status write timing).
+
+- [ ] **Step 1: contract** (PT, structure of `match-clock.md`): commands, `status_effects_updated`, examples from the Task 8/10/11 tests; the per-kind params table with wire names, variant and defaults; enum values; visibility modes and default rule; sight (owner decision 4) and "nothing on leaving sight"; Hidden; `match_full_state` fields; error codes; inside a turn: live now, durable at the close. Front material: PT display names (§5.3; "Corpo/Mente/Espírito debilitado"; "Visão prejudicada/anulada") and §8's alias suggestions verbatim. Plainly list what is NOT there yet ("Deferred").
+- [ ] **Step 2: design doc** (PT): package map; pieces, containment in code, `Summary`; viewer list + sight; write timing and healing; G1 recorded; limitation: a sheet live in two rooms keeps two memories (last write wins on disk).
+- [ ] **Step 3:** index/map updates. **Commit** `docs: status effects phase 1 contract and design`
+
+---
+
+### Task 13: Prove PR 1 for real, open it, hand off
+
+- [ ] **Step 1:** `go test ./... -race`; `go test -tags=integration -p 1 ./internal/gateway/pg/...`; `go vet -tags=integration ./... && go vet -tags=smoke ./...`; `golangci-lint cache clean && ~/go/bin/golangci-lint run --max-same-issues 0 --max-issues-per-linter 0`.
+- [ ] **Step 2: real run** (CLAUDE.md "Entrega"; `docs/dev/seed.md`): `make migrate-up`; `go run ./cmd/devseed`; API + game from this worktree. Throwaway WS script in the scratchpad (Node `ws` or Go `gorilla/websocket`), master + seed player + third account: public status reaches only who sees the character; hidden reaches the owner only; Hidden removes the NPC piece for the third account; a stunned character's `enqueue_action` gets `blocked_by_status`; `psql` shows the rows (`audience` NULL by default); **restart the game server** and reconnect → `match_full_state.statusEffects` intact; inside a turn no row before the close, row after. Never the owner's own logged-in tabs.
+- [ ] **Step 3: PR 1** (base `docs/status-effects-spec`): what was verified and how; what was not (no front ⇒ nothing visual; the player front still re-fetches participants only on reconnect — `npc_added` no longer reaches it); owner decisions; builder decisions; deferred list. Attribution line at the end.
+- [ ] **Step 4:** if Step 2 covered everything, say so and skip `dev-checkout.sh`; otherwise `./dev-checkout.sh feat/status-effects-base` from `System_X_System_Project/` and say what to look at.
+
+---
+
+## PR 2 — history of statuses and hidden actions
+
+Branch `feat/status-effects-history` from `feat/status-effects-base`. Before dispatching Task 14, the orchestrator reads `get_match_history.go`, `find_match_history.go`, `master_action_record.go` and `ProjectAction`/`Viewer` in `internal/domain/match/service/projection.go`, and appends the exact signatures to this section (the shapes below are fixed; the call sites are not yet mapped).
+
+Rule (spec §9, owner-confirmed "o passado aparece"): a reader sees a history entry about a status iff **they saw the character at that instant** (sight, recorded as views like `master_actions.views`) **and** the effect's **latest** viewer list (its last recorded event, across matches) includes them — so revealing a status later shows its past to whoever was looking, and never to who was not.
+
+### Task 14: Status events recorded and served in the history
+
+- Migration `20261118000000_status_effect_events.sql`: `status_effect_events(uuid PK, effect_uuid UUID NOT NULL, character_sheet_uuid UUID NOT NULL REFERENCES character_sheets ON DELETE CASCADE, match_uuid REFERENCES matches ON DELETE CASCADE, scene_uuid, round_uuid, turn_uuid NULL (no FK, like master_actions), change VARCHAR(16) CHECK IN ('applied','edited','removed'), snapshot JSONB NOT NULL /* the effect as it became; for removed, as it was */, views JSONB NOT NULL /* player → "full" */, happened_at TIMESTAMPTZ NOT NULL)`; indexes on `(match_uuid, happened_at)` and `effect_uuid`.
+- Recording: every write op from Tasks 8–11 also yields an event built at the instant (views = players for whom `seesCharacterLocked` was true then, plus the owner); same timing rule (turnWrites / immediate / healing), written in the same transaction as the ops.
+- `GET /history` (contract `docs/dev/api/match-history.md`): entries of kind `statusEffect` (`change`, `characterId`, the snapshot projected like `StatusEffectPayload` for that reader) placed in the turn/round they happened, filtered by the rule above; the master sees all.
+- Tests: gateway integration (write + list with latest-audience join); use case unit tests for the filter (hidden then made public later → past visible to a reader who was in sight, not to one who was not; removed effect keeps its last audience); handler/e2e for the history JSON per reader.
+
+### Task 15: Actions of a hidden character
+
+- Live: for a player from whom the actor is hidden (`hiddenFromLocked`), the turn's action is not shown — `turn_opened`, `reaction_opened`, `resolution_updated` (settled) and `turn_closed` reach that player with no actor or action identity (the projection's lowest cut; if no such cut exists in `ProjectAction`, add a `Viewer.ActorHidden` cut with tests). The damage the player's own character takes still arrives (`character_hp_changed` to the owner).
+- History: the action rows record, per player, whether the actor was hidden from them at the instant (extend the existing `move_views`-style recording); `GET /history` hides such actions from that reader until the Hidden effect's latest viewer list includes them (same rule as Task 14).
+- Tests: e2e (live cuts for the bystander, full for master and owner of the hidden character), history filter before and after revealing.
+
+### Task 16: Docs, verification and PR 2
+
+- Docs: `match-history.md`, `match-status-effects.md` (history section), `match-combat-ws.md` (hidden actor cut), design doc, documentation map.
+- Verification as Task 13 Steps 1–2 (real run: hidden NPC attacks; bystander sees nothing of the action; after revealing, the history shows it).
+- PR 2 (base `feat/status-effects-base`), cross-linked with PR 1; same handoff rule.
