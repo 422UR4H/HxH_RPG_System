@@ -285,3 +285,38 @@ func TestStatusBlock_RemoveUnblocks(t *testing.T) {
 		t.Fatalf("still refused after the removal; errors: %v", errorCodes(t, pc))
 	}
 }
+
+// §9: uma recusa não revela um status que o remetente não podia ver. O dono tem um Paralisado só
+// do mestre ("players: []") e recebe "um efeito"; o mestre, mandando a action do NPC com o mesmo
+// status escondido, vê o tipo.
+func TestStatusBlock_RefusalHidesWhatTheSenderCannotSee(t *testing.T) {
+	f := newStatusFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+
+	masterOnly := map[string]any{"mode": "players", "playerIds": []string{}}
+	for _, id := range []uuid.UUID{f.attackerID, f.npcID} {
+		n := mc.count(game.MsgTypeStatusEffectsUpdated)
+		sendApplyStatus(t, master, map[string]any{
+			"characterIds": []string{id.String()}, "kind": "paralyzed",
+			"params": map[string]any{"points": 3, "domains": []string{"attack"}}, "visibility": masterOnly,
+		})
+		if !awaitCount(mc, game.MsgTypeStatusEffectsUpdated, n+1, 2*time.Second) {
+			t.Fatalf("apply never reached the master; errors: %v", errorCodes(t, mc))
+		}
+	}
+
+	f.enqueueAttack(t, player)
+	e := awaitBlockedError(t, pc, "blocked_by_status")
+	if strings.Contains(e.Message, "paralyzed") || !strings.Contains(e.Message, "um efeito") {
+		t.Errorf("owner's refusal = %q, want the generic cause and no kind", e.Message)
+	}
+
+	f.enqueueAttackAt(t, master, f.npcID, f.victimID)
+	e = awaitBlockedError(t, mc, "blocked_by_status")
+	if !strings.Contains(e.Message, "paralyzed") {
+		t.Errorf("master's refusal = %q, want the kind named", e.Message)
+	}
+}

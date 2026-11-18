@@ -246,20 +246,47 @@ func (s *MatchSession) characterName(charID uuid.UUID) string {
 	return "O personagem"
 }
 
+// StatusBlockError é a causa estruturada de uma recusa por status: quem, o que fica proibido
+// e por quais tipos. Error() nomeia todos os tipos — é o texto do mestre; a Room monta o texto
+// de cada destinatário com Message, nomeando só os tipos que ele pode ver (§9: um jogador não
+// descobre por uma recusa um status que não podia ver). errors.Is(err, ErrBlockedByStatus) vale.
+type StatusBlockError struct {
+	CharacterID uuid.UUID
+	Character   string // apelido da ficha
+	What        string // "agir", "usar o domínio ataque", ...
+	Kinds       []statuseffect.Kind
+}
+
+func (e *StatusBlockError) Error() string { return e.Message(e.Kinds) }
+
+func (e *StatusBlockError) Unwrap() error { return ErrBlockedByStatus }
+
+// Message é o texto da recusa nomeando só os tipos dados; sem nenhum, "um efeito".
+func (e *StatusBlockError) Message(visible []statuseffect.Kind) string {
+	cause := "um efeito"
+	if len(visible) > 0 {
+		names := make([]string, len(visible))
+		for i, k := range visible {
+			names[i] = string(k)
+		}
+		cause = strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s não pode %s: %s", e.Character, e.What, cause)
+}
+
 // StatusRefusal diz se os status do ator recusam a action (ou a reação): nil = permitida; senão
-// ErrBlockedByStatus com o que está proibido e por quais tipos. Lê só as peças que bloqueiam
-// (statuseffect.Summarize); rolagens e penalidades ficam para a fase das rolagens.
+// um *StatusBlockError (ErrBlockedByStatus) com o que está proibido e por quais tipos. Lê só as
+// peças que bloqueiam (statuseffect.Summarize); rolagens e penalidades ficam para a fase das
+// rolagens.
 func (s *MatchSession) StatusRefusal(a *action.Action) error {
 	b := statusBlock(s.StatusSummaryOf(a.GetActorID()), a)
 	if b == nil {
 		return nil
 	}
-	kinds := make([]string, len(b.kinds))
-	for i, k := range b.kinds {
-		kinds[i] = string(k)
+	return &StatusBlockError{
+		CharacterID: a.GetActorID(), Character: s.characterName(a.GetActorID()),
+		What: b.what, Kinds: append([]statuseffect.Kind(nil), b.kinds...),
 	}
-	return fmt.Errorf("%w: %s não pode %s: %s",
-		ErrBlockedByStatus, s.characterName(a.GetActorID()), b.what, strings.Join(kinds, ", "))
 }
 
 // applyStatusPassives marca na reação as passivas que os status do reator tiraram: o reflexo de
