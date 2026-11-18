@@ -222,8 +222,10 @@ type Room struct {
 	// Protegidos por mu.
 	mergeGen uint64
 	clockSeq uint64
-	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem:
-	// clockPersistMu, depois mu.
+	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem: persistMu →
+	// mu em tudo que grava (tabuleiro, fechamento de turno, efeitos de status); só o end_match
+	// segura as três, na cadeia clockPersistMu → persistMu → mu. Nada que segura persistMu
+	// toma clockPersistMu.
 	clockPersistMu sync.Mutex
 	// resolutionAge conta os cálculos de turno: cada comando que recalcula a resolução o
 	// avança na MESMA seção crítica (sob mu, write lock) que mudou a sessão, então a idade
