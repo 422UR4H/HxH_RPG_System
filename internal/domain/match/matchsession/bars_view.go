@@ -43,8 +43,15 @@ type BarsView struct {
 var viewBars = []action.Bar{action.BarAction, action.BarMove}
 
 // BarsView builds the view for the master (everything, live) or for a player (only what the
-// master has already opened: frozen prices and public speeds).
+// master has already opened: frozen prices and public speeds), over every character.
 func (s *MatchSession) BarsView(isMaster bool) BarsView {
+	return s.BarsViewFor(isMaster, func(uuid.UUID) bool { return true })
+}
+
+// BarsViewFor is BarsView listing only the characters sees accepts — a sala passa a visão do
+// jogador (decisão do dono 5: as barras seguem a mesma visão dos status). O resto (preços,
+// ordem, provisórios) não muda com a visão.
+func (s *MatchSession) BarsViewFor(isMaster bool, sees func(charID uuid.UUID) bool) BarsView {
 	in := s.scheduleInput()
 	view := BarsView{Prices: s.RoundPrices(), RoundTurns: s.RoundTurnCount()}
 
@@ -61,6 +68,9 @@ func (s *MatchSession) BarsView(isMaster bool) BarsView {
 	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
 	view.Characters = make([]CharacterBarsView, 0, len(ids))
 	for _, id := range ids {
+		if !sees(id) {
+			continue
+		}
 		c := CharacterBarsView{CharacterID: id}
 		for _, bar := range viewBars {
 			bv := &c.Action

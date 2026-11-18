@@ -255,11 +255,19 @@ func (r *Room) runStatusEffectChange(
 		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 		return
 	}
+	// Quem vê cada peça antes da mudança: um Escondido que entra, sai ou troca de lista tira
+	// ou devolve peças (decisão do dono 6). O retrato é barato (peças × jogadores conectados) e
+	// precisa ser tirado antes do caso de uso, que muda a sessão.
+	before := r.pieceSightLocked()
 	change, err := op(session)
 	if err != nil {
 		r.mu.Unlock()
 		r.refuseStatusEffect(client, err)
 		return
+	}
+	var after map[uuid.UUID]map[string]bool
+	if change.HiddenChanged {
+		after = r.pieceSightLocked()
 	}
 	flushNow := r.holdStatusEffectWritesLocked(change.Writes)
 	r.mu.Unlock()
@@ -268,6 +276,14 @@ func (r *Room) runStatusEffectChange(
 	if flushNow {
 		r.flushStatusEffects()
 	}
+	if change.HiddenChanged {
+		// A peça primeiro (piece_removed/piece_moved), depois as barras e os status de quem a
+		// ganhou ou perdeu — a ordem que a névoa já segue quando uma peça anda.
+		r.relayHiddenChange(before, after)
+		r.syncSight()
+	}
+	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima
+	// já cobriu quem ainda tem efeitos; este cobre o que acabou de ficar sem nenhum.
 	r.syncStatusViews(change.Characters)
 }
 
@@ -371,9 +387,7 @@ func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMas
 	if !isMaster && !r.seesCharacterLocked(pid, charID) {
 		return nil, false
 	}
-	owner := session.GetCharToPlayer()[charID.String()]
-	subject := statuseffect.Subject{OwnerID: owner, IsNPC: owner == r.masterUUID}
-	pcPublic := session.GetRules().PlayerStatusEffectsPublic
+	subject, pcPublic := r.statusSubjectLocked(charID)
 	viewer := statuseffect.Viewer{UserID: pid, IsMaster: isMaster}
 	list = []StatusEffectPayload{}
 	for _, e := range session.StatusEffectsOf(charID) {
@@ -390,6 +404,16 @@ func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMas
 		list = append(list, w)
 	}
 	return list, true
+}
+
+// statusSubjectLocked é o personagem como statuseffect.Listed o lê (dono, se é NPC) e a regra
+// da partida que abre os escondidos de um PC. Uma conta só, para a projeção e para o
+// Escondido (hiddenFromLocked) nunca divergirem sobre quem está na lista. O chamador segura
+// r.mu (leitura basta) e r.session não é nil.
+func (r *Room) statusSubjectLocked(charID uuid.UUID) (statuseffect.Subject, bool) {
+	owner := r.session.GetCharToPlayer()[charID.String()]
+	return statuseffect.Subject{OwnerID: owner, IsNPC: owner == r.masterUUID},
+		r.session.GetRules().PlayerStatusEffectsPublic
 }
 
 func statusEffectWire(e statuseffect.Effect) StatusEffectPayload {

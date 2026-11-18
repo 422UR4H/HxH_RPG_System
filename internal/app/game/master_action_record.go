@@ -94,6 +94,22 @@ func (r *Room) sessionViews(gate viewGate) map[uuid.UUID]masteraction.View {
 	})
 }
 
+// sessionViewsPer is sessionViews for a gate that also depends on WHO the player is, not only
+// on their fog: a piece whose character is Hidden from some players (pieceHiddenForLocked) is
+// nothing for them. gate runs under r.mu's read lock.
+//
+// The caller must NOT hold r.mu.
+func (r *Room) sessionViewsPer(gate func(pid uuid.UUID, polys []domainservice.VisibilityPolygon) (masteraction.View, bool)) map[uuid.UUID]masteraction.View {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.session == nil {
+		return nil
+	}
+	return r.sessionPlayerViewsLocked(uuid.Nil, func(pid uuid.UUID) (masteraction.View, bool) {
+		return gate(pid, r.session.GetVisibility(pid))
+	})
+}
+
 // sessionPlayerViewsLocked is the one loop behind every "what did each player see" record:
 // gate runs for EVERY player of the session — connected or not, their fog at this instant from
 // the session's visibility cache (spec §4.8) — except the master, who is not a player and sees
