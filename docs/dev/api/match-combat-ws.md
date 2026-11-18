@@ -1122,10 +1122,10 @@ endpoint REST seguida de uma injeção manual que o front poderia esquecer.
 mestre) da `MatchSession` corrente — o mestre pode enfileirar uma ação pelo NPC no mesmo
 segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e emite um `bars_updated`
 NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
-[`npc_added`](#npc_added) em §5). **As duas mensagens saem por pistas diferentes**
-(`npc_added` só ao mestre, direto; `bars_updated` por destinatário, dentro de `broadcastBars`), e o contrato **não promete** a ORDEM DE CHEGADA —
-`bars_updated` pode chegar antes de `npc_added`. O front não deve exigir `npc_added` primeiro para aceitar o
-`bars_updated` que já lista o NPC.
+[`npc_added`](#npc_added) em §5). **Ordem garantida ao mestre:** `npc_added` sai por
+`sendToMaster` (pista direta) e o `syncSight` que manda `bars_updated` e `status_effects_updated`
+roda logo depois, na mesma goroutine e na mesma pista — o mestre recebe `npc_added` primeiro.
+Para os jogadores nada disso é `npc_added`: o NPC chega pela névoa e por `bars_updated`.
 
 **Sem sessão viva (partida ainda no lobby):** só a escrita no banco acontece. `npc_added`
 ainda sai, só para o mestre, mas não há barras para publicar — nenhum `bars_updated` é emitido. O
@@ -1503,9 +1503,9 @@ Na prática o jogador nem receberia este exemplo: a visão dele não mudou com e
   **o `seq` do jogador pode saltar** — o cliente continua só descartando valores menores que o
   maior já aplicado, nunca esperando `seq + 1`.
 - `bars_updated` viaja na **pista direta por destinatário**: não há garantia de ordem entre ele e
-  mensagens da pista de broadcast como [`round_mode_changed`](#round_mode_changed) ou
-  [`npc_added`](#npc_added) (também não havia antes). O cliente não pode depender de uma vir antes
-  da outra.
+  mensagens da pista de broadcast como [`round_mode_changed`](#round_mode_changed). O cliente não pode
+  depender de uma vir antes da outra. (`npc_added` também vai pela pista direta, só ao mestre, e
+  chega antes do `bars_updated` que lista o NPC.)
 - [`match_full_state.bars`](#match_full_state) é a mesma visão, montada para quem conecta.
 
 **Disparado por:** qualquer coisa que mova as barras — `start_match` (um `bars_updated` assim
@@ -2315,18 +2315,16 @@ tabuleiro, se a enxergam, e pelo `bars_updated.characters` que a vista deles pas
 
 Os `bars_updated.characters` dos jogadores listam só os personagens que cada um é dono ou enxerga (ver [`bars_updated`](#bars_updated)); o do mestre, todos.
 
-**Com sessão viva, um `bars_updated` com `seq` maior sai junto (a cada destinatário a quem a vista mudou) — em QUALQUER ordem em relação
-a este** (os status de um NPC inscrito ao vivo também podem chegar ao mestre antes do `npc_added`). Não sai um `match_full_state`: o único estado de combate que muda ao pôr um NPC é o
+**Com sessão viva, um `bars_updated` com `seq` maior sai junto (a cada destinatário a quem a vista mudou) — depois
+deste, para o mestre** (o `syncSight` roda logo após o `npc_added`, na mesma goroutine e na mesma pista direta; o mestre recebe `npc_added`, depois barras e status). Não sai um `match_full_state`: o único estado de combate que muda ao pôr um NPC é o
 conjunto de personagens nas barras, e `match_full_state.bars.seq` repete o `seq` CORRENTE por
 contrato (ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), abaixo) —
 reenviá-lo aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado
 por cima e apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa
-que mexe nas barras", e é o único que incrementa `seq`. ⚠️ **A ordem de chegada entre
-`npc_added` e esse `bars_updated` não é garantida:** cada um sai por uma pista própria
-(o canal de broadcast no braço `add_npc` de `room.go`; a pista direta por destinatário dentro
-de `broadcastBars`), disparadas em sequência no código mas sem ordem relativa assegurada. O front não pode assumir que `npc_added` sempre chega primeiro —
-`bars_updated.characters` já é suficiente para desenhar o NPC nas barras, com ou sem o
-`npc_added` correspondente já visto.
+que mexe nas barras", e é o único que incrementa `seq`. **Ordem:** `npc_added` sai por `sendToMaster` (pista direta) e o `syncSight`
+(`bars_updated`, `status_effects_updated`) vem em seguida, na mesma goroutine e na mesma pista —
+o mestre sempre recebe `npc_added` primeiro. Mesmo assim `bars_updated.characters` já basta para
+desenhar o NPC nas barras, então o front não precisa esperar o `npc_added`.
 
 **Sem sessão viva (lobby), não há `bars_updated` nenhum atrás** — não existem barras para
 publicar. `npc_added` ainda sai, como confirmação de que o roster no banco mudou; o NPC só

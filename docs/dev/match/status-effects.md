@@ -140,8 +140,9 @@ recarregar+salvar do `StartMatch` não chamam `persistClock` nem o checkpoint). 
 
 `enrollLiveNPC` (add_npc com sessão viva): sessão recebe o NPC, `npc_added` vai ao mestre,
 `loadLiveNPCStatusEffects` lê os efeitos (`ListBySheets`, sem trava; falha = NPC sem status, com
-log) e só então `syncSight()` manda barras e status. Os efeitos de um NPC inscrito ao vivo podem
-chegar ao mestre **antes** do `npc_added` (duas pistas de envio sem ordem). A leitura usa
+log) e só então `syncSight()` manda barras e status. O `npc_added` (`sendToMaster`) e o `syncSight`
+seguinte correm na mesma goroutine e na mesma pista direta: o mestre recebe `npc_added` **antes**
+dos efeitos do NPC. A leitura usa
 `ReplaceStatusEffects`: um status aplicado por um segundo socket entre a inscrição e a leitura
 seria sobrescrito (desprezível).
 

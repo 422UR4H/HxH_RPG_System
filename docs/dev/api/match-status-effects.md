@@ -372,6 +372,11 @@ o mestre** — jogador nunca recebe a chave. Ausente quando não há nenhuma.
 
 (`action` abreviado acima; a forma inteira está em `match-combat-ws.md`.)
 
+**`statusNotes` é um retrato do momento em que a ação entrou na fila** (e de `match_full_state`,
+que o recalcula na conexão). O servidor **não reenvia** a nota quando um status muda depois: um
+`status_effects_updated` posterior não altera o `action_queued` já mostrado. O front deriva as notas
+**atuais** dos status (o mestre recebe todos) e usa `statusNotes` só como o valor daquele instante.
+
 ## 7. Quem vê o quê: lista e visão
 
 Duas camadas **somadas**: a **lista** (quem o efeito deixa ver) e a **visão** (se o jogador
@@ -436,11 +441,11 @@ essa pessoa. As **ações** dele durante o Escondido, e o histórico, estão em 
 
 ### Ordem entre pistas e NPC ao vivo
 
-Dois envios (a pista de broadcast e a pista direta por destinatário) **não têm ordem entre si**.
-Consequência para o front: **os status de um NPC inscrito ao vivo (`add_npc`) podem chegar ao
-mestre antes do `npc_added`**. Não dependa da ordem: guarde os status por `characterId` e
-desenhe quando o NPC existir. Do mesmo modo, um `status_effects_updated` pode chegar antes do
-`match_full_state` mais antigo na reconexão; a próxima mudança acerta.
+`npc_added` vai ao mestre pela pista direta (`sendToMaster`) e o `syncSight`, que manda barras e
+status, roda logo depois na mesma goroutine e na mesma pista: **o mestre sempre recebe
+`npc_added` antes** dos status do NPC inscrito ao vivo (`add_npc`). Ainda assim, guardar os status
+por `characterId` é o jeito mais simples de consumir. Já um `status_effects_updated` pode chegar
+antes do `match_full_state` mais antigo na reconexão; a próxima mudança acerta.
 
 ## 8. `status_effects_updated`
 
@@ -495,7 +500,7 @@ Visão de um **jogador** (sem `visibility`/`public`):
 | `.alias` | string | ausente = sem apelido |
 | `.appliedAt` | string | instante **real** RFC 3339 (pode ir para `new Date`) |
 | `.visibility` | objeto | **só o mestre**: `{ mode, playerIds? }` |
-| `.public` | bool | **só o mestre**: `true` se algum jogador que não é o dono o vê pela lista/padrão; é a "visão à parte" para o mestre mostrar um selo "público" |
+| `.public` | bool | **só o mestre**: `true` se o efeito está **listado para todo jogador** (modo `public`, padrão do tipo público, ou a regra de mesa); `players: [x]` dá `false`. A visão (névoa) ainda se aplica a cada jogador por cima; é a "visão à parte" para o mestre mostrar um selo "público" |
 
 Exemplo de `params` por tipo na saída:
 
