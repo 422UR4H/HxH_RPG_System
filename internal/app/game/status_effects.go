@@ -280,6 +280,8 @@ func (r *Room) runStatusEffectChange(
 		// A peça primeiro (piece_removed/piece_moved), depois as barras e os status de quem a
 		// ganhou ou perdeu — a ordem que a névoa já segue quando uma peça anda.
 		r.relayHiddenChange(before, after)
+		// A peça que o mestre observa vê como o dono dela: um Escondido que muda muda a vista.
+		r.pushMasterPieceView()
 		r.syncSight()
 	}
 	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima

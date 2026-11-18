@@ -293,18 +293,21 @@ func (r *Room) enrollLiveNPC(client *Client, sheetUUID uuid.UUID) bool {
 	// bars_updated que vem logo atrás: o mestre recebe os dois nessa ordem.
 	r.sendToMaster(NewServerMessage(MsgTypeNPCAdded, NPCAddedPayload{CharacterID: sheetUUID}))
 	if session != nil {
-		// Um personagem novo na mesa: barras e status reacertados pela visão de cada um.
-		r.syncSight()
+		// Os efeitos guardados na ficha primeiro (um NPC pode chegar já Escondido), e só então
+		// barras e status reacertados pela visão de cada um: na ordem inversa, numa partida sem
+		// tabuleiro, as barras de todos listariam o Escondido antes de os efeitos dele chegarem.
 		r.loadLiveNPCStatusEffects(session, sheetUUID)
+		r.syncSight()
 	}
 	return true
 }
 
 // loadLiveNPCStatusEffects lê os efeitos de status guardados na ficha de um NPC que acabou de
-// entrar na sessão viva (o InitMatchSessionUC só lê os de quem já estava na partida) e manda a
-// cada um o que ele vê. Roda depois de a sessão ter o NPC e de o npc_added estar na fila. A
-// leitura é I/O, sem r.mu; uma falha fica no log e o NPC joga sem status. A sessão pode ter
-// sido trocada enquanto a leitura corria: então nada é aplicado.
+// entrar na sessão viva (o InitMatchSessionUC só lê os de quem já estava na partida) e os põe
+// na sessão. Não manda nada: o syncSight que o enrollLiveNPC chama logo depois manda a cada um
+// as barras e a lista que ele vê. Roda depois de a sessão ter o NPC e de o npc_added estar na
+// fila. A leitura é I/O, sem r.mu; uma falha fica no log e o NPC joga sem status. A sessão pode
+// ter sido trocada enquanto a leitura corria: então nada é aplicado.
 //
 // O chamador NÃO segura r.mu.
 func (r *Room) loadLiveNPCStatusEffects(session *matchsession.MatchSession, sheetUUID uuid.UUID) {
@@ -324,5 +327,4 @@ func (r *Room) loadLiveNPCStatusEffects(session *matchsession.MatchSession, shee
 	}
 	session.ReplaceStatusEffects(sheetUUID, byChar[sheetUUID])
 	r.mu.Unlock()
-	r.syncStatusViews([]uuid.UUID{sheetUUID})
 }

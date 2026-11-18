@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -297,5 +298,45 @@ func TestSight_NpcAddedMasterOnly(t *testing.T) {
 	chatBarrier(t, master, mc, pc)
 	if n := pc.count(game.MsgTypeNPCAdded); n != 0 {
 		t.Fatalf("player: got %d npc_added, want 0 — the NPC reaches players through the fog", n)
+	}
+}
+
+// Um NPC que entra na partida já Escondido (os efeitos ficam na ficha, de uma partida para a
+// outra) não pode aparecer nas barras de ninguém além do mestre — nem por um instante, numa
+// partida sem tabuleiro, entre a inscrição e a leitura dos efeitos.
+func TestSight_LiveNPCArrivingHiddenStaysOffTheBars(t *testing.T) {
+	npcID := uuid.New()
+	store := &fakeStatusEffectStore{effects: map[uuid.UUID][]statuseffect.Effect{npcID: {{
+		ID: uuid.New(), CharacterID: npcID, Kind: statuseffect.KindHidden,
+		AppliedAt: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
+	}}}}
+	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
+	f := newCombatFixture(t, withBystander, withStatusEffects, withAddLiveNPC(uc), withStatusEffectStore(store))
+	master, player, blind, mc, pc, bc := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	sendAddNPC(t, master, npcID)
+	if !mc.await(game.MsgTypeNPCAdded, 2*time.Second) {
+		t.Fatal("master: no npc_added")
+	}
+	if !awaitCount(mc, game.MsgTypeBarsUpdated, 1, 2*time.Second) || !barsCarry(lastBarsUpdated(t, mc), npcID) {
+		t.Fatal("master: no bars_updated listing the NPC")
+	}
+	chatBarrier(t, master, mc, pc, bc)
+	for who, c := range map[string]*collector{"player": pc, "bystander": bc} {
+		for _, m := range c.snapshotMessages() {
+			if m.Type != game.MsgTypeBarsUpdated {
+				continue
+			}
+			var p game.BarsUpdatedPayload
+			if err := json.Unmarshal(m.Payload, &p); err != nil {
+				t.Fatalf("unmarshal bars_updated: %v", err)
+			}
+			if barsCarry(p, npcID) {
+				t.Fatalf("%s: a bars_updated listed the hidden NPC", who)
+			}
+		}
 	}
 }
