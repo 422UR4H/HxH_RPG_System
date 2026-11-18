@@ -1038,7 +1038,7 @@ para o mestre (`ProjectResolution` a zera para os demais, e o payload liquidado 
 
 `MatchSession.seatDefaultReactions` roda quando o turno abre (`OpenNextAction`, `PullAction`) e
 de novo quando o mestre edita os alvos da ação do turno: todo personagem que o ataque nomeia e
-não tem reação ganha uma `default` (`newDefaultReaction`: um `Dodge` em `Reflex` e nada mais);
+não tem reação ganha uma `default` (`newDefaultReaction`: um `Dodge` em `Reflex` e nada mais — ou, com efeitos de status, a variante que `seatedReactionFor` decide, ver a regra abaixo);
 uma **sentada** cujo personagem o ataque deixou de nomear sai, com as edições. O `Turn` sabe
 quais são sentadas (`Seat`, `IsSeated`, `SeatedFor`, `ReplaceSeated`, `Unseat`). Nenhum dado cai
 ao sentar: a esquiva da `default` é passiva (`rollActionDice` a pula), e só rola se o mestre
@@ -1054,6 +1054,14 @@ puser viés.
 - **Não segura o fechamento.** `Turn.AwaitingTheFloor` (o que o `close_turn` pede para confirmar)
   deixa de fora a sentada e o `nothing` (`ReactionKind.AwaitsNarration`); uma `default` declarada
   entra. As duas continuam abríveis: abrir também posiciona na cadeia.
+- **A sentada segue os status** (efeitos de status, 2026-11-17). Em vez de sempre a `default`
+  inteira, `seatedReactionFor` senta: a `default` com **só as passivas que os status permitem**
+  (`WithoutReflexDodge` quando a esquiva está fora; `WithoutDefaultDefense` quando a defesa está
+  fora; o resolvedor pula a passiva marcada) ou **`nothing`** quando o personagem não pode reagir
+  (Atônito, Atordoado, Inconsciente) ou perdeu as duas passivas. A cada mudança de status do
+  personagem, `DropRefusedByStatus` reassenta a que não foi aberta (e, quando o status sai, ela
+  volta inteira). Os dois sinalizadores não são persistidos: o histórico mostra uma `default`
+  simples. Ver [`status-effects.md`](status-effects.md).
 - **Não é resposta do dono.** `match_full_state.ownReactions` não lista a sentada: o cliente que
   reconecta ainda oferece os botões de reação.
 
