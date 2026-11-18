@@ -318,16 +318,20 @@ func TestDropRefusedByStatus(t *testing.T) {
 	})
 }
 
+// lastPlayerB é o jogador de B do último openAttackOn (os testes não rodam em paralelo).
+var lastPlayerB uuid.UUID
+
 // openAttackOn abre um ataque de A em B com os efeitos de B já postos.
-func openAttackOn(t *testing.T, effects func(b uuid.UUID) []statuseffect.Effect) (*matchsession.MatchSession, *turn.Turn, uuid.UUID) {
+func openAttackOn(t *testing.T, face int, effects func(b uuid.UUID) []statuseffect.Effect) (*matchsession.MatchSession, *turn.Turn, uuid.UUID) {
 	t.Helper()
 	matchUUID := uuid.New()
 	playerA, playerB := uuid.New(), uuid.New()
 	pA, pB := makeParticipant(matchUUID, &playerA), makeParticipant(matchUUID, &playerB)
+	lastPlayerB = playerB
 	attacker, b := pA.Sheet.UUID, pB.Sheet.UUID
 	sheets := map[uuid.UUID]*csSheet.CharacterSheet{attacker: buildPlainSheet(t), b: buildPlainSheet(t)}
 	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{pA, pB})
-	s.SetRollSource(&countingSource{face: 1})
+	s.SetRollSource(&countingSource{face: face})
 	setEffects(s, b, effects(b)...)
 	if err := s.EnqueueAction(playerA, attackBy(attacker, b)); err != nil {
 		t.Fatalf("EnqueueAction: %v", err)
@@ -357,7 +361,7 @@ func TestSeatDefaultReactionUnderStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s, tr, b := openAttackOn(t, tc.effects)
+			s, tr, b := openAttackOn(t, 1, tc.effects)
 			seated := tr.SeatedFor(b)
 			if seated == nil {
 				t.Fatal("no seated reaction")
@@ -387,5 +391,75 @@ func TestSeatDefaultReactionUnderStatus(t *testing.T) {
 				t.Fatalf("CloseOpenTurn: %v", err)
 			}
 		})
+	}
+}
+
+// Decisão do controlador (após o relatório): a defesa padrão também sai das reações enviadas que
+// a mantêm, quando um status trava a defesa (§5.4, Paralisado — "Defesa: conforme (defesa)").
+func TestAttachedReactionLosesDefaultDefenseUnderStatus(t *testing.T) {
+	paralyzedDefense := func(b uuid.UUID) []statuseffect.Effect {
+		return []statuseffect.Effect{paralyzedIn(b, statuseffect.DomainDefense)}
+	}
+	for _, k := range []action.ReactionKind{action.ReactDodge, action.ReactEscapeGuard} {
+		t.Run(string(k), func(t *testing.T) {
+			// Todo dado mostra 9: o acerto é 18; a esquiva enviada já caiu em 1+1 e falha. Sem a
+			// trava, a defesa padrão passiva (11) contra CD 8 ampararia.
+			s, tr, b := openAttackOn(t, 9, paralyzedDefense)
+			a := tr.GetAction()
+			r := reactionBy(b, a.GetID(), k)
+			r.Dodge.Attempts = action.RollAttempts{Primary: []int{1, 1}}
+			if _, err := s.AttachReaction(lastPlayerB, r); err != nil {
+				t.Fatalf("AttachReaction(%s): %v", k, err)
+			}
+			live := tr.ReactionRef(r.GetID())
+			if live == nil || !live.WithoutDefaultDefense || live.WithoutReflexDodge {
+				t.Fatalf("attached = %+v, want WithoutDefaultDefense only", live)
+			}
+			for _, cr := range s.ResolveTurn(tr).CharacterResults {
+				if cr.TargetID != b {
+					continue
+				}
+				if cr.Avoided {
+					t.Fatal("the fixture is wrong: the dodge was meant to fail")
+				}
+				if cr.Defended {
+					t.Fatal("a failed dodge fell back on a default defense the status removed")
+				}
+				return
+			}
+			t.Fatal("no result for B")
+		})
+	}
+
+	t.Run("without the status the defense still stands", func(t *testing.T) {
+		s, tr, b := openAttackOn(t, 9, func(uuid.UUID) []statuseffect.Effect { return nil })
+		a := tr.GetAction()
+		r := reactionBy(b, a.GetID(), action.ReactDodge)
+		r.Dodge.Attempts = action.RollAttempts{Primary: []int{1, 1}}
+		if _, err := s.AttachReaction(lastPlayerB, r); err != nil {
+			t.Fatalf("AttachReaction: %v", err)
+		}
+		for _, cr := range s.ResolveTurn(tr).CharacterResults {
+			if cr.TargetID == b && (cr.Avoided || !cr.Defended) {
+				t.Fatalf("avoided %v defended %v, want a failed dodge caught by the defense", cr.Avoided, cr.Defended)
+			}
+		}
+	})
+}
+
+func TestStatusBlockError(t *testing.T) {
+	s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+	c := uuid.New()
+	setEffects(s, c, kindOnly(c, statuseffect.KindStunned))
+	err := s.StatusRefusal(attackBy(c, uuid.New()))
+	var be *matchsession.StatusBlockError
+	if !errors.As(err, &be) || !errors.Is(err, matchsession.ErrBlockedByStatus) {
+		t.Fatalf("err = %v, want a *StatusBlockError wrapping ErrBlockedByStatus", err)
+	}
+	if be.CharacterID != c || be.What != "agir" || len(be.Kinds) != 1 || be.Kinds[0] != statuseffect.KindStunned {
+		t.Fatalf("cause = %+v", be)
+	}
+	if got := be.Message(nil); strings.Contains(got, "stunned") || !strings.Contains(got, "um efeito") {
+		t.Fatalf("Message(nil) = %q, want the generic cause", got)
 	}
 }

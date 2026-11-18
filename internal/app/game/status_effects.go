@@ -598,6 +598,33 @@ func actionErrorCode(err error) string {
 	return "game_error"
 }
 
+// actionErrorMessageLocked é o texto do erro de enqueue_action/attach_reaction para quem
+// mandou. Uma recusa por status nomeia só os tipos que o remetente pode ver — o mestre, todos;
+// um jogador, os da lista dele pela mesma regra da projeção (statuseffect.Listed); nenhum
+// visível vira "um efeito" (§9). O remetente é sempre o dono do personagem ou o mestre (a
+// sessão confere a posse antes), e o dono sempre enxerga o seu, então a visão não entra.
+// O chamador segura r.mu (leitura basta).
+func (r *Room) actionErrorMessageLocked(err error, sender uuid.UUID) string {
+	var be *matchsession.StatusBlockError
+	if !errors.As(err, &be) || r.session == nil {
+		return err.Error()
+	}
+	isMaster := sender == r.masterUUID
+	subject, pcPublic := r.statusSubjectLocked(be.CharacterID)
+	viewer := statuseffect.Viewer{UserID: sender, IsMaster: isMaster}
+	effects := r.session.StatusEffectsOf(be.CharacterID)
+	var visible []statuseffect.Kind
+	for _, k := range be.Kinds {
+		for _, e := range effects {
+			if e.Kind == k && statuseffect.Listed(e, viewer, subject, pcPublic) {
+				visible = append(visible, k)
+				break
+			}
+		}
+	}
+	return be.Message(visible)
+}
+
 // statusNotesFor são as anotações dos status que valem para a action: um aviso de domínio só
 // quando ela usa o domínio; uma conduta, sempre. nil quando não há nenhuma.
 func statusNotesFor(sum statuseffect.Summary, a *action.Action) []StatusNotePayload {

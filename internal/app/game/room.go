@@ -1310,12 +1310,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		refusalCode, refusal := r.enqueueRefusalLocked(session, a)
 		var errEnqueue error
+		var errText string
 		var queued ActionQueuedPayload
 		actionID := a.GetID()
 		if refusalCode == "" {
 			errEnqueue = r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
 			if errEnqueue == nil {
 				queued = r.newActionQueuedPayloadLocked(session, a)
+			} else {
+				errText = r.actionErrorMessageLocked(errEnqueue, client.userUUID)
 			}
 		}
 		r.mu.Unlock()
@@ -1324,7 +1327,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		if errEnqueue != nil {
-			client.SendMessage(NewErrorMessage(actionErrorCode(errEnqueue), errEnqueue.Error()))
+			client.SendMessage(NewErrorMessage(actionErrorCode(errEnqueue), errText))
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: actionID}))
@@ -2614,6 +2617,10 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	var attached ReactionAttachedPayload
 	var cancelWrites []*cancelledWrite
 	var cancelledIDs []uuid.UUID
+	var errText string
+	if err != nil {
+		errText = r.actionErrorMessageLocked(err, client.userUUID)
+	}
 	if err == nil {
 		// Os movimentos que caíram em cascata (D6) são gravados como um cancelamento pedido pelo
 		// dono do reator, na mesma seção crítica — com o turno aberto, seguem com o fechamento dele.
@@ -2629,7 +2636,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	}
 	r.mu.Unlock()
 	if err != nil {
-		client.SendMessage(NewErrorMessage(actionErrorCode(err), err.Error()))
+		client.SendMessage(NewErrorMessage(actionErrorCode(err), errText))
 		return
 	}
 	// Before the master's resolution_updated, on the same lane and goroutine: the reactor and
