@@ -18,6 +18,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -55,6 +56,10 @@ type TurnCloseData struct {
 	// only now, in this same transaction, by the same rule as MasterActions. Drained from the
 	// room with them.
 	CancelledActions []cancelledaction.Record
+	// StatusEffects é o que o mestre mudou nos efeitos de status com o turno aberto, precedido
+	// do que uma gravação anterior não gravou; em ordem, nesta transação (spec §10): dura com o
+	// turno ou não dura. Esvaziado da sala junto com MasterActions.
+	StatusEffects []statuseffect.Write
 	// Board is the match's board as this close left it — the turn's move, its escapes and the
 	// master's changes inside it — and Memories every player's fog memory with it, written in
 	// this same transaction: the board on disk and the turns on disk never disagree. Board nil
@@ -355,6 +360,9 @@ type MatchEndData struct {
 	// StatusBars são as fichas cujo HP um fechamento de turno não conseguiu gravar (unwritten.go):
 	// o fim é a última escrita da partida, então elas vão nesta transação ou se perdem.
 	StatusBars []SheetStatusBars
+	// StatusEffects são as mudanças de efeitos de status que uma gravação anterior (fora de turno
+	// ou um fechamento de turno) não gravou, em ordem: pelo mesmo motivo, vão nesta transação.
+	StatusEffects []statuseffect.Write
 }
 
 // MatchEndState é o fim de uma partida encerrada, lido do banco (reconexão a uma partida
@@ -370,4 +378,10 @@ type IMatchEndRepository interface {
 	PersistMatchEnd(ctx context.Context, d MatchEndData) error
 	// ReadMatchEnd devolve o fim, ou (nil, nil) quando a partida não foi encerrada.
 	ReadMatchEnd(ctx context.Context, matchUUID uuid.UUID) (*MatchEndState, error)
+}
+
+// IStatusEffectReader lê os efeitos de status das fichas.
+type IStatusEffectReader interface {
+	// ListBySheets agrupa por ficha, em ordem applied_at, uuid. Nunca devolve nil.
+	ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error)
 }

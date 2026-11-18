@@ -79,6 +79,11 @@ func (s *CharacterStatus) BarFor(bar action.Bar) *ResourceBar {
 // e precisa ser recriado à partir delas
 // - considerar statusEngine, ou algo assim
 //
+// [Correção, 2026-11 — spec de efeitos de status §10] Os efeitos de status (caído, atordoado,
+// sangrando…) SÃO persistidos, numa tabela própria da ficha (character_status_effects,
+// pacote statuseffect) e valem em qualquer campanha. O que continua só em memória é este
+// CharacterStatus: barras de ação/movimento, ledger, postura e velocidade.
+//
 // Racional - barra de ação e de movimento:
 // MoveBar e ActionBar são os pontos atuais (ou bônus) de cada barra.
 // cada ação (de movimento ou genérica) tem um custo em pontos.

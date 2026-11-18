@@ -120,6 +120,23 @@ func (t *Turn) Unseat(id uuid.UUID) bool {
 	return true
 }
 
+// DropUnopened tira do turno uma reação que o mestre ainda não abriu — sentada ou enviada —, com
+// a escolha de pouso dela. Uma reação aberta fica: o que já foi narrado não sai. Diz se tirou.
+// Usado quando um status novo proíbe o que o personagem tinha mandado (MatchSession.
+// DropRefusedByStatus), que senta outra no lugar.
+func (t *Turn) DropUnopened(id uuid.UUID) bool {
+	if slices.Contains(t.openedReactions, id) || t.ReactionRef(id) == nil {
+		return false
+	}
+	delete(t.seated, id)
+	t.removeReaction(id)
+	delete(t.escapeLandings, id)
+	return true
+}
+
+// IsOpened diz se o mestre já deu a palavra a esta reação.
+func (t *Turn) IsOpened(id uuid.UUID) bool { return slices.Contains(t.openedReactions, id) }
+
 func (t *Turn) removeReaction(id uuid.UUID) {
 	for i := range t.reactions {
 		if t.reactions[i].GetID() == id {

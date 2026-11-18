@@ -10,6 +10,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -54,6 +55,11 @@ func (r *Room) handleEndMatch(client *Client, raw json.RawMessage) {
 	// rodando grava entre o retrato do fim e a aplicação dele.
 	r.clockPersistMu.Lock()
 	defer r.clockPersistMu.Unlock()
+	// persistMu em seguida (clockPersistMu → persistMu → r.mu; nada que segura persistMu toma
+	// clockPersistMu): nenhum flushStatusEffects ou fechamento de turno grava ou descarta as
+	// mudanças de status pendentes entre a cópia que o fim leva e o descarte dela.
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
 
 	r.mu.Lock()
 	sess := r.session
@@ -85,6 +91,7 @@ func (r *Room) handleEndMatch(client *Client, raw json.RawMessage) {
 	}
 	r.forgetRoundEndsWrittenLocked(data.UnwrittenRoundEnds)
 	r.unwrittenSheets = nil
+	r.dropWrittenStatusEffectsLocked(len(data.StatusEffects))
 	r.clearClockMergeLocked()
 	r.state = RoomStateClosed
 	msg, _ := json.Marshal(NewServerMessage(MsgTypeMatchEnded, MatchEndedPayload{
@@ -143,6 +150,8 @@ func (r *Room) matchEndDataLocked(
 		Clock:                 plan.Clock,
 		// O HP que um fechamento não gravou: o fim é a última escrita da partida.
 		StatusBars: statusBarsLocked(r.unwrittenSheets),
+		// E, pelo mesmo motivo, as mudanças de status que uma gravação anterior não gravou.
+		StatusEffects: append([]statuseffect.Write(nil), r.unwrittenStatusEffects...),
 	}
 	if plan.Pause != nil {
 		payload, err := json.Marshal(pauseEvent(plan.Pause).payload)

@@ -16,6 +16,7 @@ import (
 	pgmasteraction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
 	pgmatchboard "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/matchboard"
 	pgsheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
+	pgstatuseffect "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/statuseffect"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -24,7 +25,7 @@ import (
 // finished_at when this close also ended it, and then the round born in its place, NextRound),
 // turn, action, the action's reactions, the turn's settled resolution (nullable), the values
 // the master's edits displaced, the bars of every sheet the close damaged, the master actions
-// applied and the actions cancelled while the turn was open, and the board (with every player's fog memory) as the close
+// applied, the actions cancelled and the status effects changed while the turn was open, and the board (with every player's fog memory) as the close
 // left it, within a single database transaction.
 //
 // A turn is an action AND its reactions — that is the vocabulary the whole engine is built
@@ -169,6 +170,15 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 			if err := cas.Insert(ctx, d.CancelledActions[i]); err != nil {
 				return fmt.Errorf("PersistTurnClose cancelled action %d: %w", i, err)
 			}
+		}
+	}
+
+	// Os efeitos de status que o mestre mudou com o turno aberto seguem a regra das ações
+	// canceladas: duram com o turno ou não duram (spec §10). O Write do pgstatuseffect, rodado
+	// nesta transação (vira savepoint), em ordem.
+	if len(d.StatusEffects) > 0 {
+		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects); err != nil {
+			return fmt.Errorf("PersistTurnClose status effects: %w", err)
 		}
 	}
 

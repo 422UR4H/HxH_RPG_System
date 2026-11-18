@@ -26,6 +26,9 @@ func TestNewDefaultMatchRules(t *testing.T) {
 	if r.FogMode != nil {
 		t.Error("expected nil FogMode by default (inherits from the map)")
 	}
+	if r.PlayerStatusEffectsPublic {
+		t.Error("expected player status effects hidden by default")
+	}
 }
 
 func TestDiceSet(t *testing.T) {

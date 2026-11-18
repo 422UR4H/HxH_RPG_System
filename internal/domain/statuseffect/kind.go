@@ -1,0 +1,202 @@
+package statuseffect
+
+import (
+	"fmt"
+
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+)
+
+// Kind é o tipo de efeito de status.
+type Kind string
+
+const (
+	KindParalyzed    Kind = "paralyzed"    // Paralisado
+	KindStupefied    Kind = "stupefied"    // Atônito
+	KindStunned      Kind = "stunned"      // Atordoado
+	KindUnconscious  Kind = "unconscious"  // Inconsciente
+	KindRestrained   Kind = "restrained"   // Preso
+	KindInjured      Kind = "injured"      // Lesionado
+	KindSlowed       Kind = "slowed"       // Lento
+	KindSense        Kind = "sense"        // Sentido afetado
+	KindWeakened     Kind = "weakened"     // Debilitado
+	KindBleeding     Kind = "bleeding"     // Sangrando
+	KindBurning      Kind = "burning"      // Queimando
+	KindFreezing     Kind = "freezing"     // Congelando
+	KindPoisoned     Kind = "poisoned"     // Envenenado
+	KindAsphyxiating Kind = "asphyxiating" // Asfixiando
+	KindProne        Kind = "prone"        // Caído
+	KindAirborne     Kind = "airborne"     // No ar
+	KindOpenGuard    Kind = "openGuard"    // Guarda aberta
+	KindCompelled    Kind = "compelled"    // Compelido
+	KindControlled   Kind = "controlled"   // Controlado
+	KindHidden       Kind = "hidden"       // Escondido
+)
+
+var allKinds = []Kind{
+	KindParalyzed, KindStupefied, KindStunned, KindUnconscious, KindRestrained,
+	KindInjured, KindSlowed, KindSense, KindWeakened,
+	KindBleeding, KindBurning, KindFreezing, KindPoisoned,
+	KindAsphyxiating, KindProne, KindAirborne, KindOpenGuard,
+	KindCompelled, KindControlled, KindHidden,
+}
+
+func ParseKind(s string) (Kind, error) {
+	for _, k := range allKinds {
+		if string(k) == s {
+			return k, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %q", ErrUnknownKind, s)
+}
+
+// PublicByDefault diz se, sem registro de audiência, todos veem o efeito (§9).
+func (k Kind) PublicByDefault() bool {
+	switch k {
+	case KindProne, KindAirborne, KindRestrained, KindBurning, KindUnconscious,
+		KindStunned, KindAsphyxiating, KindOpenGuard:
+		return true
+	}
+	return false
+}
+
+// Sense é o sentido afetado.
+type Sense string
+
+const (
+	SenseVision  Sense = "vision"
+	SenseHearing Sense = "hearing"
+	SenseSmell   Sense = "smell"
+	SenseTact    Sense = "tact"
+	SenseTaste   Sense = "taste"
+)
+
+func ParseSense(s string) (Sense, error) {
+	switch v := Sense(s); v {
+	case SenseVision, SenseHearing, SenseSmell, SenseTact, SenseTaste:
+		return v, nil
+	}
+	return "", fmt.Errorf("%w: sense %q", ErrInvalidParams, s)
+}
+
+// Skill devolve a perícia correspondente ao sentido.
+func (s Sense) Skill() enum.SkillName {
+	switch s {
+	case SenseVision:
+		return enum.Vision
+	case SenseHearing:
+		return enum.Hearing
+	case SenseSmell:
+		return enum.Smell
+	case SenseTact:
+		return enum.Tact
+	case SenseTaste:
+		return enum.Taste
+	}
+	return ""
+}
+
+// Aptitude é a aptidão enfraquecida.
+type Aptitude string
+
+const (
+	AptitudePhysical  Aptitude = "physical"
+	AptitudeMental    Aptitude = "mental"
+	AptitudeSpiritual Aptitude = "spiritual"
+)
+
+func ParseAptitude(s string) (Aptitude, error) {
+	switch v := Aptitude(s); v {
+	case AptitudePhysical, AptitudeMental, AptitudeSpiritual:
+		return v, nil
+	}
+	return "", fmt.Errorf("%w: aptitude %q", ErrInvalidParams, s)
+}
+
+// Ability devolve a habilidade (ability) correspondente à aptidão.
+func (a Aptitude) Ability() enum.AbilityName {
+	switch a {
+	case AptitudePhysical:
+		return enum.Physicals
+	case AptitudeMental:
+		return enum.Mentals
+	case AptitudeSpiritual:
+		return enum.Spirituals
+	}
+	return ""
+}
+
+// Domain é um domínio de ação restringível.
+type Domain string
+
+const (
+	DomainAttack   Domain = "attack"
+	DomainDefense  Domain = "defense"
+	DomainMovement Domain = "movement"
+	DomainDodge    Domain = "dodge"
+)
+
+// AllDomains devolve os quatro domínios, na ordem de declaração.
+func AllDomains() []Domain {
+	return []Domain{DomainAttack, DomainDefense, DomainMovement, DomainDodge}
+}
+
+func ParseDomain(s string) (Domain, error) {
+	for _, d := range AllDomains() {
+		if string(d) == s {
+			return d, nil
+		}
+	}
+	return "", fmt.Errorf("%w: domain %q", ErrInvalidParams, s)
+}
+
+// SenseLevel é a gravidade de um sentido afetado.
+type SenseLevel string
+
+const (
+	SenseImpaired  SenseLevel = "impaired"
+	SenseNullified SenseLevel = "nullified"
+)
+
+func ParseSenseLevel(s string) (SenseLevel, error) {
+	switch v := SenseLevel(s); v {
+	case SenseImpaired, SenseNullified:
+		return v, nil
+	}
+	return "", fmt.Errorf("%w: sense level %q", ErrInvalidParams, s)
+}
+
+// InjuryLevel é a gravidade de uma lesão em um domínio.
+type InjuryLevel string
+
+const (
+	InjuryHurt     InjuryLevel = "hurt"
+	InjuryDisabled InjuryLevel = "disabled"
+)
+
+func ParseInjuryLevel(s string) (InjuryLevel, error) {
+	switch v := InjuryLevel(s); v {
+	case InjuryHurt, InjuryDisabled:
+		return v, nil
+	}
+	return "", fmt.Errorf("%w: injury level %q", ErrInvalidParams, s)
+}
+
+// TouchFace é uma face do Tato.
+type TouchFace string
+
+const (
+	FaceTouch      TouchFace = "touch"
+	FaceBalance    TouchFace = "balance"
+	FacePreemption TouchFace = "preemption"
+)
+
+var allFaces = []TouchFace{FaceTouch, FaceBalance, FacePreemption}
+
+func ParseTouchFace(s string) (TouchFace, error) {
+	for _, f := range allFaces {
+		if string(f) == s {
+			return f, nil
+		}
+	}
+	return "", fmt.Errorf("%w: touch face %q", ErrInvalidParams, s)
+}

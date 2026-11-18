@@ -198,7 +198,7 @@ func racingSessionWithTwoActors(t *testing.T) (*matchsession.MatchSession, uuid.
 func TestNewBarsUpdatedPayload(t *testing.T) {
 	t.Run("master", func(t *testing.T) {
 		session, p1, p2 := racingSessionWithTwoActors(t)
-		payload := newBarsUpdatedPayload(session, true)
+		payload := newBarsUpdatedPayload(session, true, nil)
 
 		t.Run("carries the frozen price of each bar that priced", func(t *testing.T) {
 			if _, ok := payload.Prices[string(action.BarAction)]; !ok {
@@ -237,7 +237,7 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 
 		t.Run("carries provisionalPrices while nothing has frozen", func(t *testing.T) {
 			queued, _, _ := racingSessionWithTwoQueued(t)
-			p := newBarsUpdatedPayload(queued, true)
+			p := newBarsUpdatedPayload(queued, true, nil)
 			if _, ok := p.ProvisionalPrices[string(action.BarAction)]; !ok {
 				t.Errorf("provisionalPrices = %v, want the action bar's provisional price", p.ProvisionalPrices)
 			}
@@ -300,7 +300,7 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 			"nothing opened yet": queued, "one opened, one pending": opened,
 		} {
 			t.Run(name, func(t *testing.T) {
-				raw, err := json.Marshal(newBarsUpdatedPayload(session, false))
+				raw, err := json.Marshal(newBarsUpdatedPayload(session, false, nil))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -322,7 +322,7 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 		}
 
 		t.Run("shows the opened speed and hides the pending one", func(t *testing.T) {
-			p := newBarsUpdatedPayload(opened, false)
+			p := newBarsUpdatedPayload(opened, false, nil)
 			var withSpeed int
 			for _, c := range p.Characters {
 				if len(c.ActionSpeeds) > 0 {
@@ -341,7 +341,7 @@ func TestNewBarsUpdatedPayload(t *testing.T) {
 func TestNewBarsUpdatedPayload_NoCharactersIsAnEmptyArray(t *testing.T) {
 	empty := matchsession.NewMatchSession(uuid.New(), map[uuid.UUID]*csSheet.CharacterSheet{}, nil)
 	for _, isMaster := range []bool{true, false} {
-		raw, err := json.Marshal(newBarsUpdatedPayload(empty, isMaster))
+		raw, err := json.Marshal(newBarsUpdatedPayload(empty, isMaster, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -464,20 +464,26 @@ func TestBroadcastBars_SkipsPlayersWhenTheirViewDidNotChange(t *testing.T) {
 		}
 	})
 
-	t.Run("a reconnecting player's snapshot is not mistaken for what the room sent", func(t *testing.T) {
-		// The room last sent view A; a reconnecting player is handed view B; the state then
-		// comes back to A. Everyone connected already holds A, but the reconnected player holds
-		// B — the next snapshot must reach the players even though it equals the last one sent.
-		r.lastPlayerBars = []byte(`"A — not the current view"`)
+	t.Run("a reconnecting player holds what match_full_state handed them", func(t *testing.T) {
+		// Por jogador (Task 10): o jogador tinha a vista A; reconectado, recebe a atual no
+		// match_full_state, e é essa que ele tem. O próximo retrato igual a ela não vai a ele —
+		// um seq novo sem nada novo anunciaria um segredo.
+		r.barsCacheMu.Lock()
+		r.playerBars[playerID] = []byte(`"A — not the current view"`)
+		r.barsCacheMu.Unlock()
 		r.session = session
 		if r.buildMatchFullState(playerID, false) == nil {
 			t.Fatal("match_full_state was not built")
 		}
-		current, err := json.Marshal(newBarsUpdatedPayload(session, false))
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.lastPlayerBars = current // the state "came back" to what the room last sent
+		r.broadcastBars(session)
+		readBars(t, master)
+		noBars(t, player, "the player already holds the view match_full_state handed them")
+	})
+
+	t.Run("a player with no recorded view gets the next snapshot even if nothing changed", func(t *testing.T) {
+		r.barsCacheMu.Lock()
+		delete(r.playerBars, playerID)
+		r.barsCacheMu.Unlock()
 		r.broadcastBars(session)
 		readBars(t, master)
 		readBars(t, player)

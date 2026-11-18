@@ -2,7 +2,6 @@ package game
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 
@@ -23,7 +22,7 @@ import (
 //   - place: the character has no piece → a new one (new id, slot shape from the grid,
 //     visible, z 0). A player's character that is not a participant is refused
 //     (not_participant); the master's NPC that is not one yet is enrolled first, through the
-//     SAME enrollLiveNPC add_npc uses, so the table hears npc_added either way.
+//     SAME enrollLiveNPC add_npc uses, so the master hears npc_added either way.
 //   - remove: the piece leaves the board. Nothing else: no un-enrolling, no death, no history
 //     erased.
 //
@@ -226,9 +225,9 @@ func slotPosition(s SlotPayload) [3]int {
 
 // enrollLiveNPC puts the master's NPC into the match: the SAME AddMatchNPCUC the REST POST
 // /npcs runs (same guards, same match_participants write), then — with a live session — the
-// sheet goes into it, and the table hears npc_added and a new bars_updated. Both add_npc and
-// the "place" of a piece master action call it, so the two announce an NPC the same way (spec
-// §4.3, "B11 … Com a sala viva").
+// sheet goes into it, the master hears npc_added and the table a new bars_updated (each its
+// own view). Both add_npc and the "place" of a piece master action call it, so the two
+// announce an NPC the same way (spec §4.3, "B11 … Com a sala viva").
 //
 // It returns true once the NPC is enrolled — in the live session when there is one; in the
 // lobby, in the roster the session will load. false means it answered the master with the
@@ -284,18 +283,48 @@ func (r *Room) enrollLiveNPC(client *Client, sheetUUID uuid.UUID) bool {
 		client.SendMessage(NewErrorMessage("game_error", addErr.Error()))
 		return false
 	}
-	// npc_added is the master's ack and the table's cue to fetch the sheet over REST — the
-	// same shape as scene_changed. The combat state that changed is only the set of
-	// characters on the bars, so bars_updated carries it, NOT match_full_state: broadcastBars
-	// bumps seq, while match_full_state repeats the CURRENT seq by contract, and a delayed
-	// bars_updated of that same seq, without the NPC, would be applied over it and wipe the
-	// NPC off the screen. match_full_state stays what its name says: the snapshot of whoever
-	// connects.
-	out := NewServerMessage(MsgTypeNPCAdded, NPCAddedPayload{CharacterID: sheetUUID})
-	data, _ := json.Marshal(out)
-	go func() { r.broadcast <- data }()
+	// npc_added é o ack do mestre, e só dele (decisão do dono 3): o NPC chega aos jogadores
+	// pela névoa, como qualquer peça — e um NPC ainda sem peça não é visto por ninguém. The
+	// combat state that changed is only the set of characters on the bars, so bars_updated
+	// carries it, NOT match_full_state: broadcastBars bumps seq, while match_full_state repeats
+	// the CURRENT seq by contract, and a delayed bars_updated of that same seq, without the
+	// NPC, would be applied over it and wipe the NPC off the screen. match_full_state stays
+	// what its name says: the snapshot of whoever connects. Pela faixa direta, a mesma do
+	// bars_updated que vem logo atrás: o mestre recebe os dois nessa ordem.
+	r.sendToMaster(NewServerMessage(MsgTypeNPCAdded, NPCAddedPayload{CharacterID: sheetUUID}))
 	if session != nil {
-		r.broadcastBars(session)
+		// Os efeitos guardados na ficha primeiro (um NPC pode chegar já Escondido), e só então
+		// barras e status reacertados pela visão de cada um: na ordem inversa, numa partida sem
+		// tabuleiro, as barras de todos listariam o Escondido antes de os efeitos dele chegarem.
+		r.loadLiveNPCStatusEffects(session, sheetUUID)
+		r.syncSight()
 	}
 	return true
+}
+
+// loadLiveNPCStatusEffects lê os efeitos de status guardados na ficha de um NPC que acabou de
+// entrar na sessão viva (o InitMatchSessionUC só lê os de quem já estava na partida) e os põe
+// na sessão. Não manda nada: o syncSight que o enrollLiveNPC chama logo depois manda a cada um
+// as barras e a lista que ele vê. Roda depois de a sessão ter o NPC e de o npc_added estar na
+// fila. A leitura é I/O, sem r.mu; uma falha fica no log e o NPC joga sem status. A sessão pode
+// ter sido trocada enquanto a leitura corria: então nada é aplicado.
+//
+// O chamador NÃO segura r.mu.
+func (r *Room) loadLiveNPCStatusEffects(session *matchsession.MatchSession, sheetUUID uuid.UUID) {
+	if r.deps.StatusEffectRepo == nil {
+		return
+	}
+	byChar, err := r.deps.StatusEffectRepo.ListBySheets(context.Background(), []uuid.UUID{sheetUUID})
+	if err != nil {
+		log.Printf("leitura dos efeitos de status do NPC %s FALHOU na partida %s — ele joga sem status: %v",
+			sheetUUID, r.matchUUID, err)
+		return
+	}
+	r.mu.Lock()
+	if r.session != session {
+		r.mu.Unlock()
+		return
+	}
+	session.ReplaceStatusEffects(sheetUUID, byChar[sheetUUID])
+	r.mu.Unlock()
 }

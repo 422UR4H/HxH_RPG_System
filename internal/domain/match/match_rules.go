@@ -60,6 +60,11 @@ type MatchRules struct {
 	ReactionTimer    *time.Duration // nil = off
 	DefaultReactions bool           // apply the default reaction when the target sends nothing
 	FogMode          *fog.FogMode   // nil = inherit from the map
+
+	// PlayerStatusEffectsPublic é a configuração da mesa (spec de efeitos de
+	// status §9/§14): quando ligada, os efeitos ocultos por padrão de um PC
+	// ficam visíveis a todos. Ainda sem tela para o mestre escolher.
+	PlayerStatusEffectsPublic bool
 }
 
 // NewDefaultMatchRules returns the MVP defaults.
@@ -70,6 +75,8 @@ func NewDefaultMatchRules() MatchRules {
 		ReactionTimer:    nil,
 		DefaultReactions: true,
 		FogMode:          nil,
+
+		PlayerStatusEffectsPublic: false,
 	}
 }
 

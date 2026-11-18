@@ -9,6 +9,8 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
+	"github.com/google/uuid"
 )
 
 // IMasterActionRepo writes one master action row (spec §4.8). recordMasterAction is the one
@@ -22,6 +24,15 @@ type IMasterActionRepo interface {
 // pgcancelledaction.Repository.
 type ICancelledActionRepo interface {
 	Insert(ctx context.Context, r cancelledaction.Record) error
+}
+
+// IStatusEffectRepo lê e grava os efeitos de status das fichas. A sala grava fora de turno
+// (flushStatusEffects) e lê os de um NPC que entra com a partida viva (enrollLiveNPC); com o
+// turno aberto, as gravações vão no PersistTurnClose. A implementação real é
+// pgstatuseffect.Repository.
+type IStatusEffectRepo interface {
+	ListBySheets(ctx context.Context, sheetUUIDs []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error)
+	Write(ctx context.Context, ops []statuseffect.Write) error
 }
 
 // RoomDeps is everything a Room needs from the outside, in one place.
@@ -100,6 +111,13 @@ type RoomDeps struct {
 	// partida encerrada o handler responde match_ended e fecha com 4002. nil: a sala recusa o
 	// end_match (game_error) e o handler não confere o encerramento.
 	MatchEndRepo appmatch.IMatchEndRepository
+	// StatusEffectsUC são os comandos do mestre sobre efeitos de status (apply/edit/remove).
+	// nil: a sala recusa esses comandos (game_error).
+	StatusEffectsUC appmatch.IStatusEffects
+	// StatusEffectRepo grava as mudanças de efeitos de status feitas fora de um turno e lê os de
+	// um NPC que entra ao vivo. nil: nada é gravado fora de turno nem acumulado para depois (as
+	// mudanças com turno aberto seguem com o fechamento do mesmo jeito, pelo RoundRepo).
+	StatusEffectRepo IStatusEffectRepo
 	// Now é a fonte do tempo real do relógio; nil = time.Now. Testes injetam um relógio falso
 	// (a sala o repassa à sessão).
 	Now func() time.Time

@@ -28,6 +28,10 @@ import (
 //     give birth to the round the session is in now — a turn close, an ensure (master action,
 //     regime change, change_scene), another round's end — writes them closed first, in its own
 //     transaction: no round is ever born open next to a predecessor still open on disk.
+//   - unwrittenStatusEffects: gravações de efeitos de status (aplicar, editar, remover) que
+//     falharam, ou que um fechamento de turno falho devolveu. Vão na frente da próxima gravação
+//     de status fora de turno, do próximo fechamento de turno ou do end_match, em ordem, e cada
+//     uma descarta só o prefixo que copiou. Uma sala que fecha com elas pendentes registra no log.
 
 // sheetsToWriteLocked is what a turn's close writes: the sheets it damaged plus the ones an earlier
 // failed close left unwritten. The caller must hold r.mu.
