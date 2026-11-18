@@ -112,6 +112,21 @@ func TestStatusEffectsUC(t *testing.T) {
 		}
 	})
 
+	t.Run("stamps times truncated to microseconds", func(t *testing.T) {
+		f := newSESession(t)
+		precise := now.Add(123 * time.Nanosecond)
+		ch, err := uc.Apply(f.s, f.master, f.master,
+			appmatch.ApplyStatusEffectInput{CharacterIDs: []uuid.UUID{f.pc1}, Draft: unconscious()}, precise)
+		if err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+		for _, w := range ch.Writes {
+			if !w.Effect.AppliedAt.Equal(now) || !w.Effect.UpdatedAt.Equal(now) {
+				t.Errorf("%s stamped %v/%v, want %v", w.Effect.Kind, w.Effect.AppliedAt, w.Effect.UpdatedAt, now)
+			}
+		}
+	})
+
 	t.Run("refuses an unknown character", func(t *testing.T) {
 		f := newSESession(t)
 		_, err := uc.Apply(f.s, f.master, f.master,

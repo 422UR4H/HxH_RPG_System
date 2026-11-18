@@ -5,6 +5,7 @@ package pgstatuseffect_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,11 +112,44 @@ func TestWrite(t *testing.T) {
 		}
 	})
 
+	t.Run("same identity with another uuid replaces the row", func(t *testing.T) {
+		sheet := setup(t)
+		old := prone(sheet, now())
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: old}}); err != nil {
+			t.Fatalf("first write: %v", err)
+		}
+		fresh := prone(sheet, now().Add(time.Minute))
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: fresh}}); err != nil {
+			t.Fatalf("second write: %v", err)
+		}
+		got, _ := repo.ListBySheets(ctx, []uuid.UUID{sheet})
+		if len(got[sheet]) != 1 || got[sheet][0].ID != fresh.ID {
+			t.Fatalf("got %+v, want only the last write", got[sheet])
+		}
+	})
+
+	t.Run("a deleted sheet is skipped, not an error", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		player := pgtest.InsertTestUser(t, pool, "pl-se-del", "pl-se-del@test.com", "pass")
+		alive := uuid.MustParse(pgtest.InsertTestCharacterSheet(t, pool, &player, nil, nil, "Gon"))
+		err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: prone(uuid.New(), now())}, // ficha apagada
+			{Effect: prone(alive, now())},
+		})
+		if err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if n := total(t); n != 1 {
+			t.Fatalf("rows = %d, want 1 (only the live sheet)", n)
+		}
+	})
+
 	t.Run("atomic", func(t *testing.T) {
 		sheet := setup(t)
 		err := repo.Write(ctx, []statuseffect.Write{
 			{Effect: prone(sheet, now())},
-			{Effect: prone(uuid.New(), now())}, // ficha inexistente
+			{Effect: statuseffect.Effect{ID: uuid.New(), CharacterID: sheet,
+				Kind: statuseffect.Kind(strings.Repeat("x", 40)), AppliedAt: now(), UpdatedAt: now()}}, // kind > VARCHAR(32)
 		})
 		if err == nil {
 			t.Fatal("expected an error")

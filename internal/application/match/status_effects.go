@@ -93,6 +93,9 @@ func (uc *StatusEffectsUC) Apply(
 	if err := uc.guard(s, masterUUID, callerUUID); err != nil {
 		return StatusEffectChange{}, err
 	}
+	// O Postgres guarda microssegundos: truncar aqui faz memória e disco concordarem e
+	// mantém estável, depois de um reinício, a ordem por applied_at (ex.: Inconsciente/Caído).
+	now = now.Truncate(time.Microsecond)
 	if len(in.CharacterIDs) == 0 {
 		return StatusEffectChange{}, invalidParams("characterIds vazio")
 	}
@@ -142,6 +145,7 @@ func (uc *StatusEffectsUC) Edit(
 	if err := uc.guard(s, masterUUID, callerUUID); err != nil {
 		return StatusEffectChange{}, err
 	}
+	now = now.Truncate(time.Microsecond) // mesmo motivo do Apply
 	cur, ok := s.FindStatusEffect(id)
 	if !ok {
 		// Pede ao domínio o erro de não encontrado, para ter uma só redação.
