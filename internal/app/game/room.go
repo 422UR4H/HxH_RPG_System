@@ -1315,7 +1315,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if refusalCode == "" {
 			errEnqueue = r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
 			if errEnqueue == nil {
-				queued = newActionQueuedPayload(a)
+				queued = r.newActionQueuedPayloadLocked(session, a)
 			}
 		}
 		r.mu.Unlock()
@@ -1324,7 +1324,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		if errEnqueue != nil {
-			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
+			client.SendMessage(NewErrorMessage(actionErrorCode(errEnqueue), errEnqueue.Error()))
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: actionID}))
@@ -1507,7 +1507,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if err == nil && result.Queued {
 			for _, a := range session.PendingActions() {
 				if a.GetID() == ma.ActionID {
-					requeued = newActionQueuedPayload(a)
+					requeued = r.newActionQueuedPayloadLocked(session, a)
 					break
 				}
 			}
@@ -2629,7 +2629,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	}
 	r.mu.Unlock()
 	if err != nil {
-		client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		client.SendMessage(NewErrorMessage(actionErrorCode(err), err.Error()))
 		return
 	}
 	// Before the master's resolution_updated, on the same lane and goroutine: the reactor and
@@ -3496,7 +3496,7 @@ func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchF
 		// PendingActions reads s.activeQueue with no lock of its own; r.mu (held for this whole
 		// function) is what serializes it against a concurrent enqueue_action.
 		for _, a := range session.PendingActions() {
-			payload.Queue = append(payload.Queue, newActionQueuedPayload(a))
+			payload.Queue = append(payload.Queue, r.newActionQueuedPayloadLocked(session, a))
 		}
 	} else {
 		// OwnQueue is B12 (design spec §4.2) — see MatchFullStatePayload.OwnQueue's own doc for
@@ -3540,6 +3540,15 @@ func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchF
 //
 // Shared by the action_queued emitted at enqueue time and by match_full_state's Queue, so the
 // live event and the snapshot can never describe the same action differently.
+//
+// StatusNotes são as anotações dos status do ator que valem para esta action (statusNotesFor).
+// O chamador segura r.mu (leitura basta).
+func (r *Room) newActionQueuedPayloadLocked(session *matchsession.MatchSession, a *action.Action) ActionQueuedPayload {
+	p := newActionQueuedPayload(a)
+	p.StatusNotes = statusNotesFor(session.StatusSummaryOf(a.GetActorID()), a)
+	return p
+}
+
 func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
 	bars := make([]string, 0, 2)
 	for _, b := range a.Bars() {

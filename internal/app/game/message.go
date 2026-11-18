@@ -297,6 +297,18 @@ type ActionQueuedPayload struct {
 	// DamageSkill is the skill that measures the damage of the action's attack, as
 	// resolution_updated.damageSkill names it. Absent when the action has no attack.
 	DamageSkill string `json:"damageSkill,omitempty"`
+	// StatusNotes são as anotações dos status do ator que valem para esta action: o aviso de um
+	// domínio inutilizado que ela usa (Lesionado) e toda conduta imposta (Compelido). Só o
+	// mestre recebe esta superfície. Ausente quando não há nenhuma.
+	StatusNotes []StatusNotePayload `json:"statusNotes,omitempty"`
+}
+
+// StatusNotePayload é uma anotação de status para o mestre.
+type StatusNotePayload struct {
+	Kind         string `json:"kind"` // o tipo do status
+	Domain       string `json:"domain,omitempty"`
+	Conduct      string `json:"conduct,omitempty"`
+	Irresistible bool   `json:"irresistible,omitempty"`
 }
 
 // OpenReactionPayload names which attached reaction the master is giving the floor to. The
