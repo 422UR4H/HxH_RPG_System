@@ -83,8 +83,9 @@ const (
 	// is running, onto the roster only if the room is still a lobby.
 	MsgTypeAddNPC MessageType = "add_npc"
 
-	// Server → Client (roster): the whole table learns an NPC joined; the front re-fetches
-	// the sheet by REST, the same way it reacts to scene_changed.
+	// Server → Client (roster): só o mestre fica sabendo que um NPC entrou (decisão do dono
+	// 3: aos jogadores ele chega pela névoa, como qualquer peça); o front busca a ficha por
+	// REST, the same way it reacts to scene_changed.
 	MsgTypeNPCAdded MessageType = "npc_added"
 
 	// Server → Client (lobby lifecycle)
