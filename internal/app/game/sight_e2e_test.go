@@ -244,7 +244,7 @@ func TestSight_StatusOnEnteringSight(t *testing.T) {
 func TestSight_BarsFollowSight(t *testing.T) {
 	f := newStatusFixture(t)
 	f.seedStatusBoard(t, statusNPCBehindWall, moveBoardWall)
-	master, player, blind, mc, pc, bc := f.connectTable(t)
+	master, player, blind, mc, pc, _ := f.connectTable(t)
 	defer master.Close() //nolint:errcheck
 	defer player.Close() //nolint:errcheck
 
