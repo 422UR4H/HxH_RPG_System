@@ -1378,6 +1378,9 @@ func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 // No die falls: a default reaction reads its tests at the dice set's base value, and rolls only
 // if the master puts a bias on one (ApplyMasterAction, ensureDiceForBias). Only an attack
 // collides with its targets, so an action without one seats nothing.
+//
+// O que senta segue os status do alvo (seatedReactionFor): sem poder reagir, ou sem as duas
+// passivas, um nothing; sem uma delas, a padrão marcada sem ela.
 func (s *MatchSession) seatDefaultReactions(t *turn.Turn) {
 	if t == nil || t.GetFinishedAt() != nil {
 		return
@@ -1406,7 +1409,7 @@ func (s *MatchSession) seatDefaultReactions(t *turn.Turn) {
 			continue
 		}
 		answered[id] = true
-		t.Seat(newDefaultReaction(id, a.GetID()))
+		t.Seat(s.seatedReactionFor(id, a.GetID()))
 	}
 }
 
@@ -1601,6 +1604,12 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 			return nil, nil, ErrReactorAlreadyReacted
 		}
 	}
+	// Os status do reator, pela mesma regra de validar antes de mutar: nada é cobrado nem
+	// consumido de uma reação que eles proíbem. As passivas que sobram ficam marcadas nela.
+	if err := s.StatusRefusal(r); err != nil {
+		return nil, nil, err
+	}
+	s.applyStatusPassives(r)
 	// Answering exactly what was seated is the same reading: it keeps the dice that may already
 	// have fallen for it and the master's edits on it — nothing is rolled again.
 	if seated != nil && r.ReactionKind == seated.ReactionKind {
@@ -1985,6 +1994,11 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 			return ErrParticipantNotFound
 		}
 		return ErrActionActorMismatch
+	}
+	// Os status do ator, antes de qualquer dado cair: vale para toda entrada, o NPC do mestre
+	// incluído.
+	if err := s.StatusRefusal(a); err != nil {
+		return err
 	}
 	s.stackOnChainTail(a)
 	s.rollActionDice(a)

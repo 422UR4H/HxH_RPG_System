@@ -9,7 +9,9 @@ import (
 	"log"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
+	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -270,12 +272,28 @@ func (r *Room) runStatusEffectChange(
 		after = r.pieceSightLocked()
 	}
 	flushNow := r.holdStatusEffectWritesLocked(change.Writes)
+	// O conjunto novo vale já para o que está pendente (decisão 8): na mesma seção crítica.
+	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters)
+	turnID := session.CurrentTurnID()
+	var res *domainservice.TurnResolution
+	if turnTouched {
+		res = session.ResolveOpenTurn()
+	}
 	r.mu.Unlock()
 	// Grava antes de avisar, como as master actions: o aviso é a barreira de quem espera a
 	// gravação.
 	if flushNow {
 		r.flushStatusEffects()
 	}
+	for _, w := range cancelWrites {
+		r.writeCancelledAction(w)
+	}
+	if len(cancelled) > 0 {
+		r.announceStatusCancelled(cancelled)
+		r.broadcastBars(session)
+	}
+	// Uma reação do turno aberto pode ter sido refeita: o mestre recebe a resolução nova.
+	r.publishResolution(turnID, res)
 	if change.HiddenChanged {
 		// A peça primeiro (piece_removed/piece_moved), depois as barras e os status de quem a
 		// ganhou ou perdeu — a ordem que a névoa já segue quando uma peça anda.
@@ -567,4 +585,82 @@ func (r *Room) statusEffectsForLocked(pid uuid.UUID, isMaster bool) (map[uuid.UU
 		views[charID], _ = json.Marshal(list)
 	}
 	return out, views
+}
+
+// ─── bloqueios (decisões 8 e 9) ─────────────────────────────────────────────
+
+// actionErrorCode traduz o erro de enqueue_action/attach_reaction: a recusa de um status vira
+// blocked_by_status; o resto continua game_error.
+func actionErrorCode(err error) string {
+	if errors.Is(err, matchsession.ErrBlockedByStatus) {
+		return "blocked_by_status"
+	}
+	return "game_error"
+}
+
+// statusNotesFor são as anotações dos status que valem para a action: um aviso de domínio só
+// quando ela usa o domínio; uma conduta, sempre. nil quando não há nenhuma.
+func statusNotesFor(sum statuseffect.Summary, a *action.Action) []StatusNotePayload {
+	used := map[statuseffect.Domain]bool{}
+	for _, d := range matchsession.ActionDomains(a) {
+		used[d] = true
+	}
+	var out []StatusNotePayload
+	for _, n := range sum.Notes {
+		if n.Domain != "" && !used[n.Domain] {
+			continue
+		}
+		out = append(out, StatusNotePayload{
+			Kind: string(n.Kind), Domain: string(n.Domain), Conduct: n.Conduct, Irresistible: n.Irresistible,
+		})
+	}
+	return out
+}
+
+// dropRefusedByStatusLocked aplica a mudança de status ao que os personagens têm pendente
+// (decisão 8), na mesma seção crítica do caso de uso: cada action que o conjunto novo recusa sai
+// da fila e é registrada como cancelada pelo mestre, pelo mesmo caminho do cancel_action (com
+// turno aberto, retida para o fechamento dele). Devolve o que gravar já, os avisos a mandar e se
+// alguma reação do turno aberto pode ter mudado. O chamador segura r.mu (escrita).
+func (r *Room) dropRefusedByStatusLocked(session *matchsession.MatchSession, chars []uuid.UUID) (
+	writes []*cancelledWrite, cancelled []cancelledNotice, turnTouched bool,
+) {
+	owners := session.GetCharToPlayer()
+	for _, charID := range chars {
+		turnTouched = turnTouched || session.HasReactionOnOpenTurn(charID)
+		removed := session.DropRefusedByStatus(charID)
+		if len(removed) == 0 {
+			continue
+		}
+		ws, ids := r.holdCancelledActionsLocked(removed, r.masterUUID)
+		writes = append(writes, ws...)
+		for _, id := range ids {
+			cancelled = append(cancelled, cancelledNotice{id: id, owner: owners[charID.String()]})
+		}
+	}
+	return writes, cancelled, turnTouched
+}
+
+// cancelledNotice é um action_cancelled a mandar: a action e o dono do personagem dela.
+type cancelledNotice struct {
+	id, owner uuid.UUID
+}
+
+// announceStatusCancelled manda o action_cancelled de cada action que um status tirou da fila:
+// ao mestre e ao dono dela — a mesma mensagem do cancel_action, que a manda ao mestre e a quem
+// pediu (aqui quem pediu é o mestre, e quem precisa saber é o dono). Fora do lock.
+func (r *Room) announceStatusCancelled(notices []cancelledNotice) {
+	for _, n := range notices {
+		msg := NewServerMessage(MsgTypeActionCancelled, ActionCancelledPayload{ActionID: n.id})
+		r.sendToMaster(msg)
+		if n.owner == r.masterUUID || n.owner == uuid.Nil {
+			continue
+		}
+		r.mu.RLock()
+		c, ok := r.clients[n.owner]
+		r.mu.RUnlock()
+		if ok {
+			c.SendMessage(msg)
+		}
+	}
 }
