@@ -20,7 +20,7 @@ Complementa [`match-combat-ws.md`](match-combat-ws.md) (envelope, `error`, `matc
 Um **efeito** é uma condição que o mestre põe num personagem da partida (PJ ou NPC): Paralisado,
 Preso, Escondido… Cada efeito tem um `id`, um `kind` (tipo), parâmetros próprios do tipo, um
 apelido opcional e uma **lista de quem o vê**. Nesta fase **só o mestre** aplica, edita e remove
-(não há teste automático nem origem automática — ver [§9](#9-o-que-ainda-não-existe)).
+(não há teste automático nem origem automática — ver [§10](#10-o-que-ainda-não-existe)).
 
 O que o servidor **faz** com um efeito já nesta fase:
 
@@ -33,7 +33,7 @@ O que o servidor **faz** com um efeito já nesta fase:
 
 O que **não** faz: nada que mude uma rolagem (penalidade, desvantagem, falha automática), nenhum
 dano por round, nenhuma recuperação. Os parâmetros dessas peças são guardados e mostrados, mas
-ainda não pesam. Lista completa em [§9](#9-o-que-ainda-não-existe).
+ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 
 ## 2. Índice
 
@@ -49,8 +49,8 @@ ainda não pesam. Lista completa em [§9](#9-o-que-ainda-não-existe).
 
 | Mensagem | Destino |
 |---|---|
-| [`status_effects_updated`](#status_effects_updated) | **por destinatário**: o mestre sempre; cada jogador só dos personagens que enxerga e só do que a lista dele inclui |
-| `match_full_state.statusEffects` | quem conecta/reconecta — ver [§8](#8-reconexão) |
+| [`status_effects_updated`](#8-status_effects_updated) | **por destinatário**: o mestre sempre; cada jogador só dos personagens que enxerga e só do que a lista dele inclui |
+| `match_full_state.statusEffects` | quem conecta/reconecta — ver [§9](#9-reconexão) |
 | [`action_queued.statusNotes`](#statusnotes-em-action_queued) | só o mestre |
 | [`action_cancelled`](#action_cancelled-disparado-por-status) | o mestre + o dono da ação, quando um status derruba uma ação da fila |
 | [`error` `blocked_by_status`](#blocked_by_status) | quem tentou agir ou reagir |
@@ -203,7 +203,7 @@ remover o Caído e manter só o Inconsciente (remover um não remove o outro). O
 o conjunto novo recusa sai da fila (`action_cancelled`); uma reação **não aberta** que ele não
 pode mais dar é refeita.
 
-**Dispara:** [`status_effects_updated`](#status_effects_updated) para quem vê.
+**Dispara:** [`status_effects_updated`](#8-status_effects_updated) para quem vê.
 
 **Erros:**
 
@@ -228,7 +228,7 @@ mudam (remova e aplique outro).
   "type": "edit_status_effect",
   "payload": {
     "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    "params": { "points": 3 },
+    "params": { "domains": ["movement", "dodge"], "points": 3 },
     "alias": "",
     "visibility": { "mode": "default" }
   }
@@ -238,7 +238,7 @@ mudam (remova e aplique outro).
 | Campo | Notas |
 |---|---|
 | `statusEffectId` | obrigatório (uuid não nulo; o servidor acha o personagem sozinho) |
-| `params` | **ausente = intocado; presente = substitui todos** (normalizado como na aplicação: reenvie o que é obrigatório) |
+| `params` | **ausente = intocado; presente = substitui todos** (normalizado como na aplicação: reenvie o que é obrigatório). ⚠️ Campos com padrão voltam ao padrão se omitidos: um `paralyzed` editado só com `points` volta a travar os **quatro** domínios; por isso o exemplo reenvia `domains`. |
 | `alias` | ausente = intocado; `""` limpa |
 | `visibility` | ausente = intocada; `{"mode":"default"}` volta ao padrão do tipo |
 
@@ -264,7 +264,7 @@ inteira**.
 
 ## 6. O que um efeito bloqueia
 
-Um efeito é composto de peças. Nesta fase valem estas (as demais só são guardadas — [§9](#9-o-que-ainda-não-existe)):
+Um efeito é composto de peças. Nesta fase valem estas (as demais só são guardadas — [§10](#10-o-que-ainda-não-existe)):
 
 | Peça | Vem de | Efeito |
 |---|---|---|
@@ -396,6 +396,8 @@ não entra em `playerIds` (recusado).
 `false` e **ainda não há como mudá-la pelo fio**: tratar como sempre `false`.) Quando há lista (`public`/`players`), **o dono só vê se
 estiver nela** — o dono não entra implicitamente.
 
+Na saída (só ao mestre), `visibility.playerIds` **ausente com `mode: "players"` = lista vazia (só o mestre)**.
+
 Jogadores **nunca veem a lista**: `visibility` e `public` só chegam ao mestre; não há `updatedAt`
 no fio.
 
@@ -414,7 +416,7 @@ o mestre sempre. Regras (decisão do dono 4):
 - **Um personagem com lista visível vazia que o jogador nunca recebeu** não gera mensagem (não há
   o que apagar).
 
-As barras seguem a mesma visão ([§10](#10-barras-e-npc_added-mudaram)).
+As barras seguem a mesma visão ([§11](#11-barras-e-npc_added-mudaram)).
 
 ### `hidden` (Escondido)
 
@@ -430,7 +432,7 @@ Quando o `hidden` entra, sai ou tem a lista trocada, o servidor manda, nesta ord
 
 Enquanto Escondido, o personagem **não aparece** no `map_full_state` nem em
 `match_full_state.bars`/`statusEffects` de quem não o percebe, e `piece_moved` dele não chega a
-essa pessoa. As **ações** dele durante o Escondido, e o histórico, estão em [§9](#9-o-que-ainda-não-existe).
+essa pessoa. As **ações** dele durante o Escondido, e o histórico, estão em [§10](#10-o-que-ainda-não-existe).
 
 ### Ordem entre pistas e NPC ao vivo
 
@@ -440,7 +442,7 @@ mestre antes do `npc_added`**. Não dependa da ordem: guarde os status por `char
 desenhe quando o NPC existir. Do mesmo modo, um `status_effects_updated` pode chegar antes do
 `match_full_state` mais antigo na reconexão; a próxima mudança acerta.
 
-## `status_effects_updated`
+## 8. `status_effects_updated`
 
 **Direção:** servidor → cliente. **Destino:** por destinatário, só quem enxerga o personagem e só
 com a lista que ele vê; o mestre sempre.
@@ -510,7 +512,7 @@ Exemplo de `params` por tipo na saída:
 Numa edição de lista (de `hidden` para `public`, por exemplo) quem **ganha** o efeito recebe a
 lista nova; quem o **perde** recebe a lista sem ele (talvez `[]`).
 
-## 8. Reconexão
+## 9. Reconexão
 
 `match_full_state` ganha **`statusEffects`**: mapa `characterId → lista` (cada lista no formato
 acima, já projetada para este destinatário), **só** dos personagens que ele enxerga agora e que
@@ -533,13 +535,13 @@ um `status_effects_updated` igual ao do `match_full_state` não é repetido.
 ```
 
 (Abreviado: só o campo novo.) Os efeitos persistem entre sessões e reinícios; ver
-[§11](#11-quando-é-gravado).
+[§12](#12-quando-é-gravado).
 
 **Corrida conhecida:** como o `match_full_state` sai por uma pista e o `status_effects_updated`
 por outra, uma mudança que acontece exatamente durante a reconexão pode chegar antes do estado
 completo; o `statusEffects` mais antigo fica na tela até a próxima mudança do personagem.
 
-## 9. O que ainda não existe
+## 10. O que ainda não existe
 
 Para o front não procurar. **Nada disto está no fio**:
 
@@ -563,7 +565,7 @@ Para o front não procurar. **Nada disto está no fio**:
 - O servidor não remove o efeito sozinho em nenhum caso (nem por troca de cena, nem por fim de
   round, nem por relógio).
 
-## 10. Barras e `npc_added` mudaram
+## 11. Barras e `npc_added` mudaram
 
 - **`bars_updated` e `match_full_state.bars` são por jogador.** A lista `characters` de um jogador
   traz só os personagens que **ele é dono ou enxerga** (mesma visão do [§7](#visão-névoa)); o
@@ -573,7 +575,7 @@ Para o front não procurar. **Nada disto está no fio**:
   (`piece_moved`/`map_full_state`) e, se enxergado, por `bars_updated`. Jogadores nunca recebem
   `npc_added` (nem no lobby).
 
-## 11. Quando é gravado
+## 12. Quando é gravado
 
 Os efeitos persistem na tabela `character_status_effects` e voltam quando a sala nasce, ao iniciar a
 partida (e, no NPC inscrito ao vivo, ao inscrevê-lo).
@@ -590,7 +592,7 @@ partida (e, no NPC inscrito ao vivo, ao inscrevê-lo).
 Uma ficha viva em duas salas (a mesma ficha em duas partidas ao mesmo tempo) guarda duas
 memórias: a última gravação ganha no banco.
 
-## 12. Catálogo de erros desta feature
+## 13. Catálogo de erros desta feature
 
 | `code` | Mensagens | Quando |
 |---|---|---|

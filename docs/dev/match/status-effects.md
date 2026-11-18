@@ -155,4 +155,4 @@ merge. Não é tratado nesta fase.
 
 Rolagens (penalidades, desvantagem, falha automática, Lento, G1), testes automáticos, dano e
 recuperação por round, asfixia, "não usa habilidades" (Nen), histórico (PR 2) e as ações de um
-Escondido em `turn_opened`/resolução (PR 2). Lista no contrato, §9.
+Escondido em `turn_opened`/resolução (PR 2). Lista no contrato, §10.
