@@ -5,6 +5,7 @@ package round_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,7 +205,8 @@ func TestPersistMatchEnd(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := newMatchEndFixture(t, pool, repo, false)
 		at := time.Now().UTC().Truncate(time.Microsecond)
-		bad := statuseffect.Effect{ID: uuid.New(), CharacterID: uuid.New(), Kind: statuseffect.KindProne, AppliedAt: at, UpdatedAt: at}
+		bad := statuseffect.Effect{ID: uuid.New(), CharacterID: fx.victimSheet, Kind: statuseffect.Kind(strings.Repeat("x", 40)), // kind > VARCHAR(32): o banco recusa
+			AppliedAt: at, UpdatedAt: at}
 		fx.data.StatusEffects = []statuseffect.Write{{Effect: bad}}
 		if err := repo.PersistMatchEnd(ctx, fx.data); err == nil {
 			t.Fatal("PersistMatchEnd succeeded with a status effect the database refuses")

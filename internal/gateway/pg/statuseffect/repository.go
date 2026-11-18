@@ -128,7 +128,9 @@ func decodeAudience(raw []byte) (*statuseffect.Audience, error) {
 
 // Write aplica as operações na ordem, numa transação só: ou todas ou nenhuma.
 // Inclusão/edição é upsert por uuid; ficha, tipo, variante e applied_at nunca mudam depois
-// de gravados. Remoção usa só o ID e remover o que não existe não é erro.
+// de gravados. Remoção usa só o ID e remover o que não existe não é erro. A última gravação
+// ganha: uma linha de outro uuid com a mesma identidade é substituída, e uma ficha que já não
+// existe é pulada sem erro.
 func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error {
 	if len(ops) == 0 {
 		return nil
@@ -162,10 +164,21 @@ func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error 
 		if err != nil {
 			return fmt.Errorf("marshal status effect audience: %w", err)
 		}
+		// Última gravação ganha: outra linha com a mesma identidade (ficha viva em duas salas)
+		// sai antes, senão o índice único recusaria para sempre.
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM character_status_effects
+			WHERE character_sheet_uuid = $1 AND kind = $2 AND variant = $3 AND uuid <> $4`,
+			e.CharacterID, string(e.Kind), e.Identity().Variant, e.ID); err != nil {
+			return fmt.Errorf("replace status effect identity %s: %w", e.ID, err)
+		}
+		// A ficha apagada com a sessão ainda a segurando: o SELECT ... WHERE EXISTS faz o
+		// insert não gravar nada, em vez de a FK recusar a transação inteira.
 		const q = `
 			INSERT INTO character_status_effects
 				(uuid, character_sheet_uuid, kind, variant, params, alias, audience, applied_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+			WHERE EXISTS (SELECT 1 FROM character_sheets WHERE uuid = $2)
 			ON CONFLICT (uuid) DO UPDATE SET
 				params = EXCLUDED.params, alias = EXCLUDED.alias,
 				audience = EXCLUDED.audience, updated_at = EXCLUDED.updated_at

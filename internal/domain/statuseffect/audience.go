@@ -6,8 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Audience é a lista de quem vê um efeito. Everyone = todos; Players vazio
-// (não nil ou nil) = só o mestre. O dono não entra implicitamente.
+// Audience é a lista de quem vê um efeito. Everyone = todos; Players vazio (nil ou não) =
+// só o mestre; já um *Audience nil no Effect é o padrão do tipo. O dono não entra implicitamente.
 type Audience struct {
 	Everyone bool
 	Players  []uuid.UUID

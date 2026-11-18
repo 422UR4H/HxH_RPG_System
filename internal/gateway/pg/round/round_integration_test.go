@@ -944,7 +944,8 @@ func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
 		tn := turnentity.NewTurn(*act)
 		tn.Close(time.Now())
 		good := proneOn(fx.victimSheet)
-		bad := proneOn(uuid.New()) // not a sheet: the FK refuses it
+		bad := proneOn(fx.victimSheet)
+		bad.Kind = statuseffect.Kind(strings.Repeat("x", 40)) // kind > VARCHAR(32): the database refuses it
 
 		err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
 			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
