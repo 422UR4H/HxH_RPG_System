@@ -98,6 +98,7 @@ has only the pieces that the statuses in this document use; do not create a piec
 - **Master's condition**: remains the master's adjustment on a roll (bias, modifier).
 - **Nickname**: scene name of an applied status ("Enjoado" (Nauseous), "Braço direito quebrado" (Broken right arm)).
 - **Action domains**: attack, defense, movement, dodge (those of the actions).
+- **Dazed** is `stupefied` in code and on the wire (contract `docs/dev/api/match-status-effects.md`).
 - **Only rolls when it can fail** [owner]: if even a critical failure would pass, the system does not roll.
 - Skill names in PT per `docs/game/glossario.md`; see §12 for the Strength ones. In code:
   Accuracy = Precisão, Sneak = Deslizar, Tact = Tato, Breath = Respiração, Heal = Cura,
@@ -535,6 +536,8 @@ Em chamas (On fire) · Suffocating — Afogando (Drowning), Estrangulado (Strang
   public — even matches later; when revealed, the past appears. [owner; "the past appears" is
   Claude's]
 - A private status weighs on the player's tests even without them knowing why.
+- **The fog comes on top of all this** [owner, 2026-11-17]: a player only receives a character's
+  public statuses while seeing it. Detail in §16.1, item 4.
 
 ## 10. Persistence and continuity [owner]
 
@@ -577,8 +580,19 @@ Em chamas (On fire) · Suffocating — Afogando (Drowning), Estrangulado (Strang
   drowning bar appears here.
 - **On the player themselves, with emphasis**, when they gain a status or cannot act because of it
   (sending is blocked while Stunned/Dazed/Unconscious and they need to understand why).
-- Follow UI/UX principles; visuals in Claude Design. Screen effects (darkening etc.) and the
-  character sheet page outside the match: later.
+- **Stack above the piece** [owner, 2026-11-19, with the PD session]: bottom to top — the
+  **piece**; right above it, the **statuses** (if any; layout of the PD session's "option C");
+  above them, the **Health and Stamina bars** (Aura replaces Stamina when it exists), if visible;
+  on top, the **action/reaction balloon**, if the character is acting or reacting (the balloon is
+  not glued to the character). The bars are plain: the default bar color for the current value and
+  the project's darkest color for the empty part. **Each player sees only their own bars by
+  default; the master sees all and can reveal other players' bars to everyone.** Reactions will
+  appear around the piece (later). ⚠️ **Gap for the back:** today Health and Stamina go only to the
+  owner and the master (`character_hp_changed`); revealing a character's bars to other players is
+  not in the contract yet.
+- Follow UI/UX principles; this phase's visuals are decided with the PD session, without Claude
+  Design (the project's human designer does the final prototypes later). Screen effects (darkening
+  etc.) and the character sheet page outside the match: later.
 
 ## 12. Docs and character sheet adjustments
 
@@ -662,6 +676,10 @@ automatic roll is costly in it — hence few rolls per round).
   discount of the test for whoever is already bleeding.
 - Check in the code, before planning: what the master's screen shows today of the reduction by
   defense; where HP is clamped at zero; how the master's "condition" enters a new roll.
+- **Process between implementation and spec** [owner, 2026-11-19]: each implementation PR carries,
+  in Portuguese, a **"Decisões tomadas"** (decisions taken) section — the owner's and the
+  implementer's. The PO session folds them into this spec (PT and EN in the same commit) when the PR
+  opens. The next implementation reads the spec, not the chat.
 
 ## 15. For the owner to review (Claude's decisions)
 
@@ -679,3 +697,94 @@ automatic roll is costly in it — hence few rolls per round).
    with someone losing HP.
 8. Names: Unconscious (not Fainted); the sense status is called "Vision nullified", and "Cego"
    (Blind) is a nickname; the elemental family includes the toxic, listed in full in the docs.
+
+## 16. Implementation decisions (phase 1)
+
+> Taken in the back-end implementation sessions (PR #111 and PR 2, history). Where they conflict
+> with the sections above, **these win**. Sources: the plan
+> `docs/superpowers/plans/2026-11-17-status-effects-phase-1.md` ("Owner decisions", "Decisions
+> this plan makes", "Deferred") and the contract `docs/dev/api/match-status-effects.md`.
+
+### 16.1 Owner — 2026-11-17 (PR #111)
+
+1. **Damage per round starts at 1** (Bleeding, Burning, Freezing, Poisoned).
+2. **Recovery points** (Stunned, Paralyzed, Dazed): on manual apply the master types them; with
+   the automatic test, they come from the failure.
+3. **`npc_added` goes to the master only.** An NPC on the board reaches players through the fog,
+   like any piece.
+4. **Public statuses depend on the fog.** A player only receives a character's statuses while
+   seeing it; the owner and the master always see. Out of sight: the server sends nothing and the
+   player keeps the last state seen. Back in sight: the current list. Match without a board:
+   everyone sees. With a board, a character with no piece is not seen by others.
+5. **The round bars** (action and movement) follow the same sight.
+6. **Hidden takes the piece off the map** and hides bars and statuses from whoever is not in the
+   list of those who perceive it.
+7. **Unconscious brings Prone**; the master may remove Prone and keep only Unconscious.
+8. **Tact, balance face:** impaired gives the status's own disadvantage/number on attack, defense,
+   dodge and movement; nullified gives one disadvantage on those four. Declared now; applied in the
+   rolls phase.
+9. **Everything that does not depend on another implementation is applied now** (the action and
+   reaction blocks).
+10. From the new advantage/disadvantage rule (§4), answered for the plan: a **passive test with N
+    levels** rolls 2 + N dice and compares with the base value, as today; **D20 set**: one more
+    D20 per level.
+
+### 16.2 Owner — 2026-11-19 (PR 2: history and Hidden)
+
+11. **Each status event in the history keeps its cause:** the specific action or reaction of the
+    turn. For now the master gives it, optionally, when applying, editing or removing with a turn
+    open (e.g. from the reaction's card). Without a cause, the event sits in the turn, in time
+    order; outside a turn, in the round's events. The test, once it exists, fills the same field,
+    plus the test's own id. **Never infer from "the last opened reaction":** at closing, all are
+    open.
+12. **Hidden hides the character's actions**, and with them the tests and statuses tied to those
+    actions, from whoever does not perceive it — live and in the history.
+13. **Nothing stays hidden forever.** The master reveals whenever he wants, even after the match
+    ends:
+    - a Hidden character's whole period (actions, targets and statuses of that character in the
+      period) or a single status;
+    - the reveal applies to everyone (per player is future) and covers what happened up to that
+      instant;
+    - flow: when removing Hidden, the front asks the master whether to reveal what stayed hidden;
+      if not, he can do it later from the event's card.
+14. **Widening who perceives the character does NOT reveal the past.** Only the master's command
+    reveals. In the future, a perception test may make a player perceive.
+15. **Hidden target:** for whoever does not perceive it, it leaves the target list and the result
+    (live and in the history) until revealed. It may have been hit by accident.
+16. **The closed result of the blow goes to everyone**, even to whoever does not perceive the
+    attacker, in this phase.
+17. Whoever was watching when Hidden came in **sees it come in** and then sees nothing more of that
+    character, but keeps in the history what they had already seen.
+18. **Lean storage for the rare case:** very few actions and statuses will actually be hidden.
+
+### 16.3 From the implementer (the owner was informed)
+
+- Re-applying a status the character already has is refused; the master edits the existing one.
+  Several characters at once: all or nothing.
+- The viewer list is stored per effect (empty = the kind's default); players never see that list.
+- Revealing is a master-only HTTP call; it works during and after the match, and the front reloads
+  the history. A WebSocket notice may come later.
+- In the history, a status event is seen by whoever saw the character right before or right after
+  the change, plus the owner.
+- Containment inherits what a status **does**, not how it **ends** (Unconscious has no Tenacity
+  recovery).
+- The rest (required fields, reaction ↔ piece mapping, effect on the queue and pending reactions,
+  text limits) is in the plan, "Decisions this plan makes".
+
+## 17. What comes next and shapes the model
+
+Whoever implements any phase needs to know this up front, because it decides the shape of the data.
+
+- **Most statuses will come from tests** [owner, 2026-11-19]. The tests brainstorm is in progress
+  (`2026-11-15-testes-brainstorm-notas.md`). Many will come out of **collisions between the action
+  and the reactions**, so one turn applies statuses **at several moments and on several targets**
+  (several reactions, several targets). Tests **outside battle** will also apply statuses. The
+  master's manual statuses remain.
+- **The system will know each status's cause** once tests exist. The cause field (§16.2, item 11)
+  is born for that.
+- **Reveal** also applies to **hidden tests** (the master's secret test, perception against Hidden).
+- **Who sees will be per player.** A player who passes the perception test perceives the Hidden
+  character and the others do not; per-player reveal is the same list. The model is already a list;
+  the command is missing.
+- **Health and Stamina bars above the piece**, with reveal by the master (§11) — needs back support.
+- **Stacking tests** (§13) only adds tests to an action's stack; it does not change the order.

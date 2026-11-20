@@ -518,6 +518,9 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
   partidas depois; ao ser revelado, o passado aparece. [dono; "o passado aparece" é Claude]
 - O status privado pesa nos testes do jogador mesmo sem ele saber por quê.
 
+- **A névoa vem por cima de tudo isto** [dono, 2026-11-17]: o jogador só recebe os status públicos
+  de um personagem enquanto o vê. Detalhe em §16.1, item 4.
+
 ## 10. Persistência e continuidade [dono]
 
 - **Qualquer status, barra ou efeito vale para a ficha em qualquer campanha e partida** [dono]: o
@@ -559,7 +562,18 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
   de afogamento aparece aqui.
 - **No próprio jogador, com destaque**, quando ganha um status ou não pode agir por causa dele
   (o envio fica bloqueado enquanto Atordoado/Atônito/Inconsciente e ele precisa entender por quê).
-- Seguir princípios de UI/UX; visual no Claude Design. Efeitos de tela (escurecer etc.) e a página
+- **Pilha sobre a peça** [dono, 2026-11-19, com a sessão de PD]: de baixo para cima — a **peça**;
+  logo acima, os **status** (se houver; organização da "opção C" da sessão de PD); acima deles, as
+  **barras de Vida e de Stamina** (a de Aura substitui a de Stamina quando existir), se forem
+  visíveis; no topo, o **balão de ação/reação**, se o personagem estiver agindo ou reagindo (o balão
+  não fica colado ao personagem). As barras são simples: a cor padrão das barras para o valor atual
+  e a cor mais escura do projeto para a parte vazia. **Cada jogador vê só as próprias barras, por
+  padrão; o mestre vê todas e pode revelar as de outros jogadores a todos.** As reações aparecerão ao
+  redor da peça (depois). ⚠️ **Lacuna para o back:** hoje Vida e Stamina só vão ao dono e ao mestre
+  (`character_hp_changed`); revelar as barras de um personagem aos outros jogadores ainda não
+  existe no contrato.
+- Seguir princípios de UI/UX; o visual desta fase é decidido com a sessão de PD, sem Claude Design
+  (o designer humano do projeto faz os protótipos finais depois). Efeitos de tela (escurecer etc.) e a página
   da ficha fora da partida: depois.
 
 ## 12. Docs e ajustes na ficha
@@ -644,6 +658,11 @@ automática custa caro nela — por isso poucas rolagens por round).
 - Conferir no código, antes de planejar: o que a tela do mestre mostra hoje da redução por defesa;
   onde o HP é travado em zero; como a "condição" do mestre entra numa rolagem nova.
 
+- **Processo entre implementação e spec** [dono, 2026-11-19]: cada PR de implementação traz, em
+  português, uma seção **"Decisões tomadas"** (do dono e de quem implementou). A sessão de PO as
+  incorpora a este spec (PT e EN no mesmo commit) quando o PR abre. A próxima implementação lê o
+  spec, não o chat.
+
 ## 15. Para o dono revisar (decisões de Claude)
 
 1. Atordoado = Paralisado + Atônito + sentidos anulados (§5.2); Atônito bloqueia agir e reagir.
@@ -660,3 +679,94 @@ automática custa caro nela — por isso poucas rolagens por round).
    alguém perdendo HP.
 8. Nomes: Inconsciente (não Desmaiado); status de sentido se chama "Visão anulada", e "Cego" é
    apelido; a família elemental inclui o tóxico, listado por extenso nas docs.
+
+## 16. Decisões da implementação (fase 1)
+
+> Tomadas nas sessões de implementação do back (PR #111 e o PR 2, de histórico). Onde houver
+> conflito com as seções acima, **valem estas**. Fontes: o plano
+> `docs/superpowers/plans/2026-11-17-status-effects-phase-1.md` (seções "Owner decisions",
+> "Decisions this plan makes", "Deferred") e o contrato `docs/dev/api/match-status-effects.md`.
+
+### 16.1 Do dono — 2026-11-17 (PR #111)
+
+1. **Dano por round começa em 1** (Sangrando, Queimando, Congelando, Envenenado).
+2. **Pontos de recuperação** (Atordoado, Paralisado, Atônito): na aplicação manual o mestre os
+   digita; com o teste automático, saem da falha.
+3. **`npc_added` vai só ao mestre.** O NPC no tabuleiro chega aos jogadores pela névoa, como
+   qualquer peça.
+4. **Status públicos dependem da névoa.** O jogador só recebe os status de um personagem enquanto
+   o vê; o dono e o mestre sempre veem. Saiu da visão: o servidor não manda nada e o jogador fica
+   com o último estado visto. Voltou: recebe a lista atual. Partida sem tabuleiro: todos veem. Com
+   tabuleiro, personagem sem peça não é visto pelos outros.
+5. **As barras do round** (ação e movimento) seguem a mesma visão.
+6. **Escondido tira a peça do mapa** e esconde barras e status de quem não está na lista dos que o
+   percebem.
+7. **Inconsciente traz Caído**; o mestre pode tirar o Caído e deixar só o Inconsciente.
+8. **Tato, face equilíbrio:** prejudicado dá a desvantagem/número do próprio status em ataque,
+   defesa, esquiva e movimento; anulado dá uma desvantagem nesses quatro. Declarado agora; aplicado
+   na fase das rolagens.
+9. **Tudo o que não depende de outra implementação já é aplicado** (os bloqueios de ação e de
+   reação).
+10. Da regra nova de vantagem/desvantagem (§4), respondido para o plano: **teste passivo com N
+    níveis** rola 2 + N dados e compara com o valor base, como hoje; **conjunto de D20**: um D20 a
+    mais por nível.
+
+### 16.2 Do dono — 2026-11-19 (PR 2: histórico e Escondido)
+
+11. **Cada evento de status no histórico guarda a sua causa:** a ação ou a reação específica do
+    turno. Por enquanto o mestre a informa, opcionalmente, ao aplicar, editar ou tirar com o turno
+    aberto (por exemplo, pelo card da reação). Sem causa, o evento fica no turno, na ordem do
+    horário; fora de turno, nos eventos do round. O teste, quando existir, preenche o mesmo campo,
+    mais a identificação do próprio teste. **Nunca inferir pela "última reação aberta":** no
+    fechamento todas estão abertas.
+12. **Escondido oculta as ações do personagem**, e com elas os testes e os status ligados a essas
+    ações, de quem não o percebe — ao vivo e no histórico.
+13. **Nada fica oculto para sempre.** O mestre revela quando quiser, inclusive depois de a partida
+    encerrar:
+    - o período inteiro de um Escondido (ações, alvos e status daquele personagem no período) ou
+      um status só;
+    - a revelação vale para todos (por jogador é futuro) e cobre o que aconteceu até aquele instante;
+    - fluxo: ao tirar o Escondido, o front pergunta ao mestre se revela o que ficou oculto; se não
+      revelar, pode fazê-lo depois pelo card do evento.
+14. **Ampliar quem percebe o personagem NÃO revela o passado.** Só o comando do mestre revela. No
+    futuro, um teste de percepção poderá fazer um jogador perceber.
+15. **Alvo Escondido:** para quem não o percebe, ele sai da lista de alvos e do resultado (ao vivo
+    e no histórico) até ser revelado. Ele pode ter sido atingido sem querer.
+16. **O resultado fechado do golpe vai a todos**, mesmo a quem não percebe o atacante, nesta fase.
+17. Quem estava olhando quando o Escondido entrou **vê ele entrar** e depois não vê mais nada
+    daquele personagem, mas mantém no histórico o que já tinha visto.
+18. **Banco enxuto para o caso raro:** pouquíssimas ações e status ficarão de fato escondidos.
+
+### 16.3 De quem implementou (o dono foi informado)
+
+- Reaplicar um status que o personagem já tem é recusado; o mestre edita o existente. Vários
+  personagens de uma vez: tudo ou nada.
+- A lista de quem vê é guardada por efeito (vazia = o padrão do tipo); o jogador nunca vê essa
+  lista.
+- Revelar é uma chamada HTTP só do mestre; funciona durante e depois da partida, e o front
+  recarrega o histórico. Um aviso pelo WebSocket pode vir depois.
+- No histórico, vê um evento de status quem enxergava o personagem logo antes ou logo depois da
+  mudança, mais o dono.
+- Contenção herda o que um status **faz**, não como ele **acaba** (o Inconsciente não tem a
+  recuperação por Tenacidade).
+- O resto (campos obrigatórios, mapeamento reação ↔ peça, efeito na fila e nas reações
+  pendentes, limites de texto) está no plano, "Decisions this plan makes".
+
+## 17. O que vem depois e molda o modelo
+
+Quem implementar qualquer fase precisa saber disto de saída, porque decide a forma dos dados.
+
+- **A maioria dos status virá de testes** [dono, 2026-11-19]. O brainstorm dos testes está em
+  andamento (`2026-11-15-testes-brainstorm-notas.md`). Muitos sairão das **colisões entre a ação e
+  as reações**, então um mesmo turno aplica status **em vários momentos e em vários alvos** (várias
+  reações, vários alvos). Testes **fora de batalha** também aplicarão status. Os status manuais do
+  mestre continuam existindo.
+- **O sistema saberá a causa de cada status** quando os testes existirem. O campo de causa (§16.2,
+  item 11) já nasce para isso.
+- **Revelação:** vale também para os **testes ocultos** (o teste secreto do mestre, a percepção
+  contra Escondido).
+- **Quem vê será por jogador.** Um jogador que passa no teste de percepção percebe o Escondido e os
+  outros não; a revelação por jogador é a mesma lista. O modelo já é lista; falta o comando.
+- **Barras de Vida e Stamina sobre a peça**, com revelação pelo mestre (§11) — precisa de suporte
+  no back.
+- **Empilhar testes** (§13) só acrescenta testes à pilha de uma action; não muda a ordem.
