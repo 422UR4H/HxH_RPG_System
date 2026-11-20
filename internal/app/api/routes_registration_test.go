@@ -104,3 +104,39 @@ func TestRoutes_SheetRulesArePublic(t *testing.T) {
 		}
 	}
 }
+
+// TestRoutes_RevealStatusEffectNeedsAuth: o comando de revelar fica atrás do middleware de
+// auth (aqui ele recusa tudo com 401) e o handler nem roda.
+func TestRoutes_RevealStatusEffectNeedsAuth(t *testing.T) {
+	called := false
+	a := api.Api{
+		LivenessHandler:       api.LivenessHandler(),
+		ReadinessHandler:      api.ReadinessHandler(nil),
+		CharacterSheetHandler: &sheetHandler.Api{},
+		ScenarioHandler:       &scenarioHandler.Api{},
+		CampaignHandler:       &campaignHandler.Api{},
+		MatchHandler: &matchHandler.Api{
+			RevealStatusEffectHandler: func(context.Context, *matchHandler.RevealStatusEffectRequest) (*matchHandler.RevealStatusEffectResponse, error) {
+				called = true
+				return &matchHandler.RevealStatusEffectResponse{}, nil
+			},
+		},
+		SubmissionHandler: &submissionHandler.Api{},
+		EnrollmentHandler: &enrollmentHandler.Api{},
+		MapHandler:        &mapHandler.Api{},
+		MatchMapHandler:   &matchmapHandler.Api{},
+		UploadHandler:     &uploadHandler.Api{},
+		RulesHandler:      &rulesHandler.Api{},
+		AuthHandler:       auth.NewAuthHandler(nil, nil),
+	}
+	deny := func(ctx huma.Context, next func(huma.Context)) { ctx.SetStatus(http.StatusUnauthorized) }
+	r := chi.NewRouter()
+	a.Routes(r, deny)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
+		"/matches/6f1c1c1e-0000-4000-8000-000000000001/status-effects/6f1c1c1e-0000-4000-8000-000000000002/reveal", nil))
+	if rec.Code != http.StatusUnauthorized || called {
+		t.Fatalf("status = %d, handler called = %v, want 401 and not called", rec.Code, called)
+	}
+}
