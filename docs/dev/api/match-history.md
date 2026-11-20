@@ -200,9 +200,10 @@ Notas sobre `scenes[]` e `rounds[]`:
 - `mode` do round é o **último** regime em que ele esteve. Por onde ele passou, e quando, está
   nos `events` (`roundModeChanged`).
 - `finishedAt` ausente = round/cena ainda aberto.
-- **Todo instante deste endpoint é RFC3339 do instante real** (os dos eventos e master actions
-  saem em **RFC3339Nano** desde os efeitos de status: o instante pode ter casas decimais) (`createdAt`/`finishedAt` de
-  `scenes[]`/`rounds[]`/`turns[]`, `happenedAt` de master action, `createdAt` de evento) — o
+- **Todo instante deste endpoint é RFC3339Nano do instante real** — o instante pode ter casas
+  decimais (microssegundos), e um instante sem fração sai sem elas (`createdAt`/`finishedAt` de
+  `scenes[]`/`rounds[]`/`turns[]`, `openedAt` de reação, `happenedAt` de master action e de
+  evento de status, `createdAt` de evento). Compare instantes como tempo, nunca como string. O
   sufixo `Z` nos exemplos acima é literal (UTC), não um rótulo colado em cima da hora local de
   quem fechou o turno. Até 2026-10-02, `scenes`/`rounds`/`turns` eram `TIMESTAMP` sem fuso no
   banco: o Go escrevia a hora local do processo, e o driver lia de volta rotulando UTC — um
@@ -437,8 +438,8 @@ Campos novos fora dos eventos: `scenes[].briefFinalDescription`, `scenes[].story
 | `content` | o que ela fez — peça: `{ characterId, pieceId, from?, to? }` (`from` ausente num `placePiece`, `to` ausente num `removePiece`); parede: `{ wallIds, interact }` (só as paredes que de fato mudaram — um `wallInteract` traz sempre **uma** parede: um lote do mestre vira uma master action por parede, cada uma com quem viu aquela parede, para que ver uma porta comum não entregue no histórico o id de uma porta secreta não revelada do mesmo lote; um `revealWall` traz todas as reveladas, que vão a todos); `turnNote`: o payload do `enqueue_master_action` como o mestre o mandou |
 
 `events` e `masterActions` são **sempre listas** — `[]` quando não há nada — nunca `null`.
-Dentro de cada uma, a ordem do array é a ordem do tempo; `createdAt`/`happenedAt` têm
-precisão de segundo, então o array é quem desempata.
+Dentro de cada uma, a ordem do array é a ordem do tempo; dois instantes iguais (até o
+microssegundo) são desempatados pela ordem do array.
 
 **Projeção — cada leitor vê a master action como a viu ao vivo.** No instante da aplicação o
 servidor já decide, jogador a jogador, o que cada um recebe (o portão de fog do

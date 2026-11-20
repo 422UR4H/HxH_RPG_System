@@ -334,7 +334,7 @@ func toHistorySceneResponse(s matchUC.HistoryScene) HistorySceneResponse {
 	}
 	return HistorySceneResponse{
 		UUID: s.UUID, Category: s.Category, BriefDesc: s.BriefDesc,
-		CreatedAt:             s.CreatedAt.Format(time.RFC3339),
+		CreatedAt:             s.CreatedAt.Format(time.RFC3339Nano),
 		FinishedAt:            formatTimePtr(s.FinishedAt),
 		BriefFinalDescription: s.BriefFinalDescription,
 		StoryStartedAt:        formatStoryPtr(s.StoryStartedAt),
@@ -356,7 +356,7 @@ func toHistoryRoundResponse(r matchUC.HistoryRound) HistoryRoundResponse {
 	}
 	return HistoryRoundResponse{
 		UUID: r.UUID, Mode: r.Mode,
-		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
+		CreatedAt:  r.CreatedAt.Format(time.RFC3339Nano),
 		FinishedAt: formatTimePtr(r.FinishedAt),
 		Counted:    r.Counted,
 		Drained:    r.Drained,
@@ -499,8 +499,8 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	}
 	return HistoryTurnResponse{
 		UUID:          t.UUID,
-		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
-		FinishedAt:    t.FinishedAt.Format(time.RFC3339),
+		CreatedAt:     t.CreatedAt.Format(time.RFC3339Nano),
+		FinishedAt:    t.FinishedAt.Format(time.RFC3339Nano),
 		StoryAt:       formatStoryPtr(t.StoryAt),
 		Action:        act,
 		Reactions:     reactions,
@@ -616,7 +616,7 @@ func formatTimePtr(t *time.Time) *string {
 	if t == nil {
 		return nil
 	}
-	s := t.Format(time.RFC3339)
+	s := t.Format(time.RFC3339Nano)
 	return &s
 }
 
