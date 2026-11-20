@@ -124,14 +124,14 @@ func (r *Room) describeDroppedTurnLocked() droppedTurn {
 // logDroppedTurn says what a room that went away mid-turn did not write — never silently.
 func logDroppedTurn(matchUUID uuid.UUID, d droppedTurn) {
 	if d.unwrittenStatusEffects > 0 {
-		log.Printf("room of match %s closed with %d status effect write(s) still pending from a failed write — they were NOT persisted",
+		log.Printf("sala da partida %s fechou com %d gravação(ões) de efeitos de status pendentes de uma gravação que falhou — NÃO foram gravadas",
 			matchUUID, d.unwrittenStatusEffects)
 	}
 	if d.turnID == uuid.Nil && d.masterActions == 0 && d.cancelledActions == 0 && d.statusEffects == 0 {
 		return
 	}
 	log.Printf("room of match %s closed with turn %s still open — the turn, its opened move, the %d master action(s) "+
-		"applied, the %d action(s) cancelled and the %d status effect write(s) made inside it were NOT persisted; "+
+		"applied, the %d action(s) cancelled and the %d gravação(ões) de efeitos de status feitas nele were NOT persisted; "+
 		"the match resumes from the last closed turn",
 		matchUUID, d.turnID, d.masterActions, d.cancelledActions, d.statusEffects)
 }
