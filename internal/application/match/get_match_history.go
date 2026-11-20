@@ -12,6 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	matchPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/match"
 	"github.com/google/uuid"
 )
@@ -51,6 +52,14 @@ type ICancelledActionLister interface {
 	ListByMatch(ctx context.Context, matchUUID uuid.UUID) ([]cancelledaction.Record, error)
 }
 
+// IStatusEffectEventLister lê os eventos de status da partida (status_effect_events) e a última
+// lista gravada de cada efeito, em qualquer partida. A implementação real é
+// pgstatuseffect.Repository.
+type IStatusEffectEventLister interface {
+	ListEventsByMatch(ctx context.Context, matchUUID uuid.UUID) ([]statuseffect.EventRecord, error)
+	LatestListings(ctx context.Context, effectIDs []uuid.UUID) (map[uuid.UUID]statuseffect.Audience, error)
+}
+
 // GetMatchHistoryUC is the read side of the Action History — a game surface with per-field
 // visibility, not a log. Authorization mirrors GetMatchParticipantsUC exactly (public match, or
 // master, or a campaign participant); the only thing this use case adds on top is running the
@@ -70,6 +79,8 @@ type GetMatchHistoryUC struct {
 	events           IEventLister
 	masterActions    IMasterActionLister
 	cancelledActions ICancelledActionLister
+	// statusEvents pode ser nil: nenhum evento de status entra.
+	statusEvents IStatusEffectEventLister
 }
 
 func NewGetMatchHistoryUC(
@@ -88,6 +99,12 @@ func NewGetMatchHistoryUC(
 		masterActions:        masterActions,
 		cancelledActions:     cancelledActions,
 	}
+}
+
+// WithStatusEffectEvents liga a leitura dos eventos de status; nil = nenhum.
+func (uc *GetMatchHistoryUC) WithStatusEffectEvents(l IStatusEffectEventLister) *GetMatchHistoryUC {
+	uc.statusEvents = l
+	return uc
 }
 
 func (uc *GetMatchHistoryUC) Get(
@@ -165,6 +182,7 @@ func (uc *GetMatchHistoryUC) Get(
 				// Who saw what is not table data — the verdicts above are all this reader gets.
 				pt.MoveViews, pt.LandingViews, pt.ReactionMoveViews = nil, nil, nil
 				pt.MasterActions = make([]masteraction.Record, 0)
+				pt.StatusEffects = make([]HistoryStatusEffect, 0)
 				projected[i].Rounds[j].Turns[k] = pt
 			}
 			projected[i].Rounds[j].Events = make([]HistoryEvent, 0)
@@ -282,6 +300,10 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 // be one. Who cancelled is public (the public bar already showed the order change); the action
 // itself is cut per reader by cancelledActionFor.
 //
+// Um evento de status entra como uma master action (no turno dele quando o turno está na
+// árvore, senão nos eventos do round), filtrado para o leitor pela regra única do domínio
+// (statuseffect.VisibleInHistory) com a última lista do efeito, lida uma vez só para todos.
+//
 // An entry whose round is not in the tree is logged and dropped: every round is a row from
 // birth (EnsureSceneAndRound), so this is drift, and there is no place in the tree to show it.
 func (uc *GetMatchHistoryUC) stitch(
@@ -312,7 +334,11 @@ func (uc *GetMatchHistoryUC) stitch(
 		}
 		cancelled = recs
 	}
-	if len(events) == 0 && len(records) == 0 && len(cancelled) == 0 {
+	statusEvents, latest, err := uc.readStatusEvents(ctx, matchUUID)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 && len(records) == 0 && len(cancelled) == 0 && len(statusEvents) == 0 {
 		return nil
 	}
 
@@ -388,9 +414,35 @@ func (uc *GetMatchHistoryUC) stitch(
 		})
 	}
 
+	for _, se := range statusEvents {
+		h := statuseffect.HistoryReading{Reader: userUUID, IsMaster: viewer.IsMaster, AnchorVisible: true}
+		h.Latest, h.HasLatest = latest[se.Effect.ID]
+		// Revelações (Task 16) e âncora escondida (Task 15) ainda não existem: nada revelado,
+		// toda âncora visível.
+		if !statuseffect.VisibleInHistory(se, h) {
+			continue
+		}
+		hs := statusEventFor(se, viewer.IsMaster)
+		if se.Event.TurnID != nil {
+			if tu, ok := turns[*se.Event.TurnID]; ok {
+				tu.StatusEffects = append(tu.StatusEffects, hs)
+				continue
+			}
+		}
+		ro, ok := rounds[se.Event.RoundID]
+		if !ok {
+			log.Printf("GetMatchHistory: match %s — status effect event %s points at round %s, which is not in the history; dropped",
+				matchUUID, se.Event.ID, se.Event.RoundID)
+			continue
+		}
+		ro.Events = append(ro.Events, HistoryEvent{
+			Kind: HistoryEventStatusEffect, At: hs.HappenedAt, StatusEffect: &hs,
+		})
+	}
+
 	// Stable: the lists arrive ordered by (time, uuid) from their tables, so a tie keeps that
 	// order — and between entries tied to the instant, the one appended first (regime change,
-	// then master action, then cancelled action) comes first.
+	// then master action, then cancelled action, then status event) comes first.
 	for _, ro := range rounds {
 		sort.SliceStable(ro.Events, func(a, b int) bool { return ro.Events[a].At.Before(ro.Events[b].At) })
 	}
@@ -398,8 +450,66 @@ func (uc *GetMatchHistoryUC) stitch(
 		sort.SliceStable(tu.MasterActions, func(a, b int) bool {
 			return tu.MasterActions[a].HappenedAt.Before(tu.MasterActions[b].HappenedAt)
 		})
+		sort.SliceStable(tu.StatusEffects, func(a, b int) bool {
+			return tu.StatusEffects[a].HappenedAt.Before(tu.StatusEffects[b].HappenedAt)
+		})
 	}
 	return nil
+}
+
+// readStatusEvents lê os eventos de status da partida e, numa chamada só, a última lista de
+// cada efeito que eles nomeiam. Sem leitor, nada.
+func (uc *GetMatchHistoryUC) readStatusEvents(
+	ctx context.Context, matchUUID uuid.UUID,
+) ([]statuseffect.EventRecord, map[uuid.UUID]statuseffect.Audience, error) {
+	if uc.statusEvents == nil {
+		return nil, nil, nil
+	}
+	recs, err := uc.statusEvents.ListEventsByMatch(ctx, matchUUID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(recs) == 0 {
+		return nil, nil, nil
+	}
+	seen := make(map[uuid.UUID]bool, len(recs))
+	ids := make([]uuid.UUID, 0, len(recs))
+	for _, r := range recs {
+		if !seen[r.Effect.ID] {
+			seen[r.Effect.ID] = true
+			ids = append(ids, r.Effect.ID)
+		}
+	}
+	latest, err := uc.statusEvents.LatestListings(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, latest, nil
+}
+
+// statusEventFor é o evento como este leitor o recebe: a lista de quem vê (Audience e Public)
+// só vai ao mestre.
+func statusEventFor(se statuseffect.EventRecord, isMaster bool) HistoryStatusEffect {
+	e := se.Effect.Clone()
+	out := HistoryStatusEffect{
+		UUID: se.Event.ID, Change: se.Event.Change, Effect: e,
+		HappenedAt: se.Event.HappenedAt,
+	}
+	if se.Event.TurnID != nil {
+		id := *se.Event.TurnID
+		out.TurnUUID = &id
+	}
+	if se.Event.ActionID != nil {
+		id := *se.Event.ActionID
+		out.ActionID = &id
+	}
+	if isMaster {
+		public := se.Event.Listing.Everyone
+		out.Public = &public
+	} else {
+		out.Effect.Audience = nil
+	}
+	return out
 }
 
 // cancelledActionFor is c as this reader may see it (spec 2026-10-10 §8.1 P8): the master the

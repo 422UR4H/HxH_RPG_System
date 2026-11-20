@@ -234,5 +234,6 @@
       }
     }
   ],
-  "masterActions": []
+  "masterActions": [],
+  "statusEffects": []
 }

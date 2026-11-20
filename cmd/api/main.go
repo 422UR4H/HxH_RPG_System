@@ -38,6 +38,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/application/submission"
 	campaignPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/campaign"
 	cancelledactionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/cancelledaction"
+	pgstatuseffect "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/statuseffect"
 	enrollmentPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/enrollment"
 	mapPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/map"
 	masteractionPg "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/masteraction"
@@ -128,6 +129,7 @@ func main() {
 	matchEventRepo := matcheventPg.NewRepository(pgPool)
 	masterActionRepo := masteractionPg.NewRepository(pgPool)
 	cancelledActionRepo := cancelledactionPg.NewRepository(pgPool)
+	statusEffectRepo := pgstatuseffect.NewRepository(pgPool)
 
 	registerUC := authUC.NewRegisterUC(authRepo)
 	loginUC := authUC.NewLoginUC(&sessions, authRepo, sessionRepo)
@@ -226,7 +228,7 @@ func main() {
 	getMatchParticipantsUC := match.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
 	getMatchHistoryUC := match.NewGetMatchHistoryUC(
 		matchRepo, roundRepo, characterSheetRepo, matchEventRepo, masterActionRepo, cancelledActionRepo,
-	)
+	).WithStatusEffectEvents(statusEffectRepo)
 	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepo, characterSheetRepo, matchRepo)
 	removeMatchNPCUC := match.NewRemoveMatchNPCUC(matchRepo, matchRepo)
 
