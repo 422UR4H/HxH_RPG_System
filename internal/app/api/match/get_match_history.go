@@ -131,10 +131,10 @@ type HistoryTurnResponse struct {
 	CreatedAt  string    `json:"createdAt"`
 	FinishedAt string    `json:"finishedAt"`
 	// StoryAt é o horário da história quando o turno abriu (ingênuo); omitido quando nulo.
-	StoryAt    *string                 `json:"storyAt,omitempty"`
-	Action     actionwire.Action       `json:"action"`
-	Reactions  []actionwire.Action     `json:"reactions"`
-	Resolution *TurnResolutionResponse `json:"resolution,omitempty"`
+	StoryAt    *string                   `json:"storyAt,omitempty"`
+	Action     actionwire.Action         `json:"action"`
+	Reactions  []HistoryReactionResponse `json:"reactions"`
+	Resolution *TurnResolutionResponse   `json:"resolution,omitempty"`
 	// MasterActions are the master actions applied while this turn was open, as this reader
 	// saw them live, in the order they happened (spec §4.8). Always a list, never null.
 	MasterActions []HistoryMasterActionResponse `json:"masterActions"`
@@ -144,6 +144,14 @@ type HistoryTurnResponse struct {
 	// ConcealedBy são os efeitos Escondido que ainda escondem algo deste turno de alguém — só
 	// para o mestre (o front oferece "revelar"); omitido quando nenhum.
 	ConcealedBy []uuid.UUID `json:"concealedBy,omitempty"`
+}
+
+// HistoryReactionResponse é uma reação do histórico: a forma do actionwire (embutida, os
+// mesmos campos) mais openedAt — quando o mestre a abriu (RFC3339Nano), ausente na que nunca
+// abriu. Só o histórico tem esse campo; o fio do WS não muda.
+type HistoryReactionResponse struct {
+	actionwire.Action
+	OpenedAt string `json:"openedAt,omitempty"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -447,7 +455,7 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	// turnActionWireLocked applies the live gate in. Every one of them defaults to hidden: a
 	// HistoryTurn that never went through the use case reveals nothing. MoveViews/LandingViews
 	// themselves are never mapped: who saw what is not table data.
-	reactions := make([]actionwire.Action, 0, len(t.Reactions))
+	reactions := make([]HistoryReactionResponse, 0, len(t.Reactions))
 	for _, r := range t.Reactions {
 		wr := actionwire.From(r, actionwire.Full)
 		// A reaction never carries From (see actionwire.Move.From); its Position is where an
@@ -455,7 +463,11 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 		if wr.Move != nil && !t.ShownReactionMoves[r.GetID()] {
 			wr.Move.Position = nil
 		}
-		reactions = append(reactions, wr)
+		hr := HistoryReactionResponse{Action: wr}
+		if at, ok := t.ReactionOpenedAt[r.GetID()]; ok {
+			hr.OpenedAt = at.Format(time.RFC3339Nano)
+		}
+		reactions = append(reactions, hr)
 	}
 	masterActions := make([]HistoryMasterActionResponse, 0, len(t.MasterActions))
 	for _, ma := range t.MasterActions {

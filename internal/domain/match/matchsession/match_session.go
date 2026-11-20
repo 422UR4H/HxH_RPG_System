@@ -234,6 +234,7 @@ func (s *MatchSession) ClockSnapshotNow() clock.Snapshot { return s.clock.Snapsh
 // está em Race e sobe o limite do relógio até esse horário.
 func (s *MatchSession) stampOpened(t *turn.Turn) {
 	real := s.now()
+	t.SetOpenedAt(real.Truncate(time.Microsecond))
 	t.SetStoryAt(s.clock.Now(real))
 	if s.activeRound.GetMode() == enum.Race {
 		s.activeRound.MarkCounted()
@@ -1878,7 +1879,7 @@ func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*action.Action, *serv
 	if t.GetFinishedAt() != nil {
 		return nil, nil, ErrTurnAlreadyClosed
 	}
-	if !t.OpenReaction(reactionID) {
+	if !t.OpenReactionAt(reactionID, s.now().Truncate(time.Microsecond)) {
 		return nil, nil, ErrReactionNotFound
 	}
 	if r := t.ReactionRef(reactionID); r != nil {

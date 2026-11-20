@@ -211,3 +211,52 @@ func TestGetMatchHistoryHiddenMarksAndNanoTimes(t *testing.T) {
 		}
 	})
 }
+
+// TestGetMatchHistoryServesReactionOpenings (Task 15b): cada reação aberta leva o openedAt dela
+// (RFC3339Nano); a nunca aberta, nada. Só no histórico — o fio do WS não muda.
+func TestGetMatchHistoryServesReactionOpenings(t *testing.T) {
+	now := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	openedAt := now.Add(1500 * time.Millisecond)
+	act := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	mk := func() action.Action {
+		return *action.NewAction(uuid.New(), nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, &action.Dodge{}, nil, nil)
+	}
+	opened, never := mk(), mk()
+	tree := []match.HistoryScene{{
+		UUID: uuid.New(), Category: "battle", CreatedAt: now,
+		Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "Race", CreatedAt: now,
+			Turns: []match.HistoryTurn{{
+				UUID: uuid.New(), CreatedAt: now, FinishedAt: now.Add(time.Minute), Action: *act,
+				Reactions:        []action.Action{opened, never},
+				ReactionOpenedAt: map[uuid.UUID]time.Time{opened.GetID(): openedAt},
+			}},
+		}},
+	}}
+	var w struct {
+		Scenes []struct {
+			Rounds []struct {
+				Turns []struct {
+					Reactions []map[string]json.RawMessage `json:"reactions"`
+				} `json:"turns"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	body := getHistory(t, tree)
+	if err := json.Unmarshal(body, &w); err != nil {
+		t.Fatal(err)
+	}
+	rs := w.Scenes[0].Rounds[0].Turns[0].Reactions
+	if len(rs) != 2 {
+		t.Fatalf("reactions = %d, want 2", len(rs))
+	}
+	if got := string(rs[0]["openedAt"]); got != `"`+openedAt.Format(time.RFC3339Nano)+`"` {
+		t.Fatalf("opened reaction openedAt = %s, want %s", got, openedAt.Format(time.RFC3339Nano))
+	}
+	if _, ok := rs[1]["openedAt"]; ok {
+		t.Fatalf("never-opened reaction carries openedAt: %s", rs[1]["openedAt"])
+	}
+	if _, ok := rs[0]["uuid"]; !ok {
+		t.Fatalf("the reaction lost its actionwire fields: %v", rs[0])
+	}
+}

@@ -54,7 +54,7 @@ func (r *Repository) FindMatchHistory(
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
 		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
 		        a.trigger, a.interact, a.system_bias, a.move_views, a.consumed_action_ids,
-		        a.hidden_from
+		        a.hidden_from, a.opened_at
 		 FROM scenes s
 		 LEFT JOIN rounds  ro ON ro.scene_uuid = s.uuid
 		 LEFT JOIN turns   t  ON t.round_uuid = ro.uuid
@@ -130,6 +130,8 @@ func (r *Repository) FindMatchHistory(
 			consumed     []uuid.UUID
 			// hiddenFromRaw é para quem cada personagem da linha estava Escondido (NULL = ninguém).
 			hiddenFromRaw []byte
+			// openedAt é a abertura da linha; NULL = reação nunca aberta (ou linha antiga).
+			openedAt *time.Time
 		)
 
 		if err := rows.Scan(
@@ -140,7 +142,7 @@ func (r *Repository) FindMatchHistory(
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
 			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw, &consumed,
-			&hiddenFromRaw,
+			&hiddenFromRaw, &openedAt,
 		); err != nil {
 			return nil, fmt.Errorf("FindMatchHistory scan: %w", err)
 		}
@@ -236,6 +238,12 @@ func (r *Repository) FindMatchHistory(
 					curTurn.ReactionMoveViews = map[uuid.UUID]map[uuid.UUID]masteraction.View{}
 				}
 				curTurn.ReactionMoveViews[react.GetID()] = views
+			}
+			if openedAt != nil {
+				if curTurn.ReactionOpenedAt == nil {
+					curTurn.ReactionOpenedAt = map[uuid.UUID]time.Time{}
+				}
+				curTurn.ReactionOpenedAt[react.GetID()] = *openedAt
 			}
 			if hf := decodeHiddenFrom(hiddenFromRaw, *turnUUID, *actionUUID, react.GetActorID()); hf != nil {
 				if curTurn.ReactionHiddenFrom == nil {
