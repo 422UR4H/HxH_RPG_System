@@ -8,6 +8,7 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
@@ -72,6 +73,7 @@ type HistoryRoundResponse struct {
 // HistoryEventResponse is one entry of a round's events. Kind is the discriminator:
 // "roundModeChanged" carries Payload ({"from", "to"}); "clockStarted", "clockAdjusted" and
 // "clockRealTime" carry Payload as recorded (spec 2026-11-08 §7); "masterAction" carries MasterAction;
+// "statusEffect" carries StatusEffect;
 // "actionCancelled" carries ActorID always and Action only for the master (Full cut) and the
 // actor's owner (Declaration cut) — the use case decided which (matchUC.HistoryCancelledAction).
 // UUID is the event's own, the master action's, or the cancelled action's; CreatedAt is when it
@@ -84,6 +86,22 @@ type HistoryEventResponse struct {
 	MasterAction *HistoryMasterActionResponse `json:"masterAction,omitempty"`
 	ActorID      *uuid.UUID                   `json:"actorId,omitempty"`
 	Action       *actionwire.Action           `json:"action,omitempty"`
+	StatusEffect *HistoryStatusEffectResponse `json:"statusEffect,omitempty"`
+}
+
+// HistoryStatusEffectResponse é um evento de efeito de status já decidido para este leitor
+// pelo caso de uso (statuseffect.VisibleInHistory). StatusEffect é o efeito na mesma forma do
+// fio da sala (statuswire): como ficou, ou, numa remoção, como era. visibility e public só vão
+// ao mestre. TurnID: o turno aberto no instante; ActionID: a action/reação a que a mudança
+// pertence (sem ela, do turno ou do round como um todo).
+type HistoryStatusEffectResponse struct {
+	UUID         uuid.UUID         `json:"uuid"`
+	Change       string            `json:"change"`
+	CharacterID  uuid.UUID         `json:"characterId"`
+	TurnID       *uuid.UUID        `json:"turnId,omitempty"`
+	ActionID     *uuid.UUID        `json:"actionId,omitempty"`
+	HappenedAt   string            `json:"happenedAt"`
+	StatusEffect statuswire.Effect `json:"statusEffect"`
 }
 
 // HistoryMasterActionResponse is one master action as this reader saw it live — already run
@@ -118,6 +136,9 @@ type HistoryTurnResponse struct {
 	// MasterActions are the master actions applied while this turn was open, as this reader
 	// saw them live, in the order they happened (spec §4.8). Always a list, never null.
 	MasterActions []HistoryMasterActionResponse `json:"masterActions"`
+	// StatusEffects são as mudanças de efeito de status feitas com este turno aberto, como este
+	// leitor pode vê-las, na ordem em que aconteceram. Sempre lista, nunca null.
+	StatusEffects []HistoryStatusEffectResponse `json:"statusEffects"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -376,8 +397,32 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 			}
 		}
 		return out, true
+	case e.Kind == matchUC.HistoryEventStatusEffect && e.StatusEffect != nil:
+		se := toHistoryStatusEffectResponse(*e.StatusEffect)
+		return HistoryEventResponse{
+			UUID: e.StatusEffect.UUID, Kind: string(e.Kind),
+			CreatedAt:    e.At.Format(time.RFC3339),
+			StatusEffect: &se,
+		}, true
 	default:
 		return HistoryEventResponse{}, false
+	}
+}
+
+// toHistoryStatusEffectResponse mapeia um evento de status; a visibilidade só entra quando o
+// caso de uso deu Public (o mestre).
+func toHistoryStatusEffectResponse(h matchUC.HistoryStatusEffect) HistoryStatusEffectResponse {
+	w := statuswire.From(h.Effect)
+	if h.Public != nil {
+		vis := statuswire.VisibilityOf(h.Effect.Audience)
+		public := *h.Public
+		w.Visibility, w.Public = &vis, &public
+	}
+	return HistoryStatusEffectResponse{
+		UUID: h.UUID, Change: string(h.Change), CharacterID: h.Effect.CharacterID,
+		TurnID: h.TurnUUID, ActionID: h.ActionID,
+		HappenedAt:   h.HappenedAt.Format(time.RFC3339),
+		StatusEffect: w,
 	}
 }
 
@@ -411,6 +456,10 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	for _, ma := range t.MasterActions {
 		masterActions = append(masterActions, toHistoryMasterActionResponse(ma))
 	}
+	statusEffects := make([]HistoryStatusEffectResponse, 0, len(t.StatusEffects))
+	for _, se := range t.StatusEffects {
+		statusEffects = append(statusEffects, toHistoryStatusEffectResponse(se))
+	}
 	act := actionwire.From(t.Action, actionwire.Full)
 	if act.Move != nil {
 		switch t.MoveSight {
@@ -440,6 +489,7 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 		Reactions:     reactions,
 		Resolution:    res,
 		MasterActions: masterActions,
+		StatusEffects: statusEffects,
 	}
 }
 

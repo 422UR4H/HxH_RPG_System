@@ -206,6 +206,9 @@ const (
 	HistoryEventRoundModeChanged HistoryEventKind = "roundModeChanged"
 	HistoryEventMasterAction     HistoryEventKind = "masterAction"
 	HistoryEventActionCancelled  HistoryEventKind = "actionCancelled"
+	// HistoryEventStatusEffect é uma mudança de efeito de status fora de turno (ou de um turno
+	// que não está na árvore).
+	HistoryEventStatusEffect HistoryEventKind = "statusEffect"
 	// Eventos do relógio da história (spec 2026-11-08 §7), com o payload como foi gravado.
 	HistoryEventClockStarted  HistoryEventKind = HistoryEventKind(matchevent.KindClockStarted)
 	HistoryEventClockAdjusted HistoryEventKind = HistoryEventKind(matchevent.KindClockAdjusted)
@@ -213,7 +216,7 @@ const (
 )
 
 // HistoryEvent is one entry of HistoryRound.Events: exactly one of RoundModeChange, ClockChange,
-// MasterAction and CancelledAction is set, the one Kind names. At is when it happened — what
+// MasterAction, CancelledAction and StatusEffect is set, the one Kind names. At is when it happened — what
 // Events is ordered by.
 type HistoryEvent struct {
 	Kind            HistoryEventKind
@@ -223,6 +226,23 @@ type HistoryEvent struct {
 	ClockChange     *matchevent.Event
 	MasterAction    *masteraction.Record
 	CancelledAction *HistoryCancelledAction
+	StatusEffect    *HistoryStatusEffect
+}
+
+// HistoryStatusEffect é um evento de efeito de status já decidido para este leitor
+// (statuseffect.VisibleInHistory): quem não o vê nunca o recebe.
+type HistoryStatusEffect struct {
+	// UUID é o id do evento.
+	UUID   uuid.UUID
+	Change statuseffect.Change
+	// Effect é o efeito como ficou (removido: como era), com o CharacterID dentro. Audience só
+	// fica para o mestre.
+	Effect statuseffect.Effect
+	// Public é só do mestre: a lista resolvida do instante incluía todo jogador.
+	Public     *bool
+	TurnUUID   *uuid.UUID
+	ActionID   *uuid.UUID
+	HappenedAt time.Time
 }
 
 // HistoryCancelledAction is an action its declarer took back out of the queue (spec 2026-10-10
@@ -272,6 +292,9 @@ type HistoryTurn struct {
 	// for the reader (masteraction.Record.ProjectFor), in the order they happened. Never nil
 	// once the use case has run.
 	MasterActions []masteraction.Record
+	// StatusEffects são os eventos de status gravados com o UUID deste turno, já decididos para
+	// o leitor, na ordem em que aconteceram. Nunca nil depois do caso de uso.
+	StatusEffects []HistoryStatusEffect
 
 	// MoveViews is what each player of the session saw LIVE of the action's move — the
 	// verdict turn_opened's move gate reached for them at the opening (actions.move_views):
