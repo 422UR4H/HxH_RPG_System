@@ -193,9 +193,28 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 		}
 	})
 
+	// O caminho dos eventos já é lista de permissão (Views/HiddenFrom só abrem): um leitor de
+	// fora da sessão não ganha o evento com a revelação do Escondido, só com a do próprio efeito.
+	t.Run("an outsider needs views, hiddenFrom or the effect's own reveal", func(t *testing.T) {
+		eff, outsider := uuid.New(), uuid.New()
+		turn := newTurn(100, ownersPC, pc, nil)
+		rec := event(eff, 102, &turn, false, everyone, []uuid.UUID{reader}, map[uuid.UUID]uuid.UUID{third: hid1})
+		latest := map[uuid.UUID]statuseffect.Audience{eff: everyone}
+		rv := &fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(200)}}
+		ro := get(t, []turnSpec{turn}, []statuseffect.EventRecord{rec}, latest, rv, outsider)
+		if ids := statusIDs(ro, turnByID(ro, turn.id)); len(ids) != 0 {
+			t.Fatalf("outsider with the Hidden revealed got %v, want none", ids)
+		}
+		rv = &fakeRevealReader{at: map[uuid.UUID]time.Time{eff: at(200)}}
+		ro = get(t, []turnSpec{turn}, []statuseffect.EventRecord{rec}, latest, rv, outsider)
+		if ids := statusIDs(ro, turnByID(ro, turn.id)); !slices.Equal(ids, []uuid.UUID{rec.Event.ID}) {
+			t.Fatalf("outsider with the effect revealed got %v, want the event", ids)
+		}
+	})
+
 	t.Run("a hidden actor's turn comes back, with its anchored events", func(t *testing.T) {
 		eff := uuid.New()
-		turn := newTurn(100, ownersPC, pc, match.HiddenFrom{ownersPC: {reader: hid1}})
+		turn := newTurn(100, ownersPC, pc, match.HiddenFrom{ownersPC: {Effect: hid1}})
 		rec := event(eff, 102, &turn, true, everyone, []uuid.UUID{reader}, nil)
 		latest := map[uuid.UUID]statuseffect.Audience{eff: everyone}
 		ro := get(t, []turnSpec{turn}, []statuseffect.EventRecord{rec}, latest, &fakeRevealReader{}, reader)
@@ -214,7 +233,7 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 	})
 
 	t.Run("a hidden target's id and result come back", func(t *testing.T) {
-		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{npc: {reader: hid1}})
+		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{npc: {Effect: hid1}})
 		ro := get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, reader)
 		tu := turnByID(ro, turn.id)
 		if len(tu.Action.TargetID) != 0 || len(tu.Resolution.CharacterResults) != 0 {
@@ -229,7 +248,7 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 	})
 
 	t.Run("a reveal before a later turn does not cover it", func(t *testing.T) {
-		hf := match.HiddenFrom{ownersPC: {reader: hid1}}
+		hf := match.HiddenFrom{ownersPC: {Effect: hid1}}
 		first, second := newTurn(100, ownersPC, pc, hf), newTurn(200, ownersPC, pc, hf)
 		rv := &fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150)}}
 		ro := get(t, []turnSpec{first, second}, nil, nil, rv, reader)
@@ -243,7 +262,7 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 
 	t.Run("the master's concealedBy shrinks and revealed flips", func(t *testing.T) {
 		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{
-			ownersPC: {reader: hid1}, npc: {reader: hid2},
+			ownersPC: {Effect: hid1}, npc: {Effect: hid2},
 		})
 		eff := uuid.New()
 		rec := event(eff, 102, &turn, false, everyone, []uuid.UUID{reader}, map[uuid.UUID]uuid.UUID{reader: hid1})
@@ -273,7 +292,7 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 
 	t.Run("the reveals are read once per request, for every effect the history needs", func(t *testing.T) {
 		eff := uuid.New()
-		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{ownersPC: {reader: hid1}, npc: {reader: hid2}})
+		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{ownersPC: {Effect: hid1}, npc: {Effect: hid2}})
 		rec := event(eff, 102, &turn, false, everyone, nil, map[uuid.UUID]uuid.UUID{reader: hid1})
 		rv := &fakeRevealReader{}
 		get(t, []turnSpec{turn}, []statuseffect.EventRecord{rec}, nil, rv, reader)
@@ -291,7 +310,7 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 	})
 
 	t.Run("the nil sentinel is never revealed", func(t *testing.T) {
-		turn := newTurn(100, ownersPC, pc, match.HiddenFrom{ownersPC: {match.HiddenFromEveryone: uuid.Nil}})
+		turn := newTurn(100, ownersPC, pc, match.HiddenFrom{ownersPC: {}})
 		rv := &fakeRevealReader{at: map[uuid.UUID]time.Time{uuid.Nil: at(500)}}
 		ro := get(t, []turnSpec{turn}, nil, nil, rv, reader)
 		if turnByID(ro, turn.id) != nil {

@@ -40,11 +40,11 @@ type turnWrites struct {
 	// que aconteceram (holdStatusEffectWritesLocked): gravadas pelo PersistTurnClose
 	// (TurnCloseData.StatusEffects), atrás das que uma gravação anterior não gravou.
 	statusEffects []statuseffect.Write
-	// actionHiddenFrom é, para o ator e cada alvo da action, para quem ele estava Escondido na
-	// abertura do turno (recordOpenedMoveViews) — gravado com a action (actions.hidden_from).
-	// nil = ninguém.
+	// actionHiddenFrom é, para o ator e cada alvo da action Escondido na abertura do turno
+	// (recordOpenedMoveViews), o efeito e quem o percebia (hiddenRecordLocked) — gravado com a
+	// action (actions.hidden_from). nil = nenhum.
 	actionHiddenFrom appmatch.HiddenFrom
-	// reactionHiddenFrom é, por reação aberta, para quem o reator estava Escondido na abertura
+	// reactionHiddenFrom é, por reação aberta, o registro do reator Escondido na abertura
 	// dela (recordOpenedReactionMoveViews). A entrada existe (mesmo nil) para toda reação aberta:
 	// é o que diz ao fechamento que ela já foi registrada; a que nunca abriu é registrada lá.
 	reactionHiddenFrom map[uuid.UUID]appmatch.HiddenFrom

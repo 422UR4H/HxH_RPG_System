@@ -2241,8 +2241,8 @@ func (r *Room) recordOpenedMoveViews(opened *turnentity.Turn, origin *[3]int) {
 	}
 	// Under the lock: the copy's Move points at live session memory (announceOpenedTurn).
 	act := opened.GetAction()
-	// Para quem o ator e cada alvo estavam Escondidos agora, na abertura — o mesmo instante do
-	// corte do turn_opened abaixo. Antes do retorno de "sem movimento": vale para toda action.
+	// O registro do ator e de cada alvo Escondido agora (efeito e quem o percebe), na abertura —
+	// o mesmo instante do corte do turn_opened abaixo. Antes do retorno de "sem movimento": vale para toda action.
 	chars := append([]uuid.UUID{act.GetActorID()}, act.TargetID...)
 	r.turnWritesLocked(turnID).actionHiddenFrom = r.hiddenFromOfLocked(chars...)
 	if act.Move == nil {
@@ -2265,8 +2265,8 @@ func (r *Room) recordOpenedReactionMoveViews(turnID uuid.UUID, react action.Acti
 	if r.openTurnIDLocked() != turnID {
 		return
 	}
-	// Para quem o reator estava Escondido na abertura da reação; a entrada fica mesmo vazia, e é
-	// ela que diz ao fechamento que esta reação já foi registrada.
+	// O registro do reator Escondido na abertura da reação; a entrada fica mesmo vazia, e é ela
+	// que diz ao fechamento que esta reação já foi registrada.
 	hw := r.turnWritesLocked(turnID)
 	if hw.reactionHiddenFrom == nil {
 		hw.reactionHiddenFrom = map[uuid.UUID]appmatch.HiddenFrom{}
@@ -2667,9 +2667,9 @@ func (r *Room) persistClosedTurn(
 	r.mu.Unlock()
 }
 
-// closedReactionsHiddenFromLocked completa, para um turno que fecha, para quem cada reator
-// estava Escondido: a reação aberta leva o que a abertura registrou; a nunca aberta, o de agora.
-// Só as entradas com alguém; nil quando nenhuma. O chamador segura r.mu.
+// closedReactionsHiddenFromLocked completa, para um turno que fecha, o registro de cada reator
+// Escondido (efeito e quem o percebia): a reação aberta leva o que a abertura registrou; a nunca
+// aberta, o de agora. Só as reações com registro; nil quando nenhuma. O chamador segura r.mu.
 func (r *Room) closedReactionsHiddenFromLocked(
 	t *turnentity.Turn, opened map[uuid.UUID]appmatch.HiddenFrom,
 ) map[uuid.UUID]appmatch.HiddenFrom {

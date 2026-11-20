@@ -140,7 +140,7 @@ func TestGetMatchHistoryHiddenActor(t *testing.T) {
 		return out
 	}
 	hiddenActor := func() match.HistoryTurn {
-		return turn(ownersPC, pc, pc, match.HiddenFrom{ownersPC: {reader: hid}}, nil)
+		return turn(ownersPC, pc, pc, match.HiddenFrom{ownersPC: {Effect: hid, PerceivedBy: []uuid.UUID{other}}}, nil)
 	}
 
 	t.Run("turn hidden from the reader until revealed", func(t *testing.T) {
@@ -200,7 +200,7 @@ func TestGetMatchHistoryHiddenActor(t *testing.T) {
 		an := actionID
 		onAction.Event.ActionID = &an
 		d := deps{
-			turn:   turn(ownersPC, pc, npc, nil, map[uuid.UUID]match.HiddenFrom{reactionID: {npc: {reader: hid}}}),
+			turn:   turn(ownersPC, pc, npc, nil, map[uuid.UUID]match.HiddenFrom{reactionID: {npc: {Effect: hid, PerceivedBy: []uuid.UUID{other}}}}),
 			status: []statuseffect.EventRecord{onReaction, onAction}, latest: latestOf(onReaction, onAction),
 		}
 		_, tu := get(t, d, reader)
@@ -224,7 +224,7 @@ func TestGetMatchHistoryHiddenActor(t *testing.T) {
 	})
 
 	t.Run("a hidden target leaves targetId and the resolution", func(t *testing.T) {
-		d := deps{turn: turn(ownersPC, npc, npc, match.HiddenFrom{npc: {reader: hid}}, nil)}
+		d := deps{turn: turn(ownersPC, npc, npc, match.HiddenFrom{npc: {Effect: hid, PerceivedBy: []uuid.UUID{other}}}, nil)}
 		_, tu := get(t, d, reader)
 		if tu == nil {
 			t.Fatal("reader: a visible actor's turn is missing")
@@ -244,7 +244,7 @@ func TestGetMatchHistoryHiddenActor(t *testing.T) {
 	// Sem esconder para trás: um alvo que só ficou Escondido depois da abertura continua em
 	// targetId (o leitor o viu ser alvo); a reação dele e o resultado dele somem.
 	t.Run("a target hidden after the opening keeps its id but loses its reaction and result", func(t *testing.T) {
-		d := deps{turn: turn(ownersPC, npc, npc, nil, map[uuid.UUID]match.HiddenFrom{reactionID: {npc: {reader: hid}}})}
+		d := deps{turn: turn(ownersPC, npc, npc, nil, map[uuid.UUID]match.HiddenFrom{reactionID: {npc: {Effect: hid, PerceivedBy: []uuid.UUID{other}}}})}
 		_, tu := get(t, d, reader)
 		if tu == nil {
 			t.Fatal("reader: a visible actor's turn is missing")
@@ -270,7 +270,7 @@ func TestGetMatchHistoryHiddenActor(t *testing.T) {
 	})
 
 	t.Run("an unreadable record hides the turn from everyone but the master and the owner", func(t *testing.T) {
-		d := deps{turn: turn(ownersPC, pc, pc, match.HiddenFrom{ownersPC: {match.HiddenFromEveryone: uuid.Nil}}, nil)}
+		d := deps{turn: turn(ownersPC, pc, pc, match.HiddenFrom{ownersPC: {}}, nil)}
 		for _, who := range []uuid.UUID{reader, other} {
 			if _, tu := get(t, d, who); tu != nil {
 				t.Fatalf("%s: the turn is in the history", who)

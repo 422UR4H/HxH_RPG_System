@@ -164,10 +164,17 @@ Escondido já revelado, **e** a última lista do efeito inclui o leitor))). A ú
 (`LatestListings`) vem de qualquer partida; sem evento anterior, nenhuma → falha fechada.
 
 **`hidden_from`** (sala → banco): esparso, `NULL` = ninguém. Em `status_effect_events` é
-`{playerId: hiddenEffectId}` (jogadores para quem o personagem estava Escondido); em
-`actions` é `{charId: {playerId: hiddenEffectId}}` e cobre o ator e cada alvo na linha da action
-(abertura do turno) e o reator na da reação (na abertura dela; nunca aberta, no fechamento).
-Nunca sai no wire.
+`{playerId: hiddenEffectId}` (jogadores da sessão para quem o personagem estava Escondido) — lá
+ele só **abre** o evento a quem estava de fora; a lista de permissão do evento é `views`, então
+nomear só a sessão não vaza nada. Em `actions` é uma **lista de permissão**
+(`statuseffect.HiddenFrom`, `hiddenRecordLocked`): `{charId: {effect, perceivedBy: [playerId…]}}`,
+por personagem Escondido com lista que não é "todos", com a lista resolvida do instante
+(`ResolveListing`) — quem não está nela não o percebia, inclusive quem não era jogador da sessão
+(leitor de fora da partida pública, membro da campanha não inscrito, inscrito depois). O dono e o
+mestre são decididos na leitura. Cobre o ator e cada alvo na linha da action (abertura do turno)
+e o reator na da reação (na abertura dela; nunca aberta, no fechamento). A sentinela de linha
+ilegível é o registro zero (efeito `uuid.Nil`, ninguém): esconde de todos e não é revelável. O
+codec é um só (`actioncodec.EncodeHiddenFrom`/`DecodeHiddenFrom`). Nunca sai no wire.
 
 **Revelações** (`status_effect_reveals`, `reveals.go`): só o REST do mestre insere; o histórico lê
 o `MAX(revealed_at)` por efeito (`RevealedAt`) uma vez por requisição, junto de `LatestListings`.
@@ -179,7 +186,8 @@ sob `r.mu`: **seguem** (reação sentada substituída pela do jogador, ou refeit
 sentada que sai sem substituta → a action do turno); **relink** (`relink_status_effect`) as troca
 à mão; o mestre vê a âncora viva em `turnActionId`. **Desfazer** (`remove_status_effect` de um
 efeito aplicado neste mesmo turno) apaga todas as gravações e eventos pendentes dele e tira o id
-dele de `hidden_from` das ações/eventos do turno (`purgeEffectFromTurnLocked`); as ações da fila
+dele de `hidden_from` das ações/eventos do turno (`purgeEffectFromTurnLocked`: nas ações, a
+entrada do personagem sai inteira); as ações da fila
 que ele cancelou continuam canceladas. Depois do fechamento o histórico é definitivo.
 
 **Horários reais.** O turno guarda a abertura (`Turn.GetOpenedAt`, relógio da sala, µs):

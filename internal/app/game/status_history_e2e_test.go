@@ -179,8 +179,10 @@ func TestStatusHistory_HiddenKeepsWhoWasLooking(t *testing.T) {
 	}
 
 	// Remover o Escondido: os dois voltam a ver logo depois — entram em views.
+	// A contagem é lida ANTES do envio: lida depois, a resposta já contada fazia esperar uma a mais.
+	removedBefore := mc.count(game.MsgTypeStatusEffectsUpdated)
 	sendWS(t, master, string(game.MsgTypeRemoveStatusEffect), map[string]any{"statusEffectId": hid})
-	awaitStatusCount(t, "master", mc, mc.count(game.MsgTypeStatusEffectsUpdated)+1)
+	awaitStatusCount(t, "master", mc, removedBefore+1)
 	writes, _ := store.snapshot()
 	last := writes[len(writes)-1]
 	if len(last) != 1 || last[0].Event == nil || last[0].Event.Change != statuseffect.ChangeRemoved {

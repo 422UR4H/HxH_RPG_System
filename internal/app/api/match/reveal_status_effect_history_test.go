@@ -88,7 +88,7 @@ func TestRevealStatusEffectOpensTheHistory(t *testing.T) {
 	rounds := &fakeRoundTree{scenes: []match.HistoryScene{{UUID: uuid.New(), Rounds: []match.HistoryRound{{
 		UUID: uuid.New(), Turns: []match.HistoryTurn{{
 			UUID: turnUUID, CreatedAt: opened, FinishedAt: opened.Add(time.Second), Action: *act,
-			ActionHiddenFrom: match.HiddenFrom{ownersPC: {reader: hid}},
+			ActionHiddenFrom: match.HiddenFrom{ownersPC: {Effect: hid}},
 		}},
 	}}}}}
 	historyUC := match.NewGetMatchHistoryUC(matchRepo, rounds, nil, nil, nil, nil).
