@@ -53,7 +53,8 @@ func (r *Repository) FindMatchHistory(
 		        t.uuid, t.created_at, t.finished_at, t.resolution, t.story_at,
 		        a.uuid, a.actor_uuid, a.react_to_uuid, a.target_ids, a.type, a.reaction_kind,
 		        a.speed, a.skills, a.move, a.attack, a.defense, a.dodge, a.repel, a.feint,
-		        a.trigger, a.interact, a.system_bias, a.move_views, a.consumed_action_ids
+		        a.trigger, a.interact, a.system_bias, a.move_views, a.consumed_action_ids,
+		        a.hidden_from
 		 FROM scenes s
 		 LEFT JOIN rounds  ro ON ro.scene_uuid = s.uuid
 		 LEFT JOIN turns   t  ON t.round_uuid = ro.uuid
@@ -127,6 +128,8 @@ func (r *Repository) FindMatchHistory(
 			// player saw of an opened reaction's destination (NULL when it was never opened).
 			moveViewsRaw []byte
 			consumed     []uuid.UUID
+			// hiddenFromRaw é para quem cada personagem da linha estava Escondido (NULL = ninguém).
+			hiddenFromRaw []byte
 		)
 
 		if err := rows.Scan(
@@ -137,6 +140,7 @@ func (r *Repository) FindMatchHistory(
 			&actionUUID, &actorUUID, &reactToUUID, &targetIDs, &actionType, &reactionKind,
 			&speedRaw, &skillsRaw, &moveRaw, &attackRaw, &defenseRaw, &dodgeRaw, &repelRaw,
 			&feintRaw, &triggerRaw, &interactRaw, &systemBias, &moveViewsRaw, &consumed,
+			&hiddenFromRaw,
 		); err != nil {
 			return nil, fmt.Errorf("FindMatchHistory scan: %w", err)
 		}
@@ -233,6 +237,12 @@ func (r *Repository) FindMatchHistory(
 				}
 				curTurn.ReactionMoveViews[react.GetID()] = views
 			}
+			if hf := decodeHiddenFrom(hiddenFromRaw, *turnUUID, *actionUUID, react.GetActorID()); hf != nil {
+				if curTurn.ReactionHiddenFrom == nil {
+					curTurn.ReactionHiddenFrom = map[uuid.UUID]appmatch.HiddenFrom{}
+				}
+				curTurn.ReactionHiddenFrom[react.GetID()] = hf
+			}
 
 		default:
 			// The ORDER BY's t.uuid tiebreaker (ahead of the react-to-uuid boolean) keeps a
@@ -269,11 +279,12 @@ func (r *Repository) FindMatchHistory(
 			// because the LEFT join could have handed NULL for a turn that is not there.
 			curRound.Turns = append(curRound.Turns, appmatch.HistoryTurn{
 				UUID: *turnUUID, CreatedAt: derefTime(turnCreatedAt), FinishedAt: derefTime(turnFinishedAt),
-				Action:       *act,
-				Resolution:   DecodeResolution(resolutionRaw),
-				StoryAt:      turnStoryAt,
-				MoveViews:    moveViews,
-				LandingViews: decodeLandingViews(resolutionRaw),
+				Action:           *act,
+				Resolution:       DecodeResolution(resolutionRaw),
+				StoryAt:          turnStoryAt,
+				MoveViews:        moveViews,
+				LandingViews:     decodeLandingViews(resolutionRaw),
+				ActionHiddenFrom: decodeHiddenFrom(hiddenFromRaw, *turnUUID, *actionUUID, act.GetActorID()),
 			})
 			curTurn = &curRound.Turns[len(curRound.Turns)-1]
 		}
@@ -312,6 +323,26 @@ func decodeMoveViews(raw []byte, turnUUID, actionUUID uuid.UUID) map[uuid.UUID]m
 		return nil
 	}
 	return views
+}
+
+// decodeHiddenFrom lê actions.hidden_from. NULL = ninguém (nil). Um valor ilegível falha
+// FECHADO: o personagem da própria linha (o ator, ou o reator) fica escondido de todo leitor
+// que não é o mestre nem o dono (appmatch.HiddenFromEveryone, efeito uuid.Nil — que nenhuma
+// revelação cobre). Esconder o ator esconde o turno inteiro, e com ele os alvos.
+func decodeHiddenFrom(raw []byte, turnUUID, actionUUID, charUUID uuid.UUID) appmatch.HiddenFrom {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m appmatch.HiddenFrom
+	if err := json.Unmarshal(raw, &m); err != nil {
+		log.Printf("FindMatchHistory: turno %s — hidden_from da action %s não decodificou; escondida de todo "+
+			"leitor exceto o mestre e o dono: %v", turnUUID, actionUUID, err)
+		return appmatch.HiddenFrom{charUUID: {appmatch.HiddenFromEveryone: uuid.Nil}}
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 // decode rebuilds the row through actioncodec — the same mapping insertAction wrote it with,

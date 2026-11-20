@@ -463,12 +463,16 @@ type ConditionEditPayload struct {
 // ⚠️ Moving to the direct lane is not just "add a field": turn_closed had to move there WITH
 // it, in the SAME call chain, or the two could arrive out of order — see broadcastTurnClosed's
 // own doc for why, and the design spec's own ⚠️ in §4.2.
+//
+// Para quem não percebe um ator Escondido, a mensagem é reduzida: actorId, actionId e action
+// saem (omitzero) e actorHidden vem true. Nas mensagens normais os três estão sempre lá.
 type TurnOpenedPayload struct {
-	TurnID     uuid.UUID         `json:"turnId"`
-	ActorID    uuid.UUID         `json:"actorId"`
-	ActionID   uuid.UUID         `json:"actionId"`
-	ActionType string            `json:"actionType"`
-	Action     actionwire.Action `json:"action"`
+	TurnID      uuid.UUID         `json:"turnId"`
+	ActorID     uuid.UUID         `json:"actorId,omitzero"`
+	ActionID    uuid.UUID         `json:"actionId,omitzero"`
+	ActionType  string            `json:"actionType"`
+	Action      actionwire.Action `json:"action,omitzero"`
+	ActorHidden bool              `json:"actorHidden,omitempty"`
 }
 
 type RoundClosedPayload struct {
@@ -498,10 +502,13 @@ type ReactionAttachedPayload struct {
 // and consumedActionIds stripped for a third party) at Opened, with move.position passing the
 // reactor's piece's fog gate. Projected, so it travels on the DIRECT lane (dispatchPerPlayer),
 // and the master's resolution_updated that follows is sent after it by the same goroutine.
+//
+// Reator Escondido para o leitor: reactionId e reaction saem e actorHidden vem true.
 type ReactionOpenedPayload struct {
-	TurnID     uuid.UUID         `json:"turnId"`
-	ReactionID uuid.UUID         `json:"reactionId"`
-	Reaction   actionwire.Action `json:"reaction"`
+	TurnID      uuid.UUID         `json:"turnId"`
+	ReactionID  uuid.UUID         `json:"reactionId,omitzero"`
+	Reaction    actionwire.Action `json:"reaction,omitzero"`
+	ActorHidden bool              `json:"actorHidden,omitempty"`
 }
 
 // TurnClosedPayload announces that the baton was put down. Same message for the whole table —
@@ -1112,10 +1119,13 @@ type OwnQueuedActionPayload struct {
 // own Viewer, at Full for the master and Opened for everyone else — so the two can never
 // disagree about the same turn.
 type OpenTurnPayload struct {
-	TurnID   uuid.UUID         `json:"turnId"`
-	ActorID  uuid.UUID         `json:"actorId"`
-	ActionID uuid.UUID         `json:"actionId"`
-	Action   actionwire.Action `json:"action"`
+	TurnID uuid.UUID `json:"turnId"`
+	// ActorID, ActionID e Action saem para quem não percebe o ator Escondido (actorHidden
+	// true), como no turn_opened.
+	ActorID     uuid.UUID         `json:"actorId,omitzero"`
+	ActionID    uuid.UUID         `json:"actionId,omitzero"`
+	Action      actionwire.Action `json:"action,omitzero"`
+	ActorHidden bool              `json:"actorHidden,omitempty"`
 	// Reactions are the open turn's OPENED reactions, in the order the master opened them —
 	// each cut for this recipient exactly as the live reaction_opened cut it
 	// (reactionWireLocked), so a reconnect shows the table the same balloons and escape ghosts,

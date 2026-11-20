@@ -86,6 +86,14 @@ func TestE2E_TurnOpenedProjectsTheActionPerRecipient(t *testing.T) {
 	ownerOpened := unmarshalTurnOpened(t, playerMsgs)
 	bystanderOpened := unmarshalTurnOpened(t, bystanderMsgs)
 
+	// omitzero só tira a identidade da mensagem reduzida de um ator Escondido (Task 15): numa
+	// mensagem normal, actorId, actionId e action estão no fio para todos, e actorHidden não.
+	t.Run("a normal turn_opened keeps its identity keys", func(t *testing.T) {
+		for who, c := range map[string]*collector{"master": masterMsgs, "owner": playerMsgs, "bystander": bystanderMsgs} {
+			assertWhole(t, who, rawLast(t, who, c, game.MsgTypeTurnOpened), "actorId", "actionId", "action")
+		}
+	})
+
 	t.Run("the master gets Full — every number, including the closed ones", func(t *testing.T) {
 		a := masterOpened.Action
 		if a.Attack == nil {

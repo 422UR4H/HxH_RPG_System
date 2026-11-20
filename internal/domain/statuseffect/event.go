@@ -80,6 +80,16 @@ func ResolveListing(e Effect, s Subject, pcPublicByDefault bool) Audience {
 // false = nunca. Um nil vale por "nunca revelado".
 type RevealLookup func(effectID uuid.UUID) (revealedAt time.Time, ok bool)
 
+// Covers diz se uma revelação do efeito cobre o instante at (revelado em at ou depois). Um
+// lookup nil não cobre nada.
+func (l RevealLookup) Covers(effectID uuid.UUID, at time.Time) bool {
+	if l == nil {
+		return false
+	}
+	t, ok := l(effectID)
+	return ok && !t.Before(at)
+}
+
 // HistoryReading é o que a regra de visibilidade de um evento precisa saber de quem lê e do
 // resto do histórico.
 type HistoryReading struct {
@@ -97,11 +107,7 @@ type HistoryReading struct {
 }
 
 func (h HistoryReading) revealedBy(effectID uuid.UUID, at time.Time) bool {
-	if h.RevealedAt == nil {
-		return false
-	}
-	t, ok := h.RevealedAt(effectID)
-	return ok && !t.Before(at)
+	return h.RevealedAt.Covers(effectID, at)
 }
 
 // VisibleInHistory é a regra única de visibilidade de um evento de status no histórico:

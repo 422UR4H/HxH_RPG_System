@@ -808,6 +808,10 @@ func TestStatusEffects_LiveNPCArrivesWithItsEffects(t *testing.T) {
 		if ids := npcAddedIDs(t, mc); len(ids) != 1 || ids[0] != npcID {
 			t.Fatalf("npc_added = %v, want [%s]", ids, npcID)
 		}
+		// Carregar os efeitos de quem chega não é uma mudança: nenhum evento, nenhuma gravação.
+		if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
+			t.Fatalf("store got %d write(s) (%d attempt(s)) for loaded effects, want none", len(writes), attempts)
+		}
 	})
 
 	t.Run("a failed read leaves the NPC playing without statuses", func(t *testing.T) {

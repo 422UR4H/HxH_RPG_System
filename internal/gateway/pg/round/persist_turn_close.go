@@ -104,14 +104,15 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	// The action carries what each player saw of its move live (move_views); a reaction carries
 	// what each player saw of its destination when it was opened (nil if never opened); an
 	// escape's landing is recorded in the resolution above.
-	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt, d.MoveViews); err != nil {
+	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt, d.MoveViews, d.ActionHiddenFrom); err != nil {
 		return fmt.Errorf("PersistTurnClose insert action: %w", err)
 	}
 
 	// Reactions after the action, never before: react_to_uuid references it.
 	reactions := t.GetReactions()
 	for i := range reactions {
-		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, d.ReactionMoveViews[reactions[i].GetID()]); err != nil {
+		id := reactions[i].GetID()
+		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, d.ReactionMoveViews[id], d.ReactionHiddenFrom[id]); err != nil {
 			return fmt.Errorf("PersistTurnClose insert reaction %d: %w", i, err)
 		}
 	}
@@ -219,6 +220,9 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 //
 // moveViews is move_views: nil writes SQL NULL ("not recorded"), an empty map '{}' ("recorded,
 // nobody but the master and the owner saw it") — the history reads both the same way.
+//
+// hiddenFrom é hidden_from: para quem cada personagem estava Escondido. Vazio (ou só com
+// personagens sem ninguém) grava SQL NULL, nunca '{}'.
 func insertAction(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -226,6 +230,7 @@ func insertAction(
 	turnID uuid.UUID,
 	createdAt time.Time,
 	moveViews map[uuid.UUID]masteraction.View,
+	hiddenFrom appmatch.HiddenFrom,
 ) error {
 	// The JSON pieces are actioncodec's: cancelled_actions stores the same pieces, mapped once.
 	cols, err := actioncodec.EncodeColumns(act)
@@ -238,6 +243,11 @@ func insertAction(
 		if moveViewsJSON, err = json.Marshal(moveViews); err != nil {
 			return fmt.Errorf("marshal move views: %w", err)
 		}
+	}
+
+	hiddenFromJSON, err := encodeHiddenFrom(hiddenFrom)
+	if err != nil {
+		return err
 	}
 
 	// react_to_uuid: nil SQL when ReactToID is zero UUID
@@ -265,17 +275,40 @@ func insertAction(
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, repel, feint, trigger,
 		  interact, system_bias, reaction_kind, created_at, move_views, consumed_action_ids,
-		  default_defense)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		  default_defense, hidden_from)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, act.TypeName(),
 		cols.Speed, cols.Skills, cols.Move, cols.Attack,
 		cols.Defense, cols.Dodge, cols.Repel, cols.Feint, cols.Trigger,
 		cols.Interact, act.SystemBias,
 		reactionKind, createdAt, moveViewsJSON, consumedOrNil(act.ConsumedActionIDs),
-		cols.DefaultDefense,
+		cols.DefaultDefense, hiddenFromJSON,
 	)
 	return err
+}
+
+// encodeHiddenFrom é o hidden_from de uma linha: nil (SQL NULL) quando ninguém — um personagem
+// sem jogador nenhum não conta.
+func encodeHiddenFrom(m appmatch.HiddenFrom) ([]byte, error) {
+	var kept appmatch.HiddenFrom
+	for c, players := range m {
+		if len(players) == 0 {
+			continue
+		}
+		if kept == nil {
+			kept = appmatch.HiddenFrom{}
+		}
+		kept[c] = players
+	}
+	if kept == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(kept)
+	if err != nil {
+		return nil, fmt.Errorf("marshal hidden from: %w", err)
+	}
+	return raw, nil
 }
 
 // consumedOrNil is consumed_action_ids: NULL when the reaction consumed nothing (or the row is a

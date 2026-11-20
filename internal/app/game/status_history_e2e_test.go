@@ -342,3 +342,104 @@ func TestStatusHistory_EndMatchCarriesEvents(t *testing.T) {
 		t.Fatalf("event = %+v, want the applied event stamped at %v", ev, now.t)
 	}
 }
+
+// Um fechamento que falha devolve as gravações de status à fila com o evento intacto (o turno
+// dele inclusive); o próximo fechamento as grava uma vez só.
+func TestStatusHistory_FailedCloseKeepsTheEventsTurn(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newHistoryFixture(t, store)
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	first := f.openAttackTurn(t, master, player, mc)
+	applyProneAndWait(t, master, mc, f.bystanderID)
+	f.roundRepo.setFailPersist(errors.New("connection reset"))
+	closeTurnAndWait(t, master, mc)
+	f.roundRepo.setFailPersist(nil)
+
+	before := mc.count(game.MsgTypeTurnOpened)
+	f.enqueueAttack(t, player)
+	if !awaitCount(mc, game.MsgTypeActionQueued, 2, 2*time.Second) {
+		t.Fatal("the second attack was never queued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !awaitCount(mc, game.MsgTypeTurnOpened, before+1, 2*time.Second) {
+		t.Fatal("no second turn opened")
+	}
+	second := lastTurnOpened(t, mc).TurnID
+	before = mc.count(game.MsgTypeTurnClosed)
+	sendWS(t, master, string(game.MsgTypeCloseTurn), game.CloseTurnPayload{Confirm: true})
+	if !awaitCount(mc, game.MsgTypeTurnClosed, before+1, 3*time.Second) {
+		t.Fatal("the second turn never closed")
+	}
+	f.awaitPersistedTurn(t, second)
+
+	ops := lastCloseStatusOps(t, f)
+	if len(ops) != 1 || ops[0].Event == nil || ops[0].Event.TurnID == nil || *ops[0].Event.TurnID != first {
+		t.Fatalf("second close ops = %+v, want the first turn's event, its TurnID kept", ops)
+	}
+	var seen int
+	for _, cd := range f.roundRepo.closeData() {
+		for _, w := range cd.StatusEffects {
+			if w.Event != nil && w.Event.ID == ops[0].Event.ID {
+				seen++
+			}
+		}
+	}
+	if writes, _ := store.snapshot(); seen != 1 || len(writes) != 0 {
+		t.Fatalf("the event was written %d time(s) by closes and %d by the store, want once by the close", seen, len(writes))
+	}
+}
+
+// A âncora pode ser uma reação anexada (ainda não aberta) ou uma já aberta.
+func TestStatusHistory_AnchorsOnAttachedAndOpenedReactions(t *testing.T) {
+	store := &fakeStatusEffectStore{}
+	f := newHistoryFixture(t, store)
+	master, player, blind, mc, _, _ := f.connectNoBoard(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	defer blind.Close()  //nolint:errcheck
+
+	f.enqueueAttackAt(t, player, f.attackerID, f.npcID)
+	if !mc.await(game.MsgTypeActionQueued, 2*time.Second) {
+		t.Fatal("the attack was never queued")
+	}
+	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
+	if !mc.await(game.MsgTypeTurnOpened, 2*time.Second) {
+		t.Fatal("no turn opened")
+	}
+	turnID, actionID := lastTurnOpened(t, mc).TurnID, lastTurnOpened(t, mc).ActionID
+	sendWS(t, master, string(game.MsgTypeAttachReaction), game.ActionPayload{
+		ActorID: f.npcID, ReactToID: actionID, ReactionKind: "dodge", Dodge: &game.DodgePayload{},
+	})
+	if !mc.await(game.MsgTypeReactionAttached, 2*time.Second) {
+		t.Fatal("no reaction_attached")
+	}
+	reactionID := lastReactionAttached(t, mc).ReactionID
+
+	applyAndWait(t, master, mc, map[string]any{
+		"characterIds": []string{f.victimID.String()}, "kind": "prone", "actionId": reactionID})
+	sendWS(t, master, string(game.MsgTypeOpenReaction), game.OpenReactionPayload{ReactionID: reactionID})
+	if !mc.await(game.MsgTypeReactionOpened, 2*time.Second) {
+		t.Fatal("no reaction_opened")
+	}
+	applyAndWait(t, master, mc, map[string]any{
+		"characterIds": []string{f.bystanderID.String()}, "kind": "prone", "actionId": reactionID})
+	if codes := errorCodes(t, mc); len(codes) != 0 {
+		t.Fatalf("errors = %v, want none", codes)
+	}
+
+	closeTurnAndWait(t, master, mc)
+	f.awaitPersistedTurn(t, turnID)
+	ops := lastCloseStatusOps(t, f)
+	if len(ops) != 2 {
+		t.Fatalf("close ops = %d, want 2", len(ops))
+	}
+	for i, w := range ops {
+		if w.Event == nil || w.Event.ActionID == nil || *w.Event.ActionID != reactionID {
+			t.Fatalf("op %d: event = %+v, want anchored on the reaction %s", i, w.Event, reactionID)
+		}
+	}
+}

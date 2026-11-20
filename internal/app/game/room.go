@@ -1487,9 +1487,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			// (see announceOpenedTurn).
 			r.mu.RLock()
 			defer r.mu.RUnlock()
+			v := r.viewerFor(pid, isMaster)
+			if !v.Perceives(opened.GetActorID()) {
+				// Reator Escondido para este leitor: só que uma reação abriu.
+				msg := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{TurnID: turnID, ActorHidden: true})
+				return &msg
+			}
 			msg := NewServerMessage(MsgTypeReactionOpened, ReactionOpenedPayload{
 				TurnID: turnID, ReactionID: payload.ReactionID,
-				Reaction: r.reactionWireLocked(opened, pid, r.viewerFor(pid, isMaster)),
+				Reaction: r.reactionWireLocked(opened, pid, v),
 			})
 			return &msg
 		})
@@ -2231,6 +2237,10 @@ func (r *Room) recordOpenedMoveViews(opened *turnentity.Turn, origin *[3]int) {
 	}
 	// Under the lock: the copy's Move points at live session memory (announceOpenedTurn).
 	act := opened.GetAction()
+	// Para quem o ator e cada alvo estavam Escondidos agora, na abertura — o mesmo instante do
+	// corte do turn_opened abaixo. Antes do retorno de "sem movimento": vale para toda action.
+	chars := append([]uuid.UUID{act.GetActorID()}, act.TargetID...)
+	r.turnWritesLocked(turnID).actionHiddenFrom = r.hiddenFromOfLocked(chars...)
 	if act.Move == nil {
 		return
 	}
@@ -2246,12 +2256,19 @@ func (r *Room) recordOpenedMoveViews(opened *turnentity.Turn, origin *[3]int) {
 // Only while that turn is still the open one, like recordOpenedMoveViews. The caller must NOT
 // hold r.mu.
 func (r *Room) recordOpenedReactionMoveViews(turnID uuid.UUID, react action.Action) {
-	if react.Move == nil {
-		return
-	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.openTurnIDLocked() != turnID {
+		return
+	}
+	// Para quem o reator estava Escondido na abertura da reação; a entrada fica mesmo vazia, e é
+	// ela que diz ao fechamento que esta reação já foi registrada.
+	hw := r.turnWritesLocked(turnID)
+	if hw.reactionHiddenFrom == nil {
+		hw.reactionHiddenFrom = map[uuid.UUID]appmatch.HiddenFrom{}
+	}
+	hw.reactionHiddenFrom[react.GetID()] = r.hiddenFromOfLocked(react.GetActorID())
+	if react.Move == nil {
 		return
 	}
 	// from is the reaction's own move.from, as the wire path (turnActionWireLocked) passes it:
@@ -2444,6 +2461,12 @@ func (r *Room) announceOpenedTurn(
 		// building the Viewer.
 		r.mu.RLock()
 		v := r.viewerFor(pid, isMaster)
+		if !v.Perceives(actorID) {
+			r.mu.RUnlock()
+			// Quem não percebe o ator Escondido sabe que um turno abriu, e só (Task 15).
+			msg := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{TurnID: turnID, ActorHidden: true})
+			return &msg
+		}
 		wireAction := r.turnActionWireLocked(act, pid, v, origin)
 		r.mu.RUnlock()
 		msg := NewServerMessage(MsgTypeTurnOpened, TurnOpenedPayload{
@@ -2544,6 +2567,9 @@ func (r *Room) persistClosedTurn(
 	// What the master did inside this turn, held until now (turnWrites): written in the turn's
 	// own transaction, or lost with it.
 	inTurn := r.takeTurnWritesLocked(t.GetID())
+	// Para quem cada reator estava Escondido: o da abertura, ou — reação nunca aberta — agora,
+	// no fechamento. Só as reações com alguém seguem para a gravação.
+	reactionHiddenFrom := r.closedReactionsHiddenFromLocked(t, inTurn.reactionHiddenFrom)
 	// The board as this close left it, in the same critical section: what the turn's write
 	// says the board is, exactly.
 	board, memories := r.boardSnapshotLocked()
@@ -2577,7 +2603,8 @@ func (r *Room) persistClosedTurn(
 		MasterActions: inTurn.masterActions, CancelledActions: inTurn.cancelledActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
 		NextRound: nextRound, UnwrittenRoundEnds: roundEnds, Clock: &clockSnap,
-		StatusEffects: statusOps,
+		StatusEffects:    statusOps,
+		ActionHiddenFrom: inTurn.actionHiddenFrom, ReactionHiddenFrom: reactionHiddenFrom,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied and the %d action(s) cancelled inside it, "+
@@ -2627,6 +2654,29 @@ func (r *Room) persistClosedTurn(
 	r.dropWrittenStatusEffectsLocked(len(pendingStatus))
 	markRoundPersistedIfActiveLocked(session, written.GetID())
 	r.mu.Unlock()
+}
+
+// closedReactionsHiddenFromLocked completa, para um turno que fecha, para quem cada reator
+// estava Escondido: a reação aberta leva o que a abertura registrou; a nunca aberta, o de agora.
+// Só as entradas com alguém; nil quando nenhuma. O chamador segura r.mu.
+func (r *Room) closedReactionsHiddenFromLocked(
+	t *turnentity.Turn, opened map[uuid.UUID]appmatch.HiddenFrom,
+) map[uuid.UUID]appmatch.HiddenFrom {
+	var out map[uuid.UUID]appmatch.HiddenFrom
+	for _, re := range t.GetReactions() {
+		m, ok := opened[re.GetID()]
+		if !ok {
+			m = r.hiddenFromOfLocked(re.GetActorID())
+		}
+		if len(m) == 0 {
+			continue
+		}
+		if out == nil {
+			out = map[uuid.UUID]appmatch.HiddenFrom{}
+		}
+		out[re.GetID()] = m
+	}
+	return out
 }
 
 func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
@@ -2820,6 +2870,10 @@ func barPricesWire(prices map[action.Bar]int) map[string]int {
 // of this exact loop (uuid.Parse of the char string, matched against playerID) for the same
 // reason: both need a per-recipient Viewer, one to project a resolution, the other to project
 // an action. Now announceOpenedTurn's per-recipient turn_opened uses it too.
+//
+// Hidden (Task 15) são os personagens Escondidos para este jogador agora (hiddenCharsForLocked):
+// quem monta a mensagem corta um ator/reator que ele não percebe (Viewer.Perceives), e as
+// projeções tiram dele os alvos que ele não percebe.
 func (r *Room) viewerFor(playerID uuid.UUID, isMaster bool) domainservice.Viewer {
 	owns := map[uuid.UUID]bool{}
 	if r.session != nil {
@@ -2832,7 +2886,7 @@ func (r *Room) viewerFor(playerID uuid.UUID, isMaster bool) domainservice.Viewer
 			}
 		}
 	}
-	return domainservice.Viewer{IsMaster: isMaster, Owns: owns}
+	return domainservice.Viewer{IsMaster: isMaster, Owns: owns, Hidden: r.hiddenCharsForLocked(playerID)}
 }
 
 // stampResolutionLocked dá a idade do cálculo que o comando corrente acabou de produzir.
@@ -3488,17 +3542,22 @@ func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchF
 			// used to build their own copy of the exact same owns-lookup loop (viewerFor's own
 			// doc).
 			v := r.viewerFor(playerID, isMaster)
-			payload.OpenTurn = &OpenTurnPayload{
-				TurnID:  t.GetID(),
-				ActorID: act.GetActorID(),
-				// ActionID and Action are B2 (design spec §4.2): the same two fields the live
-				// turn_opened carries, projected by the exact same rule (turnActionWireLocked) — a
-				// reconnecting client's snapshot can never disagree with the live event they
-				// may already have received.
-				ActionID: act.GetID(),
-				// The reconnect has no record of where the piece stood at the opening, so the
-				// gate judges the move from its enqueue-time move.from (turnActionWireLocked).
-				Action: r.turnActionWireLocked(act, playerID, v, moveFromOf(act)),
+			if !v.Perceives(act.GetActorID()) {
+				// O mesmo corte do turn_opened ao vivo para um ator Escondido.
+				payload.OpenTurn = &OpenTurnPayload{TurnID: t.GetID(), ActorHidden: true}
+			} else {
+				payload.OpenTurn = &OpenTurnPayload{
+					TurnID:  t.GetID(),
+					ActorID: act.GetActorID(),
+					// ActionID and Action are B2 (design spec §4.2): the same two fields the live
+					// turn_opened carries, projected by the exact same rule (turnActionWireLocked) — a
+					// reconnecting client's snapshot can never disagree with the live event they
+					// may already have received.
+					ActionID: act.GetID(),
+					// The reconnect has no record of where the piece stood at the opening, so the
+					// gate judges the move from its enqueue-time move.from (turnActionWireLocked).
+					Action: r.turnActionWireLocked(act, playerID, v, moveFromOf(act)),
+				}
 			}
 			// The opened reactions, in opening order, each cut as the live reaction_opened cut
 			// it — reactionWireLocked needs r.mu, held here for the whole function.
@@ -3511,7 +3570,9 @@ func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchF
 			opened := make(map[uuid.UUID]bool, len(openedIDs))
 			for _, id := range openedIDs {
 				opened[id] = true
-				if re, ok := byID[id]; ok {
+				// A reação aberta de um reator Escondido para este leitor fica de fora (o
+				// reaction_opened dele chegou reduzido).
+				if re, ok := byID[id]; ok && v.Perceives(re.GetActorID()) {
 					payload.OpenTurn.Reactions = append(payload.OpenTurn.Reactions, r.reactionWireLocked(re, playerID, v))
 				}
 			}

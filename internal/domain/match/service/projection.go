@@ -4,6 +4,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/battle"
 	"github.com/google/uuid"
 )
 
@@ -16,6 +17,36 @@ type Viewer struct {
 	IsMaster bool
 	// Owns is the set of character sheet UUIDs this viewer controls.
 	Owns map[uuid.UUID]bool
+	// Hidden são os personagens Escondidos para este leitor: na sala, os que estão agora; no
+	// histórico, os que o registro do turno esconde dele e ainda não foram revelados. Quem não
+	// percebe um personagem não recebe o id dele como alvo nem o resultado dele (dono do
+	// produto, Q4) — a ação de um ator Escondido é cortada por quem monta a mensagem.
+	Hidden map[uuid.UUID]bool
+}
+
+// Perceives diz se este leitor percebe o personagem: o mestre e o dono sempre; os demais,
+// quando ele não está Escondido para eles. Um mapa nil não esconde ninguém.
+func (v Viewer) Perceives(charID uuid.UUID) bool {
+	return v.IsMaster || v.Owns[charID] || !v.Hidden[charID]
+}
+
+// withoutConcealedTargets tira dos alvos de a quem este leitor não percebe. Cópia: a fatia é
+// a da action viva.
+func withoutConcealedTargets(a action.Action, v Viewer) action.Action {
+	if len(v.Hidden) == 0 || len(a.TargetID) == 0 {
+		return a
+	}
+	kept := make([]uuid.UUID, 0, len(a.TargetID))
+	for _, id := range a.TargetID {
+		if v.Perceives(id) {
+			kept = append(kept, id)
+		}
+	}
+	if len(kept) == len(a.TargetID) {
+		return a
+	}
+	a.TargetID = kept
+	return a
 }
 
 // SeesAllOf reports whether this viewer is entitled to the unprojected truth about one
@@ -56,6 +87,11 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 	out := *res
 	out.CharacterResults = make([]CharacterResult, 0, len(res.CharacterResults))
 	for _, cr := range res.CharacterResults {
+		// Um alvo Escondido que este leitor não percebe sai inteiro (resultado, golpe e fuga)
+		// até ser revelado (dono do produto, Q4).
+		if !v.Perceives(cr.TargetID) {
+			continue
+		}
 		if !v.SeesAllOf(cr.TargetID) {
 			public := publicKind(cr.ReactionKind)
 			// The DEMOTION is the discriminator, not the field. A payout is secret only when
@@ -101,9 +137,18 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 		// are not.
 		out.Conditions = nil
 	}
-	// Blows carry no numbers (see battle.Blow) and are not projected. There is no separate
-	// per-reaction list to project either — every reaction outcome is already on the
-	// CharacterResult of the target that sent it, projected above.
+	// Um golpe num alvo Escondido que o leitor não percebe sai com o resultado dele (Q4).
+	if len(v.Hidden) > 0 && len(res.Blows) > 0 {
+		out.Blows = make([]*battle.Blow, 0, len(res.Blows))
+		for _, b := range res.Blows {
+			if v.Perceives(b.GetTargetID()) {
+				out.Blows = append(out.Blows, b)
+			}
+		}
+	}
+	// Blows carry no numbers (see battle.Blow) and are not projected beyond the hidden-target
+	// cut above. There is no separate per-reaction list to project either — every reaction
+	// outcome is already on the CharacterResult of the target that sent it, projected above.
 	return &out
 }
 
@@ -115,6 +160,9 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 // same turn's resolution, because their success was against a false attack and the real one
 // follows. Hiding it after the turn closed hides it forever, which is not the rule.
 func ProjectAction(a action.Action, v Viewer, isSettled bool) action.Action {
+	// Antes de tudo, e também para o dono do ator: um alvo que o leitor não percebe não é
+	// nomeado (Q4). O mestre percebe todos.
+	a = withoutConcealedTargets(a, v)
 	if v.SeesAllOf(a.GetActorID()) {
 		return a
 	}
