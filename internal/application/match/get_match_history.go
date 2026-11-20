@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"maps"
 	"sort"
 	"time"
 
@@ -213,8 +214,8 @@ func concealedFrom(m HiddenFrom, c, reader uuid.UUID, at time.Time, reveals stat
 }
 
 // projectTurn é o turno como este leitor o vê, ou false quando o ator dele estava Escondido
-// para o leitor (o turno some). Um reator escondido leva a reação; um alvo escondido sai dos
-// alvos e da resolução (Viewer.Hidden). O mestre recebe as marcas do que ainda está escondido
+// para o leitor (o turno some). Um reator escondido leva a reação e o resultado dele; um alvo
+// escondido na abertura sai dos alvos e da resolução (Viewer.Hidden). O mestre recebe as marcas do que ainda está escondido
 // (ConcealedBy). Os registros de quem estava Escondido nunca saem daqui.
 func (uc *GetMatchHistoryUC) projectTurn(
 	tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID, cut concealment,
@@ -248,6 +249,10 @@ func (uc *GetMatchHistoryUC) projectTurn(
 		}
 		return HistoryTurn{}, false
 	}
+	// Os alvos saem só pelo registro da abertura (ActionHiddenFrom): o leitor viu o turno abrir
+	// com eles, e nada se esconde para trás (dono do produto). O registro de uma reação corta a
+	// reação e o resultado do reator, não o id dele nos alvos.
+	onOpening := maps.Clone(hidden)
 	reactions := make([]action.Action, 0, len(tu.Reactions))
 	for _, re := range tu.Reactions {
 		if m := tu.ReactionHiddenFrom[re.GetID()]; concealed(m, re.GetActorID()) {
@@ -259,6 +264,8 @@ func (uc *GetMatchHistoryUC) projectTurn(
 		reactions = append(reactions, re)
 	}
 	tv.Hidden = hidden
+	ta := viewer
+	ta.Hidden = onOpening
 
 	pt := tu
 	// Read the fact instead of assuming it: HistoryTurn.FinishedAt is a plain time.Time (not a
@@ -266,10 +273,10 @@ func (uc *GetMatchHistoryUC) projectTurn(
 	// in practice — but reading it costs the same as hardcoding true, and it does not break the
 	// day an open turn crosses this path.
 	settled := !tu.FinishedAt.IsZero()
-	pt.Action = service.ProjectAction(tu.Action, tv, settled)
+	pt.Action = service.ProjectAction(tu.Action, ta, settled)
 	pt.Reactions = make([]action.Action, len(reactions))
 	for l, react := range reactions {
-		pt.Reactions[l] = service.ProjectAction(react, tv, settled)
+		pt.Reactions[l] = service.ProjectAction(react, ta, settled)
 	}
 	pt.Resolution = service.ProjectResolution(tu.Resolution, tv)
 	pt.MoveSight = moveSightFor(tu, viewer, userUUID)

@@ -353,8 +353,13 @@ func TestHiddenActor_RecordsHiddenFrom(t *testing.T) {
 		if seatedID == uuid.Nil {
 			t.Fatal("no seated reaction for the NPC")
 		}
-		// O mestre abre a reação sentada: o reator é registrado na abertura dela.
+		// O mestre abre a reação sentada: o reator é registrado na abertura dela. Depois a lista
+		// do Escondido muda (o jogador também sai dela): o registro da abertura é o que fica.
 		h.openReaction(t, seatedID)
+		before := h.mc.count(game.MsgTypeStatusEffectsUpdated)
+		sendWS(t, h.master, string(game.MsgTypeEditStatusEffect), map[string]any{
+			"statusEffectId": hid, "visibility": map[string]any{"mode": "players", "playerIds": []string{}}})
+		awaitStatusCount(t, "master", h.mc, before+1)
 		closeTurnAndWait(t, h.master, h.mc)
 		h.f.awaitPersistedTurn(t, turnID)
 		cd := lastClose(t, h.f)
@@ -392,6 +397,20 @@ func TestHiddenActor_RecordsHiddenFrom(t *testing.T) {
 		}
 	})
 
+	// Um PC Escondido (padrão do tipo: o mestre e o dono): o dono nunca entra no registro.
+	t.Run("a hidden PC never records its owner", func(t *testing.T) {
+		h := newHiddenTable(t)
+		hid := h.hide(t, h.f.victimID, nil)
+		turnID := h.openNPCAttack(t)
+		closeTurnAndWait(t, h.master, h.mc)
+		h.f.awaitPersistedTurn(t, turnID)
+		got := lastClose(t, h.f).ActionHiddenFrom
+		if len(got) != 1 || len(got[h.f.victimID]) != 1 || got[h.f.victimID][h.f.bystanderUUID] != hid {
+			t.Fatalf("ActionHiddenFrom = %v, want {victim: {bystander: %s}} — the owner %s never in it",
+				got, hid, h.f.playerUUID)
+		}
+	})
+
 	t.Run("nobody hidden records nothing", func(t *testing.T) {
 		h := newHiddenTable(t)
 		turnID := h.openPCAttackOnNPC(t)
@@ -402,4 +421,52 @@ func TestHiddenActor_RecordsHiddenFrom(t *testing.T) {
 			t.Fatalf("hidden from = %v / %v, want nil", cd.ActionHiddenFrom, cd.ReactionHiddenFrom)
 		}
 	})
+}
+
+// hasReactToID diz se a chave reactToId está numa reação crua.
+func hasReactToID(t *testing.T, raw json.RawMessage) bool {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal reaction: %v", err)
+	}
+	_, ok := m["reactToId"]
+	return ok
+}
+
+// A vítima (PC visível) responde a um NPC Escondido: a reação dela chega inteira a quem a
+// percebe, mas sem reactToId (o id da action escondida), ao vivo e na reconexão — e o openTurn
+// reduzido ainda a traz.
+func TestHiddenActor_VisibleReactionToAHiddenActor(t *testing.T) {
+	h := newHiddenTable(t)
+	h.hide(t, h.f.npcID, nil)
+	h.openNPCAttack(t)
+	actionID := lastTurnOpened(t, h.mc).ActionID
+	before := h.mc.count(game.MsgTypeReactionAttached)
+	sendWS(t, h.player, string(game.MsgTypeAttachReaction), game.ActionPayload{
+		ActorID: h.f.victimID, ReactToID: actionID, ReactionKind: "dodge", Dodge: &game.DodgePayload{},
+	})
+	if !awaitCount(h.mc, game.MsgTypeReactionAttached, before+1, 2*time.Second) {
+		t.Fatalf("no reaction_attached; got %v", messageTypes(h.mc.snapshotMessages()))
+	}
+	h.openReaction(t, lastReactionAttached(t, h.mc).ReactionID)
+
+	if p := rawLast(t, "master", h.mc, game.MsgTypeReactionOpened); !hasReactToID(t, p["reaction"]) {
+		t.Fatal("master: reactToId is missing")
+	}
+	p := rawLast(t, "bystander", h.bc, game.MsgTypeReactionOpened)
+	assertWhole(t, "bystander", p, "reactionId", "reaction")
+	if hasReactToID(t, p["reaction"]) {
+		t.Fatalf("bystander: reactToId names the hidden action: %s", p["reaction"])
+	}
+
+	ot := h.f.reconnectOpenTurn(t, h.blind, h.f.bystanderUUID)
+	assertReduced(t, "bystander openTurn", ot, "actorId", "actionId", "action")
+	var reactions []json.RawMessage
+	if err := json.Unmarshal(ot["reactions"], &reactions); err != nil || len(reactions) != 1 {
+		t.Fatalf("bystander: openTurn.reactions = %s, want the victim's", ot["reactions"])
+	}
+	if hasReactToID(t, reactions[0]) {
+		t.Fatalf("bystander: openTurn.reactions[0] names the hidden action: %s", reactions[0])
+	}
 }

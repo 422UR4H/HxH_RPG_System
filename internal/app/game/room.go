@@ -2187,9 +2187,32 @@ func (r *Room) turnActionWireLocked(act action.Action, pid uuid.UUID, v domainse
 //
 // Shared by the live reaction_opened and match_full_state's openTurn.reactions. The caller
 // MUST hold r.mu (a read lock is enough).
+//
+// reactToId é o id da action do turno: para quem não percebe o ator dela (Escondido), sai.
 func (r *Room) reactionWireLocked(react action.Action, pid uuid.UUID, v domainservice.Viewer) actionwire.Action {
 	origin, _ := r.pieceSlotOf(react.GetActorID().String())
-	return r.turnActionWireLocked(react, pid, v, origin)
+	out := r.turnActionWireLocked(react, pid, v, origin)
+	if actor, ok := r.reactedActorLocked(react.ReactToID); ok && !v.Perceives(actor) {
+		out.ReactToID = nil
+	}
+	return out
+}
+
+// reactedActorLocked é o ator da action do turno atual cujo id é actionID. O chamador segura
+// r.mu (leitura basta).
+func (r *Room) reactedActorLocked(actionID uuid.UUID) (uuid.UUID, bool) {
+	if r.session == nil || r.session.GetActiveRound() == nil {
+		return uuid.Nil, false
+	}
+	t := r.session.GetActiveRound().CurrentTurn()
+	if t == nil {
+		return uuid.Nil, false
+	}
+	act := t.GetAction()
+	if act.GetID() != actionID {
+		return uuid.Nil, false
+	}
+	return act.GetActorID(), true
 }
 
 // openedMoveViewLocked is what recipient pid may see of an opened move's WHERE: full (from and
