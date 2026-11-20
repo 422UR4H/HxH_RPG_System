@@ -256,28 +256,25 @@ type HistoryStatusEffect struct {
 }
 
 // HistoryCancelledAction is an action its declarer took back out of the queue (spec 2026-10-10
-// §8.1 P8), already decided for this reader: who cancelled is public — the public bar already
-// showed the order change — and the action itself only for the master and the actor's owner.
+// §8.1 P8), already decided for this reader. Only the master and the actor's owner ever hold
+// one (D1, 2026-11-20): every other reader gets no entry at all.
 type HistoryCancelledAction struct {
 	// UUID is the cancelled action's own id.
 	UUID uuid.UUID
 	// ActorUUID is the character sheet that would have acted.
 	ActorUUID uuid.UUID
-	// Action is nil when Cut is CancelledActionCutActor: a reader who may not see it never
-	// holds it.
+	// Action is the action as it stood in the queue, cut as Cut says.
 	Action *action.Action
 	// Cut is how much of Action this reader may see — applied by the REST mapping as an
 	// actionwire level, the way MoveSight is applied after From.
 	Cut CancelledActionCut
 }
 
-// CancelledActionCut is how much of a cancelled action one reader may see. The zero value is
-// the actor alone — fail closed: only the use case grants more.
+// CancelledActionCut is how much of a cancelled action its reader may see. The zero value
+// grants nothing: the REST mapping keeps the action off the wire unless the use case set a cut.
 type CancelledActionCut string
 
 const (
-	// CancelledActionCutActor shows who cancelled and nothing of the action. The zero value.
-	CancelledActionCutActor CancelledActionCut = ""
 	// CancelledActionCutDeclaration shows what the owner declared, no numbers — the cut of
 	// their own ownQueue. The actor's owner.
 	CancelledActionCutDeclaration CancelledActionCut = "declaration"

@@ -163,10 +163,10 @@ antes ou logo depois, mais o dono (o mestre nunca entra).
 Escondido já revelado, **e** a última lista do efeito inclui o leitor))). A última lista
 (`LatestListings`) vem de qualquer partida; sem evento anterior, nenhuma → falha fechada.
 
-**`hidden_from`** (sala → banco): esparso, `NULL` = ninguém. `cancelled_actions.hidden_from`
-tem a forma de `actions` só com o ator, carimbada em `holdCancelledActionLocked` (os três caminhos
-de cancelamento passam por ele); o histórico tira a entrada de quem não o percebia até a
-revelação. Em `status_effect_events` é
+**`hidden_from`** (sala → banco): esparso, `NULL` = ninguém. `cancelled_actions` **não tem**
+`hidden_from`: a action cancelada só chega ao mestre e ao dono do ator (dono do produto,
+2026-11-20), que enxergam através do Escondido, então nenhum leitor dependeria de uma lista ali.
+Em `status_effect_events` é
 `{playerId: hiddenEffectId}` (jogadores da sessão para quem o personagem estava Escondido) — lá
 ele só **abre** o evento a quem estava de fora; a lista de permissão do evento é `views`, então
 nomear só a sessão não vaza nada. Em `actions` é uma **lista de permissão**

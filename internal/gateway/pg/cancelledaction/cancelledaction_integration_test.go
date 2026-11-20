@@ -12,7 +12,6 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
 	pgcancelledaction "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
@@ -148,58 +147,6 @@ func TestCancelledAction(t *testing.T) {
 		empty, err := repo.ListByMatch(ctx, uuid.New())
 		if err != nil || empty == nil || len(empty) != 0 {
 			t.Fatalf("ListByMatch of a match with none = %#v, %v; want a non-nil empty slice", empty, err)
-		}
-	})
-
-	// cancelled_actions.hidden_from (revisão final do PR 2, achado 2): o registro do ator
-	// Escondido volta como foi gravado; nil = SQL NULL; ilegível falha fechado (a sentinela).
-	t.Run("hidden_from round-trips, NULL when none, fails closed when unreadable", func(t *testing.T) {
-		pgtest.TruncateAll(t, pool)
-		masterStr := pgtest.InsertTestUser(t, pool, "gm-ch", "gm-ch@test.com", "pass")
-		campaignUUID := pgtest.InsertTestCampaign(t, pool, masterStr, "CH Campaign")
-		matchStr := pgtest.InsertTestMatch(t, pool, masterStr, campaignUUID, "CH Match")
-		sceneStr := pgtest.InsertTestScene(t, pool, matchStr, "Battle")
-		roundStr := pgtest.InsertTestRound(t, pool, sceneStr, "Race")
-		sheetUUID := uuid.MustParse(pgtest.InsertTestCharacterSheet(t, pool, nil, &masterStr, nil, "NPC"))
-		at := time.Now().UTC().Truncate(time.Microsecond)
-		build := func(sec int, hf statuseffect.HiddenFrom) cancelledaction.Record {
-			act := action.NewAction(sheetUUID, nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
-			return cancelledaction.Record{
-				UUID: act.GetID(), MatchUUID: uuid.MustParse(matchStr),
-				SceneUUID: uuid.MustParse(sceneStr), RoundUUID: uuid.MustParse(roundStr),
-				ActorUUID: sheetUUID, CancelledBy: uuid.MustParse(masterStr),
-				Action: *act, CancelledAt: at.Add(time.Duration(sec) * time.Second), HiddenFrom: hf,
-			}
-		}
-		hidden := statuseffect.HiddenFrom{sheetUUID: {Effect: uuid.New(), PerceivedBy: []uuid.UUID{uuid.New()}}}
-		recs := []cancelledaction.Record{build(0, hidden), build(1, nil), build(2, hidden)}
-		for _, rec := range recs {
-			if err := repo.Insert(ctx, rec); err != nil {
-				t.Fatalf("Insert: %v", err)
-			}
-		}
-		var raw []byte
-		if err := pool.QueryRow(ctx, `SELECT hidden_from FROM cancelled_actions WHERE uuid = $1`, recs[1].UUID).Scan(&raw); err != nil {
-			t.Fatalf("read hidden_from: %v", err)
-		}
-		if raw != nil {
-			t.Fatalf("hidden_from with no record = %s, want SQL NULL", raw)
-		}
-		if _, err := pool.Exec(ctx, `UPDATE cancelled_actions SET hidden_from = '"not-a-map"'::jsonb WHERE uuid = $1`, recs[2].UUID); err != nil {
-			t.Fatalf("corrupt hidden_from: %v", err)
-		}
-		got, err := repo.ListByMatch(ctx, uuid.MustParse(matchStr))
-		if err != nil || len(got) != 3 {
-			t.Fatalf("ListByMatch = %d, %v", len(got), err)
-		}
-		if !reflect.DeepEqual(got[0].HiddenFrom, hidden) {
-			t.Fatalf("hidden_from = %v, want %v", got[0].HiddenFrom, hidden)
-		}
-		if got[1].HiddenFrom != nil {
-			t.Fatalf("hidden_from = %v, want nil", got[1].HiddenFrom)
-		}
-		if want := (statuseffect.HiddenFrom{sheetUUID: {}}); !reflect.DeepEqual(got[2].HiddenFrom, want) {
-			t.Fatalf("unreadable hidden_from = %v, want the sentinel %v", got[2].HiddenFrom, want)
 		}
 	})
 

@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// EncodeHiddenFrom é a coluna hidden_from (actions e cancelled_actions):
+// EncodeHiddenFrom é a coluna hidden_from (actions):
 // {"<charUUID>": {"effect": "<hiddenEffectUUID>", "perceivedBy": ["<playerUUID>", ...]}} — por
 // personagem Escondido no instante, o efeito e quem o percebia (lista de permissão). nil (SQL
 // NULL) quando nenhum, nunca '{}'. perceivedBy vazio sai [] (ninguém além do mestre e do dono).

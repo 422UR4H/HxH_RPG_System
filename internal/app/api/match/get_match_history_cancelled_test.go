@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func (anyoneParticipates) ExistsSheetInCampaign(context.Context, uuid.UUID, uuid
 // through the REST handler and the real use case: a cancelled action is a round event
 // {kind: "actionCancelled", actorId, action?} — the master reads the action at the Full cut
 // (speed numbers kept), the actor's owner at the Declaration cut (speed reduced to its skill
-// name, the cut of their own ownQueue), and anyone else reads actorId with no action key at all.
+// name, the cut of their own ownQueue), and anyone else gets no entry at all (D1, 2026-11-20).
 func TestGetMatchHistoryProjectsCancelledActionsPerReader(t *testing.T) {
 	masterUUID, ownerUUID, otherUUID := uuid.New(), uuid.New(), uuid.New()
 	matchUUID, roundUUID, sheetUUID := uuid.New(), uuid.New(), uuid.New()
@@ -147,10 +148,14 @@ func TestGetMatchHistoryProjectsCancelledActionsPerReader(t *testing.T) {
 			t.Fatalf("speed.rollCheck.result = %s, want it cut — Declaration", r)
 		}
 	})
-	t.Run("another player reads only who cancelled", func(t *testing.T) {
-		ev := events(t, otherUUID)[0]
-		if raw, ok := ev["action"]; ok {
-			t.Fatalf("another player received the action: %s", raw)
+	t.Run("another player reads no cancelled action at all (D1)", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), auth.UserIDKey, otherUUID)
+		resp := api.GetCtx(ctx, "/matches/"+matchUUID.String()+"/history")
+		if resp.Code != http.StatusOK {
+			t.Fatalf("status = %d. Body: %s", resp.Code, resp.Body.String())
+		}
+		if strings.Contains(resp.Body.String(), "actionCancelled") || strings.Contains(resp.Body.String(), rec.UUID.String()) {
+			t.Fatalf("another player's history mentions the cancelled action: %s", resp.Body.String())
 		}
 	})
 }

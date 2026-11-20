@@ -373,8 +373,8 @@ Três tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
   (`cancel_action`, `match-combat-ws.md`). Gravada em `cancelled_actions` pela mesma regra das
   master actions: sem turno aberto, no instante; com turno aberto, no fechamento dele (e um
   reinício no meio do turno a perde junto com o turno). Vai **sempre** em `rounds[].events` —
-  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Projetada por leitor (e
-  some para quem não percebia um ator Escondido): ver "A ação cancelada" abaixo.
+  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Só o mestre e o
+  dono do ator a recebem: ver "A ação cancelada" abaixo.
 
 **`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
 do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
@@ -423,9 +423,9 @@ Campos novos fora dos eventos: `scenes[].briefFinalDescription`, `scenes[].story
 | `createdAt` | quando aconteceu (em `actionCancelled`, quando foi cancelada) |
 | `payload` | em `roundModeChanged`: `{ "from": "Free", "to": "Race" }`; nos três de relógio, como acima |
 | `masterAction` | só em `masterAction`: o mesmo objeto de `turns[].masterActions[]` |
-| `actorId` | só em `actionCancelled`, **sempre**: a ficha do personagem que agiria |
+| `actorId` | só em `actionCancelled`: a ficha do personagem que agiria |
 | `statusEffect` | só em `statusEffect`: o evento de efeito de status ([seção abaixo](#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects)); `uuid` = o do evento |
-| `action` | só em `actionCancelled`, e só para o mestre e o dono do personagem: a ação como estava na fila, no formato de `turns[].action` cortado por leitor (tabela abaixo); **ausente** para os outros |
+| `action` | só em `actionCancelled`: a ação como estava na fila, no formato de `turns[].action` cortado por leitor (tabela abaixo). A entrada inteira só vai ao mestre e ao dono do personagem |
 
 **Formato de uma master action** (`turns[].masterActions[]` e `events[].masterAction`):
 
@@ -458,21 +458,18 @@ O mestre vê todas, inteiras. Revelar parede vai a todos ao vivo, então vai a t
 mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, nem para o mestre:
 é como a projeção é decidida, não dado de mesa.
 
-**A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8). Quem cancelou é
-público. O que a ação seria, não:
-
-**Ator Escondido.** Se o ator estava Escondido no instante do cancelamento, o servidor grava o
-registro dele (`cancelled_actions.hidden_from`, a mesma forma de `actions.hidden_from`, só com o
-ator). Um leitor que não o percebia — que não é o mestre nem o dono — **não recebe a entrada
-inteira** até o mestre revelar aquele Escondido com uma revelação que cubra o instante
-(`revealedAt >= createdAt` da entrada). Depois da revelação, a entrada volta com o corte da
-tabela abaixo.
+**A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8; decisão do dono do
+produto em 2026-11-20: "ações canceladas devem ser mostradas apenas para o dono e para o mestre,
+mas não para outros jogadores"). Só quem a pode ler recebe a entrada; para qualquer outro jogador
+ela **não existe** — nem o `actorId`. O Escondido do ator não entra na regra: o mestre e o dono
+enxergam através dele, então a entrada vai a eles Escondido ou não, e para os demais já não vai
+nunca (não há revelação que a abra).
 
 | Leitor | Recebe |
 |---|---|
 | mestre | `actorId` + `action` inteira (o corte do resto do histórico: dados, totais e velocidades) |
 | dono do personagem | `actorId` + `action` no corte da própria fila (`ownQueue` do `match_full_state`): alvos, arma, movimento, **nomes** das perícias, `reactionKind`, `systemBias` — **sem números**: sem dados, sem totais, sem velocidade |
-| qualquer outro | só `actorId` — a chave `action` não vem |
+| qualquer outro | **nenhuma entrada** em `events[]` |
 
 ```json
 {
@@ -484,8 +481,8 @@ tabela abaixo.
 }
 ```
 
-Para o front: com `action`, "Fulano cancelou: <descrição da ação>"; sem, "Fulano cancelou uma
-ação". O NPC é do mestre, então só o mestre vê o que ele cancelou.
+Para o front: toda entrada `actionCancelled` que chega traz `action` — "Fulano cancelou:
+<descrição da ação>". O NPC é do mestre, então só o mestre vê o que ele cancelou.
 
 ### O movimento como foi visto ao vivo — `move.from`, `move.position`, `escape.landing`
 
