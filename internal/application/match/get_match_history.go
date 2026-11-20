@@ -172,10 +172,22 @@ func (uc *GetMatchHistoryUC) Get(
 		return nil, err
 	}
 
+	// As actions canceladas são lidas antes das revelações: o registro do ator Escondido delas
+	// também nomeia efeitos a consultar.
+	var cancelled []cancelledaction.Record
+	if uc.cancelledActions != nil {
+		recs, err := uc.cancelledActions.ListByMatch(ctx, matchUUID)
+		if err != nil {
+			return nil, err
+		}
+		cancelled = recs
+	}
+
 	// Os eventos de status, a última lista e as revelações de cada efeito que o histórico
 	// nomeia são lidos AQUI, uma vez por requisição, antes de projetar a árvore: as revelações
-	// valem tanto para a regra dos eventos (R2) quanto para o escondido dos turnos (R4).
-	sd, err := uc.readStatusData(ctx, matchUUID, scenes)
+	// valem para a regra dos eventos (R2), para o escondido dos turnos (R4) e para o das
+	// actions canceladas.
+	sd, err := uc.readStatusData(ctx, matchUUID, scenes, cancelled)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +217,7 @@ func (uc *GetMatchHistoryUC) Get(
 		}
 	}
 
-	if err := uc.stitch(ctx, matchUUID, projected, viewer, userUUID, cut, sd); err != nil {
+	if err := uc.stitch(ctx, matchUUID, projected, viewer, userUUID, cut, sd, cancelled); err != nil {
 		return nil, err
 	}
 	return &GetMatchHistoryResult{Scenes: projected}, nil
@@ -447,8 +459,11 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 //
 // A cancelled action always goes in its round's events, even when it was cancelled while a turn
 // the tree holds was open: it never belonged to that turn — it left the queue before it could
-// be one. Who cancelled is public (the public bar already showed the order change); the action
-// itself is cut per reader by cancelledActionFor.
+// be one. Who cancelled and whose action it was reach every reader who perceived the actor at
+// the instant; the action itself is cut per reader by cancelledActionFor. An actor Hidden at
+// the cancel instant (Record.HiddenFrom, an allow-list) takes the whole entry away from every
+// reader who did not perceive them — the master and the owner aside — until a reveal of that
+// Hidden covers the instant (revealedAt >= cancelledAt).
 //
 // Um evento de status entra como uma master action (no turno dele quando o turno está na
 // árvore, senão nos eventos do round), filtrado para o leitor pela regra única do domínio
@@ -459,6 +474,7 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 func (uc *GetMatchHistoryUC) stitch(
 	ctx context.Context, matchUUID uuid.UUID, scenes []HistoryScene,
 	viewer service.Viewer, userUUID uuid.UUID, cut concealment, sd statusData,
+	cancelled []cancelledaction.Record,
 ) error {
 	var events []matchevent.Event
 	if uc.events != nil {
@@ -475,14 +491,6 @@ func (uc *GetMatchHistoryUC) stitch(
 			return err
 		}
 		records = recs
-	}
-	var cancelled []cancelledaction.Record
-	if uc.cancelledActions != nil {
-		recs, err := uc.cancelledActions.ListByMatch(ctx, matchUUID)
-		if err != nil {
-			return err
-		}
-		cancelled = recs
 	}
 	statusEvents, latest := sd.recs, sd.latest
 	if len(events) == 0 && len(records) == 0 && len(cancelled) == 0 && len(statusEvents) == 0 {
@@ -551,6 +559,9 @@ func (uc *GetMatchHistoryUC) stitch(
 	}
 
 	for _, c := range cancelled {
+		if !viewer.SeesAllOf(c.ActorUUID) && c.HiddenFrom.Conceals(c.ActorUUID, userUUID, c.CancelledAt, sd.reveals) {
+			continue
+		}
 		ro, ok := rounds[c.RoundUUID]
 		if !ok {
 			log.Printf("GetMatchHistory: match %s — cancelled action %s points at round %s, which is not in the history; dropped",
@@ -620,10 +631,10 @@ type statusData struct {
 // readStatusData lê os eventos de status da partida e, numa chamada só cada, a última lista dos
 // efeitos que eles nomeiam e a última revelação de todo efeito que o histórico usa: os dos
 // eventos, os Escondidos de HiddenFrom deles e os dos hidden_from das actions e reações da
-// árvore. Sem o leitor de revelações, nada é revelado. A sentinela uuid.Nil (linha ilegível,
+// árvore e das actions canceladas. Sem o leitor de revelações, nada é revelado. A sentinela uuid.Nil (linha ilegível,
 // escondida de todos) nunca entra: nunca é revelável.
 func (uc *GetMatchHistoryUC) readStatusData(
-	ctx context.Context, matchUUID uuid.UUID, scenes []HistoryScene,
+	ctx context.Context, matchUUID uuid.UUID, scenes []HistoryScene, cancelled []cancelledaction.Record,
 ) (statusData, error) {
 	var sd statusData
 	if uc.statusEvents != nil {
@@ -667,6 +678,9 @@ func (uc *GetMatchHistoryUC) readStatusData(
 		for _, eff := range r.Event.HiddenFrom {
 			add(eff)
 		}
+	}
+	for _, c := range cancelled {
+		addMap(c.HiddenFrom)
 	}
 	for _, sc := range scenes {
 		for _, ro := range sc.Rounds {

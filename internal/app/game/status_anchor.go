@@ -124,7 +124,7 @@ func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) []statuseffe
 }
 
 // purgeEffectFromTurnLocked tira effectID (um Escondido desfeito) de todo registro do turno
-// que será gravado: o hidden_from da action e das reações e o
+// que será gravado: o hidden_from da action, das reações e das actions canceladas retidas, e o
 // HiddenFrom das mudanças pendentes. Desfazer é "como se nunca tivesse existido" (controlador):
 // um id sem evento nunca poderia ser revelado. No registro das actions, a entrada do personagem
 // com esse Escondido sai inteira (efeito e quem o percebia); o mapa vazio vira nil (NULL). A
@@ -134,6 +134,9 @@ func purgeEffectFromTurnLocked(w *turnWrites, effectID uuid.UUID) {
 	w.actionHiddenFrom = purgeHiddenFrom(w.actionHiddenFrom, effectID)
 	for id, m := range w.reactionHiddenFrom {
 		w.reactionHiddenFrom[id] = purgeHiddenFrom(m, effectID)
+	}
+	for i := range w.cancelledActions {
+		w.cancelledActions[i].HiddenFrom = purgeHiddenFrom(w.cancelledActions[i].HiddenFrom, effectID)
 	}
 	for i := range w.statusEffects {
 		ev := w.statusEffects[i].Event

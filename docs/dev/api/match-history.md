@@ -372,8 +372,8 @@ Três tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
   (`cancel_action`, `match-combat-ws.md`). Gravada em `cancelled_actions` pela mesma regra das
   master actions: sem turno aberto, no instante; com turno aberto, no fechamento dele (e um
   reinício no meio do turno a perde junto com o turno). Vai **sempre** em `rounds[].events` —
-  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Projetada por leitor: ver
-  "A ação cancelada" abaixo.
+  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Projetada por leitor (e
+  some para quem não percebia um ator Escondido): ver "A ação cancelada" abaixo.
 
 **`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
 do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
@@ -459,6 +459,13 @@ mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, n
 
 **A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8). Quem cancelou é
 público. O que a ação seria, não:
+
+**Ator Escondido.** Se o ator estava Escondido no instante do cancelamento, o servidor grava o
+registro dele (`cancelled_actions.hidden_from`, a mesma forma de `actions.hidden_from`, só com o
+ator). Um leitor que não o percebia — que não é o mestre nem o dono — **não recebe a entrada
+inteira** até o mestre revelar aquele Escondido com uma revelação que cubra o instante
+(`revealedAt >= createdAt` da entrada). Depois da revelação, a entrada volta com o corte da
+tabela abaixo.
 
 | Leitor | Recebe |
 |---|---|

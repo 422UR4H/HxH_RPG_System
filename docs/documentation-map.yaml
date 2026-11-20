@@ -400,7 +400,7 @@ mappings:
     dev_docs:
       - path: docs/dev/api/match-history.md
         confidence: directly_affected
-    notes: actions.hidden_from JSONB esparso (NULL = ninguém), nunca no wire
+    notes: actions.hidden_from JSONB esparso (NULL = nenhum), nunca no wire; forma atual (lista de permissão {effect, perceivedBy}) no COMMENT da 20261120000001
   - code_path: migrations/20261119000000_actions_opened_at.sql
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -411,6 +411,13 @@ mappings:
       - path: docs/dev/api/match-history.md
         confidence: directly_affected
     notes: status_effect_reveals (uma linha por comando de revelar)
+  - code_path: migrations/20261120000001_cancelled_actions_hidden_from.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: cancelled_actions.hidden_from (registro do ator Escondido, lista de permissão) e o COMMENT da forma nova de actions.hidden_from
 
   # ─── Match: Actions ───
   - code_path: internal/domain/match/entity/action/
