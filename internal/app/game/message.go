@@ -682,6 +682,11 @@ type ResolutionUpdatedPayload struct {
 	// the targets (master while open, everyone once settled), minus an unrevealed secret door
 	// for anyone but the master. Absent when the action targets no wall.
 	Walls []WallResultPayload `json:"walls,omitempty"`
+	// HiddenTargetsHit é quantos golpes acertaram um alvo Escondido que este destinatário não
+	// percebe — só o número: nenhum id, valor, reação ou posição, e o alvo segue fora de Targets
+	// e de targetId. O front lê "Desconhecido 1..N" a partir daqui (dono do produto, D2). Ausente
+	// = nenhum; o mestre e o dono do alvo nunca o recebem (percebem o alvo, veem o resultado).
+	HiddenTargetsHit int `json:"hiddenTargetsHit,omitempty"`
 }
 
 // ConditionPayload is one master condition in force — the shape of an edit_action conditions
@@ -927,6 +932,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 	}
 	p.DamageSkill = res.DamageSkill
 	p.Conditions = conditionPayloadsOf(res.Conditions)
+	p.HiddenTargetsHit = res.HiddenTargetsHit
 	return p
 }
 

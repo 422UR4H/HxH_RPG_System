@@ -192,6 +192,10 @@ type TurnResolutionResponse struct {
 	// turn did. The turn resolved, these numbers are real, and one part of the collision is
 	// missing from them.
 	Errors []ResolutionErrorResponse `json:"errors,omitempty"`
+	// HiddenTargetsHit é quantos golpes acertaram um alvo Escondido que este leitor não percebe
+	// — só o número, calculado por service.ProjectResolution (espelho do campo do WS). Ausente =
+	// nenhum; o mestre e o dono do alvo nunca o recebem. O front lê "Desconhecido 1..N" daqui.
+	HiddenTargetsHit int `json:"hiddenTargetsHit,omitempty"`
 }
 
 // ResolutionErrorResponse is one engine fault, as the master's client reads it — the REST
@@ -531,8 +535,9 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 			IsCritical: res.ActionResult.IsCritical, IsCriticalFailure: res.ActionResult.IsCriticalFailure,
 			Margin: res.ActionResult.Margin,
 		},
-		Targets:     make([]CharacterResultResponse, 0, len(res.CharacterResults)),
-		DamageSkill: res.DamageSkill,
+		Targets:          make([]CharacterResultResponse, 0, len(res.CharacterResults)),
+		DamageSkill:      res.DamageSkill,
+		HiddenTargetsHit: res.HiddenTargetsHit,
 	}
 	for _, wr := range res.WallResults {
 		out.Walls = append(out.Walls, WallResultResponse{

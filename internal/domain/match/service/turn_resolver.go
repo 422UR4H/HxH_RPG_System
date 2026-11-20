@@ -162,6 +162,13 @@ type TurnResolution struct {
 	// rather than merely uneventful. It is master-only on the wire (see the WS contract):
 	// these are diagnostics about the engine, not facts about the fiction.
 	Errors []ResolutionError
+	// HiddenTargetsHit é quantos golpes ACERTARAM um alvo Escondido que o leitor não percebe —
+	// só o número, preenchido por ProjectResolution numa cópia projetada (nunca na resolução do
+	// mestre nem na original). Quem lê não recebe id, número, reação nem posição do atingido: o
+	// front mostra "Desconhecido 1..N" a partir da contagem (dono do produto, D2). Um alvo que
+	// esquivou, aparou ou foi barrado antes na cadeia não conta: a mesa não pode saber que havia
+	// alguém ali.
+	HiddenTargetsHit int
 }
 
 // PendingReaction is one attached-but-not-yet-opened reaction, as the master needs to choose

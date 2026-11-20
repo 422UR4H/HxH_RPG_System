@@ -104,3 +104,72 @@ func TestProjectActionCutsAHiddenTarget(t *testing.T) {
 		}
 	})
 }
+
+// Alvo Escondido atingido (D2): quem não o percebe não sabe nada dele, mas fica sabendo QUANTOS
+// golpes acertaram alguém que não vê — só o número, para a mesa ler "desconhecido N".
+func TestProjectResolution_HiddenTargetHit_CountsAnonymously(t *testing.T) {
+	actor, seen, h1, h2 := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	res := &service.TurnResolution{
+		IsSettled: true,
+		CharacterResults: []service.CharacterResult{
+			{TargetID: seen, ReactionKind: string(action.ReactDodge)},
+			{TargetID: h1, RawDamage: 9, EffectiveDamage: 7},
+			{TargetID: h2, RawDamage: 5, EffectiveDamage: 5},
+		},
+		Blows: []*battle.Blow{
+			battle.NewBlow(actor, seen, action.Attack{}, nil, nil, nil),
+			battle.NewBlow(actor, h1, action.Attack{}, nil, nil, nil),
+			battle.NewBlow(actor, h2, action.Attack{}, nil, nil, nil),
+		},
+	}
+	got := service.ProjectResolution(res, service.Viewer{Hidden: map[uuid.UUID]bool{h1: true, h2: true}})
+	if got.HiddenTargetsHit != 2 {
+		t.Fatalf("HiddenTargetsHit = %d, want 2", got.HiddenTargetsHit)
+	}
+	if len(got.CharacterResults) != 1 || got.CharacterResults[0].TargetID != seen {
+		t.Fatalf("CharacterResults = %+v, want only the seen target", got.CharacterResults)
+	}
+	if len(got.Blows) != 1 || got.Blows[0].GetTargetID() != seen {
+		t.Fatalf("Blows = %d, want only the seen target's", len(got.Blows))
+	}
+	if res.HiddenTargetsHit != 0 {
+		t.Fatal("the projection mutated the source resolution")
+	}
+}
+
+func TestProjectResolution_HiddenTargetAvoided_LeavesNoTrace(t *testing.T) {
+	hidden := uuid.New()
+	res := &service.TurnResolution{CharacterResults: []service.CharacterResult{{TargetID: hidden, Avoided: true}}}
+	got := service.ProjectResolution(res, service.Viewer{Hidden: map[uuid.UUID]bool{hidden: true}})
+	if got.HiddenTargetsHit != 0 || len(got.CharacterResults) != 0 {
+		t.Fatalf("hit/results = %d/%d, want 0/0", got.HiddenTargetsHit, len(got.CharacterResults))
+	}
+}
+
+func TestProjectResolution_HiddenTargetAttackStopped_LeavesNoTrace(t *testing.T) {
+	hidden := uuid.New()
+	res := &service.TurnResolution{CharacterResults: []service.CharacterResult{{TargetID: hidden, AttackStopped: true}}}
+	got := service.ProjectResolution(res, service.Viewer{Hidden: map[uuid.UUID]bool{hidden: true}})
+	if got.HiddenTargetsHit != 0 || len(got.CharacterResults) != 0 {
+		t.Fatalf("hit/results = %d/%d, want 0/0", got.HiddenTargetsHit, len(got.CharacterResults))
+	}
+}
+
+func TestProjectResolution_MasterGetsNoCount(t *testing.T) {
+	hidden := uuid.New()
+	res := &service.TurnResolution{CharacterResults: []service.CharacterResult{{TargetID: hidden}}}
+	got := service.ProjectResolution(res, service.Viewer{IsMaster: true, Hidden: map[uuid.UUID]bool{hidden: true}})
+	if got.HiddenTargetsHit != 0 || len(got.CharacterResults) != 1 {
+		t.Fatalf("hit/results = %d/%d, want 0/1", got.HiddenTargetsHit, len(got.CharacterResults))
+	}
+}
+
+func TestProjectResolution_OwnerOfHiddenTargetSeesOwnResult(t *testing.T) {
+	hidden := uuid.New()
+	res := &service.TurnResolution{CharacterResults: []service.CharacterResult{{TargetID: hidden}}}
+	v := service.Viewer{Owns: map[uuid.UUID]bool{hidden: true}, Hidden: map[uuid.UUID]bool{hidden: true}}
+	got := service.ProjectResolution(res, v)
+	if got.HiddenTargetsHit != 0 || len(got.CharacterResults) != 1 {
+		t.Fatalf("hit/results = %d/%d, want 0/1", got.HiddenTargetsHit, len(got.CharacterResults))
+	}
+}

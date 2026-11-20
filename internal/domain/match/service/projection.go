@@ -85,11 +85,17 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 		return nil
 	}
 	out := *res
+	out.HiddenTargetsHit = 0 // sempre recontado abaixo; nunca herdado da origem
 	out.CharacterResults = make([]CharacterResult, 0, len(res.CharacterResults))
 	for _, cr := range res.CharacterResults {
 		// Um alvo Escondido que este leitor não percebe sai inteiro (resultado, golpe e fuga)
 		// até ser revelado (dono do produto, Q4).
 		if !v.Perceives(cr.TargetID) {
+			// Só o golpe que ACERTOU deixa rastro, e só como número (dono do produto, D2): o
+			// que esquivou, aparou ou foi barrado não revela que havia alguém ali.
+			if !cr.Avoided && !cr.AttackStopped {
+				out.HiddenTargetsHit++
+			}
 			continue
 		}
 		if !v.SeesAllOf(cr.TargetID) {

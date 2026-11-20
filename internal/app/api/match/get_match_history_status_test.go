@@ -8,6 +8,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -258,5 +259,31 @@ func TestGetMatchHistoryServesReactionOpenings(t *testing.T) {
 	}
 	if _, ok := rs[0]["uuid"]; !ok {
 		t.Fatalf("the reaction lost its actionwire fields: %v", rs[0])
+	}
+}
+
+// D2: o resolution do turno leva hiddenTargetsHit só quando alguém atingido ficou fora da vista
+// do leitor; sem isso o fio fica idêntico ao de antes.
+func TestGetMatchHistoryHiddenTargetsHit(t *testing.T) {
+	now := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	act := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	tree := func(hit int) []match.HistoryScene {
+		return []match.HistoryScene{{
+			UUID: uuid.New(), Category: "battle", CreatedAt: now,
+			Rounds: []match.HistoryRound{{
+				UUID: uuid.New(), Mode: "Race", CreatedAt: now,
+				Turns: []match.HistoryTurn{{
+					UUID: uuid.New(), CreatedAt: now, FinishedAt: now, Action: *act,
+					Reactions:  []action.Action{},
+					Resolution: &service.TurnResolution{IsSettled: true, HiddenTargetsHit: hit},
+				}},
+			}},
+		}}
+	}
+	if body := getHistory(t, tree(2)); !strings.Contains(string(body), `"hiddenTargetsHit":2`) {
+		t.Fatalf("the anonymous count is not on the wire: %s", body)
+	}
+	if body := getHistory(t, tree(0)); strings.Contains(string(body), "hiddenTargetsHit") {
+		t.Fatalf("a zero count reached the wire: %s", body)
 	}
 }

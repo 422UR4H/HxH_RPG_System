@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -490,5 +491,60 @@ func TestHiddenActor_VisibleReactionToAHiddenActor(t *testing.T) {
 	}
 	if hasReactToID(t, reactions[0]) {
 		t.Fatalf("bystander: openTurn.reactions[0] names the hidden action: %s", reactions[0])
+	}
+}
+
+// lastSettledRaw é o payload cru (bytes) do último resolution_updated assentado que o coletor recebeu.
+func lastSettledRaw(t *testing.T, who string, c *collector) []byte {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeResolutionUpdate {
+			continue
+		}
+		var p game.ResolutionUpdatedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+			t.Fatal(err)
+		}
+		if p.IsSettled {
+			return msgs[i].Payload
+		}
+	}
+	t.Fatalf("%s: no settled resolution_updated", who)
+	return nil
+}
+
+// D2: um alvo Escondido que foi atingido vira só uma contagem anônima para quem não o percebe;
+// o id dele não aparece em lugar nenhum da mensagem. O mestre e o dono recebem o resultado real.
+func TestHiddenTarget_HitReachesAsAnonymousCount(t *testing.T) {
+	h := newHiddenTable(t)
+	h.hide(t, h.f.npcID, map[string]any{"mode": "players", "playerIds": []string{h.f.playerUUID.String()}})
+	h.openPCAttackOnNPC(t)
+	closeTurnAndWait(t, h.master, h.mc)
+	chatBarrier(t, h.master, h.mc, h.pc, h.bc)
+
+	var seen game.ResolutionUpdatedPayload
+	if err := json.Unmarshal(lastSettledRaw(t, "master", h.mc), &seen); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen.Targets) != 1 || seen.Targets[0].Avoided {
+		t.Fatalf("master: targets = %+v, want one landed hit (the fixture's dice are fixed)", seen.Targets)
+	}
+	if raw := lastSettledRaw(t, "master", h.mc); strings.Contains(string(raw), "hiddenTargetsHit") {
+		t.Fatalf("master: the anonymous count reached the master: %s", raw)
+	}
+	if raw := lastSettledRaw(t, "player", h.pc); strings.Contains(string(raw), "hiddenTargetsHit") {
+		t.Fatalf("player: the anonymous count reached the one who perceives the NPC: %s", raw)
+	}
+
+	raw := lastSettledRaw(t, "bystander", h.bc)
+	if !strings.Contains(string(raw), `"hiddenTargetsHit":1`) {
+		t.Fatalf("bystander: no anonymous count in %s", raw)
+	}
+	if strings.Contains(string(raw), h.f.npcID.String()) {
+		t.Fatalf("bystander: the hidden target's id is in the message: %s", raw)
+	}
+	if got := settledTargets(t, "bystander", h.bc); len(got) != 0 {
+		t.Fatalf("bystander: targets = %v, want the hidden NPC cut", got)
 	}
 }
