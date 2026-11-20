@@ -580,9 +580,8 @@ uma reação já saiu da fila — também não.
 
 **A ação cancelada fica registrada** (tabela `cancelled_actions`, não `actions` — ela nunca teve
 turno): a ação inteira como estava na fila, quem cancelou, a cena, a rodada e o turno aberto no
-instante (nenhum, se não havia) e, se o ator estava Escondido, o registro dele (efeito e quem o
-percebia — o `GET /history` tira a entrada de quem não o percebia até a revelação; ver
-`match-history.md`). **Quando grava** é a regra das master actions: sem turno aberto,
+instante (nenhum, se não havia). O `GET /history` só a entrega ao mestre e ao dono do ator,
+Escondido ou não; ver `match-history.md`. **Quando grava** é a regra das master actions: sem turno aberto,
 na hora; com turno aberto, junto com o fechamento desse turno, na mesma transação — um reinício no
 meio do turno a perde com o turno, de propósito. Nada disso vai ao wire agora.
 

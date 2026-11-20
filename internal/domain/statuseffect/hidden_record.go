@@ -33,7 +33,7 @@ func (h HiddenRecord) Conceals(reader uuid.UUID, at time.Time, reveals RevealLoo
 
 // HiddenFrom é, por personagem, o registro do Escondido dele no instante (HiddenRecord); só os
 // personagens Escondidos com lista que não é "todos". nil = nenhum. É a forma de
-// actions.hidden_from e de cancelled_actions.hidden_from.
+// actions.hidden_from.
 type HiddenFrom map[uuid.UUID]HiddenRecord
 
 // Conceals diz se o personagem c fica escondido de reader no instante at; sem registro, não.
