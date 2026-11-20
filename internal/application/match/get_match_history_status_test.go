@@ -40,6 +40,9 @@ func TestGetMatchHistoryStatusEffects(t *testing.T) {
 	masterUUID, matchUUID := uuid.New(), uuid.New()
 	inSight, outOfSight := uuid.New(), uuid.New()
 	sceneUUID, roundUUID, turnUUID := uuid.New(), uuid.New(), uuid.New()
+	// turnActionID é a action gravada do turno: a âncora de um evento só vale quando nomeia uma
+	// action/reação gravada dele (Task 15).
+	turnActionID := uuid.New()
 	pc := uuid.New()
 	base := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
 	at := func(sec int) time.Time { return base.Add(time.Duration(sec) * time.Second) }
@@ -68,7 +71,9 @@ func TestGetMatchHistoryStatusEffects(t *testing.T) {
 			Rounds: []match.HistoryRound{{
 				UUID: roundUUID, Mode: "Race",
 				Turns: []match.HistoryTurn{
-					{UUID: turnUUID, FinishedAt: at(100), Action: actionWithFeint(uuid.New()), Reactions: []action.Action{}},
+					{UUID: turnUUID, FinishedAt: at(100), Action: *action.NewAction(uuid.New(), nil, uuid.Nil, nil,
+						action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil, action.WithReconstructedID(turnActionID)),
+						Reactions: []action.Action{}},
 				},
 			}},
 		}}
@@ -212,7 +217,7 @@ func TestGetMatchHistoryStatusEffects(t *testing.T) {
 	t.Run("in-turn event goes inside its turn", func(t *testing.T) {
 		eff := uuid.New()
 		tu := turnUUID
-		anchor := uuid.New()
+		anchor := turnActionID
 		late := rec(eff, statuseffect.ChangeEdited, 50, everyone, []uuid.UUID{inSight}, &tu)
 		early := rec(eff, statuseffect.ChangeApplied, 40, everyone, []uuid.UUID{inSight}, &tu)
 		early.Event.ActionID = &anchor

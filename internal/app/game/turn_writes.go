@@ -3,6 +3,7 @@ package game
 import (
 	"log"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
@@ -39,6 +40,14 @@ type turnWrites struct {
 	// que aconteceram (holdStatusEffectWritesLocked): gravadas pelo PersistTurnClose
 	// (TurnCloseData.StatusEffects), atrás das que uma gravação anterior não gravou.
 	statusEffects []statuseffect.Write
+	// actionHiddenFrom é, para o ator e cada alvo da action, para quem ele estava Escondido na
+	// abertura do turno (recordOpenedMoveViews) — gravado com a action (actions.hidden_from).
+	// nil = ninguém.
+	actionHiddenFrom appmatch.HiddenFrom
+	// reactionHiddenFrom é, por reação aberta, para quem o reator estava Escondido na abertura
+	// dela (recordOpenedReactionMoveViews). A entrada existe (mesmo nil) para toda reação aberta:
+	// é o que diz ao fechamento que ela já foi registrada; a que nunca abriu é registrada lá.
+	reactionHiddenFrom map[uuid.UUID]appmatch.HiddenFrom
 }
 
 // openTurnIDLocked is the session's open turn, uuid.Nil when there is none (or no session).

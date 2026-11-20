@@ -84,6 +84,13 @@ type TurnCloseData struct {
 	// held with the turn (turnWrites) and written to that reaction's actions.move_views. A
 	// reaction never opened has no entry: it was never shown. Same keys and rules as MoveViews.
 	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// ActionHiddenFrom é, para o ator e cada alvo da action, para quem ele estava Escondido na
+	// abertura do turno (actions.hidden_from da action). nil = ninguém.
+	ActionHiddenFrom HiddenFrom
+	// ReactionHiddenFrom é, por reação (pelo id), para quem o reator estava Escondido na
+	// abertura dela — ou no fechamento, se nunca foi aberta. Só as reações com alguém; as
+	// demais não têm entrada.
+	ReactionHiddenFrom map[uuid.UUID]HiddenFrom
 	// StatusBars is every sheet this close damaged, with its bars as the session holds them
 	// after the close (copies taken under r.mu), written to character_sheets in this same
 	// transaction: one master command, one transaction (owner decision, 2026-10-02). A turn that
@@ -239,7 +246,10 @@ type HistoryStatusEffect struct {
 	// fica para o mestre.
 	Effect statuseffect.Effect
 	// Public é só do mestre: a lista resolvida do instante incluía todo jogador.
-	Public     *bool
+	Public *bool
+	// Revealed é só do mestre: uma revelação do mestre cobre este evento (o front oferece
+	// "revelar" quando não). Sem revelações ainda, sempre false.
+	Revealed   *bool
 	TurnUUID   *uuid.UUID
 	ActionID   *uuid.UUID
 	HappenedAt time.Time
@@ -279,6 +289,16 @@ const (
 // the settled collision that resulted, and the master's own actions applied while it was open
 // — not the master's live edits, which are not master actions (they live in
 // overridden_action_values and the history shows the edited action).
+// HiddenFrom é, por personagem, para quem ele estava Escondido no instante, com o id do efeito
+// Escondido: personagem → jogador → efeito. O mestre e o dono nunca entram. Um jogador
+// HiddenFromEveryone esconde o personagem de todo leitor que não é o mestre nem o dono (uma
+// linha que não decodificou: falha fechada).
+type HiddenFrom map[uuid.UUID]map[uuid.UUID]uuid.UUID
+
+// HiddenFromEveryone é a chave de jogador que vale por todos (ver HiddenFrom); o efeito dela é
+// uuid.Nil, que nenhuma revelação cobre.
+var HiddenFromEveryone = uuid.Nil
+
 type HistoryTurn struct {
 	UUID       uuid.UUID
 	CreatedAt  time.Time
@@ -315,6 +335,14 @@ type HistoryTurn struct {
 	// MoveViews: absent fails closed. Read side only: the use case turns it into
 	// ShownReactionMoves and clears it.
 	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// ActionHiddenFrom e ReactionHiddenFrom são o actions.hidden_from da action e de cada
+	// reação (pelo id), como TurnCloseData os grava. nil = ninguém. Só leitura: o caso de uso os
+	// transforma no que o leitor perde do turno e os limpa.
+	ActionHiddenFrom   HiddenFrom
+	ReactionHiddenFrom map[uuid.UUID]HiddenFrom
+	// ConcealedBy são os efeitos Escondido que ainda escondem algo deste turno de alguém — só
+	// para o mestre (o front oferece "revelar"); nil para os demais.
+	ConcealedBy []uuid.UUID
 
 	// The three fields below are what this reader may see of WHERE pieces went — set by the
 	// use case from the views above, applied by the REST mapping after actionwire.From, exactly

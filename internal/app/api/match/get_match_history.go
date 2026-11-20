@@ -102,6 +102,8 @@ type HistoryStatusEffectResponse struct {
 	ActionID     *uuid.UUID        `json:"actionId,omitempty"`
 	HappenedAt   string            `json:"happenedAt"`
 	StatusEffect statuswire.Effect `json:"statusEffect"`
+	// Revealed é só do mestre: uma revelação cobre este evento.
+	Revealed *bool `json:"revealed,omitempty"`
 }
 
 // HistoryMasterActionResponse is one master action as this reader saw it live — already run
@@ -139,6 +141,9 @@ type HistoryTurnResponse struct {
 	// StatusEffects são as mudanças de efeito de status feitas com este turno aberto, como este
 	// leitor pode vê-las, na ordem em que aconteceram. Sempre lista, nunca null.
 	StatusEffects []HistoryStatusEffectResponse `json:"statusEffects"`
+	// ConcealedBy são os efeitos Escondido que ainda escondem algo deste turno de alguém — só
+	// para o mestre (o front oferece "revelar"); omitido quando nenhum.
+	ConcealedBy []uuid.UUID `json:"concealedBy,omitempty"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -359,21 +364,21 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 	case e.Kind == matchUC.HistoryEventRoundModeChanged && e.RoundModeChange != nil:
 		return HistoryEventResponse{
 			UUID: e.RoundModeChange.UUID, Kind: string(e.Kind),
-			CreatedAt: e.At.Format(time.RFC3339),
+			CreatedAt: e.At.Format(time.RFC3339Nano),
 			Payload:   e.RoundModeChange.Payload,
 		}, true
 	case (e.Kind == matchUC.HistoryEventClockStarted || e.Kind == matchUC.HistoryEventClockAdjusted ||
 		e.Kind == matchUC.HistoryEventClockRealTime) && e.ClockChange != nil:
 		return HistoryEventResponse{
 			UUID: e.ClockChange.UUID, Kind: string(e.Kind),
-			CreatedAt: e.At.Format(time.RFC3339),
+			CreatedAt: e.At.Format(time.RFC3339Nano),
 			Payload:   e.ClockChange.Payload,
 		}, true
 	case e.Kind == matchUC.HistoryEventMasterAction && e.MasterAction != nil:
 		ma := toHistoryMasterActionResponse(*e.MasterAction)
 		return HistoryEventResponse{
 			UUID: e.MasterAction.UUID, Kind: string(e.Kind),
-			CreatedAt:    e.At.Format(time.RFC3339),
+			CreatedAt:    e.At.Format(time.RFC3339Nano),
 			MasterAction: &ma,
 		}, true
 	case e.Kind == matchUC.HistoryEventActionCancelled && e.CancelledAction != nil:
@@ -381,7 +386,7 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 		actor := ca.ActorUUID
 		out := HistoryEventResponse{
 			UUID: ca.UUID, Kind: string(e.Kind),
-			CreatedAt: e.At.Format(time.RFC3339),
+			CreatedAt: e.At.Format(time.RFC3339Nano),
 			ActorID:   &actor,
 		}
 		// The cut the use case granted, as an actionwire level; anything else — the zero value
@@ -401,7 +406,7 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 		se := toHistoryStatusEffectResponse(*e.StatusEffect)
 		return HistoryEventResponse{
 			UUID: e.StatusEffect.UUID, Kind: string(e.Kind),
-			CreatedAt:    e.At.Format(time.RFC3339),
+			CreatedAt:    e.At.Format(time.RFC3339Nano),
 			StatusEffect: &se,
 		}, true
 	default:
@@ -420,8 +425,8 @@ func toHistoryStatusEffectResponse(h matchUC.HistoryStatusEffect) HistoryStatusE
 	}
 	return HistoryStatusEffectResponse{
 		UUID: h.UUID, Change: string(h.Change), CharacterID: h.Effect.CharacterID,
-		TurnID: h.TurnUUID, ActionID: h.ActionID,
-		HappenedAt:   h.HappenedAt.Format(time.RFC3339),
+		TurnID: h.TurnUUID, ActionID: h.ActionID, Revealed: h.Revealed,
+		HappenedAt:   h.HappenedAt.Format(time.RFC3339Nano),
 		StatusEffect: w,
 	}
 }
@@ -431,7 +436,7 @@ func toHistoryStatusEffectResponse(h matchUC.HistoryStatusEffect) HistoryStatusE
 func toHistoryMasterActionResponse(r masteraction.Record) HistoryMasterActionResponse {
 	return HistoryMasterActionResponse{
 		UUID: r.UUID, Kind: string(r.Kind), TurnID: r.TurnUUID,
-		HappenedAt: r.HappenedAt.Format(time.RFC3339),
+		HappenedAt: r.HappenedAt.Format(time.RFC3339Nano),
 		Content:    r.Content,
 	}
 }
@@ -490,6 +495,7 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 		Resolution:    res,
 		MasterActions: masterActions,
 		StatusEffects: statusEffects,
+		ConcealedBy:   t.ConcealedBy,
 	}
 }
 

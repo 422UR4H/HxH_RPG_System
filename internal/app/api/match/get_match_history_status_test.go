@@ -130,3 +130,84 @@ func TestGetMatchHistoryCarriesStatusEffects(t *testing.T) {
 		}
 	})
 }
+
+// TestGetMatchHistoryHiddenMarksAndNanoTimes: o mestre recebe concealedBy no turno e revealed
+// nos eventos de status; o jogador, nenhum dos dois. happenedAt/createdAt de eventos de round,
+// master actions e eventos de status levam a fração de segundo (o front ordena dentro do turno
+// pelo instante).
+func TestGetMatchHistoryHiddenMarksAndNanoTimes(t *testing.T) {
+	now := time.Date(2026, 11, 19, 10, 0, 0, 123456000, time.UTC)
+	turnUUID, hid := uuid.New(), uuid.New()
+	act := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	eff := statuseffect.Effect{ID: uuid.New(), CharacterID: uuid.New(), Kind: statuseffect.KindProne, AppliedAt: now}
+	tree := func(master bool) []match.HistoryScene {
+		se := match.HistoryStatusEffect{UUID: uuid.New(), Change: statuseffect.ChangeApplied, Effect: eff,
+			TurnUUID: &turnUUID, HappenedAt: now}
+		tu := match.HistoryTurn{UUID: turnUUID, CreatedAt: now, FinishedAt: now, Action: *act,
+			Reactions: []action.Action{}, StatusEffects: []match.HistoryStatusEffect{se}}
+		if master {
+			pub, rev := true, false
+			tu.StatusEffects[0].Public, tu.StatusEffects[0].Revealed = &pub, &rev
+			tu.ConcealedBy = []uuid.UUID{hid}
+		}
+		round := se
+		round.TurnUUID = nil
+		return []match.HistoryScene{{
+			UUID: uuid.New(), Category: "battle", CreatedAt: now,
+			Rounds: []match.HistoryRound{{
+				UUID: uuid.New(), Mode: "Race", CreatedAt: now, Turns: []match.HistoryTurn{tu},
+				Events: []match.HistoryEvent{{Kind: match.HistoryEventStatusEffect, At: now, StatusEffect: &round}},
+			}},
+		}}
+	}
+	type wire struct {
+		Scenes []struct {
+			Rounds []struct {
+				Turns []struct {
+					ConcealedBy   []uuid.UUID `json:"concealedBy"`
+					StatusEffects []struct {
+						HappenedAt string `json:"happenedAt"`
+						Revealed   *bool  `json:"revealed"`
+					} `json:"statusEffects"`
+				} `json:"turns"`
+				Events []struct {
+					CreatedAt    string `json:"createdAt"`
+					StatusEffect struct {
+						HappenedAt string `json:"happenedAt"`
+					} `json:"statusEffect"`
+				} `json:"events"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	read := func(t *testing.T, body []byte) wire {
+		t.Helper()
+		var w wire
+		if err := json.Unmarshal(body, &w); err != nil {
+			t.Fatalf("unmarshal: %v\n%s", err, body)
+		}
+		return w
+	}
+	nano := now.Format(time.RFC3339Nano)
+
+	t.Run("the master's marks", func(t *testing.T) {
+		ro := read(t, getHistory(t, tree(true))).Scenes[0].Rounds[0]
+		tu := ro.Turns[0]
+		if len(tu.ConcealedBy) != 1 || tu.ConcealedBy[0] != hid {
+			t.Fatalf("concealedBy = %v, want [%s]", tu.ConcealedBy, hid)
+		}
+		if r := tu.StatusEffects[0].Revealed; r == nil || *r {
+			t.Fatalf("revealed = %v, want false", r)
+		}
+		if tu.StatusEffects[0].HappenedAt != nano || ro.Events[0].CreatedAt != nano || ro.Events[0].StatusEffect.HappenedAt != nano {
+			t.Fatalf("times = %s / %s / %s, want %s", tu.StatusEffects[0].HappenedAt, ro.Events[0].CreatedAt,
+				ro.Events[0].StatusEffect.HappenedAt, nano)
+		}
+	})
+
+	t.Run("a player gets no marks", func(t *testing.T) {
+		body := getHistory(t, tree(false))
+		if strings.Contains(string(body), `"concealedBy"`) || strings.Contains(string(body), `"revealed"`) {
+			t.Fatalf("a player's history carries the master's marks: %s", body)
+		}
+	})
+}

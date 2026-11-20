@@ -148,3 +148,30 @@ func TestVisibleInHistory(t *testing.T) {
 		})
 	}
 }
+
+func TestRevealLookupCovers(t *testing.T) {
+	eff := uuid.New()
+	at := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	revealedAt := func(r time.Time) statuseffect.RevealLookup {
+		return func(id uuid.UUID) (time.Time, bool) { return r, id == eff }
+	}
+	cases := []struct {
+		name string
+		l    statuseffect.RevealLookup
+		id   uuid.UUID
+		want bool
+	}{
+		{"nil means never revealed", nil, eff, false},
+		{"revealed after", revealedAt(at.Add(time.Second)), eff, true},
+		{"revealed at the instant", revealedAt(at), eff, true},
+		{"revealed before", revealedAt(at.Add(-time.Second)), eff, false},
+		{"another effect", revealedAt(at.Add(time.Second)), uuid.New(), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.l.Covers(tc.id, at); got != tc.want {
+				t.Fatalf("Covers = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -3344,3 +3344,125 @@ func TestEnsureFillsSceneStoryStartLater(t *testing.T) {
 		t.Errorf("scene story_started_at = %v, want %v", got, start)
 	}
 }
+
+// TestPersistTurnClose_HiddenFrom: para quem o ator, cada alvo e cada reator estavam
+// Escondidos (actions.hidden_from) é gravado com o turno e lido de volta; ninguém = SQL NULL
+// (nunca '{}'), que volta nil; um valor ilegível falha fechado (esconde de todo leitor).
+func TestPersistTurnClose_HiddenFrom(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	setup := func(t *testing.T) (resolutionFixture, *action.Action, *action.Action, *action.Action, *turnentity.Turn) {
+		t.Helper()
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		mk := func() *action.Action {
+			r := action.NewAction(fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, &action.Dodge{}, nil, nil)
+			r.ReactionKind = action.ReactDodge
+			return r
+		}
+		hiddenReact, plainReact := mk(), mk()
+		tn := turnentity.NewTurn(*act)
+		tn.AddReaction(hiddenReact)
+		tn.AddReaction(plainReact)
+		tn.Close(time.Now())
+		return fx, act, hiddenReact, plainReact, tn
+	}
+	readRaw := func(t *testing.T, id uuid.UUID) []byte {
+		t.Helper()
+		var raw []byte
+		if err := pool.QueryRow(ctx, `SELECT hidden_from FROM actions WHERE uuid = $1`, id).Scan(&raw); err != nil {
+			t.Fatalf("read hidden_from: %v", err)
+		}
+		return raw
+	}
+
+	t.Run("hidden_from round-trips on action and reaction", func(t *testing.T) {
+		fx, act, hiddenReact, plainReact, tn := setup(t)
+		player, bystander, hid := uuid.New(), uuid.New(), uuid.New()
+		actionHF := appmatch.HiddenFrom{
+			fx.attackerSheet: {player: hid, bystander: hid},
+			fx.victimSheet:   {bystander: hid},
+		}
+		reactHF := appmatch.HiddenFrom{fx.victimSheet: {bystander: hid}}
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			ActionHiddenFrom:   actionHF,
+			ReactionHiddenFrom: map[uuid.UUID]appmatch.HiddenFrom{hiddenReact.GetID(): reactHF},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatalf("FindMatchHistory: %v", err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		if !reflect.DeepEqual(turn.ActionHiddenFrom, actionHF) {
+			t.Fatalf("ActionHiddenFrom = %v, want %v", turn.ActionHiddenFrom, actionHF)
+		}
+		if !reflect.DeepEqual(turn.ReactionHiddenFrom[hiddenReact.GetID()], reactHF) {
+			t.Fatalf("ReactionHiddenFrom = %v, want %v for %s", turn.ReactionHiddenFrom, reactHF, hiddenReact.GetID())
+		}
+		if _, ok := turn.ReactionHiddenFrom[plainReact.GetID()]; ok || len(turn.ReactionHiddenFrom) != 1 {
+			t.Fatalf("ReactionHiddenFrom = %v, want only the hidden reactor's", turn.ReactionHiddenFrom)
+		}
+	})
+
+	t.Run("NULL reads as nil", func(t *testing.T) {
+		fx, act, hiddenReact, plainReact, tn := setup(t)
+		// Mapas vazios (e um personagem sem ninguém) são "ninguém": NULL, nunca '{}'.
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			ActionHiddenFrom: appmatch.HiddenFrom{fx.attackerSheet: {}},
+			ReactionHiddenFrom: map[uuid.UUID]appmatch.HiddenFrom{
+				hiddenReact.GetID(): {}, plainReact.GetID(): nil,
+			},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		for _, id := range []uuid.UUID{act.GetID(), hiddenReact.GetID(), plainReact.GetID()} {
+			if raw := readRaw(t, id); raw != nil {
+				t.Fatalf("hidden_from of %s = %s, want SQL NULL", id, raw)
+			}
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatalf("FindMatchHistory: %v", err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		if turn.ActionHiddenFrom != nil || turn.ReactionHiddenFrom != nil {
+			t.Fatalf("hidden from = %v / %v, want nil", turn.ActionHiddenFrom, turn.ReactionHiddenFrom)
+		}
+	})
+
+	t.Run("an unreadable value fails closed", func(t *testing.T) {
+		fx, act, hiddenReact, _, tn := setup(t)
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		for _, id := range []uuid.UUID{act.GetID(), hiddenReact.GetID()} {
+			if _, err := pool.Exec(ctx, `UPDATE actions SET hidden_from = '"not-a-map"'::jsonb WHERE uuid = $1`, id); err != nil {
+				t.Fatalf("corrupt hidden_from: %v", err)
+			}
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatalf("FindMatchHistory: %v", err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		everyone := appmatch.HiddenFromEveryone
+		if got := turn.ActionHiddenFrom[fx.attackerSheet]; len(got) != 1 || got[everyone] != uuid.Nil {
+			t.Fatalf("ActionHiddenFrom = %v, want the actor hidden from everyone", turn.ActionHiddenFrom)
+		}
+		if _, ok := turn.ActionHiddenFrom[fx.attackerSheet][everyone]; !ok {
+			t.Fatalf("ActionHiddenFrom = %v, want the sentinel key", turn.ActionHiddenFrom)
+		}
+		if got := turn.ReactionHiddenFrom[hiddenReact.GetID()][fx.victimSheet]; len(got) != 1 {
+			t.Fatalf("ReactionHiddenFrom = %v, want the reactor hidden from everyone", turn.ReactionHiddenFrom)
+		}
+	})
+}

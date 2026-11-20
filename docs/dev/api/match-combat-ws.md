@@ -1755,6 +1755,27 @@ de ser.
 > `turn_closed` e `turn_opened` ainda saíam por `r.broadcast` — nenhum dos dois, `turn_opened`
 > incluído — e a ordem entre eles e o resto não era prometida.
 
+#### Ator Escondido: a mensagem reduzida
+
+Para quem **não percebe** o ator — ele tem o efeito Escondido e o destinatário está fora da
+lista dele (ver [`match-status-effects.md`](match-status-effects.md#7-quem-vê-o-quê-lista-e-visão);
+o mestre e o dono do ator sempre percebem) — o `turn_opened` chega **reduzido**: sabe-se que um
+turno abriu, e só. `actorId`, `actionId` e `action` **saem da mensagem** (a chave não vem) e
+`actorHidden` vem `true`:
+
+```json
+{ "type": "turn_opened", "payload": { "turnId": "55555555-5555-4555-8555-555555555555", "actionType": "", "actorHidden": true } }
+```
+
+Numa mensagem normal `actorHidden` não vem, e `actorId`/`actionId`/`action` estão sempre lá. A
+regra é lida no instante em que a mensagem é montada. Quem recebe a reduzida não tem alvo para
+reagir (a reação padrão sentada continua valendo).
+
+**Alvo Escondido.** Com o ator visível, um alvo que o destinatário não percebe **sai de
+`action.targetId`** (de todo destinatário que não o percebe, o dono do ator incluído) — aqui, no
+[`openTurn`](#match_full_state) e no histórico — até o mestre revelá-lo. O resultado dele sai do
+`resolution_updated` liquidado (ver [§6](#6-resolution_updated-tem-dois-eixos)).
+
 ### `reaction_opened`
 
 **Direção:** servidor → cliente. **Destino:** **mesa inteira**, **uma cópia por destinatário**
@@ -1862,6 +1883,12 @@ como ele o viu ao vivo.
 > ⚠️ **Ordem garantida:** `reaction_opened` chega ao mestre **antes** do
 > [`resolution_updated`](#resolution_updated) recomputado pela abertura — mesma pista (a
 > direta), mesmo goroutine. Ordem de envio é ordem de chegada.
+
+**Reator Escondido.** Para quem não percebe o reator (mesma regra do
+[ator Escondido](#ator-escondido-a-mensagem-reduzida)), a mensagem chega reduzida:
+`reactionId` e `reaction` saem e `actorHidden` vem `true` —
+`{ "turnId": "…", "actorHidden": true }`. A reconexão deixa essa reação fora de
+`openTurn.reactions`.
 
 **O cálculo que a abertura desencadeia continua master-only** — o `resolution_updated` que vem
 junto é de turno aberto.
@@ -2473,7 +2500,8 @@ continuam, porque isso o dono já sabia que declarou.
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
-| `openTurn.reactions` | **Fase 7 (design spec §4.1).** As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. Ausente (`omitempty`) quando nenhuma está aberta. |
+| `openTurn.actorHidden` | Para quem não percebe o ator Escondido, o `openTurn` vem reduzido como o [`turn_opened`](#ator-escondido-a-mensagem-reduzida): só `turnId` e `actorHidden: true` (sem `actorId`, `actionId`, `action` nem `reactions`). Ausente numa mensagem normal. Um alvo Escondido que o destinatário não percebe sai de `openTurn.action.targetId`. |
+| `openTurn.reactions` | **Fase 7 (design spec §4.1).** A reação aberta de um reator Escondido que o destinatário não percebe fica de fora. As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. Ausente (`omitempty`) quando nenhuma está aberta. |
 | `ownReactions` | **Fase 7 (design spec §4.2, decisões D5/D6).** As reações do turno aberto cujo ator pertence a este destinatário (`charToPlayer` — o mestre, pelos NPCs dele), **abertas ou não**, na ordem de chegada: o que o [`reaction_attached`](#reaction_attached) disse ao vivo, para um cliente que reconectou depois dele. Uma entrada é `{ reactionId, actorId, reactionKind, opened, consumedActionIds }`. `opened` diz se o mestre já deu a palavra ("reação enviada, aguardando o mestre" × "é a sua vez de narrar"). `reactionKind` é o **verdadeiro** — o dono vê o próprio (`closedEscape`, não `escape`). `consumedActionIds` são as ações da fila que ela consumiu — **sempre** lista, `[]` numa reação livre; uma declarada nomeada ali foi consumida, não perdida (regra de reconciliação abaixo). A reação padrão **sentada** não entra: não é resposta que o dono deu, e ele ainda pode reagir (uma `default` que ele declarou entra). Ausente (`omitempty`) quando o destinatário não tem nenhuma, ou não há turno aberto — aqui ausente e vazio querem dizer a mesma coisa, diferente de `ownQueue`: nenhuma reconciliação depende de distinguir os dois. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. Traz `conditions` e `damageSkill` como o `resolution_updated` — é o que faz a edição do mestre sobreviver a recarregar. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
@@ -2744,6 +2772,11 @@ Quando `isSettled` é `true`, o servidor projeta **uma cópia por destinatário*
 
 > **O alvo de um ataque deliberadamente NÃO é uma classe.** Uma finta contra você não te
 > avisa que era finta — privilegiar o alvo apagaria a finta do jogo.
+
+**Escondido (efeitos de status, PR 2).** A resolução liquidada vai a **todo** destinatário, mesmo
+a quem não percebe o ator Escondido (dono do produto: todos estão à mesa). O que sai é o **alvo**
+Escondido que o destinatário não percebe: o `targets[]` dele (com a fuga) não vem, até o mestre
+o revelar. O mestre e o dono do alvo o recebem sempre.
 
 ### O que isso significa na prática
 

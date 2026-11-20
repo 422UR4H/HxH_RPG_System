@@ -1,6 +1,7 @@
 package game
 
 import (
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	mapservice "github.com/422UR4H/HxH_RPG_System/internal/domain/map/service"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
@@ -102,6 +103,43 @@ func (r *Room) hiddenFromMapLocked(charID uuid.UUID) map[uuid.UUID]uuid.UUID {
 			out = make(map[uuid.UUID]uuid.UUID)
 		}
 		out[pid] = hid
+	}
+	return out
+}
+
+// hiddenFromOfLocked é, para cada personagem dado, para quem ele está Escondido agora
+// (hiddenFromMapLocked); só os que têm alguém. nil quando ninguém. O registro de uma action ou
+// reação no instante da abertura (actions.hidden_from). O chamador segura r.mu.
+func (r *Room) hiddenFromOfLocked(chars ...uuid.UUID) appmatch.HiddenFrom {
+	var out appmatch.HiddenFrom
+	for _, c := range chars {
+		m := r.hiddenFromMapLocked(c)
+		if len(m) == 0 {
+			continue
+		}
+		if out == nil {
+			out = appmatch.HiddenFrom{}
+		}
+		out[c] = m
+	}
+	return out
+}
+
+// hiddenCharsForLocked são os personagens Escondidos para pid agora — o Viewer.Hidden da sala.
+// nil para o mestre e quando ninguém. O chamador segura r.mu (leitura basta).
+func (r *Room) hiddenCharsForLocked(pid uuid.UUID) map[uuid.UUID]bool {
+	if r.session == nil || pid == r.masterUUID {
+		return nil
+	}
+	var out map[uuid.UUID]bool
+	for _, c := range r.session.CharactersWithStatusEffects() {
+		if !r.hiddenFromLocked(pid, c) {
+			continue
+		}
+		if out == nil {
+			out = map[uuid.UUID]bool{}
+		}
+		out[c] = true
 	}
 	return out
 }
