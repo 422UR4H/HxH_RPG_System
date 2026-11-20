@@ -87,10 +87,12 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 	out := *res
 	out.HiddenTargetsHit = 0 // sempre recontado abaixo; nunca herdado da origem
 	out.CharacterResults = make([]CharacterResult, 0, len(res.CharacterResults))
+	cutTarget := false
 	for _, cr := range res.CharacterResults {
 		// Um alvo Escondido que este leitor não percebe sai inteiro (resultado, golpe e fuga)
 		// até ser revelado (dono do produto, Q4).
 		if !v.Perceives(cr.TargetID) {
+			cutTarget = true
 			// Só o golpe que ACERTOU deixa rastro, e só como número (dono do produto, D2): o
 			// que esquivou, aparou ou foi barrado não revela que havia alguém ali.
 			if !cr.Avoided && !cr.AttackStopped {
@@ -117,6 +119,14 @@ func ProjectResolution(res *TurnResolution, v Viewer) *TurnResolution {
 			cr.ReactionKind = public
 		}
 		out.CharacterResults = append(out.CharacterResults, cr)
+	}
+	// A margem do ataque é medida contra o alvo (total - margem = a esquiva dele) e só existe num
+	// ataque de um único alvo. Se algum alvo saiu da vista, ela entregaria a esquiva do Escondido
+	// — inclusive a de quem esquivou, que não pode deixar rastro — e diria que havia um só alvo.
+	// Corta-se na cópia (ActionResult é valor; só o ponteiro Margin é refeito): a resolução do
+	// mestre segue intacta, e para o leitor ela lê como um ataque de vários alvos.
+	if cutTarget {
+		out.ActionResult.Margin = nil
 	}
 	// A wall the table cannot see as itself — an unrevealed secret door — leaves no result for
 	// anyone but the master: naming its id, or its damage, would give the door away.

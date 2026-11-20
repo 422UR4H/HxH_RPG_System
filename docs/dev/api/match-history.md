@@ -298,6 +298,7 @@ Notas sobre `resolution`:
   `locked`, `noRoll`, `notApplicable`). Sem `hp`: a vida da parede mora nas tabelas do mapa, não no
   turno. Uma porta secreta que ninguém tinha visto quando o turno fechou só aparece para o mestre.
   **Ausente** sem parede e em turnos gravados antes deste campo.
+- `action.margin` é **omitido** para o leitor que não percebe algum alvo Escondido do ataque (`total - margin` entregaria a esquiva dele, e a presença da margem diz que havia um só alvo); o mestre e quem percebe o alvo a mantêm. Igual ao `resolution_updated`.
 - `hiddenTargetsHit` é a contagem anônima de golpes que acertaram um alvo Escondido que este
   leitor não percebe (ver "Ações de quem estava Escondido"). Ausente quando nenhum.
 - `conditions` **não existe no histórico.** As condições do mestre em vigor só viajam no
