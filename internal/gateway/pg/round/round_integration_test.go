@@ -937,6 +937,59 @@ func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
 		}
 	})
 
+	t.Run("status events ride the turn close", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		e := proneOn(fx.victimSheet)
+		turnID, actionID := tn.GetID(), act.GetID()
+		ev := &statuseffect.Event{
+			ID: uuid.New(), Change: statuseffect.ChangeApplied, MatchID: fx.matchUUID,
+			SceneID: fx.scene.GetID(), RoundID: fx.round.GetID(), TurnID: &turnID, ActionID: &actionID,
+			Listing: statuseffect.Audience{Everyone: true}, Views: map[uuid.UUID]masteraction.View{},
+			HappenedAt: e.AppliedAt,
+		}
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusEffects: []statuseffect.Write{{Effect: e, Event: ev}},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM status_effect_events WHERE uuid = $1 AND turn_uuid = $2 AND action_uuid = $3`,
+			ev.ID, turnID, actionID); n != 1 {
+			t.Fatalf("event rows with the turn = %d, want 1", n)
+		}
+	})
+
+	t.Run("a failing close writes no status event", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		good := proneOn(fx.victimSheet)
+		bad := proneOn(fx.victimSheet)
+		bad.Kind = statuseffect.Kind(strings.Repeat("x", 40)) // kind > VARCHAR(32): o banco recusa
+		turnID := tn.GetID()
+		ev := &statuseffect.Event{
+			ID: uuid.New(), Change: statuseffect.ChangeApplied, MatchID: fx.matchUUID,
+			SceneID: fx.scene.GetID(), RoundID: fx.round.GetID(), TurnID: &turnID,
+			Listing: statuseffect.Audience{Everyone: true}, Views: map[uuid.UUID]masteraction.View{},
+			HappenedAt: good.AppliedAt,
+		}
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusEffects: []statuseffect.Write{{Effect: good, Event: ev}, {Effect: bad}},
+		}); err == nil {
+			t.Fatal("PersistTurnClose succeeded with a status effect the database refuses")
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM status_effect_events`); n != 0 {
+			t.Fatalf("event rows = %d, want 0", n)
+		}
+	})
+
 	t.Run("a failing close writes no status effect", func(t *testing.T) {
 		pgtest.TruncateAll(t, pool)
 		fx := seedMatchAndSheets(t, pool)

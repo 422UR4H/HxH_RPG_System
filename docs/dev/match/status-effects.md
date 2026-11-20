@@ -19,7 +19,7 @@ bloqueios**. Tudo o que muda uma rolagem é a fase seguinte (ver "O que não est
 | Sala: comandos, projeção por destinatário, gravação | `internal/app/game/status_effects.go`, `sight.go`, `room.go`, `master_board.go` |
 | Fio | `internal/app/game/message.go` |
 
-O domínio `statuseffect` não importa nada de fora de `domain/entity`.
+O domínio `statuseffect` não importa nada de fora de `domain/entity`, exceto `domain/masteraction` (o `View` das `views` de um evento de histórico, `event.go`).
 
 ## As peças e a contenção
 

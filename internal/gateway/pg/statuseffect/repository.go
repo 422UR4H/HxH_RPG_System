@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Repository persiste os efeitos de status das fichas (tabela character_status_effects).
@@ -130,7 +131,8 @@ func decodeAudience(raw []byte) (*statuseffect.Audience, error) {
 // Inclusão/edição é upsert por uuid; ficha, tipo, variante e applied_at nunca mudam depois
 // de gravados. Remoção usa só o ID e remover o que não existe não é erro. A última gravação
 // ganha: uma linha de outro uuid com a mesma identidade é substituída, e uma ficha que já não
-// existe é pulada sem erro.
+// existe é pulada sem erro. Uma operação com Event grava também o evento do histórico
+// (status_effect_events) logo depois dela, na mesma transação (insertEvent).
 func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error {
 	if len(ops) == 0 {
 		return nil
@@ -148,50 +150,63 @@ func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error 
 	}()
 
 	for _, op := range ops {
-		if op.Delete {
-			if _, err := tx.Exec(ctx,
-				`DELETE FROM character_status_effects WHERE uuid = $1`, op.Effect.ID); err != nil {
-				return fmt.Errorf("delete status effect %s: %w", op.Effect.ID, err)
+		if err := writeOp(ctx, tx, op); err != nil {
+			return err
+		}
+		if op.Event != nil {
+			if err := insertEvent(ctx, tx, op); err != nil {
+				return err
 			}
-			continue
-		}
-		e := op.Effect
-		params, err := encodeParams(e.Params)
-		if err != nil {
-			return fmt.Errorf("marshal status effect params: %w", err)
-		}
-		audience, err := encodeAudience(e.Audience)
-		if err != nil {
-			return fmt.Errorf("marshal status effect audience: %w", err)
-		}
-		// Última gravação ganha: outra linha com a mesma identidade (ficha viva em duas salas)
-		// sai antes, senão o índice único recusaria para sempre.
-		if _, err := tx.Exec(ctx, `
-			DELETE FROM character_status_effects
-			WHERE character_sheet_uuid = $1 AND kind = $2 AND variant = $3 AND uuid <> $4`,
-			e.CharacterID, string(e.Kind), e.Identity().Variant, e.ID); err != nil {
-			return fmt.Errorf("replace status effect identity %s: %w", e.ID, err)
-		}
-		// A ficha apagada com a sessão ainda a segurando: o SELECT ... WHERE EXISTS faz o
-		// insert não gravar nada, em vez de a FK recusar a transação inteira.
-		const q = `
-			INSERT INTO character_status_effects
-				(uuid, character_sheet_uuid, kind, variant, params, alias, audience, applied_at, updated_at)
-			SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
-			WHERE EXISTS (SELECT 1 FROM character_sheets WHERE uuid = $2)
-			ON CONFLICT (uuid) DO UPDATE SET
-				params = EXCLUDED.params, alias = EXCLUDED.alias,
-				audience = EXCLUDED.audience, updated_at = EXCLUDED.updated_at
-		`
-		if _, err := tx.Exec(ctx, q,
-			e.ID, e.CharacterID, string(e.Kind), e.Identity().Variant, params, e.Alias, audience,
-			e.AppliedAt, e.UpdatedAt,
-		); err != nil {
-			return fmt.Errorf("upsert status effect %s: %w", e.ID, err)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit status effect write: %w", err)
+	}
+	return nil
+}
+
+// writeOp grava (upsert) ou apaga um efeito, dentro da transação de Write.
+func writeOp(ctx context.Context, tx pgx.Tx, op statuseffect.Write) error {
+	if op.Delete {
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM character_status_effects WHERE uuid = $1`, op.Effect.ID); err != nil {
+			return fmt.Errorf("delete status effect %s: %w", op.Effect.ID, err)
+		}
+		return nil
+	}
+	e := op.Effect
+	params, err := encodeParams(e.Params)
+	if err != nil {
+		return fmt.Errorf("marshal status effect params: %w", err)
+	}
+	audience, err := encodeAudience(e.Audience)
+	if err != nil {
+		return fmt.Errorf("marshal status effect audience: %w", err)
+	}
+	// Última gravação ganha: outra linha com a mesma identidade (ficha viva em duas salas)
+	// sai antes, senão o índice único recusaria para sempre.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM character_status_effects
+		WHERE character_sheet_uuid = $1 AND kind = $2 AND variant = $3 AND uuid <> $4`,
+		e.CharacterID, string(e.Kind), e.Identity().Variant, e.ID); err != nil {
+		return fmt.Errorf("replace status effect identity %s: %w", e.ID, err)
+	}
+	// A ficha apagada com a sessão ainda a segurando: o SELECT ... WHERE EXISTS faz o
+	// insert não gravar nada, em vez de a FK recusar a transação inteira.
+	const q = `
+		INSERT INTO character_status_effects
+			(uuid, character_sheet_uuid, kind, variant, params, alias, audience, applied_at, updated_at)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+		WHERE EXISTS (SELECT 1 FROM character_sheets WHERE uuid = $2)
+		ON CONFLICT (uuid) DO UPDATE SET
+			params = EXCLUDED.params, alias = EXCLUDED.alias,
+			audience = EXCLUDED.audience, updated_at = EXCLUDED.updated_at
+	`
+	if _, err := tx.Exec(ctx, q,
+		e.ID, e.CharacterID, string(e.Kind), e.Identity().Variant, params, e.Alias, audience,
+		e.AppliedAt, e.UpdatedAt,
+	); err != nil {
+		return fmt.Errorf("upsert status effect %s: %w", e.ID, err)
 	}
 	return nil
 }

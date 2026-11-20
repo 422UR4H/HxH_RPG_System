@@ -1556,6 +1556,9 @@ type ApplyStatusEffectPayload struct {
 	Params       StatusEffectParamsPayload      `json:"params"`
 	Alias        string                         `json:"alias,omitempty"`
 	Visibility   *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+	// ActionID é a action do turno aberto (ou uma reação dela) a que esta mudança pertence, no
+	// histórico; ausente = do turno/round como um todo. Igual nos três comandos.
+	ActionID *uuid.UUID `json:"actionId,omitempty"`
 }
 
 // EditStatusEffectPayload edita um efeito. Params ausente = intocado, presente = substitui
@@ -1566,10 +1569,12 @@ type EditStatusEffectPayload struct {
 	Params         *StatusEffectParamsPayload     `json:"params,omitempty"`
 	Alias          *string                        `json:"alias,omitempty"`
 	Visibility     *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+	ActionID       *uuid.UUID                     `json:"actionId,omitempty"`
 }
 
 type RemoveStatusEffectPayload struct {
-	StatusEffectID uuid.UUID `json:"statusEffectId"`
+	StatusEffectID uuid.UUID  `json:"statusEffectId"`
+	ActionID       *uuid.UUID `json:"actionId,omitempty"`
 }
 
 // StatusEffectPayload é um efeito como o destinatário o vê (statuswire.Effect). Visibility e

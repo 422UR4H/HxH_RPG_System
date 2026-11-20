@@ -12,6 +12,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
@@ -198,6 +199,27 @@ func TestPersistMatchEnd(t *testing.T) {
 		}
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_status_effects WHERE uuid = $1`, gone.ID).Scan(&n); err != nil || n != 0 {
 			t.Errorf("removed effect rows = %d (%v), want 0", n, err)
+		}
+	})
+
+	t.Run("status events ride the match end", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := newMatchEndFixture(t, pool, repo, false)
+		at := time.Now().UTC().Truncate(time.Microsecond)
+		e := statuseffect.Effect{ID: uuid.New(), CharacterID: fx.victimSheet, Kind: statuseffect.KindProne, AppliedAt: at, UpdatedAt: at}
+		ev := &statuseffect.Event{
+			ID: uuid.New(), Change: statuseffect.ChangeApplied, MatchID: fx.matchUUID,
+			SceneID: fx.scene.GetID(), RoundID: fx.round.GetID(),
+			Listing: statuseffect.Audience{Everyone: true}, Views: map[uuid.UUID]masteraction.View{},
+			HappenedAt: at,
+		}
+		fx.data.StatusEffects = []statuseffect.Write{{Effect: e, Event: ev}}
+		if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+			t.Fatalf("PersistMatchEnd: %v", err)
+		}
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM status_effect_events WHERE uuid = $1 AND turn_uuid IS NULL`, ev.ID).Scan(&n); err != nil || n != 1 {
+			t.Errorf("event rows = %d (%v), want 1", n, err)
 		}
 	})
 

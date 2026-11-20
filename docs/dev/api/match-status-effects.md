@@ -193,6 +193,7 @@ qualquer personagem recusa, nenhum recebe.
 | `params` | objeto | sim (pode ser `{}`) | [§4](#4-parâmetros-por-tipo) |
 | `alias` | string | não | até 60 caracteres depois de aparado; `""` = sem apelido |
 | `visibility` | objeto | não | ausente = padrão do tipo. Ver [§7](#visibilidade-lista-de-quem-vê). |
+| `actionId` | uuid | não | a action a que esta mudança pertence, no histórico: a **ação do turno aberto** ou **uma reação dele** (anexada, aberta ou sentada). Ausente = do turno (ou do round) como um todo. Sem turno aberto, ou um id que não é dele → `status_effect_invalid`. Os três comandos aceitam o mesmo campo. |
 
 **Efeito colateral — Inconsciente traz Caído.** Aplicar `unconscious` num personagem que ainda
 não tem `prone` aplica também um `prone` (parâmetros, apelido e lista padrão). O mestre pode
@@ -214,7 +215,7 @@ pode mais dar é refeita.
 | `match_already_ended` | partida encerrada |
 | `invalid_payload` | JSON do `payload` malformado; `characterIds` vazio, com id nulo ou repetido; `sense`, `aptitude`, `level`, `faces[]`, `domains[]`, `injuries` (domínio ou nível) desconhecidos; `visibility.mode` desconhecido; **`visibility.playerIds` com `mode` diferente de `"players"`** |
 | `unknown_character` | um id não é ficha da sessão |
-| `status_effect_invalid` | `kind` desconhecido; parâmetro ausente, fora da faixa ou **estranho ao tipo**; `sense` anulado com `disadvantage`/`penalty` (mesmo `false`/`0`); `controllerId` igual ao alvo ou fora da partida; `alias` longo; `visibility.playerIds` com o mestre, alguém fora da partida, repetido ou uuid nulo |
+| `status_effect_invalid` | `kind` desconhecido; parâmetro ausente, fora da faixa ou **estranho ao tipo**; `sense` anulado com `disadvantage`/`penalty` (mesmo `false`/`0`); `controllerId` igual ao alvo ou fora da partida; `alias` longo; `visibility.playerIds` com o mestre, alguém fora da partida, repetido ou uuid nulo; `actionId` sem turno aberto ou fora dele |
 | `status_effect_exists` | um dos personagens já tem o `(kind, variante)` |
 | `game_error` | `"status effects are not available"` (servidor sem o caso de uso) e qualquer outra falha |
 
@@ -241,6 +242,7 @@ mudam (remova e aplique outro).
 | `params` | **ausente = intocado; presente = substitui todos** (normalizado como na aplicação: reenvie o que é obrigatório). ⚠️ Campos com padrão voltam ao padrão se omitidos: um `paralyzed` editado só com `points` volta a travar os **quatro** domínios; por isso o exemplo reenvia `domains`. |
 | `alias` | ausente = intocado; `""` limpa |
 | `visibility` | ausente = intocada; `{"mode":"default"}` volta ao padrão do tipo |
+| `actionId` | opcional; mesma regra de `apply_status_effect` |
 
 **Dispara:** `status_effects_updated` (lista inteira nova) para quem vê. Editar a lista de um
 `hidden` re-avalia a peça, as barras e os status ([§7](#hidden-escondido)). Edição também refaz
@@ -255,12 +257,15 @@ efeito com esse id).
 { "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }
 ```
 
+`actionId` é opcional, com a mesma regra de `apply_status_effect`.
+
 **Dispara:** `status_effects_updated` com a lista sem o efeito (vazia se era o único). Remover
 nunca recusa nada novo; reações sentadas como `nothing` por causa do efeito **voltam à padrão
 inteira**.
 
 **Erros:** `forbidden` · `match_not_started` · `match_already_ended` · `invalid_payload`
-(`statusEffectId` ausente ou nulo) · `status_effect_not_found`.
+(`statusEffectId` ausente ou nulo) · `status_effect_not_found` · `status_effect_invalid` (`actionId`
+sem turno aberto ou fora dele).
 
 ## 6. O que um efeito bloqueia
 
