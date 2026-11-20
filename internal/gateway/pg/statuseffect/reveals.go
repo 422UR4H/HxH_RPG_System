@@ -53,15 +53,24 @@ func (r *Repository) RevealedAt(ctx context.Context, effectIDs []uuid.UUID) (map
 	return out, nil
 }
 
-// HasEventInMatch diz se o efeito tem algum evento de status nesta partida — o que o torna
-// revelável nela.
-func (r *Repository) HasEventInMatch(ctx context.Context, matchUUID, effectUUID uuid.UUID) (bool, error) {
+// RevealableInMatch diz se o efeito é revelável nesta partida: tem algum evento de status, em
+// QUALQUER partida, e a ficha dele (status_effect_events.character_sheet_uuid) é participante
+// desta (match_participants). Um Escondido aplicado na partida A e ainda ativo na B esconde
+// turnos da B — o concealedBy da B o nomeia, e o mestre da B precisa poder revelá-lo. Índices:
+// idx_status_effect_events_effect (effect_uuid), idx_match_participants_character_sheet_uuid e
+// idx_match_participants_match_uuid.
+func (r *Repository) RevealableInMatch(ctx context.Context, matchUUID, effectUUID uuid.UUID) (bool, error) {
 	const q = `
-		SELECT EXISTS (SELECT 1 FROM status_effect_events WHERE match_uuid = $1 AND effect_uuid = $2)
+		SELECT EXISTS (
+			SELECT 1
+			FROM status_effect_events e
+			JOIN match_participants mp ON mp.character_sheet_uuid = e.character_sheet_uuid
+			WHERE e.effect_uuid = $2 AND mp.match_uuid = $1
+		)
 	`
 	var ok bool
 	if err := r.q.QueryRow(ctx, q, matchUUID, effectUUID).Scan(&ok); err != nil {
-		return false, fmt.Errorf("has status effect event in match: %w", err)
+		return false, fmt.Errorf("status effect revealable in match: %w", err)
 	}
 	return ok, nil
 }

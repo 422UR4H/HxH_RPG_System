@@ -336,7 +336,7 @@ mappings:
     dev_docs:
       - path: docs/dev/match/status-effects.md
         confidence: directly_affected
-    notes: character_status_effects (audience JSONB anulável), ListBySheets, Write; events.go (status_effect_events), reveals.go (status_effect_reveals, InsertReveal/RevealedAt/HasEventInMatch)
+    notes: character_status_effects (audience JSONB anulável), ListBySheets, Write; events.go (status_effect_events), reveals.go (status_effect_reveals, InsertReveal/RevealedAt/RevealableInMatch)
   - code_path: internal/gateway/pg/statuseffect/events.go
     dev_docs:
       - path: docs/dev/api/match-history.md
@@ -350,7 +350,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/match/status-effects.md
         confidence: directly_affected
-    notes: Revelações do mestre (MAX por efeito, em qualquer partida), HasEventInMatch (o 404 do reveal)
+    notes: Revelações do mestre (MAX por efeito, em qualquer partida), RevealableInMatch (o 404 do reveal: evento em qualquer partida + ficha participante desta)
   - code_path: internal/domain/statuseffect/event.go
     dev_docs:
       - path: docs/dev/api/match-history.md

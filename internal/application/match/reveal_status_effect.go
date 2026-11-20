@@ -10,9 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// IStatusEffectEventChecker diz se o efeito tem evento de status na partida.
+// IStatusEffectEventChecker diz se o efeito é revelável na partida: tem evento de status em
+// qualquer partida e a ficha dele participa desta (um Escondido aplicado em outra partida e
+// ainda ativo nesta esconde turnos daqui). A implementação real é pgstatuseffect.Repository.
 type IStatusEffectEventChecker interface {
-	HasEventInMatch(ctx context.Context, matchUUID, effectUUID uuid.UUID) (bool, error)
+	RevealableInMatch(ctx context.Context, matchUUID, effectUUID uuid.UUID) (bool, error)
 }
 
 // IStatusEffectRevealWriter grava uma revelação. A implementação real é
@@ -42,7 +44,8 @@ func NewRevealStatusEffectUC(
 
 // Reveal grava uma revelação nova (cada chamada é uma linha: uma posterior cobre os eventos
 // posteriores). Partida inexistente = ErrMatchNotFound; quem não é o mestre = ErrNotMatchMaster;
-// efeito sem evento nesta partida = statuseffect.ErrNotFound. O efeito uuid.Nil é a sentinela do
+// efeito não revelável aqui (sem evento em partida alguma, ou de ficha que não participa desta)
+// = statuseffect.ErrNotFound. O efeito uuid.Nil é a sentinela do
 // histórico (linha ilegível escondida de todos) e nunca é revelável.
 func (uc *RevealStatusEffectUC) Reveal(ctx context.Context, matchUUID, effectUUID, userUUID uuid.UUID) error {
 	mt, err := uc.matchReader.GetMatch(ctx, matchUUID)
@@ -58,7 +61,7 @@ func (uc *RevealStatusEffectUC) Reveal(ctx context.Context, matchUUID, effectUUI
 	if effectUUID == uuid.Nil {
 		return statuseffect.ErrNotFound
 	}
-	ok, err := uc.events.HasEventInMatch(ctx, matchUUID, effectUUID)
+	ok, err := uc.events.RevealableInMatch(ctx, matchUUID, effectUUID)
 	if err != nil {
 		return err
 	}
