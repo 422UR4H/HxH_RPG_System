@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -75,7 +76,7 @@ func (r *Room) pendingAnchorLocked(effectID uuid.UUID) *uuid.UUID {
 	return nil
 }
 
-// anchoredCharsLocked são os personagens com mudança ancorada entre ops — o turnActionId que o
+// anchoredChars são os personagens com mudança ancorada entre ops — o turnActionId que o
 // mestre vê deles some quando o turno fecha.
 func anchoredChars(ops []statuseffect.Write) []uuid.UUID {
 	var out []uuid.UUID
@@ -118,10 +119,57 @@ func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) []statuseffe
 			}
 		}
 		w.statusEffects = rest
+		purgeEffectFromTurnLocked(w, op.Effect.ID)
 	}
 	return kept
 }
 
+// purgeEffectFromTurnLocked tira effectID (um Escondido desfeito) de todo registro do turno
+// que será gravado: o hidden_from da action e das reações e o HiddenFrom das mudanças
+// pendentes. Desfazer é "como se nunca tivesse existido" (controlador): um id sem evento nunca
+// poderia ser revelado. O jogador que perde o id sai; o personagem que fica vazio sai; o mapa
+// vazio vira nil (NULL). A entrada de uma reação aberta fica (vazia), porque marca que ela já
+// foi registrada.
+func purgeEffectFromTurnLocked(w *turnWrites, effectID uuid.UUID) {
+	w.actionHiddenFrom = purgeHiddenFrom(w.actionHiddenFrom, effectID)
+	for id, m := range w.reactionHiddenFrom {
+		w.reactionHiddenFrom[id] = purgeHiddenFrom(m, effectID)
+	}
+	for i := range w.statusEffects {
+		ev := w.statusEffects[i].Event
+		if ev == nil {
+			continue
+		}
+		for pid, eff := range ev.HiddenFrom {
+			if eff == effectID {
+				delete(ev.HiddenFrom, pid)
+			}
+		}
+		if len(ev.HiddenFrom) == 0 {
+			ev.HiddenFrom = nil
+		}
+	}
+}
+
+func purgeHiddenFrom(m appmatch.HiddenFrom, effectID uuid.UUID) appmatch.HiddenFrom {
+	for c, players := range m {
+		for pid, eff := range players {
+			if eff == effectID {
+				delete(players, pid)
+			}
+		}
+		if len(players) == 0 {
+			delete(m, c)
+		}
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
+}
+
+// appliedIn diz se o efeito foi aplicado nas mudanças pendentes do turno. O desfazer depende de
+// a gravação "applied" pendente levar o seu evento (sempre, com turno aberto).
 func appliedIn(ops []statuseffect.Write, effectID uuid.UUID) bool {
 	for _, p := range ops {
 		if p.Effect.ID == effectID && !p.Delete && p.Event != nil && p.Event.Change == statuseffect.ChangeApplied {

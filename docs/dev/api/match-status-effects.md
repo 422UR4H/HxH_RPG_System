@@ -510,6 +510,8 @@ com a lista que ele vê; o mestre sempre.
 ainda pendente no turno aberto — a ação ou a reação a que ela pertence. Chega quando muda
 (`apply`/`edit`/`remove` com `actionId`, a âncora que segue a reação, `relink_status_effect`), some
 quando o turno fecha (um `status_effects_updated` ao mestre sem ela) e vem no `match_full_state`.
+Ordem no fechamento: esse `status_effects_updated` do mestre chega **antes** do
+`character_hp_changed` e do `turn_closed`, na mesma pista direta.
 Os jogadores nunca a recebem; veem a âncora no histórico, depois do fechamento.
 
 **É a lista INTEIRA** do personagem como o destinatário a vê: **substitua**, nunca acrescente. **Nunca
