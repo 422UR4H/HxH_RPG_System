@@ -340,6 +340,9 @@ type HistoryTurn struct {
 	// transforma no que o leitor perde do turno e os limpa.
 	ActionHiddenFrom   HiddenFrom
 	ReactionHiddenFrom map[uuid.UUID]HiddenFrom
+	// ReactionOpenedAt é, por reação aberta (pelo id), o instante em que o mestre a abriu
+	// (actions.opened_at); a nunca aberta não tem entrada. CreatedAt é a abertura do turno.
+	ReactionOpenedAt map[uuid.UUID]time.Time
 	// ConcealedBy são os efeitos Escondido que ainda escondem algo deste turno de alguém — só
 	// para o mestre (o front oferece "revelar"); nil para os demais.
 	ConcealedBy []uuid.UUID

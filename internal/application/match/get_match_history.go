@@ -224,9 +224,17 @@ func (uc *GetMatchHistoryUC) projectTurn(
 	for _, re := range tu.Reactions {
 		cut.stored[re.GetID()] = tu.UUID
 	}
-	at := tu.CreatedAt
-	concealed := func(m HiddenFrom, c uuid.UUID) bool {
+	// O instante de cada registro é o real: a abertura do turno para a action e os alvos; a da
+	// reação para o reator — a nunca aberta foi registrada no fechamento.
+	concealedAt := func(m HiddenFrom, c uuid.UUID, at time.Time) bool {
 		return !viewer.IsMaster && !viewer.Owns[c] && concealedFrom(m, c, userUUID, at, uc.reveals)
+	}
+	concealed := func(m HiddenFrom, c uuid.UUID) bool { return concealedAt(m, c, tu.CreatedAt) }
+	reactionAt := func(id uuid.UUID) time.Time {
+		if at, ok := tu.ReactionOpenedAt[id]; ok {
+			return at
+		}
+		return tu.FinishedAt
 	}
 
 	tv := viewer
@@ -255,7 +263,7 @@ func (uc *GetMatchHistoryUC) projectTurn(
 	onOpening := maps.Clone(hidden)
 	reactions := make([]action.Action, 0, len(tu.Reactions))
 	for _, re := range tu.Reactions {
-		if m := tu.ReactionHiddenFrom[re.GetID()]; concealed(m, re.GetActorID()) {
+		if m := tu.ReactionHiddenFrom[re.GetID()]; concealedAt(m, re.GetActorID(), reactionAt(re.GetID())) {
 			// A reação some, e com ela o resultado do reator (ele é o alvo que a mandou).
 			cut.hidden[re.GetID()] = true
 			hide(re.GetActorID())
@@ -299,18 +307,22 @@ func (uc *GetMatchHistoryUC) projectTurn(
 // um efeito e fica de fora.
 func concealedEffects(tu HistoryTurn, reveals statuseffect.RevealLookup) []uuid.UUID {
 	seen := map[uuid.UUID]bool{}
-	add := func(m HiddenFrom) {
+	add := func(m HiddenFrom, at time.Time) {
 		for _, players := range m {
 			for _, eff := range players {
-				if eff != uuid.Nil && !reveals.Covers(eff, tu.CreatedAt) {
+				if eff != uuid.Nil && !reveals.Covers(eff, at) {
 					seen[eff] = true
 				}
 			}
 		}
 	}
-	add(tu.ActionHiddenFrom)
-	for _, m := range tu.ReactionHiddenFrom {
-		add(m)
+	add(tu.ActionHiddenFrom, tu.CreatedAt)
+	for id, m := range tu.ReactionHiddenFrom {
+		at, ok := tu.ReactionOpenedAt[id]
+		if !ok {
+			at = tu.FinishedAt
+		}
+		add(m, at)
 	}
 	if len(seen) == 0 {
 		return nil

@@ -124,7 +124,7 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
 **Deferred to Phase 4 (reações):**
 - Reaction visibility — **feito** (Fase 7, pacote de back): a reação vai à mesa projetada em `reaction_opened` e na reconexão; o cálculo continua do mestre até o fechamento.
 - Initiative handling in `ChangeMode`
-- `Turn.createdAt` field (turns currently use `finishedAt` as approximation for `created_at` in DB)
+- `Turn.createdAt` — **feito** (status-effects PR 2, Task 15b): a sessão carimba a abertura real do turno (`Turn.GetOpenedAt`, relógio da sala, µs) e de cada reação (`actions.opened_at`, NULL = nunca aberta); `turns.created_at` é a abertura. Linhas gravadas antes ficam com o `finished_at` como `created_at`.
 - No Attack mapping in `buildMasterAction` — decided, not pending (spec 2026-09-27 §2, B9): the master attacks through an NPC with `enqueue_action`; `enqueue_master_action` refuses an `attack` key outright. A master attack as an environment effect (a trap) is future work. Move maps only `position` — it is the master's drag (spec 2026-09-27 §4.3)
 
 **Fechamento da Fase 6 — pacote de back (B1–B16, spec 2026-09-27):**
