@@ -4,6 +4,7 @@ package pgcancelledaction
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/actioncodec"
@@ -32,15 +33,21 @@ func (r *Repository) Insert(ctx context.Context, rec cancelledaction.Record) err
 	if err != nil {
 		return fmt.Errorf("marshal cancelled action: %w", err)
 	}
+	// hidden_from: o registro do ator Escondido; nil grava SQL NULL.
+	hiddenFrom, err := actioncodec.EncodeHiddenFrom(rec.HiddenFrom)
+	if err != nil {
+		return err
+	}
 
 	const q = `
 		INSERT INTO cancelled_actions
-			(uuid, match_uuid, scene_uuid, round_uuid, turn_uuid, actor_uuid, cancelled_by, action, cancelled_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			(uuid, match_uuid, scene_uuid, round_uuid, turn_uuid, actor_uuid, cancelled_by, action, cancelled_at,
+			 hidden_from)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err = r.q.Exec(ctx, q,
 		rec.UUID, rec.MatchUUID, rec.SceneUUID, rec.RoundUUID, rec.TurnUUID, rec.ActorUUID,
-		rec.CancelledBy, raw, rec.CancelledAt,
+		rec.CancelledBy, raw, rec.CancelledAt, hiddenFrom,
 	)
 	if err != nil {
 		return fmt.Errorf("insert cancelled action: %w", err)
@@ -52,7 +59,8 @@ func (r *Repository) Insert(ctx context.Context, rec cancelledaction.Record) err
 // rebuilt by actioncodec — the same decoding the history runs over actions. Never nil.
 func (r *Repository) ListByMatch(ctx context.Context, matchUUID uuid.UUID) ([]cancelledaction.Record, error) {
 	const q = `
-		SELECT uuid, match_uuid, scene_uuid, round_uuid, turn_uuid, actor_uuid, cancelled_by, action, cancelled_at
+		SELECT uuid, match_uuid, scene_uuid, round_uuid, turn_uuid, actor_uuid, cancelled_by, action, cancelled_at,
+		       hidden_from
 		FROM cancelled_actions
 		WHERE match_uuid = $1
 		ORDER BY cancelled_at, uuid
@@ -66,10 +74,10 @@ func (r *Repository) ListByMatch(ctx context.Context, matchUUID uuid.UUID) ([]ca
 	records := []cancelledaction.Record{}
 	for rows.Next() {
 		var rec cancelledaction.Record
-		var raw []byte
+		var raw, hiddenFrom []byte
 		if err := rows.Scan(
 			&rec.UUID, &rec.MatchUUID, &rec.SceneUUID, &rec.RoundUUID, &rec.TurnUUID, &rec.ActorUUID,
-			&rec.CancelledBy, &raw, &rec.CancelledAt,
+			&rec.CancelledBy, &raw, &rec.CancelledAt, &hiddenFrom,
 		); err != nil {
 			return nil, fmt.Errorf("scan cancelled action: %w", err)
 		}
@@ -78,6 +86,12 @@ func (r *Repository) ListByMatch(ctx context.Context, matchUUID uuid.UUID) ([]ca
 			return nil, fmt.Errorf("decode cancelled action %s: %w", rec.UUID, err)
 		}
 		rec.Action = *act
+		// Ilegível falha FECHADO: a sentinela esconde o ator de todo leitor que não é o mestre
+		// nem o dono, e nenhuma revelação a cobre.
+		if rec.HiddenFrom, err = actioncodec.DecodeHiddenFrom(hiddenFrom, rec.ActorUUID); err != nil {
+			log.Printf("ListByMatch: hidden_from da action cancelada %s não decodificou; escondida de todo "+
+				"leitor exceto o mestre e o dono: %v", rec.UUID, err)
+		}
 		records = append(records, rec)
 	}
 	if err := rows.Err(); err != nil {

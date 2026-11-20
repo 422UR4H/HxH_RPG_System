@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -33,4 +34,9 @@ type Record struct {
 	// Action is the action as it stood in the queue when it was cancelled, dice already rolled.
 	Action      action.Action
 	CancelledAt time.Time
+	// HiddenFrom é o registro do ator, se ele estava Escondido no instante do cancelamento com
+	// lista que não é "todos": o efeito e quem o percebia (lista de permissão — a mesma forma
+	// de actions.hidden_from, só com o ator). nil = não estava. O histórico tira a entrada de
+	// quem não o percebia até uma revelação cobrir o instante.
+	HiddenFrom statuseffect.HiddenFrom
 }

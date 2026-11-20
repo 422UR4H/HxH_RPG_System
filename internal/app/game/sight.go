@@ -134,7 +134,8 @@ func (r *Room) hiddenRecordLocked(charID uuid.UUID) (statuseffect.HiddenRecord, 
 
 // hiddenFromOfLocked é, para cada personagem dado que está Escondido agora, o registro dele
 // (hiddenRecordLocked). nil quando nenhum. O registro de uma action ou reação no instante da
-// abertura (actions.hidden_from). O chamador segura r.mu.
+// abertura (actions.hidden_from), e o do ator de uma action cancelada
+// (cancelled_actions.hidden_from). O chamador segura r.mu.
 func (r *Room) hiddenFromOfLocked(chars ...uuid.UUID) appmatch.HiddenFrom {
 	var out appmatch.HiddenFrom
 	for _, c := range chars {

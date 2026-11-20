@@ -51,6 +51,10 @@ func (r *Room) holdCancelledActionLocked(act *action.Action, by uuid.UUID) *canc
 		UUID: act.GetID(), MatchUUID: r.matchUUID, SceneUUID: sc.GetID(), RoundUUID: rd.GetID(),
 		ActorUUID: act.GetActorID(), CancelledBy: by, Action: *act,
 		CancelledAt: time.Now().UTC(),
+		// O registro do ator Escondido no instante (lista de permissão): o histórico tira a
+		// entrada de quem não o percebia. Vale para os três caminhos (cancel_action, cascata e
+		// o status que tira a action da fila), que passam todos por aqui.
+		HiddenFrom: r.hiddenFromOfLocked(act.GetActorID()),
 	}
 	if turnID := r.openTurnIDLocked(); turnID != uuid.Nil {
 		rec.TurnUUID = &turnID
