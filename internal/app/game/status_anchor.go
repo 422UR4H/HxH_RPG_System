@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -93,24 +94,29 @@ func anchoredChars(ops []statuseffect.Write) []uuid.UUID {
 // undoInTurnAppliesLocked desfaz, no turno aberto, a aplicação de todo efeito removido por
 // writes que foi APLICADO neste mesmo turno (a gravação "applied" dele ainda está pendente):
 // tira do turno toda mudança pendente desse efeito e devolve writes sem a remoção dele — nada
-// desse efeito é gravado, nem evento "removed" (dono do produto, 2026-11-19). Qualquer outra
-// remoção segue normal. As ações da fila que o status já cancelou continuam canceladas. O
-// chamador segura r.mu (escrita).
-func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) []statuseffect.Write {
+// desse efeito é gravado, nem evento "removed" (dono do produto, 2026-11-19) — e os efeitos
+// desfeitos. Qualquer outra remoção segue normal. As ações da fila que o status cancelou só
+// voltam se o mestre pedir (restoreCancelledActions, giveBackLocked); sem o pedido, continuam
+// canceladas. O chamador segura r.mu (escrita).
+func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) (kept []statuseffect.Write, undone map[uuid.UUID]bool) {
 	turnID := r.openTurnIDLocked()
 	if turnID == uuid.Nil {
-		return writes
+		return writes, nil
 	}
 	w, ok := r.pendingTurns[turnID]
 	if !ok {
-		return writes
+		return writes, nil
 	}
-	kept := writes[:0:0]
+	kept = writes[:0:0]
 	for _, op := range writes {
 		if !op.Delete || !appliedIn(w.statusEffects, op.Effect.ID) {
 			kept = append(kept, op)
 			continue
 		}
+		if undone == nil {
+			undone = map[uuid.UUID]bool{}
+		}
+		undone[op.Effect.ID] = true
 		rest := w.statusEffects[:0:0]
 		for _, p := range w.statusEffects {
 			if p.Effect.ID != op.Effect.ID {
@@ -120,7 +126,77 @@ func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) []statuseffe
 		w.statusEffects = rest
 		purgeEffectFromTurnLocked(w, op.Effect.ID)
 	}
-	return kept
+	return kept, undone
+}
+
+// restoredNotice é uma ação que voltou à fila, como o enqueue a anuncia: o action_queued do
+// mestre (montado sob r.mu) e o dono, que recebe o action_enqueued.
+type restoredNotice struct {
+	queued ActionQueuedPayload
+	owner  uuid.UUID
+}
+
+// giveBackLocked é o lado da sala do inverso de aplicar um status no turno aberto (D3). Para
+// cada efeito removido: o registro do desfazer dele (turnWrites.statusCancels) é apagado, com
+// pedido ou sem; e só quando o efeito foi DESFEITO agora (undone — aplicado neste mesmo turno)
+// e o mestre pediu (restore), as ações que ele tirou da fila voltam por
+// RestoreCancelledByStatus, que as revalida contra a sessão de agora — o status já saiu dela. A
+// devolvida apaga o próprio cancelamento (forgetRestored): nada dela é gravado no fechamento.
+// O status não marca troca (sem swapMarks no DropRefusedByStatus), então não há marca a tirar.
+// Fora da janela do desfazer não há o que devolver e o pedido é ignorado.
+//
+// Devolve os anúncios das devolvidas e as recusas (só ao mestre). O chamador segura r.mu
+// (escrita), na MESMA seção crítica da remoção e do desfazer, e r.session não é nil.
+func (r *Room) giveBackLocked(removed []uuid.UUID, undone map[uuid.UUID]bool, restore bool) (
+	notices []restoredNotice, refusals []matchsession.RestoreRefusal,
+) {
+	turnID := r.openTurnIDLocked()
+	if turnID == uuid.Nil {
+		return nil, nil
+	}
+	w, ok := r.pendingTurns[turnID]
+	if !ok {
+		return nil, nil
+	}
+	owners := r.session.GetCharToPlayer()
+	for _, effectID := range removed {
+		rec, ok := w.statusCancels[effectID]
+		delete(w.statusCancels, effectID)
+		if !ok || !restore || !undone[effectID] {
+			continue
+		}
+		restored, refused := r.session.RestoreCancelledByStatus(rec.actions)
+		refusals = append(refusals, refused...)
+		ids := make(map[uuid.UUID]bool, len(restored))
+		for _, a := range restored {
+			ids[a.GetID()] = true
+			notices = append(notices, restoredNotice{
+				queued: r.newActionQueuedPayloadLocked(r.session, a),
+				owner:  owners[a.GetActorID().String()],
+			})
+		}
+		w.forgetRestored(ids)
+	}
+	return notices, refusals
+}
+
+// cancelledActionIDsLocked é o cancelledActionIds que o mestre vê em effectID: o que ele tirou
+// da fila no turno aberto, enquanto um desfazer ainda pode devolver — só para um efeito aplicado
+// neste turno. nil fora disso. O chamador segura r.mu (leitura basta).
+func (r *Room) cancelledActionIDsLocked(effectID uuid.UUID) []uuid.UUID {
+	turnID := r.openTurnIDLocked()
+	if turnID == uuid.Nil {
+		return nil
+	}
+	w, ok := r.pendingTurns[turnID]
+	if !ok || !appliedIn(w.statusEffects, effectID) {
+		return nil
+	}
+	var out []uuid.UUID
+	for _, a := range w.statusCancels[effectID].actions {
+		out = append(out, a.GetID())
+	}
+	return out
 }
 
 // purgeEffectFromTurnLocked tira effectID (um Escondido desfeito) de todo registro do turno

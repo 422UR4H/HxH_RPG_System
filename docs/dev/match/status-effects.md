@@ -193,7 +193,34 @@ sentada que sai sem substituta → a action do turno); **relink** (`relink_statu
 efeito aplicado neste mesmo turno) apaga todas as gravações e eventos pendentes dele e tira o id
 dele de `hidden_from` das ações/eventos do turno (`purgeEffectFromTurnLocked`: nas ações, a
 entrada do personagem sai inteira); as ações da fila
-que ele cancelou continuam canceladas. Depois do fechamento o histórico é definitivo.
+que ele cancelou continuam canceladas, a não ser que o mestre peça a devolução (abaixo). Depois
+do fechamento o histórico é definitivo.
+
+**Devolver o que o status cancelou (D3, dono do produto 2026-11-20).** Quando
+`dropRefusedByStatusLocked` tira ações da fila com turno aberto, o turno guarda o **registro do
+desfazer** (`turnWrites.statusCancels`): efeito → as `*action.Action` que saíram, em ordem de
+remoção, atribuídas a todo efeito do personagem que a mesma mudança aplicou ou editou (atribuir a
+mais é seguro: a devolução revalida). O registro morre com o turno (fechamento, reinício,
+`end_match`): depois dele não há o que devolver nem ponteiro velho. O mestre o vê em
+`cancelledActionIds` (só efeito aplicado no turno). No `remove_status_effect`, o registro do
+efeito é sempre apagado; só quando `undoInTurnAppliesLocked` desfaz esse efeito **e** veio
+`restoreCancelledActions`, `giveBackLocked` chama `MatchSession.RestoreCancelledByStatus` — na
+**mesma seção crítica de `r.mu`** da remoção e do desfazer, depois de o status sair da sessão.
+A sessão **revalida, nunca repete**: ator na partida; id ainda não na fila (idempotente);
+`statusBlock` dos status de agora; um movimento só volta no fim da cadeia em que estava (base
+empilhada na fila e sendo o fim dela; cabeça sem outro movimento pendente — nunca meia cadeia,
+nunca garfo). A aceita entra com id, dados e velocidade (`activeQueue.Insert`, fim da fila), e
+`reseatForStatus` refaz as reações; a recusada volta com motivo em português (`restore_refused`,
+só ao mestre). Cada devolvida apaga o seu registro em `turnWrites.cancelledActions` e sai do
+registro de todo efeito (`forgetRestored`). O cancelamento por status não marca troca (sem
+`swapMarks`), então não há marca a desfazer; as edições do mestre na ação enfileirada, que o
+cancelamento descartou (`discardEdits`), não voltam. O anúncio é o do enqueue: `action_queued`
+ao mestre e `action_enqueued` ao dono.
+
+**A regra do ctrl+Z.** O inverso de aplicar um status no turno aberto é o desfazer com
+`restoreCancelledActions` (`undoInTurnAppliesLocked` + `RestoreCancelledByStatus`). Um futuro
+ctrl+Z deve chamar este caminho, nunca escrever a sua própria reversão: a reversão revalida
+contra o estado de agora, sob `r.mu`, e recusa com motivo o que não cabe mais.
 
 **Horários reais.** O turno guarda a abertura (`Turn.GetOpenedAt`, relógio da sala, µs):
 `turns.created_at` é ela; cada reação ganha `actions.opened_at` (NULL = nunca aberta). A regra de

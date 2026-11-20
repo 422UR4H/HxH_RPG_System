@@ -48,6 +48,11 @@ type Effect struct {
 	// pendente no turno aberto (a action ou a reação a que ela pertence). Ausente sem turno
 	// aberto, sem mudança nele ou sem âncora; o histórico nunca a põe.
 	TurnActionID *uuid.UUID `json:"turnActionId,omitempty"`
+	// CancelledActionIDs é só da sala e só do mestre, com o mesmo corte do TurnActionID: as
+	// ações da fila que ESTE efeito tirou no turno aberto e que um remove_status_effect com
+	// restoreCancelledActions ainda pode devolver (D3). Ausente fora da janela do desfazer (efeito
+	// não aplicado neste turno, sem turno aberto, depois do fechamento); o histórico nunca o põe.
+	CancelledActionIDs []uuid.UUID `json:"cancelledActionIds,omitempty"`
 }
 
 // From é o efeito no fio, sem Visibility nem Public (quem é mestre as põe).

@@ -1594,6 +1594,10 @@ type EditStatusEffectPayload struct {
 type RemoveStatusEffectPayload struct {
 	StatusEffectID uuid.UUID  `json:"statusEffectId"`
 	ActionID       *uuid.UUID `json:"actionId,omitempty"`
+	// RestoreCancelledActions pede, ao desfazer no turno aberto um efeito aplicado nele, que as
+	// ações da fila que ele cancelou voltem (D3), revalidadas. Fora da janela do desfazer é
+	// ignorado: não há o que devolver. Ausente = false.
+	RestoreCancelledActions bool `json:"restoreCancelledActions,omitempty"`
 }
 
 // RelinkStatusEffectPayload é o relink_status_effect: ActionID nil (ou null) = a mudança é do

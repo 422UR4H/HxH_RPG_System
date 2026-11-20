@@ -2539,9 +2539,10 @@ func (r *Room) persistClosedTurn(
 	closedIn *roundentity.Round, damaged []matchsession.DamagedCharacter,
 ) {
 	act := t.GetAction()
-	// O turnActionId que o mestre vê some com o fechamento: depois de soltar persistMu, a vista
-	// dele é refeita para os personagens com mudança ancorada no turno (registrado antes do
-	// Unlock abaixo, os defers rodam ao contrário).
+	// O turnActionId e o cancelledActionIds que o mestre vê somem com o fechamento: depois de
+	// soltar persistMu, a vista dele é refeita para os personagens com mudança ancorada ou com
+	// registro do desfazer no turno (registrado antes do Unlock abaixo, os defers rodam ao
+	// contrário).
 	var anchored []uuid.UUID
 	defer func() { r.syncStatusViews(anchored) }()
 	r.persistMu.Lock()
@@ -2577,7 +2578,8 @@ func (r *Room) persistClosedTurn(
 	// own transaction, or lost with it.
 	r.followAnchorsLocked()
 	inTurn := r.takeTurnWritesLocked(t.GetID())
-	anchored = anchoredChars(inTurn.statusEffects)
+	// O cancelledActionIds também: o registro do desfazer morre com o turno.
+	anchored = append(anchoredChars(inTurn.statusEffects), inTurn.statusCancelChars()...)
 	// Para quem cada reator estava Escondido: o da abertura, ou — reação nunca aberta — agora,
 	// no fechamento. Só as reações com alguém seguem para a gravação.
 	reactionHiddenFrom := r.closedReactionsHiddenFromLocked(t, inTurn.reactionHiddenFrom)

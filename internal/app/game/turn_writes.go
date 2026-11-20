@@ -2,10 +2,12 @@ package game
 
 import (
 	"log"
+	"slices"
 
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -48,6 +50,73 @@ type turnWrites struct {
 	// dela (recordOpenedReactionMoveViews). A entrada existe (mesmo nil) para toda reação aberta:
 	// é o que diz ao fechamento que ela já foi registrada; a que nunca abriu é registrada lá.
 	reactionHiddenFrom map[uuid.UUID]appmatch.HiddenFrom
+	// statusCancels é o registro do desfazer (D3): por efeito aplicado ou editado neste turno, as
+	// ações da fila que a mudança dele tirou (dropRefusedByStatusLocked), em ordem de remoção. É
+	// o que um remove_status_effect com restoreCancelledActions devolve (giveBackLocked). Morre
+	// com o turno — fechamento, reinício, end_match —, então nenhum ponteiro velho sobrevive a
+	// ele; nunca é gravado.
+	statusCancels map[uuid.UUID]statusCancel
+}
+
+// statusCancel são as ações da fila que um efeito tirou no turno aberto, do personagem dele. Os
+// ponteiros são os que saíram da fila: depois do DropRefusedByStatus só este registro os segura
+// (o registro de cancelamento guarda uma cópia), então voltar com eles é seguro.
+type statusCancel struct {
+	charID  uuid.UUID
+	actions []*action.Action
+}
+
+// noteStatusCancel registra que effectID (de charID) tirou acts da fila no turno w.
+func (w *turnWrites) noteStatusCancel(effectID, charID uuid.UUID, acts []*action.Action) {
+	if w.statusCancels == nil {
+		w.statusCancels = map[uuid.UUID]statusCancel{}
+	}
+	rec := w.statusCancels[effectID]
+	rec.charID = charID
+	rec.actions = append(rec.actions, acts...)
+	w.statusCancels[effectID] = rec
+}
+
+// forgetRestored tira do turno o que o cancelamento de cada ação devolvida deixou: o registro
+// em cancelledActions (nada dela é gravado no fechamento) e a entrada dela no registro do
+// desfazer de qualquer efeito (ela não pode ser devolvida duas vezes).
+func (w *turnWrites) forgetRestored(ids map[uuid.UUID]bool) {
+	if len(ids) == 0 {
+		return
+	}
+	kept := w.cancelledActions[:0:0]
+	for _, rec := range w.cancelledActions {
+		if !ids[rec.UUID] {
+			kept = append(kept, rec)
+		}
+	}
+	w.cancelledActions = kept
+	for effectID, rec := range w.statusCancels {
+		acts := rec.actions[:0:0]
+		for _, a := range rec.actions {
+			if !ids[a.GetID()] {
+				acts = append(acts, a)
+			}
+		}
+		if len(acts) == 0 {
+			delete(w.statusCancels, effectID)
+			continue
+		}
+		rec.actions = acts
+		w.statusCancels[effectID] = rec
+	}
+}
+
+// statusCancelChars são os personagens com registro do desfazer — o cancelledActionIds que o
+// mestre vê deles some quando o turno fecha.
+func (w *turnWrites) statusCancelChars() []uuid.UUID {
+	var out []uuid.UUID
+	for _, rec := range w.statusCancels {
+		if !slices.Contains(out, rec.charID) {
+			out = append(out, rec.charID)
+		}
+	}
+	return out
 }
 
 // openTurnIDLocked is the session's open turn, uuid.Nil when there is none (or no session).
