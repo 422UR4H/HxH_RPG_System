@@ -62,6 +62,15 @@ type IStatusEffectEventLister interface {
 	LatestListings(ctx context.Context, effectIDs []uuid.UUID) (map[uuid.UUID]statuseffect.Audience, error)
 }
 
+// IStatusEffectRevealReader lê as revelações do mestre: para cada efeito, a última (MAX em todas
+// as partidas); um efeito nunca revelado não aparece. É uma interface à parte do
+// IStatusEffectEventLister porque é outra tabela e outro assunto (o comando de revelar a grava),
+// e assim as implementações e os fakes de eventos não mudam. A implementação real é
+// pgstatuseffect.Repository.
+type IStatusEffectRevealReader interface {
+	RevealedAt(ctx context.Context, effectIDs []uuid.UUID) (map[uuid.UUID]time.Time, error)
+}
+
 // GetMatchHistoryUC is the read side of the Action History — a game surface with per-field
 // visibility, not a log. Authorization mirrors GetMatchParticipantsUC exactly (public match, or
 // master, or a campaign participant); the only thing this use case adds on top is running the
@@ -83,9 +92,8 @@ type GetMatchHistoryUC struct {
 	cancelledActions ICancelledActionLister
 	// statusEvents pode ser nil: nenhum evento de status entra.
 	statusEvents IStatusEffectEventLister
-	// reveals diz até quando o mestre revelou cada efeito; nil = nada revelado (as revelações
-	// chegam na Task 16, que só liga os dados aqui).
-	reveals statuseffect.RevealLookup
+	// revealReader pode ser nil: nada é revelado (falha fechada).
+	revealReader IStatusEffectRevealReader
 }
 
 func NewGetMatchHistoryUC(
@@ -109,6 +117,12 @@ func NewGetMatchHistoryUC(
 // WithStatusEffectEvents liga a leitura dos eventos de status; nil = nenhum.
 func (uc *GetMatchHistoryUC) WithStatusEffectEvents(l IStatusEffectEventLister) *GetMatchHistoryUC {
 	uc.statusEvents = l
+	return uc
+}
+
+// WithStatusEffectReveals liga a leitura das revelações do mestre; nil = nada revelado.
+func (uc *GetMatchHistoryUC) WithStatusEffectReveals(r IStatusEffectRevealReader) *GetMatchHistoryUC {
+	uc.revealReader = r
 	return uc
 }
 
@@ -158,6 +172,14 @@ func (uc *GetMatchHistoryUC) Get(
 		return nil, err
 	}
 
+	// Os eventos de status, a última lista e as revelações de cada efeito que o histórico
+	// nomeia são lidos AQUI, uma vez por requisição, antes de projetar a árvore: as revelações
+	// valem tanto para a regra dos eventos (R2) quanto para o escondido dos turnos (R4).
+	sd, err := uc.readStatusData(ctx, matchUUID, scenes)
+	if err != nil {
+		return nil, err
+	}
+
 	// Never nil, even when scenes itself already is not (FindMatchHistory's own doc): an
 	// explicit make keeps this true regardless of what the gateway returns, so an empty
 	// history marshals as [] on the wire, not null.
@@ -173,7 +195,7 @@ func (uc *GetMatchHistoryUC) Get(
 			projected[i].Rounds[j] = ro
 			projected[i].Rounds[j].Turns = make([]HistoryTurn, 0, len(ro.Turns))
 			for _, tu := range ro.Turns {
-				pt, ok := uc.projectTurn(tu, viewer, userUUID, cut)
+				pt, ok := uc.projectTurn(tu, viewer, userUUID, cut, sd.reveals)
 				if !ok {
 					continue
 				}
@@ -183,7 +205,7 @@ func (uc *GetMatchHistoryUC) Get(
 		}
 	}
 
-	if err := uc.stitch(ctx, matchUUID, projected, viewer, userUUID, cut); err != nil {
+	if err := uc.stitch(ctx, matchUUID, projected, viewer, userUUID, cut, sd); err != nil {
 		return nil, err
 	}
 	return &GetMatchHistoryResult{Scenes: projected}, nil
@@ -219,6 +241,7 @@ func concealedFrom(m HiddenFrom, c, reader uuid.UUID, at time.Time, reveals stat
 // (ConcealedBy). Os registros de quem estava Escondido nunca saem daqui.
 func (uc *GetMatchHistoryUC) projectTurn(
 	tu HistoryTurn, viewer service.Viewer, userUUID uuid.UUID, cut concealment,
+	reveals statuseffect.RevealLookup,
 ) (HistoryTurn, bool) {
 	cut.stored[tu.Action.GetID()] = tu.UUID
 	for _, re := range tu.Reactions {
@@ -227,7 +250,7 @@ func (uc *GetMatchHistoryUC) projectTurn(
 	// O instante de cada registro é o real: a abertura do turno para a action e os alvos; a da
 	// reação para o reator — a nunca aberta foi registrada no fechamento.
 	concealedAt := func(m HiddenFrom, c uuid.UUID, at time.Time) bool {
-		return !viewer.IsMaster && !viewer.Owns[c] && concealedFrom(m, c, userUUID, at, uc.reveals)
+		return !viewer.IsMaster && !viewer.Owns[c] && concealedFrom(m, c, userUUID, at, reveals)
 	}
 	concealed := func(m HiddenFrom, c uuid.UUID) bool { return concealedAt(m, c, tu.CreatedAt) }
 	reactionAt := func(id uuid.UUID) time.Time {
@@ -295,7 +318,7 @@ func (uc *GetMatchHistoryUC) projectTurn(
 	pt.ActionHiddenFrom, pt.ReactionHiddenFrom = nil, nil
 	pt.ConcealedBy = nil
 	if viewer.IsMaster {
-		pt.ConcealedBy = concealedEffects(tu, uc.reveals)
+		pt.ConcealedBy = concealedEffects(tu, reveals)
 	}
 	pt.MasterActions = make([]masteraction.Record, 0)
 	pt.StatusEffects = make([]HistoryStatusEffect, 0)
@@ -448,7 +471,7 @@ func shownReactionMovesFor(tu HistoryTurn, viewer service.Viewer, userUUID uuid.
 // birth (EnsureSceneAndRound), so this is drift, and there is no place in the tree to show it.
 func (uc *GetMatchHistoryUC) stitch(
 	ctx context.Context, matchUUID uuid.UUID, scenes []HistoryScene,
-	viewer service.Viewer, userUUID uuid.UUID, cut concealment,
+	viewer service.Viewer, userUUID uuid.UUID, cut concealment, sd statusData,
 ) error {
 	var events []matchevent.Event
 	if uc.events != nil {
@@ -474,10 +497,7 @@ func (uc *GetMatchHistoryUC) stitch(
 		}
 		cancelled = recs
 	}
-	statusEvents, latest, err := uc.readStatusEvents(ctx, matchUUID)
-	if err != nil {
-		return err
-	}
+	statusEvents, latest := sd.recs, sd.latest
 	if len(events) == 0 && len(records) == 0 && len(cancelled) == 0 && len(statusEvents) == 0 {
 		return nil
 	}
@@ -560,14 +580,14 @@ func (uc *GetMatchHistoryUC) stitch(
 		// substituída depois) não é âncora: o evento é do turno.
 		se.Event.ActionID = storedAnchor(se.Event, cut)
 		h := statuseffect.HistoryReading{
-			Reader: userUUID, IsMaster: viewer.IsMaster, RevealedAt: uc.reveals,
+			Reader: userUUID, IsMaster: viewer.IsMaster, RevealedAt: sd.reveals,
 			AnchorVisible: se.Event.ActionID == nil || !cut.hidden[*se.Event.ActionID],
 		}
 		h.Latest, h.HasLatest = latest[se.Effect.ID]
 		if !statuseffect.VisibleInHistory(se, h) {
 			continue
 		}
-		hs := statusEventFor(se, viewer.IsMaster, uc.reveals)
+		hs := statusEventFor(se, viewer.IsMaster, sd.reveals)
 		if se.Event.TurnID != nil {
 			if tu, ok := turns[*se.Event.TurnID]; ok {
 				tu.StatusEffects = append(tu.StatusEffects, hs)
@@ -602,34 +622,96 @@ func (uc *GetMatchHistoryUC) stitch(
 	return nil
 }
 
-// readStatusEvents lê os eventos de status da partida e, numa chamada só, a última lista de
-// cada efeito que eles nomeiam. Sem leitor, nada.
-func (uc *GetMatchHistoryUC) readStatusEvents(
-	ctx context.Context, matchUUID uuid.UUID,
-) ([]statuseffect.EventRecord, map[uuid.UUID]statuseffect.Audience, error) {
-	if uc.statusEvents == nil {
-		return nil, nil, nil
-	}
-	recs, err := uc.statusEvents.ListEventsByMatch(ctx, matchUUID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(recs) == 0 {
-		return nil, nil, nil
-	}
-	seen := make(map[uuid.UUID]bool, len(recs))
-	ids := make([]uuid.UUID, 0, len(recs))
-	for _, r := range recs {
-		if !seen[r.Effect.ID] {
-			seen[r.Effect.ID] = true
-			ids = append(ids, r.Effect.ID)
+// statusData é o que a requisição leu sobre os efeitos de status: os eventos da partida, a
+// última lista de cada efeito e as revelações do mestre (nil = nada revelado).
+type statusData struct {
+	recs    []statuseffect.EventRecord
+	latest  map[uuid.UUID]statuseffect.Audience
+	reveals statuseffect.RevealLookup
+}
+
+// readStatusData lê os eventos de status da partida e, numa chamada só cada, a última lista dos
+// efeitos que eles nomeiam e a última revelação de todo efeito que o histórico usa: os dos
+// eventos, os Escondidos de HiddenFrom deles e os dos hidden_from das actions e reações da
+// árvore. Sem o leitor de revelações, nada é revelado. A sentinela uuid.Nil (linha ilegível,
+// escondida de todos) nunca entra: nunca é revelável.
+func (uc *GetMatchHistoryUC) readStatusData(
+	ctx context.Context, matchUUID uuid.UUID, scenes []HistoryScene,
+) (statusData, error) {
+	var sd statusData
+	if uc.statusEvents != nil {
+		recs, err := uc.statusEvents.ListEventsByMatch(ctx, matchUUID)
+		if err != nil {
+			return statusData{}, err
+		}
+		if len(recs) > 0 {
+			seen := make(map[uuid.UUID]bool, len(recs))
+			ids := make([]uuid.UUID, 0, len(recs))
+			for _, r := range recs {
+				if !seen[r.Effect.ID] {
+					seen[r.Effect.ID] = true
+					ids = append(ids, r.Effect.ID)
+				}
+			}
+			latest, err := uc.statusEvents.LatestListings(ctx, ids)
+			if err != nil {
+				return statusData{}, err
+			}
+			sd.recs, sd.latest = recs, latest
 		}
 	}
-	latest, err := uc.statusEvents.LatestListings(ctx, ids)
-	if err != nil {
-		return nil, nil, err
+	if uc.revealReader == nil {
+		return sd, nil
 	}
-	return recs, latest, nil
+
+	need := map[uuid.UUID]bool{}
+	add := func(id uuid.UUID) {
+		if id != uuid.Nil {
+			need[id] = true
+		}
+	}
+	addMap := func(m HiddenFrom) {
+		for _, players := range m {
+			for _, eff := range players {
+				add(eff)
+			}
+		}
+	}
+	for _, r := range sd.recs {
+		add(r.Effect.ID)
+		for _, eff := range r.Event.HiddenFrom {
+			add(eff)
+		}
+	}
+	for _, sc := range scenes {
+		for _, ro := range sc.Rounds {
+			for _, tu := range ro.Turns {
+				addMap(tu.ActionHiddenFrom)
+				for _, m := range tu.ReactionHiddenFrom {
+					addMap(m)
+				}
+			}
+		}
+	}
+	if len(need) == 0 {
+		return sd, nil
+	}
+	ids := make([]uuid.UUID, 0, len(need))
+	for id := range need {
+		ids = append(ids, id)
+	}
+	at, err := uc.revealReader.RevealedAt(ctx, ids)
+	if err != nil {
+		return statusData{}, err
+	}
+	sd.reveals = func(id uuid.UUID) (time.Time, bool) {
+		if id == uuid.Nil {
+			return time.Time{}, false
+		}
+		t, ok := at[id]
+		return t, ok
+	}
+	return sd, nil
 }
 
 // storedAnchor é a âncora do evento quando ela nomeia uma action/reação gravada do turno dele;
@@ -662,7 +744,11 @@ func statusEventFor(se statuseffect.EventRecord, isMaster bool, reveals statusef
 	}
 	if isMaster {
 		public := se.Event.Listing.Everyone
+		// Coberto pela revelação do próprio efeito ou do Escondido que o escondeu de alguém.
 		revealed := reveals.Covers(se.Effect.ID, se.Event.HappenedAt)
+		for _, hid := range se.Event.HiddenFrom {
+			revealed = revealed || reveals.Covers(hid, se.Event.HappenedAt)
+		}
 		out.Public, out.Revealed = &public, &revealed
 	} else {
 		out.Effect.Audience = nil

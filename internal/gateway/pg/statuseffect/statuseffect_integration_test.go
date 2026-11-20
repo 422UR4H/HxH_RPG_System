@@ -633,3 +633,92 @@ func TestLatestListings(t *testing.T) {
 		}
 	})
 }
+
+func TestReveals(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgstatuseffect.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("revealed at is the max across matches and rows", func(t *testing.T) {
+		f := newEventFixture(t, pool, "rv1")
+		master := pgtest.InsertTestUser(t, pool, "gm-rv1b", "gm-rv1b@test.com", "pass")
+		campaign := pgtest.InsertTestCampaign(t, pool, master, "Camp rv1b")
+		matchB := uuid.MustParse(pgtest.InsertTestMatch(t, pool, master, campaign, "B"))
+		eff, other := uuid.New(), uuid.New()
+		t0 := now()
+		for _, r := range []struct {
+			m  uuid.UUID
+			id uuid.UUID
+			at time.Time
+		}{
+			{f.match, eff, t0}, {matchB, eff, t0.Add(time.Hour)}, {f.match, eff, t0.Add(time.Minute)},
+			{f.match, other, t0.Add(2 * time.Hour)},
+		} {
+			if err := repo.InsertReveal(ctx, r.m, r.id, r.at); err != nil {
+				t.Fatalf("insert: %v", err)
+			}
+		}
+		got, err := repo.RevealedAt(ctx, []uuid.UUID{eff, uuid.New()})
+		if err != nil {
+			t.Fatalf("revealed at: %v", err)
+		}
+		if len(got) != 1 || !got[eff].Equal(t0.Add(time.Hour)) {
+			t.Fatalf("got %v, want only the effect at t0+1h", got)
+		}
+	})
+
+	t.Run("empty input is a non-nil empty map", func(t *testing.T) {
+		got, err := repo.RevealedAt(ctx, nil)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+
+	t.Run("cascade with the match", func(t *testing.T) {
+		f := newEventFixture(t, pool, "rv2")
+		eff := uuid.New()
+		if err := repo.InsertReveal(ctx, f.match, eff, now()); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM matches WHERE uuid = $1`, f.match); err != nil {
+			t.Fatalf("delete match: %v", err)
+		}
+		got, err := repo.RevealedAt(ctx, []uuid.UUID{eff})
+		if err != nil || len(got) != 0 {
+			t.Fatalf("got %v, %v, want the reveal gone with its match", got, err)
+		}
+	})
+}
+
+func TestHasEventInMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgstatuseffect.NewRepository(pool)
+	ctx := context.Background()
+
+	f := newEventFixture(t, pool, "he1")
+	master := pgtest.InsertTestUser(t, pool, "gm-he1b", "gm-he1b@test.com", "pass")
+	campaign := pgtest.InsertTestCampaign(t, pool, master, "Camp he1b")
+	matchB := uuid.MustParse(pgtest.InsertTestMatch(t, pool, master, campaign, "B"))
+	e := prone(f.sheet, now())
+	if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: f.event(statuseffect.ChangeApplied, now())}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	for _, c := range []struct {
+		name  string
+		match uuid.UUID
+		eff   uuid.UUID
+		want  bool
+	}{
+		{"event in the match", f.match, e.ID, true},
+		{"same effect, another match", matchB, e.ID, false},
+		{"unknown effect", f.match, uuid.New(), false},
+		{"nil effect", f.match, uuid.Nil, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := repo.HasEventInMatch(ctx, c.match, c.eff)
+			if err != nil || got != c.want {
+				t.Fatalf("got %v, %v, want %v", got, err, c.want)
+			}
+		})
+	}
+}

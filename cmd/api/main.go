@@ -228,9 +228,10 @@ func main() {
 	getMatchParticipantsUC := match.NewGetMatchParticipantsUC(matchRepo, characterSheetRepo)
 	getMatchHistoryUC := match.NewGetMatchHistoryUC(
 		matchRepo, roundRepo, characterSheetRepo, matchEventRepo, masterActionRepo, cancelledActionRepo,
-	).WithStatusEffectEvents(statusEffectRepo)
+	).WithStatusEffectEvents(statusEffectRepo).WithStatusEffectReveals(statusEffectRepo)
 	addMatchNPCUC := match.NewAddMatchNPCUC(matchRepo, characterSheetRepo, matchRepo)
 	removeMatchNPCUC := match.NewRemoveMatchNPCUC(matchRepo, matchRepo)
+	revealStatusEffectUC := match.NewRevealStatusEffectUC(matchRepo, statusEffectRepo, statusEffectRepo)
 
 	matchesApi := matchHandler.Api{
 		CreateMatchHandler:               matchHandler.CreateMatchHandler(createMatchUC),
@@ -244,6 +245,7 @@ func main() {
 		GetMatchHistoryHandler:           matchHandler.GetMatchHistoryHandler(getMatchHistoryUC),
 		AddMatchNPCHandler:               matchHandler.AddMatchNPCHandler(addMatchNPCUC),
 		RemoveMatchNPCHandler:            matchHandler.RemoveMatchNPCHandler(removeMatchNPCUC),
+		RevealStatusEffectHandler:        matchHandler.RevealStatusEffectHandler(revealStatusEffectUC),
 	}
 
 	submitCharacterSheetUC := submission.NewSubmitCharacterSheetUC(
