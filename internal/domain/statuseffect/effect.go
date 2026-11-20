@@ -100,6 +100,9 @@ func cloneAudience(a *Audience) *Audience {
 type Write struct {
 	Delete bool
 	Effect Effect
+	// Event é o registro desta mudança no histórico, gravado na mesma operação; nil = nada a
+	// registrar.
+	Event *Event
 }
 
 // Draft é o pedido de aplicação de um efeito.

@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	pgstatuseffect "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/statuseffect"
@@ -286,4 +288,348 @@ func Full(sheet uuid.UUID, at time.Time, ctrl uuid.UUID) []statuseffect.Write {
 			e.Audience = &statuseffect.Audience{Everyone: true}
 		}),
 	}
+}
+
+// eventFixture monta mestre, jogador, ficha e partida para os testes de evento.
+type eventFixture struct {
+	player, sheet, match uuid.UUID
+}
+
+func newEventFixture(t *testing.T, pool *pgxpool.Pool, tag string) eventFixture {
+	t.Helper()
+	pgtest.TruncateAll(t, pool)
+	master := pgtest.InsertTestUser(t, pool, "gm-"+tag, "gm-"+tag+"@test.com", "pass")
+	player := pgtest.InsertTestUser(t, pool, "pl-"+tag, "pl-"+tag+"@test.com", "pass")
+	campaign := pgtest.InsertTestCampaign(t, pool, master, "Camp "+tag)
+	match := pgtest.InsertTestMatch(t, pool, master, campaign, "Match "+tag)
+	sheet := pgtest.InsertTestCharacterSheet(t, pool, &player, nil, nil, "Gon")
+	return eventFixture{player: uuid.MustParse(player), sheet: uuid.MustParse(sheet), match: uuid.MustParse(match)}
+}
+
+func (f eventFixture) event(change statuseffect.Change, at time.Time) *statuseffect.Event {
+	return &statuseffect.Event{
+		ID: uuid.New(), Change: change, MatchID: f.match, SceneID: uuid.New(), RoundID: uuid.New(),
+		Listing:    statuseffect.Audience{Everyone: true},
+		Views:      map[uuid.UUID]masteraction.View{f.player: masteraction.ViewFull},
+		HappenedAt: at,
+	}
+}
+
+func countEvents(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM status_effect_events`).Scan(&n); err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	return n
+}
+
+func TestWriteEvents(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgstatuseffect.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("event rides its op", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev1")
+		at := now()
+		ctrl := uuid.New()
+		e := statuseffect.Effect{
+			ID: uuid.New(), CharacterID: f.sheet, Kind: statuseffect.KindControlled,
+			Params: statuseffect.Params{ControllerID: &ctrl}, Alias: "marionete",
+			Audience:  &statuseffect.Audience{Players: []uuid.UUID{f.player}},
+			AppliedAt: at, UpdatedAt: at,
+		}
+		ev := f.event(statuseffect.ChangeApplied, at)
+		ev.Listing = statuseffect.Audience{Players: []uuid.UUID{}}
+		action, hid := uuid.New(), uuid.New()
+		other := uuid.New()
+		ev.ActionID = &action
+		ev.HiddenFrom = map[uuid.UUID]uuid.UUID{other: hid}
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: ev}}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, err := repo.ListEventsByMatch(ctx, f.match)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("events = %d, want 1", len(got))
+		}
+		if !reflect.DeepEqual(got[0].Effect, e) {
+			t.Errorf("snapshot = %+v, want %+v", got[0].Effect, e)
+		}
+		want := *ev
+		if !reflect.DeepEqual(got[0].Event, want) {
+			t.Errorf("event = %+v, want %+v", got[0].Event, want)
+		}
+		if got[0].Event.TurnID != nil {
+			t.Errorf("turn = %v, want nil", got[0].Event.TurnID)
+		}
+		if live, _ := repo.ListBySheets(ctx, []uuid.UUID{f.sheet}); len(live[f.sheet]) != 1 {
+			t.Errorf("effect row missing: %+v", live)
+		}
+	})
+
+	t.Run("no hidden_from and no action are stored as NULL and read as nil", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev1b")
+		ev := f.event(statuseffect.ChangeApplied, now())
+		ev.HiddenFrom = map[uuid.UUID]uuid.UUID{} // vazio grava NULL, como ausente
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(f.sheet, now()), Event: ev}}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		var hiddenNull, actionNull bool
+		if err := pool.QueryRow(ctx,
+			`SELECT hidden_from IS NULL, action_uuid IS NULL FROM status_effect_events`).Scan(&hiddenNull, &actionNull); err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if !hiddenNull || !actionNull {
+			t.Fatalf("hidden_from NULL=%v action_uuid NULL=%v, want both SQL NULL", hiddenNull, actionNull)
+		}
+		got, _ := repo.ListEventsByMatch(ctx, f.match)
+		if len(got) != 1 || got[0].Event.HiddenFrom != nil || got[0].Event.ActionID != nil {
+			t.Fatalf("got %+v", got)
+		}
+	})
+
+	t.Run("a failing op writes no event", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev2")
+		bad := statuseffect.Effect{ID: uuid.New(), CharacterID: f.sheet,
+			Kind: statuseffect.Kind(strings.Repeat("x", 40)), AppliedAt: now(), UpdatedAt: now()}
+		err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())},
+			{Effect: bad, Event: f.event(statuseffect.ChangeApplied, now())},
+		})
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		if n := countEvents(t, pool); n != 0 {
+			t.Fatalf("events = %d, want 0", n)
+		}
+	})
+
+	t.Run("a skipped sheet skips its event", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev3")
+		gone := prone(uuid.New(), now())
+		err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: gone, Event: f.event(statuseffect.ChangeApplied, now())},
+			{Delete: true, Effect: gone, Event: f.event(statuseffect.ChangeRemoved, now())},
+			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())},
+		})
+		if err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if n := countEvents(t, pool); n != 1 {
+			t.Fatalf("events = %d, want 1 (only the live sheet)", n)
+		}
+	})
+
+	t.Run("a deleted match skips its event", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev3b")
+		ev := f.event(statuseffect.ChangeApplied, now())
+		ev.MatchID = uuid.New()
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: prone(f.sheet, now()), Event: ev}}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if n := countEvents(t, pool); n != 0 {
+			t.Fatalf("events = %d, want 0", n)
+		}
+	})
+
+	t.Run("a repeated event id is ignored", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev4")
+		w := statuseffect.Write{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())}
+		if err := repo.Write(ctx, []statuseffect.Write{w}); err != nil {
+			t.Fatalf("first: %v", err)
+		}
+		if err := repo.Write(ctx, []statuseffect.Write{w}); err != nil {
+			t.Fatalf("second: %v", err)
+		}
+		if n := countEvents(t, pool); n != 1 {
+			t.Fatalf("events = %d, want 1", n)
+		}
+	})
+
+	t.Run("runs inside an outer transaction", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ev5")
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := pgstatuseffect.NewRepository(tx).Write(ctx, []statuseffect.Write{
+			{Effect: prone(f.sheet, now()), Event: f.event(statuseffect.ChangeApplied, now())}}); err != nil {
+			t.Fatalf("write in tx: %v", err)
+		}
+		if err := tx.Rollback(ctx); err != nil {
+			t.Fatalf("rollback: %v", err)
+		}
+		if n := countEvents(t, pool); n != 0 {
+			t.Fatalf("events = %d, want 0", n)
+		}
+	})
+}
+
+func TestListEventsByMatch(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgstatuseffect.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("orders by happened_at then seq", func(t *testing.T) {
+		f := newEventFixture(t, pool, "le1")
+		at := now()
+		e := prone(f.sheet, at)
+		late := f.event(statuseffect.ChangeEdited, at.Add(time.Minute))
+		first := f.event(statuseffect.ChangeApplied, at)
+		second := f.event(statuseffect.ChangeEdited, at) // mesmo instante: vale a ordem de gravação
+		if err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: e, Event: late}, {Effect: e, Event: first}, {Effect: e, Event: second},
+		}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, err := repo.ListEventsByMatch(ctx, f.match)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		if len(got) != 3 || got[0].Event.ID != first.ID || got[1].Event.ID != second.ID || got[2].Event.ID != late.ID {
+			t.Fatalf("order wrong: %+v", got)
+		}
+	})
+
+	t.Run("only that match", func(t *testing.T) {
+		f := newEventFixture(t, pool, "le2")
+		master := pgtest.InsertTestUser(t, pool, "gm-le2b", "gm-le2b@test.com", "pass")
+		campaign := pgtest.InsertTestCampaign(t, pool, master, "Camp le2b")
+		otherMatch := uuid.MustParse(pgtest.InsertTestMatch(t, pool, master, campaign, "Other"))
+		mine := f.event(statuseffect.ChangeApplied, now())
+		theirs := f.event(statuseffect.ChangeApplied, now())
+		theirs.MatchID = otherMatch
+		if err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: prone(f.sheet, now()), Event: mine},
+			{Effect: statuseffect.Effect{ID: uuid.New(), CharacterID: f.sheet, Kind: statuseffect.KindAirborne,
+				AppliedAt: now(), UpdatedAt: now()}, Event: theirs},
+		}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, err := repo.ListEventsByMatch(ctx, f.match)
+		if err != nil || len(got) != 1 || got[0].Event.ID != mine.ID {
+			t.Fatalf("got %+v, %v", got, err)
+		}
+	})
+
+	t.Run("removed keeps its snapshot", func(t *testing.T) {
+		f := newEventFixture(t, pool, "le3")
+		e := statuseffect.Effect{ID: uuid.New(), CharacterID: f.sheet, Kind: statuseffect.KindBleeding,
+			Params: statuseffect.Params{HPPerRound: 2}, Alias: "corte", AppliedAt: now(), UpdatedAt: now()}
+		if err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: e, Event: f.event(statuseffect.ChangeApplied, now())},
+			{Delete: true, Effect: e, Event: f.event(statuseffect.ChangeRemoved, now().Add(time.Second))},
+		}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, err := repo.ListEventsByMatch(ctx, f.match)
+		if err != nil || len(got) != 2 {
+			t.Fatalf("got %+v, %v", got, err)
+		}
+		if got[1].Event.Change != statuseffect.ChangeRemoved || !reflect.DeepEqual(got[1].Effect, e) {
+			t.Fatalf("removed = %+v, want snapshot %+v", got[1], e)
+		}
+		if live, _ := repo.ListBySheets(ctx, []uuid.UUID{f.sheet}); len(live[f.sheet]) != 0 {
+			t.Fatalf("effect row still there: %+v", live)
+		}
+	})
+
+	t.Run("an undecodable row is skipped", func(t *testing.T) {
+		f := newEventFixture(t, pool, "le4")
+		good := f.event(statuseffect.ChangeApplied, now())
+		bad := f.event(statuseffect.ChangeApplied, now())
+		if err := repo.Write(ctx, []statuseffect.Write{
+			{Effect: prone(f.sheet, now()), Event: good}, {Effect: prone(f.sheet, now()), Event: bad},
+		}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE status_effect_events SET views = '[1]' WHERE uuid = $1`, bad.ID); err != nil {
+			t.Fatalf("corrupt: %v", err)
+		}
+		got, err := repo.ListEventsByMatch(ctx, f.match)
+		if err != nil || len(got) != 1 || got[0].Event.ID != good.ID {
+			t.Fatalf("got %+v, %v", got, err)
+		}
+	})
+
+	t.Run("no events is an empty list", func(t *testing.T) {
+		f := newEventFixture(t, pool, "le5")
+		got, err := repo.ListEventsByMatch(ctx, f.match)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+}
+
+func TestLatestListings(t *testing.T) {
+	pool := pgtest.SetupTestDB(t)
+	repo := pgstatuseffect.NewRepository(pool)
+	ctx := context.Background()
+
+	t.Run("latest across matches", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ll1")
+		master := pgtest.InsertTestUser(t, pool, "gm-ll1b", "gm-ll1b@test.com", "pass")
+		campaign := pgtest.InsertTestCampaign(t, pool, master, "Camp ll1b")
+		matchB := uuid.MustParse(pgtest.InsertTestMatch(t, pool, master, campaign, "B"))
+		e := prone(f.sheet, now())
+		inA := f.event(statuseffect.ChangeApplied, now())
+		inA.Listing = statuseffect.Audience{Players: []uuid.UUID{}}
+		inB := f.event(statuseffect.ChangeEdited, now().Add(time.Minute))
+		inB.MatchID = matchB
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: inA}, {Effect: e, Event: inB}}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, err := repo.LatestListings(ctx, []uuid.UUID{e.ID, uuid.New()})
+		if err != nil {
+			t.Fatalf("latest: %v", err)
+		}
+		if len(got) != 1 || !got[e.ID].Everyone {
+			t.Fatalf("got %+v, want everyone for the effect only", got)
+		}
+	})
+
+	t.Run("same happened_at resolved by seq", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ll2")
+		at := now()
+		e := prone(f.sheet, at)
+		a := f.event(statuseffect.ChangeApplied, at)
+		b := f.event(statuseffect.ChangeEdited, at)
+		b.Listing = statuseffect.Audience{Players: []uuid.UUID{f.player}}
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: a}, {Effect: e, Event: b}}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, err := repo.LatestListings(ctx, []uuid.UUID{e.ID})
+		if err != nil {
+			t.Fatalf("latest: %v", err)
+		}
+		if l := got[e.ID]; l.Everyone || len(l.Players) != 1 || l.Players[0] != f.player {
+			t.Fatalf("got %+v, want [player]", l)
+		}
+	})
+
+	t.Run("an empty list round-trips as master only", func(t *testing.T) {
+		f := newEventFixture(t, pool, "ll3")
+		e := prone(f.sheet, now())
+		ev := f.event(statuseffect.ChangeApplied, now())
+		ev.Listing = statuseffect.Audience{Players: []uuid.UUID{}}
+		if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: ev}}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		got, _ := repo.LatestListings(ctx, []uuid.UUID{e.ID})
+		l, ok := got[e.ID]
+		if !ok || l.Everyone || l.Players == nil || len(l.Players) != 0 {
+			t.Fatalf("got %+v (%v), want players []", l, ok)
+		}
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		got, err := repo.LatestListings(ctx, nil)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
 }

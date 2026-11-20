@@ -71,6 +71,84 @@ func (r *Room) hiddenFromLocked(pid uuid.UUID, charID uuid.UUID) bool {
 	return false
 }
 
+// hiddenEffectOfLocked é o efeito Escondido de charID, se ele tem um (um por personagem: é a
+// identidade do tipo). O chamador segura r.mu (leitura basta).
+func (r *Room) hiddenEffectOfLocked(charID uuid.UUID) (uuid.UUID, bool) {
+	if r.session == nil {
+		return uuid.Nil, false
+	}
+	for _, e := range r.session.StatusEffectsOf(charID) {
+		if e.Kind == statuseffect.KindHidden {
+			return e.ID, true
+		}
+	}
+	return uuid.Nil, false
+}
+
+// hiddenFromMapLocked são os jogadores da sessão (conectados ou não; nunca o mestre nem o
+// dono) para quem charID está Escondido agora, com o id do efeito Escondido. nil quando
+// ninguém. O chamador segura r.mu (leitura basta).
+func (r *Room) hiddenFromMapLocked(charID uuid.UUID) map[uuid.UUID]uuid.UUID {
+	hid, ok := r.hiddenEffectOfLocked(charID)
+	if !ok {
+		return nil
+	}
+	var out map[uuid.UUID]uuid.UUID
+	for _, pid := range r.session.PlayerIDs() {
+		if !r.hiddenFromLocked(pid, charID) {
+			continue
+		}
+		if out == nil {
+			out = make(map[uuid.UUID]uuid.UUID)
+		}
+		out[pid] = hid
+	}
+	return out
+}
+
+// sessionSightLocked é o retrato de quem enxerga cada personagem da sessão: personagem →
+// jogador da sessão (conectado ou não; o mestre fora) → seesCharacterLocked. O "antes" do
+// histórico de uma mudança de status. O chamador segura r.mu (leitura basta).
+func (r *Room) sessionSightLocked() map[uuid.UUID]map[uuid.UUID]bool {
+	if r.session == nil {
+		return nil
+	}
+	players := r.session.PlayerIDs()
+	out := make(map[uuid.UUID]map[uuid.UUID]bool)
+	for key := range r.session.GetCharToPlayer() {
+		charID, err := uuid.Parse(key)
+		if err != nil {
+			continue
+		}
+		seen := make(map[uuid.UUID]bool, len(players))
+		for _, pid := range players {
+			if pid != r.masterUUID && r.seesCharacterLocked(pid, charID) {
+				seen[pid] = true
+			}
+		}
+		out[charID] = seen
+	}
+	return out
+}
+
+// sessionHiddenFromLocked é hiddenFromMapLocked de todo personagem com efeitos: o "antes" do
+// HiddenFrom de um evento. O chamador segura r.mu (leitura basta).
+func (r *Room) sessionHiddenFromLocked() map[uuid.UUID]map[uuid.UUID]uuid.UUID {
+	if r.session == nil {
+		return nil
+	}
+	var out map[uuid.UUID]map[uuid.UUID]uuid.UUID
+	for _, charID := range r.session.CharactersWithStatusEffects() {
+		if m := r.hiddenFromMapLocked(charID); m != nil {
+			if out == nil {
+				out = make(map[uuid.UUID]map[uuid.UUID]uuid.UUID)
+			}
+			out[charID] = m
+		}
+	}
+	return out
+}
+
 // pieceHiddenForLocked é o predicado de toda porta da névoa: "esta peça está escondida para
 // pid". Dois motivos à parte: a peça está com visible:false (global, gravado com o tabuleiro)
 // ou o personagem dela está Escondido para pid (por jogador, nunca escrito em Visible). O

@@ -396,6 +396,25 @@ func (s *MatchSession) HasReactionOnOpenTurn(charID uuid.UUID) bool {
 	return false
 }
 
+// IsOpenTurnAction diz se id é a action do turno aberto ou uma das reações dele (anexada,
+// aberta ou sentada) — o que um evento de status pode nomear como âncora. false sem turno
+// aberto.
+func (s *MatchSession) IsOpenTurnAction(id uuid.UUID) bool {
+	t := s.openTurn()
+	if t == nil || id == uuid.Nil {
+		return false
+	}
+	if t.ActionRef().GetID() == id {
+		return true
+	}
+	for _, r := range t.GetReactions() {
+		if r.GetID() == id {
+			return true
+		}
+	}
+	return false
+}
+
 // openTurn é o turno aberto agora; nil sem round, sem turno ou com o último já fechado.
 func (s *MatchSession) openTurn() *turn.Turn {
 	if s.activeRound == nil {

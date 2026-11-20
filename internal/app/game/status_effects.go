@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -21,6 +23,11 @@ import (
 // repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
 // passa por aqui — é status_effect_invalid, como o domínio o diz.
 var errStatusPayload = errors.New("invalid status effect payload")
+
+// errStatusActionID recusa uma âncora (actionId) que não é a action do turno aberto nem uma
+// reação dela — ou qualquer âncora sem turno aberto. É status_effect_invalid.
+var errStatusActionID = fmt.Errorf("%w: actionId precisa ser a ação do turno aberto ou uma reação dela",
+	statuseffect.ErrInvalidParams)
 
 func statusPayloadErr(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", errStatusPayload, fmt.Sprintf(format, a...))
@@ -202,8 +209,8 @@ func (r *Room) handleApplyStatusEffect(client *Client, raw json.RawMessage) {
 		return
 	}
 	in := appmatch.ApplyStatusEffectInput{CharacterIDs: p.CharacterIDs, Draft: draft}
-	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
-		return r.deps.StatusEffectsUC.Apply(s, r.masterUUID, client.userUUID, in, r.now())
+	r.runStatusEffectChange(client, p.ActionID, func(s *matchsession.MatchSession, now time.Time) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Apply(s, r.masterUUID, client.userUUID, in, now)
 	})
 }
 
@@ -222,8 +229,8 @@ func (r *Room) handleEditStatusEffect(client *Client, raw json.RawMessage) {
 		r.refuseStatusEffect(client, err)
 		return
 	}
-	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
-		return r.deps.StatusEffectsUC.Edit(s, r.masterUUID, client.userUUID, p.StatusEffectID, patch, r.now())
+	r.runStatusEffectChange(client, p.ActionID, func(s *matchsession.MatchSession, now time.Time) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Edit(s, r.masterUUID, client.userUUID, p.StatusEffectID, patch, now)
 	})
 }
 
@@ -237,15 +244,18 @@ func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 		client.SendMessage(NewErrorMessage("invalid_payload", "invalid remove_status_effect payload"))
 		return
 	}
-	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
+	r.runStatusEffectChange(client, p.ActionID, func(s *matchsession.MatchSession, _ time.Time) (appmatch.StatusEffectChange, error) {
 		return r.deps.StatusEffectsUC.Remove(s, r.masterUUID, client.userUUID, p.StatusEffectID)
 	})
 }
 
-// runStatusEffectChange roda o caso de uso sob r.mu (a sessão não tem trava própria), segura
-// as gravações e, já sem a trava, manda a cada um a lista nova que ele vê.
+// runStatusEffectChange roda o caso de uso sob r.mu (a sessão não tem trava própria), carimba
+// o evento de histórico de cada gravação (stampStatusEventsLocked), segura as gravações e, já
+// sem a trava, manda a cada um a lista nova que ele vê. actionID (opcional) é a âncora do
+// evento: precisa ser a action do turno aberto ou uma reação dela.
 func (r *Room) runStatusEffectChange(
-	client *Client, op func(*matchsession.MatchSession) (appmatch.StatusEffectChange, error),
+	client *Client, actionID *uuid.UUID,
+	op func(*matchsession.MatchSession, time.Time) (appmatch.StatusEffectChange, error),
 ) {
 	if r.deps.StatusEffectsUC == nil {
 		client.SendMessage(NewErrorMessage("game_error", "status effects are not available"))
@@ -258,16 +268,28 @@ func (r *Room) runStatusEffectChange(
 		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 		return
 	}
+	if actionID != nil && !session.IsOpenTurnAction(*actionID) {
+		r.mu.Unlock()
+		r.refuseStatusEffect(client, errStatusActionID)
+		return
+	}
 	// Quem vê cada peça antes da mudança: um Escondido que entra, sai ou troca de lista tira
 	// ou devolve peças (decisão do dono 6). O retrato é barato (peças × jogadores conectados) e
 	// precisa ser tirado antes do caso de uso, que muda a sessão.
 	before := r.pieceSightLocked()
-	change, err := op(session)
+	// O mesmo para o histórico, por jogador da sessão (conectado ou não): quem enxergava cada
+	// personagem e para quem ele estava Escondido logo antes da mudança.
+	instant := statusInstant{
+		at: r.now().Truncate(time.Microsecond), actionID: actionID,
+		sight: r.sessionSightLocked(), hidden: r.sessionHiddenFromLocked(),
+	}
+	change, err := op(session, instant.at)
 	if err != nil {
 		r.mu.Unlock()
 		r.refuseStatusEffect(client, err)
 		return
 	}
+	r.stampStatusEventsLocked(change.Writes, instant)
 	var after map[uuid.UUID]map[string]bool
 	if change.HiddenChanged {
 		after = r.pieceSightLocked()
@@ -306,6 +328,101 @@ func (r *Room) runStatusEffectChange(
 	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima
 	// já cobriu quem ainda tem efeitos; este cobre o que acabou de ficar sem nenhum.
 	r.syncStatusViews(change.Characters)
+}
+
+// statusInstant é o instante de uma mudança de status, como o histórico o carimba: a hora, a
+// âncora pedida e o retrato de antes da mudança (sight: personagem → jogador → enxergava;
+// hidden: personagem → jogador → efeito Escondido que o escondia dele).
+type statusInstant struct {
+	at       time.Time
+	actionID *uuid.UUID
+	sight    map[uuid.UUID]map[uuid.UUID]bool
+	hidden   map[uuid.UUID]map[uuid.UUID]uuid.UUID
+}
+
+// stampStatusEventsLocked completa o evento que o caso de uso pôs em cada gravação (só a
+// mudança) com o que só a sala sabe: partida, cena, round, turno aberto, âncora, a lista de
+// quem vê já resolvida, quem enxergava o personagem logo antes OU logo depois (mais o dono;
+// o mestre nunca) e para quem ele estava Escondido. Sem cena ou round ativos o evento é
+// descartado (não há onde pendurá-lo) e a gravação do efeito segue sem ele.
+//
+// O chamador segura r.mu (escrita) e r.session não é nil.
+func (r *Room) stampStatusEventsLocked(writes []statuseffect.Write, in statusInstant) {
+	sc, rd := r.session.GetActiveScene(), r.session.GetActiveRound()
+	var turnID *uuid.UUID
+	if id := r.openTurnIDLocked(); id != uuid.Nil {
+		turnID = &id
+	}
+	owners := r.session.GetCharToPlayer()
+	for i := range writes {
+		ev := writes[i].Event
+		if ev == nil {
+			continue
+		}
+		e := writes[i].Effect
+		if sc == nil || rd == nil {
+			log.Printf("evento de status do efeito %s (%s) na partida %s fica fora do histórico: "+
+				"a sessão não tem cena ou round ativos", e.ID, ev.Change, r.matchUUID)
+			writes[i].Event = nil
+			continue
+		}
+		charID := e.CharacterID
+		owner := owners[charID.String()]
+		subject, pcPublic := r.statusSubjectLocked(charID)
+		ev.ID = uuid.New()
+		ev.MatchID, ev.SceneID, ev.RoundID = r.session.GetMatchUUID(), sc.GetID(), rd.GetID()
+		ev.TurnID = cloneUUIDPtr(turnID)
+		ev.ActionID = cloneUUIDPtr(in.actionID)
+		ev.Listing = statuseffect.ResolveListing(e, subject, pcPublic)
+		ev.Views = r.sessionPlayerViewsLocked(owner, func(pid uuid.UUID) (masteraction.View, bool) {
+			return masteraction.ViewFull, in.sight[charID][pid] || r.seesCharacterLocked(pid, charID)
+		})
+		if owner != r.masterUUID && owner != uuid.Nil {
+			ev.Views[owner] = masteraction.ViewFull
+		}
+		ev.HiddenFrom = r.statusHiddenFromLocked(charID, owner, ev.Views, in.hidden[charID])
+		ev.HappenedAt = in.at
+	}
+}
+
+// statusHiddenFromLocked é o HiddenFrom de um evento: os jogadores da sessão (nunca o mestre
+// nem o dono) que não estão em views e para quem o personagem estava Escondido logo depois da
+// mudança — ou, se não mais, logo antes (a remoção do Escondido). nil quando ninguém.
+//
+// O chamador segura r.mu (leitura basta) e r.session não é nil.
+func (r *Room) statusHiddenFromLocked(
+	charID, owner uuid.UUID, views map[uuid.UUID]masteraction.View, before map[uuid.UUID]uuid.UUID,
+) map[uuid.UUID]uuid.UUID {
+	after := r.hiddenFromMapLocked(charID)
+	var out map[uuid.UUID]uuid.UUID
+	for _, pid := range r.session.PlayerIDs() {
+		if pid == r.masterUUID || pid == owner {
+			continue
+		}
+		if _, saw := views[pid]; saw {
+			continue
+		}
+		hid, ok := after[pid]
+		if !ok {
+			hid, ok = before[pid]
+		}
+		if !ok {
+			continue
+		}
+		if out == nil {
+			out = make(map[uuid.UUID]uuid.UUID)
+		}
+		out[pid] = hid
+	}
+	return out
+}
+
+func cloneUUIDPtr(p *uuid.UUID) *uuid.UUID {
+	if p == nil {
+		return nil
+	}
+	id := *p
+	return &id
 }
 
 // holdStatusEffectWritesLocked guarda as gravações de uma mudança e diz se elas devem ser

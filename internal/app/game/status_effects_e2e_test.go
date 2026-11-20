@@ -532,16 +532,19 @@ type fakeStatusEffectStore struct {
 	mu       sync.Mutex
 	writes   [][]statuseffect.Write
 	attempts int
-	fail     error
-	effects  map[uuid.UUID][]statuseffect.Effect
-	listErr  error
-	lists    [][]uuid.UUID
+	// tried é cada chamada a Write, a que falhou inclusive, na ordem.
+	tried   [][]statuseffect.Write
+	fail    error
+	effects map[uuid.UUID][]statuseffect.Effect
+	listErr error
+	lists   [][]uuid.UUID
 }
 
 func (s *fakeStatusEffectStore) Write(_ context.Context, ops []statuseffect.Write) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.attempts++
+	s.tried = append(s.tried, append([]statuseffect.Write(nil), ops...))
 	if s.fail != nil {
 		return s.fail
 	}
@@ -575,6 +578,12 @@ func (s *fakeStatusEffectStore) snapshot() (writes [][]statuseffect.Write, attem
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([][]statuseffect.Write(nil), s.writes...), s.attempts
+}
+
+func (s *fakeStatusEffectStore) triedWrites() [][]statuseffect.Write {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]statuseffect.Write(nil), s.tried...)
 }
 
 func (s *fakeStatusEffectStore) listCalls() [][]uuid.UUID {
