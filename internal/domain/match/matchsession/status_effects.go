@@ -369,6 +369,7 @@ func (s *MatchSession) reseatForStatus(charID uuid.UUID) {
 			t.DropUnopened(r.GetID())
 			s.dropEdits(r.GetID())
 			t.Seat(want)
+			s.noteAnchorMove(t.GetID(), r.GetID(), want.GetID())
 			continue
 		}
 		if statusBlock(sum, live) == nil {
@@ -377,7 +378,9 @@ func (s *MatchSession) reseatForStatus(charID uuid.UUID) {
 		}
 		t.DropUnopened(r.GetID())
 		s.dropEdits(r.GetID())
-		t.Seat(s.seatedReactionFor(charID, r.ReactToID))
+		seat := s.seatedReactionFor(charID, r.ReactToID)
+		t.Seat(seat)
+		s.noteAnchorMove(t.GetID(), r.GetID(), seat.GetID())
 	}
 }
 

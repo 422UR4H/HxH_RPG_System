@@ -1536,6 +1536,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		result, err := r.deps.EditActionUC.Execute(
 			context.Background(), session, r.masterUUID, client.userUUID, ma, escapeLandingEditOf(payload))
 		resAge := r.stampResolutionLocked()
+		// Uma sentada que saiu (o mestre trocou os alvos) passa as âncoras para a action.
+		followed := r.followAnchorsLocked()
 		var requeued ActionQueuedPayload
 		if err == nil && result.Queued {
 			for _, a := range session.PendingActions() {
@@ -1546,6 +1548,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			}
 		}
 		r.mu.Unlock()
+		r.syncStatusViews(followed)
 		if err != nil {
 			client.SendMessage(NewErrorMessage("game_error", err.Error()))
 			return
@@ -2009,6 +2012,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.handleEditStatusEffect(client, incoming.Payload)
 	case MsgTypeRemoveStatusEffect:
 		r.handleRemoveStatusEffect(client, incoming.Payload)
+	case MsgTypeRelinkStatusEffect:
+		r.handleRelinkStatusEffect(client, incoming.Payload)
 
 	case MsgTypeAddNPC:
 		// Puts an NPC into the match mid-game. It lives ALONGSIDE the REST POST /npcs, it does
@@ -2558,6 +2563,11 @@ func (r *Room) persistClosedTurn(
 	closedIn *roundentity.Round, damaged []matchsession.DamagedCharacter,
 ) {
 	act := t.GetAction()
+	// O turnActionId que o mestre vê some com o fechamento: depois de soltar persistMu, a vista
+	// dele é refeita para os personagens com mudança ancorada no turno (registrado antes do
+	// Unlock abaixo, os defers rodam ao contrário).
+	var anchored []uuid.UUID
+	defer func() { r.syncStatusViews(anchored) }()
 	r.persistMu.Lock()
 	defer r.persistMu.Unlock()
 	// Write lock, not read: TakeOverridesFor DRAINS two maps on the session, it does not just
@@ -2589,7 +2599,9 @@ func (r *Room) persistClosedTurn(
 	overrides := session.TakeOverridesFor(t)
 	// What the master did inside this turn, held until now (turnWrites): written in the turn's
 	// own transaction, or lost with it.
+	r.followAnchorsLocked()
 	inTurn := r.takeTurnWritesLocked(t.GetID())
+	anchored = anchoredChars(inTurn.statusEffects)
 	// Para quem cada reator estava Escondido: o da abertura, ou — reação nunca aberta — agora,
 	// no fechamento. Só as reações com alguém seguem para a gravação.
 	reactionHiddenFrom := r.closedReactionsHiddenFromLocked(t, inTurn.reactionHiddenFrom)
@@ -2734,7 +2746,10 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 			ConsumedActionIDs: append([]uuid.UUID{}, reaction.ConsumedActionIDs...),
 		}
 	}
+	// A reação do personagem substituiu a sentada: as âncoras presas a ela a seguem.
+	followed := r.followAnchorsLocked()
 	r.mu.Unlock()
+	r.syncStatusViews(followed)
 	if err != nil {
 		client.SendMessage(NewErrorMessage(actionErrorCode(err), errText))
 		return

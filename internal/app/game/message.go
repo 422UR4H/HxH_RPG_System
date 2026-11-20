@@ -154,6 +154,9 @@ const (
 	MsgTypeApplyStatusEffect  MessageType = "apply_status_effect"
 	MsgTypeEditStatusEffect   MessageType = "edit_status_effect"
 	MsgTypeRemoveStatusEffect MessageType = "remove_status_effect"
+	// Cliente → servidor, só o mestre, só com turno aberto: troca a âncora (actionId; null = do
+	// turno) de toda mudança pendente de um efeito no turno aberto.
+	MsgTypeRelinkStatusEffect MessageType = "relink_status_effect"
 	// Servidor → cliente, projetado por destinatário: a lista INTEIRA que ele vê de um
 	// personagem (quem vê + visão).
 	MsgTypeStatusEffectsUpdated MessageType = "status_effects_updated"
@@ -1585,6 +1588,13 @@ type EditStatusEffectPayload struct {
 type RemoveStatusEffectPayload struct {
 	StatusEffectID uuid.UUID  `json:"statusEffectId"`
 	ActionID       *uuid.UUID `json:"actionId,omitempty"`
+}
+
+// RelinkStatusEffectPayload é o relink_status_effect: ActionID nil (ou null) = a mudança é do
+// turno, sem âncora.
+type RelinkStatusEffectPayload struct {
+	StatusEffectID uuid.UUID  `json:"statusEffectId"`
+	ActionID       *uuid.UUID `json:"actionId"`
 }
 
 // StatusEffectPayload é um efeito como o destinatário o vê (statuswire.Effect). Visibility e

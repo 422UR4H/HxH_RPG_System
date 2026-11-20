@@ -44,6 +44,10 @@ type Effect struct {
 	AppliedAt  time.Time   `json:"appliedAt"`
 	Visibility *Visibility `json:"visibility,omitempty"`
 	Public     *bool       `json:"public,omitempty"`
+	// TurnActionID é só da sala e só do mestre: a âncora da última mudança deste efeito ainda
+	// pendente no turno aberto (a action ou a reação a que ela pertence). Ausente sem turno
+	// aberto, sem mudança nele ou sem âncora; o histórico nunca a põe.
+	TurnActionID *uuid.UUID `json:"turnActionId,omitempty"`
 }
 
 // From é o efeito no fio, sem Visibility nem Public (quem é mestre as põe).

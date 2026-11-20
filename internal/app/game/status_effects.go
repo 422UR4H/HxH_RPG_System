@@ -289,6 +289,8 @@ func (r *Room) runStatusEffectChange(
 		r.refuseStatusEffect(client, err)
 		return
 	}
+	// Remover um efeito aplicado neste mesmo turno desfaz a aplicação: nada dele é gravado.
+	change.Writes = r.undoInTurnAppliesLocked(change.Writes)
 	r.stampStatusEventsLocked(change.Writes, instant)
 	var after map[uuid.UUID]map[string]bool
 	if change.HiddenChanged {
@@ -297,6 +299,8 @@ func (r *Room) runStatusEffectChange(
 	flushNow := r.holdStatusEffectWritesLocked(change.Writes)
 	// O conjunto novo vale já para o que está pendente (decisão 8): na mesma seção crítica.
 	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters)
+	// Uma reação refeita pelo status leva junto as âncoras presas a ela.
+	followed := r.followAnchorsLocked()
 	turnID := session.CurrentTurnID()
 	var res *domainservice.TurnResolution
 	var resAge uint64
@@ -329,7 +333,7 @@ func (r *Room) runStatusEffectChange(
 	}
 	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima
 	// já cobriu quem ainda tem efeitos; este cobre o que acabou de ficar sem nenhum.
-	r.syncStatusViews(change.Characters)
+	r.syncStatusViews(append(append([]uuid.UUID(nil), change.Characters...), followed...))
 }
 
 // statusInstant é o instante de uma mudança de status, como o histórico o carimba: a hora, a
@@ -536,6 +540,7 @@ func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMas
 		}
 		w := statuswire.From(e)
 		if isMaster {
+			w.TurnActionID = r.pendingAnchorLocked(e.ID)
 			vis := statuswire.VisibilityOf(e.Audience)
 			// Público = está na lista de um jogador qualquer, que não é o dono (a visão à parte).
 			public := statuseffect.Listed(e, statuseffect.Viewer{UserID: uuid.Nil}, subject, pcPublic)

@@ -34,6 +34,9 @@ type PiecePositionSource interface {
 }
 
 type MatchSession struct {
+	// anchorMoves são as reações que saíram do turno aberto desde a última vez que a sala as
+	// leu (TakeAnchorMoves), com o que ficou no lugar de cada uma.
+	anchorMoves []AnchorMove
 	matchUUID uuid.UUID
 	// mapUUID is the map the session's board belongs to — set by Room via SetMapUUID once it
 	// knows it (StartMatch/RehydrateSession/loadBoard, from Board.MapUUID). It exists so a
@@ -1399,6 +1402,7 @@ func (s *MatchSession) seatDefaultReactions(t *turn.Turn) {
 		if t.IsSeated(r.GetID()) && !named[r.GetActorID()] {
 			t.Unseat(r.GetID())
 			s.dropEdits(r.GetID())
+			s.noteAnchorMove(t.GetID(), r.GetID(), a.GetID())
 		}
 	}
 	answered := make(map[uuid.UUID]bool, len(named))
@@ -1646,6 +1650,7 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	}
 	if seatedID != uuid.Nil {
 		t.ReplaceSeated(seatedID, r.GetID())
+		s.noteAnchorMove(t.GetID(), seatedID, r.GetID())
 		// Inherited edits were moved to r already; anything left under the seated ID was the
 		// master's edit on a reading the target just replaced with one of their own.
 		s.dropEdits(seatedID)
