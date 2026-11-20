@@ -2645,7 +2645,7 @@ func (r *Room) persistClosedTurn(
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied and the %d action(s) cancelled inside it, "+
 			"nor the HP it applied to %d sheet(s) (character_sheets keep the last close), "+
 			"nor the board it left (match_boards and player_memories keep the last close), "+
-			"nor %d status effect write(s) (kept for the next write): %v",
+			"nem %d gravação(ões) de efeitos de status (continuam pendentes para a próxima gravação): %v",
 			t.GetID(), matchUUID, len(inTurn.masterActions), len(inTurn.cancelledActions), len(statusBars), len(statusOps), err)
 		// The overrides, the turn's master actions and its cancellations were already drained
 		// above and are lost with the turn. That is correct, not a leak to plug:

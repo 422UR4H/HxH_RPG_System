@@ -587,6 +587,8 @@ Dentro de `rounds[].events` o item é `{ uuid, kind: "statusEffect", createdAt, 
 - Um evento preso (`actionId`) a uma ação que o leitor não vê some junto com ela.
 - Falha fechada: um efeito aplicado antes deste recurso (sem eventos) não tem "última lista" e
   não aparece para jogador algum.
+- **Lacuna conhecida:** um evento fora de turno num round que nunca virou linha (reinício antes
+  de a linha do round ser garantida) não tem onde ficar na árvore e sai do histórico, com log.
 
 ### Ações de quem estava Escondido
 
@@ -603,7 +605,8 @@ personagem:
 - **Ator escondido** → o **turno inteiro não existe** para esse leitor: nem `action`, nem
   `reactions`, nem `resolution`. As master actions e os eventos de status desse turno que **não**
   dependem da ação (sem `actionId`) caem para `rounds[].events`, onde o leitor os vê pelas regras
-  de cada um; os presos à ação escondida somem com ela.
+  de cada um; os presos à ação escondida somem com ela. Os que caem **continuam com o `turnId`**
+  (de propósito): o front **não pode assumir que esse turno existe** na árvore deste leitor.
 - **Reator escondido** → aquela **reação é descartada** (e o resultado dele sai da resolução).
 - **Alvo escondido** → o id sai de `action.targetId` e o `targets[]` dele (com golpes e fuga) sai
   da resolução.
@@ -698,7 +701,9 @@ Semântica:
 
 - **Para todos** (por enquanto; revelar a um jogador só é futuro).
 - **Cobre o que aconteceu até o instante da chamada.** O que vier depois do efeito continuar
-  escondido pede outra revelação.
+  escondido pede outra revelação. O instante da revelação é o relógio do servidor da API, e o
+  dos eventos o do servidor do jogo: uns milissegundos de diferença entre os dois podem deixar
+  descoberto um evento carimbado logo depois do clique (outra revelação o cobre).
 - **Cada chamada é uma revelação nova** (insere uma linha em `status_effect_reveals`); repetir
   não dá erro e a mais recente vale. O histórico lê a última por efeito.
 - Funciona **durante e depois** da partida.

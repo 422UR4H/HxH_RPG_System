@@ -1769,6 +1769,9 @@ turno abriu, e só. `actorId`, `actionId` e `action` **saem da mensagem** (a cha
 { "type": "turn_opened", "payload": { "turnId": "55555555-5555-4555-8555-555555555555", "actionType": "", "actorHidden": true } }
 ```
 
+`"actionType": ""` na reduzida é **de propósito**: o tipo da ação também é do ator e não pode
+vazar; a chave continua lá (vazia) para o formato da mensagem não mudar.
+
 Numa mensagem normal `actorHidden` não vem, e `actorId`/`actionId`/`action` estão sempre lá. A
 regra é lida no instante em que a mensagem é montada. Quem recebe a reduzida não tem alvo para
 reagir (a reação padrão sentada continua valendo).
