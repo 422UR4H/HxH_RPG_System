@@ -384,6 +384,84 @@ func (s *MatchSession) reseatForStatus(charID uuid.UUID) {
 	}
 }
 
+// RestoreRefusal é uma ação que RestoreCancelledByStatus não devolveu, com o motivo — em
+// português, mostrado ao mestre.
+type RestoreRefusal struct {
+	ActionID uuid.UUID
+	Reason   string
+}
+
+// RestoreCancelledByStatus devolve à fila ações que DropRefusedByStatus tirou (D3: o mestre
+// desfez, no mesmo turno aberto, o status que as cancelou). Revalida, nunca repete: cada ação é
+// conferida contra a sessão de AGORA, em ordem —
+//
+//   - o ator ainda está na partida;
+//   - nenhuma ação com esse id está na fila (idempotente: uma segunda chamada só recusa);
+//   - os status de agora a permitem (outro status pode continuar recusando);
+//   - um movimento volta só no fim da cadeia em que estava: empilhado, a base dele precisa
+//     estar na fila (ou ter voltado nesta mesma chamada) e ser o fim da cadeia; cabeça, o
+//     personagem não pode ter outro movimento pendente. Nunca meia cadeia, nunca um garfo.
+//
+// A aceita entra no fim da fila com o id, os dados e a velocidade que tinha (as edições do
+// mestre o cancelamento já descartou); depois, as reações não abertas de cada ator são refeitas
+// para o conjunto de agora. A recusada volta com o motivo.
+//
+// O inverso de aplicar um status no turno aberto é o desfazer com restoreCancelledActions
+// (undoInTurnAppliesLocked + RestoreCancelledByStatus). Um futuro ctrl+Z deve chamar este
+// caminho, nunca escrever a sua própria reversão: a reversão revalida contra o estado de agora,
+// sob r.mu, e recusa com motivo o que não cabe mais.
+func (s *MatchSession) RestoreCancelledByStatus(acts []*action.Action) (restored []*action.Action, refused []RestoreRefusal) {
+	var actors []uuid.UUID
+	for _, a := range acts {
+		if a == nil {
+			continue
+		}
+		if reason := s.restoreRefusal(a); reason != "" {
+			refused = append(refused, RestoreRefusal{ActionID: a.GetID(), Reason: reason})
+			continue
+		}
+		s.activeQueue.Insert(a)
+		restored = append(restored, a)
+		if !slices.Contains(actors, a.GetActorID()) {
+			actors = append(actors, a.GetActorID())
+		}
+	}
+	for _, id := range actors {
+		s.reseatForStatus(id)
+	}
+	return restored, refused
+}
+
+// restoreRefusal é o motivo pelo qual a não pode voltar à fila agora; "" = pode.
+func (s *MatchSession) restoreRefusal(a *action.Action) string {
+	actor := a.GetActorID()
+	if _, ok := s.charToPlayer[actor.String()]; !ok {
+		return "o personagem não está mais na partida"
+	}
+	name := s.characterName(actor)
+	if s.IsQueued(a.GetID()) {
+		return fmt.Sprintf("a ação de %s já está na fila", name)
+	}
+	if err := s.StatusRefusal(a); err != nil {
+		return err.Error()
+	}
+	if a.Move == nil {
+		return ""
+	}
+	base := a.Move.StackedOn
+	if base != uuid.Nil && !s.IsQueued(base) {
+		return fmt.Sprintf("o movimento de %s em que ela se apoia não está na fila", name)
+	}
+	tail := uuid.Nil
+	if t := s.MoveChainTail(actor); t != nil {
+		tail = t.GetID()
+	}
+	if tail != base {
+		return fmt.Sprintf("a cadeia de movimentos de %s mudou desde o cancelamento", name)
+	}
+	return ""
+}
+
 // HasReactionOnOpenTurn diz se o personagem tem uma reação no turno aberto — o que uma mudança
 // de status pode ter refeito, e por isso a resolução volta ao mestre.
 func (s *MatchSession) HasReactionOnOpenTurn(charID uuid.UUID) bool {

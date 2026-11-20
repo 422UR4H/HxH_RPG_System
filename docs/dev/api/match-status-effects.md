@@ -258,7 +258,13 @@ efeito com esse id).
 { "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }
 ```
 
-`actionId` é opcional, com a mesma regra de `apply_status_effect`.
+`actionId` é opcional, com a mesma regra de `apply_status_effect`. `restoreCancelledActions`
+(bool, opcional, ausente = `false`) pede que as ações da fila que o efeito cancelou voltem — só
+vale no desfazer no turno (abaixo).
+
+```json
+{ "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "restoreCancelledActions": true } }
+```
 
 **Dispara:** `status_effects_updated` com a lista sem o efeito (vazia se era o único). Remover
 nunca recusa nada novo; reações sentadas como `nothing` por causa do efeito **voltam à padrão
@@ -267,9 +273,37 @@ inteira**.
 **Desfazer no turno.** Remover, com o turno aberto, um efeito **aplicado nesse mesmo turno**
 desfaz a aplicação: nada desse efeito é gravado no fechamento (nem a aplicação, nem edições, nem
 evento `removed` no histórico). Ao vivo é uma remoção como as outras. As ações da fila que o
-efeito já derrubou **continuam canceladas**. Qualquer outra remoção (efeito de antes do turno,
-ou sem turno aberto) é uma remoção normal, gravada (com o turno aberto, no fechamento dele).
-Depois do fechamento não há volta.
+efeito já derrubou **continuam canceladas**, a não ser que o mestre peça a volta delas.
+Qualquer outra remoção (efeito de antes do turno, ou sem turno aberto) é uma remoção normal,
+gravada (com o turno aberto, no fechamento dele). Depois do fechamento não há volta.
+
+**Devolver as ações (`restoreCancelledActions: true`).** Só no desfazer no turno: as ações que
+**este** efeito tirou da fila neste turno (as que o mestre vê em `cancelledActionIds`, [§8](#8-status_effects_updated))
+voltam com o **mesmo id**, os mesmos dados e a mesma velocidade, no fim da fila, na ordem em que
+saíram. O servidor **revalida** cada uma contra o estado de agora e recusa, com motivo, a que não
+cabe mais: outro status ainda a recusa; uma ação com esse id já está na fila; o personagem saiu
+da partida; um movimento empilhado cuja base não está na fila, ou uma cadeia de movimentos que
+seguiu sem ele (nunca volta meia cadeia). As edições do mestre na ação enfileirada não voltam — o
+cancelamento já as tinha descartado. Uma devolvida some do registro de canceladas: **nada dela é
+gravado** em `cancelled_actions` no fechamento.
+
+Fora da janela do desfazer (efeito de antes do turno, sem turno aberto, depois do fechamento) a
+flag é **ignorada** sem erro: não há o que devolver. Sem a flag, as ações continuam canceladas e
+o registro de devolução do efeito é descartado.
+
+**Dispara (devolvidas)**, por ação, as mesmas mensagens de uma ação que entra na fila pelo
+`enqueue_action`: `action_queued` ao **mestre** e `action_enqueued` ao **dono** (o mestre, numa
+ação de NPC, recebe os dois — como quando ele mesmo enfileira). Depois, `bars_updated` e, se o
+personagem tem reação no turno aberto, `resolution_updated` ao mestre. O cliente do dono que
+recebe um `action_enqueued` que não pediu põe a ação de volta em `ownQueue`.
+
+```json
+{ "type": "action_enqueued", "payload": { "actionId": "33333333-3333-4333-8333-333333333333" } }
+```
+
+**Dispara (recusadas)**, por ação, **só ao mestre**: `error` com `code: "restore_refused"` e a
+mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi possível devolver a ação:
+Gon não pode agir: stunned`). A recusada continua cancelada (gravada no fechamento).
 
 **Erros:** `forbidden` · `match_not_started` · `match_already_ended` · `invalid_payload`
 (`statusEffectId` ausente ou nulo) · `status_effect_not_found` · `status_effect_invalid` (`actionId`
@@ -514,6 +548,14 @@ Ordem no fechamento: esse `status_effects_updated` do mestre chega **antes** do
 `character_hp_changed` e do `turn_closed`, na mesma pista direta.
 Os jogadores nunca a recebem; veem a âncora no histórico, depois do fechamento.
 
+**`cancelledActionIds`** (só o mestre, mesmo corte do `turnActionId`, omitido quando não há): os
+ids das ações da fila que **esse** efeito tirou no turno aberto e que um `remove_status_effect`
+com `restoreCancelledActions` ainda pode devolver ([§5](#remove_status_effect)). Só aparece num
+efeito **aplicado neste turno** (a janela do desfazer); some quando o turno fecha (o mesmo
+`status_effects_updated` ao mestre que tira o `turnActionId`) e vem no `match_full_state` do
+mestre. É o gatilho do front para perguntar "devolver?" ao remover o efeito. Uma ação que voltou
+sai da lista. Os jogadores nunca o recebem.
+
 **É a lista INTEIRA** do personagem como o destinatário a vê: **substitua**, nunca acrescente. **Nunca
 `null`**: `[]` = ele não vê mais nenhum. O servidor só manda quando a lista **difere** da última
 que ele enviou àquele destinatário.
@@ -658,6 +700,7 @@ não grava evento algum.
 | `status_effect_exists` | `status effect already applied: <kind>[/<variante>]` | repetição de `(kind, variante)` |
 | `status_effect_not_found` | — | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
 | `blocked_by_status` | `<nick> não pode <o que>: <causa>` | `enqueue_action`, `attach_reaction` |
+| `restore_refused` | `Não foi possível devolver a ação: <motivo>` | `remove_status_effect` com `restoreCancelledActions`, uma por ação recusada, só ao mestre |
 | `game_error` | — | qualquer outra falha |
 
 ## 14. Histórico
@@ -667,5 +710,5 @@ pode vê-las, e esconde as ações de quem estava Escondido de quem não o perce
 inteiro — formato do evento, `actionId` (a causa), regra de visibilidade, "Ações de quem estava
 Escondido" e o endpoint do mestre `POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal`
 — está em [`match-history.md`](match-history.md#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects).
-Do lado do fio WS: `actionId` nos três comandos, `relink_status_effect`, `turnActionId` (só o
-mestre) e o desfazer no turno, em §5 e §8.
+Do lado do fio WS: `actionId` nos três comandos, `relink_status_effect`, `turnActionId` e
+`cancelledActionIds` (só o mestre) e o desfazer no turno (com a devolução das ações), em §5 e §8.

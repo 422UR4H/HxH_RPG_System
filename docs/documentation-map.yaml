@@ -373,7 +373,7 @@ mappings:
         confidence: directly_affected
       - path: docs/dev/api/match-history.md
         confidence: possibly_affected
-    notes: Âncora (actionId) que segue, relink_status_effect, turnActionId do mestre, desfazer no turno
+    notes: Âncora (actionId) que segue, relink_status_effect, turnActionId do mestre, desfazer no turno, devolução das ações canceladas (giveBackLocked, cancelledActionIds)
   - code_path: internal/application/match/reveal_status_effect.go
     dev_docs:
       - path: docs/dev/api/match-history.md
