@@ -285,10 +285,6 @@ const (
 	CancelledActionCutFull CancelledActionCut = "full"
 )
 
-// HistoryTurn is one closed turn: the action that drove it, whatever reactions answered it,
-// the settled collision that resulted, and the master's own actions applied while it was open
-// — not the master's live edits, which are not master actions (they live in
-// overridden_action_values and the history shows the edited action).
 // HiddenFrom é, por personagem, para quem ele estava Escondido no instante, com o id do efeito
 // Escondido: personagem → jogador → efeito. O mestre e o dono nunca entram. Um jogador
 // HiddenFromEveryone esconde o personagem de todo leitor que não é o mestre nem o dono (uma
@@ -299,6 +295,10 @@ type HiddenFrom map[uuid.UUID]map[uuid.UUID]uuid.UUID
 // uuid.Nil, que nenhuma revelação cobre.
 var HiddenFromEveryone = uuid.Nil
 
+// HistoryTurn is one closed turn: the action that drove it, whatever reactions answered it,
+// the settled collision that resulted, and the master's own actions applied while it was open
+// — not the master's live edits, which are not master actions (they live in
+// overridden_action_values and the history shows the edited action).
 type HistoryTurn struct {
 	UUID       uuid.UUID
 	CreatedAt  time.Time

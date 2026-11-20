@@ -241,6 +241,22 @@ func TestGetMatchHistoryHiddenActor(t *testing.T) {
 		}
 	})
 
+	// Sem esconder para trás: um alvo que só ficou Escondido depois da abertura continua em
+	// targetId (o leitor o viu ser alvo); a reação dele e o resultado dele somem.
+	t.Run("a target hidden after the opening keeps its id but loses its reaction and result", func(t *testing.T) {
+		d := deps{turn: turn(ownersPC, npc, npc, nil, map[uuid.UUID]match.HiddenFrom{reactionID: {npc: {reader: hid}}})}
+		_, tu := get(t, d, reader)
+		if tu == nil {
+			t.Fatal("reader: a visible actor's turn is missing")
+		}
+		if !slices.Equal(tu.Action.TargetID, []uuid.UUID{npc}) {
+			t.Fatalf("reader: targetId = %v, want the target seen at the opening", tu.Action.TargetID)
+		}
+		if len(tu.Reactions) != 0 || len(tu.Resolution.CharacterResults) != 0 {
+			t.Fatalf("reader: reactions/results = %d/%d, want both cut", len(tu.Reactions), len(tu.Resolution.CharacterResults))
+		}
+	})
+
 	t.Run("an anchor naming nothing stored belongs to the turn, unanchored", func(t *testing.T) {
 		gone := uuid.New() // uma reação sentada que foi substituída depois
 		s := statusRec(102, &gone, reader)
