@@ -194,7 +194,7 @@ func TestStatusAnchor_Relink(t *testing.T) {
 
 func TestStatusAnchor_TurnActionIDIsTheMasters(t *testing.T) {
 	h := newHiddenTable(t)
-	turnID := h.openPCAttackOnNPC(t)
+	h.openPCAttackOnNPC(t)
 	actionID := lastTurnOpened(t, h.mc).ActionID
 	eff := h.applyAnchored(t, h.f.bystanderID, "prone", actionID)
 	assertAnchor(t, "master", masterAnchorOf(t, h, h.f.bystanderID, eff), actionID)
@@ -225,7 +225,6 @@ func TestStatusAnchor_TurnActionIDIsTheMasters(t *testing.T) {
 			t.Fatal("bystander reconnect got turnActionId")
 		}
 	}
-	_ = turnID
 }
 
 func TestStatusAnchor_TurnActionIDLeavesWithTheClose(t *testing.T) {
@@ -340,4 +339,34 @@ func TestStatusAnchor_FollowsAReseatByStatus(t *testing.T) {
 	chatBarrier(t, h.master, h.mc)
 	assertAnchor(t, "master after the reseat", masterAnchorOf(t, h, h.f.bystanderID, eff), reseated)
 	assertAnchor(t, "close", closeAnchors(t, h, turnID)[eff], reseated)
+}
+
+// Desfazer um Escondido aplicado no turno é "como se nunca tivesse existido": o id dele some de
+// todo registro do turno que será gravado — o hidden_from da action e das reações e o
+// HiddenFrom dos outros eventos do turno.
+func TestStatusAnchor_UndoingAHiddenPurgesItsID(t *testing.T) {
+	h := newHiddenTable(t)
+	turnID := h.openPCAttackOnNPC(t)
+	seated := seatedOf(t, h, h.f.npcID)
+	hid := h.hide(t, h.f.npcID, nil)
+	h.openReaction(t, seated)
+	applyProneAndWait(t, h.master, h.mc, h.f.npcID)
+	before := h.mc.count(game.MsgTypeStatusEffectsUpdated)
+	sendWS(t, h.master, string(game.MsgTypeRemoveStatusEffect), map[string]any{"statusEffectId": hid})
+	awaitStatusCount(t, "master", h.mc, before+1)
+	closeTurnAndWait(t, h.master, h.mc)
+	h.f.awaitPersistedTurn(t, turnID)
+
+	cd := lastClose(t, h.f)
+	if cd.ActionHiddenFrom != nil || len(cd.ReactionHiddenFrom) != 0 {
+		t.Fatalf("hidden from = %v / %v, want no trace of the undone Hidden %s", cd.ActionHiddenFrom, cd.ReactionHiddenFrom, hid)
+	}
+	if len(cd.StatusEffects) != 1 || cd.StatusEffects[0].Event == nil {
+		t.Fatalf("close ops = %v, want only prone's apply", opsOn(cd.StatusEffects))
+	}
+	for pid, eff := range cd.StatusEffects[0].Event.HiddenFrom {
+		if eff == hid {
+			t.Fatalf("prone's event HiddenFrom names the undone Hidden for %s", pid)
+		}
+	}
 }
