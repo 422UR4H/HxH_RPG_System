@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -1539,28 +1540,11 @@ type HiatusTurn struct {
 	ActionKind  string    `json:"actionKind"`
 }
 
-// StatusEffectParamsPayload são os parâmetros de um efeito no fio. Na entrada, ponteiro nil =
-// não informado; na saída, só os campos que o tipo possui, com os padrões já aplicados.
-type StatusEffectParamsPayload struct {
-	Domains      []string          `json:"domains,omitempty"`
-	Injuries     map[string]string `json:"injuries,omitempty"`
-	Level        string            `json:"level,omitempty"`
-	Faces        []string          `json:"faces,omitempty"`
-	Points       *int              `json:"points,omitempty"`
-	HPPerRound   *int              `json:"hpPerRound,omitempty"`
-	Penalty      *int              `json:"penalty,omitempty"`
-	Disadvantage *bool             `json:"disadvantage,omitempty"`
-	Conduct      string            `json:"conduct,omitempty"`
-	Irresistible *bool             `json:"irresistible,omitempty"`
-	ControllerID *uuid.UUID        `json:"controllerId,omitempty"`
-}
+// StatusEffectParamsPayload e StatusEffectVisibilityPayload são a forma do fio compartilhada
+// com o histórico REST (statuswire); os nomes ficam aqui para a sala e seus testes.
+type StatusEffectParamsPayload = statuswire.Params
 
-// StatusEffectVisibilityPayload é a lista de quem vê um efeito. Mode: "default" (padrão do
-// tipo), "public" (todos) ou "players" (PlayerIDs; vazio = só o mestre).
-type StatusEffectVisibilityPayload struct {
-	Mode      string      `json:"mode"`
-	PlayerIDs []uuid.UUID `json:"playerIds,omitempty"`
-}
+type StatusEffectVisibilityPayload = statuswire.Visibility
 
 // ApplyStatusEffectPayload aplica um efeito a um ou mais personagens (tudo ou nada).
 // Visibility ausente = padrão do tipo.
@@ -1588,19 +1572,9 @@ type RemoveStatusEffectPayload struct {
 	StatusEffectID uuid.UUID `json:"statusEffectId"`
 }
 
-// StatusEffectPayload é um efeito como o destinatário o vê. Visibility e Public só vão ao
-// mestre; Public diz se todo jogador está na lista (a visão à parte).
-type StatusEffectPayload struct {
-	ID         uuid.UUID                      `json:"id"`
-	Kind       string                         `json:"kind"`
-	Sense      string                         `json:"sense,omitempty"`
-	Aptitude   string                         `json:"aptitude,omitempty"`
-	Params     StatusEffectParamsPayload      `json:"params"`
-	Alias      string                         `json:"alias,omitempty"`
-	AppliedAt  time.Time                      `json:"appliedAt"`
-	Visibility *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
-	Public     *bool                          `json:"public,omitempty"`
-}
+// StatusEffectPayload é um efeito como o destinatário o vê (statuswire.Effect). Visibility e
+// Public só vão ao mestre.
+type StatusEffectPayload = statuswire.Effect
 
 // StatusEffectsUpdatedPayload é a lista INTEIRA que o destinatário vê do personagem; nunca
 // null (vazia = não vê mais nenhum).
