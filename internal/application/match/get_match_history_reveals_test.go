@@ -263,8 +263,10 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 			}
 		}
 		want(&fakeRevealReader{}, []uuid.UUID{hid1, hid2}, false)
-		want(&fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150)}}, []uuid.UUID{hid2}, true)
-		want(&fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150), hid2: at(150)}}, nil, true)
+		// revelar só o Escondido da HiddenFrom não marca o evento: revealed é do PRÓPRIO efeito
+		want(&fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150)}}, []uuid.UUID{hid2}, false)
+		want(&fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150), hid2: at(150)}}, nil, false)
+		want(&fakeRevealReader{at: map[uuid.UUID]time.Time{eff: at(150)}}, []uuid.UUID{hid1, hid2}, true)
 		// uma revelação anterior ao turno não o cobre: segue na lista
 		want(&fakeRevealReader{at: map[uuid.UUID]time.Time{hid2: at(50), eff: at(50)}}, []uuid.UUID{hid1, hid2}, false)
 	})

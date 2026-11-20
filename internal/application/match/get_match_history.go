@@ -744,11 +744,9 @@ func statusEventFor(se statuseffect.EventRecord, isMaster bool, reveals statusef
 	}
 	if isMaster {
 		public := se.Event.Listing.Everyone
-		// Coberto pela revelação do próprio efeito ou do Escondido que o escondeu de alguém.
+		// Só a revelação do PRÓPRIO efeito conta: é nele que o botão "revelar" age, e revelar o
+		// Escondido não abre a lista de um status secreto.
 		revealed := reveals.Covers(se.Effect.ID, se.Event.HappenedAt)
-		for _, hid := range se.Event.HiddenFrom {
-			revealed = revealed || reveals.Covers(hid, se.Event.HappenedAt)
-		}
 		out.Public, out.Revealed = &public, &revealed
 	} else {
 		out.Effect.Audience = nil
