@@ -1477,6 +1477,10 @@ mappings:
       once it closes. get_match_history.go only ever calls it with settled turns, so in
       practice Feint reaches every viewer of match-history.md, not just owner/master —
       match-history.md's own note here was stale and got corrected in this PR.
+      Alvo Escondido atingido (D2): o alvo que o leitor não percebe continua cortado por
+      inteiro, mas TurnResolution.HiddenTargetsHit conta os golpes que acertaram (não
+      esquivou, aparou nem foi barrado) — só o número, na cópia projetada; wire
+      `hiddenTargetsHit` (omitempty) no resolution_updated e no resolution do histórico.
 
   - code_path: internal/domain/match/entity/battle/blow.go
     dev_docs:

@@ -247,6 +247,26 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 		}
 	})
 
+	// D2: o terceiro jogador não sabe quem foi atingido, só quantos; revelado, volta o resultado real.
+	t.Run("a hidden target that was hit counts anonymously until revealed", func(t *testing.T) {
+		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{npc: {Effect: hid1}})
+		ro := get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, reader)
+		tu := turnByID(ro, turn.id)
+		if tu.Resolution.HiddenTargetsHit != 1 || len(tu.Resolution.CharacterResults) != 0 {
+			t.Fatalf("before: hit/results = %d/%d, want 1/0", tu.Resolution.HiddenTargetsHit, len(tu.Resolution.CharacterResults))
+		}
+		rv := &fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150)}}
+		ro = get(t, []turnSpec{turn}, nil, nil, rv, reader)
+		tu = turnByID(ro, turn.id)
+		if tu.Resolution.HiddenTargetsHit != 0 || len(tu.Resolution.CharacterResults) != 1 {
+			t.Fatalf("after: hit/results = %d/%d, want 0/1", tu.Resolution.HiddenTargetsHit, len(tu.Resolution.CharacterResults))
+		}
+		ro = get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, masterUUID)
+		if tu = turnByID(ro, turn.id); tu.Resolution.HiddenTargetsHit != 0 || len(tu.Resolution.CharacterResults) != 1 {
+			t.Fatalf("master: hit/results = %d/%d, want 0/1", tu.Resolution.HiddenTargetsHit, len(tu.Resolution.CharacterResults))
+		}
+	})
+
 	t.Run("a reveal before a later turn does not cover it", func(t *testing.T) {
 		hf := match.HiddenFrom{ownersPC: {Effect: hid1}}
 		first, second := newTurn(100, ownersPC, pc, hf), newTurn(200, ownersPC, pc, hf)

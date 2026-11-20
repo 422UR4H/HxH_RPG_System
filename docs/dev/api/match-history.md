@@ -298,6 +298,8 @@ Notas sobre `resolution`:
   `locked`, `noRoll`, `notApplicable`). Sem `hp`: a vida da parede mora nas tabelas do mapa, não no
   turno. Uma porta secreta que ninguém tinha visto quando o turno fechou só aparece para o mestre.
   **Ausente** sem parede e em turnos gravados antes deste campo.
+- `hiddenTargetsHit` é a contagem anônima de golpes que acertaram um alvo Escondido que este
+  leitor não percebe (ver "Ações de quem estava Escondido"). Ausente quando nenhum.
 - `conditions` **não existe no histórico.** As condições do mestre em vigor só viajam no
   `resolution_updated` do turno aberto (e no `match_full_state`), para o mestre; gravadas,
   elas ficam dentro da própria ação (tabela `actions`), não numa segunda cópia em
@@ -606,7 +608,12 @@ personagem:
   (de propósito): o front **não pode assumir que esse turno existe** na árvore deste leitor.
 - **Reator escondido** → aquela **reação é descartada** (e o resultado dele sai da resolução).
 - **Alvo escondido** → o id sai de `action.targetId` e o `targets[]` dele (com golpes e fuga) sai
-  da resolução.
+  da resolução. Se o golpe **acertou** esse alvo (não esquivou, aparou nem foi barrado antes na
+  cadeia), `resolution.hiddenTargetsHit` conta quantos: **só o número**, sem id, valor, reação ou
+  posição — o front mostra "Desconhecido 1..N". Golpe que não acertou não deixa rastro (a mesa
+  não pode saber que havia alguém ali). **Ausente** = nenhum; o mestre e o dono do alvo nunca o
+  recebem. Depois da revelação o alvo volta com o resultado real e a contagem cai. Mesmo campo
+  do `resolution_updated` ([`match-combat-ws.md`](match-combat-ws.md#resolution_updated)).
 - **Nada do que foi visto ao vivo se esconde depois.** Quem viu o personagem agir não perde isso
   porque ele ficou Escondido em seguida.
 - **Ampliar a lista do Escondido não revela o passado.** Só a revelação do mestre
