@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -414,9 +415,9 @@ func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMas
 		if !statuseffect.Listed(e, viewer, subject, pcPublic) {
 			continue
 		}
-		w := statusEffectWire(e)
+		w := statuswire.From(e)
 		if isMaster {
-			vis := visibilityWire(e.Audience)
+			vis := statuswire.VisibilityOf(e.Audience)
 			// Público = está na lista de um jogador qualquer, que não é o dono (a visão à parte).
 			public := statuseffect.Listed(e, statuseffect.Viewer{UserID: uuid.Nil}, subject, pcPublic)
 			w.Visibility, w.Public = &vis, &public
@@ -434,84 +435,6 @@ func (r *Room) statusSubjectLocked(charID uuid.UUID) (statuseffect.Subject, bool
 	owner := r.session.GetCharToPlayer()[charID.String()]
 	return statuseffect.Subject{OwnerID: owner, IsNPC: owner == r.masterUUID},
 		r.session.GetRules().PlayerStatusEffectsPublic
-}
-
-func statusEffectWire(e statuseffect.Effect) StatusEffectPayload {
-	return StatusEffectPayload{
-		ID:        e.ID,
-		Kind:      string(e.Kind),
-		Sense:     string(e.Sense),
-		Aptitude:  string(e.Aptitude),
-		Params:    statusParamsWire(e),
-		Alias:     e.Alias,
-		AppliedAt: e.AppliedAt,
-	}
-}
-
-func visibilityWire(a *statuseffect.Audience) StatusEffectVisibilityPayload {
-	switch {
-	case a == nil:
-		return StatusEffectVisibilityPayload{Mode: "default"}
-	case a.Everyone:
-		return StatusEffectVisibilityPayload{Mode: "public"}
-	}
-	return StatusEffectVisibilityPayload{Mode: "players", PlayerIDs: append([]uuid.UUID(nil), a.Players...)}
-}
-
-// statusParamsWire põe no fio todo campo que o tipo possui, e só esses (tabela da Task 2). Um
-// sentido anulado não leva desvantagem nem penalidade.
-func statusParamsWire(e statuseffect.Effect) StatusEffectParamsPayload {
-	p := e.Params
-	intp := func(v int) *int { return &v }
-	boolp := func(v bool) *bool { return &v }
-	var out StatusEffectParamsPayload
-	switch e.Kind {
-	case statuseffect.KindParalyzed:
-		out.Domains = domainsWire(p.Domains)
-		out.Points = intp(p.Points)
-	case statuseffect.KindStupefied, statuseffect.KindStunned:
-		out.Points = intp(p.Points)
-	case statuseffect.KindInjured:
-		out.Injuries = make(map[string]string, len(p.Injuries))
-		for d, l := range p.Injuries {
-			out.Injuries[string(d)] = string(l)
-		}
-	case statuseffect.KindSlowed:
-		out.Penalty = intp(p.Penalty)
-	case statuseffect.KindSense:
-		out.Level = string(p.Level)
-		if p.Level == statuseffect.SenseImpaired {
-			out.Disadvantage = boolp(p.Disadvantage)
-			out.Penalty = intp(p.Penalty)
-		}
-		if e.Sense == statuseffect.SenseTact {
-			for _, f := range p.Faces {
-				out.Faces = append(out.Faces, string(f))
-			}
-		}
-	case statuseffect.KindWeakened:
-		out.Disadvantage = boolp(p.Disadvantage)
-		out.Penalty = intp(p.Penalty)
-	case statuseffect.KindBleeding, statuseffect.KindBurning, statuseffect.KindFreezing, statuseffect.KindPoisoned:
-		out.HPPerRound = intp(p.HPPerRound)
-	case statuseffect.KindCompelled:
-		out.Conduct = p.Conduct
-		out.Irresistible = boolp(p.Irresistible)
-	case statuseffect.KindControlled:
-		if p.ControllerID != nil {
-			id := *p.ControllerID
-			out.ControllerID = &id
-		}
-	}
-	return out
-}
-
-func domainsWire(ds []statuseffect.Domain) []string {
-	out := make([]string, 0, len(ds))
-	for _, d := range ds {
-		out = append(out, string(d))
-	}
-	return out
 }
 
 // ─── envio ──────────────────────────────────────────────────────────────────
