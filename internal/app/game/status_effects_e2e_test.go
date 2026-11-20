@@ -692,8 +692,9 @@ func TestStatusEffects_InsideATurnWaitsForTheClose(t *testing.T) {
 
 	closeTurnAndWait(t, master, mc)
 	f.awaitPersistedTurn(t, turnID)
-	assertOps(t, "close", lastCloseStatusOps(t, f),
-		op(f.bystanderID, "prone"), op(f.npcID, "prone"), "-"+op(f.bystanderID, "prone"))
+	// O prone do terceiro foi aplicado e removido no mesmo turno: a remoção desfaz a aplicação
+	// (Task 15b) e nada dele é gravado.
+	assertOps(t, "close", lastCloseStatusOps(t, f), op(f.npcID, "prone"))
 	if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
 		t.Fatalf("store got %d write(s) (%d attempt(s)), want none — the turn's changes ride its close", len(writes), attempts)
 	}

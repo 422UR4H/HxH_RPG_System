@@ -43,7 +43,8 @@ ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 |---|---|
 | [`apply_status_effect`](#apply_status_effect) | aplica um efeito a um ou mais personagens (tudo ou nada) |
 | [`edit_status_effect`](#edit_status_effect) | troca parâmetros, apelido e/ou lista de quem vê de um efeito |
-| [`remove_status_effect`](#remove_status_effect) | tira um efeito |
+| [`remove_status_effect`](#remove_status_effect) | tira um efeito (aplicado no mesmo turno aberto: desfaz) |
+| [`relink_status_effect`](#relink_status_effect) | troca a âncora (`actionId`) das mudanças de um efeito no turno aberto |
 
 **Servidor → cliente**
 
@@ -263,9 +264,37 @@ efeito com esse id).
 nunca recusa nada novo; reações sentadas como `nothing` por causa do efeito **voltam à padrão
 inteira**.
 
+**Desfazer no turno.** Remover, com o turno aberto, um efeito **aplicado nesse mesmo turno**
+desfaz a aplicação: nada desse efeito é gravado no fechamento (nem a aplicação, nem edições, nem
+evento `removed` no histórico). Ao vivo é uma remoção como as outras. As ações da fila que o
+efeito já derrubou **continuam canceladas**. Qualquer outra remoção (efeito de antes do turno,
+ou sem turno aberto) é uma remoção normal, gravada (com o turno aberto, no fechamento dele).
+Depois do fechamento não há volta.
+
 **Erros:** `forbidden` · `match_not_started` · `match_already_ended` · `invalid_payload`
 (`statusEffectId` ausente ou nulo) · `status_effect_not_found` · `status_effect_invalid` (`actionId`
 sem turno aberto ou fora dele).
+
+### `relink_status_effect`
+
+```json
+{ "type": "relink_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "actionId": "33333333-3333-4333-8333-333333333333" } }
+```
+
+Só o mestre, só com turno aberto. Troca a âncora de **toda** mudança desse efeito ainda pendente
+no turno aberto: `actionId` = a ação do turno ou uma reação dele; `null` (ou ausente) = a
+mudança é do turno, sem âncora. Depois do fechamento o histórico é definitivo.
+
+A âncora também **segue sozinha**: quando a reação sentada de um personagem é substituída pela
+que ele mandou (ou refeita por um status), o que estava preso à sentada passa para a nova; quando
+a sentada sai sem substituta (o mestre trocou os alvos), passa para a ação do turno.
+
+**Dispara:** `status_effects_updated` do personagem **ao mestre**, com o `turnActionId` novo
+(ver [§8](#8-status_effects_updated)) — sempre, mesmo sem mudança.
+
+**Erros:** `forbidden` · `match_not_started` · `invalid_payload` (`statusEffectId` ausente ou
+nulo) · `status_effect_invalid` (sem turno aberto; `actionId` que não é do turno aberto) ·
+`status_effect_not_found` (o efeito não tem mudança neste turno).
 
 ## 6. O que um efeito bloqueia
 
@@ -476,6 +505,12 @@ com a lista que ele vê; o mestre sempre.
   }
 }
 ```
+
+**`turnActionId`** (só o mestre, omitido quando não há): a âncora da última mudança desse efeito
+ainda pendente no turno aberto — a ação ou a reação a que ela pertence. Chega quando muda
+(`apply`/`edit`/`remove` com `actionId`, a âncora que segue a reação, `relink_status_effect`), some
+quando o turno fecha (um `status_effects_updated` ao mestre sem ela) e vem no `match_full_state`.
+Os jogadores nunca a recebem; veem a âncora no histórico, depois do fechamento.
 
 **É a lista INTEIRA** do personagem como o destinatário a vê: **substitua**, nunca acrescente. **Nunca
 `null`**: `[]` = ele não vê mais nenhum. O servidor só manda quando a lista **difere** da última
