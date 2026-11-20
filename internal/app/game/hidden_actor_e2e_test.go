@@ -514,6 +514,20 @@ func lastSettledRaw(t *testing.T, who string, c *collector) []byte {
 	return nil
 }
 
+// actionMarginIn lê o action.margin cru de um resolution_updated (nil = ausente).
+func actionMarginIn(t *testing.T, raw []byte) *int {
+	t.Helper()
+	var p struct {
+		Action struct {
+			Margin *int `json:"margin"`
+		} `json:"action"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatal(err)
+	}
+	return p.Action.Margin
+}
+
 // D2: um alvo Escondido que foi atingido vira só uma contagem anônima para quem não o percebe;
 // o id dele não aparece em lugar nenhum da mensagem. O mestre e o dono recebem o resultado real.
 func TestHiddenTarget_HitReachesAsAnonymousCount(t *testing.T) {
@@ -537,7 +551,20 @@ func TestHiddenTarget_HitReachesAsAnonymousCount(t *testing.T) {
 		t.Fatalf("player: the anonymous count reached the one who perceives the NPC: %s", raw)
 	}
 
+	// A margem do ataque (total - margem = a esquiva do alvo) só existe com um alvo e entregaria o
+	// Escondido: o mestre e quem o percebe a recebem, o terceiro não.
+	mm := actionMarginIn(t, lastSettledRaw(t, "master", h.mc))
+	if mm == nil {
+		t.Fatal("master: a single-target attack has no margin")
+	}
+	if pm := actionMarginIn(t, lastSettledRaw(t, "player", h.pc)); pm == nil || *pm != *mm {
+		t.Fatalf("player: margin = %v, want the master's %d", pm, *mm)
+	}
+
 	raw := lastSettledRaw(t, "bystander", h.bc)
+	if m := actionMarginIn(t, raw); m != nil {
+		t.Fatalf("bystander: action.margin = %d leaks the hidden target's dodge", *m)
+	}
 	if !strings.Contains(string(raw), `"hiddenTargetsHit":1`) {
 		t.Fatalf("bystander: no anonymous count in %s", raw)
 	}

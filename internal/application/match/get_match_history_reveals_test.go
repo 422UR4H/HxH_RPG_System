@@ -51,10 +51,12 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 		opened        int
 		actor, target uuid.UUID
 		hiddenFrom    match.HiddenFrom
+		avoided       bool // o golpe no alvo não acertou
 	}
 	newTurn := func(opened int, actor, target uuid.UUID, hf match.HiddenFrom) turnSpec {
 		return turnSpec{id: uuid.New(), actionID: uuid.New(), opened: opened, actor: actor, target: target, hiddenFrom: hf}
 	}
+	margin := 7 // a margem do ataque de um alvo só (total - margem = a esquiva do alvo)
 	tree := func(s turnSpec) match.HistoryTurn {
 		act := action.NewAction(s.actor, []uuid.UUID{s.target}, uuid.Nil, nil, action.ActionSpeed{},
 			nil, nil, &action.Attack{}, nil, nil, nil, nil, action.WithReconstructedID(s.actionID))
@@ -62,7 +64,8 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 			UUID: s.id, CreatedAt: at(s.opened), FinishedAt: at(s.opened + 5), Action: *act,
 			Resolution: &service.TurnResolution{
 				IsSettled:        true,
-				CharacterResults: []service.CharacterResult{{TargetID: s.target, ReactionKind: "dodge"}},
+				ActionResult:     service.RollResult{Total: 20, Margin: &margin},
+				CharacterResults: []service.CharacterResult{{TargetID: s.target, ReactionKind: "dodge", Avoided: s.avoided}},
 			},
 			ActionHiddenFrom: s.hiddenFrom,
 		}
@@ -264,6 +267,36 @@ func TestGetMatchHistoryReveals(t *testing.T) {
 		ro = get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, masterUUID)
 		if tu = turnByID(ro, turn.id); tu.Resolution.HiddenTargetsHit != 0 || len(tu.Resolution.CharacterResults) != 1 {
 			t.Fatalf("master: hit/results = %d/%d, want 0/1", tu.Resolution.HiddenTargetsHit, len(tu.Resolution.CharacterResults))
+		}
+	})
+
+	// A margem entregaria a esquiva do Escondido (total - margem), até a de quem esquivou: sai
+	// para quem não o percebe, e volta com a revelação. Um alvo visível único mantém a sua.
+	t.Run("a single hidden target that dodged leaves no margin for who does not perceive it", func(t *testing.T) {
+		turn := newTurn(100, ownersPC, npc, match.HiddenFrom{npc: {Effect: hid1}})
+		turn.avoided = true
+		ro := get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, reader)
+		tu := turnByID(ro, turn.id)
+		if tu.Resolution.HiddenTargetsHit != 0 || len(tu.Resolution.CharacterResults) != 0 || tu.Resolution.ActionResult.Margin != nil {
+			t.Fatalf("reader: hit/results/margin = %d/%d/%v, want 0/0/nil",
+				tu.Resolution.HiddenTargetsHit, len(tu.Resolution.CharacterResults), tu.Resolution.ActionResult.Margin)
+		}
+		ro = get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, masterUUID)
+		if m := turnByID(ro, turn.id).Resolution.ActionResult.Margin; m == nil || *m != margin {
+			t.Fatalf("master: margin = %v, want %d", m, margin)
+		}
+		rv := &fakeRevealReader{at: map[uuid.UUID]time.Time{hid1: at(150)}}
+		ro = get(t, []turnSpec{turn}, nil, nil, rv, reader)
+		if m := turnByID(ro, turn.id).Resolution.ActionResult.Margin; m == nil || *m != margin {
+			t.Fatalf("after the reveal: margin = %v, want %d", m, margin)
+		}
+	})
+
+	t.Run("a single visible target keeps its margin", func(t *testing.T) {
+		turn := newTurn(100, ownersPC, pc, nil)
+		ro := get(t, []turnSpec{turn}, nil, nil, &fakeRevealReader{}, reader)
+		if m := turnByID(ro, turn.id).Resolution.ActionResult.Margin; m == nil || *m != margin {
+			t.Fatalf("reader: margin = %v, want %d", m, margin)
 		}
 	})
 

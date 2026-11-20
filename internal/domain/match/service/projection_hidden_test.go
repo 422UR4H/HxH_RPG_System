@@ -173,3 +173,91 @@ func TestProjectResolution_OwnerOfHiddenTargetSeesOwnResult(t *testing.T) {
 		t.Fatalf("hit/results = %d/%d, want 0/1", got.HiddenTargetsHit, len(got.CharacterResults))
 	}
 }
+
+// A margem do ataque (total - margem = a esquiva do alvo) só existe com um alvo e entregaria a
+// esquiva do Escondido, mesmo a de quem esquivou: sai quando algum alvo é cortado.
+func TestProjectResolution_HiddenTargetCut_DropsTheActionMargin(t *testing.T) {
+	seen, hidden := uuid.New(), uuid.New()
+	margin := 5
+	mk := func(cr ...service.CharacterResult) *service.TurnResolution {
+		return &service.TurnResolution{
+			ActionResult:     service.RollResult{Total: 18, Margin: &margin},
+			CharacterResults: cr,
+		}
+	}
+	hiddenV := service.Viewer{Hidden: map[uuid.UUID]bool{hidden: true}}
+
+	t.Run("a single hidden target that dodged leaves no margin", func(t *testing.T) {
+		res := mk(service.CharacterResult{TargetID: hidden, Avoided: true})
+		got := service.ProjectResolution(res, hiddenV)
+		if got.ActionResult.Margin != nil || got.HiddenTargetsHit != 0 {
+			t.Fatalf("margin/hit = %v/%d, want nil/0", got.ActionResult.Margin, got.HiddenTargetsHit)
+		}
+		if got.ActionResult.Total != 18 {
+			t.Fatalf("total = %d, want it untouched", got.ActionResult.Total)
+		}
+		if res.ActionResult.Margin == nil || *res.ActionResult.Margin != 5 {
+			t.Fatal("the projection mutated the source margin")
+		}
+	})
+	t.Run("a single hidden target that was stopped or hit leaves no margin either", func(t *testing.T) {
+		for _, cr := range []service.CharacterResult{
+			{TargetID: hidden, AttackStopped: true}, {TargetID: hidden},
+		} {
+			if got := service.ProjectResolution(mk(cr), hiddenV); got.ActionResult.Margin != nil {
+				t.Fatalf("margin = %v, want nil", *got.ActionResult.Margin)
+			}
+		}
+	})
+	t.Run("the master, the owner and an unrelated single visible target keep it", func(t *testing.T) {
+		for name, v := range map[string]service.Viewer{
+			"master": {IsMaster: true, Hidden: map[uuid.UUID]bool{hidden: true}},
+			"owner":  {Owns: map[uuid.UUID]bool{hidden: true}, Hidden: map[uuid.UUID]bool{hidden: true}},
+		} {
+			got := service.ProjectResolution(mk(service.CharacterResult{TargetID: hidden}), v)
+			if got.ActionResult.Margin == nil || *got.ActionResult.Margin != 5 {
+				t.Fatalf("%s: margin = %v, want 5", name, got.ActionResult.Margin)
+			}
+		}
+		got := service.ProjectResolution(mk(service.CharacterResult{TargetID: seen}), hiddenV)
+		if got.ActionResult.Margin == nil || *got.ActionResult.Margin != 5 {
+			t.Fatalf("visible single target: margin = %v, want 5", got.ActionResult.Margin)
+		}
+	})
+}
+
+func TestProjectResolution_MixedVisibleAndHiddenTargets(t *testing.T) {
+	actor, seen, hit, dodged := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	margin := 3
+	res := &service.TurnResolution{
+		IsSettled:    true,
+		ActionResult: service.RollResult{Total: 15, Margin: &margin},
+		CharacterResults: []service.CharacterResult{
+			{TargetID: seen, ReactionKind: string(action.ReactDodge), EffectiveDamage: 4},
+			{TargetID: hit, EffectiveDamage: 9},
+			{TargetID: dodged, Avoided: true},
+		},
+		Blows: []*battle.Blow{
+			battle.NewBlow(actor, seen, action.Attack{}, nil, nil, nil),
+			battle.NewBlow(actor, hit, action.Attack{}, nil, nil, nil),
+			battle.NewBlow(actor, dodged, action.Attack{}, nil, nil, nil),
+		},
+	}
+	got := service.ProjectResolution(res, service.Viewer{Hidden: map[uuid.UUID]bool{hit: true, dodged: true}})
+	if got.HiddenTargetsHit != 1 {
+		t.Fatalf("HiddenTargetsHit = %d, want exactly 1", got.HiddenTargetsHit)
+	}
+	if len(got.CharacterResults) != 1 || got.CharacterResults[0].TargetID != seen || got.CharacterResults[0].EffectiveDamage != 4 {
+		t.Fatalf("CharacterResults = %+v, want only the visible result", got.CharacterResults)
+	}
+	if len(got.Blows) != 1 || got.Blows[0].GetTargetID() != seen {
+		t.Fatalf("Blows = %d, want only the visible target's", len(got.Blows))
+	}
+	if got.ActionResult.Margin != nil {
+		t.Fatalf("margin = %d, want none", *got.ActionResult.Margin)
+	}
+	if len(res.CharacterResults) != 3 || len(res.Blows) != 3 || res.HiddenTargetsHit != 0 ||
+		res.ActionResult.Margin == nil || *res.ActionResult.Margin != 3 {
+		t.Fatal("the projection mutated the source resolution")
+	}
+}
