@@ -17,7 +17,8 @@ bloqueios**. Tudo o que muda uma rolagem é a fase seguinte (ver "O que não est
 | Carga ao iniciar a partida | `internal/application/match/init_match_session.go` (`WithStatusEffects`) |
 | Gateway | `internal/gateway/pg/statuseffect/` (`ListBySheets`, `Write`); migration `20261117000000_character_status_effects.sql` |
 | Sala: comandos, projeção por destinatário, gravação | `internal/app/game/status_effects.go`, `sight.go`, `room.go`, `master_board.go` |
-| Fio | `internal/app/game/message.go` |
+| Fio | `internal/app/game/message.go`; forma compartilhada sala + histórico REST em `internal/app/wire/statuswire/` |
+| Histórico: eventos, revelações, âncoras | `domain/statuseffect/event.go`; `gateway/pg/statuseffect/{events,reveals}.go`; `application/match/{get_match_history,reveal_status_effect}.go`; sala: `internal/app/game/status_anchor.go` |
 
 O domínio `statuseffect` não importa nada de fora de `domain/entity`, exceto `domain/masteraction` (o `View` das `views` de um evento de histórico, `event.go`).
 
@@ -146,6 +147,45 @@ dos efeitos do NPC. A leitura usa
 `ReplaceStatusEffects`: um status aplicado por um segundo socket entre a inscrição e a leitura
 seria sobrescrito (desprezível).
 
+## Histórico: eventos, listas, revelações e âncoras
+
+Contrato: [`../api/match-history.md`](../api/match-history.md).
+
+**Eventos.** Cada mudança (`applied`/`edited`/`removed`) carrega um `statuseffect.Event`
+(`Write.Event`), carimbado pela sala no instante e gravado **na mesma operação** do efeito
+(`status_effect_events`: `snapshot`, `listing`, `views`, `hidden_from`, `action_uuid`, `seq` para
+desempatar). O caso de uso continua sem I/O. `ResolveListing` resolve a lista do instante (o
+padrão do tipo já aplicado, nunca "padrão"); `views` = jogadores que enxergavam o personagem logo
+antes ou logo depois, mais o dono (o mestre nunca entra).
+
+**Quem vê um evento** é uma regra só, `statuseffect.VisibleInHistory`: mestre; ou (âncora visível
+**e** (revelação do efeito cobre o instante **ou** (leitor em `views`, ou em `hidden_from` com o
+Escondido já revelado, **e** a última lista do efeito inclui o leitor))). A última lista
+(`LatestListings`) vem de qualquer partida; sem evento anterior, nenhuma → falha fechada.
+
+**`hidden_from`** (sala → banco): esparso, `NULL` = ninguém. Em `status_effect_events` é
+`{playerId: hiddenEffectId}` (jogadores para quem o personagem estava Escondido); em
+`actions` é `{charId: {playerId: hiddenEffectId}}` e cobre o ator e cada alvo na linha da action
+(abertura do turno) e o reator na da reação (na abertura dela; nunca aberta, no fechamento).
+Nunca sai no wire.
+
+**Revelações** (`status_effect_reveals`, `reveals.go`): só o REST do mestre insere; o histórico lê
+o `MAX(revealed_at)` por efeito (`RevealedAt`) uma vez por requisição, junto de `LatestListings`.
+`RevealLookup.Covers` = revelado em ou depois do instante. Ampliar a lista nunca revela.
+
+**Âncoras** (`actionId`, a causa; `status_anchor.go` + `matchsession/anchor_moves.go`). Só o mestre
+informa, e só uma action/reação do turno aberto. Enquanto o turno está aberto a sala as mantém
+sob `r.mu`: **seguem** (reação sentada substituída pela do jogador, ou refeita por status → a nova;
+sentada que sai sem substituta → a action do turno); **relink** (`relink_status_effect`) as troca
+à mão; o mestre vê a âncora viva em `turnActionId`. **Desfazer** (`remove_status_effect` de um
+efeito aplicado neste mesmo turno) apaga todas as gravações e eventos pendentes dele e tira o id
+dele de `hidden_from` das ações/eventos do turno (`purgeEffectFromTurnLocked`); as ações da fila
+que ele cancelou continuam canceladas. Depois do fechamento o histórico é definitivo.
+
+**Horários reais.** O turno guarda a abertura (`Turn.GetOpenedAt`, relógio da sala, µs):
+`turns.created_at` é ela; cada reação ganha `actions.opened_at` (NULL = nunca aberta). A regra de
+"escondido" compara a revelação com esses instantes.
+
 ## Limitação: uma ficha viva em duas salas
 
 Cada sala guarda os efeitos **na própria sessão** e grava o que mudou nela. Uma mesma ficha viva
@@ -155,5 +195,6 @@ merge. Não é tratado nesta fase.
 ## O que não está aqui
 
 Rolagens (penalidades, desvantagem, falha automática, Lento, G1), testes automáticos, dano e
-recuperação por round, asfixia, "não usa habilidades" (Nen), histórico (PR 2) e as ações de um
-Escondido em `turn_opened`/resolução (PR 2). Lista no contrato, §10.
+recuperação por round, asfixia, "não usa habilidades" (Nen), revelar a um jogador só (a revelação
+é para todos), push de WS depois de revelar e desfazer depois do fechamento do turno. Lista no
+contrato, §10.

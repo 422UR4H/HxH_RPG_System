@@ -471,7 +471,7 @@ Quando o `hidden` entra, sai ou tem a lista trocada, o servidor manda, nesta ord
 
 Enquanto Escondido, o personagem **não aparece** no `map_full_state` nem em
 `match_full_state.bars`/`statusEffects` de quem não o percebe, e `piece_moved` dele não chega a
-essa pessoa. As **ações** dele durante o Escondido, e o histórico, estão em [§10](#10-o-que-ainda-não-existe).
+essa pessoa. As **ações** dele durante o Escondido chegam reduzidas (`turn_opened`/`reaction_opened`/`openTurn` com `actorHidden`, alvo cortado; ver [`match-combat-ws.md`](match-combat-ws.md#ator-escondido-a-mensagem-reduzida)) e o histórico respeita o que cada um viu ([§14](#14-histórico)).
 
 ### Ordem entre pistas e NPC ao vivo
 
@@ -602,9 +602,8 @@ Para o front não procurar. **Nada disto está no fio**:
   negativo, Inconsciente automático, morte.
 - **Asfixia** e Fadiga: `asphyxiating` existe como rótulo, sem mecânica.
 - **"Não usa habilidades"** (Atônito/Atordoado/Paralisado): espera o Nen (TODO).
-- **Histórico**: entrada, mudança e saída de status e o que é privado ainda **não aparecem** no
-  histórico (REST/WS) — é o PR 2. Idem as **ações de um Escondido** em `turn_opened` e na
-  resolução: o servidor ainda não filtra o ator escondido ali.
+- **Revelar a um jogador só**: a revelação do histórico é **para todos** (ver [§14](#14-histórico)); por jogador é futuro.
+- **Push no WebSocket depois de uma revelação**: não existe; o front relê o histórico.
 - **Endpoint de catálogo** de efeitos: não existe; nomes e sugestões são do front.
 - **Esconder o NPC no REST** de participantes (`GET` de participantes da partida): continua
   listando o NPC; o front precisa lidar com isso até a fase dele.
@@ -639,17 +638,34 @@ partida (e, no NPC inscrito ao vivo, ao inscrevê-lo).
 Uma ficha viva em duas salas (a mesma ficha em duas partidas ao mesmo tempo) guarda duas
 memórias: a última gravação ganha no banco.
 
+**Os eventos do histórico vão nas mesmas gravações.** Cada mudança carrega o seu evento
+(`status_effect_events`), carimbado pela sala no instante: fora de turno é gravado **na hora**,
+junto do efeito; dentro de um turno, **com o fechamento**, na transação dele; uma gravação que
+falha se cura junto com o efeito (o evento volta com os mesmos ids, e uma ficha ou partida
+apagada no meio só o descarta, sem falhar o lote). Desfazer no turno (§5, `remove_status_effect`)
+não grava evento algum.
+
 ## 13. Catálogo de erros desta feature
 
 | `code` | Mensagens | Quando |
 |---|---|---|
-| `forbidden` | `only the master can perform this action` | os três comandos, por jogador |
+| `forbidden` | `only the master can perform this action` | os quatro comandos, por jogador |
 | `match_not_started` | `match session not initialized` | lobby |
 | `match_already_ended` | — | partida encerrada |
 | `invalid_payload` | texto do campo | ver [§5](#apply_status_effect) |
 | `unknown_character` | — | id de ficha fora da sessão |
-| `status_effect_invalid` | texto do erro de domínio | parâmetro/lista inválidos |
+| `status_effect_invalid` | texto do erro de domínio | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
 | `status_effect_exists` | `status effect already applied: <kind>[/<variante>]` | repetição de `(kind, variante)` |
-| `status_effect_not_found` | — | edit/remove de id desconhecido |
+| `status_effect_not_found` | — | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
 | `blocked_by_status` | `<nick> não pode <o que>: <causa>` | `enqueue_action`, `attach_reaction` |
 | `game_error` | — | qualquer outra falha |
+
+## 14. Histórico
+
+O histórico (REST) registra a aplicação, a edição e a remoção de cada efeito, como cada leitor
+pode vê-las, e esconde as ações de quem estava Escondido de quem não o percebia. O contrato
+inteiro — formato do evento, `actionId` (a causa), regra de visibilidade, "Ações de quem estava
+Escondido" e o endpoint do mestre `POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal`
+— está em [`match-history.md`](match-history.md#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects).
+Do lado do fio WS: `actionId` nos três comandos, `relink_status_effect`, `turnActionId` (só o
+mestre) e o desfazer no turno, em §5 e §8.

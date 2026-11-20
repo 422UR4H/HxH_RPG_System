@@ -336,7 +336,81 @@ mappings:
     dev_docs:
       - path: docs/dev/match/status-effects.md
         confidence: directly_affected
-    notes: character_status_effects (audience JSONB anulável), ListBySheets, Write
+    notes: character_status_effects (audience JSONB anulável), ListBySheets, Write; events.go (status_effect_events), reveals.go (status_effect_reveals, InsertReveal/RevealedAt/HasEventInMatch)
+  - code_path: internal/gateway/pg/statuseffect/events.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: Eventos de status gravados com o efeito (snapshot, listing, views, hidden_from, action_uuid), ListEventsByMatch, LatestListings
+  - code_path: internal/gateway/pg/statuseffect/reveals.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: Revelações do mestre (MAX por efeito, em qualquer partida), HasEventInMatch (o 404 do reveal)
+  - code_path: internal/domain/statuseffect/event.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: Event, ResolveListing, VisibleInHistory (regra única de visibilidade), RevealLookup; importa domain/masteraction
+  - code_path: internal/app/wire/statuswire/
+    dev_docs:
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: Forma do efeito no fio, compartilhada pela sala (WS) e pelo histórico REST
+  - code_path: internal/app/game/status_anchor.go
+    dev_docs:
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-history.md
+        confidence: possibly_affected
+    notes: Âncora (actionId) que segue, relink_status_effect, turnActionId do mestre, desfazer no turno
+  - code_path: internal/application/match/reveal_status_effect.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal (só o mestre; 204/403/404)
+  - code_path: internal/app/api/match/reveal_status_effect.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: Handler do reveal
+  - code_path: internal/application/match/get_match_history.go
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: Eventos de status, ações de quem estava Escondido, concealedBy/revealed, horários reais
+  - code_path: migrations/20261118000000_status_effect_events.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: status_effect_events
+  - code_path: migrations/20261118000001_actions_hidden_from.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: actions.hidden_from JSONB esparso (NULL = ninguém), nunca no wire
+  - code_path: migrations/20261119000000_actions_opened_at.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: actions.opened_at (abertura real da reação; turns.created_at passa a ser a abertura do turno)
+  - code_path: migrations/20261120000000_status_effect_reveals.sql
+    dev_docs:
+      - path: docs/dev/api/match-history.md
+        confidence: directly_affected
+    notes: status_effect_reveals (uma linha por comando de revelar)
 
   # ─── Match: Actions ───
   - code_path: internal/domain/match/entity/action/
