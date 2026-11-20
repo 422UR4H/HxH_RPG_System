@@ -179,7 +179,9 @@ e o reator na da reação (na abertura dela; nunca aberta, no fechamento). A sen
 ilegível é o registro zero (efeito `uuid.Nil`, ninguém): esconde de todos e não é revelável. O
 codec é um só (`actioncodec.EncodeHiddenFrom`/`DecodeHiddenFrom`). Nunca sai no wire.
 
-**Revelações** (`status_effect_reveals`, `reveals.go`): só o REST do mestre insere; o histórico lê
+**Revelações** (`status_effect_reveals`, `reveals.go`): só o REST do mestre insere, e só um efeito
+revelável na partida (`RevealableInMatch`: evento em qualquer partida + ficha participante desta —
+um Escondido trazido de outra partida também); o histórico lê
 o `MAX(revealed_at)` por efeito (`RevealedAt`) uma vez por requisição, junto de `LatestListings`.
 `RevealLookup.Covers` = revelado em ou depois do instante. Ampliar a lista nunca revela.
 

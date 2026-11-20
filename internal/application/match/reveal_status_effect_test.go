@@ -25,7 +25,7 @@ type fakeRevealStore struct {
 	hasCalls int
 }
 
-func (f *fakeRevealStore) HasEventInMatch(_ context.Context, _, _ uuid.UUID) (bool, error) {
+func (f *fakeRevealStore) RevealableInMatch(_ context.Context, _, _ uuid.UUID) (bool, error) {
 	f.hasCalls++
 	return f.hasEvent, f.hasErr
 }

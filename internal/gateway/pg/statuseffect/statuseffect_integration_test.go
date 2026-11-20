@@ -690,7 +690,10 @@ func TestReveals(t *testing.T) {
 	})
 }
 
-func TestHasEventInMatch(t *testing.T) {
+// TestRevealableInMatch (revisão final do PR 2, achado 3): um efeito é revelável numa partida
+// quando tem evento em QUALQUER partida e a ficha dele participa desta — um Escondido aplicado
+// na partida A e ainda ativo na B é revelável pelo mestre da B; o de uma ficha fora da B, não.
+func TestRevealableInMatch(t *testing.T) {
 	pool := pgtest.SetupTestDB(t)
 	repo := pgstatuseffect.NewRepository(pool)
 	ctx := context.Background()
@@ -699,6 +702,10 @@ func TestHasEventInMatch(t *testing.T) {
 	master := pgtest.InsertTestUser(t, pool, "gm-he1b", "gm-he1b@test.com", "pass")
 	campaign := pgtest.InsertTestCampaign(t, pool, master, "Camp he1b")
 	matchB := uuid.MustParse(pgtest.InsertTestMatch(t, pool, master, campaign, "B"))
+	matchC := uuid.MustParse(pgtest.InsertTestMatch(t, pool, master, campaign, "C"))
+	// A ficha participa da partida do evento (A) e da B; não da C.
+	pgtest.InsertTestMatchParticipant(t, pool, f.match.String(), f.sheet.String(), now())
+	pgtest.InsertTestMatchParticipant(t, pool, matchB.String(), f.sheet.String(), now())
 	e := prone(f.sheet, now())
 	if err := repo.Write(ctx, []statuseffect.Write{{Effect: e, Event: f.event(statuseffect.ChangeApplied, now())}}); err != nil {
 		t.Fatalf("write: %v", err)
@@ -709,13 +716,14 @@ func TestHasEventInMatch(t *testing.T) {
 		eff   uuid.UUID
 		want  bool
 	}{
-		{"event in the match", f.match, e.ID, true},
-		{"same effect, another match", matchB, e.ID, false},
+		{"event in the match, sheet a participant", f.match, e.ID, true},
+		{"event in another match, sheet a participant here", matchB, e.ID, true},
+		{"sheet not a participant here", matchC, e.ID, false},
 		{"unknown effect", f.match, uuid.New(), false},
 		{"nil effect", f.match, uuid.Nil, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := repo.HasEventInMatch(ctx, c.match, c.eff)
+			got, err := repo.RevealableInMatch(ctx, c.match, c.eff)
 			if err != nil || got != c.want {
 				t.Fatalf("got %v, %v, want %v", got, err, c.want)
 			}

@@ -722,5 +722,5 @@ curl -s -H "Authorization: Bearer $TOKEN_JOGADOR" \
 | 400 | UUID inválido |
 | 401 | Sem JWT |
 | 403 | Quem chama não é o mestre da partida |
-| 404 | Partida não encontrada, **ou o efeito não tem nenhum evento nesta partida** (inclusive um efeito aplicado antes do histórico de status existir: ele não pode ser revelado) |
+| 404 | Partida não encontrada, **ou o efeito não é revelável nesta partida**: não tem evento de status em partida alguma (inclusive um efeito aplicado antes do histórico de status existir: ele não pode ser revelado) ou a ficha dele não participa desta partida. Um Escondido aplicado em **outra** partida e ainda ativo nesta é revelável aqui — é ele que o `concealedBy` desta nomeia. `uuid.Nil` é sempre 404 |
 | 500 | Erro interno |
