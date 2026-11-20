@@ -128,7 +128,8 @@ func (r *Repository) FindMatchHistory(
 			// player saw of an opened reaction's destination (NULL when it was never opened).
 			moveViewsRaw []byte
 			consumed     []uuid.UUID
-			// hiddenFromRaw é para quem cada personagem da linha estava Escondido (NULL = ninguém).
+			// hiddenFromRaw é o registro de cada personagem Escondido da linha: efeito e quem o
+			// percebia (NULL = nenhum).
 			hiddenFromRaw []byte
 			// openedAt é a abertura da linha; NULL = reação nunca aberta (ou linha antiga).
 			openedAt *time.Time
@@ -333,22 +334,15 @@ func decodeMoveViews(raw []byte, turnUUID, actionUUID uuid.UUID) map[uuid.UUID]m
 	return views
 }
 
-// decodeHiddenFrom lê actions.hidden_from. NULL = ninguém (nil). Um valor ilegível falha
-// FECHADO: o personagem da própria linha (o ator, ou o reator) fica escondido de todo leitor
-// que não é o mestre nem o dono (appmatch.HiddenFromEveryone, efeito uuid.Nil — que nenhuma
-// revelação cobre). Esconder o ator esconde o turno inteiro, e com ele os alvos.
+// decodeHiddenFrom lê actions.hidden_from (actioncodec.DecodeHiddenFrom). NULL = nenhum (nil).
+// Um valor ilegível falha FECHADO: o personagem da própria linha (o ator, ou o reator) fica
+// escondido de todo leitor que não é o mestre nem o dono, com a sentinela que nenhuma revelação
+// cobre. Esconder o ator esconde o turno inteiro, e com ele os alvos.
 func decodeHiddenFrom(raw []byte, turnUUID, actionUUID, charUUID uuid.UUID) appmatch.HiddenFrom {
-	if len(raw) == 0 {
-		return nil
-	}
-	var m appmatch.HiddenFrom
-	if err := json.Unmarshal(raw, &m); err != nil {
+	m, err := actioncodec.DecodeHiddenFrom(raw, charUUID)
+	if err != nil {
 		log.Printf("FindMatchHistory: turno %s — hidden_from da action %s não decodificou; escondida de todo "+
 			"leitor exceto o mestre e o dono: %v", turnUUID, actionUUID, err)
-		return appmatch.HiddenFrom{charUUID: {appmatch.HiddenFromEveryone: uuid.Nil}}
-	}
-	if len(m) == 0 {
-		return nil
 	}
 	return m
 }

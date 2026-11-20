@@ -229,8 +229,8 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 //
 // openedAt é opened_at: a abertura da linha (a do turno para a action); nil = nunca aberta.
 //
-// hiddenFrom é hidden_from: para quem cada personagem estava Escondido. Vazio (ou só com
-// personagens sem ninguém) grava SQL NULL, nunca '{}'.
+// hiddenFrom é hidden_from: por personagem Escondido, o efeito e quem o percebia
+// (actioncodec.EncodeHiddenFrom). Vazio grava SQL NULL, nunca '{}'.
 func insertAction(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -254,7 +254,7 @@ func insertAction(
 		}
 	}
 
-	hiddenFromJSON, err := encodeHiddenFrom(hiddenFrom)
+	hiddenFromJSON, err := actioncodec.EncodeHiddenFrom(hiddenFrom)
 	if err != nil {
 		return err
 	}
@@ -295,29 +295,6 @@ func insertAction(
 		cols.DefaultDefense, hiddenFromJSON, openedAt,
 	)
 	return err
-}
-
-// encodeHiddenFrom é o hidden_from de uma linha: nil (SQL NULL) quando ninguém — um personagem
-// sem jogador nenhum não conta.
-func encodeHiddenFrom(m appmatch.HiddenFrom) ([]byte, error) {
-	var kept appmatch.HiddenFrom
-	for c, players := range m {
-		if len(players) == 0 {
-			continue
-		}
-		if kept == nil {
-			kept = appmatch.HiddenFrom{}
-		}
-		kept[c] = players
-	}
-	if kept == nil {
-		return nil, nil
-	}
-	raw, err := json.Marshal(kept)
-	if err != nil {
-		return nil, fmt.Errorf("marshal hidden from: %w", err)
-	}
-	return raw, nil
 }
 
 // consumedOrNil is consumed_action_ids: NULL when the reaction consumed nothing (or the row is a

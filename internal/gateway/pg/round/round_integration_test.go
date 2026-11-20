@@ -5,6 +5,7 @@ package round_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -3345,9 +3346,10 @@ func TestEnsureFillsSceneStoryStartLater(t *testing.T) {
 	}
 }
 
-// TestPersistTurnClose_HiddenFrom: para quem o ator, cada alvo e cada reator estavam
-// Escondidos (actions.hidden_from) é gravado com o turno e lido de volta; ninguém = SQL NULL
-// (nunca '{}'), que volta nil; um valor ilegível falha fechado (esconde de todo leitor).
+// TestPersistTurnClose_HiddenFrom: o registro do ator, de cada alvo e de cada reator Escondido
+// (actions.hidden_from: efeito + quem o percebia) é gravado com o turno e lido de volta;
+// nenhum = SQL NULL (nunca '{}'), que volta nil; um valor ilegível falha fechado (a sentinela,
+// que esconde de todo leitor).
 func TestPersistTurnClose_HiddenFrom(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.SetupTestDB(t)
@@ -3381,12 +3383,12 @@ func TestPersistTurnClose_HiddenFrom(t *testing.T) {
 
 	t.Run("hidden_from round-trips on action and reaction", func(t *testing.T) {
 		fx, act, hiddenReact, plainReact, tn := setup(t)
-		player, bystander, hid := uuid.New(), uuid.New(), uuid.New()
+		player, hid, hid2 := uuid.New(), uuid.New(), uuid.New()
 		actionHF := appmatch.HiddenFrom{
-			fx.attackerSheet: {player: hid, bystander: hid},
-			fx.victimSheet:   {bystander: hid},
+			fx.attackerSheet: {Effect: hid, PerceivedBy: []uuid.UUID{}},
+			fx.victimSheet:   {Effect: hid2, PerceivedBy: []uuid.UUID{player}},
 		}
-		reactHF := appmatch.HiddenFrom{fx.victimSheet: {bystander: hid}}
+		reactHF := appmatch.HiddenFrom{fx.victimSheet: {Effect: hid2, PerceivedBy: []uuid.UUID{player}}}
 		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
 			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
 			ActionHiddenFrom:   actionHF,
@@ -3408,14 +3410,23 @@ func TestPersistTurnClose_HiddenFrom(t *testing.T) {
 		if _, ok := turn.ReactionHiddenFrom[plainReact.GetID()]; ok || len(turn.ReactionHiddenFrom) != 1 {
 			t.Fatalf("ReactionHiddenFrom = %v, want only the hidden reactor's", turn.ReactionHiddenFrom)
 		}
+		// A forma gravada: por personagem, o efeito e quem o percebia ([] = ninguém).
+		var stored map[string]map[string]any
+		if err := json.Unmarshal(readRaw(t, act.GetID()), &stored); err != nil {
+			t.Fatalf("decode stored hidden_from: %v", err)
+		}
+		got := stored[fx.attackerSheet.String()]
+		if got["effect"] != hid.String() || fmt.Sprint(got["perceivedBy"]) != "[]" {
+			t.Fatalf("stored hidden_from = %v, want {effect, perceivedBy: []}", stored)
+		}
 	})
 
 	t.Run("NULL reads as nil", func(t *testing.T) {
 		fx, act, hiddenReact, plainReact, tn := setup(t)
-		// Mapas vazios (e um personagem sem ninguém) são "ninguém": NULL, nunca '{}'.
+		// Mapas vazios são "nenhum": NULL, nunca '{}'.
 		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
 			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
-			ActionHiddenFrom: appmatch.HiddenFrom{fx.attackerSheet: {}},
+			ActionHiddenFrom: appmatch.HiddenFrom{},
 			ReactionHiddenFrom: map[uuid.UUID]appmatch.HiddenFrom{
 				hiddenReact.GetID(): {}, plainReact.GetID(): nil,
 			},
@@ -3454,15 +3465,15 @@ func TestPersistTurnClose_HiddenFrom(t *testing.T) {
 			t.Fatalf("FindMatchHistory: %v", err)
 		}
 		turn := scenes[0].Rounds[0].Turns[0]
-		everyone := appmatch.HiddenFromEveryone
-		if got := turn.ActionHiddenFrom[fx.attackerSheet]; len(got) != 1 || got[everyone] != uuid.Nil {
-			t.Fatalf("ActionHiddenFrom = %v, want the actor hidden from everyone", turn.ActionHiddenFrom)
+		sentinel := func(m appmatch.HiddenFrom, c uuid.UUID) bool {
+			h, ok := m[c]
+			return ok && len(m) == 1 && h.Effect == uuid.Nil && len(h.PerceivedBy) == 0
 		}
-		if _, ok := turn.ActionHiddenFrom[fx.attackerSheet][everyone]; !ok {
-			t.Fatalf("ActionHiddenFrom = %v, want the sentinel key", turn.ActionHiddenFrom)
+		if !sentinel(turn.ActionHiddenFrom, fx.attackerSheet) {
+			t.Fatalf("ActionHiddenFrom = %v, want the actor's sentinel", turn.ActionHiddenFrom)
 		}
-		if got := turn.ReactionHiddenFrom[hiddenReact.GetID()][fx.victimSheet]; len(got) != 1 {
-			t.Fatalf("ReactionHiddenFrom = %v, want the reactor hidden from everyone", turn.ReactionHiddenFrom)
+		if !sentinel(turn.ReactionHiddenFrom[hiddenReact.GetID()], fx.victimSheet) {
+			t.Fatalf("ReactionHiddenFrom = %v, want the reactor's sentinel", turn.ReactionHiddenFrom)
 		}
 	})
 }

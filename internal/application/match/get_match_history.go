@@ -223,18 +223,6 @@ func newConcealment() concealment {
 	return concealment{stored: map[uuid.UUID]uuid.UUID{}, hidden: map[uuid.UUID]bool{}}
 }
 
-// concealedFrom diz se o personagem c, no registro m de um turno aberto em at, fica escondido
-// do leitor: ele está no mapa (ou o mapa o esconde de todos — linha ilegível) e o Escondido não
-// foi revelado em at ou depois. O dono e o mestre nunca passam por aqui.
-func concealedFrom(m HiddenFrom, c, reader uuid.UUID, at time.Time, reveals statuseffect.RevealLookup) bool {
-	players := m[c]
-	eff, ok := players[reader]
-	if !ok {
-		eff, ok = players[HiddenFromEveryone]
-	}
-	return ok && !reveals.Covers(eff, at)
-}
-
 // projectTurn é o turno como este leitor o vê, ou false quando o ator dele estava Escondido
 // para o leitor (o turno some). Um reator escondido leva a reação e o resultado dele; um alvo
 // escondido na abertura sai dos alvos e da resolução (Viewer.Hidden). O mestre recebe as marcas do que ainda está escondido
@@ -250,7 +238,7 @@ func (uc *GetMatchHistoryUC) projectTurn(
 	// O instante de cada registro é o real: a abertura do turno para a action e os alvos; a da
 	// reação para o reator — a nunca aberta foi registrada no fechamento.
 	concealedAt := func(m HiddenFrom, c uuid.UUID, at time.Time) bool {
-		return !viewer.IsMaster && !viewer.Owns[c] && concealedFrom(m, c, userUUID, at, reveals)
+		return !viewer.IsMaster && !viewer.Owns[c] && m.Conceals(c, userUUID, at, reveals)
 	}
 	concealed := func(m HiddenFrom, c uuid.UUID) bool { return concealedAt(m, c, tu.CreatedAt) }
 	reactionAt := func(id uuid.UUID) time.Time {
@@ -326,16 +314,15 @@ func (uc *GetMatchHistoryUC) projectTurn(
 }
 
 // concealedEffects são os Escondidos que ainda escondem algo do turno de alguém (não revelados
-// na abertura dele), em ordem estável; nil quando nenhum. A sentinela de linha ilegível não é
-// um efeito e fica de fora.
+// no instante do registro), em ordem estável; nil quando nenhum. Todo registro conta: a lista
+// de permissão sempre deixa alguém de fora (no mínimo quem não era da sessão). A sentinela de
+// linha ilegível não é um efeito e fica de fora.
 func concealedEffects(tu HistoryTurn, reveals statuseffect.RevealLookup) []uuid.UUID {
 	seen := map[uuid.UUID]bool{}
 	add := func(m HiddenFrom, at time.Time) {
-		for _, players := range m {
-			for _, eff := range players {
-				if eff != uuid.Nil && !reveals.Covers(eff, at) {
-					seen[eff] = true
-				}
+		for _, h := range m {
+			if h.Effect != uuid.Nil && !reveals.Covers(h.Effect, at) {
+				seen[h.Effect] = true
 			}
 		}
 	}
@@ -671,10 +658,8 @@ func (uc *GetMatchHistoryUC) readStatusData(
 		}
 	}
 	addMap := func(m HiddenFrom) {
-		for _, players := range m {
-			for _, eff := range players {
-				add(eff)
-			}
+		for _, h := range m {
+			add(h.Effect)
 		}
 	}
 	for _, r := range sd.recs {

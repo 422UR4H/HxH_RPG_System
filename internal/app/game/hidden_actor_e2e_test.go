@@ -2,12 +2,14 @@ package game_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -325,18 +327,27 @@ func lastClose(t *testing.T, f *combatFixture) appmatch.TurnCloseData {
 	return closes[len(closes)-1]
 }
 
+// hiddenRec é o registro esperado de um Escondido: o efeito e quem o percebia.
+func hiddenRec(eff uuid.UUID, perceivedBy ...uuid.UUID) statuseffect.HiddenRecord {
+	if perceivedBy == nil {
+		perceivedBy = []uuid.UUID{}
+	}
+	return statuseffect.HiddenRecord{Effect: eff, PerceivedBy: perceivedBy}
+}
+
+// O registro é a lista de permissão do Escondido no instante (a lista resolvida), não os
+// jogadores da sessão: quem não é nomeado — inclusive quem nem é da sessão — não o percebia.
 func TestHiddenActor_RecordsHiddenFrom(t *testing.T) {
-	t.Run("a hidden actor is recorded for every player but the master", func(t *testing.T) {
+	t.Run("a hidden actor records its effect and nobody who perceived it", func(t *testing.T) {
 		h := newHiddenTable(t)
 		hid := h.hide(t, h.f.npcID, nil)
 		turnID := h.openNPCAttack(t)
 		closeTurnAndWait(t, h.master, h.mc)
 		h.f.awaitPersistedTurn(t, turnID)
 		got := lastClose(t, h.f).ActionHiddenFrom
-		want := map[uuid.UUID]uuid.UUID{h.f.playerUUID: hid, h.f.bystanderUUID: hid}
-		if len(got) != 1 || len(got[h.f.npcID]) != 2 ||
-			got[h.f.npcID][h.f.playerUUID] != hid || got[h.f.npcID][h.f.bystanderUUID] != hid {
-			t.Fatalf("ActionHiddenFrom = %v, want {npc: %v}", got, want)
+		want := appmatch.HiddenFrom{h.f.npcID: hiddenRec(hid)}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("ActionHiddenFrom = %v, want %v", got, want)
 		}
 	})
 
@@ -363,12 +374,12 @@ func TestHiddenActor_RecordsHiddenFrom(t *testing.T) {
 		closeTurnAndWait(t, h.master, h.mc)
 		h.f.awaitPersistedTurn(t, turnID)
 		cd := lastClose(t, h.f)
-		if len(cd.ActionHiddenFrom) != 1 || len(cd.ActionHiddenFrom[h.f.npcID]) != 1 || cd.ActionHiddenFrom[h.f.npcID][h.f.bystanderUUID] != hid {
-			t.Fatalf("ActionHiddenFrom = %v, want {npc: {bystander: %s}}", cd.ActionHiddenFrom, hid)
+		want := appmatch.HiddenFrom{h.f.npcID: hiddenRec(hid, h.f.playerUUID)}
+		if !reflect.DeepEqual(cd.ActionHiddenFrom, want) {
+			t.Fatalf("ActionHiddenFrom = %v, want %v", cd.ActionHiddenFrom, want)
 		}
-		r := cd.ReactionHiddenFrom[seatedID]
-		if len(cd.ReactionHiddenFrom) != 1 || len(r) != 1 || len(r[h.f.npcID]) != 1 || r[h.f.npcID][h.f.bystanderUUID] != hid {
-			t.Fatalf("ReactionHiddenFrom = %v, want {%s: {npc: {bystander: %s}}}", cd.ReactionHiddenFrom, seatedID, hid)
+		if len(cd.ReactionHiddenFrom) != 1 || !reflect.DeepEqual(cd.ReactionHiddenFrom[seatedID], want) {
+			t.Fatalf("ReactionHiddenFrom = %v, want {%s: %v}", cd.ReactionHiddenFrom, seatedID, want)
 		}
 	})
 
@@ -391,23 +402,34 @@ func TestHiddenActor_RecordsHiddenFrom(t *testing.T) {
 		if cd.ActionHiddenFrom != nil {
 			t.Fatalf("ActionHiddenFrom = %v, want nil — nobody was hidden at the opening", cd.ActionHiddenFrom)
 		}
-		r := cd.ReactionHiddenFrom[seatedID]
-		if len(r) != 1 || len(r[h.f.npcID]) != 2 || r[h.f.npcID][h.f.playerUUID] != hid || r[h.f.npcID][h.f.bystanderUUID] != hid {
-			t.Fatalf("ReactionHiddenFrom = %v, want {%s: {npc: {player, bystander: %s}}}", cd.ReactionHiddenFrom, seatedID, hid)
+		want := appmatch.HiddenFrom{h.f.npcID: hiddenRec(hid)}
+		if !reflect.DeepEqual(cd.ReactionHiddenFrom[seatedID], want) {
+			t.Fatalf("ReactionHiddenFrom = %v, want {%s: %v}", cd.ReactionHiddenFrom, seatedID, want)
 		}
 	})
 
-	// Um PC Escondido (padrão do tipo: o mestre e o dono): o dono nunca entra no registro.
-	t.Run("a hidden PC never records its owner", func(t *testing.T) {
+	// Um PC Escondido (padrão do tipo: o mestre e o dono): a lista resolvida é o dono.
+	t.Run("a hidden PC records its default listing", func(t *testing.T) {
 		h := newHiddenTable(t)
 		hid := h.hide(t, h.f.victimID, nil)
 		turnID := h.openNPCAttack(t)
 		closeTurnAndWait(t, h.master, h.mc)
 		h.f.awaitPersistedTurn(t, turnID)
 		got := lastClose(t, h.f).ActionHiddenFrom
-		if len(got) != 1 || len(got[h.f.victimID]) != 1 || got[h.f.victimID][h.f.bystanderUUID] != hid {
-			t.Fatalf("ActionHiddenFrom = %v, want {victim: {bystander: %s}} — the owner %s never in it",
-				got, hid, h.f.playerUUID)
+		want := appmatch.HiddenFrom{h.f.victimID: hiddenRec(hid, h.f.playerUUID)}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("ActionHiddenFrom = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("a Hidden listed for everyone records nothing", func(t *testing.T) {
+		h := newHiddenTable(t)
+		h.hide(t, h.f.npcID, map[string]any{"mode": "public"})
+		turnID := h.openNPCAttack(t)
+		closeTurnAndWait(t, h.master, h.mc)
+		h.f.awaitPersistedTurn(t, turnID)
+		if cd := lastClose(t, h.f); cd.ActionHiddenFrom != nil {
+			t.Fatalf("ActionHiddenFrom = %v, want nil", cd.ActionHiddenFrom)
 		}
 	})
 

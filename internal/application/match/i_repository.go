@@ -84,12 +84,12 @@ type TurnCloseData struct {
 	// held with the turn (turnWrites) and written to that reaction's actions.move_views. A
 	// reaction never opened has no entry: it was never shown. Same keys and rules as MoveViews.
 	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
-	// ActionHiddenFrom é, para o ator e cada alvo da action, para quem ele estava Escondido na
-	// abertura do turno (actions.hidden_from da action). nil = ninguém.
+	// ActionHiddenFrom é, para o ator e cada alvo da action que estava Escondido na abertura do
+	// turno, o efeito e quem o percebia então (actions.hidden_from da action). nil = nenhum.
 	ActionHiddenFrom HiddenFrom
-	// ReactionHiddenFrom é, por reação (pelo id), para quem o reator estava Escondido na
-	// abertura dela — ou no fechamento, se nunca foi aberta. Só as reações com alguém; as
-	// demais não têm entrada.
+	// ReactionHiddenFrom é, por reação (pelo id), o registro do reator Escondido na
+	// abertura dela — ou no fechamento, se nunca foi aberta. Só as reações com reator Escondido;
+	// as demais não têm entrada.
 	ReactionHiddenFrom map[uuid.UUID]HiddenFrom
 	// StatusBars is every sheet this close damaged, with its bars as the session holds them
 	// after the close (copies taken under r.mu), written to character_sheets in this same
@@ -285,15 +285,10 @@ const (
 	CancelledActionCutFull CancelledActionCut = "full"
 )
 
-// HiddenFrom é, por personagem, para quem ele estava Escondido no instante, com o id do efeito
-// Escondido: personagem → jogador → efeito. O mestre e o dono nunca entram. Um jogador
-// HiddenFromEveryone esconde o personagem de todo leitor que não é o mestre nem o dono (uma
-// linha que não decodificou: falha fechada).
-type HiddenFrom map[uuid.UUID]map[uuid.UUID]uuid.UUID
-
-// HiddenFromEveryone é a chave de jogador que vale por todos (ver HiddenFrom); o efeito dela é
-// uuid.Nil, que nenhuma revelação cobre.
-var HiddenFromEveryone = uuid.Nil
+// HiddenFrom é o registro de quem estava Escondido no instante (statuseffect.HiddenFrom):
+// personagem → efeito Escondido + quem o percebia (lista de permissão). O mestre e o dono são
+// decididos na leitura. Alias para o caso de uso e os gateways falarem do mesmo tipo.
+type HiddenFrom = statuseffect.HiddenFrom
 
 // HistoryTurn is one closed turn: the action that drove it, whatever reactions answered it,
 // the settled collision that resulted, and the master's own actions applied while it was open

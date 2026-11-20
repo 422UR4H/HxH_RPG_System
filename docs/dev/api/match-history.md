@@ -585,8 +585,12 @@ Dentro de `rounds[].events` o item é `{ uuid, kind: "statusEffect", createdAt, 
 Com o efeito **Escondido** ([`match-status-effects.md`](match-status-effects.md#hidden-escondido)),
 o personagem some da mesa para quem não está na lista dele. O histórico respeita o que cada
 leitor viu ao vivo. O servidor grava, na linha da action no instante da abertura do turno
-(`actions.hidden_from`, ver abaixo), para quem cada personagem — ator e alvos — estava Escondido,
-e na da reação, quando ela abre. Para um jogador que não percebia o personagem:
+(`actions.hidden_from`, ver abaixo), para cada personagem Escondido — ator e alvos — o efeito e
+**quem o percebia** (a lista dele naquele instante), e na da reação, quando ela abre. É uma
+**lista de permissão**: um leitor que não está nela não o percebia — inclusive quem nem era
+jogador da sessão naquele instante (um leitor de fora numa partida pública, um membro da campanha
+não inscrito na partida, um jogador inscrito depois). Para um leitor que não percebia o
+personagem:
 
 - **Ator escondido** → o **turno inteiro não existe** para esse leitor: nem `action`, nem
   `reactions`, nem `resolution`. As master actions e os eventos de status desse turno que **não**
@@ -602,16 +606,19 @@ e na da reação, quando ela abre. Para um jogador que não percebia o personage
   eventos de status do personagem escondidos pelo Escondido idem. Um Escondido revelado cobre o
   que aconteceu **até** o instante da revelação — ações posteriores do mesmo Escondido seguem
   escondidas até a próxima revelação.
-- Um leitor que **não é o dono** e para quem a linha não pôde ser lida fica sem o personagem
-  (falha fechada). O dono e o mestre nunca estão na lista dos escondidos.
+- Uma linha que não pôde ser lida esconde o personagem de todo leitor que não é o dono nem o
+  mestre (falha fechada), e nenhuma revelação a cobre. O dono e o mestre sempre veem.
 - O **instante** que decide é o da abertura real (`createdAt` do turno; `openedAt` da reação).
   Uma reação nunca aberta vale o instante do fechamento.
 
-`actions.hidden_from` é JSONB **esparso** (`NULL` = ninguém; nunca `{}`):
-`{ "<charId>": { "<playerId>": "<hiddenEffectId>" } }`. **Nunca sai no wire.**
+`actions.hidden_from` é JSONB **esparso** (`NULL` = nenhum personagem Escondido com lista que não
+é "todos"; nunca `{}`):
+`{ "<charId>": { "effect": "<hiddenEffectId>", "perceivedBy": ["<playerId>", ...] } }`
+(`perceivedBy: []` = ninguém além do mestre e do dono). **Nunca sai no wire.**
 
 **Só para o mestre:** `turns[].concealedBy` (lista de uuids, omitida quando vazia) são os efeitos
-Escondido que **ainda** escondem algo daquele turno de alguém — o front oferece "revelar" para
+Escondido que **ainda** escondem algo daquele turno de alguém (com a lista de permissão, todo
+Escondido gravado esconde de alguém — no mínimo de quem não era da sessão) — o front oferece "revelar" para
 cada um. Some de lá conforme as revelações cobrem o turno.
 
 **Instantes reais.** `turns[].createdAt` agora é a **abertura real do turno** (antes era o
