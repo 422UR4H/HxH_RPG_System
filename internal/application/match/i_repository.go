@@ -84,6 +84,13 @@ type TurnCloseData struct {
 	// held with the turn (turnWrites) and written to that reaction's actions.move_views. A
 	// reaction never opened has no entry: it was never shown. Same keys and rules as MoveViews.
 	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// ActionHiddenFrom é, para o ator e cada alvo da action que estava Escondido na abertura do
+	// turno, o efeito e quem o percebia então (actions.hidden_from da action). nil = nenhum.
+	ActionHiddenFrom HiddenFrom
+	// ReactionHiddenFrom é, por reação (pelo id), o registro do reator Escondido na
+	// abertura dela — ou no fechamento, se nunca foi aberta. Só as reações com reator Escondido;
+	// as demais não têm entrada.
+	ReactionHiddenFrom map[uuid.UUID]HiddenFrom
 	// StatusBars is every sheet this close damaged, with its bars as the session holds them
 	// after the close (copies taken under r.mu), written to character_sheets in this same
 	// transaction: one master command, one transaction (owner decision, 2026-10-02). A turn that
@@ -206,6 +213,9 @@ const (
 	HistoryEventRoundModeChanged HistoryEventKind = "roundModeChanged"
 	HistoryEventMasterAction     HistoryEventKind = "masterAction"
 	HistoryEventActionCancelled  HistoryEventKind = "actionCancelled"
+	// HistoryEventStatusEffect é uma mudança de efeito de status fora de turno (ou de um turno
+	// que não está na árvore).
+	HistoryEventStatusEffect HistoryEventKind = "statusEffect"
 	// Eventos do relógio da história (spec 2026-11-08 §7), com o payload como foi gravado.
 	HistoryEventClockStarted  HistoryEventKind = HistoryEventKind(matchevent.KindClockStarted)
 	HistoryEventClockAdjusted HistoryEventKind = HistoryEventKind(matchevent.KindClockAdjusted)
@@ -213,7 +223,7 @@ const (
 )
 
 // HistoryEvent is one entry of HistoryRound.Events: exactly one of RoundModeChange, ClockChange,
-// MasterAction and CancelledAction is set, the one Kind names. At is when it happened — what
+// MasterAction, CancelledAction and StatusEffect is set, the one Kind names. At is when it happened — what
 // Events is ordered by.
 type HistoryEvent struct {
 	Kind            HistoryEventKind
@@ -223,37 +233,59 @@ type HistoryEvent struct {
 	ClockChange     *matchevent.Event
 	MasterAction    *masteraction.Record
 	CancelledAction *HistoryCancelledAction
+	StatusEffect    *HistoryStatusEffect
+}
+
+// HistoryStatusEffect é um evento de efeito de status já decidido para este leitor
+// (statuseffect.VisibleInHistory): quem não o vê nunca o recebe.
+type HistoryStatusEffect struct {
+	// UUID é o id do evento.
+	UUID   uuid.UUID
+	Change statuseffect.Change
+	// Effect é o efeito como ficou (removido: como era), com o CharacterID dentro. Audience só
+	// fica para o mestre.
+	Effect statuseffect.Effect
+	// Public é só do mestre: a lista resolvida do instante incluía todo jogador.
+	Public *bool
+	// Revealed é só do mestre: uma revelação do mestre cobre este evento (o front oferece
+	// "revelar" quando não). Sem revelações ainda, sempre false.
+	Revealed   *bool
+	TurnUUID   *uuid.UUID
+	ActionID   *uuid.UUID
+	HappenedAt time.Time
 }
 
 // HistoryCancelledAction is an action its declarer took back out of the queue (spec 2026-10-10
-// §8.1 P8), already decided for this reader: who cancelled is public — the public bar already
-// showed the order change — and the action itself only for the master and the actor's owner.
+// §8.1 P8), already decided for this reader. Only the master and the actor's owner ever hold
+// one (D1, 2026-11-20): every other reader gets no entry at all.
 type HistoryCancelledAction struct {
 	// UUID is the cancelled action's own id.
 	UUID uuid.UUID
 	// ActorUUID is the character sheet that would have acted.
 	ActorUUID uuid.UUID
-	// Action is nil when Cut is CancelledActionCutActor: a reader who may not see it never
-	// holds it.
+	// Action is the action as it stood in the queue, cut as Cut says.
 	Action *action.Action
 	// Cut is how much of Action this reader may see — applied by the REST mapping as an
 	// actionwire level, the way MoveSight is applied after From.
 	Cut CancelledActionCut
 }
 
-// CancelledActionCut is how much of a cancelled action one reader may see. The zero value is
-// the actor alone — fail closed: only the use case grants more.
+// CancelledActionCut is how much of a cancelled action its reader may see. The zero value
+// grants nothing: the REST mapping keeps the action off the wire unless the use case set a cut.
 type CancelledActionCut string
 
 const (
-	// CancelledActionCutActor shows who cancelled and nothing of the action. The zero value.
-	CancelledActionCutActor CancelledActionCut = ""
 	// CancelledActionCutDeclaration shows what the owner declared, no numbers — the cut of
 	// their own ownQueue. The actor's owner.
 	CancelledActionCutDeclaration CancelledActionCut = "declaration"
 	// CancelledActionCutFull shows the whole action, dice included. The master.
 	CancelledActionCutFull CancelledActionCut = "full"
 )
+
+// HiddenFrom é o registro de quem estava Escondido no instante (statuseffect.HiddenFrom):
+// personagem → efeito Escondido + quem o percebia (lista de permissão). O mestre e o dono são
+// decididos na leitura. Alias para o caso de uso e os gateways falarem do mesmo tipo.
+type HiddenFrom = statuseffect.HiddenFrom
 
 // HistoryTurn is one closed turn: the action that drove it, whatever reactions answered it,
 // the settled collision that resulted, and the master's own actions applied while it was open
@@ -272,6 +304,9 @@ type HistoryTurn struct {
 	// for the reader (masteraction.Record.ProjectFor), in the order they happened. Never nil
 	// once the use case has run.
 	MasterActions []masteraction.Record
+	// StatusEffects são os eventos de status gravados com o UUID deste turno, já decididos para
+	// o leitor, na ordem em que aconteceram. Nunca nil depois do caso de uso.
+	StatusEffects []HistoryStatusEffect
 
 	// MoveViews is what each player of the session saw LIVE of the action's move — the
 	// verdict turn_opened's move gate reached for them at the opening (actions.move_views):
@@ -292,6 +327,17 @@ type HistoryTurn struct {
 	// MoveViews: absent fails closed. Read side only: the use case turns it into
 	// ShownReactionMoves and clears it.
 	ReactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// ActionHiddenFrom e ReactionHiddenFrom são o actions.hidden_from da action e de cada
+	// reação (pelo id), como TurnCloseData os grava. nil = ninguém. Só leitura: o caso de uso os
+	// transforma no que o leitor perde do turno e os limpa.
+	ActionHiddenFrom   HiddenFrom
+	ReactionHiddenFrom map[uuid.UUID]HiddenFrom
+	// ReactionOpenedAt é, por reação aberta (pelo id), o instante em que o mestre a abriu
+	// (actions.opened_at); a nunca aberta não tem entrada. CreatedAt é a abertura do turno.
+	ReactionOpenedAt map[uuid.UUID]time.Time
+	// ConcealedBy são os efeitos Escondido que ainda escondem algo deste turno de alguém — só
+	// para o mestre (o front oferece "revelar"); nil para os demais.
+	ConcealedBy []uuid.UUID
 
 	// The three fields below are what this reader may see of WHERE pieces went — set by the
 	// use case from the views above, applied by the REST mapping after actionwire.From, exactly

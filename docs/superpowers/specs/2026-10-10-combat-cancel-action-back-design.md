@@ -154,6 +154,8 @@ devolução nem cobrança).
 | P7 | **Quando grava:** a mesma regra das master actions — com turno aberto, junto com o fechamento desse turno (`turnWrites` → `PersistTurnClose`, mesma transação); sem turno aberto, na hora (`ensureSceneAndRoundRows` antes, como `recordMasterAction`). Um reinício no meio do turno perde o registro junto com o turno, de propósito. |
 | P8 | **No histórico** (`GET /history`): um evento de rodada `kind: "actionCancelled"` em `rounds[].events`, na ordem do tempo. O **mestre** vê `actorId` + `action` (nível `Full`); o **dono** do personagem vê `actorId` + `action` (nível `Declaration`, o mesmo do `ownQueue`); **os outros** veem só `actorId` ("Fulano cancelou uma ação") — não revela nada que a barra geral pública já não tenha mostrado. |
 
+> Atualizado em 2026-11-20 (dono do produto): os outros jogadores não veem a action cancelada no histórico — só o mestre e o dono.
+
 ### 8.2 Onde mora
 
 - **A marca:** `MatchSession.swapMarks map[uuid.UUID]uuid.UUID` (personagem → id da rodada em que

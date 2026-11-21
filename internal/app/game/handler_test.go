@@ -128,6 +128,17 @@ func (s *fakeBoardStore) saveCount() int {
 	return s.saves
 }
 
+// awaitSaves espera, até d, que Save tenha rodado ao menos n vezes. O relay de uma peça sai
+// antes da gravação (handlePieceRemoved/piece_moved relayam e depois persistem, no mesmo read
+// pump): quem espera o relay ainda pode ler a contagem antes da gravação. A conferência exata
+// (nem mais, nem menos) continua com quem chama.
+func (s *fakeBoardStore) awaitSaves(n int, d time.Duration) {
+	deadline := time.Now().Add(d)
+	for s.saveCount() < n && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // loadCount returns how many times Load was called.
 func (s *fakeBoardStore) loadCount() int {
 	s.mu.Lock()

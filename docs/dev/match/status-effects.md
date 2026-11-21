@@ -17,9 +17,10 @@ bloqueios**. Tudo o que muda uma rolagem é a fase seguinte (ver "O que não est
 | Carga ao iniciar a partida | `internal/application/match/init_match_session.go` (`WithStatusEffects`) |
 | Gateway | `internal/gateway/pg/statuseffect/` (`ListBySheets`, `Write`); migration `20261117000000_character_status_effects.sql` |
 | Sala: comandos, projeção por destinatário, gravação | `internal/app/game/status_effects.go`, `sight.go`, `room.go`, `master_board.go` |
-| Fio | `internal/app/game/message.go` |
+| Fio | `internal/app/game/message.go`; forma compartilhada sala + histórico REST em `internal/app/wire/statuswire/` |
+| Histórico: eventos, revelações, âncoras | `domain/statuseffect/event.go`; `gateway/pg/statuseffect/{events,reveals}.go`; `application/match/{get_match_history,reveal_status_effect}.go`; sala: `internal/app/game/status_anchor.go` |
 
-O domínio `statuseffect` não importa nada de fora de `domain/entity`.
+O domínio `statuseffect` não importa nada de fora de `domain/entity`, exceto `domain/masteraction` (o `View` das `views` de um evento de histórico, `event.go`).
 
 ## As peças e a contenção
 
@@ -146,6 +147,141 @@ dos efeitos do NPC. A leitura usa
 `ReplaceStatusEffects`: um status aplicado por um segundo socket entre a inscrição e a leitura
 seria sobrescrito (desprezível).
 
+## Histórico: eventos, listas, revelações e âncoras
+
+Contrato: [`../api/match-history.md`](../api/match-history.md).
+
+**Eventos.** Cada mudança (`applied`/`edited`/`removed`) carrega um `statuseffect.Event`
+(`Write.Event`), carimbado pela sala no instante e gravado **na mesma operação** do efeito
+(`status_effect_events`: `snapshot`, `listing`, `views`, `hidden_from`, `action_uuid`, `seq` para
+desempatar). O caso de uso continua sem I/O. `ResolveListing` resolve a lista do instante (o
+padrão do tipo já aplicado, nunca "padrão"); `views` = jogadores que enxergavam o personagem logo
+antes ou logo depois, mais o dono (o mestre nunca entra).
+
+**Quem vê um evento** é uma regra só, `statuseffect.VisibleInHistory`: mestre; ou (âncora visível
+**e** (revelação do efeito cobre o instante **ou** (leitor em `views`, ou em `hidden_from` com o
+Escondido já revelado, **e** a última lista do efeito inclui o leitor))). A última lista
+(`LatestListings`) vem de qualquer partida; sem evento anterior, nenhuma → falha fechada.
+
+**`hidden_from`** (sala → banco): esparso, `NULL` = ninguém. `cancelled_actions` **não tem**
+`hidden_from`: a action cancelada só chega ao mestre e ao dono do ator (dono do produto,
+2026-11-20), que enxergam através do Escondido, então nenhum leitor dependeria de uma lista ali.
+Em `status_effect_events` é
+`{playerId: hiddenEffectId}` (jogadores da sessão para quem o personagem estava Escondido) — lá
+ele só **abre** o evento a quem estava de fora; a lista de permissão do evento é `views`, então
+nomear só a sessão não vaza nada. Em `actions` é uma **lista de permissão**
+(`statuseffect.HiddenFrom`, `hiddenRecordLocked`): `{charId: {effect, perceivedBy: [playerId…]}}`,
+por personagem Escondido com lista que não é "todos", com a lista resolvida do instante
+(`ResolveListing`) — quem não está nela não o percebia, inclusive quem não era jogador da sessão
+(leitor de fora da partida pública, membro da campanha não inscrito, inscrito depois). O dono e o
+mestre são decididos na leitura. Cobre o ator e cada alvo na linha da action (abertura do turno)
+e o reator na da reação (na abertura dela; nunca aberta, no fechamento). A sentinela de linha
+ilegível é o registro zero (efeito `uuid.Nil`, ninguém): esconde de todos e não é revelável. O
+codec é um só (`actioncodec.EncodeHiddenFrom`/`DecodeHiddenFrom`). Nunca sai no wire.
+
+**Revelações** (`status_effect_reveals`, `reveals.go`): só o REST do mestre insere, e só um efeito
+revelável na partida (`RevealableInMatch`: evento em qualquer partida + ficha participante desta —
+um Escondido trazido de outra partida também); o histórico lê
+o `MAX(revealed_at)` por efeito (`RevealedAt`) uma vez por requisição, junto de `LatestListings`.
+`RevealLookup.Covers` = revelado em ou depois do instante. Ampliar a lista nunca revela.
+
+**Âncoras** (`actionId`, a causa; `status_anchor.go` + `matchsession/anchor_moves.go`). Só o mestre
+informa, e só uma action/reação do turno aberto. Enquanto o turno está aberto a sala as mantém
+sob `r.mu`: **seguem** (reação sentada substituída pela do jogador, ou refeita por status → a nova;
+sentada que sai sem substituta → a action do turno); **relink** (`relink_status_effect`) as troca
+à mão; o mestre vê a âncora viva em `turnActionId`. **Desfazer** (`remove_status_effect` de um
+efeito aplicado neste mesmo turno) apaga todas as gravações e eventos pendentes dele e tira o id
+dele de `hidden_from` das ações/eventos do turno (`purgeEffectFromTurnLocked`: nas ações, a
+entrada do personagem sai inteira); as ações da fila
+que ele cancelou continuam canceladas, a não ser que o mestre peça a devolução (abaixo). Depois
+do fechamento o histórico é definitivo.
+
+**Devolver o que o status cancelou (D3, dono do produto 2026-11-20).** Quando
+`dropRefusedByStatusLocked` tira ações da fila com turno aberto, o turno guarda o **registro do
+desfazer** (`turnWrites.statusCancels`): efeito → os `matchsession.StatusDrop` que saíram, em
+ordem de remoção, atribuídos a todo efeito do personagem que a mesma mudança aplicou ou editou
+(atribuir a mais é seguro: a devolução revalida). O `StatusDrop` é o retrato do instante da
+saída, tirado antes de a ação sair: a ordem de chegada dela (`MatchSession.arrivals`, que espelha
+a ordem da fila e desempata), as edições do mestre (capturas, dados de perícias retiradas e o
+valor editado de cada campo, que o `discardEdits` apaga) e se o movimento se apoiava numa base
+ainda na fila, e os valores derivados que a saída recalcula (`derivedSnapshot`: `Speed` inteira,
+`Move.Speed`, `Move.FinalSpeed`, `SystemBias`). O registro morre com o turno (fechamento, reinício,
+`end_match`): depois dele não há o que devolver nem ponteiro velho. O mestre o vê em
+`cancelledActionIds` (só efeito aplicado no turno). No `remove_status_effect`, o registro do
+efeito é sempre apagado; só quando `undoInTurnAppliesLocked` desfaz esse efeito **e** veio
+`restoreCancelledActions`, `giveBackLocked` chama `MatchSession.RestoreCancelledByStatus` — na
+**mesma seção crítica de `r.mu`** da remoção e do desfazer, depois de o status sair da sessão.
+A sessão **revalida, nunca repete**: ator na partida; id ainda não na fila (idempotente);
+`statusBlock` dos status de agora; a cadeia de movimentos como estava na saída — o que se apoiava
+numa base ainda na fila naquele instante volta só se ela continua na fila e é o fim da cadeia; o
+que era cabeça (de fato, ou com a base já fora da fila antes do status — aberta, consumida) volta
+só sem outro movimento pendente. A distinção é do instante da saída, não do de agora: uma base
+cancelada depois da saída e uma que abriu antes dela parecem iguais na fila de agora. Nunca meia
+cadeia, nunca garfo. A aceita volta ao mesmo lugar (`insertByArrival` + `PriorityQueue.InsertAt`,
+pela ordem de chegada), com as edições do mestre de novo (`reapplyEdits`: valor editado, capturas,
+dados retirados) e os valores derivados escritos de volta como estavam antes da saída
+(`restoreDerived`) — **não** derivados de novo: o ledger só muda no fechamento de um turno
+(pagamentos, `AdvanceTurn`), e um turno fechado entre o enqueue e a saída daria outra velocidade,
+outro lugar na ordem do Race; `reseatForStatus` refaz as reações; a recusada volta com motivo em português (`restore_refused`, só ao mestre). Cada
+devolvida apaga o seu registro em `turnWrites.cancelledActions` e sai do registro de todo efeito
+(`forgetRestored`). Uma recusa por outro status (`RestoreRefusal.BlockedBy`) passa o `StatusDrop`
+ao registro de cada efeito desse tipo aplicado no mesmo turno (`passToBlockerLocked`): desfazer
+os dois devolve a ação em qualquer ordem. Um empilhado cuja base foi recusada assim na mesma
+chamada herda o `BlockedBy` da base e vai junto, depois dela. O cancelamento por status não marca troca (sem
+`swapMarks`), então não há marca a desfazer; o fechamento da janela de fusão do relógio que o
+cancelamento fez (`clearClockMergeLocked`, em `holdCancelledActionsLocked`) não é desfeito — é
+inofensivo: só faz o próximo ajuste do relógio virar um evento próprio. O anúncio é
+`action_restored` (mestre em `Full`, dono no corte do `ownQueue`, com `beforeActionId`) e o
+`action_queued` do mestre; nunca `action_enqueued`, que é o ack casado pela ordem dos envios do
+cliente.
+
+**A reação trocada volta também (revisão final do PR 2).** Uma reação **não aberta** que o status
+tirou do turno aberto (`reseatForStatus`: a enviada que o conjunto recusa e a sentada trocada por
+outra de tipo diferente) entra no mesmo registro (`statusCancel.reactions`), como
+`matchsession.ReactionDrop` — retrato tirado **antes** do `DropUnopened`: o turno, a reação inteira
+(cópia; o turno guarda reações por valor e a que saiu não está em lugar nenhum — dados,
+velocidades, `ConsumedActionIDs` vêm nela), o lugar entre as reações (`Turn.ReactionIndex`), se era
+a sentada, o pouso do mestre e as capturas dele (que o `dropEdits` apaga). Sai em
+`DropRefusedByStatusWithReactions` (o `DropRefusedByStatus` de antes é o mesmo sem as reações) e o
+mestre o vê em `swappedReactionIds`. Com o mesmo `restoreCancelledActions`, `giveBackLocked` chama,
+logo depois do `RestoreCancelledByStatus`, `MatchSession.RestoreSwappedReactions`, que **revalida,
+nunca repete**: o turno dela ainda é o aberto; o reator ainda está na partida e ainda é alvo da
+ação do turno; nenhuma reação com esse id no turno (idempotente); `statusBlock` dos status de
+agora (`ReactionRefusal.BlockedBy`, passado ao outro efeito do turno por
+`passReactionToBlockerLocked`, como as ações); o reator não mandou outra reação depois (a dele é a
+última palavra) e a sentada que ficou no lugar não foi aberta (o narrado fica). A aceita volta
+como estava (`Turn.RestoreUnopened`: mesmo id, mesmo lugar, sentada ou não, pouso; `reapplyEdits`
+para as capturas; só as passivas recalculadas), no lugar da sentada que está lá — que sai, com as
+edições dela, e passa as âncoras para a devolvida (`noteAnchorMove`, aplicado pelo
+`followAnchorsLocked` na mesma seção crítica): a âncora que tinha seguido a reação para a sentada
+volta com ela. **A barra fica coerente:** a reação cobrou na chegada (`RecordSecretSpeed`, pelo id
+dela) e o status nunca devolveu; com a mesma reação de volta, a cobrança volta a corresponder a
+uma reação do turno. A recusada (ou sem o pedido) fica como o status deixou: fora do turno, com a
+barra cobrada. O anúncio é `reaction_restored` ao mestre (com `replacedReactionId`) e ao dono só
+quando a reação é dele (uma sentada, `RestoredReaction.Seated`, nunca está em `ownReactions`) e o
+efeito desfeito era visível a ele (`statuseffect.Listed`: a troca só chegou a ele por esse
+efeito, §9); nunca `reaction_attached`, que o front casa com o envio pendente do mesmo personagem
+(`status === "sending" && actorId`). A mesa não recebe nada (o `resolution_updated` do turno
+aberto é do mestre).
+
+**A regra do ctrl+Z.** O inverso de aplicar um status no turno aberto é o desfazer com
+`restoreCancelledActions` (`undoInTurnAppliesLocked` + `giveBackLocked`, que chama
+`RestoreCancelledByStatus` para as ações da fila e `RestoreSwappedReactions` para as reações
+trocadas). Um futuro ctrl+Z deve chamar este caminho, nunca escrever a sua própria reversão: a
+reversão revalida contra o estado de agora, sob `r.mu`, e recusa com motivo o que não cabe mais.
+**O que o inverso cobre:** as gravações e eventos pendentes do efeito (nada dele é gravado), o
+`hidden_from` dele no turno, as ações da fila que ele cancelou (lugar, edições, velocidades de
+antes; o registro de cancelada some) e as reações não abertas que ele trocou (a mesma reação, as
+âncoras de volta; a barra cobrada volta a ser coerente). **O que não cobre:** a janela de fusão do
+relógio fechada pelo cancelamento (`clearClockMergeLocked`, inofensivo); o que foi recusado na
+revalidação (fica como o status deixou: ação cancelada e gravada no fechamento, reação fora do
+turno com a barra cobrada — a cobrança dela, aí, não volta); uma reação que já foi **aberta**
+(o status nunca a tira); e nada depois do fechamento do turno.
+
+**Horários reais.** O turno guarda a abertura (`Turn.GetOpenedAt`, relógio da sala, µs):
+`turns.created_at` é ela; cada reação ganha `actions.opened_at` (NULL = nunca aberta). A regra de
+"escondido" compara a revelação com esses instantes.
+
 ## Limitação: uma ficha viva em duas salas
 
 Cada sala guarda os efeitos **na própria sessão** e grava o que mudou nela. Uma mesma ficha viva
@@ -155,5 +291,6 @@ merge. Não é tratado nesta fase.
 ## O que não está aqui
 
 Rolagens (penalidades, desvantagem, falha automática, Lento, G1), testes automáticos, dano e
-recuperação por round, asfixia, "não usa habilidades" (Nen), histórico (PR 2) e as ações de um
-Escondido em `turn_opened`/resolução (PR 2). Lista no contrato, §10.
+recuperação por round, asfixia, "não usa habilidades" (Nen), revelar a um jogador só (a revelação
+é para todos), push de WS depois de revelar e desfazer depois do fechamento do turno. Lista no
+contrato, §10.

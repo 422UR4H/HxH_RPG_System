@@ -2,6 +2,7 @@ package match_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -264,6 +265,42 @@ func TestStatusEffectsUC(t *testing.T) {
 		if err != nil || !ch.HiddenChanged {
 			t.Errorf("remove hidden: changed=%v err=%v", ch.HiddenChanged, err)
 		}
+	})
+	t.Run("writes carry their change", func(t *testing.T) {
+		f := newSESession(t)
+		check := func(label string, ws []statuseffect.Write, want statuseffect.Change, n int) {
+			t.Helper()
+			if len(ws) != n {
+				t.Fatalf("%s: %d writes, want %d", label, len(ws), n)
+			}
+			for i, w := range ws {
+				if w.Event == nil {
+					t.Fatalf("%s[%d]: no event", label, i)
+				}
+				// Só a mudança vem do caso de uso; o resto do evento é carimbado pela sala.
+				if !reflect.DeepEqual(*w.Event, statuseffect.Event{Change: want}) {
+					t.Errorf("%s[%d]: event = %+v, want only Change=%s", label, i, *w.Event, want)
+				}
+			}
+		}
+		ch, err := uc.Apply(f.s, f.master, f.master,
+			appmatch.ApplyStatusEffectInput{CharacterIDs: []uuid.UUID{f.pc1}, Draft: unconscious()}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("apply unconscious", ch.Writes, statuseffect.ChangeApplied, 2)
+		e := f.s.StatusEffectsOf(f.pc1)[0]
+		alias := "apagado"
+		ch, err = uc.Edit(f.s, f.master, f.master, e.ID, statuseffect.Patch{Alias: &alias}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("edit", ch.Writes, statuseffect.ChangeEdited, 1)
+		ch, err = uc.Remove(f.s, f.master, f.master, e.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("remove", ch.Writes, statuseffect.ChangeRemoved, 1)
 	})
 }
 

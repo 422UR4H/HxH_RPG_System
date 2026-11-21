@@ -1,7 +1,6 @@
 package match
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -42,7 +41,7 @@ func NewStatusEffectsUC() *StatusEffectsUC {
 }
 
 func invalidParams(msg string) error {
-	return fmt.Errorf("%w: %s", statuseffect.ErrInvalidParams, msg)
+	return statuseffect.Wrap(statuseffect.ErrInvalidParams, msg)
 }
 
 // guard cobre o que vale para as três operações: só o mestre, e só com a partida aberta.
@@ -67,7 +66,7 @@ func checkAudience(s *matchsession.MatchSession, masterUUID uuid.UUID, a *status
 	}
 	for _, p := range a.Players {
 		if p == masterUUID || !s.IsPlayerParticipant(p) {
-			return fmt.Errorf("%w: jogador fora da partida", statuseffect.ErrInvalidAudience)
+			return statuseffect.Wrap(statuseffect.ErrInvalidAudience, "Um dos jogadores escolhidos não está na partida.")
 		}
 	}
 	return nil
@@ -79,10 +78,10 @@ func checkController(s *matchsession.MatchSession, target uuid.UUID, controller 
 		return nil
 	}
 	if *controller == target {
-		return invalidParams("controllerId igual ao alvo")
+		return invalidParams("O controlador não pode ser o próprio personagem.")
 	}
 	if _, err := s.GetCharSheet(*controller); err != nil {
-		return invalidParams("controllerId fora da partida")
+		return invalidParams("O controlador precisa ser um personagem da partida.")
 	}
 	return nil
 }
@@ -97,12 +96,12 @@ func (uc *StatusEffectsUC) Apply(
 	// mantém estável, depois de um reinício, a ordem por applied_at (ex.: Inconsciente/Caído).
 	now = now.Truncate(time.Microsecond)
 	if len(in.CharacterIDs) == 0 {
-		return StatusEffectChange{}, invalidParams("characterIds vazio")
+		return StatusEffectChange{}, invalidParams("Escolha ao menos um personagem.")
 	}
 	seen := make(map[uuid.UUID]struct{}, len(in.CharacterIDs))
 	for _, id := range in.CharacterIDs {
 		if _, dup := seen[id]; dup {
-			return StatusEffectChange{}, invalidParams("characterIds repetido")
+			return StatusEffectChange{}, invalidParams("Um personagem foi escolhido duas vezes.")
 		}
 		seen[id] = struct{}{}
 		if _, err := s.GetCharSheet(id); err != nil {
@@ -127,7 +126,7 @@ func (uc *StatusEffectsUC) Apply(
 		nexts[i] = next
 		change.Characters = append(change.Characters, id)
 		for _, e := range added {
-			change.Writes = append(change.Writes, statuseffect.Write{Effect: e})
+			change.Writes = append(change.Writes, statuseffect.Write{Effect: e, Event: &statuseffect.Event{Change: statuseffect.ChangeApplied}})
 			if e.Kind == statuseffect.KindHidden {
 				change.HiddenChanged = true
 			}
@@ -169,7 +168,7 @@ func (uc *StatusEffectsUC) Edit(
 	s.ReplaceStatusEffects(cur.CharacterID, next)
 	return StatusEffectChange{
 		Characters:    []uuid.UUID{cur.CharacterID},
-		Writes:        []statuseffect.Write{{Effect: edited}},
+		Writes:        []statuseffect.Write{{Effect: edited, Event: &statuseffect.Event{Change: statuseffect.ChangeEdited}}},
 		HiddenChanged: cur.Kind == statuseffect.KindHidden && p.SetAudience,
 	}, nil
 }
@@ -192,7 +191,7 @@ func (uc *StatusEffectsUC) Remove(
 	s.ReplaceStatusEffects(cur.CharacterID, next)
 	return StatusEffectChange{
 		Characters:    []uuid.UUID{cur.CharacterID},
-		Writes:        []statuseffect.Write{{Delete: true, Effect: removed}},
+		Writes:        []statuseffect.Write{{Delete: true, Effect: removed, Event: &statuseffect.Event{Change: statuseffect.ChangeRemoved}}},
 		HiddenChanged: removed.Kind == statuseffect.KindHidden,
 	}, nil
 }

@@ -686,3 +686,49 @@ func TestGetMatchHistoryCarriesTheDamageSkill(t *testing.T) {
 		}
 	})
 }
+
+// TestGetMatchHistoryTimesAreNano (revisão final do PR 2, achado 4): cena, round e turno saem em
+// RFC3339Nano, como os eventos — a abertura real do turno tem microssegundos, e cortar em
+// segundo a punha antes de um evento do mesmo segundo.
+func TestGetMatchHistoryTimesAreNano(t *testing.T) {
+	at := time.Date(2026, 11, 20, 10, 0, 0, 123456000, time.UTC)
+	finished := at.Add(time.Second)
+	act := action.NewAction(uuid.New(), nil, uuid.Nil, nil, action.ActionSpeed{}, nil, nil, nil, nil, nil, nil, nil)
+	scenes := []match.HistoryScene{{
+		UUID: uuid.New(), Category: "combat", CreatedAt: at, FinishedAt: &finished,
+		Rounds: []match.HistoryRound{{
+			UUID: uuid.New(), Mode: "combat", CreatedAt: at, FinishedAt: &finished,
+			Turns: []match.HistoryTurn{{UUID: uuid.New(), CreatedAt: at, FinishedAt: finished, Action: *act}},
+		}},
+	}}
+	_, api := humatest.New(t)
+	huma.Register(api, huma.Operation{Method: http.MethodGet, Path: "/matches/{uuid}/history"},
+		apiMatch.GetMatchHistoryHandler(&mockGetMatchHistory{fn: func(context.Context, uuid.UUID, uuid.UUID) (*match.GetMatchHistoryResult, error) {
+			return &match.GetMatchHistoryResult{Scenes: scenes}, nil
+		}}))
+	ctx := context.WithValue(context.Background(), auth.UserIDKey, uuid.New())
+	resp := api.GetCtx(ctx, "/matches/"+uuid.New().String()+"/history")
+	var w struct {
+		Scenes []struct {
+			CreatedAt, FinishedAt string
+			Rounds                []struct {
+				CreatedAt, FinishedAt string
+				Turns                 []struct{ CreatedAt, FinishedAt string } `json:"turns"`
+			} `json:"rounds"`
+		} `json:"scenes"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &w); err != nil {
+		t.Fatalf("unmarshal: %v (%s)", err, resp.Body.String())
+	}
+	wantAt, wantFin := "2026-11-20T10:00:00.123456Z", "2026-11-20T10:00:01.123456Z"
+	sc := w.Scenes[0]
+	ro := sc.Rounds[0]
+	tu := ro.Turns[0]
+	for name, got := range map[string][2]string{
+		"scene": {sc.CreatedAt, sc.FinishedAt}, "round": {ro.CreatedAt, ro.FinishedAt}, "turn": {tu.CreatedAt, tu.FinishedAt},
+	} {
+		if got[0] != wantAt || got[1] != wantFin {
+			t.Errorf("%s createdAt/finishedAt = %q/%q, want %q/%q", name, got[0], got[1], wantAt, wantFin)
+		}
+	}
+}

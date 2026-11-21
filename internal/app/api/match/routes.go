@@ -23,6 +23,7 @@ type Api struct {
 	GetMatchHistoryHandler           Handler[GetMatchHistoryRequest, GetMatchHistoryResponse]
 	AddMatchNPCHandler               Handler[AddMatchNPCRequest, AddMatchNPCResponse]
 	RemoveMatchNPCHandler            Handler[RemoveMatchNPCRequest, RemoveMatchNPCResponse]
+	RevealStatusEffectHandler        Handler[RevealStatusEffectRequest, RevealStatusEffectResponse]
 }
 
 func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
@@ -180,4 +181,20 @@ func (a *Api) RegisterRoutes(r *chi.Mux, api huma.API, logger *zap.Logger) {
 		},
 		DefaultStatus: http.StatusNoContent,
 	}, a.RemoveMatchNPCHandler)
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/matches/{matchUuid}/status-effects/{effectUuid}/reveal",
+		Description: "Master reveals to everyone what a status effect hid in the history (during or after the match)",
+		Tags:        []string{"matches"},
+		Errors: []int{
+			http.StatusBadRequest,
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+			http.StatusNotFound,
+			http.StatusUnprocessableEntity,
+			http.StatusInternalServerError,
+		},
+		DefaultStatus: http.StatusNoContent,
+	}, a.RevealStatusEffectHandler)
 }

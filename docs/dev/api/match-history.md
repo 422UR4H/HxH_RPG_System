@@ -82,6 +82,7 @@ renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega t
               "uuid": "9c9c...",
               "createdAt": "2026-08-20T14:01:00Z",
               "finishedAt": "2026-08-20T14:01:30Z",
+              "statusEffects": [],
               "masterActions": [
                 {
                   "uuid": "ma01...",
@@ -118,6 +119,7 @@ renderiza os cards de ação dentro do escopo de cada cena. Cada round carrega t
               "reactions": [
                 {
                   "uuid": "bb22...",
+                  "openedAt": "2026-08-20T14:01:12.250000Z",
                   "actorId": "char-hisoka...",
                   "reactToId": "aa11...",
                   "reactionKind": "dodge",
@@ -198,8 +200,10 @@ Notas sobre `scenes[]` e `rounds[]`:
 - `mode` do round é o **último** regime em que ele esteve. Por onde ele passou, e quando, está
   nos `events` (`roundModeChanged`).
 - `finishedAt` ausente = round/cena ainda aberto.
-- **Todo instante deste endpoint é RFC3339 do instante real** (`createdAt`/`finishedAt` de
-  `scenes[]`/`rounds[]`/`turns[]`, `happenedAt` de master action, `createdAt` de evento) — o
+- **Todo instante deste endpoint é RFC3339Nano do instante real** — o instante pode ter casas
+  decimais (microssegundos), e um instante sem fração sai sem elas (`createdAt`/`finishedAt` de
+  `scenes[]`/`rounds[]`/`turns[]`, `openedAt` de reação, `happenedAt` de master action e de
+  evento de status, `createdAt` de evento). Compare instantes como tempo, nunca como string. O
   sufixo `Z` nos exemplos acima é literal (UTC), não um rótulo colado em cima da hora local de
   quem fechou o turno. Até 2026-10-02, `scenes`/`rounds`/`turns` eram `TIMESTAMP` sem fuso no
   banco: o Go escrevia a hora local do processo, e o driver lia de volta rotulando UTC — um
@@ -294,6 +298,9 @@ Notas sobre `resolution`:
   `locked`, `noRoll`, `notApplicable`). Sem `hp`: a vida da parede mora nas tabelas do mapa, não no
   turno. Uma porta secreta que ninguém tinha visto quando o turno fechou só aparece para o mestre.
   **Ausente** sem parede e em turnos gravados antes deste campo.
+- `action.margin` é **omitido** para o leitor que não percebe algum alvo Escondido do ataque (`total - margin` entregaria a esquiva dele, e a presença da margem diz que havia um só alvo); o mestre e quem percebe o alvo a mantêm. Igual ao `resolution_updated`.
+- `hiddenTargetsHit` é a contagem anônima de golpes que acertaram um alvo Escondido que este
+  leitor não percebe (ver "Ações de quem estava Escondido"). Ausente quando nenhum.
 - `conditions` **não existe no histórico.** As condições do mestre em vigor só viajam no
   `resolution_updated` do turno aberto (e no `match_full_state`), para o mestre; gravadas,
   elas ficam dentro da própria ação (tabela `actions`), não numa segunda cópia em
@@ -369,8 +376,8 @@ Três tipos de coisa acontecem dentro de um round sem serem o turno de alguém:
   (`cancel_action`, `match-combat-ws.md`). Gravada em `cancelled_actions` pela mesma regra das
   master actions: sem turno aberto, no instante; com turno aberto, no fechamento dele (e um
   reinício no meio do turno a perde junto com o turno). Vai **sempre** em `rounds[].events` —
-  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Projetada por leitor: ver
-  "A ação cancelada" abaixo.
+  mesmo cancelada com um turno aberto, ela nunca foi daquele turno. Só o mestre e o
+  dono do ator a recebem: ver "A ação cancelada" abaixo.
 
 **`edit_action` não é master action** e não aparece em lugar nenhum desta resposta: a edição
 do mestre continua registrada só em `overridden_action_values` (o valor que ela deslocou), e
@@ -415,12 +422,13 @@ Campos novos fora dos eventos: `scenes[].briefFinalDescription`, `scenes[].story
 | Campo | |
 |---|---|
 | `uuid` | do evento (`roundModeChanged`), da master action (`masterAction`) ou da ação cancelada (`actionCancelled` — o id que a ação tinha na fila) |
-| `kind` | `"roundModeChanged"` \| `"masterAction"` \| `"actionCancelled"` \| `"clockStarted"` \| `"clockAdjusted"` \| `"clockRealTime"` |
+| `kind` | `"roundModeChanged"` \| `"masterAction"` \| `"actionCancelled"` \| `"statusEffect"` \| `"clockStarted"` \| `"clockAdjusted"` \| `"clockRealTime"` |
 | `createdAt` | quando aconteceu (em `actionCancelled`, quando foi cancelada) |
 | `payload` | em `roundModeChanged`: `{ "from": "Free", "to": "Race" }`; nos três de relógio, como acima |
 | `masterAction` | só em `masterAction`: o mesmo objeto de `turns[].masterActions[]` |
-| `actorId` | só em `actionCancelled`, **sempre**: a ficha do personagem que agiria |
-| `action` | só em `actionCancelled`, e só para o mestre e o dono do personagem: a ação como estava na fila, no formato de `turns[].action` cortado por leitor (tabela abaixo); **ausente** para os outros |
+| `actorId` | só em `actionCancelled`: a ficha do personagem que agiria |
+| `statusEffect` | só em `statusEffect`: o evento de efeito de status ([seção abaixo](#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects)); `uuid` = o do evento |
+| `action` | só em `actionCancelled`: a ação como estava na fila, no formato de `turns[].action` cortado por leitor (tabela abaixo). A entrada inteira só vai ao mestre e ao dono do personagem |
 
 **Formato de uma master action** (`turns[].masterActions[]` e `events[].masterAction`):
 
@@ -433,8 +441,8 @@ Campos novos fora dos eventos: `scenes[].briefFinalDescription`, `scenes[].story
 | `content` | o que ela fez — peça: `{ characterId, pieceId, from?, to? }` (`from` ausente num `placePiece`, `to` ausente num `removePiece`); parede: `{ wallIds, interact }` (só as paredes que de fato mudaram — um `wallInteract` traz sempre **uma** parede: um lote do mestre vira uma master action por parede, cada uma com quem viu aquela parede, para que ver uma porta comum não entregue no histórico o id de uma porta secreta não revelada do mesmo lote; um `revealWall` traz todas as reveladas, que vão a todos); `turnNote`: o payload do `enqueue_master_action` como o mestre o mandou |
 
 `events` e `masterActions` são **sempre listas** — `[]` quando não há nada — nunca `null`.
-Dentro de cada uma, a ordem do array é a ordem do tempo; `createdAt`/`happenedAt` têm
-precisão de segundo, então o array é quem desempata.
+Dentro de cada uma, a ordem do array é a ordem do tempo; dois instantes iguais (até o
+microssegundo) são desempatados pela ordem do array.
 
 **Projeção — cada leitor vê a master action como a viu ao vivo.** No instante da aplicação o
 servidor já decide, jogador a jogador, o que cada um recebe (o portão de fog do
@@ -453,14 +461,18 @@ O mestre vê todas, inteiras. Revelar parede vai a todos ao vivo, então vai a t
 mestre. **O registro de quem viu o quê nunca sai no wire** — para ninguém, nem para o mestre:
 é como a projeção é decidida, não dado de mesa.
 
-**A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8). Quem cancelou é
-público. O que a ação seria, não:
+**A ação cancelada — `kind: "actionCancelled"`** (spec 2026-10-10 §8.1 P8; decisão do dono do
+produto em 2026-11-20: "ações canceladas devem ser mostradas apenas para o dono e para o mestre,
+mas não para outros jogadores"). Só quem a pode ler recebe a entrada; para qualquer outro jogador
+ela **não existe** — nem o `actorId`. O Escondido do ator não entra na regra: o mestre e o dono
+enxergam através dele, então a entrada vai a eles Escondido ou não, e para os demais já não vai
+nunca (não há revelação que a abra).
 
 | Leitor | Recebe |
 |---|---|
 | mestre | `actorId` + `action` inteira (o corte do resto do histórico: dados, totais e velocidades) |
 | dono do personagem | `actorId` + `action` no corte da própria fila (`ownQueue` do `match_full_state`): alvos, arma, movimento, **nomes** das perícias, `reactionKind`, `systemBias` — **sem números**: sem dados, sem totais, sem velocidade |
-| qualquer outro | só `actorId` — a chave `action` não vem |
+| qualquer outro | **nenhuma entrada** em `events[]` |
 
 ```json
 {
@@ -472,8 +484,8 @@ público. O que a ação seria, não:
 }
 ```
 
-Para o front: com `action`, "Fulano cancelou: <descrição da ação>"; sem, "Fulano cancelou uma
-ação". O NPC é do mestre, então só o mestre vê o que ele cancelou.
+Para o front: toda entrada `actionCancelled` que chega traz `action` — "Fulano cancelou:
+<descrição da ação>". O NPC é do mestre, então só o mestre vê o que ele cancelou.
 
 ### O movimento como foi visto ao vivo — `move.from`, `move.position`, `escape.landing`
 
@@ -514,6 +526,121 @@ transação dele (`actions.move_views`, na linha da action e na de cada reação
 `move_views`, sem `landingViews`) mostra a quem não é mestre nem dono só a `category` do
 movimento — da action e das reações — e nenhum `landing`: na dúvida, não se entrega o que
 talvez não tenha sido visto.
+
+### Efeitos de status no histórico — `kind: "statusEffect"` e `turns[].statusEffects`
+
+Toda aplicação, edição e remoção de um efeito de status ([`match-status-effects.md`](match-status-effects.md))
+vira um evento. Onde ele entra:
+
+| A mudança foi feita… | Aparece em |
+|---|---|
+| com um turno aberto, e esse turno está na árvore | `turns[].statusEffects` daquele turno — **só depois que o turno fecha e é gravado**, como as master actions |
+| sem turno aberto | `rounds[].events`, `kind: "statusEffect"` |
+| com um turno que não foi gravado (reinício) ou que este leitor não vê (ver "Ações de quem estava Escondido") | `rounds[].events` quando o evento não depende de uma ação escondida; do contrário, não aparece |
+
+`turns[].statusEffects` é **sempre lista** (`[]`, nunca `null`), na ordem de `happenedAt`. Em
+`rounds[].events` o evento entra na ordem do tempo, entre os outros `kind`.
+
+```json
+{
+  "uuid": "e5e5...",
+  "change": "applied",
+  "characterId": "char-gon...",
+  "turnId": "9c9c...",
+  "actionId": "bb22...",
+  "happenedAt": "2026-11-18T14:01:20.123456Z",
+  "statusEffect": {
+    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "kind": "hidden",
+    "visibility": { "mode": "players", "playerIds": [] },
+    "public": false
+  },
+  "revealed": false
+}
+```
+
+Dentro de `rounds[].events` o item é `{ uuid, kind: "statusEffect", createdAt, statusEffect: <o objeto acima> }`
+(`createdAt` = `happenedAt`). Campos do objeto:
+
+| Campo | |
+|---|---|
+| `uuid` | do evento (não do efeito) |
+| `change` | `applied` · `edited` · `removed` |
+| `characterId` | a ficha do personagem que tem o efeito |
+| `turnId` | o turno aberto no instante; ausente fora de turno |
+| `actionId` | **a causa**: a action (ou reação) do turno a que a mudança pertence — o mestre a informa no `actionId` de `apply_status_effect`/`edit_status_effect`/`remove_status_effect` ou a troca com `relink_status_effect`. Ausente = a mudança é do turno (ou do round) como um todo; o front a ordena pelo `happenedAt`. Só aparece quando nomeia uma action/reação gravada do próprio turno (uma reação sentada que foi substituída depois não é âncora: o evento volta a ser do turno) |
+| `happenedAt` | instante real, **RFC3339Nano** (microssegundos) |
+| `statusEffect` | o efeito **como ficou** (numa remoção, como era), na mesma forma do `status_effects_updated` ([`match-status-effects.md`](match-status-effects.md#8-status_effects_updated)); `visibility` e `public` só vão ao mestre |
+| `revealed` | **só do mestre**: `true` quando uma revelação **do próprio efeito** cobre este evento; omitido para os jogadores |
+
+**Quem vê um evento — a regra, em palavras:**
+
+- O **mestre** vê todos, sempre.
+- Um **jogador** vê o evento quando as duas coisas valem:
+  1. ele **enxergava o personagem** no instante da mudança — logo antes ou logo depois dela, a
+     sala grava isso (`status_effect_events.views`) — **ou** estava de fora só por um Escondido
+     que o mestre já revelou (cobrindo o instante); **e**
+  2. a **última lista** do efeito (a mais recente, em qualquer partida) inclui o jogador. Assim,
+     quem passa a ser listado hoje vê o passado que já enxergava; quem sai da lista deixa de ver
+     o efeito inteiro.
+- **Ou** uma revelação do efeito (próxima seção) cobre o evento: então todos o veem.
+- Um evento preso (`actionId`) a uma ação que o leitor não vê some junto com ela.
+- Falha fechada: um efeito aplicado antes deste recurso (sem eventos) não tem "última lista" e
+  não aparece para jogador algum.
+- **Lacuna conhecida:** um evento fora de turno num round que nunca virou linha (reinício antes
+  de a linha do round ser garantida) não tem onde ficar na árvore e sai do histórico, com log.
+
+### Ações de quem estava Escondido
+
+Com o efeito **Escondido** ([`match-status-effects.md`](match-status-effects.md#hidden-escondido)),
+o personagem some da mesa para quem não está na lista dele. O histórico respeita o que cada
+leitor viu ao vivo. O servidor grava, na linha da action no instante da abertura do turno
+(`actions.hidden_from`, ver abaixo), para cada personagem Escondido — ator e alvos — o efeito e
+**quem o percebia** (a lista dele naquele instante), e na da reação, quando ela abre. É uma
+**lista de permissão**: um leitor que não está nela não o percebia — inclusive quem nem era
+jogador da sessão naquele instante (um leitor de fora numa partida pública, um membro da campanha
+não inscrito na partida, um jogador inscrito depois). Para um leitor que não percebia o
+personagem:
+
+- **Ator escondido** → o **turno inteiro não existe** para esse leitor: nem `action`, nem
+  `reactions`, nem `resolution`. As master actions e os eventos de status desse turno que **não**
+  dependem da ação (sem `actionId`) caem para `rounds[].events`, onde o leitor os vê pelas regras
+  de cada um; os presos à ação escondida somem com ela. Os que caem **continuam com o `turnId`**
+  (de propósito): o front **não pode assumir que esse turno existe** na árvore deste leitor.
+- **Reator escondido** → aquela **reação é descartada** (e o resultado dele sai da resolução).
+- **Alvo escondido** → o id sai de `action.targetId` e o `targets[]` dele (com golpes e fuga) sai
+  da resolução. Se o golpe **acertou** esse alvo (não esquivou, aparou nem foi barrado antes na
+  cadeia), `resolution.hiddenTargetsHit` conta quantos: **só o número**, sem id, valor, reação ou
+  posição — o front mostra "Desconhecido 1..N". Golpe que não acertou não deixa rastro (a mesa
+  não pode saber que havia alguém ali). **Ausente** = nenhum; o mestre e o dono do alvo nunca o
+  recebem. Depois da revelação o alvo volta com o resultado real e a contagem cai. Mesmo campo
+  do `resolution_updated` ([`match-combat-ws.md`](match-combat-ws.md#resolution_updated)).
+- **Nada do que foi visto ao vivo se esconde depois.** Quem viu o personagem agir não perde isso
+  porque ele ficou Escondido em seguida.
+- **Ampliar a lista do Escondido não revela o passado.** Só a revelação do mestre
+  (`POST …/reveal`, abaixo) faz isso; depois dela o turno, a reação e o alvo reaparecem, e os
+  eventos de status do personagem escondidos pelo Escondido idem. Um Escondido revelado cobre o
+  que aconteceu **até** o instante da revelação — ações posteriores do mesmo Escondido seguem
+  escondidas até a próxima revelação.
+- Uma linha que não pôde ser lida esconde o personagem de todo leitor que não é o dono nem o
+  mestre (falha fechada), e nenhuma revelação a cobre. O dono e o mestre sempre veem.
+- O **instante** que decide é o da abertura real (`createdAt` do turno; `openedAt` da reação).
+  Uma reação nunca aberta vale o instante do fechamento.
+
+`actions.hidden_from` é JSONB **esparso** (`NULL` = nenhum personagem Escondido com lista que não
+é "todos"; nunca `{}`):
+`{ "<charId>": { "effect": "<hiddenEffectId>", "perceivedBy": ["<playerId>", ...] } }`
+(`perceivedBy: []` = ninguém além do mestre e do dono). **Nunca sai no wire.**
+
+**Só para o mestre:** `turns[].concealedBy` (lista de uuids, omitida quando vazia) são os efeitos
+Escondido que **ainda** escondem algo daquele turno de alguém (com a lista de permissão, todo
+Escondido gravado esconde de alguém — no mínimo de quem não era da sessão) — o front oferece "revelar" para
+cada um. Some de lá conforme as revelações cobrem o turno.
+
+**Instantes reais.** `turns[].createdAt` agora é a **abertura real do turno** (antes era o
+fechamento); linhas gravadas antes desta mudança mantêm o horário de fechamento. Cada reação traz
+`openedAt` (RFC3339Nano): quando o mestre a abriu; ausente numa reação que nunca abriu (e em
+linhas antigas). É um campo só do histórico — o fio do WS não muda.
 
 ### A resposta já vem projetada — não filtre no cliente
 
@@ -564,3 +691,47 @@ deny-list para divergir da primeira da próxima vez que ela mudar.
 | 403 | Partida privada e usuário não é mestre nem participante |
 | 404 | Partida não encontrada |
 | 500 | Erro interno |
+
+## POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal — Revelar o que um efeito escondeu
+
+**Auth:** JWT obrigatório. **Só o mestre da partida.**
+
+Torna visível **a todos os jogadores**, no histórico, o que o efeito escondeu até este instante:
+para um Escondido, as ações do personagem (turno, reação, alvo) e os eventos de status dele que o
+Escondido ocultou; para qualquer outro efeito, os eventos desse efeito. `effectUuid` é o
+`statusEffect.id` que os eventos do histórico carregam (o `concealedBy` de um turno é um id de
+Escondido).
+
+Semântica:
+
+- **Para todos** (por enquanto; revelar a um jogador só é futuro).
+- **Cobre o que aconteceu até o instante da chamada.** O que vier depois do efeito continuar
+  escondido pede outra revelação. O instante da revelação é o relógio do servidor da API, e o
+  dos eventos o do servidor do jogo: uns milissegundos de diferença entre os dois podem deixar
+  descoberto um evento carimbado logo depois do clique (outra revelação o cobre).
+- **Cada chamada é uma revelação nova** (insere uma linha em `status_effect_reveals`); repetir
+  não dá erro e a mais recente vale. O histórico lê a última por efeito.
+- Funciona **durante e depois** da partida.
+- **Não há push no WebSocket**: o front relê `GET /matches/{uuid}/history`.
+- Remover um Escondido, editar sua lista ou o efeito sair de cena **não revela nada** sozinho; só
+  este comando.
+
+```bash
+curl -i -X POST \
+  -H "Authorization: Bearer $TOKEN_MESTRE" \
+  "http://localhost:5000/matches/$MATCH/status-effects/$EFFECT/reveal"
+# HTTP/1.1 204 No Content
+
+# depois, o leitor vê o turno que antes não existia:
+curl -s -H "Authorization: Bearer $TOKEN_JOGADOR" \
+  "http://localhost:5000/matches/$MATCH/history" | jq '.scenes[].rounds[].turns | length'
+```
+
+| Status | Situação |
+|---|---|
+| 204 | Revelado |
+| 400 | UUID inválido |
+| 401 | Sem JWT |
+| 403 | Quem chama não é o mestre da partida (`detail`: `Só o mestre da partida pode revelar.`) |
+| 404 | Partida não encontrada (`detail`: `Partida não encontrada.`), **ou o efeito não é revelável nesta partida**: não tem evento de status em partida alguma (inclusive um efeito aplicado antes do histórico de status existir: ele não pode ser revelado) ou a ficha dele não participa desta partida. Um Escondido aplicado em **outra** partida e ainda ativo nesta é revelável aqui — é ele que o `concealedBy` desta nomeia. `uuid.Nil` é sempre 404 (`detail`: `Esse efeito não está mais no personagem.`) |
+| 500 | Erro interno (`detail`: `Não foi possível revelar agora.`) |

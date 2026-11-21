@@ -35,6 +35,18 @@ func (aq *PriorityQueue) Insert(newAction *Action) {
 	*aq = append(*aq, newAction)
 }
 
+// InsertAt põe a ação na posição i (0 = frente), preservando a ordem do resto; i fora da fila
+// vale o fim. É o caminho de uma ação que volta ao lugar em que estava (o desfazer de um status).
+func (aq *PriorityQueue) InsertAt(i int, newAction *Action) {
+	if i < 0 || i >= len(*aq) {
+		aq.Insert(newAction)
+		return
+	}
+	*aq = append(*aq, nil)
+	copy((*aq)[i+1:], (*aq)[i:])
+	(*aq)[i] = newAction
+}
+
 // All returns every pending action, in insertion order, as a copy. The scheduler iterates it
 // to compute a key per entry; handing out the backing array would let a caller reshape the
 // queue behind the session's back.

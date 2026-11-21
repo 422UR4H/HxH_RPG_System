@@ -5,6 +5,7 @@ package round_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -934,6 +935,59 @@ func TestPersistTurnCloseWritesTheStatusEffectsWithTheTurn(t *testing.T) {
 		}
 		if n := countOf(t, `SELECT COUNT(*) FROM character_status_effects WHERE uuid = $1`, e.ID); n != 1 {
 			t.Fatalf("status rows = %d, want 1", n)
+		}
+	})
+
+	t.Run("status events ride the turn close", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		e := proneOn(fx.victimSheet)
+		turnID, actionID := tn.GetID(), act.GetID()
+		ev := &statuseffect.Event{
+			ID: uuid.New(), Change: statuseffect.ChangeApplied, MatchID: fx.matchUUID,
+			SceneID: fx.scene.GetID(), RoundID: fx.round.GetID(), TurnID: &turnID, ActionID: &actionID,
+			Listing: statuseffect.Audience{Everyone: true}, Views: map[uuid.UUID]masteraction.View{},
+			HappenedAt: e.AppliedAt,
+		}
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusEffects: []statuseffect.Write{{Effect: e, Event: ev}},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM status_effect_events WHERE uuid = $1 AND turn_uuid = $2 AND action_uuid = $3`,
+			ev.ID, turnID, actionID); n != 1 {
+			t.Fatalf("event rows with the turn = %d, want 1", n)
+		}
+	})
+
+	t.Run("a failing close writes no status event", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(time.Now())
+		good := proneOn(fx.victimSheet)
+		bad := proneOn(fx.victimSheet)
+		bad.Kind = statuseffect.Kind(strings.Repeat("x", 40)) // kind > VARCHAR(32): o banco recusa
+		turnID := tn.GetID()
+		ev := &statuseffect.Event{
+			ID: uuid.New(), Change: statuseffect.ChangeApplied, MatchID: fx.matchUUID,
+			SceneID: fx.scene.GetID(), RoundID: fx.round.GetID(), TurnID: &turnID,
+			Listing: statuseffect.Audience{Everyone: true}, Views: map[uuid.UUID]masteraction.View{},
+			HappenedAt: good.AppliedAt,
+		}
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			StatusEffects: []statuseffect.Write{{Effect: good, Event: ev}, {Effect: bad}},
+		}); err == nil {
+			t.Fatal("PersistTurnClose succeeded with a status effect the database refuses")
+		}
+		if n := countOf(t, `SELECT COUNT(*) FROM status_effect_events`); n != 0 {
+			t.Fatalf("event rows = %d, want 0", n)
 		}
 	})
 
@@ -3290,4 +3344,225 @@ func TestEnsureFillsSceneStoryStartLater(t *testing.T) {
 	if got := scenes[0].StoryStartedAt; got == nil || !got.Equal(start) {
 		t.Errorf("scene story_started_at = %v, want %v", got, start)
 	}
+}
+
+// TestPersistTurnClose_HiddenFrom: o registro do ator, de cada alvo e de cada reator Escondido
+// (actions.hidden_from: efeito + quem o percebia) é gravado com o turno e lido de volta;
+// nenhum = SQL NULL (nunca '{}'), que volta nil; um valor ilegível falha fechado (a sentinela,
+// que esconde de todo leitor).
+func TestPersistTurnClose_HiddenFrom(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+
+	setup := func(t *testing.T) (resolutionFixture, *action.Action, *action.Action, *action.Action, *turnentity.Turn) {
+		t.Helper()
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		mk := func() *action.Action {
+			r := action.NewAction(fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, &action.Dodge{}, nil, nil)
+			r.ReactionKind = action.ReactDodge
+			return r
+		}
+		hiddenReact, plainReact := mk(), mk()
+		tn := turnentity.NewTurn(*act)
+		tn.AddReaction(hiddenReact)
+		tn.AddReaction(plainReact)
+		tn.Close(time.Now())
+		return fx, act, hiddenReact, plainReact, tn
+	}
+	readRaw := func(t *testing.T, id uuid.UUID) []byte {
+		t.Helper()
+		var raw []byte
+		if err := pool.QueryRow(ctx, `SELECT hidden_from FROM actions WHERE uuid = $1`, id).Scan(&raw); err != nil {
+			t.Fatalf("read hidden_from: %v", err)
+		}
+		return raw
+	}
+
+	t.Run("hidden_from round-trips on action and reaction", func(t *testing.T) {
+		fx, act, hiddenReact, plainReact, tn := setup(t)
+		player, hid, hid2 := uuid.New(), uuid.New(), uuid.New()
+		actionHF := appmatch.HiddenFrom{
+			fx.attackerSheet: {Effect: hid, PerceivedBy: []uuid.UUID{}},
+			fx.victimSheet:   {Effect: hid2, PerceivedBy: []uuid.UUID{player}},
+		}
+		reactHF := appmatch.HiddenFrom{fx.victimSheet: {Effect: hid2, PerceivedBy: []uuid.UUID{player}}}
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			ActionHiddenFrom:   actionHF,
+			ReactionHiddenFrom: map[uuid.UUID]appmatch.HiddenFrom{hiddenReact.GetID(): reactHF},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatalf("FindMatchHistory: %v", err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		if !reflect.DeepEqual(turn.ActionHiddenFrom, actionHF) {
+			t.Fatalf("ActionHiddenFrom = %v, want %v", turn.ActionHiddenFrom, actionHF)
+		}
+		if !reflect.DeepEqual(turn.ReactionHiddenFrom[hiddenReact.GetID()], reactHF) {
+			t.Fatalf("ReactionHiddenFrom = %v, want %v for %s", turn.ReactionHiddenFrom, reactHF, hiddenReact.GetID())
+		}
+		if _, ok := turn.ReactionHiddenFrom[plainReact.GetID()]; ok || len(turn.ReactionHiddenFrom) != 1 {
+			t.Fatalf("ReactionHiddenFrom = %v, want only the hidden reactor's", turn.ReactionHiddenFrom)
+		}
+		// A forma gravada: por personagem, o efeito e quem o percebia ([] = ninguém).
+		var stored map[string]map[string]any
+		if err := json.Unmarshal(readRaw(t, act.GetID()), &stored); err != nil {
+			t.Fatalf("decode stored hidden_from: %v", err)
+		}
+		got := stored[fx.attackerSheet.String()]
+		if got["effect"] != hid.String() || fmt.Sprint(got["perceivedBy"]) != "[]" {
+			t.Fatalf("stored hidden_from = %v, want {effect, perceivedBy: []}", stored)
+		}
+	})
+
+	t.Run("NULL reads as nil", func(t *testing.T) {
+		fx, act, hiddenReact, plainReact, tn := setup(t)
+		// Mapas vazios são "nenhum": NULL, nunca '{}'.
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+			ActionHiddenFrom: appmatch.HiddenFrom{},
+			ReactionHiddenFrom: map[uuid.UUID]appmatch.HiddenFrom{
+				hiddenReact.GetID(): {}, plainReact.GetID(): nil,
+			},
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		for _, id := range []uuid.UUID{act.GetID(), hiddenReact.GetID(), plainReact.GetID()} {
+			if raw := readRaw(t, id); raw != nil {
+				t.Fatalf("hidden_from of %s = %s, want SQL NULL", id, raw)
+			}
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatalf("FindMatchHistory: %v", err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		if turn.ActionHiddenFrom != nil || turn.ReactionHiddenFrom != nil {
+			t.Fatalf("hidden from = %v / %v, want nil", turn.ActionHiddenFrom, turn.ReactionHiddenFrom)
+		}
+	})
+
+	t.Run("an unreadable value fails closed", func(t *testing.T) {
+		fx, act, hiddenReact, _, tn := setup(t)
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		for _, id := range []uuid.UUID{act.GetID(), hiddenReact.GetID()} {
+			if _, err := pool.Exec(ctx, `UPDATE actions SET hidden_from = '"not-a-map"'::jsonb WHERE uuid = $1`, id); err != nil {
+				t.Fatalf("corrupt hidden_from: %v", err)
+			}
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatalf("FindMatchHistory: %v", err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		sentinel := func(m appmatch.HiddenFrom, c uuid.UUID) bool {
+			h, ok := m[c]
+			return ok && len(m) == 1 && h.Effect == uuid.Nil && len(h.PerceivedBy) == 0
+		}
+		if !sentinel(turn.ActionHiddenFrom, fx.attackerSheet) {
+			t.Fatalf("ActionHiddenFrom = %v, want the actor's sentinel", turn.ActionHiddenFrom)
+		}
+		if !sentinel(turn.ReactionHiddenFrom[hiddenReact.GetID()], fx.victimSheet) {
+			t.Fatalf("ReactionHiddenFrom = %v, want the reactor's sentinel", turn.ReactionHiddenFrom)
+		}
+	})
+}
+
+// TestPersistTurnClose_OpeningTimes (Task 15b): turns.created_at é a abertura real do turno
+// (sem ela, como antes, o fechamento); actions.opened_at é a abertura da linha — a da action é
+// a do turno, a da reação a dela, NULL na que nunca abriu. O histórico os lê de volta.
+func TestPersistTurnClose_OpeningTimes(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SetupTestDB(t)
+	repo := roundrepo.NewRepository(pool)
+	t0 := time.Date(2026, 11, 19, 10, 0, 0, 123456000, time.UTC)
+
+	t.Run("stored and served", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		mk := func() *action.Action {
+			r := action.NewAction(fx.victimSheet, nil, act.GetID(), nil, action.ActionSpeed{}, nil, nil, nil, nil, &action.Dodge{}, nil, nil)
+			r.ReactionKind = action.ReactDodge
+			return r
+		}
+		opened, never := mk(), mk()
+		tn := turnentity.NewTurn(*act)
+		tn.SetOpenedAt(t0)
+		tn.AddReaction(opened)
+		tn.AddReaction(never)
+		tn.OpenReactionAt(opened.GetID(), t0.Add(time.Second))
+		tn.Close(t0.Add(5 * time.Second))
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		var created time.Time
+		if err := pool.QueryRow(ctx, `SELECT created_at FROM turns WHERE uuid = $1`, tn.GetID()).Scan(&created); err != nil {
+			t.Fatal(err)
+		}
+		if !created.Equal(t0) {
+			t.Fatalf("turns.created_at = %v, want the opening %v", created, t0)
+		}
+		readOpened := func(id uuid.UUID) *time.Time {
+			var at *time.Time
+			if err := pool.QueryRow(ctx, `SELECT opened_at FROM actions WHERE uuid = $1`, id).Scan(&at); err != nil {
+				t.Fatal(err)
+			}
+			return at
+		}
+		if at := readOpened(act.GetID()); at == nil || !at.Equal(t0) {
+			t.Fatalf("action opened_at = %v, want %v", at, t0)
+		}
+		if at := readOpened(opened.GetID()); at == nil || !at.Equal(t0.Add(time.Second)) {
+			t.Fatalf("reaction opened_at = %v, want %v", at, t0.Add(time.Second))
+		}
+		if at := readOpened(never.GetID()); at != nil {
+			t.Fatalf("never-opened reaction opened_at = %v, want NULL", at)
+		}
+		scenes, err := repo.FindMatchHistory(ctx, fx.matchUUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		turn := scenes[0].Rounds[0].Turns[0]
+		if !turn.CreatedAt.Equal(t0) {
+			t.Fatalf("history createdAt = %v, want %v", turn.CreatedAt, t0)
+		}
+		if len(turn.ReactionOpenedAt) != 1 || !turn.ReactionOpenedAt[opened.GetID()].Equal(t0.Add(time.Second)) {
+			t.Fatalf("ReactionOpenedAt = %v, want only the opened reaction's", turn.ReactionOpenedAt)
+		}
+	})
+
+	t.Run("a turn with no opening keeps the close as created_at", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := seedMatchAndSheets(t, pool)
+		act := buildAttackAction(t, fx.attackerSheet, fx.victimSheet)
+		tn := turnentity.NewTurn(*act)
+		tn.Close(t0)
+		if err := repo.PersistTurnClose(ctx, appmatch.TurnCloseData{
+			Scene: fx.scene, Round: fx.round, Turn: tn, Action: act, MatchUUID: fx.matchUUID,
+		}); err != nil {
+			t.Fatalf("PersistTurnClose: %v", err)
+		}
+		var created time.Time
+		var openedAt *time.Time
+		if err := pool.QueryRow(ctx, `SELECT t.created_at, a.opened_at FROM turns t JOIN actions a ON a.turn_uuid = t.uuid WHERE t.uuid = $1`,
+			tn.GetID()).Scan(&created, &openedAt); err != nil {
+			t.Fatal(err)
+		}
+		if !created.Equal(t0) || openedAt != nil {
+			t.Fatalf("created_at/opened_at = %v/%v, want %v/NULL", created, openedAt, t0)
+		}
+	})
 }

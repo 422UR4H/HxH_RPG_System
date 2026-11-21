@@ -2,9 +2,12 @@ package game
 
 import (
 	"log"
+	"slices"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -39,6 +42,116 @@ type turnWrites struct {
 	// que aconteceram (holdStatusEffectWritesLocked): gravadas pelo PersistTurnClose
 	// (TurnCloseData.StatusEffects), atrás das que uma gravação anterior não gravou.
 	statusEffects []statuseffect.Write
+	// actionHiddenFrom é, para o ator e cada alvo da action Escondido na abertura do turno
+	// (recordOpenedMoveViews), o efeito e quem o percebia (hiddenRecordLocked) — gravado com a
+	// action (actions.hidden_from). nil = nenhum.
+	actionHiddenFrom appmatch.HiddenFrom
+	// reactionHiddenFrom é, por reação aberta, o registro do reator Escondido na abertura
+	// dela (recordOpenedReactionMoveViews). A entrada existe (mesmo nil) para toda reação aberta:
+	// é o que diz ao fechamento que ela já foi registrada; a que nunca abriu é registrada lá.
+	reactionHiddenFrom map[uuid.UUID]appmatch.HiddenFrom
+	// statusCancels é o registro do desfazer (D3): por efeito aplicado ou editado neste turno, as
+	// ações da fila que a mudança dele tirou e as reações não abertas que ela trocou no turno
+	// (dropRefusedByStatusLocked), em ordem de remoção. É o que um remove_status_effect com
+	// restoreCancelledActions devolve (giveBackLocked). Morre
+	// com o turno — fechamento, reinício, end_match —, então nenhum ponteiro velho sobrevive a
+	// ele; nunca é gravado.
+	statusCancels map[uuid.UUID]statusCancel
+}
+
+// statusCancel são as ações da fila que um efeito tirou no turno aberto, do personagem dele,
+// com o retrato do instante da saída (matchsession.StatusDrop: lugar na fila, edições do mestre,
+// base do movimento). Os ponteiros são os que saíram da fila: depois do DropRefusedByStatus só
+// este registro os segura (o registro de cancelamento guarda uma cópia), então voltar com eles
+// é seguro.
+//
+// reactions são as reações não abertas do personagem que o efeito tirou do turno aberto
+// (matchsession.ReactionDrop: a reação inteira, o lugar, a sentada, o pouso e as edições).
+type statusCancel struct {
+	charID    uuid.UUID
+	drops     []matchsession.StatusDrop
+	reactions []matchsession.ReactionDrop
+}
+
+// noteReactionSwap registra que effectID (de charID) tirou reactions do turno w; uma reação que
+// o registro já tem não entra de novo.
+func (w *turnWrites) noteReactionSwap(effectID, charID uuid.UUID, reactions []matchsession.ReactionDrop) {
+	if w.statusCancels == nil {
+		w.statusCancels = map[uuid.UUID]statusCancel{}
+	}
+	rec := w.statusCancels[effectID]
+	rec.charID = charID
+	for _, d := range reactions {
+		if !slices.ContainsFunc(rec.reactions, func(o matchsession.ReactionDrop) bool { return o.Reaction.GetID() == d.Reaction.GetID() }) {
+			rec.reactions = append(rec.reactions, d)
+		}
+	}
+	w.statusCancels[effectID] = rec
+}
+
+// noteStatusCancel registra que effectID (de charID) tirou drops da fila no turno w; uma ação
+// que o registro já tem não entra de novo.
+func (w *turnWrites) noteStatusCancel(effectID, charID uuid.UUID, drops []matchsession.StatusDrop) {
+	if w.statusCancels == nil {
+		w.statusCancels = map[uuid.UUID]statusCancel{}
+	}
+	rec := w.statusCancels[effectID]
+	rec.charID = charID
+	for _, d := range drops {
+		if !slices.ContainsFunc(rec.drops, func(o matchsession.StatusDrop) bool { return o.Action.GetID() == d.Action.GetID() }) {
+			rec.drops = append(rec.drops, d)
+		}
+	}
+	w.statusCancels[effectID] = rec
+}
+
+// forgetRestored tira do turno o que o cancelamento de cada ação devolvida deixou: o registro
+// em cancelledActions (nada dela é gravado no fechamento) e a entrada dela no registro do
+// desfazer de qualquer efeito (ela não pode ser devolvida duas vezes). Vale igual para as
+// reações devolvidas (ids de reação nunca estão em cancelledActions).
+func (w *turnWrites) forgetRestored(ids map[uuid.UUID]bool) {
+	if len(ids) == 0 {
+		return
+	}
+	kept := w.cancelledActions[:0:0]
+	for _, rec := range w.cancelledActions {
+		if !ids[rec.UUID] {
+			kept = append(kept, rec)
+		}
+	}
+	w.cancelledActions = kept
+	for effectID, rec := range w.statusCancels {
+		drops := rec.drops[:0:0]
+		for _, d := range rec.drops {
+			if !ids[d.Action.GetID()] {
+				drops = append(drops, d)
+			}
+		}
+		reactions := rec.reactions[:0:0]
+		for _, d := range rec.reactions {
+			if !ids[d.Reaction.GetID()] {
+				reactions = append(reactions, d)
+			}
+		}
+		if len(drops) == 0 && len(reactions) == 0 {
+			delete(w.statusCancels, effectID)
+			continue
+		}
+		rec.drops, rec.reactions = drops, reactions
+		w.statusCancels[effectID] = rec
+	}
+}
+
+// statusCancelChars são os personagens com registro do desfazer — o cancelledActionIds que o
+// mestre vê deles some quando o turno fecha.
+func (w *turnWrites) statusCancelChars() []uuid.UUID {
+	var out []uuid.UUID
+	for _, rec := range w.statusCancels {
+		if !slices.Contains(out, rec.charID) {
+			out = append(out, rec.charID)
+		}
+	}
+	return out
 }
 
 // openTurnIDLocked is the session's open turn, uuid.Nil when there is none (or no session).
@@ -115,14 +228,14 @@ func (r *Room) describeDroppedTurnLocked() droppedTurn {
 // logDroppedTurn says what a room that went away mid-turn did not write — never silently.
 func logDroppedTurn(matchUUID uuid.UUID, d droppedTurn) {
 	if d.unwrittenStatusEffects > 0 {
-		log.Printf("room of match %s closed with %d status effect write(s) still pending from a failed write — they were NOT persisted",
+		log.Printf("sala da partida %s fechou com %d gravação(ões) de efeitos de status pendentes de uma gravação que falhou — NÃO foram gravadas",
 			matchUUID, d.unwrittenStatusEffects)
 	}
 	if d.turnID == uuid.Nil && d.masterActions == 0 && d.cancelledActions == 0 && d.statusEffects == 0 {
 		return
 	}
 	log.Printf("room of match %s closed with turn %s still open — the turn, its opened move, the %d master action(s) "+
-		"applied, the %d action(s) cancelled and the %d status effect write(s) made inside it were NOT persisted; "+
+		"applied, the %d action(s) cancelled and the %d gravação(ões) de efeitos de status feitas nele were NOT persisted; "+
 		"the match resumes from the last closed turn",
 		matchUUID, d.turnID, d.masterActions, d.cancelledActions, d.statusEffects)
 }

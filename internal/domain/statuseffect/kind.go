@@ -1,8 +1,6 @@
 package statuseffect
 
 import (
-	"fmt"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -46,7 +44,65 @@ func ParseKind(s string) (Kind, error) {
 			return k, nil
 		}
 	}
-	return "", fmt.Errorf("%w: %q", ErrUnknownKind, s)
+	return "", ErrUnknownKind
+}
+
+// kindLabel é o nome de cada tipo na mesa (a tabela de match-status-effects.md §3).
+var kindLabel = map[Kind]string{
+	KindParalyzed: "Paralisado", KindStupefied: "Atônito", KindStunned: "Atordoado",
+	KindUnconscious: "Inconsciente", KindRestrained: "Preso", KindInjured: "Lesionado",
+	KindSlowed: "Lento", KindSense: "Sentido afetado", KindWeakened: "Debilitado",
+	KindBleeding: "Sangrando", KindBurning: "Queimando", KindFreezing: "Congelando",
+	KindPoisoned: "Envenenado", KindAsphyxiating: "Asfixiando", KindProne: "Caído",
+	KindAirborne: "No ar", KindOpenGuard: "Guarda aberta", KindCompelled: "Compelido",
+	KindControlled: "Controlado", KindHidden: "Escondido",
+}
+
+// Label é o nome do tipo em português, para texto que o usuário lê (as recusas por status). O
+// fio continua com o valor em inglês (string(k)); um tipo desconhecido sai como veio.
+func (k Kind) Label() string {
+	if l, ok := kindLabel[k]; ok {
+		return l
+	}
+	return string(k)
+}
+
+// kindState é cada tipo numa forma que cabe depois de "está" ("está paralisado").
+var kindState = map[Kind]string{
+	KindParalyzed: "paralisado", KindStupefied: "atônito", KindStunned: "atordoado",
+	KindUnconscious: "inconsciente", KindRestrained: "preso", KindInjured: "lesionado",
+	KindSlowed: "lento", KindSense: "com um sentido afetado", KindWeakened: "debilitado",
+	KindBleeding: "sangrando", KindBurning: "queimando", KindFreezing: "congelando",
+	KindPoisoned: "envenenado", KindAsphyxiating: "asfixiando", KindProne: "caído",
+	KindAirborne: "no ar", KindOpenGuard: "com a guarda aberta", KindCompelled: "compelido",
+	KindControlled: "controlado", KindHidden: "escondido",
+}
+
+// StatePhrase é o tipo em forma de estado, para frases "está …" que o usuário lê (as recusas
+// por status: "não pode atacar porque está paralisado"). Tipo desconhecido sai como veio.
+func (k Kind) StatePhrase() string {
+	if l, ok := kindState[k]; ok {
+		return l
+	}
+	return string(k)
+}
+
+// variantState é a variante (sentido ou aptidão) em forma de estado, nos nomes da mesa.
+var variantState = map[string]string{
+	string(SenseVision): "com a visão afetada", string(SenseHearing): "com a audição afetada",
+	string(SenseSmell): "com o olfato afetado", string(SenseTact): "com o tato afetado",
+	string(SenseTaste):       "com o paladar afetado",
+	string(AptitudePhysical): "com o corpo debilitado", string(AptitudeMental): "com a mente debilitada",
+	string(AptitudeSpiritual): "com o espírito debilitado",
+}
+
+// StatePhrase é a identidade em forma de estado: a variante, quando tem nome na mesa
+// ("com a visão afetada"), senão o tipo ("paralisado").
+func (id Identity) StatePhrase() string {
+	if l, ok := variantState[id.Variant]; ok {
+		return l
+	}
+	return id.Kind.StatePhrase()
 }
 
 // PublicByDefault diz se, sem registro de audiência, todos veem o efeito (§9).
@@ -75,7 +131,7 @@ func ParseSense(s string) (Sense, error) {
 	case SenseVision, SenseHearing, SenseSmell, SenseTact, SenseTaste:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: sense %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Esse sentido não existe.")
 }
 
 // Skill devolve a perícia correspondente ao sentido.
@@ -109,7 +165,7 @@ func ParseAptitude(s string) (Aptitude, error) {
 	case AptitudePhysical, AptitudeMental, AptitudeSpiritual:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: aptitude %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa aptidão não existe.")
 }
 
 // Ability devolve a habilidade (ability) correspondente à aptidão.
@@ -146,7 +202,7 @@ func ParseDomain(s string) (Domain, error) {
 			return d, nil
 		}
 	}
-	return "", fmt.Errorf("%w: domain %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa ação bloqueada não existe.")
 }
 
 // SenseLevel é a gravidade de um sentido afetado.
@@ -162,7 +218,7 @@ func ParseSenseLevel(s string) (SenseLevel, error) {
 	case SenseImpaired, SenseNullified:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: sense level %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa gravidade do sentido não existe.")
 }
 
 // InjuryLevel é a gravidade de uma lesão em um domínio.
@@ -178,7 +234,7 @@ func ParseInjuryLevel(s string) (InjuryLevel, error) {
 	case InjuryHurt, InjuryDisabled:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: injury level %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa gravidade da lesão não existe.")
 }
 
 // TouchFace é uma face do Tato.
@@ -198,5 +254,5 @@ func ParseTouchFace(s string) (TouchFace, error) {
 			return f, nil
 		}
 	}
-	return "", fmt.Errorf("%w: touch face %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa face do Tato não existe.")
 }

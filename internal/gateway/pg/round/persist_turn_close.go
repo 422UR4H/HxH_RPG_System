@@ -81,13 +81,15 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 		}
 	}
 
-	// Insert turn — turn entity has no createdAt field. AGENTS.md's own known-issues entry
-	// names the approximation this is supposed to be: finishedAt stands in for created_at,
-	// not time.Now(). Persistence always happens strictly AFTER the turn closes, so a
-	// time.Now() here would make every turn's created_at land strictly AFTER its finished_at —
-	// invisible while nothing read created_at, and nonsense the moment something sorts by it
-	// (HistoryTurnResponse.CreatedAt, since Task 12).
+	// created_at é a abertura real do turno (Turn.GetOpenedAt, carimbada pela sessão com o relógio
+	// da sala). Um turno sem ela (montado à mão, testes) fica com o fechamento, a aproximação de
+	// antes: nunca time.Now(), que poria o created_at depois do finished_at.
 	finishedAt := t.GetFinishedAt()
+	createdAt := *finishedAt
+	var actionOpenedAt *time.Time
+	if at := t.GetOpenedAt(); !at.IsZero() {
+		createdAt, actionOpenedAt = at, &at
+	}
 	resolutionJSON, err := encodeResolution(d.Resolution, d.LandingViews)
 	if err != nil {
 		return fmt.Errorf("PersistTurnClose marshal resolution: %w", err)
@@ -95,7 +97,7 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	_, err = tx.Exec(ctx,
 		`INSERT INTO turns (uuid, round_uuid, created_at, finished_at, resolution, story_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		t.GetID(), rnd.GetID(), *finishedAt, finishedAt, resolutionJSON, t.GetStoryAt(),
+		t.GetID(), rnd.GetID(), createdAt, finishedAt, resolutionJSON, t.GetStoryAt(),
 	)
 	if err != nil {
 		return fmt.Errorf("PersistTurnClose insert turn: %w", err)
@@ -104,14 +106,19 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 	// The action carries what each player saw of its move live (move_views); a reaction carries
 	// what each player saw of its destination when it was opened (nil if never opened); an
 	// escape's landing is recorded in the resolution above.
-	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt, d.MoveViews); err != nil {
+	if err := insertAction(ctx, tx, act, t.GetID(), *finishedAt, actionOpenedAt, d.MoveViews, d.ActionHiddenFrom); err != nil {
 		return fmt.Errorf("PersistTurnClose insert action: %w", err)
 	}
 
 	// Reactions after the action, never before: react_to_uuid references it.
 	reactions := t.GetReactions()
 	for i := range reactions {
-		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, d.ReactionMoveViews[reactions[i].GetID()]); err != nil {
+		id := reactions[i].GetID()
+		var openedAt *time.Time
+		if at, ok := t.ReactionOpenedAt(id); ok {
+			openedAt = &at
+		}
+		if err := insertAction(ctx, tx, &reactions[i], t.GetID(), *finishedAt, openedAt, d.ReactionMoveViews[id], d.ReactionHiddenFrom[id]); err != nil {
 			return fmt.Errorf("PersistTurnClose insert reaction %d: %w", i, err)
 		}
 	}
@@ -219,13 +226,20 @@ func (r *Repository) PersistTurnClose(ctx context.Context, d appmatch.TurnCloseD
 //
 // moveViews is move_views: nil writes SQL NULL ("not recorded"), an empty map '{}' ("recorded,
 // nobody but the master and the owner saw it") — the history reads both the same way.
+//
+// openedAt é opened_at: a abertura da linha (a do turno para a action); nil = nunca aberta.
+//
+// hiddenFrom é hidden_from: por personagem Escondido, o efeito e quem o percebia
+// (actioncodec.EncodeHiddenFrom). Vazio grava SQL NULL, nunca '{}'.
 func insertAction(
 	ctx context.Context,
 	tx pgx.Tx,
 	act *action.Action,
 	turnID uuid.UUID,
 	createdAt time.Time,
+	openedAt *time.Time,
 	moveViews map[uuid.UUID]masteraction.View,
+	hiddenFrom appmatch.HiddenFrom,
 ) error {
 	// The JSON pieces are actioncodec's: cancelled_actions stores the same pieces, mapped once.
 	cols, err := actioncodec.EncodeColumns(act)
@@ -238,6 +252,11 @@ func insertAction(
 		if moveViewsJSON, err = json.Marshal(moveViews); err != nil {
 			return fmt.Errorf("marshal move views: %w", err)
 		}
+	}
+
+	hiddenFromJSON, err := actioncodec.EncodeHiddenFrom(hiddenFrom)
+	if err != nil {
+		return err
 	}
 
 	// react_to_uuid: nil SQL when ReactToID is zero UUID
@@ -265,15 +284,15 @@ func insertAction(
 		 (uuid, turn_uuid, actor_uuid, react_to_uuid, target_ids, type,
 		  speed, skills, move, attack, defense, dodge, repel, feint, trigger,
 		  interact, system_bias, reaction_kind, created_at, move_views, consumed_action_ids,
-		  default_defense)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		  default_defense, hidden_from, opened_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
 		act.GetID(), turnID, act.GetActorID(), reactToUUID,
 		targetIDs, act.TypeName(),
 		cols.Speed, cols.Skills, cols.Move, cols.Attack,
 		cols.Defense, cols.Dodge, cols.Repel, cols.Feint, cols.Trigger,
 		cols.Interact, act.SystemBias,
 		reactionKind, createdAt, moveViewsJSON, consumedOrNil(act.ConsumedActionIDs),
-		cols.DefaultDefense,
+		cols.DefaultDefense, hiddenFromJSON, openedAt,
 	)
 	return err
 }

@@ -85,6 +85,7 @@ func TestE2E_PlayerCancelsOwnQueuedAction(t *testing.T) {
 	readMessage(t, bystander) // room_state
 
 	masterMsgs, playerMsgs, bystanderMsgs := collectFrom(master), collectFrom(player), collectFrom(bystander)
+	awaitHandedTheTable(t, "the bystander", bystanderMsgs)
 
 	f.enqueueAttack(t, player)
 	if !awaitCount(playerMsgs, game.MsgTypeActionEnqueued, 1, 2*time.Second) {
@@ -254,6 +255,7 @@ func TestE2E_CannotCancelSomeoneElsesAction(t *testing.T) {
 	readMessage(t, bystander) // room_state
 
 	masterMsgs, playerMsgs, bystanderMsgs := collectFrom(master), collectFrom(player), collectFrom(bystander)
+	awaitHandedTheTable(t, "the bystander", bystanderMsgs)
 
 	f.enqueueAttack(t, player)
 	if !playerMsgs.await(game.MsgTypeActionEnqueued, 2*time.Second) {

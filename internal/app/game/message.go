@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -48,6 +49,12 @@ const (
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 	MsgTypeActionQueued     MessageType = "action_queued"
 	MsgTypeActionCancelled  MessageType = "action_cancelled"
+	// action_restored: uma ação que um status tirou da fila voltou a ela porque o mestre desfez
+	// esse status no turno aberto (D3) — ao mestre e ao dono, cada um com o seu corte.
+	MsgTypeActionRestored MessageType = "action_restored"
+	// reaction_restored: uma reação não aberta que um status tirou do turno voltou a ele pelo
+	// mesmo desfazer — ao mestre e, quando o efeito era visível a ele, ao dono.
+	MsgTypeReactionRestored MessageType = "reaction_restored"
 	MsgTypeBarsUpdated      MessageType = "bars_updated"
 	MsgTypeReactionOpened   MessageType = "reaction_opened"
 	// reaction_attached answers attach_reaction: to whoever reacted, and to the master — the
@@ -153,6 +160,9 @@ const (
 	MsgTypeApplyStatusEffect  MessageType = "apply_status_effect"
 	MsgTypeEditStatusEffect   MessageType = "edit_status_effect"
 	MsgTypeRemoveStatusEffect MessageType = "remove_status_effect"
+	// Cliente → servidor, só o mestre, só com turno aberto: troca a âncora (actionId; null = do
+	// turno) de toda mudança pendente de um efeito no turno aberto.
+	MsgTypeRelinkStatusEffect MessageType = "relink_status_effect"
 	// Servidor → cliente, projetado por destinatário: a lista INTEIRA que ele vê de um
 	// personagem (quem vê + visão).
 	MsgTypeStatusEffectsUpdated MessageType = "status_effects_updated"
@@ -256,6 +266,34 @@ type ActionCancelledPayload struct {
 // client cannot learn is an operation a client cannot invoke.
 type ActionEnqueuedPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
+}
+
+// ReactionRestoredPayload é o reaction_restored: uma reação não aberta que um status desfeito no
+// turno tinha tirado do turno e que voltou, com o MESMO reactionId de antes (D3, revisão final).
+// Vai ao mestre — com ReplacedReactionID, a sentada que saiu do lugar dela — e ao dono do reator
+// quando a reação é dele (uma sentada nunca está em ownReactions) e o efeito desfeito era visível
+// a ele (a troca também só chegou a ele por esse efeito).
+// Não é ack de nada: o reaction_attached é casado pelo cliente com o envio pendente do mesmo
+// personagem, e um reaction_attached sem pedido cairia num envio em andamento.
+type ReactionRestoredPayload struct {
+	TurnID             uuid.UUID   `json:"turnId"`
+	ReactionID         uuid.UUID   `json:"reactionId"`
+	ActorID            uuid.UUID   `json:"actorId"`
+	ReactionKind       string      `json:"reactionKind"`
+	ConsumedActionIDs  []uuid.UUID `json:"consumedActionIds"`
+	ReplacedReactionID *uuid.UUID  `json:"replacedReactionId,omitempty"`
+}
+
+// ActionRestoredPayload é o action_restored: a ação que voltou à fila, com o mesmo actionId de
+// antes, como o destinatário pode vê-la — o mestre em actionwire.Full, o dono no corte do
+// ownQueue (actionwire.Declaration). Não é ack de nada (o action_enqueued é casado pela ordem
+// dos envios do cliente, por isso não é usado aqui). BeforeActionID é a ação, entre as que o
+// destinatário conhece na fila (o mestre: todas; o dono: as dele), diante da qual ela voltou —
+// o lugar dela, que desempata a fila; ausente = ela é a última.
+type ActionRestoredPayload struct {
+	ActionID       uuid.UUID         `json:"actionId"`
+	Action         actionwire.Action `json:"action"`
+	BeforeActionID *uuid.UUID        `json:"beforeActionId,omitempty"`
 }
 
 // ActionQueuedPayload tells the MASTER that something landed in the queue, and names it.
@@ -462,12 +500,16 @@ type ConditionEditPayload struct {
 // ⚠️ Moving to the direct lane is not just "add a field": turn_closed had to move there WITH
 // it, in the SAME call chain, or the two could arrive out of order — see broadcastTurnClosed's
 // own doc for why, and the design spec's own ⚠️ in §4.2.
+//
+// Para quem não percebe um ator Escondido, a mensagem é reduzida: actorId, actionId e action
+// saem (omitzero) e actorHidden vem true. Nas mensagens normais os três estão sempre lá.
 type TurnOpenedPayload struct {
-	TurnID     uuid.UUID         `json:"turnId"`
-	ActorID    uuid.UUID         `json:"actorId"`
-	ActionID   uuid.UUID         `json:"actionId"`
-	ActionType string            `json:"actionType"`
-	Action     actionwire.Action `json:"action"`
+	TurnID      uuid.UUID         `json:"turnId"`
+	ActorID     uuid.UUID         `json:"actorId,omitzero"`
+	ActionID    uuid.UUID         `json:"actionId,omitzero"`
+	ActionType  string            `json:"actionType"`
+	Action      actionwire.Action `json:"action,omitzero"`
+	ActorHidden bool              `json:"actorHidden,omitempty"`
 }
 
 type RoundClosedPayload struct {
@@ -497,10 +539,13 @@ type ReactionAttachedPayload struct {
 // and consumedActionIds stripped for a third party) at Opened, with move.position passing the
 // reactor's piece's fog gate. Projected, so it travels on the DIRECT lane (dispatchPerPlayer),
 // and the master's resolution_updated that follows is sent after it by the same goroutine.
+//
+// Reator Escondido para o leitor: reactionId e reaction saem e actorHidden vem true.
 type ReactionOpenedPayload struct {
-	TurnID     uuid.UUID         `json:"turnId"`
-	ReactionID uuid.UUID         `json:"reactionId"`
-	Reaction   actionwire.Action `json:"reaction"`
+	TurnID      uuid.UUID         `json:"turnId"`
+	ReactionID  uuid.UUID         `json:"reactionId,omitzero"`
+	Reaction    actionwire.Action `json:"reaction,omitzero"`
+	ActorHidden bool              `json:"actorHidden,omitempty"`
 }
 
 // TurnClosedPayload announces that the baton was put down. Same message for the whole table —
@@ -671,6 +716,11 @@ type ResolutionUpdatedPayload struct {
 	// the targets (master while open, everyone once settled), minus an unrevealed secret door
 	// for anyone but the master. Absent when the action targets no wall.
 	Walls []WallResultPayload `json:"walls,omitempty"`
+	// HiddenTargetsHit é quantos golpes acertaram um alvo Escondido que este destinatário não
+	// percebe — só o número: nenhum id, valor, reação ou posição, e o alvo segue fora de Targets
+	// e de targetId. O front lê "Desconhecido 1..N" a partir daqui (dono do produto, D2). Ausente
+	// = nenhum; o mestre e o dono do alvo nunca o recebem (percebem o alvo, veem o resultado).
+	HiddenTargetsHit int `json:"hiddenTargetsHit,omitempty"`
 }
 
 // ConditionPayload is one master condition in force — the shape of an edit_action conditions
@@ -916,6 +966,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 	}
 	p.DamageSkill = res.DamageSkill
 	p.Conditions = conditionPayloadsOf(res.Conditions)
+	p.HiddenTargetsHit = res.HiddenTargetsHit
 	return p
 }
 
@@ -1111,10 +1162,13 @@ type OwnQueuedActionPayload struct {
 // own Viewer, at Full for the master and Opened for everyone else — so the two can never
 // disagree about the same turn.
 type OpenTurnPayload struct {
-	TurnID   uuid.UUID         `json:"turnId"`
-	ActorID  uuid.UUID         `json:"actorId"`
-	ActionID uuid.UUID         `json:"actionId"`
-	Action   actionwire.Action `json:"action"`
+	TurnID uuid.UUID `json:"turnId"`
+	// ActorID, ActionID e Action saem para quem não percebe o ator Escondido (actorHidden
+	// true), como no turn_opened.
+	ActorID     uuid.UUID         `json:"actorId,omitzero"`
+	ActionID    uuid.UUID         `json:"actionId,omitzero"`
+	Action      actionwire.Action `json:"action,omitzero"`
+	ActorHidden bool              `json:"actorHidden,omitempty"`
 	// Reactions are the open turn's OPENED reactions, in the order the master opened them —
 	// each cut for this recipient exactly as the live reaction_opened cut it
 	// (reactionWireLocked), so a reconnect shows the table the same balloons and escape ghosts,
@@ -1539,28 +1593,11 @@ type HiatusTurn struct {
 	ActionKind  string    `json:"actionKind"`
 }
 
-// StatusEffectParamsPayload são os parâmetros de um efeito no fio. Na entrada, ponteiro nil =
-// não informado; na saída, só os campos que o tipo possui, com os padrões já aplicados.
-type StatusEffectParamsPayload struct {
-	Domains      []string          `json:"domains,omitempty"`
-	Injuries     map[string]string `json:"injuries,omitempty"`
-	Level        string            `json:"level,omitempty"`
-	Faces        []string          `json:"faces,omitempty"`
-	Points       *int              `json:"points,omitempty"`
-	HPPerRound   *int              `json:"hpPerRound,omitempty"`
-	Penalty      *int              `json:"penalty,omitempty"`
-	Disadvantage *bool             `json:"disadvantage,omitempty"`
-	Conduct      string            `json:"conduct,omitempty"`
-	Irresistible *bool             `json:"irresistible,omitempty"`
-	ControllerID *uuid.UUID        `json:"controllerId,omitempty"`
-}
+// StatusEffectParamsPayload e StatusEffectVisibilityPayload são a forma do fio compartilhada
+// com o histórico REST (statuswire); os nomes ficam aqui para a sala e seus testes.
+type StatusEffectParamsPayload = statuswire.Params
 
-// StatusEffectVisibilityPayload é a lista de quem vê um efeito. Mode: "default" (padrão do
-// tipo), "public" (todos) ou "players" (PlayerIDs; vazio = só o mestre).
-type StatusEffectVisibilityPayload struct {
-	Mode      string      `json:"mode"`
-	PlayerIDs []uuid.UUID `json:"playerIds,omitempty"`
-}
+type StatusEffectVisibilityPayload = statuswire.Visibility
 
 // ApplyStatusEffectPayload aplica um efeito a um ou mais personagens (tudo ou nada).
 // Visibility ausente = padrão do tipo.
@@ -1572,6 +1609,9 @@ type ApplyStatusEffectPayload struct {
 	Params       StatusEffectParamsPayload      `json:"params"`
 	Alias        string                         `json:"alias,omitempty"`
 	Visibility   *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+	// ActionID é a action do turno aberto (ou uma reação dela) a que esta mudança pertence, no
+	// histórico; ausente = do turno/round como um todo. Igual nos três comandos.
+	ActionID *uuid.UUID `json:"actionId,omitempty"`
 }
 
 // EditStatusEffectPayload edita um efeito. Params ausente = intocado, presente = substitui
@@ -1582,25 +1622,28 @@ type EditStatusEffectPayload struct {
 	Params         *StatusEffectParamsPayload     `json:"params,omitempty"`
 	Alias          *string                        `json:"alias,omitempty"`
 	Visibility     *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
+	ActionID       *uuid.UUID                     `json:"actionId,omitempty"`
 }
 
 type RemoveStatusEffectPayload struct {
-	StatusEffectID uuid.UUID `json:"statusEffectId"`
+	StatusEffectID uuid.UUID  `json:"statusEffectId"`
+	ActionID       *uuid.UUID `json:"actionId,omitempty"`
+	// RestoreCancelledActions pede, ao desfazer no turno aberto um efeito aplicado nele, que as
+	// ações da fila que ele cancelou voltem (D3), revalidadas. Fora da janela do desfazer é
+	// ignorado: não há o que devolver. Ausente = false.
+	RestoreCancelledActions bool `json:"restoreCancelledActions,omitempty"`
 }
 
-// StatusEffectPayload é um efeito como o destinatário o vê. Visibility e Public só vão ao
-// mestre; Public diz se todo jogador está na lista (a visão à parte).
-type StatusEffectPayload struct {
-	ID         uuid.UUID                      `json:"id"`
-	Kind       string                         `json:"kind"`
-	Sense      string                         `json:"sense,omitempty"`
-	Aptitude   string                         `json:"aptitude,omitempty"`
-	Params     StatusEffectParamsPayload      `json:"params"`
-	Alias      string                         `json:"alias,omitempty"`
-	AppliedAt  time.Time                      `json:"appliedAt"`
-	Visibility *StatusEffectVisibilityPayload `json:"visibility,omitempty"`
-	Public     *bool                          `json:"public,omitempty"`
+// RelinkStatusEffectPayload é o relink_status_effect: ActionID nil (ou null) = a mudança é do
+// turno, sem âncora.
+type RelinkStatusEffectPayload struct {
+	StatusEffectID uuid.UUID  `json:"statusEffectId"`
+	ActionID       *uuid.UUID `json:"actionId"`
 }
+
+// StatusEffectPayload é um efeito como o destinatário o vê (statuswire.Effect). Visibility e
+// Public só vão ao mestre.
+type StatusEffectPayload = statuswire.Effect
 
 // StatusEffectsUpdatedPayload é a lista INTEIRA que o destinatário vê do personagem; nunca
 // null (vazia = não vê mais nenhum).
