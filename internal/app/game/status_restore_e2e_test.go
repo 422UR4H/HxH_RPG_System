@@ -499,3 +499,83 @@ func TestRemoveStatusEffect_CancelledActionIDsAreTheMasters(t *testing.T) {
 		t.Fatal("master reconnect: the effect is missing")
 	}
 }
+
+// Uma cadeia cuja base é recusada por outro status do turno: o empilhado segue a base para o
+// registro desse status, e desfazer os dois devolve a cadeia inteira, em qualquer ordem.
+func TestRemoveStatusEffect_InTurnUndo_AChainFollowsItsBlockedBaseInEitherOrder(t *testing.T) {
+	setup := func(t *testing.T) (h *restoreTable, stunned, paralyzed uuid.UUID) {
+		t.Helper()
+		f := newStatusFixture(t)
+		master, player := f.connect(t)
+		t.Cleanup(func() {
+			_ = master.Close()
+			_ = player.Close()
+		})
+		mc, pc := collectFrom(master), collectFrom(player)
+		turnID := f.openAttackTurn(t, master, player, mc)
+		h = &restoreTable{f: f, master: master, player: player, mc: mc, pc: pc, turnID: turnID}
+		f.enqueueMoveAttackFrom(t, player, f.victimID, f.attackerID, "Sword", [3]int{0, 0, 0}, [3]int{4, 6, 0})
+		sendWS(t, player, "enqueue_action", map[string]any{
+			"actorId": f.victimID.String(),
+			"move":    map[string]any{"category": "Dash", "from": [3]int{0, 0, 0}, "position": [3]int{5, 6, 0}},
+		})
+		if !awaitCount(mc, game.MsgTypeActionQueued, 3, 2*time.Second) {
+			t.Fatalf("the chain was never queued; errors: %v", errorCodes(t, pc))
+		}
+		moves := queuedMoves(t, mc)
+		if len(moves) != 2 || moves[1].stackedOn == nil || *moves[1].stackedOn != moves[0].id {
+			t.Fatalf("setup: moves = %+v, want the dash stacked on the attack that moves", moves)
+		}
+		h.queued = []uuid.UUID{moves[0].id, moves[1].id}
+		idOf := func(kind string, payload map[string]any) uuid.UUID {
+			for _, e := range applyAndWait(t, master, mc, payload).StatusEffects {
+				if string(e.Kind) == kind {
+					return e.ID
+				}
+			}
+			t.Fatalf("no %s in the master's update", kind)
+			return uuid.Nil
+		}
+		stunned = idOf("stunned", map[string]any{
+			"characterIds": []string{f.victimID.String()}, "kind": "stunned", "params": map[string]any{"points": 3}})
+		for _, id := range h.queued {
+			awaitCancelled(t, "owner", pc, id)
+		}
+		paralyzed = idOf("paralyzed", map[string]any{
+			"characterIds": []string{f.victimID.String()}, "kind": "paralyzed",
+			"params": map[string]any{"points": 3, "domains": []string{"attack"}}})
+		return h, stunned, paralyzed
+	}
+
+	for _, tc := range []struct {
+		name  string
+		first func(stunned, paralyzed uuid.UUID) uuid.UUID
+	}{
+		{"the one that cancelled is undone first", func(s, _ uuid.UUID) uuid.UUID { return s }},
+		{"the other one is undone first", func(_, p uuid.UUID) uuid.UUID { return p }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, stunned, paralyzed := setup(t)
+			first := tc.first(stunned, paralyzed)
+			second := stunned
+			if first == stunned {
+				second = paralyzed
+			}
+			h.remove(t, first, true)
+			chatBarrier(t, h.master, h.mc)
+			if n := h.mc.count(game.MsgTypeActionRestored); n != 0 {
+				t.Fatalf("the first undo gave back %d action(s), want none (the other status still blocks the base)", n)
+			}
+			h.remove(t, second, true)
+			awaitRestored(t, "master", h.mc, h.queued)
+			awaitRestored(t, "owner", h.pc, h.queued)
+			chatBarrier(t, h.master, h.mc, h.pc)
+			if pending := idsOfPending(h.f); !slices.Equal(pending, h.queued) {
+				t.Fatalf("queue = %v, want the whole chain %v", pending, h.queued)
+			}
+			if got := h.closeAndCancelled(t); len(got) != 0 {
+				t.Fatalf("cancelled_actions at the close = %v, want none", got)
+			}
+		})
+	}
+}
