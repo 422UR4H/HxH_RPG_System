@@ -185,8 +185,8 @@ func TestRemoveStatusEffect_InTurnUndo_ReactionResentIsRefused(t *testing.T) {
 	rt.removeWithRestore(t, stun)
 
 	refusals := restoreRefusals(t, rt.mc)
-	if len(refusals) != 1 || !strings.HasPrefix(refusals[0].Message, "Não foi possível devolver a reação: ") ||
-		!strings.Contains(refusals[0].Message, "outra reação") {
+	if len(refusals) != 1 || !strings.HasPrefix(refusals[0].Message, "A reação não voltou: ") ||
+		!strings.HasSuffix(refusals[0].Message, "mandou outra reação depois.") {
 		t.Fatalf("master restore_refused = %+v, want one for the reaction, saying another was sent", refusals)
 	}
 	if n := rt.mc.count(game.MsgTypeReactionRestored) + rt.pc.count(game.MsgTypeReactionRestored); n != 0 {

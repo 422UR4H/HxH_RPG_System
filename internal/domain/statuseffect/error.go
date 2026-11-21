@@ -34,7 +34,7 @@ func Wrap(sentinel error, msg string) error {
 }
 
 func wrapAlready(id Identity) error {
-	return Wrap(ErrAlreadyApplied, "O personagem já está "+id.Kind.StatePhrase()+".")
+	return Wrap(ErrAlreadyApplied, "O personagem já está "+id.StatePhrase()+".")
 }
 
 func wrapNotFound() error {

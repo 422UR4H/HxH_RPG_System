@@ -11,19 +11,36 @@ const maxConductRunes = 255
 var fieldLabel = map[string]string{
 	"sense": "um sentido", "aptitude": "uma aptidão", "domains": "as ações bloqueadas",
 	"injuries": "as lesões", "level": "a gravidade", "faces": "as faces do Tato",
-	"points": "os pontos", "hpPerRound": "o dano por round", "penalty": "a penalidade",
+	"points": "os pontos", "hpPerRound": "quanto de vida o efeito tira por round", "penalty": "a penalidade",
 	"disadvantage": "a desvantagem", "conduct": "a conduta", "irresistible": "o irresistível",
 	"controllerId": "quem controla",
 }
 
+// foreignLabel completa "Esse efeito não …" para o campo que o tipo não aceita.
+var foreignLabel = map[string]string{
+	"sense": "tem sentido", "aptitude": "tem aptidão", "domains": "tem ações bloqueadas",
+	"injuries": "tem lesões", "level": "tem gravidade", "faces": "tem faces do Tato",
+	"points": "tem pontos", "hpPerRound": "tem dano por round", "penalty": "tem penalidade",
+	"disadvantage": "tem desvantagem", "conduct": "tem conduta", "irresistible": "pode ser irresistível",
+	"controllerId": "tem controlador",
+}
+
+// missingText é a frase de um campo exigido: "Informe os pontos do efeito."
+func missingText(field string) string {
+	if field == "hpPerRound" {
+		return "Informe quanto de vida o efeito tira por round."
+	}
+	return "Informe " + fieldLabel[field] + " do efeito."
+}
+
 // invalid é o campo que o tipo não aceita: "Esse efeito não usa os pontos."
 func invalid(field string) error {
-	return Wrap(ErrInvalidParams, "Esse efeito não usa "+fieldLabel[field]+".")
+	return Wrap(ErrInvalidParams, "Esse efeito não "+foreignLabel[field]+".")
 }
 
 // missing é o campo que o tipo exige e veio vazio ou fora da faixa: "Informe os pontos do efeito."
 func missing(field string) error {
-	return Wrap(ErrInvalidParams, "Informe "+fieldLabel[field]+" do efeito.")
+	return Wrap(ErrInvalidParams, missingText(field))
 }
 
 // allowed declara quais campos de ParamsInput um tipo aceita.

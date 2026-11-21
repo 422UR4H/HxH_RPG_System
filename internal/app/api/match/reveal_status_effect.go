@@ -3,6 +3,7 @@ package match
 import (
 	"context"
 	"errors"
+	"log"
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
@@ -29,13 +30,15 @@ func RevealStatusEffectHandler(
 
 		if err := uc.Reveal(ctx, req.MatchUUID, req.EffectUUID, userUUID); err != nil {
 			switch {
-			case errors.Is(err, matchUC.ErrMatchNotFound),
-				errors.Is(err, statuseffect.ErrNotFound):
+			case errors.Is(err, matchUC.ErrMatchNotFound):
+				return nil, huma.Error404NotFound("Partida não encontrada.")
+			case errors.Is(err, statuseffect.ErrNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden("Só o mestre da partida pode revelar.")
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				log.Printf("reveal status effect: %v", err)
+				return nil, huma.Error500InternalServerError("Não foi possível revelar agora.")
 			}
 		}
 		return &RevealStatusEffectResponse{}, nil

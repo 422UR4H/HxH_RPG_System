@@ -51,7 +51,7 @@ func TestErrorsReadAsSingleSentences(t *testing.T) {
 		{"foreign field", func() error {
 			_, err := statuseffect.Normalize(statuseffect.KindProne, "", "", statuseffect.ParamsInput{Points: &two})
 			return err
-		}(), statuseffect.ErrInvalidParams, "Esse efeito não usa os pontos."},
+		}(), statuseffect.ErrInvalidParams, "Esse efeito não tem pontos."},
 		{"unknown kind", func() error { _, err := statuseffect.ParseKind("foo"); return err }(),
 			statuseffect.ErrUnknownKind, "Esse efeito não existe."},
 		{"invalid player", statuseffect.Audience{Players: []uuid.UUID{uuid.New(), uuid.Nil}}.Validate(),
@@ -69,5 +69,21 @@ func TestErrorsReadAsSingleSentences(t *testing.T) {
 func TestStatePhrase(t *testing.T) {
 	if got := statuseffect.KindOpenGuard.StatePhrase(); got != "com a guarda aberta" {
 		t.Errorf("StatePhrase = %q", got)
+	}
+}
+
+func TestIdentityStatePhrase(t *testing.T) {
+	cases := []struct {
+		id   statuseffect.Identity
+		want string
+	}{
+		{statuseffect.Identity{Kind: statuseffect.KindParalyzed}, "paralisado"},
+		{statuseffect.Identity{Kind: statuseffect.KindSense, Variant: "vision"}, "com a visão afetada"},
+		{statuseffect.Identity{Kind: statuseffect.KindWeakened, Variant: "mental"}, "com a mente debilitada"},
+	}
+	for _, tc := range cases {
+		if got := tc.id.StatePhrase(); got != tc.want {
+			t.Errorf("StatePhrase(%+v) = %q, want %q", tc.id, got, tc.want)
+		}
 	}
 }

@@ -87,6 +87,24 @@ func (k Kind) StatePhrase() string {
 	return string(k)
 }
 
+// variantState é a variante (sentido ou aptidão) em forma de estado, nos nomes da mesa.
+var variantState = map[string]string{
+	string(SenseVision): "com a visão afetada", string(SenseHearing): "com a audição afetada",
+	string(SenseSmell): "com o olfato afetado", string(SenseTact): "com o tato afetado",
+	string(SenseTaste):       "com o paladar afetado",
+	string(AptitudePhysical): "com o corpo debilitado", string(AptitudeMental): "com a mente debilitada",
+	string(AptitudeSpiritual): "com o espírito debilitado",
+}
+
+// StatePhrase é a identidade em forma de estado: a variante, quando tem nome na mesa
+// ("com a visão afetada"), senão o tipo ("paralisado").
+func (id Identity) StatePhrase() string {
+	if l, ok := variantState[id.Variant]; ok {
+		return l
+	}
+	return id.Kind.StatePhrase()
+}
+
 // PublicByDefault diz se, sem registro de audiência, todos veem o efeito (§9).
 func (k Kind) PublicByDefault() bool {
 	switch k {

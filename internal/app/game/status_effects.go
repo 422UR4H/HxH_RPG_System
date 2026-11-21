@@ -21,7 +21,7 @@ import (
 // errStatusPayload marca o que o fio trouxe malformado (enum desconhecido, ids vazios ou
 // repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
 // passa por aqui — é status_effect_invalid, como o domínio o diz.
-var errStatusPayload = statuseffect.Sentence("O pedido do efeito de status está malformado.")
+var errStatusPayload = statuseffect.Sentence("Não entendi o pedido do efeito.")
 
 // errStatusActionID recusa uma âncora (actionId) que não é a action do turno aberto nem uma
 // reação dela — ou qualquer âncora sem turno aberto. É status_effect_invalid.
@@ -129,7 +129,7 @@ func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error
 // audienceOf traduz a visibilidade do fio: "default" = nil (padrão do tipo).
 func audienceOf(v StatusEffectVisibilityPayload) (*statuseffect.Audience, error) {
 	if v.Mode != "players" && len(v.PlayerIDs) > 0 {
-		return nil, statusPayloadErr("Só dá para listar jogadores quando o efeito é visível para jogadores específicos.")
+		return nil, statusPayloadErr("Para escolher jogadores, marque a opção de jogadores específicos.")
 	}
 	switch v.Mode {
 	case "default":
@@ -868,9 +868,9 @@ func (r *Room) announceRestored(back givenBack) {
 		}
 	}
 	for _, f := range back.refusals {
-		r.sendToMaster(NewErrorMessage("restore_refused", "Não foi possível devolver a ação: "+f.Reason))
+		r.sendToMaster(NewErrorMessage("restore_refused", "A ação não voltou: "+f.Reason+"."))
 	}
 	for _, f := range back.reactionRefusals {
-		r.sendToMaster(NewErrorMessage("restore_refused", "Não foi possível devolver a reação: "+f.Reason))
+		r.sendToMaster(NewErrorMessage("restore_refused", "A reação não voltou: "+f.Reason+"."))
 	}
 }

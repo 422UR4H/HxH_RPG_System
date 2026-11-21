@@ -267,14 +267,20 @@ func (e *StatusBlockError) Unwrap() error { return ErrBlockedByStatus }
 // Message é o texto da recusa nomeando só os tipos dados, na forma "Fulano não pode atacar
 // porque está paralisado e caído." (Kind.StatePhrase); sem nenhum, "por causa de um efeito".
 func (e *StatusBlockError) Message(visible []statuseffect.Kind) string {
+	return e.Sentence(visible) + "."
+}
+
+// Sentence é a mesma recusa como oração, sem o ponto final, para ser encaixada noutra frase
+// (o motivo de um restore_refused).
+func (e *StatusBlockError) Sentence(visible []statuseffect.Kind) string {
 	if len(visible) == 0 {
-		return fmt.Sprintf("%s não pode %s por causa de um efeito.", e.Character, e.What)
+		return fmt.Sprintf("%s não pode %s por causa de um efeito", e.Character, e.What)
 	}
 	states := make([]string, len(visible))
 	for i, k := range visible {
 		states[i] = k.StatePhrase()
 	}
-	return fmt.Sprintf("%s não pode %s porque está %s.", e.Character, e.What, joinPT(states))
+	return fmt.Sprintf("%s não pode %s porque está %s", e.Character, e.What, joinPT(states))
 }
 
 // joinPT junta com vírgula e "e" no último: "a", "a e b", "a, b e c".
@@ -686,9 +692,9 @@ func (s *MatchSession) reactionRestoreRefusal(d ReactionDrop) (string, []statuse
 	if err := s.StatusRefusal(&r); err != nil {
 		var be *StatusBlockError
 		if errors.As(err, &be) {
-			return err.Error(), be.Kinds
+			return be.Sentence(be.Kinds), be.Kinds
 		}
-		return err.Error(), nil
+		return strings.TrimSuffix(err.Error(), "."), nil
 	}
 	if cur := currentReactionOf(t, actor); cur != nil {
 		if !t.IsSeated(cur.GetID()) {
@@ -800,9 +806,9 @@ func (s *MatchSession) restoreRefusal(d StatusDrop) (string, []statuseffect.Kind
 	if err := s.StatusRefusal(a); err != nil {
 		var be *StatusBlockError
 		if errors.As(err, &be) {
-			return err.Error(), be.Kinds
+			return be.Sentence(be.Kinds), be.Kinds
 		}
-		return err.Error(), nil
+		return strings.TrimSuffix(err.Error(), "."), nil
 	}
 	if a.Move == nil {
 		return "", nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
@@ -30,12 +31,13 @@ func TestRevealStatusEffectHandler(t *testing.T) {
 		name       string
 		err        error
 		wantStatus int
+		wantDetail string
 	}{
-		{"revealed", nil, http.StatusNoContent},
-		{"not the master", matchUC.ErrNotMatchMaster, http.StatusForbidden},
-		{"match not found", matchUC.ErrMatchNotFound, http.StatusNotFound},
-		{"effect not found", statuseffect.ErrNotFound, http.StatusNotFound},
-		{"unexpected error", errors.New("db error"), http.StatusInternalServerError},
+		{"revealed", nil, http.StatusNoContent, ""},
+		{"not the master", matchUC.ErrNotMatchMaster, http.StatusForbidden, "Só o mestre da partida pode revelar."},
+		{"match not found", matchUC.ErrMatchNotFound, http.StatusNotFound, "Partida não encontrada."},
+		{"effect not found", statuseffect.ErrNotFound, http.StatusNotFound, "Esse efeito não está mais no personagem."},
+		{"unexpected error", errors.New("db error"), http.StatusInternalServerError, "Não foi possível revelar agora."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,6 +59,9 @@ func TestRevealStatusEffectHandler(t *testing.T) {
 			resp := api.PostCtx(ctx, "/matches/"+matchUUID.String()+"/status-effects/"+effectUUID.String()+"/reveal")
 			if resp.Code != tt.wantStatus {
 				t.Errorf("got status %d, want %d. Body: %s", resp.Code, tt.wantStatus, resp.Body.String())
+			}
+			if tt.wantDetail != "" && !strings.Contains(resp.Body.String(), tt.wantDetail) {
+				t.Errorf("body %s does not carry %q", resp.Body.String(), tt.wantDetail)
 			}
 		})
 	}

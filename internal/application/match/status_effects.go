@@ -78,10 +78,10 @@ func checkController(s *matchsession.MatchSession, target uuid.UUID, controller 
 		return nil
 	}
 	if *controller == target {
-		return invalidParams("Quem controla não pode ser o próprio personagem.")
+		return invalidParams("O controlador não pode ser o próprio personagem.")
 	}
 	if _, err := s.GetCharSheet(*controller); err != nil {
-		return invalidParams("Quem controla precisa ser um personagem da partida.")
+		return invalidParams("O controlador precisa ser um personagem da partida.")
 	}
 	return nil
 }

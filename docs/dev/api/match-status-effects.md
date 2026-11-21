@@ -391,9 +391,7 @@ esse `reactionId`, como `attached`; o do mestre só registra (a fonte do que est
 devolvida nunca foi aberta).
 
 **Dispara (recusadas)**, por ação ou reação, **só ao mestre**: `error` com
-`code: "restore_refused"` e a mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi
-possível devolver a ação: Gon não pode agir porque está atordoado.`) ou `Não foi possível devolver a reação:
-<motivo>` (ex.: `Não foi possível devolver a reação: Gon mandou outra reação depois`). A ação
+`code: "restore_refused"` e a mensagem `A ação não voltou: <motivo>.` (ex.: `A ação não voltou: Gon não pode agir porque está atordoado.`) ou `A reação não voltou: <motivo>.` (ex.: `A reação não voltou: Gon mandou outra reação depois.`). O motivo é uma oração sem ponto final. A ação
 recusada continua cancelada (gravada no fechamento); a reação recusada continua fora do turno.
 
 **Erros:** `forbidden` · `match_not_started` · `match_already_ended` · `invalid_payload`
@@ -794,11 +792,11 @@ não grava evento algum.
 | `match_already_ended` | `A partida já terminou.` | partida encerrada |
 | `invalid_payload` | frase em português que diz o que está errado (ex.: `Escolha ao menos um personagem.`) | ver [§5](#apply_status_effect) |
 | `unknown_character` | `Esse personagem não está na partida.` | id de ficha fora da sessão |
-| `status_effect_invalid` | frase em português (ex.: `Informe os pontos do efeito.`, `Esse efeito não existe.`, `Um jogador foi escolhido duas vezes.`, `Escolha a ação do turno aberto ou uma reação dela.`, `Só dá para mudar a ligação do efeito com um turno aberto.`) | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
-| `status_effect_exists` | `O personagem já está <estado>.` (ex.: `O personagem já está paralisado.`) | repetição de `(kind, variante)` |
+| `status_effect_invalid` | frase em português (ex.: `Informe os pontos do efeito.`, `Esse efeito não tem pontos.`, `Esse efeito não existe.`, `Um jogador foi escolhido duas vezes.`, `O controlador não pode ser o próprio personagem.`, `Para escolher jogadores, marque a opção de jogadores específicos.`, `Escolha a ação do turno aberto ou uma reação dela.`, `Só dá para mudar a ligação do efeito com um turno aberto.`) | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
+| `status_effect_exists` | `O personagem já está <estado>.` (ex.: `O personagem já está paralisado.`; sentido/aptidão: `O personagem já está com a visão afetada.`) | repetição de `(kind, variante)` |
 | `status_effect_not_found` | `Esse efeito não está mais no personagem.` (relink: `Esse efeito não tem mudança neste turno.`) | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
 | `blocked_by_status` | `<nick> não pode <o que> porque está <estado>.` | `enqueue_action`, `attach_reaction` |
-| `restore_refused` | `Não foi possível devolver a ação: <motivo>` ou `Não foi possível devolver a reação: <motivo>` | `remove_status_effect` com `restoreCancelledActions`, uma por ação ou reação recusada, só ao mestre |
+| `restore_refused` | `A ação não voltou: <motivo>.` ou `A reação não voltou: <motivo>.` | `remove_status_effect` com `restoreCancelledActions`, uma por ação ou reação recusada, só ao mestre |
 | `game_error` | `Não foi possível fazer essa mudança de status.` | qualquer outra falha |
 
 ## 14. Histórico

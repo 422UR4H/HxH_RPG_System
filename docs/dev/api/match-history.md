@@ -690,7 +690,7 @@ deny-list para divergir da primeira da próxima vez que ela mudar.
 | 401 | Sem JWT |
 | 403 | Partida privada e usuário não é mestre nem participante |
 | 404 | Partida não encontrada |
-| 500 | Erro interno |
+| 500 | Erro interno (`detail`: `Não foi possível revelar agora.`) |
 
 ## POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal — Revelar o que um efeito escondeu
 
@@ -732,6 +732,6 @@ curl -s -H "Authorization: Bearer $TOKEN_JOGADOR" \
 | 204 | Revelado |
 | 400 | UUID inválido |
 | 401 | Sem JWT |
-| 403 | Quem chama não é o mestre da partida |
-| 404 | Partida não encontrada, **ou o efeito não é revelável nesta partida**: não tem evento de status em partida alguma (inclusive um efeito aplicado antes do histórico de status existir: ele não pode ser revelado) ou a ficha dele não participa desta partida. Um Escondido aplicado em **outra** partida e ainda ativo nesta é revelável aqui — é ele que o `concealedBy` desta nomeia. `uuid.Nil` é sempre 404 |
+| 403 | Quem chama não é o mestre da partida (`detail`: `Só o mestre da partida pode revelar.`) |
+| 404 | Partida não encontrada (`detail`: `Partida não encontrada.`), **ou o efeito não é revelável nesta partida**: não tem evento de status em partida alguma (inclusive um efeito aplicado antes do histórico de status existir: ele não pode ser revelado) ou a ficha dele não participa desta partida. Um Escondido aplicado em **outra** partida e ainda ativo nesta é revelável aqui — é ele que o `concealedBy` desta nomeia. `uuid.Nil` é sempre 404 (`detail`: `Esse efeito não está mais no personagem.`) |
 | 500 | Erro interno |
