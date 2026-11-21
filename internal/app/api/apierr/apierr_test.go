@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
-	"github.com/danielgtaylor/huma/v2"
 )
 
 func captureLog(t *testing.T) *bytes.Buffer {
@@ -24,8 +23,8 @@ func TestInternal_HidesTheRealErrorAndLogsIt(t *testing.T) {
 
 	err := apierr.Internal(errors.New("pq: connection refused"))
 
-	se, ok := err.(huma.StatusError)
-	if !ok || se.GetStatus() != 500 {
+	se := err
+	if se.GetStatus() != 500 {
 		t.Fatalf("want a 500 status error, got %v", err)
 	}
 	if se.Error() != "Algo deu errado. Tente de novo." {
