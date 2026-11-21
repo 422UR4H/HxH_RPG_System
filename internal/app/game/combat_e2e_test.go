@@ -1273,6 +1273,9 @@ func TestE2E_PlayerBarsShowOnlyWhatTheMasterOpened(t *testing.T) {
 	defer master.Close() //nolint:errcheck
 	masterMsgs := newCollector(master)
 	playerMsgs := newCollector(player)
+	// O registro do jogador termina depois do room_state: sem esperar o match_full_state dele, o
+	// broadcastBars do change_round_mode o encontra sem entrada no cache e lhe manda barras.
+	awaitHandedTheTable(t, "the player", playerMsgs)
 
 	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
 		Mode: string(enum.Race),
@@ -1398,6 +1401,7 @@ func TestE2E_ReactionBarsReachEachRecipientAsTheyMaySeeThem(t *testing.T) {
 	defer master.Close() //nolint:errcheck
 	defer player.Close() //nolint:errcheck
 	mc, pc := collectFrom(master), collectFrom(player)
+	awaitHandedTheTable(t, "the player", pc)
 
 	sendWS(t, master, string(game.MsgTypeChangeRoundMode), game.ChangeRoundModePayload{
 		Mode: string(enum.Race),
@@ -1468,6 +1472,10 @@ func TestE2E_StartMatchHandsThePlayersTheirBars(t *testing.T) {
 	if !mc.await(game.MsgTypeMapFullState, 2*time.Second) {
 		t.Fatal("the master never got the lobby board")
 	}
+	// O room_state só diz que o jogador entrou em r.clients; o resto do registro dele
+	// (map_full_state, match_full_state, player_joined) corre no Run e pode cair dentro do
+	// start_match. O player_joined do mestre é o último passo desse registro.
+	awaitSeated(t, mc, 1)
 
 	sendWS(t, master, string(game.MsgTypeStartMatch), map[string]any{})
 	if !pc.await(game.MsgTypeMatchStarted, 2*time.Second) {
@@ -1499,7 +1507,30 @@ func (f *combatFixture) connectBystander(t *testing.T) *collector {
 	bystander := connectWS(t, f.server.URL, f.bystanderUUID, f.matchUUID)
 	t.Cleanup(func() { bystander.Close() }) //nolint:errcheck
 	readMessage(t, bystander)               // room_state
-	return collectFrom(bystander)
+	bc := collectFrom(bystander)
+	awaitHandedTheTable(t, "the bystander", bc)
+	return bc
+}
+
+// awaitHandedTheTable espera o match_full_state de quem acabou de conectar numa partida. O
+// room_state só confirma a entrada em r.clients; o Run continua o registro depois dele
+// (map_full_state, match_full_state — que anota as barras que o jogador já tem — e
+// player_joined), e um comando da mesa que corre antes disso acha o jogador sem barras anotadas
+// e lhe manda um bars_updated que o teste não esperava.
+func awaitHandedTheTable(t *testing.T, who string, c *collector) {
+	t.Helper()
+	if !c.await(game.MsgTypeMatchFullState, 2*time.Second) {
+		t.Fatalf("%s was never handed the table (match_full_state)", who)
+	}
+}
+
+// awaitSeated espera o player_joined do mestre por n jogadores: o último passo do registro de
+// cada um (vale também no lobby, onde não há match_full_state).
+func awaitSeated(t *testing.T, mc *collector, n int) {
+	t.Helper()
+	if !awaitCount(mc, game.MsgTypePlayerJoined, n, 2*time.Second) {
+		t.Fatalf("the master saw %d player_joined, want %d — a register never finished", mc.count(game.MsgTypePlayerJoined), n)
+	}
 }
 
 // assertNoPlayerBarsAtEnqueue sends one more enqueue and fails if the bystander's count of
