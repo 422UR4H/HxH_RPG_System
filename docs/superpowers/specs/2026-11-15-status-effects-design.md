@@ -589,7 +589,7 @@ Em chamas (On fire) · Suffocating — Afogando (Drowning), Estrangulado (Strang
   default; the master sees all and can reveal other players' bars to everyone.** Reactions will
   appear around the piece (later). ⚠️ **Gap for the back:** today Health and Stamina go only to the
   owner and the master (`character_hp_changed`); revealing a character's bars to other players is
-  not in the contract yet.
+  not in the contract yet. It comes with per-player visibility (§16.3, item 24).
 - Follow UI/UX principles; this phase's visuals are decided with the PD session, without Claude
   Design (the project's human designer does the final prototypes later). Screen effects (darkening
   etc.) and the character sheet page outside the match: later.
@@ -757,7 +757,30 @@ automatic roll is costly in it — hence few rolls per round).
     character, but keeps in the history what they had already seen.
 18. **Lean storage for the rare case:** very few actions and statuses will actually be hidden.
 
-### 16.3 From the implementer (the owner was informed)
+### 16.3 Owner — 2026-11-20 (PR #112)
+
+19. **Cancelled action in the history:** only the character's owner and the master see the entry;
+    other players receive nothing.
+20. **A Hidden target leaves no trace** for whoever does not perceive it: no id, no numbers, no
+    reaction, no position. If the blow hit it, the result carries only how many hidden targets were
+    hit, and the screen shows "Desconhecido 1", "Desconhecido 2"… (Unknown 1, 2). If it did not
+    hit, nothing appears. The attack's margin also disappears for that reader. Once the master
+    reveals, the real result appears.
+21. **Undo within the same turn, with "Devolver?" (Give back?):** when the master removes a status
+    in the same turn he applied it, it is an **undo** ("as if it never existed"), not a reveal. If
+    the status had pulled actions off the queue or swapped a reaction, the screen asks the master
+    whether to give them back and lists what returns. Given back, everything returns as it was: same
+    action, same place in the queue, same data and the master's edits. What cannot return reaches
+    the master with the reason in Portuguese. Outside the turn, or after closing, there is no
+    question. A future general undo (ctrl+Z) uses this same path.
+22. **Refusals caused by a status name it in Portuguese** (e.g. "Paralisado").
+23. **Revealing after the NPC leaves the match:** stays as is for now.
+24. **Health and Stamina bars for other players** [2026-11-21]: they come with **per-player
+    visibility** (which character perceived the Hidden one, etc.), in the same session. Today
+    Health goes only to the owner and the master, Stamina does not arrive live, and the master
+    cannot reveal bars: those three gaps close there.
+
+### 16.4 From the implementer (the owner was informed)
 
 - Re-applying a status the character already has is refused; the master edits the existing one.
   Several characters at once: all or nothing.
@@ -786,5 +809,6 @@ Whoever implements any phase needs to know this up front, because it decides the
 - **Who sees will be per player.** A player who passes the perception test perceives the Hidden
   character and the others do not; per-player reveal is the same list. The model is already a list;
   the command is missing.
-- **Health and Stamina bars above the piece**, with reveal by the master (§11) — needs back support.
+- **Health and Stamina bars above the piece**, with reveal by the master (§11): they come with
+  per-player visibility (§16.3, item 24).
 - **Stacking tests** (§13) only adds tests to an action's stack; it does not change the order.

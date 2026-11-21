@@ -85,6 +85,27 @@ lugar para uma barra extra temporária por personagem e para um aviso urgente ao
 - **Alvo escondido cortado:** para quem não percebe um alvo Escondido, ele some da lista de alvos e
   do resultado, ao vivo e no histórico, até ser revelado.
 
+## PR #112 do back — decisões do dono de 2026-11-20
+
+Contratos (fonte da verdade): `docs/dev/api/match-history.md`, `match-status-effects.md`,
+`match-combat-ws.md`, na branch do PR #112. Resumo no spec §16.3.
+
+- **Ação cancelada no histórico:** só o dono do personagem e o mestre veem.
+- **Alvo Escondido atingido:** quem não o percebe vê "Desconhecido 1", "Desconhecido 2"… no
+  resultado (o servidor manda só a contagem, `hiddenTargetsHit`); sem margem do ataque. Não atingido:
+  nenhum rastro.
+- **"Devolver?" ao desfazer:** quando o mestre tira, no mesmo turno, um status que ele aplicou, e o
+  status trazia (só para o mestre) `cancelledActionIds` ou `swappedReactionIds` não vazios, a tela
+  pergunta se devolve e lista o que volta. Sim → `remove_status_effect` com
+  `restoreCancelledActions: true`; chegam `action_restored` (com `beforeActionId`, o lugar na fila)
+  e `reaction_restored`; o que não puder voltar chega como `restore_refused`, com o motivo em
+  português. Fora do turno ou depois do fechamento, não pergunta.
+- **Recusa por status:** a mensagem já vem com o nome do status em português ("Paralisado").
+- **Barras de Vida e Stamina sobre a peça:** desenhe o lugar delas, mas **os dados ainda não
+  existem** para outros jogadores (a Vida só vai ao dono e ao mestre; a Stamina não chega ao vivo;
+  não há comando de revelar). Entram com a visibilidade por jogador, numa sessão do back à parte.
+  Nesta fase, cada jogador vê só as próprias barras, e o mestre vê todas.
+
 ## Restrições de produto
 
 - **Seguir princípios de UI/UX** (dono). Leitura rápida para o mestre vale mais que completude.

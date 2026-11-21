@@ -571,7 +571,7 @@ Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado �
   padrão; o mestre vê todas e pode revelar as de outros jogadores a todos.** As reações aparecerão ao
   redor da peça (depois). ⚠️ **Lacuna para o back:** hoje Vida e Stamina só vão ao dono e ao mestre
   (`character_hp_changed`); revelar as barras de um personagem aos outros jogadores ainda não
-  existe no contrato.
+  existe no contrato. Entra com a visibilidade por jogador (§16.3, item 24).
 - Seguir princípios de UI/UX; o visual desta fase é decidido com a sessão de PD, sem Claude Design
   (o designer humano do projeto faz os protótipos finais depois). Efeitos de tela (escurecer etc.) e a página
   da ficha fora da partida: depois.
@@ -737,7 +737,30 @@ automática custa caro nela — por isso poucas rolagens por round).
     daquele personagem, mas mantém no histórico o que já tinha visto.
 18. **Banco enxuto para o caso raro:** pouquíssimas ações e status ficarão de fato escondidos.
 
-### 16.3 De quem implementou (o dono foi informado)
+### 16.3 Do dono — 2026-11-20 (PR #112)
+
+19. **Ação cancelada no histórico:** só o dono do personagem e o mestre veem a entrada; os outros
+    jogadores não recebem nada.
+20. **Alvo Escondido não deixa rastro** para quem não o percebe: nem identificação, nem números, nem
+    reação, nem posição. Se o golpe o atingiu, o resultado traz só quantos alvos ocultos foram
+    atingidos, e a tela mostra "Desconhecido 1", "Desconhecido 2"… Se não atingiu, não aparece
+    nada. A margem do ataque também some para esse leitor. Depois que o mestre revela, aparece o
+    resultado real.
+21. **Desfazer no mesmo turno, com "Devolver?":** quando o mestre tira um status no mesmo turno em
+    que o aplicou, é um **desfazer** ("como se nunca tivesse existido"), não uma revelação. Se o
+    status tinha tirado ações da fila ou trocado uma reação, a tela pergunta ao mestre se devolve e
+    lista o que volta. Devolvido, tudo volta igual: mesma ação, mesmo lugar na fila, mesmos dados e
+    as edições do mestre. O que não puder voltar chega ao mestre com o motivo em português. Fora do
+    turno, ou depois do fechamento, não há pergunta. Um futuro "desfazer" geral (ctrl+Z) usa este
+    mesmo caminho.
+22. **As recusas por status dizem o nome do status em português** (ex.: "Paralisado").
+23. **Revelar depois que o NPC sai da partida:** fica como está por enquanto.
+24. **Barras de Vida e Stamina para outros jogadores** [2026-11-21]: entram junto com a
+    **visibilidade por jogador** (qual personagem viu quem estava Escondido etc.), na mesma
+    sessão. Hoje a Vida só vai ao dono e ao mestre, a Stamina não chega ao vivo, e o mestre não tem
+    como revelar barras: essas três lacunas fecham nela.
+
+### 16.4 De quem implementou (o dono foi informado)
 
 - Reaplicar um status que o personagem já tem é recusado; o mestre edita o existente. Vários
   personagens de uma vez: tudo ou nada.
@@ -767,6 +790,6 @@ Quem implementar qualquer fase precisa saber disto de saída, porque decide a fo
   contra Escondido).
 - **Quem vê será por jogador.** Um jogador que passa no teste de percepção percebe o Escondido e os
   outros não; a revelação por jogador é a mesma lista. O modelo já é lista; falta o comando.
-- **Barras de Vida e Stamina sobre a peça**, com revelação pelo mestre (§11) — precisa de suporte
-  no back.
+- **Barras de Vida e Stamina sobre a peça**, com revelação pelo mestre (§11): entram com a
+  visibilidade por jogador (§16.3, item 24).
 - **Empilhar testes** (§13) só acrescenta testes à pilha de uma action; não muda a ordem.
