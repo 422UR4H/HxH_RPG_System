@@ -281,8 +281,10 @@ gravada (com o turno aberto, no fechamento dele). Depois do fechamento não há 
 **este** efeito tirou da fila neste turno (as que o mestre vê em `cancelledActionIds`, [§8](#8-status_effects_updated))
 voltam **para o mesmo lugar da fila** (a ordem de chegada delas, que desempata a fila: empates
 incluídos, contra as que chegaram antes e depois — também depois do cancelamento), com o **mesmo
-id**, os mesmos dados já rolados e as **edições do mestre** que o cancelamento tinha descartado
-(condições, velocidade editada, `damageSkill`). O servidor **revalida** cada uma contra o estado
+id**, os mesmos dados já rolados, as **edições do mestre** que o cancelamento tinha descartado
+(condições, `damageSkill`) e as **velocidades exatamente como estavam no instante antes do
+cancelamento** — a editada pelo mestre inclusive. Não são derivadas de novo: um turno que fechou
+desde o enqueue pode ter mudado os modificadores do personagem, e a ação voltaria noutro lugar. O servidor **revalida** cada uma contra o estado
 de agora e recusa, com motivo, a que não cabe mais: outro status ainda a recusa; uma ação com
 esse id já está na fila; o personagem saiu da partida; a cadeia de movimentos não está como
 estava no cancelamento — um movimento que se apoiava numa base ainda na fila volta só se essa
@@ -292,7 +294,9 @@ movimento pendente. Nunca volta meia cadeia. Uma devolvida some do registro de c
 **nada dela é gravado** em `cancelled_actions` no fechamento.
 
 Quando a recusa é porque **outro status aplicado neste mesmo turno** ainda a recusa, a ação passa
-para o `cancelledActionIds` desse outro efeito: desfazer os dois a devolve, em qualquer ordem.
+para o `cancelledActionIds` desse outro efeito: desfazer os dois a devolve, em qualquer ordem. Um
+movimento empilhado numa base recusada assim segue a base (passa para o mesmo efeito), e a cadeia
+volta inteira.
 Recusada por um status de antes do turno, ela fica cancelada; a mensagem nomeia o tipo que
 recusa.
 

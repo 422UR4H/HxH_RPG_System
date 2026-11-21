@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
@@ -348,4 +349,71 @@ func TestRestoreCancelledByStatus_AStackedMoveWhoseBaseOpenedIsAHead(t *testing.
 			t.Fatalf("queue = %v, want only the fresh move", got)
 		}
 	})
+}
+
+// A velocidade volta como estava no instante antes do cancelamento, não derivada de novo: um
+// turno que fechou entre o enqueue e a saída expirou um modificador de actionSpeed do ator, e a
+// saída (discardEdits → deriveSpeeds) leu o ledger sem ele.
+func TestRestoreCancelledByStatus_GivesBackTheSpeedItHadBeforeTheCancel(t *testing.T) {
+	f := newDefaultFixture(t)
+	status, err := f.session.GetCharacterStatus(f.b)
+	if err != nil {
+		t.Fatalf("GetCharacterStatus: %v", err)
+	}
+	status.Ledger.Add(match.Modifier{
+		Amount: 5, Applies: match.DimActionSpeed, Source: match.SourceSystem,
+		Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeEndOfTurn, Reason: "bônus de teste",
+	})
+	bAttack := mustEnqueue(t, f.session, f.playerB, attackBy(f.b, f.c))
+	before := rollsOf(bAttack)
+	if _, err := f.session.CloseOpenTurn(); err != nil {
+		t.Fatalf("CloseOpenTurn: %v", err)
+	}
+	if got := status.Ledger.TotalAmount(match.DimActionSpeed, nil); got != 0 {
+		t.Fatalf("setup: the close left %d on the ledger, want the bonus expired", got)
+	}
+
+	setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindStunned))
+	drops := f.session.DropRefusedByStatus(f.b)
+	if rollsOf(bAttack) == before {
+		t.Fatal("setup: the cancel did not re-derive the speed — the test would prove nothing")
+	}
+	setEffects(f.session, f.b)
+	if restored, _ := f.session.RestoreCancelledByStatus(drops); len(restored) != 1 {
+		t.Fatalf("restored = %v, want the attack", idsOf(restored))
+	}
+	if got := rollsOf(bAttack); got != before {
+		t.Fatalf("restored with %s, want the speed it had before the cancel: %s", got, before)
+	}
+}
+
+// Um movimento empilhado numa base recusada por outro status segue a base: a recusa dele leva os
+// mesmos tipos (BlockedBy), e os dois voltam juntos quando esse status sai.
+func TestRestoreCancelledByStatus_AFollowerOfARefusedBaseFollowsItsBlocker(t *testing.T) {
+	f := newDefaultFixture(t)
+	base := mustEnqueue(t, f.session, f.playerB, attackMoveBy(f.b, f.c))
+	follower := mustEnqueue(t, f.session, f.playerB, moveBy(f.b))
+	if follower.Move.StackedOn != base.GetID() {
+		t.Fatalf("setup: follower.StackedOn = %v, want the base %v", follower.Move.StackedOn, base.GetID())
+	}
+	setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindStunned), paralyzedIn(f.b, statuseffect.DomainAttack))
+	drops := f.session.DropRefusedByStatus(f.b)
+
+	setEffects(f.session, f.b, paralyzedIn(f.b, statuseffect.DomainAttack))
+	restored, refused := f.session.RestoreCancelledByStatus(drops)
+	if len(restored) != 0 || len(refused) != 2 {
+		t.Fatalf("restore = %v / %+v, want both refused", idsOf(restored), refused)
+	}
+	paralyzed := []statuseffect.Kind{statuseffect.KindParalyzed}
+	for _, r := range refused {
+		if !slices.Equal(r.BlockedBy, paralyzed) {
+			t.Errorf("%v BlockedBy = %v, want %v (the follower follows its base)", r.ActionID, r.BlockedBy, paralyzed)
+		}
+	}
+
+	setEffects(f.session, f.b)
+	again := []matchsession.StatusDrop{refused[0].Drop, refused[1].Drop}
+	if restored, refused := f.session.RestoreCancelledByStatus(again); len(restored) != 2 || len(refused) != 0 {
+		t.Fatalf("second restore = %v / %+v, want both back", idsOf(restored), refused)
+	}
 }

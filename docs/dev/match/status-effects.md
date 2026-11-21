@@ -204,7 +204,8 @@ ordem de remoção, atribuídos a todo efeito do personagem que a mesma mudança
 saída, tirado antes de a ação sair: a ordem de chegada dela (`MatchSession.arrivals`, que espelha
 a ordem da fila e desempata), as edições do mestre (capturas, dados de perícias retiradas e o
 valor editado de cada campo, que o `discardEdits` apaga) e se o movimento se apoiava numa base
-ainda na fila. O registro morre com o turno (fechamento, reinício,
+ainda na fila, e os valores derivados que a saída recalcula (`derivedSnapshot`: `Speed` inteira,
+`Move.Speed`, `Move.FinalSpeed`, `SystemBias`). O registro morre com o turno (fechamento, reinício,
 `end_match`): depois dele não há o que devolver nem ponteiro velho. O mestre o vê em
 `cancelledActionIds` (só efeito aplicado no turno). No `remove_status_effect`, o registro do
 efeito é sempre apagado; só quando `undoInTurnAppliesLocked` desfaz esse efeito **e** veio
@@ -218,12 +219,15 @@ só sem outro movimento pendente. A distinção é do instante da saída, não d
 cancelada depois da saída e uma que abriu antes dela parecem iguais na fila de agora. Nunca meia
 cadeia, nunca garfo. A aceita volta ao mesmo lugar (`insertByArrival` + `PriorityQueue.InsertAt`,
 pela ordem de chegada), com as edições do mestre de novo (`reapplyEdits`: valor editado, capturas,
-dados retirados e velocidade derivada de novo com o `SystemBias` dela), e `reseatForStatus` refaz
-as reações; a recusada volta com motivo em português (`restore_refused`, só ao mestre). Cada
+dados retirados) e os valores derivados escritos de volta como estavam antes da saída
+(`restoreDerived`) — **não** derivados de novo: o ledger só muda no fechamento de um turno
+(pagamentos, `AdvanceTurn`), e um turno fechado entre o enqueue e a saída daria outra velocidade,
+outro lugar na ordem do Race; `reseatForStatus` refaz as reações; a recusada volta com motivo em português (`restore_refused`, só ao mestre). Cada
 devolvida apaga o seu registro em `turnWrites.cancelledActions` e sai do registro de todo efeito
 (`forgetRestored`). Uma recusa por outro status (`RestoreRefusal.BlockedBy`) passa o `StatusDrop`
 ao registro de cada efeito desse tipo aplicado no mesmo turno (`passToBlockerLocked`): desfazer
-os dois devolve a ação em qualquer ordem. O cancelamento por status não marca troca (sem
+os dois devolve a ação em qualquer ordem. Um empilhado cuja base foi recusada assim na mesma
+chamada herda o `BlockedBy` da base e vai junto, depois dela. O cancelamento por status não marca troca (sem
 `swapMarks`), então não há marca a desfazer; o fechamento da janela de fusão do relógio que o
 cancelamento fez (`clearClockMergeLocked`, em `holdCancelledActionsLocked`) não é desfeito — é
 inofensivo: só faz o próximo ajuste do relógio virar um evento próprio. O anúncio é

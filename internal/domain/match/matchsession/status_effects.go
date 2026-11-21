@@ -356,6 +356,7 @@ func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) []StatusDrop {
 			arrival:    s.arrivals[a.GetID()],
 			baseQueued: a.Move != nil && a.Move.StackedOn != uuid.Nil && s.IsQueued(a.Move.StackedOn),
 			edits:      s.snapshotEdits(a),
+			derived:    snapshotDerived(a),
 		})
 	}
 	for _, a := range removed {
@@ -368,12 +369,54 @@ func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) []StatusDrop {
 // StatusDrop é uma ação que DropRefusedByStatus tirou da fila, com o retrato do instante da
 // saída que só RestoreCancelledByStatus lê: a ordem de chegada (o lugar na fila, empates
 // incluídos), se o movimento se apoiava numa base ainda na fila e as edições do mestre que a
-// saída descartou. O ponteiro é o que saiu da fila; depois da saída só o desfazer o segura.
+// saída descartou, e os valores derivados que a saída recalcula (derived). O ponteiro é o que
+// saiu da fila; depois da saída só o desfazer o segura.
 type StatusDrop struct {
 	Action     *action.Action
 	arrival    uint64
 	baseQueued bool
 	edits      editSnapshot
+	derived    derivedSnapshot
+}
+
+// derivedSnapshot são os campos que o discardEdits recalcula (pelo deriveSpeeds) numa ação que
+// sai da fila, como estavam no instante ANTES da saída: a velocidade da ação (perícia, valor,
+// dados e resultado), a do movimento, o FinalSpeed e o viés do sistema. O desfazer os escreve
+// de volta em vez de derivar de novo: o ledger do personagem pode ter mudado desde o enqueue ou
+// a última edição (um turno que fechou paga ou expira modificadores de actionSpeed), e uma
+// velocidade derivada de novo poria a ação noutro lugar da ordem do Race.
+type derivedSnapshot struct {
+	speed      action.ActionSpeed
+	moveSpeed  *action.RollCheck
+	finalSpeed int
+	systemBias int
+}
+
+func snapshotDerived(a *action.Action) derivedSnapshot {
+	d := derivedSnapshot{speed: a.Speed, systemBias: a.SystemBias}
+	if a.Move != nil {
+		d.finalSpeed = a.Move.FinalSpeed
+		if a.Move.Speed != nil {
+			ms := *a.Move.Speed
+			d.moveSpeed = &ms
+		}
+	}
+	return d
+}
+
+// restoreDerived escreve de volta o que snapshotDerived guardou.
+func restoreDerived(a *action.Action, d derivedSnapshot) {
+	a.Speed, a.SystemBias = d.speed, d.systemBias
+	if a.Move == nil {
+		return
+	}
+	a.Move.FinalSpeed = d.finalSpeed
+	if d.moveSpeed == nil {
+		a.Move.Speed = nil
+		return
+	}
+	ms := *d.moveSpeed
+	a.Move.Speed = &ms
 }
 
 // DroppedActions são as ações de uma lista de StatusDrop, na mesma ordem.
@@ -409,8 +452,8 @@ func (s *MatchSession) snapshotEdits(a *action.Action) editSnapshot {
 }
 
 // reapplyEdits desfaz o discardEdits de uma ação que volta: o valor editado de cada campo, as
-// capturas e os dados retirados voltam, e as velocidades são derivadas de novo com o viés do
-// sistema que a ação já tinha — o mesmo que a edição usou.
+// capturas e os dados retirados voltam. As velocidades não são derivadas aqui: restoreDerived
+// as escreve como estavam antes da saída.
 func (s *MatchSession) reapplyEdits(a *action.Action, snap editSnapshot) {
 	if len(snap.overrides) == 0 && len(snap.removedDice) == 0 {
 		return
@@ -431,7 +474,6 @@ func (s *MatchSession) reapplyEdits(a *action.Action, snap editSnapshot) {
 		}
 		s.removedSkillDice[id] = maps.Clone(snap.removedDice)
 	}
-	s.deriveSpeeds(a, a.SystemBias)
 }
 
 // currentValue é o valor de agora de um campo que captureOverride captura, na forma que
@@ -504,8 +546,10 @@ func (s *MatchSession) reseatForStatus(charID uuid.UUID) {
 }
 
 // RestoreRefusal é uma ação que RestoreCancelledByStatus não devolveu: o motivo (em português,
-// mostrado ao mestre), os tipos de status que ainda a recusam quando é isso (BlockedBy; nil
-// por outro motivo) e o próprio StatusDrop, para quem chama poder guardá-lo de novo.
+// mostrado ao mestre), os tipos de status que ainda a recusam (BlockedBy; nil por outro motivo)
+// — ou que recusam a base dela, quando ela é um movimento empilhado numa base recusada nesta
+// mesma chamada: ela segue a base — e o próprio StatusDrop, para quem chama poder guardá-lo de
+// novo.
 type RestoreRefusal struct {
 	ActionID  uuid.UUID
 	Reason    string
@@ -527,8 +571,10 @@ type RestoreRefusal struct {
 //     movimento pendente. Nunca meia cadeia, nunca um garfo.
 //
 // A aceita volta ao MESMO lugar da fila (a ordem de chegada dela, empates incluídos), com o id,
-// os dados e as edições do mestre que a saída tinha descartado (reapplyEdits); depois, as reações
-// não abertas de cada ator são refeitas para o conjunto de agora. A recusada volta com o motivo.
+// os dados, as edições do mestre que a saída tinha descartado (reapplyEdits) e os valores
+// derivados — velocidades, viés do sistema — exatamente como estavam antes da saída
+// (restoreDerived, sem derivar de novo); depois, as reações não abertas de cada ator são refeitas
+// para o conjunto de agora. A recusada volta com o motivo.
 //
 // O inverso de aplicar um status no turno aberto é o desfazer com restoreCancelledActions
 // (undoInTurnAppliesLocked + RestoreCancelledByStatus). Um futuro ctrl+Z deve chamar este
@@ -536,16 +582,29 @@ type RestoreRefusal struct {
 // sob r.mu, e recusa com motivo o que não cabe mais.
 func (s *MatchSession) RestoreCancelledByStatus(drops []StatusDrop) (restored []*action.Action, refused []RestoreRefusal) {
 	var actors []uuid.UUID
+	// blockedHere: as recusadas nesta chamada por um status, com os tipos — um empilhado nelas
+	// segue a base.
+	blockedHere := map[uuid.UUID][]statuseffect.Kind{}
 	for _, d := range drops {
 		a := d.Action
 		if a == nil {
 			continue
 		}
+		if kinds, ok := blockedHere[stackedOn(a)]; ok && d.baseQueued {
+			reason := fmt.Sprintf("o movimento de %s em que ela se apoia também não pôde voltar", s.characterName(a.GetActorID()))
+			refused = append(refused, RestoreRefusal{ActionID: a.GetID(), Reason: reason, BlockedBy: kinds, Drop: d})
+			blockedHere[a.GetID()] = kinds
+			continue
+		}
 		if reason, kinds := s.restoreRefusal(d); reason != "" {
 			refused = append(refused, RestoreRefusal{ActionID: a.GetID(), Reason: reason, BlockedBy: kinds, Drop: d})
+			if len(kinds) > 0 {
+				blockedHere[a.GetID()] = kinds
+			}
 			continue
 		}
 		s.reapplyEdits(a, d.edits)
+		restoreDerived(a, d.derived)
 		s.insertByArrival(a, d.arrival)
 		restored = append(restored, a)
 		if !slices.Contains(actors, a.GetActorID()) {
@@ -556,6 +615,14 @@ func (s *MatchSession) RestoreCancelledByStatus(drops []StatusDrop) (restored []
 		s.reseatForStatus(id)
 	}
 	return restored, refused
+}
+
+// stackedOn é a base do movimento empilhado de a; uuid.Nil sem movimento ou sem base.
+func stackedOn(a *action.Action) uuid.UUID {
+	if a.Move == nil {
+		return uuid.Nil
+	}
+	return a.Move.StackedOn
 }
 
 // restoreRefusal é o motivo pelo qual d não pode voltar à fila agora ("" = pode) e, quando é um
