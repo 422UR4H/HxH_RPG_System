@@ -228,9 +228,10 @@ func (r *Room) giveBackLocked(removed []statuseffect.Effect, undone map[uuid.UUI
 }
 
 // reactionRestoredNoticesLocked monta o reaction_restored de cada reação que o desfazer de e
-// devolveu. O dono do reator recebe o seu só quando e era visível a ele: a troca chegou a ele
-// apenas por esse efeito (status_effects_updated), e um efeito que ele não via não pode ser
-// anunciado pela volta da reação (spec §9). O chamador segura r.mu.
+// devolveu. O dono do reator recebe o seu só quando a reação é dele — não uma sentada da sessão,
+// que nunca entra em ownReactions — e e era visível a ele: a troca chegou a ele apenas por esse
+// efeito (status_effects_updated), e um efeito que ele não via não pode ser anunciado pela volta
+// da reação (spec §9). O chamador segura r.mu.
 func (r *Room) reactionRestoredNoticesLocked(e statuseffect.Effect, reacts []matchsession.RestoredReaction) []reactionRestoredNotice {
 	if len(reacts) == 0 {
 		return nil
@@ -249,7 +250,7 @@ func (r *Room) reactionRestoredNoticesLocked(e statuseffect.Effect, reacts []mat
 			replaced := rr.Replaced
 			n.master.ReplacedReactionID = &replaced
 		}
-		if n.owner != uuid.Nil && n.owner != r.masterUUID {
+		if !rr.Seated && n.owner != uuid.Nil && n.owner != r.masterUUID {
 			subject, pcPublic := r.statusSubjectLocked(re.GetActorID())
 			if statuseffect.Listed(e, statuseffect.Viewer{UserID: n.owner}, subject, pcPublic) {
 				own := p

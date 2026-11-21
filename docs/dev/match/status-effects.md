@@ -258,7 +258,8 @@ volta com ela. **A barra fica coerente:** a reação cobrou na chegada (`RecordS
 dela) e o status nunca devolveu; com a mesma reação de volta, a cobrança volta a corresponder a
 uma reação do turno. A recusada (ou sem o pedido) fica como o status deixou: fora do turno, com a
 barra cobrada. O anúncio é `reaction_restored` ao mestre (com `replacedReactionId`) e ao dono só
-quando o efeito desfeito era visível a ele (`statuseffect.Listed`: a troca só chegou a ele por esse
+quando a reação é dele (uma sentada, `RestoredReaction.Seated`, nunca está em `ownReactions`) e o
+efeito desfeito era visível a ele (`statuseffect.Listed`: a troca só chegou a ele por esse
 efeito, §9); nunca `reaction_attached`, que o front casa com o envio pendente do mesmo personagem
 (`status === "sending" && actorId`). A mesa não recebe nada (o `resolution_updated` do turno
 aberto é do mestre).

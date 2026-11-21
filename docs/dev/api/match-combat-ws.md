@@ -120,7 +120,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 |---|---|
 | [`action_enqueued`](#action_enqueued) | só quem enviou |
 | [`action_restored`](match-status-effects.md#action_restored) | o mestre + o dono da ação que o desfazer de um status devolveu à fila (`{ actionId, action, beforeActionId? }`, cada um no seu corte) |
-| [`reaction_restored`](match-status-effects.md#reaction_restored) | o mestre (+ o dono do reator, se via o efeito desfeito) quando o desfazer de um status devolve ao turno a reação não aberta que ele trocou (`{ turnId, reactionId, actorId, reactionKind, consumedActionIds, replacedReactionId? }`); não é `reaction_attached` |
+| [`reaction_restored`](match-status-effects.md#reaction_restored) | o mestre (+ o dono do reator, se a reação é dele — não sentada — e ele via o efeito desfeito) quando o desfazer de um status devolve ao turno a reação não aberta que ele trocou (`{ turnId, reactionId, actorId, reactionKind, consumedActionIds, replacedReactionId? }`); não é `reaction_attached` |
 | [`action_queued`](#action_queued) | **só o mestre** (com `statusNotes`) |
 | [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu**; também o dono da ação que um status derrubou |
 | [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo; o jogador, só os personagens que é dono ou enxerga, e só o que o mestre já abriu |

@@ -55,7 +55,7 @@ ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 | [`action_queued.statusNotes`](#statusnotes-em-action_queued) | só o mestre |
 | [`action_cancelled`](#action_cancelled-disparado-por-status) | o mestre + o dono da ação, quando um status derruba uma ação da fila |
 | [`action_restored`](#action_restored) | o mestre + o dono da ação, quando o desfazer no turno a devolve à fila |
-| [`reaction_restored`](#reaction_restored) | o mestre (+ o dono do reator, se via o efeito), quando o desfazer no turno devolve uma reação trocada |
+| [`reaction_restored`](#reaction_restored) | o mestre (+ o dono do reator, se a reação é dele — não sentada — e ele via o efeito), quando o desfazer no turno devolve uma reação trocada |
 | [`error` `blocked_by_status`](#blocked_by_status) | quem tentou agir ou reagir |
 
 Também mudaram (detalhe em `match-combat-ws.md`): `npc_added` agora vai **só ao mestre**;
@@ -356,9 +356,12 @@ que vem logo depois tem o mesmo `actionId` e só a redescreve (substitui no luga
 
 ### `reaction_restored`
 
-**Direção:** servidor → cliente. **Destino:** o mestre; e o dono do reator **só quando o efeito
-desfeito era visível a ele** (a troca também só chegou a ele por esse efeito — um efeito que ele
-não via não é anunciado pela volta da reação). Reação de NPC: só o mestre. A mesa nunca recebe.
+**Direção:** servidor → cliente. **Destino:** o mestre; e o dono do reator **só quando a reação é
+uma que ele mandou e o efeito desfeito era visível a ele** (a troca também só chegou a ele por
+esse efeito — um efeito que ele não via não é anunciado pela volta da reação). Uma reação
+**sentada** pela sessão que volta (a padrão que o status tinha trocado por `nothing`) vai **só ao
+mestre**: ela nunca está em `ownReactions` (não é resposta que o dono deu). Reação de NPC: só o
+mestre. A mesa nunca recebe.
 
 ```json
 { "type": "reaction_restored", "payload": {
