@@ -52,8 +52,11 @@ const (
 	// action_restored: uma ação que um status tirou da fila voltou a ela porque o mestre desfez
 	// esse status no turno aberto (D3) — ao mestre e ao dono, cada um com o seu corte.
 	MsgTypeActionRestored MessageType = "action_restored"
-	MsgTypeBarsUpdated    MessageType = "bars_updated"
-	MsgTypeReactionOpened MessageType = "reaction_opened"
+	// reaction_restored: uma reação não aberta que um status tirou do turno voltou a ele pelo
+	// mesmo desfazer — ao mestre e, quando o efeito era visível a ele, ao dono.
+	MsgTypeReactionRestored MessageType = "reaction_restored"
+	MsgTypeBarsUpdated      MessageType = "bars_updated"
+	MsgTypeReactionOpened   MessageType = "reaction_opened"
 	// reaction_attached answers attach_reaction: to whoever reacted, and to the master — the
 	// one message that names the queued actions a charged reaction consumed (Phase 7, item 3).
 	MsgTypeReactionAttached MessageType = "reaction_attached"
@@ -263,6 +266,21 @@ type ActionCancelledPayload struct {
 // client cannot learn is an operation a client cannot invoke.
 type ActionEnqueuedPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
+}
+
+// ReactionRestoredPayload é o reaction_restored: uma reação não aberta que um status desfeito no
+// turno tinha tirado do turno e que voltou, com o MESMO reactionId de antes (D3, revisão final).
+// Vai ao mestre — com ReplacedReactionID, a sentada que saiu do lugar dela — e ao dono do reator
+// quando o efeito desfeito era visível a ele (a troca também só chegou a ele por esse efeito).
+// Não é ack de nada: o reaction_attached é casado pelo cliente com o envio pendente do mesmo
+// personagem, e um reaction_attached sem pedido cairia num envio em andamento.
+type ReactionRestoredPayload struct {
+	TurnID             uuid.UUID   `json:"turnId"`
+	ReactionID         uuid.UUID   `json:"reactionId"`
+	ActorID            uuid.UUID   `json:"actorId"`
+	ReactionKind       string      `json:"reactionKind"`
+	ConsumedActionIDs  []uuid.UUID `json:"consumedActionIds"`
+	ReplacedReactionID *uuid.UUID  `json:"replacedReactionId,omitempty"`
 }
 
 // ActionRestoredPayload é o action_restored: a ação que voltou à fila, com o mesmo actionId de

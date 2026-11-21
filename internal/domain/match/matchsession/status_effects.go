@@ -324,15 +324,26 @@ func (s *MatchSession) seatedReactionFor(actorID, reactToID uuid.UUID) *action.A
 // mestre. No turno aberto, cada reação dele ainda não aberta é refeita: uma que o conjunto
 // recusa sai e dá lugar à sentada (padrão ou nothing); a sentada é trocada pela que o conjunto
 // pede; a enviada que continua permitida só tem as passivas recalculadas. O que já foi aberto
-// fica. Uma reação trocada não é uma action cancelada e não é devolvida.
+// fica. Uma reação trocada não é uma action cancelada: não vai para a gravação de canceladas.
 //
 // Nada é devolvido nem marcado como troca: a barra que uma reação recusada cobrou fica cobrada,
-// e a decisão é do mestre, não do jogador (sem swapMarks).
+// e a decisão é do mestre, não do jogador (sem swapMarks). Só o desfazer no turno, com o pedido
+// do mestre, devolve alguma coisa (RestoreCancelledByStatus, RestoreSwappedReactions).
 //
 // Cada StatusDrop leva, do instante da saída, o que o desfazer precisa para devolver a ação
 // como estava (RestoreCancelledByStatus): o lugar dela na fila, as edições do mestre que a saída
-// descarta e se o movimento dela se apoiava numa base ainda na fila.
+// descarta e se o movimento dela se apoiava numa base ainda na fila. As reações trocadas saem
+// em DropRefusedByStatusWithReactions.
 func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) []StatusDrop {
+	drops, _ := s.DropRefusedByStatusWithReactions(charID)
+	return drops
+}
+
+// DropRefusedByStatusWithReactions é DropRefusedByStatus respondendo também as reações não
+// abertas que a mudança tirou do turno aberto (ReactionDrop: a enviada que o conjunto recusa e
+// a sentada trocada por outra de tipo diferente), com o retrato do instante da saída — o que
+// RestoreSwappedReactions devolve.
+func (s *MatchSession) DropRefusedByStatusWithReactions(charID uuid.UUID) ([]StatusDrop, []ReactionDrop) {
 	sum := s.StatusSummaryOf(charID)
 	seen := map[uuid.UUID]bool{}
 	var removed []*action.Action
@@ -362,8 +373,7 @@ func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) []StatusDrop {
 	for _, a := range removed {
 		s.dropFromQueue(a)
 	}
-	s.reseatForStatus(charID)
-	return drops
+	return drops, s.reseatForStatus(charID)
 }
 
 // StatusDrop é uma ação que DropRefusedByStatus tirou da fila, com o retrato do instante da
@@ -508,41 +518,178 @@ func currentValue(a *action.Action, field string) any {
 }
 
 // reseatForStatus refaz as reações não abertas do personagem no turno aberto (ver
-// DropRefusedByStatus).
-func (s *MatchSession) reseatForStatus(charID uuid.UUID) {
+// DropRefusedByStatus) e devolve as que tirou do turno, com o retrato de antes da saída.
+func (s *MatchSession) reseatForStatus(charID uuid.UUID) []ReactionDrop {
 	t := s.openTurn()
 	if t == nil {
-		return
+		return nil
 	}
 	sum := s.StatusSummaryOf(charID)
+	var swapped []ReactionDrop
 	for _, r := range t.GetReactions() {
 		if r.GetActorID() != charID || t.IsOpened(r.GetID()) {
 			continue
 		}
 		live := t.ReactionRef(r.GetID())
+		var seat *action.Action
 		if t.IsSeated(r.GetID()) {
-			want := s.seatedReactionFor(charID, r.ReactToID)
-			if want.ReactionKind == live.ReactionKind {
+			seat = s.seatedReactionFor(charID, r.ReactToID)
+			if seat.ReactionKind == live.ReactionKind {
 				// Mesmo tipo: guarda os dados e as edições do mestre, só as passivas mudam.
-				live.WithoutReflexDodge, live.WithoutDefaultDefense = want.WithoutReflexDodge, want.WithoutDefaultDefense
+				live.WithoutReflexDodge, live.WithoutDefaultDefense = seat.WithoutReflexDodge, seat.WithoutDefaultDefense
 				continue
 			}
-			t.DropUnopened(r.GetID())
-			s.dropEdits(r.GetID())
-			t.Seat(want)
-			s.noteAnchorMove(t.GetID(), r.GetID(), want.GetID())
-			continue
+		} else {
+			if statusBlock(sum, live) == nil {
+				s.applyStatusPassives(live)
+				continue
+			}
+			seat = s.seatedReactionFor(charID, r.ReactToID)
 		}
-		if statusBlock(sum, live) == nil {
-			s.applyStatusPassives(live)
-			continue
-		}
+		// O retrato vem antes da saída: o lugar, a sentada, o pouso e as edições do mestre.
+		swapped = append(swapped, s.snapshotReaction(t, live))
 		t.DropUnopened(r.GetID())
 		s.dropEdits(r.GetID())
-		seat := s.seatedReactionFor(charID, r.ReactToID)
 		t.Seat(seat)
 		s.noteAnchorMove(t.GetID(), r.GetID(), seat.GetID())
 	}
+	return swapped
+}
+
+// ReactionDrop é uma reação não aberta que um status tirou do turno aberto (reseatForStatus),
+// com o retrato do instante da saída que só RestoreSwappedReactions lê: o turno, a reação
+// inteira (uma cópia: o turno guarda reações por valor, e a que saiu não está mais em lugar
+// nenhum — os dados, as velocidades e o que ela consumiu vêm nela), o lugar entre as reações do
+// turno, se era a sentada, a escolha de pouso do mestre e as edições dele (as capturas, que a
+// saída descarta).
+type ReactionDrop struct {
+	TurnID   uuid.UUID
+	Reaction action.Action
+	index    int
+	seated   bool
+	landing  *[3]int
+	edits    editSnapshot
+}
+
+func (s *MatchSession) snapshotReaction(t *turn.Turn, live *action.Action) ReactionDrop {
+	d := ReactionDrop{
+		TurnID: t.GetID(), Reaction: *live, index: t.ReactionIndex(live.GetID()),
+		seated: t.IsSeated(live.GetID()), edits: s.snapshotEdits(live),
+	}
+	if pos, ok := t.EscapeLandings()[live.GetID()]; ok {
+		d.landing = &pos
+	}
+	return d
+}
+
+// RestoredReaction é uma reação que RestoreSwappedReactions pôs de volta no turno: uma cópia de
+// como ela ficou e a reação que estava no lugar dela e saiu (Replaced; a sentada que o status ou
+// a remoção dele puseram).
+type RestoredReaction struct {
+	TurnID   uuid.UUID
+	Reaction action.Action
+	Replaced uuid.UUID
+}
+
+// ReactionRefusal é uma reação que RestoreSwappedReactions não devolveu: o motivo (em
+// português, mostrado ao mestre), os tipos de status que ainda a recusam (BlockedBy; nil por
+// outro motivo) e o próprio ReactionDrop, para quem chama poder guardá-lo de novo.
+type ReactionRefusal struct {
+	ReactionID uuid.UUID
+	Reason     string
+	BlockedBy  []statuseffect.Kind
+	Drop       ReactionDrop
+}
+
+// RestoreSwappedReactions devolve ao turno aberto as reações que um status tirou dele
+// (DropRefusedByStatusWithReactions) — o par de RestoreCancelledByStatus para as reações, no
+// mesmo desfazer. Revalida, nunca repete: cada uma é conferida contra o turno de AGORA, em
+// ordem —
+//
+//   - o turno dela ainda é o aberto;
+//   - o reator ainda está na partida e ainda é alvo da ação do turno;
+//   - nenhuma reação com esse id está no turno (idempotente: uma segunda chamada só recusa);
+//   - os status de agora a permitem (outro status pode continuar recusando: BlockedBy);
+//   - o reator não mandou outra reação depois (a que ele mandou fica: é a última palavra dele),
+//     e a sentada que ficou no lugar não foi aberta pelo mestre (o que foi narrado fica).
+//
+// A aceita volta como estava — o mesmo id, os dados, as velocidades, o que ela consumiu, o lugar
+// entre as reações, sentada ou não, o pouso e as edições do mestre — no lugar da sentada que
+// está lá (que sai, com as edições dela, e cujas âncoras passam para a devolvida: noteAnchorMove);
+// só as passivas são recalculadas para o conjunto de agora. Nada é cobrado de novo: a barra que
+// ela cobrou na chegada (RecordSecretSpeed, pelo id dela) ficou cobrada e volta a corresponder a
+// uma reação do turno. A recusada volta com o motivo e continua fora do turno.
+func (s *MatchSession) RestoreSwappedReactions(drops []ReactionDrop) (restored []RestoredReaction, refused []ReactionRefusal) {
+	for _, d := range drops {
+		reason, kinds := s.reactionRestoreRefusal(d)
+		if reason != "" {
+			refused = append(refused, ReactionRefusal{ReactionID: d.Reaction.GetID(), Reason: reason, BlockedBy: kinds, Drop: d})
+			continue
+		}
+		t := s.openTurn()
+		var replaced uuid.UUID
+		if cur := currentReactionOf(t, d.Reaction.GetActorID()); cur != nil {
+			replaced = cur.GetID()
+			t.DropUnopened(replaced)
+			s.dropEdits(replaced)
+		}
+		t.RestoreUnopened(d.Reaction, d.index, d.seated, d.landing)
+		live := t.ReactionRef(d.Reaction.GetID())
+		s.reapplyEdits(live, d.edits)
+		s.applyStatusPassives(live)
+		if replaced != uuid.Nil {
+			s.noteAnchorMove(t.GetID(), replaced, live.GetID())
+		}
+		restored = append(restored, RestoredReaction{TurnID: t.GetID(), Reaction: *live, Replaced: replaced})
+	}
+	return restored, refused
+}
+
+// currentReactionOf é a reação de actorID no turno agora; nil sem nenhuma.
+func currentReactionOf(t *turn.Turn, actorID uuid.UUID) *action.Action {
+	for _, r := range t.GetReactions() {
+		if r.GetActorID() == actorID {
+			return t.ReactionRef(r.GetID())
+		}
+	}
+	return nil
+}
+
+// reactionRestoreRefusal é o motivo pelo qual d não pode voltar ao turno agora ("" = pode) e,
+// quando é um status, os tipos que a recusam.
+func (s *MatchSession) reactionRestoreRefusal(d ReactionDrop) (string, []statuseffect.Kind) {
+	r := d.Reaction
+	actor := r.GetActorID()
+	t := s.openTurn()
+	if t == nil || t.GetID() != d.TurnID {
+		return "o turno da reação não é mais o turno aberto", nil
+	}
+	if _, ok := s.charToPlayer[actor.String()]; !ok {
+		return "o personagem não está mais na partida", nil
+	}
+	name := s.characterName(actor)
+	if t.ReactionRef(r.GetID()) != nil {
+		return fmt.Sprintf("a reação de %s já está no turno", name), nil
+	}
+	if act := t.GetAction(); act.GetID() != r.ReactToID || !slices.Contains(act.TargetID, actor) {
+		return fmt.Sprintf("%s não é mais alvo da ação do turno", name), nil
+	}
+	if err := s.StatusRefusal(&r); err != nil {
+		var be *StatusBlockError
+		if errors.As(err, &be) {
+			return err.Error(), be.Kinds
+		}
+		return err.Error(), nil
+	}
+	if cur := currentReactionOf(t, actor); cur != nil {
+		if !t.IsSeated(cur.GetID()) {
+			return fmt.Sprintf("%s mandou outra reação depois", name), nil
+		}
+		if t.IsOpened(cur.GetID()) {
+			return fmt.Sprintf("o mestre já abriu a reação que ficou no lugar da de %s", name), nil
+		}
+	}
+	return "", nil
 }
 
 // RestoreRefusal é uma ação que RestoreCancelledByStatus não devolveu: o motivo (em português,
@@ -577,9 +724,11 @@ type RestoreRefusal struct {
 // para o conjunto de agora. A recusada volta com o motivo.
 //
 // O inverso de aplicar um status no turno aberto é o desfazer com restoreCancelledActions
-// (undoInTurnAppliesLocked + RestoreCancelledByStatus). Um futuro ctrl+Z deve chamar este
-// caminho, nunca escrever a sua própria reversão: a reversão revalida contra o estado de agora,
-// sob r.mu, e recusa com motivo o que não cabe mais.
+// (undoInTurnAppliesLocked + giveBackLocked, que chama este método para as ações da fila e
+// RestoreSwappedReactions para as reações que o status trocou no turno). Um futuro ctrl+Z deve
+// chamar este caminho, nunca escrever a sua própria reversão: a reversão revalida contra o estado
+// de agora, sob r.mu, e recusa com motivo o que não cabe mais. Não volta: a janela de fusão do
+// relógio que o cancelamento fechou (inofensivo) e o que a revalidação recusa.
 func (s *MatchSession) RestoreCancelledByStatus(drops []StatusDrop) (restored []*action.Action, refused []RestoreRefusal) {
 	var actors []uuid.UUID
 	// blockedHere: as recusadas nesta chamada por um status, com os tipos — um empilhado nelas
@@ -612,7 +761,9 @@ func (s *MatchSession) RestoreCancelledByStatus(drops []StatusDrop) (restored []
 		}
 	}
 	for _, id := range actors {
-		s.reseatForStatus(id)
+		// O conjunto de agora é o mesmo da remoção que veio antes (DropRefusedByStatus): nada
+		// novo sai do turno aqui, e o que sairia não é deste desfazer.
+		_ = s.reseatForStatus(id)
 	}
 	return restored, refused
 }

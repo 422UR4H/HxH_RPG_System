@@ -235,13 +235,20 @@ func (r *Room) handleEditStatusEffect(client *Client, raw json.RawMessage) {
 }
 
 // handleRemoveStatusEffect remove um efeito. Com restoreCancelledActions, um efeito aplicado no
-// próprio turno aberto é desfeito e as ações da fila que ele cancelou voltam, revalidadas (D3,
-// giveBackLocked); fora dessa janela a flag é ignorada — não há o que devolver.
+// próprio turno aberto é desfeito e o que ele tirou volta, revalidado (D3, giveBackLocked): as
+// ações da fila que ele cancelou e as reações não abertas que ele trocou no turno; fora dessa
+// janela a flag é ignorada — não há o que devolver.
 //
 // O inverso de aplicar um status no turno aberto é o desfazer com restoreCancelledActions
-// (undoInTurnAppliesLocked + RestoreCancelledByStatus). Um futuro ctrl+Z deve chamar este
-// caminho, nunca escrever a sua própria reversão: a reversão revalida contra o estado de agora,
-// sob r.mu, e recusa com motivo o que não cabe mais.
+// (undoInTurnAppliesLocked + giveBackLocked, que chama RestoreCancelledByStatus e
+// RestoreSwappedReactions). Um futuro ctrl+Z deve chamar este caminho, nunca escrever a sua
+// própria reversão: a reversão revalida contra o estado de agora, sob r.mu, e recusa com motivo o
+// que não cabe mais. Cobre: as gravações pendentes do efeito, as ações canceladas (lugar, edições,
+// velocidades; o registro de cancelada some) e as reações trocadas (a mesma reação, as âncoras de
+// volta; a barra que ela cobrou volta a ser coerente). Não cobre: a janela de fusão do relógio
+// fechada pelo cancelamento (clearClockMergeLocked, inofensivo), o que a revalidação recusa (fica
+// como o status deixou, a barra de uma reação recusada continua cobrada) e nada depois do
+// fechamento.
 func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 	if !r.IsMaster(client.userUUID) {
 		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
@@ -312,8 +319,8 @@ func (r *Room) runStatusEffectChange(
 	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters, changedEffects(change.Writes))
 	// O desfazer pedido devolve, na mesma seção crítica, o que o efeito desfeito cancelou (D3);
 	// a remoção já saiu da sessão, então ele não recusa mais nada.
-	restored, refusals := r.giveBackLocked(removed, undone, restore)
-	if len(restored) > 0 {
+	back := r.giveBackLocked(removed, undone, restore)
+	if len(back.actions) > 0 || len(back.reactions) > 0 {
 		turnTouched = true
 	}
 	// Uma reação refeita pelo status leva junto as âncoras presas a ela.
@@ -337,8 +344,8 @@ func (r *Room) runStatusEffectChange(
 	if len(cancelled) > 0 {
 		r.announceStatusCancelled(cancelled)
 	}
-	r.announceRestored(restored, refusals)
-	if len(cancelled) > 0 || len(restored) > 0 {
+	r.announceRestored(back)
+	if len(cancelled) > 0 || len(back.actions) > 0 {
 		r.broadcastBars(session)
 	}
 	// Uma reação do turno aberto pode ter sido refeita: o mestre recebe a resolução nova.
@@ -561,7 +568,7 @@ func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMas
 		w := statuswire.From(e)
 		if isMaster {
 			w.TurnActionID = r.pendingAnchorLocked(e.ID)
-			w.CancelledActionIDs = r.cancelledActionIDsLocked(e.ID)
+			w.CancelledActionIDs, w.SwappedReactionIDs = r.cancelledActionIDsLocked(e.ID)
 			vis := statuswire.VisibilityOf(e.Audience)
 			// Público = está na lista de um jogador qualquer, que não é o dono (a visão à parte).
 			public := statuseffect.Listed(e, statuseffect.Viewer{UserID: uuid.Nil}, subject, pcPublic)
@@ -717,7 +724,8 @@ func statusNotesFor(sum statuseffect.Summary, a *action.Action) []StatusNotePayl
 // da fila e é registrada como cancelada pelo mestre, pelo mesmo caminho do cancel_action (com
 // turno aberto, retida para o fechamento dele). Com turno aberto, o que saiu também vai para o
 // registro do desfazer (turnWrites.statusCancels) de cada efeito do personagem que esta mudança
-// aplicou ou editou (changed): atribuir a mais de um é seguro, porque a devolução revalida.
+// aplicou ou editou (changed), e as reações não abertas que ela trocou no turno também:
+// atribuir a mais de um é seguro, porque a devolução revalida.
 // Devolve o que gravar já, os avisos a mandar e se alguma reação do turno aberto pode ter mudado.
 // O chamador segura r.mu (escrita).
 func (r *Room) dropRefusedByStatusLocked(
@@ -727,7 +735,13 @@ func (r *Room) dropRefusedByStatusLocked(
 	turnID := r.openTurnIDLocked()
 	for _, charID := range chars {
 		turnTouched = turnTouched || session.HasReactionOnOpenTurn(charID)
-		drops := session.DropRefusedByStatus(charID)
+		drops, swapped := session.DropRefusedByStatusWithReactions(charID)
+		if turnID != uuid.Nil && len(swapped) > 0 {
+			w := r.turnWritesLocked(turnID)
+			for _, effectID := range changed[charID] {
+				w.noteReactionSwap(effectID, charID, swapped)
+			}
+		}
 		if len(drops) == 0 {
 			continue
 		}
@@ -746,12 +760,12 @@ func (r *Room) dropRefusedByStatusLocked(
 	return writes, cancelled, turnTouched
 }
 
-// removedEffects são os efeitos que writes remove, em ordem.
-func removedEffects(writes []statuseffect.Write) []uuid.UUID {
-	var out []uuid.UUID
+// removedEffects são os efeitos que writes remove, em ordem, como estavam antes da remoção.
+func removedEffects(writes []statuseffect.Write) []statuseffect.Effect {
+	var out []statuseffect.Effect
 	for _, op := range writes {
 		if op.Delete {
-			out = append(out, op.Effect.ID)
+			out = append(out, op.Effect)
 		}
 	}
 	return out
@@ -796,14 +810,16 @@ func (r *Room) announceStatusCancelled(notices []cancelledNotice) {
 	}
 }
 
-// announceRestored anuncia cada ação que um desfazer devolveu à fila: action_restored ao mestre
-// (actionwire.Full) e ao dono (o corte do ownQueue), e o action_queued do mestre, como no enqueue
-// — depois do action_restored, para que o cliente, que já a pôs no lugar (beforeActionId), só a
-// redescreva. Não usa action_enqueued: ele é o ack de um envio do cliente, casado pela ordem
-// dos envios, e um ack que ninguém pediu cairia no envio errado. Cada recusa vai só ao mestre,
-// como error restore_refused. Fora do lock.
-func (r *Room) announceRestored(notices []restoredNotice, refusals []matchsession.RestoreRefusal) {
-	for _, n := range notices {
+// announceRestored anuncia o que um desfazer devolveu. Cada ação de volta à fila: action_restored
+// ao mestre (actionwire.Full) e ao dono (o corte do ownQueue), e o action_queued do mestre, como
+// no enqueue — depois do action_restored, para que o cliente, que já a pôs no lugar
+// (beforeActionId), só a redescreva. Não usa action_enqueued: ele é o ack de um envio do
+// cliente, casado pela ordem dos envios, e um ack que ninguém pediu cairia no envio errado.
+// Cada reação de volta ao turno: reaction_restored ao mestre e, quando o efeito desfeito era
+// visível a ele, ao dono — não reaction_attached, que o cliente casa com o envio pendente do
+// mesmo personagem. Cada recusa vai só ao mestre, como error restore_refused. Fora do lock.
+func (r *Room) announceRestored(back givenBack) {
+	for _, n := range back.actions {
 		r.sendToMaster(NewServerMessage(MsgTypeActionRestored, n.master))
 		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, n.queued))
 		if n.ownerMsg == nil {
@@ -816,7 +832,22 @@ func (r *Room) announceRestored(notices []restoredNotice, refusals []matchsessio
 			c.SendMessage(NewServerMessage(MsgTypeActionRestored, *n.ownerMsg))
 		}
 	}
-	for _, f := range refusals {
+	for _, n := range back.reactions {
+		r.sendToMaster(NewServerMessage(MsgTypeReactionRestored, n.master))
+		if n.ownerMsg == nil {
+			continue
+		}
+		r.mu.RLock()
+		c, ok := r.clients[n.owner]
+		r.mu.RUnlock()
+		if ok {
+			c.SendMessage(NewServerMessage(MsgTypeReactionRestored, *n.ownerMsg))
+		}
+	}
+	for _, f := range back.refusals {
 		r.sendToMaster(NewErrorMessage("restore_refused", "Não foi possível devolver a ação: "+f.Reason))
+	}
+	for _, f := range back.reactionRefusals {
+		r.sendToMaster(NewErrorMessage("restore_refused", "Não foi possível devolver a reação: "+f.Reason))
 	}
 }

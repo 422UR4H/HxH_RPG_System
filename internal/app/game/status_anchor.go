@@ -98,9 +98,9 @@ func anchoredChars(ops []statuseffect.Write) []uuid.UUID {
 // writes que foi APLICADO neste mesmo turno (a gravação "applied" dele ainda está pendente):
 // tira do turno toda mudança pendente desse efeito e devolve writes sem a remoção dele — nada
 // desse efeito é gravado, nem evento "removed" (dono do produto, 2026-11-19) — e os efeitos
-// desfeitos. Qualquer outra remoção segue normal. As ações da fila que o status cancelou só
-// voltam se o mestre pedir (restoreCancelledActions, giveBackLocked); sem o pedido, continuam
-// canceladas. O chamador segura r.mu (escrita).
+// desfeitos. Qualquer outra remoção segue normal. As ações da fila que o status cancelou e as
+// reações que ele trocou só voltam se o mestre pedir (restoreCancelledActions, giveBackLocked);
+// sem o pedido, continuam canceladas/trocadas. O chamador segura r.mu (escrita).
 func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) (kept []statuseffect.Write, undone map[uuid.UUID]bool) {
 	turnID := r.openTurnIDLocked()
 	if turnID == uuid.Nil {
@@ -142,53 +142,137 @@ type restoredNotice struct {
 	ownerMsg *ActionRestoredPayload
 }
 
+// givenBack é o que um desfazer devolveu e recusou, montado sob r.mu para announceRestored.
+type givenBack struct {
+	actions          []restoredNotice
+	reactions        []reactionRestoredNotice
+	refusals         []matchsession.RestoreRefusal
+	reactionRefusals []matchsession.ReactionRefusal
+}
+
+// reactionRestoredNotice é uma reação que voltou ao turno, como cada um a recebe: o
+// reaction_restored do mestre e o do dono (ownerMsg nil quando o dono é o mestre, ou quando o
+// efeito desfeito não era visível a ele).
+type reactionRestoredNotice struct {
+	master   ReactionRestoredPayload
+	owner    uuid.UUID
+	ownerMsg *ReactionRestoredPayload
+}
+
 // giveBackLocked é o lado da sala do inverso de aplicar um status no turno aberto (D3). Para
 // cada efeito removido: o registro do desfazer dele (turnWrites.statusCancels) é apagado, com
 // pedido ou sem; e só quando o efeito foi DESFEITO agora (undone — aplicado neste mesmo turno)
-// e o mestre pediu (restore), as ações que ele tirou da fila voltam por
-// RestoreCancelledByStatus, que as revalida contra a sessão de agora — o status já saiu dela —
-// e as põe no mesmo lugar da fila, com as edições do mestre. A devolvida apaga o próprio
-// cancelamento (forgetRestored): nada dela é gravado no fechamento. O status não marca troca
-// (sem swapMarks no DropRefusedByStatus), então não há marca a tirar; o fechamento da janela de
-// fusão do relógio que o cancelamento fez (clearClockMergeLocked) fica — é inofensivo.
+// e o mestre pediu (restore), o que ele tirou volta, revalidado contra a sessão de agora — o
+// status já saiu dela:
+//
+//   - as ações da fila, por RestoreCancelledByStatus: no mesmo lugar da fila, com as edições do
+//     mestre e as velocidades de antes. A devolvida apaga o próprio cancelamento
+//     (forgetRestored): nada dela é gravado no fechamento;
+//   - as reações não abertas que ele trocou no turno, por RestoreSwappedReactions: a mesma
+//     reação (id, dados, lugar, sentada ou não), no lugar da sentada que está lá, e as âncoras
+//     que tinham seguido a reação para a sentada voltam com ela (followAnchorsLocked, logo
+//     depois, na mesma seção crítica). A barra que a reação cobrou na chegada nunca foi
+//     devolvida: com a reação de volta, a cobrança volta a ser coerente.
+//
+// O que o inverso NÃO desfaz: o status não marca troca (sem swapMarks no DropRefusedByStatus),
+// então não há marca a tirar; o fechamento da janela de fusão do relógio que o cancelamento fez
+// (clearClockMergeLocked) fica — é inofensivo; e o que foi recusado continua como o status
+// deixou (a ação cancelada, gravada no fechamento; a reação fora do turno, com a barra cobrada).
 //
 // Uma recusa porque outro status ainda a recusa passa o registro dela a cada efeito desse tipo
 // aplicado neste mesmo turno (ainda desfazível): desfazer esse depois a devolve, em qualquer
 // ordem. Fora da janela do desfazer não há o que devolver e o pedido é ignorado.
 //
-// Devolve os anúncios das devolvidas e as recusas (só ao mestre). O chamador segura r.mu
-// (escrita), na MESMA seção crítica da remoção e do desfazer, e r.session não é nil.
-func (r *Room) giveBackLocked(removed []uuid.UUID, undone map[uuid.UUID]bool, restore bool) (
-	notices []restoredNotice, refusals []matchsession.RestoreRefusal,
-) {
+// O chamador segura r.mu (escrita), na MESMA seção crítica da remoção e do desfazer, e
+// r.session não é nil.
+func (r *Room) giveBackLocked(removed []statuseffect.Effect, undone map[uuid.UUID]bool, restore bool) givenBack {
+	var back givenBack
 	turnID := r.openTurnIDLocked()
 	if turnID == uuid.Nil {
-		return nil, nil
+		return back
 	}
 	w, ok := r.pendingTurns[turnID]
 	if !ok {
-		return nil, nil
+		return back
 	}
 	var restored []*action.Action
-	for _, effectID := range removed {
-		rec, ok := w.statusCancels[effectID]
-		delete(w.statusCancels, effectID)
-		if !ok || !restore || !undone[effectID] {
+	for _, e := range removed {
+		rec, ok := w.statusCancels[e.ID]
+		delete(w.statusCancels, e.ID)
+		if !ok || !restore || !undone[e.ID] {
 			continue
 		}
-		back, refused := r.session.RestoreCancelledByStatus(rec.drops)
-		ids := make(map[uuid.UUID]bool, len(back))
-		for _, a := range back {
+		acts, refused := r.session.RestoreCancelledByStatus(rec.drops)
+		reacts, reactRefused := r.session.RestoreSwappedReactions(rec.reactions)
+		ids := make(map[uuid.UUID]bool, len(acts)+len(reacts))
+		for _, a := range acts {
 			ids[a.GetID()] = true
 		}
+		for _, rr := range reacts {
+			ids[rr.Reaction.GetID()] = true
+		}
 		w.forgetRestored(ids)
-		restored = append(restored, back...)
+		restored = append(restored, acts...)
 		for _, f := range refused {
 			r.passToBlockerLocked(w, rec.charID, f)
 		}
-		refusals = append(refusals, refused...)
+		for _, f := range reactRefused {
+			r.passReactionToBlockerLocked(w, rec.charID, f)
+		}
+		back.refusals = append(back.refusals, refused...)
+		back.reactionRefusals = append(back.reactionRefusals, reactRefused...)
+		back.reactions = append(back.reactions, r.reactionRestoredNoticesLocked(e, reacts)...)
 	}
-	return r.restoredNoticesLocked(restored), refusals
+	back.actions = r.restoredNoticesLocked(restored)
+	return back
+}
+
+// reactionRestoredNoticesLocked monta o reaction_restored de cada reação que o desfazer de e
+// devolveu. O dono do reator recebe o seu só quando e era visível a ele: a troca chegou a ele
+// apenas por esse efeito (status_effects_updated), e um efeito que ele não via não pode ser
+// anunciado pela volta da reação (spec §9). O chamador segura r.mu.
+func (r *Room) reactionRestoredNoticesLocked(e statuseffect.Effect, reacts []matchsession.RestoredReaction) []reactionRestoredNotice {
+	if len(reacts) == 0 {
+		return nil
+	}
+	owners := r.session.GetCharToPlayer()
+	out := make([]reactionRestoredNotice, 0, len(reacts))
+	for _, rr := range reacts {
+		re := rr.Reaction
+		p := ReactionRestoredPayload{
+			TurnID: rr.TurnID, ReactionID: re.GetID(), ActorID: re.GetActorID(),
+			ReactionKind:      string(re.ReactionKind),
+			ConsumedActionIDs: append([]uuid.UUID{}, re.ConsumedActionIDs...),
+		}
+		n := reactionRestoredNotice{master: p, owner: owners[re.GetActorID().String()]}
+		if rr.Replaced != uuid.Nil {
+			replaced := rr.Replaced
+			n.master.ReplacedReactionID = &replaced
+		}
+		if n.owner != uuid.Nil && n.owner != r.masterUUID {
+			subject, pcPublic := r.statusSubjectLocked(re.GetActorID())
+			if statuseffect.Listed(e, statuseffect.Viewer{UserID: n.owner}, subject, pcPublic) {
+				own := p
+				n.ownerMsg = &own
+			}
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// passReactionToBlockerLocked é o passToBlockerLocked das reações: guarda a recusada no
+// registro de cada efeito do personagem, aplicado neste turno, cujo tipo ainda a recusa. O
+// chamador segura r.mu (escrita).
+func (r *Room) passReactionToBlockerLocked(w *turnWrites, charID uuid.UUID, f matchsession.ReactionRefusal) {
+	if len(f.BlockedBy) == 0 {
+		return
+	}
+	for _, e := range r.session.StatusEffectsOf(charID) {
+		if slices.Contains(f.BlockedBy, e.Kind) && appliedIn(w.statusEffects, e.ID) {
+			w.noteReactionSwap(e.ID, charID, []matchsession.ReactionDrop{f.Drop})
+		}
+	}
 }
 
 // passToBlockerLocked guarda a ação recusada no registro de cada efeito do personagem, aplicado
@@ -254,23 +338,27 @@ func (r *Room) restoredNoticesLocked(restored []*action.Action) []restoredNotice
 	return out
 }
 
-// cancelledActionIDsLocked é o cancelledActionIds que o mestre vê em effectID: o que ele tirou
-// da fila no turno aberto, enquanto um desfazer ainda pode devolver — só para um efeito aplicado
-// neste turno. nil fora disso. O chamador segura r.mu (leitura basta).
-func (r *Room) cancelledActionIDsLocked(effectID uuid.UUID) []uuid.UUID {
+// cancelledActionIDsLocked são o cancelledActionIds e o swappedReactionIds que o mestre vê em
+// effectID: o que ele tirou da fila e as reações que ele trocou no turno aberto, enquanto um
+// desfazer ainda pode devolver — só para um efeito aplicado neste turno. nil fora disso. O
+// chamador segura r.mu (leitura basta).
+func (r *Room) cancelledActionIDsLocked(effectID uuid.UUID) (actions, reactions []uuid.UUID) {
 	turnID := r.openTurnIDLocked()
 	if turnID == uuid.Nil {
-		return nil
+		return nil, nil
 	}
 	w, ok := r.pendingTurns[turnID]
 	if !ok || !appliedIn(w.statusEffects, effectID) {
-		return nil
+		return nil, nil
 	}
-	var out []uuid.UUID
-	for _, d := range w.statusCancels[effectID].drops {
-		out = append(out, d.Action.GetID())
+	rec := w.statusCancels[effectID]
+	for _, d := range rec.drops {
+		actions = append(actions, d.Action.GetID())
 	}
-	return out
+	for _, d := range rec.reactions {
+		reactions = append(reactions, d.Reaction.GetID())
+	}
+	return actions, reactions
 }
 
 // uniqueIDs tira as repetições de ids, mantendo a primeira ocorrência.
