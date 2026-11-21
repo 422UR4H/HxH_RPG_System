@@ -50,7 +50,7 @@ func UpdateNenHexagonValueHandler(
 		characterSheet, err := charSheetUC.GetCharacterSheet(ctx, charSheetId, playerUUID)
 		if err != nil {
 			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			}
 			return nil, apierr.Internal(err)
 		}
@@ -62,7 +62,7 @@ func UpdateNenHexagonValueHandler(
 		result, err := hexValUC.UpdateNenHexagonValue(ctx, characterSheet, req.Method)
 		if err != nil {
 			if errors.Is(err, spiritual.ErrNenHexNotInitialized) {
-				return nil, huma.Error400BadRequest(err.Error())
+				return nil, huma.Error400BadRequest(apierr.Text(err))
 			}
 			return nil, apierr.Internal(err)
 		}

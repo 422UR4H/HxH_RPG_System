@@ -55,14 +55,14 @@ func AddMatchNPCHandler(
 			switch {
 			case errors.Is(err, matchUC.ErrMatchNotFound),
 				errors.Is(err, matchUC.ErrCharacterSheetNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrSheetNotNPC),
 				errors.Is(err, matchUC.ErrSheetNotOwnedByMaster),
 				errors.Is(err, matchUC.ErrMatchAlreadyFinished),
 				errors.Is(err, matchUC.ErrNPCAlreadyInMatch):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

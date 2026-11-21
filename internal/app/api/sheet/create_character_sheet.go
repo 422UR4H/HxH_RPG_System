@@ -93,13 +93,13 @@ func CreateCharacterSheetHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, charactersheet.ErrNicknameAlreadyExists):
-				return nil, huma.Error409Conflict(err.Error())
+				return nil, huma.Error409Conflict(apierr.Text(err))
 			case errors.Is(err, charactersheet.ErrCharacterClassNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, charactersheet.ErrMaxCharacterSheetsLimit):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, domain.ErrValidation):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}
@@ -127,9 +127,9 @@ func (e *profileError) Unwrap() error { return e.err }
 func castRequestError(err error) error {
 	var pe *profileError
 	if errors.As(err, &pe) {
-		return huma.Error422UnprocessableEntity(err.Error())
+		return huma.Error422UnprocessableEntity(apierr.Text(err))
 	}
-	return huma.Error400BadRequest(err.Error())
+	return huma.Error400BadRequest(apierr.Text(err))
 }
 
 func castRequest(

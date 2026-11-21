@@ -36,7 +36,7 @@ func ListMapsHandler(uc mapuc.IListMaps) func(context.Context, *ListMapsRequest)
 		maps, err := uc.ListMaps(ctx, userID, req.CampaignID)
 		if err != nil {
 			if errors.Is(err, mapuc.ErrNotMapMaster) {
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			}
 			return nil, apierr.Internal(err)
 		}

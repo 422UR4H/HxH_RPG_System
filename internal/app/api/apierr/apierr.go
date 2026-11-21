@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -21,6 +22,19 @@ const NoUserMessage = "Não foi possível identificar sua conta. Entre de novo."
 func Internal(err error) huma.StatusError {
 	log.Printf("[ERROR] %s: %v", caller(), err)
 	return huma.Error500InternalServerError(InternalMessage)
+}
+
+// FallbackMessage é o que a pessoa lê num 4xx cujo erro não é uma frase de mesa.
+const FallbackMessage = "Não foi possível fazer isso."
+
+// Text é o detail de um 4xx: a frase do erro (errtext) ou, se ele não é uma frase, a genérica,
+// com o erro original no log.
+func Text(err error) string {
+	if text, ok := errtext.Of(err); ok {
+		return text
+	}
+	log.Printf("[ERROR] %s: refusal without a sentence: %v", caller(), err)
+	return FallbackMessage
 }
 
 // NoUser devolve o 500 de "o contexto não tem o usuário".

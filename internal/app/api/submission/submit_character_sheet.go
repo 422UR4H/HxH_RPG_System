@@ -41,17 +41,17 @@ func SubmitCharacterSheetHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, charactersheet.ErrCharacterSheetNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaign.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, charactersheet.ErrNotCharacterSheetOwner):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrMasterCannotSubmitOwnSheet):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrCharacterAlreadySubmitted):
-				return nil, huma.Error409Conflict(err.Error())
+				return nil, huma.Error409Conflict(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrNickAlreadyInCampaign):
-				return nil, huma.Error409Conflict(err.Error())
+				return nil, huma.Error409Conflict(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

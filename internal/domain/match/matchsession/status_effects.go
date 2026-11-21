@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
+	"log"
 	"maps"
 	"slices"
 	"strings"
@@ -694,7 +696,7 @@ func (s *MatchSession) reactionRestoreRefusal(d ReactionDrop) (string, []statuse
 		if errors.As(err, &be) {
 			return be.Sentence(be.Kinds), be.Kinds
 		}
-		return strings.TrimSuffix(err.Error(), "."), nil
+		return refusalClause(err), nil
 	}
 	if cur := currentReactionOf(t, actor); cur != nil {
 		if !t.IsSeated(cur.GetID()) {
@@ -808,7 +810,7 @@ func (s *MatchSession) restoreRefusal(d StatusDrop) (string, []statuseffect.Kind
 		if errors.As(err, &be) {
 			return be.Sentence(be.Kinds), be.Kinds
 		}
-		return strings.TrimSuffix(err.Error(), "."), nil
+		return refusalClause(err), nil
 	}
 	if a.Move == nil {
 		return "", nil
@@ -883,4 +885,15 @@ func (s *MatchSession) ResolveOpenTurn() *service.TurnResolution {
 		return nil
 	}
 	return s.ResolveTurn(t)
+}
+
+// refusalClause é o motivo de uma recusa que não é de status, encaixado depois de "A ação não
+// voltou: ". Frase de mesa (errtext) entra sem o ponto final; qualquer outro erro vira uma
+// cláusula fixa e o original vai para o log.
+func refusalClause(err error) string {
+	if text, ok := errtext.Of(err); ok {
+		return strings.TrimSuffix(text, ".")
+	}
+	log.Printf("restore refusal with no sentence: %v", err)
+	return "algo impediu a volta"
 }

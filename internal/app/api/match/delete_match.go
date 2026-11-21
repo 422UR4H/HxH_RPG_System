@@ -41,11 +41,11 @@ func DeleteMatchHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, matchUC.ErrMatchNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrMatchAlreadyStarted):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

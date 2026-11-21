@@ -189,8 +189,8 @@ func TestE2E_PullingAStackedMoveIsRefused(t *testing.T) {
 
 	sendWS(t, master, string(game.MsgTypePullAction), game.PullActionPayload{ActionID: chain[1]})
 	e := awaitErrorWithCode(t, mc, "game_error", 2*time.Second)
-	if e.Message != "Esse movimento está empilhado em outro que ainda não abriu. Abra aquele primeiro." {
-		t.Errorf("message = %q, want %q", e.Message, "Esse movimento está empilhado em outro que ainda não abriu. Abra aquele primeiro.")
+	if e.Message != "Abra antes o movimento de que este depende." {
+		t.Errorf("message = %q, want %q", e.Message, "Abra antes o movimento de que este depende.")
 	}
 	if n := mc.count(game.MsgTypeTurnOpened); n != 0 {
 		t.Errorf("a refused pull opened %d turn(s)", n)

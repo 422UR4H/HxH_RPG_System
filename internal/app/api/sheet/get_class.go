@@ -35,7 +35,7 @@ func GetClassHandler(
 			switch {
 			case errors.Is(err, enum.ErrInvalidNameOf),
 				errors.Is(err, charactersheet.ErrCharacterClassNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

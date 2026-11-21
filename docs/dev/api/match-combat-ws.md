@@ -227,7 +227,7 @@ porque uma ação plausível carregue todas.
   fim de cadeia: o próximo parte da peça.
 - **Ordem:** um movimento empilhado num que ainda está na fila **não é candidato** — não abre em
   `open_next_action` (Race e Free), não entra na ordem projetada do `bars_updated` antes dele e é
-  recusado pelo [`pull_action`](#pull_action) (`Esse movimento está empilhado em outro que ainda não abriu. Abra aquele primeiro.`). Se o anterior
+  recusado pelo [`pull_action`](#pull_action) (`Abra antes o movimento de que este depende.`). Se o anterior
   fica para a rodada seguinte, o empilhado fica junto. Não há penalidade nova: quando o primeiro
   abre, o segundo é chaveado com essa velocidade já gasta (a regra de toda segunda ação da rodada).
 - **Cancelar** o anterior cancela os empilhados nele ([`cancel_action`](#cancel_action)).
@@ -465,7 +465,7 @@ de que alguém reagiu.
 | `invalid_action` | `"Escolha o personagem que age."` |
 | `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
-| `game_error` | `Esse personagem não é seu.` · `Não há turno neste round.` · `O turno já fechou: não dá para abrir reação.` · `Só quem é alvo da ação aberta pode reagir a ela.` · `Essa reação não é para a ação atual.` · `Esse personagem já reagiu à ação aberta.` (segundo `attach_reaction` do mesmo personagem na mesma ação, de qualquer tipo, aberta ou não — a reação padrão sentada não conta, ela é substituída. Recusado antes de rolar ou cobrar: a fila e as barras não mudam). |
+| `game_error` | `Esse personagem não é seu.` · `Não há turno neste round.` · `O turno já fechou, então não dá para reagir.` · `Só quem é alvo da ação aberta pode reagir a ela.` · `Essa reação não é para a ação atual.` · `Esse personagem já reagiu à ação aberta.` (segundo `attach_reaction` do mesmo personagem na mesma ação, de qualquer tipo, aberta ou não — a reação padrão sentada não conta, ela é substituída. Recusado antes de rolar ou cobrar: a fila e as barras não mudam). |
 
 ### `open_next_action`
 
@@ -537,9 +537,9 @@ falha — mas um `actionId` velho **não** congela o preço (só congela quando 
 
 **Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para antecipar a ação."`) ·
 `match_not_started` · `game_error` (`Essa ação não está mais na fila.`) · `game_error`
-(`Esse movimento está empilhado em outro que ainda não abriu. Abra aquele primeiro.`).
+(`Abra antes o movimento de que este depende.`).
 
-> **`Esse movimento está empilhado em outro que ainda não abriu. Abra aquele primeiro.`** (2026-11-06, D4): a ação é um
+> **`Abra antes o movimento de que este depende.`** (2026-11-06, D4): a ação é um
 > [movimento empilhado](#movimentos-empilhados) num movimento do mesmo personagem que ainda está
 > na fila. O segundo movimento nunca acontece antes do primeiro — puxe o primeiro. A recusa vem
 > **antes de tudo**: o turno aberto não fecha, nenhum preço congela, a fila não muda (o
@@ -716,7 +716,7 @@ porque as reações seguintes dependem de onde a peça está.
 
 **Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para abrir a reação."`) ·
 `match_not_started` · `game_error` (`Não há turno neste round.`,
-`O turno já fechou: não dá para abrir reação.`, `Essa reação não está no turno atual.`).
+`O turno já fechou, então não dá para reagir.`, `Essa reação não está no turno atual.`).
 
 ### `edit_action`
 

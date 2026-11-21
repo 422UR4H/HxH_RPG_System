@@ -40,11 +40,11 @@ func RejectSheetSubmissionHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, campaign.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrSubmissionNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrNotCampaignMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

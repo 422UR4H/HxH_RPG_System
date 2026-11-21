@@ -36,7 +36,7 @@ func GetMapHandler(uc mapuc.IGetMap) func(context.Context, *GetMapRequest) (*Get
 		m, isMaster, err := uc.GetMap(ctx, req.MapID, userID)
 		if err != nil {
 			if errors.Is(err, mapuc.ErrMapNotFound) {
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			}
 			return nil, apierr.Internal(err)
 		}

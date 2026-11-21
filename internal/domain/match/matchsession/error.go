@@ -23,7 +23,7 @@ var (
 	ErrReactorAlreadyReacted = errtext.Sentence("Esse personagem já reagiu à ação aberta.")
 	// ErrTurnAlreadyClosed means the turn the caller tried to open a reaction on has already
 	// finished — there is no one left to narrate for.
-	ErrTurnAlreadyClosed = errtext.Sentence("O turno já fechou: não dá para abrir reação.")
+	ErrTurnAlreadyClosed = errtext.Sentence("O turno já fechou, então não dá para reagir.")
 	// ErrReactionNotFound means the given id is not attached to the open turn.
 	ErrReactionNotFound = errtext.Sentence("Essa reação não está no turno atual.")
 	// ErrNoOpenTurn is close_turn with nothing under the baton. It is an error rather than a
@@ -55,7 +55,7 @@ var (
 	// masterUUID. None of the three has a sane fallback, and writing partial state from one
 	// of them would corrupt charSheets/statuses/charToPlayer for a character nobody can
 	// address afterwards.
-	ErrInvalidNPC = errtext.Sentence("Não dá para pôr esse NPC na partida: faltam dados da ficha.")
+	ErrInvalidNPC = errtext.Sentence("Faltam dados na ficha desse NPC para colocá-lo na partida.")
 	// ErrNotAnEscape means an escapeLanding named something that does not displace — the
 	// turn's own action, or a reaction whose kind is not one of the three escapes. Only an
 	// escape has a piece whose landing the master can decide.
@@ -72,7 +72,7 @@ var (
 	// ErrStackedOnPending: o pull_action nomeou um movimento empilhado num movimento do mesmo
 	// personagem que ainda está na fila (spec 2026-11-06 D4). Um empilhado nunca abre antes do
 	// anterior; puxe a cabeça primeiro. Nada muda: nenhum turno fecha, nenhum preço congela.
-	ErrStackedOnPending = errtext.Sentence("Esse movimento está empilhado em outro que ainda não abriu. Abra aquele primeiro.")
+	ErrStackedOnPending = errtext.Sentence("Abra antes o movimento de que este depende.")
 	// ErrMatchInBattle: encerrar a partida com a cena atual em combate. Troque de cena antes.
 	ErrMatchInBattle = errtext.Sentence("Encerre o combate antes de encerrar a partida.")
 	// ErrMatchEnded: a partida já foi encerrada.

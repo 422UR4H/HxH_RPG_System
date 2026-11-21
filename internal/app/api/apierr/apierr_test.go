@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 )
 
 func captureLog(t *testing.T) *bytes.Buffer {
@@ -45,5 +46,19 @@ func TestNoUser_IsAFixedSentence(t *testing.T) {
 
 	if se.GetStatus() != 500 || se.Error() != "Não foi possível identificar sua conta. Entre de novo." {
 		t.Errorf("got %d %q", se.GetStatus(), se.Error())
+	}
+}
+
+func TestText_SentenceIsShownAndEnglishFallsBack(t *testing.T) {
+	buf := captureLog(t)
+
+	if got := apierr.Text(errtext.Sentence("Partida não encontrada.")); got != "Partida não encontrada." {
+		t.Errorf("sentence: got %q", got)
+	}
+	if got := apierr.Text(errors.New("character sheet not found")); got != "Não foi possível fazer isso." {
+		t.Errorf("english error: got %q", got)
+	}
+	if !strings.Contains(buf.String(), "character sheet not found") {
+		t.Errorf("the original error must be logged, log = %q", buf.String())
 	}
 }

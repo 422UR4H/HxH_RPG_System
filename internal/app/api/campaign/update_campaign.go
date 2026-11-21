@@ -88,16 +88,16 @@ func UpdateCampaignHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, campaignUC.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaignUC.ErrNotCampaignOwner):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, campaignUC.ErrCampaignAlreadyEnded),
 				errors.Is(err, campaignUC.ErrLockedAfterMatchStart),
 				errors.Is(err, campaignUC.ErrCannotRegressStoryCurrentAt),
 				errors.Is(err, campaignUC.ErrStoryCurrentBeforeStart):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			case errors.Is(err, domain.ErrValidation):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

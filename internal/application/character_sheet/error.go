@@ -15,7 +15,7 @@ var (
 	ErrMaxCharacterSheetsLimit       = domain.NewValidationError(errtext.Sentence("Você não pode ter mais de 10 fichas de personagem."))
 	ErrNotCharacterSheetOwner        = domain.NewValidationError(errtext.Sentence("Essa ficha não é sua."))
 	ErrCharacterSheetHasNoOwner      = domain.NewDomainError(errtext.Sentence("A ficha não tem dono."))
-	ErrInvalidUpdateHexValMethod     = domain.NewDomainError(errtext.Sentence("Jeito inválido de mudar o hexágono de Nen."))
+	ErrInvalidUpdateHexValMethod     = domain.NewDomainError(errtext.Sentence("Essa mudança no hexágono de Nen não é válida."))
 	ErrCharacterSheetNotFreeToManage = domain.NewValidationError(errtext.Sentence("Essa ficha não pode ser gerenciada agora."))
 )
 

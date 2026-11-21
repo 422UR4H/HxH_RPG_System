@@ -100,11 +100,11 @@ func CreateMatchHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, campaign.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaign.ErrNotCampaignOwner):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, domain.ErrValidation):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}

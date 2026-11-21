@@ -43,7 +43,7 @@ const (
 var (
 	ErrNotMaster      = errtext.Sentence("Só o mestre pode fazer isso.")
 	ErrAlreadyPlaying = errtext.Sentence("A partida já começou.")
-	ErrRoomClosed     = errtext.Sentence("Esta sala está fechada.")
+	ErrRoomClosed     = errtext.Sentence("A partida está fechada.")
 	// ErrMasterMovesByMasterAction and ErrPlayersMoveByAction are the two refusals a live
 	// session gives handlePieceMoved/handlePieceRemoved (spec §4.3, "Quem move o quê", B14):
 	// piece_moved/piece_removed are a LOBBY-ONLY pair of verbs. Once a match has a session,

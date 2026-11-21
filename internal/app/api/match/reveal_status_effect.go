@@ -34,7 +34,7 @@ func RevealStatusEffectHandler(
 			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound("Partida não encontrada.")
 			case errors.Is(err, statuseffect.ErrNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden("Só o mestre da partida pode revelar.")
 			default:

@@ -61,9 +61,9 @@ func CreateScenarioHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, scenarioUC.ErrScenarioNameAlreadyExists):
-				return nil, huma.Error409Conflict(err.Error())
+				return nil, huma.Error409Conflict(apierr.Text(err))
 			case errors.Is(err, domain.ErrValidation):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
 				return nil, apierr.Internal(err)
 			}
