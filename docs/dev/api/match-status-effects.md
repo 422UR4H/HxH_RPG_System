@@ -67,7 +67,8 @@ Todo comando do mestre **sem sessão viva** (partida em lobby) responde `match_n
 ## 3. Valores (enums)
 
 Todos os valores do fio são camelCase em inglês. **Os nomes em português são do front**; o
-servidor nunca os manda.
+servidor nunca os manda como valor — só dentro do texto das recusas (`blocked_by_status`,
+`restore_refused`), que é para mostrar, não para ler.
 
 ### `kind`
 
@@ -459,13 +460,15 @@ também perde a defesa padrão de reserva. Isso não aparece no fio.
 quem enviou. Não muda nada na fila, nas barras nem nos dados.
 
 ```json
-{ "type": "error", "payload": { "code": "blocked_by_status", "message": "Combatant não pode usar o domínio ataque: paralyzed" } }
+{ "type": "error", "payload": { "code": "blocked_by_status", "message": "Combatant não pode usar o domínio ataque: Paralisado" } }
 ```
 
 `message` tem a forma `<nick> não pode <o que>: <causa>`. "O que" é um de `agir`,
 `reagir`, `reagir com a reação padrão`, `se deslocar`, `usar o domínio <ataque|defesa|movimento|esquiva>`,
 `usar <a esquiva por reflexo|a evasão|a defesa padrão|repelir|escapar>`. **A causa nomeia só os
-`kind`s que o remetente pode ver**: o mestre vê todos; um jogador, os que a lista dele inclui;
+`kind`s que o remetente pode ver**, pelo **nome da mesa em português** (a coluna "Nome na mesa"
+de [§3](#kind): `Paralisado`, `Atordoado`, `Guarda aberta`…, separados por vírgula), nunca pelo
+valor do fio: o mestre vê todos; um jogador, os que a lista dele inclui;
 se nenhum é visível a ele, a causa é `um efeito` — mas o "o que" continua dito (ex.:
 `... não pode usar o domínio ataque: um efeito`). Não parseie a mensagem; mostre-a.
 

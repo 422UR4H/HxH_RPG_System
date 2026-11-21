@@ -191,7 +191,7 @@ func TestRestoreCancelledByStatus_RefusesWhenAnotherStatusStillBlocks(t *testing
 	if len(refused) != 1 || refused[0].ActionID != bAttack.GetID() || refused[0].Drop.Action != bAttack {
 		t.Fatalf("refused = %+v, want the attack and its drop", refused)
 	}
-	if r := refused[0].Reason; !strings.Contains(r, "ataque") || !strings.Contains(r, "paralyzed") {
+	if r := refused[0].Reason; !strings.Contains(r, "ataque") || !strings.Contains(r, "Paralisado") {
 		t.Errorf("reason = %q, want what still blocks and by which kind", r)
 	}
 	if !slices.Equal(refused[0].BlockedBy, []statuseffect.Kind{statuseffect.KindParalyzed}) {
