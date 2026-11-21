@@ -91,7 +91,7 @@ func TestStatusRefusal(t *testing.T) {
 		probes  []probe
 	}{
 		{
-			name: "stunned", want: "stunned",
+			name: "stunned", want: "Atordoado",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindStunned)},
 			probes: []probe{
 				{"attack", attackBy(c, other), true},
@@ -101,7 +101,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "paralyzed attack", want: "paralyzed",
+			name: "paralyzed attack", want: "Paralisado",
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainAttack)},
 			probes: []probe{
 				{"attack", attackBy(c, other), true},
@@ -109,7 +109,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "restrained", want: "restrained",
+			name: "restrained", want: "Preso",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindRestrained)},
 			probes: []probe{
 				{"move", moveBy(c), true},
@@ -119,7 +119,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "openGuard", want: "openGuard",
+			name: "openGuard", want: "Guarda aberta",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindOpenGuard)},
 			probes: []probe{
 				{"dodge", react(action.ReactDodge), true},
@@ -130,7 +130,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "airborne", want: "airborne",
+			name: "airborne", want: "No ar",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindAirborne)},
 			probes: []probe{
 				{"escape", react(action.ReactEscape), true},
@@ -140,7 +140,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "paralyzed dodge", want: "paralyzed",
+			name: "paralyzed dodge", want: "Paralisado",
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainDodge)},
 			probes: []probe{
 				{"escape needs dodge", react(action.ReactEscape), true},
@@ -150,7 +150,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "paralyzed defense", want: "paralyzed",
+			name: "paralyzed defense", want: "Paralisado",
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainDefense)},
 			probes: []probe{
 				{"repel", react(action.ReactRepel), true},
@@ -158,7 +158,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "openGuard and paralyzed defense", want: "openGuard",
+			name: "openGuard and paralyzed defense", want: "Guarda aberta",
 			effects: []statuseffect.Effect{
 				kindOnly(c, statuseffect.KindOpenGuard), paralyzedIn(c, statuseffect.DomainDefense),
 			},
@@ -230,7 +230,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 		cAttack := mustEnqueue(t, f.session, f.playerC, attackBy(f.c, f.b))
 
 		setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindStunned))
-		removed := f.session.DropRefusedByStatus(f.b)
+		removed := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.b))
 
 		got := idsOf(removed)
 		if len(got) != 2 || got[0] != bAttack.GetID() || got[1] != bMove.GetID() {
@@ -240,7 +240,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 		if len(pending) != 1 || pending[0] != cAttack.GetID() {
 			t.Fatalf("queue = %v, want only C's attack %v", pending, cAttack.GetID())
 		}
-		if again := f.session.DropRefusedByStatus(f.c); len(again) != 0 {
+		if again := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.c)); len(again) != 0 {
 			t.Fatalf("C has no status and lost %v", idsOf(again))
 		}
 	})
@@ -251,7 +251,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 		mustEnqueue(t, f.session, f.playerB, moveBy(f.b))
 		setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindRestrained))
 
-		removed := f.session.DropRefusedByStatus(f.b)
+		removed := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.b))
 		if len(removed) != 1 || removed[0].Move == nil {
 			t.Fatalf("removed = %v, want only the move", idsOf(removed))
 		}
@@ -276,7 +276,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 
 		setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindStunned))
 		setEffects(f.session, f.c, kindOnly(f.c, statuseffect.KindStunned))
-		if removed := f.session.DropRefusedByStatus(f.b); len(removed) != 0 {
+		if removed := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.b)); len(removed) != 0 {
 			t.Fatalf("a replaced reaction is not a removed queued action: %v", idsOf(removed))
 		}
 		f.session.DropRefusedByStatus(f.c)
@@ -459,7 +459,11 @@ func TestStatusBlockError(t *testing.T) {
 	if be.CharacterID != c || be.What != "agir" || len(be.Kinds) != 1 || be.Kinds[0] != statuseffect.KindStunned {
 		t.Fatalf("cause = %+v", be)
 	}
-	if got := be.Message(nil); strings.Contains(got, "stunned") || !strings.Contains(got, "um efeito") {
+	if got := be.Message(nil); strings.Contains(got, "Atordoado") || !strings.Contains(got, "um efeito") {
 		t.Fatalf("Message(nil) = %q, want the generic cause", got)
+	}
+	// O texto é do usuário: o tipo sai com o nome da mesa, nunca o valor do fio.
+	if got, want := be.Error(), "O personagem não pode agir: Atordoado"; got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
 	}
 }

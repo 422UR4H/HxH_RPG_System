@@ -532,16 +532,19 @@ type fakeStatusEffectStore struct {
 	mu       sync.Mutex
 	writes   [][]statuseffect.Write
 	attempts int
-	fail     error
-	effects  map[uuid.UUID][]statuseffect.Effect
-	listErr  error
-	lists    [][]uuid.UUID
+	// tried é cada chamada a Write, a que falhou inclusive, na ordem.
+	tried   [][]statuseffect.Write
+	fail    error
+	effects map[uuid.UUID][]statuseffect.Effect
+	listErr error
+	lists   [][]uuid.UUID
 }
 
 func (s *fakeStatusEffectStore) Write(_ context.Context, ops []statuseffect.Write) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.attempts++
+	s.tried = append(s.tried, append([]statuseffect.Write(nil), ops...))
 	if s.fail != nil {
 		return s.fail
 	}
@@ -575,6 +578,12 @@ func (s *fakeStatusEffectStore) snapshot() (writes [][]statuseffect.Write, attem
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([][]statuseffect.Write(nil), s.writes...), s.attempts
+}
+
+func (s *fakeStatusEffectStore) triedWrites() [][]statuseffect.Write {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]statuseffect.Write(nil), s.tried...)
 }
 
 func (s *fakeStatusEffectStore) listCalls() [][]uuid.UUID {
@@ -683,8 +692,9 @@ func TestStatusEffects_InsideATurnWaitsForTheClose(t *testing.T) {
 
 	closeTurnAndWait(t, master, mc)
 	f.awaitPersistedTurn(t, turnID)
-	assertOps(t, "close", lastCloseStatusOps(t, f),
-		op(f.bystanderID, "prone"), op(f.npcID, "prone"), "-"+op(f.bystanderID, "prone"))
+	// O prone do terceiro foi aplicado e removido no mesmo turno: a remoção desfaz a aplicação
+	// (Task 15b) e nada dele é gravado.
+	assertOps(t, "close", lastCloseStatusOps(t, f), op(f.npcID, "prone"))
 	if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
 		t.Fatalf("store got %d write(s) (%d attempt(s)), want none — the turn's changes ride its close", len(writes), attempts)
 	}
@@ -798,6 +808,10 @@ func TestStatusEffects_LiveNPCArrivesWithItsEffects(t *testing.T) {
 		}
 		if ids := npcAddedIDs(t, mc); len(ids) != 1 || ids[0] != npcID {
 			t.Fatalf("npc_added = %v, want [%s]", ids, npcID)
+		}
+		// Carregar os efeitos de quem chega não é uma mudança: nenhum evento, nenhuma gravação.
+		if writes, attempts := store.snapshot(); len(writes) != 0 || attempts != 0 {
+			t.Fatalf("store got %d write(s) (%d attempt(s)) for loaded effects, want none", len(writes), attempts)
 		}
 	})
 

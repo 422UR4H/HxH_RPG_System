@@ -34,6 +34,9 @@ type PiecePositionSource interface {
 }
 
 type MatchSession struct {
+	// anchorMoves são as reações que saíram do turno aberto desde a última vez que a sala as
+	// leu (TakeAnchorMoves), com o que ficou no lugar de cada uma.
+	anchorMoves []AnchorMove
 	matchUUID uuid.UUID
 	// mapUUID is the map the session's board belongs to — set by Room via SetMapUUID once it
 	// knows it (StartMatch/RehydrateSession/loadBoard, from Board.MapUUID). It exists so a
@@ -96,6 +99,13 @@ type MatchSession struct {
 	// statusEffects são os efeitos de status por ficha (a mesma chave de charSheets), em ordem.
 	// Mexido sempre sob o r.mu de quem chama; ver status_effects.go.
 	statusEffects map[uuid.UUID][]statuseffect.Effect
+	// arrivals é a ordem de chegada de cada ação na fila (nextArrival cresce a cada
+	// EnqueueAction). A fila já guarda as ações nessa ordem — Insert só acrescenta e a saída
+	// preserva o resto —, e é ela que desempata a fila; o número existe para que uma ação que um
+	// status tirou e o desfazer devolveu (RestoreCancelledByStatus) volte ao MESMO lugar, empates
+	// incluídos. Só as ações na fila precisam de entrada; as outras são podadas (noteArrival).
+	arrivals    map[uuid.UUID]uint64
+	nextArrival uint64
 }
 
 // defaultStoryStart é o horário da história com que as sessões nascem nos construtores.
@@ -234,6 +244,7 @@ func (s *MatchSession) ClockSnapshotNow() clock.Snapshot { return s.clock.Snapsh
 // está em Race e sobe o limite do relógio até esse horário.
 func (s *MatchSession) stampOpened(t *turn.Turn) {
 	real := s.now()
+	t.SetOpenedAt(real.Truncate(time.Microsecond))
 	t.SetStoryAt(s.clock.Now(real))
 	if s.activeRound.GetMode() == enum.Race {
 		s.activeRound.MarkCounted()
@@ -1398,6 +1409,7 @@ func (s *MatchSession) seatDefaultReactions(t *turn.Turn) {
 		if t.IsSeated(r.GetID()) && !named[r.GetActorID()] {
 			t.Unseat(r.GetID())
 			s.dropEdits(r.GetID())
+			s.noteAnchorMove(t.GetID(), r.GetID(), a.GetID())
 		}
 	}
 	answered := make(map[uuid.UUID]bool, len(named))
@@ -1645,6 +1657,7 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	}
 	if seatedID != uuid.Nil {
 		t.ReplaceSeated(seatedID, r.GetID())
+		s.noteAnchorMove(t.GetID(), seatedID, r.GetID())
 		// Inherited edits were moved to r already; anything left under the seated ID was the
 		// master's edit on a reading the target just replaced with one of their own.
 		s.dropEdits(seatedID)
@@ -1878,7 +1891,7 @@ func (s *MatchSession) OpenReaction(reactionID uuid.UUID) (*action.Action, *serv
 	if t.GetFinishedAt() != nil {
 		return nil, nil, ErrTurnAlreadyClosed
 	}
-	if !t.OpenReaction(reactionID) {
+	if !t.OpenReactionAt(reactionID, s.now().Truncate(time.Microsecond)) {
 		return nil, nil, ErrReactionNotFound
 	}
 	if r := t.ReactionRef(reactionID); r != nil {
@@ -2003,8 +2016,42 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	s.stackOnChainTail(a)
 	s.rollActionDice(a)
 	s.deriveSpeeds(a, s.swapBias(a.GetActorID()))
+	s.nextArrival++
+	s.noteArrival(a.GetID(), s.nextArrival)
 	s.activeQueue.Insert(a)
 	return nil
+}
+
+// noteArrival guarda a ordem de chegada de id. Quando o mapa passa muito da fila, as entradas
+// de ações que já saíram dela são podadas (o desfazer guarda a sua no StatusDrop).
+func (s *MatchSession) noteArrival(id uuid.UUID, seq uint64) {
+	if s.arrivals == nil {
+		s.arrivals = map[uuid.UUID]uint64{}
+	}
+	if n := s.activeQueue.Len(); len(s.arrivals) > 64 && len(s.arrivals) > 4*n {
+		kept := make(map[uuid.UUID]uint64, n+1)
+		for _, q := range s.activeQueue.All() {
+			if v, ok := s.arrivals[q.GetID()]; ok {
+				kept[q.GetID()] = v
+			}
+		}
+		s.arrivals = kept
+	}
+	s.arrivals[id] = seq
+}
+
+// insertByArrival põe a de volta na fila na posição da ordem de chegada seq: antes da primeira
+// ação que chegou depois dela. A fila está sempre nessa ordem, então o lugar é o de antes.
+func (s *MatchSession) insertByArrival(a *action.Action, seq uint64) {
+	at := s.activeQueue.Len()
+	for i, q := range s.activeQueue.All() {
+		if v, ok := s.arrivals[q.GetID()]; ok && v > seq {
+			at = i
+			break
+		}
+	}
+	s.noteArrival(a.GetID(), seq)
+	s.activeQueue.InsertAt(at, a)
 }
 
 // stackOnChainTail empilha um movimento no último movimento pendente do mesmo personagem

@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -20,6 +23,11 @@ import (
 // repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
 // passa por aqui — é status_effect_invalid, como o domínio o diz.
 var errStatusPayload = errors.New("invalid status effect payload")
+
+// errStatusActionID recusa uma âncora (actionId) que não é a action do turno aberto nem uma
+// reação dela — ou qualquer âncora sem turno aberto. É status_effect_invalid.
+var errStatusActionID = fmt.Errorf("%w: actionId precisa ser a ação do turno aberto ou uma reação dela",
+	statuseffect.ErrInvalidParams)
 
 func statusPayloadErr(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", errStatusPayload, fmt.Sprintf(format, a...))
@@ -201,8 +209,8 @@ func (r *Room) handleApplyStatusEffect(client *Client, raw json.RawMessage) {
 		return
 	}
 	in := appmatch.ApplyStatusEffectInput{CharacterIDs: p.CharacterIDs, Draft: draft}
-	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
-		return r.deps.StatusEffectsUC.Apply(s, r.masterUUID, client.userUUID, in, r.now())
+	r.runStatusEffectChange(client, p.ActionID, false, func(s *matchsession.MatchSession, now time.Time) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Apply(s, r.masterUUID, client.userUUID, in, now)
 	})
 }
 
@@ -221,11 +229,26 @@ func (r *Room) handleEditStatusEffect(client *Client, raw json.RawMessage) {
 		r.refuseStatusEffect(client, err)
 		return
 	}
-	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
-		return r.deps.StatusEffectsUC.Edit(s, r.masterUUID, client.userUUID, p.StatusEffectID, patch, r.now())
+	r.runStatusEffectChange(client, p.ActionID, false, func(s *matchsession.MatchSession, now time.Time) (appmatch.StatusEffectChange, error) {
+		return r.deps.StatusEffectsUC.Edit(s, r.masterUUID, client.userUUID, p.StatusEffectID, patch, now)
 	})
 }
 
+// handleRemoveStatusEffect remove um efeito. Com restoreCancelledActions, um efeito aplicado no
+// próprio turno aberto é desfeito e o que ele tirou volta, revalidado (D3, giveBackLocked): as
+// ações da fila que ele cancelou e as reações não abertas que ele trocou no turno; fora dessa
+// janela a flag é ignorada — não há o que devolver.
+//
+// O inverso de aplicar um status no turno aberto é o desfazer com restoreCancelledActions
+// (undoInTurnAppliesLocked + giveBackLocked, que chama RestoreCancelledByStatus e
+// RestoreSwappedReactions). Um futuro ctrl+Z deve chamar este caminho, nunca escrever a sua
+// própria reversão: a reversão revalida contra o estado de agora, sob r.mu, e recusa com motivo o
+// que não cabe mais. Cobre: as gravações pendentes do efeito, as ações canceladas (lugar, edições,
+// velocidades; o registro de cancelada some) e as reações trocadas (a mesma reação, as âncoras de
+// volta; a barra que ela cobrou volta a ser coerente). Não cobre: a janela de fusão do relógio
+// fechada pelo cancelamento (clearClockMergeLocked, inofensivo), o que a revalidação recusa (fica
+// como o status deixou, a barra de uma reação recusada continua cobrada) e nada depois do
+// fechamento.
 func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 	if !r.IsMaster(client.userUUID) {
 		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
@@ -236,15 +259,19 @@ func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 		client.SendMessage(NewErrorMessage("invalid_payload", "invalid remove_status_effect payload"))
 		return
 	}
-	r.runStatusEffectChange(client, func(s *matchsession.MatchSession) (appmatch.StatusEffectChange, error) {
+	r.runStatusEffectChange(client, p.ActionID, p.RestoreCancelledActions, func(s *matchsession.MatchSession, _ time.Time) (appmatch.StatusEffectChange, error) {
 		return r.deps.StatusEffectsUC.Remove(s, r.masterUUID, client.userUUID, p.StatusEffectID)
 	})
 }
 
-// runStatusEffectChange roda o caso de uso sob r.mu (a sessão não tem trava própria), segura
-// as gravações e, já sem a trava, manda a cada um a lista nova que ele vê.
+// runStatusEffectChange roda o caso de uso sob r.mu (a sessão não tem trava própria), carimba
+// o evento de histórico de cada gravação (stampStatusEventsLocked), segura as gravações e, já
+// sem a trava, manda a cada um a lista nova que ele vê. actionID (opcional) é a âncora do
+// evento: precisa ser a action do turno aberto ou uma reação dela. restore é o
+// restoreCancelledActions da remoção (giveBackLocked); false para aplicar e editar.
 func (r *Room) runStatusEffectChange(
-	client *Client, op func(*matchsession.MatchSession) (appmatch.StatusEffectChange, error),
+	client *Client, actionID *uuid.UUID, restore bool,
+	op func(*matchsession.MatchSession, time.Time) (appmatch.StatusEffectChange, error),
 ) {
 	if r.deps.StatusEffectsUC == nil {
 		client.SendMessage(NewErrorMessage("game_error", "status effects are not available"))
@@ -257,23 +284,47 @@ func (r *Room) runStatusEffectChange(
 		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
 		return
 	}
+	if actionID != nil && !session.IsOpenTurnAction(*actionID) {
+		r.mu.Unlock()
+		r.refuseStatusEffect(client, errStatusActionID)
+		return
+	}
 	// Quem vê cada peça antes da mudança: um Escondido que entra, sai ou troca de lista tira
 	// ou devolve peças (decisão do dono 6). O retrato é barato (peças × jogadores conectados) e
 	// precisa ser tirado antes do caso de uso, que muda a sessão.
 	before := r.pieceSightLocked()
-	change, err := op(session)
+	// O mesmo para o histórico, por jogador da sessão (conectado ou não): quem enxergava cada
+	// personagem e para quem ele estava Escondido logo antes da mudança.
+	instant := statusInstant{
+		at: r.now().Truncate(time.Microsecond), actionID: actionID,
+		sight: r.sessionSightLocked(), hidden: r.sessionHiddenFromLocked(),
+	}
+	change, err := op(session, instant.at)
 	if err != nil {
 		r.mu.Unlock()
 		r.refuseStatusEffect(client, err)
 		return
 	}
+	// Remover um efeito aplicado neste mesmo turno desfaz a aplicação: nada dele é gravado.
+	removed := removedEffects(change.Writes)
+	var undone map[uuid.UUID]bool
+	change.Writes, undone = r.undoInTurnAppliesLocked(change.Writes)
+	r.stampStatusEventsLocked(change.Writes, instant)
 	var after map[uuid.UUID]map[string]bool
 	if change.HiddenChanged {
 		after = r.pieceSightLocked()
 	}
 	flushNow := r.holdStatusEffectWritesLocked(change.Writes)
 	// O conjunto novo vale já para o que está pendente (decisão 8): na mesma seção crítica.
-	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters)
+	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters, changedEffects(change.Writes))
+	// O desfazer pedido devolve, na mesma seção crítica, o que o efeito desfeito cancelou (D3);
+	// a remoção já saiu da sessão, então ele não recusa mais nada.
+	back := r.giveBackLocked(removed, undone, restore)
+	if len(back.actions) > 0 || len(back.reactions) > 0 {
+		turnTouched = true
+	}
+	// Uma reação refeita pelo status leva junto as âncoras presas a ela.
+	followed := r.followAnchorsLocked()
 	turnID := session.CurrentTurnID()
 	var res *domainservice.TurnResolution
 	if turnTouched {
@@ -290,6 +341,9 @@ func (r *Room) runStatusEffectChange(
 	}
 	if len(cancelled) > 0 {
 		r.announceStatusCancelled(cancelled)
+	}
+	r.announceRestored(back)
+	if len(cancelled) > 0 || len(back.actions) > 0 {
 		r.broadcastBars(session)
 	}
 	// Uma reação do turno aberto pode ter sido refeita: o mestre recebe a resolução nova.
@@ -304,7 +358,102 @@ func (r *Room) runStatusEffectChange(
 	}
 	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima
 	// já cobriu quem ainda tem efeitos; este cobre o que acabou de ficar sem nenhum.
-	r.syncStatusViews(change.Characters)
+	r.syncStatusViews(append(append([]uuid.UUID(nil), change.Characters...), followed...))
+}
+
+// statusInstant é o instante de uma mudança de status, como o histórico o carimba: a hora, a
+// âncora pedida e o retrato de antes da mudança (sight: personagem → jogador → enxergava;
+// hidden: personagem → jogador → efeito Escondido que o escondia dele).
+type statusInstant struct {
+	at       time.Time
+	actionID *uuid.UUID
+	sight    map[uuid.UUID]map[uuid.UUID]bool
+	hidden   map[uuid.UUID]map[uuid.UUID]uuid.UUID
+}
+
+// stampStatusEventsLocked completa o evento que o caso de uso pôs em cada gravação (só a
+// mudança) com o que só a sala sabe: partida, cena, round, turno aberto, âncora, a lista de
+// quem vê já resolvida, quem enxergava o personagem logo antes OU logo depois (mais o dono;
+// o mestre nunca) e para quem ele estava Escondido. Sem cena ou round ativos o evento é
+// descartado (não há onde pendurá-lo) e a gravação do efeito segue sem ele.
+//
+// O chamador segura r.mu (escrita) e r.session não é nil.
+func (r *Room) stampStatusEventsLocked(writes []statuseffect.Write, in statusInstant) {
+	sc, rd := r.session.GetActiveScene(), r.session.GetActiveRound()
+	var turnID *uuid.UUID
+	if id := r.openTurnIDLocked(); id != uuid.Nil {
+		turnID = &id
+	}
+	owners := r.session.GetCharToPlayer()
+	for i := range writes {
+		ev := writes[i].Event
+		if ev == nil {
+			continue
+		}
+		e := writes[i].Effect
+		if sc == nil || rd == nil {
+			log.Printf("evento de status do efeito %s (%s) na partida %s fica fora do histórico: "+
+				"a sessão não tem cena ou round ativos", e.ID, ev.Change, r.matchUUID)
+			writes[i].Event = nil
+			continue
+		}
+		charID := e.CharacterID
+		owner := owners[charID.String()]
+		subject, pcPublic := r.statusSubjectLocked(charID)
+		ev.ID = uuid.New()
+		ev.MatchID, ev.SceneID, ev.RoundID = r.session.GetMatchUUID(), sc.GetID(), rd.GetID()
+		ev.TurnID = cloneUUIDPtr(turnID)
+		ev.ActionID = cloneUUIDPtr(in.actionID)
+		ev.Listing = statuseffect.ResolveListing(e, subject, pcPublic)
+		ev.Views = r.sessionPlayerViewsLocked(owner, func(pid uuid.UUID) (masteraction.View, bool) {
+			return masteraction.ViewFull, in.sight[charID][pid] || r.seesCharacterLocked(pid, charID)
+		})
+		if owner != r.masterUUID && owner != uuid.Nil {
+			ev.Views[owner] = masteraction.ViewFull
+		}
+		ev.HiddenFrom = r.statusHiddenFromLocked(charID, owner, ev.Views, in.hidden[charID])
+		ev.HappenedAt = in.at
+	}
+}
+
+// statusHiddenFromLocked é o HiddenFrom de um evento: os jogadores da sessão (nunca o mestre
+// nem o dono) que não estão em views e para quem o personagem estava Escondido logo depois da
+// mudança — ou, se não mais, logo antes (a remoção do Escondido). nil quando ninguém.
+//
+// O chamador segura r.mu (leitura basta) e r.session não é nil.
+func (r *Room) statusHiddenFromLocked(
+	charID, owner uuid.UUID, views map[uuid.UUID]masteraction.View, before map[uuid.UUID]uuid.UUID,
+) map[uuid.UUID]uuid.UUID {
+	after := r.hiddenFromMapLocked(charID)
+	var out map[uuid.UUID]uuid.UUID
+	for _, pid := range r.session.PlayerIDs() {
+		if pid == r.masterUUID || pid == owner {
+			continue
+		}
+		if _, saw := views[pid]; saw {
+			continue
+		}
+		hid, ok := after[pid]
+		if !ok {
+			hid, ok = before[pid]
+		}
+		if !ok {
+			continue
+		}
+		if out == nil {
+			out = make(map[uuid.UUID]uuid.UUID)
+		}
+		out[pid] = hid
+	}
+	return out
+}
+
+func cloneUUIDPtr(p *uuid.UUID) *uuid.UUID {
+	if p == nil {
+		return nil
+	}
+	id := *p
+	return &id
 }
 
 // holdStatusEffectWritesLocked guarda as gravações de uma mudança e diz se elas devem ser
@@ -414,9 +563,11 @@ func (r *Room) projectStatusEffectsLocked(charID uuid.UUID, pid uuid.UUID, isMas
 		if !statuseffect.Listed(e, viewer, subject, pcPublic) {
 			continue
 		}
-		w := statusEffectWire(e)
+		w := statuswire.From(e)
 		if isMaster {
-			vis := visibilityWire(e.Audience)
+			w.TurnActionID = r.pendingAnchorLocked(e.ID)
+			w.CancelledActionIDs, w.SwappedReactionIDs = r.cancelledActionIDsLocked(e.ID)
+			vis := statuswire.VisibilityOf(e.Audience)
 			// Público = está na lista de um jogador qualquer, que não é o dono (a visão à parte).
 			public := statuseffect.Listed(e, statuseffect.Viewer{UserID: uuid.Nil}, subject, pcPublic)
 			w.Visibility, w.Public = &vis, &public
@@ -434,84 +585,6 @@ func (r *Room) statusSubjectLocked(charID uuid.UUID) (statuseffect.Subject, bool
 	owner := r.session.GetCharToPlayer()[charID.String()]
 	return statuseffect.Subject{OwnerID: owner, IsNPC: owner == r.masterUUID},
 		r.session.GetRules().PlayerStatusEffectsPublic
-}
-
-func statusEffectWire(e statuseffect.Effect) StatusEffectPayload {
-	return StatusEffectPayload{
-		ID:        e.ID,
-		Kind:      string(e.Kind),
-		Sense:     string(e.Sense),
-		Aptitude:  string(e.Aptitude),
-		Params:    statusParamsWire(e),
-		Alias:     e.Alias,
-		AppliedAt: e.AppliedAt,
-	}
-}
-
-func visibilityWire(a *statuseffect.Audience) StatusEffectVisibilityPayload {
-	switch {
-	case a == nil:
-		return StatusEffectVisibilityPayload{Mode: "default"}
-	case a.Everyone:
-		return StatusEffectVisibilityPayload{Mode: "public"}
-	}
-	return StatusEffectVisibilityPayload{Mode: "players", PlayerIDs: append([]uuid.UUID(nil), a.Players...)}
-}
-
-// statusParamsWire põe no fio todo campo que o tipo possui, e só esses (tabela da Task 2). Um
-// sentido anulado não leva desvantagem nem penalidade.
-func statusParamsWire(e statuseffect.Effect) StatusEffectParamsPayload {
-	p := e.Params
-	intp := func(v int) *int { return &v }
-	boolp := func(v bool) *bool { return &v }
-	var out StatusEffectParamsPayload
-	switch e.Kind {
-	case statuseffect.KindParalyzed:
-		out.Domains = domainsWire(p.Domains)
-		out.Points = intp(p.Points)
-	case statuseffect.KindStupefied, statuseffect.KindStunned:
-		out.Points = intp(p.Points)
-	case statuseffect.KindInjured:
-		out.Injuries = make(map[string]string, len(p.Injuries))
-		for d, l := range p.Injuries {
-			out.Injuries[string(d)] = string(l)
-		}
-	case statuseffect.KindSlowed:
-		out.Penalty = intp(p.Penalty)
-	case statuseffect.KindSense:
-		out.Level = string(p.Level)
-		if p.Level == statuseffect.SenseImpaired {
-			out.Disadvantage = boolp(p.Disadvantage)
-			out.Penalty = intp(p.Penalty)
-		}
-		if e.Sense == statuseffect.SenseTact {
-			for _, f := range p.Faces {
-				out.Faces = append(out.Faces, string(f))
-			}
-		}
-	case statuseffect.KindWeakened:
-		out.Disadvantage = boolp(p.Disadvantage)
-		out.Penalty = intp(p.Penalty)
-	case statuseffect.KindBleeding, statuseffect.KindBurning, statuseffect.KindFreezing, statuseffect.KindPoisoned:
-		out.HPPerRound = intp(p.HPPerRound)
-	case statuseffect.KindCompelled:
-		out.Conduct = p.Conduct
-		out.Irresistible = boolp(p.Irresistible)
-	case statuseffect.KindControlled:
-		if p.ControllerID != nil {
-			id := *p.ControllerID
-			out.ControllerID = &id
-		}
-	}
-	return out
-}
-
-func domainsWire(ds []statuseffect.Domain) []string {
-	out := make([]string, 0, len(ds))
-	for _, d := range ds {
-		out = append(out, string(d))
-	}
-	return out
 }
 
 // ─── envio ──────────────────────────────────────────────────────────────────
@@ -647,25 +720,68 @@ func statusNotesFor(sum statuseffect.Summary, a *action.Action) []StatusNotePayl
 // dropRefusedByStatusLocked aplica a mudança de status ao que os personagens têm pendente
 // (decisão 8), na mesma seção crítica do caso de uso: cada action que o conjunto novo recusa sai
 // da fila e é registrada como cancelada pelo mestre, pelo mesmo caminho do cancel_action (com
-// turno aberto, retida para o fechamento dele). Devolve o que gravar já, os avisos a mandar e se
-// alguma reação do turno aberto pode ter mudado. O chamador segura r.mu (escrita).
-func (r *Room) dropRefusedByStatusLocked(session *matchsession.MatchSession, chars []uuid.UUID) (
-	writes []*cancelledWrite, cancelled []cancelledNotice, turnTouched bool,
-) {
+// turno aberto, retida para o fechamento dele). Com turno aberto, o que saiu também vai para o
+// registro do desfazer (turnWrites.statusCancels) de cada efeito do personagem que esta mudança
+// aplicou ou editou (changed), e as reações não abertas que ela trocou no turno também:
+// atribuir a mais de um é seguro, porque a devolução revalida.
+// Devolve o que gravar já, os avisos a mandar e se alguma reação do turno aberto pode ter mudado.
+// O chamador segura r.mu (escrita).
+func (r *Room) dropRefusedByStatusLocked(
+	session *matchsession.MatchSession, chars []uuid.UUID, changed map[uuid.UUID][]uuid.UUID,
+) (writes []*cancelledWrite, cancelled []cancelledNotice, turnTouched bool) {
 	owners := session.GetCharToPlayer()
+	turnID := r.openTurnIDLocked()
 	for _, charID := range chars {
 		turnTouched = turnTouched || session.HasReactionOnOpenTurn(charID)
-		removed := session.DropRefusedByStatus(charID)
-		if len(removed) == 0 {
+		drops, swapped := session.DropRefusedByStatusWithReactions(charID)
+		if turnID != uuid.Nil && len(swapped) > 0 {
+			w := r.turnWritesLocked(turnID)
+			for _, effectID := range changed[charID] {
+				w.noteReactionSwap(effectID, charID, swapped)
+			}
+		}
+		if len(drops) == 0 {
 			continue
 		}
-		ws, ids := r.holdCancelledActionsLocked(removed, r.masterUUID)
+		if turnID != uuid.Nil {
+			w := r.turnWritesLocked(turnID)
+			for _, effectID := range changed[charID] {
+				w.noteStatusCancel(effectID, charID, drops)
+			}
+		}
+		ws, ids := r.holdCancelledActionsLocked(matchsession.DroppedActions(drops), r.masterUUID)
 		writes = append(writes, ws...)
 		for _, id := range ids {
 			cancelled = append(cancelled, cancelledNotice{id: id, owner: owners[charID.String()]})
 		}
 	}
 	return writes, cancelled, turnTouched
+}
+
+// removedEffects são os efeitos que writes remove, em ordem, como estavam antes da remoção.
+func removedEffects(writes []statuseffect.Write) []statuseffect.Effect {
+	var out []statuseffect.Effect
+	for _, op := range writes {
+		if op.Delete {
+			out = append(out, op.Effect)
+		}
+	}
+	return out
+}
+
+// changedEffects são, por personagem, os efeitos que writes aplica ou edita.
+func changedEffects(writes []statuseffect.Write) map[uuid.UUID][]uuid.UUID {
+	var out map[uuid.UUID][]uuid.UUID
+	for _, op := range writes {
+		if op.Delete {
+			continue
+		}
+		if out == nil {
+			out = map[uuid.UUID][]uuid.UUID{}
+		}
+		out[op.Effect.CharacterID] = append(out[op.Effect.CharacterID], op.Effect.ID)
+	}
+	return out
 }
 
 // cancelledNotice é um action_cancelled a mandar: a action e o dono do personagem dela.
@@ -689,5 +805,47 @@ func (r *Room) announceStatusCancelled(notices []cancelledNotice) {
 		if ok {
 			c.SendMessage(msg)
 		}
+	}
+}
+
+// announceRestored anuncia o que um desfazer devolveu. Cada ação de volta à fila: action_restored
+// ao mestre (actionwire.Full) e ao dono (o corte do ownQueue), e o action_queued do mestre, como
+// no enqueue — depois do action_restored, para que o cliente, que já a pôs no lugar
+// (beforeActionId), só a redescreva. Não usa action_enqueued: ele é o ack de um envio do
+// cliente, casado pela ordem dos envios, e um ack que ninguém pediu cairia no envio errado.
+// Cada reação de volta ao turno: reaction_restored ao mestre e, quando o efeito desfeito era
+// visível a ele, ao dono — não reaction_attached, que o cliente casa com o envio pendente do
+// mesmo personagem. Cada recusa vai só ao mestre, como error restore_refused. Fora do lock.
+func (r *Room) announceRestored(back givenBack) {
+	for _, n := range back.actions {
+		r.sendToMaster(NewServerMessage(MsgTypeActionRestored, n.master))
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, n.queued))
+		if n.ownerMsg == nil {
+			continue
+		}
+		r.mu.RLock()
+		c, ok := r.clients[n.owner]
+		r.mu.RUnlock()
+		if ok {
+			c.SendMessage(NewServerMessage(MsgTypeActionRestored, *n.ownerMsg))
+		}
+	}
+	for _, n := range back.reactions {
+		r.sendToMaster(NewServerMessage(MsgTypeReactionRestored, n.master))
+		if n.ownerMsg == nil {
+			continue
+		}
+		r.mu.RLock()
+		c, ok := r.clients[n.owner]
+		r.mu.RUnlock()
+		if ok {
+			c.SendMessage(NewServerMessage(MsgTypeReactionRestored, *n.ownerMsg))
+		}
+	}
+	for _, f := range back.refusals {
+		r.sendToMaster(NewErrorMessage("restore_refused", "Não foi possível devolver a ação: "+f.Reason))
+	}
+	for _, f := range back.reactionRefusals {
+		r.sendToMaster(NewErrorMessage("restore_refused", "Não foi possível devolver a reação: "+f.Reason))
 	}
 }

@@ -49,6 +49,26 @@ func ParseKind(s string) (Kind, error) {
 	return "", fmt.Errorf("%w: %q", ErrUnknownKind, s)
 }
 
+// kindLabel é o nome de cada tipo na mesa (a tabela de match-status-effects.md §3).
+var kindLabel = map[Kind]string{
+	KindParalyzed: "Paralisado", KindStupefied: "Atônito", KindStunned: "Atordoado",
+	KindUnconscious: "Inconsciente", KindRestrained: "Preso", KindInjured: "Lesionado",
+	KindSlowed: "Lento", KindSense: "Sentido afetado", KindWeakened: "Debilitado",
+	KindBleeding: "Sangrando", KindBurning: "Queimando", KindFreezing: "Congelando",
+	KindPoisoned: "Envenenado", KindAsphyxiating: "Asfixiando", KindProne: "Caído",
+	KindAirborne: "No ar", KindOpenGuard: "Guarda aberta", KindCompelled: "Compelido",
+	KindControlled: "Controlado", KindHidden: "Escondido",
+}
+
+// Label é o nome do tipo em português, para texto que o usuário lê (as recusas por status). O
+// fio continua com o valor em inglês (string(k)); um tipo desconhecido sai como veio.
+func (k Kind) Label() string {
+	if l, ok := kindLabel[k]; ok {
+		return l
+	}
+	return string(k)
+}
+
 // PublicByDefault diz se, sem registro de audiência, todos veem o efeito (§9).
 func (k Kind) PublicByDefault() bool {
 	switch k {

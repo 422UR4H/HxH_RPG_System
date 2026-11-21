@@ -22,6 +22,12 @@ type Turn struct {
 	// storyAt é o horário da história em que o turno abriu: fixado na abertura, em memória, e
 	// só gravado quando o turno fecha (nada dentro de um turno aberto vai ao banco).
 	storyAt *time.Time
+	// openedAt é o instante real (do relógio da sala, em µs) em que o turno abriu; zero num
+	// turno que nunca passou pela abertura (testes). É o turns.created_at.
+	openedAt time.Time
+	// reactionOpenedAt é o instante real em que o mestre abriu cada reação (a primeira vez);
+	// uma reação nunca aberta não tem entrada. É o actions.opened_at dela.
+	reactionOpenedAt map[uuid.UUID]time.Time
 	// escapeLandings is where the MASTER put the piece of an escape, keyed by the reaction's
 	// own ID — chosen over edit_action while the turn is open (front-combat-phases.md §6A.5,
 	// B13). It is only a standing choice: the resolver copies it into the resolution only
@@ -47,6 +53,33 @@ func NewTurn(action action.Action) *Turn {
 func (t *Turn) SetStoryAt(at time.Time) { t.storyAt = &at }
 
 func (t *Turn) GetStoryAt() *time.Time { return t.storyAt }
+
+// SetOpenedAt fixa o instante real da abertura do turno.
+func (t *Turn) SetOpenedAt(at time.Time) { t.openedAt = at }
+
+// GetOpenedAt é o instante real da abertura; zero se nunca fixado.
+func (t *Turn) GetOpenedAt() time.Time { return t.openedAt }
+
+// OpenReactionAt é OpenReaction registrando o instante da abertura — o primeiro: abrir de novo
+// não o move.
+func (t *Turn) OpenReactionAt(id uuid.UUID, at time.Time) bool {
+	if !t.OpenReaction(id) {
+		return false
+	}
+	if _, ok := t.reactionOpenedAt[id]; !ok {
+		if t.reactionOpenedAt == nil {
+			t.reactionOpenedAt = make(map[uuid.UUID]time.Time)
+		}
+		t.reactionOpenedAt[id] = at
+	}
+	return true
+}
+
+// ReactionOpenedAt é o instante em que a reação foi aberta; false se nunca foi.
+func (t *Turn) ReactionOpenedAt(id uuid.UUID) (time.Time, bool) {
+	at, ok := t.reactionOpenedAt[id]
+	return at, ok
+}
 
 func (t *Turn) GetID() uuid.UUID {
 	return t.id
@@ -95,6 +128,13 @@ func (t *Turn) ReplaceSeated(seatedID, newID uuid.UUID) bool {
 	}
 	delete(t.seated, seatedID)
 	t.removeReaction(seatedID)
+	// Quem responde herda o lugar na ordem de abertura — e o instante dela.
+	if at, ok := t.reactionOpenedAt[seatedID]; ok {
+		delete(t.reactionOpenedAt, seatedID)
+		if _, has := t.reactionOpenedAt[newID]; !has {
+			t.reactionOpenedAt[newID] = at
+		}
+	}
 	if i := slices.Index(t.openedReactions, seatedID); i >= 0 {
 		if slices.Contains(t.openedReactions, newID) {
 			t.openedReactions = slices.Delete(t.openedReactions, i, i+1)
@@ -117,6 +157,7 @@ func (t *Turn) Unseat(id uuid.UUID) bool {
 		t.openedReactions = slices.Delete(t.openedReactions, i, i+1)
 	}
 	delete(t.escapeLandings, id)
+	delete(t.reactionOpenedAt, id)
 	return true
 }
 
@@ -132,6 +173,35 @@ func (t *Turn) DropUnopened(id uuid.UUID) bool {
 	t.removeReaction(id)
 	delete(t.escapeLandings, id)
 	return true
+}
+
+// ReactionIndex é a posição da reação entre as do turno; -1 se ela não está nele.
+func (t *Turn) ReactionIndex(id uuid.UUID) int {
+	for i := range t.reactions {
+		if t.reactions[i].GetID() == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// RestoreUnopened põe de volta uma reação que DropUnopened tirou, como estava: na posição dada
+// (o fim, se ela não existe mais), sentada ou não, com a escolha de pouso dela. Quem chama
+// revalida antes (MatchSession.RestoreSwappedReactions); o turno só a recoloca.
+func (t *Turn) RestoreUnopened(r action.Action, index int, seated bool, landing *[3]int) {
+	if index < 0 || index > len(t.reactions) {
+		index = len(t.reactions)
+	}
+	t.reactions = slices.Insert(t.reactions, index, r)
+	if seated {
+		if t.seated == nil {
+			t.seated = make(map[uuid.UUID]bool)
+		}
+		t.seated[r.GetID()] = true
+	}
+	if landing != nil {
+		t.SetEscapeLanding(r.GetID(), *landing)
+	}
 }
 
 // IsOpened diz se o mestre já deu a palavra a esta reação.

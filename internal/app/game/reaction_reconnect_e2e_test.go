@@ -319,11 +319,13 @@ func TestE2E_MasterOwnReactionsCarryOnlyTheNPCs(t *testing.T) {
 	sendWS(t, master, string(game.MsgTypeAttachReaction), game.ActionPayload{
 		ActorID: f.npcID, ReactToID: actionID, ReactionKind: "dodge", Dodge: &game.DodgePayload{},
 	})
-	// The master got the player's reaction_attached too, so the NPC's is the second.
+	// The master gets the player's reaction_attached too, from the player's read pump: the two
+	// copies can reach the master in either order, so the NPC's is picked by its actor, not by
+	// being the last.
 	if !awaitCount(mc, game.MsgTypeReactionAttached, 2, 2*time.Second) {
 		t.Fatalf("the master never got the NPC's reaction_attached; got %v", messageTypes(mc.snapshotMessages()))
 	}
-	npcReactionID := lastReactionAttached(t, mc).ReactionID
+	npcReactionID := reactionAttachedBy(t, mc, f.npcID).ReactionID
 
 	// Every fresh connection stays open to the end: the room closes itself once nobody is in
 	// it, and the second reconnect must find the same session the first one left.

@@ -249,7 +249,13 @@ func assertClosedBeforeOpened(t *testing.T, c *collector, closed, opened uuid.UU
 		t.Fatalf("%s was never told turn %s ended; it received: %v",
 			who, closed, messageTypes(c.snapshotMessages()))
 	}
+	// O turn_opened vem depois do turn_closed na mesma pista: espera ele chegar a este cliente
+	// antes de olhar a ordem (o mestre já o recebeu, este pode estar um envio atrás).
 	msgs := c.snapshotMessages()
+	for deadline := time.Now().Add(2 * time.Second); indexOfTurnMessage(t, msgs, game.MsgTypeTurnOpened, opened) < 0 &&
+		time.Now().Before(deadline); msgs = c.snapshotMessages() {
+		time.Sleep(5 * time.Millisecond)
+	}
 	closedAt := indexOfTurnMessage(t, msgs, game.MsgTypeTurnClosed, closed)
 	if closedAt < 0 {
 		t.Fatalf("%s got a turn_closed, but never for turn %s — the implicit close named "+

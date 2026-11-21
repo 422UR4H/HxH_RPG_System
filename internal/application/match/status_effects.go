@@ -127,7 +127,7 @@ func (uc *StatusEffectsUC) Apply(
 		nexts[i] = next
 		change.Characters = append(change.Characters, id)
 		for _, e := range added {
-			change.Writes = append(change.Writes, statuseffect.Write{Effect: e})
+			change.Writes = append(change.Writes, statuseffect.Write{Effect: e, Event: &statuseffect.Event{Change: statuseffect.ChangeApplied}})
 			if e.Kind == statuseffect.KindHidden {
 				change.HiddenChanged = true
 			}
@@ -169,7 +169,7 @@ func (uc *StatusEffectsUC) Edit(
 	s.ReplaceStatusEffects(cur.CharacterID, next)
 	return StatusEffectChange{
 		Characters:    []uuid.UUID{cur.CharacterID},
-		Writes:        []statuseffect.Write{{Effect: edited}},
+		Writes:        []statuseffect.Write{{Effect: edited, Event: &statuseffect.Event{Change: statuseffect.ChangeEdited}}},
 		HiddenChanged: cur.Kind == statuseffect.KindHidden && p.SetAudience,
 	}, nil
 }
@@ -192,7 +192,7 @@ func (uc *StatusEffectsUC) Remove(
 	s.ReplaceStatusEffects(cur.CharacterID, next)
 	return StatusEffectChange{
 		Characters:    []uuid.UUID{cur.CharacterID},
-		Writes:        []statuseffect.Write{{Delete: true, Effect: removed}},
+		Writes:        []statuseffect.Write{{Delete: true, Effect: removed, Event: &statuseffect.Event{Change: statuseffect.ChangeRemoved}}},
 		HiddenChanged: removed.Kind == statuseffect.KindHidden,
 	}, nil
 }

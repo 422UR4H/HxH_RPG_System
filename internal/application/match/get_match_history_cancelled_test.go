@@ -27,7 +27,7 @@ func (f *fakeCancelledActionLister) ListByMatch(_ context.Context, _ uuid.UUID) 
 // is an actionCancelled event of its round, in time order with the round's other events — even
 // one cancelled while a turn the tree holds was open: it never belonged to that turn — and each
 // reader gets their cut of it: the master the action at Full, the actor's owner at Declaration
-// (the cut of their own ownQueue), anyone else who cancelled and nothing more.
+// (the cut of their own ownQueue), anyone else nothing at all (D1, 2026-11-20).
 func TestGetMatchHistoryStitchesCancelledActions(t *testing.T) {
 	masterUUID, matchUUID := uuid.New(), uuid.New()
 	ownerUUID, otherUUID := uuid.New(), uuid.New()
@@ -94,10 +94,11 @@ func TestGetMatchHistoryStitchesCancelledActions(t *testing.T) {
 		reader     uuid.UUID
 		wantCut    match.CancelledActionCut
 		wantAction bool
+		wantNone   bool // D1: nem o mestre nem o dono — nenhuma entrada
 	}{
 		{name: "the master reads the whole action", reader: masterUUID, wantCut: match.CancelledActionCutFull, wantAction: true},
 		{name: "the actor's owner reads what they declared", reader: ownerUUID, wantCut: match.CancelledActionCutDeclaration, wantAction: true},
-		{name: "another player reads only who cancelled", reader: otherUUID, wantCut: match.CancelledActionCutActor},
+		{name: "another player reads no cancelled action at all", reader: otherUUID, wantNone: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -108,6 +109,13 @@ func TestGetMatchHistoryStitchesCancelledActions(t *testing.T) {
 			round := res.Scenes[0].Rounds[0]
 			if ma := round.Turns[0].MasterActions; len(ma) != 0 {
 				t.Fatalf("the turn holds %d master actions — a cancelled action is not one", len(ma))
+			}
+
+			if tt.wantNone {
+				if len(round.Events) != 1 || round.Events[0].Kind != match.HistoryEventRoundModeChanged {
+					t.Fatalf("events = %+v, want only the regime change", round.Events)
+				}
+				return
 			}
 
 			wantOrder := []struct {

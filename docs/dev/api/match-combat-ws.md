@@ -119,6 +119,8 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | Mensagem | Destino |
 |---|---|
 | [`action_enqueued`](#action_enqueued) | só quem enviou |
+| [`action_restored`](match-status-effects.md#action_restored) | o mestre + o dono da ação que o desfazer de um status devolveu à fila (`{ actionId, action, beforeActionId? }`, cada um no seu corte) |
+| [`reaction_restored`](match-status-effects.md#reaction_restored) | o mestre (+ o dono do reator, se a reação é dele — não sentada — e ele via o efeito desfeito) quando o desfazer de um status devolve ao turno a reação não aberta que ele trocou (`{ turnId, reactionId, actorId, reactionKind, consumedActionIds, replacedReactionId? }`); não é `reaction_attached` |
 | [`action_queued`](#action_queued) | **só o mestre** (com `statusNotes`) |
 | [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu**; também o dono da ação que um status derrubou |
 | [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo; o jogador, só os personagens que é dono ou enxerga, e só o que o mestre já abriu |
@@ -579,8 +581,9 @@ personagem. O front avisa antes de confirmar quais movimentos vão junto.
 uma reação já saiu da fila — também não.
 
 **A ação cancelada fica registrada** (tabela `cancelled_actions`, não `actions` — ela nunca teve
-turno): a ação inteira como estava na fila, quem cancelou, e a cena, a rodada e o turno aberto no
-instante (nenhum, se não havia). **Quando grava** é a regra das master actions: sem turno aberto,
+turno): a ação inteira como estava na fila, quem cancelou, a cena, a rodada e o turno aberto no
+instante (nenhum, se não havia). O `GET /history` só a entrega ao mestre e ao dono do ator,
+Escondido ou não; ver `match-history.md`. **Quando grava** é a regra das master actions: sem turno aberto,
 na hora; com turno aberto, junto com o fechamento desse turno, na mesma transação — um reinício no
 meio do turno a perde com o turno, de propósito. Nada disso vai ao wire agora.
 
@@ -1195,7 +1198,9 @@ não aprende é uma operação que ele não consegue invocar.
 Continua sem dizer nada sobre o **conteúdo** da ação (arma, alvo, perícia) e continua sem
 ser notícia para a mesa — isso é `action_queued`, master-only, logo abaixo.
 
-**Disparado por:** `enqueue_action` aceito.
+**Disparado por:** `enqueue_action` aceito — e só por ele: é casado pela ordem dos envios do
+cliente. Uma ação que volta à fila pelo desfazer de um status chega em
+[`action_restored`](match-status-effects.md#action_restored), nunca aqui.
 
 ### `action_queued`
 
@@ -1314,7 +1319,9 @@ dispara **uma vez**; quem reconecta depois acha a fila já sem a ação em `matc
 **Direção:** servidor → cliente. **Destino:** quem reagiu **+ o mestre** — uma cópia só quando
 o mestre é quem reagiu.
 
-Responde um [`attach_reaction`](#attach_reaction) aceito.
+Responde um [`attach_reaction`](#attach_reaction) aceito — e só ele: o front o casa com o envio
+pendente do mesmo personagem. Uma reação que volta ao turno pelo desfazer de um status chega em
+[`reaction_restored`](match-status-effects.md#reaction_restored), nunca aqui.
 
 ```json
 { "type": "reaction_attached", "payload": { "turnId": "5555…", "reactionId": "4444…", "actorId": "2222…", "consumedActionIds": ["3333…"] } }
@@ -1755,6 +1762,30 @@ de ser.
 > `turn_closed` e `turn_opened` ainda saíam por `r.broadcast` — nenhum dos dois, `turn_opened`
 > incluído — e a ordem entre eles e o resto não era prometida.
 
+#### Ator Escondido: a mensagem reduzida
+
+Para quem **não percebe** o ator — ele tem o efeito Escondido e o destinatário está fora da
+lista dele (ver [`match-status-effects.md`](match-status-effects.md#7-quem-vê-o-quê-lista-e-visão);
+o mestre e o dono do ator sempre percebem) — o `turn_opened` chega **reduzido**: sabe-se que um
+turno abriu, e só. `actorId`, `actionId` e `action` **saem da mensagem** (a chave não vem) e
+`actorHidden` vem `true`:
+
+```json
+{ "type": "turn_opened", "payload": { "turnId": "55555555-5555-4555-8555-555555555555", "actionType": "", "actorHidden": true } }
+```
+
+`"actionType": ""` na reduzida é **de propósito**: o tipo da ação também é do ator e não pode
+vazar; a chave continua lá (vazia) para o formato da mensagem não mudar.
+
+Numa mensagem normal `actorHidden` não vem, e `actorId`/`actionId`/`action` estão sempre lá. A
+regra é lida no instante em que a mensagem é montada. Quem recebe a reduzida não tem alvo para
+reagir (a reação padrão sentada continua valendo).
+
+**Alvo Escondido.** Com o ator visível, um alvo que o destinatário não percebe **sai de
+`action.targetId`** (de todo destinatário que não o percebe, o dono do ator incluído) — aqui, no
+[`openTurn`](#match_full_state) e no histórico — até o mestre revelá-lo. O resultado dele sai do
+`resolution_updated` liquidado (ver [§6](#6-resolution_updated-tem-dois-eixos)).
+
 ### `reaction_opened`
 
 **Direção:** servidor → cliente. **Destino:** **mesa inteira**, **uma cópia por destinatário**
@@ -1863,6 +1894,14 @@ como ele o viu ao vivo.
 > [`resolution_updated`](#resolution_updated) recomputado pela abertura — mesma pista (a
 > direta), mesmo goroutine. Ordem de envio é ordem de chegada.
 
+**Reator Escondido.** Para quem não percebe o reator (mesma regra do
+[ator Escondido](#ator-escondido-a-mensagem-reduzida)), a mensagem chega reduzida:
+`reactionId` e `reaction` saem e `actorHidden` vem `true` —
+`{ "turnId": "…", "actorHidden": true }`. A reconexão deixa essa reação fora de
+`openTurn.reactions`. E quando é o **ator do turno** que o destinatário não percebe, a reação
+(visível) chega sem `reaction.reactToId` — o id da action escondida — aqui e em
+`openTurn.reactions`.
+
 **O cálculo que a abertura desencadeia continua master-only** — o `resolution_updated` que vem
 junto é de turno aberto.
 
@@ -1952,7 +1991,7 @@ junto é de turno aberto.
 | Campo | Notas |
 |---|---|
 | `isSettled` | `false` = turno aberto, cálculo provisório, **master-only**. `true` = turno fechado, é **este** o cálculo cujo dano foi aplicado. |
-| `action` | O teste de acerto do atacante — **um golpe só**, compartilhado por toda a cadeia. `margin` só existe quando há CD única, isto é, **num ataque de alvo único**; num ataque multi-alvo o campo é **omitido**. |
+| `action` | O teste de acerto do atacante — **um golpe só**, compartilhado por toda a cadeia. `margin` só existe quando há CD única, isto é, **num ataque de alvo único**; num ataque multi-alvo o campo é **omitido**. **Também é omitido** para o destinatário que não percebe algum alvo Escondido do ataque (D2): como `total - margin` é a esquiva do alvo único, a margem entregaria o Escondido — inclusive o que esquivou, que não pode deixar rastro — e diria que havia um só alvo. O mestre e quem percebe o alvo mantêm a margem; o `total` segue público. |
 | `action.diceRolled` | Os dados **efetivamente lidos**. Um teste enviesado rolou dois conjuntos; só o lido viaja. |
 | `targets` | **Na ordem da cadeia**: primeiro os alvos cuja reação foi aberta, na ordem em que o mestre as abriu; depois os demais alvos — com a reação anexada a eles, não aberta (a padrão sentada inclusive) —, na ordem de `action.targetId`. Vale para o payload aberto, o liquidado projetado, o `match_full_state.resolution` e o histórico. É assim que a ordem de abertura — que muda o desfecho — sobrevive à reconexão. Só personagens: parede não entra em `targets`. |
 | `targets[].avoided` | O golpe **não acertou este alvo, por qualquer meio**: esquiva, fuga, aparo, ou um aparo anterior que parou a corrente. **Não** é "esquivou" — pergunte a `reaction.kind` se a distinção importa. |
@@ -1976,6 +2015,7 @@ junto é de turno aberto.
 | `pendingReactions[].speed` | A **chave** da reação: o resultado da velocidade de ação dela — o mesmo número que ordena a fila de ações. **Ausente** numa reação que não rola velocidade (esquiva, esquiva fechada, não fazer nada). A ordem de abrir continua sendo do mestre; isto é o que ele lê para decidir. |
 | `walls` | O que o turno fez a **cada parede** que mirou, na ordem de `targetId`. **Ausente** sem parede. Projeção como `targets`: com o turno aberto, só o mestre; fechado, todos — menos uma `secret_door` não revelada, que só o mestre vê. Ver abaixo. |
 | `errors` | **Sempre master-only.** Faltas do **motor**, não do jogo — ver abaixo. Ausente numa resolução limpa. |
+| `hiddenTargetsHit` | Quantos golpes **acertaram** um alvo Escondido que **este destinatário não percebe** (dono do produto, D2). **Só o número**: nenhum id, valor, reação ou posição — o alvo segue fora de `targets` e de `targetId`. O front mostra "Desconhecido 1..N" a partir da contagem (dois alvos anônimos no mesmo turno = "Desconhecido 1" e "Desconhecido 2"). Um alvo que esquivou, aparou ou foi barrado antes na cadeia **não conta**: a mesa não pode saber que havia alguém ali. **Ausente** (`omitempty`) = nenhum; o mestre e o dono do alvo **nunca** o recebem (percebem o alvo e veem o resultado real). Depois da revelação do mestre o destinatário percebe o alvo: o resultado real volta e a contagem cai. Segue o eixo do TEMPO de `targets` (turno aberto: só o mestre recebe a resolução; assentado: todos). |
 | `damageSkill` | A perícia que mediu o dano: `Push`, ou a que o mestre escolheu ([`edit_action`](#edit_action) `damageSkill`); `"None"` = nenhuma. **Ausente** sem ataque. Segue o eixo de `rawDamage`: com o turno aberto, só o mestre; fechado, todos. |
 | `conditions` | As condições do mestre **em vigor** no turno aberto: uma entrada por rolagem com condição, no formato de uma entrada de `edit_action.conditions` mais `actionId` (sempre o ID real, inclusive da ação do turno). **Só o mestre, só com turno aberto** — nunca no payload liquidado, nunca no histórico (a condição fica gravada dentro da ação, na tabela `actions`). É o que o editor do mestre mostra depois de recarregar. Ausente = nada editado. `field: "defense"` numa reação é a defesa padrão dela. |
 
@@ -2473,7 +2513,8 @@ continuam, porque isso o dono já sabia que declarou.
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
-| `openTurn.reactions` | **Fase 7 (design spec §4.1).** As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. Ausente (`omitempty`) quando nenhuma está aberta. |
+| `openTurn.actorHidden` | Para quem não percebe o ator Escondido, o `openTurn` vem reduzido como o [`turn_opened`](#ator-escondido-a-mensagem-reduzida): `turnId` e `actorHidden: true` (sem `actorId`, `actionId` e `action`). `reactions` continua trazendo as reações abertas dos reatores que o destinatário percebe (a vítima visível respondendo ao ator Escondido, por exemplo), sem `reactToId`. Ausente numa mensagem normal. Um alvo Escondido que o destinatário não percebe sai de `openTurn.action.targetId`. |
+| `openTurn.reactions` | **Fase 7 (design spec §4.1).** As reações **abertas** do turno aberto, na ordem em que o mestre as abriu — cada uma cortada para este destinatário **exatamente** como o [`reaction_opened`](#reaction_opened) ao vivo a cortou (`reactionWireLocked`, o mesmo código): mestre vê `actionwire.Full`; todo mundo mais, o dono inclusive, `actionwire.Opened` depois de `service.ProjectAction` (rótulo fechado rebaixado, `Evasion` e `consumedActionIds` tirados para um terceiro), com o destino de uma fuga passando pelo gate de fog da peça do reator, julgado da casa em que a peça está agora (nenhuma fuga desloca antes do fechamento). Assim a reconexão mostra à mesa os mesmos balões e fantasmas de fuga, **na mesma ordem** — a ordem muda o resultado. Uma reação anexada e **não** aberta nunca está aqui: ela nunca foi anunciada. A reação aberta de um reator Escondido que o destinatário não percebe também fica de fora (ver `openTurn.actorHidden`). Ausente (`omitempty`) quando nenhuma está aberta. |
 | `ownReactions` | **Fase 7 (design spec §4.2, decisões D5/D6).** As reações do turno aberto cujo ator pertence a este destinatário (`charToPlayer` — o mestre, pelos NPCs dele), **abertas ou não**, na ordem de chegada: o que o [`reaction_attached`](#reaction_attached) disse ao vivo, para um cliente que reconectou depois dele. Uma entrada é `{ reactionId, actorId, reactionKind, opened, consumedActionIds }`. `opened` diz se o mestre já deu a palavra ("reação enviada, aguardando o mestre" × "é a sua vez de narrar"). `reactionKind` é o **verdadeiro** — o dono vê o próprio (`closedEscape`, não `escape`). `consumedActionIds` são as ações da fila que ela consumiu — **sempre** lista, `[]` numa reação livre; uma declarada nomeada ali foi consumida, não perdida (regra de reconciliação abaixo). A reação padrão **sentada** não entra: não é resposta que o dono deu, e ele ainda pode reagir (uma `default` que ele declarou entra). Ausente (`omitempty`) quando o destinatário não tem nenhuma, ou não há turno aberto — aqui ausente e vazio querem dizer a mesma coisa, diferente de `ownQueue`: nenhuma reconciliação depende de distinguir os dois. |
 | `resolution` | O cálculo do turno aberto, **master-only**. Ausente para qualquer outro destinatário, e também ausente para o próprio mestre quando não há turno aberto. Mesmos dois eixos de `resolution_updated` (§6) — aqui só o eixo do TEMPO se manifesta, porque um snapshot de conexão sempre reflete um turno em aberto (`isSettled: false`); não existe um `match_full_state` de turno fechado. Traz `conditions` e `damageSkill` como o `resolution_updated` — é o que faz a edição do mestre sobreviver a recarregar. |
 | `queue` | A fila do mestre, **master-only pelo mesmo eixo de `resolution`** — ausente para qualquer outro destinatário. Um payload de [`action_queued`](#action_queued) **inteiro** por ação ainda pendente, na **ordem de inserção** da fila (não confundir com `bars.order`, que carrega a ordem *projetada* de execução — public, sem identidade de ação). Cada entrada carrega `action` **igual, byte a byte**, ao que o `action_queued` daquela ação já mandou ao vivo — as duas vêm de `newActionQueuedPayload` (`room.go`), então não podem divergir. `omitempty`: **ausente** significa fila vazia, não erro. Existe **com ou sem turno aberto** — o estado mais comum de reconectar é justamente "nada aberto ainda, três coisas esperando". É a versão de `action_queued` que **sobrevive à reconexão**; ver a nota na seção de `action_queued`. |
@@ -2745,6 +2786,11 @@ Quando `isSettled` é `true`, o servidor projeta **uma cópia por destinatário*
 > **O alvo de um ataque deliberadamente NÃO é uma classe.** Uma finta contra você não te
 > avisa que era finta — privilegiar o alvo apagaria a finta do jogo.
 
+**Escondido (efeitos de status, PR 2).** A resolução liquidada vai a **todo** destinatário, mesmo
+a quem não percebe o ator Escondido (dono do produto: todos estão à mesa). O que sai é o **alvo**
+Escondido que o destinatário não percebe: o `targets[]` dele (com a fuga) não vem, até o mestre
+o revelar. O mestre e o dono do alvo o recebem sempre.
+
 ### O que isso significa na prática
 
 **Dois clientes de jogador recebem payloads DIFERENTES para o MESMO turno, e isso não é bug.**
@@ -2849,7 +2895,7 @@ vale para o REST.
 | `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `blocked_by_status` | `"<nick> não pode <o que>: <causa>"` — um efeito de status do ator recusa a ação ou a reação (domínio inutilizado, não age/não reage, sem deslocamento, reação proibida). A causa nomeia só os tipos que o remetente pode ver; senão `um efeito`. Nada muda na fila nem nas barras. Ver [`match-status-effects.md`](match-status-effects.md#blocked_by_status). | `enqueue_action`, `attach_reaction`. |
-| `status_effect_invalid` · `status_effect_exists` · `status_effect_not_found` · `unknown_character` | Comandos de efeitos de status — gatilhos em [`match-status-effects.md` §13](match-status-effects.md#13-catálogo-de-erros-desta-feature). | `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
+| `status_effect_invalid` · `status_effect_exists` · `status_effect_not_found` · `unknown_character` · `restore_refused` | Comandos de efeitos de status (`restore_refused`: uma ação ou reação que o desfazer não pôde devolver, só ao mestre) — gatilhos em [`match-status-effects.md` §13](match-status-effects.md#13-catálogo-de-erros-desta-feature). | `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6; num [movimento empilhado](#movimentos-empilhados), o destino do anterior da cadeia). Centros medidos no espaço local da grade. |

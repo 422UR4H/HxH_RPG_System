@@ -43,7 +43,8 @@ ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 |---|---|
 | [`apply_status_effect`](#apply_status_effect) | aplica um efeito a um ou mais personagens (tudo ou nada) |
 | [`edit_status_effect`](#edit_status_effect) | troca parâmetros, apelido e/ou lista de quem vê de um efeito |
-| [`remove_status_effect`](#remove_status_effect) | tira um efeito |
+| [`remove_status_effect`](#remove_status_effect) | tira um efeito (aplicado no mesmo turno aberto: desfaz) |
+| [`relink_status_effect`](#relink_status_effect) | troca a âncora (`actionId`) das mudanças de um efeito no turno aberto |
 
 **Servidor → cliente**
 
@@ -53,6 +54,8 @@ ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 | `match_full_state.statusEffects` | quem conecta/reconecta — ver [§9](#9-reconexão) |
 | [`action_queued.statusNotes`](#statusnotes-em-action_queued) | só o mestre |
 | [`action_cancelled`](#action_cancelled-disparado-por-status) | o mestre + o dono da ação, quando um status derruba uma ação da fila |
+| [`action_restored`](#action_restored) | o mestre + o dono da ação, quando o desfazer no turno a devolve à fila |
+| [`reaction_restored`](#reaction_restored) | o mestre (+ o dono do reator, se a reação é dele — não sentada — e ele via o efeito), quando o desfazer no turno devolve uma reação trocada |
 | [`error` `blocked_by_status`](#blocked_by_status) | quem tentou agir ou reagir |
 
 Também mudaram (detalhe em `match-combat-ws.md`): `npc_added` agora vai **só ao mestre**;
@@ -64,7 +67,8 @@ Todo comando do mestre **sem sessão viva** (partida em lobby) responde `match_n
 ## 3. Valores (enums)
 
 Todos os valores do fio são camelCase em inglês. **Os nomes em português são do front**; o
-servidor nunca os manda.
+servidor nunca os manda como valor — só dentro do texto das recusas (`blocked_by_status`,
+`restore_refused`), que é para mostrar, não para ler.
 
 ### `kind`
 
@@ -193,6 +197,7 @@ qualquer personagem recusa, nenhum recebe.
 | `params` | objeto | sim (pode ser `{}`) | [§4](#4-parâmetros-por-tipo) |
 | `alias` | string | não | até 60 caracteres depois de aparado; `""` = sem apelido |
 | `visibility` | objeto | não | ausente = padrão do tipo. Ver [§7](#visibilidade-lista-de-quem-vê). |
+| `actionId` | uuid | não | a action a que esta mudança pertence, no histórico: a **ação do turno aberto** ou **uma reação dele** (anexada, aberta ou sentada). Ausente = do turno (ou do round) como um todo. Sem turno aberto, ou um id que não é dele → `status_effect_invalid`. Os três comandos aceitam o mesmo campo. |
 
 **Efeito colateral — Inconsciente traz Caído.** Aplicar `unconscious` num personagem que ainda
 não tem `prone` aplica também um `prone` (parâmetros, apelido e lista padrão). O mestre pode
@@ -214,7 +219,7 @@ pode mais dar é refeita.
 | `match_already_ended` | partida encerrada |
 | `invalid_payload` | JSON do `payload` malformado; `characterIds` vazio, com id nulo ou repetido; `sense`, `aptitude`, `level`, `faces[]`, `domains[]`, `injuries` (domínio ou nível) desconhecidos; `visibility.mode` desconhecido; **`visibility.playerIds` com `mode` diferente de `"players"`** |
 | `unknown_character` | um id não é ficha da sessão |
-| `status_effect_invalid` | `kind` desconhecido; parâmetro ausente, fora da faixa ou **estranho ao tipo**; `sense` anulado com `disadvantage`/`penalty` (mesmo `false`/`0`); `controllerId` igual ao alvo ou fora da partida; `alias` longo; `visibility.playerIds` com o mestre, alguém fora da partida, repetido ou uuid nulo |
+| `status_effect_invalid` | `kind` desconhecido; parâmetro ausente, fora da faixa ou **estranho ao tipo**; `sense` anulado com `disadvantage`/`penalty` (mesmo `false`/`0`); `controllerId` igual ao alvo ou fora da partida; `alias` longo; `visibility.playerIds` com o mestre, alguém fora da partida, repetido ou uuid nulo; `actionId` sem turno aberto ou fora dele |
 | `status_effect_exists` | um dos personagens já tem o `(kind, variante)` |
 | `game_error` | `"status effects are not available"` (servidor sem o caso de uso) e qualquer outra falha |
 
@@ -241,6 +246,7 @@ mudam (remova e aplique outro).
 | `params` | **ausente = intocado; presente = substitui todos** (normalizado como na aplicação: reenvie o que é obrigatório). ⚠️ Campos com padrão voltam ao padrão se omitidos: um `paralyzed` editado só com `points` volta a travar os **quatro** domínios; por isso o exemplo reenvia `domains`. |
 | `alias` | ausente = intocado; `""` limpa |
 | `visibility` | ausente = intocada; `{"mode":"default"}` volta ao padrão do tipo |
+| `actionId` | opcional; mesma regra de `apply_status_effect` |
 
 **Dispara:** `status_effects_updated` (lista inteira nova) para quem vê. Editar a lista de um
 `hidden` re-avalia a peça, as barras e os status ([§7](#hidden-escondido)). Edição também refaz
@@ -255,12 +261,165 @@ efeito com esse id).
 { "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }
 ```
 
+`actionId` é opcional, com a mesma regra de `apply_status_effect`. `restoreCancelledActions`
+(bool, opcional, ausente = `false`) pede que o que o efeito tirou volte — as ações da fila que ele
+cancelou **e** as reações não abertas que ele trocou no turno — só vale no desfazer no turno
+(abaixo).
+
+```json
+{ "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "restoreCancelledActions": true } }
+```
+
 **Dispara:** `status_effects_updated` com a lista sem o efeito (vazia se era o único). Remover
 nunca recusa nada novo; reações sentadas como `nothing` por causa do efeito **voltam à padrão
 inteira**.
 
+**Desfazer no turno.** Remover, com o turno aberto, um efeito **aplicado nesse mesmo turno**
+desfaz a aplicação: nada desse efeito é gravado no fechamento (nem a aplicação, nem edições, nem
+evento `removed` no histórico). Ao vivo é uma remoção como as outras. As ações da fila que o
+efeito já derrubou **continuam canceladas** (e as reações que ele trocou continuam trocadas), a
+não ser que o mestre peça a volta delas.
+Qualquer outra remoção (efeito de antes do turno, ou sem turno aberto) é uma remoção normal,
+gravada (com o turno aberto, no fechamento dele). Depois do fechamento não há volta.
+
+**Devolver as ações (`restoreCancelledActions: true`).** Só no desfazer no turno: as ações que
+**este** efeito tirou da fila neste turno (as que o mestre vê em `cancelledActionIds`, [§8](#8-status_effects_updated))
+voltam **para o mesmo lugar da fila** (a ordem de chegada delas, que desempata a fila: empates
+incluídos, contra as que chegaram antes e depois — também depois do cancelamento), com o **mesmo
+id**, os mesmos dados já rolados, as **edições do mestre** que o cancelamento tinha descartado
+(condições, `damageSkill`) e as **velocidades exatamente como estavam no instante antes do
+cancelamento** — a editada pelo mestre inclusive. Não são derivadas de novo: um turno que fechou
+desde o enqueue pode ter mudado os modificadores do personagem, e a ação voltaria noutro lugar. O servidor **revalida** cada uma contra o estado
+de agora e recusa, com motivo, a que não cabe mais: outro status ainda a recusa; uma ação com
+esse id já está na fila; o personagem saiu da partida; a cadeia de movimentos não está como
+estava no cancelamento — um movimento que se apoiava numa base ainda na fila volta só se essa
+base continua na fila e é o fim da cadeia; um que era cabeça (de fato, ou porque a base já
+tinha saído da fila antes do status, aberta ou consumida) volta só se o personagem não tem outro
+movimento pendente. Nunca volta meia cadeia. Uma devolvida some do registro de canceladas:
+**nada dela é gravado** em `cancelled_actions` no fechamento.
+
+Quando a recusa é porque **outro status aplicado neste mesmo turno** ainda a recusa, a ação passa
+para o `cancelledActionIds` desse outro efeito: desfazer os dois a devolve, em qualquer ordem. Um
+movimento empilhado numa base recusada assim segue a base (passa para o mesmo efeito), e a cadeia
+volta inteira.
+Recusada por um status de antes do turno, ela fica cancelada; a mensagem nomeia o tipo que
+recusa.
+
+Fora da janela do desfazer (efeito de antes do turno, sem turno aberto, depois do fechamento) a
+flag é **ignorada** sem erro: não há o que devolver. Sem a flag, as ações continuam canceladas e
+o registro de devolução do efeito é descartado.
+
+**Devolver as reações trocadas (o mesmo `restoreCancelledActions: true`).** Uma reação **não
+aberta** do personagem que **este** efeito tirou do turno aberto ([§6](#o-que-o-efeito-refaz-nas-pendências),
+item 2 — as que o mestre vê em `swappedReactionIds`, [§8](#8-status_effects_updated)) volta
+**exatamente como estava**: o **mesmo id** (`reactionId`), os mesmos dados já rolados, as mesmas
+velocidades e `consumedActionIds`, o mesmo lugar entre as reações do turno, sentada ou não, com a
+escolha de pouso e as edições do mestre — nunca rolada de novo. Ela entra no lugar da sentada que
+está lá (padrão ou `nothing`), que sai; a âncora (`actionId`) que tinha seguido a reação para a
+sentada **volta com ela**. O servidor **revalida** e recusa, com motivo: o turno dela não é mais
+o aberto; o reator saiu da partida ou não é mais alvo da ação do turno; outro status ainda a
+recusa; o reator **mandou outra reação** depois (a nova fica: é a última palavra dele); o mestre
+já **abriu** a reação que ficou no lugar. Recusada por outro status aplicado neste mesmo turno, ela
+passa para o `swappedReactionIds` dele, como as ações. **A barra:** a reação cobrou na chegada e o
+status nunca devolveu essa cobrança; com a mesma reação de volta, a barra volta a ser coerente.
+Recusada (ou sem a flag), a reação fica fora do turno e a cobrança fica.
+
+**Dispara (devolvidas)**, por ação, na ordem da fila: [`action_restored`](#action_restored) ao
+**mestre** e ao **dono** (ação de NPC: só ao mestre), e, ao mestre, logo depois, o `action_queued`
+de sempre (a entrada na fila, com `statusNotes`). Depois, `bars_updated` e, se o personagem tem
+reação no turno aberto, `resolution_updated` ao mestre. **Não** vem `action_enqueued`: ele é o
+ack de um envio do cliente, casado pela ordem dos envios, e um ack sem pedido cairia no envio
+errado. Por reação devolvida: [`reaction_restored`](#reaction_restored) e o `resolution_updated`
+do mestre (a reação pendente volta a ser ela, `seated: false` se era do jogador).
+
+### `action_restored`
+
+**Direção:** servidor → cliente. **Destino:** o mestre e o dono da ação (NPC: só o mestre).
+
+```json
+{ "type": "action_restored", "payload": {
+  "actionId": "33333333-3333-4333-8333-333333333333",
+  "action": { "uuid": "33333333-3333-4333-8333-333333333333", "actorId": "…", "targetId": ["…"], "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity" } }, "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" } } },
+  "beforeActionId": "44444444-4444-4444-8444-444444444444"
+} }
+```
+
+| Campo | |
+|---|---|
+| `actionId` | o **mesmo** id de antes do cancelamento (o do `action_cancelled`) |
+| `action` | a ação como o destinatário a vê: o mestre em `Full` (como `action_queued.action`), o dono no corte do `ownQueue` (`Declaration`: sem dados nem velocidades) |
+| `beforeActionId` | omitido = ela vai para o fim; senão, a ação **que o destinatário já conhece na fila** (o mestre: qualquer uma; o dono: as dele) diante da qual ela voltou — o lugar dela, que desempata a fila. As outras devolvidas do mesmo comando não contam (ainda não chegaram) |
+
+As devolvidas de um comando chegam **na ordem da fila**; o cliente põe cada uma de volta na
+fila/`ownQueue` diante de `beforeActionId` (ou no fim), uma a uma, e todas caem no lugar. Para o mestre, o `action_queued`
+que vem logo depois tem o mesmo `actionId` e só a redescreve (substitui no lugar).
+
+### `reaction_restored`
+
+**Direção:** servidor → cliente. **Destino:** o mestre; e o dono do reator **só quando a reação é
+uma que ele mandou e o efeito desfeito era visível a ele** (a troca também só chegou a ele por
+esse efeito — um efeito que ele não via não é anunciado pela volta da reação). Uma reação
+**sentada** pela sessão que volta (a padrão que o status tinha trocado por `nothing`) vai **só ao
+mestre**: ela nunca está em `ownReactions` (não é resposta que o dono deu). Reação de NPC: só o
+mestre. A mesa nunca recebe.
+
+```json
+{ "type": "reaction_restored", "payload": {
+  "turnId": "11111111-1111-4111-8111-111111111111",
+  "reactionId": "55555555-5555-4555-8555-555555555555",
+  "actorId": "66666666-6666-4666-8666-666666666666",
+  "reactionKind": "dodge",
+  "consumedActionIds": [],
+  "replacedReactionId": "77777777-7777-4777-8777-777777777777"
+} }
+```
+
+| Campo | |
+|---|---|
+| `turnId` | o turno aberto |
+| `reactionId` | o **mesmo** id de antes da troca (o do `reaction_attached` dela) |
+| `actorId` | o reator (ficha) |
+| `reactionKind` | o tipo verdadeiro (como em `ownReactions[]`) |
+| `consumedActionIds` | sempre lista: o que ela consumiu na chegada (nada é consumido de novo) |
+| `replacedReactionId` | **só o mestre**: a sentada que saiu do lugar dela |
+
+**Não é `reaction_attached`.** O front casa o `reaction_attached` com o envio pendente
+(`status === "sending"`) do mesmo personagem; um sem pedido cairia num envio em andamento. Ao
+receber `reaction_restored`, o cliente do dono põe (ou mantém) a entrada em `ownReactions` com
+esse `reactionId`, como `attached`; o do mestre só registra (a fonte do que está pendente é o
+`resolution_updated` que vem logo depois). Mesma forma de `ownReactions[]` (sem `opened`: uma
+devolvida nunca foi aberta).
+
+**Dispara (recusadas)**, por ação ou reação, **só ao mestre**: `error` com
+`code: "restore_refused"` e a mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi
+possível devolver a ação: Gon não pode agir: Atordoado`) ou `Não foi possível devolver a reação:
+<motivo>` (ex.: `Não foi possível devolver a reação: Gon mandou outra reação depois`). A ação
+recusada continua cancelada (gravada no fechamento); a reação recusada continua fora do turno.
+
 **Erros:** `forbidden` · `match_not_started` · `match_already_ended` · `invalid_payload`
-(`statusEffectId` ausente ou nulo) · `status_effect_not_found`.
+(`statusEffectId` ausente ou nulo) · `status_effect_not_found` · `status_effect_invalid` (`actionId`
+sem turno aberto ou fora dele).
+
+### `relink_status_effect`
+
+```json
+{ "type": "relink_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "actionId": "33333333-3333-4333-8333-333333333333" } }
+```
+
+Só o mestre, só com turno aberto. Troca a âncora de **toda** mudança desse efeito ainda pendente
+no turno aberto: `actionId` = a ação do turno ou uma reação dele; `null` (ou ausente) = a
+mudança é do turno, sem âncora. Depois do fechamento o histórico é definitivo.
+
+A âncora também **segue sozinha**: quando a reação sentada de um personagem é substituída pela
+que ele mandou (ou refeita por um status), o que estava preso à sentada passa para a nova; quando
+a sentada sai sem substituta (o mestre trocou os alvos), passa para a ação do turno.
+
+**Dispara:** `status_effects_updated` do personagem **ao mestre**, com o `turnActionId` novo
+(ver [§8](#8-status_effects_updated)) — sempre, mesmo sem mudança.
+
+**Erros:** `forbidden` · `match_not_started` · `invalid_payload` (`statusEffectId` ausente ou
+nulo) · `status_effect_invalid` (sem turno aberto; `actionId` que não é do turno aberto) ·
+`status_effect_not_found` (o efeito não tem mudança neste turno).
 
 ## 6. O que um efeito bloqueia
 
@@ -304,13 +463,15 @@ também perde a defesa padrão de reserva. Isso não aparece no fio.
 quem enviou. Não muda nada na fila, nas barras nem nos dados.
 
 ```json
-{ "type": "error", "payload": { "code": "blocked_by_status", "message": "Combatant não pode usar o domínio ataque: paralyzed" } }
+{ "type": "error", "payload": { "code": "blocked_by_status", "message": "Combatant não pode usar o domínio ataque: Paralisado" } }
 ```
 
 `message` tem a forma `<nick> não pode <o que>: <causa>`. "O que" é um de `agir`,
 `reagir`, `reagir com a reação padrão`, `se deslocar`, `usar o domínio <ataque|defesa|movimento|esquiva>`,
 `usar <a esquiva por reflexo|a evasão|a defesa padrão|repelir|escapar>`. **A causa nomeia só os
-`kind`s que o remetente pode ver**: o mestre vê todos; um jogador, os que a lista dele inclui;
+`kind`s que o remetente pode ver**, pelo **nome da mesa em português** (a coluna "Nome na mesa"
+de [§3](#kind): `Paralisado`, `Atordoado`, `Guarda aberta`…, separados por vírgula), nunca pelo
+valor do fio: o mestre vê todos; um jogador, os que a lista dele inclui;
 se nenhum é visível a ele, a causa é `um efeito` — mas o "o que" continua dito (ex.:
 `... não pode usar o domínio ataque: um efeito`). Não parseie a mensagem; mostre-a.
 
@@ -325,7 +486,8 @@ Ao aplicar ou editar (e, para as sentadas, ao remover), na mesma operação:
    (mesma tabela e regra do `cancel_action`: com turno aberto, no fechamento dele).
 2. Uma reação **ainda não aberta** do personagem no turno aberto que ele não pode mais dar é
    trocada pela reação padrão sentada (só as passivas permitidas) ou por `nothing` (quando nenhuma
-   passiva resta ou ele não pode reagir). O que já foi **aberto** fica.
+   passiva resta ou ele não pode reagir). O que já foi **aberto** fica. A trocada só volta pelo
+   desfazer no turno com `restoreCancelledActions` ([`remove_status_effect`](#remove_status_effect)).
 3. A reação trocada **não manda mensagem extra ao dono dela**: se o efeito é visível a ele,
    ele o ganha por `status_effects_updated`; se é escondido, **não é anunciado de propósito**
    (spec §9: o status privado pesa sem o jogador saber por quê).
@@ -437,7 +599,7 @@ Quando o `hidden` entra, sai ou tem a lista trocada, o servidor manda, nesta ord
 
 Enquanto Escondido, o personagem **não aparece** no `map_full_state` nem em
 `match_full_state.bars`/`statusEffects` de quem não o percebe, e `piece_moved` dele não chega a
-essa pessoa. As **ações** dele durante o Escondido, e o histórico, estão em [§10](#10-o-que-ainda-não-existe).
+essa pessoa. As **ações** dele durante o Escondido chegam reduzidas (`turn_opened`/`reaction_opened`/`openTurn` com `actorHidden`, alvo cortado; ver [`match-combat-ws.md`](match-combat-ws.md#ator-escondido-a-mensagem-reduzida)) e o histórico respeita o que cada um viu ([§14](#14-histórico)).
 
 ### Ordem entre pistas e NPC ao vivo
 
@@ -471,6 +633,27 @@ com a lista que ele vê; o mestre sempre.
   }
 }
 ```
+
+**`turnActionId`** (só o mestre, omitido quando não há): a âncora da última mudança desse efeito
+ainda pendente no turno aberto — a ação ou a reação a que ela pertence. Chega quando muda
+(`apply`/`edit`/`remove` com `actionId`, a âncora que segue a reação, `relink_status_effect`), some
+quando o turno fecha (um `status_effects_updated` ao mestre sem ela) e vem no `match_full_state`.
+Ordem no fechamento: esse `status_effects_updated` do mestre chega **antes** do
+`character_hp_changed` e do `turn_closed`, na mesma pista direta.
+Os jogadores nunca a recebem; veem a âncora no histórico, depois do fechamento.
+
+**`cancelledActionIds`** (só o mestre, mesmo corte do `turnActionId`, omitido quando não há): os
+ids das ações da fila que **esse** efeito tirou no turno aberto e que um `remove_status_effect`
+com `restoreCancelledActions` ainda pode devolver ([§5](#remove_status_effect)). Só aparece num
+efeito **aplicado neste turno** (a janela do desfazer); some quando o turno fecha (o mesmo
+`status_effects_updated` ao mestre que tira o `turnActionId`) e vem no `match_full_state` do
+mestre. É o gatilho do front para perguntar "devolver?" ao remover o efeito. Uma ação que voltou
+sai da lista; uma que o desfazer de outro efeito não pôde devolver porque **este** a recusa
+entra nela. Os jogadores nunca o recebem.
+
+**`swappedReactionIds`** (só o mestre, o mesmo corte e o mesmo ciclo do `cancelledActionIds`): os
+ids das reações não abertas que **esse** efeito tirou do turno aberto (a sentada entrou no lugar)
+e que o mesmo `restoreCancelledActions` ainda pode devolver. Também é gatilho do "devolver?".
 
 **É a lista INTEIRA** do personagem como o destinatário a vê: **substitua**, nunca acrescente. **Nunca
 `null`**: `[]` = ele não vê mais nenhum. O servidor só manda quando a lista **difere** da última
@@ -560,9 +743,8 @@ Para o front não procurar. **Nada disto está no fio**:
   negativo, Inconsciente automático, morte.
 - **Asfixia** e Fadiga: `asphyxiating` existe como rótulo, sem mecânica.
 - **"Não usa habilidades"** (Atônito/Atordoado/Paralisado): espera o Nen (TODO).
-- **Histórico**: entrada, mudança e saída de status e o que é privado ainda **não aparecem** no
-  histórico (REST/WS) — é o PR 2. Idem as **ações de um Escondido** em `turn_opened` e na
-  resolução: o servidor ainda não filtra o ator escondido ali.
+- **Revelar a um jogador só**: a revelação do histórico é **para todos** (ver [§14](#14-histórico)); por jogador é futuro.
+- **Push no WebSocket depois de uma revelação**: não existe; o front relê o histórico.
 - **Endpoint de catálogo** de efeitos: não existe; nomes e sugestões são do front.
 - **Esconder o NPC no REST** de participantes (`GET` de participantes da partida): continua
   listando o NPC; o front precisa lidar com isso até a fase dele.
@@ -597,17 +779,36 @@ partida (e, no NPC inscrito ao vivo, ao inscrevê-lo).
 Uma ficha viva em duas salas (a mesma ficha em duas partidas ao mesmo tempo) guarda duas
 memórias: a última gravação ganha no banco.
 
+**Os eventos do histórico vão nas mesmas gravações.** Cada mudança carrega o seu evento
+(`status_effect_events`), carimbado pela sala no instante: fora de turno é gravado **na hora**,
+junto do efeito; dentro de um turno, **com o fechamento**, na transação dele; uma gravação que
+falha se cura junto com o efeito (o evento volta com os mesmos ids, e uma ficha ou partida
+apagada no meio só o descarta, sem falhar o lote). Desfazer no turno (§5, `remove_status_effect`)
+não grava evento algum.
+
 ## 13. Catálogo de erros desta feature
 
 | `code` | Mensagens | Quando |
 |---|---|---|
-| `forbidden` | `only the master can perform this action` | os três comandos, por jogador |
+| `forbidden` | `only the master can perform this action` | os quatro comandos, por jogador |
 | `match_not_started` | `match session not initialized` | lobby |
 | `match_already_ended` | — | partida encerrada |
 | `invalid_payload` | texto do campo | ver [§5](#apply_status_effect) |
 | `unknown_character` | — | id de ficha fora da sessão |
-| `status_effect_invalid` | texto do erro de domínio | parâmetro/lista inválidos |
+| `status_effect_invalid` | texto do erro de domínio | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
 | `status_effect_exists` | `status effect already applied: <kind>[/<variante>]` | repetição de `(kind, variante)` |
-| `status_effect_not_found` | — | edit/remove de id desconhecido |
+| `status_effect_not_found` | — | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
 | `blocked_by_status` | `<nick> não pode <o que>: <causa>` | `enqueue_action`, `attach_reaction` |
+| `restore_refused` | `Não foi possível devolver a ação: <motivo>` ou `Não foi possível devolver a reação: <motivo>` | `remove_status_effect` com `restoreCancelledActions`, uma por ação ou reação recusada, só ao mestre |
 | `game_error` | — | qualquer outra falha |
+
+## 14. Histórico
+
+O histórico (REST) registra a aplicação, a edição e a remoção de cada efeito, como cada leitor
+pode vê-las, e esconde as ações de quem estava Escondido de quem não o percebia. O contrato
+inteiro — formato do evento, `actionId` (a causa), regra de visibilidade, "Ações de quem estava
+Escondido" e o endpoint do mestre `POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal`
+— está em [`match-history.md`](match-history.md#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects).
+Do lado do fio WS: `actionId` nos três comandos, `relink_status_effect`, `turnActionId` e
+`cancelledActionIds`/`swappedReactionIds` (só o mestre) e o desfazer no turno (com a devolução
+das ações e das reações trocadas), em §5 e §8.

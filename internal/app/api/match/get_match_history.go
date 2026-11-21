@@ -8,6 +8,7 @@ import (
 
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
@@ -72,8 +73,10 @@ type HistoryRoundResponse struct {
 // HistoryEventResponse is one entry of a round's events. Kind is the discriminator:
 // "roundModeChanged" carries Payload ({"from", "to"}); "clockStarted", "clockAdjusted" and
 // "clockRealTime" carry Payload as recorded (spec 2026-11-08 §7); "masterAction" carries MasterAction;
-// "actionCancelled" carries ActorID always and Action only for the master (Full cut) and the
-// actor's owner (Declaration cut) — the use case decided which (matchUC.HistoryCancelledAction).
+// "statusEffect" carries StatusEffect;
+// "actionCancelled" exists only for the master and the actor's owner (D1, 2026-11-20) and always
+// carries ActorID and Action — Full for the master, Declaration for the owner; the use case
+// decided which (matchUC.HistoryCancelledAction).
 // UUID is the event's own, the master action's, or the cancelled action's; CreatedAt is when it
 // happened.
 type HistoryEventResponse struct {
@@ -84,6 +87,24 @@ type HistoryEventResponse struct {
 	MasterAction *HistoryMasterActionResponse `json:"masterAction,omitempty"`
 	ActorID      *uuid.UUID                   `json:"actorId,omitempty"`
 	Action       *actionwire.Action           `json:"action,omitempty"`
+	StatusEffect *HistoryStatusEffectResponse `json:"statusEffect,omitempty"`
+}
+
+// HistoryStatusEffectResponse é um evento de efeito de status já decidido para este leitor
+// pelo caso de uso (statuseffect.VisibleInHistory). StatusEffect é o efeito na mesma forma do
+// fio da sala (statuswire): como ficou, ou, numa remoção, como era. visibility e public só vão
+// ao mestre. TurnID: o turno aberto no instante; ActionID: a action/reação a que a mudança
+// pertence (sem ela, do turno ou do round como um todo).
+type HistoryStatusEffectResponse struct {
+	UUID         uuid.UUID         `json:"uuid"`
+	Change       string            `json:"change"`
+	CharacterID  uuid.UUID         `json:"characterId"`
+	TurnID       *uuid.UUID        `json:"turnId,omitempty"`
+	ActionID     *uuid.UUID        `json:"actionId,omitempty"`
+	HappenedAt   string            `json:"happenedAt"`
+	StatusEffect statuswire.Effect `json:"statusEffect"`
+	// Revealed é só do mestre: uma revelação cobre este evento.
+	Revealed *bool `json:"revealed,omitempty"`
 }
 
 // HistoryMasterActionResponse is one master action as this reader saw it live — already run
@@ -111,13 +132,27 @@ type HistoryTurnResponse struct {
 	CreatedAt  string    `json:"createdAt"`
 	FinishedAt string    `json:"finishedAt"`
 	// StoryAt é o horário da história quando o turno abriu (ingênuo); omitido quando nulo.
-	StoryAt    *string                 `json:"storyAt,omitempty"`
-	Action     actionwire.Action       `json:"action"`
-	Reactions  []actionwire.Action     `json:"reactions"`
-	Resolution *TurnResolutionResponse `json:"resolution,omitempty"`
+	StoryAt    *string                   `json:"storyAt,omitempty"`
+	Action     actionwire.Action         `json:"action"`
+	Reactions  []HistoryReactionResponse `json:"reactions"`
+	Resolution *TurnResolutionResponse   `json:"resolution,omitempty"`
 	// MasterActions are the master actions applied while this turn was open, as this reader
 	// saw them live, in the order they happened (spec §4.8). Always a list, never null.
 	MasterActions []HistoryMasterActionResponse `json:"masterActions"`
+	// StatusEffects são as mudanças de efeito de status feitas com este turno aberto, como este
+	// leitor pode vê-las, na ordem em que aconteceram. Sempre lista, nunca null.
+	StatusEffects []HistoryStatusEffectResponse `json:"statusEffects"`
+	// ConcealedBy são os efeitos Escondido que ainda escondem algo deste turno de alguém — só
+	// para o mestre (o front oferece "revelar"); omitido quando nenhum.
+	ConcealedBy []uuid.UUID `json:"concealedBy,omitempty"`
+}
+
+// HistoryReactionResponse é uma reação do histórico: a forma do actionwire (embutida, os
+// mesmos campos) mais openedAt — quando o mestre a abriu (RFC3339Nano), ausente na que nunca
+// abriu. Só o histórico tem esse campo; o fio do WS não muda.
+type HistoryReactionResponse struct {
+	actionwire.Action
+	OpenedAt string `json:"openedAt,omitempty"`
 }
 
 // TurnResolutionResponse is one recipient's view of a turn's settled resolution — the same
@@ -158,6 +193,10 @@ type TurnResolutionResponse struct {
 	// turn did. The turn resolved, these numbers are real, and one part of the collision is
 	// missing from them.
 	Errors []ResolutionErrorResponse `json:"errors,omitempty"`
+	// HiddenTargetsHit é quantos golpes acertaram um alvo Escondido que este leitor não percebe
+	// — só o número, calculado por service.ProjectResolution (espelho do campo do WS). Ausente =
+	// nenhum; o mestre e o dono do alvo nunca o recebem. O front lê "Desconhecido 1..N" daqui.
+	HiddenTargetsHit int `json:"hiddenTargetsHit,omitempty"`
 }
 
 // ResolutionErrorResponse is one engine fault, as the master's client reads it — the REST
@@ -300,7 +339,7 @@ func toHistorySceneResponse(s matchUC.HistoryScene) HistorySceneResponse {
 	}
 	return HistorySceneResponse{
 		UUID: s.UUID, Category: s.Category, BriefDesc: s.BriefDesc,
-		CreatedAt:             s.CreatedAt.Format(time.RFC3339),
+		CreatedAt:             s.CreatedAt.Format(time.RFC3339Nano),
 		FinishedAt:            formatTimePtr(s.FinishedAt),
 		BriefFinalDescription: s.BriefFinalDescription,
 		StoryStartedAt:        formatStoryPtr(s.StoryStartedAt),
@@ -322,7 +361,7 @@ func toHistoryRoundResponse(r matchUC.HistoryRound) HistoryRoundResponse {
 	}
 	return HistoryRoundResponse{
 		UUID: r.UUID, Mode: r.Mode,
-		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
+		CreatedAt:  r.CreatedAt.Format(time.RFC3339Nano),
 		FinishedAt: formatTimePtr(r.FinishedAt),
 		Counted:    r.Counted,
 		Drained:    r.Drained,
@@ -338,21 +377,21 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 	case e.Kind == matchUC.HistoryEventRoundModeChanged && e.RoundModeChange != nil:
 		return HistoryEventResponse{
 			UUID: e.RoundModeChange.UUID, Kind: string(e.Kind),
-			CreatedAt: e.At.Format(time.RFC3339),
+			CreatedAt: e.At.Format(time.RFC3339Nano),
 			Payload:   e.RoundModeChange.Payload,
 		}, true
 	case (e.Kind == matchUC.HistoryEventClockStarted || e.Kind == matchUC.HistoryEventClockAdjusted ||
 		e.Kind == matchUC.HistoryEventClockRealTime) && e.ClockChange != nil:
 		return HistoryEventResponse{
 			UUID: e.ClockChange.UUID, Kind: string(e.Kind),
-			CreatedAt: e.At.Format(time.RFC3339),
+			CreatedAt: e.At.Format(time.RFC3339Nano),
 			Payload:   e.ClockChange.Payload,
 		}, true
 	case e.Kind == matchUC.HistoryEventMasterAction && e.MasterAction != nil:
 		ma := toHistoryMasterActionResponse(*e.MasterAction)
 		return HistoryEventResponse{
 			UUID: e.MasterAction.UUID, Kind: string(e.Kind),
-			CreatedAt:    e.At.Format(time.RFC3339),
+			CreatedAt:    e.At.Format(time.RFC3339Nano),
 			MasterAction: &ma,
 		}, true
 	case e.Kind == matchUC.HistoryEventActionCancelled && e.CancelledAction != nil:
@@ -360,7 +399,7 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 		actor := ca.ActorUUID
 		out := HistoryEventResponse{
 			UUID: ca.UUID, Kind: string(e.Kind),
-			CreatedAt: e.At.Format(time.RFC3339),
+			CreatedAt: e.At.Format(time.RFC3339Nano),
 			ActorID:   &actor,
 		}
 		// The cut the use case granted, as an actionwire level; anything else — the zero value
@@ -376,8 +415,32 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 			}
 		}
 		return out, true
+	case e.Kind == matchUC.HistoryEventStatusEffect && e.StatusEffect != nil:
+		se := toHistoryStatusEffectResponse(*e.StatusEffect)
+		return HistoryEventResponse{
+			UUID: e.StatusEffect.UUID, Kind: string(e.Kind),
+			CreatedAt:    e.At.Format(time.RFC3339Nano),
+			StatusEffect: &se,
+		}, true
 	default:
 		return HistoryEventResponse{}, false
+	}
+}
+
+// toHistoryStatusEffectResponse mapeia um evento de status; a visibilidade só entra quando o
+// caso de uso deu Public (o mestre).
+func toHistoryStatusEffectResponse(h matchUC.HistoryStatusEffect) HistoryStatusEffectResponse {
+	w := statuswire.From(h.Effect)
+	if h.Public != nil {
+		vis := statuswire.VisibilityOf(h.Effect.Audience)
+		public := *h.Public
+		w.Visibility, w.Public = &vis, &public
+	}
+	return HistoryStatusEffectResponse{
+		UUID: h.UUID, Change: string(h.Change), CharacterID: h.Effect.CharacterID,
+		TurnID: h.TurnUUID, ActionID: h.ActionID, Revealed: h.Revealed,
+		HappenedAt:   h.HappenedAt.Format(time.RFC3339Nano),
+		StatusEffect: w,
 	}
 }
 
@@ -386,7 +449,7 @@ func toHistoryEventResponse(e matchUC.HistoryEvent) (HistoryEventResponse, bool)
 func toHistoryMasterActionResponse(r masteraction.Record) HistoryMasterActionResponse {
 	return HistoryMasterActionResponse{
 		UUID: r.UUID, Kind: string(r.Kind), TurnID: r.TurnUUID,
-		HappenedAt: r.HappenedAt.Format(time.RFC3339),
+		HappenedAt: r.HappenedAt.Format(time.RFC3339Nano),
 		Content:    r.Content,
 	}
 }
@@ -397,7 +460,7 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	// turnActionWireLocked applies the live gate in. Every one of them defaults to hidden: a
 	// HistoryTurn that never went through the use case reveals nothing. MoveViews/LandingViews
 	// themselves are never mapped: who saw what is not table data.
-	reactions := make([]actionwire.Action, 0, len(t.Reactions))
+	reactions := make([]HistoryReactionResponse, 0, len(t.Reactions))
 	for _, r := range t.Reactions {
 		wr := actionwire.From(r, actionwire.Full)
 		// A reaction never carries From (see actionwire.Move.From); its Position is where an
@@ -405,11 +468,19 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 		if wr.Move != nil && !t.ShownReactionMoves[r.GetID()] {
 			wr.Move.Position = nil
 		}
-		reactions = append(reactions, wr)
+		hr := HistoryReactionResponse{Action: wr}
+		if at, ok := t.ReactionOpenedAt[r.GetID()]; ok {
+			hr.OpenedAt = at.Format(time.RFC3339Nano)
+		}
+		reactions = append(reactions, hr)
 	}
 	masterActions := make([]HistoryMasterActionResponse, 0, len(t.MasterActions))
 	for _, ma := range t.MasterActions {
 		masterActions = append(masterActions, toHistoryMasterActionResponse(ma))
+	}
+	statusEffects := make([]HistoryStatusEffectResponse, 0, len(t.StatusEffects))
+	for _, se := range t.StatusEffects {
+		statusEffects = append(statusEffects, toHistoryStatusEffectResponse(se))
 	}
 	act := actionwire.From(t.Action, actionwire.Full)
 	if act.Move != nil {
@@ -433,13 +504,15 @@ func toHistoryTurnResponse(t matchUC.HistoryTurn) HistoryTurnResponse {
 	}
 	return HistoryTurnResponse{
 		UUID:          t.UUID,
-		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
-		FinishedAt:    t.FinishedAt.Format(time.RFC3339),
+		CreatedAt:     t.CreatedAt.Format(time.RFC3339Nano),
+		FinishedAt:    t.FinishedAt.Format(time.RFC3339Nano),
 		StoryAt:       formatStoryPtr(t.StoryAt),
 		Action:        act,
 		Reactions:     reactions,
 		Resolution:    res,
 		MasterActions: masterActions,
+		StatusEffects: statusEffects,
+		ConcealedBy:   t.ConcealedBy,
 	}
 }
 
@@ -463,8 +536,9 @@ func toTurnResolutionResponse(res *service.TurnResolution) *TurnResolutionRespon
 			IsCritical: res.ActionResult.IsCritical, IsCriticalFailure: res.ActionResult.IsCriticalFailure,
 			Margin: res.ActionResult.Margin,
 		},
-		Targets:     make([]CharacterResultResponse, 0, len(res.CharacterResults)),
-		DamageSkill: res.DamageSkill,
+		Targets:          make([]CharacterResultResponse, 0, len(res.CharacterResults)),
+		DamageSkill:      res.DamageSkill,
+		HiddenTargetsHit: res.HiddenTargetsHit,
 	}
 	for _, wr := range res.WallResults {
 		out.Walls = append(out.Walls, WallResultResponse{
@@ -548,7 +622,7 @@ func formatTimePtr(t *time.Time) *string {
 	if t == nil {
 		return nil
 	}
-	s := t.Format(time.RFC3339)
+	s := t.Format(time.RFC3339Nano)
 	return &s
 }
 
