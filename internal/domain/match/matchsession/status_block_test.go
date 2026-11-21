@@ -230,7 +230,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 		cAttack := mustEnqueue(t, f.session, f.playerC, attackBy(f.c, f.b))
 
 		setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindStunned))
-		removed := f.session.DropRefusedByStatus(f.b)
+		removed := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.b))
 
 		got := idsOf(removed)
 		if len(got) != 2 || got[0] != bAttack.GetID() || got[1] != bMove.GetID() {
@@ -240,7 +240,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 		if len(pending) != 1 || pending[0] != cAttack.GetID() {
 			t.Fatalf("queue = %v, want only C's attack %v", pending, cAttack.GetID())
 		}
-		if again := f.session.DropRefusedByStatus(f.c); len(again) != 0 {
+		if again := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.c)); len(again) != 0 {
 			t.Fatalf("C has no status and lost %v", idsOf(again))
 		}
 	})
@@ -251,7 +251,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 		mustEnqueue(t, f.session, f.playerB, moveBy(f.b))
 		setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindRestrained))
 
-		removed := f.session.DropRefusedByStatus(f.b)
+		removed := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.b))
 		if len(removed) != 1 || removed[0].Move == nil {
 			t.Fatalf("removed = %v, want only the move", idsOf(removed))
 		}
@@ -276,7 +276,7 @@ func TestDropRefusedByStatus(t *testing.T) {
 
 		setEffects(f.session, f.b, kindOnly(f.b, statuseffect.KindStunned))
 		setEffects(f.session, f.c, kindOnly(f.c, statuseffect.KindStunned))
-		if removed := f.session.DropRefusedByStatus(f.b); len(removed) != 0 {
+		if removed := matchsession.DroppedActions(f.session.DropRefusedByStatus(f.b)); len(removed) != 0 {
 			t.Fatalf("a replaced reaction is not a removed queued action: %v", idsOf(removed))
 		}
 		f.session.DropRefusedByStatus(f.c)

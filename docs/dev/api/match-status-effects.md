@@ -279,27 +279,55 @@ gravada (com o turno aberto, no fechamento dele). Depois do fechamento não há 
 
 **Devolver as ações (`restoreCancelledActions: true`).** Só no desfazer no turno: as ações que
 **este** efeito tirou da fila neste turno (as que o mestre vê em `cancelledActionIds`, [§8](#8-status_effects_updated))
-voltam com o **mesmo id**, os mesmos dados e a mesma velocidade, no fim da fila, na ordem em que
-saíram. O servidor **revalida** cada uma contra o estado de agora e recusa, com motivo, a que não
-cabe mais: outro status ainda a recusa; uma ação com esse id já está na fila; o personagem saiu
-da partida; um movimento empilhado cuja base não está na fila, ou uma cadeia de movimentos que
-seguiu sem ele (nunca volta meia cadeia). As edições do mestre na ação enfileirada não voltam — o
-cancelamento já as tinha descartado. Uma devolvida some do registro de canceladas: **nada dela é
-gravado** em `cancelled_actions` no fechamento.
+voltam **para o mesmo lugar da fila** (a ordem de chegada delas, que desempata a fila: empates
+incluídos, contra as que chegaram antes e depois — também depois do cancelamento), com o **mesmo
+id**, os mesmos dados já rolados e as **edições do mestre** que o cancelamento tinha descartado
+(condições, velocidade editada, `damageSkill`). O servidor **revalida** cada uma contra o estado
+de agora e recusa, com motivo, a que não cabe mais: outro status ainda a recusa; uma ação com
+esse id já está na fila; o personagem saiu da partida; a cadeia de movimentos não está como
+estava no cancelamento — um movimento que se apoiava numa base ainda na fila volta só se essa
+base continua na fila e é o fim da cadeia; um que era cabeça (de fato, ou porque a base já
+tinha saído da fila antes do status, aberta ou consumida) volta só se o personagem não tem outro
+movimento pendente. Nunca volta meia cadeia. Uma devolvida some do registro de canceladas:
+**nada dela é gravado** em `cancelled_actions` no fechamento.
+
+Quando a recusa é porque **outro status aplicado neste mesmo turno** ainda a recusa, a ação passa
+para o `cancelledActionIds` desse outro efeito: desfazer os dois a devolve, em qualquer ordem.
+Recusada por um status de antes do turno, ela fica cancelada; a mensagem nomeia o tipo que
+recusa.
 
 Fora da janela do desfazer (efeito de antes do turno, sem turno aberto, depois do fechamento) a
 flag é **ignorada** sem erro: não há o que devolver. Sem a flag, as ações continuam canceladas e
 o registro de devolução do efeito é descartado.
 
-**Dispara (devolvidas)**, por ação, as mesmas mensagens de uma ação que entra na fila pelo
-`enqueue_action`: `action_queued` ao **mestre** e `action_enqueued` ao **dono** (o mestre, numa
-ação de NPC, recebe os dois — como quando ele mesmo enfileira). Depois, `bars_updated` e, se o
-personagem tem reação no turno aberto, `resolution_updated` ao mestre. O cliente do dono que
-recebe um `action_enqueued` que não pediu põe a ação de volta em `ownQueue`.
+**Dispara (devolvidas)**, por ação, na ordem da fila: [`action_restored`](#action_restored) ao
+**mestre** e ao **dono** (ação de NPC: só ao mestre), e, ao mestre, logo depois, o `action_queued`
+de sempre (a entrada na fila, com `statusNotes`). Depois, `bars_updated` e, se o personagem tem
+reação no turno aberto, `resolution_updated` ao mestre. **Não** vem `action_enqueued`: ele é o
+ack de um envio do cliente, casado pela ordem dos envios, e um ack sem pedido cairia no envio
+errado.
+
+### `action_restored`
+
+**Direção:** servidor → cliente. **Destino:** o mestre e o dono da ação (NPC: só o mestre).
 
 ```json
-{ "type": "action_enqueued", "payload": { "actionId": "33333333-3333-4333-8333-333333333333" } }
+{ "type": "action_restored", "payload": {
+  "actionId": "33333333-3333-4333-8333-333333333333",
+  "action": { "uuid": "33333333-3333-4333-8333-333333333333", "actorId": "…", "targetId": ["…"], "speed": { "bar": 0, "rollCheck": { "skillName": "Legerity" } }, "attack": { "weapon": "Sword", "hit": { "skillName": "Accuracy" } } },
+  "beforeActionId": "44444444-4444-4444-8444-444444444444"
+} }
 ```
+
+| Campo | |
+|---|---|
+| `actionId` | o **mesmo** id de antes do cancelamento (o do `action_cancelled`) |
+| `action` | a ação como o destinatário a vê: o mestre em `Full` (como `action_queued.action`), o dono no corte do `ownQueue` (`Declaration`: sem dados nem velocidades) |
+| `beforeActionId` | omitido = ela vai para o fim; senão, a ação **que o destinatário já conhece na fila** (o mestre: qualquer uma; o dono: as dele) diante da qual ela voltou — o lugar dela, que desempata a fila. As outras devolvidas do mesmo comando não contam (ainda não chegaram) |
+
+As devolvidas de um comando chegam **na ordem da fila**; o cliente põe cada uma de volta na
+fila/`ownQueue` diante de `beforeActionId` (ou no fim), uma a uma, e todas caem no lugar. Para o mestre, o `action_queued`
+que vem logo depois tem o mesmo `actionId` e só a redescreve (substitui no lugar).
 
 **Dispara (recusadas)**, por ação, **só ao mestre**: `error` com `code: "restore_refused"` e a
 mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi possível devolver a ação:
@@ -554,7 +582,8 @@ com `restoreCancelledActions` ainda pode devolver ([§5](#remove_status_effect))
 efeito **aplicado neste turno** (a janela do desfazer); some quando o turno fecha (o mesmo
 `status_effects_updated` ao mestre que tira o `turnActionId`) e vem no `match_full_state` do
 mestre. É o gatilho do front para perguntar "devolver?" ao remover o efeito. Uma ação que voltou
-sai da lista. Os jogadores nunca o recebem.
+sai da lista; uma que o desfazer de outro efeito não pôde devolver porque **este** a recusa
+entra nela. Os jogadores nunca o recebem.
 
 **É a lista INTEIRA** do personagem como o destinatário a vê: **substitua**, nunca acrescente. **Nunca
 `null`**: `[]` = ele não vê mais nenhum. O servidor só manda quando a lista **difere** da última
