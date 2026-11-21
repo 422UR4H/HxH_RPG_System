@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	du "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/danielgtaylor/huma/v2"
@@ -52,7 +53,7 @@ func (h *AuthHandler) Register(
 			return nil, huma.Error409Conflict(err.Error())
 
 		default:
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 	}
 	return &RegisterResponse{Status: http.StatusCreated}, nil
@@ -79,7 +80,7 @@ func (h *AuthHandler) Login(
 		case authUC.ErrUnauthorized:
 			return nil, huma.Error401Unauthorized(err.Error())
 		default:
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 	}
 	return &LoginResponse{

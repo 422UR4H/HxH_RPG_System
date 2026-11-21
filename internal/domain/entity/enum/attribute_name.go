@@ -42,5 +42,5 @@ func AttributeNameFrom(s string) (AttributeName, error) {
 			return name, nil
 		}
 	}
-	return "", newInvalidNameOfError("attribute", s)
+	return "", newInvalidNameOfError("atributo", s)
 }

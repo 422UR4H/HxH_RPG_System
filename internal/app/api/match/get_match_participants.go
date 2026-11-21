@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiSheet "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
@@ -39,7 +40,7 @@ func GetMatchParticipantsHandler(
 	return func(ctx context.Context, req *GetMatchParticipantsRequest) (*GetMatchParticipantsResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		result, err := uc.Get(ctx, req.UUID, userUUID)
@@ -50,7 +51,7 @@ func GetMatchParticipantsHandler(
 			case errors.Is(err, auth.ErrInsufficientPermissions):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

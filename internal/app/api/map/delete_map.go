@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	"github.com/danielgtaylor/huma/v2"
@@ -24,7 +25,7 @@ func DeleteMapHandler(uc mapuc.IDeleteMap) func(context.Context, *DeleteMapReque
 	return func(ctx context.Context, req *DeleteMapRequest) (*DeleteMapResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		err := uc.DeleteMap(ctx, userID, req.MapID)
@@ -35,7 +36,7 @@ func DeleteMapHandler(uc mapuc.IDeleteMap) func(context.Context, *DeleteMapReque
 			case errors.Is(err, mapuc.ErrMapNotFound):
 				return nil, huma.Error404NotFound(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &DeleteMapResponse{Status: http.StatusNoContent}, nil

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
@@ -62,12 +63,12 @@ func GetCombatCatalogueHandler(
 	return func(ctx context.Context, req *GetCombatCatalogueRequest) (*GetCombatCatalogueResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		charSheetID, err := uuid.Parse(req.UUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		characterSheet, err := uc.GetCharacterSheet(ctx, charSheetID, userUUID)
@@ -81,7 +82,7 @@ func GetCombatCatalogueHandler(
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				log.Printf("[ERROR] GetCombatCatalogue uuid=%s: %v", req.UUID, err)
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

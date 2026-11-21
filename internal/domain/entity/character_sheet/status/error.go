@@ -1,13 +1,13 @@
 package status
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrStatusNotFound = domain.NewDomainError(errors.New("status not found"))
-	ErrSpiritualIsNil = domain.NewDomainError(errors.New("spiritual ability is nil"))
-	ErrInvalidValue   = domain.NewDomainError(errors.New("invalid value for status"))
+	ErrStatusNotFound = domain.NewDomainError(errtext.Sentence("Barra de status não encontrada."))
+	ErrSpiritualIsNil = domain.NewDomainError(errtext.Sentence("A aptidão espiritual não foi iniciada."))
+	ErrInvalidValue   = domain.NewDomainError(errtext.Sentence("Valor inválido para a barra de status."))
 )

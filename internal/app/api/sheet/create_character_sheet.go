@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -74,7 +75,7 @@ func CreateCharacterSheetHandler(
 	return func(ctx context.Context, req *CreateCharacterSheetRequest) (*CreateCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		input, err := castRequest(&req.Body)
@@ -100,7 +101,7 @@ func CreateCharacterSheetHandler(
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		response := NewCharacterSheetResponse(characterSheet)
@@ -118,7 +119,7 @@ func CreateCharacterSheetHandler(
 // devolver 422 nelas sem mudar o 400 dos demais erros de castRequest (enums).
 type profileError struct{ err error }
 
-func (e *profileError) Error() string { return "character profile error: " + e.err.Error() }
+func (e *profileError) Error() string { return e.err.Error() }
 func (e *profileError) Unwrap() error { return e.err }
 
 // castRequestError traduz um erro de castRequest: falha de validação do perfil

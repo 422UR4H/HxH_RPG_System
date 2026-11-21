@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
@@ -33,7 +34,7 @@ func EnrollCharacterHandler(
 	return func(ctx context.Context, req *EnrollCharacterRequest) (*EnrollCharacterResponse, error) {
 		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		err := uc.Enroll(ctx, req.Body.MatchUUID, req.Body.SheetUUID, playerUUID)
@@ -50,7 +51,7 @@ func EnrollCharacterHandler(
 			case errors.Is(err, enrollmentUC.ErrCharacterAlreadyEnrolled):
 				return nil, huma.Error409Conflict(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &EnrollCharacterResponse{

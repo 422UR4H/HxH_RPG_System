@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -26,12 +26,12 @@ func ListCharacterSheetsHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListCharacterSheetsResponse, error) {
 		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		sheets, err := uc.ListCharacterSheets(ctx, playerUUID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		responses := make([]CharacterPrivateSummaryResponse, len(sheets))

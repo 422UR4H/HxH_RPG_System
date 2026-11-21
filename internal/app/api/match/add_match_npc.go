@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
@@ -42,7 +43,7 @@ func AddMatchNPCHandler(
 	return func(ctx context.Context, req *AddMatchNPCRequest) (*AddMatchNPCResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		participant, err := uc.Add(ctx, &matchUC.AddMatchNPCInput{
@@ -63,7 +64,7 @@ func AddMatchNPCHandler(
 				errors.Is(err, matchUC.ErrNPCAlreadyInMatch):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
@@ -36,12 +37,12 @@ func GetCharacterSheetHandler(
 	return func(ctx context.Context, req *GetCharacterSheetRequest) (*GetCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		charSheetId, err := uuid.Parse(req.UUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		characterSheet, err := uc.GetCharacterSheet(ctx, charSheetId, userUUID)
@@ -55,7 +56,7 @@ func GetCharacterSheetHandler(
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
 				log.Printf("[ERROR] GetCharacterSheet uuid=%s: %v", req.UUID, err)
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 
@@ -65,7 +66,7 @@ func GetCharacterSheetHandler(
 			info, err := submissionFetcher.GetSubmissionInfoBySheetUUID(ctx, charSheetId)
 			if err != nil {
 				log.Printf("[ERROR] GetSubmissionInfo uuid=%s: %v", req.UUID, err)
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 			if info != nil {
 				response.Submission = &SubmissionResponse{

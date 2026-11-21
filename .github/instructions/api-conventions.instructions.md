@@ -26,3 +26,7 @@ All business validation belongs in the use case. The handler maps `domain.ErrVal
 
 Allowed tags: `required`, `doc`, `default`, `json`, `path`.
 Exception: `enum` on path parameters is fine when the use case also validates.
+
+## Error text (`detail`)
+
+`detail` reaches the screen, so it is a single Portuguese sentence with a final period, written for the person who sees it (use `errtext.Sentence`/`errtext.Wrap` in `internal/domain/errtext`; no field names, enum names or English). A 500 never shows the internal error: use `apierr.Internal(err)` (fixed sentence, original error logged) and `apierr.NoUser()` for a missing user in the context.

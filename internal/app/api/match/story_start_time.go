@@ -1,8 +1,8 @@
 package match
 
 import (
-	"errors"
 	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"regexp"
 	"strconv"
 	"time"
@@ -10,7 +10,7 @@ import (
 	matchEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 )
 
-const errInvalidStoryStartTime = "storyStartTime must be HH:MM or HH:MM:SS"
+const errInvalidStoryStartTime = "Horário inicial da história inválido. Use HH:MM ou HH:MM:SS."
 
 // storyStartTimeRe é o formato estrito: dois dígitos por campo, hora 00–23, sem sinal nem espaço.
 var storyStartTimeRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$`)
@@ -22,7 +22,7 @@ func parseStoryStartTime(s string) (*time.Duration, error) {
 		return nil, nil
 	}
 	if !storyStartTimeRe.MatchString(s) {
-		return nil, errors.New(errInvalidStoryStartTime)
+		return nil, errtext.Sentence(errInvalidStoryStartTime)
 	}
 	// o regexp garante os dígitos: as conversões não falham
 	h, _ := strconv.Atoi(s[0:2])

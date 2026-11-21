@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	mapentity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
@@ -29,7 +30,7 @@ func GetMapHandler(uc mapuc.IGetMap) func(context.Context, *GetMapRequest) (*Get
 	return func(ctx context.Context, req *GetMapRequest) (*GetMapResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		m, isMaster, err := uc.GetMap(ctx, req.MapID, userID)
@@ -37,7 +38,7 @@ func GetMapHandler(uc mapuc.IGetMap) func(context.Context, *GetMapRequest) (*Get
 			if errors.Is(err, mapuc.ErrMapNotFound) {
 				return nil, huma.Error404NotFound(err.Error())
 			}
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		applyRoleFilter(m, isMaster)

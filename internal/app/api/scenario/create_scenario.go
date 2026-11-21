@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -47,7 +48,7 @@ func CreateScenarioHandler(
 	return func(ctx context.Context, req *CreateScenarioRequest) (*CreateScenarioResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		input := &scenarioUC.CreateScenarioInput{
@@ -64,7 +65,7 @@ func CreateScenarioHandler(
 			case errors.Is(err, domain.ErrValidation):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchmapuc "github.com/422UR4H/HxH_RPG_System/internal/application/matchmap"
 	"github.com/danielgtaylor/huma/v2"
@@ -21,7 +22,7 @@ func DetachMatchMapHandler(uc matchmapuc.IDetachMatchMap) func(context.Context, 
 	return func(ctx context.Context, req *DetachMatchMapRequest) (*DetachMatchMapResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		err := uc.Detach(ctx, &matchmapuc.DetachMatchMapInput{
@@ -38,7 +39,7 @@ func DetachMatchMapHandler(uc matchmapuc.IDetachMatchMap) func(context.Context, 
 			case errors.Is(err, matchmapuc.ErrMatchAlreadyStarted):
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &DetachMatchMapResponse{}, nil

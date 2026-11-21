@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
@@ -33,7 +34,7 @@ func SubmitCharacterSheetHandler(
 	return func(ctx context.Context, req *SubmitCharacterRequest) (*SubmitCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		err := uc.Submit(ctx, userUUID, req.Body.SheetUUID, req.Body.CampaignUUID)
@@ -52,7 +53,7 @@ func SubmitCharacterSheetHandler(
 			case errors.Is(err, submissionUC.ErrNickAlreadyInCampaign):
 				return nil, huma.Error409Conflict(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &SubmitCharacterSheetResponse{

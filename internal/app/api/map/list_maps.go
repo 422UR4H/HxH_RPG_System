@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	"github.com/danielgtaylor/huma/v2"
@@ -29,7 +30,7 @@ func ListMapsHandler(uc mapuc.IListMaps) func(context.Context, *ListMapsRequest)
 	return func(ctx context.Context, req *ListMapsRequest) (*ListMapsResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		maps, err := uc.ListMaps(ctx, userID, req.CampaignID)
@@ -37,7 +38,7 @@ func ListMapsHandler(uc mapuc.IListMaps) func(context.Context, *ListMapsRequest)
 			if errors.Is(err, mapuc.ErrNotMapMaster) {
 				return nil, huma.Error403Forbidden(err.Error())
 			}
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		result := make([]MapResponse, 0, len(maps))

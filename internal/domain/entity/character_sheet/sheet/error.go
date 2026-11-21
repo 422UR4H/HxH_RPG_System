@@ -3,27 +3,28 @@ package sheet
 import (
 	"errors"
 	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
-const invalidOwnerMsg = "the owner must be a player (user) OR a scenario, exclusively (XOR)"
-const invalidAlignment = "alignment must be: '{Lawful, Neutral, Chaotic}-{Good, Neutral, Evil}'"
+const invalidOwnerMsg = "A ficha deve ser de um jogador ou de um cenário, nunca dos dois."
+const invalidAlignment = "O alinhamento deve combinar Ordeiro, Neutro ou Caótico com Bom, Neutro ou Mau."
 
 var (
-	ErrClassNotApplied            = domain.NewDomainError(errors.New("class not applied"))
-	ErrInvalidOwner               = domain.NewValidationError(errors.New(invalidOwnerMsg))
-	ErrInvalidAlignment           = domain.NewValidationError(errors.New(invalidAlignment))
-	ErrInvalidActiveCategoryCount = domain.NewValidationError(errors.New("at least one category must be active"))
-	ErrInvalidNicknameLength      = domain.NewValidationError(errors.New("nickname must be 3-10 characters long"))
-	ErrInvalidFullNameLength      = domain.NewValidationError(errors.New("fullname must be 6-32 characters long"))
-	ErrNicknameHasEmoji           = domain.NewValidationError(errors.New("nickname must not contain emoji"))
-	ErrFullNameHasEmoji           = domain.NewValidationError(errors.New("fullname must not contain emoji"))
-	ErrInvalidBriefDescription    = domain.NewValidationError(errors.New("brief description must be at most 255 characters long"))
-	ErrInvalidBirthday            = domain.NewValidationError(errors.New("invalid birthday"))
-	ErrInvalidAge                 = domain.NewValidationError(errors.New("age must be positive"))
-	ErrInvalidDistributionPoints  = domain.NewValidationError(errors.New("invalid distribution points"))
-	ErrCharClassAlreadyExists     = domain.NewValidationError(errors.New("character class already exists"))
+	ErrClassNotApplied            = domain.NewDomainError(errtext.Sentence("A classe ainda não foi aplicada à ficha."))
+	ErrInvalidOwner               = domain.NewValidationError(errtext.Sentence(invalidOwnerMsg))
+	ErrInvalidAlignment           = domain.NewValidationError(errtext.Sentence(invalidAlignment))
+	ErrInvalidActiveCategoryCount = domain.NewValidationError(errtext.Sentence("Deixe pelo menos uma categoria ativa."))
+	ErrInvalidNicknameLength      = domain.NewValidationError(errtext.Sentence("O apelido deve ter entre 3 e 10 caracteres."))
+	ErrInvalidFullNameLength      = domain.NewValidationError(errtext.Sentence("O nome completo deve ter entre 6 e 32 caracteres."))
+	ErrNicknameHasEmoji           = domain.NewValidationError(errtext.Sentence("O apelido não pode ter emoji."))
+	ErrFullNameHasEmoji           = domain.NewValidationError(errtext.Sentence("O nome completo não pode ter emoji."))
+	ErrInvalidBriefDescription    = domain.NewValidationError(errtext.Sentence("A descrição curta deve ter no máximo 255 caracteres."))
+	ErrInvalidBirthday            = domain.NewValidationError(errtext.Sentence("Data de nascimento inválida."))
+	ErrInvalidAge                 = domain.NewValidationError(errtext.Sentence("A idade deve ser maior que zero."))
+	ErrInvalidDistributionPoints  = domain.NewValidationError(errtext.Sentence("Os pontos distribuídos não estão certos."))
+	ErrCharClassAlreadyExists     = domain.NewValidationError(errtext.Sentence("A ficha já tem uma classe."))
 
 	ErrFailedToUpgradeStatus          = domain.NewDomainError(errors.New("failed to upgrade status"))
 	ErrFailedToBuildHatsu             = domain.NewDomainError(errors.New("failed to build hatsu"))
@@ -48,27 +49,27 @@ func NewClassNotAppliedError(msg string) error {
 }
 
 func NewInvalidNicknameLengthError(nick string) error {
-	return fmt.Errorf("%w: %s", ErrInvalidNicknameLength, nick)
+	return errtext.Wrap(ErrInvalidNicknameLength, "O apelido deve ter entre 3 e 10 caracteres.")
 }
 
 func NewInvalidFullNameLengthError(name string) error {
-	return fmt.Errorf("%w: %s", ErrInvalidFullNameLength, name)
+	return errtext.Wrap(ErrInvalidFullNameLength, "O nome completo deve ter entre 6 e 32 caracteres.")
 }
 
 func NewNicknameHasEmojiError(nick string) error {
-	return fmt.Errorf("%w: %s", ErrNicknameHasEmoji, nick)
+	return errtext.Wrap(ErrNicknameHasEmoji, "O apelido não pode ter emoji.")
 }
 
 func NewFullNameHasEmojiError(name string) error {
-	return fmt.Errorf("%w: %s", ErrFullNameHasEmoji, name)
+	return errtext.Wrap(ErrFullNameHasEmoji, "O nome completo não pode ter emoji.")
 }
 
 func NewInvalidAlignmentError(alignment string) error {
-	return fmt.Errorf("%w: %s", ErrInvalidAlignment, alignment)
+	return ErrInvalidAlignment
 }
 
 func NewInvalidBriefDescriptionError(desc string) error {
-	return fmt.Errorf("%w: %s", ErrInvalidBriefDescription, desc)
+	return ErrInvalidBriefDescription
 }
 
 func NewInvalidBirthdayError() error {

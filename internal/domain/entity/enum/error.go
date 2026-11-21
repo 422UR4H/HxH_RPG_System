@@ -1,16 +1,15 @@
 package enum
 
 import (
-	"errors"
-	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrInvalidNameOf = domain.NewValidationError(errors.New("invalid name of "))
+	ErrInvalidNameOf = domain.NewValidationError(errtext.Sentence("Valor inválido."))
 )
 
 func newInvalidNameOfError(kind, value string) error {
-	return fmt.Errorf("%w%s: %s", ErrInvalidNameOf, kind, value)
+	return errtext.Wrap(ErrInvalidNameOf, "Valor inválido para "+kind+": "+value+".")
 }

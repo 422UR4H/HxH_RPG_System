@@ -1,7 +1,7 @@
 package service
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"unicode/utf8"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -16,17 +16,17 @@ import (
 const wallBoundsTolerance = 1e-6
 
 var (
-	ErrNameTooShort      = errors.New("map name must be at least 3 characters")
-	ErrNameHasEmoji      = errors.New("map name must not contain emoji")
-	ErrInvalidCellSize   = errors.New("cell_size must be > 0")
-	ErrInvalidCols       = errors.New("cols must be > 0")
-	ErrInvalidRows       = errors.New("rows must be > 0")
-	ErrInvalidSkewRatio  = errors.New("skew_ratio must be in [0, 1]")
-	ErrWallSameEndpoints = errors.New("wall p1 and p2 must be different points")
-	ErrWallInvalidType   = errors.New("invalid wall_type")
-	ErrWallNegativeHP    = errors.New("wall hp must be >= 0")
-	ErrWallOutOfBounds   = errors.New("wall segment out of grid bounds")
-	ErrInvalidFogMode    = errors.New("invalid fog_mode: must be 'live' or 'explored'")
+	ErrNameTooShort      = errtext.Sentence("O nome do mapa deve ter pelo menos 3 caracteres.")
+	ErrNameHasEmoji      = errtext.Sentence("O nome do mapa não pode ter emoji.")
+	ErrInvalidCellSize   = errtext.Sentence("O tamanho da célula deve ser maior que zero.")
+	ErrInvalidCols       = errtext.Sentence("O mapa precisa de pelo menos uma coluna.")
+	ErrInvalidRows       = errtext.Sentence("O mapa precisa de pelo menos uma linha.")
+	ErrInvalidSkewRatio  = errtext.Sentence("A inclinação do mapa deve ficar entre 0 e 1.")
+	ErrWallSameEndpoints = errtext.Sentence("Uma parede precisa de dois pontos diferentes.")
+	ErrWallInvalidType   = errtext.Sentence("Tipo de parede inválido.")
+	ErrWallNegativeHP    = errtext.Sentence("A vida da parede não pode ser negativa.")
+	ErrWallOutOfBounds   = errtext.Sentence("Uma parede está fora da grade do mapa.")
+	ErrInvalidFogMode    = errtext.Sentence("Modo de névoa inválido: escolha ao vivo ou explorado.")
 )
 
 func ValidateMap(name string, grid entity.GridShape) error {

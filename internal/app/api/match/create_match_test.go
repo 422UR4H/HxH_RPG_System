@@ -227,7 +227,7 @@ func TestCreateMatchStoryStartTime(t *testing.T) {
 				if called {
 					t.Error("UC should not be called on invalid time")
 				}
-				if !strings.Contains(resp.Body.String(), "storyStartTime must be HH:MM or HH:MM:SS") {
+				if !strings.Contains(resp.Body.String(), "Horário inicial da história inválido. Use HH:MM ou HH:MM:SS.") {
 					t.Errorf("detail missing: %s", resp.Body.String())
 				}
 				return

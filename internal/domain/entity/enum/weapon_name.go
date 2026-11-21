@@ -101,5 +101,5 @@ func WeaponNameFrom(s string) (WeaponName, error) {
 			return name, nil
 		}
 	}
-	return "", newInvalidNameOfError("weapon", s)
+	return "", newInvalidNameOfError("arma", s)
 }

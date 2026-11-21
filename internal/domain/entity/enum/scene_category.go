@@ -26,5 +26,5 @@ func SceneCategoryFrom(s string) (SceneCategory, error) {
 			return c, nil
 		}
 	}
-	return "", newInvalidNameOfError("scene category", s)
+	return "", newInvalidNameOfError("categoria de cena", s)
 }

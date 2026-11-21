@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
@@ -36,12 +37,12 @@ func UpdateCharacterSheetHandler(
 	return func(ctx context.Context, req *UpdateCharacterSheetRequest) (*UpdateCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		sheetUUID, err := uuid.Parse(req.UUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid uuid")
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		input, err := castRequest(&req.Body)
@@ -65,14 +66,14 @@ func UpdateCharacterSheetHandler(
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			default:
 				log.Printf("[ERROR] UpdateCharacterSheet uuid=%s: %v", req.UUID, err)
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 
 		charSheet, err := getUC.GetCharacterSheet(ctx, sheetUUID, userUUID)
 		if err != nil {
 			log.Printf("[ERROR] UpdateCharacterSheet post-update GET uuid=%s: %v", req.UUID, err)
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		return &UpdateCharacterSheetResponse{

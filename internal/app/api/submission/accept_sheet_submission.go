@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	submissionUC "github.com/422UR4H/HxH_RPG_System/internal/application/submission"
@@ -27,12 +28,12 @@ func AcceptSheetSubmissionHandler(
 	return func(ctx context.Context, req *AcceptSheetSubmissionRequest) (*AcceptSheetSubmissionResponse, error) {
 		masterUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		sheetUUID, err := uuid.Parse(req.SheetUUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid sheet UUID")
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		err = uc.Accept(ctx, sheetUUID, masterUUID)
@@ -47,7 +48,7 @@ func AcceptSheetSubmissionHandler(
 			case errors.Is(err, submissionUC.ErrNickAlreadyInCampaign):
 				return nil, huma.Error409Conflict(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &AcceptSheetSubmissionResponse{

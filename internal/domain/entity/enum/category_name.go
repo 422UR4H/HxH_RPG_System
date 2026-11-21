@@ -33,5 +33,5 @@ func CategoryNameFrom(s string) (CategoryName, error) {
 			return name, nil
 		}
 	}
-	return "", newInvalidNameOfError("category", s)
+	return "", newInvalidNameOfError("categoria", s)
 }

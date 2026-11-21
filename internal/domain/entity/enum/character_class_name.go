@@ -54,5 +54,5 @@ func CharacterClassNameFrom(s string) (CharacterClassName, error) {
 			return name, nil
 		}
 	}
-	return "", newInvalidNameOfError("character class", s)
+	return "", newInvalidNameOfError("classe", s)
 }

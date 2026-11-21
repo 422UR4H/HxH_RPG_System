@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -23,14 +23,14 @@ func AuthMiddlewareProvider(
 		authHeader := ctx.Header("Authorization")
 		if authHeader == "" {
 			ctx.SetStatus(http.StatusUnauthorized)
-			WriteAuthError(ctx.BodyWriter(), "Authentication required", "Missing authorization token")
+			WriteAuthError(ctx.BodyWriter(), "Autenticação necessária.", "Entre na sua conta para continuar.")
 			return
 		}
 
 		const bearerPrefix = "Bearer "
 		if !strings.HasPrefix(authHeader, bearerPrefix) {
 			ctx.SetStatus(http.StatusUnauthorized)
-			WriteAuthError(ctx.BodyWriter(), "Authentication failed", "Invalid token format, expected 'Bearer <token>'")
+			WriteAuthError(ctx.BodyWriter(), "Falha na autenticação.", "Entre de novo na sua conta.")
 			return
 		}
 		tokenStr := authHeader[len(bearerPrefix):]
@@ -38,7 +38,7 @@ func AuthMiddlewareProvider(
 		claims, err := jwtAuth.ValidateToken(tokenStr)
 		if err != nil {
 			ctx.SetStatus(http.StatusUnauthorized)
-			WriteAuthError(ctx.BodyWriter(), "Authentication failed", "Invalid authorization token")
+			WriteAuthError(ctx.BodyWriter(), "Falha na autenticação.", "Entre de novo na sua conta.")
 			return
 		}
 
@@ -50,13 +50,13 @@ func AuthMiddlewareProvider(
 		if !exists || token != tokenStr {
 			// check directly with the bank as a last resort
 			valid, err := sessionRepo.ValidateSession(ctx.Context(), claims.UserID, tokenStr)
-			errMsg := "Access Denied!"
+			errMsg := "Entre de novo na sua conta."
 			if err != nil {
-				errMsg = fmt.Sprintf("Access Denied: %s", err.Error())
+				log.Printf("[ERROR] session validation: %v", err)
 			}
 			if !valid {
 				ctx.SetStatus(http.StatusUnauthorized)
-				WriteAuthError(ctx.BodyWriter(), "Authentication failed", errMsg)
+				WriteAuthError(ctx.BodyWriter(), "Falha na autenticação.", errMsg)
 				return
 			}
 			// update cache

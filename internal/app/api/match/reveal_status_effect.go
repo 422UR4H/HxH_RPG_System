@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
@@ -25,7 +26,7 @@ func RevealStatusEffectHandler(
 	return func(ctx context.Context, req *RevealStatusEffectRequest) (*RevealStatusEffectResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		if err := uc.Reveal(ctx, req.MatchUUID, req.EffectUUID, userUUID); err != nil {

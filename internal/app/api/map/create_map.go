@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
@@ -38,7 +39,7 @@ func CreateMapHandler(uc mapuc.ICreateMap) func(context.Context, *CreateMapReque
 	return func(ctx context.Context, req *CreateMapRequest) (*CreateMapResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		var grid *entity.GridShape

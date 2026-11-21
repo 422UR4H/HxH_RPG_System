@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"log"
 	"time"
 
@@ -21,16 +22,16 @@ import (
 // errStatusPayload marca o que o fio trouxe malformado (enum desconhecido, ids vazios ou
 // repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
 // passa por aqui — é status_effect_invalid, como o domínio o diz.
-var errStatusPayload = statuseffect.Sentence("Não entendi o pedido do efeito.")
+var errStatusPayload = errtext.Sentence("Não entendi o pedido do efeito.")
 
 // errStatusActionID recusa uma âncora (actionId) que não é a action do turno aberto nem uma
 // reação dela — ou qualquer âncora sem turno aberto. É status_effect_invalid.
-var errStatusActionID = statuseffect.Wrap(statuseffect.ErrInvalidParams,
+var errStatusActionID = errtext.Wrap(statuseffect.ErrInvalidParams,
 	"Escolha a ação do turno aberto ou uma reação dela.")
 
 // statusPayloadErr é uma recusa de payload com a frase que o mestre lê.
 func statusPayloadErr(msg string) error {
-	return statuseffect.Wrap(errStatusPayload, msg)
+	return errtext.Wrap(errStatusPayload, msg)
 }
 
 // statusEffectErrorCode traduz os erros dos três comandos para o código do fio.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
@@ -28,12 +29,12 @@ func RejectEnrollmentHandler(
 	return func(ctx context.Context, req *RejectEnrollmentRequest) (*RejectEnrollmentResponse, error) {
 		masterUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		enrollmentUUID, err := uuid.Parse(req.EnrollmentUUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid enrollment UUID")
+			return nil, huma.Error400BadRequest("Inscrição inválida.")
 		}
 
 		err = uc.Reject(ctx, enrollmentUUID, masterUUID)
@@ -48,7 +49,7 @@ func RejectEnrollmentHandler(
 			case errors.Is(err, enrollmentUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden(err.Error())
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &RejectEnrollmentResponse{

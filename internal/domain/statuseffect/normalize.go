@@ -1,6 +1,7 @@
 package statuseffect
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"strings"
 	"unicode/utf8"
 )
@@ -35,12 +36,12 @@ func missingText(field string) string {
 
 // invalid é o campo que o tipo não aceita: "Esse efeito não tem pontos."
 func invalid(field string) error {
-	return Wrap(ErrInvalidParams, "Esse efeito não "+foreignLabel[field]+".")
+	return errtext.Wrap(ErrInvalidParams, "Esse efeito não "+foreignLabel[field]+".")
 }
 
 // missing é o campo que o tipo exige e veio vazio ou fora da faixa: "Informe os pontos do efeito."
 func missing(field string) error {
-	return Wrap(ErrInvalidParams, missingText(field))
+	return errtext.Wrap(ErrInvalidParams, missingText(field))
 }
 
 // allowed declara quais campos de ParamsInput um tipo aceita.
@@ -140,10 +141,10 @@ func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error) {
 		p.Level = in.Level
 		if in.Level == SenseNullified {
 			if in.Disadvantage != nil {
-				return Params{}, Wrap(ErrInvalidParams, "Um sentido anulado não aceita desvantagem.")
+				return Params{}, errtext.Wrap(ErrInvalidParams, "Um sentido anulado não aceita desvantagem.")
 			}
 			if in.Penalty != nil {
-				return Params{}, Wrap(ErrInvalidParams, "Um sentido anulado não aceita penalidade.")
+				return Params{}, errtext.Wrap(ErrInvalidParams, "Um sentido anulado não aceita penalidade.")
 			}
 		} else if err := disadvantageOrPenalty(&p, in); err != nil {
 			return Params{}, err
@@ -171,7 +172,7 @@ func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error) {
 	case KindCompelled:
 		c := strings.TrimSpace(in.Conduct)
 		if n := utf8.RuneCountInString(c); n < 1 || n > maxConductRunes {
-			return Params{}, Wrap(ErrInvalidParams, "Informe a conduta, com até 255 caracteres.")
+			return Params{}, errtext.Wrap(ErrInvalidParams, "Informe a conduta, com até 255 caracteres.")
 		}
 		p.Conduct = c
 		p.Irresistible = in.Irresistible != nil && *in.Irresistible
@@ -224,12 +225,12 @@ func disadvantageOrPenalty(p *Params, in ParamsInput) error {
 	p.Disadvantage = in.Disadvantage == nil || *in.Disadvantage
 	if in.Penalty != nil {
 		if *in.Penalty < 0 {
-			return Wrap(ErrInvalidParams, "A penalidade não pode ser negativa.")
+			return errtext.Wrap(ErrInvalidParams, "A penalidade não pode ser negativa.")
 		}
 		p.Penalty = *in.Penalty
 	}
 	if !p.Disadvantage && p.Penalty == 0 {
-		return Wrap(ErrInvalidParams, "Deixe a desvantagem ligada ou informe uma penalidade.")
+		return errtext.Wrap(ErrInvalidParams, "Deixe a desvantagem ligada ou informe uma penalidade.")
 	}
 	return nil
 }
@@ -244,7 +245,7 @@ func normDomains(in []Domain) ([]Domain, error) {
 			return nil, err
 		}
 		if seen[d] {
-			return nil, Wrap(ErrInvalidParams, "As ações bloqueadas não podem se repetir.")
+			return nil, errtext.Wrap(ErrInvalidParams, "As ações bloqueadas não podem se repetir.")
 		}
 		seen[d] = true
 	}
@@ -259,7 +260,7 @@ func normDomains(in []Domain) ([]Domain, error) {
 
 func normFaces(in []TouchFace) ([]TouchFace, error) {
 	if len(in) == 0 {
-		return nil, Wrap(ErrInvalidParams, "Informe ao menos uma face do Tato.")
+		return nil, errtext.Wrap(ErrInvalidParams, "Informe ao menos uma face do Tato.")
 	}
 	seen := map[TouchFace]bool{}
 	for _, f := range in {
@@ -267,7 +268,7 @@ func normFaces(in []TouchFace) ([]TouchFace, error) {
 			return nil, err
 		}
 		if seen[f] {
-			return nil, Wrap(ErrInvalidParams, "As faces do Tato não podem se repetir.")
+			return nil, errtext.Wrap(ErrInvalidParams, "As faces do Tato não podem se repetir.")
 		}
 		seen[f] = true
 	}
