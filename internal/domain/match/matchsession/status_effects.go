@@ -264,13 +264,14 @@ func (e *StatusBlockError) Error() string { return e.Message(e.Kinds) }
 
 func (e *StatusBlockError) Unwrap() error { return ErrBlockedByStatus }
 
-// Message é o texto da recusa nomeando só os tipos dados; sem nenhum, "um efeito".
+// Message é o texto da recusa nomeando só os tipos dados, pelo nome da mesa (Kind.Label); sem
+// nenhum, "um efeito".
 func (e *StatusBlockError) Message(visible []statuseffect.Kind) string {
 	cause := "um efeito"
 	if len(visible) > 0 {
 		names := make([]string, len(visible))
 		for i, k := range visible {
-			names[i] = string(k)
+			names[i] = k.Label()
 		}
 		cause = strings.Join(names, ", ")
 	}

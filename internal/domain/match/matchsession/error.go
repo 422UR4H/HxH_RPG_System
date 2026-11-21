@@ -77,6 +77,6 @@ var (
 	// ErrBriefFinalTooLong: o resumo final passa de 255 caracteres.
 	ErrBriefFinalTooLong = errors.New("final description cannot exceed 255 characters")
 	// ErrBlockedByStatus: um status do personagem proíbe a action ou a reação (StatusRefusal). A
-	// mensagem diz o que está proibido e por quais tipos ("<personagem> não pode agir: stunned").
+	// mensagem diz o que está proibido e por quais tipos ("<personagem> não pode agir: Atordoado", pelo nome da mesa).
 	ErrBlockedByStatus = errors.New("blocked by status")
 )
