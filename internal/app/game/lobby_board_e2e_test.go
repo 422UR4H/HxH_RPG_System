@@ -70,6 +70,7 @@ func TestLobbyPieceMoved_MasterMovesAnyPiece(t *testing.T) {
 	if codes := errorCodes(t, masterMsgs); len(codes) != 0 {
 		t.Fatalf("the master, who runs the lobby, was refused: %v", codes)
 	}
+	f.boards.awaitSaves(baseline+1, 2*time.Second)
 	if got := f.boards.saveCount(); got != baseline+1 {
 		t.Fatalf("saveCount = %d, want %d — a lobby move persists exactly once", got, baseline+1)
 	}
@@ -105,6 +106,7 @@ func TestLobbyPieceMoved_PlayerMovesOwnExistingPiece(t *testing.T) {
 	if codes := errorCodes(t, playerMsgs); len(codes) != 0 {
 		t.Fatalf("the player, moving their own existing piece, was refused: %v", codes)
 	}
+	f.boards.awaitSaves(baseline+1, 2*time.Second)
 	if got := f.boards.saveCount(); got != baseline+1 {
 		t.Fatalf("saveCount = %d, want %d — a lobby move persists exactly once", got, baseline+1)
 	}
