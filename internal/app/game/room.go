@@ -217,6 +217,17 @@ type Room struct {
 	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem:
 	// clockPersistMu, depois mu.
 	clockPersistMu sync.Mutex
+	// resolutionAge conta os cálculos de turno: cada comando que recalcula a resolução o
+	// avança na MESMA seção crítica (sob mu, write lock) que mudou a sessão, então a idade
+	// segue a ordem real das mudanças (stampResolutionLocked). Protegido por mu.
+	resolutionAge uint64
+	// resolutionSendMu serializa os envios de resolution_updated, e sentResolutionAge é a
+	// idade do mais novo já entregue ao mestre. Cálculos nascem em read pumps diferentes (a
+	// abertura no do mestre, cada reação no de quem reagiu) e saem fora de mu: sem isto, um
+	// retrato mais velho podia chegar DEPOIS de um mais novo (publishResolution). Ordem:
+	// resolutionSendMu, depois mu.
+	resolutionSendMu  sync.Mutex
+	sentResolutionAge uint64
 	// clockWriteGen conta os retratos do relógio entregues a uma gravação — persistClock e as
 	// transações que também gravam match_clocks sem clockPersistMu (fechamento de turno, de
 	// round, troca de cena, fim). O checkpoint assíncrono compara o seu com o corrente antes de
@@ -968,8 +979,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		var result *appmatch.OpenNextActionResult
 		var err error
+		var resAge uint64
 		if session != nil {
 			result, err = r.deps.OpenNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
+			resAge = r.stampResolutionLocked()
 			r.clearClockMergeLocked()
 		}
 		r.mu.Unlock()
@@ -1027,7 +1040,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
-					r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
+					r.publishResolution(closedTurn.GetID(), result.ClosedResolution, resAge)
 				}
 			}
 		}
@@ -1084,7 +1097,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
+		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution, resAge)
 		// Fechar e abrir o turno subiram o limite (só em memória): o painel do mestre precisa
 		// saber. Um anúncio só cobre os dois.
 		r.announceClockLimit(session)
@@ -1164,8 +1177,10 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		session := r.session
 		var result *appmatch.PullActionResult
 		var err error
+		var resAge uint64
 		if session != nil {
 			result, err = r.deps.PullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
+			resAge = r.stampResolutionLocked()
 			r.clearClockMergeLocked()
 		}
 		r.mu.Unlock()
@@ -1218,7 +1233,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// The settled resolution of the turn that just ended — this is the one whose
 				// damage was actually applied.
 				if result.ClosedResolution != nil {
-					r.publishResolution(closedTurn.GetID(), result.ClosedResolution)
+					r.publishResolution(closedTurn.GetID(), result.ClosedResolution, resAge)
 				}
 			}
 		}
@@ -1240,7 +1255,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 
-		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution)
+		r.announceOpenedTurn(session, result.OpenedTurn, result.Resolution, resAge)
 		r.announceClockLimit(session)
 
 	case MsgTypeEnqueueAction:
@@ -1416,6 +1431,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Lock()
 		result, err := r.deps.OpenReactionUC.Execute(context.Background(), session, client.userUUID, payload.ReactionID)
+		resAge := r.stampResolutionLocked()
 		turnID := session.CurrentTurnID()
 		var opened action.Action
 		if err == nil {
@@ -1455,7 +1471,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			})
 			return &msg
 		})
-		r.publishResolution(turnID, result.Resolution)
+		r.publishResolution(turnID, result.Resolution, resAge)
 		// The reactor's speed just turned public: the players' bars show it from here on.
 		r.broadcastBars(session)
 
@@ -1491,6 +1507,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		result, err := r.deps.EditActionUC.Execute(
 			context.Background(), session, r.masterUUID, client.userUUID, ma, escapeLandingEditOf(payload))
+		resAge := r.stampResolutionLocked()
 		var requeued ActionQueuedPayload
 		if err == nil && result.Queued {
 			for _, a := range session.PendingActions() {
@@ -1516,7 +1533,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			r.broadcastBars(session)
 			return
 		}
-		r.publishResolution(result.TurnID, result.Resolution)
+		r.publishResolution(result.TurnID, result.Resolution, resAge)
 
 	case MsgTypeCloseTurn:
 		if !r.IsMaster(client.userUUID) {
@@ -1535,10 +1552,12 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var result *appmatch.CloseTurnResult
 		var err error
 		var turnID uuid.UUID
+		var resAge uint64
 		if session != nil {
 			turnID = session.CurrentTurnID()
 			result, err = r.deps.CloseTurnUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID, payload.Confirm)
+			resAge = r.stampResolutionLocked()
 			r.clearClockMergeLocked()
 		}
 		r.mu.Unlock()
@@ -1586,7 +1605,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// turn_closed. See the comment there for why the order matters.
 		r.broadcastHpChanges(result.Damaged)
 		r.broadcastTurnClosed(closedTurn.GetID())
-		r.publishResolution(closedTurn.GetID(), result.Resolution)
+		r.publishResolution(closedTurn.GetID(), result.Resolution, resAge)
 		r.broadcastBars(session)
 		// O fechamento subiu o limite (RaiseLimit(turn), só em memória): anunciado como nas
 		// aberturas, sem evento.
@@ -2367,7 +2386,7 @@ func (r *Room) escapeLandingViewsLocked(closed *turnentity.Turn, res *domainserv
 //
 // res is nil-safe: a turn can open with nothing to resolve.
 func (r *Room) announceOpenedTurn(
-	session *matchsession.MatchSession, opened *turnentity.Turn, res *domainservice.TurnResolution,
+	session *matchsession.MatchSession, opened *turnentity.Turn, res *domainservice.TurnResolution, resAge uint64,
 ) {
 	// origin is where the piece stood when the turn opened — what the relay just judged the
 	// move on, and so what turn_opened's move gate judges it on too (turnActionWireLocked).
@@ -2416,7 +2435,7 @@ func (r *Room) announceOpenedTurn(
 		// The projection for the turn just opened. publishResolution keeps this master-only on
 		// its own: the mechanics are public when a turn opens, but the calculation stays with
 		// the master until it closes (IsSettled is false here).
-		r.publishResolution(opened.GetID(), res)
+		r.publishResolution(opened.GetID(), res, resAge)
 	}
 }
 
@@ -2578,6 +2597,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	// open turn, and the master may be closing that same turn from another goroutine.
 	r.mu.Lock()
 	result, err := r.deps.AttachReactionUC.Execute(context.Background(), session, client.userUUID, reaction)
+	resAge := r.stampResolutionLocked()
 	var turnID uuid.UUID
 	var attached ReactionAttachedPayload
 	var cancelWrites []*cancelledWrite
@@ -2625,7 +2645,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	// mismatch. This is routed through the same door as every other resolution anyway, so a
 	// future change to attach timing cannot silently reintroduce a master-only leak here — but
 	// the guard, not the routing, is what keeps this comment true.
-	r.publishResolution(turnID, result.Resolution)
+	r.publishResolution(turnID, result.Resolution, resAge)
 	// The reaction's speed was charged on attach: the master's bars changed. A player's do not
 	// (the speed stays secret until the reaction opens), but every snapshot goes to everyone.
 	r.broadcastBars(session)
@@ -2765,6 +2785,13 @@ func (r *Room) viewerFor(playerID uuid.UUID, isMaster bool) domainservice.Viewer
 	return domainservice.Viewer{IsMaster: isMaster, Owns: owns}
 }
 
+// stampResolutionLocked dá a idade do cálculo que o comando corrente acabou de produzir.
+// Chamado sob mu (write lock), na mesma seção crítica do Execute que mudou a sessão.
+func (r *Room) stampResolutionLocked() uint64 {
+	r.resolutionAge++
+	return r.resolutionAge
+}
+
 // publishResolution sends one turn's resolution to everyone entitled to a version of it.
 //
 // TWO axes, not one:
@@ -2775,15 +2802,39 @@ func (r *Room) viewerFor(playerID uuid.UUID, isMaster bool) domainservice.Viewer
 //
 // It reuses dispatchPerPlayer, which is the mechanism the fog of war already uses for exactly
 // this. Do not grow a second one.
-func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolution) {
+//
+// age é a idade do cálculo (stampResolutionLocked, na seção crítica que o produziu). O
+// resolution_updated é o retrato inteiro do turno, e retratos nascem em read pumps
+// diferentes — a abertura e as edições no do mestre, cada reação no de quem reagiu —, então
+// dois deles podiam chegar ao mestre invertidos: a abertura, ainda com a reação padrão
+// sentada, chegando depois da esquiva fechada que já a tinha substituído. A tela do mestre
+// ficava com o velho, e abrir aquela reação respondia "reaction not found". Por isso:
+//
+//   - um cálculo de turno aberto mais velho que o último entregue ao mestre é DESCARTADO —
+//     o mais novo já tem tudo o que ele tinha (é o retrato inteiro, não uma diferença);
+//   - o liquidado sai SEMPRE (é outra notícia — o fim do turno —, não um retrato a mais do
+//     turno aberto) e aposenta os cálculos abertos mais velhos que ele;
+//   - mesma idade não é mais velho: o fechamento e a abertura de um open_next_action saem
+//     do mesmo comando, com a mesma idade, e os dois vão.
+//
+// resolutionSendMu envolve a decisão E o envio, para que a ordem de entrega siga a ordem das
+// idades. Quem chama não segura mu (dispatchPerPlayer e sendToMaster exigem).
+func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolution, age uint64) {
 	if res == nil {
 		return
 	}
+	r.resolutionSendMu.Lock()
+	defer r.resolutionSendMu.Unlock()
 	if !res.IsSettled {
+		if age < r.sentResolutionAge {
+			return
+		}
+		r.sentResolutionAge = age
 		r.sendToMaster(NewServerMessage(
 			MsgTypeResolutionUpdate, newResolutionUpdatedPayload(turnID, res)))
 		return
 	}
+	r.sentResolutionAge = max(r.sentResolutionAge, age)
 
 	r.dispatchPerPlayer(func(playerID uuid.UUID, isMaster bool) *Message {
 		// The landing gate reads the board and the visibility cache, so the payload is built
