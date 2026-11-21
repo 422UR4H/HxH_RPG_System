@@ -243,24 +243,48 @@ func TestE2E_PullActionAnnouncesTheTurnItClosed(t *testing.T) {
 //
 // The order is the point, not a detail — a table that is told the next turn started before it
 // is told the last one ended has to reorder the two itself to draw a correct event list.
+//
+// A espera é pelo turn_opened do turno novo, não pelo turn_closed: o servidor manda os dois em
+// sequência, e o turn_opened é o último. Quem chama só esperou o turn_opened do MESTRE, e o
+// dispatchPerPlayer entrega um destinatário de cada vez — o do jogador pode ainda estar a
+// caminho. Esperando só o turn_closed, a foto podia sair entre os dois envios e acusar um
+// turn_opened que ainda não tinha chegado. Com o turn_opened na mão, um turn_closed ausente
+// é falha de verdade: ou ele não veio, ou veio depois — e as duas coisas o servidor promete
+// que não acontecem.
 func assertClosedBeforeOpened(t *testing.T, c *collector, closed, opened uuid.UUID, who string) {
 	t.Helper()
-	if !c.await(game.MsgTypeTurnClosed, 2*time.Second) {
-		t.Fatalf("%s was never told turn %s ended; it received: %v",
-			who, closed, messageTypes(c.snapshotMessages()))
+	var msgs []game.Message
+	openedAt := -1
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		msgs = c.snapshotMessages()
+		if openedAt = indexOfTurnMessage(t, msgs, game.MsgTypeTurnOpened, opened); openedAt >= 0 {
+			break
+		}
 	}
-	msgs := c.snapshotMessages()
+	if openedAt < 0 {
+		t.Fatalf("%s never saw turn %s open; it received: %v", who, opened, messageTypes(msgs))
+	}
 	closedAt := indexOfTurnMessage(t, msgs, game.MsgTypeTurnClosed, closed)
 	if closedAt < 0 {
+		if !hasMessage(msgs, game.MsgTypeTurnClosed) {
+			t.Fatalf("%s saw turn %s open without being told turn %s ended; it received: %v",
+				who, opened, closed, messageTypes(msgs))
+		}
 		t.Fatalf("%s got a turn_closed, but never for turn %s — the implicit close named "+
 			"the wrong turn", who, closed)
-	}
-	openedAt := indexOfTurnMessage(t, msgs, game.MsgTypeTurnOpened, opened)
-	if openedAt < 0 {
-		t.Fatalf("%s never saw turn %s open", who, opened)
 	}
 	if closedAt > openedAt {
 		t.Errorf("%s saw the next turn open (position %d) before the last one closed "+
 			"(position %d)", who, openedAt, closedAt)
 	}
+}
+
+// hasMessage reports whether any message of that type is in msgs.
+func hasMessage(msgs []game.Message, want game.MessageType) bool {
+	for _, m := range msgs {
+		if m.Type == want {
+			return true
+		}
+	}
+	return false
 }
