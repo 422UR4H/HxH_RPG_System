@@ -866,8 +866,13 @@ func (r *Room) KickPlayer(masterUUID uuid.UUID, playerUUID uuid.UUID) error {
 			Reason:   "kicked by master",
 		})
 
+		// A mensagem entra na fila ANTES do sinal de fechamento: a WritePump esvazia a fila e só
+		// então escreve o quadro de fechamento, então o expulso lê player_kicked. Fecha-se pelo
+		// done, nunca fechando send: outra goroutine pode ter pegado este cliente antes do delete
+		// acima e estar enviando agora — enviar num canal fechado entra em pânico e derruba o
+		// servidor do jogo com todas as mesas.
 		client.SendMessage(kickedMsg)
-		close(client.send)
+		client.Close()
 
 		data, _ := json.Marshal(kickedMsg)
 		r.mu.RLock()

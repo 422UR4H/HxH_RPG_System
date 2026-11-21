@@ -14,7 +14,7 @@ Hub (1)
 
 - **Hub** — gerencia salas em `map[uuid.UUID]*Room` protegido por `sync.RWMutex`. `GetOrCreateRoom` cria a sala (recebendo UCs de domínio) e inicia sua goroutine (`go room.Run()`). `Stop()` encerra todas as salas.
 - **Room** — event loop baseado em `select` com canais: `broadcast`, `register`, `unregister`, `stop`. Cada sala roda em sua própria goroutine. Possui UCs injetados (`IStartMatch`, `IKickPlayer`) para operações de domínio com persistência.
-- **Client** — encapsula `gorilla/websocket.Conn` com duas goroutines: `ReadPump` (lê mensagens do WS e delega a `room.handleClientMessage`) e `WritePump` (escreve do canal `send` e envia pings).
+- **Client** — encapsula `gorilla/websocket.Conn` com duas goroutines: `ReadPump` (lê mensagens do WS e delega a `room.handleClientMessage`) e `WritePump` (escreve do canal `send` e envia pings). **Ninguém fecha `send`:** encerrar uma conexão (desconexão, troca de conexão, expulsão, fim de partida) é `Close()`/`CloseWith()`, que fecham o `done`; a `WritePump` esvazia a fila e só então escreve o quadro de fechamento. Fechar `send` derrubaria o processo (`send on closed channel`) se outra goroutine estivesse enviando naquele instante.
 
 Constantes do Client:
 
