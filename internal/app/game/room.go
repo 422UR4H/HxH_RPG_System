@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"log"
 	"slices"
 	"sync"
@@ -40,29 +41,27 @@ const (
 )
 
 var (
-	ErrNotMaster      = errors.New("only the master can perform this action")
-	ErrAlreadyPlaying = errors.New("match already started")
-	ErrRoomClosed     = errors.New("room is closed")
+	ErrNotMaster      = errtext.Sentence("Só o mestre pode fazer isso.")
+	ErrAlreadyPlaying = errtext.Sentence("A partida já começou.")
+	ErrRoomClosed     = errtext.Sentence("Esta sala está fechada.")
 	// ErrMasterMovesByMasterAction and ErrPlayersMoveByAction are the two refusals a live
 	// session gives handlePieceMoved/handlePieceRemoved (spec §4.3, "Quem move o quê", B14):
 	// piece_moved/piece_removed are a LOBBY-ONLY pair of verbs. Once a match has a session,
 	// the master places/moves/removes pieces through enqueue_master_action's move/remove
 	// (Task 5), and a player only ever moves a piece by acting.
-	ErrMasterMovesByMasterAction = errors.New(
-		"during a match the master moves pieces with enqueue_master_action",
-	)
-	ErrPlayersMoveByAction = errors.New("players move by action")
+	ErrMasterMovesByMasterAction = errtext.Sentence("Durante a partida o mestre move as peças pela ação do mestre.")
+	ErrPlayersMoveByAction       = errtext.Sentence("Os jogadores movem pelas ações do personagem.")
 	// ErrPieceNotOwnedByPlayer is the lobby-phase refusal for a player's piece_moved: the
 	// piece has to already exist, and its CURRENT CharacterID has to belong to the sender
 	// (spec §4.3, "Quem move o quê" — "só peça existente de personagem dele"). It also covers
 	// the payload trying to relabel the piece under a different CharacterID: a player moves
 	// their own piece, they do not reassign whose piece it is.
-	ErrPieceNotOwnedByPlayer = errors.New("you can only move your own existing pieces")
+	ErrPieceNotOwnedByPlayer = errtext.Sentence("Você só pode mover as suas próprias peças.")
 	// ErrPlayersCannotRemovePieces is the lobby-phase refusal for a player's piece_removed:
 	// the spec's table gives removal to the master only, in the lobby ("lobby | jogador |
 	// piece_moved | ... não remove") — there is no ownership carve-out the way piece_moved has
 	// one, a player never removes any piece, theirs or not.
-	ErrPlayersCannotRemovePieces = errors.New("only the master can remove pieces")
+	ErrPlayersCannotRemovePieces = errtext.Sentence("Só o mestre pode tirar peças do mapa.")
 )
 
 type IStartMatch interface {
@@ -455,7 +454,7 @@ func (r *Room) Run() {
 			// of evicting the connection that replaced it (review focus 5).
 			if hadOld && old != client {
 				old.SendMessage(NewErrorMessage(
-					"connection_replaced", "this account connected again elsewhere",
+					"connection_replaced", "Sua conta entrou de novo em outro lugar.",
 				))
 				old.Close()
 			}
@@ -556,7 +555,7 @@ func (r *Room) Run() {
 			// The connection stays open; a later map_full_state replaces this state.
 			if boardUnavailable {
 				client.SendMessage(NewErrorMessage(
-					"board_unavailable", "the match board could not be loaded; reconnect to try again",
+					"board_unavailable", "Não foi possível carregar o mapa. Entre de novo na partida.",
 				))
 			}
 			// map_full_state above covers the board and nothing else. A client that connects
@@ -948,7 +947,7 @@ func (r *Room) CloseLobby(masterUUID uuid.UUID) error {
 func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	var incoming Message
 	if err := json.Unmarshal(rawMsg, &incoming); err != nil {
-		client.SendMessage(NewErrorMessage("invalid_message", "malformed JSON"))
+		client.SendMessage(NewErrorMessage("invalid_message", "Não entendi a mensagem. Recarregue a página."))
 		return
 	}
 	// Partida encerrada: o que ainda chegar pelas leituras abertas (o próximo quadro do próprio
@@ -961,23 +960,23 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	switch incoming.Type {
 	case MsgTypeStartMatch:
 		if err := r.StartMatch(client.userUUID); err != nil {
-			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
+			client.SendMessage(NewErrorMessage("forbidden", gameErrorText(err)))
 		}
 
 	case MsgTypeKickPlayer:
 		var kickPayload KickPlayerPayload
 		if err := json.Unmarshal(incoming.Payload, &kickPayload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid kick payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para expulsar o jogador."))
 			return
 		}
 		if err := r.KickPlayer(client.userUUID, kickPayload.PlayerUUID); err != nil {
-			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
+			client.SendMessage(NewErrorMessage("forbidden", gameErrorText(err)))
 		}
 
 	case MsgTypeChat:
 		var chatPayload ChatPayload
 		if err := json.Unmarshal(incoming.Payload, &chatPayload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid chat payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para enviar a mensagem."))
 			return
 		}
 		outMsg := NewClientMessage(MsgTypeChatMessage, client.userUUID, chatPayload)
@@ -1006,7 +1005,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Unlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 
@@ -1069,7 +1068,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			if result != nil && result.ClosedTurn != nil {
 				r.announceClockLimit(session)
 			}
-			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+			client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 			return
 		}
 
@@ -1128,7 +1127,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload ChangeRoundModePayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_round_mode payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para trocar o regime do round."))
 			return
 		}
 		// Write lock across Execute — the regime decides how every later selection is scored.
@@ -1158,11 +1157,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Unlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		if err != nil {
-			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+			client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 			return
 		}
 		// Recorded before the table is told, so the history never lags what the table saw.
@@ -1188,7 +1187,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload PullActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid pull_action payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para antecipar a ação."))
 			return
 		}
 		// Write lock across Execute — same reason as open_next_action.
@@ -1204,7 +1203,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Unlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 
@@ -1262,7 +1261,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			if result != nil && result.ClosedTurn != nil {
 				r.announceClockLimit(session)
 			}
-			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+			client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 			return
 		}
 
@@ -1280,25 +1279,25 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	case MsgTypeEnqueueAction:
 		var payload ActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido da ação."))
 			return
 		}
 		// The two travel together or not at all. reactToId says "this is a reaction"; the kind
 		// says what it costs. One without the other is a client that is going to be surprised.
 		if (payload.ReactToID != uuid.Nil) != (payload.ReactionKind != "") {
 			client.SendMessage(NewErrorMessage("invalid_action",
-				"a reaction needs both reactToId and reactionKind; an action needs neither"))
+				"Uma reação precisa da ação a que responde e do tipo; uma ação não leva nenhum dos dois."))
 			return
 		}
 		if payload.ActorID == uuid.Nil {
-			client.SendMessage(NewErrorMessage("invalid_action", "actorId is required: the acting character's sheet UUID"))
+			client.SendMessage(NewErrorMessage("invalid_action", "Escolha o personagem que age."))
 			return
 		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		// TODO: consider collapsing enqueue_action and attach_reaction into a single message type
@@ -1308,7 +1307,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		a, err := buildAction(payload.ActorID, payload)
 		if err != nil {
-			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			client.SendMessage(NewErrorMessage("invalid_action", gameErrorText(err)))
 			return
 		}
 		// A character's hand on a wall: only the kinds a character declares (lock, unlock and
@@ -1316,7 +1315,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// under the lock, after the move.
 		if a.Interact != nil && !a.Interact.Kind.IsCharacterInteract() {
 			client.SendMessage(NewErrorMessage("invalid_action",
-				fmt.Sprintf("interact kind %q is not a character action", a.Interact.Kind)))
+				"Esse tipo de interação não é uma ação de personagem."))
 			return
 		}
 		// Write lock across the board checks AND Execute: enqueueing pushes onto the priority
@@ -1363,7 +1362,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	case MsgTypeCancelAction:
 		var payload CancelActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil || payload.ActionID == uuid.Nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid cancel_action payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para cancelar a ação."))
 			return
 		}
 		// Write lock across Execute: cancelling takes the action out of the same queue
@@ -1386,11 +1385,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Unlock()
 		if session == nil || r.deps.CancelActionUC == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			client.SendMessage(NewErrorMessage("game_error", gameErrorText(err)))
 			return
 		}
 		// No turn open: written now, before the news goes out.
@@ -1407,29 +1406,29 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	case MsgTypeAttachReaction:
 		var payload ActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid action payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido da ação."))
 			return
 		}
 		if payload.ReactToID == uuid.Nil {
-			client.SendMessage(NewErrorMessage("invalid_action", "reaction requires react_to_id"))
+			client.SendMessage(NewErrorMessage("invalid_action", "Uma reação precisa da ação a que responde."))
 			return
 		}
 		// The two travel together or not at all. reactToId says "this is a reaction"; the kind
 		// says what it costs. One without the other is a client that is going to be surprised.
 		if (payload.ReactToID != uuid.Nil) != (payload.ReactionKind != "") {
 			client.SendMessage(NewErrorMessage("invalid_action",
-				"a reaction needs both reactToId and reactionKind; an action needs neither"))
+				"Uma reação precisa da ação a que responde e do tipo; uma ação não leva nenhum dos dois."))
 			return
 		}
 		if payload.ActorID == uuid.Nil {
-			client.SendMessage(NewErrorMessage("invalid_action", "actorId is required: the acting character's sheet UUID"))
+			client.SendMessage(NewErrorMessage("invalid_action", "Escolha o personagem que age."))
 			return
 		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		r.handleReaction(client, session, payload)
@@ -1441,14 +1440,14 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload OpenReactionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid open_reaction payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para abrir a reação."))
 			return
 		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		r.mu.Lock()
@@ -1462,7 +1461,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Unlock()
 		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			client.SendMessage(NewErrorMessage("game_error", gameErrorText(err)))
 			return
 		}
 		// No escape displaces here, not even the Shift one that rolls nothing: every escape can
@@ -1510,19 +1509,19 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload EditActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid edit_action payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para editar a ação."))
 			return
 		}
 		ma, err := buildEditAction(payload)
 		if err != nil {
-			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			client.SendMessage(NewErrorMessage("invalid_action", gameErrorText(err)))
 			return
 		}
 		r.mu.RLock()
 		session := r.session
 		r.mu.RUnlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		// Write lock across Execute: the edit mutates the action itself and re-derives the
@@ -1550,7 +1549,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Unlock()
 		r.syncStatusViews(followed)
 		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			client.SendMessage(NewErrorMessage("game_error", gameErrorText(err)))
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEdited, ActionEditedPayload{
@@ -1573,7 +1572,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload CloseTurnPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid close_turn payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para fechar o turno."))
 			return
 		}
 		// Write lock across Execute — closing resolves the turn, applies damage to the target
@@ -1593,11 +1592,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		r.mu.Unlock()
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		if err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			client.SendMessage(NewErrorMessage("game_error", gameErrorText(err)))
 			return
 		}
 		if len(result.Refused) > 0 {
@@ -1649,7 +1648,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload ChangeScenePayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid change_scene payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para trocar de cena."))
 			return
 		}
 		// Validated against the enum's exact values (same pattern as skill/weapon names),
@@ -1661,7 +1660,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// the write lock would hold the whole room for a pure string check.
 		category, err := enum.SceneCategoryFrom(payload.Category)
 		if err != nil {
-			client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+			client.SendMessage(NewErrorMessage("invalid_action", gameErrorText(err)))
 			return
 		}
 		sceneClose := matchsession.SceneClose{
@@ -1671,7 +1670,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if payload.StoryAt != nil {
 			at, perr := clock.ParseStory(*payload.StoryAt)
 			if perr != nil {
-				client.SendMessage(NewErrorMessage("invalid_payload", "storyAt must be 2006-01-02T15:04:05"))
+				client.SendMessage(NewErrorMessage("invalid_payload", "Hora da história inválida. Use o formato AAAA-MM-DDTHH:MM:SS."))
 				return
 			}
 			sceneClose.StoryAt = &at
@@ -1737,15 +1736,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Unlock()
 
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		if errors.Is(err, matchsession.ErrBriefFinalTooLong) {
-			client.SendMessage(NewErrorMessage("invalid_payload", "briefFinalDescription is too long"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "O resumo final deve ter no máximo 255 caracteres."))
 			return
 		}
 		if err != nil {
-			client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+			client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 			return
 		}
 
@@ -1813,7 +1812,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 
 	case MsgTypeCancelLobby:
 		if err := r.CloseLobby(client.userUUID); err != nil {
-			client.SendMessage(NewErrorMessage("forbidden", err.Error()))
+			client.SendMessage(NewErrorMessage("forbidden", gameErrorText(err)))
 		}
 
 	case MsgTypePieceMoved:
@@ -1823,7 +1822,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// player who does not own the piece's current CharacterID. See its own comment.
 		var payload PieceMovedPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_moved payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para mover a peça."))
 			return
 		}
 		r.handlePieceMoved(client, payload)
@@ -1831,7 +1830,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 	case MsgTypePieceRemoved:
 		var payload PieceRemovedPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid lobby_piece_removed payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para tirar a peça."))
 			return
 		}
 		r.handlePieceRemoved(client, payload)
@@ -1848,7 +1847,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload MapStateSyncPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid map_state_sync payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para sincronizar o mapa."))
 			return
 		}
 		client.SendMessage(*r.buildMapFullState(client.userUUID, true))
@@ -1863,7 +1862,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload WatchPieceViewPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid watch_piece_view payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para ver pela peça."))
 			return
 		}
 		r.mu.Lock()
@@ -1895,7 +1894,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload MasterActionPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid enqueue_master_action payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para executar a ação do mestre."))
 			return
 		}
 		// MasterActionPayload carries no Attack field (B9, spec §2): a plain Unmarshal above
@@ -1910,7 +1909,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		_ = json.Unmarshal(incoming.Payload, &attackProbe)
 		if attackProbe.Attack != nil {
 			client.SendMessage(NewErrorMessage("invalid_action",
-				"the master attacks through an NPC with enqueue_action"))
+				"O mestre ataca por meio de um NPC."))
 			return
 		}
 		r.mu.RLock()
@@ -1960,7 +1959,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 					// Last defense (spec §4.3): a wall the server does not know about answers
 					// unknown_wall to the master instead of the silent skip this used to be.
 					client.SendMessage(NewErrorMessage("unknown_wall",
-						fmt.Sprintf("wall %s is not on this match's board", wallID)))
+						"Essa parede não está no mapa da partida."))
 					continue
 				}
 				updated, ok := r.applyWallInteract(wallID, ma.Interact)
@@ -1991,11 +1990,11 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		if session == nil {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		if err := r.deps.EnqueueMasterActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, ma); err != nil {
-			client.SendMessage(NewErrorMessage("game_error", err.Error()))
+			client.SendMessage(NewErrorMessage("game_error", gameErrorText(err)))
 			return
 		}
 		// A turn note: it hangs on the open turn and emits nothing to the table as an action, so
@@ -2028,13 +2027,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		}
 		var payload AddNPCPayload
 		if err := json.Unmarshal(incoming.Payload, &payload); err != nil || payload.CharacterSheetUUID == uuid.Nil {
-			client.SendMessage(NewErrorMessage("invalid_payload", "invalid add_npc payload"))
+			client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para pôr o NPC na partida."))
 			return
 		}
 		r.enrollLiveNPC(client, payload.CharacterSheetUUID)
 
 	default:
-		client.SendMessage(NewErrorMessage("unknown_type", "unrecognized message type"))
+		client.SendMessage(NewErrorMessage("unknown_type", "Não reconheço essa operação."))
 	}
 }
 
@@ -2719,7 +2718,7 @@ func (r *Room) closedReactionsHiddenFromLocked(
 func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession, payload ActionPayload) {
 	reaction, err := buildAction(payload.ActorID, payload)
 	if err != nil {
-		client.SendMessage(NewErrorMessage("invalid_action", err.Error()))
+		client.SendMessage(NewErrorMessage("invalid_action", gameErrorText(err)))
 		return
 	}
 	// Write lock across Execute: attaching a reaction rolls its dice and re-resolves the
@@ -3183,7 +3182,7 @@ func (r *Room) revealSecretDoors(client *Client, targetIDs []uuid.UUID) ([]strin
 		r.mu.RUnlock()
 		if !ok {
 			client.SendMessage(NewErrorMessage("unknown_wall",
-				fmt.Sprintf("wall %s is not on this match's board", wallID)))
+				"Essa parede não está no mapa da partida."))
 			continue
 		}
 		msg := NewServerMessage(MsgTypeWallRevealed, WallRevealedPayload{Wall: toWallSegmentPayload(w)})

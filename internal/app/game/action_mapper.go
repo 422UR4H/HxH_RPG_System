@@ -1,7 +1,7 @@
 package game
 
 import (
-	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -158,21 +158,20 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 			switch c {
 			case action.ComponentDodge:
 				if dodge == nil {
-					return nil, fmt.Errorf("reaction %q must carry a dodge", p.ReactionKind)
+					return nil, errtext.Sentence("Essa reação precisa de uma esquiva.")
 				}
 			case action.ComponentMove:
 				if p.Move == nil {
-					return nil, fmt.Errorf("reaction %q must carry a move", p.ReactionKind)
+					return nil, errtext.Sentence("Essa reação precisa de um movimento.")
 				}
 				// Displaces() says THAT it moves; RequiredMoveCategory says WITH WHAT. Both
 				// live on the kind — this is enforcement, not a second copy of the rule.
 				if want, required := kind.RequiredMoveCategory(); required && p.Move.Category != string(want) {
-					return nil, fmt.Errorf(
-						"reaction %q must move with %s, not %s", p.ReactionKind, want, p.Move.Category)
+					return nil, errtext.Sentence("Essa reação precisa de outro tipo de movimento.")
 				}
 			case action.ComponentRepel:
 				if repel == nil {
-					return nil, fmt.Errorf("reaction %q must carry a repel", p.ReactionKind)
+					return nil, errtext.Sentence("Essa reação precisa de um aparo.")
 				}
 			}
 		}
@@ -187,7 +186,7 @@ func buildAction(actorCharID uuid.UUID, p ActionPayload) (*action.Action, error)
 		// use") — a displacing kind with the wrong category is refused by that one; a
 		// non-displacing kind with ANY Move, right category or not, is refused by this one.
 		if !kind.Displaces() && p.Move != nil {
-			return nil, fmt.Errorf("reaction %q must not carry a move", p.ReactionKind)
+			return nil, errtext.Sentence("Essa reação não leva movimento.")
 		}
 		// Evasion is not a ReactionComponent — it names an entry inside Skills — so the loop
 		// above does not cover it. The closed variants need it: without it they derive against
@@ -290,7 +289,7 @@ func moveSpeedSkill(raw string) (enum.MoveCategory, enum.SkillName, error) {
 	case enum.Shift:
 		return enum.Shift, enum.Brake, nil
 	default:
-		return "", "", fmt.Errorf("move category %q is not supported yet", raw)
+		return "", "", errtext.Sentence("Esse tipo de movimento ainda não existe.")
 	}
 }
 
@@ -400,6 +399,6 @@ func conditionFieldFrom(s string) (action.ConditionField, error) {
 		action.FieldDefense, action.FieldRepel, action.FieldFeint, action.FieldMoveSpeed:
 		return action.ConditionField(s), nil
 	default:
-		return "", fmt.Errorf("condition field %q is not recognized", s)
+		return "", errtext.Sentence("Essa condição não existe.")
 	}
 }

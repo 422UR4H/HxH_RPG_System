@@ -247,8 +247,8 @@ func TestLobbyPieceRemoved_OnlyTheMasterMayRemove(t *testing.T) {
 // enqueue_master_action é o mesmo mecanismo citado para os dois verbos.
 func TestPieceMovedAndRemoved_ForbiddenDuringAMatch(t *testing.T) {
 	const (
-		masterMustUseMasterAction = "during a match the master moves pieces with enqueue_master_action"
-		playersMoveByAction       = "players move by action"
+		masterMustUseMasterAction = "Durante a partida o mestre move as peças pela ação do mestre."
+		playersMoveByAction       = "Os jogadores movem pelas ações do personagem."
 	)
 	cases := []struct {
 		name     string

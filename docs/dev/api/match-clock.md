@@ -103,8 +103,8 @@ limite = esse instante e `limitReason: "start"`.
 **Dispara:** [`clock_changed`](#clock_changed) `kind: "start"` (`to` = o instante). Grava o evento
 `clockStarted`.
 
-**Erros:** `forbidden` · `match_not_started` · `invalid_payload` (`"invalid set_clock_start payload"`
-ou `time must be "HH:MM" or "HH:MM:SS"`) · `clock_already_set` (a hora já existe — **não é
+**Erros:** `forbidden` · `match_not_started` · `invalid_payload` (`"Não entendi o pedido para definir a hora da partida."`
+ou `Hora inválida. Use HH:MM ou HH:MM:SS.`) · `clock_already_set` (a hora já existe — **não é
 idempotente**: a segunda chamada é recusada) · `game_error`
 (`"could not read the match start date"`, `"story clock unavailable"`).
 
@@ -123,14 +123,14 @@ valor de agora; ele continua rodando).
 
 | Campo | Regra |
 |---|---|
-| `deltaSeconds` | inteiro, positivo ou negativo, **≠ 0**, no máximo **±3 155 760 000** (100 anos); fora disso `invalid_payload` `"deltaSeconds out of range"` |
+| `deltaSeconds` | inteiro, positivo ou negativo, **≠ 0**, no máximo **±3 155 760 000** (100 anos); fora disso `invalid_payload` `"O ajuste do relógio está fora do limite."` |
 | `confirmLongSkip` | opcional (`false` por padrão). Avanço **maior que 172 800 s (2 dias)** a partir do relógio corrente exige `true`. Estritamente maior: exatamente 172 800 passa sem confirmar. Recuos nunca pedem. |
 
 **Dispara:** `clock_changed` `kind: "adjust"` (`from`, `to`, `deltaSeconds` = `to − from`).
 Grava `clockAdjusted` (com fusão — [§5](#fusão-de-ajustes-seguidos-no-histórico)).
 
 **Erros:** `forbidden` · `invalid_payload` (inclui `deltaSeconds: 0`:
-`"story time adjustment has no effect"`) · `match_not_started` · `clock_not_set` ·
+`"Esse ajuste não muda a hora."`) · `match_not_started` · `clock_not_set` ·
 `clock_below_limit` (o resultado ficaria abaixo de `limitAt`) · `clock_long_skip_unconfirmed`.
 
 ### `set_clock`
@@ -147,7 +147,7 @@ Mesmos limite e confirmação do `adjust_clock` (o salto é medido de `to` contr
 **Dispara:** `clock_changed` `kind: "set"`. Grava `clockAdjusted` (mesma fusão).
 
 **Erros:** os do `adjust_clock`; `invalid_payload` também para `storyAt` fora do formato naïve
-ou fora dos anos 1..9999 (`"storyAt must be 2006-01-02T15:04:05"`) e para `storyAt` **igual** ao relógio corrente
+ou fora dos anos 1..9999 (`"Hora da história inválida. Use o formato AAAA-MM-DDTHH:MM:SS."`) e para `storyAt` **igual** ao relógio corrente
 (sem efeito).
 
 ### `play_clock`
@@ -228,7 +228,7 @@ Em seguida `bars_updated`, como antes.
 
 **Erros novos:** `clock_not_set` · `clock_below_limit` · `clock_long_skip_unconfirmed` ·
 `invalid_payload` (`briefFinalDescription` longo; `storyAt` malformado). Os antigos continuam
-(`invalid_action`, `game_error` `cannot close round: current turn is still open`, …).
+(`invalid_action`, `game_error` `Feche o turno aberto antes de encerrar o round.`, …).
 
 ### `end_match`
 
@@ -253,7 +253,7 @@ Em seguida `bars_updated`, como antes.
 
 **Recusas** (nesta ordem de checagem do servidor): `match_already_ended` · `clock_not_set` ·
 `match_in_battle` (cena ativa é `battle` — é preciso trocar de cena antes) · `game_error`
-`cannot close round: current turn is still open` · `clock_below_limit` ·
+`Feche o turno aberto antes de encerrar o round.` · `clock_below_limit` ·
 `clock_long_skip_unconfirmed`.
 
 **Sucesso:** o servidor grava tudo numa transação ([§6](#6-o-que-persiste-e-em-qual-transação)),
@@ -264,8 +264,8 @@ de novo. Fila e reações em memória são descartadas. **Não** há `clock_chan
 `match_ended` carrega o instante final. O tempo real, se ligado, é pausado (motivo `end`) e
 registrado no histórico como `clockRealTime`.
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid end_match payload"`, `storyAt must be
-2006-01-02T15:04:05`, `briefFinalDescription is too long`) · `match_not_started` · os da lista de
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para encerrar a partida."`, `storyAt must be
+2006-01-02T15:04:05`, `O resumo final deve ter no máximo 255 caracteres.`) · `match_not_started` · os da lista de
 recusas · `game_error` (`"match end unavailable"`, `"could not end the match"`).
 
 ## 5. Servidor → cliente
@@ -458,7 +458,7 @@ Formato `error` de `match-combat-ws.md` §5. Vão **só** a quem enviou. Código
 Reaproveitados: `forbidden` (não é o mestre) · `invalid_payload` (JSON inválido; `deltaSeconds` 0 ou
 `set_clock` para o instante corrente; `storyAt`/`time` fora do formato; `briefFinalDescription` > 255)
 · `match_not_started` · `game_error` (domínio: turno aberto
-`cannot close round: current turn is still open`; falhas de leitura/gravação). Os erros de relógio
+`Feche o turno aberto antes de encerrar o round.`; falhas de leitura/gravação). Os erros de relógio
 chegam também em `open_next_action`, `pull_action`, `change_round_mode` e `change_scene` com o
 `code` acima (antes eram todos `game_error`), e **nada muda** na sessão nessas recusas.
 

@@ -1,7 +1,7 @@
 package action
 
 import (
-	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
@@ -195,7 +195,7 @@ func (k ReactionKind) String() string { return string(k) }
 func ReactionKindFrom(s string) (ReactionKind, error) {
 	k := ReactionKind(s)
 	if !k.IsValid() {
-		return "", fmt.Errorf("reaction kind %q is not in the catalogue", s)
+		return "", errtext.Sentence("Esse tipo de reação não existe.")
 	}
 	return k, nil
 }

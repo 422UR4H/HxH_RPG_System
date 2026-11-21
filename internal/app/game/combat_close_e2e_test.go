@@ -235,7 +235,7 @@ func TestChangeSceneBelowMinimumRefused(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(msgs) != 2 || msgs[1] != "briefFinalDescription is too long" {
+	if len(msgs) != 2 || msgs[1] != "O resumo final deve ter no máximo 255 caracteres." {
 		t.Fatalf("invalid_payload errors = %q, want the bad storyAt and the too-long final description", msgs)
 	}
 

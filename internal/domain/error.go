@@ -1,15 +1,16 @@
 package domain
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
+	"errors"
 )
 
-// As categorias abaixo só classificam o erro (errors.Is); o texto que chega à tela é o da frase
-// do erro de dentro, sem prefixo técnico.
+// As categorias abaixo só classificam o erro (errors.Is); nunca são lidas na tela: o texto que
+// chega lá é o da frase do erro de dentro, sem prefixo técnico. Por isso ficam em inglês e fora
+// do errtext (errtext.Of não as toma por frase).
 var (
-	ErrValidation = errtext.Sentence("Os dados enviados não estão certos.")
-	ErrDomain     = errtext.Sentence("Isso não é permitido pelas regras.")
-	ErrDB         = errtext.Sentence("Não foi possível acessar os dados agora.")
+	ErrValidation = errors.New("validation error")
+	ErrDomain     = errors.New("domain base error")
+	ErrDB         = errors.New("database error")
 )
 
 // categorized lê como o erro de dentro e continua sendo da categoria (e do erro de dentro) para errors.Is.
@@ -19,7 +20,7 @@ type categorized struct {
 }
 
 func (e *categorized) Error() string   { return e.inner.Error() }
-func (e *categorized) Unwrap() []error { return []error{e.kind, e.inner} }
+func (e *categorized) Unwrap() []error { return []error{e.inner, e.kind} }
 
 func NewValidationError(err error) error { return &categorized{kind: ErrValidation, inner: err} }
 

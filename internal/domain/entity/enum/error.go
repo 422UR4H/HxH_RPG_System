@@ -10,6 +10,6 @@ var (
 	ErrInvalidNameOf = domain.NewValidationError(errtext.Sentence("Valor inválido."))
 )
 
-func newInvalidNameOfError(kind, value string) error {
-	return errtext.Wrap(ErrInvalidNameOf, "Valor inválido para "+kind+": "+value+".")
+func newInvalidNameOfError(kind, _ string) error {
+	return errtext.Wrap(ErrInvalidNameOf, "Valor inválido para "+kind+".")
 }

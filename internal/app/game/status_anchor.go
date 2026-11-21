@@ -446,7 +446,7 @@ func (r *Room) handleRelinkStatusEffect(client *Client, raw json.RawMessage) {
 	r.syncStatusViews([]uuid.UUID{charID})
 }
 
-var errMatchNotStarted = errors.New("match session not initialized")
+var errMatchNotStarted = errtext.Sentence("A partida ainda não começou.")
 
 // relinkStatusEffect troca a âncora de toda mudança pendente de effectID no turno aberto
 // (nil = do turno). Esquece o que o mestre recebeu do personagem, para que o

@@ -2,6 +2,7 @@ package errtext_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
@@ -24,5 +25,17 @@ func TestSentence_IsItsOwnSentinel(t *testing.T) {
 	b := errtext.Sentence("Mesma frase.")
 	if errors.Is(a, b) {
 		t.Error("two sentinels with the same text must stay distinct")
+	}
+}
+
+func TestOf_FindsTheSentenceThroughWrappers(t *testing.T) {
+	sentence := errtext.Sentence("Partida não encontrada.")
+	wrapped := fmt.Errorf("load: %w", sentence)
+
+	if got, ok := errtext.Of(wrapped); !ok || got != "Partida não encontrada." {
+		t.Errorf("Of(wrapped) = %q, %v", got, ok)
+	}
+	if _, ok := errtext.Of(errors.New("pq: boom")); ok {
+		t.Error("an English infrastructure error is not a sentence")
 	}
 }

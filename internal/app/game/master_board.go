@@ -44,16 +44,16 @@ func (r *Room) applyMasterPieceAction(client *Client, ma *action.MasterAction, r
 	session := r.session
 	r.mu.RUnlock()
 	if session == nil {
-		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 		return
 	}
 	if len(ma.TargetID) != 1 {
 		client.SendMessage(NewErrorMessage("invalid_action",
-			"a piece master action names exactly one character in targetIds"))
+			"Escolha exatamente um personagem para a ação de peça."))
 		return
 	}
 	if remove && ma.Move != nil {
-		client.SendMessage(NewErrorMessage("invalid_action", "move and remove are exclusive"))
+		client.SendMessage(NewErrorMessage("invalid_action", "Mover e tirar a peça não podem ir juntos."))
 		return
 	}
 	charID := ma.TargetID[0]
@@ -105,7 +105,7 @@ func (r *Room) masterRemovePiece(
 	pieceID := r.pieceOfLocked(charID.String())
 	if pieceID == "" {
 		r.mu.Unlock()
-		client.SendMessage(NewErrorMessage("invalid_action", "character has no piece"))
+		client.SendMessage(NewErrorMessage("invalid_action", "Esse personagem não tem peça no mapa."))
 		return "", masteraction.PieceContent{}, nil, false
 	}
 	old := r.pieces[pieceID]
@@ -153,7 +153,7 @@ func (r *Room) masterMoveOrPlacePiece(
 			rel, err := r.deps.SheetOwnership.GetCharacterSheetRelationshipUUIDs(context.Background(), charID)
 			if err == nil && rel.PlayerUUID != nil {
 				client.SendMessage(NewErrorMessage("not_participant",
-					"a player's character that is not in the match cannot be put on the board"))
+					"Um personagem de jogador que não está na partida não pode ir para o mapa."))
 				return "", masteraction.PieceContent{}, nil, false
 			}
 			// A read error falls through on purpose: enrollLiveNPC reads the sheet again through
@@ -178,7 +178,7 @@ func (r *Room) masterMoveOrPlacePiece(
 	// applyMove's TODO describes — never created here.
 	if r.pieceOfLocked(charID.String()) != "" {
 		r.mu.Unlock()
-		client.SendMessage(NewErrorMessage("invalid_action", "character already has a piece"))
+		client.SendMessage(NewErrorMessage("invalid_action", "Esse personagem já tem peça no mapa."))
 		return "", masteraction.PieceContent{}, nil, false
 	}
 	r.pieces[placed.PieceID] = placed
@@ -236,7 +236,7 @@ func slotPosition(s SlotPayload) [3]int {
 // The caller must NOT hold r.mu.
 func (r *Room) enrollLiveNPC(client *Client, sheetUUID uuid.UUID) bool {
 	if r.deps.AddLiveNPCUC == nil {
-		client.SendMessage(NewErrorMessage("game_error", "this room cannot enroll NPCs"))
+		client.SendMessage(NewErrorMessage("game_error", "Esta partida não aceita NPCs agora."))
 		return false
 	}
 	// DB I/O, so no r.mu here. The use case already swallows ErrNPCAlreadyInMatch: every
@@ -262,7 +262,7 @@ func (r *Room) enrollLiveNPC(client *Client, sheetUUID uuid.UUID) bool {
 			errors.Is(err, appmatch.ErrMatchAlreadyFinished):
 			code = "invalid_npc"
 		}
-		client.SendMessage(NewErrorMessage(code, err.Error()))
+		client.SendMessage(NewErrorMessage(code, gameErrorText(err)))
 		return false
 	}
 	// Write lock: AddNPC writes the session's sheets, statuses and charToPlayer. With no
@@ -276,11 +276,11 @@ func (r *Room) enrollLiveNPC(client *Client, sheetUUID uuid.UUID) bool {
 	}
 	r.mu.Unlock()
 	if errors.Is(addErr, matchsession.ErrCharacterAlreadyInSession) {
-		client.SendMessage(NewErrorMessage("npc_already_in_match", addErr.Error()))
+		client.SendMessage(NewErrorMessage("npc_already_in_match", gameErrorText(addErr)))
 		return false
 	}
 	if addErr != nil {
-		client.SendMessage(NewErrorMessage("game_error", addErr.Error()))
+		client.SendMessage(NewErrorMessage("game_error", gameErrorText(addErr)))
 		return false
 	}
 	// npc_added é o ack do mestre, e só dele (decisão do dono 3): o NPC chega aos jogadores

@@ -50,7 +50,7 @@ whose old tab did not close in time — makes the **last** connection win (B4, s
 OLD connection gets:
 
 ```json
-{ "type": "error", "payload": { "code": "connection_replaced", "message": "this account connected again elsewhere" } }
+{ "type": "error", "payload": { "code": "connection_replaced", "message": "Sua conta entrou de novo em outro lugar." } }
 ```
 
 and the server closes it right after. The lobby itself is untouched — the new connection

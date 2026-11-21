@@ -635,7 +635,7 @@ func TestClockCommandsRejectOutOfRange(t *testing.T) {
 	cf := newClockFixture(t, false, 0)
 	mc, pc := cf.connectCollectors(t)
 	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": int64(3_155_760_001), "confirmLongSkip": true})
-	awaitClockErrorMessage(t, mc, "invalid_payload", "deltaSeconds out of range")
+	awaitClockErrorMessage(t, mc, "invalid_payload", "O ajuste do relógio está fora do limite.")
 	sendWS(t, cf.masterConn, "adjust_clock", map[string]any{"deltaSeconds": int64(-9_223_372_036), "confirmLongSkip": true})
 	if !awaitCount(mc, game.MsgTypeError, 2, 2*time.Second) {
 		t.Fatal("a huge negative delta was not refused")

@@ -281,7 +281,7 @@ table, which is shared with the combat engine's own server-authored moves):
   elevation preserved.
 - Refused with `error` `forbidden`. During a match, the message is one of
   `"during a match the master moves pieces with enqueue_master_action"` (master) or
-  `"players move by action"` (player) — see the catalogue in
+  `"Os jogadores movem pelas ações do personagem."` (player) — see the catalogue in
   [`match-combat-ws.md`](match-combat-ws.md#7-catálogo-de-erros). In the lobby, a player's
   disallowed move/removal is also `forbidden`, with a message describing the specific reason
   (piece not owned, piece does not exist yet, or trying to remove at all).
