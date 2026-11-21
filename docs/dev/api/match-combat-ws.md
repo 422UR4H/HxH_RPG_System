@@ -118,7 +118,8 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 
 | Mensagem | Destino |
 |---|---|
-| [`action_enqueued`](#action_enqueued) | só quem enviou; também o dono da ação que o desfazer de um status devolveu |
+| [`action_enqueued`](#action_enqueued) | só quem enviou |
+| [`action_restored`](match-status-effects.md#action_restored) | o mestre + o dono da ação que o desfazer de um status devolveu à fila (`{ actionId, action, beforeActionId? }`, cada um no seu corte) |
 | [`action_queued`](#action_queued) | **só o mestre** (com `statusNotes`) |
 | [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu**; também o dono da ação que um status derrubou |
 | [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo; o jogador, só os personagens que é dono ou enxerga, e só o que o mestre já abriu |
@@ -1196,11 +1197,9 @@ não aprende é uma operação que ele não consegue invocar.
 Continua sem dizer nada sobre o **conteúdo** da ação (arma, alvo, perícia) e continua sem
 ser notícia para a mesa — isso é `action_queued`, master-only, logo abaixo.
 
-**Disparado por:** `enqueue_action` aceito. Também, **sem pedido do cliente**, ao dono de uma
-ação que voltou à fila porque o mestre desfez no turno o status que a cancelou
-(`remove_status_effect` com `restoreCancelledActions`, ver
-[`match-status-effects.md`](match-status-effects.md#remove_status_effect)): o mesmo `actionId` de
-antes; o cliente a põe de volta em `ownQueue`.
+**Disparado por:** `enqueue_action` aceito — e só por ele: é casado pela ordem dos envios do
+cliente. Uma ação que volta à fila pelo desfazer de um status chega em
+[`action_restored`](match-status-effects.md#action_restored), nunca aqui.
 
 ### `action_queued`
 

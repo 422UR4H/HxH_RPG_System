@@ -49,8 +49,11 @@ const (
 	MsgTypeActionEnqueued   MessageType = "action_enqueued"
 	MsgTypeActionQueued     MessageType = "action_queued"
 	MsgTypeActionCancelled  MessageType = "action_cancelled"
-	MsgTypeBarsUpdated      MessageType = "bars_updated"
-	MsgTypeReactionOpened   MessageType = "reaction_opened"
+	// action_restored: uma ação que um status tirou da fila voltou a ela porque o mestre desfez
+	// esse status no turno aberto (D3) — ao mestre e ao dono, cada um com o seu corte.
+	MsgTypeActionRestored MessageType = "action_restored"
+	MsgTypeBarsUpdated    MessageType = "bars_updated"
+	MsgTypeReactionOpened MessageType = "reaction_opened"
 	// reaction_attached answers attach_reaction: to whoever reacted, and to the master — the
 	// one message that names the queued actions a charged reaction consumed (Phase 7, item 3).
 	MsgTypeReactionAttached MessageType = "reaction_attached"
@@ -260,6 +263,18 @@ type ActionCancelledPayload struct {
 // client cannot learn is an operation a client cannot invoke.
 type ActionEnqueuedPayload struct {
 	ActionID uuid.UUID `json:"actionId"`
+}
+
+// ActionRestoredPayload é o action_restored: a ação que voltou à fila, com o mesmo actionId de
+// antes, como o destinatário pode vê-la — o mestre em actionwire.Full, o dono no corte do
+// ownQueue (actionwire.Declaration). Não é ack de nada (o action_enqueued é casado pela ordem
+// dos envios do cliente, por isso não é usado aqui). BeforeActionID é a ação, entre as que o
+// destinatário conhece na fila (o mestre: todas; o dono: as dele), diante da qual ela voltou —
+// o lugar dela, que desempata a fila; ausente = ela é a última.
+type ActionRestoredPayload struct {
+	ActionID       uuid.UUID         `json:"actionId"`
+	Action         actionwire.Action `json:"action"`
+	BeforeActionID *uuid.UUID        `json:"beforeActionId,omitempty"`
 }
 
 // ActionQueuedPayload tells the MASTER that something landed in the queue, and names it.

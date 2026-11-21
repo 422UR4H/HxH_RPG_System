@@ -727,17 +727,17 @@ func (r *Room) dropRefusedByStatusLocked(
 	turnID := r.openTurnIDLocked()
 	for _, charID := range chars {
 		turnTouched = turnTouched || session.HasReactionOnOpenTurn(charID)
-		removed := session.DropRefusedByStatus(charID)
-		if len(removed) == 0 {
+		drops := session.DropRefusedByStatus(charID)
+		if len(drops) == 0 {
 			continue
 		}
 		if turnID != uuid.Nil {
 			w := r.turnWritesLocked(turnID)
 			for _, effectID := range changed[charID] {
-				w.noteStatusCancel(effectID, charID, removed)
+				w.noteStatusCancel(effectID, charID, drops)
 			}
 		}
-		ws, ids := r.holdCancelledActionsLocked(removed, r.masterUUID)
+		ws, ids := r.holdCancelledActionsLocked(matchsession.DroppedActions(drops), r.masterUUID)
 		writes = append(writes, ws...)
 		for _, id := range ids {
 			cancelled = append(cancelled, cancelledNotice{id: id, owner: owners[charID.String()]})
@@ -796,21 +796,24 @@ func (r *Room) announceStatusCancelled(notices []cancelledNotice) {
 	}
 }
 
-// announceRestored anuncia cada ação que um desfazer devolveu à fila como o enqueue anuncia uma
-// que entra: o action_queued ao mestre e o action_enqueued ao dono (o mestre, num NPC — como no
-// enqueue que ele mesmo manda). Cada recusa vai só ao mestre, como error restore_refused. Fora
-// do lock.
+// announceRestored anuncia cada ação que um desfazer devolveu à fila: action_restored ao mestre
+// (actionwire.Full) e ao dono (o corte do ownQueue), e o action_queued do mestre, como no enqueue
+// — depois do action_restored, para que o cliente, que já a pôs no lugar (beforeActionId), só a
+// redescreva. Não usa action_enqueued: ele é o ack de um envio do cliente, casado pela ordem
+// dos envios, e um ack que ninguém pediu cairia no envio errado. Cada recusa vai só ao mestre,
+// como error restore_refused. Fora do lock.
 func (r *Room) announceRestored(notices []restoredNotice, refusals []matchsession.RestoreRefusal) {
 	for _, n := range notices {
+		r.sendToMaster(NewServerMessage(MsgTypeActionRestored, n.master))
 		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, n.queued))
-		if n.owner == uuid.Nil {
+		if n.ownerMsg == nil {
 			continue
 		}
 		r.mu.RLock()
 		c, ok := r.clients[n.owner]
 		r.mu.RUnlock()
 		if ok {
-			c.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: n.queued.ActionID}))
+			c.SendMessage(NewServerMessage(MsgTypeActionRestored, *n.ownerMsg))
 		}
 	}
 	for _, f := range refusals {

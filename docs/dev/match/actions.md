@@ -68,6 +68,7 @@ entre as barras que a ação cobra). Nos dois, um movimento empilhado num penden
 | Método           | Descrição                                                    |
 |------------------|--------------------------------------------------------------|
 | `Insert`         | Põe a ação no fim da fila                                    |
+| `InsertAt`       | Põe a ação numa posição, preservando o resto (o desfazer de um status a devolve ao lugar de chegada) |
 | `ExtractMax`     | Remove e retorna a desbloqueada de maior `OrderSpeed` (Free) |
 | `Peek`           | Consulta essa mesma ação sem remover                         |
 | `ExtractByID`    | Busca linear por UUID e remove                               |

@@ -2,10 +2,13 @@ package matchsession
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
@@ -325,9 +328,14 @@ func (s *MatchSession) seatedReactionFor(actorID, reactToID uuid.UUID) *action.A
 //
 // Nada é devolvido nem marcado como troca: a barra que uma reação recusada cobrou fica cobrada,
 // e a decisão é do mestre, não do jogador (sem swapMarks).
-func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) (removed []*action.Action) {
+//
+// Cada StatusDrop leva, do instante da saída, o que o desfazer precisa para devolver a ação
+// como estava (RestoreCancelledByStatus): o lugar dela na fila, as edições do mestre que a saída
+// descarta e se o movimento dela se apoiava numa base ainda na fila.
+func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) []StatusDrop {
 	sum := s.StatusSummaryOf(charID)
 	seen := map[uuid.UUID]bool{}
+	var removed []*action.Action
 	for _, a := range s.activeQueue.All() {
 		if a.GetActorID() != charID || seen[a.GetID()] || statusBlock(sum, a) == nil {
 			continue
@@ -339,11 +347,122 @@ func (s *MatchSession) DropRefusedByStatus(charID uuid.UUID) (removed []*action.
 			}
 		}
 	}
+	// O retrato vem antes de qualquer saída: a base de um empilhado que sai junto ainda está na
+	// fila, e as edições ainda estão na ação.
+	drops := make([]StatusDrop, 0, len(removed))
+	for _, a := range removed {
+		drops = append(drops, StatusDrop{
+			Action:     a,
+			arrival:    s.arrivals[a.GetID()],
+			baseQueued: a.Move != nil && a.Move.StackedOn != uuid.Nil && s.IsQueued(a.Move.StackedOn),
+			edits:      s.snapshotEdits(a),
+		})
+	}
 	for _, a := range removed {
 		s.dropFromQueue(a)
 	}
 	s.reseatForStatus(charID)
-	return removed
+	return drops
+}
+
+// StatusDrop é uma ação que DropRefusedByStatus tirou da fila, com o retrato do instante da
+// saída que só RestoreCancelledByStatus lê: a ordem de chegada (o lugar na fila, empates
+// incluídos), se o movimento se apoiava numa base ainda na fila e as edições do mestre que a
+// saída descartou. O ponteiro é o que saiu da fila; depois da saída só o desfazer o segura.
+type StatusDrop struct {
+	Action     *action.Action
+	arrival    uint64
+	baseQueued bool
+	edits      editSnapshot
+}
+
+// DroppedActions são as ações de uma lista de StatusDrop, na mesma ordem.
+func DroppedActions(ds []StatusDrop) []*action.Action {
+	out := make([]*action.Action, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, d.Action)
+	}
+	return out
+}
+
+// editSnapshot são as edições do mestre numa ação enfileirada no instante em que um status a
+// tirou da fila: as capturas (overrides, com os originais) e os dados de perícias retiradas,
+// mais o valor EDITADO de cada campo capturado — o discardEdits põe o original de volta, e o
+// desfazer reescreve o editado (reapplyEdits). Vazio quando não havia edição.
+type editSnapshot struct {
+	overrides   map[string]match.OverriddenValue
+	removedDice map[string]action.RollAttempts
+	edited      []match.OverriddenValue
+}
+
+func (s *MatchSession) snapshotEdits(a *action.Action) editSnapshot {
+	id := a.GetID()
+	ovs, dice := s.overrides[id], s.removedSkillDice[id]
+	if len(ovs) == 0 && len(dice) == 0 {
+		return editSnapshot{}
+	}
+	snap := editSnapshot{overrides: maps.Clone(ovs), removedDice: maps.Clone(dice)}
+	for field := range ovs {
+		snap.edited = append(snap.edited, match.OverriddenValue{Field: field, Original: currentValue(a, field)})
+	}
+	return snap
+}
+
+// reapplyEdits desfaz o discardEdits de uma ação que volta: o valor editado de cada campo, as
+// capturas e os dados retirados voltam, e as velocidades são derivadas de novo com o viés do
+// sistema que a ação já tinha — o mesmo que a edição usou.
+func (s *MatchSession) reapplyEdits(a *action.Action, snap editSnapshot) {
+	if len(snap.overrides) == 0 && len(snap.removedDice) == 0 {
+		return
+	}
+	id := a.GetID()
+	for _, ov := range snap.edited {
+		restoreOriginal(a, ov)
+	}
+	if len(snap.overrides) > 0 {
+		if s.overrides == nil {
+			s.overrides = map[uuid.UUID]map[string]match.OverriddenValue{}
+		}
+		s.overrides[id] = maps.Clone(snap.overrides)
+	}
+	if len(snap.removedDice) > 0 {
+		if s.removedSkillDice == nil {
+			s.removedSkillDice = map[uuid.UUID]map[string]action.RollAttempts{}
+		}
+		s.removedSkillDice[id] = maps.Clone(snap.removedDice)
+	}
+	s.deriveSpeeds(a, a.SystemBias)
+}
+
+// currentValue é o valor de agora de um campo que captureOverride captura, na forma que
+// restoreOriginal escreve de volta (as chaves de lá: "<campo>.condition",
+// "skill:<nome>.condition", "damageSkill", "targetIds", "skills"). nil = sem valor (uma
+// condição ausente).
+func currentValue(a *action.Action, field string) any {
+	switch field {
+	case "damageSkill":
+		if a.Attack == nil {
+			return nil
+		}
+		return a.Attack.DamageSkill
+	case "targetIds":
+		return append([]uuid.UUID(nil), a.TargetID...)
+	case "skills":
+		return append([]action.Skill(nil), a.Skills...)
+	}
+	key, ok := strings.CutSuffix(field, ".condition")
+	if !ok {
+		return nil
+	}
+	edit := action.ConditionEdit{Field: action.ConditionField(key)}
+	if name, isSkill := strings.CutPrefix(key, "skill:"); isSkill {
+		edit = action.ConditionEdit{SkillName: name}
+	}
+	rc, err := resolveRollCheck(a, edit)
+	if err != nil || rc.Context.Condition == nil {
+		return nil
+	}
+	return *rc.Context.Condition
 }
 
 // reseatForStatus refaz as reações não abertas do personagem no turno aberto (ver
@@ -384,11 +503,14 @@ func (s *MatchSession) reseatForStatus(charID uuid.UUID) {
 	}
 }
 
-// RestoreRefusal é uma ação que RestoreCancelledByStatus não devolveu, com o motivo — em
-// português, mostrado ao mestre.
+// RestoreRefusal é uma ação que RestoreCancelledByStatus não devolveu: o motivo (em português,
+// mostrado ao mestre), os tipos de status que ainda a recusam quando é isso (BlockedBy; nil
+// por outro motivo) e o próprio StatusDrop, para quem chama poder guardá-lo de novo.
 type RestoreRefusal struct {
-	ActionID uuid.UUID
-	Reason   string
+	ActionID  uuid.UUID
+	Reason    string
+	BlockedBy []statuseffect.Kind
+	Drop      StatusDrop
 }
 
 // RestoreCancelledByStatus devolve à fila ações que DropRefusedByStatus tirou (D3: o mestre
@@ -397,30 +519,34 @@ type RestoreRefusal struct {
 //
 //   - o ator ainda está na partida;
 //   - nenhuma ação com esse id está na fila (idempotente: uma segunda chamada só recusa);
-//   - os status de agora a permitem (outro status pode continuar recusando);
-//   - um movimento volta só no fim da cadeia em que estava: empilhado, a base dele precisa
-//     estar na fila (ou ter voltado nesta mesma chamada) e ser o fim da cadeia; cabeça, o
-//     personagem não pode ter outro movimento pendente. Nunca meia cadeia, nunca um garfo.
+//   - os status de agora a permitem (outro status pode continuar recusando: BlockedBy);
+//   - um movimento volta só se a cadeia dele está como estava na saída: o que se apoiava numa
+//     base ainda na fila naquele instante volta só se essa base continua na fila (ou voltou
+//     nesta mesma chamada) e é o fim da cadeia; o que era cabeça — de fato, ou porque a base
+//     já tinha saído da fila (aberta, consumida) — volta só se o personagem não tem nenhum
+//     movimento pendente. Nunca meia cadeia, nunca um garfo.
 //
-// A aceita entra no fim da fila com o id, os dados e a velocidade que tinha (as edições do
-// mestre o cancelamento já descartou); depois, as reações não abertas de cada ator são refeitas
-// para o conjunto de agora. A recusada volta com o motivo.
+// A aceita volta ao MESMO lugar da fila (a ordem de chegada dela, empates incluídos), com o id,
+// os dados e as edições do mestre que a saída tinha descartado (reapplyEdits); depois, as reações
+// não abertas de cada ator são refeitas para o conjunto de agora. A recusada volta com o motivo.
 //
 // O inverso de aplicar um status no turno aberto é o desfazer com restoreCancelledActions
 // (undoInTurnAppliesLocked + RestoreCancelledByStatus). Um futuro ctrl+Z deve chamar este
 // caminho, nunca escrever a sua própria reversão: a reversão revalida contra o estado de agora,
 // sob r.mu, e recusa com motivo o que não cabe mais.
-func (s *MatchSession) RestoreCancelledByStatus(acts []*action.Action) (restored []*action.Action, refused []RestoreRefusal) {
+func (s *MatchSession) RestoreCancelledByStatus(drops []StatusDrop) (restored []*action.Action, refused []RestoreRefusal) {
 	var actors []uuid.UUID
-	for _, a := range acts {
+	for _, d := range drops {
+		a := d.Action
 		if a == nil {
 			continue
 		}
-		if reason := s.restoreRefusal(a); reason != "" {
-			refused = append(refused, RestoreRefusal{ActionID: a.GetID(), Reason: reason})
+		if reason, kinds := s.restoreRefusal(d); reason != "" {
+			refused = append(refused, RestoreRefusal{ActionID: a.GetID(), Reason: reason, BlockedBy: kinds, Drop: d})
 			continue
 		}
-		s.activeQueue.Insert(a)
+		s.reapplyEdits(a, d.edits)
+		s.insertByArrival(a, d.arrival)
 		restored = append(restored, a)
 		if !slices.Contains(actors, a.GetActorID()) {
 			actors = append(actors, a.GetActorID())
@@ -432,34 +558,43 @@ func (s *MatchSession) RestoreCancelledByStatus(acts []*action.Action) (restored
 	return restored, refused
 }
 
-// restoreRefusal é o motivo pelo qual a não pode voltar à fila agora; "" = pode.
-func (s *MatchSession) restoreRefusal(a *action.Action) string {
+// restoreRefusal é o motivo pelo qual d não pode voltar à fila agora ("" = pode) e, quando é um
+// status, os tipos que a recusam.
+func (s *MatchSession) restoreRefusal(d StatusDrop) (string, []statuseffect.Kind) {
+	a := d.Action
 	actor := a.GetActorID()
 	if _, ok := s.charToPlayer[actor.String()]; !ok {
-		return "o personagem não está mais na partida"
+		return "o personagem não está mais na partida", nil
 	}
 	name := s.characterName(actor)
 	if s.IsQueued(a.GetID()) {
-		return fmt.Sprintf("a ação de %s já está na fila", name)
+		return fmt.Sprintf("a ação de %s já está na fila", name), nil
 	}
 	if err := s.StatusRefusal(a); err != nil {
-		return err.Error()
+		var be *StatusBlockError
+		if errors.As(err, &be) {
+			return err.Error(), be.Kinds
+		}
+		return err.Error(), nil
 	}
 	if a.Move == nil {
-		return ""
+		return "", nil
+	}
+	tail := s.MoveChainTail(actor)
+	if !d.baseQueued {
+		if tail != nil {
+			return fmt.Sprintf("a cadeia de movimentos de %s mudou desde o cancelamento", name), nil
+		}
+		return "", nil
 	}
 	base := a.Move.StackedOn
-	if base != uuid.Nil && !s.IsQueued(base) {
-		return fmt.Sprintf("o movimento de %s em que ela se apoia não está na fila", name)
+	if !s.IsQueued(base) {
+		return fmt.Sprintf("o movimento de %s em que ela se apoia não está mais na fila", name), nil
 	}
-	tail := uuid.Nil
-	if t := s.MoveChainTail(actor); t != nil {
-		tail = t.GetID()
+	if tail == nil || tail.GetID() != base {
+		return fmt.Sprintf("a cadeia de movimentos de %s mudou desde o cancelamento", name), nil
 	}
-	if tail != base {
-		return fmt.Sprintf("a cadeia de movimentos de %s mudou desde o cancelamento", name)
-	}
-	return ""
+	return "", nil
 }
 
 // HasReactionOnOpenTurn diz se o personagem tem uma reação no turno aberto — o que uma mudança

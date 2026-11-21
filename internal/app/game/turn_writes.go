@@ -7,7 +7,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
@@ -58,22 +58,29 @@ type turnWrites struct {
 	statusCancels map[uuid.UUID]statusCancel
 }
 
-// statusCancel são as ações da fila que um efeito tirou no turno aberto, do personagem dele. Os
-// ponteiros são os que saíram da fila: depois do DropRefusedByStatus só este registro os segura
-// (o registro de cancelamento guarda uma cópia), então voltar com eles é seguro.
+// statusCancel são as ações da fila que um efeito tirou no turno aberto, do personagem dele,
+// com o retrato do instante da saída (matchsession.StatusDrop: lugar na fila, edições do mestre,
+// base do movimento). Os ponteiros são os que saíram da fila: depois do DropRefusedByStatus só
+// este registro os segura (o registro de cancelamento guarda uma cópia), então voltar com eles
+// é seguro.
 type statusCancel struct {
-	charID  uuid.UUID
-	actions []*action.Action
+	charID uuid.UUID
+	drops  []matchsession.StatusDrop
 }
 
-// noteStatusCancel registra que effectID (de charID) tirou acts da fila no turno w.
-func (w *turnWrites) noteStatusCancel(effectID, charID uuid.UUID, acts []*action.Action) {
+// noteStatusCancel registra que effectID (de charID) tirou drops da fila no turno w; uma ação
+// que o registro já tem não entra de novo.
+func (w *turnWrites) noteStatusCancel(effectID, charID uuid.UUID, drops []matchsession.StatusDrop) {
 	if w.statusCancels == nil {
 		w.statusCancels = map[uuid.UUID]statusCancel{}
 	}
 	rec := w.statusCancels[effectID]
 	rec.charID = charID
-	rec.actions = append(rec.actions, acts...)
+	for _, d := range drops {
+		if !slices.ContainsFunc(rec.drops, func(o matchsession.StatusDrop) bool { return o.Action.GetID() == d.Action.GetID() }) {
+			rec.drops = append(rec.drops, d)
+		}
+	}
 	w.statusCancels[effectID] = rec
 }
 
@@ -92,17 +99,17 @@ func (w *turnWrites) forgetRestored(ids map[uuid.UUID]bool) {
 	}
 	w.cancelledActions = kept
 	for effectID, rec := range w.statusCancels {
-		acts := rec.actions[:0:0]
-		for _, a := range rec.actions {
-			if !ids[a.GetID()] {
-				acts = append(acts, a)
+		drops := rec.drops[:0:0]
+		for _, d := range rec.drops {
+			if !ids[d.Action.GetID()] {
+				drops = append(drops, d)
 			}
 		}
-		if len(acts) == 0 {
+		if len(drops) == 0 {
 			delete(w.statusCancels, effectID)
 			continue
 		}
-		rec.actions = acts
+		rec.drops = drops
 		w.statusCancels[effectID] = rec
 	}
 }

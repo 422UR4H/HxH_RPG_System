@@ -120,6 +120,61 @@ func queuedIDs(t *testing.T, c *collector) []uuid.UUID {
 	return ids
 }
 
+func restoredOf(t *testing.T, c *collector) []game.ActionRestoredPayload {
+	t.Helper()
+	var out []game.ActionRestoredPayload
+	for _, m := range c.snapshotMessages() {
+		if m.Type != game.MsgTypeActionRestored {
+			continue
+		}
+		var p game.ActionRestoredPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal action_restored: %v", err)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func restoredIDs(ps []game.ActionRestoredPayload) []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.ActionID)
+	}
+	return out
+}
+
+func restoreRefusals(t *testing.T, c *collector) []game.ErrorPayload {
+	t.Helper()
+	var out []game.ErrorPayload
+	for _, m := range c.snapshotMessages() {
+		if m.Type != game.MsgTypeError {
+			continue
+		}
+		var p game.ErrorPayload
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if p.Code == "restore_refused" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// awaitRestored espera o action_restored das ações em c, na ordem dada.
+func awaitRestored(t *testing.T, who string, c *collector, want []uuid.UUID) []game.ActionRestoredPayload {
+	t.Helper()
+	if !awaitCount(c, game.MsgTypeActionRestored, len(want), 2*time.Second) {
+		t.Fatalf("%s got %d action_restored, want %d", who, c.count(game.MsgTypeActionRestored), len(want))
+	}
+	got := restoredOf(t, c)
+	if !slices.Equal(restoredIDs(got), want) {
+		t.Fatalf("%s action_restored = %v, want %v", who, restoredIDs(got), want)
+	}
+	return got
+}
+
 func assertNoKeyIn(t *testing.T, who string, c *collector, key string) {
 	t.Helper()
 	for _, m := range c.snapshotMessages() {
@@ -152,22 +207,47 @@ func TestRemoveStatusEffect_InTurnUndo_RestoresCancelledActions(t *testing.T) {
 	if got := masterCancelledOf(t, h.mc, h.f.victimID, eff); !slices.Equal(got, h.queued) {
 		t.Fatalf("master cancelledActionIds = %v, want %v", got, h.queued)
 	}
+	// Uma ação nova do jogador chega depois do cancelamento: as devolvidas voltam antes dela.
+	f := h.f
+	f.enqueueAttackAt(t, h.player, f.attackerID, f.npcID)
+	if !awaitCount(h.mc, game.MsgTypeActionQueued, 4, 2*time.Second) {
+		t.Fatalf("the later action was never queued; errors: %v", errorCodes(t, h.pc))
+	}
+	later := lastActionQueuedID(t, h.mc)
 	queuedBefore := len(queuedIDs(t, h.mc))
-	enqueuedBefore := len(actionIDsInOrder(t, h.pc))
+	enqueuedBefore := h.pc.count(game.MsgTypeActionEnqueued)
 	h.remove(t, eff, true)
+	master := awaitRestored(t, "master", h.mc, h.queued)
+	owner := awaitRestored(t, "owner", h.pc, h.queued)
 	if !awaitCount(h.mc, game.MsgTypeActionQueued, queuedBefore+2, 2*time.Second) {
-		t.Fatalf("the master never got the restored actions; errors: %v", errorCodes(t, h.mc))
+		t.Fatalf("the master never got the queue entries; errors: %v", errorCodes(t, h.mc))
 	}
 	if got := queuedIDs(t, h.mc)[queuedBefore:]; !slices.Equal(got, h.queued) {
 		t.Fatalf("master action_queued = %v, want %v (same ids, in order)", got, h.queued)
 	}
-	if !awaitCount(h.pc, game.MsgTypeActionEnqueued, enqueuedBefore+2, 2*time.Second) {
-		t.Fatal("the owner never got the restored actions")
+	// O lugar: as duas, anunciadas na ordem da fila, voltam diante da ação que chegou depois.
+	for who, ps := range map[string][]game.ActionRestoredPayload{"master": master, "owner": owner} {
+		for i, p := range ps {
+			if p.BeforeActionID == nil || *p.BeforeActionID != later {
+				t.Errorf("%s restored #%d beforeActionId = %v, want %v", who, i, p.BeforeActionID, later)
+			}
+		}
 	}
-	if got := actionIDsInOrder(t, h.pc)[enqueuedBefore:]; !slices.Equal(got, h.queued) {
-		t.Fatalf("owner action_enqueued = %v, want %v", got, h.queued)
+	// O corte: o mestre vê os números, o dono o que declarou (sem velocidade).
+	if master[0].Action.Speed.RollCheck.Result == nil {
+		t.Error("master action_restored has no speed result, want actionwire.Full")
+	}
+	if owner[0].Action.Speed.RollCheck.Result != nil {
+		t.Error("owner action_restored carries the speed result, want the ownQueue cut")
 	}
 	chatBarrier(t, h.master, h.mc, h.pc)
+	if pending, want := idsOfPending(h.f), append(append([]uuid.UUID(nil), h.queued...), later); !slices.Equal(pending, want) {
+		t.Fatalf("queue = %v, want %v (the restored ones back in their place)", pending, want)
+	}
+	// Nenhum ack sem pedido: o action_enqueued é casado pela ordem dos envios do cliente.
+	if n := h.pc.count(game.MsgTypeActionEnqueued); n != enqueuedBefore {
+		t.Fatalf("the owner got %d unsolicited action_enqueued", n-enqueuedBefore)
+	}
 	assertNoKeyIn(t, "player", h.pc, "cancelledActionIds")
 	if codes := errorCodes(t, h.mc); len(codes) != 0 {
 		t.Fatalf("master errors = %v, want none", codes)
@@ -204,19 +284,7 @@ func TestRemoveStatusEffect_InTurnUndo_RefusalGoesToTheMasterOnly(t *testing.T) 
 	if n := h.mc.count(game.MsgTypeActionQueued); n != queuedBefore {
 		t.Fatalf("a still-stunned character got %d action(s) back", n-queuedBefore)
 	}
-	var refusals []game.ErrorPayload
-	for _, m := range h.mc.snapshotMessages() {
-		if m.Type != game.MsgTypeError {
-			continue
-		}
-		var p game.ErrorPayload
-		if err := json.Unmarshal(m.Payload, &p); err != nil {
-			t.Fatalf("unmarshal error: %v", err)
-		}
-		if p.Code == "restore_refused" {
-			refusals = append(refusals, p)
-		}
-	}
+	refusals := restoreRefusals(t, h.mc)
 	if len(refusals) != 2 {
 		t.Fatalf("restore_refused = %+v, want one per action", refusals)
 	}
@@ -231,6 +299,116 @@ func TestRemoveStatusEffect_InTurnUndo_RefusalGoesToTheMasterOnly(t *testing.T) 
 	if got := h.closeAndCancelled(t); !slices.Equal(got, h.queued) {
 		t.Fatalf("cancelled_actions at the close = %v, want %v (refused stays cancelled)", got, h.queued)
 	}
+}
+
+// Dois status aplicados no turno recusam as mesmas ações: desfazer os dois as devolve, em
+// qualquer ordem. A recusa do primeiro passa o registro ao segundo.
+func TestRemoveStatusEffect_InTurnUndo_TwoBlockersInEitherOrder(t *testing.T) {
+	stun := func(t *testing.T, h *restoreTable) uuid.UUID {
+		t.Helper()
+		got := applyAndWait(t, h.master, h.mc, map[string]any{
+			"characterIds": []string{h.f.victimID.String()}, "kind": "stunned", "params": map[string]any{"points": 3}})
+		for _, e := range got.StatusEffects {
+			if e.Kind == "stunned" {
+				return e.ID
+			}
+		}
+		t.Fatal("no stunned in the master's update")
+		return uuid.Nil
+	}
+
+	t.Run("the first applied is undone first", func(t *testing.T) {
+		h := newRestoreTable(t)
+		paralyzed := h.paralyze(t)
+		stunned := stun(t, h)
+		h.remove(t, paralyzed, true)
+		chatBarrier(t, h.master, h.mc)
+		if n := len(restoreRefusals(t, h.mc)); n != 2 {
+			t.Fatalf("restore_refused = %d, want 2 (stunned still blocks)", n)
+		}
+		if got := masterCancelledOf(t, h.mc, h.f.victimID, stunned); !slices.Equal(got, h.queued) {
+			t.Fatalf("stunned cancelledActionIds = %v, want %v (the record moved to it)", got, h.queued)
+		}
+		h.remove(t, stunned, true)
+		awaitRestored(t, "master", h.mc, h.queued)
+		awaitRestored(t, "owner", h.pc, h.queued)
+		if got := h.closeAndCancelled(t); len(got) != 0 {
+			t.Fatalf("cancelled_actions at the close = %v, want none", got)
+		}
+	})
+
+	t.Run("the last applied is undone first", func(t *testing.T) {
+		h := newRestoreTable(t)
+		paralyzed := h.paralyze(t)
+		stunned := stun(t, h)
+		h.remove(t, stunned, true)
+		chatBarrier(t, h.master, h.mc)
+		if n := h.mc.count(game.MsgTypeActionRestored); n != 0 {
+			t.Fatalf("undoing the stun gave back %d action(s), want none (it cancelled nothing)", n)
+		}
+		h.remove(t, paralyzed, true)
+		awaitRestored(t, "master", h.mc, h.queued)
+		awaitRestored(t, "owner", h.pc, h.queued)
+		if got := h.closeAndCancelled(t); len(got) != 0 {
+			t.Fatalf("cancelled_actions at the close = %v, want none", got)
+		}
+	})
+}
+
+// Uma cadeia de movimentos empilhados volta inteira, na ordem, ainda empilhada.
+func TestRemoveStatusEffect_InTurnUndo_RestoresAStackedChain(t *testing.T) {
+	f := newStatusFixture(t)
+	master, player := f.connect(t)
+	defer master.Close() //nolint:errcheck
+	defer player.Close() //nolint:errcheck
+	mc, pc := collectFrom(master), collectFrom(player)
+	turnID := f.openAttackTurn(t, master, player, mc)
+	h := &restoreTable{f: f, master: master, player: player, mc: mc, pc: pc, turnID: turnID}
+
+	for i, to := range [][3]int{{4, 6, 0}, {5, 6, 0}} {
+		sendWS(t, player, "enqueue_action", map[string]any{
+			"actorId": f.victimID.String(),
+			"move":    map[string]any{"category": "Dash", "from": [3]int{0, 0, 0}, "position": to},
+		})
+		if !awaitCount(mc, game.MsgTypeActionQueued, i+2, 2*time.Second) {
+			t.Fatalf("dash %d was never queued; errors: %v", i+1, errorCodes(t, pc))
+		}
+	}
+	moves := queuedMoves(t, mc)
+	if len(moves) != 2 || moves[1].stackedOn == nil || *moves[1].stackedOn != moves[0].id {
+		t.Fatalf("setup: moves = %+v, want the second stacked on the first", moves)
+	}
+	h.queued = []uuid.UUID{moves[0].id, moves[1].id}
+
+	got := applyAndWait(t, master, mc, map[string]any{
+		"characterIds": []string{f.victimID.String()}, "kind": "paralyzed",
+		"params": map[string]any{"points": 3, "domains": []string{"movement"}},
+	})
+	for _, id := range h.queued {
+		awaitCancelled(t, "owner", pc, id)
+	}
+	h.remove(t, got.StatusEffects[0].ID, true)
+	restored := awaitRestored(t, "master", mc, h.queued)
+	awaitRestored(t, "owner", pc, h.queued)
+	if s := restored[1].Action.Move; s == nil || s.StackedOn == nil || *s.StackedOn != h.queued[0] {
+		t.Fatalf("restored second move = %+v, want still stacked on the first", s)
+	}
+	chatBarrier(t, master, mc, pc)
+	// O arm terminou (a barreira passou): ler a sessão é seguro.
+	if pending := idsOfPending(f); !slices.Equal(pending, h.queued) {
+		t.Fatalf("queue = %v, want the chain %v", pending, h.queued)
+	}
+	if got := h.closeAndCancelled(t); len(got) != 0 {
+		t.Fatalf("cancelled_actions at the close = %v, want none", got)
+	}
+}
+
+func idsOfPending(f *combatFixture) []uuid.UUID {
+	var out []uuid.UUID
+	for _, a := range f.session.PendingActions() {
+		out = append(out, a.GetID())
+	}
+	return out
 }
 
 func TestRemoveStatusEffect_RestoreFlagOutsideUndoWindow_IsIgnored(t *testing.T) {

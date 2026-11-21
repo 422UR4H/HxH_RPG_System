@@ -2603,7 +2603,7 @@ func (r *Room) persistClosedTurn(
 	r.followAnchorsLocked()
 	inTurn := r.takeTurnWritesLocked(t.GetID())
 	// O cancelledActionIds também: o registro do desfazer morre com o turno.
-	anchored = append(anchoredChars(inTurn.statusEffects), inTurn.statusCancelChars()...)
+	anchored = uniqueIDs(append(anchoredChars(inTurn.statusEffects), inTurn.statusCancelChars()...))
 	// Para quem cada reator estava Escondido: o da abertura, ou — reação nunca aberta — agora,
 	// no fechamento. Só as reações com alguém seguem para a gravação.
 	reactionHiddenFrom := r.closedReactionsHiddenFromLocked(t, inTurn.reactionHiddenFrom)

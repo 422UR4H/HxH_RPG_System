@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
@@ -129,21 +132,29 @@ func (r *Room) undoInTurnAppliesLocked(writes []statuseffect.Write) (kept []stat
 	return kept, undone
 }
 
-// restoredNotice é uma ação que voltou à fila, como o enqueue a anuncia: o action_queued do
-// mestre (montado sob r.mu) e o dono, que recebe o action_enqueued.
+// restoredNotice é uma ação que voltou à fila, como cada um a recebe: o action_restored do
+// mestre e o action_queued dele (a entrada na fila, como no enqueue), e o action_restored do
+// dono quando o dono não é o mestre (ownerMsg nil). Tudo montado sob r.mu.
 type restoredNotice struct {
-	queued ActionQueuedPayload
-	owner  uuid.UUID
+	master   ActionRestoredPayload
+	queued   ActionQueuedPayload
+	owner    uuid.UUID
+	ownerMsg *ActionRestoredPayload
 }
 
 // giveBackLocked é o lado da sala do inverso de aplicar um status no turno aberto (D3). Para
 // cada efeito removido: o registro do desfazer dele (turnWrites.statusCancels) é apagado, com
 // pedido ou sem; e só quando o efeito foi DESFEITO agora (undone — aplicado neste mesmo turno)
 // e o mestre pediu (restore), as ações que ele tirou da fila voltam por
-// RestoreCancelledByStatus, que as revalida contra a sessão de agora — o status já saiu dela. A
-// devolvida apaga o próprio cancelamento (forgetRestored): nada dela é gravado no fechamento.
-// O status não marca troca (sem swapMarks no DropRefusedByStatus), então não há marca a tirar.
-// Fora da janela do desfazer não há o que devolver e o pedido é ignorado.
+// RestoreCancelledByStatus, que as revalida contra a sessão de agora — o status já saiu dela —
+// e as põe no mesmo lugar da fila, com as edições do mestre. A devolvida apaga o próprio
+// cancelamento (forgetRestored): nada dela é gravado no fechamento. O status não marca troca
+// (sem swapMarks no DropRefusedByStatus), então não há marca a tirar; o fechamento da janela de
+// fusão do relógio que o cancelamento fez (clearClockMergeLocked) fica — é inofensivo.
+//
+// Uma recusa porque outro status ainda a recusa passa o registro dela a cada efeito desse tipo
+// aplicado neste mesmo turno (ainda desfazível): desfazer esse depois a devolve, em qualquer
+// ordem. Fora da janela do desfazer não há o que devolver e o pedido é ignorado.
 //
 // Devolve os anúncios das devolvidas e as recusas (só ao mestre). O chamador segura r.mu
 // (escrita), na MESMA seção crítica da remoção e do desfazer, e r.session não é nil.
@@ -158,26 +169,89 @@ func (r *Room) giveBackLocked(removed []uuid.UUID, undone map[uuid.UUID]bool, re
 	if !ok {
 		return nil, nil
 	}
-	owners := r.session.GetCharToPlayer()
+	var restored []*action.Action
 	for _, effectID := range removed {
 		rec, ok := w.statusCancels[effectID]
 		delete(w.statusCancels, effectID)
 		if !ok || !restore || !undone[effectID] {
 			continue
 		}
-		restored, refused := r.session.RestoreCancelledByStatus(rec.actions)
-		refusals = append(refusals, refused...)
-		ids := make(map[uuid.UUID]bool, len(restored))
-		for _, a := range restored {
+		back, refused := r.session.RestoreCancelledByStatus(rec.drops)
+		ids := make(map[uuid.UUID]bool, len(back))
+		for _, a := range back {
 			ids[a.GetID()] = true
-			notices = append(notices, restoredNotice{
-				queued: r.newActionQueuedPayloadLocked(r.session, a),
-				owner:  owners[a.GetActorID().String()],
-			})
 		}
 		w.forgetRestored(ids)
+		restored = append(restored, back...)
+		for _, f := range refused {
+			r.passToBlockerLocked(w, rec.charID, f)
+		}
+		refusals = append(refusals, refused...)
 	}
-	return notices, refusals
+	return r.restoredNoticesLocked(restored), refusals
+}
+
+// passToBlockerLocked guarda a ação recusada no registro de cada efeito do personagem, aplicado
+// neste turno, cujo tipo ainda a recusa (f.BlockedBy). O chamador segura r.mu (escrita).
+func (r *Room) passToBlockerLocked(w *turnWrites, charID uuid.UUID, f matchsession.RestoreRefusal) {
+	if len(f.BlockedBy) == 0 {
+		return
+	}
+	for _, e := range r.session.StatusEffectsOf(charID) {
+		if slices.Contains(f.BlockedBy, e.Kind) && appliedIn(w.statusEffects, e.ID) {
+			w.noteStatusCancel(e.ID, charID, []matchsession.StatusDrop{f.Drop})
+		}
+	}
+}
+
+// restoredNoticesLocked monta, com a fila já refeita, o que cada ação devolvida anuncia, na
+// ordem da fila. O lugar de cada uma é a próxima ação da fila que o destinatário já conhece
+// quando a mensagem chega (o mestre, todas; o dono, as dele) — sem contar as outras devolvidas,
+// que ainda não foram anunciadas: inseridas uma a uma, nessa ordem, caem todas no lugar. O
+// chamador segura r.mu.
+func (r *Room) restoredNoticesLocked(restored []*action.Action) []restoredNotice {
+	if len(restored) == 0 {
+		return nil
+	}
+	owners := r.session.GetCharToPlayer()
+	pending := r.session.PendingActions()
+	back := make(map[*action.Action]bool, len(restored))
+	for _, a := range restored {
+		back[a] = true
+	}
+	ownerOf := func(a *action.Action) uuid.UUID { return owners[a.GetActorID().String()] }
+	nextFor := func(i int, known func(*action.Action) bool) *uuid.UUID {
+		for _, q := range pending[i+1:] {
+			if !back[q] && known(q) {
+				id := q.GetID()
+				return &id
+			}
+		}
+		return nil
+	}
+	out := make([]restoredNotice, 0, len(restored))
+	for i, a := range pending {
+		if !back[a] {
+			continue
+		}
+		owner := ownerOf(a)
+		n := restoredNotice{
+			master: ActionRestoredPayload{
+				ActionID: a.GetID(), Action: actionwire.From(*a, actionwire.Full),
+				BeforeActionID: nextFor(i, func(*action.Action) bool { return true }),
+			},
+			queued: r.newActionQueuedPayloadLocked(r.session, a),
+			owner:  owner,
+		}
+		if owner != uuid.Nil && owner != r.masterUUID {
+			n.ownerMsg = &ActionRestoredPayload{
+				ActionID: a.GetID(), Action: actionwire.From(*a, actionwire.Declaration),
+				BeforeActionID: nextFor(i, func(q *action.Action) bool { return ownerOf(q) == owner }),
+			}
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // cancelledActionIDsLocked é o cancelledActionIds que o mestre vê em effectID: o que ele tirou
@@ -193,8 +267,19 @@ func (r *Room) cancelledActionIDsLocked(effectID uuid.UUID) []uuid.UUID {
 		return nil
 	}
 	var out []uuid.UUID
-	for _, a := range w.statusCancels[effectID].actions {
-		out = append(out, a.GetID())
+	for _, d := range w.statusCancels[effectID].drops {
+		out = append(out, d.Action.GetID())
+	}
+	return out
+}
+
+// uniqueIDs tira as repetições de ids, mantendo a primeira ocorrência.
+func uniqueIDs(ids []uuid.UUID) []uuid.UUID {
+	out := ids[:0:0]
+	for _, id := range ids {
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
 	}
 	return out
 }
