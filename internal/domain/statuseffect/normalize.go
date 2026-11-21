@@ -33,7 +33,7 @@ func missingText(field string) string {
 	return "Informe " + fieldLabel[field] + " do efeito."
 }
 
-// invalid é o campo que o tipo não aceita: "Esse efeito não usa os pontos."
+// invalid é o campo que o tipo não aceita: "Esse efeito não tem pontos."
 func invalid(field string) error {
 	return Wrap(ErrInvalidParams, "Esse efeito não "+foreignLabel[field]+".")
 }
