@@ -14,6 +14,26 @@ import (
 // a charged reaction consumed. The table hears nothing: that someone reacted is not table news
 // until the master opens it.
 
+// reactionAttachedBy is the last reaction_attached in c whose reactor is actorID.
+func reactionAttachedBy(t *testing.T, c *collector, actorID uuid.UUID) game.ReactionAttachedPayload {
+	t.Helper()
+	msgs := c.snapshotMessages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Type != game.MsgTypeReactionAttached {
+			continue
+		}
+		var p game.ReactionAttachedPayload
+		if err := json.Unmarshal(msgs[i].Payload, &p); err != nil {
+			t.Fatalf("unmarshal reaction_attached: %v", err)
+		}
+		if p.ActorID == actorID {
+			return p
+		}
+	}
+	t.Fatalf("no reaction_attached by %s in the collected messages", actorID)
+	return game.ReactionAttachedPayload{}
+}
+
 func lastReactionAttached(t *testing.T, c *collector) game.ReactionAttachedPayload {
 	t.Helper()
 	msgs := c.snapshotMessages()

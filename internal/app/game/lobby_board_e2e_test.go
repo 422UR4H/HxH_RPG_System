@@ -228,6 +228,7 @@ func TestLobbyPieceRemoved_OnlyTheMasterMayRemove(t *testing.T) {
 		if codes := errorCodes(t, masterMsgs); len(codes) != 0 {
 			t.Fatalf("the master's own removal was refused: %v", codes)
 		}
+		f.boards.awaitSaves(baseline+1, 2*time.Second)
 		if got := f.boards.saveCount(); got != baseline+1 {
 			t.Fatalf("saveCount = %d, want %d — a lobby removal persists exactly once",
 				got, baseline+1)
@@ -344,6 +345,7 @@ func TestLobbyPieceMoved_ARemovalDuringTheOwnershipCheckIsNotResurrected(t *test
 	if !playerMsgs.await(game.MsgTypePieceRemoved, 2*time.Second) {
 		t.Fatal("the master's removal was never relayed to the player")
 	}
+	f.boards.awaitSaves(baseline+1, 2*time.Second)
 	afterRemoval := f.boards.saveCount()
 	if afterRemoval != baseline+1 {
 		t.Fatalf("saveCount after the master's removal = %d, want %d", afterRemoval, baseline+1)
