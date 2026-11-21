@@ -1,9 +1,11 @@
 package match
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log"
+	"slices"
 	"time"
 
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
@@ -15,6 +17,7 @@ import (
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchboard"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -45,6 +48,7 @@ type InitMatchSessionUC struct {
 	board       IBoardReader
 	npcs        INPCEnroller
 	clocks      IClockRepository
+	effects     IStatusEffectReader
 }
 
 // NewInitMatchSessionUC wires the session loader. board and npcs are optional — nil for
@@ -58,6 +62,13 @@ func NewInitMatchSessionUC(
 		matchRepo: matchRepo, sheetLoader: sheetLoader, roundRepo: roundRepo, board: board, npcs: npcs,
 		clocks: clocks,
 	}
+}
+
+// WithStatusEffects liga a leitura dos efeitos de status (nil: a sessão nasce sem nenhum).
+// Devolve o próprio UC para encadear; o construtor tem muitos chamadores e não muda.
+func (uc *InitMatchSessionUC) WithStatusEffects(r IStatusEffectReader) *InitMatchSessionUC {
+	uc.effects = r
+	return uc
 }
 
 func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*matchsession.MatchSession, error) {
@@ -103,6 +114,13 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 		return nil, err
 	}
 
+	// Mesma política do relógio: falha ao ler os efeitos derruba a criação da sessão, porque uma
+	// sessão sem os efeitos deixaria o mestre agir como se eles não existissem.
+	effects, err := uc.loadStatusEffects(ctx, participants)
+	if err != nil {
+		return nil, err
+	}
+
 	data, err := uc.roundRepo.FindActiveSession(ctx, matchUUID)
 	if err != nil {
 		return nil, err
@@ -115,11 +133,37 @@ func (uc *InitMatchSessionUC) Init(ctx context.Context, matchUUID uuid.UUID) (*m
 		}
 		session := matchsession.NewMatchSessionWithState(matchUUID, charSheets, participants, sc, r)
 		adoptClock(session, storyClock)
+		adoptStatusEffects(session, effects)
 		return session, nil
 	}
 	session := matchsession.NewMatchSession(matchUUID, charSheets, participants)
 	adoptClock(session, storyClock)
+	adoptStatusEffects(session, effects)
 	return session, nil
+}
+
+// loadStatusEffects lê os efeitos das fichas de todos os participantes (NPCs inclusos), em
+// ordem estável. Sem leitor devolve nil.
+func (uc *InitMatchSessionUC) loadStatusEffects(
+	ctx context.Context, participants []*matchEntity.Participant,
+) (map[uuid.UUID][]statuseffect.Effect, error) {
+	if uc.effects == nil {
+		return nil, nil
+	}
+	ids := make([]uuid.UUID, 0, len(participants))
+	for _, p := range participants {
+		if p.Sheet.UUID != uuid.Nil {
+			ids = append(ids, p.Sheet.UUID)
+		}
+	}
+	slices.SortFunc(ids, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+	return uc.effects.ListBySheets(ctx, ids)
+}
+
+func adoptStatusEffects(session *matchsession.MatchSession, effects map[uuid.UUID][]statuseffect.Effect) {
+	if effects != nil {
+		session.SetStatusEffects(effects)
+	}
 }
 
 // adoptClock instala o relógio carregado (nil: fica o provisório) e, se ele já tem horário,

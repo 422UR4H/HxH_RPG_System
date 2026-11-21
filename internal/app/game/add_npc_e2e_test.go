@@ -96,8 +96,8 @@ func barsCarry(p game.BarsUpdatedPayload, charID uuid.UUID) bool {
 	return false
 }
 
-// O caminho feliz: o mestre põe um NPC numa sala viva. A mesa inteira ouve npc_added e recebe
-// barras NOVAS (seq maior) que já contam o NPC — e, a prova de que a sessão viva o conhece de
+// O caminho feliz: o mestre põe um NPC numa sala viva. Só o mestre ouve npc_added (decisão do
+// dono 3); a mesa recebe barras NOVAS (seq maior) que já contam o NPC — e, a prova de que a sessão viva o conhece de
 // verdade, o mestre consegue enfileirar uma ação com ele como ator logo em seguida.
 func TestE2E_AddNPCPutsTheNPCIntoTheLiveSession(t *testing.T) {
 	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
@@ -121,14 +121,12 @@ func TestE2E_AddNPCPutsTheNPCIntoTheLiveSession(t *testing.T) {
 	npcID := uuid.New()
 	sendAddNPC(t, master, npcID)
 
-	for name, c := range map[string]*collector{"master": masterMsgs, "player": playerMsgs} {
-		if !c.await(game.MsgTypeNPCAdded, 2*time.Second) {
-			t.Fatalf("the %s never received npc_added; they received: %v",
-				name, messageTypes(c.snapshotMessages()))
-		}
-		if ids := npcAddedIDs(t, c); len(ids) != 1 || ids[0] != npcID {
-			t.Fatalf("the %s got npc_added for %v, want exactly [%s]", name, ids, npcID)
-		}
+	if !masterMsgs.await(game.MsgTypeNPCAdded, 2*time.Second) {
+		t.Fatalf("the master never received npc_added; they received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
+	}
+	if ids := npcAddedIDs(t, masterMsgs); len(ids) != 1 || ids[0] != npcID {
+		t.Fatalf("the master got npc_added for %v, want exactly [%s]", ids, npcID)
 	}
 
 	for name, tc := range map[string]struct {
@@ -166,6 +164,11 @@ func TestE2E_AddNPCPutsTheNPCIntoTheLiveSession(t *testing.T) {
 	if codes := errorCodes(t, masterMsgs); len(codes) != 0 {
 		t.Fatalf("the master received errors along the way: %v", codes)
 	}
+	// O npc_added não chega ao jogador: o NPC chega a ele pela névoa.
+	chatBarrier(t, master, masterMsgs, playerMsgs)
+	if n := playerMsgs.count(game.MsgTypeNPCAdded); n != 0 {
+		t.Fatalf("the player got %d npc_added, want 0", n)
+	}
 }
 
 // Um jogador não põe NPC na mesa — e a recusa vem antes do banco: o use case nem é chamado.
@@ -188,7 +191,7 @@ func TestE2E_AddNPCFromAPlayerIsForbidden(t *testing.T) {
 }
 
 // O mesmo NPC duas vezes: o banco tolera (o UC é chamado de novo — Decisão 2), a SESSÃO recusa,
-// e a mesa não ouve um segundo npc_added.
+// e o mestre não ouve um segundo npc_added (o jogador não ouve nenhum — decisão do dono 3).
 func TestE2E_AddNPCTwiceIsRefusedByTheSession(t *testing.T) {
 	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
 	f := newCombatFixture(t, withAddLiveNPC(uc))
@@ -216,21 +219,21 @@ func TestE2E_AddNPCTwiceIsRefusedByTheSession(t *testing.T) {
 			"duplicate, it is the session that refuses it", n)
 	}
 
-	// The barrier. npc_added travels through r.broadcast from a goroutine, so there is no
-	// same-goroutine message to wait on behind it; a SECOND, different NPC is the closest
-	// thing — the table must end up with exactly [first, second], in that order, and a
-	// stray duplicate announcement would show up between them.
+	// The barrier. A SECOND, different NPC: the master must end up with exactly [first,
+	// second], in that order, and a stray duplicate announcement would show up between them.
 	second := uuid.New()
 	sendAddNPC(t, master, second)
-	for name, c := range map[string]*collector{"master": masterMsgs, "player": playerMsgs} {
-		if !awaitCount(c, game.MsgTypeNPCAdded, 2, 2*time.Second) {
-			t.Fatalf("the %s never heard about the second NPC", name)
-		}
-		ids := npcAddedIDs(t, c)
-		if len(ids) != 2 || ids[0] != npcID || ids[1] != second {
-			t.Fatalf("the %s got npc_added for %v, want [%s %s] — the refused duplicate was "+
-				"announced anyway", name, ids, npcID, second)
-		}
+	if !awaitCount(masterMsgs, game.MsgTypeNPCAdded, 2, 2*time.Second) {
+		t.Fatal("the master never heard about the second NPC")
+	}
+	ids := npcAddedIDs(t, masterMsgs)
+	if len(ids) != 2 || ids[0] != npcID || ids[1] != second {
+		t.Fatalf("the master got npc_added for %v, want [%s %s] — the refused duplicate was "+
+			"announced anyway", ids, npcID, second)
+	}
+	chatBarrier(t, master, masterMsgs, playerMsgs)
+	if n := playerMsgs.count(game.MsgTypeNPCAdded); n != 0 {
+		t.Fatalf("the player got %d npc_added, want 0", n)
 	}
 }
 
@@ -307,7 +310,8 @@ func TestE2E_AddNPCWithAnInvalidPayloadIsRefused(t *testing.T) {
 }
 
 // Sala sem sessão (lobby — Decisão 3): o banco é gravado (o Init trará o NPC quando a partida
-// começar) e a mesa ouve npc_added — mas não há barras para publicar.
+// começar) e o mestre ouve npc_added (só ele — decisão do dono 3) — mas não há barras para
+// publicar.
 func TestE2E_AddNPCInTheLobbyRostersItWithoutBars(t *testing.T) {
 	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
 	f := newCombatFixture(t, withAddLiveNPC(uc), inLobby)
@@ -319,11 +323,9 @@ func TestE2E_AddNPCInTheLobbyRostersItWithoutBars(t *testing.T) {
 
 	npcID := uuid.New()
 	sendAddNPC(t, master, npcID)
-	for name, c := range map[string]*collector{"master": masterMsgs, "player": playerMsgs} {
-		if !c.await(game.MsgTypeNPCAdded, 2*time.Second) {
-			t.Fatalf("the %s never received npc_added in the lobby; they received: %v",
-				name, messageTypes(c.snapshotMessages()))
-		}
+	if !masterMsgs.await(game.MsgTypeNPCAdded, 2*time.Second) {
+		t.Fatalf("the master never received npc_added in the lobby; they received: %v",
+			messageTypes(masterMsgs.snapshotMessages()))
 	}
 	if n := len(uc.snapshot()); n != 1 {
 		t.Fatalf("the use case was called %d time(s), want 1 — the lobby still rosters the NPC", n)
@@ -343,5 +345,8 @@ func TestE2E_AddNPCInTheLobbyRostersItWithoutBars(t *testing.T) {
 		if codes := errorCodes(t, c); len(codes) != 0 {
 			t.Fatalf("the %s received errors: %v", name, codes)
 		}
+	}
+	if n := playerMsgs.count(game.MsgTypeNPCAdded); n != 0 {
+		t.Fatalf("the player got %d npc_added in the lobby, want 0", n)
 	}
 }

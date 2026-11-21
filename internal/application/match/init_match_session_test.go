@@ -2,7 +2,9 @@ package match_test
 
 import (
 	"context"
+	"errors"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/clock"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"reflect"
 	"sync"
 	"testing"
@@ -794,4 +796,70 @@ func TestInitStampsRehydratedSceneOnlyWhenUnstamped(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fakeStatusEffectReader stands in for match.IStatusEffectReader.
+type fakeStatusEffectReader struct {
+	byChar map[uuid.UUID][]statuseffect.Effect
+	err    error
+	asked  []uuid.UUID
+}
+
+func (f *fakeStatusEffectReader) ListBySheets(_ context.Context, ids []uuid.UUID) (map[uuid.UUID][]statuseffect.Effect, error) {
+	f.asked = append([]uuid.UUID(nil), ids...)
+	return f.byChar, f.err
+}
+
+func TestInitLoadsStatusEffects(t *testing.T) {
+	sheetA, sheetB := uuid.New(), uuid.New()
+	pa, pb := uuid.New(), uuid.New()
+	repo := &mockMatchRepo{participants: []*matchDomain.Participant{
+		{Sheet: csEntity.Summary{UUID: sheetA, PlayerUUID: &pa}},
+		{Sheet: csEntity.Summary{UUID: sheetB, PlayerUUID: &pb}},
+	}}
+	loader := &mockSheetLoader{sheet: &csSheet.CharacterSheet{}}
+	prone := statuseffect.Effect{ID: uuid.New(), CharacterID: sheetA, Kind: statuseffect.KindProne}
+
+	t.Run("effects land in the session and the reader gets the participants' sheets", func(t *testing.T) {
+		reader := &fakeStatusEffectReader{byChar: map[uuid.UUID][]statuseffect.Effect{sheetA: {prone}}}
+		uc := match.NewInitMatchSessionUC(repo, loader, &noopRoundRepo{}, nil, nil, nil).WithStatusEffects(reader)
+		s, err := uc.Init(context.Background(), uuid.New())
+		if err != nil {
+			t.Fatalf("Init: %v", err)
+		}
+		got := s.StatusEffectsOf(sheetA)
+		if len(got) != 1 || got[0].ID != prone.ID {
+			t.Errorf("effects of A = %+v", got)
+		}
+		if len(s.StatusEffectsOf(sheetB)) != 0 {
+			t.Error("B must have none")
+		}
+		asked := map[uuid.UUID]bool{}
+		for _, id := range reader.asked {
+			asked[id] = true
+		}
+		if len(reader.asked) != 2 || !asked[sheetA] || !asked[sheetB] {
+			t.Errorf("reader asked for %v, want exactly %v and %v", reader.asked, sheetA, sheetB)
+		}
+	})
+
+	t.Run("a reader error aborts Init", func(t *testing.T) {
+		boom := errors.New("boom")
+		uc := match.NewInitMatchSessionUC(repo, loader, &noopRoundRepo{}, nil, nil, nil).
+			WithStatusEffects(&fakeStatusEffectReader{err: boom})
+		if _, err := uc.Init(context.Background(), uuid.New()); !errors.Is(err, boom) {
+			t.Errorf("err = %v, want boom", err)
+		}
+	})
+
+	t.Run("no reader means no effects", func(t *testing.T) {
+		uc := match.NewInitMatchSessionUC(repo, loader, &noopRoundRepo{}, nil, nil, nil).WithStatusEffects(nil)
+		s, err := uc.Init(context.Background(), uuid.New())
+		if err != nil {
+			t.Fatalf("Init: %v", err)
+		}
+		if len(s.CharactersWithStatusEffects()) != 0 {
+			t.Error("want no effects")
+		}
+	})
 }

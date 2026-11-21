@@ -21,7 +21,10 @@ Dependency: entity ← domain ← app, entity ← gateway. Entities never import
 
 ## Code Conventions
 
-- **NEVER remove TODO comments** — intentional markers by the owner
+- **Comments and TODOs are the owner's markers.** Never delete one outside the scope of your task —
+  sessions used to wipe other people's TODOs. What your change makes contradictory (a comment that
+  now describes the code wrongly) must be corrected or removed in the same change, saying why in
+  the commit.
 - Go idiomatic: implicit interfaces, short var names, error wrapping `%w`
 - **User vs Player vs Master:** `User` = generic auth entity. Use `Player`/`Master` for role-specific contexts.
 - **Domain Services:** stateless structs in `domain/match/service/` — receive entities, apply RPG rules, return results. No I/O, no state.
@@ -182,6 +185,8 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   `docs/superpowers/specs/2026-10-12-default-reaction-and-queue-edits-design.md`.
 
 **Relógio da história existe** (spec 2026-11-08): `clock_changed`/`set_clock`/`end_match` etc. Coisas que parecem lacuna e são deliberadas: tempo da história é **ingênuo** (string sem fuso; o front nunca usa `Date`); `clock_changed.kind: "end"` existe na struct mas o servidor não o emite (o fim vai em `match_ended` + fechamento 4002); `pause_clock` com o relógio já parado não responde nada; `get_combat_summary` não exige hora definida. Partida encerrada = `gameEndAt` (`Match.IsFinished()`), não `storyEndAt`. Ver `docs/dev/api/match-clock.md` e `docs/dev/match/clock.md`.
+
+**Efeitos de status — fase 1** (spec 2026-11-15; plano 2026-11-17). O mestre aplica/edita/remove (`apply_status_effect` etc.), `status_effects_updated` vai por destinatário e a sessão os guarda (a sala decide quando gravar: fora de turno na hora, dentro com o fechamento, falha cura na próxima gravação ou no `end_match`). Coisas que parecem lacuna e são deliberadas: **nada aqui muda rolagem** (penalidade, desvantagem, falha automática, Lento, G1 são só declarados — a fase das rolagens os aplica), não há teste automático, dano/recuperação por round, "não usa habilidades" (Nen) nem histórico de status (PR 2); o jogador **fica com o último estado visto** quando o personagem sai da visão (o servidor não manda "deixou de ver"); `npc_added` e a lista de NPCs vão **só ao mestre** e as barras são **por jogador** (névoa + Escondido); a reação padrão sentada segue os status (`nothing` quando não pode reagir) e seus sinalizadores de passiva não são persistidos; uma ficha viva em duas salas guarda duas memórias (última gravação ganha). Cadeia de trava: `persistMu` → `r.mu`; só `end_match` segura `clockPersistMu` → `persistMu` → `r.mu`. Ver `docs/dev/api/match-status-effects.md` e `docs/dev/match/status-effects.md`.
 
 **Envios pendentes travam quando a sala para (não corrigido):** os `go func(){ r.broadcast <- … }()` (e `broadcastInOrder`) ainda sem leitor quando o `Run` sai ficam bloqueados para sempre — padrão anterior ao relógio, mais frequente com ele (`clock_changed` em quase todo comando do mestre).
 

@@ -80,15 +80,21 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		return resolveRepel(in, calc)
 	}
 
-	dodge, evasion, bonus := dodgeAndReserve(in, calc)
-	out.Dodge = dodge
-	if isClosedKind(in.Kind) {
-		out.Evasion = evasion
+	// Um status pode ter tirado a esquiva por reflexo de uma reação padrão (decisão 9 do plano
+	// de efeitos de status): ela não é lida, e o golpe vai direto à defesa padrão.
+	noReflex := in.Kind.IsPassive() && in.Reaction != nil && in.Reaction.WithoutReflexDodge
+	dodgePassed := false
+	if !noReflex {
+		dodge, evasion, bonus := dodgeAndReserve(in, calc)
+		out.Dodge = dodge
+		if isClosedKind(in.Kind) {
+			out.Evasion = evasion
+		}
+		if bonus != nil {
+			out.Payouts = append(out.Payouts, *bonus)
+		}
+		dodgePassed = out.Dodge.Total >= in.HitTotal
 	}
-	if bonus != nil {
-		out.Payouts = append(out.Payouts, *bonus)
-	}
-	dodgePassed := out.Dodge.Total >= in.HitTotal
 	out.Avoided = dodgePassed
 	if in.Kind.Displaces() {
 		// An escape is a dodge that moves, and the move is its own test against the same CD:
@@ -110,6 +116,10 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 	}
 	if !in.Kind.KeepsDefault() {
 		// Escaping and repelling give up the automatic defense. Miss, and the blow lands whole.
+		return out
+	}
+	if in.Reaction != nil && in.Reaction.WithoutDefaultDefense {
+		// Um status tirou a defesa padrão (domínio de defesa travado): nada a amparar.
 		return out
 	}
 	// The master's condition on the default defense lives on the reaction's DefaultDefense

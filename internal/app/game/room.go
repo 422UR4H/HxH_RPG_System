@@ -27,6 +27,7 @@ import (
 	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -143,24 +144,22 @@ type Room struct {
 	// every snapshot to the old room's last one. Microseconds keep it below 2^53, exact as a
 	// JavaScript number.
 	barsSeq uint64
-	// barsCacheMu guards lastPlayerBars and playerBarsStale. Its own lock, not mu:
-	// buildMatchFullState writes them while holding only mu's READ lock. Lock order: mu, then
-	// barsCacheMu — never the other way.
+	// barsCacheMu guards playerBars. Its own lock, not mu: buildMatchFullState writes it while
+	// holding only mu's READ lock. Lock order: mu, then barsCacheMu — never the other way.
 	barsCacheMu sync.Mutex
-	// lastPlayerBars is the player view every connected player holds, as JSON with seq zero
-	// (barsViewKey). broadcastBars compares each new player view against it and skips the
-	// players when nothing they may see changed (spec 2026-11-04 D1): a fresh seq with nothing
-	// new in it would tell them that something secret just happened. The player view is the
-	// same for every player, so one copy covers them all.
+	// playerBars is, per player, the bars view that player holds, as JSON with seq zero
+	// (barsViewKey). broadcastBars compares each player's new view against theirs and skips
+	// that player when nothing they may see changed (spec 2026-11-04 D1): a fresh seq with
+	// nothing new in it would tell them that something secret just happened.
 	//
-	// Set by every snapshot sent to the players, and seeded by the first match_full_state a
-	// player is handed while it is nil. A new Room (restart) starts at nil, so what it first
+	// Por jogador desde a Task 10 (decisão do dono 5): a vista de cada um lista só os
+	// personagens que ele tem ou vê, então já não há uma cópia só para todos. O "stale" de
+	// antes (alguém recebeu uma vista que nenhum bars_updated levou) vira a falta de entrada:
+	// sem entrada, o próximo retrato vai a esse jogador mesmo que seja igual. Gravada por todo
+	// retrato que vai ao jogador e por todo match_full_state que ele recebe; apagada quando ele
+	// sai e, inteira, quando a sessão nasce. A new Room (restart) starts empty, so what it first
 	// tells anyone is what defines it.
-	lastPlayerBars []byte
-	// playerBarsStale is set when a player was handed (match_full_state) a bars view different
-	// from lastPlayerBars — a change no bars_updated carried. The players then do not all hold
-	// the same view, so the next snapshot goes to them even if it equals lastPlayerBars.
-	playerBarsStale bool
+	playerBars map[uuid.UUID][]byte
 	// boardLoaded is true once loadBoard has installed a board at least once for this Room (a
 	// load that found no map attached does not count). It is what
 	// narrows the master-reconnect half of "quando carrega" (spec §4.3) to a SINGLE load once
@@ -194,10 +193,19 @@ type Room struct {
 	// carry (unwritten.go). Guarded by mu.
 	unwrittenSheets    map[uuid.UUID]*csSheet.CharacterSheet
 	unwrittenRoundEnds []appmatch.RoundEnd
+	// unwrittenStatusEffects são as mudanças de efeitos de status ainda não gravadas, em ordem:
+	// as de fora de turno à espera do flushStatusEffects e as que uma gravação falha deixou
+	// (unwritten.go). A próxima gravação — fora de turno ou o fechamento de um turno — leva
+	// todas na frente das suas. Protegido por mu; só é descartado com persistMu.
+	unwrittenStatusEffects []statuseffect.Write
 	// masterViewPieceID é a peça pela qual o mestre está vendo o tabuleiro
 	// (watch_piece_view); "" é sem observação. Protegido por mu. Vive enquanto durar a conexão
 	// do mestre: um socket novo do mestre nasce sem observação, e o front a reenvia.
 	masterViewPieceID string
+	// statusViews é, por jogador e por personagem, o JSON da última lista de efeitos de status
+	// que ele recebeu (status_effects.go): syncStatusViews só manda o que difere dela, e o
+	// match_full_state a troca pelo que entregou. Protegido por mu.
+	statusViews map[uuid.UUID]map[uuid.UUID][]byte
 
 	session *matchsession.MatchSession
 
@@ -214,8 +222,10 @@ type Room struct {
 	// Protegidos por mu.
 	mergeGen uint64
 	clockSeq uint64
-	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem:
-	// clockPersistMu, depois mu.
+	// clockPersistMu serializa retrato e escrita do relógio (persistClock). Ordem: persistMu →
+	// mu em tudo que grava (tabuleiro, fechamento de turno, efeitos de status); só o end_match
+	// segura as três, na cadeia clockPersistMu → persistMu → mu. Nada que segura persistMu
+	// toma clockPersistMu.
 	clockPersistMu sync.Mutex
 	// resolutionAge conta os cálculos de turno: cada comando que recalcula a resolução o
 	// avança na MESMA seção crítica (sob mu, write lock) que mudou a sessão, então a idade
@@ -262,6 +272,8 @@ func NewRoom(
 		done:       make(chan struct{}),
 		deps:       deps,
 		barsSeq:    uint64(time.Now().UnixMicro()),
+
+		statusViews: make(map[uuid.UUID]map[uuid.UUID][]byte),
 
 		nowFn:                deps.Now,
 		clockSeq:             uint64(time.Now().UnixMicro()),
@@ -363,6 +375,13 @@ func (r *Room) removeClient(client *Client) bool {
 	if r.IsMaster(client.userUUID) {
 		r.masterViewPieceID = ""
 	}
+	// O que esta conexão recebeu de efeitos de status morre com ela; a próxima recomeça do
+	// match_full_state.
+	delete(r.statusViews, client.userUUID)
+	// As barras também: a próxima conexão recomeça do match_full_state dela.
+	r.barsCacheMu.Lock()
+	delete(r.playerBars, client.userUUID)
+	r.barsCacheMu.Unlock()
 	// Signal shutdown via done, never by closing send: a concurrent
 	// SendMessage on a closed channel panics and kills the process.
 	client.Close()
@@ -794,7 +813,7 @@ func (r *Room) StartMatch(userUUID uuid.UUID) error {
 	// The players at the table hold no bars yet: whatever the cache says, the next snapshot
 	// goes to them (see the broadcastBars at the end of this function).
 	r.barsCacheMu.Lock()
-	r.lastPlayerBars, r.playerBarsStale = nil, true
+	r.playerBars = nil
 	r.barsCacheMu.Unlock()
 	wallSlice := make([]mapentity.WallSegment, 0, len(r.walls))
 	for _, w := range r.walls {
@@ -1002,8 +1021,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// The bars go out on every exit past Execute, the failed ones included: a failed command
 		// can still have closed the previous turn or changed what the views read. The price
 		// itself freezes only when an action opens, so a failed open/pull leaks none (spec
-		// 2026-11-04 D7). When the players' view did not change, they get nothing
-		// (lastPlayerBars).
+		// 2026-11-04 D7). A player whose view did not change gets nothing
+		// (playerBars).
 		r.broadcastBars(session)
 		if result != nil {
 			if result.ClosedTurn != nil {
@@ -1313,12 +1332,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		r.mu.Lock()
 		refusalCode, refusal := r.enqueueRefusalLocked(session, a)
 		var errEnqueue error
+		var errText string
 		var queued ActionQueuedPayload
 		actionID := a.GetID()
 		if refusalCode == "" {
 			errEnqueue = r.deps.EnqueueActionUC.Execute(context.Background(), session, client.userUUID, a)
 			if errEnqueue == nil {
-				queued = newActionQueuedPayload(a)
+				queued = r.newActionQueuedPayloadLocked(session, a)
+			} else {
+				errText = r.actionErrorMessageLocked(errEnqueue, client.userUUID)
 			}
 		}
 		r.mu.Unlock()
@@ -1327,7 +1349,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 			return
 		}
 		if errEnqueue != nil {
-			client.SendMessage(NewErrorMessage("game_error", errEnqueue.Error()))
+			client.SendMessage(NewErrorMessage(actionErrorCode(errEnqueue), errText))
 			return
 		}
 		client.SendMessage(NewServerMessage(MsgTypeActionEnqueued, ActionEnqueuedPayload{ActionID: actionID}))
@@ -1512,7 +1534,7 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		if err == nil && result.Queued {
 			for _, a := range session.PendingActions() {
 				if a.GetID() == ma.ActionID {
-					requeued = newActionQueuedPayload(a)
+					requeued = r.newActionQueuedPayloadLocked(session, a)
 					break
 				}
 			}
@@ -1975,6 +1997,13 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		data, _ := json.Marshal(out)
 		go func() { r.broadcast <- data }()
 
+	case MsgTypeApplyStatusEffect:
+		r.handleApplyStatusEffect(client, incoming.Payload)
+	case MsgTypeEditStatusEffect:
+		r.handleEditStatusEffect(client, incoming.Payload)
+	case MsgTypeRemoveStatusEffect:
+		r.handleRemoveStatusEffect(client, incoming.Payload)
+
 	case MsgTypeAddNPC:
 		// Puts an NPC into the match mid-game. It lives ALONGSIDE the REST POST /npcs, it does
 		// not replace it: REST builds the roster before there is a room, this verb is for the
@@ -2258,9 +2287,9 @@ func moveFromOf(a action.Action) *[3]int {
 // nil from means no known origin (only the destination can be seen); nil to means no
 // destination (only the origin can) — never cell (0,0).
 //
-// The piece is hidden — nothing for any player — when it is visible:false, and also when the
-// character has NO piece on the board: applyMove then moves nothing and the relay tells
-// nobody anything, so neither may this.
+// The piece is hidden — nothing for that player — when it is visible:false or its character is
+// Hidden from pid (pieceHiddenForLocked), and also when the character has NO piece on the
+// board: applyMove then moves nothing and the relay tells nobody anything, so neither may this.
 //
 // No session (the lobby) means no fog: everything is visible, as relayPieceMove has it.
 //
@@ -2273,7 +2302,8 @@ func (r *Room) gatePieceMoveLocked(pid, characterID uuid.UUID, from, to *[3]int)
 	if pieceID == "" {
 		return "", false
 	}
-	if vis := r.pieces[pieceID].Visible; vis != nil && !*vis {
+	// Escondida para pid — visible:false ou o personagem Escondido fora da lista dele.
+	if r.pieceHiddenForLocked(pid, r.pieces[pieceID]) {
 		return "", false
 	}
 	grid := r.session.GetGrid()
@@ -2531,6 +2561,11 @@ func (r *Room) persistClosedTurn(
 	// Round ends an earlier command could not write: closed in this same transaction, before the
 	// round this turn belongs to (or its successor) can be born next to them still open.
 	roundEnds := r.unwrittenRoundEndsLocked()
+	// Os efeitos de status que uma gravação anterior não gravou vão na frente dos do turno, na
+	// mesma transação; persistMu (segurado acima) impede um flushStatusEffects de descartá-los
+	// no meio.
+	pendingStatus := append([]statuseffect.Write(nil), r.unwrittenStatusEffects...)
+	statusOps := append(append([]statuseffect.Write(nil), pendingStatus...), inTurn.statusEffects...)
 	// O relógio da história como este fechamento o deixou (um round que acabou junto com o
 	// turno já somou o seu segundo), copiado na mesma seção crítica das demais cópias.
 	clockSnap := r.clockSnapshotForWriteLocked(session)
@@ -2542,12 +2577,14 @@ func (r *Room) persistClosedTurn(
 		MasterActions: inTurn.masterActions, CancelledActions: inTurn.cancelledActions, Board: board, Memories: memories,
 		MoveViews: inTurn.moveViews, LandingViews: landingViews, ReactionMoveViews: inTurn.reactionMoveViews, StatusBars: statusBars,
 		NextRound: nextRound, UnwrittenRoundEnds: roundEnds, Clock: &clockSnap,
+		StatusEffects: statusOps,
 	})
 	if err != nil {
 		log.Printf("PersistTurnClose FAILED — turn %s of match %s was NOT persisted, nor the %d master action(s) applied and the %d action(s) cancelled inside it, "+
 			"nor the HP it applied to %d sheet(s) (character_sheets keep the last close), "+
-			"nor the board it left (match_boards and player_memories keep the last close): %v",
-			t.GetID(), matchUUID, len(inTurn.masterActions), len(inTurn.cancelledActions), len(statusBars), err)
+			"nor the board it left (match_boards and player_memories keep the last close), "+
+			"nor %d status effect write(s) (kept for the next write): %v",
+			t.GetID(), matchUUID, len(inTurn.masterActions), len(inTurn.cancelledActions), len(statusBars), len(statusOps), err)
 		// The overrides, the turn's master actions and its cancellations were already drained
 		// above and are lost with the turn. That is correct, not a leak to plug:
 		// overridden_action_values.action_uuid references actions(uuid), so the override rows
@@ -2559,8 +2596,12 @@ func (r *Room) persistClosedTurn(
 		// The HP is not lost either: the sheets keep it in memory, and they are remembered as
 		// unwritten (the ones of earlier failed closes stay remembered), so the NEXT close writes
 		// them with its own, whichever character it damages (unwritten.go).
+		//
+		// Os efeitos de status do turno também não se perdem: ficam pendentes logo atrás dos que
+		// já estavam (a ordem em que aconteceram), e a próxima gravação os leva.
 		r.mu.Lock()
 		r.markSheetsUnwrittenLocked(damaged)
+		r.keepFailedTurnStatusEffectsLocked(len(pendingStatus), inTurn.statusEffects)
 		r.mu.Unlock()
 		// The round's end is salvaged at once. The round DID end at the table, and leaving
 		// its row open while the successor is not one would have the successor's first write (a
@@ -2583,6 +2624,7 @@ func (r *Room) persistClosedTurn(
 	r.mu.Lock()
 	r.forgetSheetsWrittenLocked(sheets)
 	r.forgetRoundEndsWrittenLocked(roundEnds)
+	r.dropWrittenStatusEffectsLocked(len(pendingStatus))
 	markRoundPersistedIfActiveLocked(session, written.GetID())
 	r.mu.Unlock()
 }
@@ -2602,6 +2644,10 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	var attached ReactionAttachedPayload
 	var cancelWrites []*cancelledWrite
 	var cancelledIDs []uuid.UUID
+	var errText string
+	if err != nil {
+		errText = r.actionErrorMessageLocked(err, client.userUUID)
+	}
 	if err == nil {
 		// Os movimentos que caíram em cascata (D6) são gravados como um cancelamento pedido pelo
 		// dono do reator, na mesma seção crítica — com o turno aberto, seguem com o fechamento dele.
@@ -2617,7 +2663,7 @@ func (r *Room) handleReaction(client *Client, session *matchsession.MatchSession
 	}
 	r.mu.Unlock()
 	if err != nil {
-		client.SendMessage(NewErrorMessage("game_error", err.Error()))
+		client.SendMessage(NewErrorMessage(actionErrorCode(err), errText))
 		return
 	}
 	// Before the master's resolution_updated, on the same lane and goroutine: the reactor and
@@ -2709,12 +2755,16 @@ func (r *Room) sendToMaster(msg Message) {
 }
 
 // newBarsUpdatedPayload snapshots both clocks as the master (isMaster) or a player sees them —
-// matchsession.BarsView decides what each may see; this only puts it on the wire.
+// matchsession.BarsView decides what each may see; this only puts it on the wire. sees, when
+// not nil, limits the characters to the ones it accepts (BarsViewFor — the player's sight).
 //
 // The caller holds r.mu — it reads session state that every open and every enqueue mutates —
 // and stamps Seq from the room counter in that same critical section.
-func newBarsUpdatedPayload(session *matchsession.MatchSession, isMaster bool) BarsUpdatedPayload {
+func newBarsUpdatedPayload(session *matchsession.MatchSession, isMaster bool, sees func(uuid.UUID) bool) BarsUpdatedPayload {
 	view := session.BarsView(isMaster)
+	if sees != nil {
+		view = session.BarsViewFor(isMaster, sees)
+	}
 	out := BarsUpdatedPayload{
 		Prices:     barPricesWire(view.Prices),
 		Characters: make([]CharacterBarsPayload, 0, len(view.Characters)),
@@ -2851,14 +2901,16 @@ func (r *Room) publishResolution(turnID uuid.UUID, res *domainservice.TurnResolu
 
 // broadcastBars publishes the clocks to everyone, each recipient their own view of them: the
 // master the whole live view, every player only what the master has opened (spec 2026-11-04
-// D1). Called after anything that moves them: an action enqueued, a turn opened, a reaction
+// D1), and only for the characters that player owns or sees (seesCharacterLocked — decisão do
+// dono 5). Called after anything that moves them: an action enqueued, a turn opened, a reaction
 // attached or opened, a round closed, a regime switched, a scene changed — and a failed open
-// or pull, which may have frozen a price before it failed.
+// or pull, which may have frozen a price before it failed — and, through syncSight, after
+// anything that changes who sees whom.
 //
-// The players get it only when their view CHANGED (see lastPlayerBars): an enqueue or an
-// attach moves only the master's bars, and a player copy with a new seq and nothing new in it
-// would still announce that something secret happened. A skipped copy simply never arrives —
-// the seq a player sees still only rises.
+// A player gets it only when THEIR view CHANGED (see playerBars): an enqueue or an attach
+// moves only the master's bars, and a player copy with a new seq and nothing new in it would
+// still announce that something secret happened. A skipped copy simply never arrives — the
+// seq a player sees still only rises. The seq is one counter for the whole room.
 //
 // On the direct lane, like turn_opened: sends are synchronous and ordered per client.
 func (r *Room) broadcastBars(session *matchsession.MatchSession) {
@@ -2867,53 +2919,72 @@ func (r *Room) broadcastBars(session *matchsession.MatchSession) {
 	}
 	// Write-locked, not read-locked: the sequence counter is bumped in the same critical
 	// section that reads the state, so the number and the snapshot it stamps cannot disagree —
-	// and both views are built in it, so the master's copy and the players' copy of one seq
-	// describe the same instant. The comparison with lastPlayerBars is in it too, so two
+	// and every view is built in it, so the master's copy and each player's copy of one seq
+	// describe the same instant. The comparison with playerBars is in it too, so two
 	// snapshots cannot both decide against the same stale copy.
+	type send struct {
+		c   *Client
+		msg Message
+	}
 	r.mu.Lock()
 	r.barsSeq++
-	masterView := newBarsUpdatedPayload(session, true)
-	masterView.Seq = r.barsSeq
-	playerView := newBarsUpdatedPayload(session, false)
-	toPlayers := r.notePlayerBarsSentLocked(barsViewKey(playerView))
-	playerView.Seq = r.barsSeq
-	masterMsg := NewServerMessage(MsgTypeBarsUpdated, masterView)
-	playerMsg := NewServerMessage(MsgTypeBarsUpdated, playerView)
+	var out []send
+	for pid, c := range r.clients {
+		if pid == r.masterUUID {
+			view := newBarsUpdatedPayload(session, true, nil)
+			view.Seq = r.barsSeq
+			out = append(out, send{c: c, msg: NewServerMessage(MsgTypeBarsUpdated, view)})
+			continue
+		}
+		view := r.playerBarsPayloadLocked(session, pid)
+		if !r.notePlayerBarsSentLocked(pid, barsViewKey(view)) {
+			continue
+		}
+		view.Seq = r.barsSeq
+		out = append(out, send{c: c, msg: NewServerMessage(MsgTypeBarsUpdated, view)})
+	}
 	r.mu.Unlock()
-	r.dispatchPerPlayer(func(_ uuid.UUID, isMaster bool) *Message {
-		if isMaster {
-			return &masterMsg
-		}
-		if !toPlayers {
-			return nil
-		}
-		return &playerMsg
+	for _, s := range out {
+		s.c.SendMessage(s.msg)
+	}
+}
+
+// playerBarsPayloadLocked é a vista das barras de um jogador: só o que o mestre já abriu, e só
+// dos personagens que ele tem ou vê agora. A MESMA para o bars_updated e para o
+// match_full_state.bars. O chamador segura r.mu (leitura basta).
+func (r *Room) playerBarsPayloadLocked(session *matchsession.MatchSession, pid uuid.UUID) BarsUpdatedPayload {
+	return newBarsUpdatedPayload(session, false, func(charID uuid.UUID) bool {
+		return r.seesCharacterLocked(pid, charID)
 	})
 }
 
-// notePlayerBarsSentLocked decides whether a snapshot whose player view is key goes to the
-// players, and if so records it as what they hold. The caller holds mu (write).
-func (r *Room) notePlayerBarsSentLocked(key []byte) bool {
+// notePlayerBarsSentLocked decides whether a snapshot whose view for pid is key goes to pid,
+// and if so records it as what pid holds. The caller holds mu (write).
+func (r *Room) notePlayerBarsSentLocked(pid uuid.UUID, key []byte) bool {
 	r.barsCacheMu.Lock()
 	defer r.barsCacheMu.Unlock()
-	if !r.playerBarsStale && r.lastPlayerBars != nil && bytes.Equal(key, r.lastPlayerBars) {
+	if prev, ok := r.playerBars[pid]; ok && bytes.Equal(key, prev) {
 		return false
 	}
-	r.lastPlayerBars, r.playerBarsStale = key, false
+	r.notePlayerBarsCacheLocked(pid, key)
 	return true
 }
 
-// notePlayerBarsHandedLocked records that a player was just handed the player view key in a
-// match_full_state. The caller holds mu (a read lock is enough).
-func (r *Room) notePlayerBarsHandedLocked(key []byte) {
+// notePlayerBarsHandedLocked records that pid was just handed the view key in a
+// match_full_state: from here on it is what pid holds. The caller holds mu (a read lock is
+// enough).
+func (r *Room) notePlayerBarsHandedLocked(pid uuid.UUID, key []byte) {
 	r.barsCacheMu.Lock()
 	defer r.barsCacheMu.Unlock()
-	switch {
-	case r.lastPlayerBars == nil && !r.playerBarsStale:
-		r.lastPlayerBars = key
-	case !bytes.Equal(key, r.lastPlayerBars):
-		r.playerBarsStale = true
+	r.notePlayerBarsCacheLocked(pid, key)
+}
+
+// notePlayerBarsCacheLocked grava key como a vista de pid. O chamador segura barsCacheMu.
+func (r *Room) notePlayerBarsCacheLocked(pid uuid.UUID, key []byte) {
+	if r.playerBars == nil {
+		r.playerBars = make(map[uuid.UUID][]byte)
 	}
+	r.playerBars[pid] = key
 }
 
 // barsViewKey is a bars view as JSON with seq zero — what two snapshots are compared by. JSON
@@ -3057,6 +3128,8 @@ func (r *Room) pushVisibilityUpdates() {
 	})
 	// O que mudou a visão dos jogadores (uma parede, uma revelação) muda a da peça observada também.
 	r.pushMasterPieceView()
+	// E muda quem cada um vê: barras e status reacertados, depois do visibility_updated.
+	r.syncSight()
 }
 
 // buildPieceView é o piece_view da peça que o mestre observa: o que ela vê agora, de onde
@@ -3091,9 +3164,16 @@ func (r *Room) buildPieceView() *Message {
 	for _, w := range r.walls {
 		allWalls = append(allWalls, w)
 	}
+	// A peça observada vê como o dono dela: quem está Escondido para ele some aqui também. O
+	// NPC é do mestre, e para o mestre o Escondido não esconde nada.
+	watcher := r.session.GetCharToPlayer()[viewer.CharacterID]
 	pieceProj := make([]domainservice.PieceVisibility, 0, len(r.pieces))
 	for _, p := range r.pieces {
-		pieceProj = append(pieceProj, pieceVisibilityOf(p, grid))
+		pv := pieceVisibilityOf(p, grid)
+		if watcher != uuid.Nil && r.pieceHiddenForLocked(watcher, p) {
+			pv.Visible = false
+		}
+		pieceProj = append(pieceProj, pv)
 	}
 	poly := r.session.VisibilityFrom(pieceVisibilityOf(viewer, grid).Pos)
 	r.mu.RUnlock()
@@ -3244,7 +3324,13 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 	boardBg := r.bg
 	for _, p := range r.pieces {
 		allPieces = append(allPieces, p)
-		pieceProj = append(pieceProj, pieceVisibilityOf(p, grid))
+		pv := pieceVisibilityOf(p, grid)
+		// O Escondido por jogador entra nos filtros como uma peça visible:false — só nesta
+		// projeção, nunca no PieceMovedPayload (o visible dele é global e vai gravado).
+		if !isMaster && r.pieceHiddenForLocked(playerID, p) {
+			pv.Visible = false
+		}
+		pieceProj = append(pieceProj, pv)
 	}
 	var polys []domainservice.VisibilityPolygon
 	fogMode := fogentity.FogModeLive
@@ -3317,7 +3403,36 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 // its own single RLock/RUnlock pair. There is no reason to split it into two critical
 // sections here: nothing in between needs the lock released, and ResolveTurn is a pure
 // recompute (no I/O, no sheet writes), so it is safe to run under RLock.
+//
+// Os efeitos de status ficam de fora dessa leitura: a projeção deles e a troca de
+// statusViews[playerID] pelo exato que esta mensagem leva acontecem juntas, numa seção curta
+// com a trava de escrita, logo depois do retrato. Assim o cache é sempre a lista que esta
+// mensagem carrega: um syncStatusViews que rode antes da seção já mudou a sessão que ela lê, e
+// um que rode depois compara com o que esta mensagem leva e só manda uma diferença de verdade.
+// O que continua sem garantia é a ordem entre as duas faixas de envio: o
+// status_effects_updated sai pela faixa direta, este match_full_state pela do Run — um sync
+// montado depois da seção pode chegar ao cliente antes desta mensagem, e então a lista mais
+// velha do match_full_state fica na tela até a próxima mudança.
 func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
+	payload := r.snapshotMatchFullState(playerID, isMaster)
+	if payload == nil {
+		return nil
+	}
+	r.mu.Lock()
+	var views map[uuid.UUID][]byte
+	payload.StatusEffects, views = r.statusEffectsForLocked(playerID, isMaster)
+	if r.statusViews == nil {
+		r.statusViews = make(map[uuid.UUID]map[uuid.UUID][]byte)
+	}
+	r.statusViews[playerID] = views
+	r.mu.Unlock()
+	msg := NewServerMessage(MsgTypeMatchFullState, *payload)
+	return &msg
+}
+
+// snapshotMatchFullState is buildMatchFullState's read half, under r.mu.RLock: everything in
+// the payload but the status effects, which buildMatchFullState adds with the cache reset.
+func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchFullStatePayload {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -3326,9 +3441,12 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		return nil
 	}
 
-	payload := MatchFullStatePayload{Bars: newBarsUpdatedPayload(session, isMaster)}
-	if !isMaster {
-		r.notePlayerBarsHandedLocked(barsViewKey(payload.Bars))
+	var payload MatchFullStatePayload
+	if isMaster {
+		payload.Bars = newBarsUpdatedPayload(session, true, nil)
+	} else {
+		payload.Bars = r.playerBarsPayloadLocked(session, playerID)
+		r.notePlayerBarsHandedLocked(playerID, barsViewKey(payload.Bars))
 	}
 	// The CURRENT counter, not a new one — see MatchFullStatePayload.Bars' own doc comment.
 	// broadcastBars is the only place that bumps r.barsSeq; this just reads it.
@@ -3443,7 +3561,7 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		// PendingActions reads s.activeQueue with no lock of its own; r.mu (held for this whole
 		// function) is what serializes it against a concurrent enqueue_action.
 		for _, a := range session.PendingActions() {
-			payload.Queue = append(payload.Queue, newActionQueuedPayload(a))
+			payload.Queue = append(payload.Queue, r.newActionQueuedPayloadLocked(session, a))
 		}
 	} else {
 		// OwnQueue is B12 (design spec §4.2) — see MatchFullStatePayload.OwnQueue's own doc for
@@ -3476,8 +3594,7 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 		payload.OwnQueue = &own
 	}
 
-	msg := NewServerMessage(MsgTypeMatchFullState, payload)
-	return &msg
+	return &payload
 }
 
 // newActionQueuedPayload is one pending action as the MASTER reads it: the ID pull_action
@@ -3488,6 +3605,15 @@ func (r *Room) buildMatchFullState(playerID uuid.UUID, isMaster bool) *Message {
 //
 // Shared by the action_queued emitted at enqueue time and by match_full_state's Queue, so the
 // live event and the snapshot can never describe the same action differently.
+//
+// StatusNotes são as anotações dos status do ator que valem para esta action (statusNotesFor).
+// O chamador segura r.mu (leitura basta).
+func (r *Room) newActionQueuedPayloadLocked(session *matchsession.MatchSession, a *action.Action) ActionQueuedPayload {
+	p := newActionQueuedPayload(a)
+	p.StatusNotes = statusNotesFor(session.StatusSummaryOf(a.GetActorID()), a)
+	return p
+}
+
 func newActionQueuedPayload(a *action.Action) ActionQueuedPayload {
 	bars := make([]string, 0, 2)
 	for _, b := range a.Bars() {
@@ -3621,7 +3747,6 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 	if hadOld {
 		oldX, oldY = slotPayloadToLocal(old.Slot, grid)
 	}
-	hidden := payload.Visible != nil && !*payload.Visible
 
 	// A server-authored move carries no sender. NewClientMessage with uuid.Nil would encode
 	// the same bytes, but saying NewServerMessage keeps the intent readable at the call site.
@@ -3684,14 +3809,16 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 
 	// The fog gate, one player at a time: seeing the destination is the move (full); seeing only
 	// the origin is the piece leaving (left, the piece_removed half); neither is nothing. Hidden
-	// pieces never reach players. It is used TWICE — for the connected clients below, and for
+	// pieces never reach players — visible:false, or (per player) a character Hidden from them
+	// (pieceHiddenForLocked). It is used TWICE — for the connected clients below, and for
 	// every player of the session in views — so what is recorded is what was sent.
+	// The caller of gate holds r.mu (read).
 	newPt := domainservice.Point2D{X: newX, Y: newY}
 	oldPt := domainservice.Point2D{X: oldX, Y: oldY}
-	gate := func(polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
-		return pieceMoveView(polys, newPt, oldPt, hadOld, hidden)
+	gate := func(pid uuid.UUID, polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
+		return pieceMoveView(polys, newPt, oldPt, hadOld, r.pieceHiddenForLocked(pid, payload))
 	}
-	views := r.sessionViews(gate)
+	views := r.sessionViewsPer(gate)
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 		if origin != uuid.Nil && pid == origin {
@@ -3706,7 +3833,8 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 			m := moved
 			return &m
 		}
-		switch v, ok := gate(r.visibilityFor(pid)); {
+		v, ok := r.gateForLocking(pid, gate)
+		switch {
 		case !ok:
 			return nil
 		case v == masteraction.ViewFull:
@@ -3717,6 +3845,15 @@ func (r *Room) relayPieceMove(payload, old PieceMovedPayload, hadOld bool, origi
 			return &m
 		}
 	})
+	// A peça andou: a visão de alguém pode ter mudado, então as barras e os status de cada um
+	// são reacertados (syncSight) — por último, depois do piece_moved e do map_full_state do
+	// dono, para que o jogador já tenha a peça quando os status dela chegam. Chamado aqui, e não
+	// só no comando, porque este relay é o caminho de toda peça que anda (arrasto do mestre,
+	// movimento aberto, fugas fechadas). O open_next_action/pull_action já mandam um
+	// broadcastBars, mas ANTES do movimento — com a visão velha —, então aqui vai o syncSight
+	// inteiro, não só a metade de status: sem ele, as barras do jogador ficariam com a visão de
+	// antes do passo até o próximo comando. O preço é um bars_updated a mais para o mestre.
+	defer r.syncSight()
 	// Toda saída abaixo — inclusive a de owner == uuid.Nil, que é a que o movimento de um NPC
 	// toma — atualiza a peça que o mestre observa, DEPOIS do piece_moved acima.
 	defer r.pushMasterPieceView()
@@ -4215,7 +4352,6 @@ func (r *Room) handlePieceRemoved(client *Client, payload PieceRemovedPayload) {
 //
 // The caller must NOT hold r.mu.
 func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid.UUID) map[uuid.UUID]masteraction.View {
-	hidden := hadOld && old.Visible != nil && !*old.Visible
 	grid := r.gridShape()
 	var oldPt domainservice.Point2D
 	if hadOld {
@@ -4239,10 +4375,12 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 		owner = uuid.Nil
 	}
 
-	gate := func(polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
-		return pieceRemovedView(polys, oldPt, hadOld, hidden)
+	// Escondida para pid (visible:false, ou o personagem Escondido fora da lista dele): nada.
+	// Quem chama gate segura r.mu (leitura).
+	gate := func(pid uuid.UUID, polys []domainservice.VisibilityPolygon) (masteraction.View, bool) {
+		return pieceRemovedView(polys, oldPt, hadOld, hadOld && r.pieceHiddenForLocked(pid, old))
 	}
-	views := r.sessionViews(gate)
+	views := r.sessionViewsPer(gate)
 
 	r.dispatchPerPlayer(func(pid uuid.UUID, isMaster bool) *Message {
 		if origin != uuid.Nil && pid == origin {
@@ -4257,12 +4395,16 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 			m := removed
 			return &m
 		}
-		if _, ok := gate(r.visibilityFor(pid)); !ok {
+		_, ok := r.gateForLocking(pid, gate)
+		if !ok {
 			return nil
 		}
 		m := removed
 		return &m
 	})
+	// A peça saiu: quem a via deixa de ver o personagem — barras e status reacertados por
+	// último, como no relayPieceMove.
+	defer r.syncSight()
 	// Toda saída abaixo atualiza a peça que o mestre observa, DEPOIS do piece_removed acima;
 	// quando a peça removida É a observada, buildPieceView limpa a observação em vez disso.
 	defer r.pushMasterPieceView()
@@ -4284,6 +4426,21 @@ func (r *Room) relayPieceRemoved(old PieceMovedPayload, hadOld bool, origin uuid
 		ownerClient.SendMessage(*r.buildMapFullState(owner, false))
 	}
 	return views
+}
+
+// gateForLocking roda a porta de um relay para um destinatário, sob r.mu (leitura): a porta lê
+// o cache de visão e os efeitos do personagem (pieceHiddenForLocked). Sem sessão, nada.
+//
+// O chamador NÃO segura r.mu.
+func (r *Room) gateForLocking(
+	pid uuid.UUID, gate func(uuid.UUID, []domainservice.VisibilityPolygon) (masteraction.View, bool),
+) (masteraction.View, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.session == nil {
+		return "", false
+	}
+	return gate(pid, r.session.GetVisibility(pid))
 }
 
 func (r *Room) sendRoomState(client *Client) {

@@ -36,6 +36,14 @@ type Action struct {
 	// mapped by no wire, the same way RollCheck.Context is not.
 	DefaultDefense *RollCheck
 
+	// WithoutReflexDodge e WithoutDefaultDefense dizem que um status tirou uma das passivas desta
+	// reação (decisão 9 do plano de efeitos de status): a esquiva por reflexo de uma ReactDefault,
+	// a defesa padrão de qualquer tipo que a mantém (KeepsDefault). Postos só pela MatchSession
+	// (reação sentada e reação recebida) e lidos pelo resolvedor. Sem as duas, a sessão senta um
+	// ReactNothing em vez de uma ReactDefault vazia. Como DefaultDefense, nenhum fio os mapeia.
+	WithoutReflexDodge    bool
+	WithoutDefaultDefense bool
+
 	// ReactionKind is set only on a reaction, and it is what decides the cost — never the
 	// shape. It is deliberately a field rather than a constructor parameter: NewAction already
 	// takes twelve positional arguments and is called from dozens of sites, and growing it

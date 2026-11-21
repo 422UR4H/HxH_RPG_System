@@ -111,6 +111,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`change_scene`](#change_scene) | mestre |
 | [`enqueue_master_action`](#enqueue_master_action) | mestre |
 | [`add_npc`](#add_npc) | mestre |
+| `apply_status_effect`, `edit_status_effect`, `remove_status_effect` | mestre — ver [`match-status-effects.md`](match-status-effects.md) |
 | `set_clock_start`, `adjust_clock`, `set_clock`, `play_clock`, `pause_clock`, `get_combat_summary`, `end_match` | mestre — ver [`match-clock.md`](match-clock.md) |
 
 **Servidor → cliente**
@@ -118,9 +119,9 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | Mensagem | Destino |
 |---|---|
 | [`action_enqueued`](#action_enqueued) | só quem enviou |
-| [`action_queued`](#action_queued) | **só o mestre** |
-| [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu** |
-| [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo, o jogador só o que o mestre já abriu |
+| [`action_queued`](#action_queued) | **só o mestre** (com `statusNotes`) |
+| [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu**; também o dono da ação que um status derrubou |
+| [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo; o jogador, só os personagens que é dono ou enxerga, e só o que o mestre já abriu |
 | [`turn_opened`](#turn_opened) | mesa inteira |
 | [`reaction_attached`](#reaction_attached) | quem reagiu **+ mestre** |
 | [`reaction_opened`](#reaction_opened) | mesa inteira (projetado por destinatário) |
@@ -134,7 +135,8 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 | [`scene_changed`](#scene_changed) | mesa inteira |
 | [`master_action_enqueued`](#master_action_enqueued) | mesa inteira; **só o mestre** nas ações de peça |
 | [`master_action_recorded`](#master_action_recorded) | o mestre + quem pode ler o registro no histórico |
-| [`npc_added`](#npc_added) | mesa inteira |
+| [`npc_added`](#npc_added) | **só o mestre** |
+| `status_effects_updated` | por destinatário (mestre sempre; jogador só o que vê) — ver [`match-status-effects.md`](match-status-effects.md) |
 | `clock_changed` · `combat_summary` · `match_ended` | relógio da história, resumo do combate e fim da partida — ver [`match-clock.md`](match-clock.md) |
 | [`match_full_state`](#match_full_state) | quem conecta/reconecta, enquanto há sessão viva |
 | [`piece_moved`](#piece_moved-servidor) (também servidor) | fog-gated, por destinatário |
@@ -1021,8 +1023,8 @@ Esta mensagem tem **quatro destinos possíveis**, decididos nesta ordem:
      `from` são **ignorados**: o arrastar não é movimento de jogo, não rola nem cobra barra.
    - **Pôr** — o personagem não tem peça: ganha uma nova (`pieceId` novo, forma do slot pela
      grade, `visible: true`, `z` 0). Se é **NPC do mestre** que ainda não participa, é
-     inscrito na partida antes — o mesmo caminho de [`add_npc`](#add_npc): a mesa recebe
-     [`npc_added`](#npc_added) e um `bars_updated` novo. Se é personagem de **jogador** que
+     inscrito na partida antes — o mesmo caminho de [`add_npc`](#add_npc): o mestre recebe
+     [`npc_added`](#npc_added); os jogadores veem a peça pela névoa e o NPC em `bars_updated` se o enxergam. Se é personagem de **jogador** que
      não participa → `error` `not_participant`, nada é criado.
    - **Tirar** (`remove`) — a peça sai do tabuleiro. Só isso: não desinscreve, não mata, não
      apaga histórico; o personagem continua nas barras. O dono da peça (jogador) recebe um
@@ -1120,14 +1122,13 @@ endpoint REST seguida de uma injeção manual que o front poderia esquecer.
 mestre) da `MatchSession` corrente — o mestre pode enfileirar uma ação pelo NPC no mesmo
 segundo (ver §2). O servidor responde [`npc_added`](#npc_added) e emite um `bars_updated`
 NOVO (`seq` maior) que já lista o NPC — **não** `match_full_state` (ver
-[`npc_added`](#npc_added) em §5). **As duas mensagens saem por pistas diferentes**
-(`npc_added` pelo canal de broadcast, em `room.go`; `bars_updated` pela pista direta por
-destinatário, dentro de `broadcastBars`), então a ORDEM DE CHEGADA **não é garantida** —
-`bars_updated` pode chegar antes de `npc_added`. O front não deve exigir `npc_added` primeiro para aceitar o
-`bars_updated` que já lista o NPC.
+[`npc_added`](#npc_added) em §5). **Ordem garantida ao mestre:** `npc_added` sai por
+`sendToMaster` (pista direta) e o `syncSight` que manda `bars_updated` e `status_effects_updated`
+roda logo depois, na mesma goroutine e na mesma pista — o mestre recebe `npc_added` primeiro.
+Para os jogadores nada disso é `npc_added`: o NPC chega pela névoa e por `bars_updated`.
 
 **Sem sessão viva (partida ainda no lobby):** só a escrita no banco acontece. `npc_added`
-ainda sai para a mesa, mas não há barras para publicar — nenhum `bars_updated` é emitido. O
+ainda sai, só para o mestre, mas não há barras para publicar — nenhum `bars_updated` é emitido. O
 NPC entra em jogo quando a sala nascer: `InitMatchSessionUC` o carrega do banco junto com o
 resto do roster.
 
@@ -1242,6 +1243,12 @@ então `move.from` é o destino dele, não a peça. Ausente num movimento não e
 vai em `match_full_state.queue`/`ownQueue` e no `turn_opened` do mestre e do dono; terceiros nunca
 o recebem.
 
+**`statusNotes` (efeitos de status):** anotações dos status do ator que valem para esta ação —
+`[{ kind, domain?, conduct?, irresistible? }]`: o aviso de um domínio inutilizado que a ação usa
+(Lesionado `disabled`) e toda conduta imposta (Compelido). **Só o mestre** (esta mensagem já é
+só dele; `match_full_state.queue` leva o mesmo campo). Ausente sem nenhuma. Formato e exemplo em
+[`match-status-effects.md`](match-status-effects.md#statusnotes-em-action_queued).
+
 **É master-only porque a fila é secreta** (`combat-engine.md` § *A ordem projetada é do mestre*: "a
 fila é secreta"; o `bars_updated` do jogador não carrega a ordem nem velocidade não aberta). Um jogador que aprendesse o que está
 pendente leria as intenções da mesa no wire.
@@ -1289,6 +1296,12 @@ ação de um NPC recebe **uma só**.
 [`bars_updated`](#bars_updated) que vem logo depois. O mestre é avisado na hora porque é ele quem
 decide o que abre a seguir.
 
+**Também por um status** (ver [`match-status-effects.md`](match-status-effects.md#action_cancelled-disparado-por-status)):
+quando `apply_status_effect`/`edit_status_effect` faz o personagem não poder mais declarar uma ação que já
+estava na fila, ela sai e o servidor manda este mesmo `action_cancelled` **ao mestre e ao dono da
+ação** (ação de NPC: só ao mestre), seguido de `bars_updated`. Fica registrada como cancelada
+**pelo mestre**.
+
 **Disparado por:** `cancel_action` aceito — **um por ação** cancelada: a pedida e cada
 [movimento empilhado](#movimentos-empilhados) que caiu com ela, em ordem de cadeia, todos antes do
 `bars_updated`. E por [`attach_reaction`](#attach_reaction), um por movimento empilhado que a
@@ -1333,7 +1346,7 @@ nada na fila — nunca `null`, nunca ausente.
 visão, montada pelo servidor na pista direta (`dispatchPerPlayer`, a mesma de
 [`turn_opened`](#turn_opened)). Não é broadcast: ação pendente é segredo do mestre, e um número
 rolado que chegasse ao jogador antes de o mestre abrir a ação lhe permitiria cancelar a que
-rolou mal. O **mestre** vê a visão viva inteira (cada envio, na hora); o **jogador** — para todo
+rolou mal. **A lista `characters` é por jogador** (efeitos de status, 2026-11-17): o jogador recebe só os personagens que **é dono ou enxerga agora** (mesma visão da névoa e do Escondido de [`match-status-effects.md`](match-status-effects.md#7-quem-vê-o-quê-lista-e-visão)); o mestre, todos. Um personagem que sai da vista some da lista dele no `bars_updated` seguinte, e reaparece ao voltar; quem a vista não mudou não recebe nada. O **mestre** vê a visão viva inteira (cada envio, na hora); o **jogador** — para todo
 personagem, o próprio incluso — vê só o que o mestre já abriu: preços congelados, velocidades
 públicas, ordem vazia.
 
@@ -1490,9 +1503,9 @@ Na prática o jogador nem receberia este exemplo: a visão dele não mudou com e
   **o `seq` do jogador pode saltar** — o cliente continua só descartando valores menores que o
   maior já aplicado, nunca esperando `seq + 1`.
 - `bars_updated` viaja na **pista direta por destinatário**: não há garantia de ordem entre ele e
-  mensagens da pista de broadcast como [`round_mode_changed`](#round_mode_changed) ou
-  [`npc_added`](#npc_added) (também não havia antes). O cliente não pode depender de uma vir antes
-  da outra.
+  mensagens da pista de broadcast como [`round_mode_changed`](#round_mode_changed). O cliente não pode
+  depender de uma vir antes da outra. (`npc_added` também vai pela pista direta, só ao mestre, e
+  chega antes do `bars_updated` que lista o NPC.)
 - [`match_full_state.bars`](#match_full_state) é a mesma visão, montada para quem conecta.
 
 **Disparado por:** qualquer coisa que mova as barras — `start_match` (um `bars_updated` assim
@@ -1964,6 +1977,7 @@ junto é de turno aberto.
 | `reaction.systemBias` | A **Desvantagem que o próprio motor** pôs nas velocidades da reação (`actionSpeed` e, se ela move, `moveSpeed`): `-1` quando ela consumiu uma ação da fila (menos a fuga para o mesmo destino do movimento consumido) ou quem reage cancelou antes nesta rodada (ver [`attach_reaction`](#attach_reaction)). **Ausente** = nenhuma. Acumula com o viés que o mestre der no `edit_action`: um `+1` do mestre a **anula** (neutro — lê o primeiro conjunto de dados, não o melhor); o viés só decide o sinal, então não há como ir além de neutro com viés — vantagem líquida é o `modifier`. O mesmo valor de `systemBias` da ação ([`reaction_opened`](#reaction_opened)), aqui para o painel não precisar cruzar mensagens. |
 | `pendingReactions` | Reações **anexadas e ainda não abertas** — a padrão sentada e o `nothing` inclusive. **Sempre master-only**, mesmo num payload liquidado. É a lista de tarefas do mestre (de quem ainda pode ganhar a palavra), não estado de mesa. A reação não aberta **está** no cálculo (em `targets[].reaction`, com `opened: false`); esta lista é o que deixa o mestre escolher a ordem. |
 | `pendingReactions[].seated` | `true` na reação padrão que o servidor sentou para um alvo que ainda não respondeu — "ainda calado" × "escolheu a padrão". Ausente quando o alvo respondeu. |
+| `pendingReactions[].kind` | O tipo da reação. **Com efeitos de status, a sentada segue os status do alvo:** `"default"` (inteira, ou só com as passivas que os status permitem) ou **`"nothing"` com `seated: true`** quando o alvo não pode reagir ou perdeu as duas passivas (esquiva por reflexo e defesa padrão). O front não pode assumir que `seated` implica `default`. |
 | `pendingReactions[].arrival` | A ordem em que a reação foi anexada neste turno (`1` = a primeira), contando as já abertas. |
 | `pendingReactions[].systemBias` | Como `reaction.systemBias`, para a reação ainda não aberta. |
 | `pendingReactions[].speed` | A **chave** da reação: o resultado da velocidade de ação dela — o mesmo número que ordena a fila de ações. **Ausente** numa reação que não rola velocidade (esquiva, esquiva fechada, não fazer nada). A ordem de abrir continua sendo do mestre; isto é o que ele lê para decidir. |
@@ -2275,7 +2289,7 @@ Com turno aberto não há esta mensagem: a ação é gravada no fechamento, junt
 
 ### `npc_added`
 
-**Direção:** servidor → cliente. **Destino:** mesa inteira, em broadcast.
+**Direção:** servidor → cliente. **Destino:** **SÓ O MESTRE** (decisão do dono, 2026-11-17; antes era a mesa inteira). Jogador nenhum o recebe, nem no lobby. Um NPC chega aos jogadores como qualquer peça: pela névoa (`piece_moved`, `map_full_state`) e, se o jogador o enxerga, em `bars_updated`; os status dele seguem a visão (ver [`match-status-effects.md`](match-status-effects.md#7-quem-vê-o-quê-lista-e-visão)).
 
 ```json
 {
@@ -2289,33 +2303,28 @@ mesma forma de [`scene_changed`](#scene_changed) e
 [`master_action_enqueued`](#master_action_enqueued): o evento anuncia que algo mudou, não
 carrega a coisa que mudou.
 
-⚠️ **Só o mestre consegue buscar essa ficha.** `GetCharacterSheetUC.GetCharacterSheet`
+⚠️ **Só o mestre consegue buscar essa ficha** (e por isso só ele recebe a mensagem). `GetCharacterSheetUC.GetCharacterSheet`
 (`internal/application/character_sheet/get_character_sheet.go:64-119`) só devolve uma ficha
 para o `master_uuid` dela, para o `player_uuid` dela, ou para o mestre da campanha — nessa
 ordem de checagem. Uma ficha de NPC tem `player_uuid == null`, então um jogador comum que
 tentar buscá-la (`GET /charactersheets/{uuid}`) cai em `auth.ErrInsufficientPermissions`
-(403), a menos que por acaso seja o mestre da campanha. `npc_added` é broadcast para a mesa
-inteira, mas o (re)fetch por REST que ele sugere só faz sentido para quem tem permissão de
-lê-la: o mestre. **Os demais jogadores aprendem que o NPC existe pelo `bars_updated.characters`
-que segue** (que já traz `characterId`, carry e saldo) **e pela peça que aparece no
-tabuleiro** — não pela ficha completa, que não é deles para ver. Não é uma lacuna deste
-contrato: é a mesma regra de visibilidade de ficha que já vale fora do combate.
+(403), a menos que por acaso seja o mestre da campanha. O (re)fetch por REST que ele sugere só faz sentido para quem tem permissão de
+lê-la: o mestre. **Os jogadores aprendem que o NPC existe pela peça que aparece no
+tabuleiro, se a enxergam, e pelo `bars_updated.characters` que a vista deles passa a incluir** (que já traz `characterId`, carry e saldo)
+— não pela ficha completa, que não é deles para ver. Um NPC fora da vista (ou Escondido) não aparece a ninguém.
 
-Não vaza nada novo além disso: `bars_updated.characters` já lista todo personagem em combate,
-NPC incluído.
+Os `bars_updated.characters` dos jogadores listam só os personagens que cada um é dono ou enxerga (ver [`bars_updated`](#bars_updated)); o do mestre, todos.
 
-**Com sessão viva, um `bars_updated` com `seq` maior sai junto — em QUALQUER ordem em relação
-a este.** Não sai um `match_full_state`: o único estado de combate que muda ao pôr um NPC é o
+**Com sessão viva, um `bars_updated` com `seq` maior sai junto (a cada destinatário a quem a vista mudou) — depois
+deste, para o mestre** (o `syncSight` roda logo após o `npc_added`, na mesma goroutine e na mesma pista direta; o mestre recebe `npc_added`, depois barras e status). Não sai um `match_full_state`: o único estado de combate que muda ao pôr um NPC é o
 conjunto de personagens nas barras, e `match_full_state.bars.seq` repete o `seq` CORRENTE por
 contrato (ver a nota de `bars.seq` em [`match_full_state`](#match_full_state), abaixo) —
 reenviá-lo aqui deixaria um `bars_updated` atrasado, do MESMO `seq` e sem o NPC, ser aplicado
 por cima e apagar o NPC da tela. `bars_updated` é o caminho documentado para "qualquer coisa
-que mexe nas barras", e é o único que incrementa `seq`. ⚠️ **A ordem de chegada entre
-`npc_added` e esse `bars_updated` não é garantida:** cada um sai por uma pista própria
-(o canal de broadcast no braço `add_npc` de `room.go`; a pista direta por destinatário dentro
-de `broadcastBars`), disparadas em sequência no código mas sem ordem relativa assegurada. O front não pode assumir que `npc_added` sempre chega primeiro —
-`bars_updated.characters` já é suficiente para desenhar o NPC nas barras, com ou sem o
-`npc_added` correspondente já visto.
+que mexe nas barras", e é o único que incrementa `seq`. **Ordem:** `npc_added` sai por `sendToMaster` (pista direta) e o `syncSight`
+(`bars_updated`, `status_effects_updated`) vem em seguida, na mesma goroutine e na mesma pista —
+o mestre sempre recebe `npc_added` primeiro. Mesmo assim `bars_updated.characters` já basta para
+desenhar o NPC nas barras, então o front não precisa esperar o `npc_added`.
 
 **Sem sessão viva (lobby), não há `bars_updated` nenhum atrás** — não existem barras para
 publicar. `npc_added` ainda sai, como confirmação de que o roster no banco mudou; o NPC só
@@ -2466,7 +2475,8 @@ continuam, porque isso o dono já sabia que declarou.
 | `roundMode` | O regime do round ativo — `"Free"` ou `"Race"`, os mesmos valores de [`round_mode_changed`](#round_mode_changed). Vem `""` quando não há round ativo. Público: vai para todo mundo que conecta. |
 | `clock` | O estado do relógio da história (`seq`, `storyAt`, `running`, `limitAt`, `limitReason`), o mesmo de `clock_changed.clock`, com o `seq` corrente. **`storyAt: null` = hora não definida** (o mestre recebe o diálogo obrigatório). Tempos naïve, sem fuso — nunca passe por `Date`. Ver [`match-clock.md`](match-clock.md#3-o-estado-do-relógio). Ausente sem sessão. |
 | `passiveValue` | O valor base do conjunto de dados — o que um teste passivo lê em vez de rolar (**11** no 2D10, **10** no D20). O editor do mestre o nomeia ao avisar que um viés faz o teste passivo rolar contra ele. Ausente sem sessão. (2026-10-12.) |
-| `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. **Projetado para este destinatário**: o mestre recebe a visão dele, o jogador a de jogador (ver [`bars_updated`](#bars_updated)). |
+| `bars` | O `bars_updated` **inteiro**, reaproveitado — não é uma segunda forma para manter em sincronia com a primeira. **Projetado para este destinatário**: o mestre recebe a visão dele, o jogador a de jogador (ver [`bars_updated`](#bars_updated)) — **e `bars.characters` é por jogador**: só os personagens que ele é dono ou enxerga. |
+| `statusEffects` | **Efeitos de status.** Mapa `characterId → lista de efeitos`, a mesma lista do [`status_effects_updated`](match-status-effects.md#8-status_effects_updated), projetada para este destinatário: só personagens que ele enxerga agora e que têm algo visível a ele. Ausente (`omitempty`) quando não há nenhum; personagem com lista vazia não entra. Ver [`match-status-effects.md`](match-status-effects.md#9-reconexão). |
 | `bars.seq` | ⚠️ **É o contador CORRENTE, não um novo.** O cliente guarda o maior `seq` já aplicado e descarta qualquer coisa menor; estampar um número novo aqui zeraria essa guarda numa reconexão — o primeiro `bars_updated` atrasado a chegar depois seria aplicado por cima de um estado mais novo. É por isso que a proteção do cliente contra snapshot atrasado atravessa a reconexão: o contador nunca reinicia — **nem quando a sala é recriada** (o servidor reiniciou, ou a sala esvaziou e se fechou): uma sala nova começa o contador no relógio, em microssegundos, acima de qualquer `seq` da sala que ela substitui. O número é grande (ordem de 10¹⁵) e cabe exato num `number` do JavaScript. |
 | `openTurn` | Ausente (`omitempty`) **para todo destinatário** — jogador ou mestre — quando a mesa está em "fechado e nada aberto", estado em que ela pode legitimamente estar. Quando presente, vai para **todo mundo** que conecta: quem é o ator da vez não é segredo. |
 | `openTurn.actionId` / `openTurn.action` | **B2 (design spec §4.2).** Os mesmos dois campos que o [`turn_opened`](#turn_opened) ao vivo já mandou para este mesmo destinatário — `action` projetado pela MESMA regra (mestre vê `actionwire.Full`; todo mundo mais, inclusive o dono, vê `actionwire.Opened` depois do deny-list de `service.ProjectAction`). O exemplo acima é o que o MESTRE vê; um jogador que reconecta recebe o corte de `Opened` aqui, exatamente como no `turn_opened` que perdeu ao cair — **inclusive o gate de fog de `move.from`/`move.position`** (ver [`turn_opened`](#onde-a-peça-vai-movefrom-e-moveposition-seguem-a-fog)), lido da visão dele no momento da reconexão, com `move.from` como origem julgada (a casa em que a peça estava na abertura não é guardada — numa janela rara em que a peça andou entre o enfileiramento e a abertura, o snapshot pode diferir do `turn_opened` ao vivo). Sem `actionId` o cliente não tinha como casar este turno com uma ação da própria fila reconciliada (`ownQueue`, B12). |
@@ -2842,9 +2852,11 @@ vale para o REST.
 | `invalid_message` | `"malformed JSON"` — o envelope não parseou. | Qualquer mensagem. |
 | `unknown_type` | `"unrecognized message type"` | `type` fora do catálogo. |
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
-| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`. |
+| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`, `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
 | `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
+| `blocked_by_status` | `"<nick> não pode <o que>: <causa>"` — um efeito de status do ator recusa a ação ou a reação (domínio inutilizado, não age/não reage, sem deslocamento, reação proibida). A causa nomeia só os tipos que o remetente pode ver; senão `um efeito`. Nada muda na fila nem nas barras. Ver [`match-status-effects.md`](match-status-effects.md#blocked_by_status). | `enqueue_action`, `attach_reaction`. |
+| `status_effect_invalid` · `status_effect_exists` · `status_effect_not_found` · `unknown_character` | Comandos de efeitos de status — gatilhos em [`match-status-effects.md` §13](match-status-effects.md#13-catálogo-de-erros-desta-feature). | `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6; num [movimento empilhado](#movimentos-empilhados), o destino do anterior da cadeia). Centros medidos no espaço local da grade. |

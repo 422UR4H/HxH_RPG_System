@@ -5,6 +5,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/cancelledaction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -34,6 +35,10 @@ type turnWrites struct {
 	// a reaction's move as they saw it then (Phase 7, item 1). Absent for a reaction never
 	// opened: it was never shown.
 	reactionMoveViews map[uuid.UUID]map[uuid.UUID]masteraction.View
+	// statusEffects são as mudanças de efeitos de status feitas com o turno aberto, na ordem em
+	// que aconteceram (holdStatusEffectWritesLocked): gravadas pelo PersistTurnClose
+	// (TurnCloseData.StatusEffects), atrás das que uma gravação anterior não gravou.
+	statusEffects []statuseffect.Write
 }
 
 // openTurnIDLocked is the session's open turn, uuid.Nil when there is none (or no session).
@@ -84,6 +89,10 @@ type droppedTurn struct {
 	turnID           uuid.UUID
 	masterActions    int
 	cancelledActions int
+	statusEffects    int
+	// unwrittenStatusEffects são as mudanças de status de fora de turno (ou de um fechamento que
+	// falhou) que ainda esperavam uma gravação: morrem com a sala.
+	unwrittenStatusEffects int
 }
 
 // describeDroppedTurnLocked reads what is lost when the room itself goes away — its last client
@@ -94,20 +103,26 @@ type droppedTurn struct {
 // here would hand the next room an opened move whose turn does not exist. The result is only for
 // logDroppedTurn, after the unlock. The caller must hold r.mu.
 func (r *Room) describeDroppedTurnLocked() droppedTurn {
-	d := droppedTurn{turnID: r.openTurnIDLocked()}
+	d := droppedTurn{turnID: r.openTurnIDLocked(), unwrittenStatusEffects: len(r.unwrittenStatusEffects)}
 	for _, w := range r.pendingTurns {
 		d.masterActions += len(w.masterActions)
 		d.cancelledActions += len(w.cancelledActions)
+		d.statusEffects += len(w.statusEffects)
 	}
 	return d
 }
 
 // logDroppedTurn says what a room that went away mid-turn did not write — never silently.
 func logDroppedTurn(matchUUID uuid.UUID, d droppedTurn) {
-	if d.turnID == uuid.Nil && d.masterActions == 0 && d.cancelledActions == 0 {
+	if d.unwrittenStatusEffects > 0 {
+		log.Printf("room of match %s closed with %d status effect write(s) still pending from a failed write — they were NOT persisted",
+			matchUUID, d.unwrittenStatusEffects)
+	}
+	if d.turnID == uuid.Nil && d.masterActions == 0 && d.cancelledActions == 0 && d.statusEffects == 0 {
 		return
 	}
 	log.Printf("room of match %s closed with turn %s still open — the turn, its opened move, the %d master action(s) "+
-		"applied and the %d action(s) cancelled inside it were NOT persisted; the match resumes from the last closed turn",
-		matchUUID, d.turnID, d.masterActions, d.cancelledActions)
+		"applied, the %d action(s) cancelled and the %d status effect write(s) made inside it were NOT persisted; "+
+		"the match resumes from the last closed turn",
+		matchUUID, d.turnID, d.masterActions, d.cancelledActions, d.statusEffects)
 }

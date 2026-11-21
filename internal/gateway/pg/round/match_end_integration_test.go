@@ -5,6 +5,7 @@ package round_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
 	sceneentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/scene"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	pgclock "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/clock"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/pgtest"
 	roundrepo "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/round"
@@ -177,6 +179,41 @@ func TestPersistMatchEnd(t *testing.T) {
 		}
 		if finished, exists, _ := roundRowsOf(t, pool, oldRd.GetID(), oldSc.GetID()); !exists || finished == nil {
 			t.Errorf("unwritten round exists=%v finished=%v, want a closed row", exists, finished)
+		}
+	})
+
+	t.Run("writes pending status effects with the match end", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := newMatchEndFixture(t, pool, repo, false)
+		at := time.Now().UTC().Truncate(time.Microsecond)
+		kept := statuseffect.Effect{ID: uuid.New(), CharacterID: fx.victimSheet, Kind: statuseffect.KindProne, AppliedAt: at, UpdatedAt: at}
+		gone := statuseffect.Effect{ID: uuid.New(), CharacterID: fx.attackerSheet, Kind: statuseffect.KindProne, AppliedAt: at, UpdatedAt: at}
+		fx.data.StatusEffects = []statuseffect.Write{{Effect: kept}, {Effect: gone}, {Delete: true, Effect: gone}}
+		if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+			t.Fatalf("PersistMatchEnd: %v", err)
+		}
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_status_effects WHERE uuid = $1`, kept.ID).Scan(&n); err != nil || n != 1 {
+			t.Errorf("applied effect rows = %d (%v), want 1", n, err)
+		}
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_status_effects WHERE uuid = $1`, gone.ID).Scan(&n); err != nil || n != 0 {
+			t.Errorf("removed effect rows = %d (%v), want 0", n, err)
+		}
+	})
+
+	t.Run("a status effect the database refuses rolls the end back", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+		fx := newMatchEndFixture(t, pool, repo, false)
+		at := time.Now().UTC().Truncate(time.Microsecond)
+		bad := statuseffect.Effect{ID: uuid.New(), CharacterID: fx.victimSheet, Kind: statuseffect.Kind(strings.Repeat("x", 40)), // kind > VARCHAR(32): o banco recusa
+			AppliedAt: at, UpdatedAt: at}
+		fx.data.StatusEffects = []statuseffect.Write{{Effect: bad}}
+		if err := repo.PersistMatchEnd(ctx, fx.data); err == nil {
+			t.Fatal("PersistMatchEnd succeeded with a status effect the database refuses")
+		}
+		var ended *time.Time
+		if err := pool.QueryRow(ctx, `SELECT game_end_at FROM matches WHERE uuid = $1`, fx.matchUUID).Scan(&ended); err != nil || ended != nil {
+			t.Errorf("game_end_at = %v (%v), want NULL after the rollback", ended, err)
 		}
 	})
 

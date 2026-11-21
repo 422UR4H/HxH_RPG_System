@@ -306,7 +306,7 @@ func TestMasterBoard_DragSeenLeaving(t *testing.T) {
 // ─── pôr ────────────────────────────────────────────────────────────────────
 
 // Pôr o NPC do mestre que ainda não está na partida: inscrição de B11 (o mesmo enrollLiveNPC
-// do add_npc — npc_added para a mesa e bars_updated), peça nova no slot, registro placePiece.
+// do add_npc — npc_added só para o mestre e bars_updated), peça nova no slot, registro placePiece.
 func TestMasterBoard_PlaceAnNPCThatIsNotAParticipant(t *testing.T) {
 	uc := &recordingAddLiveNPC{sheet: newCombatSheet(t)}
 	f := newCombatFixture(t, withAddLiveNPC(uc))
@@ -326,10 +326,10 @@ func TestMasterBoard_PlaceAnNPCThatIsNotAParticipant(t *testing.T) {
 		t.Fatalf("the place was never acked; the master received: %v (errors %v)",
 			messageTypes(mc.snapshotMessages()), errorCodes(t, mc))
 	}
+	if !mc.await(game.MsgTypeNPCAdded, 2*time.Second) {
+		t.Fatal("the master never received npc_added")
+	}
 	for name, c := range map[string]*collector{"master": mc, "player": pc} {
-		if !c.await(game.MsgTypeNPCAdded, 2*time.Second) {
-			t.Fatalf("the %s never received npc_added", name)
-		}
 		if !c.await(game.MsgTypePieceMoved, 2*time.Second) {
 			t.Fatalf("the %s never saw the new piece", name)
 		}
@@ -358,6 +358,11 @@ func TestMasterBoard_PlaceAnNPCThatIsNotAParticipant(t *testing.T) {
 		t.Fatalf("content = %s, want the new piece, no from, to [6 6 0]", recs[0].Content)
 	}
 	assertViews(t, recs[0].Views, map[uuid.UUID]masteraction.View{f.playerUUID: masteraction.ViewFull})
+	// O jogador fica sabendo do NPC pela peça (névoa), não por npc_added.
+	chatBarrier(t, master, mc, pc)
+	if n := pc.count(game.MsgTypeNPCAdded); n != 0 {
+		t.Fatalf("the player got %d npc_added, want 0", n)
+	}
 }
 
 // Personagem de jogador que não participa: not_participant, nada criado, nada gravado.

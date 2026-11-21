@@ -110,7 +110,7 @@ assim — é assim que o REST-no-meio-da-partida se resolve.
 põe uma peça pelo WS (`enqueue_master_action` com `move`, ver
 [`match-combat-ws.md`](match-combat-ws.md) §4); se o personagem é NPC dele e ainda não está na
 partida, o game server roda o MESMO caminho do `add_npc` — `AddMatchNPCUC`, injeção na sessão,
-`npc_added` para a mesa e `bars_updated` — e só então cria a peça. Um NPC que já participa só
+`npc_added` para o mestre e `bars_updated` — e só então cria a peça. Um NPC que já participa só
 ganha a peça. Tirar a peça (`remove`) **não** o desinscreve.
 
 **Remoção continua só-na-próxima-sala.** O `DELETE` abaixo não tem par ao vivo: tirar um NPC

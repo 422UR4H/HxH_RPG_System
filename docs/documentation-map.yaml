@@ -297,6 +297,52 @@ mappings:
         confidence: possibly_affected
     notes: end_match, match_ended, fechamento 4002
 
+  # ─── Match: Efeitos de status ───
+  - code_path: internal/domain/statuseffect/
+    dev_docs:
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+    notes: Tipos, parâmetros por tipo (tabela do contrato §4), peças, Summary, quem vê (Listed)
+  - code_path: internal/app/game/status_effects.go
+    dev_docs:
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: Comandos do mestre, status_effects_updated, projeção, momento da gravação, blocked_by_status, statusNotes
+  - code_path: internal/app/game/sight.go
+    dev_docs:
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: directly_affected
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: Visão do jogador (névoa + Escondido), barras por jogador, npc_added só do mestre
+  - code_path: internal/domain/match/matchsession/status_effects.go
+    dev_docs:
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: Recusas por status, reação padrão sentada que segue os status, DropRefusedByStatus
+  - code_path: internal/application/match/status_effects.go
+    dev_docs:
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-status-effects.md
+        confidence: possibly_affected
+    notes: Aplicar, editar, remover (sem I/O); tudo ou nada
+  - code_path: internal/gateway/pg/statuseffect/
+    dev_docs:
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+    notes: character_status_effects (audience JSONB anulável), ListBySheets, Write
+
   # ─── Match: Actions ───
   - code_path: internal/domain/match/entity/action/
     dev_docs:

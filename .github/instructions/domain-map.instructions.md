@@ -22,6 +22,7 @@ applyTo: "internal/**"
 | Campaign | `internal/domain/entity/campaign/` |
 | Scenario | `internal/domain/entity/scenario/` |
 | User | `internal/domain/entity/user/` |
+| Status Effects (efeitos de status) | `internal/domain/statuseffect/` |
 | Enums | `internal/domain/entity/enum/` |
 | Dice | `internal/domain/entity/die/` |
 | Items | `internal/domain/entity/item/` |
@@ -36,6 +37,7 @@ applyTo: "internal/**"
 - ✅ `gateway/` — PostgreSQL repositories (fully implemented)
 - ✅ `gateway/pg/round/` — PersistTurnClose (atomic: turn, HP, master actions, board, and a round's end + successor), PersistRoundClose (a round's end + successor, atomic), EnsureSceneAndRound, FindActiveSession, CloseSceneAndRound, **PersistMatchEnd** (`persist_match_end.go`, in `round` to avoid an import cycle; ONE transaction: match end fields, scene/round close, clock, `clockRealTime` event, campaign and participant sheets' `story_current_at`, unwritten sheet bars) and ReadMatchEnd
 - ✅ `domain/match/entity/clock/` + `gateway/pg/clock/` — Story clock (naive story time, limit, pause reasons, 1 round = 1 s); `match_clocks` retrato + evento numa transação. Ver `docs/dev/match/clock.md`, contrato em `docs/dev/api/match-clock.md`
+- ✅ `domain/statuseffect/` — Efeitos de status fase 1: 20 tipos, parâmetros normalizados por tipo, peças, `Summary` (bloqueios), `Listed` (quem vê); `gateway/pg/statuseffect/` (`character_status_effects`); sessão, caso de uso e sala ligados; as peças de rolagem (penalidade, falha automática, dano por round) são declaradas e ainda não lidas. Ver `docs/dev/match/status-effects.md`, contrato em `docs/dev/api/match-status-effects.md`
 - ✅ `app/api/` — HTTP handlers (unit tested with humatest)
 - ✅ `app/game/` — WebSocket game server (Hub/Room/Client pattern); ChangeScene and EnqueueMasterAction messages; PersistTurnClose on turn close
 - ✅ `application/` — Use cases migrated from domain/ (all features); ChangeSceneUC, EnqueueMasterActionUC added
