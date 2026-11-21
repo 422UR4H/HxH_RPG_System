@@ -584,11 +584,12 @@ func (s *MatchSession) snapshotReaction(t *turn.Turn, live *action.Action) React
 }
 
 // RestoredReaction é uma reação que RestoreSwappedReactions pôs de volta no turno: uma cópia de
-// como ela ficou e a reação que estava no lugar dela e saiu (Replaced; a sentada que o status ou
-// a remoção dele puseram).
+// como ela ficou, se ela é a sentada da sessão (Seated: não é resposta de ninguém) e a reação que
+// estava no lugar dela e saiu (Replaced; a sentada que o status ou a remoção dele puseram).
 type RestoredReaction struct {
 	TurnID   uuid.UUID
 	Reaction action.Action
+	Seated   bool
 	Replaced uuid.UUID
 }
 
@@ -641,7 +642,7 @@ func (s *MatchSession) RestoreSwappedReactions(drops []ReactionDrop) (restored [
 		if replaced != uuid.Nil {
 			s.noteAnchorMove(t.GetID(), replaced, live.GetID())
 		}
-		restored = append(restored, RestoredReaction{TurnID: t.GetID(), Reaction: *live, Replaced: replaced})
+		restored = append(restored, RestoredReaction{TurnID: t.GetID(), Reaction: *live, Seated: d.seated, Replaced: replaced})
 	}
 	return restored, refused
 }

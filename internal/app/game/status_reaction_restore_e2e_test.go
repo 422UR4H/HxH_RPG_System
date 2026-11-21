@@ -261,3 +261,37 @@ func TestRemoveStatusEffect_InTurnUndo_WithoutRestore_ReactionStaysSwapped(t *te
 		t.Fatalf("pending reaction = %s (seated %v), want the default seat, not the dodge", id, seated)
 	}
 }
+
+// A sentada da sessão que volta não é resposta do dono: nunca está em ownReactions, e o
+// reaction_restored dela vai só ao mestre — mesmo com o efeito visível ao dono.
+func TestRemoveStatusEffect_InTurnUndo_ARestoredSeatIsTheMastersOnly(t *testing.T) {
+	h := newHiddenTable(t)
+	rt := &reactionTable{hiddenTable: h}
+	rt.turnID = h.openNPCAttack(t)
+	rt.actionID = lastTurnOpened(t, h.mc).ActionID
+	seat, seated := rt.pending(t)
+	if !seated {
+		t.Fatalf("the victim's pending reaction %s is not a seat", seat)
+	}
+
+	// Atordoado é público: o dono o vê. A padrão sentada vira nothing.
+	stun := rt.applyOnVictim(t, "stunned", nil)
+	if got := masterSwappedOf(t, rt.mc, rt.f.victimID, stun); len(got) != 1 || got[0] != seat {
+		t.Fatalf("master swappedReactionIds = %v, want the seat %s", got, seat)
+	}
+
+	rt.removeWithRestore(t, stun)
+
+	if m := reactionRestoredOf(t, rt.mc); len(m) != 1 || m[0].ReactionID != seat {
+		t.Fatalf("master reaction_restored = %+v, want the seat %s back", m, seat)
+	}
+	if n := rt.pc.count(game.MsgTypeReactionRestored); n != 0 {
+		t.Fatalf("the owner got %d reaction_restored for a seat they never sent", n)
+	}
+	if n := rt.bc.count(game.MsgTypeReactionRestored); n != 0 {
+		t.Fatalf("the bystander got %d reaction_restored", n)
+	}
+	if id, seated := rt.pending(t); id != seat || !seated {
+		t.Fatalf("pending reaction = %s (seated %v), want the original seat %s back as a seat", id, seated, seat)
+	}
+}

@@ -271,7 +271,8 @@ type ActionEnqueuedPayload struct {
 // ReactionRestoredPayload é o reaction_restored: uma reação não aberta que um status desfeito no
 // turno tinha tirado do turno e que voltou, com o MESMO reactionId de antes (D3, revisão final).
 // Vai ao mestre — com ReplacedReactionID, a sentada que saiu do lugar dela — e ao dono do reator
-// quando o efeito desfeito era visível a ele (a troca também só chegou a ele por esse efeito).
+// quando a reação é dele (uma sentada nunca está em ownReactions) e o efeito desfeito era visível
+// a ele (a troca também só chegou a ele por esse efeito).
 // Não é ack de nada: o reaction_attached é casado pelo cliente com o envio pendente do mesmo
 // personagem, e um reaction_attached sem pedido cairia num envio em andamento.
 type ReactionRestoredPayload struct {
