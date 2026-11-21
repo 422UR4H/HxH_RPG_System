@@ -232,21 +232,45 @@ func (f *visibilityFixture) attachClosedDodge(t *testing.T, conn *websocket.Conn
 	act := turn.GetAction()
 	actionID := act.GetID()
 
-	before := f.masterMsgs.count(game.MsgTypeResolutionUpdate)
 	sendWS(t, conn, "attach_reaction", game.ActionPayload{
 		ActorID: f.defenderID, ReactToID: actionID, ReactionKind: "closedDodge",
 		Dodge:  &game.DodgePayload{RollCheck: &game.RollCheckPayload{SkillName: enum.Reflex.String()}},
 		Skills: []game.ActionSkillPayload{{SkillName: enum.Evasion.String()}},
 	})
-	if !awaitCount(f.masterMsgs, game.MsgTypeResolutionUpdate, before+1, 2*time.Second) {
-		t.Fatal("attach_reaction never produced a fresh resolution_updated for the master — " +
-			"the closed dodge was likely refused at the boundary (missing Dodge or Evasion entry)")
-	}
 
 	// The reaction's own ID lives only in the master's PendingReactions — see
 	// ResolutionUpdatedPayload.PendingReactions' own comment for why nothing else names it.
+	//
+	// Espera-se o retrato certo, não "mais um retrato": a abertura do turno também manda um
+	// resolution_updated ao mestre (com a reação padrão sentada, outro ID), e ele pode chegar
+	// depois que este helper começou a contar. E é o ÚLTIMO retrato que tem de trazer a esquiva
+	// fechada — o servidor promete que um cálculo mais velho nunca chega depois de um mais novo
+	// (publishResolution); se a abertura chegasse por último, a tela do mestre ficaria com a
+	// reação que já não existe, e este helper falha em vez de escolher o ID errado.
 	reactionID := uuid.Nil
-	msgs := f.masterMsgs.snapshotMessages()
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if reactionID = lastPendingClosedDodge(t, f.masterMsgs, f.defenderID); reactionID != uuid.Nil {
+			break
+		}
+	}
+	if reactionID == uuid.Nil {
+		t.Fatalf("the master's latest resolution_updated never listed the closed dodge — refused at "+
+			"the boundary (missing Dodge or Evasion entry), or an older calculation arrived last; got %v",
+			messageTypes(f.masterMsgs.snapshotMessages()))
+	}
+
+	beforeOpen := f.masterMsgs.count(game.MsgTypeResolutionUpdate)
+	sendWS(t, f.masterConn, "open_reaction", game.OpenReactionPayload{ReactionID: reactionID})
+	if !awaitCount(f.masterMsgs, game.MsgTypeResolutionUpdate, beforeOpen+1, 2*time.Second) {
+		t.Fatal("open_reaction never produced a fresh resolution_updated for the master")
+	}
+}
+
+// lastPendingClosedDodge is the closedDodge actorID has pending in the LAST resolution_updated
+// in c, or uuid.Nil when that last one does not list it.
+func lastPendingClosedDodge(t *testing.T, c *collector, actorID uuid.UUID) uuid.UUID {
+	t.Helper()
+	msgs := c.snapshotMessages()
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Type != game.MsgTypeResolutionUpdate {
 			continue
@@ -256,21 +280,13 @@ func (f *visibilityFixture) attachClosedDodge(t *testing.T, conn *websocket.Conn
 			t.Fatalf("unmarshal resolution_updated: %v", err)
 		}
 		for _, pr := range resolved.PendingReactions {
-			if pr.ActorID == f.defenderID {
-				reactionID = pr.ReactionID
+			if pr.ActorID == actorID && pr.Kind == "closedDodge" {
+				return pr.ReactionID
 			}
 		}
-		break
+		return uuid.Nil
 	}
-	if reactionID == uuid.Nil {
-		t.Fatal("the closed dodge never showed up in the master's PendingReactions")
-	}
-
-	beforeOpen := f.masterMsgs.count(game.MsgTypeResolutionUpdate)
-	sendWS(t, f.masterConn, "open_reaction", game.OpenReactionPayload{ReactionID: reactionID})
-	if !awaitCount(f.masterMsgs, game.MsgTypeResolutionUpdate, beforeOpen+1, 2*time.Second) {
-		t.Fatal("open_reaction never produced a fresh resolution_updated for the master")
-	}
+	return uuid.Nil
 }
 
 // kindOfFirstTarget reads the reaction kind off the first settled resolution_updated in c that

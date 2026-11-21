@@ -1859,6 +1859,13 @@ junto é de turno aberto.
 
 **Direção:** servidor → cliente. **Destino: depende de dois eixos independentes — ver §6.**
 
+> ⚠️ **O último que chega é o mais novo.** Cada `resolution_updated` é o retrato **inteiro** do
+> turno, não uma diferença — o cliente substitui o que mostrava. O servidor promete que o
+> mestre nunca recebe um cálculo de turno aberto mais velho que o último que já recebeu: um
+> cálculo que ficou velho no caminho (ex.: o da abertura, ainda com a reação padrão sentada,
+> quando o alvo já anexou outra reação) é **descartado**, não entregue atrasado. O liquidado
+> (fim do turno) sai sempre. Não há `seq` no payload: a ordem de chegada basta.
+
 ```json
 {
   "type": "resolution_updated",
