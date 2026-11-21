@@ -724,9 +724,10 @@ mappings:
       are MASTER-ONLY, stripped upstream rather than
       here: pendingReactions and errors (engine faults). payouts is withheld on one
       condition only, that the reaction's label was demoted. systemBias IS exposed;
-      RollCheck.Context is not. A round event kind "actionCancelled" carries actorId always
-      and action only for the master (Full) or the actor's owner (Declaration) — the use case
-      (GetMatchHistoryUC, HistoryCancelledAction.Cut) decides, this file only applies the cut.
+      RollCheck.Context is not. A round event kind "actionCancelled" exists only for the master and
+      the actor's owner (D1, 2026-11-20) and always carries actorId and action — Full for the
+      master, Declaration for the owner; the use case (GetMatchHistoryUC,
+      HistoryCancelledAction.Cut) decides, this file only applies the cut.
 
   # ─── Match: Maps REST + WS API ───
   - code_path: internal/app/api/matchmap/
