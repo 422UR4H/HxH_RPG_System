@@ -1,9 +1,11 @@
 package statuseffect_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
+	"github.com/google/uuid"
 )
 
 // O nome de cada tipo na mesa (o mesmo da tabela de match-status-effects.md §3): é o que as
@@ -31,5 +33,41 @@ func TestKindLabel(t *testing.T) {
 	}
 	if got := statuseffect.Kind("unknownKind").Label(); got != "unknownKind" {
 		t.Errorf("an unknown kind's label = %q, want the raw value", got)
+	}
+}
+
+func TestErrorsReadAsSingleSentences(t *testing.T) {
+	two := 0
+	cases := []struct {
+		name string
+		err  error
+		is   error
+		want string
+	}{
+		{"missing points", func() error {
+			_, err := statuseffect.Normalize(statuseffect.KindParalyzed, "", "", statuseffect.ParamsInput{})
+			return err
+		}(), statuseffect.ErrInvalidParams, "Informe os pontos do efeito."},
+		{"foreign field", func() error {
+			_, err := statuseffect.Normalize(statuseffect.KindProne, "", "", statuseffect.ParamsInput{Points: &two})
+			return err
+		}(), statuseffect.ErrInvalidParams, "Esse efeito não usa os pontos."},
+		{"unknown kind", func() error { _, err := statuseffect.ParseKind("foo"); return err }(),
+			statuseffect.ErrUnknownKind, "Esse efeito não existe."},
+		{"invalid player", statuseffect.Audience{Players: []uuid.UUID{uuid.New(), uuid.Nil}}.Validate(),
+			statuseffect.ErrInvalidAudience, "Um dos jogadores escolhidos não é válido."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !errors.Is(tc.err, tc.is) || tc.err.Error() != tc.want {
+				t.Errorf("err = %q (is=%v), want %q", tc.err, errors.Is(tc.err, tc.is), tc.want)
+			}
+		})
+	}
+}
+
+func TestStatePhrase(t *testing.T) {
+	if got := statuseffect.KindOpenGuard.StatePhrase(); got != "com a guarda aberta" {
+		t.Errorf("StatePhrase = %q", got)
 	}
 }

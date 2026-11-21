@@ -1,8 +1,6 @@
 package statuseffect
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 )
 
@@ -29,15 +27,15 @@ type Subject struct {
 // Lista vazia é válida: significa só o mestre.
 func (a Audience) Validate() error {
 	if a.Everyone && len(a.Players) > 0 {
-		return fmt.Errorf("%w: everyone com jogadores", ErrInvalidAudience)
+		return Wrap(ErrInvalidAudience, "Escolha todos ou jogadores específicos, não os dois.")
 	}
 	seen := make(map[uuid.UUID]struct{}, len(a.Players))
 	for _, p := range a.Players {
 		if p == uuid.Nil {
-			return fmt.Errorf("%w: jogador inválido", ErrInvalidAudience)
+			return Wrap(ErrInvalidAudience, "Um dos jogadores escolhidos não é válido.")
 		}
 		if _, dup := seen[p]; dup {
-			return fmt.Errorf("%w: jogador repetido", ErrInvalidAudience)
+			return Wrap(ErrInvalidAudience, "Um jogador foi escolhido duas vezes.")
 		}
 		seen[p] = struct{}{}
 	}

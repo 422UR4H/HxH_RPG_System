@@ -1,30 +1,42 @@
 package statuseffect
 
-import (
-	"errors"
-	"fmt"
-)
-
+// Os textos destes erros chegam ao mestre na tela: são frases em português, escritas para quem
+// joga. Quem precisa dar mais detalhe usa Wrap, que mantém o sentinela para errors.Is.
 var (
 	// ErrUnknownKind: o tipo de efeito não existe no catálogo.
-	ErrUnknownKind = errors.New("unknown status effect kind")
+	ErrUnknownKind = Sentence("Esse efeito não existe.")
 	// ErrInvalidParams: parâmetro ausente, estranho ao tipo ou fora da faixa.
-	ErrInvalidParams = errors.New("invalid status effect params")
+	ErrInvalidParams = Sentence("Os dados do efeito não estão certos.")
 	// ErrAlreadyApplied: o personagem já tem um efeito com a mesma identidade.
-	ErrAlreadyApplied = errors.New("status effect already applied")
+	ErrAlreadyApplied = Sentence("O personagem já tem esse efeito.")
 	// ErrInvalidAudience: lista de quem vê malformada (todos + jogadores, repetido ou uuid nulo).
-	ErrInvalidAudience = errors.New("invalid status effect audience")
+	ErrInvalidAudience = Sentence("A lista de quem vê o efeito não está certa.")
 	// ErrNotFound: nenhum efeito com esse id.
-	ErrNotFound = errors.New("status effect not found")
+	ErrNotFound = Sentence("Esse efeito não está mais no personagem.")
 )
 
+// Sentence cria um sentinela cujo texto é uma frase (com ponto final, que errors.New avisa).
+func Sentence(msg string) error { return &detailed{msg: msg} }
+
+// detailed é um sentinela com a frase completa que o mestre lê no lugar do texto genérico.
+// Error() é só a frase (sem "sentinela: detalhe"); Unwrap devolve o sentinela para errors.Is.
+type detailed struct {
+	msg      string
+	sentinel error
+}
+
+func (e *detailed) Error() string { return e.msg }
+func (e *detailed) Unwrap() error { return e.sentinel }
+
+// Wrap devolve um erro que lê como a frase msg e continua sendo o sentinela para errors.Is.
+func Wrap(sentinel error, msg string) error {
+	return &detailed{msg: msg, sentinel: sentinel}
+}
+
 func wrapAlready(id Identity) error {
-	if id.Variant == "" {
-		return fmt.Errorf("%w: %s", ErrAlreadyApplied, id.Kind)
-	}
-	return fmt.Errorf("%w: %s/%s", ErrAlreadyApplied, id.Kind, id.Variant)
+	return Wrap(ErrAlreadyApplied, "O personagem já está "+id.Kind.StatePhrase()+".")
 }
 
 func wrapNotFound() error {
-	return fmt.Errorf("%w: id", ErrNotFound)
+	return ErrNotFound
 }

@@ -3,7 +3,6 @@ package game
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
@@ -20,12 +19,12 @@ import (
 // histórico é definitivo.
 
 // errStatusNoOpenTurn recusa um relink sem turno aberto.
-var errStatusNoOpenTurn = fmt.Errorf("%w: relink_status_effect só vale com um turno aberto",
-	statuseffect.ErrInvalidParams)
+var errStatusNoOpenTurn = statuseffect.Wrap(statuseffect.ErrInvalidParams,
+	"Só dá para mudar a ligação do efeito com um turno aberto.")
 
 // errStatusNoChangeInTurn recusa um relink de um efeito que não mudou no turno aberto.
-var errStatusNoChangeInTurn = fmt.Errorf("%w: o efeito não tem mudança neste turno",
-	statuseffect.ErrNotFound)
+var errStatusNoChangeInTurn = statuseffect.Wrap(statuseffect.ErrNotFound,
+	"Esse efeito não tem mudança neste turno.")
 
 // followAnchorsLocked aplica as saídas de reação que a sessão registrou (TakeAnchorMoves) às
 // mudanças de status pendentes do turno de cada uma: a âncora que nomeava a reação que saiu
@@ -426,18 +425,18 @@ func appliedIn(ops []statuseffect.Write, effectID uuid.UUID) bool {
 
 func (r *Room) handleRelinkStatusEffect(client *Client, raw json.RawMessage) {
 	if !r.IsMaster(client.userUUID) {
-		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		client.SendMessage(NewErrorMessage("forbidden", "Só o mestre pode fazer isso."))
 		return
 	}
 	var p RelinkStatusEffectPayload
 	if err := json.Unmarshal(raw, &p); err != nil || p.StatusEffectID == uuid.Nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid relink_status_effect payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para mudar a ligação do efeito."))
 		return
 	}
 	charID, err := r.relinkStatusEffect(p.StatusEffectID, p.ActionID)
 	if err != nil {
 		if errors.Is(err, errMatchNotStarted) {
-			client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+			client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 			return
 		}
 		r.refuseStatusEffect(client, err)

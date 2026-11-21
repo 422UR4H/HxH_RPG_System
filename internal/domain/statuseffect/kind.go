@@ -1,8 +1,6 @@
 package statuseffect
 
 import (
-	"fmt"
-
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 )
 
@@ -46,7 +44,7 @@ func ParseKind(s string) (Kind, error) {
 			return k, nil
 		}
 	}
-	return "", fmt.Errorf("%w: %q", ErrUnknownKind, s)
+	return "", ErrUnknownKind
 }
 
 // kindLabel é o nome de cada tipo na mesa (a tabela de match-status-effects.md §3).
@@ -115,7 +113,7 @@ func ParseSense(s string) (Sense, error) {
 	case SenseVision, SenseHearing, SenseSmell, SenseTact, SenseTaste:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: sense %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Esse sentido não existe.")
 }
 
 // Skill devolve a perícia correspondente ao sentido.
@@ -149,7 +147,7 @@ func ParseAptitude(s string) (Aptitude, error) {
 	case AptitudePhysical, AptitudeMental, AptitudeSpiritual:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: aptitude %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa aptidão não existe.")
 }
 
 // Ability devolve a habilidade (ability) correspondente à aptidão.
@@ -186,7 +184,7 @@ func ParseDomain(s string) (Domain, error) {
 			return d, nil
 		}
 	}
-	return "", fmt.Errorf("%w: domain %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa ação bloqueada não existe.")
 }
 
 // SenseLevel é a gravidade de um sentido afetado.
@@ -202,7 +200,7 @@ func ParseSenseLevel(s string) (SenseLevel, error) {
 	case SenseImpaired, SenseNullified:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: sense level %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa gravidade do sentido não existe.")
 }
 
 // InjuryLevel é a gravidade de uma lesão em um domínio.
@@ -218,7 +216,7 @@ func ParseInjuryLevel(s string) (InjuryLevel, error) {
 	case InjuryHurt, InjuryDisabled:
 		return v, nil
 	}
-	return "", fmt.Errorf("%w: injury level %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa gravidade da lesão não existe.")
 }
 
 // TouchFace é uma face do Tato.
@@ -238,5 +236,5 @@ func ParseTouchFace(s string) (TouchFace, error) {
 			return f, nil
 		}
 	}
-	return "", fmt.Errorf("%w: touch face %q", ErrInvalidParams, s)
+	return "", Wrap(ErrInvalidParams, "Essa face do Tato não existe.")
 }

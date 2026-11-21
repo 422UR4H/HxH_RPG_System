@@ -1,15 +1,29 @@
 package statuseffect
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 )
 
 const maxConductRunes = 255
 
+// fieldLabel é o campo como o mestre o chama, com o artigo ("os pontos").
+var fieldLabel = map[string]string{
+	"sense": "um sentido", "aptitude": "uma aptidão", "domains": "as ações bloqueadas",
+	"injuries": "as lesões", "level": "a gravidade", "faces": "as faces do Tato",
+	"points": "os pontos", "hpPerRound": "o dano por round", "penalty": "a penalidade",
+	"disadvantage": "a desvantagem", "conduct": "a conduta", "irresistible": "o irresistível",
+	"controllerId": "quem controla",
+}
+
+// invalid é o campo que o tipo não aceita: "Esse efeito não usa os pontos."
 func invalid(field string) error {
-	return fmt.Errorf("%w: %s", ErrInvalidParams, field)
+	return Wrap(ErrInvalidParams, "Esse efeito não usa "+fieldLabel[field]+".")
+}
+
+// missing é o campo que o tipo exige e veio vazio ou fora da faixa: "Informe os pontos do efeito."
+func missing(field string) error {
+	return Wrap(ErrInvalidParams, "Informe "+fieldLabel[field]+" do efeito.")
 }
 
 // allowed declara quais campos de ParamsInput um tipo aceita.
@@ -84,7 +98,7 @@ func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error) {
 		p.Points = pts
 	case KindInjured:
 		if len(in.Injuries) == 0 {
-			return Params{}, invalid("injuries")
+			return Params{}, missing("injuries")
 		}
 		p.Injuries = make(map[Domain]InjuryLevel, len(in.Injuries))
 		for d, l := range in.Injuries {
@@ -109,10 +123,10 @@ func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error) {
 		p.Level = in.Level
 		if in.Level == SenseNullified {
 			if in.Disadvantage != nil {
-				return Params{}, invalid("disadvantage")
+				return Params{}, Wrap(ErrInvalidParams, "Um sentido anulado não aceita desvantagem.")
 			}
 			if in.Penalty != nil {
-				return Params{}, invalid("penalty")
+				return Params{}, Wrap(ErrInvalidParams, "Um sentido anulado não aceita penalidade.")
 			}
 		} else if err := disadvantageOrPenalty(&p, in); err != nil {
 			return Params{}, err
@@ -140,7 +154,7 @@ func Normalize(k Kind, s Sense, a Aptitude, in ParamsInput) (Params, error) {
 	case KindCompelled:
 		c := strings.TrimSpace(in.Conduct)
 		if n := utf8.RuneCountInString(c); n < 1 || n > maxConductRunes {
-			return Params{}, invalid("conduct")
+			return Params{}, Wrap(ErrInvalidParams, "Informe a conduta, com até 255 caracteres.")
 		}
 		p.Conduct = c
 		p.Irresistible = in.Irresistible != nil && *in.Irresistible
@@ -183,7 +197,7 @@ func rejectForeign(al allowed, in ParamsInput) error {
 
 func requirePositive(v *int, field string) (int, error) {
 	if v == nil || *v < 1 {
-		return 0, invalid(field)
+		return 0, missing(field)
 	}
 	return *v, nil
 }
@@ -193,12 +207,12 @@ func disadvantageOrPenalty(p *Params, in ParamsInput) error {
 	p.Disadvantage = in.Disadvantage == nil || *in.Disadvantage
 	if in.Penalty != nil {
 		if *in.Penalty < 0 {
-			return invalid("penalty")
+			return Wrap(ErrInvalidParams, "A penalidade não pode ser negativa.")
 		}
 		p.Penalty = *in.Penalty
 	}
 	if !p.Disadvantage && p.Penalty == 0 {
-		return invalid("disadvantage or penalty")
+		return Wrap(ErrInvalidParams, "Deixe a desvantagem ligada ou informe uma penalidade.")
 	}
 	return nil
 }
@@ -213,7 +227,7 @@ func normDomains(in []Domain) ([]Domain, error) {
 			return nil, err
 		}
 		if seen[d] {
-			return nil, invalid("domains")
+			return nil, Wrap(ErrInvalidParams, "As ações bloqueadas não podem se repetir.")
 		}
 		seen[d] = true
 	}
@@ -228,7 +242,7 @@ func normDomains(in []Domain) ([]Domain, error) {
 
 func normFaces(in []TouchFace) ([]TouchFace, error) {
 	if len(in) == 0 {
-		return nil, invalid("faces")
+		return nil, Wrap(ErrInvalidParams, "Informe ao menos uma face do Tato.")
 	}
 	seen := map[TouchFace]bool{}
 	for _, f := range in {
@@ -236,7 +250,7 @@ func normFaces(in []TouchFace) ([]TouchFace, error) {
 			return nil, err
 		}
 		if seen[f] {
-			return nil, invalid("faces")
+			return nil, Wrap(ErrInvalidParams, "As faces do Tato não podem se repetir.")
 		}
 		seen[f] = true
 	}

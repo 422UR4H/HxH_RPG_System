@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -22,15 +21,16 @@ import (
 // errStatusPayload marca o que o fio trouxe malformado (enum desconhecido, ids vazios ou
 // repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
 // passa por aqui — é status_effect_invalid, como o domínio o diz.
-var errStatusPayload = errors.New("invalid status effect payload")
+var errStatusPayload = statuseffect.Sentence("O pedido do efeito de status está malformado.")
 
 // errStatusActionID recusa uma âncora (actionId) que não é a action do turno aberto nem uma
 // reação dela — ou qualquer âncora sem turno aberto. É status_effect_invalid.
-var errStatusActionID = fmt.Errorf("%w: actionId precisa ser a ação do turno aberto ou uma reação dela",
-	statuseffect.ErrInvalidParams)
+var errStatusActionID = statuseffect.Wrap(statuseffect.ErrInvalidParams,
+	"Escolha a ação do turno aberto ou uma reação dela.")
 
-func statusPayloadErr(format string, a ...any) error {
-	return fmt.Errorf("%w: %s", errStatusPayload, fmt.Sprintf(format, a...))
+// statusPayloadErr é uma recusa de payload com a frase que o mestre lê.
+func statusPayloadErr(msg string) error {
+	return statuseffect.Wrap(errStatusPayload, msg)
 }
 
 // statusEffectErrorCode traduz os erros dos três comandos para o código do fio.
@@ -57,6 +57,29 @@ func statusEffectErrorCode(err error) string {
 	}
 }
 
+// statusEffectErrorText é a frase que o mestre lê para um erro dos comandos de status. Os erros
+// do domínio de status já são frases; os das outras camadas (em inglês) ganham a sua aqui, e o
+// que não se conhece vira uma frase genérica, com o motivo real no log.
+func statusEffectErrorText(err error) string {
+	switch {
+	case errors.Is(err, errStatusPayload),
+		errors.Is(err, statuseffect.ErrUnknownKind),
+		errors.Is(err, statuseffect.ErrInvalidParams),
+		errors.Is(err, statuseffect.ErrInvalidAudience),
+		errors.Is(err, statuseffect.ErrAlreadyApplied),
+		errors.Is(err, statuseffect.ErrNotFound):
+		return err.Error()
+	case errors.Is(err, matchsession.ErrCharSheetNotFound):
+		return "Esse personagem não está na partida."
+	case errors.Is(err, appmatch.ErrNotMatchMaster):
+		return "Só o mestre da partida pode fazer isso."
+	case errors.Is(err, matchsession.ErrMatchEnded):
+		return "A partida já terminou."
+	}
+	log.Printf("status effect command refused: %v", err)
+	return "Não foi possível fazer essa mudança de status."
+}
+
 // ─── fio → domínio ──────────────────────────────────────────────────────────
 
 func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error) {
@@ -68,7 +91,7 @@ func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error
 	for _, s := range p.Domains {
 		d, err := statuseffect.ParseDomain(s)
 		if err != nil {
-			return in, statusPayloadErr("domains: %q", s)
+			return in, statusPayloadErr("Uma das ações bloqueadas não existe.")
 		}
 		in.Domains = append(in.Domains, d)
 	}
@@ -77,11 +100,11 @@ func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error
 		for ds, ls := range p.Injuries {
 			d, err := statuseffect.ParseDomain(ds)
 			if err != nil {
-				return in, statusPayloadErr("injuries: %q", ds)
+				return in, statusPayloadErr("Uma das lesões fala de uma ação que não existe.")
 			}
 			l, err := statuseffect.ParseInjuryLevel(ls)
 			if err != nil {
-				return in, statusPayloadErr("injuries.%s: %q", ds, ls)
+				return in, statusPayloadErr("A gravidade de uma lesão não existe.")
 			}
 			in.Injuries[d] = l
 		}
@@ -89,14 +112,14 @@ func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error
 	if p.Level != "" {
 		l, err := statuseffect.ParseSenseLevel(p.Level)
 		if err != nil {
-			return in, statusPayloadErr("level: %q", p.Level)
+			return in, statusPayloadErr("A gravidade do sentido não existe.")
 		}
 		in.Level = l
 	}
 	for _, s := range p.Faces {
 		f, err := statuseffect.ParseTouchFace(s)
 		if err != nil {
-			return in, statusPayloadErr("faces: %q", s)
+			return in, statusPayloadErr("Uma das faces do Tato não existe.")
 		}
 		in.Faces = append(in.Faces, f)
 	}
@@ -106,7 +129,7 @@ func paramsInputOf(p StatusEffectParamsPayload) (statuseffect.ParamsInput, error
 // audienceOf traduz a visibilidade do fio: "default" = nil (padrão do tipo).
 func audienceOf(v StatusEffectVisibilityPayload) (*statuseffect.Audience, error) {
 	if v.Mode != "players" && len(v.PlayerIDs) > 0 {
-		return nil, statusPayloadErr("playerIds só com mode players")
+		return nil, statusPayloadErr("Só dá para listar jogadores quando o efeito é visível para jogadores específicos.")
 	}
 	switch v.Mode {
 	case "default":
@@ -116,7 +139,7 @@ func audienceOf(v StatusEffectVisibilityPayload) (*statuseffect.Audience, error)
 	case "players":
 		return &statuseffect.Audience{Players: append([]uuid.UUID{}, v.PlayerIDs...)}, nil
 	}
-	return nil, statusPayloadErr("visibility.mode: %q", v.Mode)
+	return nil, statusPayloadErr("Essa forma de visibilidade não existe.")
 }
 
 func draftOf(p ApplyStatusEffectPayload) (statuseffect.Draft, error) {
@@ -128,12 +151,12 @@ func draftOf(p ApplyStatusEffectPayload) (statuseffect.Draft, error) {
 	d.Kind, d.Alias = k, p.Alias
 	if p.Sense != "" {
 		if d.Sense, err = statuseffect.ParseSense(p.Sense); err != nil {
-			return d, statusPayloadErr("sense: %q", p.Sense)
+			return d, statusPayloadErr("Esse sentido não existe.")
 		}
 	}
 	if p.Aptitude != "" {
 		if d.Aptitude, err = statuseffect.ParseAptitude(p.Aptitude); err != nil {
-			return d, statusPayloadErr("aptitude: %q", p.Aptitude)
+			return d, statusPayloadErr("Essa aptidão não existe.")
 		}
 	}
 	if d.Params, err = paramsInputOf(p.Params); err != nil {
@@ -149,15 +172,15 @@ func draftOf(p ApplyStatusEffectPayload) (statuseffect.Draft, error) {
 
 func checkCharacterIDs(ids []uuid.UUID) error {
 	if len(ids) == 0 {
-		return statusPayloadErr("characterIds vazio")
+		return statusPayloadErr("Escolha ao menos um personagem.")
 	}
 	seen := make(map[uuid.UUID]struct{}, len(ids))
 	for _, id := range ids {
 		if id == uuid.Nil {
-			return statusPayloadErr("characterIds com id nulo")
+			return statusPayloadErr("Um dos personagens escolhidos não é válido.")
 		}
 		if _, dup := seen[id]; dup {
-			return statusPayloadErr("characterIds repetido")
+			return statusPayloadErr("Um personagem foi escolhido duas vezes.")
 		}
 		seen[id] = struct{}{}
 	}
@@ -186,17 +209,17 @@ func patchOf(p EditStatusEffectPayload) (statuseffect.Patch, error) {
 // ─── os três braços ─────────────────────────────────────────────────────────
 
 func (r *Room) refuseStatusEffect(client *Client, err error) {
-	client.SendMessage(NewErrorMessage(statusEffectErrorCode(err), err.Error()))
+	client.SendMessage(NewErrorMessage(statusEffectErrorCode(err), statusEffectErrorText(err)))
 }
 
 func (r *Room) handleApplyStatusEffect(client *Client, raw json.RawMessage) {
 	if !r.IsMaster(client.userUUID) {
-		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		client.SendMessage(NewErrorMessage("forbidden", "Só o mestre pode fazer isso."))
 		return
 	}
 	var p ApplyStatusEffectPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid apply_status_effect payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para aplicar o efeito."))
 		return
 	}
 	if err := checkCharacterIDs(p.CharacterIDs); err != nil {
@@ -216,12 +239,12 @@ func (r *Room) handleApplyStatusEffect(client *Client, raw json.RawMessage) {
 
 func (r *Room) handleEditStatusEffect(client *Client, raw json.RawMessage) {
 	if !r.IsMaster(client.userUUID) {
-		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		client.SendMessage(NewErrorMessage("forbidden", "Só o mestre pode fazer isso."))
 		return
 	}
 	var p EditStatusEffectPayload
 	if err := json.Unmarshal(raw, &p); err != nil || p.StatusEffectID == uuid.Nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid edit_status_effect payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para editar o efeito."))
 		return
 	}
 	patch, err := patchOf(p)
@@ -251,12 +274,12 @@ func (r *Room) handleEditStatusEffect(client *Client, raw json.RawMessage) {
 // fechamento.
 func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 	if !r.IsMaster(client.userUUID) {
-		client.SendMessage(NewErrorMessage("forbidden", ErrNotMaster.Error()))
+		client.SendMessage(NewErrorMessage("forbidden", "Só o mestre pode fazer isso."))
 		return
 	}
 	var p RemoveStatusEffectPayload
 	if err := json.Unmarshal(raw, &p); err != nil || p.StatusEffectID == uuid.Nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid remove_status_effect payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para remover o efeito."))
 		return
 	}
 	r.runStatusEffectChange(client, p.ActionID, p.RestoreCancelledActions, func(s *matchsession.MatchSession, _ time.Time) (appmatch.StatusEffectChange, error) {
@@ -274,14 +297,14 @@ func (r *Room) runStatusEffectChange(
 	op func(*matchsession.MatchSession, time.Time) (appmatch.StatusEffectChange, error),
 ) {
 	if r.deps.StatusEffectsUC == nil {
-		client.SendMessage(NewErrorMessage("game_error", "status effects are not available"))
+		client.SendMessage(NewErrorMessage("game_error", "Os efeitos de status não estão disponíveis nesta partida."))
 		return
 	}
 	r.mu.Lock()
 	session := r.session
 	if session == nil {
 		r.mu.Unlock()
-		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 		return
 	}
 	if actionID != nil && !session.IsOpenTurnAction(*actionID) {

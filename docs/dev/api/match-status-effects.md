@@ -789,17 +789,17 @@ não grava evento algum.
 
 | `code` | Mensagens | Quando |
 |---|---|---|
-| `forbidden` | `only the master can perform this action` | os quatro comandos, por jogador |
-| `match_not_started` | `match session not initialized` | lobby |
-| `match_already_ended` | — | partida encerrada |
-| `invalid_payload` | texto do campo | ver [§5](#apply_status_effect) |
-| `unknown_character` | — | id de ficha fora da sessão |
-| `status_effect_invalid` | texto do erro de domínio | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
-| `status_effect_exists` | `status effect already applied: <kind>[/<variante>]` | repetição de `(kind, variante)` |
-| `status_effect_not_found` | — | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
-| `blocked_by_status` | `<nick> não pode <o que>: <causa>` | `enqueue_action`, `attach_reaction` |
+| `forbidden` | `Só o mestre pode fazer isso.` | os quatro comandos, por jogador |
+| `match_not_started` | `A partida ainda não começou.` | lobby |
+| `match_already_ended` | `A partida já terminou.` | partida encerrada |
+| `invalid_payload` | frase em português que diz o que está errado (ex.: `Escolha ao menos um personagem.`) | ver [§5](#apply_status_effect) |
+| `unknown_character` | `Esse personagem não está na partida.` | id de ficha fora da sessão |
+| `status_effect_invalid` | frase em português (ex.: `Informe os pontos do efeito.`, `Esse efeito não existe.`, `Um jogador foi escolhido duas vezes.`, `Escolha a ação do turno aberto ou uma reação dela.`, `Só dá para mudar a ligação do efeito com um turno aberto.`) | parâmetro/lista inválidos; `actionId` sem turno aberto ou fora dele (`relink` inclusive) |
+| `status_effect_exists` | `O personagem já está <estado>.` (ex.: `O personagem já está paralisado.`) | repetição de `(kind, variante)` |
+| `status_effect_not_found` | `Esse efeito não está mais no personagem.` (relink: `Esse efeito não tem mudança neste turno.`) | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
+| `blocked_by_status` | `<nick> não pode <o que> porque está <estado>.` | `enqueue_action`, `attach_reaction` |
 | `restore_refused` | `Não foi possível devolver a ação: <motivo>` ou `Não foi possível devolver a reação: <motivo>` | `remove_status_effect` com `restoreCancelledActions`, uma por ação ou reação recusada, só ao mestre |
-| `game_error` | — | qualquer outra falha |
+| `game_error` | `Não foi possível fazer essa mudança de status.` | qualquer outra falha |
 
 ## 14. Histórico
 
