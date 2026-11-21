@@ -276,8 +276,10 @@ func (r *Room) runStatusEffectChange(
 	cancelWrites, cancelled, turnTouched := r.dropRefusedByStatusLocked(session, change.Characters)
 	turnID := session.CurrentTurnID()
 	var res *domainservice.TurnResolution
+	var resAge uint64
 	if turnTouched {
 		res = session.ResolveOpenTurn()
+		resAge = r.stampResolutionLocked()
 	}
 	r.mu.Unlock()
 	// Grava antes de avisar, como as master actions: o aviso é a barreira de quem espera a
@@ -293,7 +295,7 @@ func (r *Room) runStatusEffectChange(
 		r.broadcastBars(session)
 	}
 	// Uma reação do turno aberto pode ter sido refeita: o mestre recebe a resolução nova.
-	r.publishResolution(turnID, res)
+	r.publishResolution(turnID, res, resAge)
 	if change.HiddenChanged {
 		// A peça primeiro (piece_removed/piece_moved), depois as barras e os status de quem a
 		// ganhou ou perdeu — a ordem que a névoa já segue quando uma peça anda.
