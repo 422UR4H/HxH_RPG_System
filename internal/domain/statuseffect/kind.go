@@ -69,6 +69,26 @@ func (k Kind) Label() string {
 	return string(k)
 }
 
+// kindState é cada tipo numa forma que cabe depois de "está" ("está paralisado").
+var kindState = map[Kind]string{
+	KindParalyzed: "paralisado", KindStupefied: "atônito", KindStunned: "atordoado",
+	KindUnconscious: "inconsciente", KindRestrained: "preso", KindInjured: "lesionado",
+	KindSlowed: "lento", KindSense: "com um sentido afetado", KindWeakened: "debilitado",
+	KindBleeding: "sangrando", KindBurning: "queimando", KindFreezing: "congelando",
+	KindPoisoned: "envenenado", KindAsphyxiating: "asfixiando", KindProne: "caído",
+	KindAirborne: "no ar", KindOpenGuard: "com a guarda aberta", KindCompelled: "compelido",
+	KindControlled: "controlado", KindHidden: "escondido",
+}
+
+// StatePhrase é o tipo em forma de estado, para frases "está …" que o usuário lê (as recusas
+// por status: "não pode atacar porque está paralisado"). Tipo desconhecido sai como veio.
+func (k Kind) StatePhrase() string {
+	if l, ok := kindState[k]; ok {
+		return l
+	}
+	return string(k)
+}
+
 // PublicByDefault diz se, sem registro de audiência, todos veem o efeito (§9).
 func (k Kind) PublicByDefault() bool {
 	switch k {

@@ -207,7 +207,7 @@ func TestRemoveStatusEffect_InTurnUndo_ReactionStillBlockedComesBackWithTheOther
 
 	rt.removeWithRestore(t, stun)
 	refusals := restoreRefusals(t, rt.mc)
-	if len(refusals) != 1 || !strings.Contains(refusals[0].Message, "Paralisado") {
+	if len(refusals) != 1 || !strings.Contains(refusals[0].Message, "paralisado") {
 		t.Fatalf("master restore_refused = %+v, want one naming Paralisado", refusals)
 	}
 	if got := masterSwappedOf(t, rt.mc, rt.f.victimID, para); len(got) != 1 || got[0] != rt.reactionID {

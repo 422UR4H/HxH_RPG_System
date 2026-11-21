@@ -88,19 +88,19 @@ func (s *MatchSession) IsPlayerParticipant(userID uuid.UUID) bool {
 
 // ─── peças que bloqueiam (decisões 8 e 9 do plano de efeitos de status) ───────
 
-// domainLabel é o nome do domínio na mensagem de recusa.
+// domainLabel é o verbo do domínio na mensagem de recusa ("não pode <verbo> porque está …").
 var domainLabel = map[statuseffect.Domain]string{
-	statuseffect.DomainAttack:   "ataque",
-	statuseffect.DomainDefense:  "defesa",
-	statuseffect.DomainMovement: "movimento",
-	statuseffect.DomainDodge:    "esquiva",
+	statuseffect.DomainAttack:   "atacar",
+	statuseffect.DomainDefense:  "defender",
+	statuseffect.DomainMovement: "se mover",
+	statuseffect.DomainDodge:    "esquivar",
 }
 
-// reactionLabel é o nome da peça de reação na mensagem de recusa.
+// reactionLabel é o que a peça de reação faz, como verbo, na mensagem de recusa.
 var reactionLabel = map[statuseffect.Reaction]string{
-	statuseffect.ReactionReflexDodge: "a esquiva por reflexo",
-	statuseffect.ReactionEvasion:     "a evasão",
-	statuseffect.ReactionDefense:     "a defesa padrão",
+	statuseffect.ReactionReflexDodge: "esquivar por reflexo",
+	statuseffect.ReactionEvasion:     "usar a evasão",
+	statuseffect.ReactionDefense:     "usar a defesa padrão",
 	statuseffect.ReactionRepel:       "repelir",
 	statuseffect.ReactionEscape:      "escapar",
 }
@@ -148,11 +148,11 @@ func reactionNeeds(k action.ReactionKind) []reactionNeed {
 // needBlock diz se a peça está proibida ou se um domínio que ela exige está travado.
 func needBlock(sum statuseffect.Summary, n reactionNeed) *block {
 	if kinds := sum.ForbiddenReactions[n.piece]; len(kinds) > 0 {
-		return &block{"usar " + reactionLabel[n.piece], kinds}
+		return &block{reactionLabel[n.piece], kinds}
 	}
 	for _, d := range n.domains {
 		if kinds := sum.LockedDomains[d]; len(kinds) > 0 {
-			return &block{"usar o domínio " + domainLabel[d], kinds}
+			return &block{domainLabel[d], kinds}
 		}
 	}
 	return nil
@@ -195,7 +195,7 @@ func statusBlock(sum statuseffect.Summary, a *action.Action) *block {
 		}
 		for _, d := range ActionDomains(a) {
 			if kinds := sum.LockedDomains[d]; len(kinds) > 0 {
-				return &block{"usar o domínio " + domainLabel[d], kinds}
+				return &block{domainLabel[d], kinds}
 			}
 		}
 		if a.Move != nil && sum.NoDisplacement {
@@ -256,7 +256,7 @@ func (s *MatchSession) characterName(charID uuid.UUID) string {
 type StatusBlockError struct {
 	CharacterID uuid.UUID
 	Character   string // apelido da ficha
-	What        string // "agir", "usar o domínio ataque", ...
+	What        string // o verbo da recusa: "agir", "atacar", ...
 	Kinds       []statuseffect.Kind
 }
 
@@ -264,18 +264,25 @@ func (e *StatusBlockError) Error() string { return e.Message(e.Kinds) }
 
 func (e *StatusBlockError) Unwrap() error { return ErrBlockedByStatus }
 
-// Message é o texto da recusa nomeando só os tipos dados, pelo nome da mesa (Kind.Label); sem
-// nenhum, "um efeito".
+// Message é o texto da recusa nomeando só os tipos dados, na forma "Fulano não pode atacar
+// porque está paralisado e caído." (Kind.StatePhrase); sem nenhum, "por causa de um efeito".
 func (e *StatusBlockError) Message(visible []statuseffect.Kind) string {
-	cause := "um efeito"
-	if len(visible) > 0 {
-		names := make([]string, len(visible))
-		for i, k := range visible {
-			names[i] = k.Label()
-		}
-		cause = strings.Join(names, ", ")
+	if len(visible) == 0 {
+		return fmt.Sprintf("%s não pode %s por causa de um efeito.", e.Character, e.What)
 	}
-	return fmt.Sprintf("%s não pode %s: %s", e.Character, e.What, cause)
+	states := make([]string, len(visible))
+	for i, k := range visible {
+		states[i] = k.StatePhrase()
+	}
+	return fmt.Sprintf("%s não pode %s porque está %s.", e.Character, e.What, joinPT(states))
+}
+
+// joinPT junta com vírgula e "e" no último: "a", "a e b", "a, b e c".
+func joinPT(items []string) string {
+	if len(items) <= 1 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " e " + items[len(items)-1]
 }
 
 // StatusRefusal diz se os status do ator recusam a action (ou a reação): nil = permitida; senão

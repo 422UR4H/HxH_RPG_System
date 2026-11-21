@@ -91,7 +91,7 @@ func TestStatusRefusal(t *testing.T) {
 		probes  []probe
 	}{
 		{
-			name: "stunned", want: "Atordoado",
+			name: "stunned", want: "atordoado",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindStunned)},
 			probes: []probe{
 				{"attack", attackBy(c, other), true},
@@ -101,7 +101,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "paralyzed attack", want: "Paralisado",
+			name: "paralyzed attack", want: "paralisado",
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainAttack)},
 			probes: []probe{
 				{"attack", attackBy(c, other), true},
@@ -109,7 +109,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "restrained", want: "Preso",
+			name: "restrained", want: "preso",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindRestrained)},
 			probes: []probe{
 				{"move", moveBy(c), true},
@@ -119,7 +119,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "openGuard", want: "Guarda aberta",
+			name: "openGuard", want: "com a guarda aberta",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindOpenGuard)},
 			probes: []probe{
 				{"dodge", react(action.ReactDodge), true},
@@ -130,7 +130,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "airborne", want: "No ar",
+			name: "airborne", want: "no ar",
 			effects: []statuseffect.Effect{kindOnly(c, statuseffect.KindAirborne)},
 			probes: []probe{
 				{"escape", react(action.ReactEscape), true},
@@ -140,7 +140,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "paralyzed dodge", want: "Paralisado",
+			name: "paralyzed dodge", want: "paralisado",
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainDodge)},
 			probes: []probe{
 				{"escape needs dodge", react(action.ReactEscape), true},
@@ -150,7 +150,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "paralyzed defense", want: "Paralisado",
+			name: "paralyzed defense", want: "paralisado",
 			effects: []statuseffect.Effect{paralyzedIn(c, statuseffect.DomainDefense)},
 			probes: []probe{
 				{"repel", react(action.ReactRepel), true},
@@ -158,7 +158,7 @@ func TestStatusRefusal(t *testing.T) {
 			},
 		},
 		{
-			name: "openGuard and paralyzed defense", want: "Guarda aberta",
+			name: "openGuard and paralyzed defense", want: "com a guarda aberta",
 			effects: []statuseffect.Effect{
 				kindOnly(c, statuseffect.KindOpenGuard), paralyzedIn(c, statuseffect.DomainDefense),
 			},
@@ -459,11 +459,34 @@ func TestStatusBlockError(t *testing.T) {
 	if be.CharacterID != c || be.What != "agir" || len(be.Kinds) != 1 || be.Kinds[0] != statuseffect.KindStunned {
 		t.Fatalf("cause = %+v", be)
 	}
-	if got := be.Message(nil); strings.Contains(got, "Atordoado") || !strings.Contains(got, "um efeito") {
+	if got := be.Message(nil); strings.Contains(got, "Atordoado") || !strings.Contains(got, "por causa de um efeito") {
 		t.Fatalf("Message(nil) = %q, want the generic cause", got)
 	}
 	// O texto é do usuário: o tipo sai com o nome da mesa, nunca o valor do fio.
-	if got, want := be.Error(), "O personagem não pode agir: Atordoado"; got != want {
+	if got, want := be.Error(), "O personagem não pode agir porque está atordoado."; got != want {
 		t.Fatalf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestStatusBlockError_MessageText(t *testing.T) {
+	be := &matchsession.StatusBlockError{Character: "Jogador29", What: "atacar"}
+	cases := []struct {
+		name string
+		what string
+		kind []statuseffect.Kind
+		want string
+	}{
+		{"one kind", "atacar", []statuseffect.Kind{statuseffect.KindParalyzed}, "Jogador29 não pode atacar porque está paralisado."},
+		{"two kinds", "se mover", []statuseffect.Kind{statuseffect.KindRestrained, statuseffect.KindProne}, "Jogador29 não pode se mover porque está preso e caído."},
+		{"three kinds", "se mover", []statuseffect.Kind{statuseffect.KindRestrained, statuseffect.KindSlowed, statuseffect.KindProne}, "Jogador29 não pode se mover porque está preso, lento e caído."},
+		{"none visible", "reagir", nil, "Jogador29 não pode reagir por causa de um efeito."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			be.What = tc.what
+			if got := be.Message(tc.kind); got != tc.want {
+				t.Errorf("Message = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

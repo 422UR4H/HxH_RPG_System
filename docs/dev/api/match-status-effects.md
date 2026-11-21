@@ -392,7 +392,7 @@ devolvida nunca foi aberta).
 
 **Dispara (recusadas)**, por ação ou reação, **só ao mestre**: `error` com
 `code: "restore_refused"` e a mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi
-possível devolver a ação: Gon não pode agir: Atordoado`) ou `Não foi possível devolver a reação:
+possível devolver a ação: Gon não pode agir porque está atordoado.`) ou `Não foi possível devolver a reação:
 <motivo>` (ex.: `Não foi possível devolver a reação: Gon mandou outra reação depois`). A ação
 recusada continua cancelada (gravada no fechamento); a reação recusada continua fora do turno.
 
@@ -463,17 +463,16 @@ também perde a defesa padrão de reserva. Isso não aparece no fio.
 quem enviou. Não muda nada na fila, nas barras nem nos dados.
 
 ```json
-{ "type": "error", "payload": { "code": "blocked_by_status", "message": "Combatant não pode usar o domínio ataque: Paralisado" } }
+{ "type": "error", "payload": { "code": "blocked_by_status", "message": "Combatant não pode atacar porque está paralisado." } }
 ```
 
-`message` tem a forma `<nick> não pode <o que>: <causa>`. "O que" é um de `agir`,
-`reagir`, `reagir com a reação padrão`, `se deslocar`, `usar o domínio <ataque|defesa|movimento|esquiva>`,
-`usar <a esquiva por reflexo|a evasão|a defesa padrão|repelir|escapar>`. **A causa nomeia só os
-`kind`s que o remetente pode ver**, pelo **nome da mesa em português** (a coluna "Nome na mesa"
-de [§3](#kind): `Paralisado`, `Atordoado`, `Guarda aberta`…, separados por vírgula), nunca pelo
-valor do fio: o mestre vê todos; um jogador, os que a lista dele inclui;
-se nenhum é visível a ele, a causa é `um efeito` — mas o "o que" continua dito (ex.:
-`... não pode usar o domínio ataque: um efeito`). Não parseie a mensagem; mostre-a.
+`message` tem a forma `<nick> não pode <o que> porque está <estado>.` "O que" é um de `agir`,
+`reagir`, `reagir com a reação padrão`, `se deslocar`, `atacar`, `defender`, `se mover`, `esquivar`,
+`esquivar por reflexo`, `usar a evasão`, `usar a defesa padrão`, `repelir`, `escapar`. **O estado
+nomeia só os `kind`s que o remetente pode ver**, em forma de estado (`paralisado`, `atônito`,
+`com a guarda aberta`…; vários: `preso, lento e caído`), nunca pelo valor do fio: o mestre vê
+todos; um jogador, os que a lista dele inclui. Se nenhum é visível a ele, a mensagem é
+`<nick> não pode <o que> por causa de um efeito.` — mas o "o que" continua dito. Não parseie a mensagem; mostre-a.
 
 Sai de `enqueue_action`, `attach_reaction` e `enqueue_action` com `reactToId`.
 

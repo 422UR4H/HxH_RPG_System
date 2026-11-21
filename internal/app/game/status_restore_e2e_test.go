@@ -289,7 +289,7 @@ func TestRemoveStatusEffect_InTurnUndo_RefusalGoesToTheMasterOnly(t *testing.T) 
 		t.Fatalf("restore_refused = %+v, want one per action", refusals)
 	}
 	for _, r := range refusals {
-		if !strings.HasPrefix(r.Message, "Não foi possível devolver a ação: ") || !strings.Contains(r.Message, "Atordoado") {
+		if !strings.HasPrefix(r.Message, "Não foi possível devolver a ação: ") || !strings.Contains(r.Message, "atordoado") {
 			t.Errorf("message = %q, want the PT prefix and what still blocks", r.Message)
 		}
 	}

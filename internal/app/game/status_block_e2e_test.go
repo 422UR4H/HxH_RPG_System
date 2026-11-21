@@ -65,7 +65,7 @@ func TestStatusBlock_EnqueueRefused(t *testing.T) {
 	applyStatus(t, master, mc, f.attackerID, "stunned", map[string]any{"points": 3})
 	f.enqueueAttack(t, player)
 	e := awaitBlockedError(t, pc, "blocked_by_status")
-	if !strings.Contains(e.Message, "agir") || !strings.Contains(e.Message, "Atordoado") {
+	if !strings.Contains(e.Message, "agir") || !strings.Contains(e.Message, "atordoado") {
 		t.Errorf("message = %q, want what is blocked and by which kind", e.Message)
 	}
 	if n := mc.count(game.MsgTypeActionQueued); n != 0 {
@@ -76,7 +76,7 @@ func TestStatusBlock_EnqueueRefused(t *testing.T) {
 		applyStatus(t, master, mc, f.npcID, "paralyzed", map[string]any{"points": 3, "domains": []string{"attack"}})
 		f.enqueueAttackAt(t, master, f.npcID, f.victimID)
 		e := awaitBlockedError(t, mc, "blocked_by_status")
-		if !strings.Contains(e.Message, "ataque") || !strings.Contains(e.Message, "Paralisado") {
+		if !strings.Contains(e.Message, "atacar porque está paralisado.") {
 			t.Errorf("message = %q, want the attack domain and Paralisado", e.Message)
 		}
 	})
@@ -99,8 +99,8 @@ func TestStatusBlock_ReactionRefused(t *testing.T) {
 		Repel: &game.RepelPayload{Weapon: &sword},
 	})
 	e := awaitBlockedError(t, pc, "blocked_by_status")
-	if !strings.Contains(e.Message, "Guarda aberta") {
-		t.Errorf("message = %q, want Guarda aberta", e.Message)
+	if !strings.Contains(e.Message, "com a guarda aberta") {
+		t.Errorf("message = %q, want guarda aberta", e.Message)
 	}
 	if n := pc.count(game.MsgTypeReactionAttached); n != 0 {
 		t.Fatalf("a refused reaction was attached (%d reaction_attached)", n)
@@ -310,13 +310,13 @@ func TestStatusBlock_RefusalHidesWhatTheSenderCannotSee(t *testing.T) {
 
 	f.enqueueAttack(t, player)
 	e := awaitBlockedError(t, pc, "blocked_by_status")
-	if strings.Contains(e.Message, "Paralisado") || !strings.Contains(e.Message, "um efeito") {
+	if strings.Contains(e.Message, "paralisado") || !strings.Contains(e.Message, "por causa de um efeito") {
 		t.Errorf("owner's refusal = %q, want the generic cause and no kind", e.Message)
 	}
 
 	f.enqueueAttackAt(t, master, f.npcID, f.victimID)
 	e = awaitBlockedError(t, mc, "blocked_by_status")
-	if !strings.Contains(e.Message, "Paralisado") {
+	if !strings.Contains(e.Message, "paralisado") {
 		t.Errorf("master's refusal = %q, want the kind named", e.Message)
 	}
 }
