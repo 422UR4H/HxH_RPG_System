@@ -74,8 +74,9 @@ type HistoryRoundResponse struct {
 // "roundModeChanged" carries Payload ({"from", "to"}); "clockStarted", "clockAdjusted" and
 // "clockRealTime" carry Payload as recorded (spec 2026-11-08 §7); "masterAction" carries MasterAction;
 // "statusEffect" carries StatusEffect;
-// "actionCancelled" carries ActorID always and Action only for the master (Full cut) and the
-// actor's owner (Declaration cut) — the use case decided which (matchUC.HistoryCancelledAction).
+// "actionCancelled" exists only for the master and the actor's owner (D1, 2026-11-20) and always
+// carries ActorID and Action — Full for the master, Declaration for the owner; the use case
+// decided which (matchUC.HistoryCancelledAction).
 // UUID is the event's own, the master action's, or the cancelled action's; CreatedAt is when it
 // happened.
 type HistoryEventResponse struct {
