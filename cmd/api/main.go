@@ -22,6 +22,7 @@ import (
 	uploadHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/upload"
 	"github.com/422UR4H/HxH_RPG_System/docs"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/rules"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/item"
 	r2gw "github.com/422UR4H/HxH_RPG_System/internal/gateway/r2"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
@@ -319,6 +320,7 @@ func main() {
 	}
 	rulesApi := rulesHandler.Api{
 		GetSheetRulesHandler: rulesHandler.GetSheetRulesHandler(sheetRulesChapters),
+		GetWeaponsHandler:    rulesHandler.GetWeaponsHandler(item.NewWeaponsManagerFactory().Build()),
 	}
 
 	chiServer := api.NewServer()

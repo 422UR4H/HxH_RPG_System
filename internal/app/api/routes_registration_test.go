@@ -19,6 +19,7 @@ import (
 	submissionHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/submission"
 	uploadHandler "github.com/422UR4H/HxH_RPG_System/internal/app/api/upload"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/rules"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/item"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 )
@@ -86,8 +87,11 @@ func TestRoutes_SheetRulesArePublic(t *testing.T) {
 		MapHandler:        &mapHandler.Api{},
 		MatchMapHandler:   &matchmapHandler.Api{},
 		UploadHandler:     &uploadHandler.Api{},
-		RulesHandler:      &rulesHandler.Api{GetSheetRulesHandler: rulesHandler.GetSheetRulesHandler(chapters)},
-		AuthHandler:       auth.NewAuthHandler(nil, nil),
+		RulesHandler: &rulesHandler.Api{
+			GetSheetRulesHandler: rulesHandler.GetSheetRulesHandler(chapters),
+			GetWeaponsHandler:    rulesHandler.GetWeaponsHandler(item.NewWeaponsManagerFactory().Build()),
+		},
+		AuthHandler: auth.NewAuthHandler(nil, nil),
 	}
 	deny := func(ctx huma.Context, next func(huma.Context)) { ctx.SetStatus(http.StatusUnauthorized) }
 	r := chi.NewRouter()
@@ -95,6 +99,7 @@ func TestRoutes_SheetRulesArePublic(t *testing.T) {
 
 	for path, want := range map[string]int{
 		"/rules/character-sheet": http.StatusOK,
+		"/rules/weapons":         http.StatusOK,
 		"/classes":               http.StatusUnauthorized,
 	} {
 		rec := httptest.NewRecorder()
