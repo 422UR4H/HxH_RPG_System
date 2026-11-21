@@ -760,6 +760,15 @@ automática custa caro nela — por isso poucas rolagens por round).
     sessão. Hoje a Vida só vai ao dono e ao mestre, a Stamina não chega ao vivo, e o mestre não tem
     como revelar barras: essas três lacunas fecham nela.
 
+25. **Revelar barras de status** [2026-11-21; regra registrada, o refinamento da visibilidade por
+    jogador ainda virá]: **por personagem**, com um **atalho para revelar as de todos os personagens
+    de jogador a todos os jogadores**. **NPCs são revelados um por um** — o atalho não os inclui.
+    Revelar todos os NPCs de uma vez, se existir, é outro botão e vai para a **configuração da
+    partida**.
+26. **A Stamina segue a mesma regra de quem vê da Vida** [2026-11-21].
+27. **Golpe no vazio** [2026-11-21]: um ataque cujo único alvo é um Escondido que esquivou aparece,
+    para quem não percebe o alvo, como ataque sem alvo visível. Já funciona assim.
+
 ### 16.4 De quem implementou (o dono foi informado)
 
 - Reaplicar um status que o personagem já tem é recusado; o mestre edita o existente. Vários

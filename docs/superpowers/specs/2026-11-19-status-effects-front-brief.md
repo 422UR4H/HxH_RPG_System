@@ -106,6 +106,20 @@ Contratos (fonte da verdade): `docs/dev/api/match-history.md`, `match-status-eff
   não há comando de revelar). Entram com a visibilidade por jogador, numa sessão do back à parte.
   Nesta fase, cada jogador vê só as próprias barras, e o mestre vê todas.
 
+## Decisões do dono de 2026-11-21 (front)
+
+- **O novo formato da bottom sheet** (sem encostar nas laterais da tela em celular e tablet na
+  vertical) vale **só para o jogador**. As demais mudanças do componente valem para todos. Motivo:
+  o jogador precisa de uma tela limpa; o mestre precisa de informação presa à tela, e vai precisar
+  de telas maiores para conduzir a partida. A forma da tela do mestre (inclusive minimizar a bottom
+  sheet) o dono revê depois com o designer humano do projeto — **não mexer agora**.
+- **Nova opção no footer do mestre, de gerenciamento da partida**, para reunir as configurações e
+  botões do mestre que estão se acumulando. No celular, é necessária. Em telas grandes talvez não
+  precise; no tablet, a decidir.
+- **Revelar barras** (para quando os dados existirem): por personagem, com atalho para revelar as
+  de todos os personagens de jogador a todos os jogadores; NPCs um por um; "revelar todos os NPCs",
+  se existir, é outro botão, na configuração da partida. A Stamina segue a mesma regra da Vida.
+
 ## Restrições de produto
 
 - **Seguir princípios de UI/UX** (dono). Leitura rápida para o mestre vale mais que completude.

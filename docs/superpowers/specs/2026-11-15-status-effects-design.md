@@ -780,6 +780,15 @@ automatic roll is costly in it — hence few rolls per round).
     Health goes only to the owner and the master, Stamina does not arrive live, and the master
     cannot reveal bars: those three gaps close there.
 
+25. **Revealing status bars** [2026-11-21; rule recorded, per-player visibility is still to be
+    refined]: **per character**, with a **shortcut to reveal all player characters' bars to all
+    players**. **NPCs are revealed one by one** — the shortcut does not include them. Revealing all
+    NPCs at once, if it exists, is a separate button and lives in the **match settings**.
+26. **Stamina follows the same who-sees rule as Health** [2026-11-21].
+27. **Blow into thin air** [2026-11-21]: an attack whose only target is a Hidden one that dodged
+    appears, to whoever does not perceive the target, as an attack with no visible target. It
+    already works this way.
+
 ### 16.4 From the implementer (the owner was informed)
 
 - Re-applying a status the character already has is refused; the master edits the existing one.
