@@ -175,6 +175,35 @@ func (t *Turn) DropUnopened(id uuid.UUID) bool {
 	return true
 }
 
+// ReactionIndex é a posição da reação entre as do turno; -1 se ela não está nele.
+func (t *Turn) ReactionIndex(id uuid.UUID) int {
+	for i := range t.reactions {
+		if t.reactions[i].GetID() == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// RestoreUnopened põe de volta uma reação que DropUnopened tirou, como estava: na posição dada
+// (o fim, se ela não existe mais), sentada ou não, com a escolha de pouso dela. Quem chama
+// revalida antes (MatchSession.RestoreSwappedReactions); o turno só a recoloca.
+func (t *Turn) RestoreUnopened(r action.Action, index int, seated bool, landing *[3]int) {
+	if index < 0 || index > len(t.reactions) {
+		index = len(t.reactions)
+	}
+	t.reactions = slices.Insert(t.reactions, index, r)
+	if seated {
+		if t.seated == nil {
+			t.seated = make(map[uuid.UUID]bool)
+		}
+		t.seated[r.GetID()] = true
+	}
+	if landing != nil {
+		t.SetEscapeLanding(r.GetID(), *landing)
+	}
+}
+
 // IsOpened diz se o mestre já deu a palavra a esta reação.
 func (t *Turn) IsOpened(id uuid.UUID) bool { return slices.Contains(t.openedReactions, id) }
 

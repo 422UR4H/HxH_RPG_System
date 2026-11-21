@@ -54,6 +54,8 @@ ainda não pesam. Lista completa em [§10](#10-o-que-ainda-não-existe).
 | `match_full_state.statusEffects` | quem conecta/reconecta — ver [§9](#9-reconexão) |
 | [`action_queued.statusNotes`](#statusnotes-em-action_queued) | só o mestre |
 | [`action_cancelled`](#action_cancelled-disparado-por-status) | o mestre + o dono da ação, quando um status derruba uma ação da fila |
+| [`action_restored`](#action_restored) | o mestre + o dono da ação, quando o desfazer no turno a devolve à fila |
+| [`reaction_restored`](#reaction_restored) | o mestre (+ o dono do reator, se via o efeito), quando o desfazer no turno devolve uma reação trocada |
 | [`error` `blocked_by_status`](#blocked_by_status) | quem tentou agir ou reagir |
 
 Também mudaram (detalhe em `match-combat-ws.md`): `npc_added` agora vai **só ao mestre**;
@@ -259,8 +261,9 @@ efeito com esse id).
 ```
 
 `actionId` é opcional, com a mesma regra de `apply_status_effect`. `restoreCancelledActions`
-(bool, opcional, ausente = `false`) pede que as ações da fila que o efeito cancelou voltem — só
-vale no desfazer no turno (abaixo).
+(bool, opcional, ausente = `false`) pede que o que o efeito tirou volte — as ações da fila que ele
+cancelou **e** as reações não abertas que ele trocou no turno — só vale no desfazer no turno
+(abaixo).
 
 ```json
 { "type": "remove_status_effect", "payload": { "statusEffectId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "restoreCancelledActions": true } }
@@ -273,7 +276,8 @@ inteira**.
 **Desfazer no turno.** Remover, com o turno aberto, um efeito **aplicado nesse mesmo turno**
 desfaz a aplicação: nada desse efeito é gravado no fechamento (nem a aplicação, nem edições, nem
 evento `removed` no histórico). Ao vivo é uma remoção como as outras. As ações da fila que o
-efeito já derrubou **continuam canceladas**, a não ser que o mestre peça a volta delas.
+efeito já derrubou **continuam canceladas** (e as reações que ele trocou continuam trocadas), a
+não ser que o mestre peça a volta delas.
 Qualquer outra remoção (efeito de antes do turno, ou sem turno aberto) é uma remoção normal,
 gravada (com o turno aberto, no fechamento dele). Depois do fechamento não há volta.
 
@@ -304,12 +308,28 @@ Fora da janela do desfazer (efeito de antes do turno, sem turno aberto, depois d
 flag é **ignorada** sem erro: não há o que devolver. Sem a flag, as ações continuam canceladas e
 o registro de devolução do efeito é descartado.
 
+**Devolver as reações trocadas (o mesmo `restoreCancelledActions: true`).** Uma reação **não
+aberta** do personagem que **este** efeito tirou do turno aberto ([§6](#o-que-o-efeito-refaz-nas-pendências),
+item 2 — as que o mestre vê em `swappedReactionIds`, [§8](#8-status_effects_updated)) volta
+**exatamente como estava**: o **mesmo id** (`reactionId`), os mesmos dados já rolados, as mesmas
+velocidades e `consumedActionIds`, o mesmo lugar entre as reações do turno, sentada ou não, com a
+escolha de pouso e as edições do mestre — nunca rolada de novo. Ela entra no lugar da sentada que
+está lá (padrão ou `nothing`), que sai; a âncora (`actionId`) que tinha seguido a reação para a
+sentada **volta com ela**. O servidor **revalida** e recusa, com motivo: o turno dela não é mais
+o aberto; o reator saiu da partida ou não é mais alvo da ação do turno; outro status ainda a
+recusa; o reator **mandou outra reação** depois (a nova fica: é a última palavra dele); o mestre
+já **abriu** a reação que ficou no lugar. Recusada por outro status aplicado neste mesmo turno, ela
+passa para o `swappedReactionIds` dele, como as ações. **A barra:** a reação cobrou na chegada e o
+status nunca devolveu essa cobrança; com a mesma reação de volta, a barra volta a ser coerente.
+Recusada (ou sem a flag), a reação fica fora do turno e a cobrança fica.
+
 **Dispara (devolvidas)**, por ação, na ordem da fila: [`action_restored`](#action_restored) ao
 **mestre** e ao **dono** (ação de NPC: só ao mestre), e, ao mestre, logo depois, o `action_queued`
 de sempre (a entrada na fila, com `statusNotes`). Depois, `bars_updated` e, se o personagem tem
 reação no turno aberto, `resolution_updated` ao mestre. **Não** vem `action_enqueued`: ele é o
 ack de um envio do cliente, casado pela ordem dos envios, e um ack sem pedido cairia no envio
-errado.
+errado. Por reação devolvida: [`reaction_restored`](#reaction_restored) e o `resolution_updated`
+do mestre (a reação pendente volta a ser ela, `seated: false` se era do jogador).
 
 ### `action_restored`
 
@@ -333,9 +353,44 @@ As devolvidas de um comando chegam **na ordem da fila**; o cliente põe cada uma
 fila/`ownQueue` diante de `beforeActionId` (ou no fim), uma a uma, e todas caem no lugar. Para o mestre, o `action_queued`
 que vem logo depois tem o mesmo `actionId` e só a redescreve (substitui no lugar).
 
-**Dispara (recusadas)**, por ação, **só ao mestre**: `error` com `code: "restore_refused"` e a
-mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi possível devolver a ação:
-Gon não pode agir: stunned`). A recusada continua cancelada (gravada no fechamento).
+### `reaction_restored`
+
+**Direção:** servidor → cliente. **Destino:** o mestre; e o dono do reator **só quando o efeito
+desfeito era visível a ele** (a troca também só chegou a ele por esse efeito — um efeito que ele
+não via não é anunciado pela volta da reação). Reação de NPC: só o mestre. A mesa nunca recebe.
+
+```json
+{ "type": "reaction_restored", "payload": {
+  "turnId": "11111111-1111-4111-8111-111111111111",
+  "reactionId": "55555555-5555-4555-8555-555555555555",
+  "actorId": "66666666-6666-4666-8666-666666666666",
+  "reactionKind": "dodge",
+  "consumedActionIds": [],
+  "replacedReactionId": "77777777-7777-4777-8777-777777777777"
+} }
+```
+
+| Campo | |
+|---|---|
+| `turnId` | o turno aberto |
+| `reactionId` | o **mesmo** id de antes da troca (o do `reaction_attached` dela) |
+| `actorId` | o reator (ficha) |
+| `reactionKind` | o tipo verdadeiro (como em `ownReactions[]`) |
+| `consumedActionIds` | sempre lista: o que ela consumiu na chegada (nada é consumido de novo) |
+| `replacedReactionId` | **só o mestre**: a sentada que saiu do lugar dela |
+
+**Não é `reaction_attached`.** O front casa o `reaction_attached` com o envio pendente
+(`status === "sending"`) do mesmo personagem; um sem pedido cairia num envio em andamento. Ao
+receber `reaction_restored`, o cliente do dono põe (ou mantém) a entrada em `ownReactions` com
+esse `reactionId`, como `attached`; o do mestre só registra (a fonte do que está pendente é o
+`resolution_updated` que vem logo depois). Mesma forma de `ownReactions[]` (sem `opened`: uma
+devolvida nunca foi aberta).
+
+**Dispara (recusadas)**, por ação ou reação, **só ao mestre**: `error` com
+`code: "restore_refused"` e a mensagem `Não foi possível devolver a ação: <motivo>` (ex.: `Não foi
+possível devolver a ação: Gon não pode agir: Atordoado`) ou `Não foi possível devolver a reação:
+<motivo>` (ex.: `Não foi possível devolver a reação: Gon mandou outra reação depois`). A ação
+recusada continua cancelada (gravada no fechamento); a reação recusada continua fora do turno.
 
 **Erros:** `forbidden` · `match_not_started` · `match_already_ended` · `invalid_payload`
 (`statusEffectId` ausente ou nulo) · `status_effect_not_found` · `status_effect_invalid` (`actionId`
@@ -425,7 +480,8 @@ Ao aplicar ou editar (e, para as sentadas, ao remover), na mesma operação:
    (mesma tabela e regra do `cancel_action`: com turno aberto, no fechamento dele).
 2. Uma reação **ainda não aberta** do personagem no turno aberto que ele não pode mais dar é
    trocada pela reação padrão sentada (só as passivas permitidas) ou por `nothing` (quando nenhuma
-   passiva resta ou ele não pode reagir). O que já foi **aberto** fica.
+   passiva resta ou ele não pode reagir). O que já foi **aberto** fica. A trocada só volta pelo
+   desfazer no turno com `restoreCancelledActions` ([`remove_status_effect`](#remove_status_effect)).
 3. A reação trocada **não manda mensagem extra ao dono dela**: se o efeito é visível a ele,
    ele o ganha por `status_effects_updated`; se é escondido, **não é anunciado de propósito**
    (spec §9: o status privado pesa sem o jogador saber por quê).
@@ -589,6 +645,10 @@ mestre. É o gatilho do front para perguntar "devolver?" ao remover o efeito. Um
 sai da lista; uma que o desfazer de outro efeito não pôde devolver porque **este** a recusa
 entra nela. Os jogadores nunca o recebem.
 
+**`swappedReactionIds`** (só o mestre, o mesmo corte e o mesmo ciclo do `cancelledActionIds`): os
+ids das reações não abertas que **esse** efeito tirou do turno aberto (a sentada entrou no lugar)
+e que o mesmo `restoreCancelledActions` ainda pode devolver. Também é gatilho do "devolver?".
+
 **É a lista INTEIRA** do personagem como o destinatário a vê: **substitua**, nunca acrescente. **Nunca
 `null`**: `[]` = ele não vê mais nenhum. O servidor só manda quando a lista **difere** da última
 que ele enviou àquele destinatário.
@@ -733,7 +793,7 @@ não grava evento algum.
 | `status_effect_exists` | `status effect already applied: <kind>[/<variante>]` | repetição de `(kind, variante)` |
 | `status_effect_not_found` | — | edit/remove de id desconhecido; `relink` de efeito sem mudança neste turno |
 | `blocked_by_status` | `<nick> não pode <o que>: <causa>` | `enqueue_action`, `attach_reaction` |
-| `restore_refused` | `Não foi possível devolver a ação: <motivo>` | `remove_status_effect` com `restoreCancelledActions`, uma por ação recusada, só ao mestre |
+| `restore_refused` | `Não foi possível devolver a ação: <motivo>` ou `Não foi possível devolver a reação: <motivo>` | `remove_status_effect` com `restoreCancelledActions`, uma por ação ou reação recusada, só ao mestre |
 | `game_error` | — | qualquer outra falha |
 
 ## 14. Histórico
@@ -744,4 +804,5 @@ inteiro — formato do evento, `actionId` (a causa), regra de visibilidade, "Aç
 Escondido" e o endpoint do mestre `POST /matches/{matchUuid}/status-effects/{effectUuid}/reveal`
 — está em [`match-history.md`](match-history.md#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects).
 Do lado do fio WS: `actionId` nos três comandos, `relink_status_effect`, `turnActionId` e
-`cancelledActionIds` (só o mestre) e o desfazer no turno (com a devolução das ações), em §5 e §8.
+`cancelledActionIds`/`swappedReactionIds` (só o mestre) e o desfazer no turno (com a devolução
+das ações e das reações trocadas), em §5 e §8.

@@ -51,8 +51,9 @@ type turnWrites struct {
 	// é o que diz ao fechamento que ela já foi registrada; a que nunca abriu é registrada lá.
 	reactionHiddenFrom map[uuid.UUID]appmatch.HiddenFrom
 	// statusCancels é o registro do desfazer (D3): por efeito aplicado ou editado neste turno, as
-	// ações da fila que a mudança dele tirou (dropRefusedByStatusLocked), em ordem de remoção. É
-	// o que um remove_status_effect com restoreCancelledActions devolve (giveBackLocked). Morre
+	// ações da fila que a mudança dele tirou e as reações não abertas que ela trocou no turno
+	// (dropRefusedByStatusLocked), em ordem de remoção. É o que um remove_status_effect com
+	// restoreCancelledActions devolve (giveBackLocked). Morre
 	// com o turno — fechamento, reinício, end_match —, então nenhum ponteiro velho sobrevive a
 	// ele; nunca é gravado.
 	statusCancels map[uuid.UUID]statusCancel
@@ -63,9 +64,29 @@ type turnWrites struct {
 // base do movimento). Os ponteiros são os que saíram da fila: depois do DropRefusedByStatus só
 // este registro os segura (o registro de cancelamento guarda uma cópia), então voltar com eles
 // é seguro.
+//
+// reactions são as reações não abertas do personagem que o efeito tirou do turno aberto
+// (matchsession.ReactionDrop: a reação inteira, o lugar, a sentada, o pouso e as edições).
 type statusCancel struct {
-	charID uuid.UUID
-	drops  []matchsession.StatusDrop
+	charID    uuid.UUID
+	drops     []matchsession.StatusDrop
+	reactions []matchsession.ReactionDrop
+}
+
+// noteReactionSwap registra que effectID (de charID) tirou reactions do turno w; uma reação que
+// o registro já tem não entra de novo.
+func (w *turnWrites) noteReactionSwap(effectID, charID uuid.UUID, reactions []matchsession.ReactionDrop) {
+	if w.statusCancels == nil {
+		w.statusCancels = map[uuid.UUID]statusCancel{}
+	}
+	rec := w.statusCancels[effectID]
+	rec.charID = charID
+	for _, d := range reactions {
+		if !slices.ContainsFunc(rec.reactions, func(o matchsession.ReactionDrop) bool { return o.Reaction.GetID() == d.Reaction.GetID() }) {
+			rec.reactions = append(rec.reactions, d)
+		}
+	}
+	w.statusCancels[effectID] = rec
 }
 
 // noteStatusCancel registra que effectID (de charID) tirou drops da fila no turno w; uma ação
@@ -86,7 +107,8 @@ func (w *turnWrites) noteStatusCancel(effectID, charID uuid.UUID, drops []matchs
 
 // forgetRestored tira do turno o que o cancelamento de cada ação devolvida deixou: o registro
 // em cancelledActions (nada dela é gravado no fechamento) e a entrada dela no registro do
-// desfazer de qualquer efeito (ela não pode ser devolvida duas vezes).
+// desfazer de qualquer efeito (ela não pode ser devolvida duas vezes). Vale igual para as
+// reações devolvidas (ids de reação nunca estão em cancelledActions).
 func (w *turnWrites) forgetRestored(ids map[uuid.UUID]bool) {
 	if len(ids) == 0 {
 		return
@@ -105,11 +127,17 @@ func (w *turnWrites) forgetRestored(ids map[uuid.UUID]bool) {
 				drops = append(drops, d)
 			}
 		}
-		if len(drops) == 0 {
+		reactions := rec.reactions[:0:0]
+		for _, d := range rec.reactions {
+			if !ids[d.Reaction.GetID()] {
+				reactions = append(reactions, d)
+			}
+		}
+		if len(drops) == 0 && len(reactions) == 0 {
 			delete(w.statusCancels, effectID)
 			continue
 		}
-		rec.drops = drops
+		rec.drops, rec.reactions = drops, reactions
 		w.statusCancels[effectID] = rec
 	}
 }

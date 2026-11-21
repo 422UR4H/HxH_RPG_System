@@ -235,10 +235,47 @@ inofensivo: só faz o próximo ajuste do relógio virar um evento próprio. O an
 `action_queued` do mestre; nunca `action_enqueued`, que é o ack casado pela ordem dos envios do
 cliente.
 
+**A reação trocada volta também (revisão final do PR 2).** Uma reação **não aberta** que o status
+tirou do turno aberto (`reseatForStatus`: a enviada que o conjunto recusa e a sentada trocada por
+outra de tipo diferente) entra no mesmo registro (`statusCancel.reactions`), como
+`matchsession.ReactionDrop` — retrato tirado **antes** do `DropUnopened`: o turno, a reação inteira
+(cópia; o turno guarda reações por valor e a que saiu não está em lugar nenhum — dados,
+velocidades, `ConsumedActionIDs` vêm nela), o lugar entre as reações (`Turn.ReactionIndex`), se era
+a sentada, o pouso do mestre e as capturas dele (que o `dropEdits` apaga). Sai em
+`DropRefusedByStatusWithReactions` (o `DropRefusedByStatus` de antes é o mesmo sem as reações) e o
+mestre o vê em `swappedReactionIds`. Com o mesmo `restoreCancelledActions`, `giveBackLocked` chama,
+logo depois do `RestoreCancelledByStatus`, `MatchSession.RestoreSwappedReactions`, que **revalida,
+nunca repete**: o turno dela ainda é o aberto; o reator ainda está na partida e ainda é alvo da
+ação do turno; nenhuma reação com esse id no turno (idempotente); `statusBlock` dos status de
+agora (`ReactionRefusal.BlockedBy`, passado ao outro efeito do turno por
+`passReactionToBlockerLocked`, como as ações); o reator não mandou outra reação depois (a dele é a
+última palavra) e a sentada que ficou no lugar não foi aberta (o narrado fica). A aceita volta
+como estava (`Turn.RestoreUnopened`: mesmo id, mesmo lugar, sentada ou não, pouso; `reapplyEdits`
+para as capturas; só as passivas recalculadas), no lugar da sentada que está lá — que sai, com as
+edições dela, e passa as âncoras para a devolvida (`noteAnchorMove`, aplicado pelo
+`followAnchorsLocked` na mesma seção crítica): a âncora que tinha seguido a reação para a sentada
+volta com ela. **A barra fica coerente:** a reação cobrou na chegada (`RecordSecretSpeed`, pelo id
+dela) e o status nunca devolveu; com a mesma reação de volta, a cobrança volta a corresponder a
+uma reação do turno. A recusada (ou sem o pedido) fica como o status deixou: fora do turno, com a
+barra cobrada. O anúncio é `reaction_restored` ao mestre (com `replacedReactionId`) e ao dono só
+quando o efeito desfeito era visível a ele (`statuseffect.Listed`: a troca só chegou a ele por esse
+efeito, §9); nunca `reaction_attached`, que o front casa com o envio pendente do mesmo personagem
+(`status === "sending" && actorId`). A mesa não recebe nada (o `resolution_updated` do turno
+aberto é do mestre).
+
 **A regra do ctrl+Z.** O inverso de aplicar um status no turno aberto é o desfazer com
-`restoreCancelledActions` (`undoInTurnAppliesLocked` + `RestoreCancelledByStatus`). Um futuro
-ctrl+Z deve chamar este caminho, nunca escrever a sua própria reversão: a reversão revalida
-contra o estado de agora, sob `r.mu`, e recusa com motivo o que não cabe mais.
+`restoreCancelledActions` (`undoInTurnAppliesLocked` + `giveBackLocked`, que chama
+`RestoreCancelledByStatus` para as ações da fila e `RestoreSwappedReactions` para as reações
+trocadas). Um futuro ctrl+Z deve chamar este caminho, nunca escrever a sua própria reversão: a
+reversão revalida contra o estado de agora, sob `r.mu`, e recusa com motivo o que não cabe mais.
+**O que o inverso cobre:** as gravações e eventos pendentes do efeito (nada dele é gravado), o
+`hidden_from` dele no turno, as ações da fila que ele cancelou (lugar, edições, velocidades de
+antes; o registro de cancelada some) e as reações não abertas que ele trocou (a mesma reação, as
+âncoras de volta; a barra cobrada volta a ser coerente). **O que não cobre:** a janela de fusão do
+relógio fechada pelo cancelamento (`clearClockMergeLocked`, inofensivo); o que foi recusado na
+revalidação (fica como o status deixou: ação cancelada e gravada no fechamento, reação fora do
+turno com a barra cobrada — a cobrança dela, aí, não volta); uma reação que já foi **aberta**
+(o status nunca a tira); e nada depois do fechamento do turno.
 
 **Horários reais.** O turno guarda a abertura (`Turn.GetOpenedAt`, relógio da sala, µs):
 `turns.created_at` é ela; cada reação ganha `actions.opened_at` (NULL = nunca aberta). A regra de

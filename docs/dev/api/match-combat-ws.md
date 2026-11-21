@@ -120,6 +120,7 @@ Toda mensagem, nos dois sentidos, é um `Message`:
 |---|---|
 | [`action_enqueued`](#action_enqueued) | só quem enviou |
 | [`action_restored`](match-status-effects.md#action_restored) | o mestre + o dono da ação que o desfazer de um status devolveu à fila (`{ actionId, action, beforeActionId? }`, cada um no seu corte) |
+| [`reaction_restored`](match-status-effects.md#reaction_restored) | o mestre (+ o dono do reator, se via o efeito desfeito) quando o desfazer de um status devolve ao turno a reação não aberta que ele trocou (`{ turnId, reactionId, actorId, reactionKind, consumedActionIds, replacedReactionId? }`); não é `reaction_attached` |
 | [`action_queued`](#action_queued) | **só o mestre** (com `statusNotes`) |
 | [`action_cancelled`](#action_cancelled) | **o mestre + quem pediu**; também o dono da ação que um status derrubou |
 | [`bars_updated`](#bars_updated) | **por destinatário** — o mestre recebe tudo; o jogador, só os personagens que é dono ou enxerga, e só o que o mestre já abriu |
@@ -1318,7 +1319,9 @@ dispara **uma vez**; quem reconecta depois acha a fila já sem a ação em `matc
 **Direção:** servidor → cliente. **Destino:** quem reagiu **+ o mestre** — uma cópia só quando
 o mestre é quem reagiu.
 
-Responde um [`attach_reaction`](#attach_reaction) aceito.
+Responde um [`attach_reaction`](#attach_reaction) aceito — e só ele: o front o casa com o envio
+pendente do mesmo personagem. Uma reação que volta ao turno pelo desfazer de um status chega em
+[`reaction_restored`](match-status-effects.md#reaction_restored), nunca aqui.
 
 ```json
 { "type": "reaction_attached", "payload": { "turnId": "5555…", "reactionId": "4444…", "actorId": "2222…", "consumedActionIds": ["3333…"] } }
@@ -2892,7 +2895,7 @@ vale para o REST.
 | `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
 | `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `blocked_by_status` | `"<nick> não pode <o que>: <causa>"` — um efeito de status do ator recusa a ação ou a reação (domínio inutilizado, não age/não reage, sem deslocamento, reação proibida). A causa nomeia só os tipos que o remetente pode ver; senão `um efeito`. Nada muda na fila nem nas barras. Ver [`match-status-effects.md`](match-status-effects.md#blocked_by_status). | `enqueue_action`, `attach_reaction`. |
-| `status_effect_invalid` · `status_effect_exists` · `status_effect_not_found` · `unknown_character` · `restore_refused` | Comandos de efeitos de status (`restore_refused`: uma ação que o desfazer não pôde devolver, só ao mestre) — gatilhos em [`match-status-effects.md` §13](match-status-effects.md#13-catálogo-de-erros-desta-feature). | `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
+| `status_effect_invalid` · `status_effect_exists` · `status_effect_not_found` · `unknown_character` · `restore_refused` | Comandos de efeitos de status (`restore_refused`: uma ação ou reação que o desfazer não pôde devolver, só ao mestre) — gatilhos em [`match-status-effects.md` §13](match-status-effects.md#13-catálogo-de-erros-desta-feature). | `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
 | `not_participant` | Pôr no tabuleiro o personagem de um **jogador** que não participa da partida — só o NPC do mestre é inscrito ao ser posto (spec §4.3). | `enqueue_master_action` (`move` de personagem sem peça). |
 | `move_blocked` | `"movement blocked by a wall"` | `enqueue_action` com `move`, quando o ator TEM peça no tabuleiro (a origem checada é a posição dessa peça, nunca `move.from` — B6; num [movimento empilhado](#movimentos-empilhados), o destino do anterior da cadeia). Centros medidos no espaço local da grade. |

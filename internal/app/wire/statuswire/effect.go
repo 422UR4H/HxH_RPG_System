@@ -53,6 +53,10 @@ type Effect struct {
 	// restoreCancelledActions ainda pode devolver (D3). Ausente fora da janela do desfazer (efeito
 	// não aplicado neste turno, sem turno aberto, depois do fechamento); o histórico nunca o põe.
 	CancelledActionIDs []uuid.UUID `json:"cancelledActionIds,omitempty"`
+	// SwappedReactionIDs é o par do CancelledActionIDs para as reações, com o mesmo corte: as
+	// reações não abertas que ESTE efeito tirou do turno aberto (a sentada entrou no lugar) e
+	// que o mesmo restoreCancelledActions ainda pode devolver. Ausente fora da janela.
+	SwappedReactionIDs []uuid.UUID `json:"swappedReactionIds,omitempty"`
 }
 
 // From é o efeito no fio, sem Visibility nem Public (quem é mestre as põe).
