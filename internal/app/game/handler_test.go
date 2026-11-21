@@ -1034,6 +1034,12 @@ func TestKickPlayerFlow(t *testing.T) {
 	if playerReceived.Type != game.MsgTypePlayerKicked {
 		t.Errorf("expected player_kicked, got %s", playerReceived.Type)
 	}
+	// Só depois do player_kicked a conexão do expulso fecha, com o quadro de fechamento sem
+	// código de sempre (1005 do lado de quem lê).
+	_ = playerConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := playerConn.ReadMessage(); !websocket.IsCloseError(err, websocket.CloseNoStatusReceived) {
+		t.Errorf("expected the kicked player's connection to close after player_kicked, got %v", err)
+	}
 
 	masterReceived := readMessage(t, masterConn)
 	if masterReceived.Type != game.MsgTypePlayerKicked {
