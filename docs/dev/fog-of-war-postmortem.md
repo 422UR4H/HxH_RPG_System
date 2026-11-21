@@ -45,6 +45,9 @@ visão (`BoundaryLOSWalls`). Depois: polígono dentro de `[0..2400] × [0..3360]
 O `-race` acusou `Room.Run` fechando `client.send` enquanto outra goroutine fazia
 `send <- data`: `panic: send on closed channel`, que derruba o processo inteiro.
 Passou a sinalizar por `done`, drenando o backlog antes de fechar.
+A correção não alcançou a expulsão: `KickPlayer` continuou com `close(client.send)` até
+2026-11-21, quando também passou a usar `client.Close()`. Regra: **ninguém fecha `send`** —
+nenhum caminho de saída (desconexão, troca de conexão, expulsão, fim de partida); só o `done`.
 
 ## Onde os diagnósticos erraram
 
