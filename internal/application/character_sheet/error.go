@@ -1,33 +1,32 @@
 package charactersheet
 
 import (
-	"errors"
-	"fmt"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrCharacterSheetNotFound    = domain.NewValidationError(errors.New("character sheet not found"))
-	ErrCharacterClassNotFound    = domain.NewValidationError(errors.New("character class not found"))
-	ErrNicknameNotAllowed        = domain.NewValidationError(errors.New("nickname is not allowed"))
-	ErrNicknameAlreadyExists     = domain.NewValidationError(errors.New("nickname already exists"))
-	ErrNenHexNotInitialized      = domain.NewValidationError(errors.New("nen hexagon value not initialized"))
-	ErrMaxCharacterSheetsLimit   = domain.NewValidationError(errors.New("player cannot have more than 10 character sheets"))
-	ErrNotCharacterSheetOwner    = domain.NewValidationError(errors.New("not the owner of the character sheet"))
-	ErrCharacterSheetHasNoOwner  = domain.NewDomainError(errors.New("the character sheet has no playerUUID or masterUUID"))
-	ErrInvalidUpdateHexValMethod    = domain.NewDomainError(errors.New("invalid update nen hexagon value method"))
-	ErrCharacterSheetNotFreeToManage = domain.NewValidationError(errors.New("character sheet is not free to manage"))
+	ErrCharacterSheetNotFound        = domain.NewValidationError(errtext.Sentence("Ficha não encontrada."))
+	ErrCharacterClassNotFound        = domain.NewValidationError(errtext.Sentence("Classe não encontrada."))
+	ErrNicknameNotAllowed            = domain.NewValidationError(errtext.Sentence("Esse apelido não é permitido."))
+	ErrNicknameAlreadyExists         = domain.NewValidationError(errtext.Sentence("Esse apelido já está em uso."))
+	ErrNenHexNotInitialized          = domain.NewValidationError(errtext.Sentence("O hexágono de Nen ainda não foi iniciado."))
+	ErrMaxCharacterSheetsLimit       = domain.NewValidationError(errtext.Sentence("Você não pode ter mais de 10 fichas de personagem."))
+	ErrNotCharacterSheetOwner        = domain.NewValidationError(errtext.Sentence("Essa ficha não é sua."))
+	ErrCharacterSheetHasNoOwner      = domain.NewDomainError(errtext.Sentence("A ficha não tem dono."))
+	ErrInvalidUpdateHexValMethod     = domain.NewDomainError(errtext.Sentence("Essa mudança no hexágono de Nen não é válida."))
+	ErrCharacterSheetNotFreeToManage = domain.NewValidationError(errtext.Sentence("Essa ficha não pode ser gerenciada agora."))
 )
 
 func NewCharacterClassNotFoundError(className string) error {
-	return fmt.Errorf("%w: %s", ErrCharacterClassNotFound, className)
+	return errtext.Wrap(ErrCharacterClassNotFound, "A classe "+className+" não foi encontrada.")
 }
 
 func NewNicknameNotAllowedError(nickname string) error {
-	return fmt.Errorf("%w: %s", ErrNicknameNotAllowed, nickname)
+	return errtext.Wrap(ErrNicknameNotAllowed, "O apelido "+nickname+" não é permitido.")
 }
 
 func NewNicknameAlreadyExistsError(nickname string) error {
-	return fmt.Errorf("%w: %s", ErrNicknameAlreadyExists, nickname)
+	return errtext.Wrap(ErrNicknameAlreadyExists, "O apelido "+nickname+" já está em uso.")
 }

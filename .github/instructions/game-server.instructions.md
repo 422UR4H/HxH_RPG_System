@@ -57,3 +57,7 @@ The clock lives in `MatchSession` (`Clock()`); the room (`clock.go`) mutates it 
 ## WS Event Design
 
 **Prefer fewer event types with richer payloads** over many event types with minimal data. The client derives state transitions (e.g., "damaged" vs "destroyed") from payload fields (`hp`, `destroyed`, etc.), not from the event type name. Add a new event type only when the domain transition is meaningfully distinct and cannot be inferred from existing payload fields.
+
+## Error text (`error.message`)
+
+`error.message` reaches the screen: one Portuguese sentence. Build errors with `errtext.Sentence`/`errtext.Wrap` and send them through `gameErrorText(err)` (`internal/app/game/error_text.go`): a sentence is shown as is; anything else becomes `Não foi possível fazer isso agora.` and the real error is logged. Never pass `err.Error()` straight to `NewErrorMessage`.

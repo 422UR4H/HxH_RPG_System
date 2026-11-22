@@ -952,7 +952,7 @@ func TestE2E_MasterActionWithAttackIsRefused(t *testing.T) {
 	})
 
 	got := awaitErrorWithCode(t, mc, "invalid_action", 2*time.Second)
-	wantMsg := "the master attacks through an NPC with enqueue_action"
+	wantMsg := "O mestre ataca por meio de um NPC."
 	if got.Message != wantMsg {
 		t.Fatalf("error message = %q, want %q", got.Message, wantMsg)
 	}

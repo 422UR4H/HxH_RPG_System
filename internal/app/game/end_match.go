@@ -33,21 +33,21 @@ func (r *Room) handleEndMatch(client *Client, raw json.RawMessage) {
 	}
 	var payload EndMatchPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid end_match payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para encerrar a partida."))
 		return
 	}
 	storyAt, err := clock.ParseStory(payload.StoryAt)
 	if err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "storyAt must be 2006-01-02T15:04:05"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Hora da história inválida. Use o formato AAAA-MM-DDTHH:MM:SS."))
 		return
 	}
 	brief, err := matchsession.NormalizeBriefFinal(payload.BriefFinalDescription)
 	if err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "briefFinalDescription is too long"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "O resumo final deve ter no máximo 255 caracteres."))
 		return
 	}
 	if r.deps.MatchEndRepo == nil {
-		client.SendMessage(NewErrorMessage("game_error", "match end unavailable"))
+		client.SendMessage(NewErrorMessage("game_error", "Não dá para encerrar a partida agora."))
 		return
 	}
 
@@ -65,13 +65,13 @@ func (r *Room) handleEndMatch(client *Client, raw json.RawMessage) {
 	sess := r.session
 	if sess == nil {
 		r.mu.Unlock()
-		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 		return
 	}
 	plan, err := sess.PlanEndMatch(storyAt, payload.ConfirmLongSkip, r.now())
 	if err != nil {
 		r.mu.Unlock()
-		client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+		client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 		return
 	}
 	data := r.matchEndDataLocked(sess, plan, brief)
@@ -79,7 +79,7 @@ func (r *Room) handleEndMatch(client *Client, raw json.RawMessage) {
 
 	if err := r.deps.MatchEndRepo.PersistMatchEnd(context.Background(), data); err != nil {
 		log.Printf("end_match FAILED — match %s NOT ended (session untouched): %v", r.matchUUID, err)
-		client.SendMessage(NewErrorMessage("game_error", "could not end the match"))
+		client.SendMessage(NewErrorMessage("game_error", "Não foi possível encerrar a partida."))
 		return
 	}
 

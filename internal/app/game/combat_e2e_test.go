@@ -2743,9 +2743,8 @@ func TestE2E_ChangeSceneRejectsAnUnknownCategoryForTheRightReason(t *testing.T) 
 		t.Fatalf("error code = %q, want invalid_action (got forbidden/invalid_payload/"+
 			"match_not_started would mean the wrong check fired first)", got.Code)
 	}
-	if !strings.Contains(got.Message, "scene category") || !strings.Contains(got.Message, "Battle") {
-		t.Fatalf("error message = %q, want SceneCategoryFrom's own wording naming the "+
-			"rejected value", got.Message)
+	if got.Message != "Valor inválido para categoria de cena." {
+		t.Fatalf("error message = %q, want the Portuguese sentence for an unknown category", got.Message)
 	}
 }
 
@@ -2911,7 +2910,7 @@ func TestE2E_AttachingAFreeDodgeWithAMoveIsRefusedAndNeverDisplaces(t *testing.T
 		t.Fatalf("error code = %q, want invalid_action (forbidden/invalid_payload/game_error "+
 			"would mean the wrong check fired first)", errPayload.Code)
 	}
-	if !strings.Contains(errPayload.Message, "must not carry a move") {
+	if !strings.Contains(errPayload.Message, "Essa reação não leva movimento.") {
 		t.Fatalf("refused for the wrong reason: %q", errPayload.Message)
 	}
 

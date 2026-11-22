@@ -226,7 +226,7 @@ func TestE2E_ARoundWithNoTurnIsNotEnded(t *testing.T) {
 	}
 	sendWS(t, master, string(game.MsgTypeOpenNextAction), struct{}{})
 	ep := awaitErrorWithCode(t, mc, "game_error", 2*time.Second)
-	if ep.Message != "validation error: no turn opened in this round yet" {
+	if ep.Message != "Ainda não há turno aberto neste round." {
 		t.Fatalf("message = %q", ep.Message)
 	}
 	if mc.count(game.MsgTypeRoundClosed) != 0 || len(f.roundRepo.roundCloseCalls()) != 0 {

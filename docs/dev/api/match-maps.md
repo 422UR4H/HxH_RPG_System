@@ -74,19 +74,19 @@ surface it.
 | 422 | Match already started, or (B16) the source match is itself, is not in this campaign, has no board to inherit, or is on a different map |
 | 500 | Internal server error |
 
-**`detail` strings — stable, the front maps them to its own text.** Every refusal of this route
+**`detail` strings — Portuguese sentences, stable; the front may key on them.** Every refusal of this route
 carries the domain error's message verbatim in `detail` (no prefix). The 422s share one status,
 so `detail` is the only way to tell them apart:
 
 | Status | `detail` | When |
 |--------|----------|------|
-| 422 | `cannot change map after match has started` | the match already started (with or without inheriting) |
-| 422 | `source match cannot be the same match being attached to` | `inheritBoardFromMatchUuid` is this match |
-| 422 | `source match is not in the same campaign` | the source match is in another campaign |
-| 422 | `source match's board is on a different map` | the source's board is a portrait of another map |
-| 422 | `source match has no board to inherit` | the source never saved a board |
-| 404 | `match not found` | this match, or the source match, does not exist |
-| 404 | `map not found` | `mapUuid` does not exist |
+| 422 | `Não dá para trocar o mapa depois que a partida começou.` | the match already started (with or without inheriting) |
+| 422 | `A partida de origem não pode ser a própria partida.` | `inheritBoardFromMatchUuid` is this match |
+| 422 | `A partida de origem é de outra campanha.` | the source match is in another campaign |
+| 422 | `O tabuleiro da partida de origem está em outro mapa.` | the source's board is a portrait of another map |
+| 422 | `A partida de origem não tem tabuleiro para herdar.` | the source never saved a board |
+| 404 | `Partida não encontrada.` | this match, or the source match, does not exist |
+| 404 | `Mapa não encontrado.` | `mapUuid` does not exist |
 
 Changing one of these strings is a contract change: the front's `INHERIT_REFUSALS`
 (`MatchPage.tsx`) must change with it.
@@ -281,7 +281,7 @@ table, which is shared with the combat engine's own server-authored moves):
   elevation preserved.
 - Refused with `error` `forbidden`. During a match, the message is one of
   `"during a match the master moves pieces with enqueue_master_action"` (master) or
-  `"players move by action"` (player) — see the catalogue in
+  `"Os jogadores movem pelas ações do personagem."` (player) — see the catalogue in
   [`match-combat-ws.md`](match-combat-ws.md#7-catálogo-de-erros). In the lobby, a player's
   disallowed move/removal is also `forbidden`, with a message describing the specific reason
   (piece not owned, piece does not exist yet, or trying to remove at all).

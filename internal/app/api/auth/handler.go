@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	authUC "github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	du "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/user"
 	"github.com/danielgtaylor/huma/v2"
@@ -36,7 +37,7 @@ func (h *AuthHandler) Register(
 			du.ErrMissingEmail,
 			du.ErrMissingPassword,
 			du.ErrMissingConfirmPass:
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, huma.Error400BadRequest(apierr.Text(err))
 
 		case du.ErrInvalidNickLength,
 			du.ErrNickHasEmoji,
@@ -45,14 +46,14 @@ func (h *AuthHandler) Register(
 			du.ErrPasswordMinLenght,
 			du.ErrPasswordMaxLenght,
 			du.ErrMismatchPassword:
-			return nil, huma.Error422UnprocessableEntity(err.Error())
+			return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 
 		case du.ErrNickAlreadyExists,
 			du.ErrEmailAlreadyExists:
-			return nil, huma.Error409Conflict(err.Error())
+			return nil, huma.Error409Conflict(apierr.Text(err))
 
 		default:
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 	}
 	return &RegisterResponse{Status: http.StatusCreated}, nil
@@ -71,15 +72,15 @@ func (h *AuthHandler) Login(
 		switch err {
 		case du.ErrMissingEmail,
 			du.ErrMissingPassword:
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, huma.Error400BadRequest(apierr.Text(err))
 		case du.ErrInvalidEmailLength,
 			du.ErrPasswordMinLenght,
 			du.ErrPasswordMaxLenght:
-			return nil, huma.Error422UnprocessableEntity(err.Error())
+			return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 		case authUC.ErrUnauthorized:
-			return nil, huma.Error401Unauthorized(err.Error())
+			return nil, huma.Error401Unauthorized(apierr.Text(err))
 		default:
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 	}
 	return &LoginResponse{

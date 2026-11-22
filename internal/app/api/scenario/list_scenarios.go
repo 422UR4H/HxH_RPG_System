@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	scenarioUC "github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -33,12 +33,12 @@ func ListScenariosHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListScenariosResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		scenarios, err := uc.ListScenarios(ctx, userUUID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		responses := make([]ScenarioSummaryResponse, 0, len(scenarios))

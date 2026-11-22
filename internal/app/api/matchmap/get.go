@@ -5,8 +5,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	matchmapuc "github.com/422UR4H/HxH_RPG_System/internal/application/matchmap"
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -27,7 +27,7 @@ func GetMatchMapHandler(uc matchmapuc.IGetMatchMap) func(context.Context, *GetMa
 	return func(ctx context.Context, req *GetMatchMapRequest) (*GetMatchMapResponse, error) {
 		mm, err := uc.Get(ctx, req.MatchUUID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 		if mm == nil {
 			return &GetMatchMapResponse{Status: http.StatusNoContent}, nil

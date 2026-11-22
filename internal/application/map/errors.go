@@ -1,9 +1,11 @@
 // internal/application/map/errors.go
 package mapuc
 
-import "errors"
+import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
+)
 
 var (
-	ErrMapNotFound  = errors.New("map not found")
-	ErrNotMapMaster = errors.New("only the campaign master can perform this action")
+	ErrMapNotFound  = errtext.Sentence("Mapa não encontrado.")
+	ErrNotMapMaster = errtext.Sentence("Só o mestre da campanha pode fazer isso.")
 )

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/scenario"
@@ -56,19 +57,19 @@ func CreateCampaignHandler(
 	return func(ctx context.Context, req *CreateCampaignRequest) (*CreateCampaignResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		storyStartAt, err := time.Parse("2006-01-02", req.Body.StoryStartAt)
 		if err != nil {
-			return nil, huma.Error422UnprocessableEntity("invalid story_start_at date format, use YYYY-MM-DD")
+			return nil, huma.Error422UnprocessableEntity("Data de início inválida. Use o formato AAAA-MM-DD.")
 		}
 
 		var storyCurrentAtPtr *time.Time
 		if req.Body.StoryCurrentAt != nil {
 			storyCurrentAt, err := time.Parse(time.RFC3339, *req.Body.StoryCurrentAt)
 			if err != nil {
-				return nil, huma.Error422UnprocessableEntity("invalid story_current_at format, use ISO 8601")
+				return nil, huma.Error422UnprocessableEntity("Data atual da história inválida. Use o formato AAAA-MM-DDTHH:MM:SSZ.")
 			}
 			storyCurrentAtPtr = &storyCurrentAt
 		}
@@ -89,13 +90,13 @@ func CreateCampaignHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, campaignUC.ErrMaxCampaignsLimit):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, scenario.ErrScenarioNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, domain.ErrValidation):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	charactersheet "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
@@ -33,26 +34,26 @@ func SubmitCharacterSheetHandler(
 	return func(ctx context.Context, req *SubmitCharacterRequest) (*SubmitCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		err := uc.Submit(ctx, userUUID, req.Body.SheetUUID, req.Body.CampaignUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, charactersheet.ErrCharacterSheetNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaign.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, charactersheet.ErrNotCharacterSheetOwner):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrMasterCannotSubmitOwnSheet):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrCharacterAlreadySubmitted):
-				return nil, huma.Error409Conflict(err.Error())
+				return nil, huma.Error409Conflict(apierr.Text(err))
 			case errors.Is(err, submissionUC.ErrNickAlreadyInCampaign):
-				return nil, huma.Error409Conflict(err.Error())
+				return nil, huma.Error409Conflict(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &SubmitCharacterSheetResponse{

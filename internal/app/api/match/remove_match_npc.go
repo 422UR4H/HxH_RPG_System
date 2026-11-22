@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/danielgtaylor/huma/v2"
@@ -23,7 +24,7 @@ func RemoveMatchNPCHandler(
 	return func(ctx context.Context, req *RemoveMatchNPCRequest) (*RemoveMatchNPCResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		err := uc.Remove(ctx, &matchUC.RemoveMatchNPCInput{
@@ -35,11 +36,11 @@ func RemoveMatchNPCHandler(
 			switch {
 			case errors.Is(err, matchUC.ErrMatchNotFound),
 				errors.Is(err, matchUC.ErrNPCNotInMatch):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

@@ -1,15 +1,15 @@
 package submission
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrCharacterAlreadySubmitted  = domain.NewValidationError(errors.New("character sheet is already submitted"))
-	ErrMasterCannotSubmitOwnSheet = domain.NewValidationError(errors.New("master cannot submit own character sheet"))
-	ErrSubmissionNotFound         = domain.NewValidationError(errors.New("character sheet submission not found"))
-	ErrNotCampaignMaster          = domain.NewValidationError(errors.New("user is not the campaign master"))
-	ErrNickAlreadyInCampaign      = domain.NewValidationError(errors.New("a character with this nickname already exists in the campaign"))
+	ErrCharacterAlreadySubmitted  = domain.NewValidationError(errtext.Sentence("Essa ficha já foi enviada."))
+	ErrMasterCannotSubmitOwnSheet = domain.NewValidationError(errtext.Sentence("O mestre não pode enviar a própria ficha."))
+	ErrSubmissionNotFound         = domain.NewValidationError(errtext.Sentence("Envio da ficha não encontrado."))
+	ErrNotCampaignMaster          = domain.NewValidationError(errtext.Sentence("Só o mestre da campanha pode fazer isso."))
+	ErrNickAlreadyInCampaign      = domain.NewValidationError(errtext.Sentence("Já existe um personagem com esse apelido na campanha."))
 )

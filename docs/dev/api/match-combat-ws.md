@@ -227,7 +227,7 @@ porque uma ação plausível carregue todas.
   fim de cadeia: o próximo parte da peça.
 - **Ordem:** um movimento empilhado num que ainda está na fila **não é candidato** — não abre em
   `open_next_action` (Race e Free), não entra na ordem projetada do `bars_updated` antes dele e é
-  recusado pelo [`pull_action`](#pull_action) (`action is stacked on a pending move`). Se o anterior
+  recusado pelo [`pull_action`](#pull_action) (`Abra antes o movimento de que este depende.`). Se o anterior
   fica para a rodada seguinte, o empilhado fica junto. Não há penalidade nova: quando o primeiro
   abre, o segundo é chaveado com essa velocidade já gasta (a regra de toda segunda ação da rodada).
 - **Cancelar** o anterior cancela os empilhados nele ([`cancel_action`](#cancel_action)).
@@ -293,15 +293,15 @@ em geral, nada (a ação pendente é segredo do mestre).
 
 | `code` | Quando |
 |---|---|
-| `invalid_payload` | `"invalid action payload"` — JSON não casa com a struct. |
+| `invalid_payload` | `"Não entendi o pedido da ação."` — JSON não casa com a struct. |
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` — os dois viajam juntos ou nenhum. |
-| `invalid_action` | `"actorId is required: the acting character's sheet UUID"` |
+| `invalid_action` | `"Escolha o personagem que age."` |
 | `invalid_action` | Erro do mapper: perícia desconhecida, arma desconhecida, `move category "X" is not supported yet`. |
 | `invalid_action` | `interact kind "X" is not a character action` — `lock`, `unlock`, `reveal` ou um valor desconhecido. |
-| `match_not_started` | `"match session not initialized"` — sessão ainda não existe. |
+| `match_not_started` | `"A partida ainda não começou."` — sessão ainda não existe. |
 | `move_blocked` | `"movement blocked by a wall"` — o caminho em linha reta entre os **centros** da casa da peça (num [movimento empilhado](#movimentos-empilhados), do destino do anterior da cadeia) e de `move.position`, medido no espaço **local** da grade (o das paredes), cruza uma parede com `move` e fechada. |
 | `out_of_reach` | `"wall <id> is out of reach: the actor must stand next to it"` · `"the actor has no piece on the board to reach the wall from"` — `interact` numa parede que a casa final do ator não toca (ver acima). |
-| `game_error` | `participant not found in match session` · `action actor does not match player`. |
+| `game_error` | `Você não participa desta partida.` · `Essa ação não é sua.`. |
 
 A tabela está na ordem em que as checagens rodam: o primeiro erro encontrado é o que volta. Desde
 2026-11-06 o `interact kind` recusado (`invalid_action`) vem **antes** do `move_blocked`; parede e
@@ -312,7 +312,7 @@ crítica, e só então a posse (`game_error`).
 
 **Direção:** cliente → servidor. **Quem:** o jogador de um personagem que **está em
 `targetId` da ação aberta**. Um espectador não reage: recebe
-`game_error: only a target of the open action may react to it`.
+`game_error: Só quem é alvo da ação aberta pode reagir a ela.`.
 
 Anexa uma reação ao turno aberto. **Anexar não é narrar** — a reação entra no cálculo na
 hora, aberta ou não, mas só ganha a palavra quando o mestre manda [`open_reaction`](#open_reaction).
@@ -459,18 +459,18 @@ de que alguém reagiu.
 
 | `code` | Quando |
 |---|---|
-| `invalid_payload` | `"invalid action payload"` |
+| `invalid_payload` | `"Não entendi o pedido da ação."` |
 | `invalid_action` | `"reaction requires react_to_id"` |
 | `invalid_action` | `"a reaction needs both reactToId and reactionKind; an action needs neither"` |
-| `invalid_action` | `"actorId is required: …"` |
+| `invalid_action` | `"Escolha o personagem que age."` |
 | `invalid_action` | `reaction "X" must carry a dodge` / `a move` / `a repel`; `reaction kind "X" is not in the catalogue`; `reaction "X" must move with Y, not Z` (categoria de `move` errada — ver a matriz acima); `reaction "X" must not carry a move` (`move` presente numa reação que **não** desloca — `dodge`, `closedDodge` ou `nothing` — checagem de presença, distinta da de categoria acima). |
 | `match_not_started` | Sessão inexistente. |
-| `game_error` | `the reacting character does not belong to this player` · `no current turn in round` · `cannot open a reaction: turn already closed` · `only a target of the open action may react to it` · `reaction does not target the current action` · `this character already reacted to the open action` (segundo `attach_reaction` do mesmo personagem na mesma ação, de qualquer tipo, aberta ou não — a reação padrão sentada não conta, ela é substituída. Recusado antes de rolar ou cobrar: a fila e as barras não mudam). |
+| `game_error` | `Esse personagem não é seu.` · `Não há turno neste round.` · `O turno já fechou, então não dá para reagir.` · `Só quem é alvo da ação aberta pode reagir a ela.` · `Essa reação não é para a ação atual.` · `Esse personagem já reagiu à ação aberta.` (segundo `attach_reaction` do mesmo personagem na mesma ação, de qualquer tipo, aberta ou não — a reação padrão sentada não conta, ela é substituída. Recusado antes de rolar ou cobrar: a fila e as barras não mudam). |
 
 ### `open_next_action`
 
 **Direção:** cliente → servidor. **Quem:** **só o mestre.** Qualquer outro recebe
-`error` com `code: "forbidden"` e mensagem `only the master can perform this action`.
+`error` com `code: "forbidden"` e mensagem `Só o mestre pode fazer isso.`.
 
 Sem payload (o que vier é ignorado):
 
@@ -495,7 +495,7 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
    comando fechou (ou numa só deles, se nenhum turno fechou) — um comando do mestre, uma
    transação. **Uma rodada em que nenhum turno abriu não acaba**: sem turno aberto, sem turno
    fechando agora e `bars_updated.roundTurns == 0`, o comando é recusado com `game_error`
-   `validation error: no turn opened in this round yet` e nenhum turno abre (o mestre não roda o
+   `Ainda não há turno aberto neste round.` e nenhum turno abre (o mestre não roda o
    relógio de rodada vazia em rodada vazia). O preço da barra **não** congela nessa recusa (ele só congela
    quando uma ação abre); o `bars_updated` do passo 1 sai mesmo assim, só que sem preço novo.
 4. Senão: [`turn_opened`](#turn_opened) — mesa — e
@@ -508,8 +508,8 @@ ordem. Empate entre chaves iguais resolve por ordem de chegada.
 > congela quando uma ação de fato abre. Se a visão do jogador não
 > mudou, ele não recebe nada (ver "Entrega ao jogador" em [`bars_updated`](#bars_updated)).
 
-**Erros:** `forbidden` · `match_not_started` · `game_error` (`action queue is empty`,
-`action not found in queue`, `validation error: no turn opened in this round yet`).
+**Erros:** `forbidden` · `match_not_started` · `game_error` (`A fila de ações está vazia.`,
+`Essa ação não está mais na fila.`, `Ainda não há turno aberto neste round.`).
 
 > O use case também recusa um chamador que não é o mestre (`user is not the match master`),
 > mas por esta porta isso é inalcançável: `room.go` já recusou antes, com `forbidden`. Vale
@@ -535,17 +535,17 @@ Abre uma ação específica **fora de ordem**. Antecipar é prerrogativa do mest
 falha — mas um `actionId` velho **não** congela o preço (só congela quando a ação abre).
 **Nunca** fecha a rodada — `round_closed` só sai de `open_next_action`.
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid pull_action payload"`) ·
-`match_not_started` · `game_error` (`action not found in queue`) · `game_error`
-(`action is stacked on a pending move`).
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para antecipar a ação."`) ·
+`match_not_started` · `game_error` (`Essa ação não está mais na fila.`) · `game_error`
+(`Abra antes o movimento de que este depende.`).
 
-> **`action is stacked on a pending move`** (2026-11-06, D4): a ação é um
+> **`Abra antes o movimento de que este depende.`** (2026-11-06, D4): a ação é um
 > [movimento empilhado](#movimentos-empilhados) num movimento do mesmo personagem que ainda está
 > na fila. O segundo movimento nunca acontece antes do primeiro — puxe o primeiro. A recusa vem
 > **antes de tudo**: o turno aberto não fecha, nenhum preço congela, a fila não muda (o
 > `bars_updated` que sai em toda saída do `pull_action` repete o estado de antes).
 
-> O `game_error` `action not found in queue` também ocorre quando o dono da ação a
+> O `game_error` `Essa ação não está mais na fila.` também ocorre quando o dono da ação a
 > [cancelou](#cancel_action) no meio-tempo; o mestre fica sabendo por
 > [`action_cancelled`](#action_cancelled).
 
@@ -609,14 +609,14 @@ sempre (`pull_action`, deixar acontecer).
 
 | `code` | Quando |
 |---|---|
-| `invalid_payload` (`"invalid cancel_action payload"`) | payload não parseia, ou `actionId` ausente/nulo |
+| `invalid_payload` (`"Não entendi o pedido para cancelar a ação."`) | payload não parseia, ou `actionId` ausente/nulo |
 | `match_not_started` | sala sem sessão |
-| `game_error` (`action not found in queue`) | a ação não está na fila: já abriu, foi consumida por uma reação, já foi cancelada, ou nunca existiu |
-| `game_error` (`action actor does not match player`) | a ação é de um personagem que não é de quem pediu |
-| `game_error` (`participant not found in match session`) | quem pediu não participa da partida — **inclui o mestre pedindo a ação de um jogador** (o mestre não é participante; é a mesma resposta que `enqueue_action` daria) |
+| `game_error` (`Essa ação não está mais na fila.`) | a ação não está na fila: já abriu, foi consumida por uma reação, já foi cancelada, ou nunca existiu |
+| `game_error` (`Essa ação não é sua.`) | a ação é de um personagem que não é de quem pediu |
+| `game_error` (`Você não participa desta partida.`) | quem pediu não participa da partida — **inclui o mestre pedindo a ação de um jogador** (o mestre não é participante; é a mesma resposta que `enqueue_action` daria) |
 
 A ordem de checagem é "existe na fila" → "é de quem pediu". Um id que não está na fila responde
-`action not found in queue` para qualquer um: não vaza a existência da ação de outro (a fila é
+`Essa ação não está mais na fila.` para qualquer um: não vaza a existência da ação de outro (a fila é
 secreta). Uma ação de outro personagem que **está** na fila responde o erro de autorização.
 
 ### `open_reaction`
@@ -714,9 +714,9 @@ caso de um `Move` chegar a outra reação por qualquer outro caminho.
 desloca **na abertura do turno**, qualquer que seja a categoria — a posição não pode esperar,
 porque as reações seguintes dependem de onde a peça está.
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid open_reaction payload"`) ·
-`match_not_started` · `game_error` (`no current turn in round`,
-`cannot open a reaction: turn already closed`, `reaction not found on the current turn`).
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para abrir a reação."`) ·
+`match_not_started` · `game_error` (`Não há turno neste round.`,
+`O turno já fechou, então não dá para reagir.`, `Essa reação não está no turno atual.`).
 
 ### `edit_action`
 
@@ -756,9 +756,9 @@ independente — mande só o que muda.
 | `actionId` | Ausente ou zero = **a ação própria do turno**. Senão, o ID de uma reação anexada ou de uma ação na fila (`action_queued.actionId`). |
 | `conditions[].field` | `speed` · `hit` · `damage` · `dodge` · `defense` · `repel` · `feint` · `moveSpeed`. |
 | `conditions[].skillName` | **Alternativa** a `field`, nomeando uma entrada de `skills`. Mandar os dois é erro. |
-| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `damage has no advantage: a damage condition takes no bias`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
+| `bias` | Vantagem/desvantagem nos dados (−1 / 0 / +1). **Não** é somado ao total: escolhe qual conjunto de dados é lido. **Recusado no dano** (`field: "damage"`): o dano rola um conjunto só de dados, não há o que escolher — `game_error` `O dano não aceita vantagem nem desvantagem.`. O `modifier` no dano soma ao dano bruto (piso zero) e vale para toda a cadeia de alvos. |
 | `modifier` | Ajuste plano no total. |
-| `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`), ou **`"None"`**: nenhuma perícia soma no dano — só os dados e o bônus fixo da arma (uma arma de fogo, por exemplo). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `damageSkill edit targets an action with no attack`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
+| `damageSkill` | A perícia que mede o dano do ataque da ação (padrão **`Push`**). Qualquer perícia válida do enum (perícia desconhecida → `invalid_action`), ou **`"None"`**: nenhuma perícia soma no dano — só os dados e o bônus fixo da arma (uma arma de fogo, por exemplo). Ausente = não mexe; `"Push"` devolve ao padrão e apaga a captura. Só numa ação com ataque — senão `game_error` `Essa ação não tem ataque, então não há dano para medir.`. O original vai para `overridden_action_values` com origem `system`. Exemplo: `{ "type": "edit_action", "payload": { "damageSkill": "Grab" } }`. |
 | `escapeLanding.position` | Onde a peça de uma **fuga que falhar** vai parar — ver abaixo. `null` limpa. |
 
 > **O que cada rolagem muda com o turno aberto.**
@@ -771,8 +771,8 @@ independente — mande só o que muda.
 > | `dodge` | reação `default` | sim — é a esquiva por reflexo | **passiva** |
 > | `defense` | reação `default`, `dodge`, `closedDodge`, `escapeGuard` | sim — é a **defesa padrão** atrás da reação | **passiva** |
 > | `repel` | reação `repel` | sim | rolada |
-> | `defense` | a ação própria | **não** — é o componente `Defense` que o jogador declarou, e a resolução nunca o lê; aceito e guardado, não muda nada (sem `Defense` declarado: recusado, `condition edit targets a check that is not on this action`) | — |
-> | `defense` | reação `escape`, `closedEscape`, `repel`, `nothing` | — | recusado, `condition edit targets a check that is not on this action`: a reação desiste da defesa padrão, a menos que tenha declarado um `Defense` |
+> | `defense` | a ação própria | **não** — é o componente `Defense` que o jogador declarou, e a resolução nunca o lê; aceito e guardado, não muda nada (sem `Defense` declarado: recusado, `Esse teste não existe nessa ação.`) | — |
+> | `defense` | reação `escape`, `closedEscape`, `repel`, `nothing` | — | recusado, `Esse teste não existe nessa ação.`: a reação desiste da defesa padrão, a menos que tenha declarado um `Defense` |
 > | `moveSpeed` | reação de fuga | sim — decide se a fuga escapa | rolada no `escape`/`escapeGuard` (Dash); **passiva** no `closedEscape` (Shift) |
 > | `skillName: "Evasion"` | reação fechada | sim — entra na esquiva fechada e na reserva | rolada |
 > | `speed` | qualquer | **não** — move a economia, que não se refaz | passiva fora do regime Race |
@@ -830,7 +830,7 @@ A edição **não re-rola nada**. Os dados já caíram; `bias` só troca qual co
 **Editar uma ação na fila.** Com `actionId` de uma ação que está na fila (com ou sem turno
 aberto), a edição pousa nela e vai junto quando ela abrir: as capturas ficam guardadas até o
 fechamento do turno dela. Vale `conditions` e `damageSkill`; **`targetIds` e `skills` são
-recusados** (`game_error` `a queued action takes condition and damageSkill edits only`), porque
+recusados** (`game_error` `Uma ação na fila só aceita mudar as condições e a perícia de dano.`), porque
 os dois chegam ao dono antes do fechamento (o corte `Declaration` do `ownQueue` leva os alvos e
 os nomes das perícias, e o `turn_opened` leva a ação no corte `Opened`). **Editar a `speed` (ou o
 `moveSpeed`) reordena a fila**: o escalonador lê a velocidade na hora de escolher. Numa rodada
@@ -849,16 +849,16 @@ deixa `targetIds` ou `skills` já alterados.
 `conditions` e `damageSkill` — e [`bars_updated`](#bars_updated) (por destinatário); nenhum
 `resolution_updated`.
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid edit_action payload"`) ·
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para editar a ação."`) ·
 `invalid_action` (`condition field "X" is not recognized`, perícia desconhecida) ·
-`match_not_started` · `game_error` (`no active turn in current round`,
-`action is not on the open turn`,
-`condition edit targets a check that is not on this action`,
-`condition edit must set either field or skillName, not both`,
-`escapeLanding only applies to an escape reaction on the open turn`,
-`escapeLanding position is outside the grid`, `damage has no advantage: a damage condition takes no bias`,
-`damageSkill edit targets an action with no attack`,
-`a queued action takes condition and damageSkill edits only`).
+`match_not_started` · `game_error` (`Não há turno ativo neste round.`,
+`Essa ação não está no turno aberto.`,
+`Esse teste não existe nessa ação.`,
+`Escolha o campo ou a perícia do teste, não os dois.`,
+`O pouso só vale para uma fuga no turno aberto.`,
+`Esse pouso fica fora do mapa.`, `O dano não aceita vantagem nem desvantagem.`,
+`Essa ação não tem ataque, então não há dano para medir.`,
+`Uma ação na fila só aceita mudar as condições e a perícia de dano.`).
 
 ### `close_turn`
 
@@ -921,8 +921,8 @@ cujo resultado dependesse de qual verbo o mestre usou seria bug, não regra. (Ne
 `piece_moved` sai antes da persistência e antes do [`turn_opened`](#turn_opened) do próximo
 turno, e o [`turn_closed`](#turn_closed) sai igual ao do `close_turn` — pela mesma razão.)
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid close_turn payload"`) ·
-`match_not_started` · `game_error` (`no open turn to close`).
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para fechar o turno."`) ·
+`match_not_started` · `game_error` (`Não há turno aberto para fechar.`).
 
 ### `change_round_mode`
 
@@ -940,8 +940,8 @@ O regime que a mesa recebe de volta é **lido da sessão**, não ecoado do pedid
 **Dispara:** [`round_mode_changed`](#round_mode_changed) (mesa) e
 [`bars_updated`](#bars_updated) (por destinatário).
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid change_round_mode payload"`) ·
-`match_not_started` · `game_error` (`round mode must be Free or Race`).
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para trocar o regime do round."`) ·
+`match_not_started` · `game_error` (`O modo do round deve ser livre ou corrida.`).
 
 ### `change_scene`
 
@@ -975,12 +975,12 @@ ordem garantida entre eles.
 `confirmLongSkip?` — semântica, ordem das mensagens (`scene_changed` → `clock_changed` pause →
 `clock_changed` scene) e erros em [`match-clock.md`](match-clock.md#change_scene-campos-novos).
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid change_scene payload"`; também
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para trocar de cena."`; também
 `briefFinalDescription` > 255 e `storyAt` malformado) ·
-`invalid_action` (`"invalid name of scene category: X"` — `category` fora de
+`invalid_action` (`"Valor inválido para categoria de cena."` — `category` fora de
 `"battle"`/`"roleplay"`) · `match_not_started` · `clock_not_set` · `clock_below_limit` ·
 `clock_long_skip_unconfirmed` ·
-`game_error` (`cannot close round: current turn is still open`).
+`game_error` (`Feche o turno aberto antes de encerrar o round.`).
 
 ### `enqueue_master_action`
 
@@ -1000,7 +1000,7 @@ ordem garantida entre eles.
 Os campos são `targetIds`, `skills`, `actionSpeed`, `move`, `remove`, `interact`. **Não há
 `attack`** (B9, spec §2, decisão fechada com o dono do produto): o mestre ataca pelo NPC, com
 [`enqueue_action`](#enqueue_action) — um `attack` aqui é recusado, sempre, com `invalid_action`
-`"the master attacks through an NPC with enqueue_action"`, decidido a partir do JSON bruto
+`"O mestre ataca por meio de um NPC."`, decidido a partir do JSON bruto
 antes de qualquer outro caminho abaixo (um cliente que ainda manda essa chave não pode ser
 ignorado em silêncio). Um "ataque do mestre" só faria sentido como efeito de ambiente — uma
 armadilha —, o que é **futuro**, não pendência. **Quais dos campos restantes vêm decide o
@@ -1083,8 +1083,8 @@ ações do caminho 3 não chegam à mesa como ação, então ficam só para o me
 action **recusada** não é gravada, e [`edit_action`](#edit_action) **não** é master action
 (fica em `overridden_action_values`, como sempre).
 
-**Erros:** `forbidden` · `invalid_payload` (`"invalid enqueue_master_action payload"`) ·
-`invalid_action` (`"the master attacks through an NPC with enqueue_action"` — chave `attack`
+**Erros:** `forbidden` · `invalid_payload` (`"Não entendi o pedido para executar a ação do mestre."`) ·
+`invalid_action` (`"O mestre ataca por meio de um NPC."` — chave `attack`
 presente, checado antes de tudo abaixo e independente de partida em andamento) ·
 `match_not_started` (**caminhos 0 e 3** — os caminhos de parede retornam antes dessa
 checagem) · `invalid_action` (**caminho 0**: `targetIds` sem exatamente um id; `move` e
@@ -1172,8 +1172,8 @@ mestre recebe `npc_already_in_match` e nenhum `npc_added` sai.
 com `move` para um NPC que ainda não participa, spec §4.3 B11): mesma inscrição, mesmo
 `npc_added`, mesmo `bars_updated`, mesmos erros — e só depois a peça é criada.
 
-**Erros:** `forbidden` (`"only the master can perform this action"`) · `invalid_payload`
-(`"invalid add_npc payload"` — `characterSheetUuid` ausente/zero, ou payload que não é um
+**Erros:** `forbidden` (`"Só o mestre pode fazer isso."`) · `invalid_payload`
+(`"Não entendi o pedido para pôr o NPC na partida."` — `characterSheetUuid` ausente/zero, ou payload que não é um
 objeto) · `not_found` · `invalid_npc` · `npc_already_in_match` · `game_error` (catálogo
 completo em §7).
 
@@ -2701,7 +2701,7 @@ no impacto são desfechos possíveis, e nenhum foi escolhido ainda. Ver §10.
 ```json
 {
   "type": "error",
-  "payload": { "code": "forbidden", "message": "only the master can perform this action" }
+  "payload": { "code": "forbidden", "message": "Só o mestre pode fazer isso." }
 }
 ```
 
@@ -2719,7 +2719,7 @@ segunda aba, um F5 cuja aba antiga não fechou a tempo — e o servidor decide p
   "type": "error",
   "payload": {
     "code": "connection_replaced",
-    "message": "this account connected again elsewhere"
+    "message": "Sua conta entrou de novo em outro lugar."
   }
 }
 ```
@@ -2742,7 +2742,7 @@ nova recebe normalmente tudo que se passar dali em diante.
   "type": "error",
   "payload": {
     "code": "board_unavailable",
-    "message": "the match board could not be loaded; reconnect to try again"
+    "message": "Não foi possível carregar o mapa. Entre de novo na partida."
   }
 }
 ```
@@ -2893,14 +2893,16 @@ vale para o REST.
 
 ## 7. Catálogo de erros
 
+> **O texto de `message` é uma frase em português, escrita para a tela.** Quando o erro de um comando não é uma frase de mesa (falha de gravação/leitura, algo inesperado), a mensagem é `"Não foi possível fazer isso agora."` e o motivo real vai para o log. O front só deve depender do `code`.
+
 | `code` | Significado | Onde aparece |
 |---|---|---|
-| `invalid_message` | `"malformed JSON"` — o envelope não parseou. | Qualquer mensagem. |
-| `unknown_type` | `"unrecognized message type"` | `type` fora do catálogo. |
+| `invalid_message` | `"Não entendi a mensagem. Recarregue a página."` — o envelope não parseou. | Qualquer mensagem. |
+| `unknown_type` | `"Não reconheço essa operação."` | `type` fora do catálogo. |
 | `invalid_payload` | O `payload` não casa com a struct daquele `type`. A mensagem nomeia qual. | Todas. |
-| `forbidden` | `"only the master can perform this action"` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`, `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
-| `forbidden` | `"during a match the master moves pieces with enqueue_master_action"` (mestre) / `"players move by action"` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
-| `match_not_started` | `"match session not initialized"` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
+| `forbidden` | `"Só o mestre pode fazer isso."` | `open_next_action`, `pull_action`, `open_reaction`, `edit_action`, `close_turn`, `change_round_mode`, `change_scene`, `enqueue_master_action`, `add_npc`, `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
+| `forbidden` | `"Durante a partida o mestre move as peças pela ação do mestre."` (mestre) / `"Os jogadores movem pelas ações do personagem."` (jogador) — com sessão viva, os dois papéis são recusados sem excecão (B14, spec §4.3, "Quem move o quê"). No lobby, o jogador ainda pode ser recusado por não ser dono da peça, ela não existir, ou tentar remover (só o mestre remove) — mensagens específicas, ver [`match-maps.md`](match-maps.md#websocket-piece_moved--piece_removed-cliente--servidor). | `piece_moved`, `piece_removed`. |
+| `match_not_started` | `"A partida ainda não começou."` — a partida não foi iniciada. | Todas as de partida (exceto `add_npc`) — na sala sem sessão, `add_npc` é caminho de sucesso (Decisão 3), não erro. |
 | `blocked_by_status` | `"<nick> não pode <o que> porque está <estado>."` — um efeito de status do ator recusa a ação ou a reação (não ataca/defende/esquiva, não age/não reage, sem deslocamento, reação proibida). O estado nomeia só os tipos que o remetente pode ver; senão `"<nick> não pode <o que> por causa de um efeito."`. Nada muda na fila nem nas barras. Ver [`match-status-effects.md`](match-status-effects.md#blocked_by_status). | `enqueue_action`, `attach_reaction`. |
 | `status_effect_invalid` · `status_effect_exists` · `status_effect_not_found` · `unknown_character` · `restore_refused` | Comandos de efeitos de status (`restore_refused`: uma ação ou reação que o desfazer não pôde devolver, só ao mestre) — gatilhos em [`match-status-effects.md` §13](match-status-effects.md#13-catálogo-de-erros-desta-feature). | `apply_status_effect`, `edit_status_effect`, `remove_status_effect`. |
 | `invalid_action` | Payload bem formado, conteúdo inválido: perícia/arma/categoria de Nen desconhecida, reação sem componente obrigatório, `actorId` ausente, `reactToId`/`reactionKind` desemparelhados, **categoria de cena** fora de `"battle"`/`"roleplay"`; na master action de peça, `targetIds` sem exatamente um id, `move` e `remove` juntos, `remove` de personagem sem peça (`"character has no piece"`), ou **pôr** quando um segundo socket do mestre já criou a peça entre a leitura de posse e a gravação (`"character already has a piece"`). | `enqueue_action`, `attach_reaction`, `edit_action`, `change_scene`, `enqueue_master_action` (peça). |
@@ -2913,7 +2915,7 @@ vale para o REST.
 | `unknown_wall` | `"wall <id> is not on this match's board"` — um `targetId` de parede que o servidor não conhece (B14, spec §4.3, "Última defesa"). O resto do lote em `targetIds` ainda é processado. | `enqueue_master_action` (`interact.kind == "reveal"` e qualquer outro `interact`). |
 | `game_error` | O domínio recusou. A `message` é o texto do erro de domínio (tabelas por mensagem em §4). | Todas as de partida. |
 | `clock_not_set` · `clock_already_set` · `clock_below_limit` · `clock_long_skip_unconfirmed` · `clock_play_in_race` · `clock_already_running` · `match_in_battle` · `match_already_ended` · `not_battle_scene` | Relógio da história, resumo do combate e fim da partida. Gatilho de cada um em [`match-clock.md` §6](match-clock.md#6-catálogo-de-erros). | `open_next_action`, `pull_action`, `change_round_mode`, `change_scene` e os comandos de relógio/`end_match`. |
-| `connection_replaced` | `"this account connected again elsewhere"` — a mesma conta abriu outra conexão; esta é a antiga, e o servidor a fecha a seguir (B4, spec §4.6). Ver [`connection_replaced`](#connection_replaced). | Não é resposta a mensagem nenhuma — dispara no `register`. |
+| `connection_replaced` | `"Sua conta entrou de novo em outro lugar."` — a mesma conta abriu outra conexão; esta é a antiga, e o servidor a fecha a seguir (B4, spec §4.6). Ver [`connection_replaced`](#connection_replaced). | Não é resposta a mensagem nenhuma — dispara no `register`. |
 
 **`error` nunca é broadcast.** Vai só para quem enviou a mensagem que falhou — **exceto
 `connection_replaced`**, cujo destinatário não é quem mandou a última mensagem, mas a conexão

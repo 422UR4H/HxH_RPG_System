@@ -390,7 +390,7 @@ func TestBuildAction_Reactions(t *testing.T) {
 		if err == nil {
 			t.Fatal("a dodge reaction carrying a Move must be refused")
 		}
-		if !strings.Contains(err.Error(), "must not carry a move") {
+		if !strings.Contains(err.Error(), "Essa reação não leva movimento.") {
 			t.Fatalf("refused for the wrong reason (want the presence check, not the category one): %v", err)
 		}
 	})
@@ -407,7 +407,7 @@ func TestBuildAction_Reactions(t *testing.T) {
 		}
 		// Dodge and Evasion are both satisfied above, so a failure here can only be the
 		// presence-of-Move check — proving it fires even when every OTHER requirement is met.
-		if !strings.Contains(err.Error(), "must not carry a move") {
+		if !strings.Contains(err.Error(), "Essa reação não leva movimento.") {
 			t.Fatalf("refused for the wrong reason: %v", err)
 		}
 	})
@@ -420,7 +420,7 @@ func TestBuildAction_Reactions(t *testing.T) {
 		if err == nil {
 			t.Fatal("a nothing reaction carrying a Move must be refused")
 		}
-		if !strings.Contains(err.Error(), "must not carry a move") {
+		if !strings.Contains(err.Error(), "Essa reação não leva movimento.") {
 			t.Fatalf("refused for the wrong reason: %v", err)
 		}
 	})
@@ -593,7 +593,7 @@ func TestBuildActionEnforcesEscapeMoveCategory(t *testing.T) {
 			// The refused cases must fail on the move category specifically, not on a
 			// coincidental other validation (missing component, unknown skill) — a case that
 			// failed for the wrong reason would pass wantErr without proving anything.
-			if c.wantErr && err != nil && !strings.Contains(err.Error(), "must move with") {
+			if c.wantErr && err != nil && !strings.Contains(err.Error(), "Essa reação precisa de outro tipo de movimento.") {
 				t.Fatalf("%s with %s was refused for the wrong reason: %v", c.kind, c.category, err)
 			}
 		})

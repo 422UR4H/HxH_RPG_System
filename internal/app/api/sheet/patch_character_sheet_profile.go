@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	domainsheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
@@ -37,26 +38,26 @@ func PatchCharacterSheetProfileHandler(
 	return func(ctx context.Context, req *PatchCharacterSheetProfileRequest) (*PatchCharacterSheetProfileResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		sheetUUID, err := uuid.Parse(req.UUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid uuid")
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		if req.Body.Description != nil {
 			if err := domainsheet.ValidateBriefDescription(*req.Body.Description); err != nil {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			}
 		}
 
 		err = repo.UpdateCharacterSheetProfile(ctx, sheetUUID, userUUID, req.Body.AvatarURL, req.Body.CoverURL, req.Body.Description)
 		if err != nil {
 			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			}
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		return &PatchCharacterSheetProfileResponse{Status: http.StatusNoContent}, nil

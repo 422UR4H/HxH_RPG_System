@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/gateway/r2"
 	"github.com/danielgtaylor/huma/v2"
@@ -50,7 +51,7 @@ func PresignedURLHandler(
 	return func(ctx context.Context, req *PresignedURLRequest) (*PresignedURLResponse, error) {
 		_, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		fileType := req.Body.FileType
@@ -58,10 +59,10 @@ func PresignedURLHandler(
 		switch fileType {
 		case "avatar", "cover":
 			if req.Body.SheetUUID == nil {
-				return nil, huma.Error400BadRequest("sheet_uuid is required for avatar/cover")
+				return nil, huma.Error400BadRequest("Escolha a ficha da imagem.")
 			}
 			if _, err := uuid.Parse(*req.Body.SheetUUID); err != nil {
-				return nil, huma.Error400BadRequest("invalid sheet_uuid")
+				return nil, huma.Error400BadRequest("Ficha inválida.")
 			}
 			// Use a fresh UUID as the filename so every upload produces a new CDN
 			// cache entry. Reusing the entity UUID would cause stale CDN responses
@@ -69,19 +70,19 @@ func PresignedURLHandler(
 			key = fileType + "/" + uuid.New().String() + ".webp"
 		case "map_bg":
 			if req.Body.MapUUID == nil {
-				return nil, huma.Error400BadRequest("map_uuid is required for map_bg")
+				return nil, huma.Error400BadRequest("Escolha o mapa da imagem.")
 			}
 			_, err := uuid.Parse(*req.Body.MapUUID)
 			if err != nil {
-				return nil, huma.Error400BadRequest("invalid map_uuid")
+				return nil, huma.Error400BadRequest("Mapa inválido.")
 			}
 			key = "map_bg/" + uuid.New().String() + ".webp"
 		default:
-			return nil, huma.Error422UnprocessableEntity("file_type must be 'avatar', 'cover', or 'map_bg'")
+			return nil, huma.Error422UnprocessableEntity("Tipo de imagem inválido: escolha avatar, capa ou fundo do mapa.")
 		}
 		result, err := r2Client.NewPresignedPutURL(ctx, key, 5*time.Minute)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to generate upload URL")
+			return nil, apierr.Internal(err)
 		}
 
 		return &PresignedURLResponse{

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/danielgtaylor/huma/v2"
@@ -25,12 +26,12 @@ func DeleteCampaignHandler(
 	return func(ctx context.Context, req *DeleteCampaignRequest) (*DeleteCampaignResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		campaignUUID, err := uuid.Parse(req.UUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid uuid")
+			return nil, huma.Error400BadRequest("Campanha inválida.")
 		}
 
 		err = uc.Delete(ctx, &campaignUC.DeleteCampaignInput{
@@ -40,13 +41,13 @@ func DeleteCampaignHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, campaignUC.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaignUC.ErrNotCampaignOwner):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, campaignUC.ErrCampaignHasStartedMatch):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

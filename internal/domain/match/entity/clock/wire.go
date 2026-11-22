@@ -1,7 +1,7 @@
 package clock
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"time"
 )
 
@@ -23,10 +23,10 @@ func ParseStory(s string) (time.Time, error) {
 	}
 	// o parser aceita fração de segundo após os segundos; o fio não
 	if t.Format(WireLayout) != s {
-		return time.Time{}, errors.New("story time must have whole seconds")
+		return time.Time{}, errtext.Sentence("A hora da história deve ter segundos inteiros.")
 	}
 	if t.Year() < 1 {
-		return time.Time{}, errors.New("story time year must be 1..9999")
+		return time.Time{}, errtext.Sentence("O ano da hora da história deve ficar entre 1 e 9999.")
 	}
 	return t, nil
 }

@@ -1,6 +1,7 @@
 package statuseffect
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"github.com/google/uuid"
 )
 
@@ -27,15 +28,15 @@ type Subject struct {
 // Lista vazia é válida: significa só o mestre.
 func (a Audience) Validate() error {
 	if a.Everyone && len(a.Players) > 0 {
-		return Wrap(ErrInvalidAudience, "Escolha todos ou jogadores específicos, não os dois.")
+		return errtext.Wrap(ErrInvalidAudience, "Escolha todos ou jogadores específicos, não os dois.")
 	}
 	seen := make(map[uuid.UUID]struct{}, len(a.Players))
 	for _, p := range a.Players {
 		if p == uuid.Nil {
-			return Wrap(ErrInvalidAudience, "Um dos jogadores escolhidos não é válido.")
+			return errtext.Wrap(ErrInvalidAudience, "Um dos jogadores escolhidos não é válido.")
 		}
 		if _, dup := seen[p]; dup {
-			return Wrap(ErrInvalidAudience, "Um jogador foi escolhido duas vezes.")
+			return errtext.Wrap(ErrInvalidAudience, "Um jogador foi escolhido duas vezes.")
 		}
 		seen[p] = struct{}{}
 	}

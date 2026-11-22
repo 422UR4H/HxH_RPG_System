@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
@@ -26,25 +27,25 @@ func DeleteCharacterSheetHandler(
 	return func(ctx context.Context, req *DeleteCharacterSheetRequest) (*DeleteCharacterSheetResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		sheetUUID, err := uuid.Parse(req.UUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid uuid")
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		err = uc.DeleteCharacterSheet(ctx, sheetUUID, userUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, cs.ErrCharacterSheetNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, auth.ErrInsufficientPermissions):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, cs.ErrCharacterSheetNotFreeToManage):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

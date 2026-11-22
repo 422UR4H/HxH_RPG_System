@@ -3,9 +3,9 @@ package match
 import (
 	"context"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -16,12 +16,12 @@ func ListPublicUpcomingMatchesHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListMatchesResponse, error) {
 		masterUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		matches, err := uc.ListPublicUpcomingMatches(ctx, masterUUID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		responses := make([]MatchSummaryResponse, 0, len(matches))

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	apiSheet "github.com/422UR4H/HxH_RPG_System/internal/app/api/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/auth"
@@ -45,18 +46,18 @@ func ListMatchEnrollmentsHandler(
 	return func(ctx context.Context, req *ListMatchEnrollmentsRequest) (*ListMatchEnrollmentsResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		result, err := uc.List(ctx, req.UUID, userUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, matchUC.ErrMatchNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, auth.ErrInsufficientPermissions):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

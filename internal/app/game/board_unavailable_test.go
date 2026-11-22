@@ -173,7 +173,7 @@ func countBoardUnavailable(t *testing.T, msgs []game.Message) int {
 			t.Fatalf("unmarshal error payload: %v", err)
 		}
 		if p.Code == "board_unavailable" {
-			if p.Message != "the match board could not be loaded; reconnect to try again" {
+			if p.Message != "Não foi possível carregar o mapa. Entre de novo na partida." {
 				t.Errorf("unexpected board_unavailable message: %q", p.Message)
 			}
 			n++

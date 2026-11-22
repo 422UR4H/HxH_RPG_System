@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	"github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	enrollmentUC "github.com/422UR4H/HxH_RPG_System/internal/application/enrollment"
@@ -28,27 +29,27 @@ func AcceptEnrollmentHandler(
 	return func(ctx context.Context, req *AcceptEnrollmentRequest) (*AcceptEnrollmentResponse, error) {
 		masterUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		enrollmentUUID, err := uuid.Parse(req.EnrollmentUUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest("invalid enrollment UUID")
+			return nil, huma.Error400BadRequest("Inscrição inválida.")
 		}
 
 		err = uc.Accept(ctx, enrollmentUUID, masterUUID)
 		if err != nil {
 			switch {
 			case errors.Is(err, enrollmentUC.ErrEnrollmentNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, match.ErrMatchNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaign.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, enrollmentUC.ErrNotMatchMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &AcceptEnrollmentResponse{

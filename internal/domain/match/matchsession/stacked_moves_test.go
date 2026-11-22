@@ -168,7 +168,7 @@ func TestStackedMoves_PullingAStackedMoveIsRefused(t *testing.T) {
 	if !errors.Is(err, matchsession.ErrStackedOnPending) {
 		t.Fatalf("err = %v, want ErrStackedOnPending", err)
 	}
-	if err.Error() != "action is stacked on a pending move" {
+	if err.Error() != "Abra antes o movimento de que este depende." {
 		t.Errorf("message = %q", err.Error())
 	}
 	if tr == nil || tr.Closed != nil || tr.Opened != nil {

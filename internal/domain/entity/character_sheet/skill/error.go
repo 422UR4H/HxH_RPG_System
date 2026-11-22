@@ -1,18 +1,18 @@
 package skill
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrSkillsAlreadyInitialized = domain.NewDomainError(errors.New("skills already initialized"))
-	ErrJointSkillNotInitialized = domain.NewDomainError(errors.New("joint skill not initialized"))
+	ErrSkillsAlreadyInitialized = domain.NewDomainError(errtext.Sentence("As perícias já foram iniciadas."))
+	ErrJointSkillNotInitialized = domain.NewDomainError(errtext.Sentence("A perícia conjunta ainda não foi iniciada."))
 
-	ErrAbilitySkillsAlreadyInitialized = domain.NewDomainError(errors.New("ability skills exp already initialized"))
-	ErrAbilitySkillsCannotBeNil        = domain.NewDomainError(errors.New("ability skills exp cannot be nil"))
-	ErrSkillNotFound                   = domain.NewDomainError(errors.New("skill not found"))
+	ErrAbilitySkillsAlreadyInitialized = domain.NewDomainError(errtext.Sentence("A experiência das perícias da aptidão já foi iniciada."))
+	ErrAbilitySkillsCannotBeNil        = domain.NewDomainError(errtext.Sentence("A experiência das perícias da aptidão não pode ser vazia."))
+	ErrSkillNotFound                   = domain.NewDomainError(errtext.Sentence("Perícia não encontrada."))
 
-	ErrJointSkillAlreadyExists = domain.NewValidationError(errors.New("joint skill already exists"))
+	ErrJointSkillAlreadyExists = domain.NewValidationError(errtext.Sentence("Essa perícia conjunta já existe."))
 )

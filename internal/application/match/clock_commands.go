@@ -2,7 +2,7 @@ package match
 
 import (
 	"context"
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -14,7 +14,7 @@ import (
 )
 
 // ErrClockPlayInRace: o tempo real só existe no regime livre (spec §3.4).
-var ErrClockPlayInRace = domain.NewDomainError(errors.New("story clock cannot run in the race regime"))
+var ErrClockPlayInRace = domain.NewDomainError(errtext.Sentence("O relógio da história não corre no modo corrida."))
 
 // IMatchGetter é o pedaço do repositório de partidas que os comandos do relógio leem: a data
 // da história, para o set_clock_start.

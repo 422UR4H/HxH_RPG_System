@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	mapuc "github.com/422UR4H/HxH_RPG_System/internal/application/map"
 	entity "github.com/422UR4H/HxH_RPG_System/internal/domain/map/entity"
@@ -59,7 +60,7 @@ func UpdateMapHandler(uc mapuc.IUpdateMap) func(context.Context, *UpdateMapReque
 	return func(ctx context.Context, req *UpdateMapRequest) (*UpdateMapResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		var grid *entity.GridShape
@@ -103,11 +104,11 @@ func UpdateMapHandler(uc mapuc.IUpdateMap) func(context.Context, *UpdateMapReque
 		if err != nil {
 			switch {
 			case errors.Is(err, mapuc.ErrNotMapMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, mapuc.ErrMapNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			default:
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			}
 		}
 		return &UpdateMapResponse{Status: http.StatusNoContent}, nil

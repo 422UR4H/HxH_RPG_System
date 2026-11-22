@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"slices"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/actionwire"
@@ -19,11 +20,11 @@ import (
 // histórico é definitivo.
 
 // errStatusNoOpenTurn recusa um relink sem turno aberto.
-var errStatusNoOpenTurn = statuseffect.Wrap(statuseffect.ErrInvalidParams,
+var errStatusNoOpenTurn = errtext.Wrap(statuseffect.ErrInvalidParams,
 	"Só dá para mudar a ligação do efeito com um turno aberto.")
 
 // errStatusNoChangeInTurn recusa um relink de um efeito que não mudou no turno aberto.
-var errStatusNoChangeInTurn = statuseffect.Wrap(statuseffect.ErrNotFound,
+var errStatusNoChangeInTurn = errtext.Wrap(statuseffect.ErrNotFound,
 	"Esse efeito não tem mudança neste turno.")
 
 // followAnchorsLocked aplica as saídas de reação que a sessão registrou (TakeAnchorMoves) às
@@ -445,7 +446,7 @@ func (r *Room) handleRelinkStatusEffect(client *Client, raw json.RawMessage) {
 	r.syncStatusViews([]uuid.UUID{charID})
 }
 
-var errMatchNotStarted = errors.New("match session not initialized")
+var errMatchNotStarted = errtext.Sentence("A partida ainda não começou.")
 
 // relinkStatusEffect troca a âncora de toda mudança pendente de effectID no turno aberto
 // (nil = do turno). Esquece o que o mestre recebeu do personagem, para que o

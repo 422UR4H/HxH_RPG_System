@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -39,12 +39,12 @@ func ListCampaignsHandler(
 	return func(ctx context.Context, _ *struct{}) (*ListCampaignsResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		campaigns, err := uc.ListCampaigns(ctx, userUUID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		responses := make([]CampaignSummaryResponse, 0, len(campaigns))

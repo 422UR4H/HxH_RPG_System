@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchmapuc "github.com/422UR4H/HxH_RPG_System/internal/application/matchmap"
 	"github.com/danielgtaylor/huma/v2"
@@ -37,7 +38,7 @@ func AttachMatchMapHandler(uc matchmapuc.IAttachMatchMap) func(context.Context, 
 	return func(ctx context.Context, req *AttachMatchMapRequest) (*AttachMatchMapResponse, error) {
 		userID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID")
+			return nil, apierr.NoUser()
 		}
 
 		mm, err := uc.Attach(ctx, &matchmapuc.AttachMatchMapInput{
@@ -49,18 +50,18 @@ func AttachMatchMapHandler(uc matchmapuc.IAttachMatchMap) func(context.Context, 
 		if err != nil {
 			switch {
 			case errors.Is(err, matchmapuc.ErrNotMatchMaster):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, matchmapuc.ErrMatchNotFound),
 				errors.Is(err, matchmapuc.ErrMapNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, matchmapuc.ErrMatchAlreadyStarted),
 				errors.Is(err, matchmapuc.ErrSourceMatchNotInCampaign),
 				errors.Is(err, matchmapuc.ErrSourceMatchOnAnotherMap),
 				errors.Is(err, matchmapuc.ErrSourceMatchHasNoBoard),
 				errors.Is(err, matchmapuc.ErrSourceMatchIsTheSameMatch):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 		return &AttachMatchMapResponse{Body: AttachMatchMapResponseBody{MatchMap: toMatchMapResponse(mm)}}, nil

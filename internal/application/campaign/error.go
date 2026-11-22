@@ -1,23 +1,23 @@
 package campaign
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrCampaignNotFound   = domain.NewValidationError(errors.New("campaign not found"))
-	ErrNotCampaignOwner   = domain.NewValidationError(errors.New("master is not the owner of this campaign"))
-	ErrMinNameLength      = domain.NewValidationError(errors.New("name must be at least 5 characters"))
-	ErrMaxNameLength      = domain.NewValidationError(errors.New("name cannot exceed 32 characters"))
-	ErrInvalidStartDate   = domain.NewValidationError(errors.New("story start date cannot be empty"))
-	ErrMaxCampaignsLimit  = domain.NewValidationError(errors.New("user cannot have more than 10 campaigns"))
-	ErrMaxBriefDescLength      = domain.NewValidationError(errors.New("brief description cannot exceed 255 characters"))
-	ErrMaxCallLinkLength       = domain.NewValidationError(errors.New("call link cannot exceed 255 characters"))
-	ErrCampaignHasStartedMatch = domain.NewValidationError(errors.New("campaign has a match that has already started"))
-	ErrCampaignAlreadyEnded        = domain.NewValidationError(errors.New("campaign has already ended"))
-	ErrLockedAfterMatchStart       = domain.NewValidationError(errors.New("name and story_start_at cannot be changed after a match has started"))
-	ErrCannotRegressStoryCurrentAt = domain.NewValidationError(errors.New("story_current_at cannot be set to a date earlier than the current value"))
-	ErrStoryCurrentBeforeStart     = domain.NewValidationError(errors.New("story_current_at cannot be before story_start_at"))
+	ErrCampaignNotFound            = domain.NewValidationError(errtext.Sentence("Campanha não encontrada."))
+	ErrNotCampaignOwner            = domain.NewValidationError(errtext.Sentence("Essa campanha não é sua."))
+	ErrMinNameLength               = domain.NewValidationError(errtext.Sentence("O nome deve ter pelo menos 5 caracteres."))
+	ErrMaxNameLength               = domain.NewValidationError(errtext.Sentence("O nome deve ter no máximo 32 caracteres."))
+	ErrInvalidStartDate            = domain.NewValidationError(errtext.Sentence("Informe a data de início da história."))
+	ErrMaxCampaignsLimit           = domain.NewValidationError(errtext.Sentence("Você não pode ter mais de 10 campanhas."))
+	ErrMaxBriefDescLength          = domain.NewValidationError(errtext.Sentence("A descrição curta deve ter no máximo 255 caracteres."))
+	ErrMaxCallLinkLength           = domain.NewValidationError(errtext.Sentence("O link da chamada deve ter no máximo 255 caracteres."))
+	ErrCampaignHasStartedMatch     = domain.NewValidationError(errtext.Sentence("A campanha tem uma partida que já começou."))
+	ErrCampaignAlreadyEnded        = domain.NewValidationError(errtext.Sentence("A campanha já terminou."))
+	ErrLockedAfterMatchStart       = domain.NewValidationError(errtext.Sentence("O nome e a data de início da história não mudam depois que uma partida começa."))
+	ErrCannotRegressStoryCurrentAt = domain.NewValidationError(errtext.Sentence("A data atual da história não pode voltar para antes da data de agora."))
+	ErrStoryCurrentBeforeStart     = domain.NewValidationError(errtext.Sentence("A data atual da história não pode ser anterior à data de início."))
 )

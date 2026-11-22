@@ -469,7 +469,7 @@ func TestE2E_EscapeLandingIsRefusedWhereItMeansNothing(t *testing.T) {
 			payload: game.EditActionPayload{
 				EscapeLanding: &game.EscapeLandingPayload{Position: &[3]int{7, 6, 0}},
 			},
-			contains: "escape reaction",
+			contains: "só vale para uma fuga",
 		},
 		{
 			name: "a cell off the board",
@@ -477,7 +477,7 @@ func TestE2E_EscapeLandingIsRefusedWhereItMeansNothing(t *testing.T) {
 				ActionID:      reactionID,
 				EscapeLanding: &game.EscapeLandingPayload{Position: &[3]int{99, 6, 0}},
 			},
-			contains: "outside the grid",
+			contains: "fora do mapa",
 		},
 		{
 			name: "something that is not on the turn",
@@ -485,7 +485,7 @@ func TestE2E_EscapeLandingIsRefusedWhereItMeansNothing(t *testing.T) {
 				ActionID:      uuid.New(),
 				EscapeLanding: &game.EscapeLandingPayload{Position: &[3]int{7, 6, 0}},
 			},
-			contains: "not on the open turn",
+			contains: "não está no turno aberto",
 		},
 	}
 	for i, c := range cases {
@@ -557,7 +557,7 @@ func TestE2E_EscapeLandingOnADodgeIsRefused(t *testing.T) {
 	if err := json.Unmarshal(findMessage(t, masterMsgs.snapshotMessages(), game.MsgTypeError).Payload, &e); err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
-	if e.Code != "game_error" || !strings.Contains(e.Message, "escape reaction") {
+	if e.Code != "game_error" || !strings.Contains(e.Message, "só vale para uma fuga") {
 		t.Fatalf("error = %+v, want game_error naming the escape rule", e)
 	}
 	if n := masterMsgs.count(game.MsgTypeActionEdited); n != 0 {

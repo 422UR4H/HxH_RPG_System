@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	cs "github.com/422UR4H/HxH_RPG_System/internal/application/character_sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/spiritual"
@@ -38,20 +39,20 @@ func UpdateNenHexagonValueHandler(
 	return func(ctx context.Context, req *UpdateNenHexagonValueRequest) (*UpdateNenHexagonValueResponse, error) {
 		playerUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		charSheetId, err := uuid.Parse(req.CharSheetUUID)
 		if err != nil {
-			return nil, huma.Error400BadRequest(err.Error())
+			return nil, huma.Error400BadRequest("Ficha inválida.")
 		}
 
 		characterSheet, err := charSheetUC.GetCharacterSheet(ctx, charSheetId, playerUUID)
 		if err != nil {
 			if errors.Is(err, cs.ErrCharacterSheetNotFound) {
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			}
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		if characterSheet.GetCurrHexValue() == nil {
@@ -61,9 +62,9 @@ func UpdateNenHexagonValueHandler(
 		result, err := hexValUC.UpdateNenHexagonValue(ctx, characterSheet, req.Method)
 		if err != nil {
 			if errors.Is(err, spiritual.ErrNenHexNotInitialized) {
-				return nil, huma.Error400BadRequest(err.Error())
+				return nil, huma.Error400BadRequest(apierr.Text(err))
 			}
-			return nil, huma.Error500InternalServerError(err.Error())
+			return nil, apierr.Internal(err)
 		}
 
 		return &UpdateNenHexagonValueResponse{

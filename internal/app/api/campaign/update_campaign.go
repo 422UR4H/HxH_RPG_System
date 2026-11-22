@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	"github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	campaignUC "github.com/422UR4H/HxH_RPG_System/internal/application/campaign"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
@@ -55,7 +56,7 @@ func UpdateCampaignHandler(
 	return func(ctx context.Context, req *UpdateCampaignRequest) (*UpdateCampaignResponse, error) {
 		userUUID, ok := ctx.Value(auth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		input := &campaignUC.UpdateCampaignInput{
@@ -71,16 +72,14 @@ func UpdateCampaignHandler(
 		if req.Body.StoryStartAt != nil {
 			t, err := time.Parse("2006-01-02", *req.Body.StoryStartAt)
 			if err != nil {
-				return nil, huma.Error422UnprocessableEntity(
-					"invalid story_start_at date format, use YYYY-MM-DD")
+				return nil, huma.Error422UnprocessableEntity("Data de início inválida. Use o formato AAAA-MM-DD.")
 			}
 			input.StoryStartAt = &t
 		}
 		if req.Body.StoryCurrentAt != nil {
 			t, err := time.Parse(time.RFC3339, *req.Body.StoryCurrentAt)
 			if err != nil {
-				return nil, huma.Error422UnprocessableEntity(
-					"invalid story_current_at format, use ISO 8601. E.g. 2026-06-15T19:30:00Z")
+				return nil, huma.Error422UnprocessableEntity("Data atual da história inválida. Use o formato AAAA-MM-DDTHH:MM:SSZ.")
 			}
 			input.StoryCurrentAt = &t
 		}
@@ -89,18 +88,18 @@ func UpdateCampaignHandler(
 		if err != nil {
 			switch {
 			case errors.Is(err, campaignUC.ErrCampaignNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, campaignUC.ErrNotCampaignOwner):
-				return nil, huma.Error403Forbidden(err.Error())
+				return nil, huma.Error403Forbidden(apierr.Text(err))
 			case errors.Is(err, campaignUC.ErrCampaignAlreadyEnded),
 				errors.Is(err, campaignUC.ErrLockedAfterMatchStart),
 				errors.Is(err, campaignUC.ErrCannotRegressStoryCurrentAt),
 				errors.Is(err, campaignUC.ErrStoryCurrentBeforeStart):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			case errors.Is(err, domain.ErrValidation):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error422UnprocessableEntity(apierr.Text(err))
 			default:
-				return nil, huma.Error500InternalServerError(err.Error())
+				return nil, apierr.Internal(err)
 			}
 		}
 

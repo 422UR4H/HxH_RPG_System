@@ -1,6 +1,7 @@
 package match
 
 import (
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
@@ -41,7 +42,7 @@ func NewStatusEffectsUC() *StatusEffectsUC {
 }
 
 func invalidParams(msg string) error {
-	return statuseffect.Wrap(statuseffect.ErrInvalidParams, msg)
+	return errtext.Wrap(statuseffect.ErrInvalidParams, msg)
 }
 
 // guard cobre o que vale para as três operações: só o mestre, e só com a partida aberta.
@@ -66,7 +67,7 @@ func checkAudience(s *matchsession.MatchSession, masterUUID uuid.UUID, a *status
 	}
 	for _, p := range a.Players {
 		if p == masterUUID || !s.IsPlayerParticipant(p) {
-			return statuseffect.Wrap(statuseffect.ErrInvalidAudience, "Um dos jogadores escolhidos não está na partida.")
+			return errtext.Wrap(statuseffect.ErrInvalidAudience, "Um dos jogadores escolhidos não está na partida.")
 		}
 	}
 	return nil

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"log"
 	"time"
 
@@ -21,16 +22,16 @@ import (
 // errStatusPayload marca o que o fio trouxe malformado (enum desconhecido, ids vazios ou
 // repetidos, modo de visibilidade inválido): vira invalid_payload. O tipo desconhecido não
 // passa por aqui — é status_effect_invalid, como o domínio o diz.
-var errStatusPayload = statuseffect.Sentence("Não entendi o pedido do efeito.")
+var errStatusPayload = errtext.Sentence("Não entendi o pedido do efeito.")
 
 // errStatusActionID recusa uma âncora (actionId) que não é a action do turno aberto nem uma
 // reação dela — ou qualquer âncora sem turno aberto. É status_effect_invalid.
-var errStatusActionID = statuseffect.Wrap(statuseffect.ErrInvalidParams,
+var errStatusActionID = errtext.Wrap(statuseffect.ErrInvalidParams,
 	"Escolha a ação do turno aberto ou uma reação dela.")
 
 // statusPayloadErr é uma recusa de payload com a frase que o mestre lê.
 func statusPayloadErr(msg string) error {
-	return statuseffect.Wrap(errStatusPayload, msg)
+	return errtext.Wrap(errStatusPayload, msg)
 }
 
 // statusEffectErrorCode traduz os erros dos três comandos para o código do fio.
@@ -57,27 +58,11 @@ func statusEffectErrorCode(err error) string {
 	}
 }
 
-// statusEffectErrorText é a frase que o mestre lê para um erro dos comandos de status. Os erros
-// do domínio de status já são frases; os das outras camadas (em inglês) ganham a sua aqui, e o
-// que não se conhece vira uma frase genérica, com o motivo real no log.
+// statusEffectErrorText é a frase que o mestre lê para um erro dos comandos de status: a do
+// próprio erro (todos os sentinelas que chegam aqui já são frases) ou, para o que não se conhece,
+// uma genérica de status, com o motivo real no log.
 func statusEffectErrorText(err error) string {
-	switch {
-	case errors.Is(err, errStatusPayload),
-		errors.Is(err, statuseffect.ErrUnknownKind),
-		errors.Is(err, statuseffect.ErrInvalidParams),
-		errors.Is(err, statuseffect.ErrInvalidAudience),
-		errors.Is(err, statuseffect.ErrAlreadyApplied),
-		errors.Is(err, statuseffect.ErrNotFound):
-		return err.Error()
-	case errors.Is(err, matchsession.ErrCharSheetNotFound):
-		return "Esse personagem não está na partida."
-	case errors.Is(err, appmatch.ErrNotMatchMaster):
-		return "Só o mestre da partida pode fazer isso."
-	case errors.Is(err, matchsession.ErrMatchEnded):
-		return "A partida já terminou."
-	}
-	log.Printf("status effect command refused: %v", err)
-	return "Não foi possível fazer essa mudança de status."
+	return errorTextOr(err, "Não foi possível fazer essa mudança de status.")
 }
 
 // ─── fio → domínio ──────────────────────────────────────────────────────────
@@ -705,7 +690,7 @@ func actionErrorCode(err error) string {
 func (r *Room) actionErrorMessageLocked(err error, sender uuid.UUID) string {
 	var be *matchsession.StatusBlockError
 	if !errors.As(err, &be) || r.session == nil {
-		return err.Error()
+		return gameErrorText(err)
 	}
 	isMaster := sender == r.masterUUID
 	subject, pcPublic := r.statusSubjectLocked(be.CharacterID)

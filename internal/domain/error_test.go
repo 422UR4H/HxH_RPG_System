@@ -51,3 +51,15 @@ func TestErrorWrapping_ContainsInnerMessage(t *testing.T) {
 		t.Error("expected non-empty error message")
 	}
 }
+
+func TestNewValidationError_ReadsAsInnerSentence(t *testing.T) {
+	inner := errors.New("Ficha não encontrada.")
+	err := domain.NewValidationError(inner)
+
+	if got := err.Error(); got != "Ficha não encontrada." {
+		t.Errorf("Error() = %q, want the inner sentence without a technical prefix", got)
+	}
+	if !errors.Is(err, inner) {
+		t.Error("expected error to keep the inner error for errors.Is")
+	}
+}

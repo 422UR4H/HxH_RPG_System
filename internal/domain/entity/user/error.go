@@ -1,29 +1,29 @@
 package user
 
 import (
-	"errors"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/domain"
 )
 
 var (
-	ErrMissingNick       = domain.NewValidationError(errors.New("nickname is required"))
-	ErrInvalidNickLength = domain.NewValidationError(errors.New("nickname must be between 3 and 20 characters"))
-	ErrNickHasEmoji      = domain.NewValidationError(errors.New("nickname must not contain emoji"))
-	ErrNickAlreadyExists = domain.NewValidationError(errors.New("nickname already exists"))
+	ErrMissingNick       = domain.NewValidationError(errtext.Sentence("Informe o nick (apelido)."))
+	ErrInvalidNickLength = domain.NewValidationError(errtext.Sentence("O nick (apelido) deve ter entre 3 e 20 caracteres."))
+	ErrNickHasEmoji      = domain.NewValidationError(errtext.Sentence("O nick (apelido) não pode ter emoji."))
+	ErrNickAlreadyExists = domain.NewValidationError(errtext.Sentence("Esse nick (apelido) já está em uso."))
 
-	ErrInvalidEmailFormat = domain.NewValidationError(errors.New("invalid email format"))
-	ErrMissingEmail       = domain.NewValidationError(errors.New("email is required"))
-	ErrInvalidEmailLength = domain.NewValidationError(errors.New("email must be between 12 and 64 characters"))
-	ErrEmailHasEmoji      = domain.NewValidationError(errors.New("email must not contain emoji"))
-	ErrEmailAlreadyExists = domain.NewValidationError(errors.New("email already exists"))
+	ErrInvalidEmailFormat = domain.NewValidationError(errtext.Sentence("E-mail inválido."))
+	ErrMissingEmail       = domain.NewValidationError(errtext.Sentence("Informe o e-mail."))
+	ErrInvalidEmailLength = domain.NewValidationError(errtext.Sentence("O e-mail deve ter entre 12 e 64 caracteres."))
+	ErrEmailHasEmoji      = domain.NewValidationError(errtext.Sentence("O e-mail não pode ter emoji."))
+	ErrEmailAlreadyExists = domain.NewValidationError(errtext.Sentence("Já existe uma conta com esse e-mail."))
 
-	ErrMissingPassword   = domain.NewValidationError(errors.New("password is required"))
-	ErrMismatchPassword  = domain.NewValidationError(errors.New("passwords mismatch"))
-	ErrPasswordMinLenght = domain.NewValidationError(errors.New("password must be longer than 8 characters"))
-	ErrPasswordMaxLenght = domain.NewValidationError(errors.New("password is too long"))
+	ErrMissingPassword   = domain.NewValidationError(errtext.Sentence("Informe a senha."))
+	ErrMismatchPassword  = domain.NewValidationError(errtext.Sentence("As senhas não são iguais."))
+	ErrPasswordMinLenght = domain.NewValidationError(errtext.Sentence("A senha deve ter pelo menos 8 caracteres."))
+	ErrPasswordMaxLenght = domain.NewValidationError(errtext.Sentence("A senha deve ter no máximo 64 caracteres."))
 
-	ErrMissingConfirmPass = domain.NewValidationError(errors.New("confirm password is required"))
+	ErrMissingConfirmPass = domain.NewValidationError(errtext.Sentence("Confirme a senha."))
 
-	ErrUserNotFound = domain.NewValidationError(errors.New("user not found"))
+	ErrUserNotFound = domain.NewValidationError(errtext.Sentence("Usuário não encontrado."))
 )

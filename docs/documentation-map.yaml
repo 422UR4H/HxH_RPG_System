@@ -297,6 +297,18 @@ mappings:
         confidence: possibly_affected
     notes: end_match, match_ended, fechamento 4002
 
+  # ─── Texto de erro em português ───
+  - code_path: internal/domain/errtext/
+    dev_docs:
+      - path: .github/instructions/api-conventions.instructions.md
+        confidence: directly_affected
+    notes: Sentence/Wrap, frases de erro que chegam à tela
+  - code_path: internal/app/api/apierr/
+    dev_docs:
+      - path: .github/instructions/api-conventions.instructions.md
+        confidence: directly_affected
+    notes: 500 com frase fixa e erro original no log
+
   # ─── Match: Efeitos de status ───
   - code_path: internal/domain/statuseffect/
     dev_docs:

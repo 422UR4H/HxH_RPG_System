@@ -267,8 +267,8 @@ func TestE2E_CannotCancelSomeoneElsesAction(t *testing.T) {
 	if !bystanderMsgs.await(game.MsgTypeError, 2*time.Second) {
 		t.Fatal("the intruder was not refused")
 	}
-	if e := lastError(t, bystanderMsgs); e.Code != "game_error" || e.Message != "action actor does not match player" {
-		t.Errorf("error = %+v, want game_error / action actor does not match player", e)
+	if e := lastError(t, bystanderMsgs); e.Code != "game_error" || e.Message != "Essa ação não é sua." {
+		t.Errorf("error = %+v, want game_error / Essa ação não é sua.", e)
 	}
 	// No barrier orders the bystander's refusal against the master's connection (different
 	// sockets); these counts only catch a leak that already landed. The reconnection check
@@ -316,8 +316,8 @@ func TestE2E_CancelActionRejectsBadPayload(t *testing.T) {
 	if !playerMsgs.await(game.MsgTypeError, 2*time.Second) {
 		t.Fatal("a malformed cancel_action got no error")
 	}
-	if e := lastError(t, playerMsgs); e.Code != "invalid_payload" || e.Message != "invalid cancel_action payload" {
-		t.Errorf("error = %+v, want invalid_payload / invalid cancel_action payload", e)
+	if e := lastError(t, playerMsgs); e.Code != "invalid_payload" || e.Message != "Não entendi o pedido para cancelar a ação." {
+		t.Errorf("error = %+v, want invalid_payload / Não entendi o pedido para cancelar a ação.", e)
 	}
 }
 

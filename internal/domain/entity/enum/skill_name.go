@@ -93,5 +93,5 @@ func SkillNameFrom(s string) (SkillName, error) {
 			return name, nil
 		}
 	}
-	return "", newInvalidNameOfError("skill", s)
+	return "", newInvalidNameOfError("perícia", s)
 }

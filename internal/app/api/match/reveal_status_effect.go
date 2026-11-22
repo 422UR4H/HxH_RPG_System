@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/422UR4H/HxH_RPG_System/internal/app/api/apierr"
 	apiAuth "github.com/422UR4H/HxH_RPG_System/internal/app/api/auth"
 	matchUC "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
@@ -25,7 +26,7 @@ func RevealStatusEffectHandler(
 	return func(ctx context.Context, req *RevealStatusEffectRequest) (*RevealStatusEffectResponse, error) {
 		userUUID, ok := ctx.Value(apiAuth.UserIDKey).(uuid.UUID)
 		if !ok {
-			return nil, huma.Error500InternalServerError("failed to get userID in context")
+			return nil, apierr.NoUser()
 		}
 
 		if err := uc.Reveal(ctx, req.MatchUUID, req.EffectUUID, userUUID); err != nil {
@@ -33,7 +34,7 @@ func RevealStatusEffectHandler(
 			case errors.Is(err, matchUC.ErrMatchNotFound):
 				return nil, huma.Error404NotFound("Partida não encontrada.")
 			case errors.Is(err, statuseffect.ErrNotFound):
-				return nil, huma.Error404NotFound(err.Error())
+				return nil, huma.Error404NotFound(apierr.Text(err))
 			case errors.Is(err, matchUC.ErrNotMatchMaster):
 				return nil, huma.Error403Forbidden("Só o mestre da partida pode revelar.")
 			default:

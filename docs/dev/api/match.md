@@ -37,7 +37,7 @@
 | 401 | Sem JWT |
 | 403 | Usuário não é o mestre da campanha |
 | 404 | Campanha não encontrada |
-| 422 | Validação (título fora do tamanho, datas fora da janela, `storyStartTime` inválido: detail `"storyStartTime must be HH:MM or HH:MM:SS"`, etc.) |
+| 422 | Validação (título fora do tamanho, datas fora da janela, `storyStartTime` inválido: detail `"Horário inicial da história inválido. Use HH:MM ou HH:MM:SS."`, etc.) |
 | 500 | Erro interno |
 
 ---

@@ -268,14 +268,14 @@ func (r *Room) sessionForClock(client *Client) *matchsession.MatchSession {
 		return nil
 	}
 	if r.deps.ClockUC == nil {
-		client.SendMessage(NewErrorMessage("game_error", "story clock unavailable"))
+		client.SendMessage(NewErrorMessage("game_error", "O relógio da história não está disponível."))
 		return nil
 	}
 	r.mu.RLock()
 	sess := r.session
 	r.mu.RUnlock()
 	if sess == nil {
-		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 		return nil
 	}
 	return sess
@@ -298,7 +298,7 @@ func parseTimeOfDay(s string) (time.Duration, bool) {
 func (r *Room) handleSetClockStart(client *Client, raw json.RawMessage) {
 	var payload SetClockStartPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid set_clock_start payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para definir a hora da partida."))
 		return
 	}
 	sess := r.sessionForClock(client)
@@ -307,14 +307,14 @@ func (r *Room) handleSetClockStart(client *Client, raw json.RawMessage) {
 	}
 	tod, ok := parseTimeOfDay(payload.Time)
 	if !ok {
-		client.SendMessage(NewErrorMessage("invalid_payload", `time must be "HH:MM" or "HH:MM:SS"`))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Hora inválida. Use HH:MM ou HH:MM:SS."))
 		return
 	}
 	// A data da história vem do banco: lida fora do r.mu.
 	date, err := r.deps.ClockUC.StoryDate(context.Background(), r.matchUUID)
 	if err != nil {
 		log.Printf("set_clock_start: read story start date of match %s: %v", r.matchUUID, err)
-		client.SendMessage(NewErrorMessage("game_error", "could not read the match start date"))
+		client.SendMessage(NewErrorMessage("game_error", "Não foi possível ler a data de início da partida."))
 		return
 	}
 	at := date.Add(tod)
@@ -326,7 +326,7 @@ func (r *Room) handleSetClockStart(client *Client, raw json.RawMessage) {
 	}
 	r.mu.Unlock()
 	if err != nil {
-		client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+		client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 		return
 	}
 	r.persistClock(sess, &pendingClockEvent{
@@ -339,11 +339,11 @@ func (r *Room) handleSetClockStart(client *Client, raw json.RawMessage) {
 func (r *Room) handleAdjustClock(client *Client, raw json.RawMessage) {
 	var payload AdjustClockPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid adjust_clock payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para ajustar o relógio."))
 		return
 	}
 	if payload.DeltaSeconds > maxAdjustSeconds || payload.DeltaSeconds < -maxAdjustSeconds {
-		client.SendMessage(NewErrorMessage("invalid_payload", "deltaSeconds out of range"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "O ajuste do relógio está fora do limite."))
 		return
 	}
 	sess := r.sessionForClock(client)
@@ -365,7 +365,7 @@ func (r *Room) handleAdjustClock(client *Client, raw json.RawMessage) {
 func (r *Room) handleSetClock(client *Client, raw json.RawMessage) {
 	var payload SetClockPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "invalid set_clock payload"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Não entendi o pedido para mudar o relógio."))
 		return
 	}
 	sess := r.sessionForClock(client)
@@ -374,7 +374,7 @@ func (r *Room) handleSetClock(client *Client, raw json.RawMessage) {
 	}
 	to, perr := clock.ParseStory(payload.StoryAt)
 	if perr != nil {
-		client.SendMessage(NewErrorMessage("invalid_payload", "storyAt must be 2006-01-02T15:04:05"))
+		client.SendMessage(NewErrorMessage("invalid_payload", "Hora da história inválida. Use o formato AAAA-MM-DDTHH:MM:SS."))
 		return
 	}
 	r.mu.Lock()
@@ -424,7 +424,7 @@ func (r *Room) finishClockMove(
 	mv clockMove, err error,
 ) {
 	if err != nil {
-		client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+		client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 		return
 	}
 	recorded := r.persistClock(sess, mv.ev, "clock "+kind)
@@ -456,7 +456,7 @@ func (r *Room) handlePlayClock(client *Client) {
 	}
 	r.mu.Unlock()
 	if err != nil {
-		client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+		client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 		return
 	}
 	// Sem evento: o tempo real vira clockRealTime na pausa. O checkpoint grava o "rodando".
@@ -476,7 +476,7 @@ func (r *Room) handlePauseClock(client *Client) {
 	}
 	r.mu.Unlock()
 	if err != nil {
-		client.SendMessage(NewErrorMessage(clockErrorCode(err), err.Error()))
+		client.SendMessage(NewErrorMessage(clockErrorCode(err), gameErrorText(err)))
 		return
 	}
 	if p == nil {
@@ -590,20 +590,20 @@ func (r *Room) handleGetCombatSummary(client *Client) {
 	r.mu.RUnlock()
 	switch {
 	case sess == nil:
-		client.SendMessage(NewErrorMessage("match_not_started", "match session not initialized"))
+		client.SendMessage(NewErrorMessage("match_not_started", "A partida ainda não começou."))
 		return
 	case !battle:
-		client.SendMessage(NewErrorMessage("not_battle_scene", "the active scene is not a battle"))
+		client.SendMessage(NewErrorMessage("not_battle_scene", "A cena atual não é de combate."))
 		return
 	case r.deps.CombatSummaryRepo == nil:
-		client.SendMessage(NewErrorMessage("game_error", "combat summary unavailable"))
+		client.SendMessage(NewErrorMessage("game_error", "O resumo do combate não está disponível."))
 		return
 	}
 
 	rounds, err := r.deps.CombatSummaryRepo.ListSceneRoundsForSummary(context.Background(), sceneID)
 	if err != nil {
 		log.Printf("get_combat_summary: read rounds of scene %s (match %s): %v", sceneID, r.matchUUID, err)
-		client.SendMessage(NewErrorMessage("game_error", "could not read the combat rounds"))
+		client.SendMessage(NewErrorMessage("game_error", "Não foi possível ler os rounds do combate."))
 		return
 	}
 
@@ -612,7 +612,7 @@ func (r *Room) handleGetCombatSummary(client *Client) {
 	if sc.GetID() != sceneID {
 		// a cena mudou durante a leitura: o resumo pedido não existe mais
 		r.mu.RUnlock()
-		client.SendMessage(NewErrorMessage("not_battle_scene", "the active scene changed"))
+		client.SendMessage(NewErrorMessage("not_battle_scene", "A cena atual mudou."))
 		return
 	}
 	active := summaryRoundOf(sess.GetActiveRound())

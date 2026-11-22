@@ -214,7 +214,7 @@ func TestEndMatchRefusedWithOpenTurn(t *testing.T) {
 			}
 		}
 	}
-	if msg != "cannot close round: current turn is still open" {
+	if msg != "Feche o turno aberto antes de encerrar o round." {
 		t.Errorf("game_error = %q, want the change_scene open-turn text", msg)
 	}
 }
