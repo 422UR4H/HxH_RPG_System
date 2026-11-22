@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	ErrMissingNick       = domain.NewValidationError(errtext.Sentence("Informe o apelido."))
-	ErrInvalidNickLength = domain.NewValidationError(errtext.Sentence("O apelido deve ter entre 3 e 20 caracteres."))
-	ErrNickHasEmoji      = domain.NewValidationError(errtext.Sentence("O apelido não pode ter emoji."))
-	ErrNickAlreadyExists = domain.NewValidationError(errtext.Sentence("Esse apelido já está em uso."))
+	ErrMissingNick       = domain.NewValidationError(errtext.Sentence("Informe o nick (apelido)."))
+	ErrInvalidNickLength = domain.NewValidationError(errtext.Sentence("O nick (apelido) deve ter entre 3 e 20 caracteres."))
+	ErrNickHasEmoji      = domain.NewValidationError(errtext.Sentence("O nick (apelido) não pode ter emoji."))
+	ErrNickAlreadyExists = domain.NewValidationError(errtext.Sentence("Esse nick (apelido) já está em uso."))
 
 	ErrInvalidEmailFormat = domain.NewValidationError(errtext.Sentence("E-mail inválido."))
 	ErrMissingEmail       = domain.NewValidationError(errtext.Sentence("Informe o e-mail."))
