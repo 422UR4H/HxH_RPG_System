@@ -901,8 +901,9 @@ acontecem. O mestre pode mudar essa margem ou deixar a corrente seguir mesmo ass
 > seguinte, porque ela não tem relação nenhuma com a velocidade com que o personagem age — o
 > ciclo dela fecha dentro do turno.
 
-⛔ **Nada disso está em código.** `match_session.go` rola cada `Skill` e **ninguém lê o
-resultado**; a única leitura de `Skills` em toda a colisão é a `Evasion` da esquiva fechada,
+⛔ **Nada disso está em código.** `match_session.go` rola cada `Skill` e deriva o total dela
+(`deriveSkills`: dados, valor, condição do mestre e status, na chegada e a cada edição ou mudança
+de status), mas **nenhum desfecho lê esse total**; a única leitura de `Skills` em toda a colisão é a `Evasion` da esquiva fechada,
 por nome. O que acontece com quem falha (guarda aberta, caído, dano igual à diferença) segue
 em aberto por decisão do dono do produto — o sistema propõe um padrão, o mestre substitui.
 
@@ -995,8 +996,8 @@ condição que o `edit_action` aceita e que muda um desfecho**. O contrato
 | `speed`, `moveSpeed` da ação, `feint`, outras perícias | — | aceitas e guardadas; **não mudam o desfecho** |
 
 `speed` mexeria na economia, que não se refaz (acima); o `moveSpeed` da própria ação já gastou o
-movimento na abertura e nada testa contra ele; a finta não tem resolução; e ninguém lê o
-resultado das perícias (a corrente de testes não está em código). A tela do mestre esconde o que
+movimento na abertura e nada testa contra ele; a finta não tem resolução; e nenhum desfecho lê o
+total das perícias (derivado, mas a corrente de testes não está em código). A tela do mestre esconde o que
 não muda nada, mas o motor guarda tudo — a regra pode crescer sem mudar o wire.
 
 **`DefaultDefense`, e não `Defense`.** A defesa padrão é passiva e não tem componente na ação

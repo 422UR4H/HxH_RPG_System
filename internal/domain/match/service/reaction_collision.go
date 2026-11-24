@@ -161,7 +161,7 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		Condition:  defenseCond,
 		// A Guarda aberta deixa a defesa padrão só rolada (RolledOnly): sem dados, ela pede o
 		// conjunto pela falta abaixo, e a sessão o tira.
-		Status: statusRollOf(in.Effects, statuseffect.Test{
+		Status: StatusRollOf(in.Effects, statuseffect.Test{
 			Skill: enum.Defense, Domain: statuseffect.DomainDefense, Reaction: statuseffect.ReactionDefense,
 		}),
 	})
@@ -245,7 +245,7 @@ func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
 		Ledger:    in.Ledger,
 		Dimension: match.DimDodge,
 		AgainstID: &in.AttackerID,
-		Status:    statusRollOf(in.Effects, reflexTest(in.Kind)),
+		Status:    StatusRollOf(in.Effects, reflexTest(in.Kind)),
 	})
 }
 
@@ -287,7 +287,7 @@ func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 		Ledger:    in.Ledger,
 		Dimension: match.DimDodge,
 		AgainstID: &in.AttackerID,
-		Status: statusRollOf(in.Effects, statuseffect.Test{
+		Status: StatusRollOf(in.Effects, statuseffect.Test{
 			Skill: enum.Evasion, Domain: statuseffect.DomainDodge, Reaction: statuseffect.ReactionEvasion,
 		}),
 	})
@@ -321,7 +321,7 @@ func resolveRepel(in ReactionInput, calc RollCalculator) ReactionOutcome {
 		SkillValue: skillValueOf(in.Target, enum.Repel.String()),
 		Condition:  cond,
 		AgainstID:  &in.AttackerID,
-		Status: statusRollOf(in.Effects, statuseffect.Test{
+		Status: StatusRollOf(in.Effects, statuseffect.Test{
 			Skill: enum.Repel, Domain: statuseffect.DomainDefense, Reaction: statuseffect.ReactionRepel,
 		}),
 	})

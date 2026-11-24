@@ -738,14 +738,15 @@ func (tr TurnResolver) deriveHit(
 		SkillValue: skill + tr.actorWeaponProficiency(in, a),
 		Condition:  a.Attack.Hit.Context.Condition,
 		AgainstID:  against,
-		Status: statusRollOf(in.Effects[a.GetActorID()], statuseffect.Test{
+		Status: StatusRollOf(in.Effects[a.GetActorID()], statuseffect.Test{
 			Skill: skillNameOf(a.Attack.Hit.SkillName), Domain: statuseffect.DomainAttack,
 		}),
 	})
 }
 
-// statusRollOf é a leitura dos efeitos de status de quem testa para um teste.
-func statusRollOf(effects []statuseffect.Effect, t statuseffect.Test) StatusRoll {
+// StatusRollOf é a leitura dos efeitos de status de quem testa para um teste. A sessão lê pela
+// mesma função os testes que ela deriva (velocidades e skills[]).
+func StatusRollOf(effects []statuseffect.Effect, t statuseffect.Test) StatusRoll {
 	e := statuseffect.RollEffectOf(effects, t)
 	return StatusRoll{Bias: e.Bias, Penalty: e.Penalty, AutoFail: e.AutoFail, RolledOnly: e.RolledOnly}
 }

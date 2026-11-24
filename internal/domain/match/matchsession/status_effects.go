@@ -389,7 +389,11 @@ func (s *MatchSession) DropRefusedByStatusWithReactions(charID uuid.UUID) ([]Sta
 	for _, a := range removed {
 		s.dropFromQueue(a)
 	}
-	return drops, s.reseatForStatus(charID)
+	swapped := s.reseatForStatus(charID)
+	// O que fica pendente lê o conjunto novo: velocidades (a fila se reordena) e skills[]. Depois
+	// do retrato e da saída: o desfazer devolve as que saíram com os valores de antes.
+	s.rederiveForStatus(charID)
+	return drops, swapped
 }
 
 // StatusDrop é uma ação que DropRefusedByStatus tirou da fila, com o retrato do instante da

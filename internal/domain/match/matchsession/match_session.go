@@ -648,6 +648,7 @@ func (s *MatchSession) ApplyMasterAction(
 	// would silently erase a reaction's swap-disadvantage the instant the master edited any
 	// OTHER condition on it (see Action.SystemBias).
 	s.deriveSpeeds(target, target.SystemBias)
+	s.deriveSkills(target)
 	if t == nil {
 		return nil, nil
 	}
@@ -700,6 +701,7 @@ func (s *MatchSession) discardEdits(a *action.Action) {
 	}
 	s.dropEdits(a.GetID())
 	s.deriveSpeeds(a, a.SystemBias)
+	s.deriveSkills(a)
 }
 
 // restoreOriginal writes one capture's original back onto the action. The field keys are the
@@ -919,8 +921,11 @@ func conditionFieldKey(e action.ConditionEdit) string {
 // a later re-add reads them back. Without that, taking a skill out and putting it back would
 // be a free re-roll — the master would only have to dislike a number to be given another one.
 //
-// The list changes and the list does not yet DECIDE anything: nobody reads a Skill's result
-// (combat-engine.md § A corrente de testes). That is stated, not hidden.
+// Cada entrada ganha o total derivado (deriveSkills: dados, valor, condição do mestre e
+// status) antes da captura, para que "tirar e pôr de volta exatamente" compare igual ao
+// original capturado. A lista muda e ainda não DECIDE nada: o total existe, mas nenhum
+// desfecho o lê (combat-engine.md § A corrente de testes — a corrente vai ler). Dito, não
+// escondido.
 func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, masterUUID uuid.UUID) {
 	if s.removedSkillDice == nil {
 		s.removedSkillDice = map[uuid.UUID]map[string]action.RollAttempts{}
@@ -963,15 +968,22 @@ func (s *MatchSession) applySkillEdit(a *action.Action, want []action.Skill, mas
 			memory[name] = attempts
 		}
 	}
+	// As entradas genuinamente novas tiram os dados agora (a PRIMEIRA rolagem de um teste que
+	// não existia); toda a lista ganha o total. Antes da captura: o original capturado tem total,
+	// e o next também precisa ter para que a edição de volta compare igual.
+	calc := service.RollCalculator{}
+	for i := range next {
+		if next[i].Attempts.IsEmpty() {
+			next[i].Attempts = calc.Roll(s.rules, s.rollSource)
+		}
+	}
+	s.deriveSkillList(a.GetActorID(), next)
 	// Captured BEFORE the write, against next — the reconciled list, dice and all — not the
 	// raw want the master sent. That is what lets "strip, then put back exactly" compare equal
 	// to the captured original and erase the row: a re-add reads the SAME dice back from
 	// memory, so incoming here is byte-for-byte what was there before the strip.
 	s.captureOverride(a.GetID(), "skills", match.OriginPlayer, masterUUID, a.Skills, next)
 	a.Skills = next
-	// rollActionDice leaves alone every RollCheck whose dice already fell, so this rolls for
-	// exactly the entries that are genuinely new.
-	s.rollActionDice(a)
 }
 
 // captureOverride records the value about to be displaced, once per field, and erases the
@@ -1658,8 +1670,11 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	}
 
 	s.rollActionDice(r)
+	// skills[] ganha o total em toda reação, livre ou não: é um teste declarado, não uma
+	// velocidade.
+	s.deriveSkills(r)
 
-	// A free reaction derives nothing, records nothing and consumes nothing. That IS the
+	// A free reaction derives no speed, records nothing and consumes nothing. That IS the
 	// discount: done in the exact instant, without opening the guard, it gives the action back.
 	var cancelled []*action.Action
 	if !r.ReactionKind.IsFree() {
@@ -2046,6 +2061,7 @@ func (s *MatchSession) EnqueueAction(playerUUID uuid.UUID, a *action.Action) err
 	s.stackOnChainTail(a)
 	s.rollActionDice(a)
 	s.deriveSpeeds(a, s.swapBias(a.GetActorID()))
+	s.deriveSkills(a)
 	s.nextArrival++
 	s.noteArrival(a.GetID(), s.nextArrival)
 	s.activeQueue.Insert(a)
@@ -2223,6 +2239,12 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 // passes back whatever this action was last derived under. It is a MODE of reading the dice,
 // never an Amount: cada nível tira um dado extra (deriveCheck) e o Derive mantém o melhor ou
 // o pior par do monte.
+//
+// Os status do ator pesam aqui como em todo teste (statuseffect.RollEffectOf): a actionSpeed é
+// lida como um teste de Legerity sem domínio (o Enfraquecido físico a alcança), o moveSpeed
+// como um teste de movimento (o Lento, a lesão de movimento) e, numa fuga, também como a
+// restrição "escape" (o Caído e a Guarda aberta põem a desvantagem nos dois testes dela). Uma
+// mudança de status volta aqui pelo rederiveForStatus.
 func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
@@ -2273,6 +2295,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 			Dimension:  match.DimActionSpeed,
 			SystemBias: systemBias,
 			AgainstID:  againstID,
+			Status:     s.statusRoll(a.GetActorID(), statuseffect.Test{Skill: enum.Legerity}),
 		}).Total
 	}
 
@@ -2291,6 +2314,11 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
+	moveTest := statuseffect.Test{Skill: skill, Domain: statuseffect.DomainMovement, MoveSpeed: true}
+	if a.ReactionKind.Displaces() {
+		// O teste de movimento de uma fuga é o segundo teste dela (spec §16.4 itens 34 e 37).
+		moveTest.Reaction = statuseffect.ReactionEscape
+	}
 	a.Move.Speed.Result = s.deriveCheck(a.Move.Speed, service.RollInput{
 		SkillName:  a.Move.Speed.SkillName,
 		SkillValue: a.Move.Speed.SkillValue,
@@ -2299,6 +2327,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		// No ledger on the move bar: the accumulated difference is an actionSpeed bonus.
 		Dimension:  match.DimActionSpeed,
 		SystemBias: systemBias,
+		Status:     s.statusRoll(a.GetActorID(), moveTest),
 	}).Total
 	// Charge is deliberately not read. The momentum accumulating into CharacterStatus.Velocity
 	// is the movement slice's, and the bar works without it (spec §5, Fase 3).
@@ -2313,6 +2342,81 @@ func skillValueOn(cs *csSheet.CharacterSheet, name enum.SkillName) int {
 		return 0
 	}
 	return v
+}
+
+// statusRoll é a leitura dos efeitos de status de quem testa para um teste que a sessão deriva
+// — a mesma do resolvedor (service.StatusRollOf).
+func (s *MatchSession) statusRoll(charID uuid.UUID, t statuseffect.Test) service.StatusRoll {
+	return service.StatusRollOf(s.statusEffects[charID], t)
+}
+
+// deriveSkills deriva o total de cada teste de skills[] (RollCheck.Result): os dados que já
+// caíram, o valor da ficha, a condição do mestre e os status do ator, lidos como um teste da
+// perícia sem domínio — um Tato declarado é a face do toque (spec §16.4 item 38), e um sentido
+// anulado falha automaticamente (total 0). Nenhum desfecho lê esse total ainda: a corrente de
+// testes vai ler (combat-engine.md § A corrente de testes).
+//
+// Um viés que pede dados que ainda não existem os tira uma vez (deriveCheck); um nome que não é
+// perícia (um teste de atributo) lê valor 0, como no resolvedor (skillValueOf).
+func (s *MatchSession) deriveSkills(a *action.Action) {
+	if a == nil {
+		return
+	}
+	s.deriveSkillList(a.GetActorID(), a.Skills)
+}
+
+// deriveSkillList é o deriveSkills sobre uma lista que ainda não está na ação (applySkillEdit).
+func (s *MatchSession) deriveSkillList(actorID uuid.UUID, skills []action.Skill) {
+	sheet := s.charSheets[actorID]
+	for i := range skills {
+		sk := &skills[i]
+		name, err := enum.SkillNameFrom(sk.SkillName)
+		if err != nil {
+			name = ""
+		}
+		if sk.RollCheck.SkillName == "" {
+			sk.RollCheck.SkillName = sk.SkillName
+		}
+		if sheet != nil && name != "" {
+			sk.SkillValue = skillValueOn(sheet, name)
+		}
+		sk.Result = s.deriveCheck(&sk.RollCheck, service.RollInput{
+			SkillName:  sk.SkillName,
+			SkillValue: sk.SkillValue,
+			Condition:  sk.Context.Condition,
+			Status:     s.statusRoll(actorID, statuseffect.Test{Skill: name}),
+		}).Total
+	}
+}
+
+// rederiveForStatus refaz, depois de uma mudança de status do personagem, o que a sessão deriva
+// das ações dele que ainda não abriram — as da fila e as reações dele no turno aberto: as
+// velocidades (com o mesmo viés do sistema com que cada uma chegou) e skills[]. É o caminho de
+// uma speed editada (ApplyMasterAction → deriveSpeeds): o agendador lê a velocidade na hora de
+// escolher, então uma penalidade nova já reordena a fila. Nenhum dado cai de novo; um viés que
+// cresce tira só os que faltam, uma vez.
+func (s *MatchSession) rederiveForStatus(charID uuid.UUID) {
+	for _, a := range s.activeQueue.All() {
+		if a.GetActorID() == charID {
+			s.deriveSpeeds(a, a.SystemBias)
+			s.deriveSkills(a)
+		}
+	}
+	t := s.openTurn()
+	if t == nil {
+		return
+	}
+	for _, r := range t.GetReactions() {
+		if r.GetActorID() != charID {
+			continue
+		}
+		live := t.ReactionRef(r.GetID())
+		// Uma reação livre não deriva velocidade nenhuma (AttachReaction): só skills[].
+		if !live.ReactionKind.IsFree() {
+			s.deriveSpeeds(live, live.SystemBias)
+		}
+		s.deriveSkills(live)
+	}
 }
 
 // rollActionDice drops the dice for every test the action carries, once, the moment it

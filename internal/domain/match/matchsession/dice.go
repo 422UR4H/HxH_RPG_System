@@ -11,8 +11,8 @@ import (
 // deriveCheck deriva um teste e, se faltarem dados para o viés que ele lê (Short), tira só
 // os que faltam, uma vez (RollCalculator.TopUp), e deriva de novo. É assim que um teste
 // passivo vira rolado no primeiro viés — "se pôs vantagem, é rolado" (decisão do dono,
-// 2026-10-12) — e que um viés que cresce ganha seus extras. As velocidades pedem aqui
-// (deriveSpeeds); os testes que o resolvedor lê pedem por TurnResolution.DiceShort
+// 2026-10-12) — e que um viés que cresce ganha seus extras. As velocidades e skills[] pedem
+// aqui (deriveSpeeds, deriveSkills); os testes que o resolvedor lê pedem por TurnResolution.DiceShort
 // (drawShortDice).
 //
 // Nunca é uma nova rolagem: o que caiu fica, então tirar o viés e pô-lo de volta lê os mesmos
