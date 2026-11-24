@@ -262,6 +262,7 @@ Notas sobre o shape:
 - `nenHexValue` só aparece quando o hexágono de Nen da ficha já tem valor definido (`*int`, `omitempty`).
 - As chaves de `abilities`/`physicalAttributes`/`mentalAttributes`/`spiritualAttributes`/`physicalSkills`/`mentalSkills`/`spiritualSkills`/`principles`/`categories`/`commonProficiencies` são os nomes reais dos enums (`AbilityName`, `AttributeName`, `SkillName`, `PrincipleName`, `CategoryName`, `WeaponName`), com a capitalização exata dos enums Go.
 - `status` usa chaves em minúsculo (`health`, `stamina`, `aura` — via `strings.ToLower`), diferente de todos os outros mapas acima.
+- `status.health.min` é **negativo** e por ficha: `−⌊10 + nível de Vitality + valor de Resistance + bônus dos Físicos⌋` (ex.: `-40`). O HP pode descer até aí; **abaixo** dele o personagem morre na partida (status `dead`, ver [`match-status-effects.md`](match-status-effects.md#morto-dead)). `current` pode, portanto, ser negativo, e um golpe grande o deixa no valor exato (−40 continua −40). `stamina` e `aura` seguem com `min: 0`. O `min` vem da barra gravada: uma ficha gravada antes desta regra pode mostrar `min: 0` até a próxima gravação das barras. O front deve desenhar a barra com `[min, max]`, não com `[0, max]`.
 - Toda entrada de "experiência" (abilities, atributos, skills, principles, categories, proficiências) compartilha o mesmo bloco base `{ level, exp, currExp, nextLvlBaseExp }`, cada tipo adicionando campos próprios (`bonus`, `points`/`value`/`power`, `percent`, `weapons`).
 - A chave de `jointProficiencies` é um nome de grupo livre (string, não vinculado a um enum fixo) definido no domínio de proficiências conjuntas — não fabricamos um valor real aqui; consulte `internal/domain/entity/character_sheet/proficiency/proficiency_manager.go` para a lógica de criação desses grupos.
 
@@ -653,6 +654,13 @@ verificados separadamente no código. `avatarUrl`, `coverUrl`, `playerUuid`,
 todos `omitempty` — ausentes quando não aplicável (ex.: personagem sem
 imagem, ficha ainda sem campanha, campanha sem data de história corrente).
 
+**`deadAt` e a morte na partida.** `deadAt` é a marca de que a ficha morreu. Quem a escreve é só o
+**fim da partida** (`end_match`): quem terminou a partida com o status `dead` ganha o instante real
+do fim; uma ficha que **já** tinha `deadAt` mantém a data anterior; quem teve a morte **desfeita**
+pelo mestre durante a partida tem o `deadAt` **limpo** no mesmo instante. Enquanto a partida corre,
+`deadAt` não muda — o que diz "morto" é o status `dead` na partida
+([`match-status-effects.md`](match-status-effects.md#morto-dead)).
+
 ### `CharacterPrivateOnlyResponse` (campos privados — dono da ficha / mestre da partida)
 
 ```json
@@ -673,7 +681,7 @@ imagem, ficha ainda sem campanha, campanha sem data de história corrente).
   "spiritualsLvl": 1,
   "skillsLvl": 2,
   "stamina": { "min": 0, "current": 18, "max": 20 },
-  "health": { "min": 0, "current": 20, "max": 20 }
+  "health": { "min": -25, "current": 20, "max": 20 }
 }
 ```
 

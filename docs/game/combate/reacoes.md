@@ -62,7 +62,7 @@ automática **não entra** — você toma o dano cheio. A única forma de escapa
 ### Se você já tinha declarado uma ação
 
 Reagir ativamente **consome a ação que você tinha na fila**. E, assim como trocar de ação,
-isso custa **Desvantagem**: o sistema rola de novo e fica com o pior dos dois resultados.
+isso custa **Desvantagem**: o teste ganha um dado a mais e valem os piores dados.
 
 Se você **não** tinha ação declarada, a reação simplesmente vira a sua ação. Sem penalidade.
 

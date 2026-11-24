@@ -28,14 +28,22 @@ Ao resultado dos dados soma-se o valor do personagem no que está sendo testado.
 
 ### Crítico e erro crítico
 
-O que define um crítico **não é o total**, e sim os dois dados:
+O que define um crítico **não é o total**, e sim os dados que valem no teste:
 
 | Situação | Como acontece |
 |----------|---------------|
-| **Crítico** | Ambos os dados saem **10** |
-| **Erro crítico** | Ambos os dados saem **1** |
+| **Crítico** | Todos os dados que valem saem na **face mais alta** (ambos **10** nos 2 D10) |
+| **Erro crítico** | Todos os dados que valem saem **1** |
 
 Ou seja: somar 20 só é possível com dois dez, e somar 2 só com dois uns — mas a leitura é sempre feita nos dados individuais, não na soma.
+
+**O que o crítico faz.** Vale para **qualquer** teste:
+
+- **Crítico:** o resultado do teste — os dados, o valor do personagem e **tudo o que foi somado a ele** — é **dobrado**.
+- **Erro crítico:** esse mesmo resultado é **dividido por dois**, arredondando para baixo.
+- **Acerto crítico num ataque:** além disso, o **dano final** que cada alvo sofre (depois de toda defesa e redução) é **dobrado** — e o dano numa parede também. Dano zero continua zero.
+
+Um teste que **falha automaticamente** (por exemplo, por um sentido anulado) não rola dado e não tem crítico.
 
 ### Classe de Dificuldade (CD)
 
@@ -45,10 +53,10 @@ Alguns testes têm uma **CD** definida pelo mestre: o número que o resultado pr
 
 Sob certas condições, um teste é feito **com vantagem** ou **com desvantagem**:
 
-- **Vantagem** — a rolagem é feita duas vezes e vale o **melhor** resultado.
-- **Desvantagem** — a rolagem é feita duas vezes e vale o **pior** resultado.
+- **Vantagem** — cada nível de vantagem acrescenta **um dado a mais** à rolagem, e valem os **melhores** dados (a mesma quantidade de uma rolagem normal: dois nos 2 D10).
+- **Desvantagem** — cada nível acrescenta um dado a mais, e valem os **piores**.
 
-Vantagens e desvantagens se acumulam e podem se anular entre si.
+Vantagens e desvantagens se acumulam, nível a nível, e **uma cancela a outra**: duas vantagens e uma desvantagem sobram em uma vantagem. Quando o personagem tem um **ajuste em número** (um bônus ou uma penalidade), ele é somado ao resultado e não conta como nível. Há um limite de 10 níveis por teste. Um dado que já caiu **nunca é rolado de novo**: se a vantagem aumenta, só os dados que faltam são rolados.
 
 Um exemplo de desvantagem em combate: **trocar uma ação que você já havia declarado**. Mudar de ideia no meio da batalha custa caro — não compensa abandonar uma ação para tentar outra que exija muitos testes.
 

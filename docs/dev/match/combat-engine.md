@@ -39,28 +39,73 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
 ## Rolagem
 
 - **Teste padrão = 2 D10 somados.** Vale para perícia, acerto e actionSpeed.
-- **Crítico** = ambos os dados 10. **Erro crítico** = ambos 1. Não é a soma — é a combinação.
-  **O motor precisa guardar os dados individuais**, não só o total. `RollContext.Dice` já faz.
+- **Crítico** = todos os dados **mantidos** na face máxima (ambos 10 no 2D10; 20 no D20).
+  **Erro crítico** = todos em 1. Não é a soma — é a combinação, então o motor guarda os dados
+  individuais (`RollOutcome.Dice`). **A regra vive em `match.MatchRules`** (`CriticalTotal`,
+  `CriticalDamage`), nunca em `die`, `enum.DieSides` nem `RollSource`. Vale em **qualquer** teste
+  que rola dados (não nos passivos que ficaram no valor base). Efeito:
+  - **total** = `(dados + valor do teste + todo número somado ao teste) × 2` no crítico; esse mesmo
+    valor `÷ 2` na falha crítica, com **piso verdadeiro** (−7 → −4; o `/` do Go trunca para zero e
+    não serve);
+  - **dano**: um acerto crítico dobra o **dano final de cada alvo** (depois de toda redução; 0
+    continua 0 — `CharacterResult.CriticalDamage` só é `true` se havia dano) e o dano a uma
+    **parede** (`ApplyStructuralDamage(..., critical)`, o rebote não muda). O resíduo que segue na
+    cadeia **não** é dobrado: cada alvo dobra o que ele mesmo toma. Nada disto vale para o dano da
+    arma, que não é teste de acerto (rola um conjunto só e não tem viés).
 - **Passivo vs. ativo.** Testes passivos usam o **valor médio do conjunto de dados** em vez de
   rolar: **11** para 2 D10, **10** para D20. Usado em: actionSpeed (de quem a tem) com `RoundMode == Free`,
   esquiva por reflexo (`Reflexo + 11`), defesa à mão livre, deslocamento Shift.
   > O passivo ser exatamente a média é intencional: rolar tem expectativa **zero** de ganho,
   > então o jogador só arrisca quando precisa de sorte acima da média.
-- **Vantagem/desvantagem**: rola o conjunto duas vezes, vale o melhor/pior.
-  `RollCondition.Bias` (−1/0/+1, acumula).
+- **Vantagem/desvantagem (spec §16.4 item 28).** Cada **nível** acrescenta **um dado extra** do
+  conjunto (`RollAttempts.Extra`); o resultado mantém `SetSize` dados do monte (2 no 2D10, 1 no
+  D20): os maiores na vantagem, os menores na desvantagem (empate: fica o que caiu primeiro). Os
+  níveis das **quatro origens** somam e se cancelam um a um — sistema (`SystemBias`, a troca de
+  reação), mestre (`RollCondition.Bias`, inteiro, não mais só −1/0/+1), ledger e **status**
+  (`RollInput.Status`, `RollEffectOf`) — com teto de `MaxBiasLevels` = 10. Os números (modificador do
+  mestre, do ledger, penalidade de status) **somam** ao total; não viram nível.
 - **Viés num teste passivo o torna rolado** (dono do produto, 2026-10-12; o do sistema desde
-  2026-10-13). O valor base vira o outro conjunto: vantagem fica com o melhor entre o dado e o
-  valor base, desvantagem com o pior (`readPassiveBias`, `roll_calculator.go`), lido pelo viés
-  **líquido** — mestre e sistema somados, como numa rolada. O dado — um conjunto, o primário —
-  cai na primeira vez que um teste é lido com um viés que o pede, e nunca mais: nas velocidades
-  (`deriveSpeeds` → `MatchSession.deriveCheck`) e nos testes que a resolução lê (o resolvedor
-  informa a falta em `TurnResolution.DiceShort`; `MatchSession.ResolveTurn` tira os dados que
-  faltam, uma vez, e resolve de novo). A edição do mestre sozinha não tira dado: um teste que
+  2026-10-13; N níveis desde a fase 2). Um passivo com N níveis rola o conjunto **mais N** dados
+  (2+N no 2D10) e o par mantido é comparado com o valor base: vantagem fica com o melhor dos dois,
+  desvantagem com o pior, empate com a base (`readPassiveBias`, `roll_calculator.go`), lido pelo
+  viés **líquido**. Um efeito de status pode também forçar o teste a ser rolado (`RolledOnly`: a
+  defesa padrão da Guarda aberta).
+- **Rolou uma vez, nunca de novo — o `TopUp`.** O conjunto cai na chegada (`RollCalculator.Roll`,
+  só `Primary`) ou, num passivo, na primeira vez que um viés o pede. Um viés que **cresce** tira só
+  os dados que faltam (`RollOutcome.Short` → `RollCalculator.TopUp`, que completa primeiro o
+  conjunto e põe o resto em `Extra`); um que **diminui** só deixa de ler os últimos extras (o que
+  caiu fica: tirar e repor o viés lê os mesmos dados). `Derive` e `TurnResolver.Resolve` **nunca
+  rolam**: informam a falta (`Short`, `TurnResolution.DiceShort`) e quem pode rolar a tira, uma
+  vez, e deriva de novo — as velocidades e `skills[]` por `MatchSession.deriveCheck`, os testes que
+  a resolução lê por `MatchSession.ResolveTurn` (`drawShortDice`, no endereço do `edit_action`).
+  **Todo comando que muda um viés resolve sob a trava de escrita** (`PeekTurnResolution`, a leitura
+  de leitura, loga em vez de rolar). A edição do mestre sozinha não tira dado: um teste que
   ninguém lê não ganha dado.
+- **Falha automática.** Um `autoFail` de status (sentido anulado, Atordoado, Inconsciente, Morto)
+  faz `Derive` devolver `Total 0`, `AutoFailed`, sem dados lidos nem pedidos e sem crítico.
 - **`RollCondition` é a struct do mestre**: `Bias` = dados; `Modifier` = ajuste manual
   (*"+3 porque teve criatividade estratégica"*).
 
 ⚠️ `docs/game/dados.md` foi corrigido nesta sessão; a implementação precisa bater com ele.
+
+### Efeitos de status na rolagem e a morte
+
+O desenho completo está em [`status-effects.md`](status-effects.md) (seções *Rolagens* e *Morte*);
+aqui, o que o motor de combate precisa saber:
+
+- Quem testa tem os **efeitos de status** lidos por `statuseffect.RollEffectOf(effects, Test)`;
+  `ResolveInput.Effects` os entrega ao resolvedor (acerto: os do **atacante**; reações: os do
+  **alvo**) e a sessão os lê nas velocidades e em `skills[]`. É a quarta origem de viés.
+- **Domínio → teste** (decisão 3 do plano): ataque = o acerto; defesa = a defesa padrão e o aparo;
+  esquiva = o reflexo (padrão, `dodge`, `closedDodge`, escapes) e a evasão; movimento = o
+  `moveSpeed` (o componente de movimento e o segundo teste dos escapes). A velocidade de ação e o
+  dano **não** são testes de domínio; a finta não tem total derivado.
+- **Escape (provisório):** Caído e Guarda aberta põem desvantagem nos **dois** testes de cada
+  escape. TODO até o redesenho do movimento; "rolar sem penalidade" é só um ponto possível dele
+  (spec §16.4 itens 33 e 37), não regra.
+- **Morte:** o fechamento do turno (`closeOpenTurn`) aplica o dano, depois `applyDeaths` aplica o
+  `dead` a quem terminou **abaixo** do mínimo da barra (um além do máximo negativo), antes de o
+  próximo turno abrir. O cálculo do turno aberto só avisa o mestre (`CharacterResult.Dies`).
 
 ## Economia de turno — duas barras
 
@@ -817,8 +862,8 @@ sobrevive ou cai conforme o destino da reação — ver *Movimentos empilhados* 
 
 Se não havia pendente, a reação **vira** a sua ação, sem Desvantagem. Se havia, a Desvantagem
 entra pelo `RollInput` (§ *Onde mora o viés de uma rolagem só*) — e note que Desvantagem é
-**modo de rolagem**, não `Amount`: `RollAttempts` já rola os dois conjuntos, e a Desvantagem só
-escolhe qual ler.
+**modo de rolagem**, não `Amount`: um nível de Desvantagem é um dado extra que o teste lê (o par
+mantido são os menores), não um número que se subtrai.
 
 #### Repelir que falha por 10 ou mais
 
@@ -1205,8 +1250,10 @@ existem e o que cada um faz — fica em código, porque mudá-la muda o jogo.
 
 Os dados caem em **`MatchSession.rollActionDice`**, chamado por `EnqueueAction` e por
 `AttachReaction` — ou seja, no instante em que a action ou a reaction chega — e ficam em
-`action.RollCheck.Attempts` (`RollAttempts{Primary, Secondary}`, movido do pacote `service`
-para `action` para que um `RollCheck` possa carregá-lo).
+`action.RollCheck.Attempts` (`RollAttempts{Primary, Extra}`, movido do pacote `service`
+para `action` para que um `RollCheck` possa carregá-lo). Desde a fase 2 a chegada só rola o
+**conjunto** (`Primary`); os extras de vantagem/desvantagem caem quando um viés os pede (`TopUp`).
+A linha gravada antes guardava `Primary`/`Secondary`: o `Secondary` é ignorado na leitura.
 
 A consequência é a propriedade que sustenta as fases seguintes: **`TurnResolver.Resolve` é
 uma função pura do turno.** Ele deriva, nunca rola. Recalcular a colisão a cada reaction
@@ -1666,33 +1713,41 @@ ler. Não construa um modelo de armadura para preencher isto — é trabalho de 
 Como a Fase 3 fez para actions, mas para reações — a próxima pessoa escrevendo um teste
 roteirizado precisa exatamente disto, ou vai achar por instrumentação como esta fase achou.
 
-⚠️ **A armadilha real não é "quais campos rolam" — é que um teste 2D10 consome QUATRO faces,
-não duas.** `RollCalculator.Roll` (chamado por `rollActionDice`, para **todo** teste do
-conjunto de dados da partida — `MatchRules.DiceSet`, 2 D10) sempre sorteia **os dois
-conjuntos**, `Primary` e `Secondary`, 2 dados cada, **mesmo quando nada usa Vantagem ou
-Desvantagem** e só `Primary` acaba sendo lido. Um plano que reserva 2 faces por teste 2D10 vai
-sortear a metade do que o código realmente consome. Só o dano da arma (`RollCalculator
-.RollDice`, chamado à parte, fora do laço de `test()`) rola um único conjunto — 2 dados para
-uma Espada (D10+D4), sem Secondary, porque dano não tem Vantagem.
+⚠️ **A armadilha real não é "quais campos rolam" — é quantos dados cada teste consome.** Desde a
+fase 2 (spec §16.4 item 28), `RollCalculator.Roll` (chamado por `rollActionDice`, para **todo**
+teste do conjunto de dados da partida — `MatchRules.DiceSet`, 2 D10) rola **só o conjunto**
+(`Primary`, 2 dados no 2D10, 1 no D20). Antes rolava dois conjuntos (`Primary` + `Secondary`) e um
+teste 2D10 consumia **quatro** faces; **não é mais assim**. Os dados extras só caem quando um viés
+os pede, **um por nível** (e, num passivo, o conjunto também cai nessa hora), então um roteiro de
+teste que não usa viés consome **metade** do que consumia. Só o dano da arma (`RollCalculator
+.RollDice`, chamado à parte, fora do laço de `test()`) rola o conjunto da arma — 2 dados para uma
+Espada (D10+D4) — sem vantagem, porque dano não tem.
 
-Por reação (os nomes das perícias são derivados no `buildAction`; o payload não decide nenhum):
+Por reação (os nomes das perícias são derivados no `buildAction`; o payload não decide nenhum), sem
+viés, em 2D10:
 
-| `ReactionKind` | O que rola | Faces (teste 2D10 = 4, sempre) |
+| `ReactionKind` | O que rola | Faces (teste 2D10 = 2) |
 |---|---|---|
 | `nothing` | nada — recusa até as passivas | 0 |
-| `dodge` | `Dodge` (Reflexo) | 4 |
-| `closedDodge` | `Dodge` (Reflexo) + a perícia `Evasion` em `Skills` | 8 |
-| `escape` / `escapeGuard` | `Dodge` (Reflexo) + `Move.Speed` se a categoria não for `Shift` | 4, ou 8 se `Move.Category == Dash` |
-| `closedEscape` | `Dodge` (Reflexo) + `Evasion` em `Skills` + `Move.Speed` se não for `Shift` | 8, ou 12 se `Dash` |
-| `repel` | `Repel` | 4 |
+| `dodge` | `Dodge` (Reflexo) | 2 |
+| `closedDodge` | `Dodge` (Reflexo) + a perícia `Evasion` em `Skills` | 4 |
+| `escape` / `escapeGuard` | `Dodge` (Reflexo) + `Move.Speed` se a categoria não for `Shift` | 2, ou 4 se `Move.Category == Dash` |
+| `closedEscape` | `Dodge` (Reflexo) + `Evasion` em `Skills` + `Move.Speed` se não for `Shift` | 4, ou 6 se `Dash` |
+| `repel` | `Repel` | 2 |
+
+**Com viés**, cada teste lido com N níveis líquidos pede N dados a mais (e um passivo lido com viés
+pede o conjunto **mais** N: 2+N no 2D10), na primeira vez que o viés o pede e uma vez só. Um status
+que força a defesa padrão a ser rolada (Guarda aberta) faz o conjunto dela cair quando a resolução a
+lê. Um teste em **falha automática** não rola nem pede nada.
 
 Um alvo que não anexa nem abre reação nenhuma (silêncio, ou `nothing`) não consome dado algum —
 `resolveCharacterStep` aplica a passiva sem tocar a fonte de dados.
 
 **Exemplo real** (`TestE2E_AreaAttackWithThreeTargetsReactingDifferently`): ataque de Espada
 contra três alvos, A repele. O plano original previa 6 faces (`6,4,7,3,7,4`); o consumo real é
-**10**: `Attack.Hit` (2D10, 4 faces) + dano da Espada (D10+D4, 2 faces, conjunto único) + o
-`Repel` de A (2D10, 4 faces) = 10. B (`nothing`) e C (silêncio) não consomem nada.
+**10** com a regra antiga (dois conjuntos por teste); com a da fase 2 é **6**: `Attack.Hit` (2D10,
+2 faces) + dano da Espada (D10+D4, 2 faces, conjunto único) + o `Repel` de A (2D10, 2 faces) = 6.
+B (`nothing`) e C (silêncio) não consomem nada.
 
 ### O caminho de escrita estava quebrado desde a Fase 2
 
@@ -1774,8 +1829,9 @@ não um acidente de reflection.
 `ApplyMasterAction` edita a action AO VIVO — não existe uma versão paralela para mesclar na
 leitura, porque a action editada JÁ É a action. O preço é que o original se perde no objeto
 vivo, e é exatamente por isso que a captura de override existe (próxima seção). A edição nunca
-rola dado: `RollCalculator.Derive` lê os dois conjuntos que `RollAttempts` guarda desde que a
-action chegou, e reler várias vezes — uma por edição do mestre — nunca é um re-sorteio. A
+re-rola dado: `RollCalculator.Derive` lê os dados que `RollAttempts` guarda desde que a action
+chegou, e reler várias vezes — uma por edição do mestre — nunca é um re-sorteio. Um viés que cresce
+tira só os dados que faltam, uma vez (`TopUp`, no comando que o leu — ver *Rolagem*). A
 economia também não se mexe: barras cobradas, `Speed`s registrados e a ordem já jogada ficam
 como estavam — `bars_updated` já estava no ar desde antes da edição existir, e refazer o preço
 reordenaria o que já foi jogado.
@@ -1850,14 +1906,15 @@ ONDE o código que toca um campo privado pode ser ESCRITO, não onde o valor res
 CHAMADO — é essa distinção que a primeira tentativa errou.
 
 ⛔ **Ainda em aberto, e esta fase deliberadamente não fechou isso:** ninguém lê o resultado de
-uma `Skill`. A corrente de testes está escrita em `docs/game/combate/acoes.md` e não existe em
+uma `Skill` **para decidir um desfecho** (desde a fase 2 cada `Skill` tem o total derivado, com a
+condição do mestre e os efeitos de status, em `RollCheck.Result`, mas nada o consome). A corrente de testes está escrita em `docs/game/combate/acoes.md` e não existe em
 código, então adicionar e remover skills muda uma lista que não decide nada.
 
 ## Pendências estruturais
 
 | Item | Situação |
 |---|---|
-| `RollCalculator` | ✅ Fase 1 — `Roll` sorteia os dois conjuntos uma vez, `Derive` recalcula quantas vezes o mestre editar. ✅ Fase 2 — a `MatchSession` o chama na chegada da action, e ganhou o seam `RollSource` |
+| `RollCalculator` | ✅ Fase 1 — `Roll` sorteia o conjunto uma vez (a fase 2 trocou o `Secondary` pelos extras de viés, `TopUp`), `Derive` recalcula quantas vezes o mestre editar. ✅ Fase 2 — a `MatchSession` o chama na chegada da action, e ganhou o seam `RollSource` |
 | `TurnResolver` — ramo `character` | ✅ Fase 2 — acerto, esquiva por reflexo e defesa passivas, dano e `CharacterResult` |
 | `CharacterStatus` | ✅ Fase 1 — `ResourceBar` (duas barras), `ModifierLedger`, `Stance` reservado |
 | `battle.Blow` | ✅ Fase 2 — construtor e acessores; `defense` virou ponteiro (nil = defesa passiva) |

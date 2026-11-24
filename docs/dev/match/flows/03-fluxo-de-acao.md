@@ -79,7 +79,7 @@ sequenceDiagram
     R->>UC: Execute(session, userUUID, a)
     UC->>S: EnqueueAction(playerUUID, a)
     S->>S: charToPlayer[actorID] == playerUUID? senão ErrActionActorMismatch
-    S->>S: rollActionDice(a) — os DOIS conjuntos, uma vez só
+    S->>S: rollActionDice(a) — o conjunto, uma vez só (extras de viés só quando um viés os pede)
     S->>S: deriveSpeeds(a, systemBias)
     S->>S: activeQueue.Insert(a)
     R-->>P: action_enqueued  (só para quem enviou)

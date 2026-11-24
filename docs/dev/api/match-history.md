@@ -258,7 +258,7 @@ Notas sobre os campos de `action`/`reactions`:
 - `systemBias` é o viés que o **próprio motor** impôs: `0` numa ação comum, `-1` numa reação
   que deslocou uma ação enfileirada (trocar o que você ia fazer custa Desvantagem). Vai para
   **todo** viewer, pela mesma razão que `attempts` vai (item abaixo): o viés é **público por
-  omissão**. Se os dois conjuntos de dados e o `result` já viajam, QUAL conjunto o motor leu
+  omissão**. Se todos os dados (conjunto e extras) e o `result` já viajam, QUAIS dados o motor leu
   já é dedutível — esconder o campo só obrigaria o cliente à álgebra que este repo evita de
   propósito (ver `CharacterResult.ReactionTotal`). Omitido quando é `0`, que é a esmagadora
   maioria das actions.
@@ -280,15 +280,25 @@ Notas sobre os campos de `action`/`reactions`:
   continua sem `ActionPayload` nem `systemBias` — o viés só existe em ações e reações de
   jogador (`buildAction`), nunca em `buildMasterAction`. Ver
   [`match-combat-ws.md`](match-combat-ws.md).
-- `actionwire.RollCheck.attempts` (`primary` e, quando existir, `secondary`) vai para **todo**
-  viewer, sem deny-list própria — isso não viola a política de visibilidade porque o viés é
-  público por omissão: nada esconde QUAL conjunto o motor leu, então mostrar os dois não
-  vaza mais do que o total já vaza. Mas é uma superfície de dados estritamente maior que o
-  WebSocket: `resolution_updated` só emite `diceRolled`, o conjunto efetivamente lido —
-  `attempts` do REST é o único lugar onde o conjunto NÃO lido também aparece.
+- `actionwire.RollCheck.attempts` (`primary` e, quando existirem, `extra` — os dados extras de
+  vantagem/desvantagem, um por nível; **substitui o antigo `secondary`**, e uma linha gravada com
+  `secondary` lê sem extras) vai para **todo** viewer, sem deny-list própria — isso não viola a
+  política de visibilidade porque o viés é público por omissão: nada esconde QUAIS dados o motor
+  leu, então mostrar todos não vaza mais do que o total já vaza. Mas é uma superfície de dados
+  estritamente maior que o WebSocket: `resolution_updated` só emite `diceRolled`, os dados
+  **mantidos** — `attempts` do REST é o único lugar onde os dados NÃO lidos também aparecem.
+  Regra dos dados em [`match-combat-ws.md`](match-combat-ws.md#o-teste-de-dados-vantagem-desvantagem-e-crítico).
+- `actionwire.RollCheck.result` agora também existe em `skills[].rollCheck` (o total derivado com
+  condição e status), com o mesmo corte de números dos demais testes.
 
 Notas sobre `resolution`:
 
+- **Campos novos da fase 2 que o histórico REST NÃO carrega** (decisão desta fase): `criticalDamage`
+  e `dies` por alvo, e `autoFailed` no teste de acerto. Eles vão no `resolution_updated` do
+  WebSocket (e ficam gravados na resolução do banco), mas os DTOs do `GET` de histórico não os
+  expõem. `isCritical`/`isCriticalFailure`/`total` do acerto e o `projectedDamage` (dano final, já
+  dobrado num crítico) seguem valendo. Quem precisar de "morreu" no histórico lê o evento de status
+  `dead` ([`statusEffects`](#efeitos-de-status-no-histórico--kind-statuseffect-e-turnsstatuseffects)).
 - `damageSkill` é a perícia que mediu o dano: `Push`, ou a que o mestre escolheu
   ([`edit_action`](match-combat-ws.md#edit_action) `damageSkill`). Pública, como `rawDamage`.
   **Ausente** em turno sem ataque e em turnos gravados antes da Fase 8, que foram todos `Push`.
@@ -537,6 +547,8 @@ vira um evento. Onde ele entra:
 | com um turno aberto, e esse turno está na árvore | `turns[].statusEffects` daquele turno — **só depois que o turno fecha e é gravado**, como as master actions |
 | sem turno aberto | `rounds[].events`, `kind: "statusEffect"` |
 | com um turno que não foi gravado (reinício) ou que este leitor não vê (ver "Ações de quem estava Escondido") | `rounds[].events` quando o evento não depende de uma ação escondida; do contrário, não aparece |
+
+**A morte** (`kind: "dead"`, `change: "applied"`) entra em `turns[].statusEffects` do turno que **fechou** com o dano que matou, com `actionId` = a ação desse turno (a causa), gravada na transação do próprio fechamento; é pública, então o leitor a vê pelas regras de visibilidade de todo status público. Desfazê-la é um evento `removed` comum (o HP com que a ficha volta não consta do histórico REST; está em `character_hp_changed`).
 
 `turns[].statusEffects` é **sempre lista** (`[]`, nunca `null`), na ordem de `happenedAt`. Em
 `rounds[].events` o evento entra na ordem do tempo, entre os outros `kind`.

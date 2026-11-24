@@ -48,14 +48,15 @@ histórico da partida.
 
 Um teste passivo não rola: usa o valor médio dos dados (11 nos 2 D10). Quando o mestre dá
 **vantagem** ou **desvantagem** a um teste passivo, ele passa a ser **rolado** — e o valor médio
-vira o outro resultado da comparação:
+vira o outro resultado da comparação. Com cada nível de vantagem ou desvantagem, o teste rola os
+dados normais **mais um dado por nível**:
 
-- **com vantagem**, vale o **melhor** entre o dado e o valor médio;
+- **com vantagem**, vale o **melhor** entre os dados que valem e o valor médio;
 - **com desvantagem**, vale o **pior** entre os dois.
 
 O passivo continua sendo o piso (ou o teto): a vantagem traz a chance de ir além, a desvantagem
-traz o risco de ficar abaixo. O dado é rolado **uma vez só**, na primeira vez que alguém pede —
-tirar e pôr a vantagem de volta lê o mesmo dado.
+traz o risco de ficar abaixo. Os dados são rolados **uma vez só**, na primeira vez que alguém pede —
+tirar e pôr a vantagem de volta lê os mesmos dados.
 
 A **desvantagem do sistema** (a de quem troca uma ação declarada) vale do mesmo jeito: um teste
 passivo de quem trocou rola contra o valor médio e fica com o pior. Se o mestre der vantagem a esse

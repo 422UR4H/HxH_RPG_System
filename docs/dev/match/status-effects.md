@@ -1,11 +1,14 @@
-# Efeitos de status — desenho (fase 1)
+# Efeitos de status — desenho (fases 1 e 2)
 
 Contrato do fio: [`../api/match-status-effects.md`](../api/match-status-effects.md). Spec:
 `docs/superpowers/specs/2026-11-15-status-effects-design.md` (e `.pt-br.md`). Plano:
 `docs/superpowers/plans/2026-11-17-status-effects-phase-1.md`.
 
-A fase 1 entrega o **catálogo, o armazenamento, o comando do mestre, a visibilidade e os
-bloqueios**. Tudo o que muda uma rolagem é a fase seguinte (ver "O que não está aqui").
+A fase 1 entregou o **catálogo, o armazenamento, o comando do mestre, a visibilidade e os
+bloqueios**. A fase 2 (plano `docs/superpowers/plans/2026-11-24-status-effects-phase-2.md`) fez os
+efeitos **pesarem nas rolagens** (vantagem/desvantagem, penalidade, falha automática), pôs o
+**crítico** e a **morte** (`dead`) — ver "Rolagens" e "Morte" abaixo e
+[`combat-engine.md`](combat-engine.md).
 
 ## Mapa de pacotes
 
@@ -38,8 +41,9 @@ não como acaba.
 `ForbiddenReactions` e as `Notes` (aviso de domínio e conduta), cada um com a lista de **quem
 causa** (`...By`, usada na mensagem de `blocked_by_status`). A sessão chama `StatusRefusal`
 em `EnqueueAction` e `AttachReactionWithCancels`, depois de toda validação existente e antes de rolar
-dado, consumir ou cobrar. `testPenalty`, `autoFail`, `losesHp`, `recovery`, `triggeredTest` e
-`control` são **declaradas e testadas, e ainda não lidas** pelo motor.
+dado, consumir ou cobrar. `losesHp`, `recovery`, `triggeredTest` e `control` são **declaradas e
+testadas, e ainda não lidas** pelo motor. `testPenalty`, `autoFail` e as `reactionRestricted` de
+**desvantagem** e **só rolada** são lidas, desde a fase 2, por `RollEffectOf` ([Rolagens](#rolagens-fase-2)).
 
 Mapa reação ↔ peça (decisão 9 do plano): `default` = esquiva por reflexo + defesa padrão;
 `dodge` = esquiva por reflexo; `closedDodge` = reflexo + evasão; `escape`/`escapeGuard` = fuga;
@@ -47,9 +51,10 @@ Mapa reação ↔ peça (decisão 9 do plano): `default` = esquiva por reflexo +
 reflexo, evasão; defesa → defesa padrão, aparo; fuga precisa de movimento **e** esquiva (spec
 §5.4).
 
-**G1 (Tato, face equilíbrio), registrado:** prejudicado → ataque, defesa, esquiva e movimento
-recebem a desvantagem/número do próprio status; anulado → uma desvantagem nesses quatro.
-Declarado como peças agora (`sensePieces`), aplicado na fase das rolagens.
+**G1 (Tato, face equilíbrio):** prejudicado → ataque, defesa, esquiva e movimento recebem a
+desvantagem/número do próprio status; anulado → uma desvantagem nesses quatro. Declarado em
+`sensePieces` e **aplicado desde a fase 2** (peças `testPenalty` com escopo de domínio). O **teste
+de equilíbrio** em si (`triggeredTest`, que derrubaria o personagem) continua sem consumidor.
 
 ### A reação padrão sentada segue os status
 
@@ -68,6 +73,101 @@ reações **não abertas** do turno aberto: sentada de mesmo tipo = só os sinal
 tipo diferente ou enviada agora recusada = `DropUnopened` e nova sentada. Reação **aberta** nunca
 é tocada. Uma reação enviada e substituída mantém o que já gastou (barras, ações consumidas):
 nada é devolvido nem registrado.
+
+## Rolagens (fase 2)
+
+**Uma função lê, três chamadores.** `statuseffect.RollEffectOf(effects, Test)` soma as peças de
+todos os efeitos que alcançam **um teste** e devolve `RollEffect{Bias, Penalty, AutoFail,
+RolledOnly}` (`roll_effect.go`). `service.StatusRollOf` o traduz para `service.StatusRoll`, a
+quarta origem de viés de `RollCalculator.Derive` (ao lado do sistema, do mestre e do ledger). Quem
+chama: o **resolvedor** (acerto do atacante; reações do alvo — `ResolveInput.Effects`), a
+**sessão** (`deriveSpeeds`, `deriveSkills`) e nada mais. `Summarize` continua dono do **bloqueio**
+(`forbidden`); `RollEffectOf` **não lê** `forbidden`.
+
+**O `Test` descreve o teste, não como rola:** `{Skill, Domain, Reaction, MoveSpeed}`. Quais peças o
+alcançam (`scopeReaches`): escopo de **aptidão** (Debilitado) → a aptidão da perícia
+(`AptitudeOfSkill`: o conjunto Focus/WillPower/SelfKnowledge/Coa/Mop/Aop é espiritual, qualquer
+outra perícia é física, não há mental); escopo de **domínio** (Lesionado, Visão anulada, G1) → o
+domínio do teste; escopo de **sentido** → a perícia do sentido (`SenseOfSkill`; no Tato só a face
+**toque** — um teste de Tato declarado numa ação é lido como toque, provisório, spec §16.4 item
+38); escopo de **moveSpeed** (Lento). `reactionRestricted` com `disadvantage` soma um nível de
+viés quando a `Reaction` do teste é a da peça; `rolledOnly` faz a defesa padrão ser rolada.
+
+**Tabela domínio → teste** (decisão 3 do plano):
+
+| Domínio | Testes |
+|---|---|
+| ataque | o acerto (`hit`) |
+| defesa | a defesa padrão e o aparo (`repel`) |
+| esquiva | o reflexo (esquiva padrão, `dodge`, `closedDodge` e o reflexo dos escapes) e a evasão |
+| movimento | `moveSpeed` (o componente de movimento e o segundo teste dos escapes) |
+| — | `actionSpeed` (Legerity) e o dano **não** são testes de domínio; a finta não tem total derivado e não recebe nada |
+
+O Debilitado pesa em **todo** teste da aptidão (acerto, reflexo, evasão, defesa, aparo,
+`actionSpeed`, `moveSpeed` e `skills[]`). **`skills[]`** ganhou o total derivado
+(`RollCheck.Result`, decisão 5): `deriveSkills` o recalcula na chegada, a cada edição do mestre e a
+cada mudança de status, e nada o lê para um desfecho ainda (a corrente de testes lerá).
+
+**Escapes (provisório).** O Caído e a Guarda aberta põem desvantagem nos **dois** testes de **cada
+um** dos três escapes (o reflexo e o `moveSpeed`, ambos com `Reaction: escape`); o Caído também
+pesa na esquiva por reflexo e no aparo. É **provisório**, TODO até o redesenho do movimento: que o
+Caído "role" sem penalidade é só **um ponto possível** desse desenho, não regra (palavras do dono,
+spec §16.4 itens 33 e 37). O Caído **não** bloqueia nada; a Guarda aberta proíbe esquiva por
+reflexo e aparo e deixa a defesa padrão só rolada.
+
+**Falha automática.** `autoFail` por sentido (Atordoado, Inconsciente, Morto; sentido anulado) faz
+`Derive` devolver `Total 0`, `AutoFailed`, sem dados e sem crítico: **nada é rolado** e o teste não
+pede dados.
+
+**Mudou um status → re-deriva.** `MatchSession.rederiveForStatus` (chamado ao fim de
+`SetStatusEffects`/`ReplaceStatusEffects`) refaz as velocidades das ações **na fila** do
+personagem e das reações dele no turno aberto, e o `skills[]` de todas (a fila é reordenada pelo mesmo caminho de uma velocidade editada). Com
+turno aberto, a sala republica o cálculo (`turnTouched`).
+
+**Invariante: ler nunca rola, e todo comando que muda o viés resolve sob a trava de escrita.**
+`Derive` e `TurnResolver.Resolve` nunca rolam: um teste que pede mais dados do que existem
+informa `RollOutcome.Short`/`TurnResolution.DiceShort` e quem **pode** rolar (a sessão: `deriveCheck`,
+`ResolveTurn`/`drawShortDice`) tira só os que faltam, **uma vez**. A leitura de somente-leitura
+(`PeekTurnResolution`) loga em vez de rolar. Todo comando que muda um viés (edição, abertura,
+mudança de status) tem de resolver sob a trava de escrita.
+
+## Morte (fase 2)
+
+Decisões do dono: spec §16.4 itens 28–32 e `docs/superpowers/specs/2026-11-15-status-effects-design.pt-br.md`.
+
+- **Mínimo da barra.** `HealthPoints.min = -NegativeMax()`, onde `NegativeMax = ⌊10 + nível de
+  Vitality + valor de Resistance + bônus de Físicos⌋` (recalculado em `Upgrade`). `DecreaseAt` não
+  tem piso (o HP exato fica: −40 é −40) e `SetCurrent` só limita pelo máximo.
+- **Quando morre.** Quando o HP **aplicado** fica **abaixo** do mínimo (um além; no mínimo é vivo).
+  É decidido pelo HP **aplicado no fechamento** (`matchsession/death.go`, `applyDeaths`), não pelo
+  `Dies` da resolução, que é só a **prévia** do mestre (`dies` em `service/turn_resolver.go`, por
+  alvo, não cumulativo, zerado para quem não é mestre em `ProjectResolution`).
+- **Fluxo no fechamento** (`close_turn`, `open_next_action`, `pull_action`, os três por
+  `closeOpenTurn`): `applyResolution` → `applyDeaths` (aplica o `dead` a cada ficha danificada que
+  ficou abaixo do mínimo e ainda não estava morta, e tira da fila o que ela tinha pelo mesmo caminho
+  de qualquer status) → `advanceLedgers`. O resultado vai em `TurnTransition.Deaths` (as gravações,
+  uma aplicação por morto) e `DeathDrops` (as ações que saíram da fila). Se a ação que o agendador
+  tinha escolhido para abrir era de quem morreu, `open_next_action` escolhe de novo.
+- **Sala.** `recordDeathsLocked` carimba os eventos como os de qualquer mudança, **mas no turno que
+  fechou** (e no round dele) e os guarda em `turnWrites.deaths`, que o `persistClosedTurn` leva em
+  `TurnCloseData`: o Morto entra **na transação do turno que o causou**. As ações derrubadas são
+  registradas como canceladas pelo mestre, também nesse turno. **Ordem dos avisos:**
+  `broadcastHpChanges` (HP que matou) → `announceDeaths` (`action_cancelled` das ações derrubadas e a
+  lista nova de status de cada morto, por `syncStatusViews`, pela névoa) → `broadcastTurnClosed`.
+- **O que o `dead` é.** Peça de `Unconscious` (`Pieces` dos dois são `stunnedPieces(0, false)`),
+  `PublicByDefault`, sem parâmetros, sem apelido, **não traz o Caído**, sem saída própria. O caso de
+  uso recusa aplicá-lo à mão (`status_effect_invalid`, "O Morto entra só pela regra.").
+- **Desfazer.** `StatusEffectsUC.Remove(..., hp *int)`: valida **tudo antes** de mexer na sessão;
+  `hp` só no `dead`; padrão = o mínimo, só se o HP estiver abaixo (nunca rebaixa); igual ao HP de
+  agora não é mudança. A mudança volta em `StatusEffectChange.HP`. A sala marca a ficha em
+  `unwrittenSheets` (`markSheetsUnwrittenLocked`): fora de turno, o `flushStatusEffects` grava as
+  barras na **mesma transação** dos efeitos (`StatusEffectRepo.Write(ops, bars)`); dentro de um turno,
+  o fechamento as leva como leva qualquer ficha dele. **Efeito colateral intencional:** o flush leva
+  **toda** ficha em `unwrittenSheets`, inclusive as de um fechamento que falhou antes — as duas
+  coisas (status e HP) ficam pendentes juntas ou vão juntas.
+- **A marca da ficha (`dead_at`)** só é escrita no **fim da partida**: a sessão registra quem morreu
+  e quem teve a morte desfeita (`DeadMarks()`); `PersistMatchEnd` faz `dead_at = COALESCE(dead_at,
+  fim)` ou `NULL`, na transação do fim.
 
 ## Quem vê (lista) e visão (névoa)
 
@@ -290,7 +390,8 @@ merge. Não é tratado nesta fase.
 
 ## O que não está aqui
 
-Rolagens (penalidades, desvantagem, falha automática, Lento, G1), testes automáticos, dano e
-recuperação por round, asfixia, "não usa habilidades" (Nen), revelar a um jogador só (a revelação
-é para todos), push de WS depois de revelar e desfazer depois do fechamento do turno. Lista no
-contrato, §10.
+Testes automáticos (resistência ao entrar, equilíbrio do Tato, Recuperação, Inconsciente
+automático), dano e recuperação por round, um comando de **editar o HP** do mestre, asfixia e
+Fadiga, "não usa habilidades" (Nen), a regra de escape por tipo (provisória, aguarda o redesenho do
+movimento), revelar a um jogador só (a revelação é para todos), push de WS depois de revelar e
+desfazer depois do fechamento do turno. Lista no contrato, §10.

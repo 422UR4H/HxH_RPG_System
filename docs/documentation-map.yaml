@@ -349,6 +349,41 @@ mappings:
       - path: docs/dev/api/match-status-effects.md
         confidence: possibly_affected
     notes: Aplicar, editar, remover (sem I/O); tudo ou nada
+  - code_path: internal/domain/statuseffect/roll_effect.go
+    dev_docs:
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+    notes: RollEffectOf — o que os efeitos fazem a um teste (viés, penalidade, falha automática, só rolada); tabela domínio → teste; tabela "O que pesa nas rolagens" do contrato
+  - code_path: internal/domain/match/matchsession/death.go
+    dev_docs:
+      - path: docs/dev/match/status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-status-effects.md
+        confidence: directly_affected
+      - path: docs/dev/api/character-sheet.md
+        confidence: possibly_affected
+    notes: Morte no fechamento do turno (applyDeaths), dead_at só no fim da partida, remove_status_effect com hp
+  - code_path: internal/domain/match/matchsession/dice.go
+    dev_docs:
+      - path: docs/dev/match/combat-engine.md
+        confidence: directly_affected
+      - path: docs/dev/api/match-combat-ws.md
+        confidence: possibly_affected
+    notes: deriveCheck/drawShortDice — completar só os dados que faltam, uma vez (TopUp)
+  - code_path: internal/domain/entity/character_sheet/status/health_points_bar.go
+    dev_docs:
+      - path: docs/dev/character-sheet/status.md
+        confidence: directly_affected
+      - path: docs/dev/api/character-sheet.md
+        confidence: directly_affected
+    game_docs:
+      - path: docs/game/ficha-de-personagem/status.md
+        confidence: possibly_affected
+    notes: HP mínimo negativo por ficha (status.health.min), DecreaseAt sem piso
   - code_path: internal/gateway/pg/statuseffect/
     dev_docs:
       - path: docs/dev/match/status-effects.md
@@ -625,7 +660,7 @@ mappings:
     dev_docs:
       - path: docs/dev/match/combat-engine.md
         confidence: directly_affected
-    notes: MatchRules — conjunto de dados, degrau da escada, timer de reação, fog_mode (partida ?? mapa)
+    notes: MatchRules — conjunto de dados, degrau da escada, timer de reação, fog_mode (partida ?? mapa); regra do crítico (CriticalTotal, CriticalDamage), teto de níveis de viés
 
   # ─── Map: Domain Entity + Service ───
   - code_path: internal/domain/map/
