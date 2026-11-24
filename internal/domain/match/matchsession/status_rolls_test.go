@@ -216,3 +216,23 @@ func TestStatusEffectsOnSessionRolls(t *testing.T) {
 		}
 	})
 }
+
+// A ação do turno aberto também tem skills[] re-derivado numa mudança de status (decisão 5:
+// "a cada edição e mudança de status"), não só as da fila e as reações.
+func TestStatusChangeRederivesOpenTurnActionSkills(t *testing.T) {
+	f := newRollsFixture(t)
+	mustEnqueue(t, f.s, f.playerA, withSkills(attackBy(f.a, f.b), enum.Vision))
+	tn := mustOpen(t, f.s)
+	open := tn.ActionRef()
+	if v := skillEntry(t, open, enum.Vision).Result; v == 0 {
+		t.Fatalf("Vision entry = 0 before the status, want a derived total")
+	}
+
+	blind := effectOf(f.a, statuseffect.KindSense, statuseffect.Params{Level: statuseffect.SenseNullified})
+	blind.Sense = statuseffect.SenseVision
+	changeStatus(f.s, f.a, blind)
+
+	if v := skillEntry(t, open, enum.Vision).Result; v != 0 {
+		t.Errorf("open turn's Vision entry = %d, want 0 (falha automática)", v)
+	}
+}

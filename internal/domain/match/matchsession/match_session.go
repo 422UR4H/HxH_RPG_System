@@ -1687,6 +1687,10 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	// have fallen for it and the master's edits on it — nothing is rolled again.
 	if seated != nil && r.ReactionKind == seated.ReactionKind {
 		s.inheritSeated(seated, r)
+	} else if seated != nil && r.ReactionKind.KeepsDefault() {
+		// Uma esquiva, uma esquiva fechada ou uma fuga defensiva mantêm a defesa padrão: os
+		// dados dela que já caíram e a condição do mestre vão junto, senão cairiam de novo.
+		s.inheritSeatedDefaultDefense(seated, r)
 	}
 
 	s.rollActionDice(r)
@@ -1700,15 +1704,13 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	if !r.ReactionKind.IsFree() {
 		var consumed []*action.Action
 		r.ConsumedActionIDs, consumed, cancelled = s.consumePendingFor(r)
-		// Swapping what you were going to do costs Disadvantage — um nível: o motor tira um
-		// dado a mais e mantém o pior par. It is a MODE of reading the dice, never an
-		// Amount: o nível de desvantagem tira um dado extra (deriveCheck, em deriveSpeeds) e
-		// o par mantido é o pior do monte.
-		// With nothing queued there was no swap, so there is no penalty.
-		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
-		// never two. Doing, sooner, what the queue already said is NOT a swap
-		// (keepsQueuedIntent: fleeing to where the queued move was going, repelling whoever
-		// the queued attack was aimed at).
+		// Trocar o que ia fazer custa uma Desvantagem — um nível: o motor tira um dado a mais
+		// (deriveCheck, em deriveSpeeds) e mantém o pior par do monte. É um MODO de ler os
+		// dados, nunca um Amount.
+		// Sem nada na fila não houve troca, então não há penalidade.
+		// Ter cancelado antes neste round também é troca; as duas são uma Desvantagem só,
+		// nunca duas. Fazer mais cedo o que a fila já dizia NÃO é troca (keepsQueuedIntent:
+		// fugir para onde o movimento da fila ia, repelir quem o ataque da fila mirava).
 		systemBias := 0
 		if (len(consumed) > 0 && !keepsQueuedIntent(r, consumed, act.GetActorID())) || s.swapBias(r.GetActorID()) < 0 {
 			systemBias = -1
@@ -1751,6 +1753,26 @@ func (s *MatchSession) inheritSeated(seated, r *action.Action) {
 		s.overrides[r.GetID()] = moved
 		delete(s.overrides, seated.GetID())
 	}
+}
+
+// inheritSeatedDefaultDefense move só a defesa padrão da reação sentada (dados e condição do
+// mestre, com a captura "defense.condition" dele) para uma reação de outro tipo que a mantém
+// (KeepsDefault). A esquiva sentada não vai: o tipo novo declara o próprio teste de esquiva.
+func (s *MatchSession) inheritSeatedDefaultDefense(seated, r *action.Action) {
+	if seated.DefaultDefense != nil {
+		r.DefaultDefense = seated.DefaultDefense
+	}
+	field := conditionFieldKey(action.ConditionEdit{Field: action.FieldDefense})
+	ov, ok := s.overrides[seated.GetID()][field]
+	if !ok {
+		return
+	}
+	ov.ActionID = r.GetID()
+	if s.overrides[r.GetID()] == nil {
+		s.overrides[r.GetID()] = map[string]match.OverriddenValue{}
+	}
+	s.overrides[r.GetID()][field] = ov
+	delete(s.overrides[seated.GetID()], field)
 }
 
 // consumePendingFor pulls this character's about-to-open action off the queue, once per bar the
@@ -2254,11 +2276,10 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 // Action.SystemBias for how a re-derive stays honest about the bias the action actually
 // arrived under.
 //
-// systemBias is the engine-imposed advantage/disadvantage for THIS derivation — a reaction
-// that swapped out a queued action passes -1, everyone else passes 0, and ApplyMasterAction
-// passes back whatever this action was last derived under. It is a MODE of reading the dice,
-// never an Amount: cada nível tira um dado extra (deriveCheck) e o Derive mantém o melhor ou
-// o pior par do monte.
+// systemBias é a vantagem/desvantagem que o motor impõe NESTA derivação — uma reação que
+// trocou uma ação da fila passa -1, todo o resto passa 0, e o ApplyMasterAction devolve o viés
+// com que esta ação foi derivada da última vez. É um MODO de ler os dados, nunca um Amount:
+// cada nível tira um dado extra (deriveCheck) e o Derive mantém o melhor ou o pior par do monte.
 //
 // Os status do ator pesam aqui como em todo teste (statuseffect.RollEffectOf): a actionSpeed é
 // lida como um teste de Legerity sem domínio (o Enfraquecido físico a alcança), o moveSpeed
@@ -2411,7 +2432,8 @@ func (s *MatchSession) deriveSkillList(actorID uuid.UUID, skills []action.Skill)
 
 // rederiveForStatus refaz, depois de uma mudança de status do personagem, o que a sessão deriva
 // das ações dele que ainda não abriram — as da fila e as reações dele no turno aberto: as
-// velocidades (com o mesmo viés do sistema com que cada uma chegou) e skills[]. É o caminho de
+// velocidades (com o mesmo viés do sistema com que cada uma chegou) e skills[]; da ação do
+// próprio turno aberto, só skills[] (a velocidade já foi usada para abri-la). É o caminho de
 // uma speed editada (ApplyMasterAction → deriveSpeeds): o agendador lê a velocidade na hora de
 // escolher, então uma penalidade nova já reordena a fila. Nenhum dado cai de novo; um viés que
 // cresce tira só os que faltam, uma vez.
@@ -2425,6 +2447,11 @@ func (s *MatchSession) rederiveForStatus(charID uuid.UUID) {
 	t := s.openTurn()
 	if t == nil {
 		return
+	}
+	// A ação do próprio turno aberto já não deriva velocidade (abriu), mas skills[] segue os
+	// status como em toda edição.
+	if open := t.ActionRef(); open.GetActorID() == charID {
+		s.deriveSkills(open)
 	}
 	for _, r := range t.GetReactions() {
 		if r.GetActorID() != charID {

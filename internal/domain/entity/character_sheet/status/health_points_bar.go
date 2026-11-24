@@ -34,13 +34,14 @@ func NewHealthPoints(
 }
 
 func (hp *HealthPoints) Upgrade() {
+	// O mínimo da barra é negativo e por ficha: -⌊10 + nível de Vitality + valor de
+	// Resistance + bônus de Físicos⌋ (spec §7 / §16.4 item 29).
+	hp.min = -hp.NegativeMax()
+
 	// old formula
 	// this.hpMax = (this.getProHp() + this.modCon + this.coefHp) * this.lvl + this.valCon + Ficha.getHP_INICIAL();
 	// new formula -> attrBonus * (skLvl + attrLvl + attrPoints)
 
-	// O mínimo da barra é negativo e por ficha: -⌊10 + nível de Vitality + valor de
-	// Resistance + bônus de Físicos⌋ (spec §7 / §16.4 item 29).
-	hp.min = -hp.NegativeMax()
 	// TODO: check how the buff interferes here
 	coeff := float64(hp.vitality.GetLevel() + hp.resistance.GetValue())
 	bonus := hp.physicals.GetBonus()
