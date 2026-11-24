@@ -276,7 +276,7 @@ Columns: what it does (the master's sentence) · how it enters · how it ends.
   (2) until the body recovers (flash, blast, sand) — Recovery every round with the origin's skill;
   (3) until treated (pierced eye) — it is an injury.
 - **Strong flash = Vision nullified, not a stun**; it leaves by beating **Tenacity**. [owner]
-- **Vision nullified → disadvantage on attack and on defense.** Future: training/ability removes it
+- **Vision nullified → disadvantage on attack, defense and dodge** (§16.4, item 35). Future: training/ability removes it
   (En). [owner]
 - One status per sense; the level goes up from impaired to nullified, it does not duplicate.
 - **Tact has three faces** [owner]: touch, balance, preemption. The master freely marks 1, 2 or all 3.
@@ -397,7 +397,7 @@ All [owner], skills [Claude]:
 |---|---|---|---|---|---|---|---|
 | **Airborne** | ✓ | trajectory only | ✗ | ✓ | ✓ | ✓ | ✗ |
 | **Open guard** | ✓ | ✓ | ✗ | ✓ | ✓ rolled only | ✗ (parrying counts as armed defense) | ✓ with disadvantage |
-| **Prone** | ✓ | only roll / slide | ✓ with disadvantage | ✓ | ✓ | ✓ with disadvantage | ✓ only by rolling or sliding, no extra penalty |
+| **Prone** | ✓ | only roll / slide | ✓ with disadvantage | ✓ | ✓ | ✓ with disadvantage | ✓ with disadvantage — provisional until movement (§16.4, item 33) |
 | **Restrained** | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | **Paralyzed** | per the domains | per the domains | per (dodge) | per (dodge) | per (defense) | per (defense) | per (movement + dodge) |
 | **Dazed / Stunned / Unconscious** | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
@@ -472,8 +472,8 @@ Nothing beyond that is automatic: Stunned does not knock down on its own.
   - **What generates a critical is the test**, never the damage die: both dice of the test at 10 =
     critical; both at 1 = critical failure. A 2 D12 weapon that rolls 12 and 12 deals 24 damage and
     that's it.
-  - **In any test** (hit, dodge, defense, resistances): critical → (dice + test value) × 2;
-    critical failure → ÷ 2, rounded down.
+  - **In any test** (hit, dodge, defense, resistances): critical → (dice + test value + every
+    number added to the test) × 2; critical failure → ÷ 2, rounded down (§16.4, item 28).
   - **On the hit**, in addition: critical **doubles the FINAL damage** — what comes out of the HP,
     after all reductions. Final damage 0 stays 0. Also applies to walls and (future) objects. On a
     critical hit both things apply together: the test total doubles and the final damage doubles.
@@ -483,7 +483,8 @@ Nothing beyond that is automatic: Stunned does not knock down on its own.
     the layers above.
 - **Death** [owner]: is **permanent**; the **master can undo it**; the **token stays on the map as a
   body**, can be carried, and can be revived or controlled by an ability (e.g. corpse manipulation)
-  — TODO Nen. **Everyone sees** that it died. It appears the way the dead NPC already appears in the
+  — TODO Nen. **Everyone sees** that it died, following the fog; in the campaign, only once the match ends
+  (§16.4, items 31–32). It appears the way the dead NPC already appears in the
   campaign: **dead tag and darkened card**. (Today an NPC "forced as dead" is left with HP at the
   maximum, which makes no sense: the one dead by the rule keeps the HP where it died.)
 - **The master always sees the death before the table** [owner]: inside the turn it appears in the
@@ -789,7 +790,38 @@ automatic roll is costly in it — hence few rolls per round).
     appears, to whoever does not perceive the target, as an attack with no visible target. It
     already works this way.
 
-### 16.4 From the implementer (the owner was informed)
+### 16.4 Owner — 2026-11-24 (phase 2: rolls, negative HP and death)
+
+28. **A critical doubles all the power added to the dice**, not only the skill: critical = (dice +
+    test value + every number added to the test) × 2; critical failure = the same ÷ 2, rounded down.
+    E.g.: dice 10 + 10, skill 8, Weakened body −3 → (20 + 8 − 3) × 2 = **50**.
+29. **Whoever dies from a big blow keeps the HP where they died.** HP 10, negative maximum 16, blow
+    of 50 → HP **−40**. The bar will show, once designed, the character's minimum (−16) and the value
+    beyond it (the −17, the −40). The negative maximum can be read from the sheet.
+30. **Undoing death = the master removing the Dead status**, after the turn closes. (Inside the turn
+    there is no death to undo: the master's calculation only warns "dies", and if he changes the
+    blow before closing, the character does not die.) On removal, **the master may give the HP the
+    character comes back with; if he does not, HP rises to the negative maximum** (−16 in the
+    example). A command for the master to set HP directly comes later. Revival by a Nen ability: TODO.
+31. **Death in the campaign:** death by the rule fills the sheet's dead mark (the "Morto" tag and the
+    darkened card the campaign already uses) and the dead character's status is explicit. **The mark
+    only reaches the campaign when the match is ended**, not instantly. Undoing death clears it.
+32. **Death follows the fog at the table**, like the other public statuses (§16.1, item 4): whoever
+    does not see the piece only receives Dead when it comes into sight; without a map, everyone sees
+    at once. §7's "everyone sees" is to be read this way.
+33. **Prone weighs on all three escapes** (escape and escape with guard, which use Dash, and the
+    closed escape, which uses Shift), with disadvantage. **Provisional:** movement is still being
+    designed as a whole; "rolling without penalty" is only a possible point of that design, not a
+    rule. Leave a TODO in the code, on Prone's piece and where the escape reads the disadvantage.
+34. **Open guard: the escape has disadvantage on both tests**, dodge and movement, one level each
+    (the escape only passes if both pass).
+35. **Vision nullified weighs on attack, defense and dodge** (reflex, evasion and the escapes'
+    dodge), one level of disadvantage per test.
+36. **The phase 2 front PR** carries the HP bar minimum in the sheet engine (parity) and the
+    "critical ×2" and "dies" marks in the master's calculation, so the rule can be validated at the
+    table. The rest of the visuals stays with the PD session.
+
+### 16.5 From the implementer (the owner was informed)
 
 - Re-applying a status the character already has is refused; the master edits the existing one.
   Several characters at once: all or nothing.

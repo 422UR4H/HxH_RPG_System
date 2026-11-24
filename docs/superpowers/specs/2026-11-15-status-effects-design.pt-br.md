@@ -272,7 +272,7 @@ Colunas: o que faz (a frase do mestre) · como entra · como acaba.
   (2) até o corpo se recuperar (clarão, estouro, areia) — Recuperação a cada round com a perícia da
   origem; (3) até ser tratado (olho perfurado) — é ferimento.
 - **Clarão forte = Visão anulada, não atordoamento**; sai vencendo a **Tenacidade**. [dono]
-- **Visão anulada → desvantagem no ataque e na defesa.** Futuro: treino/habilidade tira (En). [dono]
+- **Visão anulada → desvantagem no ataque, na defesa e na esquiva** (§16.4, item 35). Futuro: treino/habilidade tira (En). [dono]
 - Um status por sentido; o nível sobe de prejudicado para anulado, não duplica.
 - **Tato tem três faces** [dono]: toque, equilíbrio, preempção. O mestre marca livremente 1, 2 ou
   as 3. Só o **equilíbrio** afetado pesa sozinho em ataque, defesa, esquiva e movimento, e dispara
@@ -391,7 +391,7 @@ Tudo [dono], perícias [Claude]:
 |---|---|---|---|---|---|---|---|
 | **No ar** | ✓ | só a trajetória | ✗ | ✓ | ✓ | ✓ | ✗ |
 | **Guarda aberta** | ✓ | ✓ | ✗ | ✓ | ✓ só rolada | ✗ (aparar vale como defesa armada) | ✓ com desvantagem |
-| **Caído** | ✓ | só rolar / deslizar | ✓ com desvantagem | ✓ | ✓ | ✓ com desvantagem | ✓ só rolando ou deslizando, sem penalidade extra |
+| **Caído** | ✓ | só rolar / deslizar | ✓ com desvantagem | ✓ | ✓ | ✓ com desvantagem | ✓ com desvantagem — provisório até o movimento (§16.4, item 33) |
 | **Preso** | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | **Paralisado** | conforme os domínios | conforme os domínios | conforme (esquiva) | conforme (esquiva) | conforme (defesa) | conforme (defesa) | conforme (movimento + esquiva) |
 | **Atônito / Atordoado / Inconsciente** | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
@@ -463,7 +463,7 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
   - **O que gera crítico é o teste**, nunca o dado de dano: os dois dados do teste em 10 = crítico;
     os dois em 1 = erro crítico. Uma arma 2 D12 que tira 12 e 12 dá 24 de dano e pronto.
   - **Em qualquer teste** (acerto, esquiva, defesa, resistências): crítico → (dados + valor de
-    teste) × 2; erro crítico → ÷ 2, para baixo.
+    teste + todos os números somados ao teste) × 2; erro crítico → ÷ 2, para baixo (§16.4, item 28).
   - **No acerto**, além disso: crítico **dobra o dano FINAL** — o que sai do HP, depois de todas as
     reduções. Dano final 0 continua 0. Vale também para paredes e (futuros) objetos. No acerto crítico valem as duas coisas juntas: o total do teste
     dobra e o dano final dobra. [dono confirmou]
@@ -472,7 +472,7 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
     regras das camadas acima.
 - **Morte** [dono]: é **permanente**; o **mestre pode desfazer**; a **peça fica no mapa como
   corpo**, pode ser carregada, e pode ser reanimada ou controlada por habilidade (ex.: manipulação
-  de cadáveres) — TODO Nen. **Todos veem** que ele morreu. Aparece como o NPC morto já aparece
+  de cadáveres) — TODO Nen. **Todos veem** que ele morreu, seguindo a névoa; na campanha, só ao encerrar a partida (§16.4, itens 31–32). Aparece como o NPC morto já aparece
   na campanha: **tag de morto e card escurecido**. (Hoje um NPC "forçado como morto" fica com o HP
   no máximo, o que não faz sentido: o morto pela regra fica com o HP onde morreu.)
 - **O mestre sempre vê a morte antes da mesa** [dono]: dentro do turno ela aparece no cálculo, que
@@ -769,7 +769,38 @@ automática custa caro nela — por isso poucas rolagens por round).
 27. **Golpe no vazio** [2026-11-21]: um ataque cujo único alvo é um Escondido que esquivou aparece,
     para quem não percebe o alvo, como ataque sem alvo visível. Já funciona assim.
 
-### 16.4 De quem implementou (o dono foi informado)
+### 16.4 Do dono — 2026-11-24 (fase 2: rolagens, HP negativo e morte)
+
+28. **O crítico dobra todo o poder somado aos dados**, não só a perícia: crítico = (dados + valor de
+    teste + todos os números somados ao teste) × 2; erro crítico = o mesmo ÷ 2, para baixo. Ex.:
+    dados 10 + 10, perícia 8, Corpo debilitado −3 → (20 + 8 − 3) × 2 = **50**.
+29. **Quem morre num golpe grande fica com o HP onde morreu.** HP 10, máximo negativo 16, golpe de
+    50 → HP **−40**. A barra mostrará, quando desenhada, o mínimo do personagem (−16) e o valor além
+    dele (o −17, o −40). O máximo negativo pode ser lido da ficha.
+30. **Desfazer a morte = o mestre remover o status Morto**, depois do fechamento do turno. (Dentro do
+    turno não há morte para desfazer: o cálculo do mestre só avisa "morre", e se ele mudar o golpe
+    antes de fechar, o personagem não morre.) Ao remover, **o mestre pode informar o HP com que o
+    personagem volta; sem informar, o HP sobe para o máximo negativo** (−16 no exemplo). Um comando
+    para o mestre mexer no HP direto virá depois. Reanimação por habilidade Nen: TODO.
+31. **Morte na campanha:** a morte pela regra preenche a marca de morto da ficha (a tag "Morto" e o
+    card escurecido, que a campanha já usa) e o status do morto fica explícito. **A marca só entra na
+    campanha quando a partida for encerrada**, não na hora. Desfazer a morte limpa a marca.
+32. **A morte segue a névoa na mesa**, como os outros status públicos (§16.1, item 4): quem não vê a
+    peça só recebe o Morto quando ela entrar na vista; sem mapa, todos veem na hora. O "todos veem"
+    do §7 deve ser lido assim.
+33. **Caído pesa nos três escapes** (o escape e o escape com guarda, que usam Dash, e o escape
+    fechado, que usa Shift), com desvantagem. **Provisório:** o movimento ainda está sendo desenhado
+    como um todo; "rolar sem penalidade" é só um ponto possível desse desenho, não uma regra. Deixar
+    TODO no código, na peça do Caído e onde o escape lê a desvantagem.
+34. **Guarda aberta: o escape tem desvantagem nos dois testes**, na esquiva e no movimento, um nível
+    em cada (o escape só passa se os dois passarem).
+35. **Visão anulada pesa no ataque, na defesa e na esquiva** (reflexo, evasão e a esquiva dos
+    escapes), um nível de desvantagem por teste.
+36. **O PR do front da fase 2** traz o mínimo da barra de HP no motor da ficha (paridade) e as
+    marcas "crítico ×2" e "morre" no cálculo do mestre, para a regra ser validada na mesa. O resto do
+    visual fica com a sessão de PD.
+
+### 16.5 De quem implementou (o dono foi informado)
 
 - Reaplicar um status que o personagem já tem é recusado; o mestre edita o existente. Vários
   personagens de uma vez: tudo ou nada.
