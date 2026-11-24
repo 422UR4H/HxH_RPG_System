@@ -363,3 +363,54 @@ func TestResolve_WallCritical(t *testing.T) {
 		}
 	})
 }
+
+// O Atordoado e o Morto bloqueiam (fase 1); a falha automática deles é só de sentido e não
+// pode vazar para Accuracy, Reflex ou Defense.
+func TestResolve_BlockingKindsLeaveNumbersAlone(t *testing.T) {
+	sword := enum.Sword
+	actorID, targetID := uuid.New(), uuid.New()
+
+	resolve := func(t *testing.T, effects map[uuid.UUID][]statuseffect.Effect) service.CharacterResult {
+		t.Helper()
+		// Acerto 18 passa a esquiva passiva (11); a defesa padrão (11) é lida contra a CD 8.
+		tn := attackTurn(actorID, targetID, []int{9, 9}, []int{1, 1}, &sword)
+		withReaction(tn, reactionOf(targetID, action.ReactDefault))
+		in := resolveInput(t, actorID, targetID, tn)
+		in.Effects = effects
+		res := service.TurnResolver{}.Resolve(in)
+		if len(res.DiceShort) != 0 {
+			t.Fatalf("DiceShort = %+v, want none", res.DiceShort)
+		}
+		return onlyResult(t, res)
+	}
+
+	for _, kind := range []statuseffect.Kind{statuseffect.KindStunned, statuseffect.KindDead} {
+		name := map[statuseffect.Kind]string{
+			statuseffect.KindStunned: "stunned has no effect on resolver numbers beyond blocks",
+			statuseffect.KindDead:    "dead has no effect on resolver numbers beyond blocks",
+		}[kind]
+		t.Run(name, func(t *testing.T) {
+			plain := resolve(t, nil)
+			got := resolve(t, map[uuid.UUID][]statuseffect.Effect{
+				actorID:  {{Kind: kind}},
+				targetID: {{Kind: kind}},
+			})
+			if !plain.Defended || plain.Defense.Total == 0 {
+				t.Fatalf("fixture: want the default defense read, got %+v", plain.Defense)
+			}
+			for _, c := range []struct {
+				test      string
+				got, want service.RollOutcome
+			}{
+				{"hit", got.Hit, plain.Hit},
+				{"dodge", got.Dodge, plain.Dodge},
+				{"defense", got.Defense, plain.Defense},
+			} {
+				if c.got.Total != c.want.Total || c.got.Bias != c.want.Bias || c.got.AutoFailed {
+					t.Errorf("%s = total %d bias %d autoFailed %v, want total %d bias %d as with no effects",
+						c.test, c.got.Total, c.got.Bias, c.got.AutoFailed, c.want.Total, c.want.Bias)
+				}
+			}
+		})
+	}
+}
