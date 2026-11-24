@@ -1,24 +1,26 @@
 package action
 
-// RollAttempts holds BOTH dice sets, rolled together the moment the action or reaction
-// arrives.
+// RollAttempts guarda os dados que caíram para um teste: o conjunto da partida (Primary) e
+// os dados extras de vantagem/desvantagem (Extra), um por nível.
 //
-// Advantage means rolling the set twice and keeping the better one — but the master can
-// grant advantage *after* the dice have already fallen, and the master never re-rolls a
-// player's die. Rolling both sets up front is the only shape that satisfies both: a later
-// edit changes which set is read, never what was rolled. On a neutral bias, Secondary is
-// simply never read.
+// O conjunto cai uma vez, quando a ação ou reação chega (ou, num teste passivo, na primeira
+// vez que um viés pede dados). Cada nível de vantagem ou desvantagem acrescenta um dado ao
+// monte, e o resultado mantém os melhores (vantagem) ou os piores (desvantagem) do tamanho
+// do conjunto. O mestre pode dar vantagem DEPOIS que os dados caíram, e nunca rola de novo o
+// dado de um jogador: um viés que cresce tira só os extras que faltam, uma vez (TopUp), e um
+// viés que diminui só deixa de ler os últimos extras — o que caiu fica.
 //
-// It lives in this package, not in the domain service, so a RollCheck can hold it:
-// service imports action, never the reverse.
+// Mora neste pacote, e não no serviço de domínio, para que um RollCheck possa guardá-lo:
+// service importa action, nunca o contrário. Sem tags json de propósito: linhas antigas
+// gravaram "Primary"/"Secondary", e o "Secondary" delas é simplesmente ignorado na leitura.
 type RollAttempts struct {
-	Primary   []int
-	Secondary []int
+	Primary []int
+	Extra   []int
 }
 
 // IsEmpty reports whether the dice have not fallen yet. It is what keeps the roll-once
 // rule honest: whoever rolls checks this first and never overwrites a set that already
 // landed.
 func (a RollAttempts) IsEmpty() bool {
-	return len(a.Primary) == 0 && len(a.Secondary) == 0
+	return len(a.Primary) == 0 && len(a.Extra) == 0
 }

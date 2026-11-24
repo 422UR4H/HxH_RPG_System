@@ -1382,8 +1382,8 @@ func TestMatchSession_EnqueueAction_RollsTheDiceOnce(t *testing.T) {
 		if a.Attack.Hit.Attempts.Primary[0] != 7 {
 			t.Errorf("hit die = %d, want 7 from the scripted source", a.Attack.Hit.Attempts.Primary[0])
 		}
-		if len(a.Attack.Hit.Attempts.Secondary) != 2 {
-			t.Error("both sets must fall up front, so a later advantage never re-rolls")
+		if len(a.Attack.Hit.Attempts.Extra) != 0 {
+			t.Error("os extras só caem quando um viés os pede, nunca na chegada")
 		}
 	})
 
@@ -1393,8 +1393,8 @@ func TestMatchSession_EnqueueAction_RollsTheDiceOnce(t *testing.T) {
 		if len(a.Attack.Damage.Attempts.Primary) != 2 {
 			t.Errorf("damage Primary = %v, want the sword's 2 dice", a.Attack.Damage.Attempts.Primary)
 		}
-		if len(a.Attack.Damage.Attempts.Secondary) != 0 {
-			t.Error("damage has no advantage, so there is no second set")
+		if len(a.Attack.Damage.Attempts.Extra) != 0 {
+			t.Error("damage has no advantage, so there is no extra die")
 		}
 	})
 
@@ -1415,7 +1415,7 @@ func TestMatchSession_EnqueueAction_NeverRerolls(t *testing.T) {
 	a := action.NewAction(participant.Sheet.UUID, nil, uuid.Nil, nil, action.ActionSpeed{},
 		nil, nil, &action.Attack{Hit: action.RollCheck{}}, nil, nil, nil, nil)
 	// Dice that already fell — the master edited, the action came back around, whatever.
-	a.Attack.Hit.Attempts = action.RollAttempts{Primary: []int{10, 10}, Secondary: []int{1, 1}}
+	a.Attack.Hit.Attempts = action.RollAttempts{Primary: []int{10, 10}, Extra: []int{1, 1}}
 
 	if err := s.EnqueueAction(playerUUID, a); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1838,11 +1838,11 @@ func TestMatchSession_OpenNextAction_RecordsBothBarsForACombinedAction(t *testin
 	s := matchsession.NewMatchSession(matchUUID, sheets, []*match.Participant{participant})
 	s.GetActiveRound().SetMode(enum.Race)
 
-	// actionSpeed (Legerity) draws faces[0:4], moveSpeed (Accelerate, Dash) draws faces[4:8] —
-	// Roll always rolls BOTH attempt sets, so each 2D10 check costs four faces, not two. The
+	// actionSpeed (Legerity) draws faces[0:2], moveSpeed (Accelerate, Dash) draws faces[2:4] —
+	// Roll rola só o conjunto; extras caem apenas quando um viés os pede, e aqui não há viés. The
 	// attack's Hit check is pre-filled below so it draws nothing, and no Weapon means no
-	// damage roll either: these 8 faces are spent on exactly the two speed checks.
-	s.SetRollSource(&scriptedFaces{faces: []int{3, 3, 3, 3, 6, 6, 6, 6}})
+	// damage roll either: these 4 faces are spent on exactly the two speed checks.
+	s.SetRollSource(&scriptedFaces{faces: []int{3, 3, 6, 6}})
 
 	a := action.NewAction(charID, nil, uuid.Nil, nil, action.ActionSpeed{},
 		nil,
@@ -2443,7 +2443,7 @@ func TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent(t *testing.T) {
 	actionID := openedAction.GetID()
 
 	hitTotal := 5 + accA
-	repelTotal := 20 + repX
+	repelTotal := 19 + repX // 10+9: sem crítico, para o total ser só a soma
 	margin := repelTotal - hitTotal
 	if margin < s.GetRules().LadderStep {
 		t.Fatalf("test setup: margin = %d, want at least a LadderStep — the repel must clear great_success", margin)
@@ -2453,7 +2453,7 @@ func TestMatchSession_RepelBonusAppliesAgainstTheReadOpponent(t *testing.T) {
 	r.ReactionKind = action.ReactRepel
 	r.Repel = &action.Repel{RollCheck: action.RollCheck{
 		SkillName: enum.Repel.String(),
-		Attempts:  action.RollAttempts{Primary: []int{10, 10}},
+		Attempts:  action.RollAttempts{Primary: []int{10, 9}},
 	}}
 	if _, err := s.AttachReaction(playerX, r); err != nil {
 		t.Fatalf("AttachReaction: %v", err)

@@ -145,8 +145,8 @@ func TestDefaultReaction_TheMastersBiasRollsItOnce(t *testing.T) {
 	rolls := f.source.rolls
 
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: 1})
-	if got := f.source.rolls - rolls; got != 2 {
-		t.Fatalf("the first bias rolled %d dice, want 2 — the primary 2D10 set", got)
+	if got := f.source.rolls - rolls; got != 3 {
+		t.Fatalf("the first bias rolled %d dice, want 3 — the primary 2D10 set plus one extra for the level", got)
 	}
 	if cr := f.resultOf(t, f.b); cr.Dodge.Total != 18 {
 		t.Fatalf("Dodge = %d, want 18 — advantage keeps the better of 9+9 and the base 11", cr.Dodge.Total)
@@ -155,15 +155,19 @@ func TestDefaultReaction_TheMastersBiasRollsItOnce(t *testing.T) {
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: -1})
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{})
 	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: 1})
-	if got := f.source.rolls - rolls; got != 2 {
-		t.Fatalf("re-biasing rolled again: %d dice in all, want 2", got)
+	if got := f.source.rolls - rolls; got != 3 {
+		t.Fatalf("re-biasing rolled again: %d dice in all, want 3", got)
+	}
+	f.edit(t, seated.GetID(), action.FieldDodge, action.RollCondition{Bias: 2})
+	if got := f.source.rolls - rolls; got != 4 {
+		t.Fatalf("a second level drew %d dice in all, want 4 — only the one missing extra", got)
 	}
 
 	t.Run("the default defense rolls on its own first bias, and disadvantage keeps the worse", func(t *testing.T) {
 		before := f.source.rolls
 		f.edit(t, seated.GetID(), action.FieldDefense, action.RollCondition{Bias: -1})
-		if f.source.rolls-before != 2 {
-			t.Fatalf("rolled %d dice for the defense, want 2", f.source.rolls-before)
+		if f.source.rolls-before != 3 {
+			t.Fatalf("rolled %d dice for the defense, want 3 (the set plus one extra)", f.source.rolls-before)
 		}
 		// The defense is only derived when the dodge misses; B's dodge of 18 beats the hit,
 		// so read C's instead with a dodge that cannot.

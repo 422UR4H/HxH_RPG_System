@@ -508,8 +508,9 @@ func (s *MatchSession) CurrentTurnID() uuid.UUID {
 // inside Action. The price of that model is that the original is destroyed in the live
 // object, which is exactly why the override capture exists (see CaptureOverride).
 //
-// It NEVER rolls for a condition edit: Derive reads the two sets RollAttempts has held since
-// the action arrived, and a late advantage changes WHICH set is read, never what fell.
+// Uma edição de condição nunca rola de novo o que caiu: uma vantagem tardia muda QUAIS dados
+// do monte são mantidos, nunca o que caiu. Um viés que pede dados que ainda não existem (o
+// extra de um nível novo, ou o conjunto de um passivo) os tira uma vez, na hora (deriveTopped).
 //
 // It never touches the economy either. Charged bars, recorded Speeds and the order already
 // played stay as they are — bars_updated has been on the wire since before the edit, and
@@ -631,7 +632,9 @@ func (s *MatchSession) ApplyMasterAction(
 			}
 		} else {
 			rc.Context.Condition = &cond
-			s.ensureDiceForBias(rc, cond.Bias)
+			// O resolvedor é puro e nunca rola: os dados que este viés pede caem agora, uma
+			// vez. Sem dados ainda, o teste é passivo (os rolados caem na chegada).
+			s.deriveTopped(rc, service.RollInput{Passive: rc.Attempts.IsEmpty(), Condition: &cond})
 		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
@@ -681,22 +684,22 @@ func (s *MatchSession) queuedAction(id uuid.UUID) *action.Action {
 // IsQueued reports whether an action is still waiting in the queue.
 func (s *MatchSession) IsQueued(id uuid.UUID) bool { return s.queuedAction(id) != nil }
 
-// ensureDiceForBias gives a test with no dice its primary set the first time a bias asks for one
-// — the moment a passive test becomes a rolled one (RollCalculator.Derive, readPassiveBias):
-// "if you put advantage on it, it is rolled" (owner decision, 2026-10-12). The master's bias asks
-// in ApplyMasterAction; the system's (a swap's disadvantage) in deriveSpeeds (2026-10-13).
+// deriveTopped deriva um teste e, se faltarem dados para o viés que ele lê (Short), tira só
+// os que faltam, uma vez (RollCalculator.TopUp), e deriva de novo. É assim que um teste
+// passivo vira rolado no primeiro viés — "se pôs vantagem, é rolado" (decisão do dono,
+// 2026-10-12) — e que um viés que cresce ganha seus extras. O viés do mestre pede em
+// ApplyMasterAction; o do sistema (a desvantagem de uma troca) em deriveSpeeds (2026-10-13).
 //
-// It is the FIRST roll of a test that never rolled, not a re-roll: a set that fell stays, so
-// taking the bias off and putting it back reads the same dice. That is the same rule
-// applySkillEdit already follows for a skill that did not exist a moment ago. A test whose dice
-// fell on arrival is left alone.
-func (s *MatchSession) ensureDiceForBias(rc *action.RollCheck, bias int) {
-	if bias == 0 || !rc.Attempts.IsEmpty() {
-		return
+// Nunca é uma nova rolagem: o que caiu fica, então tirar o viés e pô-lo de volta lê os mesmos
+// dados. É a mesma regra que applySkillEdit já segue para uma perícia que não existia.
+func (s *MatchSession) deriveTopped(rc *action.RollCheck, in service.RollInput) service.RollOutcome {
+	calc := service.RollCalculator{}
+	out := calc.Derive(s.rules, rc.Attempts, in)
+	if out.Short > 0 {
+		calc.TopUp(s.rules, &rc.Attempts, out.Short, s.rollSource)
+		out = calc.Derive(s.rules, rc.Attempts, in)
 	}
-	rc.Attempts = action.RollAttempts{
-		Primary: service.RollCalculator{}.RollDice(s.rules.DiceSet.Dice(), s.rollSource),
-	}
+	return out
 }
 
 // discardEdits undoes everything the master displaced on an action that leaves without reaching
@@ -1387,7 +1390,7 @@ func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 // reaction a player sent is never touched here.
 //
 // No die falls: a default reaction reads its tests at the dice set's base value, and rolls only
-// if the master puts a bias on one (ApplyMasterAction, ensureDiceForBias). Only an attack
+// if the master puts a bias on one (ApplyMasterAction, deriveTopped). Only an attack
 // collides with its targets, so an action without one seats nothing.
 //
 // O que senta segue os status do alvo (seatedReactionFor): sem poder reagir, ou sem as duas
@@ -1636,9 +1639,10 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 	if !r.ReactionKind.IsFree() {
 		var consumed []*action.Action
 		r.ConsumedActionIDs, consumed, cancelled = s.consumePendingFor(r)
-		// Swapping what you were going to do costs Disadvantage — the engine rolls again and
-		// keeps the worse of the two speeds. It is a MODE of reading the dice, never an
-		// Amount: RollAttempts already holds both sets and the bias only picks which one.
+		// Swapping what you were going to do costs Disadvantage — um nível: o motor tira um
+		// dado a mais e mantém o pior par. It is a MODE of reading the dice, never an
+		// Amount: o nível de desvantagem tira um dado extra (deriveTopped, em deriveSpeeds) e
+		// o par mantido é o pior do monte.
 		// With nothing queued there was no swap, so there is no penalty.
 		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
 		// never two. Doing, sooner, what the queue already said is NOT a swap
@@ -2190,9 +2194,9 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 //
 // systemBias is the engine-imposed advantage/disadvantage for THIS derivation — a reaction
 // that swapped out a queued action passes -1, everyone else passes 0, and ApplyMasterAction
-// passes back whatever this action was last derived under. It is a MODE of reading the dice
-// that already fell, never an Amount: RollAttempts holds both attempts, and the bias only
-// picks which one pickAttempt reads.
+// passes back whatever this action was last derived under. It is a MODE of reading the dice,
+// never an Amount: cada nível tira um dado extra (deriveTopped) e o Derive mantém o melhor ou
+// o pior par do monte.
 func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
 		return
@@ -2205,7 +2209,6 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	// engine bias this action actually arrived under, instead of ApplyMasterAction having to
 	// pass a literal 0 that would silently flatten a reaction's swap-disadvantage to neutral.
 	a.SystemBias = systemBias
-	calc := service.RollCalculator{}
 	var ledger *match.ModifierLedger
 	if status, ok := s.statuses[a.GetActorID()]; ok {
 		ledger = &status.Ledger
@@ -2233,10 +2236,9 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		// different dimension (DimDodge) and is read elsewhere, inside ResolveReaction, not here.
 		a.Speed.SkillName = enum.Legerity.String()
 		a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
-		// The system's bias makes a passive reading roll against the base value, like the master's
-		// (readPassiveBias): its dice fall here, the first time that bias asks for them.
-		s.ensureDiceForBias(&a.Speed.RollCheck, systemBias)
-		a.Speed.Result = calc.Derive(s.rules, a.Speed.Attempts, service.RollInput{
+		// The system's bias makes a passive reading roll against the base value, like the master's:
+		// os dados que ele pede caem aqui, na primeira vez que os pede (deriveTopped).
+		a.Speed.Result = s.deriveTopped(&a.Speed.RollCheck, service.RollInput{
 			SkillName:  a.Speed.SkillName,
 			SkillValue: a.Speed.SkillValue,
 			Passive:    s.activeRound.GetMode() != enum.Race,
@@ -2263,8 +2265,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
-	s.ensureDiceForBias(a.Move.Speed, systemBias)
-	a.Move.Speed.Result = calc.Derive(s.rules, a.Move.Speed.Attempts, service.RollInput{
+	a.Move.Speed.Result = s.deriveTopped(a.Move.Speed, service.RollInput{
 		SkillName:  a.Move.Speed.SkillName,
 		SkillValue: a.Move.Speed.SkillValue,
 		Passive:    passive,
@@ -2336,7 +2337,7 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 		test(&a.Defense.RollCheck)
 	}
 	// A default reaction's dodge is passive: it rolls only if the master biases it
-	// (ensureDiceForBias), the same rule every passive reading follows.
+	// (deriveTopped), the same rule every passive reading follows.
 	if a.Dodge != nil && !a.ReactionKind.IsPassive() {
 		test(&a.Dodge.RollCheck)
 	}

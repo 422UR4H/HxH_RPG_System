@@ -128,3 +128,18 @@ func TestFromCarriesStackedOn(t *testing.T) {
 		}
 	})
 }
+
+func TestFromCarriesTheExtraDice(t *testing.T) {
+	a := fixtureAction()
+	a.Attack.Hit.Attempts = action.RollAttempts{Primary: []int{3, 4}, Extra: []int{9}}
+	raw, err := json.Marshal(actionwire.From(a, actionwire.Full).Attack.Hit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"attempts":{"primary":[3,4],"extra":[9]}`) {
+		t.Fatalf("hit = %s, want attempts with primary and extra", raw)
+	}
+	if strings.Contains(string(raw), "secondary") {
+		t.Fatalf("hit = %s, the old secondary key must be gone", raw)
+	}
+}

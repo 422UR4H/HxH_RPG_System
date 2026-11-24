@@ -97,6 +97,10 @@ type rollOutcomeRecord struct {
 	Total             int    `json:"total"`
 	IsCritical        bool   `json:"isCritical"`
 	IsCriticalFailure bool   `json:"isCriticalFailure"`
+	Rolled            []int  `json:"rolled,omitempty"`
+	AutoFailed        bool   `json:"autoFailed,omitempty"`
+	// Short não é gravado: é o pedido de dados de um Derive, sem sentido depois do fechamento.
+	Short int `json:"-"`
 }
 
 type characterResultRecord struct {

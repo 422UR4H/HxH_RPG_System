@@ -1,6 +1,8 @@
 package service
 
 import (
+	"sort"
+
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
@@ -33,6 +35,21 @@ type RollInput struct {
 	// Three origins, three homes, none overwriting another.
 	SystemBias int
 	AgainstID  *uuid.UUID // whom the roll is against; nil = nobody in particular
+	// Status é o que os efeitos de status do personagem fazem com este teste — a quarta
+	// origem de viés, ao lado do sistema, do mestre e do ledger. O zero não muda nada.
+	Status StatusRoll
+}
+
+// StatusRoll é a leitura, para um teste, dos efeitos de status de quem testa
+// (statuseffect.RollEffect). Bias soma níveis como os outros vieses; Penalty já vem com
+// sinal (negativo = penalidade: Lento 2 → −2) e soma ao modificador. AutoFail é a falha
+// automática: o teste não é rolado, total 0, sem crítico. RolledOnly faz um teste passivo
+// ser rolado.
+type StatusRoll struct {
+	Bias       int
+	Penalty    int
+	AutoFail   bool
+	RolledOnly bool
 }
 
 // RollOutcome is the derived result of one test. The individual dice survive because a
@@ -40,14 +57,24 @@ type RollInput struct {
 type RollOutcome struct {
 	SkillName         string
 	SkillValue        int
-	Dice              []int // empty on a passive test, unless the master's bias rolled it
+	Dice              []int // os dados MANTIDOS; vazio num teste passivo sem viés
 	DiceTotal         int
-	Bias              int // net accumulated bias, master + system
-	Modifier          int // net accumulated flat adjustment, master + ledger
+	Bias              int // viés líquido acumulado (sistema + mestre + ledger + status), limitado a ±MaxBiasLevels
+	Modifier          int // ajuste fixo líquido acumulado (mestre + ledger + status)
 	Passive           bool
 	Total             int
 	IsCritical        bool
 	IsCriticalFailure bool
+	// Rolled é o monte inteiro lido (conjunto + extras do viés), na ordem em que caiu; Dice é
+	// o que dele foi mantido.
+	Rolled []int
+	// AutoFailed: um efeito de status fez o teste falhar sem rolar (Total 0, sem crítico).
+	AutoFailed bool
+	// Short é quantos dados faltaram para ler este teste como o viés pede: o conjunto inteiro
+	// quando ainda não caiu nenhum, mais os extras que faltam. Derive nunca rola — deriva com
+	// o que existe e avisa; quem pode rolar (a sessão) tira esses dados uma vez (TopUp) e
+	// deriva de novo. Não é gravado.
+	Short int
 }
 
 // Margin is the reading of this outcome against a difficulty class. The result of a test
@@ -63,13 +90,32 @@ func (o RollOutcome) Margin(cd int) int { return o.Total - cd }
 // (Derive).
 type RollCalculator struct{}
 
-// Roll rolls both sets for the given rules. Called once, when the action or reaction
-// arrives. A nil src means the production roller.
+// Roll rola o conjunto da partida (Primary), uma vez, quando a ação ou reação chega. Os
+// extras de vantagem/desvantagem não caem aqui: caem só quando um viés os pede (TopUp).
+// Um src nil é o rolador de produção.
 func (rc RollCalculator) Roll(rules match.MatchRules, src RollSource) action.RollAttempts {
-	return action.RollAttempts{
-		Primary:   rc.RollDice(rules.DiceSet.Dice(), src),
-		Secondary: rc.RollDice(rules.DiceSet.Dice(), src),
+	return action.RollAttempts{Primary: rc.RollDice(rules.DiceSet.Dice(), src)}
+}
+
+// TopUp tira os need dados que faltam a um teste, uma vez: primeiro o conjunto, se ainda não
+// caiu, e o resto vai para os extras. Nada que já caiu é rolado de novo. need vem do Short de
+// um Derive.
+func (rc RollCalculator) TopUp(rules match.MatchRules, a *action.RollAttempts, need int, src RollSource) {
+	if a == nil || need <= 0 {
+		return
 	}
+	if len(a.Primary) == 0 {
+		a.Primary = rc.RollDice(rules.DiceSet.Dice(), src)
+		need -= len(a.Primary)
+	}
+	if need <= 0 {
+		return
+	}
+	extra := make([]enum.DieSides, need)
+	for i := range extra {
+		extra[i] = rules.DiceSet.Dice()[0]
+	}
+	a.Extra = append(a.Extra, rc.RollDice(extra, src)...)
 }
 
 // RollDice rolls an arbitrary set of dice, in order. Damage needs it: a weapon carries its
@@ -85,10 +131,16 @@ func (rc RollCalculator) RollDice(sides []enum.DieSides, src RollSource) []int {
 
 // Derive computes the outcome from dice already rolled. Pure: same inputs, same output,
 // no new dice. Every master edit goes through here.
+//
+// O viés soma as quatro origens (sistema, mestre, ledger, status), cada nível cancelando um
+// do sinal oposto, e é limitado a ±MaxBiasLevels. Cada nível lê um dado extra; a vantagem
+// mantém os SetSize maiores do monte, a desvantagem os menores. Faltando dados, deriva com
+// o que existe e informa em Short. O crítico é lido nos dados mantidos, só quando eles contam,
+// e aplicado ao total inteiro por MatchRules.CriticalTotal.
 func (rc RollCalculator) Derive(
 	rules match.MatchRules, attempts action.RollAttempts, in RollInput,
 ) RollOutcome {
-	bias, modifier := in.SystemBias, 0
+	bias, modifier := in.SystemBias+in.Status.Bias, in.Status.Penalty
 	if in.Condition != nil {
 		bias += in.Condition.Bias
 		modifier += in.Condition.Modifier
@@ -97,85 +149,130 @@ func (rc RollCalculator) Derive(
 		bias += in.Ledger.TotalBias(in.Dimension, in.AgainstID)
 		modifier += in.Ledger.TotalAmount(in.Dimension, in.AgainstID)
 	}
+	bias = max(-match.MaxBiasLevels, min(match.MaxBiasLevels, bias))
+	passive := in.Passive && !in.Status.RolledOnly
 
 	out := RollOutcome{
 		SkillName:  in.SkillName,
 		SkillValue: in.SkillValue,
 		Bias:       bias,
 		Modifier:   modifier,
-		Passive:    in.Passive,
+		Passive:    passive,
 	}
 
-	if in.Passive {
-		// A passive test takes the average of the set instead of rolling, so rolling has
-		// exactly zero expected gain. No dice means no critical either way.
-		out.DiceTotal = rules.PassiveValue()
-		readPassiveBias(&out, rules, attempts, bias)
-		out.Total = out.DiceTotal + in.SkillValue + modifier
+	// Falha automática: nenhum dado é lido nem pedido, e não há crítico.
+	if in.Status.AutoFail {
+		out.AutoFailed = true
 		return out
 	}
 
-	dice := pickAttempt(attempts, bias)
-	out.Dice = append([]int(nil), dice...)
-	out.DiceTotal = sumDice(dice)
-	out.IsCritical = allDiceShow(dice, rules.DiceSet.MaxFace())
-	out.IsCriticalFailure = allDiceShow(dice, 1)
-	out.Total = out.DiceTotal + in.SkillValue + modifier
+	diceCount := !passive
+	if passive {
+		// A passive test takes the average of the set instead of rolling, so rolling has
+		// exactly zero expected gain. No dice means no critical either way.
+		out.DiceTotal = rules.PassiveValue()
+	}
+	if !passive || bias != 0 {
+		pool, short := dicePool(rules, attempts, bias)
+		kept := keepDice(pool, bias, rules.DiceSet.SetSize())
+		out.Short = short
+		if len(pool) > 0 {
+			out.Rolled = pool
+			out.Dice = kept
+		}
+		if passive {
+			diceCount = readPassiveBias(&out, kept, bias)
+		} else {
+			out.DiceTotal = sumDice(kept)
+		}
+	}
+	critical, failure := false, false
+	if diceCount {
+		critical = allDiceShow(out.Dice, rules.DiceSet.MaxFace())
+		failure = allDiceShow(out.Dice, 1)
+	}
+	out.IsCritical, out.IsCriticalFailure = critical, failure
+	out.Total = rules.CriticalTotal(out.DiceTotal+in.SkillValue+modifier, critical, failure)
 	return out
 }
 
-// readPassiveBias is a bias on a passive test (owner decisions, 2026-10-12 and 2026-10-13):
-// advantage or disadvantage on a test that takes the base value makes it a ROLLED test, with
-// the base value as the other set — advantage keeps the better of the dice and the base,
-// disadvantage the worse. The passive stays the floor (or the ceiling): a bias adds risk or
-// chance to it, never a free reroll.
-//
-// bias is the NET bias, the same one a rolled test reads: the master's condition and the
-// system's own (a swap's disadvantage) count alike, and cancel each other the same way — the
-// master's advantage on a swapped test reads the plain base value.
-//
-// It reads the primary set, which falls the first time a bias asks for it
-// (MatchSession.ensureDiceForBias: the master's edit, or the system's bias when the speeds are
-// derived) and never again. Without dice there is nothing to read and the base value stands.
-//
-// A critical is read on the dice only when the dice are what counts.
-func readPassiveBias(out *RollOutcome, rules match.MatchRules, attempts action.RollAttempts, bias int) {
-	if bias == 0 || len(attempts.Primary) == 0 {
-		return
+// dicePool é o monte que um viés lê: o conjunto mais um extra por nível, na ordem em que
+// caíram (uma cópia, nunca um alias de attempts). short é o que falta para lê-lo inteiro: os
+// extras que ainda não caíram, mais o conjunto quando nem ele caiu.
+func dicePool(rules match.MatchRules, a action.RollAttempts, bias int) (pool []int, short int) {
+	levels := bias
+	if levels < 0 {
+		levels = -levels
 	}
-	dice := attempts.Primary
-	out.Dice = append([]int(nil), dice...)
-	sum := sumDice(dice)
-	if (bias > 0 && sum > out.DiceTotal) || (bias < 0 && sum < out.DiceTotal) {
-		out.DiceTotal = sum
-		out.IsCritical = allDiceShow(dice, rules.DiceSet.MaxFace())
-		out.IsCriticalFailure = allDiceShow(dice, 1)
-	}
-}
-
-// pickAttempt applies advantage and disadvantage: the better set on a positive bias, the
-// worse one on a negative bias, the primary set when neutral. Magnitude beyond ±1 only
-// settles the sign — accumulated advantage and disadvantage cancel each other out first.
-//
-// Ties fall back to Primary. With 2D10 a tie can never involve a critical: 20 only comes
-// from two tens and 2 only from two ones, so there is no other combination to tie with.
-func pickAttempt(a action.RollAttempts, bias int) []int {
-	if bias == 0 || len(a.Secondary) == 0 {
-		return a.Primary
+	n := min(levels, len(a.Extra))
+	pool = make([]int, 0, len(a.Primary)+n)
+	pool = append(pool, a.Primary...)
+	pool = append(pool, a.Extra[:n]...)
+	short = levels - len(a.Extra)
+	if short < 0 {
+		short = 0
 	}
 	if len(a.Primary) == 0 {
-		return a.Secondary
+		short += rules.DiceSet.SetSize()
 	}
-	if bias > 0 {
-		if sumDice(a.Secondary) > sumDice(a.Primary) {
-			return a.Secondary
+	return pool, short
+}
+
+// keepDice mantém size dados do monte: os maiores numa vantagem, os menores numa
+// desvantagem, o conjunto (os primeiros) sem viés. Entre dados iguais, fica o que caiu
+// primeiro. Os mantidos saem na ordem do monte.
+func keepDice(pool []int, bias, size int) []int {
+	if len(pool) <= size {
+		return append([]int(nil), pool...)
+	}
+	if bias == 0 {
+		return append([]int(nil), pool[:size]...)
+	}
+	idx := make([]int, len(pool))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.SliceStable(idx, func(i, j int) bool {
+		if bias > 0 {
+			return pool[idx[i]] > pool[idx[j]]
 		}
-		return a.Primary
+		return pool[idx[i]] < pool[idx[j]]
+	})
+	keep := make([]bool, len(pool))
+	for _, i := range idx[:size] {
+		keep[i] = true
 	}
-	if sumDice(a.Secondary) < sumDice(a.Primary) {
-		return a.Secondary
+	kept := make([]int, 0, size)
+	for i, d := range pool {
+		if keep[i] {
+			kept = append(kept, d)
+		}
 	}
-	return a.Primary
+	return kept
+}
+
+// readPassiveBias é um viés num teste passivo (decisões do dono, 2026-10-12, 2026-10-13 e
+// spec §16.4 item 28): o teste passa a rolar o conjunto mais um dado por nível, e o par
+// mantido é comparado com o valor base — a vantagem fica com o melhor dos dois, a
+// desvantagem com o pior; empate fica com a base. A passiva continua sendo o piso (ou o
+// teto): o viés acrescenta risco ou chance, nunca uma rolagem de graça.
+//
+// O viés é o LÍQUIDO, o mesmo que um teste rolado lê: o do mestre, o do sistema (a
+// desvantagem de uma troca), o do ledger e o dos status contam igual e se cancelam igual.
+//
+// Os dados caem na primeira vez que um viés os pede, pela sessão (Short + TopUp), e nunca
+// de novo. Sem dados não há o que ler e a base fica. Devolve se os dados é que contam —
+// só então o crítico é lido.
+func readPassiveBias(out *RollOutcome, kept []int, bias int) bool {
+	if len(kept) == 0 {
+		return false
+	}
+	sum := sumDice(kept)
+	if (bias > 0 && sum > out.DiceTotal) || (bias < 0 && sum < out.DiceTotal) {
+		out.DiceTotal = sum
+		return true
+	}
+	return false
 }
 
 func sumDice(dice []int) int {

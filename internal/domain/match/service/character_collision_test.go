@@ -135,9 +135,9 @@ func TestResolve_CharacterBranch(t *testing.T) {
 		if res.ActionResult.Margin == nil {
 			t.Fatal("the margin must be derived once a CD exists")
 		}
-		// CD is the passive dodge: 0 + 11.
-		if *res.ActionResult.Margin != 20-11 {
-			t.Errorf("Margin = %d, want %d", *res.ActionResult.Margin, 20-11)
+		// CD is the passive dodge: 0 + 11. O crítico dobra o total do acerto: 20 × 2.
+		if *res.ActionResult.Margin != 40-11 {
+			t.Errorf("Margin = %d, want %d", *res.ActionResult.Margin, 40-11)
 		}
 	})
 

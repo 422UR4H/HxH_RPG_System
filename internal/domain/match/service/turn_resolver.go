@@ -210,9 +210,9 @@ type RollResult struct {
 	SkillValue int
 	DiceRolled []int
 	Total      int
-	// The critical flags travel untouched. No rule consumes them yet — the design notes
-	// point at a narrative consequence rather than a multiplier — and the resolver must not
-	// invent one.
+	// Os sinalizadores de crítico viajam intactos. O Total já traz a regra do crítico
+	// (Derive → MatchRules.CriticalTotal: dobra no crítico, metade na falha crítica); o
+	// resolvedor não aplica outra por cima.
 	IsCritical        bool
 	IsCriticalFailure bool
 	// Margin is nil until an opposed roll gives this test a CD.

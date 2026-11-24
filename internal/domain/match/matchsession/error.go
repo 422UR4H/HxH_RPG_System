@@ -42,8 +42,8 @@ var (
 	// alternatives, never both at once.
 	ErrAmbiguousConditionEdit = errtext.Sentence("Escolha o campo ou a perícia do teste, não os dois.")
 	// ErrDamageHasNoAdvantage means a condition edit set a bias on the damage. Damage rolls a
-	// single set of dice (rollActionDice: "damage has no advantage"), so there is no second set
-	// for a bias to choose — accepting it would store something no reading can ever use. The
+	// single set of dice (rollActionDice: "damage has no advantage"), so there are no extra dice
+	// for a bias to choose from — accepting it would store something no reading can ever use. The
 	// flat modifier is accepted.
 	ErrDamageHasNoAdvantage = errtext.Sentence("O dano não aceita vantagem nem desvantagem.")
 	// ErrCharacterAlreadyInSession means AddNPC was asked to add a character that already has

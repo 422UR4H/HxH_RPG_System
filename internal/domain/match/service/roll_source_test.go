@@ -36,8 +36,8 @@ func TestRollCalculator_Roll_UsesTheGivenSource(t *testing.T) {
 	if len(got.Primary) != 2 || got.Primary[0] != 10 || got.Primary[1] != 10 {
 		t.Errorf("Primary = %v, want [10 10]", got.Primary)
 	}
-	if len(got.Secondary) != 2 || got.Secondary[0] != 3 || got.Secondary[1] != 4 {
-		t.Errorf("Secondary = %v, want [3 4]", got.Secondary)
+	if len(got.Extra) != 0 || src.i != 2 {
+		t.Errorf("Extra = %v after %d faces, want no extra and only the set drawn", got.Extra, src.i)
 	}
 }
 
@@ -48,10 +48,10 @@ func TestRollCalculator_Roll_NilSourceStillRolls(t *testing.T) {
 
 	got := service.RollCalculator{}.Roll(rules, nil)
 
-	if len(got.Primary) != 2 || len(got.Secondary) != 2 {
-		t.Fatalf("expected 2 dice per set, got %v / %v", got.Primary, got.Secondary)
+	if len(got.Primary) != 2 || len(got.Extra) != 0 {
+		t.Fatalf("expected 2 primary dice and no extra, got %v / %v", got.Primary, got.Extra)
 	}
-	for _, d := range append(append([]int{}, got.Primary...), got.Secondary...) {
+	for _, d := range got.Primary {
 		if d < 1 || d > 10 {
 			t.Errorf("die out of range for 2D10: %d", d)
 		}

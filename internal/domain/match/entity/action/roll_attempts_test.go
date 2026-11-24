@@ -14,8 +14,8 @@ func TestRollAttempts_IsEmpty(t *testing.T) {
 	}{
 		{"zero value is empty", action.RollAttempts{}, true},
 		{"only primary is not empty", action.RollAttempts{Primary: []int{3, 7}}, false},
-		{"only secondary is not empty", action.RollAttempts{Secondary: []int{3, 7}}, false},
-		{"both sets is not empty", action.RollAttempts{Primary: []int{1}, Secondary: []int{2}}, false},
+		{"only extra is not empty", action.RollAttempts{Extra: []int{3, 7}}, false},
+		{"primary and extra is not empty", action.RollAttempts{Primary: []int{1}, Extra: []int{2}}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
