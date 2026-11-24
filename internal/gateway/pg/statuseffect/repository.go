@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
+	pgsheet "github.com/422UR4H/HxH_RPG_System/internal/gateway/pg/sheet"
 	pgfs "github.com/422UR4H/HxH_RPG_System/pkg"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -133,8 +135,12 @@ func decodeAudience(raw []byte) (*statuseffect.Audience, error) {
 // ganha: uma linha de outro uuid com a mesma identidade é substituída, e uma ficha que já não
 // existe é pulada sem erro. Uma operação com Event grava também o evento do histórico
 // (status_effect_events) logo depois dela, na mesma transação (insertEvent).
-func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error {
-	if len(ops) == 0 {
+//
+// bars são as barras das fichas que a mesma mudança moveu (o HP da volta do Morto, ou o que
+// um fechamento falho não gravou), gravadas depois dos efeitos na mesma transação — um comando
+// do mestre, uma transação. Uma barra que falha desfaz também os efeitos.
+func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write, bars []appmatch.SheetStatusBars) error {
+	if len(ops) == 0 && len(bars) == 0 {
 		return nil
 	}
 	tx, err := r.q.Begin(ctx)
@@ -156,6 +162,15 @@ func (r *Repository) Write(ctx context.Context, ops []statuseffect.Write) error 
 		if op.Event != nil {
 			if err := insertEvent(ctx, tx, op); err != nil {
 				return err
+			}
+		}
+	}
+	// O UpdateStatusBars do gateway de fichas, nesta transação: o SQL mora num lugar só.
+	if len(bars) > 0 {
+		sheets := pgsheet.NewRepository(tx)
+		for _, sb := range bars {
+			if err := sheets.UpdateStatusBars(ctx, sb.CharacterID.String(), sb.Health, sb.Stamina, sb.Aura); err != nil {
+				return fmt.Errorf("status bars of %s with the status write: %w", sb.CharacterID, err)
 			}
 		}
 	}

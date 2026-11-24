@@ -1,9 +1,12 @@
 package match
 
 import (
-	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
+	"fmt"
 	"time"
 
+	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
@@ -14,7 +17,9 @@ import (
 type IStatusEffects interface {
 	Apply(s *matchsession.MatchSession, masterUUID, callerUUID uuid.UUID, in ApplyStatusEffectInput, now time.Time) (StatusEffectChange, error)
 	Edit(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID, p statuseffect.Patch, now time.Time) (StatusEffectChange, error)
-	Remove(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID) (StatusEffectChange, error)
+	// hp é o HP com que o personagem volta ao tirar o Morto (nil = o mínimo da barra, só se
+	// estiver abaixo dele); recusado em qualquer outro tipo.
+	Remove(s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID, hp *int) (StatusEffectChange, error)
 }
 
 type ApplyStatusEffectInput struct {
@@ -31,6 +36,18 @@ type StatusEffectChange struct {
 	// HiddenChanged: um efeito escondido entrou, saiu ou teve a audiência trocada (quem o vê
 	// mudou, então a peça e as barras precisam ser reavaliadas).
 	HiddenChanged bool
+	// HP são as fichas cujo HP a mudança já moveu na sessão (a remoção do Morto). A sala as
+	// grava com as gravações de status e avisa o mestre e o dono (character_hp_changed).
+	HP []HPChange
+}
+
+// HPChange é o HP que uma mudança de status deixou numa ficha. Damage é o quanto saiu
+// (HP de antes − NewHP): negativo quando o HP subiu, como na volta do Morto.
+type HPChange struct {
+	CharacterID uuid.UUID
+	Sheet       *csSheet.CharacterSheet
+	NewHP       int
+	Damage      int
 }
 
 type StatusEffectsUC struct {
@@ -96,6 +113,10 @@ func (uc *StatusEffectsUC) Apply(
 	// O Postgres guarda microssegundos: truncar aqui faz memória e disco concordarem e
 	// mantém estável, depois de um reinício, a ordem por applied_at (ex.: Inconsciente/Caído).
 	now = now.Truncate(time.Microsecond)
+	// O Morto entra só pela regra, no fechamento do turno (decisão 9 do plano).
+	if in.Draft.Kind == statuseffect.KindDead {
+		return StatusEffectChange{}, invalidParams("O Morto entra só pela regra.")
+	}
 	if len(in.CharacterIDs) == 0 {
 		return StatusEffectChange{}, invalidParams("Escolha ao menos um personagem.")
 	}
@@ -175,7 +196,7 @@ func (uc *StatusEffectsUC) Edit(
 }
 
 func (uc *StatusEffectsUC) Remove(
-	s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID,
+	s *matchsession.MatchSession, masterUUID, callerUUID, id uuid.UUID, hp *int,
 ) (StatusEffectChange, error) {
 	if err := uc.guard(s, masterUUID, callerUUID); err != nil {
 		return StatusEffectChange{}, err
@@ -185,16 +206,77 @@ func (uc *StatusEffectsUC) Remove(
 		_, _, err := statuseffect.Remove(nil, id)
 		return StatusEffectChange{}, err
 	}
+	if hp != nil && cur.Kind != statuseffect.KindDead {
+		return StatusEffectChange{}, invalidParams("Só a remoção do Morto aceita HP.")
+	}
+	// Tudo validado antes de mexer na sessão: o HP com que o Morto volta.
+	var revive *hpTarget
+	if cur.Kind == statuseffect.KindDead {
+		t, err := reviveHP(s, cur.CharacterID, hp)
+		if err != nil {
+			return StatusEffectChange{}, err
+		}
+		revive = t
+	}
 	next, removed, err := statuseffect.Remove(s.StatusEffectsOf(cur.CharacterID), id)
 	if err != nil {
 		return StatusEffectChange{}, err
 	}
 	s.ReplaceStatusEffects(cur.CharacterID, next)
-	return StatusEffectChange{
+	change := StatusEffectChange{
 		Characters:    []uuid.UUID{cur.CharacterID},
 		Writes:        []statuseffect.Write{{Delete: true, Effect: removed, Event: &statuseffect.Event{Change: statuseffect.ChangeRemoved}}},
 		HiddenChanged: removed.Kind == statuseffect.KindHidden,
-	}, nil
+	}
+	if revive != nil {
+		old := revive.bar.GetCurrent()
+		if err := revive.bar.SetCurrent(revive.hp); err != nil {
+			// Já conferido contra o máximo em reviveHP: falhar aqui é um defeito.
+			return StatusEffectChange{}, fmt.Errorf("set revive hp of %s: %w", cur.CharacterID, err)
+		}
+		change.HP = []HPChange{{
+			CharacterID: cur.CharacterID, Sheet: revive.sheet, NewHP: revive.hp, Damage: old - revive.hp,
+		}}
+	}
+	return change, nil
+}
+
+// hpTarget é o HP que a remoção do Morto vai pôr na barra de vida da ficha.
+type hpTarget struct {
+	sheet *csSheet.CharacterSheet
+	bar   interface {
+		GetCurrent() int
+		SetCurrent(int) error
+	}
+	hp int
+}
+
+// reviveHP decide o HP com que o personagem volta do Morto (decisão do dono 4): o dado pelo
+// mestre, dentro de [mínimo, máximo] da barra; sem ele, o mínimo — só se o HP estiver abaixo
+// dele (nunca rebaixa). nil quando o HP fica como está.
+func reviveHP(s *matchsession.MatchSession, charID uuid.UUID, hp *int) (*hpTarget, error) {
+	sheet, err := s.GetCharSheet(charID)
+	if err != nil {
+		return nil, err
+	}
+	bar, ok := sheet.GetAllStatusBar()[enum.Health]
+	if !ok || bar == nil {
+		if hp != nil {
+			return nil, invalidParams("Esta ficha não tem barra de vida.")
+		}
+		return nil, nil
+	}
+	lo, hi := bar.GetMin(), bar.GetMax()
+	if hp != nil {
+		if *hp < lo || *hp > hi {
+			return nil, invalidParams(fmt.Sprintf("O HP precisa ficar entre %d e %d.", lo, hi))
+		}
+		return &hpTarget{sheet: sheet, bar: bar, hp: *hp}, nil
+	}
+	if bar.GetCurrent() >= lo {
+		return nil, nil
+	}
+	return &hpTarget{sheet: sheet, bar: bar, hp: lo}, nil
 }
 
 var _ IStatusEffects = (*StatusEffectsUC)(nil)

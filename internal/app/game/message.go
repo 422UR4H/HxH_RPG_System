@@ -1643,6 +1643,9 @@ type RemoveStatusEffectPayload struct {
 	// ações da fila que ele cancelou voltem (D3), revalidadas. Fora da janela do desfazer é
 	// ignorado: não há o que devolver. Ausente = false.
 	RestoreCancelledActions bool `json:"restoreCancelledActions,omitempty"`
+	// HP é o HP com que o personagem volta ao tirar o Morto, dentro de [mínimo, máximo] da barra
+	// de vida. Ausente = o mínimo, só se o HP estiver abaixo dele. Recusado em outro tipo.
+	HP *int `json:"hp,omitempty"`
 }
 
 // RelinkStatusEffectPayload é o relink_status_effect: ActionID nil (ou null) = a mudança é do

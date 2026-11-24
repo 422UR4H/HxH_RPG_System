@@ -97,7 +97,7 @@ func (r *Repository) PersistMatchEnd(ctx context.Context, d appmatch.MatchEndDat
 
 	// As mudanças de efeitos de status que uma gravação anterior não gravou, pelo mesmo motivo.
 	if len(d.StatusEffects) > 0 {
-		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects); err != nil {
+		if err := pgstatuseffect.NewRepository(tx).Write(ctx, d.StatusEffects, nil); err != nil {
 			return fmt.Errorf("PersistMatchEnd status effects: %w", err)
 		}
 	}

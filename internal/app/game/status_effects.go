@@ -11,6 +11,7 @@ import (
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
+	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
@@ -270,7 +271,7 @@ func (r *Room) handleRemoveStatusEffect(client *Client, raw json.RawMessage) {
 		return
 	}
 	r.runStatusEffectChange(client, p.ActionID, p.RestoreCancelledActions, func(s *matchsession.MatchSession, _ time.Time) (appmatch.StatusEffectChange, error) {
-		return r.deps.StatusEffectsUC.Remove(s, r.masterUUID, client.userUUID, p.StatusEffectID)
+		return r.deps.StatusEffectsUC.Remove(s, r.masterUUID, client.userUUID, p.StatusEffectID, p.HP)
 	})
 }
 
@@ -320,6 +321,11 @@ func (r *Room) runStatusEffectChange(
 	var undone map[uuid.UUID]bool
 	change.Writes, undone = r.undoInTurnAppliesLocked(change.Writes)
 	r.stampStatusEventsLocked(change.Writes, instant)
+	// O HP que a mudança moveu (a volta do Morto) é gravado como o de um fechamento falho: fica
+	// em unwrittenSheets e vai com a próxima gravação — fora de turno, o flushStatusEffects
+	// logo abaixo, na mesma transação das gravações de status; dentro de um turno, o fechamento.
+	hpChanged := hpChangesOf(change.HP)
+	r.markSheetsUnwrittenLocked(hpChanged)
 	var after map[uuid.UUID]map[string]bool
 	if change.HiddenChanged {
 		after = r.pieceSightLocked()
@@ -331,6 +337,10 @@ func (r *Room) runStatusEffectChange(
 	// a remoção já saiu da sessão, então ele não recusa mais nada.
 	back := r.giveBackLocked(removed, undone, restore)
 	if len(back.actions) > 0 || len(back.reactions) > 0 {
+		turnTouched = true
+	}
+	// Um HP novo muda a prévia do turno aberto (quem morre com o golpe).
+	if len(hpChanged) > 0 && r.openTurnIDLocked() != uuid.Nil {
 		turnTouched = true
 	}
 	// Uma reação refeita pelo status leva junto as âncoras presas a ela.
@@ -348,6 +358,8 @@ func (r *Room) runStatusEffectChange(
 	if flushNow {
 		r.flushStatusEffects()
 	}
+	// Depois da tentativa de gravação, como o dano do fechamento: o mestre e o dono.
+	r.broadcastHpChanges(hpChanged)
 	for _, w := range cancelWrites {
 		r.writeCancelledAction(w)
 	}
@@ -506,11 +518,11 @@ func (r *Room) holdStatusEffectWritesLocked(ops []statuseffect.Write) (flushNow 
 }
 
 // flushStatusEffects grava, fora de turno, tudo o que está em unwrittenStatusEffects, numa
-// chamada só e em ordem. persistMu é segurado da cópia até o descarte, o mesmo que o
+// chamada só e em ordem, com as barras das fichas de unwrittenSheets na mesma transação. persistMu é segurado da cópia até o descarte, o mesmo que o
 // persistClosedTurn faz com a sua: os dois nunca correm juntos, e cada um descarta exatamente
 // o prefixo que copiou (o que chegou depois da cópia fica para a próxima gravação). Uma falha
-// é registrada no log e as gravações continuam pendentes: vão na próxima gravação fora de
-// turno ou no próximo fechamento de turno (unwritten.go).
+// é registrada no log e as gravações e as fichas continuam pendentes juntas: vão na próxima
+// gravação fora de turno ou no próximo fechamento de turno (unwritten.go).
 //
 // O chamador NÃO segura nenhuma trava.
 func (r *Room) flushStatusEffects() {
@@ -521,17 +533,26 @@ func (r *Room) flushStatusEffects() {
 	defer r.persistMu.Unlock()
 	r.mu.Lock()
 	pending := append([]statuseffect.Write(nil), r.unwrittenStatusEffects...)
+	// As fichas cujo HP ainda não foi gravado (a volta do Morto, um fechamento falho) vão na
+	// mesma transação: cópias das barras, tiradas na mesma seção crítica.
+	sheets := make(map[uuid.UUID]*csSheet.CharacterSheet, len(r.unwrittenSheets))
+	for id, sh := range r.unwrittenSheets {
+		sheets[id] = sh
+	}
+	bars := statusBarsLocked(sheets)
 	r.mu.Unlock()
-	if len(pending) == 0 {
+	if len(pending) == 0 && len(bars) == 0 {
 		return
 	}
-	if err := r.deps.StatusEffectRepo.Write(context.Background(), pending); err != nil {
-		log.Printf("gravação de efeitos de status FALHOU na partida %s — %d gravação(ões) continuam pendentes "+
-			"e vão na próxima gravação ou no próximo fechamento de turno: %v", r.matchUUID, len(pending), err)
+	if err := r.deps.StatusEffectRepo.Write(context.Background(), pending, bars); err != nil {
+		log.Printf("gravação de efeitos de status FALHOU na partida %s — %d gravação(ões) e o HP de %d ficha(s) "+
+			"continuam pendentes e vão na próxima gravação ou no próximo fechamento de turno: %v",
+			r.matchUUID, len(pending), len(bars), err)
 		return
 	}
 	r.mu.Lock()
 	r.dropWrittenStatusEffectsLocked(len(pending))
+	r.forgetSheetsWrittenLocked(sheets)
 	r.mu.Unlock()
 }
 
@@ -942,4 +963,19 @@ func (r *Room) announceDeaths(d closedDeaths) {
 	if len(d.chars) > 0 {
 		r.syncStatusViews(d.chars)
 	}
+}
+
+// hpChangesOf traduz o HP que uma mudança de status moveu para o formato do dano do fechamento:
+// o mesmo caminho de gravação (markSheetsUnwrittenLocked) e de aviso (broadcastHpChanges).
+func hpChangesOf(changes []appmatch.HPChange) []matchsession.DamagedCharacter {
+	if len(changes) == 0 {
+		return nil
+	}
+	out := make([]matchsession.DamagedCharacter, 0, len(changes))
+	for _, c := range changes {
+		out = append(out, matchsession.DamagedCharacter{
+			CharacterID: c.CharacterID, Sheet: c.Sheet, Damage: c.Damage, NewHP: c.NewHP,
+		})
+	}
+	return out
 }
