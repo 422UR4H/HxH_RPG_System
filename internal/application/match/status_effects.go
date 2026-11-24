@@ -271,6 +271,10 @@ func reviveHP(s *matchsession.MatchSession, charID uuid.UUID, hp *int) (*hpTarge
 		if *hp < lo || *hp > hi {
 			return nil, invalidParams(fmt.Sprintf("O HP precisa ficar entre %d e %d.", lo, hi))
 		}
+		// O mesmo HP de agora não é mudança: nada a gravar nem a avisar.
+		if *hp == bar.GetCurrent() {
+			return nil, nil
+		}
 		return &hpTarget{sheet: sheet, bar: bar, hp: *hp}, nil
 	}
 	if bar.GetCurrent() >= lo {

@@ -518,11 +518,12 @@ func (r *Room) holdStatusEffectWritesLocked(ops []statuseffect.Write) (flushNow 
 }
 
 // flushStatusEffects grava, fora de turno, tudo o que está em unwrittenStatusEffects, numa
-// chamada só e em ordem, com as barras das fichas de unwrittenSheets na mesma transação. persistMu é segurado da cópia até o descarte, o mesmo que o
-// persistClosedTurn faz com a sua: os dois nunca correm juntos, e cada um descarta exatamente
-// o prefixo que copiou (o que chegou depois da cópia fica para a próxima gravação). Uma falha
-// é registrada no log e as gravações e as fichas continuam pendentes juntas: vão na próxima
-// gravação fora de turno ou no próximo fechamento de turno (unwritten.go).
+// chamada só e em ordem, com as barras das fichas de unwrittenSheets na mesma transação.
+// persistMu é segurado da cópia até o descarte, o mesmo que o persistClosedTurn faz com a sua:
+// os dois nunca correm juntos, e cada um descarta exatamente o prefixo que copiou (o que chegou
+// depois da cópia fica para a próxima gravação). Uma falha é registrada no log e as gravações e
+// as fichas continuam pendentes juntas: vão na próxima gravação fora de turno ou no próximo
+// fechamento de turno (unwritten.go).
 //
 // O chamador NÃO segura nenhuma trava.
 func (r *Room) flushStatusEffects() {
@@ -552,6 +553,8 @@ func (r *Room) flushStatusEffects() {
 	}
 	r.mu.Lock()
 	r.dropWrittenStatusEffectsLocked(len(pending))
+	// Esquece por id: hoje nada remarca a ficha entre a cópia e aqui — só o mestre traz alguém do
+	// Morto, na goroutine de leitura dele, atrás do próprio flush.
 	r.forgetSheetsWrittenLocked(sheets)
 	r.mu.Unlock()
 }

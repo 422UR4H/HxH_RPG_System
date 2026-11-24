@@ -139,6 +139,23 @@ func TestStatusEffectsUC_Dead(t *testing.T) {
 		}
 	})
 
+	t.Run("remove dead with hp equal to current changes nothing", func(t *testing.T) {
+		f := newDeadFixture(t)
+		if err := f.bar.SetCurrent(f.bar.GetMin() + 2); err != nil {
+			t.Fatal(err)
+		}
+		ch, err := uc.Remove(f.s, f.master, f.master, f.dead.ID, intPtr(f.bar.GetMin()+2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.bar.GetCurrent() != f.bar.GetMin()+2 || len(ch.HP) != 0 {
+			t.Fatalf("hp = %d, HP = %+v, want unchanged and no HP change", f.bar.GetCurrent(), ch.HP)
+		}
+		if f.s.IsDead(f.pc) || len(ch.Writes) != 1 {
+			t.Fatalf("dead not removed: writes = %+v", ch.Writes)
+		}
+	})
+
 	t.Run("remove dead with hp already above min keeps it", func(t *testing.T) {
 		f := newDeadFixture(t)
 		// O mestre já mexeu no HP por outro caminho: sem hp, a remoção não o rebaixa.
