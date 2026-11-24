@@ -409,6 +409,15 @@ type MatchEndData struct {
 	// StatusEffects são as mudanças de efeitos de status que uma gravação anterior (fora de turno
 	// ou um fechamento de turno) não gravou, em ordem: pelo mesmo motivo, vão nesta transação.
 	StatusEffects []statuseffect.Write
+	// DeadMarks é a marca de morte das fichas (character_sheets.dead_at): Dead grava a data do fim
+	// (sem sobrescrever uma anterior); !Dead limpa a de quem teve a morte desfeita na partida.
+	DeadMarks []DeadMark
+}
+
+// DeadMark é o que o fim da partida faz com o dead_at de uma ficha.
+type DeadMark struct {
+	SheetID uuid.UUID
+	Dead    bool
 }
 
 // MatchEndState é o fim de uma partida encerrada, lido do banco (reconexão a uma partida

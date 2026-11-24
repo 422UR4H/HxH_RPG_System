@@ -12,6 +12,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/app/game"
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/matchevent"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -367,6 +368,26 @@ func TestEndMatchCarriesUnwrittenSheets(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("StatusBars = %+v, want the victim's unwritten bars", ws[0].StatusBars)
+	}
+}
+
+func TestEndMatchCarriesDeadMarks(t *testing.T) {
+	cf := newClockFixture(t, false, 0)
+	// A vítima já chega morta; o fim leva a marca de morte dela.
+	cf.session.ReplaceStatusEffects(cf.victimID, []statuseffect.Effect{
+		{ID: uuid.New(), CharacterID: cf.victimID, Kind: statuseffect.KindDead},
+	})
+	mc, _ := cf.connectCollectors(t)
+
+	sendWS(t, cf.masterConn, "end_match", map[string]any{"storyAt": "2000-01-01T05:00:00"})
+	awaitMatchEnded(t, mc)
+
+	ws := cf.ends.writes()
+	if len(ws) != 1 {
+		t.Fatalf("PersistMatchEnd calls = %d, want 1", len(ws))
+	}
+	if len(ws[0].DeadMarks) != 1 || ws[0].DeadMarks[0] != (appmatch.DeadMark{SheetID: cf.victimID, Dead: true}) {
+		t.Errorf("DeadMarks = %+v, want the victim as dead", ws[0].DeadMarks)
 	}
 }
 

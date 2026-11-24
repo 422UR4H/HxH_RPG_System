@@ -191,3 +191,37 @@ func healToMax(t *testing.T, s *matchsession.MatchSession, charID uuid.UUID) {
 		t.Fatalf("SetCurrent: %v", err)
 	}
 }
+
+func TestDeadMarksList(t *testing.T) {
+	t.Run("dead marks list", func(t *testing.T) {
+		s := matchsession.NewMatchSession(uuid.New(), nil, nil)
+		alive, dead, undone, never := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+		s.SetStatusEffects(map[uuid.UUID][]statuseffect.Effect{
+			dead:   {{ID: uuid.New(), CharacterID: dead, Kind: statuseffect.KindDead}},
+			undone: {{ID: uuid.New(), CharacterID: undone, Kind: statuseffect.KindDead}},
+			never:  {{ID: uuid.New(), CharacterID: never, Kind: statuseffect.KindProne}},
+		})
+		_ = alive
+		// A morte de "undone" é desfeita pelo mestre; "late" morre depois do carregamento.
+		s.ReplaceStatusEffects(undone, nil)
+		late := uuid.New()
+		s.ReplaceStatusEffects(late, []statuseffect.Effect{{ID: uuid.New(), CharacterID: late, Kind: statuseffect.KindDead}})
+
+		gotDead, gotUndone := s.DeadMarks()
+		if len(gotDead) != 2 || !(contains(gotDead, dead) && contains(gotDead, late)) {
+			t.Errorf("dead = %v, want [dead late]", gotDead)
+		}
+		if len(gotUndone) != 1 || gotUndone[0] != undone {
+			t.Errorf("undone = %v, want [undone]", gotUndone)
+		}
+	})
+}
+
+func contains(ids []uuid.UUID, id uuid.UUID) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}

@@ -153,6 +153,14 @@ func (r *Room) matchEndDataLocked(
 		// E, pelo mesmo motivo, as mudanças de status que uma gravação anterior não gravou.
 		StatusEffects: append([]statuseffect.Write(nil), r.unwrittenStatusEffects...),
 	}
+	// A morte chega à ficha (dead_at) só no fim: quem morreu na partida e quem teve a morte desfeita.
+	dead, undone := sess.DeadMarks()
+	for _, id := range dead {
+		d.DeadMarks = append(d.DeadMarks, appmatch.DeadMark{SheetID: id, Dead: true})
+	}
+	for _, id := range undone {
+		d.DeadMarks = append(d.DeadMarks, appmatch.DeadMark{SheetID: id})
+	}
 	if plan.Pause != nil {
 		payload, err := json.Marshal(pauseEvent(plan.Pause).payload)
 		if err != nil {

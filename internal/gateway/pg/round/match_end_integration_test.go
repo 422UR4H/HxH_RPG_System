@@ -379,3 +379,78 @@ func TestPersistMatchEndWritesUnwrittenStatusBars(t *testing.T) {
 		t.Errorf("health = %d/%d, want 7/20", curr, max)
 	}
 }
+
+func deadAtOf(t *testing.T, pool *pgxpool.Pool, sheet uuid.UUID) *time.Time {
+	t.Helper()
+	var at *time.Time
+	if err := pool.QueryRow(context.Background(), `SELECT dead_at FROM character_sheets WHERE uuid = $1`, sheet).Scan(&at); err != nil {
+		t.Fatalf("read dead_at: %v", err)
+	}
+	return at
+}
+
+func TestPersistMatchEndDeadMarks(t *testing.T) {
+	setup := func(t *testing.T) (*pgxpool.Pool, *roundrepo.Repository, matchEndFixture) {
+		pool := pgtest.SetupTestDB(t)
+		repo := roundrepo.NewRepository(pool)
+		pgtest.TruncateAll(t, pool)
+		return pool, repo, newMatchEndFixture(t, pool, repo, false)
+	}
+	ctx := context.Background()
+
+	t.Run("end marks the dead", func(t *testing.T) {
+		pool, repo, fx := setup(t)
+		fx.data.DeadMarks = []appmatch.DeadMark{{SheetID: fx.victimSheet, Dead: true}}
+		if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+			t.Fatalf("PersistMatchEnd: %v", err)
+		}
+		at := deadAtOf(t, pool, fx.victimSheet)
+		if at == nil || !at.UTC().Equal(fx.data.GameEndAt.UTC()) {
+			t.Errorf("dead_at = %v, want %v", at, fx.data.GameEndAt)
+		}
+	})
+
+	t.Run("end keeps an earlier death date", func(t *testing.T) {
+		pool, repo, fx := setup(t)
+		earlier := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+		if _, err := pool.Exec(ctx, `UPDATE character_sheets SET dead_at = $2 WHERE uuid = $1`, fx.victimSheet, earlier); err != nil {
+			t.Fatalf("seed dead_at: %v", err)
+		}
+		fx.data.DeadMarks = []appmatch.DeadMark{{SheetID: fx.victimSheet, Dead: true}}
+		if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+			t.Fatalf("PersistMatchEnd: %v", err)
+		}
+		if at := deadAtOf(t, pool, fx.victimSheet); at == nil || !at.UTC().Equal(earlier) {
+			t.Errorf("dead_at = %v, want the earlier %v", at, earlier)
+		}
+	})
+
+	t.Run("end clears an undone death", func(t *testing.T) {
+		pool, repo, fx := setup(t)
+		if _, err := pool.Exec(ctx, `UPDATE character_sheets SET dead_at = $2 WHERE uuid = $1`, fx.victimSheet, time.Now().UTC()); err != nil {
+			t.Fatalf("seed dead_at: %v", err)
+		}
+		fx.data.DeadMarks = []appmatch.DeadMark{{SheetID: fx.victimSheet, Dead: false}}
+		if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+			t.Fatalf("PersistMatchEnd: %v", err)
+		}
+		if at := deadAtOf(t, pool, fx.victimSheet); at != nil {
+			t.Errorf("dead_at = %v, want NULL", at)
+		}
+	})
+
+	t.Run("end leaves a manual mark alone", func(t *testing.T) {
+		pool, repo, fx := setup(t)
+		manual := time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)
+		if _, err := pool.Exec(ctx, `UPDATE character_sheets SET dead_at = $2 WHERE uuid = $1`, fx.victimSheet, manual); err != nil {
+			t.Fatalf("seed dead_at: %v", err)
+		}
+		// Nenhuma marca para a ficha: nunca esteve morta nesta partida.
+		if err := repo.PersistMatchEnd(ctx, fx.data); err != nil {
+			t.Fatalf("PersistMatchEnd: %v", err)
+		}
+		if at := deadAtOf(t, pool, fx.victimSheet); at == nil || !at.UTC().Equal(manual) {
+			t.Errorf("dead_at = %v, want the manual %v", at, manual)
+		}
+	})
+}

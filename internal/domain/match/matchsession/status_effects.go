@@ -36,8 +36,37 @@ func (s *MatchSession) SetStatusEffects(byChar map[uuid.UUID][]statuseffect.Effe
 	for id, es := range byChar {
 		if len(es) > 0 {
 			s.statusEffects[id] = cloneEffects(es)
+			s.noteDead(id, es)
 		}
 	}
+}
+
+// noteDead lembra que a ficha teve o Morto nesta partida.
+func (s *MatchSession) noteDead(charID uuid.UUID, es []statuseffect.Effect) {
+	for _, e := range es {
+		if e.Kind == statuseffect.KindDead {
+			s.everDead[charID] = true
+			return
+		}
+	}
+}
+
+// DeadMarks devolve o que o fim da partida grava em character_sheets.dead_at: dead são as fichas
+// com o Morto agora; undone, as que o tiveram em algum momento da partida e não o têm mais (a
+// morte desfeita pelo mestre). Ficha que nunca esteve morta aqui não entra em nenhuma lista
+// (a marca manual do mestre fica). Ordem estável.
+func (s *MatchSession) DeadMarks() (dead, undone []uuid.UUID) {
+	for id := range s.everDead {
+		if s.IsDead(id) {
+			dead = append(dead, id)
+		} else {
+			undone = append(undone, id)
+		}
+	}
+	less := func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) }
+	slices.SortFunc(dead, less)
+	slices.SortFunc(undone, less)
+	return dead, undone
 }
 
 // StatusEffectsOf devolve cópias dos efeitos da ficha, em ordem; nunca nil.
@@ -47,6 +76,7 @@ func (s *MatchSession) StatusEffectsOf(charID uuid.UUID) []statuseffect.Effect {
 
 // ReplaceStatusEffects troca o conjunto da ficha; vazio apaga a entrada.
 func (s *MatchSession) ReplaceStatusEffects(charID uuid.UUID, effects []statuseffect.Effect) {
+	s.noteDead(charID, effects)
 	if len(effects) == 0 {
 		delete(s.statusEffects, charID)
 		return

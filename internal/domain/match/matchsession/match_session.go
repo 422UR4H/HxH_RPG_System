@@ -100,6 +100,9 @@ type MatchSession struct {
 	// statusEffects são os efeitos de status por ficha (a mesma chave de charSheets), em ordem.
 	// Mexido sempre sob o r.mu de quem chama; ver status_effects.go.
 	statusEffects map[uuid.UUID][]statuseffect.Effect
+	// everDead guarda quem teve o Morto em algum momento desta partida (ao carregar ou ao morrer):
+	// no fim, quem estava aqui e não o tem mais teve a morte desfeita (ver DeadMarks).
+	everDead map[uuid.UUID]bool
 	// arrivals é a ordem de chegada de cada ação na fila (nextArrival cresce a cada
 	// EnqueueAction). A fila já guarda as ações nessa ordem — Insert só acrescenta e a saída
 	// preserva o resto —, e é ela que desempata a fila; o número existe para que uma ação que um
@@ -141,6 +144,7 @@ func NewMatchSession(
 		clock:         clock.NewAt(defaultStoryStart),
 		now:           time.Now,
 		statusEffects: make(map[uuid.UUID][]statuseffect.Effect),
+		everDead:      make(map[uuid.UUID]bool),
 	}
 }
 
@@ -174,6 +178,7 @@ func NewMatchSessionWithState(
 		clock:          clock.NewAt(defaultStoryStart),
 		now:            time.Now,
 		statusEffects:  make(map[uuid.UUID][]statuseffect.Effect),
+		everDead:       make(map[uuid.UUID]bool),
 	}
 }
 
