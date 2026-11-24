@@ -832,12 +832,19 @@ func (s *MatchSession) restoreRefusal(d StatusDrop) (string, []statuseffect.Kind
 	return "", nil
 }
 
-// HasReactionOnOpenTurn diz se o personagem tem uma reação no turno aberto — o que uma mudança
-// de status pode ter refeito, e por isso a resolução volta ao mestre.
-func (s *MatchSession) HasReactionOnOpenTurn(charID uuid.UUID) bool {
+// TakesPartInOpenTurn diz se o personagem está no turno aberto — o ator da ação, um alvo dela
+// ou o autor de uma reação. Uma mudança de status dele pode ter refeito uma reação ou mudado o
+// viés de um teste que a resolução lê, e por isso a resolução é refeita sob a trava de escrita
+// (onde os dados que faltam caem) e volta ao mestre. Antes perguntava só pela reação: um status
+// no ator deixava a primeira leitura para quem só lê.
+func (s *MatchSession) TakesPartInOpenTurn(charID uuid.UUID) bool {
 	t := s.openTurn()
 	if t == nil {
 		return false
+	}
+	a := t.ActionRef()
+	if a.GetActorID() == charID || slices.Contains(a.TargetID, charID) {
+		return true
 	}
 	for _, r := range t.GetReactions() {
 		if r.GetActorID() == charID {

@@ -109,6 +109,8 @@ func TestPureMove_HasNoActionSpeed(t *testing.T) {
 			&action.Move{Category: enum.Dash, Position: [3]int{8, 8, 0}}, nil, nil,
 			&action.Dodge{RollCheck: action.RollCheck{SkillName: enum.Reflex.String()}}, nil, nil)
 		escape.ReactionKind = action.ReactClosedEscape
+		// A fuga fechada leva a Evasion, como o mapper exige na produção (RequiresEvasionSkill).
+		escape.Skills = []action.Skill{{SkillName: enum.Evasion.String()}}
 		if _, err := f.session.AttachReaction(f.playerB, escape); err != nil {
 			t.Fatalf("AttachReaction: %v", err)
 		}

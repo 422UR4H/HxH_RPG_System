@@ -742,7 +742,7 @@ func (r *Room) dropRefusedByStatusLocked(
 	owners := session.GetCharToPlayer()
 	turnID := r.openTurnIDLocked()
 	for _, charID := range chars {
-		turnTouched = turnTouched || session.HasReactionOnOpenTurn(charID)
+		turnTouched = turnTouched || session.TakesPartInOpenTurn(charID)
 		drops, swapped := session.DropRefusedByStatusWithReactions(charID)
 		if turnID != uuid.Nil && len(swapped) > 0 {
 			w := r.turnWritesLocked(turnID)

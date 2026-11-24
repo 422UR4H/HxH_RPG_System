@@ -5,8 +5,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// DiceRef endereça um teste numa ação do turno do mesmo jeito que o edit_action: pela ação
-// (o zero é a ação do turno) e por Field ou SkillName, nunca pelos dois.
+// DiceRef endereça um teste numa ação do turno do mesmo jeito que o edit_action: pelo id da
+// ação (a do turno ou uma reação — o resolvedor sempre põe o id real) e por Field ou
+// SkillName, nunca pelos dois.
 type DiceRef struct {
 	ActionID  uuid.UUID
 	Field     action.ConditionField

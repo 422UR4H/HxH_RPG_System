@@ -1494,6 +1494,21 @@ func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 	return again
 }
 
+// PeekTurnResolution é a resolução de t para quem só lê (sob r.mu.RLock): uma passada pura,
+// que nunca tira dado. Quem muda um viés resolve sob a trava de escrita (ResolveTurn), então
+// aqui não deve faltar nada; se faltar, é um defeito do chamador que mudou o turno sem
+// resolvê-lo — vai ao log, e a leitura sai com os dados que existem.
+func (s *MatchSession) PeekTurnResolution(t *turn.Turn) *service.TurnResolution {
+	if t == nil {
+		return nil
+	}
+	res := s.resolveOnce(t)
+	if len(res.DiceShort) > 0 {
+		log.Printf("matchsession: leitura do turno %s sem dados que ninguém tirou (faltou resolver sob a trava de escrita): %+v", t.GetID(), res.DiceShort)
+	}
+	return res
+}
+
 // resolveOnce é uma passada pura do resolvedor sobre t.
 func (s *MatchSession) resolveOnce(t *turn.Turn) *service.TurnResolution {
 	return s.turnResolver.Resolve(service.ResolveInput{

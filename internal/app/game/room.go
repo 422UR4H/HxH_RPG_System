@@ -3492,10 +3492,11 @@ func (r *Room) buildMapFullState(playerID uuid.UUID, isMaster bool) *Message {
 // has, and it is what makes match_full_state testable without standing up a connection.
 //
 // The caller must NOT hold r.mu — this takes it, held for the whole read (session, barsSeq,
-// scene, round, turn and the ResolveTurn recompute), exactly as buildMapFullState does with
+// scene, round, turn and the PeekTurnResolution recompute), exactly as buildMapFullState does with
 // its own single RLock/RUnlock pair. There is no reason to split it into two critical
-// sections here: nothing in between needs the lock released, and ResolveTurn is a pure
-// recompute (no I/O, no sheet writes), so it is safe to run under RLock.
+// sections here: nothing in between needs the lock released. A resolução lida aqui é a de
+// PeekTurnResolution, que nunca tira dado — ResolveTurn tira os que faltam e por isso só roda
+// sob a trava de escrita; uma leitura nunca escreve.
 //
 // Os efeitos de status ficam de fora dessa leitura: a projeção deles e a troca de
 // statusViews[playerID] pelo exato que esta mensagem leva acontecem juntas, numa seção curta
@@ -3634,9 +3635,9 @@ func (r *Room) snapshotMatchFullState(playerID uuid.UUID, isMaster bool) *MatchF
 				})
 			}
 			if isMaster {
-				// ResolveTurn is a pure recompute, never a re-roll: the dice fell when the
-				// action arrived. attach_reaction and edit_action already call it the same way.
-				if res := session.ResolveTurn(t); res != nil {
+				// Leitura sob RLock: PeekTurnResolution nunca tira dado. Os que um viés pede já
+				// caíram no comando que o mudou (ResolveTurn sob a trava de escrita).
+				if res := session.PeekTurnResolution(t); res != nil {
 					// ProjectResolution is called even though this branch is master-only and the
 					// projection is the IDENTITY for a master (Viewer.SeesAllOf is true for every
 					// character, and PendingReactions/Errors are exactly what a master keeps).

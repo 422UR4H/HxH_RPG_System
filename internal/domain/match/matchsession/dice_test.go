@@ -111,3 +111,27 @@ func TestLedgerBiasOnPassiveDodgeDrawsOnResolve(t *testing.T) {
 		t.Fatalf("resolving again rolled %d dice, want 0", f.source.rolls-after)
 	}
 }
+
+func TestPeekTurnResolutionNeverDraws(t *testing.T) {
+	f := newDefaultFixture(t)
+	st, err := f.session.GetCharacterStatus(f.b)
+	if err != nil {
+		t.Fatalf("GetCharacterStatus: %v", err)
+	}
+	st.Ledger.Add(match.Modifier{
+		Bias: 1, Applies: match.DimDodge, Source: match.SourceSystem,
+		Against: match.ScopeAnyone(), ExpiresAt: match.LifetimeEndOfTurn,
+	})
+	rolls := f.source.rolls
+	res := f.session.PeekTurnResolution(f.turn)
+	if f.source.rolls != rolls {
+		t.Fatalf("a read drew %d dice, want 0 — a read never writes", f.source.rolls-rolls)
+	}
+	if len(res.DiceShort) != 1 || res.DiceShort[0].Need != 3 {
+		t.Fatalf("DiceShort = %+v, want the passive dodge short of 3", res.DiceShort)
+	}
+	f.session.ResolveTurn(f.turn)
+	if got := f.source.rolls - rolls; got != 3 {
+		t.Fatalf("ResolveTurn drew %d dice, want 3", got)
+	}
+}
