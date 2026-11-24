@@ -38,7 +38,7 @@ type MatchSession struct {
 	// anchorMoves são as reações que saíram do turno aberto desde a última vez que a sala as
 	// leu (TakeAnchorMoves), com o que ficou no lugar de cada uma.
 	anchorMoves []AnchorMove
-	matchUUID uuid.UUID
+	matchUUID   uuid.UUID
 	// mapUUID is the map the session's board belongs to — set by Room via SetMapUUID once it
 	// knows it (StartMatch/RehydrateSession/loadBoard, from Board.MapUUID). It exists so a
 	// PlayerMemory created for the first time (memoryFor) is stamped with the REAL map instead
@@ -1193,6 +1193,13 @@ type TurnTransition struct {
 	// Damaged is what the close actually wrote to a sheet. Empty on the first transition of
 	// a round, when nothing closed.
 	Damaged []DamagedCharacter
+	// Deaths são as aplicações do Morto que este fechamento fez: uma por personagem que o dano
+	// aplicado deixou abaixo do mínimo do HP e que ainda não estava morto (death.go). O evento de
+	// cada uma (ChangeApplied) sai só com a mudança; a sala o carimba e o grava com o turno.
+	Deaths []statuseffect.Write
+	// DeathDrops são as ações da fila que os mortos deste fechamento tinham e que o Morto tirou,
+	// em ordem — a sala as grava como canceladas pelo mestre, como as de qualquer status.
+	DeathDrops []StatusDrop
 	// NoActionCanPay reports that no action in the queue can still pay its price — none passes
 	// the gate that applies to it — which is what ends a Race round. It is not an error: the
 	// actions still queued keep the roll they already made and belong to the next round. The
@@ -1295,6 +1302,11 @@ func (s *MatchSession) OpenNextAction() (*TurnTransition, error) {
 	in.Provisional = prov
 	next := s.scheduler.SelectNext(in)
 	tr := s.closeOpenTurn()
+	if next != nil && len(tr.DeathDrops) > 0 && !s.IsQueued(next.GetID()) {
+		// A escolhida era de quem morreu neste fechamento e saiu da fila: escolhe de novo, com
+		// os mesmos preços provisórios.
+		next = s.scheduler.SelectNext(in)
+	}
 	if next == nil {
 		// No action in the queue can still pay its price. The round is over — the caller closes it.
 		// If turns already opened in it, the round is closing with a price: bars that priced
@@ -1466,6 +1478,9 @@ func (s *MatchSession) closeOpenTurn() *TurnTransition {
 	s.clock.RaiseLimit(clock.LimitTurn, s.now())
 	tr.ClosedResolution = s.ResolveTurn(tr.Closed)
 	tr.Damaged = s.applyResolution(tr.ClosedResolution)
+	// O Morto entra antes de o próximo turno abrir: a fila já não tem a ação do morto, e a
+	// reação sentada para ele num ataque novo é um nothing.
+	tr.Deaths, tr.DeathDrops = s.applyDeaths(tr.Damaged, s.now().Truncate(time.Microsecond))
 	// The ledger moves one turn forward with the turn: what was scoped to this turn dies, and
 	// what was earned FOR the next one becomes live. It happens AFTER applyResolution, so a
 	// modifier that was meant to count in this turn still counted.

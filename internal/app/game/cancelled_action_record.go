@@ -39,9 +39,20 @@ type cancelledWrite struct {
 // by is the user who cancelled. The caller MUST hold r.mu for writing, and r.session must not
 // be nil.
 func (r *Room) holdCancelledActionLocked(act *action.Action, by uuid.UUID) *cancelledWrite {
+	return r.holdCancelledActionInLocked(act, by, r.openTurnIDLocked(), nil)
+}
+
+// holdCancelledActionInLocked é holdCancelledActionLocked com o turno (uuid.Nil = nenhum) e o
+// round (nil = o ativo) ditos por quem chama: a morte no fechamento cancela no turno que FECHOU,
+// e o registro vai na transação dele (recordDeathsLocked).
+func (r *Room) holdCancelledActionInLocked(act *action.Action, by, turnID uuid.UUID, round *roundentity.Round) *cancelledWrite {
 	sess := r.session
+	rd := sess.GetActiveRound()
+	if round != nil {
+		rd = round
+	}
 	// Copies: the write below runs after the unlock, and the live pair is the session's.
-	sc, rd := snapshotSceneAndRound(sess.GetActiveScene(), sess.GetActiveRound())
+	sc, rd := snapshotSceneAndRound(sess.GetActiveScene(), rd)
 	if sc == nil || rd == nil {
 		// Nothing for the row to reference; a combat session always has both.
 		log.Printf("cancel_action: no active scene/round in match %s — cancelled action %s NOT recorded", r.matchUUID, act.GetID())
@@ -52,7 +63,7 @@ func (r *Room) holdCancelledActionLocked(act *action.Action, by uuid.UUID) *canc
 		ActorUUID: act.GetActorID(), CancelledBy: by, Action: *act,
 		CancelledAt: time.Now().UTC(),
 	}
-	if turnID := r.openTurnIDLocked(); turnID != uuid.Nil {
+	if turnID != uuid.Nil {
 		rec.TurnUUID = &turnID
 		w := r.turnWritesLocked(turnID)
 		w.cancelledActions = append(w.cancelledActions, rec)

@@ -998,10 +998,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var result *appmatch.OpenNextActionResult
 		var err error
 		var resAge uint64
+		var deaths closedDeaths
 		if session != nil {
 			result, err = r.deps.OpenNextActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID)
 			resAge = r.stampResolutionLocked()
 			r.clearClockMergeLocked()
+			if result != nil {
+				// O Morto do fechamento entra no turno que fechou, antes do persistClosedTurn.
+				deaths = r.recordDeathsLocked(result.ClosedTurn, result.ClosedRound, result.Deaths, result.DeathDrops)
+			}
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -1050,6 +1055,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// order IS arrival order — sending this one first is what keeps "the bar
 				// moved" from landing after "the turn ended".
 				r.broadcastHpChanges(result.Damaged)
+				// A morte que esse HP causou, antes do fim do turno (announceDeaths).
+				r.announceDeaths(deaths)
 				// The implicit close is announced exactly like the explicit one, in the same
 				// place in the sequence close_turn puts it: after the escapes and the write,
 				// before the settled resolution, and above all before the announceOpenedTurn
@@ -1196,10 +1203,15 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var result *appmatch.PullActionResult
 		var err error
 		var resAge uint64
+		var deaths closedDeaths
 		if session != nil {
 			result, err = r.deps.PullActionUC.Execute(context.Background(), session, r.masterUUID, client.userUUID, payload.ActionID)
 			resAge = r.stampResolutionLocked()
 			r.clearClockMergeLocked()
+			if result != nil {
+				// O Morto do fechamento entra no turno que fechou, antes do persistClosedTurn.
+				deaths = r.recordDeathsLocked(result.ClosedTurn, nil, result.Deaths, result.DeathDrops)
+			}
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -1243,6 +1255,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 				// order IS arrival order — sending this one first is what keeps "the bar
 				// moved" from landing after "the turn ended".
 				r.broadcastHpChanges(result.Damaged)
+				// A morte que esse HP causou, antes do fim do turno (announceDeaths).
+				r.announceDeaths(deaths)
 				// The implicit close is announced exactly like the explicit one, in the same
 				// place in the sequence close_turn puts it: after the escapes and the write,
 				// before the settled resolution, and above all before the announceOpenedTurn
@@ -1583,12 +1597,17 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		var err error
 		var turnID uuid.UUID
 		var resAge uint64
+		var deaths closedDeaths
 		if session != nil {
 			turnID = session.CurrentTurnID()
 			result, err = r.deps.CloseTurnUC.Execute(
 				context.Background(), session, r.masterUUID, client.userUUID, payload.Confirm)
 			resAge = r.stampResolutionLocked()
 			r.clearClockMergeLocked()
+			if err == nil && result != nil {
+				// O Morto do fechamento entra no turno que fechou, antes do persistClosedTurn.
+				deaths = r.recordDeathsLocked(result.ClosedTurn, nil, result.Deaths, result.DeathDrops)
+			}
 		}
 		r.mu.Unlock()
 		if session == nil {
@@ -1634,6 +1653,8 @@ func (r *Room) handleClientMessage(client *Client, rawMsg []byte) {
 		// Same place in the sequence the two implicit closes put it: after the write, before
 		// turn_closed. See the comment there for why the order matters.
 		r.broadcastHpChanges(result.Damaged)
+		// A morte que esse HP causou, antes do fim do turno (announceDeaths).
+		r.announceDeaths(deaths)
 		r.broadcastTurnClosed(closedTurn.GetID())
 		r.publishResolution(closedTurn.GetID(), result.Resolution, resAge)
 		r.broadcastBars(session)
@@ -2627,7 +2648,9 @@ func (r *Room) persistClosedTurn(
 	// mesma transação; persistMu (segurado acima) impede um flushStatusEffects de descartá-los
 	// no meio.
 	pendingStatus := append([]statuseffect.Write(nil), r.unwrittenStatusEffects...)
-	statusOps := append(append([]statuseffect.Write(nil), pendingStatus...), inTurn.statusEffects...)
+	// Os Mortos do fechamento vão por último: aconteceram depois de tudo o que o turno fez.
+	turnStatus := append(append([]statuseffect.Write(nil), inTurn.statusEffects...), inTurn.deaths...)
+	statusOps := append(append([]statuseffect.Write(nil), pendingStatus...), turnStatus...)
 	// O relógio da história como este fechamento o deixou (um round que acabou junto com o
 	// turno já somou o seu segundo), copiado na mesma seção crítica das demais cópias.
 	clockSnap := r.clockSnapshotForWriteLocked(session)
@@ -2664,7 +2687,7 @@ func (r *Room) persistClosedTurn(
 		// já estavam (a ordem em que aconteceram), e a próxima gravação os leva.
 		r.mu.Lock()
 		r.markSheetsUnwrittenLocked(damaged)
-		r.keepFailedTurnStatusEffectsLocked(len(pendingStatus), inTurn.statusEffects)
+		r.keepFailedTurnStatusEffectsLocked(len(pendingStatus), turnStatus)
 		r.mu.Unlock()
 		// The round's end is salvaged at once. The round DID end at the table, and leaving
 		// its row open while the successor is not one would have the successor's first write (a

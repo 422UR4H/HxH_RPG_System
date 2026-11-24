@@ -42,6 +42,10 @@ type turnWrites struct {
 	// que aconteceram (holdStatusEffectWritesLocked): gravadas pelo PersistTurnClose
 	// (TurnCloseData.StatusEffects), atrás das que uma gravação anterior não gravou.
 	statusEffects []statuseffect.Write
+	// deaths são os Mortos que o fechamento deste turno aplicou (recordDeathsLocked), já
+	// carimbados: gravados pelo PersistTurnClose depois de statusEffects. À parte deles porque
+	// não são uma mudança do turno aberto — nenhum desfazer no turno nem âncora viva os lê.
+	deaths []statuseffect.Write
 	// actionHiddenFrom é, para o ator e cada alvo da action Escondido na abertura do turno
 	// (recordOpenedMoveViews), o efeito e quem o percebia (hiddenRecordLocked) — gravado com a
 	// action (actions.hidden_from). nil = nenhum.

@@ -6,6 +6,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -18,6 +19,10 @@ type PullActionResult struct {
 	// closed. Nil when nothing was open.
 	ClosedResolution *service.TurnResolution
 	Damaged          []matchsession.DamagedCharacter
+	// Deaths e DeathDrops são o Morto que o fechamento aplicou e as ações da fila que ele tirou
+	// (TurnTransition): a sala carimba os eventos e grava tudo na transação do turno fechado.
+	Deaths     []statuseffect.Write
+	DeathDrops []matchsession.StatusDrop
 }
 
 type IPullAction interface {
@@ -55,6 +60,8 @@ func (uc *PullActionUC) Execute(
 		Resolution:       tr.OpenedResolution,
 		ClosedResolution: tr.ClosedResolution,
 		Damaged:          tr.Damaged,
+		Deaths:           tr.Deaths,
+		DeathDrops:       tr.DeathDrops,
 	}
 
 	if err != nil {

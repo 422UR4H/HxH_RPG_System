@@ -14,6 +14,7 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	matchboarduc "github.com/422UR4H/HxH_RPG_System/internal/application/matchboard"
 	csEntity "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/experience"
 	csSheet "github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/sheet"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/character_sheet/status"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
@@ -219,7 +220,8 @@ func (f *combatFixture) seatNPC(t *testing.T, session *matchsession.MatchSession
 	if f.npcID == uuid.Nil {
 		return
 	}
-	if err := session.AddNPC(f.npcID, newCombatSheet(t), f.masterUUID); err != nil {
+	// Robusto como a vítima: o golpe crítico do fixture não o mata (newSturdyCombatSheet).
+	if err := session.AddNPC(f.npcID, newSturdyCombatSheet(t), f.masterUUID); err != nil {
 		t.Fatalf("seat the NPC target: %v", err)
 	}
 }
@@ -251,7 +253,7 @@ func (f *combatFixture) newSheetsAndParticipants(t *testing.T) (
 	map[uuid.UUID]*csSheet.CharacterSheet, []*match.Participant,
 ) {
 	t.Helper()
-	f.victim = newCombatSheet(t)
+	f.victim = newSturdyCombatSheet(t)
 	sheets := map[uuid.UUID]*csSheet.CharacterSheet{
 		f.attackerID: newCombatSheet(t),
 		f.victimID:   f.victim,
@@ -508,6 +510,20 @@ func newCombatSheet(t *testing.T) *csSheet.CharacterSheet {
 	)
 	if err != nil {
 		t.Fatalf("factory.Build error: %v", err)
+	}
+	return cs
+}
+
+// newSturdyCombatSheet é o newCombatSheet com o máximo negativo do HP um pouco maior (Vitality
+// treinada; o HP cheio continua o mesmo): com os dados no topo, o golpe do fixture é crítico e
+// deixa a vítima em -12, um além do mínimo da ficha nua (-10) — e o Morto entra no fechamento
+// (fase 2 dos efeitos de status). Os testes que não falam de morte batem uma vez e seguem com a
+// vítima viva; os de morte põem o HP no mínimo de propósito.
+func newSturdyCombatSheet(t *testing.T) *csSheet.CharacterSheet {
+	t.Helper()
+	cs := newCombatSheet(t)
+	if err := cs.IncreaseExpForSkill(experience.NewUpgradeCascade(200), enum.Vitality); err != nil {
+		t.Fatalf("IncreaseExpForSkill(Vitality): %v", err)
 	}
 	return cs
 }

@@ -103,6 +103,9 @@ func TestRestoreCancelledByStatus_KeepsItsPlaceInTies(t *testing.T) {
 		t.Fatalf("CloseOpenTurn: %v", err)
 	}
 	for _, id := range want[:2] {
+		// O ataque de C em B fecha antes do de B: B volta ao HP cheio para o golpe não o matar
+		// (o Morto tiraria o ataque dele da fila, e o desempate não seria provado).
+		healToMax(t, f.session, f.b)
 		if got := openedID(t, f.session); got != id {
 			t.Fatalf("opened %v, want %v", got, id)
 		}

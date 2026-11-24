@@ -379,8 +379,13 @@ func TestStatusHistory_FailedCloseKeepsTheEventsTurn(t *testing.T) {
 	f.awaitPersistedTurn(t, second)
 
 	ops := lastCloseStatusOps(t, f)
-	if len(ops) != 1 || ops[0].Event == nil || ops[0].Event.TurnID == nil || *ops[0].Event.TurnID != first {
+	// O segundo golpe na vítima a mata (-12 e depois -44): o Morto desse fechamento vem atrás do
+	// evento que o primeiro não gravou.
+	if len(ops) != 2 || ops[0].Event == nil || ops[0].Event.TurnID == nil || *ops[0].Event.TurnID != first {
 		t.Fatalf("second close ops = %+v, want the first turn's event, its TurnID kept", ops)
+	}
+	if ops[1].Effect.Kind != statuseffect.KindDead || ops[1].Event == nil || ops[1].Event.TurnID == nil || *ops[1].Event.TurnID != second {
+		t.Fatalf("second close ops[1] = %+v, want the victim's dead in the second turn", ops[1])
 	}
 	var seen int
 	for _, cd := range f.roundRepo.closeData() {

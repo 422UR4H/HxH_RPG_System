@@ -7,6 +7,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -14,6 +15,10 @@ type CloseTurnResult struct {
 	ClosedTurn *turn.Turn
 	Resolution *service.TurnResolution
 	Damaged    []matchsession.DamagedCharacter
+	// Deaths e DeathDrops são o Morto que o fechamento aplicou e as ações da fila que ele tirou
+	// (TurnTransition): a sala carimba os eventos e grava tudo na transação do turno fechado.
+	Deaths     []statuseffect.Write
+	DeathDrops []matchsession.StatusDrop
 	// Refused is the unopened reactions that blocked the close. Non-empty means nothing was
 	// closed: the master has to send it again with Confirm.
 	Refused []action.Action
@@ -64,6 +69,8 @@ func (uc *CloseTurnUC) Execute(
 		ClosedTurn: tr.Closed,
 		Resolution: tr.ClosedResolution,
 		Damaged:    tr.Damaged,
+		Deaths:     tr.Deaths,
+		DeathDrops: tr.DeathDrops,
 	}, nil
 }
 

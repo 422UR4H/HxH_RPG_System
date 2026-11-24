@@ -13,6 +13,8 @@ import (
 	appmatch "github.com/422UR4H/HxH_RPG_System/internal/application/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/masteraction"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	roundentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/round"
+	turnentity "github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/matchsession"
 	domainservice "github.com/422UR4H/HxH_RPG_System/internal/domain/match/service"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
@@ -379,6 +381,11 @@ type statusInstant struct {
 	actionID *uuid.UUID
 	sight    map[uuid.UUID]map[uuid.UUID]bool
 	hidden   map[uuid.UUID]map[uuid.UUID]uuid.UUID
+	// turnID e round, quando dados, são o turno e o round do evento no lugar do turno aberto e do
+	// round ativo: a morte é do turno que FECHOU (recordDeathsLocked), e o round dele pode já
+	// ter dado lugar ao sucessor no mesmo comando.
+	turnID *uuid.UUID
+	round  *roundentity.Round
 }
 
 // stampStatusEventsLocked completa o evento que o caso de uso pôs em cada gravação (só a
@@ -390,8 +397,13 @@ type statusInstant struct {
 // O chamador segura r.mu (escrita) e r.session não é nil.
 func (r *Room) stampStatusEventsLocked(writes []statuseffect.Write, in statusInstant) {
 	sc, rd := r.session.GetActiveScene(), r.session.GetActiveRound()
+	if in.round != nil {
+		rd = in.round
+	}
 	var turnID *uuid.UUID
-	if id := r.openTurnIDLocked(); id != uuid.Nil {
+	if in.turnID != nil {
+		turnID = in.turnID
+	} else if id := r.openTurnIDLocked(); id != uuid.Nil {
 		turnID = &id
 	}
 	owners := r.session.GetCharToPlayer()
@@ -857,5 +869,77 @@ func (r *Room) announceRestored(back givenBack) {
 	}
 	for _, f := range back.reactionRefusals {
 		r.sendToMaster(NewErrorMessage("restore_refused", "A reação não voltou: "+f.Reason+"."))
+	}
+}
+
+// ─── morte no fechamento ────────────────────────────────────────────────────
+
+// closedDeaths é o que os três fechamentos anunciam de uma morte, depois do HP: os personagens
+// que morreram (a lista nova de status, pela névoa) e as ações da fila que o Morto cancelou.
+type closedDeaths struct {
+	chars     []uuid.UUID
+	cancelled []cancelledNotice
+}
+
+// recordDeathsLocked registra os Mortos que o fechamento de closed aplicou (TurnTransition.
+// Deaths): carimba cada evento como runStatusEffectChange carimba os seus — causa = a action do
+// turno fechado, retrato de visão e Escondido da sala neste instante —, mas no turno que fechou
+// (e no round dele, closedIn quando o mesmo comando acabou o round), e guarda as gravações nos
+// turnWrites DESSE turno, que o persistClosedTurn leva no PersistTurnClose: o Morto entra na
+// transação do turno que o causou. As ações da fila que o Morto tirou (drops, já fora da fila na
+// sessão) são registradas como canceladas pelo mestre — a regra da fase 1 para todo status —
+// também no turno fechado. Chamado na mesma seção crítica do Execute do fechamento, antes do
+// persistClosedTurn; nada a fazer sem morte.
+//
+// O chamador segura r.mu (escrita) e r.session não é nil.
+func (r *Room) recordDeathsLocked(
+	closed *turnentity.Turn, closedIn *roundentity.Round,
+	deaths []statuseffect.Write, drops []matchsession.StatusDrop,
+) closedDeaths {
+	if closed == nil || (len(deaths) == 0 && len(drops) == 0) {
+		return closedDeaths{}
+	}
+	turnID := closed.GetID()
+	act := closed.GetAction()
+	actionID := act.GetID()
+	instant := statusInstant{
+		at: r.now().Truncate(time.Microsecond), actionID: &actionID,
+		sight: r.sessionSightLocked(), hidden: r.sessionHiddenFromLocked(),
+		turnID: &turnID, round: closedIn,
+	}
+	writes := append([]statuseffect.Write(nil), deaths...)
+	r.stampStatusEventsLocked(writes, instant)
+	w := r.turnWritesLocked(turnID)
+	w.deaths = append(w.deaths, writes...)
+
+	var out closedDeaths
+	for _, op := range writes {
+		out.chars = append(out.chars, op.Effect.CharacterID)
+	}
+	owners := r.session.GetCharToPlayer()
+	acts := matchsession.DroppedActions(drops)
+	if len(acts) > 0 {
+		// Um cancelamento fecha a janela de fusão do relógio, como em holdCancelledActionsLocked.
+		r.clearClockMergeLocked()
+	}
+	for _, a := range acts {
+		// Com o turno dito, o registro fica retido para ele: nada a gravar agora.
+		r.holdCancelledActionInLocked(a, r.masterUUID, turnID, closedIn)
+		out.cancelled = append(out.cancelled, cancelledNotice{id: a.GetID(), owner: owners[a.GetActorID().String()]})
+	}
+	return out
+}
+
+// announceDeaths anuncia o que recordDeathsLocked registrou, já gravado: o action_cancelled de
+// cada ação que o Morto tirou da fila e a lista nova de status de cada morto, a quem vê o
+// personagem (syncStatusViews; quem não vê recebe quando a peça entrar na visão). Os três
+// fechamentos o chamam depois do broadcastHpChanges e antes do broadcastTurnClosed: o HP que
+// matou, a morte, o fim do turno. Fora do lock.
+func (r *Room) announceDeaths(d closedDeaths) {
+	if len(d.cancelled) > 0 {
+		r.announceStatusCancelled(d.cancelled)
+	}
+	if len(d.chars) > 0 {
+		r.syncStatusViews(d.chars)
 	}
 }
