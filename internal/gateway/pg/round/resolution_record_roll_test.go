@@ -37,3 +37,19 @@ func TestResolutionRecord_RollOutcomeRoundTrip(t *testing.T) {
 		t.Errorf("dodge = %+v, want AutoFailed back", cr.Dodge)
 	}
 }
+
+func TestResolutionRecord_KeepsCriticalDamageAndDies(t *testing.T) {
+	res := &service.TurnResolution{
+		IsSettled:        true,
+		ActionResult:     service.RollResult{AutoFailed: true},
+		CharacterResults: []service.CharacterResult{{EffectiveDamage: 40, CriticalDamage: true, Dies: true}},
+	}
+	raw, err := encodeResolution(res, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := DecodeResolution(raw)
+	if !got.CharacterResults[0].CriticalDamage || !got.CharacterResults[0].Dies || !got.ActionResult.AutoFailed {
+		t.Fatalf("lost on the round trip: %+v", got)
+	}
+}

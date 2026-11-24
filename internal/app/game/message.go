@@ -786,6 +786,8 @@ type RollResultPayload struct {
 	IsCritical        bool   `json:"isCritical"`
 	IsCriticalFailure bool   `json:"isCriticalFailure"`
 	Margin            *int   `json:"margin,omitempty"`
+	// AutoFailed: um efeito de status fez o teste falhar sem rolar (Total 0, sem dados).
+	AutoFailed bool `json:"autoFailed,omitempty"`
 }
 
 // ReactionResultPayload is what one target answered with, as the master reads it.
@@ -840,6 +842,12 @@ type CharacterResultPayload struct {
 	RawDamage       int  `json:"rawDamage"`
 	DefenseApplied  int  `json:"defenseApplied"`
 	ProjectedDamage int  `json:"projectedDamage"`
+	// CriticalDamage: o acerto crítico dobrou o dano final deste alvo. Segue a visibilidade
+	// do projectedDamage — é um fato sobre o dano.
+	CriticalDamage bool `json:"criticalDamage,omitempty"`
+	// Dies: aplicado este dano, o alvo morreria. Só o mestre recebe (service.ProjectResolution
+	// zera para os demais); a mesa fica sabendo pelo status dead, através da névoa.
+	Dies bool `json:"dies,omitempty"`
 	// Reaction is what this target answered with, opened or not — the default reaction the
 	// engine seated for a target that never answered included. nil only when the turn holds
 	// no reaction for this target.
@@ -917,6 +925,7 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 		IsCritical:        res.ActionResult.IsCritical,
 		IsCriticalFailure: res.ActionResult.IsCriticalFailure,
 		Margin:            res.ActionResult.Margin,
+		AutoFailed:        res.ActionResult.AutoFailed,
 	}
 	for _, cr := range res.CharacterResults {
 		p.Targets = append(p.Targets, CharacterResultPayload{
@@ -929,6 +938,8 @@ func newResolutionUpdatedPayload(turnID uuid.UUID, res *service.TurnResolution) 
 			RawDamage:       cr.RawDamage,
 			DefenseApplied:  cr.DefenseApplied,
 			ProjectedDamage: cr.EffectiveDamage,
+			CriticalDamage:  cr.CriticalDamage,
+			Dies:            cr.Dies,
 			Reaction:        reactionResultPayloadOf(cr),
 			Payouts:         payoutPayloadsOf(cr.Payouts),
 			Escape:          escapeResultPayloadOf(cr.Escape),

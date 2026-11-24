@@ -227,6 +227,8 @@ type RollResult struct {
 	IsCriticalFailure bool
 	// Margin is nil until an opposed roll gives this test a CD.
 	Margin *int
+	// AutoFailed: um efeito de status fez o teste falhar sem rolar (RollOutcome.AutoFailed).
+	AutoFailed bool
 }
 
 // CharacterResult is the computed outcome of one attack against one character.
@@ -802,6 +804,7 @@ func rollResultOf(o RollOutcome, cd *int) RollResult {
 		Total:             o.Total,
 		IsCritical:        o.IsCritical,
 		IsCriticalFailure: o.IsCriticalFailure,
+		AutoFailed:        o.AutoFailed,
 	}
 	if cd != nil {
 		m := o.Margin(*cd)

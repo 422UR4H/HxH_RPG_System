@@ -55,6 +55,14 @@ func TestFromCutsByLevel(t *testing.T) {
 			t.Fatal("full must keep hit, speed and finalSpeed")
 		}
 	})
+	t.Run("skill entry result travels at full only", func(t *testing.T) {
+		if full.Skills[0].RollCheck.Result == nil {
+			t.Fatal("full must keep the skill entry's result")
+		}
+		if opened.Skills[0].RollCheck.Result != nil || decl.Skills[0].RollCheck.Result != nil {
+			t.Fatal("a skill entry's result is the master's secret while the turn is open")
+		}
+	})
 	t.Run("opened keeps the speeds and cuts the rest", func(t *testing.T) {
 		if opened.Speed.RollCheck.Result == nil || opened.Move.Speed.Result == nil || opened.Move.FinalSpeed == nil {
 			t.Fatal("opened must keep actionSpeed and moveSpeed")
