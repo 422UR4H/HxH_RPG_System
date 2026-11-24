@@ -391,7 +391,7 @@ Tudo [dono], perícias [Claude]:
 |---|---|---|---|---|---|---|---|
 | **No ar** | ✓ | só a trajetória | ✗ | ✓ | ✓ | ✓ | ✗ |
 | **Guarda aberta** | ✓ | ✓ | ✗ | ✓ | ✓ só rolada | ✗ (aparar vale como defesa armada) | ✓ com desvantagem |
-| **Caído** | ✓ | só rolar / deslizar | ✓ com desvantagem | ✓ | ✓ | ✓ com desvantagem | ✓ com desvantagem — provisório até o movimento (§16.4, item 33) |
+| **Caído** | ✓ | só rolar / deslizar | ✓ com desvantagem | ✓ | ✓ | ✓ com desvantagem | ✓ com desvantagem na esquiva e no movimento — provisório até o movimento (§16.4, itens 33 e 37) |
 | **Preso** | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | **Paralisado** | conforme os domínios | conforme os domínios | conforme (esquiva) | conforme (esquiva) | conforme (defesa) | conforme (defesa) | conforme (movimento + esquiva) |
 | **Atônito / Atordoado / Inconsciente** | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
@@ -799,6 +799,19 @@ automática custa caro nela — por isso poucas rolagens por round).
 36. **O PR do front da fase 2** traz o mínimo da barra de HP no motor da ficha (paridade) e as
     marcas "crítico ×2" e "morre" no cálculo do mestre, para a regra ser validada na mesa. O resto do
     visual fica com a sessão de PD.
+
+37. **Caído no escape: desvantagem nos dois testes**, um nível na esquiva e um no movimento, como
+    na Guarda aberta (item 34). Vale para os três escapes; provisório até o movimento (mesmo TODO do
+    item 33).
+38. **Teste de Tato declarado numa ação conta como a face toque** [provisório; proposta de Claude
+    aceita pelo dono]. Pesa se o toque estiver afetado (prejudicado: a desvantagem e/ou o número do
+    status; anulado: o teste falha sozinho). O equilíbrio não pesa nesse teste, porque já pesa por
+    ataque, defesa, esquiva e movimento (§16.1, item 8); a preempção não tem teste hoje. Ex.: Tato
+    prejudicado só no equilíbrio, tateando uma fechadura → sem penalidade; com o toque prejudicado →
+    com penalidade. Se a narração for de equilíbrio (a corda bamba), o mestre compensa com a
+    condição até o spec dos testes, que deixa o teste dizer a face — no teste pedido pelo mestre isso
+    já está decidido (`2026-11-15-testes-brainstorm-notas.md`, P1); na corrente de testes de uma
+    action, será decidido lá.
 
 ### 16.5 De quem implementou (o dono foi informado)
 

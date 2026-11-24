@@ -397,7 +397,7 @@ All [owner], skills [Claude]:
 |---|---|---|---|---|---|---|---|
 | **Airborne** | ✓ | trajectory only | ✗ | ✓ | ✓ | ✓ | ✗ |
 | **Open guard** | ✓ | ✓ | ✗ | ✓ | ✓ rolled only | ✗ (parrying counts as armed defense) | ✓ with disadvantage |
-| **Prone** | ✓ | only roll / slide | ✓ with disadvantage | ✓ | ✓ | ✓ with disadvantage | ✓ with disadvantage — provisional until movement (§16.4, item 33) |
+| **Prone** | ✓ | only roll / slide | ✓ with disadvantage | ✓ | ✓ | ✓ with disadvantage | ✓ with disadvantage on dodge and movement — provisional until movement (§16.4, items 33 and 37) |
 | **Restrained** | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | **Paralyzed** | per the domains | per the domains | per (dodge) | per (dodge) | per (defense) | per (defense) | per (movement + dodge) |
 | **Dazed / Stunned / Unconscious** | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
@@ -820,6 +820,19 @@ automatic roll is costly in it — hence few rolls per round).
 36. **The phase 2 front PR** carries the HP bar minimum in the sheet engine (parity) and the
     "critical ×2" and "dies" marks in the master's calculation, so the rule can be validated at the
     table. The rest of the visuals stays with the PD session.
+
+37. **Prone in the escape: disadvantage on both tests**, one level on dodge and one on movement, as
+    with Open guard (item 34). Applies to all three escapes; provisional until movement (same TODO as
+    item 33).
+38. **A Tact test declared in an action counts as the touch face** [provisional; Claude's proposal
+    accepted by the owner]. It weighs if touch is affected (impaired: the status's disadvantage
+    and/or number; nullified: the test fails by itself). Balance does not weigh on this test, because
+    it already weighs through attack, defense, dodge and movement (§16.1, item 8); preemption has no
+    test today. E.g.: Tact impaired only in balance, feeling for a lock → no penalty; with touch
+    impaired → penalty. If the narration is about balance (the tightrope), the master compensates
+    with the condition until the tests spec, which lets the test name the face — for the master's
+    requested test this is already decided (`2026-11-15-testes-brainstorm-notas.md`, P1); for an
+    action's test chain, it will be decided there.
 
 ### 16.5 From the implementer (the owner was informed)
 
