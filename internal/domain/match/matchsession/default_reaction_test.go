@@ -163,21 +163,7 @@ func TestDefaultReaction_TheMastersBiasRollsItOnce(t *testing.T) {
 		t.Fatalf("a second level drew %d dice in all, want 4 — only the one missing extra", got)
 	}
 
-	t.Run("the default defense rolls on its own first bias, and disadvantage keeps the worse", func(t *testing.T) {
-		before := f.source.rolls
-		f.edit(t, seated.GetID(), action.FieldDefense, action.RollCondition{Bias: -1})
-		if f.source.rolls-before != 3 {
-			t.Fatalf("rolled %d dice for the defense, want 3 (the set plus one extra)", f.source.rolls-before)
-		}
-		// The defense is only derived when the dodge misses; B's dodge of 18 beats the hit,
-		// so read C's instead with a dodge that cannot.
-		sc := f.seatedOf(t, f.c)
-		f.edit(t, sc.GetID(), action.FieldDodge, action.RollCondition{Modifier: -100})
-		f.edit(t, sc.GetID(), action.FieldDefense, action.RollCondition{Bias: -1})
-		if cr := f.resultOf(t, f.c); cr.Defense.Total != 11 {
-			t.Fatalf("Defense = %d, want 11 — disadvantage keeps the worse of 9+9 and the base", cr.Defense.Total)
-		}
-	})
+	// A defesa padrão que o mestre enviesa: TestPassiveDefaultDefenseBiasDrawsBaseSet (dice_test.go).
 }
 
 func TestDefaultReaction_TheAnswerReplacesIt(t *testing.T) {

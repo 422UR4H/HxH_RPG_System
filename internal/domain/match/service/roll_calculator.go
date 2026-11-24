@@ -73,7 +73,8 @@ type RollOutcome struct {
 	// Short é quantos dados faltaram para ler este teste como o viés pede: o conjunto inteiro
 	// quando ainda não caiu nenhum, mais os extras que faltam. Derive nunca rola — deriva com
 	// o que existe e avisa; quem pode rolar (a sessão) tira esses dados uma vez (TopUp) e
-	// deriva de novo. Não é gravado.
+	// deriva de novo. Não é gravado. Um teste rolado com Primary vazio e viés 0 informa o
+	// tamanho do conjunto (inalcançável hoje: os rolados rolam na chegada).
 	Short int
 }
 

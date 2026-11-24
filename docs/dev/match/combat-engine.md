@@ -52,8 +52,11 @@ salvo numa cena de Roleplay. Pedir iniciativa **força** `Race`.
   2026-10-13). O valor base vira o outro conjunto: vantagem fica com o melhor entre o dado e o
   valor base, desvantagem com o pior (`readPassiveBias`, `roll_calculator.go`), lido pelo viés
   **líquido** — mestre e sistema somados, como numa rolada. O dado — um conjunto, o primário —
-  cai na primeira vez que um viés o pede (`MatchSession.ensureDiceForBias`: no `ApplyMasterAction`
-  para o do mestre, no `deriveSpeeds` para o do sistema) e nunca mais.
+  cai na primeira vez que um teste é lido com um viés que o pede, e nunca mais: nas velocidades
+  (`deriveSpeeds` → `MatchSession.deriveCheck`) e nos testes que a resolução lê (o resolvedor
+  informa a falta em `TurnResolution.DiceShort`; `MatchSession.ResolveTurn` tira os dados que
+  faltam, uma vez, e resolve de novo). A edição do mestre sozinha não tira dado: um teste que
+  ninguém lê não ganha dado.
 - **`RollCondition` é a struct do mestre**: `Bias` = dados; `Modifier` = ajuste manual
   (*"+3 porque teve criatividade estratégica"*).
 

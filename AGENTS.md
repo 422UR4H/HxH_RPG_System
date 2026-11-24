@@ -176,8 +176,9 @@ máximo da barra e o dano. Cura e veneno, quando existirem, emitem a MESMA mensa
   das abertas (`buildChainOrder`); `nothing` nunca precisa ser aberto nem segura o `close_turn`,
   mas o mestre pode abri-lo para posicioná-lo na cadeia. **Viés do mestre num teste passivo o
   torna rolado**, e o da troca do sistema também (P2: vantagem = melhor entre o dado e o valor
-  base, desvantagem = pior; o dado cai no primeiro viés, `ensureDiceForBias`; o valor base vai em
-  `match_full_state.passiveValue`). **Repelir quem o ataque da fila mirava não é troca**
+  base, desvantagem = pior; o dado cai na primeira leitura com viés — `deriveCheck` nas
+  velocidades, `TurnResolution.DiceShort` + `ResolveTurn` nos testes da resolução; o valor base
+  vai em `match_full_state.passiveValue`). **Repelir quem o ataque da fila mirava não é troca**
   (`keepsQueuedIntent`: `sameBlowAsQueued`, ao lado do `sameMoveAsQueued` das fugas). **O
   mestre edita ação na fila** (condições e `damageSkill`; `targetIds`/`skills` recusados — ver o
   comentário em `ApplyMasterAction`); `speed` editada reordena a fila, e cancelar/consumir

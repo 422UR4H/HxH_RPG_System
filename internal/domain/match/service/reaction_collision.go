@@ -43,6 +43,20 @@ type ReactionOutcome struct {
 	// Escape is how an escape came out — nil on every reaction that does not displace
 	// (ReactionKind.Displaces()). See EscapeResult's own doc.
 	Escape *EscapeResult
+	// DiceShort é cada teste desta reação lido com menos dados do que o viés pede, endereçado
+	// na própria reação (TurnResolution.DiceShort). Sem reação no turno não há onde guardar
+	// dados, e nada é pedido.
+	DiceShort []DiceShortage
+}
+
+// noteReactionShortage registra a falta de um teste lido nesta reação. Uma reação ausente
+// (in.Reaction nil) lê só passivas sem condição e não tem onde guardar dados.
+func noteReactionShortage(out *ReactionOutcome, in ReactionInput, ref DiceRef, o RollOutcome) {
+	if in.Reaction == nil {
+		return
+	}
+	ref.ActionID = in.Reaction.GetID()
+	out.DiceShort = noteShortage(out.DiceShort, ref, o.Short)
 }
 
 // EscapeResult is how an escape came out. nil on every reaction that does not displace.
@@ -85,10 +99,16 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 	noReflex := in.Kind.IsPassive() && in.Reaction != nil && in.Reaction.WithoutReflexDodge
 	dodgePassed := false
 	if !noReflex {
-		dodge, evasion, bonus := dodgeAndReserve(in, calc)
+		reflex, dodge, evasion, bonus := dodgeAndReserve(in, calc)
 		out.Dodge = dodge
 		if isClosedKind(in.Kind) {
 			out.Evasion = evasion
+		}
+		// A falta é lida no reflexo e na Evasion, não em out.Dodge: nas fechadas, o "dodge"
+		// é o pior dos dois, e o outro também foi lido.
+		noteReactionShortage(&out, in, DiceRef{Field: action.FieldDodge}, reflex)
+		if isClosedKind(in.Kind) {
+			noteReactionShortage(&out, in, DiceRef{SkillName: enum.Evasion.String()}, evasion)
 		}
 		if bonus != nil {
 			out.Payouts = append(out.Payouts, *bonus)
@@ -136,6 +156,9 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		Passive:    true,
 		Condition:  defenseCond,
 	})
+	// "defense" numa reação que mantém a padrão endereça a DefaultDefense, que a sessão cria
+	// se ainda não existe (resolveRollCheck).
+	noteReactionShortage(&out, in, DiceRef{Field: action.FieldDefense}, out.Defense)
 	out.Defended = out.Defense.Total >= in.HitTotal-in.Rules.LadderStep
 	return out
 }
@@ -155,10 +178,13 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 // the Disadvantage logic. The reserve banked is |Reflex − Evasion|, for whoever comes at this
 // target next turn, excluding the attacker who was just read; a zero gap banks nothing. Every
 // other kind gets no Evasion roll and no reserve.
-func dodgeAndReserve(in ReactionInput, calc RollCalculator) (dodge, evasion RollOutcome, payout *match.Modifier) {
-	reflex := deriveReflex(in, calc)
+//
+// O reflexo volta também à parte: nas fechadas o dodge pode ser a Evasion, e a falta de dados
+// do reflexo (ReactionOutcome.DiceShort) é lida nele mesmo.
+func dodgeAndReserve(in ReactionInput, calc RollCalculator) (reflex, dodge, evasion RollOutcome, payout *match.Modifier) {
+	reflex = deriveReflex(in, calc)
 	if !isClosedKind(in.Kind) {
-		return reflex, RollOutcome{}, nil
+		return reflex, reflex, RollOutcome{}, nil
 	}
 
 	evasion = deriveEvasion(in, calc)
@@ -172,7 +198,7 @@ func dodgeAndReserve(in ReactionInput, calc RollCalculator) (dodge, evasion Roll
 		gap = -gap
 	}
 	if gap == 0 {
-		return dodge, evasion, nil
+		return reflex, dodge, evasion, nil
 	}
 	m := match.Modifier{
 		Amount:    gap,
@@ -182,7 +208,7 @@ func dodgeAndReserve(in ReactionInput, calc RollCalculator) (dodge, evasion Roll
 		ExpiresAt: match.LifetimeNextTurn,
 		Reason:    "closed dodge reserve",
 	}
-	return dodge, evasion, &m
+	return reflex, dodge, evasion, &m
 }
 
 // deriveReflex derives the Reflex test alone: passive on a default reaction (and when the turn
@@ -273,6 +299,7 @@ func resolveRepel(in ReactionInput, calc RollCalculator) ReactionOutcome {
 		Condition:  cond,
 		AgainstID:  &in.AttackerID,
 	})
+	noteReactionShortage(&out, in, DiceRef{Field: action.FieldRepel}, out.Repel)
 
 	out.Ladder = ClimbLadder(out.Repel.Total-in.HitTotal, in.Rules.LadderStep)
 

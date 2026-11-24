@@ -169,6 +169,10 @@ type TurnResolution struct {
 	// esquivou, aparou ou foi barrado antes na cadeia não conta: a mesa não pode saber que havia
 	// alguém ali.
 	HiddenTargetsHit int
+	// DiceShort é cada teste que esta resolução leu com menos dados do que o viés pede (ver
+	// DiceShortage). A sessão tira os que faltam e resolve de novo (MatchSession.ResolveTurn),
+	// então uma resolução que sai da sessão o traz vazio. Nunca vai ao fio nem é gravado.
+	DiceShort []DiceShortage
 }
 
 // PendingReaction is one attached-but-not-yet-opened reaction, as the master needs to choose
@@ -298,6 +302,10 @@ type TurnResolver struct{}
 // Attempts, put there by MatchSession the moment the action arrived. Resolve derives, it
 // never rolls. That is what makes it safe to call again on every reaction and on every
 // master edit — the master never re-rolls a player's die.
+//
+// Um teste cujo viés pede mais dados do que caíram é lido com os que existem e informado em
+// TurnResolution.DiceShort; quem pode rolar (MatchSession.ResolveTurn) tira os que faltam,
+// uma vez, e resolve de novo.
 func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 	res := &TurnResolution{}
 	if in.Turn == nil {
@@ -327,7 +335,7 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 				if in.Targets.CategorizeTarget(step.targetID) != TargetKindCharacter {
 					continue
 				}
-				cr, next, resErr := tr.resolveCharacterStep(in, a, step, chain)
+				cr, next, short, resErr := tr.resolveCharacterStep(in, a, step, chain)
 				if resErr != nil {
 					res.Errors = append(res.Errors, *resErr)
 					continue
@@ -346,6 +354,10 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 					}
 				}
 				chain = next
+				// O acerto é o mesmo em todo passo: noteShortage o pede uma vez só.
+				for _, ds := range short {
+					res.DiceShort = noteShortage(res.DiceShort, ds.Ref, ds.Need)
+				}
 				res.CharacterResults = append(res.CharacterResults, cr)
 				res.Blows = append(res.Blows, cr.Blow)
 			}
@@ -549,11 +561,14 @@ func (tr TurnResolver) seedChain(in ResolveInput, a action.Action) ChainState {
 // advanced past them — the caller records the fault and walks on. It is deliberately not a
 // plain `error`: the caller has to put the fault on the resolution, and that needs the
 // subject's UUID, not a sentence.
+//
+// short é cada teste deste passo lido com menos dados do que o viés pede (o acerto e os da
+// reação do alvo) — ver TurnResolution.DiceShort.
 func (tr TurnResolver) resolveCharacterStep(
 	in ResolveInput, a action.Action, step chainStep, chainIn ChainState,
-) (CharacterResult, ChainState, *ResolutionError) {
+) (cr CharacterResult, chainOut ChainState, short []DiceShortage, resErr *ResolutionError) {
 	if a.Attack == nil {
-		return CharacterResult{}, chainIn, &ResolutionError{
+		return CharacterResult{}, chainIn, nil, &ResolutionError{
 			Subject: step.targetID,
 			Kind:    ResolutionErrNoAttack,
 			Detail:  "character step reached with no attack on the action",
@@ -561,7 +576,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	}
 	actorSheet, okActor := in.Sheets[a.GetActorID()]
 	if !okActor || actorSheet == nil {
-		return CharacterResult{}, chainIn, &ResolutionError{
+		return CharacterResult{}, chainIn, nil, &ResolutionError{
 			Subject: a.GetActorID(),
 			Kind:    ResolutionErrMissingSheet,
 			Detail:  "the acting character's sheet was not handed to the resolver",
@@ -569,7 +584,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	}
 	targetSheet, okTarget := in.Sheets[step.targetID]
 	if !okTarget || targetSheet == nil {
-		return CharacterResult{}, chainIn, &ResolutionError{
+		return CharacterResult{}, chainIn, nil, &ResolutionError{
 			Subject: step.targetID,
 			Kind:    ResolutionErrMissingSheet,
 			Detail:  "the target character's sheet was not handed to the resolver",
@@ -577,7 +592,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	}
 
 	calc := RollCalculator{}
-	cr := CharacterResult{TargetID: step.targetID}
+	cr = CharacterResult{TargetID: step.targetID}
 
 	// 1. The hit — the attacker's active test, shared by the whole chain: every target in
 	//    this attack answers against the same CD, because it is the same swing.
@@ -594,6 +609,7 @@ func (tr TurnResolver) resolveCharacterStep(
 		Condition:  a.Attack.Hit.Context.Condition,
 		AgainstID:  &step.targetID,
 	})
+	short = noteShortage(nil, DiceRef{ActionID: a.GetID(), Field: action.FieldHit}, cr.Hit.Short)
 
 	// 2. The target's answer — the reaction attached for them, opened or not (the default one
 	//    the engine seated, unless they sent their own), the passive defaults when the turn
@@ -617,6 +633,7 @@ func (tr TurnResolver) resolveCharacterStep(
 		HitTotal:   cr.Hit.Total,
 		Rules:      in.Rules,
 	})
+	short = append(short, out.DiceShort...)
 	cr.ReactionKind = string(out.Kind)
 	cr.Dodge = out.Dodge
 	cr.Defense = out.Defense
@@ -679,10 +696,10 @@ func (tr TurnResolver) resolveCharacterStep(
 	// ApplicableDefense encodes the damage-type rows it cannot yet read: the shape is what
 	// matters, not the number. Do not invent an armour model to fill it.
 	const armour = 0
-	chainOut := chainIn.ReduceSpread(a.Attack.Spread, out, weaponDefenseBonus(defenseWeapon, in.Weapons), armour)
+	chainOut = chainIn.ReduceSpread(a.Attack.Spread, out, weaponDefenseBonus(defenseWeapon, in.Weapons), armour)
 
 	cr.Blow = battle.NewBlow(a.GetActorID(), step.targetID, *a.Attack, nil, nil, nil)
-	return cr, chainOut, nil
+	return cr, chainOut, short, nil
 }
 
 // skillValueOf reads a skill off the sheet, crossing the string→enum boundary. A name the

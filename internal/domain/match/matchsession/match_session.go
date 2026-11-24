@@ -1,6 +1,7 @@
 package matchsession
 
 import (
+	"log"
 	"math"
 	"reflect"
 	"slices"
@@ -510,7 +511,9 @@ func (s *MatchSession) CurrentTurnID() uuid.UUID {
 //
 // Uma edição de condição nunca rola de novo o que caiu: uma vantagem tardia muda QUAIS dados
 // do monte são mantidos, nunca o que caiu. Um viés que pede dados que ainda não existem (o
-// extra de um nível novo, ou o conjunto de um passivo) os tira uma vez, na hora (deriveTopped).
+// extra de um nível novo, ou o conjunto de um passivo) os tira uma vez, quando o teste é lido
+// com o viés inteiro: nas velocidades (deriveSpeeds → deriveCheck) e na resolução do turno
+// (ResolveTurn → TurnResolution.DiceShort).
 //
 // It never touches the economy either. Charged bars, recorded Speeds and the order already
 // played stay as they are — bars_updated has been on the wire since before the edit, and
@@ -631,10 +634,12 @@ func (s *MatchSession) ApplyMasterAction(
 				target.DefaultDefense = nil
 			}
 		} else {
+			// Nenhum dado cai aqui: a edição só conhece o viés do mestre, e a leitura soma
+			// sistema, ledger e status. Quem lê com o viés inteiro tira o que falta, uma vez —
+			// deriveSpeeds (logo abaixo) para speed e moveSpeed, e a resolução do turno
+			// (ResolveTurn, no fim) para os testes que ela lê. Um teste que ninguém lê não
+			// ganha dado, e uma ação na fila ganha os seus quando o turno dela abre.
 			rc.Context.Condition = &cond
-			// O resolvedor é puro e nunca rola: os dados que este viés pede caem agora, uma
-			// vez. Sem dados ainda, o teste é passivo (os rolados caem na chegada).
-			s.deriveTopped(rc, service.RollInput{Passive: rc.Attempts.IsEmpty(), Condition: &cond})
 		}
 	}
 	// Re-derive the speeds so a condition on speed or moveSpeed reads through. target.SystemBias,
@@ -683,24 +688,6 @@ func (s *MatchSession) queuedAction(id uuid.UUID) *action.Action {
 
 // IsQueued reports whether an action is still waiting in the queue.
 func (s *MatchSession) IsQueued(id uuid.UUID) bool { return s.queuedAction(id) != nil }
-
-// deriveTopped deriva um teste e, se faltarem dados para o viés que ele lê (Short), tira só
-// os que faltam, uma vez (RollCalculator.TopUp), e deriva de novo. É assim que um teste
-// passivo vira rolado no primeiro viés — "se pôs vantagem, é rolado" (decisão do dono,
-// 2026-10-12) — e que um viés que cresce ganha seus extras. O viés do mestre pede em
-// ApplyMasterAction; o do sistema (a desvantagem de uma troca) em deriveSpeeds (2026-10-13).
-//
-// Nunca é uma nova rolagem: o que caiu fica, então tirar o viés e pô-lo de volta lê os mesmos
-// dados. É a mesma regra que applySkillEdit já segue para uma perícia que não existia.
-func (s *MatchSession) deriveTopped(rc *action.RollCheck, in service.RollInput) service.RollOutcome {
-	calc := service.RollCalculator{}
-	out := calc.Derive(s.rules, rc.Attempts, in)
-	if out.Short > 0 {
-		calc.TopUp(s.rules, &rc.Attempts, out.Short, s.rollSource)
-		out = calc.Derive(s.rules, rc.Attempts, in)
-	}
-	return out
-}
 
 // discardEdits undoes everything the master displaced on an action that leaves without reaching
 // a close — a queued action cancelled or consumed by a reaction: "the edits go with it" (owner
@@ -1390,7 +1377,7 @@ func (s *MatchSession) PullAction(id uuid.UUID) (*TurnTransition, error) {
 // reaction a player sent is never touched here.
 //
 // No die falls: a default reaction reads its tests at the dice set's base value, and rolls only
-// if the master puts a bias on one (ApplyMasterAction, deriveTopped). Only an attack
+// if a bias on one is read (ResolveTurn → DiceShort). Only an attack
 // collides with its targets, so an action without one seats nothing.
 //
 // O que senta segue os status do alvo (seatedReactionFor): sem poder reagir, ou sem as duas
@@ -1482,12 +1469,33 @@ func (s *MatchSession) advanceLedgers() {
 	}
 }
 
-// ResolveTurn computes the resolution snapshot for t. Pure — it never touches a sheet.
+// ResolveTurn computes the resolution snapshot for t. It never touches a sheet.
 // The master reads it as a projection, over and over, as reactions land.
+//
+// A única coisa que ele escreve são dados: um teste que a resolução leu com menos dados do
+// que o viés pede (TurnResolution.DiceShort) ganha os que faltam, uma vez, e o turno é
+// resolvido de novo (drawShortDice, dice.go). Os dados ficam nas ações do turno, então
+// resolver de novo sem nada mudar não tira nenhum.
 func (s *MatchSession) ResolveTurn(t *turn.Turn) *service.TurnResolution {
 	if t == nil {
 		return nil
 	}
+	res := s.resolveOnce(t)
+	if len(res.DiceShort) == 0 {
+		return res
+	}
+	s.drawShortDice(t, res.DiceShort)
+	again := s.resolveOnce(t)
+	if len(again.DiceShort) > 0 {
+		// Uma segunda falta depois de completar é um defeito: o resolvedor pediu um teste que
+		// a sessão não encontra, ou pediu de novo o que acabou de receber.
+		log.Printf("matchsession: turno %s ainda sem dados depois de completar: %+v", t.GetID(), again.DiceShort)
+	}
+	return again
+}
+
+// resolveOnce é uma passada pura do resolvedor sobre t.
+func (s *MatchSession) resolveOnce(t *turn.Turn) *service.TurnResolution {
 	return s.turnResolver.Resolve(service.ResolveInput{
 		Turn:     t,
 		Sheets:   s.charSheets,
@@ -1641,7 +1649,7 @@ func (s *MatchSession) AttachReactionWithCancels(playerUUID uuid.UUID, r *action
 		r.ConsumedActionIDs, consumed, cancelled = s.consumePendingFor(r)
 		// Swapping what you were going to do costs Disadvantage — um nível: o motor tira um
 		// dado a mais e mantém o pior par. It is a MODE of reading the dice, never an
-		// Amount: o nível de desvantagem tira um dado extra (deriveTopped, em deriveSpeeds) e
+		// Amount: o nível de desvantagem tira um dado extra (deriveCheck, em deriveSpeeds) e
 		// o par mantido é o pior do monte.
 		// With nothing queued there was no swap, so there is no penalty.
 		// Having cancelled earlier this round is a swap too; the two are one Disadvantage,
@@ -2195,7 +2203,7 @@ func (s *MatchSession) PendingActions() []*action.Action { return s.activeQueue.
 // systemBias is the engine-imposed advantage/disadvantage for THIS derivation — a reaction
 // that swapped out a queued action passes -1, everyone else passes 0, and ApplyMasterAction
 // passes back whatever this action was last derived under. It is a MODE of reading the dice,
-// never an Amount: cada nível tira um dado extra (deriveTopped) e o Derive mantém o melhor ou
+// never an Amount: cada nível tira um dado extra (deriveCheck) e o Derive mantém o melhor ou
 // o pior par do monte.
 func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	if a == nil {
@@ -2237,8 +2245,8 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 		a.Speed.SkillName = enum.Legerity.String()
 		a.Speed.SkillValue = skillValueOn(sheet, enum.Legerity)
 		// The system's bias makes a passive reading roll against the base value, like the master's:
-		// os dados que ele pede caem aqui, na primeira vez que os pede (deriveTopped).
-		a.Speed.Result = s.deriveTopped(&a.Speed.RollCheck, service.RollInput{
+		// os dados que ele pede caem aqui, na primeira vez que os pede (deriveCheck).
+		a.Speed.Result = s.deriveCheck(&a.Speed.RollCheck, service.RollInput{
 			SkillName:  a.Speed.SkillName,
 			SkillValue: a.Speed.SkillValue,
 			Passive:    s.activeRound.GetMode() != enum.Race,
@@ -2265,7 +2273,7 @@ func (s *MatchSession) deriveSpeeds(a *action.Action, systemBias int) {
 	}
 	a.Move.Speed.SkillName = skill.String()
 	a.Move.Speed.SkillValue = skillValueOn(sheet, skill)
-	a.Move.Speed.Result = s.deriveTopped(a.Move.Speed, service.RollInput{
+	a.Move.Speed.Result = s.deriveCheck(a.Move.Speed, service.RollInput{
 		SkillName:  a.Move.Speed.SkillName,
 		SkillValue: a.Move.Speed.SkillValue,
 		Passive:    passive,
@@ -2336,8 +2344,8 @@ func (s *MatchSession) rollActionDice(a *action.Action) {
 	if a.Defense != nil {
 		test(&a.Defense.RollCheck)
 	}
-	// A default reaction's dodge is passive: it rolls only if the master biases it
-	// (deriveTopped), the same rule every passive reading follows.
+	// A default reaction's dodge is passive: it rolls only when a bias on it is read
+	// (ResolveTurn → DiceShort), the same rule every passive reading follows.
 	if a.Dodge != nil && !a.ReactionKind.IsPassive() {
 		test(&a.Dodge.RollCheck)
 	}

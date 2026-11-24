@@ -644,7 +644,7 @@ func TestDerive_ThreeBiasOrigins(t *testing.T) {
 	// Um nível lê [4 2 9]: a vantagem mantém 4+9 = 13, a desvantagem 4+2 = 6.
 	attempts := action.RollAttempts{Primary: []int{4, 2}, Extra: []int{9, 5}}
 
-	t.Run("the system's situational bias reads the worse set on its own", func(t *testing.T) {
+	t.Run("the system's situational bias reads the worst pair on its own", func(t *testing.T) {
 		out := service.RollCalculator{}.Derive(rules, attempts, service.RollInput{
 			SkillName: "Legerity", SkillValue: 3, SystemBias: -1, Dimension: match.DimActionSpeed,
 		})

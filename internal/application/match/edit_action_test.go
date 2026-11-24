@@ -175,9 +175,10 @@ func newOpenAttackFixture(t *testing.T) *editFixture {
 // the very start, so its dice fall the moment the action is enqueued — this is the "original"
 // roll the removed-and-restored test proves comes back unchanged.
 //
-// Dice budget: rollActionDice walks Skills BEFORE Attack, so the skill's own 2D10 test (4
-// faces) rolls first, then the hit (4 faces), then the weapon's damage (2 faces, Primary
-// only — damage has no advantage). 10 faces total. Free mode never rolls actionSpeed.
+// Dice budget: rollActionDice walks Skills BEFORE Attack, so the skill's own 2D10 test (2
+// faces — Roll rola só o conjunto) rolls first, then the hit (2 faces), then the weapon's
+// damage (2 faces, Primary only — damage has no advantage). 6 faces total. Free mode never
+// rolls actionSpeed.
 func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture {
 	t.Helper()
 
@@ -258,8 +259,9 @@ func newOpenAttackFixtureWithSkill(t *testing.T, skillName string) *editFixture 
 // stays ungated on purpose"), so a single queued action opens without wiring up the
 // scheduler's Race eligibility gate.
 //
-// Dice budget: Race rolls actionSpeed (4 faces). The move is a Shift, which takes Brake's
-// passive value and rolls nothing (see rollActionDice's Shift carve-out). 4 faces total.
+// Dice budget: Race rolls actionSpeed (2 faces — Roll rola só o conjunto). The move is a
+// Shift, which takes Brake's passive value and rolls nothing (see rollActionDice's Shift
+// carve-out). 2 faces total.
 func newOpenMoveFixture(t *testing.T) *editFixture {
 	t.Helper()
 
@@ -934,8 +936,9 @@ func TestOverrideCapture(t *testing.T) {
 }
 
 // attachReaction attaches a reaction of the given kind from the victim to the fixture's open
-// attack and returns its ID. Free mode rolls no speed; a dodge rolls its 2D10 Dodge (4 faces —
-// exactly the fixture's reserved budget), a repel its 2D10 Repel.
+// attack and returns its ID. Free mode rolls no speed; a dodge rolls its 2D10 Dodge (2 faces —
+// Roll rola só o conjunto; as duas que o fixture reserva depois da abertura), a repel its
+// 2D10 Repel.
 func (f *editFixture) attachReaction(t *testing.T, kind action.ReactionKind) uuid.UUID {
 	t.Helper()
 	r := action.NewAction(
