@@ -4864,7 +4864,7 @@
      "health": {
       "current": 25,
       "max": 25,
-      "min": 0
+      "min": -16
      },
      "stamina": {
       "current": 150,
@@ -5430,7 +5430,7 @@
      "health": {
       "current": 30,
       "max": 30,
-      "min": 0
+      "min": -17
      },
      "stamina": {
       "current": 200,
@@ -6006,7 +6006,7 @@
      "health": {
       "current": 25,
       "max": 25,
-      "min": 0
+      "min": -16
      },
      "stamina": {
       "current": 150,
@@ -6585,7 +6585,7 @@
      "health": {
       "current": 40,
       "max": 40,
-      "min": 0
+      "min": -19
      },
      "stamina": {
       "current": 300,
@@ -7166,7 +7166,7 @@
      "health": {
       "current": 30,
       "max": 30,
-      "min": 0
+      "min": -17
      },
      "stamina": {
       "current": 200,
@@ -7720,7 +7720,7 @@
      "health": {
       "current": 35,
       "max": 35,
-      "min": 0
+      "min": -18
      },
      "stamina": {
       "current": 120,
@@ -8277,7 +8277,7 @@
      "health": {
       "current": 38,
       "max": 38,
-      "min": 0
+      "min": -19
      },
      "stamina": {
       "current": 150,
@@ -8847,7 +8847,7 @@
      "health": {
       "current": 35,
       "max": 35,
-      "min": 0
+      "min": -18
      },
      "stamina": {
       "current": 120,
@@ -9419,7 +9419,7 @@
      "health": {
       "current": 41,
       "max": 41,
-      "min": 0
+      "min": -20
      },
      "stamina": {
       "current": 180,
@@ -9992,7 +9992,7 @@
      "health": {
       "current": 38,
       "max": 38,
-      "min": 0
+      "min": -19
      },
      "stamina": {
       "current": 150,
@@ -10565,7 +10565,7 @@
      "health": {
       "current": 48,
       "max": 48,
-      "min": 0
+      "min": -21
      },
      "stamina": {
       "current": 120,
@@ -11142,7 +11142,7 @@
      "health": {
       "current": 52,
       "max": 52,
-      "min": 0
+      "min": -22
      },
      "stamina": {
       "current": 160,
@@ -11717,7 +11717,7 @@
      "health": {
       "current": 60,
       "max": 60,
-      "min": 0
+      "min": -24
      },
      "stamina": {
       "current": 240,
@@ -12284,7 +12284,7 @@
      "health": {
       "current": 51,
       "max": 51,
-      "min": 0
+      "min": -21
      },
      "stamina": {
       "current": 130,
@@ -12856,7 +12856,7 @@
      "health": {
       "current": 56,
       "max": 56,
-      "min": 0
+      "min": -22
      },
      "stamina": {
       "current": 180,
@@ -13426,7 +13426,7 @@
      "health": {
       "current": 65,
       "max": 65,
-      "min": 0
+      "min": -24
      },
      "stamina": {
       "current": 270,
@@ -13987,7 +13987,7 @@
      "health": {
       "current": 20,
       "max": 20,
-      "min": 0
+      "min": -14
      },
      "stamina": {
       "current": 90,
@@ -14553,7 +14553,7 @@
      "health": {
       "current": 24,
       "max": 24,
-      "min": 0
+      "min": -15
      },
      "stamina": {
       "current": 130,
@@ -15117,7 +15117,7 @@
      "health": {
       "current": 33,
       "max": 33,
-      "min": 0
+      "min": -17
      },
      "stamina": {
       "current": 220,
@@ -15678,7 +15678,7 @@
      "health": {
       "current": 53,
       "max": 53,
-      "min": 0
+      "min": -21
      },
      "stamina": {
       "current": 110,
@@ -16244,7 +16244,7 @@
      "health": {
       "current": 58,
       "max": 58,
-      "min": 0
+      "min": -22
      },
      "stamina": {
       "current": 160,
@@ -16813,7 +16813,7 @@
      "health": {
       "current": 53,
       "max": 53,
-      "min": 0
+      "min": -21
      },
      "stamina": {
       "current": 110,
@@ -17384,7 +17384,7 @@
      "health": {
       "current": 75,
       "max": 75,
-      "min": 0
+      "min": -25
      },
      "stamina": {
       "current": 330,
@@ -17958,7 +17958,7 @@
      "health": {
       "current": 58,
       "max": 58,
-      "min": 0
+      "min": -22
      },
      "stamina": {
       "current": 160,
@@ -18519,7 +18519,7 @@
      "health": {
       "current": 28,
       "max": 28,
-      "min": 0
+      "min": -16
      },
      "stamina": {
       "current": 160,
@@ -19084,7 +19084,7 @@
      "health": {
       "current": 32,
       "max": 32,
-      "min": 0
+      "min": -17
      },
      "stamina": {
       "current": 200,
@@ -19647,7 +19647,7 @@
      "health": {
       "current": 40,
       "max": 40,
-      "min": 0
+      "min": -19
      },
      "stamina": {
       "current": 280,
@@ -20214,7 +20214,7 @@
      "health": {
       "current": 20,
       "max": 20,
-      "min": 0
+      "min": -16
      },
      "stamina": {
       "current": 120,
@@ -20787,7 +20787,7 @@
      "health": {
       "current": 26,
       "max": 26,
-      "min": 0
+      "min": -17
      },
      "stamina": {
       "current": 180,
@@ -21357,7 +21357,7 @@
      "health": {
       "current": 44,
       "max": 44,
-      "min": 0
+      "min": -20
      },
      "stamina": {
       "current": 360,
@@ -21918,7 +21918,7 @@
      "health": {
       "current": 20,
       "max": 20,
-      "min": 0
+      "min": -15
      },
      "stamina": {
       "current": 110,
@@ -22484,7 +22484,7 @@
      "health": {
       "current": 25,
       "max": 25,
-      "min": 0
+      "min": -16
      },
      "stamina": {
       "current": 160,
@@ -23047,7 +23047,7 @@
      "health": {
       "current": 42,
       "max": 42,
-      "min": 0
+      "min": -19
      },
      "stamina": {
       "current": 330,
@@ -23615,7 +23615,7 @@
      "health": {
       "current": 20,
       "max": 20,
-      "min": 0
+      "min": -14
      },
      "stamina": {
       "current": 90,
@@ -24187,7 +24187,7 @@
      "health": {
       "current": 24,
       "max": 24,
-      "min": 0
+      "min": -15
      },
      "stamina": {
       "current": 130,
@@ -24757,7 +24757,7 @@
      "health": {
       "current": 33,
       "max": 33,
-      "min": 0
+      "min": -17
      },
      "stamina": {
       "current": 220,
@@ -25324,7 +25324,7 @@
      "health": {
       "current": 52,
       "max": 52,
-      "min": 0
+      "min": -22
      },
      "stamina": {
       "current": 120,
@@ -25895,7 +25895,7 @@
      "health": {
       "current": 56,
       "max": 56,
-      "min": 0
+      "min": -23
      },
      "stamina": {
       "current": 160,
@@ -26464,7 +26464,7 @@
      "health": {
       "current": 64,
       "max": 64,
-      "min": 0
+      "min": -25
      },
      "stamina": {
       "current": 240,
@@ -27059,7 +27059,7 @@
      "health": {
       "current": 36,
       "max": 36,
-      "min": 0
+      "min": -18
      },
      "stamina": {
       "current": 160,
@@ -27658,7 +27658,7 @@
      "health": {
       "current": 40,
       "max": 40,
-      "min": 0
+      "min": -19
      },
      "stamina": {
       "current": 200,
@@ -28255,7 +28255,7 @@
      "health": {
       "current": 48,
       "max": 48,
-      "min": 0
+      "min": -21
      },
      "stamina": {
       "current": 280,

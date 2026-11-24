@@ -553,6 +553,42 @@ func TestGetCharacterSheetNormalizesStaleStatus(t *testing.T) {
 		// NOTE: async DB persist is not triggered from use case (TODO: expose wasCorrected).
 		// Only the in-memory normalization is verified here.
 	})
+
+	t.Run("health below min loads unchanged", func(t *testing.T) {
+		pgtest.TruncateAll(t, pool)
+
+		playerStr := pgtest.InsertTestUser(t, pool, "player", "player@test.com", "pass")
+		playerUUID := uuid.MustParse(playerStr)
+
+		s := buildTestSheet(&playerUUID)
+		if err := sheetRepo.CreateCharacterSheet(ctx, s); err != nil {
+			t.Fatalf("setup: failed to create sheet: %v", err)
+		}
+
+		// Personagem morto: o HP fica onde morreu, muito abaixo do mínimo da ficha.
+		if _, err := pool.Exec(ctx,
+			`UPDATE character_sheets SET health_curr_pts = -40 WHERE uuid = $1`,
+			s.UUID,
+		); err != nil {
+			t.Fatalf("failed to inject health below min: %v", err)
+		}
+
+		uc := charactersheet.NewGetCharacterSheetUC(
+			&sync.Map{}, factory, sheetRepo, campaignRepo, submissionRepo,
+		)
+		result, err := uc.GetCharacterSheet(ctx, s.UUID, playerUUID)
+		if err != nil {
+			t.Fatalf("GetCharacterSheet() error = %v", err)
+		}
+
+		health := result.GetAllStatusBar()[enum.Health]
+		if got := health.GetCurrent(); got != -40 {
+			t.Errorf("domain health curr = %d, want -40", got)
+		}
+		if health.GetMin() >= 0 {
+			t.Errorf("domain health min = %d, want negative", health.GetMin())
+		}
+	})
 }
 
 func TestUpdateCharacterSheetProfile(t *testing.T) {
