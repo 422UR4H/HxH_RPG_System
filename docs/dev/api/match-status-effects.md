@@ -521,7 +521,9 @@ automática vence tudo: não há dado nem crítico. O dado de um teste **nunca �
 viés que cresce tira só os dados que faltam, uma vez ([`match-combat-ws.md`](match-combat-ws.md#o-teste-de-dados-vantagem-desvantagem-e-crítico)).
 
 **Mudar um efeito re-deriva** as velocidades das ações **na fila** do personagem (uma penalidade nova
-pode reordená-la), pelo mesmo caminho de uma velocidade editada. Com o turno aberto, o cálculo do
+pode reordená-la), pelo mesmo caminho de uma velocidade editada: o mestre recebe de novo o
+`action_queued` de cada ação da fila cuja descrição mudou (velocidade, `skills[]`, `statusNotes`), e
+todos recebem `bars_updated`. Com o turno aberto, o cálculo do
 mestre (`resolution_updated`) é refeito.
 
 Ainda **não** pesa: a recuperação/dano por round, os testes automáticos, o Fadiga/Asfixia e o Nen.

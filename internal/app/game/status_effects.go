@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/errtext"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/422UR4H/HxH_RPG_System/internal/app/wire/statuswire"
@@ -310,6 +311,9 @@ func (r *Room) runStatusEffectChange(
 		at: r.now().Truncate(time.Microsecond), actionID: actionID,
 		sight: r.sessionSightLocked(), hidden: r.sessionHiddenFromLocked(),
 	}
+	// O retrato da fila que o mestre recebeu antes da mudança: a re-derivação dos status
+	// (rederiveForStatus) pode mudar velocidades e anotações das ações na fila.
+	queuedBefore := r.queuedSnapshotLocked(session)
 	change, err := op(session, instant.at)
 	if err != nil {
 		r.mu.Unlock()
@@ -345,6 +349,9 @@ func (r *Room) runStatusEffectChange(
 	}
 	// Uma reação refeita pelo status leva junto as âncoras presas a ela.
 	followed := r.followAnchorsLocked()
+	// O mesmo caminho de uma velocidade editada (edit_action): a ação da fila que a mudança
+	// re-derivou volta ao mestre num action_queued, montado nesta seção crítica.
+	requeued := r.requeuedByStatusLocked(session, change.Characters, queuedBefore)
 	turnID := session.CurrentTurnID()
 	var res *domainservice.TurnResolution
 	var resAge uint64
@@ -367,7 +374,11 @@ func (r *Room) runStatusEffectChange(
 		r.announceStatusCancelled(cancelled)
 	}
 	r.announceRestored(back)
-	if len(cancelled) > 0 || len(back.actions) > 0 {
+	// A fila pode ter mudado de ordem: o mestre recebe a ação re-descrita, e a mesa, as barras.
+	for _, q := range requeued {
+		r.sendToMaster(NewServerMessage(MsgTypeActionQueued, q))
+	}
+	if len(cancelled) > 0 || len(back.actions) > 0 || len(requeued) > 0 {
 		r.broadcastBars(session)
 	}
 	// Uma reação do turno aberto pode ter sido refeita: o mestre recebe a resolução nova.
@@ -383,6 +394,43 @@ func (r *Room) runStatusEffectChange(
 	// Sem Escondido, a visão não mudou: só os personagens tocados. Com ele, o syncSight acima
 	// já cobriu quem ainda tem efeitos; este cobre o que acabou de ficar sem nenhum.
 	r.syncStatusViews(append(append([]uuid.UUID(nil), change.Characters...), followed...))
+}
+
+// queuedSnapshotLocked é o action_queued de cada ação da fila, serializado, como o mestre o
+// teria agora. O chamador segura r.mu.
+func (r *Room) queuedSnapshotLocked(session *matchsession.MatchSession) map[uuid.UUID][]byte {
+	out := make(map[uuid.UUID][]byte)
+	for _, a := range session.PendingActions() {
+		if b, err := json.Marshal(r.newActionQueuedPayloadLocked(session, a)); err == nil {
+			out[a.GetID()] = b
+		}
+	}
+	return out
+}
+
+// requeuedByStatusLocked devolve o action_queued novo de cada ação da fila dos personagens
+// tocados que já estava na fila antes da mudança e cuja descrição mudou (velocidade derivada,
+// skills[], anotações de status). A cancelada não está mais na fila e a devolvida vai em
+// action_restored: nenhuma das duas entra aqui. O chamador segura r.mu (escrita).
+func (r *Room) requeuedByStatusLocked(
+	session *matchsession.MatchSession, chars []uuid.UUID, before map[uuid.UUID][]byte,
+) []ActionQueuedPayload {
+	var out []ActionQueuedPayload
+	for _, a := range session.PendingActions() {
+		if !slices.Contains(chars, a.GetActorID()) {
+			continue
+		}
+		old, ok := before[a.GetID()]
+		if !ok {
+			continue
+		}
+		p := r.newActionQueuedPayloadLocked(session, a)
+		if b, err := json.Marshal(p); err == nil && bytes.Equal(b, old) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // statusInstant é o instante de uma mudança de status, como o histórico o carimba: a hora, a
