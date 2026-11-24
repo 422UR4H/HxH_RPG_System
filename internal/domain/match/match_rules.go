@@ -98,3 +98,40 @@ func (r MatchRules) ResolveFogMode(mapMode fog.FogMode) fog.FogMode {
 	}
 	return fog.FogModeExplored
 }
+
+// MaxBiasLevels é o teto técnico de níveis de vantagem/desvantagem por teste:
+// acima disso o valor é lido como 10 (spec §16.4 item 28).
+const MaxBiasLevels = 10
+
+// SetSize é quantos dados o conjunto mantém no resultado: 2 para 2d10, 1 para d20.
+// Dados extras de vantagem/desvantagem são rolados além do conjunto, mas só
+// este tanto é mantido.
+func (d DiceSet) SetSize() int { return len(d.Dice()) }
+
+// CriticalTotal aplica a regra do crítico ao total bruto do teste (dados + valor
+// do teste + todo número somado a ele): crítico dobra; falha crítica divide por
+// dois arredondando para baixo (piso verdadeiro, inclusive para negativos).
+// A regra vive aqui, e não em die/RollSource (spec §7 / §16.4 item 28).
+func (r MatchRules) CriticalTotal(raw int, critical, failure bool) int {
+	switch {
+	case critical:
+		return raw * 2
+	case failure:
+		// Piso verdadeiro: o "/" do Go trunca em direção a zero.
+		half := raw / 2
+		if raw < 0 && raw%2 != 0 {
+			half--
+		}
+		return half
+	}
+	return raw
+}
+
+// CriticalDamage dobra o dano final de cada alvo (depois de toda redução) quando
+// o acerto foi crítico; zero continua zero (spec §7 / §16.4 item 28).
+func (r MatchRules) CriticalDamage(final int, critical bool) int {
+	if critical {
+		return final * 2
+	}
+	return final
+}
