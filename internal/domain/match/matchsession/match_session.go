@@ -1518,6 +1518,9 @@ func (s *MatchSession) resolveOnce(t *turn.Turn) *service.TurnResolution {
 		Targets:  s,
 		Rules:    s.rules,
 		Weapons:  s.weapons,
+		// Lido, nunca escrito: a resolução roda sob a trava da sala (ResolveTurn na de escrita,
+		// PeekTurnResolution na de leitura), e quem muda um efeito segura a de escrita.
+		Effects: s.statusEffects,
 	})
 }
 

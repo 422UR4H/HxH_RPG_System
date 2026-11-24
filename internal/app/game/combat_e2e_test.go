@@ -753,8 +753,9 @@ func TestE2E_AttackAgainstACharacterProducesDamage(t *testing.T) {
 		if tgt.RawDamage != 16 {
 			t.Errorf("RawDamage = %d, want 16 (10 + 4 dice + 2 flat)", tgt.RawDamage)
 		}
-		if tgt.ProjectedDamage != 16 {
-			t.Errorf("ProjectedDamage = %d, want 16", tgt.ProjectedDamage)
+		// O acerto crítico dobra o dano final (MatchRules.CriticalDamage): 16 × 2.
+		if tgt.ProjectedDamage != 32 {
+			t.Errorf("ProjectedDamage = %d, want 32 (16 doubled by the critical hit)", tgt.ProjectedDamage)
 		}
 		projected = tgt.ProjectedDamage
 	})

@@ -141,17 +141,17 @@ func TestResolve_CharacterBranch(t *testing.T) {
 		}
 	})
 
-	t.Run("a critical does not change the damage", func(t *testing.T) {
-		// The flag passes through untouched — no multiplier exists, and Phase 2 must not
-		// invent one.
+	t.Run("a critical doubles the final damage", func(t *testing.T) {
+		// A regra do crítico (MatchRules.CriticalDamage) dobra o dano final do alvo; antes
+		// da fase 2 dos efeitos de status nenhuma regra o lia e este teste fixava o contrário.
 		crit := attackTurn(actorID, targetID, []int{10, 10}, []int{9, 3}, &sword)
 		plain := attackTurn(actorID, targetID, []int{10, 8}, []int{9, 3}, &sword)
 
 		critRes := service.TurnResolver{}.Resolve(resolveInput(t, actorID, targetID, crit))
 		plainRes := service.TurnResolver{}.Resolve(resolveInput(t, actorID, targetID, plain))
 
-		if critRes.CharacterResults[0].EffectiveDamage != plainRes.CharacterResults[0].EffectiveDamage {
-			t.Error("a critical must not change the damage while no rule consumes it")
+		if got, plainDmg := critRes.CharacterResults[0].EffectiveDamage, plainRes.CharacterResults[0].EffectiveDamage; got != 2*plainDmg {
+			t.Errorf("critical EffectiveDamage = %d, want twice the plain %d", got, plainDmg)
 		}
 	})
 

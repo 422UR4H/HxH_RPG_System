@@ -9,6 +9,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/battle"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/turn"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -114,6 +115,10 @@ type ResolveInput struct {
 	Targets  TargetReader // nil disables target routing
 	Rules    match.MatchRules
 	Weapons  *item.WeaponsManager
+	// Effects são os efeitos de status de cada personagem, pela mesma chave de Sheets. Pesam
+	// nas rolagens que a resolução deriva (statuseffect.RollEffectOf): o acerto lê os do
+	// atacante, a reação os do alvo. nil, ou uma entrada ausente, é "sem efeitos".
+	Effects map[uuid.UUID][]statuseffect.Effect
 }
 
 // TurnResolution is the snapshot of a Turn's result — character combat, wall
@@ -216,7 +221,8 @@ type RollResult struct {
 	Total      int
 	// Os sinalizadores de crítico viajam intactos. O Total já traz a regra do crítico
 	// (Derive → MatchRules.CriticalTotal: dobra no crítico, metade na falha crítica); o
-	// resolvedor não aplica outra por cima.
+	// resolvedor não mexe no total de novo. O crítico do acerto é lido pela regra do dano:
+	// dobra o dano final de cada alvo e o de uma parede (MatchRules.CriticalDamage).
 	IsCritical        bool
 	IsCriticalFailure bool
 	// Margin is nil until an opposed roll gives this test a CD.
@@ -284,10 +290,19 @@ type CharacterResult struct {
 	// — there is deliberately no second, resolution-level list to keep in sync with it).
 	Payouts []match.Modifier
 
-	DamageDice      []int
-	RawDamage       int
-	DefenseApplied  int
+	DamageDice     []int
+	RawDamage      int
+	DefenseApplied int
+	// EffectiveDamage é o dano final deste alvo — já dobrado num acerto crítico
+	// (MatchRules.CriticalDamage), depois de toda redução.
 	EffectiveDamage int
+	// CriticalDamage diz que o acerto crítico dobrou o dano final deste alvo (só quando havia
+	// dano: 0 continua 0).
+	CriticalDamage bool
+	// Dies diz que, aplicado este dano, o alvo morreria: o HP atual da ficha menos
+	// EffectiveDamage fica abaixo do mínimo da barra (−máximo negativo), e ele ainda não está
+	// Morto. É leitura da resolução (nada é aplicado aqui); o Morto entra no fechamento do turno.
+	Dies bool
 
 	Blow *battle.Blow
 }
@@ -401,7 +416,12 @@ func (tr TurnResolver) Resolve(in ResolveInput) *TurnResolution {
 					if err != nil {
 						raw = 0
 					}
-					sdr := ApplyStructuralDamage(wall, raw)
+					// O acerto é derivado uma vez para a parede (sem alvo contra quem ler o
+					// ledger, com os efeitos do atacante): o crítico dobra o dano dela também.
+					// A falta de dados vai pelo mesmo endereço do ramo de personagens.
+					hit := tr.deriveHit(in, a, in.Sheets[a.GetActorID()], nil)
+					res.DiceShort = noteShortage(res.DiceShort, DiceRef{ActionID: a.GetID(), Field: action.FieldHit}, hit.Short)
+					sdr := ApplyStructuralDamage(wall, raw, hit.IsCritical)
 					res.WallResults = append(res.WallResults, WallResult{
 						UpdatedWall:     sdr.UpdatedWall,
 						EffectiveDamage: sdr.EffectiveDamage,
@@ -591,7 +611,6 @@ func (tr TurnResolver) resolveCharacterStep(
 		}
 	}
 
-	calc := RollCalculator{}
 	cr = CharacterResult{TargetID: step.targetID}
 
 	// 1. The hit — the attacker's active test, shared by the whole chain: every target in
@@ -600,15 +619,7 @@ func (tr TurnResolver) resolveCharacterStep(
 	//    actionSpeed, not the hit — see match.Modifier.Applies — and the closed dodge's
 	//    reserve modifies the dodge, which ResolveReaction reads on the target's own side,
 	//    not on this roll.
-	cr.Hit = calc.Derive(in.Rules, a.Attack.Hit.Attempts, RollInput{
-		SkillName: a.Attack.Hit.SkillName,
-		// Accuracy plus the proficiency with the weapon in hand: the swing is read on the
-		// skill, and knowing the weapon adds to it. Same shape as the damage, which reads
-		// the weapon's dice and adds the attacker's Push.
-		SkillValue: skillValueOf(actorSheet, a.Attack.Hit.SkillName) + tr.actorWeaponProficiency(in, a),
-		Condition:  a.Attack.Hit.Context.Condition,
-		AgainstID:  &step.targetID,
-	})
+	cr.Hit = tr.deriveHit(in, a, actorSheet, &step.targetID)
 	short = noteShortage(nil, DiceRef{ActionID: a.GetID(), Field: action.FieldHit}, cr.Hit.Short)
 
 	// 2. The target's answer — the reaction attached for them, opened or not (the default one
@@ -632,6 +643,7 @@ func (tr TurnResolver) resolveCharacterStep(
 		AttackerID: a.GetActorID(),
 		HitTotal:   cr.Hit.Total,
 		Rules:      in.Rules,
+		Effects:    in.Effects[step.targetID],
 	})
 	short = append(short, out.DiceShort...)
 	cr.ReactionKind = string(out.Kind)
@@ -683,8 +695,13 @@ func (tr TurnResolver) resolveCharacterStep(
 			Catalogue:     in.Weapons,
 		})
 		cr.DefenseApplied = def.Amount
-		cr.EffectiveDamage = EffectiveDamage(cr.RawDamage, def)
+		// O crítico do acerto dobra o dano FINAL deste alvo, depois de toda redução; o resíduo
+		// que segue na cadeia (passo 4) não é dobrado — cada alvo dobra o que ele mesmo toma.
+		eff := EffectiveDamage(cr.RawDamage, def)
+		cr.EffectiveDamage = in.Rules.CriticalDamage(eff, cr.Hit.IsCritical)
+		cr.CriticalDamage = cr.Hit.IsCritical && eff > 0
 	}
+	cr.Dies = dies(targetSheet, cr.EffectiveDamage, in.Effects[step.targetID])
 
 	// 4. What the chain leaves for whoever is walked next.
 	var defenseWeapon *enum.WeaponName
@@ -700,6 +717,62 @@ func (tr TurnResolver) resolveCharacterStep(
 
 	cr.Blow = battle.NewBlow(a.GetActorID(), step.targetID, *a.Attack, nil, nil, nil)
 	return cr, chainOut, short, nil
+}
+
+// deriveHit deriva o acerto do atacante: Accuracy (ou a perícia da ação) mais a proficiência
+// com a arma na mão, a condição do mestre e os efeitos de status do atacante (domínio de
+// ataque). against é o alvo do passo da cadeia; nil na parede. Uma ficha ausente lê 0 (o
+// ramo de parede não passa por actorSheetMissing).
+func (tr TurnResolver) deriveHit(
+	in ResolveInput, a action.Action, actorSheet *csSheet.CharacterSheet, against *uuid.UUID,
+) RollOutcome {
+	skill := 0
+	if actorSheet != nil {
+		skill = skillValueOf(actorSheet, a.Attack.Hit.SkillName)
+	}
+	return RollCalculator{}.Derive(in.Rules, a.Attack.Hit.Attempts, RollInput{
+		SkillName: a.Attack.Hit.SkillName,
+		// Accuracy plus the proficiency with the weapon in hand: the swing is read on the
+		// skill, and knowing the weapon adds to it. Same shape as the damage, which reads
+		// the weapon's dice and adds the attacker's Push.
+		SkillValue: skill + tr.actorWeaponProficiency(in, a),
+		Condition:  a.Attack.Hit.Context.Condition,
+		AgainstID:  against,
+		Status: statusRollOf(in.Effects[a.GetActorID()], statuseffect.Test{
+			Skill: skillNameOf(a.Attack.Hit.SkillName), Domain: statuseffect.DomainAttack,
+		}),
+	})
+}
+
+// statusRollOf é a leitura dos efeitos de status de quem testa para um teste.
+func statusRollOf(effects []statuseffect.Effect, t statuseffect.Test) StatusRoll {
+	e := statuseffect.RollEffectOf(effects, t)
+	return StatusRoll{Bias: e.Bias, Penalty: e.Penalty, AutoFail: e.AutoFail, RolledOnly: e.RolledOnly}
+}
+
+// skillNameOf atravessa a fronteira string→enum; um nome desconhecido é "sem perícia".
+func skillNameOf(name string) enum.SkillName {
+	s, err := enum.SkillNameFrom(name)
+	if err != nil {
+		return ""
+	}
+	return s
+}
+
+// dies diz se o alvo morreria com este dano: HP atual − dano abaixo do mínimo da barra (um
+// além dele; ficar no mínimo é vivo). Lê a ficha ao vivo sem escrever nada. Quem já está
+// Morto não morre de novo.
+func dies(cs *csSheet.CharacterSheet, damage int, effects []statuseffect.Effect) bool {
+	for _, e := range effects {
+		if e.Kind == statuseffect.KindDead {
+			return false
+		}
+	}
+	bar, ok := cs.GetAllStatusBar()[enum.Health]
+	if !ok || bar == nil {
+		return false
+	}
+	return bar.GetCurrent()-damage < bar.GetMin()
 }
 
 // skillValueOf reads a skill off the sheet, crossing the string→enum boundary. A name the

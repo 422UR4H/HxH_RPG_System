@@ -20,7 +20,7 @@ func TestApplyStructuralDamage(t *testing.T) {
 		w := base
 		w.HP = 0
 		w.MaxHP = 0
-		result := service.ApplyStructuralDamage(w, 20)
+		result := service.ApplyStructuralDamage(w, 20, false)
 		if result.EffectiveDamage != 0 {
 			t.Errorf("expected EffectiveDamage=0, got %d", result.EffectiveDamage)
 		}
@@ -34,7 +34,7 @@ func TestApplyStructuralDamage(t *testing.T) {
 
 	t.Run("damage <= resistance: effective=0, rebound=rawDamage", func(t *testing.T) {
 		w := base
-		result := service.ApplyStructuralDamage(w, 3)
+		result := service.ApplyStructuralDamage(w, 3, false)
 		if result.EffectiveDamage != 0 {
 			t.Errorf("expected EffectiveDamage=0, got %d", result.EffectiveDamage)
 		}
@@ -48,7 +48,7 @@ func TestApplyStructuralDamage(t *testing.T) {
 
 	t.Run("damage > resistance: effective=raw-resistance, HP decremented", func(t *testing.T) {
 		w := base
-		result := service.ApplyStructuralDamage(w, 15)
+		result := service.ApplyStructuralDamage(w, 15, false)
 		if result.EffectiveDamage != 10 {
 			t.Errorf("expected EffectiveDamage=10, got %d", result.EffectiveDamage)
 		}
@@ -65,7 +65,7 @@ func TestApplyStructuralDamage(t *testing.T) {
 
 	t.Run("damage brings HP to 0: Destroyed=true", func(t *testing.T) {
 		w := base
-		result := service.ApplyStructuralDamage(w, 45)
+		result := service.ApplyStructuralDamage(w, 45, false)
 		if result.UpdatedWall.HP != 0 {
 			t.Errorf("expected HP=0, got %d", result.UpdatedWall.HP)
 		}
@@ -76,7 +76,7 @@ func TestApplyStructuralDamage(t *testing.T) {
 
 	t.Run("overkill damage: HP clamped to 0, Destroyed=true", func(t *testing.T) {
 		w := base
-		result := service.ApplyStructuralDamage(w, 200)
+		result := service.ApplyStructuralDamage(w, 200, false)
 		if result.UpdatedWall.HP != 0 {
 			t.Errorf("expected HP=0 (clamped), got %d", result.UpdatedWall.HP)
 		}

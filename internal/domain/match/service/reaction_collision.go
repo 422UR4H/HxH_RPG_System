@@ -5,6 +5,7 @@ import (
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/entity/enum"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match"
 	"github.com/422UR4H/HxH_RPG_System/internal/domain/match/entity/action"
+	"github.com/422UR4H/HxH_RPG_System/internal/domain/statuseffect"
 	"github.com/google/uuid"
 )
 
@@ -26,6 +27,9 @@ type ReactionInput struct {
 	AttackerID uuid.UUID
 	HitTotal   int // the CD every defensive test is read against
 	Rules      match.MatchRules
+	// Effects são os efeitos de status do ALVO (quem reage): pesam em cada teste da reação
+	// (statuseffect.RollEffectOf). nil = nenhum.
+	Effects []statuseffect.Effect
 }
 
 // ReactionOutcome is one target's answer to one attack, fully derived.
@@ -155,6 +159,11 @@ func ResolveReaction(in ReactionInput) ReactionOutcome {
 		SkillValue: skillValueOf(in.Target, enum.Defense.String()),
 		Passive:    true,
 		Condition:  defenseCond,
+		// A Guarda aberta deixa a defesa padrão só rolada (RolledOnly): sem dados, ela pede o
+		// conjunto pela falta abaixo, e a sessão o tira.
+		Status: statusRollOf(in.Effects, statuseffect.Test{
+			Skill: enum.Defense, Domain: statuseffect.DomainDefense, Reaction: statuseffect.ReactionDefense,
+		}),
 	})
 	// "defense" numa reação que mantém a padrão endereça a DefaultDefense, que a sessão cria
 	// se ainda não existe (resolveRollCheck).
@@ -236,7 +245,18 @@ func deriveReflex(in ReactionInput, calc RollCalculator) RollOutcome {
 		Ledger:    in.Ledger,
 		Dimension: match.DimDodge,
 		AgainstID: &in.AttackerID,
+		Status:    statusRollOf(in.Effects, reflexTest(in.Kind)),
 	})
+}
+
+// reflexTest é como os status leem o reflexo: a esquiva por reflexo, ou o escape quando a
+// reação desloca (os três escapes leem a restrição "escape", não a "reflexDodge").
+func reflexTest(k action.ReactionKind) statuseffect.Test {
+	t := statuseffect.Test{Skill: enum.Reflex, Domain: statuseffect.DomainDodge, Reaction: statuseffect.ReactionReflexDodge}
+	if k.Displaces() {
+		t.Reaction = statuseffect.ReactionEscape
+	}
+	return t
 }
 
 // deriveEvasion derives the Evasion test off the reaction's Skills list, matched by name — the
@@ -267,6 +287,9 @@ func deriveEvasion(in ReactionInput, calc RollCalculator) RollOutcome {
 		Ledger:    in.Ledger,
 		Dimension: match.DimDodge,
 		AgainstID: &in.AttackerID,
+		Status: statusRollOf(in.Effects, statuseffect.Test{
+			Skill: enum.Evasion, Domain: statuseffect.DomainDodge, Reaction: statuseffect.ReactionEvasion,
+		}),
 	})
 }
 
@@ -298,6 +321,9 @@ func resolveRepel(in ReactionInput, calc RollCalculator) ReactionOutcome {
 		SkillValue: skillValueOf(in.Target, enum.Repel.String()),
 		Condition:  cond,
 		AgainstID:  &in.AttackerID,
+		Status: statusRollOf(in.Effects, statuseffect.Test{
+			Skill: enum.Repel, Domain: statuseffect.DomainDefense, Reaction: statuseffect.ReactionRepel,
+		}),
 	})
 	noteReactionShortage(&out, in, DiceRef{Field: action.FieldRepel}, out.Repel)
 
