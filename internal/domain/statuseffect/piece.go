@@ -97,8 +97,8 @@ func (e Effect) Pieces() []Piece {
 		return stupefiedPieces(p.Points, true)
 	case KindStunned:
 		return stunnedPieces(p.Points, true)
-	case KindUnconscious:
-		// Inconsciente herda o que o Atordoado faz, não como ele termina.
+	case KindUnconscious, KindDead:
+		// Inconsciente herda o que o Atordoado faz, não como ele termina; o Morto contém o Inconsciente.
 		return stunnedPieces(0, false)
 	case KindRestrained:
 		return []Piece{
@@ -123,6 +123,8 @@ func (e Effect) Pieces() []Piece {
 		return []Piece{
 			restrict(ReactionReflexDodge, RestrictionDisadvantage),
 			restrict(ReactionRepel, RestrictionDisadvantage),
+			// TODO(movimento): provisório — o desenho do movimento decide por tipo de escape (rolar talvez sem penalidade); spec §16.4 itens 33 e 37.
+			restrict(ReactionEscape, RestrictionDisadvantage),
 		}
 	case KindAirborne:
 		// Provisório até o movimento (spec §13): só rolar/deslizar (Caído), só a trajetória (No ar).
@@ -237,7 +239,8 @@ func sensePieces(s Sense, p Params) []Piece {
 	if nullified && s == SenseVision {
 		out = append(out,
 			Piece{Kind: PieceTestPenalty, Scope: Scope{Domain: DomainAttack}, Disadvantage: 1},
-			Piece{Kind: PieceTestPenalty, Scope: Scope{Domain: DomainDefense}, Disadvantage: 1})
+			Piece{Kind: PieceTestPenalty, Scope: Scope{Domain: DomainDefense}, Disadvantage: 1},
+			Piece{Kind: PieceTestPenalty, Scope: Scope{Domain: DomainDodge}, Disadvantage: 1})
 	}
 	if s == SenseTact {
 		for _, f := range p.Faces {
