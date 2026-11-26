@@ -359,8 +359,8 @@ O personagem volta com o HP que o mestre disser:
 - **Só no `dead`.** `hp` em qualquer outro tipo é `status_effect_invalid`.
 - **Dispara**, além do `status_effects_updated` da remoção, um
   [`character_hp_changed`](match-combat-ws.md#character_hp_changed) ao mestre e ao dono **quando o
-  HP mudou**, com `damage` **negativo** (`HP de antes − HP de agora`: voltar de −40 para 5 manda
-  `damage: -45`). Com um turno aberto, o `resolution_updated` do mestre é refeito (`dies` depende do
+  HP mudou**, com `hpChange` **positivo** (`HP de agora − HP de antes`: voltar de −40 para 5 manda
+  `hpChange: 45`). Com um turno aberto, o `resolution_updated` do mestre é refeito (`dies` depende do
   HP).
 - **Gravação.** Fora de turno, o HP é gravado **na mesma transação** da remoção do status. Dentro de um
   turno aberto, vai junto do fechamento dele, como qualquer ficha que o fechamento escreve. Uma

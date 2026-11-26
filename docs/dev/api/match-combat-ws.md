@@ -2215,7 +2215,7 @@ ficha** que mudou, e mais ninguém.
     "characterId": "22222222-2222-4222-8222-222222222222",
     "hp": 84,
     "maxHp": 100,
-    "damage": 16
+    "hpChange": -16
   }
 }
 ```
@@ -2225,7 +2225,7 @@ ficha** que mudou, e mais ninguém.
 | `characterId` | UUID da ficha — o mesmo ID que a peça do tabuleiro e `bars_updated.characters[].characterId` carregam. |
 | `hp` | O valor que a ficha tem **agora** (**pode ser negativo**: a barra de vida desce até o mínimo da ficha, e um golpe grande deixa o valor exato, −40 continua −40), já aplicado — e já persistido, na transação do turno que o aplicou (se ela falhar, a mensagem sai igual: o dano vale na mesa, mas não sobrevive a um reinício; ver [§9](#reinício-recarga-queda)). |
 | `maxHp` | O máximo da mesma barra de vida, para o cliente desenhar a barra sem um round trip REST. |
-| `damage` | O quanto acabou de sair. É o que deixa uma linha de histórico dizer "−16" sem diffar dois snapshots. **É negativo quando o HP subiu** — a volta do Morto (`HP de antes − HP de agora`: de −40 para 5 sai `-45`); o front mostra "+45". |
+| `hpChange` | A variação do HP, com o **sinal natural**: `hp − hp de antes`. **Negativo = perdeu** (o exemplo acima: `-16`), **positivo = ganhou** — a volta do Morto de −40 para 5 sai `+45`. É o que deixa uma linha de histórico dizer "−16" ou "+45" sem diffar dois snapshots. |
 
 **É o número APLICADO, não a projeção.** `resolution_updated` carrega o ensaio
 (`projectedDamage`) enquanto o turno está aberto; só o fechamento escreve na ficha. Quem
@@ -2235,7 +2235,8 @@ desenha a barra de vida escuta esta mensagem, não aquela.
 por **cura** e por **veneno**, e nenhum desses caminhos resolve turno nenhum. Um campo na
 resolução teria que ser duplicado no instante em que o primeiro deles chegasse. O que esta
 mensagem diz é "a barra mexeu", não "um turno calculou alguma coisa" — quando a cura e o
-veneno existirem, eles emitem **esta** mensagem, com o mesmo formato.
+veneno existirem, eles emitem **esta** mensagem, com o mesmo formato e o mesmo campo `hpChange`
+(positivo na cura, negativo no veneno).
 
 **Por que projetado:** o HP exato de terceiro não é estado de mesa. A mesa fica sabendo que
 alguém se machucou pela narração e pelo `resolution_updated` liquidado (que já é projetado,

@@ -83,7 +83,7 @@ func TestStatusEffectsUC_Dead(t *testing.T) {
 			t.Fatalf("hp = %d, want the min %d", f.bar.GetCurrent(), f.bar.GetMin())
 		}
 		if len(ch.HP) != 1 || ch.HP[0].CharacterID != f.pc || ch.HP[0].NewHP != f.bar.GetMin() ||
-			ch.HP[0].Sheet == nil || ch.HP[0].Damage != old-f.bar.GetMin() {
+			ch.HP[0].Sheet == nil || ch.HP[0].Delta != f.bar.GetMin()-old {
 			t.Fatalf("HP = %+v", ch.HP)
 		}
 		if len(ch.Writes) != 1 || !ch.Writes[0].Delete || ch.Writes[0].Effect.ID != f.dead.ID {

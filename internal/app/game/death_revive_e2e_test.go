@@ -83,8 +83,8 @@ func TestDeathRevive(t *testing.T) {
 		chatBarrier(t, master, mc, pc, bc)
 
 		hp := hpChangesFor(t, mc, f.npcID)
-		if len(hp) != 1 || hp[0].HP != 3 || hp[0].Damage != before-3 {
-			t.Fatalf("master: hp changes = %+v, want one with hp 3 and damage %d", hp, before-3)
+		if len(hp) != 1 || hp[0].HP != 3 || hp[0].HPChange != 3-before {
+			t.Fatalf("master: hp changes = %+v, want one with hp 3 and hpChange %d", hp, 3-before)
 		}
 		// O NPC é do mestre: nenhum jogador recebe o HP dele.
 		if n := len(hpChangesFor(t, pc, f.npcID)) + len(hpChangesFor(t, bc, f.npcID)); n != 0 {

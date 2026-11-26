@@ -71,13 +71,13 @@ func assertVictimHpChange(
 	if got.CharacterID != f.victimID {
 		t.Errorf("%s was told %s changed, want the victim %s", who, got.CharacterID, f.victimID)
 	}
-	if got.Damage <= 0 {
-		t.Fatalf("%s got damage %d — nothing was applied, so this test proves nothing",
-			who, got.Damage)
+	if got.HPChange >= 0 {
+		t.Fatalf("%s got hpChange %d — nothing was applied, so this test proves nothing",
+			who, got.HPChange)
 	}
-	if got.HP != hpBefore-got.Damage {
-		t.Errorf("%s got hp %d with damage %d, want %d (%d - %d)",
-			who, got.HP, got.Damage, hpBefore-got.Damage, hpBefore, got.Damage)
+	if got.HP != hpBefore+got.HPChange {
+		t.Errorf("%s got hp %d with hpChange %d, want %d (%d + %d)",
+			who, got.HP, got.HPChange, hpBefore+got.HPChange, hpBefore, got.HPChange)
 	}
 	if got.MaxHP != maxHP {
 		t.Errorf("%s got maxHp %d, want the bar's real maximum %d", who, got.MaxHP, maxHP)

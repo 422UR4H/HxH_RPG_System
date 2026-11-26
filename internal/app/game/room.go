@@ -2134,7 +2134,7 @@ func (r *Room) broadcastHpChanges(damaged []matchsession.DamagedCharacter) {
 				CharacterID: d.CharacterID,
 				HP:          d.NewHP,
 				MaxHP:       bar.GetMax(),
-				Damage:      d.Damage,
+				HPChange:    d.Delta,
 			},
 			// An NPC IS in charToPlayer — it maps to the MASTER (indexParticipants, and
 			// AddNPC for one that joined live), so owner is the master and the two arms

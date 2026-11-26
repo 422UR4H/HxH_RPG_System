@@ -1212,12 +1212,13 @@ type TurnTransition struct {
 	NoActionCanPay bool
 }
 
-// DamagedCharacter is one applied HP reduction. The caller persists it — the session holds
-// the live sheet, the gateway holds the row.
+// DamagedCharacter is one applied HP change. The caller persists it — the session holds
+// the live sheet, the gateway holds the row. Delta is the natural sign: NewHP minus the HP
+// before, so negative when the character lost HP.
 type DamagedCharacter struct {
 	CharacterID uuid.UUID
 	Sheet       *csSheet.CharacterSheet
-	Damage      int
+	Delta       int
 	NewHP       int
 }
 
@@ -1609,7 +1610,7 @@ func (s *MatchSession) applyDamage(cr service.CharacterResult) (DamagedCharacter
 	return DamagedCharacter{
 		CharacterID: cr.TargetID,
 		Sheet:       sheet,
-		Damage:      cr.EffectiveDamage,
+		Delta:       -cr.EffectiveDamage,
 		NewHP:       newHP,
 	}, true
 }

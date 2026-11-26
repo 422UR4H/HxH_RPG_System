@@ -41,13 +41,13 @@ type StatusEffectChange struct {
 	HP []HPChange
 }
 
-// HPChange é o HP que uma mudança de status deixou numa ficha. Damage é o quanto saiu
-// (HP de antes − NewHP): negativo quando o HP subiu, como na volta do Morto.
+// HPChange é o HP que uma mudança de status deixou numa ficha. Delta é a variação
+// com o sinal natural (NewHP − HP de antes): positivo quando o HP subiu, como na volta do Morto.
 type HPChange struct {
 	CharacterID uuid.UUID
 	Sheet       *csSheet.CharacterSheet
 	NewHP       int
-	Damage      int
+	Delta       int
 }
 
 type StatusEffectsUC struct {
@@ -235,7 +235,7 @@ func (uc *StatusEffectsUC) Remove(
 			return StatusEffectChange{}, fmt.Errorf("set revive hp of %s: %w", cur.CharacterID, err)
 		}
 		change.HP = []HPChange{{
-			CharacterID: cur.CharacterID, Sheet: revive.sheet, NewHP: revive.hp, Damage: old - revive.hp,
+			CharacterID: cur.CharacterID, Sheet: revive.sheet, NewHP: revive.hp, Delta: revive.hp - old,
 		}}
 	}
 	return change, nil

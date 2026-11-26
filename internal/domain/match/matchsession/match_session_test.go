@@ -1520,8 +1520,8 @@ func TestMatchSession_DamageIsAppliedOnlyOnTurnClose(t *testing.T) {
 		if tr2.Damaged[0].CharacterID != victim {
 			t.Errorf("damaged = %v, want %v", tr2.Damaged[0].CharacterID, victim)
 		}
-		if tr2.Damaged[0].Damage != projected {
-			t.Errorf("applied %d, projected %d — they must agree", tr2.Damaged[0].Damage, projected)
+		if -tr2.Damaged[0].Delta != projected {
+			t.Errorf("applied %d, projected %d — they must agree", -tr2.Damaged[0].Delta, projected)
 		}
 		if got := currentHP(t, sheets[victim]); got != hpBefore-projected {
 			t.Errorf("HP = %d, want %d", got, hpBefore-projected)

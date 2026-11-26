@@ -575,13 +575,14 @@ type TurnClosedPayload struct {
 //
 // This is the applied number, not a projection: resolution_updated carries the dry run, and
 // only the close writes it to the sheet. HP is what the sheet holds now; MaxHP is the bar's
-// own maximum, so a client can draw the bar without a REST round trip; Damage is what took
-// it there, which is what an event list needs to say "-16" without diffing two snapshots.
+// own maximum, so a client can draw the bar without a REST round trip; HPChange is what took
+// it there, with the natural sign (HP now minus HP before): -16 for a loss, +45 for a return
+// from Dead. It is what an event list needs to say "-16" without diffing two snapshots.
 type CharacterHpChangedPayload struct {
 	CharacterID uuid.UUID `json:"characterId"`
 	HP          int       `json:"hp"`
 	MaxHP       int       `json:"maxHp"`
-	Damage      int       `json:"damage"`
+	HPChange    int       `json:"hpChange"`
 }
 
 // ActionEditedPayload confirms the edit to the MASTER. It carries no numbers — the recomputed

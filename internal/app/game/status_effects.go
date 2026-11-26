@@ -1025,7 +1025,7 @@ func hpChangesOf(changes []appmatch.HPChange) []matchsession.DamagedCharacter {
 	out := make([]matchsession.DamagedCharacter, 0, len(changes))
 	for _, c := range changes {
 		out = append(out, matchsession.DamagedCharacter{
-			CharacterID: c.CharacterID, Sheet: c.Sheet, Damage: c.Damage, NewHP: c.NewHP,
+			CharacterID: c.CharacterID, Sheet: c.Sheet, Delta: c.Delta, NewHP: c.NewHP,
 		})
 	}
 	return out
