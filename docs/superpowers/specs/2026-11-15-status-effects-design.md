@@ -510,7 +510,7 @@ Vision — Cego (Blind), Ofuscado (Dazzled) · Hearing — Surdo (Deaf), Zumbido
 Enjoado (Nauseous), Febril (Feverish), Fraco (Weak) · Weakened mind — Abalado (Shaken), Confuso
 (Confused) · Weakened spirit — Aura abalada (Shaken aura), Desanimado (Disheartened) · Paralyzed —
 Em choque (In shock), Travado (Locked up) · Dazed — Em pânico (In panic), Horrorizado (Horrified) ·
-Restrained — Agarrado (Grabbed), Enredado (Entangled), Soterrado (Buried), Pendurado (Hanging) ·
+Restrained — Agarrado (Grabbed), Amarrado (Tied up), Soterrado (Buried), Pendurado (Hanging) ·
 Compelled — Amedrontado (Frightened), Hipnotizado (Hypnotized), Em fúria (Enraged) (no
 "Enfeitiçado" (Bewitched): there is no spell in the hunter world) · Hidden — Furtivo (Stealthy),
 Emboscado (Ambushed) · Open guard — Desprevenido (Unprepared), Surpreso (Surprised) · Burning —

@@ -494,7 +494,7 @@ Nada além disso é automático: Atordoado não derruba por conta própria.
 **Apelidos sugeridos** [Claude, enxuto]: Visão — Cego, Ofuscado · Audição — Surdo, Zumbido · Tato
 (equilíbrio) — Tonto, Vertigem · Tato (toque) — Dormente · Corpo debilitado — Enjoado, Febril,
 Fraco · Mente debilitada — Abalado, Confuso · Espírito debilitado — Aura abalada, Desanimado · Paralisado — Em choque,
-Travado · Atônito — Em pânico, Horrorizado · Preso — Agarrado, Enredado, Soterrado, Pendurado ·
+Travado · Atônito — Em pânico, Horrorizado · Preso — Agarrado, Amarrado, Soterrado, Pendurado ·
 Compelido — Amedrontado, Hipnotizado, Em fúria (sem "Enfeitiçado": não há feitiço no mundo
 hunter) · Escondido — Furtivo, Emboscado · Guarda aberta — Desprevenido, Surpreso ·
 Queimando — Em chamas · Asfixiando — Afogando, Estrangulado · Lesionado — livre ("braço quebrado").
