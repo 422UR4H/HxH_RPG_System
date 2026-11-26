@@ -92,18 +92,19 @@ sua própria ação, ele pode deixar você agir mesmo assim — e até adiantar 
 ## Do que cada ação é feita
 
 Toda ação de combate é feita de uma ou mais destas quatro coisas: **ataque**, **defesa**,
-**esquiva** e **movimento**. É isso que decide o que pesa nela: um ferimento no braço de
+**esquiva** e **movimento**. É isso que decide o que pesa nela: um ferimento que pesa no
 ataque pesa em tudo que é ataque; ficar sem poder se mover impede tudo que é movimento.
 
 | Ação | É feita de |
 |------|-----------|
 | Atacar, fintar | ataque |
-| Defender (a defesa automática), aparar | defesa |
+| Defender (a defesa automática) | defesa |
 | Esquivar (a esquiva automática), esquiva fechada, Evasão | esquiva |
 | **Repelir** | **ataque e defesa** |
-| Escapar, rolar, forçar a esquiva | movimento e esquiva |
+| Escapar, rolamento *(ainda por vir)* | movimento e esquiva |
+| Escape fechado | movimento e esquiva, mais a Evasão |
 | Escape defensivo | movimento e esquiva, mais a defesa automática que ele mantém como rede |
-| Investir, arremeter | movimento e ataque |
+| Investir, arremeter *(ainda por vir)* | movimento e ataque |
 | Esquiva defensiva *(ainda por vir)* | esquiva e defesa |
 
 **Por que o repelir é ataque e defesa.** Por dois motivos juntos: repelir é **atacar o
@@ -115,8 +116,8 @@ pode defender.
 
 As reações automáticas **não** se misturam: a esquiva automática é só esquiva, e a defesa
 automática é só defesa — cada uma com o seu teste. A esquiva defensiva, que junta as duas, é
-outra ação. Já o escape faz **dois testes**, um de esquiva e um de movimento, e cada um sofre só
-o que pesa na sua parte.
+outra ação. Já o escape faz **dois testes**, um de esquiva e um de movimento, e o que pesa só na
+esquiva não pesa no teste de movimento, e vice-versa.
 
 **Um mesmo problema pesa uma vez só num teste**, mesmo que alcance mais de uma coisa que o
 teste é: com a visão anulada, o repelir (ataque e defesa) sofre **uma** desvantagem, não duas.
